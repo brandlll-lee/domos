@@ -1,5 +1,4 @@
 export const chatCopy = {
-  conversation: (name: string) => `与 ${name} 对话`,
   workspace: "本地工作空间",
   conversations: "联系人",
   search: "搜索联系人",

@@ -1,7 +1,7 @@
 import type { Bot } from "@domos/agent/bots";
 import { Button } from "@domos/ui/controls";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { MemoryPanel } from "./memory.tsx";
 import { ProfileEditor } from "./profile.tsx";
 import { PromptPanel } from "./prompt.tsx";
@@ -22,9 +22,11 @@ type Panel = keyof typeof panels;
 export function BotDetails({
   bot,
   onClose,
+  children,
 }: {
   bot: Bot;
   onClose: () => void;
+  children?: ReactNode;
 }) {
   const work = useBotWork(bot.id);
   const action = useWorkAction();
@@ -124,6 +126,7 @@ export function BotDetails({
           )}
           {panel === "prompt" && <PromptPanel botId={bot.id} action={action} />}
         </fieldset>
+        {children}
       </div>
     </aside>
   );

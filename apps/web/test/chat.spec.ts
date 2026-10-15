@@ -56,8 +56,31 @@ async function chooseAppearance(
   page: import("@playwright/test").Page,
   label: string,
 ) {
+  const details = page.getByRole("complementary", { name: /的详情$/ });
+  const opened = !(await details.isVisible());
+  if (opened) await openDetails(page);
   await page.getByRole("combobox", { name: "外观", exact: true }).click();
   await page.getByRole("option", { name: label, exact: true }).click();
+  if (opened)
+    await details.getByRole("button", { name: "关闭", exact: true }).click();
+}
+
+async function openDetails(page: import("@playwright/test").Page) {
+  const details = page.getByRole("complementary", { name: /的详情$/ });
+  if (!(await details.isVisible()))
+    await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  return details;
+}
+
+async function expectModel(
+  page: import("@playwright/test").Page,
+  text: string,
+) {
+  const details = await openDetails(page);
+  await expect(
+    details.getByRole("combobox", { name: "模型", exact: true }),
+  ).toContainText(text);
+  await details.getByRole("button", { name: "关闭", exact: true }).click();
 }
 
 async function expectTextContrast(page: import("@playwright/test").Page) {
@@ -115,6 +138,12 @@ async function createBot(
   name: string,
   model?: string,
 ) {
+  if (
+    !(await page
+      .getByRole("button", { name: "新建 Bot", exact: true })
+      .isVisible())
+  )
+    await openDetails(page);
   await page.getByRole("button", { name: "新建 Bot", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "新建 Bot", exact: true });
   await dialog.getByLabel("名字", { exact: true }).fill(name);
@@ -314,6 +343,50 @@ test("Bot details share the desktop with chat and cover narrow screens", async (
   await expect(chat).toBeVisible();
 });
 
+test("floating identity stays centered and settings belong to the details pane", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto(url);
+  const trigger = page.getByRole("button", { name: "Bot详情", exact: true });
+  await expect(trigger).toHaveText("Domos");
+  await expect(
+    page.getByRole("combobox", { name: "模型", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("combobox", { name: "外观", exact: true }),
+  ).toHaveCount(0);
+  for (const width of [320, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    const pill = await trigger.boundingBox();
+    const chat = await page.locator(".conversation").boundingBox();
+    if (!pill || !chat) throw new Error("Missing floating identity");
+    expect(pill.x + pill.width / 2).toBeCloseTo(chat.x + chat.width / 2, 0);
+    expect(pill.height).toBeGreaterThanOrEqual(44);
+    expect(pill.width).toBeLessThan(chat.width);
+    expect(await page.locator("body").evaluate((el) => el.scrollWidth)).toBe(
+      width,
+    );
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+    const details = page.getByRole("complementary", { name: /的详情$/ });
+    await expect(
+      details.getByRole("combobox", { name: "模型", exact: true }),
+    ).toBeEnabled();
+    await expect(
+      details.getByRole("combobox", { name: "外观", exact: true }),
+    ).toBeVisible();
+    await page.screenshot({
+      path: `test-results/floating-identity-${width}.png`,
+    });
+    await details.focus();
+    await page.keyboard.press("Escape");
+    await expect(trigger).toBeFocused();
+  }
+  expect(errors).toEqual([]);
+});
+
 test("contacts keep independent histories, drafts, models, and locations after restart", async ({
   page,
   context,
@@ -347,9 +420,7 @@ test("contacts keep independent histories, drafts, models, and locations after r
   await input.fill("研究草稿");
   await contacts.getByRole("link", { name: /^Domos/ }).click();
   await expect(input).toHaveValue("原来的草稿");
-  await expect(
-    page.getByRole("combobox", { name: "模型", exact: true }),
-  ).toContainText("测试模型一");
+  await expectModel(page, "测试模型一");
   await createBot(page, "写作助手");
   await input.fill("写作问题");
   await send.click();
@@ -359,18 +430,14 @@ test("contacts keep independent histories, drafts, models, and locations after r
   await contacts.getByRole("link", { name: "研究员", exact: true }).click();
   await expect(input).toHaveValue("研究草稿");
   await expect(page.getByLabel("你的消息")).toHaveText("研究问题");
-  await expect(
-    page.getByRole("combobox", { name: "模型", exact: true }),
-  ).toContainText("测试模型二");
+  await expectModel(page, "测试模型二");
   await page.reload();
   await expect(input).toHaveValue("研究草稿");
   await other.close();
   const port = Number(new URL(url).port);
   await stop();
   await start(port);
-  await expect(
-    page.getByRole("combobox", { name: "模型", exact: true }),
-  ).toBeEnabled();
+  await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   expect(page.url()).toBe(researchUrl);
   await expect(contacts.getByRole("link")).toHaveCount(3);
   await expect(page.getByLabel("研究员 的回复")).toContainText("faux-2");
@@ -445,6 +512,7 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
       await route.abort("failed");
     } else await route.continue();
   });
+  await openDetails(page);
   await trigger.click();
   await name.fill("设计助手");
   const create = dialog.getByRole("button", { name: "创建", exact: true });
@@ -454,6 +522,7 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
   await expect(dialog.getByRole("alert")).toContainText("创建未确认");
   await create.click();
   await expect(dialog).toHaveCount(0);
+  await openDetails(page);
   const picker = page.getByRole("combobox", { name: "联系人", exact: true });
   await expect(picker).toContainText("设计助手");
   await picker.click();
@@ -475,6 +544,7 @@ test("model choices load from the server and selection survives a restart", asyn
     await route.continue();
   });
   await page.goto(url);
+  const details = await openDetails(page);
   const picker = page.getByRole("combobox", { name: "模型", exact: true });
   await expect(picker).toBeDisabled();
   await expect(picker).not.toContainText("DeepSeek");
@@ -486,11 +556,13 @@ test("model choices load from the server and selection survives a restart", asyn
     .click();
   await expect(picker).toContainText("faux · 测试模型二");
   await page.reload();
+  await openDetails(page);
   await expect(picker).toContainText("faux · 测试模型二");
   const port = Number(new URL(url).port);
   await stop();
   await start(port);
   await expect(picker).toBeEnabled();
+  await details.getByRole("button", { name: "关闭", exact: true }).click();
   await page.getByLabel("消息", { exact: true }).fill("验证模型选择");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.getByLabel("Domos 的回复")).toContainText("faux-2");
@@ -500,9 +572,7 @@ test("send, reload, disconnect, reconnect and restart preserve the conversation"
   page,
 }) => {
   await page.goto(url);
-  await expect(
-    page.getByRole("combobox", { name: "模型", exact: true }),
-  ).toBeEnabled();
+  await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   await page.screenshot({ path: "test-results/chat-desktop.png" });
   await control("gate");
   await page.getByLabel("消息", { exact: true }).fill("记住这句话");
@@ -524,9 +594,7 @@ test("send, reload, disconnect, reconnect and restart preserve the conversation"
   const port = Number(new URL(url).port);
   await stop();
   await start(port);
-  await expect(
-    page.getByRole("combobox", { name: "模型", exact: true }),
-  ).toBeEnabled();
+  await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   await expect(page.getByLabel("Domos 的回复")).toContainText("记住这句话");
   await expect(page.getByLabel("你的消息")).toHaveCount(1);
 });
@@ -535,9 +603,7 @@ test("a killed server resumes unfinished work and the page reconnects", async ({
   page,
 }) => {
   await page.goto(url);
-  await expect(
-    page.getByRole("combobox", { name: "模型", exact: true }),
-  ).toBeEnabled();
+  await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   await control("gate");
   await page.getByLabel("消息", { exact: true }).fill("恢复未完成任务");
   await page.getByRole("button", { name: "发送", exact: true }).click();
@@ -551,9 +617,7 @@ test("a killed server resumes unfinished work and the page reconnects", async ({
   await start(port);
   await expect(page.getByLabel("Domos 的回复")).toContainText("完整回复。");
   await expect(page.getByLabel("你的消息")).toHaveCount(1);
-  await expect(
-    page.getByRole("combobox", { name: "模型", exact: true }),
-  ).toBeEnabled();
+  await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   await expect(contact.locator(".avatar-status")).toHaveCount(0);
 });
 
@@ -730,9 +794,7 @@ test("stopping generation keeps its partial out of reply bubbles after reload", 
 test("stop and Chinese input work on a narrow screen", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(url);
-  await expect(
-    page.getByRole("combobox", { name: "模型", exact: true }),
-  ).toBeEnabled();
+  await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   await control("gate");
   const input = page.getByLabel("消息", { exact: true });
   await input.fill("中文输入");
@@ -765,9 +827,7 @@ test("retrying a send with a lost receipt does not repeat the message", async ({
   page,
 }) => {
   await page.goto(url);
-  await expect(
-    page.getByRole("combobox", { name: "模型", exact: true }),
-  ).toBeEnabled();
+  await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   await page.route("**/rpc/send", async (route) => {
     await route.fetch();
     await route.abort();
@@ -805,9 +865,7 @@ test("drafts survive reload and reopening in the same browser", async ({
 
 test("editing during a send preserves the next draft", async ({ page }) => {
   await page.goto(url);
-  await expect(
-    page.getByRole("combobox", { name: "模型", exact: true }),
-  ).toBeEnabled();
+  await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   const receipt = Promise.withResolvers<void>();
   const sent = Promise.withResolvers<void>();
   await page.route("**/rpc/send", async (route) => {
@@ -839,9 +897,7 @@ test("storage failures keep the draft and prevent an unrecorded send", async ({
     };
   });
   await page.goto(url);
-  await expect(
-    page.getByRole("combobox", { name: "模型", exact: true }),
-  ).toBeEnabled();
+  await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   const input = page.getByLabel("消息", { exact: true });
   await input.fill("保留在输入框");
   await page.getByRole("button", { name: "发送", exact: true }).click();
@@ -855,14 +911,10 @@ test("a busy conversation shows the server rejection and keeps the draft", async
   browser,
 }) => {
   await page.goto(url);
-  await expect(
-    page.getByRole("combobox", { name: "模型", exact: true }),
-  ).toBeEnabled();
+  await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   const other = await browser.newPage();
   await other.goto(url);
-  await expect(
-    other.getByRole("combobox", { name: "模型", exact: true }),
-  ).toBeEnabled();
+  await expect(other.getByLabel("消息", { exact: true })).toBeEnabled();
   await control("gate");
   await page.route("**/rpc/send", async (route) => {
     await other.getByLabel("消息", { exact: true }).fill("占用会话");
@@ -889,10 +941,9 @@ test("text contrast, keyboard focus and message scrolling meet the UI contract",
   page,
 }) => {
   await page.goto(url);
-  await expect(
-    page.getByRole("combobox", { name: "模型", exact: true }),
-  ).toBeEnabled();
+  await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   await expectTextContrast(page);
+  const details = await openDetails(page);
   const picker = page.getByRole("combobox", { name: "模型", exact: true });
   const restingBorder = await page
     .locator(".composer-field")
@@ -903,7 +954,8 @@ test("text contrast, keyboard focus and message scrolling meet the UI contract",
   await expect(
     page.getByRole("button", { name: "添加文件", exact: true }),
   ).toBeEnabled();
-  await page.keyboard.press("Tab");
+  await details.getByRole("button", { name: "关闭", exact: true }).click();
+  await page.getByRole("button", { name: "添加文件", exact: true }).focus();
   await expect(
     page.getByRole("button", { name: "添加文件", exact: true }),
   ).toBeFocused();
@@ -944,6 +996,7 @@ test("appearance follows the system, persists, and syncs between tabs", async ({
   await page.emulateMedia({ colorScheme: "light" });
   await page.goto(url);
   const root = page.locator("html");
+  await openDetails(page);
   const appearance = page.getByRole("combobox", { name: "外观" });
   await expect(appearance).toContainText("跟随系统");
   await expect(root).toHaveAttribute("data-theme", "light");
@@ -951,10 +1004,12 @@ test("appearance follows the system, persists, and syncs between tabs", async ({
   await expect(root).toHaveAttribute("data-theme", "dark");
   await chooseAppearance(page, "浅色");
   await page.reload();
+  await openDetails(page);
   await expect(appearance).toContainText("浅色");
   await expect(root).toHaveAttribute("data-theme", "light");
   const other = await context.newPage();
   await other.goto(url);
+  await openDetails(other);
   await expect(other.getByRole("combobox", { name: "外观" })).toContainText(
     "浅色",
   );
@@ -973,6 +1028,7 @@ test("appearance remains usable when storage is blocked", async ({ page }) => {
     };
   });
   await page.goto(url);
+  await openDetails(page);
   await chooseAppearance(page, "浅色");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await expect(
@@ -984,9 +1040,7 @@ test("composer grows, shrinks, and keeps one focus surface in both themes", asyn
   page,
 }) => {
   await page.goto(url);
-  await expect(
-    page.getByRole("combobox", { name: "模型", exact: true }),
-  ).toBeEnabled();
+  await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   const input = page.getByLabel("消息", { exact: true });
   const form = page.locator(".message-composer");
   const initial = await form.boundingBox();
@@ -1035,7 +1089,9 @@ test("composer grows, shrinks, and keeps one focus surface in both themes", asyn
   expect(action?.width).toBeGreaterThanOrEqual(44);
   expect(action?.height).toBeGreaterThanOrEqual(44);
   expect((await form.boundingBox())?.height).toBeLessThanOrEqual(50);
-  await expect(page.getByRole("combobox", { name: "外观" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Bot详情", exact: true }),
+  ).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -1060,9 +1116,7 @@ test("structured messages show Markdown, thinking, tool states, and restored res
     ],
   });
   await page.goto(url);
-  await expect(
-    page.getByRole("combobox", { name: "模型", exact: true }),
-  ).toBeEnabled();
+  await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   await page.getByLabel("消息", { exact: true }).fill("检查排版");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   const response = page.getByLabel("Domos 的回复");
@@ -1164,8 +1218,8 @@ test("Markdown keeps one message scale across elements, themes, and text enlarge
     ).toBe(await page.evaluate(() => innerWidth));
   };
   for (const [width, size] of [
-    [1600, 15],
-    [390, 16],
+    [1600, 14],
+    [390, 15],
   ] as const) {
     await page.setViewportSize({ width, height: 900 });
     for (const [theme, label] of [
@@ -1185,7 +1239,7 @@ test("Markdown keeps one message scale across elements, themes, and text enlarge
   await page.setViewportSize({ width: 1600, height: 1200 });
   await page.addStyleTag({ content: ":root { font-size: 200%; }" });
   await expect(page.locator("html")).toHaveCSS("font-size", "32px");
-  await expectScale(32);
+  await expectScale(30);
   await expect(input).toBeVisible();
   await input.fill("放大后仍可编辑。");
   await expect(
@@ -1203,8 +1257,8 @@ test("bundled Chinese and Latin faces render fractional message weights", async 
   const paragraph = page.getByLabel("Domos 的回复").locator("p");
   await expect(paragraph).toContainText("中文消息与 Latin 文字。");
   await page.evaluate(() => document.fonts.ready);
-  await expect(paragraph).toHaveCSS("font-weight", "350");
-  await expect(paragraph.locator("strong")).toHaveCSS("font-weight", "500");
+  await expect(paragraph).toHaveCSS("font-weight", "320");
+  await expect(paragraph.locator("strong")).toHaveCSS("font-weight", "450");
   const session = await page.context().newCDPSession(page);
   await session.send("DOM.enable");
   await session.send("CSS.enable");
@@ -1299,6 +1353,7 @@ test("model search and themed popups support keyboard, dismissal, and narrow scr
   page,
 }) => {
   await page.goto(url);
+  await openDetails(page);
   const model = page.getByRole("combobox", { name: "模型", exact: true });
   const appearance = page.getByRole("combobox", { name: "外观", exact: true });
   await expect(model).toBeEnabled();
@@ -1335,7 +1390,7 @@ test("model search and themed popups support keyboard, dismissal, and narrow scr
   expect(bounds.x + bounds.width).toBeLessThanOrEqual(320);
   expect(bounds.y + bounds.height).toBeLessThanOrEqual(568);
   await page.screenshot({ path: "test-results/model-popup-mobile.png" });
-  await page.getByLabel("消息", { exact: true }).click();
+  await page.locator(".detail-header h2").click();
   await expect(popup).toHaveCount(0);
 });
 
@@ -1349,9 +1404,7 @@ test("IM bubbles, sidebar search, and popup surfaces share both themes", async (
       "**已整理好。**\n\n- 核对参考源码\n- 统一交互与主题\n- 验证窄屏和键盘\n\n```ts\nconst result = { status: 'complete', message: '内容在气泡内展示' };\n```\n\n接下来可以直接继续对话。",
   });
   await page.goto(url);
-  await expect(
-    page.getByRole("combobox", { name: "模型", exact: true }),
-  ).toBeEnabled();
+  await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   await page.getByLabel("消息", { exact: true }).fill("帮我整理一下");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.getByRole("button", { name: "停止生成" })).toHaveCount(0);
@@ -1388,6 +1441,7 @@ test("IM bubbles, sidebar search, and popup surfaces share both themes", async (
     await chooseAppearance(page, label);
     await expectTextContrast(page);
     await page.screenshot({ path: `test-results/im-${theme}.png` });
+    const details = await openDetails(page);
     await page.getByRole("combobox", { name: "模型", exact: true }).click();
     await expect(page.getByRole("option").first()).toBeVisible();
     await expectTextContrast(page);
@@ -1399,6 +1453,7 @@ test("IM bubbles, sidebar search, and popup surfaces share both themes", async (
     ).toBeVisible();
     await page.screenshot({ path: `test-results/im-appearance-${theme}.png` });
     await page.keyboard.press("Escape");
+    await details.getByRole("button", { name: "关闭", exact: true }).click();
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: "test-results/im-mobile.png" });
@@ -1498,9 +1553,15 @@ test("latest bubbles stay above the composer after typing, resizing, and reloadi
   await page.screenshot({ path: "test-results/chat-spacing-mobile.png" });
 });
 
-test("messages remain visible and interactive through the floating dock gaps", async ({
+test("composer fades scrolling messages and covers content below its edge", async ({
   page,
 }) => {
+  const media = await page.context().newCDPSession(page);
+  await media.send("Emulation.setEmulatedMedia", {
+    features: [
+      { name: "prefers-reduced-transparency", value: "no-preference" },
+    ],
+  });
   await control({
     content: [
       {
@@ -1552,12 +1613,23 @@ test("messages remain visible and interactive through the floating dock gaps", a
             document.elementFromPoint(x, y)?.closest("a")?.textContent,
           point,
         ),
-      ).toBe("查看记录 29");
+      ).toBeUndefined();
       expect(Math.abs(point.y - point.target)).toBeLessThanOrEqual(1);
       const scroll = await page
         .locator(".transcript")
         .evaluate((element) => element.scrollTop);
-      await page.mouse.move(point.x, point.y);
+      const fade = await page.locator(".composer-area").evaluate((element) => {
+        const style = getComputedStyle(element, "::before");
+        return {
+          blur: style.backdropFilter,
+          mask: style.maskImage,
+          surface: getComputedStyle(element).backgroundColor,
+        };
+      });
+      expect(fade.blur).toContain("blur");
+      expect(fade.mask).toContain("linear-gradient");
+      expect(fade.surface).not.toBe("rgba(0, 0, 0, 0)");
+      await page.mouse.move(point.x, point.y - 100);
       await page.mouse.wheel(0, -100);
       await expect
         .poll(() =>
@@ -1897,7 +1969,7 @@ test("one live process shares motion, keyboard disclosure, themes, and restored 
     "整理完成。",
   );
   await expect(
-    page.locator(".mobile-contacts .character-eye").first(),
+    page.locator(".conversation-title .character-eye").first(),
   ).toHaveCSS("animation-name", "none");
   await expect(
     page.locator('.bot-avatar svg[data-state="running"]'),

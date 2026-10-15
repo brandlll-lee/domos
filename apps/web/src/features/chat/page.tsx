@@ -3,17 +3,14 @@ import { messageText } from "@domos/agent/messages";
 import { chatTranscript } from "@domos/agent/transcript";
 import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
-import { SearchPicker } from "@domos/ui/picker";
 import { type CSSProperties, useState } from "react";
-import { AppearancePicker } from "../appearance/picker.tsx";
-import { CreateBot } from "../bots/create-bot.tsx";
 import { BotDetails } from "../bots/details/index.tsx";
-import { selectBot, useBots } from "../bots/use-bots.ts";
+import { useBots } from "../bots/use-bots.ts";
 import { WorkingActivity } from "./activity.tsx";
 import { Composer } from "./composer.tsx";
 import { chatCopy } from "./copy.ts";
 import { Messages } from "./messages.tsx";
-import { ModelPicker } from "./model-picker.tsx";
+import { ChatSettings } from "./settings.tsx";
 import { Sidebar } from "./sidebar.tsx";
 import { useChat } from "./use-chat.ts";
 import { useComposerDock } from "./use-composer-dock.ts";
@@ -98,57 +95,21 @@ function BotChat({
           { "--composer-dock-height": `${dock.height}px` } as CSSProperties
         }
       >
-        <header className="topbar">
-          <div className="conversation-heading">
-            <Button
-              variant="ghost"
-              className="conversation-title"
-              aria-label="Bot详情"
-              aria-expanded={detailsOpen}
-              aria-controls={detailsOpen ? "bot-details" : undefined}
-              onClick={() => setDetailsOpen(!detailsOpen)}
-            >
-              <BotAvatar seed={bot.avatar} size="small" />
-              <strong>{chatCopy.conversation(bot.name)}</strong>
-            </Button>
-            <div className="mobile-contacts">
-              <SearchPicker
-                label="联系人"
-                searchLabel="搜索联系人…"
-                emptyLabel="没有找到联系人"
-                placeholder={bot.name}
-                items={bots.map((item) => ({
-                  value: String(item.id),
-                  label: item.name,
-                }))}
-                value={String(bot.id)}
-                onValueChange={(value) => {
-                  const selected = bots.find(
-                    (item) => String(item.id) === value,
-                  );
-                  if (selected) selectBot(selected);
-                }}
-              />
-              <CreateBot
-                model={chat.view?.model ?? null}
-                onCreated={selectBot}
-              />
-            </div>
-            <span
-              className={chat.connected ? "sr-only" : "connection"}
-              role="status"
-            >
-              {connection}
-            </span>
-          </div>
-          <div className="header-actions">
-            <ModelPicker
-              botId={bot.id}
-              model={chat.view?.model ?? null}
-              connected={chat.connected}
-            />
-            <AppearancePicker />
-          </div>
+        <header className="chat-header">
+          <Button
+            variant="secondary"
+            className="conversation-title"
+            aria-label="Bot详情"
+            aria-expanded={detailsOpen}
+            aria-controls={detailsOpen ? "bot-details" : undefined}
+            onClick={() => setDetailsOpen(!detailsOpen)}
+          >
+            <BotAvatar seed={bot.avatar} size="small" />
+            <span>{bot.name}</span>
+          </Button>
+          <span className="sr-only" role="status">
+            {connection}
+          </span>
         </header>
         <Messages view={chat.view} botName={bot.name} items={items} />
         {chat.view ? (
@@ -179,7 +140,14 @@ function BotChat({
         )}
       </main>
       {detailsOpen && (
-        <BotDetails bot={bot} onClose={() => setDetailsOpen(false)} />
+        <BotDetails bot={bot} onClose={() => setDetailsOpen(false)}>
+          <ChatSettings
+            bot={bot}
+            bots={bots}
+            model={chat.view?.model ?? null}
+            connected={chat.connected}
+          />
+        </BotDetails>
       )}
     </div>
   );
