@@ -71,7 +71,7 @@ export function resolveTheme(
 
 export const metrics = {
   "font-body":
-    '"Geist Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
+    '"Geist Variable", "Noto Sans SC Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
   "text-small": "0.75rem",
   "text-label": "0.875rem",
   "text-body": "0.9375rem",
@@ -102,8 +102,8 @@ export const metrics = {
   "message-padding-inline": "0.875rem",
   "message-gap": "0.625rem",
   "message-leading": "1.5",
-  "message-weight": "400",
-  "message-emphasis-weight": "550",
+  "message-weight": "350",
+  "message-emphasis-weight": "500",
   "message-incoming-width": "50%",
   "message-outgoing-width": "60%",
   "message-paragraph-gap": "0.5em",

@@ -130,7 +130,7 @@
 }
 .conversation {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
 }
@@ -211,6 +211,7 @@
   flex-shrink: 0;
 }
 .transcript-pane {
+  grid-area: 2 / 1;
   position: relative;
   min-width: 0;
   min-height: 0;
@@ -222,6 +223,7 @@
   scrollbar-width: thin;
   scrollbar-color: var(--color-border) transparent;
   padding: var(--space-6) var(--chat-gutter);
+  padding-bottom: calc(var(--composer-dock-height, 0px) + var(--space-6));
 }
 .welcome,
 .messages {
@@ -278,7 +280,7 @@
 }
 .return-latest {
   position: absolute;
-  bottom: var(--space-3);
+  bottom: calc(var(--composer-dock-height, 0px) + var(--space-3));
   left: 50%;
   translate: -50% 0;
   display: flex;
@@ -287,9 +289,30 @@
   border-radius: var(--radius-round);
 }
 .composer-area {
+  grid-area: 2 / 1;
+  align-self: end;
+  z-index: 1;
   width: 100%;
+  pointer-events: none;
   padding: var(--space-3) var(--chat-gutter)
     max(var(--space-6), env(safe-area-inset-bottom));
+}
+.composer-area
+  :is(
+    .composer-field,
+    .composer-leading,
+    .file-attachment,
+    .alert,
+    .working,
+    .work-status
+  ) {
+  pointer-events: auto;
+}
+.composer-area :is(.working, .work-status) {
+  width: fit-content;
+  max-width: 100%;
+  border-radius: var(--radius-control);
+  background: var(--color-background);
 }
 .composer-area .alert {
   margin: 0 0 var(--space-3);

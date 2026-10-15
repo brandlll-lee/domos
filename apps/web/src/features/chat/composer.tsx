@@ -6,12 +6,13 @@ import { ArrowUpIcon } from "@phosphor-icons/react/dist/csr/ArrowUp";
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { StopIcon } from "@phosphor-icons/react/dist/csr/Stop";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, type Ref, useRef, useState } from "react";
 import { client } from "../../client.ts";
 import { chatCopy } from "./copy.ts";
 import { type SendMessage, useComposer } from "./use-composer.ts";
 
 export function Composer({
+  ref,
   botName,
   conversationId,
   connected,
@@ -23,6 +24,7 @@ export function Composer({
   onStop,
   status,
 }: {
+  ref: Ref<HTMLElement>;
   botName: string;
   conversationId: number;
   connected: boolean;
@@ -85,7 +87,7 @@ export function Composer({
           uploading,
       };
   return (
-    <footer className="composer-area">
+    <footer ref={ref} className="composer-area">
       {status}
       <input
         ref={input}

@@ -1019,6 +1019,73 @@ test("Markdown keeps one message scale across elements, themes, and text enlarge
   ).toBeEnabled();
 });
 
+test("bundled Chinese and Latin faces render fractional message weights", async ({
+  page,
+}) => {
+  await control({ content: "中文消息与 Latin 文字。**重点内容**" });
+  await page.goto(url);
+  await page.getByLabel("消息", { exact: true }).fill("检查字体");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const paragraph = page.getByLabel("Domos 的回复").locator("p");
+  await expect(paragraph).toContainText("中文消息与 Latin 文字。");
+  await page.evaluate(() => document.fonts.ready);
+  await expect(paragraph).toHaveCSS("font-weight", "350");
+  await expect(paragraph.locator("strong")).toHaveCSS("font-weight", "500");
+  const session = await page.context().newCDPSession(page);
+  await session.send("DOM.enable");
+  await session.send("CSS.enable");
+  const { root } = await session.send("DOM.getDocument");
+  const { nodeId } = await session.send("DOM.querySelector", {
+    nodeId: root.nodeId,
+    selector: ".message.assistant .markdown p",
+  });
+  const { fonts } = await session.send("CSS.getPlatformFontsForNode", {
+    nodeId,
+  });
+  for (const family of ["Noto Sans SC", "Geist"]) {
+    expect(
+      fonts.some(
+        (font) =>
+          font.isCustomFont &&
+          font.glyphCount > 0 &&
+          font.familyName.includes(family),
+      ),
+    ).toBe(true);
+  }
+  const loaded = await page.evaluate(
+    () =>
+      [...document.fonts].filter(
+        (font) =>
+          font.family.includes("Noto Sans SC") && font.status === "loaded",
+      ).length,
+  );
+  expect(loaded).toBeGreaterThan(0);
+  await page.screenshot({ path: "test-results/chat-fonts.png" });
+  await session.detach();
+});
+
+test("message text remains readable when bundled Chinese fonts cannot load", async ({
+  page,
+}) => {
+  await page.route("**/*noto-sans-sc*.woff2", (route) => route.abort());
+  await control({ content: "字体回退后，中文与 Latin 仍然可读。" });
+  await page.goto(url);
+  const input = page.getByLabel("消息", { exact: true });
+  await input.fill("检查字体回退");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const reply = page.getByLabel("Domos 的回复");
+  await expect(reply).toHaveText("字体回退后，中文与 Latin 仍然可读。");
+  await page.evaluate(() => document.fonts.ready);
+  const failed = await page.evaluate(() =>
+    [...document.fonts].some(
+      (font) => font.family.includes("Noto Sans SC") && font.status === "error",
+    ),
+  );
+  expect(failed).toBe(true);
+  await expect(input).toBeEnabled();
+  await page.screenshot({ path: "test-results/chat-font-fallback.png" });
+});
+
 test("measured text sizing grows with wrapping and resets after clearing", async ({
   page,
 }) => {
@@ -1200,9 +1267,11 @@ test("latest bubbles stay above the composer after typing, resizing, and reloadi
         last.evaluate((element) => {
           const viewport = element.closest(".transcript");
           if (!viewport) throw new Error("Missing transcript");
+          const dock = document.querySelector(".composer-area");
+          if (!dock) throw new Error("Missing composer dock");
           return (
             element.getBoundingClientRect().bottom <=
-            viewport.getBoundingClientRect().bottom
+            dock.getBoundingClientRect().top
           );
         }),
       )
@@ -1219,6 +1288,22 @@ test("latest bubbles stay above the composer after typing, resizing, and reloadi
   await page.setViewportSize({ width: 390, height: 700 });
   await expectLatest();
   await input.fill("");
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "布局.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("附件增加输入区高度。"),
+  });
+  const remove = page.getByRole("button", {
+    name: "移除文件 布局.txt",
+    exact: true,
+  });
+  await expect(remove).toBeVisible();
+  await expectLatest();
+  await remove.click();
+  await expectLatest();
+  await page.setViewportSize({ width: 390, height: 400 });
+  await expectLatest();
+  await page.setViewportSize({ width: 390, height: 700 });
   await page.reload();
   await expectLatest();
   await page.locator(".transcript").evaluate((element) => {
@@ -1237,6 +1322,81 @@ test("latest bubbles stay above the composer after typing, resizing, and reloadi
       .evaluate((element) => element.scrollHeight),
   ).toBe(heightBefore);
   await page.screenshot({ path: "test-results/chat-spacing-mobile.png" });
+});
+
+test("messages remain visible and interactive through the floating dock gaps", async ({
+  page,
+}) => {
+  await control({
+    content: [
+      {
+        type: "text",
+        text: Array.from(
+          { length: 30 },
+          (_, index) => `[查看记录 ${index}](#${index})`,
+        ).join("\n\n"),
+      },
+    ],
+  });
+  await page.goto(url);
+  await page.getByLabel("消息", { exact: true }).fill("查看记录");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByLabel("Domos 的回复").getByRole("link")).toHaveCount(
+    30,
+  );
+  for (const width of [1360, 390]) {
+    await page.setViewportSize({ width, height: 700 });
+    for (const label of ["浅色", "深色"]) {
+      await chooseAppearance(page, label);
+      const point = await page.evaluate(() => {
+        const dock = document.querySelector(".composer-area");
+        const transcript = document.querySelector(".transcript");
+        const link = [
+          ...document.querySelectorAll<HTMLAnchorElement>(
+            ".message.assistant a",
+          ),
+        ].at(-1);
+        if (!dock || !transcript || !link)
+          throw new Error("Missing chat geometry");
+        const target =
+          dock.getBoundingClientRect().top +
+          Number.parseFloat(getComputedStyle(dock).paddingTop) / 2;
+        transcript.scrollTop +=
+          link.getBoundingClientRect().top +
+          link.getBoundingClientRect().height / 2 -
+          target;
+        const rect = link.getBoundingClientRect();
+        return {
+          x: rect.x + rect.width / 2,
+          y: rect.y + rect.height / 2,
+          target,
+        };
+      });
+      expect(
+        await page.evaluate(
+          ({ x, y }) =>
+            document.elementFromPoint(x, y)?.closest("a")?.textContent,
+          point,
+        ),
+      ).toBe("查看记录 29");
+      expect(Math.abs(point.y - point.target)).toBeLessThanOrEqual(1);
+      const scroll = await page
+        .locator(".transcript")
+        .evaluate((element) => element.scrollTop);
+      await page.mouse.move(point.x, point.y);
+      await page.mouse.wheel(0, -100);
+      await expect
+        .poll(() =>
+          page.locator(".transcript").evaluate((element) => element.scrollTop),
+        )
+        .toBeLessThan(scroll);
+      const pane = await page.locator(".transcript-pane").boundingBox();
+      expect(pane && Math.round(pane.y + pane.height)).toBe(700);
+      await page.screenshot({
+        path: `test-results/floating-composer-${width}-${label}.png`,
+      });
+    }
+  }
 });
 
 test("file drafts, real tools, and published downloads survive Bot switches and restart", async ({

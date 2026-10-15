@@ -9,6 +9,7 @@
   "dependencies": {
     "@domos/ui": "workspace:*",
     "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/noto-sans-sc": "5.3.1",
     "@orpc/client": "1.15.7",
     "@phosphor-icons/react": "^2.1.10",
     "react": "19.3.1",

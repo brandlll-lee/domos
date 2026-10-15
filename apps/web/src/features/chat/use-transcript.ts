@@ -20,8 +20,14 @@ export function useTranscript(value: unknown) {
   }, [value]);
   useEffect(() => {
     const observer = new ResizeObserver(() => {
-      if (following.current && viewport.current)
-        viewport.current.scrollTop = viewport.current.scrollHeight;
+      const element = viewport.current;
+      if (!element) return;
+      if (following.current) element.scrollTop = element.scrollHeight;
+      dimensions.current = {
+        width: element.clientWidth,
+        height: element.clientHeight,
+        content: element.scrollHeight,
+      };
     });
     if (viewport.current) observer.observe(viewport.current);
     if (content.current) observer.observe(content.current);

@@ -3,6 +3,7 @@ import { messageText } from "@domos/agent/messages";
 import { chatTranscript } from "@domos/agent/transcript";
 import { BotAvatar } from "@domos/ui/avatar";
 import { SearchPicker } from "@domos/ui/picker";
+import type { CSSProperties } from "react";
 import { AppearancePicker } from "../appearance/picker.tsx";
 import { CreateBot } from "../bots/create-bot.tsx";
 import { selectBot, useBots } from "../bots/use-bots.ts";
@@ -13,6 +14,7 @@ import { Messages } from "./messages.tsx";
 import { ModelPicker } from "./model-picker.tsx";
 import { Sidebar } from "./sidebar.tsx";
 import { useChat } from "./use-chat.ts";
+import { useComposerDock } from "./use-composer-dock.ts";
 
 export function ChatPage() {
   const bots = useBots();
@@ -45,6 +47,7 @@ function BotChat({
   directoryConnected: boolean;
 }) {
   const chat = useChat(bot.id);
+  const dock = useComposerDock();
   const items = chat.view ? chatTranscript(chat.view) : [];
   const active = items.find(
     (item) => item.kind === "activity" && item.status === "running",
@@ -88,6 +91,9 @@ function BotChat({
         className="conversation chat-surface"
         id="conversation"
         tabIndex={-1}
+        style={
+          { "--composer-dock-height": `${dock.height}px` } as CSSProperties
+        }
       >
         <header className="topbar">
           <div className="conversation-heading">
@@ -138,6 +144,7 @@ function BotChat({
         <Messages view={chat.view} botName={bot.name} items={items} />
         {chat.view ? (
           <Composer
+            ref={dock.ref}
             key={chat.view.id}
             botName={bot.name}
             conversationId={chat.view.id}
