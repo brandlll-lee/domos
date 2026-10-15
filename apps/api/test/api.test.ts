@@ -2,6 +2,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openAgent } from "@domos/agent";
+import { Computer } from "@domos/agent/computer";
+import { parseConfig } from "@domos/agent/config";
 import { Files } from "@domos/agent/files";
 import { messageText } from "@domos/agent/messages";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -48,7 +50,16 @@ async function setup() {
   const agent = { model: { provider: "faux", modelId: "faux-1" } };
   const open = async () => {
     const runtime = await openAgent(database, options, agent, context);
-    const app = createApp(runtime.bots, models, runtime.files, runtime.work);
+    const computer = new Computer(
+      parseConfig({ model: agent.model, dataDir: directory }, database),
+    );
+    const app = createApp(
+      runtime.bots,
+      models,
+      runtime.files,
+      runtime.work,
+      computer,
+    );
     const client: RouterClient<AppRouter> = createORPCClient(
       new RPCLink({
         url: "http://localhost/rpc",
@@ -184,7 +195,7 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
   let botId: number;
   try {
     const events = await first.client.bots.subscribe();
-    expect((await events.next()).value).toEqual([
+    expect((await events.next()).value?.items).toEqual([
       {
         id: first.conversation.id,
         name: "Domos",
@@ -199,7 +210,10 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
     botId = bot.id;
     expect(repeated).toEqual(bot);
     expect(bot.avatar).toBe(input.avatar);
-    expect((await events.next()).value).toEqual([
+    let created = await events.next();
+    while (!created.done && created.value.items.length !== 2)
+      created = await events.next();
+    expect(created.value?.items).toEqual([
       {
         id: first.conversation.id,
         name: "Domos",
@@ -299,7 +313,7 @@ test("contact presence follows each Bot through concurrent runs, cancellation, f
     while (true) {
       const event = await events.next();
       if (event.done) throw new Error("Contact stream ended");
-      const items = event.value;
+      const items = event.value.items;
       if (
         JSON.stringify(
           items.filter((item) => item.busy).map((item) => item.id),
@@ -309,7 +323,9 @@ test("contact presence follows each Bot through concurrent runs, cancellation, f
     }
   };
   try {
-    expect((await events.next()).value?.every((bot) => !bot.busy)).toBe(true);
+    expect((await events.next()).value?.items.every((bot) => !bot.busy)).toBe(
+      true,
+    );
     await runtime.client.send({
       botId: firstId,
       text: "First task",
@@ -325,9 +341,9 @@ test("contact presence follows each Bot through concurrent runs, cancellation, f
     await next([firstId, second.id]);
     await secondStarted.promise;
     const reconnected = await runtime.client.bots.subscribe();
-    expect((await reconnected.next()).value?.every((bot) => bot.busy)).toBe(
-      true,
-    );
+    expect(
+      (await reconnected.next()).value?.items.every((bot) => bot.busy),
+    ).toBe(true);
     await reconnected.return();
     await runtime.client.stop({ botId: firstId });
     await next([second.id]);
@@ -997,5 +1013,36 @@ test("snapshots retain display content and omit provider signatures and redacted
     ).not.toContain(privateValue);
   } finally {
     await second.harness.close(context);
+  }
+});
+
+test("computer routes expose actual execution boundaries and validate Bot ownership", async () => {
+  const { open } = await setup();
+  const runtime = await open();
+  const controller = new AbortController();
+  try {
+    const botId = runtime.conversation.id;
+    expect(await runtime.client.computer.get({ botId })).toMatchObject({
+      kind: "process",
+      state: "running",
+      boundary: "host",
+    });
+    const events = await runtime.client.bots.subscribe(undefined, {
+      signal: controller.signal,
+    });
+    let update = await events.next();
+    while (!update.done && !update.value.computer) update = await events.next();
+    expect(update.value?.computer).toMatchObject({ boundary: "host" });
+    expect(update.value?.items).toHaveLength(1);
+    controller.abort();
+    await expect(
+      runtime.client.computer.get({ botId: Number.MAX_SAFE_INTEGER }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(
+      runtime.client.computer.manage({ botId, action: "stop" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  } finally {
+    controller.abort();
+    await runtime.harness.close(context);
   }
 });

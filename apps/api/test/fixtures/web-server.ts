@@ -1,5 +1,8 @@
 import { createServer } from "node:http";
+import { dirname } from "node:path";
 import { openAgent } from "@domos/agent";
+import { Computer } from "@domos/agent/computer";
+import { parseConfig } from "@domos/agent/config";
 import { Files } from "@domos/agent/files";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
@@ -106,7 +109,23 @@ const { harness, bots, work } = await openAgent(
   BACKGROUND_CONTEXT,
 );
 const server = createServer(
-  getRequestListener(createApp(bots, models, files, work).fetch),
+  getRequestListener(
+    createApp(
+      bots,
+      models,
+      files,
+      work,
+      new Computer(
+        parseConfig(
+          {
+            model: { provider: "faux", modelId: "faux-1" },
+            dataDir: dirname(database),
+          },
+          database,
+        ),
+      ),
+    ).fetch,
+  ),
 );
 server.listen(Number(process.argv[3] ?? 0), "127.0.0.1", () => {
   const address = server.address();

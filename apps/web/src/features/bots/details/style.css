@@ -98,6 +98,20 @@
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
+.computer-facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+  font-size: var(--text-label);
+}
+.computer-facts dt {
+  color: var(--color-muted);
+}
+.computer-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
 .detail-actions {
   display: flex;
   align-items: center;

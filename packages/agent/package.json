@@ -5,6 +5,8 @@
   "exports": {
     ".": "./src/open-agent.ts",
     "./chat": "./src/open-chat.ts",
+    "./computer": "./src/computer/index.ts",
+    "./config": "./src/runtime/config.ts",
     "./bots": "./src/bots.ts",
     "./files": "./src/files.ts",
     "./attachments": "./src/attachments.ts",
@@ -19,8 +21,10 @@
     "@earendil-works/chord": "1.2.0",
     "@earendil-works/pi-ai": "1.2.0",
     "@earendil-works/pi-durable": "1.2.0",
+    "@earendil-works/pi-env": "1.2.0",
     "croner": "10.0.1",
     "file-type": "^22.2.0",
-    "yaml": "2.9.0"
+    "yaml": "2.9.0",
+    "zod": "4.6.7"
   }
 }

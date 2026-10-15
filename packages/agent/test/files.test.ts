@@ -9,7 +9,6 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { crc32, deflateSync } from "node:zlib";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import {
@@ -24,6 +23,7 @@ import { MAX_FILE_BYTES } from "../src/attachments.ts";
 import { chatView } from "../src/chat-view.ts";
 import { Files } from "../src/files.ts";
 import { openAgent } from "../src/open-agent.ts";
+import { png } from "./fixtures/png.ts";
 
 const context = BACKGROUND_CONTEXT;
 
@@ -82,28 +82,6 @@ test("file limits apply to uploaded, generated, and published files", async () =
     "Invalid file name",
   );
 });
-
-function png(width: number, height: number) {
-  const chunk = (name: string, content: Buffer) => {
-    const data = Buffer.concat([Buffer.from(name), content]);
-    const size = Buffer.alloc(4);
-    size.writeUInt32BE(content.length);
-    const checksum = Buffer.alloc(4);
-    checksum.writeUInt32BE(crc32(data));
-    return Buffer.concat([size, data, checksum]);
-  };
-  const header = Buffer.alloc(13);
-  header.writeUInt32BE(width, 0);
-  header.writeUInt32BE(height, 4);
-  header[8] = 8;
-  header[9] = 2;
-  return Buffer.concat([
-    Buffer.from("89504e470d0a1a0a", "hex"),
-    chunk("IHDR", header),
-    chunk("IDAT", deflateSync(Buffer.alloc((width * 3 + 1) * height))),
-    chunk("IEND", Buffer.alloc(0)),
-  ]);
-}
 
 test("image reads resize to model limits, preserve originals, and retain decode diagnostics", async () => {
   const { directory, files } = await setup();

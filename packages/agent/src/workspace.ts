@@ -2,6 +2,7 @@ import { lstat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Context } from "@earendil-works/chord/context";
 import {
+  type ExecutionEnv,
   err,
   FileError,
   ok,
@@ -9,6 +10,10 @@ import {
 } from "@earendil-works/pi-durable/env";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { MAX_FILE_BYTES } from "./attachments.ts";
+
+export type WorkEnvironment = ExecutionEnv & {
+  path(input: string): Promise<string>;
+};
 
 export class Workspace extends NodeExecutionEnv {
   async path(input: string) {

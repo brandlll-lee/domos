@@ -8,10 +8,8 @@ import {
 import { reply } from "./chat.ts";
 
 async function main() {
-  const { harness, conversation } = await openChat(
-    "data/agent.sqlite",
-    BACKGROUND_CONTEXT,
-  );
+  const runtime = await openChat(BACKGROUND_CONTEXT);
+  const { conversation } = runtime;
   const cancellation = new AbortController();
   const context = withAbortSignal(cancellation.signal, BACKGROUND_CONTEXT);
   let terminal: Interface | undefined;
@@ -66,7 +64,7 @@ async function main() {
     terminal?.close();
     process.off("SIGINT", stop);
     process.off("SIGTERM", stop);
-    await harness.close(BACKGROUND_CONTEXT);
+    await runtime.close();
   }
 }
 

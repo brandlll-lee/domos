@@ -1,5 +1,7 @@
+import { fileURLToPath } from "node:url";
 import { MAX_FILE_BYTES } from "@domos/agent/attachments";
 import type { Bots } from "@domos/agent/bots";
+import type { Computer } from "@domos/agent/computer";
 import type { Files } from "@domos/agent/files";
 import type { BotWork } from "@domos/agent/work";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -15,9 +17,13 @@ export function createApp(
   models: Models,
   files: Files,
   work: BotWork,
+  computer?: Computer,
+  staticDir = fileURLToPath(new URL("../../web/dist", import.meta.url)),
 ) {
   const app = new Hono();
-  const handler = new RPCHandler(createRouter(bots, models, files, work));
+  const handler = new RPCHandler(
+    createRouter(bots, models, files, work, computer),
+  );
   app.use(
     "/rpc/files/upload",
     bodyLimit({ maxSize: MAX_FILE_BYTES + 1024 * 1024 }),
@@ -52,7 +58,7 @@ export function createApp(
       return c.notFound();
     }
   });
-  app.use("/*", serveStatic({ root: "./apps/web/dist" }));
+  app.use("/*", serveStatic({ root: staticDir }));
   app.onError(() => new Response("服务暂时不可用。", { status: 500 }));
   return app;
 }

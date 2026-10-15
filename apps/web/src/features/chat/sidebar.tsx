@@ -1,4 +1,5 @@
 import type { Bot, BotPresence } from "@domos/agent/bots";
+import type { ComputerStatus } from "@domos/agent/computer";
 import type { ChatView } from "@domos/agent/view";
 import { BotAvatar, BrandMark } from "@domos/ui/avatar";
 import { DesktopIcon as Desktop } from "@phosphor-icons/react/dist/csr/Desktop";
@@ -6,6 +7,7 @@ import { MagnifyingGlassIcon as MagnifyingGlass } from "@phosphor-icons/react/di
 import { useState } from "react";
 import { CreateBot } from "../bots/create-bot.tsx";
 import { selectBot } from "../bots/use-bots.ts";
+import { ComputerLocation } from "../computer/location.tsx";
 import { chatCopy } from "./copy.ts";
 
 export function Sidebar({
@@ -13,15 +15,15 @@ export function Sidebar({
   selected,
   model,
   preview,
-  connection,
   connected,
+  computer,
 }: {
   bots: BotPresence[];
   selected: Bot;
   model: ChatView["model"];
   preview: string;
-  connection: string;
   connected: boolean;
+  computer: ComputerStatus | null;
 }) {
   const [query, setQuery] = useState("");
   const matches = bots.filter((bot) =>
@@ -78,10 +80,7 @@ export function Sidebar({
       </nav>
       <footer className="sidebar-footer">
         <Desktop size={18} aria-hidden="true" />
-        <div>
-          <strong>{chatCopy.workspace}</strong>
-          <span>{connection}</span>
-        </div>
+        <ComputerLocation status={computer} connected={connected} />
       </footer>
     </aside>
   );

@@ -19,7 +19,8 @@ export function fileRouter(bots: Bots, files: Files) {
           );
         } catch {
           throw new ORPCError("BAD_REQUEST", {
-            message: "文件上传失败。请检查文件名与大小。",
+            message:
+              "文件未送达工作电脑。请检查文件名、大小及电脑连接，再重试上传。",
           });
         }
       }),

@@ -6,6 +6,8 @@ import { Button } from "@domos/ui/controls";
 import { type CSSProperties, useState } from "react";
 import { BotDetails } from "../bots/details/index.tsx";
 import { useBots } from "../bots/use-bots.ts";
+import { ComputerPanel } from "../computer/panel.tsx";
+import { useComputer } from "../computer/use-computer.ts";
 import { WorkingActivity } from "./activity.tsx";
 import { Composer } from "./composer.tsx";
 import { chatCopy } from "./copy.ts";
@@ -30,6 +32,8 @@ export function ChatPage() {
       bots={bots.items}
       directoryError={bots.error}
       directoryConnected={bots.connected}
+      computerStatus={bots.computer}
+      onComputerStatus={bots.setComputer}
     />
   );
 }
@@ -39,13 +43,18 @@ function BotChat({
   bots,
   directoryError,
   directoryConnected,
+  computerStatus,
+  onComputerStatus,
 }: {
   bot: Bot;
   bots: BotPresence[];
   directoryError: string | null;
   directoryConnected: boolean;
+  computerStatus: ReturnType<typeof useBots>["computer"];
+  onComputerStatus: ReturnType<typeof useBots>["setComputer"];
 }) {
   const chat = useChat(bot.id);
+  const computer = useComputer(bot.id, computerStatus, onComputerStatus);
   const dock = useComposerDock();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const items = chat.view ? chatTranscript(chat.view) : [];
@@ -77,8 +86,8 @@ function BotChat({
         bots={bots}
         selected={bot}
         model={chat.view?.model ?? null}
-        connection={directoryConnected ? connection : chatCopy.reconnecting}
         connected={directoryConnected}
+        computer={computer.status}
         preview={
           chat.view?.busy
             ? chatCopy.working
@@ -140,7 +149,11 @@ function BotChat({
         )}
       </main>
       {detailsOpen && (
-        <BotDetails bot={bot} onClose={() => setDetailsOpen(false)}>
+        <BotDetails
+          bot={bot}
+          onClose={() => setDetailsOpen(false)}
+          computer={<ComputerPanel computer={computer} />}
+        >
           <ChatSettings
             bot={bot}
             bots={bots}

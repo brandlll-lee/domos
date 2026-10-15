@@ -1,21 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import {
-  basename,
-  dirname,
-  join,
-  relative,
-  resolve,
-  sep,
-  win32,
-} from "node:path";
+import { basename, join, posix, resolve, win32 } from "node:path";
 import type { Context } from "@earendil-works/chord/context";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
 import {
   defineExtension,
   defineTool,
   section,
 } from "@earendil-works/pi-durable";
+import { getOrThrow } from "@earendil-works/pi-durable/env";
 import {
   createEditTool,
   createReadTool,
@@ -24,18 +18,26 @@ import {
 } from "@earendil-works/pi-durable/tools";
 import { fileTypeFromBuffer } from "file-type";
 import { type Attachment, MAX_FILE_BYTES } from "./attachments.ts";
-import { Workspace } from "./workspace.ts";
+import { type WorkEnvironment, Workspace } from "./workspace.ts";
 
 export const FileInput = "domos.file-input";
 
 export class Files {
   readonly root: string;
+  private readonly environment:
+    | ((botId: number, context: Context) => Promise<WorkEnvironment>)
+    | undefined;
 
-  constructor(database: string) {
+  constructor(
+    database: string,
+    environment?: (botId: number, context: Context) => Promise<WorkEnvironment>,
+  ) {
     this.root = resolve(`${database}.files`);
+    this.environment = environment;
   }
 
-  async workspace(botId: number) {
+  async workspace(botId: number, context = BACKGROUND_CONTEXT) {
+    if (this.environment) return this.environment(botId, context);
     const cwd = join(this.root, String(botId), "workspace");
     await mkdir(cwd, { recursive: true });
     return new Workspace({ cwd });
@@ -82,7 +84,12 @@ export class Files {
     return file;
   }
 
-  async upload(botId: number, name: string, bytes: Uint8Array) {
+  async upload(
+    botId: number,
+    name: string,
+    bytes: Uint8Array,
+    context = BACKGROUND_CONTEXT,
+  ) {
     const filename = basename(win32.basename(name)).trim();
     if (
       !filename ||
@@ -94,20 +101,23 @@ export class Files {
     )
       throw new Error("Invalid file name");
     const digest = createHash("sha256").update(bytes).digest("hex");
-    const file = await this.store(
-      botId,
-      `uploads/${digest}/${filename}`,
-      bytes,
+    if (bytes.byteLength > MAX_FILE_BYTES)
+      throw new Error("File exceeds 10 MiB");
+    const filePath = `uploads/${digest}/${filename}`;
+    const workspace = await this.workspace(botId, context);
+    const path = await workspace.path(filePath);
+    const parent = getOrThrow(await workspace.joinPath([path, ".."], context));
+    getOrThrow(await workspace.createDir(parent, { recursive: true }, context));
+    const temporary = getOrThrow(
+      await workspace.joinPath([parent, randomUUID()], context),
     );
-    const workspace = await this.workspace(botId);
-    const path = await workspace.path(file.path);
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, bytes, { flag: "wx" }).catch(
-      (error: NodeJS.ErrnoException) => {
-        if (error.code !== "EEXIST") throw error;
-      },
-    );
-    return file;
+    try {
+      getOrThrow(await workspace.writeFile(temporary, bytes, context));
+      getOrThrow(await workspace.renameFile(temporary, path, context));
+    } finally {
+      await workspace.remove(temporary, { force: true }, context);
+    }
+    return this.store(botId, filePath, bytes);
   }
 
   async metadata(botId: number, id: string): Promise<Attachment> {
@@ -134,7 +144,7 @@ export class Files {
   }
 
   async publish(botId: number, path: string, context: Context) {
-    const workspace = await this.workspace(botId);
+    const workspace = await this.workspace(botId, context);
     const resolved = await workspace.path(path);
     const reader = await workspace.openBinaryReader(
       resolved,
@@ -151,7 +161,9 @@ export class Files {
       if (!bytes.ok) throw bytes.error;
       return this.store(
         botId,
-        relative(workspace.cwd, resolved).split(sep).join("/"),
+        (resolved.startsWith("/") ? posix : win32)
+          .relative(workspace.cwd, resolved)
+          .replaceAll("\\", "/"),
         bytes.value,
       );
     } finally {
@@ -197,7 +209,7 @@ export class Files {
         section(
           "workspace",
           () =>
-            "File paths are relative to this Bot's private workspace. Read uploaded text files with read. Create or edit deliverables with write/edit, then publish them with attach_file. Only published files are downloadable. Do not claim to process unsupported file formats.",
+            "File paths are relative to this Bot's working directory on the selected computer. Bots sharing a computer share its OS permissions. Read uploaded text files with read. Create or edit deliverables with write/edit, then publish them with attach_file. Published files are durable snapshots, available even when the work computer is stopped. Do not claim to process unsupported file formats.",
         ),
       ],
     });

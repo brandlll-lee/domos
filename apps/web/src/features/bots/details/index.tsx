@@ -15,6 +15,7 @@ const panels = {
   memory: "记忆",
   skills: "技能",
   routines: "定时",
+  computer: "电脑",
   prompt: "提示词",
 };
 type Panel = keyof typeof panels;
@@ -22,11 +23,13 @@ type Panel = keyof typeof panels;
 export function BotDetails({
   bot,
   onClose,
+  computer,
   children,
 }: {
   bot: Bot;
   onClose: () => void;
   children?: ReactNode;
+  computer: ReactNode;
 }) {
   const work = useBotWork(bot.id);
   const action = useWorkAction();
@@ -125,6 +128,7 @@ export function BotDetails({
             />
           )}
           {panel === "prompt" && <PromptPanel botId={bot.id} action={action} />}
+          {panel === "computer" && computer}
         </fieldset>
         {children}
       </div>

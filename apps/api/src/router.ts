@@ -1,5 +1,6 @@
 import { MAX_ATTACHMENTS } from "@domos/agent/attachments";
 import type { Bots } from "@domos/agent/bots";
+import type { Computer } from "@domos/agent/computer";
 import { FileInput, type Files } from "@domos/agent/files";
 import { chatView } from "@domos/agent/view";
 import type { BotWork } from "@domos/agent/work";
@@ -11,7 +12,9 @@ import type { Models } from "@earendil-works/pi-ai/models";
 import { ConversationBusy } from "@earendil-works/pi-durable";
 import { ORPCError, os } from "@orpc/server";
 import { z } from "zod";
+import { computerRouter } from "./computer.ts";
 import { botConversation, botTarget } from "./conversation.ts";
+import { watchDirectory } from "./directory.ts";
 import { fileRouter } from "./files.ts";
 import { modelRouter, requireConfiguredModel } from "./models.ts";
 import { watchValues } from "./subscribe.ts";
@@ -22,8 +25,10 @@ export function createRouter(
   models: Models,
   files: Files,
   work: BotWork,
+  computer?: Computer,
 ) {
   return {
+    computer: computerRouter(bots, computer),
     work: workRouter(bots, work),
     files: fileRouter(bots, files),
     bots: {
@@ -46,10 +51,7 @@ export function createRouter(
           return bots.create(input, BACKGROUND_CONTEXT);
         }),
       subscribe: os.handler(async function* ({ signal }) {
-        const context = signal
-          ? withAbortSignal(signal, BACKGROUND_CONTEXT)
-          : BACKGROUND_CONTEXT;
-        yield* bots.watch(context);
+        yield* watchDirectory(bots, computer, signal);
       }),
     },
     models: modelRouter(bots, models),

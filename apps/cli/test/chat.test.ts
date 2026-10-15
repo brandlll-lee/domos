@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openChat } from "@domos/agent/chat";
+import { loadConfig } from "@domos/agent/config";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { expect, onTestFinished, test, vi } from "vitest";
 import { reply } from "../src/chat.ts";
@@ -11,7 +12,7 @@ const context = BACKGROUND_CONTEXT;
 async function database() {
   const directory = await mkdtemp(join(tmpdir(), "domos-chat-"));
   onTestFinished(() => rm(directory, { recursive: true, force: true }));
-  return join(directory, "agent.sqlite");
+  return { ...(await loadConfig()), dataDir: directory };
 }
 
 function credentials(key = "local-test-key") {
@@ -75,7 +76,7 @@ test("streams through the DeepSeek adapter and sends saved history after reopeni
   onTestFinished(() => {
     vi.unstubAllGlobals();
   });
-  const first = await openChat(file, context);
+  const first = await openChat(context, file);
   let output = "";
   try {
     const waiting = reply(
@@ -97,9 +98,9 @@ test("streams through the DeepSeek adapter and sends saved history after reopeni
     expect(output).toBe("Hello world");
   } finally {
     release.resolve();
-    await first.harness.close(context);
+    await first.close();
   }
-  const second = await openChat(file, context);
+  const second = await openChat(context, file);
   try {
     expect(second.conversation.id).toBe(first.conversation.id);
     output = "";
@@ -118,7 +119,7 @@ test("streams through the DeepSeek adapter and sends saved history after reopeni
       ]),
     );
   } finally {
-    await second.harness.close(context);
+    await second.close();
   }
 });
 
@@ -139,7 +140,7 @@ test("a provider failure does not print credential-bearing error details", async
   onTestFinished(() => {
     vi.unstubAllGlobals();
   });
-  const { harness, conversation } = await openChat(file, context);
+  const { close, conversation } = await openChat(context, file);
   let output = "";
   try {
     expect(
@@ -149,7 +150,7 @@ test("a provider failure does not print credential-bearing error details", async
     ).toBe(false);
     expect(output).toBe("");
   } finally {
-    await harness.close(context);
+    await close();
   }
 });
 
@@ -160,15 +161,15 @@ test("an empty credential leaves the saved conversation accessible", async () =>
   onTestFinished(() => {
     vi.unstubAllGlobals();
   });
-  const { harness, models, conversation } = await openChat(
-    await database(),
+  const { close, models, conversation } = await openChat(
     context,
+    await database(),
   );
   try {
     expect(await models.getAvailable("deepseek")).toEqual([]);
     expect((await conversation.context(context)).messages).toEqual([]);
     expect(fetch).not.toHaveBeenCalled();
   } finally {
-    await harness.close(context);
+    await close();
   }
 });

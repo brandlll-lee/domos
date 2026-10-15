@@ -1,34 +1,67 @@
-import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { Context } from "@earendil-works/chord/context";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
-import { createRegistry, type ModelRef } from "@earendil-works/pi-durable";
+import { createRegistry } from "@earendil-works/pi-durable";
 import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node";
-import { computer } from "./computer.ts";
+import { Computer } from "./computer/index.ts";
+import { computerExtension } from "./computer.ts";
 import { Files } from "./files.ts";
 import { openAgent } from "./open-agent.ts";
+import { loadConfig, type RuntimeConfig } from "./runtime/config.ts";
+import { acquireDataLease } from "./runtime/lease.ts";
 
-export async function openChat(database: string, context: Context) {
+export async function openChat(context: Context, supplied?: RuntimeConfig) {
+  const config = supplied ?? (await loadConfig());
   const models = builtinModels();
-  const config = JSON.parse(await readFile("domos.config.json", "utf8")) as {
-    model?: ModelRef;
-  };
-  if (
-    !config.model ||
-    !models.getModel(config.model.provider, config.model.modelId)
-  )
-    throw new Error("请检查 domos.config.json 中的初始模型。");
-  const files = new Files(database);
-  const registry = createRegistry();
-  registry.install(files.extension(await createNodePhotonImages()));
-  registry.install(computer);
-  return openAgent(
-    database,
-    {
-      models,
-      registry,
-      env: ({ conversationId }) => files.workspace(conversationId),
-    },
-    { model: config.model },
-    context,
-  );
+  if (!models.getModel(config.model.provider, config.model.modelId))
+    throw new Error("请检查配置中的初始模型。");
+  const release = await acquireDataLease(config.dataDir);
+  const computer = new Computer(config);
+  try {
+    await computer.bind();
+    const database = join(config.dataDir, "agent.sqlite");
+    const files = new Files(database, (botId, ctx) =>
+      computer.workspace(botId, ctx),
+    );
+    const registry = createRegistry();
+    registry.install(files.extension(await createNodePhotonImages()));
+    registry.install(computerExtension(computer));
+    const runtime = await openAgent(
+      database,
+      {
+        models,
+        registry,
+        env: ({ conversationId }) => files.workspace(conversationId, context),
+      },
+      { model: config.model },
+      context,
+      files,
+    );
+    let closed = false;
+    return {
+      ...runtime,
+      config,
+      computer,
+      async close() {
+        if (closed) return;
+        closed = true;
+        try {
+          await runtime.harness.close(context);
+        } finally {
+          try {
+            await computer.close(context);
+          } finally {
+            await release();
+          }
+        }
+      },
+    };
+  } catch (error) {
+    try {
+      await computer.close(context);
+    } finally {
+      await release();
+    }
+    throw error;
+  }
 }

@@ -5,12 +5,12 @@ import { getRequestListener } from "@hono/node-server";
 import { createApp } from "./app.ts";
 
 async function main() {
-  const { harness, bots, models, files, work } = await openChat(
-    "data/agent.sqlite",
-    BACKGROUND_CONTEXT,
-  );
+  const runtime = await openChat(BACKGROUND_CONTEXT);
+  const { bots, models, files, work, computer, config } = runtime;
   const server = createServer(
-    getRequestListener(createApp(bots, models, files, work).fetch),
+    getRequestListener(
+      createApp(bots, models, files, work, computer, config.staticDir).fetch,
+    ),
   );
   let closing = false;
   const close = async () => {
@@ -18,7 +18,7 @@ async function main() {
     closing = true;
     server.close();
     server.closeAllConnections();
-    await harness.close(BACKGROUND_CONTEXT);
+    await runtime.close();
   };
   process.once("SIGINT", () => void close());
   process.once("SIGTERM", () => void close());
@@ -27,8 +27,8 @@ async function main() {
     process.exitCode = 1;
     void close();
   });
-  server.listen(4310, "127.0.0.1", () => {
-    console.log("Domos: http://127.0.0.1:4310");
+  server.listen(config.port, config.host, () => {
+    console.log(`Domos: http://${config.host}:${config.port}`);
   });
 }
 

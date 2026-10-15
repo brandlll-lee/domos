@@ -2177,3 +2177,46 @@ test("attachment retry keeps its request and draft after a lost receipt", async 
   ).toHaveCount(1);
   await expect(page.locator(".composer-attachments")).toHaveCount(0);
 });
+
+test("computer details share live directory status and recover a failed refresh", async ({
+  page,
+}) => {
+  await page.goto(url);
+  await expect(page.locator(".sidebar-footer")).toContainText("当前电脑");
+  const details = await openDetails(page);
+  await details.getByRole("button", { name: "电脑", exact: true }).click();
+  const computer = details.getByRole("region", {
+    name: "工作电脑",
+    exact: true,
+  });
+  await expect(computer).toContainText(/win32|linux|darwin/);
+  await expect(computer).toContainText("原生进程");
+  await expect(computer).toContainText("工作目录不是安全隔离边界");
+  await expect(computer.getByRole("button", { name: "启动电脑" })).toHaveCount(
+    0,
+  );
+  await page.route("**/rpc/computer/get", (route) => route.abort("failed"));
+  await computer.getByRole("button", { name: "刷新状态" }).click();
+  await expect(computer.getByRole("alert")).toBeVisible();
+  await page.unroute("**/rpc/computer/get");
+  await computer.getByRole("button", { name: "刷新状态" }).click();
+  await expect(computer.getByRole("alert")).toHaveCount(0);
+  await page.screenshot({ path: "test-results/computer-light.png" });
+  await chooseAppearance(page, "深色");
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(
+    computer.getByRole("button", { name: "刷新状态" }),
+  ).toBeInViewport();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({ path: "test-results/computer-mobile-dark.png" });
+  await computer.getByRole("button", { name: "刷新状态" }).focus();
+  await page.keyboard.press("Escape");
+  await expect(details).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Bot详情", exact: true }),
+  ).toBeFocused();
+});

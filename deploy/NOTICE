@@ -1,0 +1,20 @@
+Rakazo
+Copyright 2026 Rakazo contributors
+Licensed under the Apache License, Version 2.0. See licenses/rakazo.txt.
+Source: https://github.com/elie222/rakazo
+
+deploy/restrict-computer-egress.sh derives from
+infra/compose/restrict-computer-egress.sh.
+Domos changes the bridge prefix, removes the shared-bridge bypass, and adds
+verification of installed rule prefixes.
+
+packages/agent/src/computer/docker.ts adapts the container security and
+resource configuration from
+infra/sandboxes/supervisor/src/computer-spec.ts:containerCreateOptions.
+Domos uses the Docker CLI and Pi execution environments.
+
+Pi
+Copyright (c) 2025 Mario Zechner
+Licensed under the MIT License. See licenses/pi.txt.
+Source: https://github.com/earendil-works/pi
+The work image distributes the official pi-env 1.2.0 daemon.

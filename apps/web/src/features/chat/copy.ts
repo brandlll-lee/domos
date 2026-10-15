@@ -1,5 +1,4 @@
 export const chatCopy = {
-  workspace: "本地工作空间",
   conversations: "联系人",
   search: "搜索联系人",
   searchEmpty: "没有找到联系人",

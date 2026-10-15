@@ -19,6 +19,7 @@ export async function openAgent(
   options: HarnessOptions & { registry: Registry },
   agent: AgentChange,
   context: Context,
+  files = new Files(database),
 ) {
   options.registry.install(messaging);
   options.registry.install(identity);
@@ -37,7 +38,7 @@ export async function openAgent(
       conversation,
       bots,
       work: botWork(harness, options.now),
-      files: new Files(database),
+      files,
       models: options.models,
     };
   } catch (error) {
