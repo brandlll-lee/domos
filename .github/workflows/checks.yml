@@ -23,3 +23,5 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      - run: pnpm exec playwright install chromium --only-shell --with-deps
+      - run: pnpm test:e2e

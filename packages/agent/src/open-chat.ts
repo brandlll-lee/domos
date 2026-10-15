@@ -1,8 +1,8 @@
-import { openAgent } from "@domos/agent";
 import type { Context } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
 import { createRegistry } from "@earendil-works/pi-durable";
+import { openAgent } from "./open-agent.ts";
 
 export async function openChat(database: string, context: Context) {
   const models = createModels();

@@ -1,10 +1,10 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { openChat } from "@domos/agent/chat";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { expect, onTestFinished, test, vi } from "vitest";
 import { reply } from "../src/chat.ts";
-import { openChat } from "../src/open-chat.ts";
 
 const context = BACKGROUND_CONTEXT;
 

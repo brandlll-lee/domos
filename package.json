@@ -8,11 +8,16 @@
   },
   "scripts": {
     "chat": "node --env-file-if-exists=.env apps/cli/src/main.ts",
+    "start": "node --env-file-if-exists=.env apps/api/src/main.ts",
+    "web": "pnpm --filter @domos/web dev",
+    "build": "pnpm --filter @domos/web build",
+    "test:e2e": "pnpm build && playwright test",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check apps packages package.json tsconfig.json biome.json vitest.config.ts"
+    "lint": "biome check apps packages package.json tsconfig.json biome.json vitest.config.ts playwright.config.ts"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.1",
     "@biomejs/biome": "2.5.15",
     "@types/node": "24.13.3",
     "typescript": "7.0.2",
