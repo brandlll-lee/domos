@@ -1,0 +1,3 @@
+/.dockerignore text eol=lf
+/deploy/*Dockerfile text eol=lf
+/deploy/*.sh text eol=lf

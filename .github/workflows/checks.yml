@@ -25,3 +25,122 @@ jobs:
       - run: pnpm test
       - run: pnpm exec playwright install chromium --only-shell --with-deps
       - run: pnpm test:e2e
+  sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        transport: [docker, ssh]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .node-version
+      - uses: pnpm/action-setup@v6.1.0
+      - run: pnpm install --frozen-lockfile
+      - name: Build work image and install egress rules
+        run: |
+          docker build -f deploy/workspace.Dockerfile -t domos-workspace:1.2.0 .
+          sudo bash deploy/restrict-computer-egress.sh
+          sudo /usr/local/sbin/domos-computer-egress --check
+      - name: Prepare SSH transport
+        if: matrix.transport == 'ssh'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openssh-server
+          sudo systemctl start ssh
+          ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/domos-key"
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          cat "$RUNNER_TEMP/domos-key.pub" >> "$HOME/.ssh/authorized_keys"
+          chmod 600 "$HOME/.ssh/authorized_keys"
+          awk '{print "domos-ci " $1 " " $2}' /etc/ssh/ssh_host_ed25519_key.pub > "$RUNNER_TEMP/domos-known-hosts"
+          node --input-type=module <<'JS'
+          import { writeFileSync } from 'node:fs';
+          import { userInfo } from 'node:os';
+          const directory = process.env.RUNNER_TEMP;
+          writeFileSync(`${directory}/domos-test.json`, JSON.stringify({ computer: { ssh: {
+            host: '127.0.0.1', user: userInfo().username,
+            identityFile: `${directory}/domos-key`, knownHostsFile: `${directory}/domos-known-hosts`, hostKeyAlias: 'domos-ci'
+          } } }));
+          JS
+          echo "DOMOS_TEST_CONFIG=$RUNNER_TEMP/domos-test.json" >> "$GITHUB_ENV"
+      - name: Verify real sandbox execution and isolation
+        env:
+          DOMOS_CONTAINER_TESTS: "1"
+        run: pnpm exec vitest run packages/agent/test/container.test.ts
+      - name: Build and verify application deployment
+        run: |
+          docker build -f deploy/Dockerfile -t domos-app:test .
+          docker volume create domos-app-test
+          for cycle in 1 2; do
+            docker run -d --name domos-app-test --read-only --cap-drop=ALL --security-opt=no-new-privileges:true --tmpfs /tmp -v domos-app-test:/data -p 127.0.0.1:4310:4310 domos-app:test
+            for attempt in $(seq 1 45); do
+              if curl --fail --silent http://127.0.0.1:4310/health >/dev/null; then break; fi
+              sleep 1
+            done
+            curl --fail --silent http://127.0.0.1:4310/health
+            curl --fail --silent http://127.0.0.1:4310/ >/dev/null
+            docker exec domos-app-test node --input-type=module -e 'import { Computer } from "./packages/agent/src/computer/index.ts"; import { loadConfig } from "./packages/agent/src/runtime/config.ts"; const state=await new Computer(await loadConfig()).status(); if(state.boundary!=="application"||state.os.split(" ")[0]!=="linux")process.exit(1);'
+            if [ "$cycle" = 1 ]; then
+              docker exec domos-app-test node -e 'require("fs").writeFileSync("/data/deployment-check", "durable")'
+            else
+              docker exec domos-app-test node -e 'if(require("fs").readFileSync("/data/deployment-check","utf8")!=="durable")process.exit(1)'
+            fi
+            docker stop --time 20 domos-app-test
+            docker rm domos-app-test
+          done
+          docker volume rm domos-app-test
+      - name: Verify application container to SSH work sandbox
+        if: matrix.transport == 'ssh'
+        run: |
+          mkdir "$RUNNER_TEMP/domos-app-ssh"
+          sudo install -m 0600 -o 1000 -g 1000 "$RUNNER_TEMP/domos-key" "$RUNNER_TEMP/domos-app-ssh/id_ed25519"
+          cp "$RUNNER_TEMP/domos-known-hosts" "$RUNNER_TEMP/domos-app-ssh/known_hosts"
+          node --input-type=module <<'JS'
+          import { writeFileSync } from 'node:fs';
+          import { userInfo } from 'node:os';
+          writeFileSync(`${process.env.RUNNER_TEMP}/domos-app.json`, JSON.stringify({
+            model: { provider: 'deepseek', modelId: 'deepseek-flash' },
+            computer: { kind: 'docker', id: 'ci-app', image: 'domos-workspace:1.2.0', volume: 'domos-ci-app-work', ssh: {
+              host: 'host.docker.internal', user: userInfo().username, identityFile: '/home/node/.ssh/id_ed25519',
+              knownHostsFile: '/home/node/.ssh/known_hosts', hostKeyAlias: 'domos-ci'
+            } }
+          }));
+          JS
+          docker run -d --name domos-app-ssh --read-only --cap-drop=ALL --security-opt=no-new-privileges:true --tmpfs /tmp --add-host host.docker.internal:host-gateway -v domos-app-ssh-data:/data -v "$RUNNER_TEMP/domos-app-ssh:/home/node/.ssh:ro" -v "$RUNNER_TEMP/domos-app.json:/app/config.json:ro" -e DOMOS_CONFIG=/app/config.json domos-app:test
+          docker exec -i -w /app/packages/agent domos-app-ssh node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { join } from 'node:path';
+          import { Computer } from './src/computer/index.ts';
+          import { loadConfig } from './src/runtime/config.ts';
+          import { Files } from './src/files.ts';
+          import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context';
+          import { getOrThrow } from '@earendil-works/pi-durable/env';
+          const config = await loadConfig();
+          const computer = new Computer(config);
+          try {
+            await computer.manage('start', context, async () => {});
+            const files = new Files(join(config.dataDir, 'agent.sqlite'), (id, ctx) => computer.workspace(id, ctx));
+            const uploaded = await files.upload(1, 'data.csv', new TextEncoder().encode('value\n3\n5\n'));
+            const env = await computer.workspace(1, context);
+            const script = "import csv,sys; open('report.txt','w').write(str(sum(int(row['value']) for row in csv.DictReader(open(sys.argv[1])))))";
+            assert.equal(getOrThrow(await env.exec(['python3','-c',script,uploaded.path], undefined, context)).exitCode, 0);
+            const artifact = await files.publish(1, 'report.txt', context);
+            assert.equal(await (await files.download(1, artifact.id)).text(), '8');
+            assert.equal((await computer.status()).boundary, 'sandbox');
+            await computer.manage('stop', context, async () => {});
+            assert.equal(await (await files.download(1, artifact.id)).text(), '8');
+          } finally { await computer.close(context); }
+          JS
+          docker stop --time 20 domos-app-ssh
+          docker rm domos-app-ssh
+          docker rm domos-ci-app
+          docker volume rm domos-ci-app-work
+          docker volume rm domos-app-ssh-data
+      - name: Report application failure
+        if: failure()
+        run: |
+          docker logs --tail 30 domos-app-test 2>/dev/null || true
+          docker logs --tail 30 domos-app-ssh 2>/dev/null || true

@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+.git
+.env*
+**/.env*
+data
+references
+coverage
+test-results
+playwright-report
+deploy/ssh
+deploy/domos.config.json

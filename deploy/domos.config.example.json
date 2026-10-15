@@ -1,0 +1,23 @@
+{
+  "model": { "provider": "deepseek", "modelId": "deepseek-flash" },
+  "dataDir": "/data",
+  "deployment": "container",
+  "computer": {
+    "kind": "docker",
+    "id": "personal",
+    "image": "domos-workspace:1.2.0",
+    "volume": "domos-personal-work",
+    "network": "none",
+    "cpus": 2,
+    "memoryMiB": 1024,
+    "pids": 256,
+    "timeoutSeconds": 120,
+    "ssh": {
+      "host": "work-host",
+      "user": "domos-control",
+      "identityFile": "/home/node/.ssh/id_ed25519",
+      "knownHostsFile": "/home/node/.ssh/known_hosts",
+      "hostKeyAlias": "domos-work-host"
+    }
+  }
+}

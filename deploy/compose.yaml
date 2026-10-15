@@ -1,0 +1,25 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    init: true
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports: ["127.0.0.1:4310:4310"]
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      DOMOS_CONFIG: /app/config.json
+    volumes:
+      - app-data:/data
+      - ./domos.config.json:/app/config.json:ro
+      - ./ssh:/home/node/.ssh:ro
+    tmpfs: [/tmp]
+    stop_grace_period: 30s
+    restart: unless-stopped
+volumes:
+  app-data:
