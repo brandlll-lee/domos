@@ -1,7 +1,10 @@
+import { chatTranscript } from "@domos/agent/transcript";
 import type { ChatView } from "@domos/agent/view";
+import { ActivityText } from "@domos/ui/activity";
 import { Button } from "@domos/ui/controls";
 import { MessageBubble } from "@domos/ui/message";
 import { ArrowDownIcon } from "@phosphor-icons/react/dist/csr/ArrowDown";
+import { ExecutionActivity } from "./activity.tsx";
 import { Attachments } from "./attachments.tsx";
 import { chatCopy } from "./copy.ts";
 import { MessageContent } from "./message-content.tsx";
@@ -14,13 +17,7 @@ export function Messages({
   view: ChatView | null;
   botName: string;
 }) {
-  const results = new Map(
-    view?.messages.flatMap((message) =>
-      message.role === "toolResult" && message.toolCallId
-        ? [[message.toolCallId, message] as const]
-        : [],
-    ),
-  );
+  const items = view ? chatTranscript(view) : [];
   const transcript = useTranscript(view);
   return (
     <div className="transcript-pane">
@@ -31,7 +28,7 @@ export function Messages({
       >
         {!view ? (
           <p className="working" role="status">
-            {chatCopy.loading}
+            <ActivityText active>{chatCopy.loading}</ActivityText>
           </p>
         ) : (
           !view.messages.length && (
@@ -47,41 +44,56 @@ export function Messages({
           aria-label={chatCopy.history}
           aria-live="off"
         >
-          {view?.messages.map((message) => (
-            <article
-              className={`message ${message.role}`}
-              key={message.id}
-              aria-label={
-                message.role === "user"
-                  ? chatCopy.userMessage
-                  : message.role === "assistant"
-                    ? chatCopy.assistantMessage(botName)
-                    : chatCopy.toolOutput
-              }
-            >
-              <MessageBubble
-                side={message.role === "user" ? "outgoing" : "incoming"}
-              >
-                <MessageContent
-                  message={message}
-                  results={results}
-                  tools={view.tools}
-                />
-                {message.attachments?.length ? (
-                  <Attachments botId={view.id} files={message.attachments} />
-                ) : null}
-              </MessageBubble>
-              {message.stopped && (
-                <div className="message-note">{chatCopy.stopped}</div>
-              )}
-            </article>
-          ))}
-          <p className={view?.busy ? "working" : "sr-only"} role="status">
-            {view?.busy
-              ? chatCopy.working
-              : view?.messages.length
-                ? chatCopy.complete
-                : ""}
+          {view &&
+            items.map((item) => {
+              if (item.kind === "activity")
+                return (
+                  <ExecutionActivity
+                    key={`activity:${item.id}`}
+                    activity={item}
+                  />
+                );
+              if (item.kind === "attachments")
+                return (
+                  <div className="delivered-files" key={item.id}>
+                    <Attachments botId={view.id} files={item.files} />
+                  </div>
+                );
+              const { message } = item;
+              return (
+                <article
+                  className={`message ${message.role}`}
+                  key={message.id}
+                  aria-label={
+                    message.role === "user"
+                      ? chatCopy.userMessage
+                      : message.role === "assistant"
+                        ? chatCopy.assistantMessage(botName)
+                        : chatCopy.toolOutput
+                  }
+                >
+                  <MessageBubble
+                    side={message.role === "user" ? "outgoing" : "incoming"}
+                  >
+                    <MessageContent
+                      content={message.content}
+                      user={message.role === "user"}
+                    />
+                    {message.attachments?.length ? (
+                      <Attachments
+                        botId={view.id}
+                        files={message.attachments}
+                      />
+                    ) : null}
+                  </MessageBubble>
+                  {message.stopped && (
+                    <div className="message-note">{chatCopy.stopped}</div>
+                  )}
+                </article>
+              );
+            })}
+          <p className="sr-only" role="status">
+            {!view?.busy && view?.messages.length ? chatCopy.complete : ""}
           </p>
         </div>
       </div>

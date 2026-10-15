@@ -697,10 +697,8 @@ test("structured messages show Markdown, thinking, tool states, and restored res
   await expect(
     page.getByRole("button", { name: "发送", exact: true }),
   ).toBeVisible();
-  await response.getByText("思考过程", { exact: true }).click();
-  await expect(
-    response.getByText("核对已有资料。", { exact: true }),
-  ).toBeVisible();
+  await page.getByText("已思考", { exact: true }).click();
+  await expect(page.getByText("核对已有资料。", { exact: true })).toBeVisible();
   await expect(
     response.getByRole("link", { name: "官方资料" }),
   ).toHaveAttribute("href", "https://example.com");
@@ -726,10 +724,17 @@ test("structured messages show Markdown, thinking, tool states, and restored res
   });
   await page.getByLabel("消息", { exact: true }).fill("调用工具");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  await expect(page.getByText("等待结果", { exact: true })).toBeVisible();
+  const process = page
+    .getByRole("region", { name: "执行过程", exact: true })
+    .last();
+  await expect(process.locator(":scope > details > summary")).toContainText(
+    toolName,
+  );
   await control("release");
-  await expect(page.getByText("执行失败", { exact: true })).toBeVisible();
-  const result = page.getByLabel("返回结果", { exact: true });
+  await expect(process).toHaveAttribute("data-state", "failed");
+  await expect(process.getByText("1 项失败", { exact: true })).toBeVisible();
+  await process.locator(":scope > details > summary").click();
+  const result = process.locator(".activity-content > details");
   await result.locator("summary").click();
   await expect(result.locator("strong")).toHaveText("工具结果");
   await expect(
@@ -737,7 +742,7 @@ test("structured messages show Markdown, thinking, tool states, and restored res
   ).toBeVisible();
   await page.screenshot({ path: "test-results/workspace-content.png" });
   await page.reload();
-  await expect(page.getByText("执行失败", { exact: true })).toBeVisible();
+  await expect(page.getByText("1 项失败", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "调研结果" })).toBeVisible();
 });
 
@@ -1037,9 +1042,18 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
   await expect(
     page.getByRole("button", { name: "下载 资料.txt", exact: true }),
   ).toBeVisible();
-  await expect(
-    page.getByLabel("返回结果", { exact: true }).filter({ hasText: "read" }),
-  ).toContainText(source);
+  const activity = page.getByRole("region", { name: "执行过程", exact: true });
+  await expect(activity).toHaveCount(1);
+  await expect(activity.locator(":scope > details > summary")).toHaveText(
+    "已完成 4 项操作",
+  );
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(1);
+  await expect(page.locator(".message.toolResult")).toHaveCount(0);
+  await activity.locator(":scope > details > summary").click();
+  const read = activity.locator(".activity-content > details").first();
+  await read.locator("summary").click();
+  await expect(read).toContainText(source);
+  await activity.locator(":scope > details > summary").click();
   await chooseAppearance(page, "深色");
   await page.screenshot({
     path: "test-results/files-dark.png",
@@ -1097,11 +1111,16 @@ test("tool progress follows the Bot and stop and restart retain accurate results
   await control(call("stopped.md"));
   await input.fill("生成文件");
   await send.click();
-  await expect(page.getByText("正在执行", { exact: true })).toBeVisible();
+  const running = page.locator('.execution-activity[data-state="running"]');
+  await expect(running.locator(":scope > details > summary")).toContainText(
+    "正在执行 · write",
+  );
   await createBot(page, "旁观助手");
-  await expect(page.getByText("正在执行", { exact: true })).toHaveCount(0);
+  await expect(running).toHaveCount(0);
   await page.goto(primary);
-  await expect(page.getByText("正在执行", { exact: true })).toBeVisible();
+  await expect(running.locator(":scope > details > summary")).toContainText(
+    "正在执行 · write",
+  );
   await page.getByRole("button", { name: "停止生成", exact: true }).click();
   await expect(send).toBeVisible();
   await expect(page.getByText("已停止", { exact: true })).toBeVisible();
@@ -1109,20 +1128,144 @@ test("tool progress follows the Bot and stop and restart retain accurate results
   await control(call("interrupted.md"));
   await input.fill("再次生成");
   await send.click();
-  await expect(page.getByText("正在执行", { exact: true })).toBeVisible();
+  await expect(running.locator(":scope > details > summary")).toContainText(
+    "正在执行 · write",
+  );
   const port = Number(new URL(url).port);
   await stop();
   await start(port);
   await page.reload();
   await expect(send).toBeVisible();
-  await expect(page.getByText("执行失败", { exact: true })).toBeVisible();
+  await expect(
+    page.locator('.execution-activity[data-state="failed"]'),
+  ).toHaveCount(1);
   await expect(page.getByRole("button", { name: /^下载/ })).toHaveCount(0);
   await expect(page.getByText("已停止", { exact: true })).toBeVisible();
   await control(call("../escape.md"));
   await input.fill("检查文件边界");
   await send.click();
-  await expect(page.getByText("执行失败", { exact: true })).toHaveCount(2);
+  await expect(
+    page.locator('.execution-activity[data-state="failed"]'),
+  ).toHaveCount(2);
   await expect(send).toBeVisible();
+});
+
+test("one live process shares motion, keyboard disclosure, themes, and restored results", async ({
+  page,
+}) => {
+  await control("gate-tool");
+  await control({
+    responses: [
+      {
+        stopReason: "toolUse",
+        content: [
+          {
+            type: "thinking",
+            thinking: "核对资料的内容与来源。",
+            thinkingSignature: "signature",
+          },
+          { type: "text", text: "先核对资料，再整理结果。" },
+          {
+            type: "toolCall",
+            id: crypto.randomUUID(),
+            name: toolName,
+            arguments: { text: "已核对完整资料。" },
+          },
+        ],
+      },
+      { content: "**整理完成。**\n\n资料已核对，可以继续修改。" },
+    ],
+  });
+  await page.goto(url);
+  await expect(
+    page.getByRole("button", { name: "发送", exact: true }),
+  ).toBeDisabled();
+  await page.getByLabel("消息", { exact: true }).fill("核对并整理资料");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const process = page.getByRole("region", { name: "执行过程", exact: true });
+  const disclosure = process.locator(":scope > details");
+  const summary = disclosure.locator(":scope > summary");
+  await expect(process).toHaveCount(1);
+  await expect(summary).toContainText(`正在执行 · ${toolName}`);
+  await expect(disclosure).not.toHaveAttribute("open");
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
+  await expect(summary.locator("svg circle")).toHaveCount(3);
+  await expect(summary.locator(".activity-label")).toHaveCSS(
+    "animation-name",
+    "activity-sweep",
+  );
+  await expect(summary.locator("circle").first()).toHaveCSS(
+    "animation-name",
+    "activity-pulse",
+  );
+  for (const [theme, label] of [
+    ["dark", "深色"],
+    ["light", "浅色"],
+  ] as const) {
+    await chooseAppearance(page, label);
+    await page.screenshot({ path: `test-results/activity-${theme}-live.png` });
+    await summary.focus();
+    await summary.press("Space");
+    await expect(disclosure).toHaveAttribute("open");
+    await expect(
+      process.getByText("先核对资料，再整理结果。", { exact: true }),
+    ).toBeVisible();
+    await page.screenshot({
+      path: `test-results/activity-${theme}-expanded.png`,
+    });
+    await summary.press("Enter");
+    await expect(disclosure).not.toHaveAttribute("open");
+  }
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(summary.locator(".activity-label")).toHaveCSS(
+    "animation-name",
+    "none",
+  );
+  await expect(summary.locator("circle").first()).toHaveCSS(
+    "animation-name",
+    "none",
+  );
+  await expect(summary.locator(".activity-label")).not.toHaveCSS(
+    "color",
+    "rgba(0, 0, 0, 0)",
+  );
+  await page.emulateMedia({ forcedColors: "active" });
+  await expect(summary.locator(".activity-label")).not.toHaveCSS(
+    "color",
+    "rgba(0, 0, 0, 0)",
+  );
+  await page.emulateMedia({
+    forcedColors: "none",
+    reducedMotion: "no-preference",
+  });
+  await page.reload();
+  await expect(summary).toContainText(`正在执行 · ${toolName}`);
+  await summary.click();
+  const step = process.locator(".activity-content > details");
+  await step.locator("summary").click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.locator("body").evaluate((element) => element.scrollWidth),
+  ).toBe(390);
+  await page.screenshot({ path: "test-results/activity-mobile-live.png" });
+  await control("release");
+  await expect(summary).toHaveText("已完成 1 项操作");
+  await expect(disclosure).not.toHaveAttribute("open");
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(1);
+  await expect(page.getByLabel("Domos 的回复").locator("strong")).toHaveText(
+    "整理完成。",
+  );
+  await expect(summary.locator("[data-active]")).toHaveCount(0);
+  await summary.click();
+  await step.locator("summary").click();
+  await expect(
+    step.getByText("已核对完整资料。", { exact: true }),
+  ).toBeVisible();
+  await page.screenshot({ path: "test-results/activity-mobile-complete.png" });
+  await page.reload();
+  await expect(summary).toHaveText("已完成 1 项操作");
+  await expect(disclosure).not.toHaveAttribute("open");
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(1);
 });
 
 test("attachment retry keeps its request and draft after a lost receipt", async ({

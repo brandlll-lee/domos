@@ -10,6 +10,7 @@
     "./attachments": "./src/attachments.ts",
     "./models": "./src/models.ts",
     "./messages": "./src/messages.ts",
+    "./transcript": "./src/transcript.ts",
     "./view": "./src/chat-view.ts"
   },
   "dependencies": {

@@ -1,4 +1,5 @@
 import type {
+  AssistantMessage,
   ImageContent,
   TextContent,
   ThinkingContent,
@@ -14,9 +15,11 @@ export type ChatContent =
 
 export type ChatMessage = {
   id: string;
+  turnId?: string;
   role: "user" | "assistant" | "toolResult";
   content: (ChatContent & { key: string })[];
   stopped: boolean;
+  stopReason?: AssistantMessage["stopReason"];
   toolCallId?: string;
   toolName?: string;
   isError?: boolean;

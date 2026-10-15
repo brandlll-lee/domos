@@ -490,7 +490,169 @@ textarea.field-control {
   border-top: 1px solid var(--color-border);
   margin-block: var(--space-6);
 }
+.activity-text {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--color-muted);
+  font-size: var(--text-label);
+  line-height: var(--message-leading);
+}
+.activity-indicator {
+  flex-shrink: 0;
+  width: var(--space-5);
+  height: var(--space-5);
+  fill: currentColor;
+}
+.activity-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.activity-text[data-active] .activity-indicator circle {
+  animation: activity-pulse var(--motion-activity-pulse) ease-in-out infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+.activity-text[data-active] circle:nth-child(2) {
+  animation-delay: calc(var(--motion-activity-pulse) / -3);
+}
+.activity-text[data-active] circle:nth-child(3) {
+  animation-delay: calc(var(--motion-activity-pulse) / -1.5);
+}
+@supports (background-clip: text) {
+  .activity-text[data-active] .activity-label {
+    color: transparent;
+    background-image: linear-gradient(
+      100deg,
+      var(--color-muted) 15%,
+      color-mix(in srgb, var(--color-muted), var(--color-text) 15%) 30%,
+      color-mix(in srgb, var(--color-muted), var(--color-text) 50%) 40%,
+      color-mix(in srgb, var(--color-muted), var(--color-text) 85%) 46%,
+      var(--color-text) 50%,
+      color-mix(in srgb, var(--color-muted), var(--color-text) 85%) 54%,
+      color-mix(in srgb, var(--color-muted), var(--color-text) 50%) 60%,
+      color-mix(in srgb, var(--color-muted), var(--color-text) 15%) 70%,
+      var(--color-muted) 85%
+    );
+    background-size: 250% 100%;
+    background-clip: text;
+    animation: activity-sweep var(--motion-activity-sweep) ease-in-out infinite;
+  }
+}
+.activity-disclosure {
+  min-width: 0;
+  color: var(--color-text);
+}
+.activity-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: fit-content;
+  max-width: 100%;
+  min-height: var(--space-8);
+  border-radius: var(--radius-control);
+  list-style: none;
+  cursor: pointer;
+}
+.activity-summary::-webkit-details-marker {
+  display: none;
+}
+.activity-summary > [role="status"] {
+  display: flex;
+  min-width: 0;
+}
+.activity-summary:hover .activity-text {
+  color: var(--color-text);
+}
+.activity-chevron {
+  flex-shrink: 0;
+  width: var(--space-2);
+  height: var(--space-2);
+  margin-inline: var(--space-1);
+  border-right: 1.5px solid var(--color-muted);
+  border-bottom: 1.5px solid var(--color-muted);
+  transform: rotate(-45deg);
+  transition: transform var(--motion-feedback);
+}
+.activity-disclosure[open] > .activity-summary .activity-chevron {
+  transform: rotate(45deg);
+}
+.activity-content {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  margin: var(--space-2) 0 var(--space-2) var(--space-2);
+  padding-inline-start: var(--space-4);
+  border-inline-start: 1px solid var(--color-border);
+  font-size: var(--text-label);
+  line-height: var(--message-leading);
+  overflow-wrap: anywhere;
+}
+.activity-caption,
+.activity-notice {
+  color: var(--color-muted);
+  font-size: var(--text-small);
+}
+.activity-caption {
+  display: block;
+  margin: 0 0 var(--space-2);
+}
+.activity-notice {
+  flex-shrink: 0;
+  color: var(--color-danger);
+}
+.activity-disclosure[data-attention] > .activity-summary .activity-text {
+  color: var(--color-danger);
+}
+.activity-detail,
+.activity-narration {
+  min-width: 0;
+  max-height: var(--activity-detail-height);
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.activity-detail pre {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: inherit;
+}
+@keyframes activity-sweep {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -150% 0;
+  }
+}
+@keyframes activity-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
+  .activity-chevron {
+    transition: none;
+  }
+  .activity-text[data-active] .activity-label {
+    animation: none;
+    background: none;
+    color: var(--color-muted);
+  }
+  .activity-text[data-active] .activity-indicator circle {
+    animation: none;
+  }
   .button,
   .message-composer {
     transition: none;
@@ -500,6 +662,11 @@ textarea.field-control {
   }
 }
 @media (forced-colors: active) {
+  .activity-text[data-active] .activity-label {
+    background: none;
+    color: CanvasText;
+    animation: none;
+  }
   .message-composer:focus-within {
     outline: 2px solid Highlight;
   }

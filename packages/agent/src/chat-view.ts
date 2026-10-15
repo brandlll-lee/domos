@@ -16,6 +16,7 @@ export type ChatView = {
   model: ModelRef | null;
   instructions: string;
   messages: ChatMessage[];
+  activeTurnId: string | null;
   busy: boolean;
   failed: boolean;
   tools: {
@@ -29,6 +30,7 @@ export function chatView(view: ConversationView): ChatView {
   const live = view.docs[LiveDoc.definition.kind] as LiveState | undefined;
   const agent = view.docs[AgentDoc.definition.kind] as AgentState | undefined;
   const messages: ChatMessage[] = [];
+  let turnId: string | undefined;
   let failed = false;
   const append = (
     message: Message,
@@ -38,11 +40,16 @@ export function chatView(view: ConversationView): ChatView {
     stopped = false,
   ) => {
     if (message.role === "system") return;
+    if (message.role === "user") turnId = id;
     failed = message.role === "assistant" && message.stopReason === "error";
     if (failed) return;
     messages.push({
       id,
+      turnId,
       role: message.role,
+      ...(message.role === "assistant"
+        ? { stopReason: message.stopReason }
+        : {}),
       attachments,
       content: (text !== undefined
         ? [{ type: "text" as const, text }]
@@ -120,6 +127,7 @@ export function chatView(view: ConversationView): ChatView {
     model: agent?.model ?? null,
     instructions: agent?.instructions ?? "",
     messages,
+    activeTurnId: live?.run ? (turnId ?? null) : null,
     busy: Boolean(live?.run),
     failed: failed && !live?.run,
     tools:

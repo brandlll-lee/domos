@@ -9,6 +9,7 @@
     "./field": "./src/web/field.tsx",
     "./picker": "./src/web/picker.tsx",
     "./message": "./src/web/message.tsx",
+    "./activity": "./src/web/activity.tsx",
     "./attachment": "./src/web/attachment.tsx",
     "./composer": "./src/web/composer.tsx",
     "./markdown": "./src/web/markdown.tsx",

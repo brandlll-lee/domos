@@ -92,4 +92,7 @@ export const metrics = {
   "message-outgoing-width": "84%",
   "message-paragraph-gap": "0.65em",
   "motion-feedback": "140ms",
+  "motion-activity-sweep": "2.8s",
+  "motion-activity-pulse": "1.4s",
+  "activity-detail-height": "20rem",
 } as const;
