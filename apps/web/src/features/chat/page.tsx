@@ -84,7 +84,11 @@ function BotChat({
               : "开始对话"
         }
       />
-      <main className="conversation" id="conversation" tabIndex={-1}>
+      <main
+        className="conversation chat-surface"
+        id="conversation"
+        tabIndex={-1}
+      >
         <header className="topbar">
           <div className="conversation-heading">
             <div className="conversation-title">

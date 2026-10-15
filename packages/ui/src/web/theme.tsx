@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import {
+  compactChat,
   metrics,
   resolveTheme,
   type ThemePreference,
@@ -15,6 +16,10 @@ import {
 
 const storageKey = "domos:appearance:v1";
 const mediaQuery = "(prefers-color-scheme: dark)";
+const variables = (values: Record<string, string>, prefix = "") =>
+  Object.entries(values)
+    .map(([key, value]) => `--${prefix}${key}:${value}`)
+    .join(";");
 const ThemeContext = createContext<{
   preference: ThemePreference;
   select: (preference: ThemePreference) => void;
@@ -34,17 +39,14 @@ function apply(preference: ThemePreference) {
 
 export function initializeTheme(): ThemePreference {
   const style = document.createElement("style");
-  const variables = Object.entries(metrics)
-    .map(([key, value]) => `--${key}:${value}`)
-    .join(";");
-  style.textContent = `:root{${variables}}${Object.entries(themes)
+  style.textContent = `:root{${variables(metrics)}}${Object.entries(themes)
     .map(
       ([name, palette]) =>
-        `[data-theme="${name}"]{color-scheme:${name};${Object.entries(palette)
-          .map(([key, value]) => `--color-${key}:${value}`)
-          .join(";")}}`,
+        `[data-theme="${name}"]{color-scheme:${name};${variables(palette, "color-")}}`,
     )
-    .join("")}`;
+    .join(
+      "",
+    )}@container chat (width < ${compactChat.maxWidth}){.chat-surface > *{${variables(compactChat.metrics)}}}`;
   document.head.append(style);
   let preference: ThemePreference = "system";
   try {

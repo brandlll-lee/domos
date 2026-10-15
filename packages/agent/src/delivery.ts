@@ -31,7 +31,7 @@ export const messaging = defineExtension({
     section(
       "messaging",
       () =>
-        "Use message_user to acknowledge substantial work or share important progress before continuing. Send only useful complete messages, not a narration of each tool call. Keep reasoning in the thinking channel. Put the complete final answer in your normal reply; do not repeat delivered updates.",
+        "Use message_user to acknowledge substantial work or share important progress before continuing. Send only useful complete messages, not a narration of each tool call. Keep reasoning in the thinking channel. Put the complete final answer in your normal reply; do not repeat delivered updates. Write conversational replies in short, natural paragraphs. Use headings, lists, and tables when they help the user. Follow requests for detailed reports or structured documents.",
     ),
   ],
 });

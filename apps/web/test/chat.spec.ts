@@ -430,7 +430,7 @@ test("working contacts retain green status across switches, concurrent work, rel
   await expect(page.locator(".sidebar .avatar-status")).toHaveCount(0);
 });
 
-test("chat content, work status, and composer share full panel gutters on desktop and mobile", async ({
+test("chat gutters stay full width while bubbles follow the available panel", async ({
   page,
 }) => {
   const answer =
@@ -441,13 +441,16 @@ test("chat content, work status, and composer share full panel gutters on deskto
   await page.goto(url);
   const input = page.getByLabel("消息", { exact: true });
   await expect(input).toBeEnabled();
-  await input.fill("请完整回复。");
+  await input.fill("请完整回复，检查长消息能使用规定的气泡宽度。".repeat(10));
   await page.getByRole("button", { name: "发送", exact: true }).click();
   const reply = page.getByLabel("Domos 的回复").locator(".message-bubble");
   await expect(reply).toHaveText(answer);
+  const outgoing = page.getByLabel("你的消息").locator(".message-bubble");
   for (const viewport of [
-    { width: 1600, height: 900 },
-    { width: 390, height: 844 },
+    { width: 1600, height: 900, incoming: 0.5, outgoing: 0.6 },
+    { width: 940, height: 900, incoming: 0.88, outgoing: 0.88 },
+    { width: 390, height: 844, incoming: 0.88, outgoing: 0.88 },
+    { width: 320, height: 700, incoming: 0.88, outgoing: 0.88 },
   ]) {
     await page.setViewportSize(viewport);
     for (const [theme, label] of [
@@ -459,18 +462,30 @@ test("chat content, work status, and composer share full panel gutters on deskto
       const messages = await page.getByRole("log").boundingBox();
       const composer = await page.locator(".message-composer").boundingBox();
       const bubble = await reply.boundingBox();
-      if (!panel || !messages || !composer || !bubble)
+      const sent = await outgoing.boundingBox();
+      if (!panel || !messages || !composer || !bubble || !sent)
         throw new Error("Chat layout missing");
       expect(messages.x).toBeCloseTo(composer.x, 0);
       expect(messages.width).toBeCloseTo(composer.width, 0);
-      expect(messages.width).toBeGreaterThan(panel.width * 0.9);
-      expect(bubble.width).toBeGreaterThan(messages.width * 0.8);
-      expect(bubble.width).toBeLessThanOrEqual(messages.width * 0.88 + 1);
+      expect(messages.width).toBeGreaterThanOrEqual(panel.width * 0.9);
+      expect(bubble.width).toBeGreaterThan(
+        messages.width * (viewport.incoming - 0.02),
+      );
+      expect(bubble.width).toBeLessThanOrEqual(
+        messages.width * viewport.incoming + 1,
+      );
+      expect(sent.width).toBeGreaterThan(
+        messages.width * (viewport.outgoing - 0.02),
+      );
+      expect(sent.width).toBeLessThanOrEqual(
+        messages.width * viewport.outgoing + 1,
+      );
+      expect(sent.x + sent.width).toBeCloseTo(messages.x + messages.width, 0);
       expect(
         await page.locator("body").evaluate((element) => element.scrollWidth),
       ).toBe(viewport.width);
       await page.screenshot({
-        path: `test-results/full-chat-${viewport.width}-${theme}.png`,
+        path: `test-results/chat-density-${viewport.width}-${theme}.png`,
       });
     }
   }
@@ -706,7 +721,7 @@ test("text contrast, keyboard focus and message scrolling meet the UI contract",
   await expectTextContrast(page);
   const picker = page.getByRole("combobox", { name: "模型", exact: true });
   const restingBorder = await page
-    .locator(".message-composer")
+    .locator(".composer-field")
     .evaluate((element) => getComputedStyle(element).borderColor);
   await picker.focus();
   await page.keyboard.press("Tab");
@@ -725,7 +740,7 @@ test("text contrast, keyboard focus and message scrolling meet the UI contract",
   await expect
     .poll(() =>
       page
-        .locator(".message-composer")
+        .locator(".composer-field")
         .evaluate((element) => getComputedStyle(element).borderColor),
     )
     .not.toBe(restingBorder);
@@ -801,7 +816,18 @@ test("composer grows, shrinks, and keeps one focus surface in both themes", asyn
   const input = page.getByLabel("消息", { exact: true });
   const form = page.locator(".message-composer");
   const initial = await form.boundingBox();
-  expect(initial?.height).toBeLessThan(75);
+  expect(initial?.height).toBeGreaterThanOrEqual(44);
+  expect(initial?.height).toBeLessThanOrEqual(50);
+  const add = page.getByRole("button", { name: "添加文件", exact: true });
+  const fieldBox = await page.locator(".composer-field").boundingBox();
+  const addBox = await add.boundingBox();
+  if (!fieldBox || !addBox) throw new Error("Composer controls missing");
+  expect(addBox.x + addBox.width).toBeLessThan(fieldBox.x);
+  expect(addBox.width).toBe(addBox.height);
+  expect(addBox.height).toBeCloseTo(fieldBox.height, 0);
+  expect(
+    await page.locator(".composer-field").getByRole("button").count(),
+  ).toBe(1);
   await input.fill(
     Array.from({ length: 12 }, (_, index) => `第 ${index + 1} 行内容`).join(
       "\n",
@@ -829,6 +855,12 @@ test("composer grows, shrinks, and keeps one focus surface in both themes", asyn
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(input).toBeVisible();
+  const action = await page
+    .getByRole("button", { name: "发送", exact: true })
+    .boundingBox();
+  expect(action?.width).toBeGreaterThanOrEqual(44);
+  expect(action?.height).toBeGreaterThanOrEqual(44);
+  expect((await form.boundingBox())?.height).toBeLessThanOrEqual(50);
   await expect(page.getByRole("combobox", { name: "外观" })).toBeVisible();
   expect(
     await page.evaluate(
@@ -913,6 +945,80 @@ test("structured messages show Markdown, thinking, tool states, and restored res
   await expect(page.getByRole("heading", { name: "调研结果" })).toBeVisible();
 });
 
+test("Markdown keeps one message scale across elements, themes, and text enlargement", async ({
+  page,
+}) => {
+  const markdown = [
+    "# 一级标题",
+    "## 二级标题",
+    "### 三级标题",
+    "#### 四级标题",
+    "##### 五级标题",
+    "###### 六级标题",
+    "普通段落，**重点**，以及[资料](https://example.com)。",
+    "- 列表内容\n- 第二项",
+    "> 引用内容",
+    "| 项目 | 状态 |\n| --- | --- |\n| 排版 | 完成 |",
+    ["```txt", "x".repeat(200), "```"].join("\n"),
+  ].join("\n\n");
+  await control({ content: markdown });
+  await page.goto(url);
+  const input = page.getByLabel("消息", { exact: true });
+  await expect(input).toBeEnabled();
+  await input.fill("请保留全部内容格式。");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const reply = page.getByLabel("Domos 的回复");
+  await expect(reply.getByRole("heading")).toHaveCount(6);
+  const expectScale = async (size: number) => {
+    const values = await reply.evaluate((element) =>
+      [
+        ...element.querySelectorAll(
+          "h1,h2,h3,h4,h5,h6,p,li,blockquote,th,td,code",
+        ),
+      ].map((node) => Number.parseFloat(getComputedStyle(node).fontSize)),
+    );
+    for (const value of values) expect(value).toBe(size);
+    const code = await reply.locator("pre").evaluate((element) => ({
+      content: element.scrollWidth,
+      frame: element.clientWidth,
+      overflow: getComputedStyle(element).overflowX,
+    }));
+    expect(code.content).toBeGreaterThan(code.frame);
+    expect(code.overflow).toBe("auto");
+    expect(
+      await page.locator("body").evaluate((element) => element.scrollWidth),
+    ).toBe(await page.evaluate(() => innerWidth));
+  };
+  for (const [width, size] of [
+    [1600, 15],
+    [390, 16],
+  ] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const [theme, label] of [
+      ["light", "浅色"],
+      ["dark", "深色"],
+    ] as const) {
+      await chooseAppearance(page, label);
+      await expectScale(size);
+      await page.getByRole("log").evaluate((element) => {
+        element.closest(".transcript")?.scrollTo(0, 0);
+      });
+      await page.screenshot({
+        path: `test-results/message-scale-${width}-${theme}.png`,
+      });
+    }
+  }
+  await page.setViewportSize({ width: 1600, height: 1200 });
+  await page.addStyleTag({ content: ":root { font-size: 200%; }" });
+  await expect(page.locator("html")).toHaveCSS("font-size", "32px");
+  await expectScale(32);
+  await expect(input).toBeVisible();
+  await input.fill("放大后仍可编辑。");
+  await expect(
+    page.getByRole("button", { name: "发送", exact: true }),
+  ).toBeEnabled();
+});
+
 test("measured text sizing grows with wrapping and resets after clearing", async ({
   page,
 }) => {
@@ -941,6 +1047,7 @@ test("measured text sizing grows with wrapping and resets after clearing", async
   await expect
     .poll(async () => (await input.boundingBox())?.height ?? 0)
     .toBeGreaterThanOrEqual(expanded?.height ?? 0);
+  await page.setViewportSize({ width: 1360, height: 900 });
   await input.fill("");
   await expect
     .poll(async () => (await input.boundingBox())?.height)
@@ -1017,7 +1124,7 @@ test("IM bubbles, sidebar search, and popup surfaces share both themes", async (
     throw new Error("Messages are not visible");
   expect(sent.width).toBeLessThan(200);
   expect(received.x).toBe(column.x);
-  expect(received.width).toBeLessThanOrEqual(column.width * 0.88 + 1);
+  expect(received.width).toBeLessThanOrEqual(column.width * 0.5 + 1);
   expect(sent.x + sent.width).toBeCloseTo(column.x + column.width, 0);
   const search = page.getByRole("searchbox", { name: "搜索联系人" });
   await search.fill(crypto.randomUUID());

@@ -1,3 +1,5 @@
+@import "./chat.css";
+
 :root {
   font-family: var(--font-body);
   font-size: 100%;
@@ -263,105 +265,6 @@ textarea.field-control {
   color: var(--color-muted);
   font-size: var(--text-label);
 }
-.message-bubble {
-  width: fit-content;
-  min-width: 0;
-  max-width: var(--message-incoming-width);
-  padding: var(--message-padding-block) var(--message-padding-inline);
-  border-radius: var(--radius-message);
-  background: var(--color-assistant);
-  color: var(--color-text);
-  font-size: var(--text-message);
-  line-height: var(--message-leading);
-}
-.message-bubble[data-side="outgoing"] {
-  max-width: var(--message-outgoing-width);
-  background: var(--color-user);
-  color: var(--color-on-user);
-}
-
-.message-composer {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-composer);
-  background: var(--color-surface);
-  transition: border-color var(--motion-feedback);
-}
-.composer-row {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--space-2);
-}
-.composer-attachments,
-.attachments {
-  display: grid;
-  gap: var(--space-2);
-  min-width: 0;
-}
-.composer-attachments {
-  padding: var(--space-2);
-}
-.attachments:not(:first-child) {
-  margin-top: var(--space-3);
-}
-.file-attachment {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-width: 0;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  color: var(--color-text);
-  background: var(--color-surface);
-}
-.file-caption {
-  display: grid;
-  gap: var(--space-1);
-  flex: 1;
-  min-width: 0;
-}
-.file-caption strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--text-label);
-  font-weight: 500;
-}
-.file-caption span {
-  color: var(--color-muted);
-  font-size: var(--text-small);
-}
-.message-composer:focus-within {
-  border-color: var(--color-focus);
-}
-.message-composer textarea {
-  display: block;
-  flex: 1;
-  field-sizing: content;
-  min-width: 0;
-  min-height: var(--control-height);
-  max-height: var(--composer-max-height);
-  padding: var(--space-2) 0;
-  border: 0;
-  outline: none;
-  resize: none;
-  overflow-y: auto;
-  background: transparent;
-  color: var(--color-text);
-  font-size: var(--text-body);
-  line-height: 1.8;
-  scrollbar-width: thin;
-}
-.message-composer textarea::placeholder {
-  color: var(--color-muted);
-}
-.composer-action {
-  display: flex;
-  flex-shrink: 0;
-}
 .alert {
   color: var(--color-danger);
   background: var(--color-danger-surface);
@@ -392,103 +295,6 @@ textarea.field-control {
 }
 .skip-link:focus {
   transform: translateY(0);
-}
-.markdown {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  line-height: inherit;
-}
-.markdown > :first-child {
-  margin-top: 0;
-}
-.markdown > :last-child {
-  margin-bottom: 0;
-}
-.markdown p,
-.markdown ul,
-.markdown ol,
-.markdown pre,
-.markdown blockquote,
-.markdown-table {
-  margin-block: var(--message-paragraph-gap);
-}
-.markdown h1,
-.markdown h2,
-.markdown h3,
-.markdown h4,
-.markdown h5,
-.markdown h6 {
-  margin: 0.9em 0 0.35em;
-  font-size: 1.1em;
-  line-height: 1.5;
-  font-weight: 600;
-}
-.markdown h1 {
-  font-size: 1.4em;
-}
-.markdown h2 {
-  font-size: 1.2em;
-}
-.markdown ul,
-.markdown ol {
-  padding-inline-start: 1.45em;
-}
-.markdown li + li {
-  margin-top: 0.25em;
-}
-.markdown li > p {
-  margin-block: 0.2em;
-}
-.markdown a {
-  color: var(--color-link);
-  text-underline-offset: 0.2em;
-}
-.markdown code {
-  background: var(--color-hover);
-  border-radius: var(--space-1);
-  padding: 0.15em 0.35em;
-  font-size: 0.9em;
-}
-.markdown pre {
-  overflow-x: auto;
-  padding: var(--space-4);
-  border-radius: var(--radius-control);
-  background: var(--color-background);
-}
-.markdown pre code {
-  padding: 0;
-  background: transparent;
-  white-space: pre;
-}
-.markdown blockquote {
-  margin-inline: 0;
-  padding-inline-start: var(--space-4);
-  border-inline-start: 2px solid var(--color-border);
-  color: var(--color-muted);
-}
-.markdown-table {
-  overflow-x: auto;
-}
-.markdown table {
-  border-collapse: collapse;
-  width: 100%;
-  font-size: var(--text-label);
-}
-.markdown th,
-.markdown td {
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--color-border);
-  text-align: start;
-}
-.markdown img {
-  max-width: 100%;
-  height: auto;
-  border-radius: var(--radius-control);
-}
-.markdown hr {
-  border: 0;
-  border-top: 1px solid var(--color-border);
-  margin-block: var(--space-6);
 }
 .activity-text {
   display: inline-flex;
@@ -838,7 +644,7 @@ textarea.field-control {
     animation: none;
   }
   .button,
-  .message-composer {
+  .composer-field {
     transition: none;
   }
   .button:active:not(:disabled) {
@@ -851,7 +657,7 @@ textarea.field-control {
     color: CanvasText;
     animation: none;
   }
-  .message-composer:focus-within {
+  .composer-field:focus-within {
     outline: 2px solid Highlight;
   }
 }

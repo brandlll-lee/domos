@@ -49,37 +49,39 @@ export function MessageComposer({
     >
       {attachments && <div className="composer-attachments">{attachments}</div>}
       <div className="composer-row">
-        {leading}
-        <label className="sr-only" htmlFor={id}>
-          {label}
-        </label>
-        <textarea
-          ref={input}
-          id={id}
-          name="message"
-          rows={1}
-          dir="auto"
-          autoComplete="off"
-          enterKeyHint="enter"
-          placeholder={placeholder}
-          value={value}
-          onChange={(event) => onValueChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (
-              event.key === "Enter" &&
-              !event.shiftKey &&
-              !event.altKey &&
-              !event.ctrlKey &&
-              !event.metaKey &&
-              !event.nativeEvent.isComposing &&
-              event.keyCode !== 229
-            ) {
-              event.preventDefault();
-              onSubmit();
-            }
-          }}
-        />
-        <div className="composer-action">{action}</div>
+        {leading && <div className="composer-leading">{leading}</div>}
+        <div className="composer-field">
+          <label className="sr-only" htmlFor={id}>
+            {label}
+          </label>
+          <textarea
+            ref={input}
+            id={id}
+            name="message"
+            rows={1}
+            dir="auto"
+            autoComplete="off"
+            enterKeyHint="enter"
+            placeholder={placeholder}
+            value={value}
+            onChange={(event) => onValueChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (
+                event.key === "Enter" &&
+                !event.shiftKey &&
+                !event.altKey &&
+                !event.ctrlKey &&
+                !event.metaKey &&
+                !event.nativeEvent.isComposing &&
+                event.keyCode !== 229
+              ) {
+                event.preventDefault();
+                onSubmit();
+              }
+            }}
+          />
+          <div className="composer-action">{action}</div>
+        </div>
       </div>
     </form>
   );

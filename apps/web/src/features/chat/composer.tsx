@@ -3,7 +3,7 @@ import { FileAttachment } from "@domos/ui/attachment";
 import { MessageComposer } from "@domos/ui/composer";
 import { Button } from "@domos/ui/controls";
 import { ArrowUpIcon } from "@phosphor-icons/react/dist/csr/ArrowUp";
-import { PaperclipIcon } from "@phosphor-icons/react/dist/csr/Paperclip";
+import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { StopIcon } from "@phosphor-icons/react/dist/csr/Stop";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { type ReactNode, useRef, useState } from "react";
@@ -114,7 +114,7 @@ export function Composer({
         leading={
           <Button
             type="button"
-            variant="ghost"
+            variant="secondary"
             size="icon"
             title={chatCopy.upload}
             aria-label={chatCopy.upload}
@@ -126,7 +126,7 @@ export function Composer({
             }
             onClick={() => input.current?.click()}
           >
-            <PaperclipIcon />
+            <PlusIcon />
           </Button>
         }
         attachments={
