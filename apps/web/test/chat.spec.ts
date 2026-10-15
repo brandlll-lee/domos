@@ -1,6 +1,6 @@
 import { type ChildProcess, fork } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,7 +42,10 @@ async function stop() {
 }
 
 async function control(
-  command: string | { content: unknown; stopReason?: "stop" | "toolUse" },
+  command:
+    | string
+    | { content: unknown; stopReason?: "stop" | "toolUse" }
+    | { responses: { content: unknown; stopReason?: "stop" | "toolUse" }[] },
 ) {
   const receipt = once(worker, "message");
   worker.send(command);
@@ -546,6 +549,13 @@ test("text contrast, keyboard focus and message scrolling meet the UI contract",
   await picker.focus();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("combobox", { name: "外观" })).toBeFocused();
+  await expect(
+    page.getByRole("button", { name: "添加文件", exact: true }),
+  ).toBeEnabled();
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("button", { name: "添加文件", exact: true }),
+  ).toBeFocused();
   await page.keyboard.press("Tab");
   const input = page.getByLabel("消息", { exact: true });
   await expect(input).toBeFocused();
@@ -948,4 +958,211 @@ test("latest bubbles stay above the composer after typing, resizing, and reloadi
       .evaluate((element) => element.scrollHeight),
   ).toBe(heightBefore);
   await page.screenshot({ path: "test-results/chat-spacing-mobile.png" });
+});
+
+test("file drafts, real tools, and published downloads survive Bot switches and restart", async ({
+  page,
+}) => {
+  await page.goto(url);
+  const input = page.getByLabel("消息", { exact: true });
+  const send = page.getByRole("button", { name: "发送", exact: true });
+  await expect(
+    page.getByRole("button", { name: "添加文件", exact: true }),
+  ).toBeEnabled();
+  const source = `Source ${crypto.randomUUID()}`;
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "资料.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from(source),
+  });
+  await expect(
+    page.getByRole("button", { name: "移除文件 资料.txt", exact: true }),
+  ).toBeEnabled();
+  const file = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((key) =>
+      key.startsWith("domos:composer:v1:"),
+    );
+    return JSON.parse(localStorage.getItem(key ?? "") ?? "{}")
+      .attachments[0] as { id: string; path: string };
+  });
+  const primary = page.url();
+  await input.fill("整理成报告");
+  await page.reload();
+  await expect(input).toHaveValue("整理成报告");
+  await expect(
+    page.getByRole("button", { name: "移除文件 资料.txt", exact: true }),
+  ).toBeVisible();
+  await createBot(page, "其他助手");
+  await expect(page.locator(".composer-attachments")).toHaveCount(0);
+  await page.goto(primary);
+  await expect(input).toHaveValue("整理成报告");
+  const call = (name: string, args: Record<string, unknown>) => ({
+    type: "toolCall",
+    id: crypto.randomUUID(),
+    name,
+    arguments: args,
+  });
+  await control({
+    responses: [
+      { content: [call("read", { path: file.path })], stopReason: "toolUse" },
+      {
+        content: [
+          call("write", { path: "report.md", content: `# Draft\n${source}` }),
+        ],
+        stopReason: "toolUse",
+      },
+      {
+        content: [
+          call("edit", {
+            path: "report.md",
+            edits: [{ oldText: "# Draft", newText: "# Report" }],
+          }),
+          call("attach_file", { path: "report.md" }),
+        ],
+        stopReason: "toolUse",
+      },
+      { content: "报告已完成。" },
+    ],
+  });
+  await expect(send).toBeEnabled();
+  await send.click();
+  const report = page.getByRole("button", {
+    name: "下载 report.md",
+    exact: true,
+  });
+  await expect(report).toBeVisible();
+  await expect(send).toBeVisible();
+  await expect(input).toHaveValue("");
+  await expect(page.locator(".composer-attachments")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "下载 资料.txt", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("返回结果", { exact: true }).filter({ hasText: "read" }),
+  ).toContainText(source);
+  await chooseAppearance(page, "深色");
+  await page.screenshot({
+    path: "test-results/files-dark.png",
+    fullPage: true,
+  });
+  await expectTextContrast(page);
+  await chooseAppearance(page, "浅色");
+  await page.screenshot({
+    path: "test-results/files-light.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await report.scrollIntoViewIfNeeded();
+  await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
+  await page.screenshot({
+    path: "test-results/files-mobile.png",
+    fullPage: true,
+  });
+  const port = Number(new URL(url).port);
+  await stop();
+  await start(port);
+  await page.reload();
+  await expect(report).toBeEnabled();
+  const downloaded = page.waitForEvent("download");
+  await report.click();
+  const download = await downloaded;
+  expect(download.suggestedFilename()).toBe("report.md");
+  expect(await readFile(await download.path(), "utf8")).toBe(
+    `# Report\n${source}`,
+  );
+});
+
+test("tool progress follows the Bot and stop and restart retain accurate results", async ({
+  page,
+}) => {
+  await page.goto(url);
+  const primary = page.url();
+  const input = page.getByLabel("消息", { exact: true });
+  const send = page.getByRole("button", { name: "发送", exact: true });
+  await expect(
+    page.getByRole("button", { name: "添加文件", exact: true }),
+  ).toBeEnabled();
+  const call = (path: string) => ({
+    content: [
+      {
+        type: "toolCall",
+        id: crypto.randomUUID(),
+        name: "write",
+        arguments: { path, content: "result" },
+      },
+    ],
+    stopReason: "toolUse" as const,
+  });
+  await control("gate-tool");
+  await control(call("stopped.md"));
+  await input.fill("生成文件");
+  await send.click();
+  await expect(page.getByText("正在执行", { exact: true })).toBeVisible();
+  await createBot(page, "旁观助手");
+  await expect(page.getByText("正在执行", { exact: true })).toHaveCount(0);
+  await page.goto(primary);
+  await expect(page.getByText("正在执行", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "停止生成", exact: true }).click();
+  await expect(send).toBeVisible();
+  await expect(page.getByText("已停止", { exact: true })).toBeVisible();
+  await control("gate-tool");
+  await control(call("interrupted.md"));
+  await input.fill("再次生成");
+  await send.click();
+  await expect(page.getByText("正在执行", { exact: true })).toBeVisible();
+  const port = Number(new URL(url).port);
+  await stop();
+  await start(port);
+  await page.reload();
+  await expect(send).toBeVisible();
+  await expect(page.getByText("执行失败", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^下载/ })).toHaveCount(0);
+  await expect(page.getByText("已停止", { exact: true })).toBeVisible();
+  await control(call("../escape.md"));
+  await input.fill("检查文件边界");
+  await send.click();
+  await expect(page.getByText("执行失败", { exact: true })).toHaveCount(2);
+  await expect(send).toBeVisible();
+});
+
+test("attachment retry keeps its request and draft after a lost receipt", async ({
+  page,
+}) => {
+  await page.goto(url);
+  const input = page.getByLabel("消息", { exact: true });
+  await expect(
+    page.getByRole("button", { name: "添加文件", exact: true }),
+  ).toBeEnabled();
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "source.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("Source"),
+  });
+  await expect(
+    page.getByRole("button", { name: "移除文件 source.txt", exact: true }),
+  ).toBeEnabled();
+  await input.fill("处理文件");
+  let lost = false;
+  await page.route("**/rpc/send", async (route) => {
+    if (lost) return route.continue();
+    lost = true;
+    await route.fetch();
+    await route.abort("failed");
+  });
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "重试发送", exact: true }),
+  ).toBeEnabled();
+  await page.reload();
+  const retry = page.getByRole("button", { name: "重试发送", exact: true });
+  await expect(retry).toBeEnabled();
+  await retry.click();
+  await expect(
+    page.getByRole("button", { name: "发送", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel("你的消息", { exact: true })).toHaveCount(1);
+  await expect(
+    page.getByRole("button", { name: "下载 source.txt", exact: true }),
+  ).toHaveCount(1);
+  await expect(page.locator(".composer-attachments")).toHaveCount(0);
 });

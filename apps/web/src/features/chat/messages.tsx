@@ -2,6 +2,7 @@ import type { ChatView } from "@domos/agent/view";
 import { Button } from "@domos/ui/controls";
 import { MessageBubble } from "@domos/ui/message";
 import { ArrowDownIcon } from "@phosphor-icons/react/dist/csr/ArrowDown";
+import { Attachments } from "./attachments.tsx";
 import { chatCopy } from "./copy.ts";
 import { MessageContent } from "./message-content.tsx";
 import { useTranscript } from "./use-transcript.ts";
@@ -61,7 +62,14 @@ export function Messages({
               <MessageBubble
                 side={message.role === "user" ? "outgoing" : "incoming"}
               >
-                <MessageContent message={message} results={results} />
+                <MessageContent
+                  message={message}
+                  results={results}
+                  tools={view.tools}
+                />
+                {message.attachments?.length ? (
+                  <Attachments botId={view.id} files={message.attachments} />
+                ) : null}
               </MessageBubble>
               {message.stopped && (
                 <div className="message-note">{chatCopy.stopped}</div>

@@ -7,6 +7,8 @@ import {
   type LiveState,
   type ModelRef,
 } from "@earendil-works/pi-durable";
+import type { Attachment } from "./attachments.ts";
+import { FileInput } from "./files.ts";
 import type { ChatContent, ChatMessage } from "./messages.ts";
 
 export type ChatView = {
@@ -16,6 +18,11 @@ export type ChatView = {
   messages: ChatMessage[];
   busy: boolean;
   failed: boolean;
+  tools: {
+    callId: string;
+    status: "pending" | "running" | "done";
+    output?: string;
+  }[];
 };
 
 export function chatView(view: ConversationView): ChatView {
@@ -23,40 +30,49 @@ export function chatView(view: ConversationView): ChatView {
   const agent = view.docs[AgentDoc.definition.kind] as AgentState | undefined;
   const messages: ChatMessage[] = [];
   let failed = false;
-  const append = (message: Message, id: string) => {
+  const append = (
+    message: Message,
+    id: string,
+    attachments?: Attachment[],
+    text?: string,
+    stopped = false,
+  ) => {
     if (message.role === "system") return;
     failed = message.role === "assistant" && message.stopReason === "error";
     if (failed) return;
     messages.push({
       id,
       role: message.role,
-      content: (typeof message.content === "string"
-        ? [{ type: "text" as const, text: message.content }]
-        : message.content.flatMap((part): ChatContent[] => {
-            switch (part.type) {
-              case "text":
-                return [{ type: "text", text: part.text }];
-              case "thinking":
-                return part.redacted
-                  ? []
-                  : [{ type: "thinking", thinking: part.thinking }];
-              case "image":
-                return [
-                  { type: "image", data: part.data, mimeType: part.mimeType },
-                ];
-              case "toolCall":
-                return [
-                  {
-                    type: "toolCall",
-                    id: part.id,
-                    name: part.name,
-                    arguments: part.arguments,
-                  },
-                ];
-            }
-            const exhaustive: never = part;
-            return exhaustive;
-          })
+      attachments,
+      content: (text !== undefined
+        ? [{ type: "text" as const, text }]
+        : typeof message.content === "string"
+          ? [{ type: "text" as const, text: message.content }]
+          : message.content.flatMap((part): ChatContent[] => {
+              switch (part.type) {
+                case "text":
+                  return [{ type: "text", text: part.text }];
+                case "thinking":
+                  return part.redacted
+                    ? []
+                    : [{ type: "thinking", thinking: part.thinking }];
+                case "image":
+                  return [
+                    { type: "image", data: part.data, mimeType: part.mimeType },
+                  ];
+                case "toolCall":
+                  return [
+                    {
+                      type: "toolCall",
+                      id: part.id,
+                      name: part.name,
+                      arguments: part.arguments,
+                    },
+                  ];
+              }
+              const exhaustive: never = part;
+              return exhaustive;
+            })
       ).map((part, index) => ({ ...part, key: `${id}:${index}` })),
       stopped: message.role === "assistant" && message.stopReason === "aborted",
       ...(message.role === "toolResult"
@@ -64,13 +80,38 @@ export function chatView(view: ConversationView): ChatView {
             toolCallId: message.toolCallId,
             toolName: message.toolName,
             isError: message.isError,
+            toolStatus: stopped
+              ? "stopped"
+              : message.isError
+                ? "failed"
+                : "done",
           }
         : {}),
     });
   };
   for (const entry of view.entries) {
+    const input =
+      entry.kind === FileInput
+        ? (entry.data as { text: string; attachments: Attachment[] })
+        : undefined;
+    const stopped =
+      entry.kind === "pi.tool-result" &&
+      (
+        entry.data as { diagnostics?: { code?: string }[] } | undefined
+      )?.diagnostics?.some((item) => item.code === "aborted");
     entry.model?.forEach((message, index) => {
-      append(message, `${entry.id}:${index}`);
+      const attachment =
+        message.role === "toolResult"
+          ? (message.details as { attachment?: Attachment } | undefined)
+              ?.attachment
+          : undefined;
+      append(
+        message,
+        `${entry.id}:${index}`,
+        input?.attachments ?? (attachment ? [attachment] : undefined),
+        input?.text,
+        stopped,
+      );
     });
   }
   if (live?.generation?.message) append(live.generation.message, "stream");
@@ -81,5 +122,11 @@ export function chatView(view: ConversationView): ChatView {
     messages,
     busy: Boolean(live?.run),
     failed: failed && !live?.run,
+    tools:
+      live?.tools?.map(({ callId, status, output }) => ({
+        callId,
+        status,
+        ...(output ? { output } : {}),
+      })) ?? [],
   };
 }

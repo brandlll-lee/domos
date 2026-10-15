@@ -4,7 +4,11 @@ import { client } from "../../client.ts";
 import { chatCopy } from "./copy.ts";
 import { rejectionMessage } from "./request-error.ts";
 
-export type SendInput = { text: string; requestId: string };
+export type SendInput = {
+  text: string;
+  requestId: string;
+  attachments?: string[];
+};
 
 export function useChat(botId: number) {
   const [view, setView] = useState<ChatView | null>(null);

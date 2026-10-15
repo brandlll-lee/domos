@@ -30,6 +30,12 @@ export const chatCopy = {
   toolReturned: "已返回",
   toolFailed: "执行失败",
   image: "消息图片",
+  upload: "添加文件",
+  uploading: "正在上传…",
+  download: "下载",
+  removeFile: "移除文件",
+  toolRunning: "正在执行",
+  toolPending: "等待执行",
   errors: {
     connect: "连接失败。请刷新页面重试。",
     unconfirmed: "发送未确认。重试会核对原请求。",
@@ -39,5 +45,8 @@ export const chatCopy = {
     busy: "会话正在回复。请等待完成后再发送。",
     model: "模型尚未配置。请检查服务商凭据或选择其他模型。",
     input: "消息格式有误。请修改后发送。",
+    upload: "文件上传失败。每个文件须小于 10 MB，最多添加 10 个文件。",
+    download: "文件下载失败。请重试。",
+    file: "附件已不可用。请移除后重新上传。",
   },
 } as const;

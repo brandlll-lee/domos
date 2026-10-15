@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { openAgent } from "@domos/agent";
+import { Files } from "@domos/agent/files";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
 import { createModels } from "@earendil-works/pi-ai/models";
@@ -32,6 +33,27 @@ let gate: ReturnType<typeof Promise.withResolvers<void>> | undefined;
 let toolGate: ReturnType<typeof Promise.withResolvers<void>> | undefined;
 const toolName = `tool_${crypto.randomUUID().replaceAll("-", "")}`;
 const registry = createRegistry();
+const files = new Files(database);
+const fileExtension = files.extension();
+registry.install({
+  ...fileExtension,
+  tools: fileExtension.tools?.map((tool) => ({
+    ...tool,
+    async execute(args, api, context) {
+      if (toolGate) {
+        const waiting = toolGate;
+        const release = () => waiting.resolve();
+        context.abortSignal?.addEventListener("abort", release, { once: true });
+        try {
+          await waiting.promise;
+        } finally {
+          context.abortSignal?.removeEventListener("abort", release);
+        }
+      }
+      return tool.execute(args, api, context);
+    },
+  })),
+});
 registry.install(
   defineExtension({
     name: "test-tools",
@@ -75,11 +97,17 @@ const answer: FauxResponseFactory = async (input, options, _state, model) => {
 faux.setResponses([answer]);
 const { harness, bots } = await openAgent(
   database,
-  { models, registry },
+  {
+    models,
+    registry,
+    env: ({ conversationId }) => files.workspace(conversationId),
+  },
   { model: { provider: "faux", modelId: "faux-1" } },
   BACKGROUND_CONTEXT,
 );
-const server = createServer(getRequestListener(createApp(bots, models).fetch));
+const server = createServer(
+  getRequestListener(createApp(bots, models, files).fetch),
+);
 server.listen(Number(process.argv[3] ?? 0), "127.0.0.1", () => {
   const address = server.address();
   if (address && typeof address === "object")
@@ -88,6 +116,21 @@ server.listen(Number(process.argv[3] ?? 0), "127.0.0.1", () => {
 let release: (() => void) | undefined;
 process.on("message", (message) => {
   if (
+    typeof message === "object" &&
+    message !== null &&
+    "responses" in message &&
+    Array.isArray(message.responses)
+  ) {
+    faux.setResponses([
+      ...message.responses.map((item) =>
+        fauxAssistantMessage(item.content, {
+          stopReason: item.stopReason ?? "stop",
+        }),
+      ),
+      answer,
+    ]);
+    process.send?.({ type: "scripted" });
+  } else if (
     typeof message === "object" &&
     message !== null &&
     "content" in message &&

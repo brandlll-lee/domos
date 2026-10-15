@@ -6,6 +6,8 @@
     ".": "./src/open-agent.ts",
     "./chat": "./src/open-chat.ts",
     "./bots": "./src/bots.ts",
+    "./files": "./src/files.ts",
+    "./attachments": "./src/attachments.ts",
     "./models": "./src/models.ts",
     "./messages": "./src/messages.ts",
     "./view": "./src/chat-view.ts"

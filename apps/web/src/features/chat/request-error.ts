@@ -10,5 +10,7 @@ export function rejectionMessage(error: unknown) {
       return chatCopy.errors.model;
     case "BAD_REQUEST":
       return chatCopy.errors.input;
+    case "NOT_FOUND":
+      return chatCopy.errors.file;
   }
 }

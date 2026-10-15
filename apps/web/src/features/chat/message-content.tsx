@@ -1,13 +1,16 @@
 import type { ChatMessage } from "@domos/agent/messages";
+import type { ChatView } from "@domos/agent/view";
 import { MessageMarkdown } from "@domos/ui/markdown";
 import { chatCopy } from "./copy.ts";
 
 export function MessageContent({
   message,
   results,
+  tools,
 }: {
   message: ChatMessage;
   results: Map<string, ChatMessage>;
+  tools: ChatView["tools"];
 }) {
   const content = message.content.map((part) => {
     switch (part.type) {
@@ -37,19 +40,27 @@ export function MessageContent({
         );
       case "toolCall": {
         const result = results.get(part.id);
+        const live = tools.find((tool) => tool.callId === part.id);
         return (
           <details className="message-detail" key={part.id}>
             <summary>
               <span>{part.name}</span>
               <span className="detail-status">
                 {result
-                  ? result.isError
-                    ? chatCopy.toolFailed
-                    : chatCopy.toolReturned
-                  : chatCopy.toolWaiting}
+                  ? result.toolStatus === "stopped"
+                    ? chatCopy.stopped
+                    : result.isError
+                      ? chatCopy.toolFailed
+                      : chatCopy.toolReturned
+                  : live?.status === "running"
+                    ? chatCopy.toolRunning
+                    : live?.status === "pending"
+                      ? chatCopy.toolPending
+                      : chatCopy.toolWaiting}
               </span>
             </summary>
             <pre>{JSON.stringify(part.arguments, null, 2)}</pre>
+            {live?.output && <pre>{live.output}</pre>}
           </details>
         );
       }
@@ -58,10 +69,17 @@ export function MessageContent({
     return exhaustive;
   });
   return message.role === "toolResult" ? (
-    <details className="message-detail" data-error={message.isError}>
+    <details
+      className="message-detail"
+      data-error={message.toolStatus !== "stopped" && message.isError}
+    >
       <summary>
         {message.toolName} ·{" "}
-        {message.isError ? chatCopy.toolFailed : chatCopy.toolOutput}
+        {message.toolStatus === "stopped"
+          ? chatCopy.stopped
+          : message.isError
+            ? chatCopy.toolFailed
+            : chatCopy.toolOutput}
       </summary>
       {content}
     </details>

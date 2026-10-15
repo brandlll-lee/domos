@@ -1,4 +1,6 @@
+import { MAX_ATTACHMENTS } from "@domos/agent/attachments";
 import type { Bots } from "@domos/agent/bots";
+import { FileInput, type Files } from "@domos/agent/files";
 import { chatView } from "@domos/agent/view";
 import {
   BACKGROUND_CONTEXT,
@@ -9,11 +11,13 @@ import { ConversationBusy } from "@earendil-works/pi-durable";
 import { ORPCError, os } from "@orpc/server";
 import { z } from "zod";
 import { botConversation, botTarget } from "./conversation.ts";
+import { fileRouter } from "./files.ts";
 import { modelRouter, requireConfiguredModel } from "./models.ts";
 import { watchValues } from "./subscribe.ts";
 
-export function createRouter(bots: Bots, models: Models) {
+export function createRouter(bots: Bots, models: Models, files: Files) {
   return {
+    files: fileRouter(bots, files),
     bots: {
       list: os.handler(() => bots.list(BACKGROUND_CONTEXT)),
       create: os
@@ -54,12 +58,27 @@ export function createRouter(bots: Bots, models: Models) {
     send: os
       .input(
         botTarget.extend({
-          text: z.string().trim().min(1),
+          text: z.string().trim(),
+          attachments: z
+            .array(z.string().regex(/^[a-f0-9]{64}$/))
+            .max(MAX_ATTACHMENTS)
+            .default([]),
           requestId: z.uuid(),
         }),
       )
       .handler(async ({ input }) => {
         const conversation = await botConversation(bots, input.botId);
+        if (!input.text && !input.attachments.length)
+          throw new ORPCError("BAD_REQUEST");
+        const attachments = await Promise.all(
+          input.attachments.map(async (id) => {
+            try {
+              return await files.metadata(input.botId, id);
+            } catch {
+              throw new ORPCError("NOT_FOUND");
+            }
+          }),
+        );
         try {
           await requireConfiguredModel(
             models,
@@ -68,7 +87,20 @@ export function createRouter(bots: Bots, models: Models) {
           const submission = await conversation.submit(
             {
               type: "input",
-              content: input.text,
+              content: [
+                input.text,
+                ...attachments.map((file) => `Uploaded file: ${file.path}`),
+              ]
+                .filter(Boolean)
+                .join("\n\n"),
+              ...(attachments.length
+                ? {
+                    entry: {
+                      kind: FileInput,
+                      data: { text: input.text, attachments },
+                    },
+                  }
+                : {}),
               requestId: input.requestId,
               whenBusy: "reject",
             },

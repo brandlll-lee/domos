@@ -2,12 +2,14 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openAgent } from "@domos/agent";
+import { Files } from "@domos/agent/files";
 import { messageText } from "@domos/agent/messages";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import {
   fauxAssistantMessage,
   fauxProvider,
+  fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
 import { createRegistry } from "@earendil-works/pi-durable";
 import { createORPCClient } from "@orpc/client";
@@ -32,16 +34,20 @@ async function setup() {
   const faux = fauxProvider();
   const models = createModels();
   models.setProvider(faux.provider);
-  const options = { models, registry: createRegistry() };
+  const database = join(directory, "agent.sqlite");
+  const files = new Files(database);
+  const registry = createRegistry();
+  registry.install(files.extension());
+  const options = {
+    models,
+    registry,
+    env: ({ conversationId }: { conversationId: number }) =>
+      files.workspace(conversationId),
+  };
   const agent = { model: { provider: "faux", modelId: "faux-1" } };
   const open = async () => {
-    const runtime = await openAgent(
-      join(directory, "agent.sqlite"),
-      options,
-      agent,
-      context,
-    );
-    const app = createApp(runtime.bots, models);
+    const runtime = await openAgent(database, options, agent, context);
+    const app = createApp(runtime.bots, models, runtime.files);
     const client: RouterClient<AppRouter> = createORPCClient(
       new RPCLink({
         url: "http://localhost/rpc",
@@ -132,6 +138,167 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
     ]);
   } finally {
     await second.harness.close(context);
+  }
+});
+
+test("uploaded text becomes a real edited deliverable with durable downloads and Bot ownership", async () => {
+  const { open, faux } = await setup();
+  const first = await open();
+  let fileId = "";
+  let botId = first.conversation.id;
+  let delivered = "";
+  const text = `Source ${crypto.randomUUID()}`;
+  try {
+    const upload = await first.client.files.upload({
+      botId,
+      file: new File([text], "资料.txt"),
+    });
+    expect(
+      await first.client.files.upload({
+        botId,
+        file: new File([text], "资料.txt"),
+      }),
+    ).toEqual(upload);
+    expect(
+      (await first.client.files.download({ botId, id: upload.id })).name,
+    ).toBe("资料.txt");
+    faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("read", { path: upload.path })], {
+        stopReason: "toolUse",
+      }),
+      async (input) => {
+        const read = input.messages.at(-1);
+        expect(read?.role).toBe("toolResult");
+        expect(
+          messageText(read as Parameters<typeof messageText>[0]),
+        ).toContain(text);
+        return fauxAssistantMessage(
+          [
+            fauxToolCall("write", {
+              path: "reports/report.md",
+              content: `# Draft\n${text}`,
+            }),
+          ],
+          { stopReason: "toolUse" },
+        );
+      },
+      fauxAssistantMessage(
+        [
+          fauxToolCall("edit", {
+            path: "reports/report.md",
+            edits: [{ oldText: "# Draft", newText: "# Report" }],
+          }),
+          fauxToolCall("attach_file", { path: "reports/report.md" }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("Report ready"),
+    ]);
+    const send = {
+      botId,
+      text: "Build a report",
+      attachments: [upload.id],
+      requestId: crypto.randomUUID(),
+    };
+    expect(await first.client.send(send)).toEqual(
+      await first.client.send(send),
+    );
+    await first.conversation.waitForIdle(context);
+    const view = await first.client.get({ botId });
+    expect(view.messages.filter((item) => item.role === "user")).toHaveLength(
+      1,
+    );
+    expect(view.messages[0]).toMatchObject({
+      attachments: [upload],
+      content: [{ type: "text", text: "Build a report" }],
+    });
+    const results = view.messages.filter((item) => item.role === "toolResult");
+    expect(results.map((item) => [item.toolName, item.isError])).toEqual([
+      ["read", false],
+      ["write", false],
+      ["edit", false],
+      ["attach_file", false],
+    ]);
+    const attachment = results.at(-1)?.attachments?.[0];
+    expect(attachment?.name).toBe("report.md");
+    fileId = attachment?.id ?? "";
+    delivered = await (
+      await first.client.files.download({ botId, id: fileId })
+    ).text();
+    expect(delivered).toBe(`# Report\n${text}`);
+    const workspace = await first.files.workspace(botId);
+    await workspace.writeFile("reports/report.md", "changed", context);
+    expect(
+      await (await first.client.files.download({ botId, id: fileId })).text(),
+    ).toBe(delivered);
+    const other = await first.client.bots.create(botInput("Other"));
+    await expect(
+      first.client.files.download({ botId: other.id, id: fileId }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(
+      first.client.send({
+        botId: other.id,
+        text: "Read it",
+        attachments: [upload.id],
+        requestId: crypto.randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  } finally {
+    await first.harness.close(context);
+  }
+  const second = await open();
+  try {
+    botId = second.conversation.id;
+    expect(
+      await (await second.client.files.download({ botId, id: fileId })).text(),
+    ).toBe(delivered);
+    expect(
+      (await second.client.get({ botId })).messages.some((item) =>
+        item.attachments?.some((file) => file.id === fileId),
+      ),
+    ).toBe(true);
+  } finally {
+    await second.harness.close(context);
+  }
+});
+
+test("file routes reject invalid targets, oversized uploads, and empty submissions", async () => {
+  const { open, faux } = await setup();
+  const runtime = await open();
+  const botId = runtime.conversation.id;
+  try {
+    await expect(
+      runtime.client.files.upload({
+        botId: 999999,
+        file: new File(["a"], "a.txt"),
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(
+      runtime.client.files.upload({
+        botId,
+        file: new File([new Uint8Array(10 * 1024 * 1024 + 1)], "large.txt"),
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(
+      runtime.client.send({ botId, text: "", requestId: crypto.randomUUID() }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    const file = await runtime.client.files.upload({
+      botId,
+      file: new File(["attached"], "a.txt"),
+    });
+    faux.setResponses([fauxAssistantMessage("Received file")]);
+    await runtime.client.send({
+      botId,
+      text: "",
+      attachments: [file.id],
+      requestId: crypto.randomUUID(),
+    });
+    await runtime.conversation.waitForIdle(context);
+    expect(
+      (await runtime.client.get({ botId })).messages[0]?.attachments,
+    ).toEqual([file]);
+  } finally {
+    await runtime.harness.close(context);
   }
 });
 

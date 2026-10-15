@@ -7,6 +7,8 @@ export function MessageComposer({
   label,
   placeholder,
   action,
+  leading,
+  attachments,
 }: {
   value: string;
   onValueChange: (value: string) => void;
@@ -14,6 +16,8 @@ export function MessageComposer({
   label: string;
   placeholder: string;
   action: ReactNode;
+  leading?: ReactNode;
+  attachments?: ReactNode;
 }) {
   const id = useId();
   const input = useRef<HTMLTextAreaElement>(null);
@@ -43,36 +47,40 @@ export function MessageComposer({
         onSubmit();
       }}
     >
-      <label className="sr-only" htmlFor={id}>
-        {label}
-      </label>
-      <textarea
-        ref={input}
-        id={id}
-        name="message"
-        rows={1}
-        dir="auto"
-        autoComplete="off"
-        enterKeyHint="enter"
-        placeholder={placeholder}
-        value={value}
-        onChange={(event) => onValueChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (
-            event.key === "Enter" &&
-            !event.shiftKey &&
-            !event.altKey &&
-            !event.ctrlKey &&
-            !event.metaKey &&
-            !event.nativeEvent.isComposing &&
-            event.keyCode !== 229
-          ) {
-            event.preventDefault();
-            onSubmit();
-          }
-        }}
-      />
-      <div className="composer-action">{action}</div>
+      {attachments && <div className="composer-attachments">{attachments}</div>}
+      <div className="composer-row">
+        {leading}
+        <label className="sr-only" htmlFor={id}>
+          {label}
+        </label>
+        <textarea
+          ref={input}
+          id={id}
+          name="message"
+          rows={1}
+          dir="auto"
+          autoComplete="off"
+          enterKeyHint="enter"
+          placeholder={placeholder}
+          value={value}
+          onChange={(event) => onValueChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (
+              event.key === "Enter" &&
+              !event.shiftKey &&
+              !event.altKey &&
+              !event.ctrlKey &&
+              !event.metaKey &&
+              !event.nativeEvent.isComposing &&
+              event.keyCode !== 229
+            ) {
+              event.preventDefault();
+              onSubmit();
+            }
+          }}
+        />
+        <div className="composer-action">{action}</div>
+      </div>
     </form>
   );
 }
