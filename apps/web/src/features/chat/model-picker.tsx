@@ -1,7 +1,7 @@
 import type { ChatView } from "@domos/agent/view";
+import { Select } from "@domos/ui/controls";
 import { useEffect, useState } from "react";
 import { client } from "../../client.ts";
-import { Select } from "../../ui/controls.tsx";
 import { rejectionMessage } from "./request-error.ts";
 
 type Choice = Awaited<ReturnType<typeof client.models.list>>[number];
@@ -44,6 +44,7 @@ export function ModelPicker({
         模型
       </label>
       <Select
+        variant="quiet"
         id="model"
         name="model"
         title="所选模型用于下一次回复"

@@ -1,9 +1,17 @@
 import type { ChatView } from "@domos/agent/view";
-import { ChatCircleDotsIcon } from "@phosphor-icons/react/dist/csr/ChatCircleDots";
+import { Button } from "@domos/ui/controls";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Button } from "../../ui/controls.tsx";
+import { chatCopy } from "./copy.ts";
+import { MessageContent } from "./message-content.tsx";
 
 export function Messages({ view }: { view: ChatView | null }) {
+  const results = new Map(
+    view?.messages.flatMap((message) =>
+      message.role === "toolResult" && message.toolCallId
+        ? [[message.toolCallId, message] as const]
+        : [],
+    ),
+  );
   const transcript = useRef<HTMLDivElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
@@ -28,43 +36,46 @@ export function Messages({ view }: { view: ChatView | null }) {
     <div className="transcript" ref={transcript}>
       {!view ? (
         <p className="working" role="status">
-          正在加载对话…
+          {chatCopy.loading}
         </p>
       ) : (
         !view.messages.length && (
           <section className="welcome">
-            <span className="welcome-avatar">
-              <ChatCircleDotsIcon size={26} />
-            </span>
-            <h1>今天想聊些什么？</h1>
-            <p>一个问题，一个想法。随时开始。</p>
+            <h1>{chatCopy.welcome}</h1>
           </section>
         )
       )}
       <div
         className="messages"
         role="log"
-        aria-label="聊天记录"
+        aria-label={chatCopy.history}
         aria-live="off"
       >
         {view?.messages.map((message) => (
           <article
             className={`message ${message.role}`}
             key={message.id}
-            aria-label={message.role === "user" ? "你的消息" : "Domos 的回复"}
+            aria-label={
+              message.role === "user"
+                ? chatCopy.userMessage
+                : message.role === "assistant"
+                  ? chatCopy.assistantMessage
+                  : chatCopy.toolOutput
+            }
           >
-            <div className="message-author">
-              {message.role === "user" ? "你" : "Domos"}
+            <div className="message-body">
+              <MessageContent message={message} results={results} />
             </div>
-            <div className="message-text">{message.text}</div>
-            {message.stopped && <div className="message-note">已停止</div>}
+            {message.stopped && (
+              <div className="message-note">{chatCopy.stopped}</div>
+            )}
           </article>
         ))}
         <p className={view?.busy ? "working" : "sr-only"} role="status">
           {view?.busy
-            ? "Domos 正在回复…"
+            ? chatCopy.working
             : view?.messages.length
-              ? "回复已结束"
+              ? chatCopy.complete
               : ""}
         </p>
       </div>
@@ -80,7 +91,7 @@ export function Messages({ view }: { view: ChatView | null }) {
               transcript.current.scrollTop = transcript.current.scrollHeight;
           }}
         >
-          返回最新
+          {chatCopy.latest}
         </Button>
       )}
     </div>

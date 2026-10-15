@@ -1,6 +1,7 @@
 import type { ChatView } from "@domos/agent/view";
 import { useEffect, useState } from "react";
 import { client } from "../../client.ts";
+import { chatCopy } from "./copy.ts";
 import { rejectionMessage } from "./request-error.ts";
 
 export type SendInput = { text: string; requestId: string };
@@ -31,7 +32,7 @@ export function useChat() {
           setConnected(true);
         }
       } catch {
-        if (!controller.signal.aborted) setError("连接失败。请刷新页面重试。");
+        if (!controller.signal.aborted) setError(chatCopy.errors.connect);
       } finally {
         if (!controller.signal.aborted) setConnected(false);
       }
@@ -47,7 +48,7 @@ export function useChat() {
       return "accepted" as const;
     } catch (cause) {
       const message = rejectionMessage(cause);
-      setError(message ?? "发送未确认。重试会核对原请求。");
+      setError(message ?? chatCopy.errors.unconfirmed);
       return message ? ("rejected" as const) : ("unconfirmed" as const);
     } finally {
       setSending(false);
@@ -60,7 +61,7 @@ export function useChat() {
     try {
       await client.stop();
     } catch {
-      setError("停止失败。请重试。");
+      setError(chatCopy.errors.stop);
     } finally {
       setStopping(false);
     }

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { messageText } from "@domos/agent/view";
+import { messageText } from "@domos/agent/messages";
 import {
   BACKGROUND_CONTEXT,
   type Context,

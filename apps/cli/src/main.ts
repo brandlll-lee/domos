@@ -1,6 +1,6 @@
 import { createInterface, type Interface } from "node:readline";
 import { openChat } from "@domos/agent/chat";
-import { messageText } from "@domos/agent/view";
+import { messageText } from "@domos/agent/messages";
 import {
   BACKGROUND_CONTEXT,
   withAbortSignal,

@@ -6,6 +6,7 @@
     ".": "./src/open-agent.ts",
     "./chat": "./src/open-chat.ts",
     "./models": "./src/models.ts",
+    "./messages": "./src/messages.ts",
     "./view": "./src/chat-view.ts"
   },
   "dependencies": {

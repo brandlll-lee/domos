@@ -1,86 +1,83 @@
-import { ChatCircleDotsIcon } from "@phosphor-icons/react/dist/csr/ChatCircleDots";
-import { HardDrivesIcon } from "@phosphor-icons/react/dist/csr/HardDrives";
+import { messageText } from "@domos/agent/messages";
+import { AppearancePicker } from "../appearance/picker.tsx";
 import { Composer } from "./composer.tsx";
+import { chatCopy } from "./copy.ts";
 import { Messages } from "./messages.tsx";
 import { ModelPicker } from "./model-picker.tsx";
 import { useChat } from "./use-chat.ts";
 
 export function ChatPage() {
   const chat = useChat();
-  const latest = chat.view?.messages.at(-1);
-  const title =
-    chat.view?.messages.find((message) => message.role === "user")?.text ??
-    "与 Domos 对话";
   const connection = chat.connected
-    ? "已连接"
+    ? chatCopy.connected
     : chat.view
-      ? "正在重连…"
-      : "正在连接…";
+      ? chatCopy.reconnecting
+      : chatCopy.connecting;
+  const latest = chat.view?.messages.findLast(
+    (message) => message.role !== "toolResult",
+  );
+  const error =
+    chat.error ?? (chat.view?.failed ? chatCopy.errors.reply : null);
   return (
     <div className="workspace">
       <a className="skip-link" href="#conversation">
-        跳到对话
+        {chatCopy.skip}
       </a>
       <aside className="sidebar">
         <a className="wordmark" href="/">
-          domos<span>.</span>
+          domos.
         </a>
-        <div className="sidebar-label">个人空间</div>
-        <nav aria-label="对话">
+        <div className="sidebar-label">{chatCopy.conversations}</div>
+        <nav aria-label={chatCopy.conversations}>
           <a className="active-chat" href="#conversation" aria-current="page">
-            <span className="avatar">
-              <ChatCircleDotsIcon />
-            </span>
-            <span className="chat-summary">
-              <strong>{title}</strong>
-              <span>
-                {chat.view?.busy
-                  ? "正在回复…"
-                  : latest?.text || "从一个想法开始"}
-              </span>
+            <strong>{chatCopy.conversation}</strong>
+            <span>
+              {chat.view?.busy
+                ? chatCopy.working
+                : latest
+                  ? messageText(latest)
+                  : chatCopy.name}
             </span>
           </a>
         </nav>
-        <div className="sidebar-footer">
-          <HardDrivesIcon />
-          <span>
-            本地工作空间<small>对话自动保存</small>
-          </span>
-        </div>
+        <div className="sidebar-footer">{chatCopy.workspace}</div>
       </aside>
       <main className="conversation" id="conversation" tabIndex={-1}>
         <header className="topbar">
           <div className="conversation-heading">
-            <span className="avatar">
-              <ChatCircleDotsIcon />
+            <strong>{chatCopy.conversation}</strong>
+            <span
+              className={chat.connected ? "sr-only" : "connection"}
+              role="status"
+            >
+              {connection}
             </span>
-            <div>
-              <strong>与 Domos 对话</strong>
-              <span
-                className="connection"
-                data-connected={chat.connected}
-                role="status"
-              >
-                {connection}
-              </span>
-            </div>
           </div>
-          <ModelPicker
-            model={chat.view?.model ?? null}
-            connected={chat.connected}
-          />
+          <div className="header-actions">
+            <ModelPicker
+              model={chat.view?.model ?? null}
+              connected={chat.connected}
+            />
+            <AppearancePicker />
+          </div>
         </header>
         <Messages view={chat.view} />
         {chat.view ? (
           <Composer
             key={chat.view.id}
             conversationId={chat.view.id}
-            chat={chat}
+            connected={chat.connected}
+            busy={chat.view.busy}
+            sending={chat.sending}
+            stopping={chat.stopping}
+            error={error}
+            onSend={chat.send}
+            onStop={chat.stop}
           />
         ) : (
-          chat.error && (
+          error && (
             <p className="alert" role="alert">
-              {chat.error}
+              {error}
             </p>
           )
         )}

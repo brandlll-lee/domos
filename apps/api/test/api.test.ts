@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openAgent } from "@domos/agent";
+import { messageText } from "@domos/agent/messages";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import {
@@ -94,9 +95,7 @@ test("SDK models can be selected, persist after reopening and leave active reque
   const second = await open();
   try {
     expect((await second.client.get()).model).toEqual(selection);
-    expect(
-      (await second.client.get()).messages.map((message) => message.text),
-    ).toEqual([
+    expect((await second.client.get()).messages.map(messageText)).toEqual([
       "First",
       "Original model answer",
       "Second",
@@ -159,9 +158,10 @@ test("HTTP subscription starts with a snapshot and detaching keeps the run alive
     expect((await first.client.get()).busy).toBe(true);
     release.resolve();
     await first.conversation.waitForIdle(context);
-    expect(
-      (await first.client.get()).messages.map((message) => message.text),
-    ).toEqual(["Remember this", "Saved answer"]);
+    expect((await first.client.get()).messages.map(messageText)).toEqual([
+      "Remember this",
+      "Saved answer",
+    ]);
   } finally {
     release.resolve();
     await first.harness.close(context);
@@ -171,7 +171,10 @@ test("HTTP subscription starts with a snapshot and detaching keeps the run alive
     const events = await second.client.subscribe();
     expect((await events.next()).value).toMatchObject({
       busy: false,
-      messages: [{ text: "Remember this" }, { text: "Saved answer" }],
+      messages: [
+        { content: [{ type: "text", text: "Remember this" }] },
+        { content: [{ type: "text", text: "Saved answer" }] },
+      ],
     });
     await events.return();
     expect((await second.client.send(request)).id).toBeDefined();
@@ -238,5 +241,56 @@ test("validation rejects empty input and snapshots hide provider error details",
     expect(JSON.stringify(view)).not.toContain(secret);
   } finally {
     await harness.close(context);
+  }
+});
+
+test("snapshots retain display content and omit provider signatures and redacted thinking", async () => {
+  const { faux, open } = await setup();
+  const privateValue = crypto.randomUUID();
+  faux.setResponses([
+    fauxAssistantMessage([
+      {
+        type: "thinking",
+        thinking: "Visible process",
+        thinkingSignature: privateValue,
+      },
+      {
+        type: "thinking",
+        thinking: privateValue,
+        thinkingSignature: privateValue,
+        redacted: true,
+      },
+      { type: "text", text: "**Saved result**", textSignature: privateValue },
+    ]),
+  ]);
+  const first = await open();
+  try {
+    await first.client.send({
+      text: "Inspect the response",
+      requestId: crypto.randomUUID(),
+    });
+    await first.conversation.waitForIdle(context);
+    const view = await first.client.get();
+    expect(view.messages.at(-1)?.content).toEqual([
+      expect.objectContaining({
+        type: "thinking",
+        thinking: "Visible process",
+      }),
+      expect.objectContaining({ type: "text", text: "**Saved result**" }),
+    ]);
+    expect(JSON.stringify(view)).not.toContain(privateValue);
+  } finally {
+    await first.harness.close(context);
+  }
+  const second = await open();
+  try {
+    expect((await second.client.get()).messages.at(-1)?.content).toHaveLength(
+      2,
+    );
+    expect(JSON.stringify(await second.client.get())).not.toContain(
+      privateValue,
+    );
+  } finally {
+    await second.harness.close(context);
   }
 });

@@ -1,0 +1,23 @@
+{
+  "name": "@domos/ui",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./tokens": "./src/tokens.ts",
+    "./controls": "./src/web/controls.tsx",
+    "./composer": "./src/web/composer.tsx",
+    "./markdown": "./src/web/markdown.tsx",
+    "./theme": "./src/web/theme.tsx",
+    "./style.css": "./src/web/style.css"
+  },
+  "dependencies": {
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0"
+  }
+}

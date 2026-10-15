@@ -1,9 +1,10 @@
 import { useRef, useState } from "react";
+import { chatCopy } from "./copy.ts";
 import type { SendInput } from "./use-chat.ts";
 
 type Draft = { text: string; pending: SendInput | null };
 const empty: Draft = { text: "", pending: null };
-const storageError = "草稿保存失败。请允许浏览器存储后重试。";
+const storageError = chatCopy.errors.draft;
 
 function load(key: string): { draft: Draft; error: string | null } {
   try {

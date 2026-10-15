@@ -7,13 +7,7 @@ import {
   type LiveState,
   type ModelRef,
 } from "@earendil-works/pi-durable";
-
-export type ChatMessage = {
-  id: string;
-  role: "user" | "assistant";
-  text: string;
-  stopped: boolean;
-};
+import type { ChatContent, ChatMessage } from "./messages.ts";
 
 export type ChatView = {
   id: number;
@@ -23,29 +17,54 @@ export type ChatView = {
   failed: boolean;
 };
 
-export function messageText(message: Message) {
-  return typeof message.content === "string"
-    ? message.content
-    : message.content
-        .filter((part) => part.type === "text")
-        .map((part) => part.text)
-        .join("");
-}
-
 export function chatView(view: ConversationView): ChatView {
   const live = view.docs[LiveDoc.definition.kind] as LiveState | undefined;
   const agent = view.docs[AgentDoc.definition.kind] as AgentState | undefined;
   const messages: ChatMessage[] = [];
   let failed = false;
   const append = (message: Message, id: string) => {
-    if (message.role !== "user" && message.role !== "assistant") return;
+    if (message.role === "system") return;
     failed = message.role === "assistant" && message.stopReason === "error";
     if (failed) return;
     messages.push({
       id,
       role: message.role,
-      text: messageText(message),
+      content: (typeof message.content === "string"
+        ? [{ type: "text" as const, text: message.content }]
+        : message.content.flatMap((part): ChatContent[] => {
+            switch (part.type) {
+              case "text":
+                return [{ type: "text", text: part.text }];
+              case "thinking":
+                return part.redacted
+                  ? []
+                  : [{ type: "thinking", thinking: part.thinking }];
+              case "image":
+                return [
+                  { type: "image", data: part.data, mimeType: part.mimeType },
+                ];
+              case "toolCall":
+                return [
+                  {
+                    type: "toolCall",
+                    id: part.id,
+                    name: part.name,
+                    arguments: part.arguments,
+                  },
+                ];
+            }
+            const exhaustive: never = part;
+            return exhaustive;
+          })
+      ).map((part, index) => ({ ...part, key: `${id}:${index}` })),
       stopped: message.role === "assistant" && message.stopReason === "aborted",
+      ...(message.role === "toolResult"
+        ? {
+            toolCallId: message.toolCallId,
+            toolName: message.toolName,
+            isError: message.isError,
+          }
+        : {}),
     });
   };
   for (const entry of view.entries) {
