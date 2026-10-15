@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ModelPicker } from "./model-picker.tsx";
 import { useChat } from "./use-chat.ts";
 
 export function App() {
@@ -45,7 +46,10 @@ export function App() {
         <header className="topbar">
           <div>
             <strong>与 Domos 对话</strong>
-            <span className="model">{view?.model ?? "DeepSeek"}</span>
+            <ModelPicker
+              model={view?.model ?? null}
+              connected={chat.connected}
+            />
           </div>
           <span className="connection" role="status">
             {chat.connected ? "已连接" : view ? "正在重连…" : "正在连接…"}

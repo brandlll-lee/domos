@@ -14,13 +14,17 @@ import { createApp } from "../../src/app.ts";
 const database = process.argv[2];
 if (!database) throw new Error("Database required");
 const faux = fauxProvider({
+  models: [
+    { id: "faux-1", name: "测试模型一" },
+    { id: "faux-2", name: "测试模型二" },
+  ],
   tokensPerSecond: 40,
   tokenSize: { min: 1, max: 1 },
 });
 const models = createModels();
 models.setProvider(faux.provider);
 let gate: ReturnType<typeof Promise.withResolvers<void>> | undefined;
-const answer: FauxResponseFactory = async (input, options) => {
+const answer: FauxResponseFactory = async (input, options, _state, model) => {
   faux.appendResponses([answer]);
   const waiting = gate;
   gate = undefined;
@@ -35,7 +39,7 @@ const answer: FauxResponseFactory = async (input, options) => {
     .find((message) => message.role === "user");
   const content = typeof user?.content === "string" ? user.content : "";
   return fauxAssistantMessage(
-    `已收到：${content}。这是一条用于验证流式显示和会话恢复的完整回复。`,
+    `已收到：${content}。这是一条用于验证流式显示和会话恢复的完整回复。（${model.id}）`,
   );
 };
 faux.setResponses([answer]);
@@ -45,7 +49,9 @@ const { harness, conversation } = await openAgent(
   { model: { provider: "faux", modelId: "faux-1" } },
   BACKGROUND_CONTEXT,
 );
-const server = createServer(getRequestListener(createApp(conversation).fetch));
+const server = createServer(
+  getRequestListener(createApp(conversation, models).fetch),
+);
 server.listen(Number(process.argv[3] ?? 0), "127.0.0.1", () => {
   const address = server.address();
   if (address && typeof address === "object")

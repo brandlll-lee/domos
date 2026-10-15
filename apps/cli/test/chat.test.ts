@@ -153,15 +153,22 @@ test("a provider failure does not print credential-bearing error details", async
   }
 });
 
-test("an empty credential fails before a model request", async () => {
+test("an empty credential leaves the saved conversation accessible", async () => {
   credentials("");
   const fetch = vi.fn();
   vi.stubGlobal("fetch", fetch);
   onTestFinished(() => {
     vi.unstubAllGlobals();
   });
-  await expect(openChat(await database(), context)).rejects.toThrow(
-    "请在 .env 中填写 DEEPSEEK_API_KEY。",
+  const { harness, models, conversation } = await openChat(
+    await database(),
+    context,
   );
-  expect(fetch).not.toHaveBeenCalled();
+  try {
+    expect(await models.getAvailable("deepseek")).toEqual([]);
+    expect((await conversation.context(context)).messages).toEqual([]);
+    expect(fetch).not.toHaveBeenCalled();
+  } finally {
+    await harness.close(context);
+  }
 });

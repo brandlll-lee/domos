@@ -5,12 +5,12 @@ import { getRequestListener } from "@hono/node-server";
 import { createApp } from "./app.ts";
 
 async function main() {
-  const { harness, conversation } = await openChat(
+  const { harness, conversation, models } = await openChat(
     "data/agent.sqlite",
     BACKGROUND_CONTEXT,
   );
   const server = createServer(
-    getRequestListener(createApp(conversation).fetch),
+    getRequestListener(createApp(conversation, models).fetch),
   );
   let closing = false;
   const close = async () => {
@@ -33,6 +33,6 @@ async function main() {
 }
 
 main().catch(() => {
-  console.error("启动失败。请检查 DEEPSEEK_API_KEY 和数据目录。");
+  console.error("启动失败。请检查模型配置、Node 版本和数据目录。");
   process.exitCode = 1;
 });

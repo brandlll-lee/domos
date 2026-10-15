@@ -1,0 +1,6 @@
+{
+  "model": {
+    "provider": "deepseek",
+    "modelId": "deepseek-flash"
+  }
+}

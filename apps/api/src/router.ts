@@ -3,15 +3,18 @@ import {
   BACKGROUND_CONTEXT,
   withAbortSignal,
 } from "@earendil-works/chord/context";
+import type { Models } from "@earendil-works/pi-ai/models";
 import {
   type Conversation,
   ConversationBusy,
 } from "@earendil-works/pi-durable";
 import { ORPCError, os } from "@orpc/server";
 import { z } from "zod";
+import { modelRouter, requireConfiguredModel } from "./models.ts";
 
-export function createRouter(conversation: Conversation) {
+export function createRouter(conversation: Conversation, models: Models) {
   return {
+    models: modelRouter(conversation, models),
     get: os.handler(async () => {
       const view = await conversation.viewState(BACKGROUND_CONTEXT);
       try {
@@ -24,6 +27,10 @@ export function createRouter(conversation: Conversation) {
       .input(z.object({ text: z.string().trim().min(1), requestId: z.uuid() }))
       .handler(async ({ input }) => {
         try {
+          await requireConfiguredModel(
+            models,
+            (await conversation.agent(BACKGROUND_CONTEXT)).model,
+          );
           const submission = await conversation.submit(
             {
               type: "input",

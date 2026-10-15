@@ -5,6 +5,7 @@ import {
   type ConversationView,
   LiveDoc,
   type LiveState,
+  type ModelRef,
 } from "@earendil-works/pi-durable";
 
 export type ChatMessage = {
@@ -16,7 +17,7 @@ export type ChatMessage = {
 
 export type ChatView = {
   id: number;
-  model: string | null;
+  model: ModelRef | null;
   messages: ChatMessage[];
   busy: boolean;
   error: string | null;
@@ -55,7 +56,7 @@ export function chatView(view: ConversationView): ChatView {
   if (live?.generation?.message) append(live.generation.message, "stream");
   return {
     id: view.conversation.id,
-    model: agent?.model?.modelId ?? null,
+    model: agent?.model ?? null,
     messages,
     busy: Boolean(live?.run),
     error:

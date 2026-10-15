@@ -17,7 +17,7 @@ export async function openAgent(
   try {
     const conversation = await harness.root(context, { agent });
     harness.resume();
-    return { harness, conversation };
+    return { harness, conversation, models: options.models };
   } catch (error) {
     await harness.close(context);
     throw error;

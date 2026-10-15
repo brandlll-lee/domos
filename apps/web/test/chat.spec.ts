@@ -55,6 +55,33 @@ test.afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
+test("model choices load from the server and selection survives a restart", async ({
+  page,
+}) => {
+  const subscription = Promise.withResolvers<void>();
+  await page.route("**/rpc/subscribe", async (route) => {
+    await subscription.promise;
+    await route.continue();
+  });
+  await page.goto(url);
+  const picker = page.getByRole("combobox", { name: "模型", exact: true });
+  await expect(picker).toBeDisabled();
+  await expect(picker).not.toContainText("DeepSeek");
+  subscription.resolve();
+  await expect(picker).toBeEnabled();
+  await picker.selectOption({ label: "faux · 测试模型二" });
+  await expect(picker).toHaveValue(JSON.stringify(["faux", "faux-2"]));
+  await page.reload();
+  await expect(picker).toHaveValue(JSON.stringify(["faux", "faux-2"]));
+  const port = Number(new URL(url).port);
+  await stop();
+  await start(port);
+  await expect(picker).toBeEnabled();
+  await page.getByLabel("消息", { exact: true }).fill("验证模型选择");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByLabel("Domos 的回复")).toContainText("faux-2");
+});
+
 test("send, reload, disconnect, reconnect and restart preserve the conversation", async ({
   page,
 }) => {

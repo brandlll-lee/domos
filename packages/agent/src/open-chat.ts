@@ -1,19 +1,23 @@
+import { readFile } from "node:fs/promises";
 import type { Context } from "@earendil-works/chord/context";
-import { createModels } from "@earendil-works/pi-ai/models";
-import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
-import { createRegistry } from "@earendil-works/pi-durable";
+import { builtinModels } from "@earendil-works/pi-ai/providers/all";
+import { createRegistry, type ModelRef } from "@earendil-works/pi-durable";
 import { openAgent } from "./open-agent.ts";
 
 export async function openChat(database: string, context: Context) {
-  const models = createModels();
-  models.setProvider(deepseekProvider());
-  if (!(await models.getAuth("deepseek"))) {
-    throw new Error("请在 .env 中填写 DEEPSEEK_API_KEY。");
-  }
+  const models = builtinModels();
+  const config = JSON.parse(await readFile("domos.config.json", "utf8")) as {
+    model?: ModelRef;
+  };
+  if (
+    !config.model ||
+    !models.getModel(config.model.provider, config.model.modelId)
+  )
+    throw new Error("请检查 domos.config.json 中的初始模型。");
   return openAgent(
     database,
     { models, registry: createRegistry() },
-    { model: { provider: "deepseek", modelId: "deepseek-flash" } },
+    { model: config.model },
     context,
   );
 }

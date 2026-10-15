@@ -33,7 +33,7 @@ async function setup() {
       agent,
       context,
     );
-    const app = createApp(runtime.conversation);
+    const app = createApp(runtime.conversation, models);
     const client: RouterClient<AppRouter> = createORPCClient(
       new RPCLink({
         url: "http://localhost/rpc",
@@ -42,8 +42,90 @@ async function setup() {
     );
     return { ...runtime, client, app };
   };
-  return { faux, open };
+  return { faux, open, models };
 }
+
+test("SDK models can be selected, persist after reopening and leave active requests pinned", async () => {
+  const { faux, open, models } = await setup();
+  const next = fauxProvider({
+    provider: crypto.randomUUID(),
+    models: [{ id: crypto.randomUUID(), name: "New catalog model" }],
+  });
+  models.setProvider(next.provider);
+  next.setResponses([fauxAssistantMessage("Next model answer")]);
+  const selection = { provider: next.provider.id, modelId: next.models[0].id };
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  faux.setResponses([
+    async () => {
+      entered.resolve();
+      await release.promise;
+      return fauxAssistantMessage("Original model answer");
+    },
+  ]);
+  const first = await open();
+  try {
+    expect(await first.client.models.list()).toContainEqual({
+      ...selection,
+      name: "New catalog model",
+      providerName: next.provider.name,
+    });
+    await first.client.send({ text: "First", requestId: crypto.randomUUID() });
+    await entered.promise;
+    await first.client.models.select(selection);
+    expect((await first.client.get()).model).toEqual(selection);
+    release.resolve();
+    await first.conversation.waitForIdle(context);
+    expect(faux.state.callCount).toBe(1);
+    expect(next.state.callCount).toBe(0);
+    await first.client.send({ text: "Second", requestId: crypto.randomUUID() });
+    await first.conversation.waitForIdle(context);
+    expect(next.state.callCount).toBe(1);
+    await expect(
+      first.client.models.select({
+        provider: crypto.randomUUID(),
+        modelId: crypto.randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  } finally {
+    release.resolve();
+    await first.harness.close(context);
+  }
+  const second = await open();
+  try {
+    expect((await second.client.get()).model).toEqual(selection);
+    expect(
+      (await second.client.get()).messages.map((message) => message.text),
+    ).toEqual([
+      "First",
+      "Original model answer",
+      "Second",
+      "Next model answer",
+    ]);
+  } finally {
+    await second.harness.close(context);
+  }
+});
+
+test("unconfigured models leave history accessible and reject execution", async () => {
+  const { faux, open } = await setup();
+  if (faux.provider.auth.apiKey)
+    faux.provider.auth.apiKey.resolve = async () => undefined;
+  const runtime = await open();
+  try {
+    expect(await runtime.client.models.list()).toEqual([]);
+    expect((await runtime.client.get()).busy).toBe(false);
+    await expect(
+      runtime.client.models.select({ provider: "faux", modelId: "faux-1" }),
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    await expect(
+      runtime.client.send({ text: "Wait", requestId: crypto.randomUUID() }),
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    expect(faux.state.callCount).toBe(0);
+  } finally {
+    await runtime.harness.close(context);
+  }
+});
 
 test("HTTP subscription starts with a snapshot and detaching keeps the run alive", async () => {
   const { faux, open } = await setup();

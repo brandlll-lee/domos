@@ -5,6 +5,7 @@
   "exports": {
     ".": "./src/open-agent.ts",
     "./chat": "./src/open-chat.ts",
+    "./models": "./src/models.ts",
     "./view": "./src/chat-view.ts"
   },
   "dependencies": {

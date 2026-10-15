@@ -1,12 +1,13 @@
+import type { Models } from "@earendil-works/pi-ai/models";
 import type { Conversation } from "@earendil-works/pi-durable";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
 import { createRouter } from "./router.ts";
 
-export function createApp(conversation: Conversation) {
+export function createApp(conversation: Conversation, models: Models) {
   const app = new Hono();
-  const handler = new RPCHandler(createRouter(conversation));
+  const handler = new RPCHandler(createRouter(conversation, models));
   app.use("/rpc/*", async (c, next) => {
     const { matched, response } = await handler.handle(c.req.raw, {
       prefix: "/rpc",

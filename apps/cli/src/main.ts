@@ -70,6 +70,6 @@ async function main() {
 }
 
 main().catch(() => {
-  console.error("启动失败。请检查 DEEPSEEK_API_KEY、Node 版本和数据目录。");
+  console.error("启动失败。请检查模型配置、Node 版本和数据目录。");
   process.exitCode = 1;
 });

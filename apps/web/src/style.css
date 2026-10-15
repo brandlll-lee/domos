@@ -121,11 +121,33 @@ a:focus-visible {
   font-size: 14px;
   font-weight: 500;
 }
-.model {
-  display: block;
+.model-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin-top: 8px;
+}
+.model-picker select {
+  max-width: 240px;
+  color: inherit;
+  background: white;
+  border: 1px solid #e0e1d9;
+  border-radius: 6px;
+  padding: 5px;
+  font: inherit;
+}
+.model-help {
+  color: #656760;
   font-size: 11px;
-  color: #85867f;
-  margin-top: 5px;
+}
+@media (max-width: 700px) {
+  .model-help {
+    display: none;
+  }
+  .model-picker select {
+    max-width: 190px;
+  }
 }
 .connection {
   font-size: 11px;
