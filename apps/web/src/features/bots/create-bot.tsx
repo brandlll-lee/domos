@@ -1,5 +1,6 @@
 import type { Bot } from "@domos/agent/bots";
 import type { ChatView } from "@domos/agent/view";
+import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
 import { TextField } from "@domos/ui/field";
@@ -70,6 +71,7 @@ function BotForm({
   const { choices, error: catalogError } = useModels(true);
   const [name, setName] = useState("");
   const [instructions, setInstructions] = useState("");
+  const [avatar, setAvatar] = useState(() => crypto.randomUUID());
   const [selection, setSelection] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const request = useRef<{ id: string; payload: string } | null>(null);
@@ -93,6 +95,7 @@ function BotForm({
         const input = {
           name: name.trim(),
           instructions: instructions.trim(),
+          avatar,
           model: { provider: choice.provider, modelId: choice.modelId },
         };
         const payload = JSON.stringify(input);
@@ -116,6 +119,16 @@ function BotForm({
       }}
     >
       <fieldset disabled={saving} className="bot-fields">
+        <div className="avatar-customize">
+          <BotAvatar seed={avatar} size="large" />
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setAvatar(crypto.randomUUID())}
+          >
+            换个形象
+          </Button>
+        </div>
         <TextField
           label="名字"
           value={name}

@@ -3,6 +3,9 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./avatar": "./src/web/avatar.tsx",
+    "./characters": "./src/characters.ts",
+    "./work-status": "./src/web/work-status.tsx",
     "./tokens": "./src/tokens.ts",
     "./controls": "./src/web/controls.tsx",
     "./dialog": "./src/web/dialog.tsx",

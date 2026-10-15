@@ -8,6 +8,7 @@ import {
   type ModelRef,
 } from "@earendil-works/pi-durable";
 import type { Attachment } from "./attachments.ts";
+import type { MessageDelivery } from "./delivery.ts";
 import { FileInput } from "./files.ts";
 import type { ChatContent, ChatMessage } from "./messages.ts";
 
@@ -113,6 +114,11 @@ export function chatView(view: ConversationView): ChatView {
           ? (message.details as { attachment?: Attachment } | undefined)
               ?.attachment
           : undefined;
+      const delivery =
+        message.role === "toolResult" && !message.isError && !stopped
+          ? (message.details as { delivery?: MessageDelivery } | undefined)
+              ?.delivery
+          : undefined;
       failed = message.role === "assistant" && message.stopReason === "error";
       const projected = project(
         message,
@@ -121,7 +127,8 @@ export function chatView(view: ConversationView): ChatView {
         input?.text,
         stopped,
       );
-      if (projected) messages.push(projected);
+      if (projected)
+        messages.push({ ...projected, ...(delivery ? { delivery } : {}) });
     });
   }
   const draft = live?.generation?.message

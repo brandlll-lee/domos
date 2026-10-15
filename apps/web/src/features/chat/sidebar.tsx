@@ -1,6 +1,6 @@
 import type { Bot } from "@domos/agent/bots";
 import type { ChatView } from "@domos/agent/view";
-import { ChatCircleIcon as ChatCircle } from "@phosphor-icons/react/dist/csr/ChatCircle";
+import { BotAvatar, BrandMark } from "@domos/ui/avatar";
 import { DesktopIcon as Desktop } from "@phosphor-icons/react/dist/csr/Desktop";
 import { MagnifyingGlassIcon as MagnifyingGlass } from "@phosphor-icons/react/dist/csr/MagnifyingGlass";
 import { useState } from "react";
@@ -14,12 +14,14 @@ export function Sidebar({
   model,
   preview,
   connection,
+  busy,
 }: {
   bots: Bot[];
   selected: Bot;
   model: ChatView["model"];
   preview: string;
   connection: string;
+  busy: boolean;
 }) {
   const [query, setQuery] = useState("");
   const matches = bots.filter((bot) =>
@@ -31,6 +33,7 @@ export function Sidebar({
     <aside className="sidebar">
       <header className="sidebar-header">
         <a className="wordmark" href="/">
+          <BrandMark />
           domos.
         </a>
         <CreateBot model={model} onCreated={selectBot} />
@@ -55,7 +58,10 @@ export function Sidebar({
               href={`#bot/${bot.id}`}
               aria-current={bot.id === selected.id ? "page" : undefined}
             >
-              <ChatCircle size={22} aria-hidden="true" />
+              <BotAvatar
+                seed={bot.avatar}
+                state={bot.id === selected.id && busy ? "running" : "idle"}
+              />
               <div className="chat-preview">
                 <strong>{bot.name}</strong>
                 {bot.id === selected.id && <span>{preview}</span>}

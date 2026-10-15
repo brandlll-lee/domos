@@ -20,6 +20,10 @@ export const themes = {
     "on-user": "#ececee",
     "popup-shadow": "0 8px 32px #00000040",
     scrim: "#00000080",
+    "brand-ink": "#ffffff",
+    "brand-eye": "#080808",
+    "avatar-eye": "#ffffff",
+    "avatar-pupil": "#080808",
   },
   light: {
     background: "#fafaf8",
@@ -42,6 +46,10 @@ export const themes = {
     "on-user": "#202123",
     "popup-shadow": "0 8px 32px #00000018",
     scrim: "#00000040",
+    "brand-ink": "#080808",
+    "brand-eye": "#ffffff",
+    "avatar-eye": "#ffffff",
+    "avatar-pupil": "#080808",
   },
 } as const;
 
@@ -95,4 +103,11 @@ export const metrics = {
   "motion-activity-sweep": "2.8s",
   "motion-activity-pulse": "1.4s",
   "activity-detail-height": "20rem",
+  "avatar-small": "1.5rem",
+  "avatar-medium": "2.5rem",
+  "avatar-large": "5rem",
+  "motion-character-breathe": "2.8s",
+  "motion-character-look": "4.5s",
+  "motion-character-blink": "7s",
+  "attachment-preview-height": "16rem",
 } as const;

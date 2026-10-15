@@ -6,7 +6,7 @@ import { ArrowUpIcon } from "@phosphor-icons/react/dist/csr/ArrowUp";
 import { PaperclipIcon } from "@phosphor-icons/react/dist/csr/Paperclip";
 import { StopIcon } from "@phosphor-icons/react/dist/csr/Stop";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { client } from "../../client.ts";
 import { chatCopy } from "./copy.ts";
 import { type SendMessage, useComposer } from "./use-composer.ts";
@@ -21,6 +21,7 @@ export function Composer({
   error,
   onSend,
   onStop,
+  status,
 }: {
   botName: string;
   conversationId: number;
@@ -31,6 +32,7 @@ export function Composer({
   error: string | null;
   onSend: SendMessage;
   onStop: () => Promise<void>;
+  status?: ReactNode;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -84,6 +86,7 @@ export function Composer({
       };
   return (
     <footer className="composer-area">
+      {status}
       <input
         ref={input}
         hidden
@@ -133,6 +136,11 @@ export function Composer({
                   key={file.id}
                   name={file.name}
                   size={file.size}
+                  preview={
+                    !file.mimeType || file.mimeType.startsWith("image/")
+                      ? `/files/${conversationId}/${file.id}`
+                      : undefined
+                  }
                   action={
                     <Button
                       type="button"

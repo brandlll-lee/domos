@@ -1,4 +1,4 @@
-import { chatTranscript } from "@domos/agent/transcript";
+import type { TranscriptItem } from "@domos/agent/transcript";
 import type { ChatView } from "@domos/agent/view";
 import { ActivityText } from "@domos/ui/activity";
 import { Button } from "@domos/ui/controls";
@@ -13,11 +13,12 @@ import { useTranscript } from "./use-transcript.ts";
 export function Messages({
   view,
   botName,
+  items,
 }: {
   view: ChatView | null;
   botName: string;
+  items: TranscriptItem[];
 }) {
-  const items = view ? chatTranscript(view) : [];
   const transcript = useTranscript(view);
   return (
     <div className="transcript-pane">
@@ -47,7 +48,7 @@ export function Messages({
           {view &&
             items.map((item) => {
               if (item.kind === "activity")
-                return (
+                return item.status === "running" ? null : (
                   <ExecutionActivity
                     key={`activity:${item.id}`}
                     activity={item}

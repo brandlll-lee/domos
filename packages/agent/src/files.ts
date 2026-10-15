@@ -21,6 +21,7 @@ import {
   createReadTool,
   createWriteTool,
 } from "@earendil-works/pi-durable/tools";
+import { fileTypeFromBuffer } from "file-type";
 import { type Attachment, MAX_FILE_BYTES } from "./attachments.ts";
 import { Workspace } from "./workspace.ts";
 
@@ -56,7 +57,16 @@ export class Files {
       .update("\0")
       .update(bytes)
       .digest("hex");
-    const file = { id, name: basename(path), size: bytes.byteLength, path };
+    const mimeType =
+      (await fileTypeFromBuffer(bytes).catch(() => undefined))?.mime ??
+      "application/octet-stream";
+    const file = {
+      id,
+      name: basename(path),
+      size: bytes.byteLength,
+      path,
+      mimeType,
+    };
     const directory = this.directory(botId, id);
     await mkdir(directory, { recursive: true });
     const temporary = join(directory, randomUUID());
@@ -100,15 +110,26 @@ export class Files {
   }
 
   async metadata(botId: number, id: string): Promise<Attachment> {
-    return JSON.parse(
+    const file: Attachment = JSON.parse(
       await readFile(join(this.directory(botId, id), "metadata.json"), "utf8"),
     );
+    if (!file.mimeType) {
+      const bytes = await readFile(join(this.directory(botId, id), "content"));
+      file.mimeType =
+        (await fileTypeFromBuffer(bytes).catch(() => undefined))?.mime ??
+        "application/octet-stream";
+      await writeFile(
+        join(this.directory(botId, id), "metadata.json"),
+        JSON.stringify(file),
+      );
+    }
+    return file;
   }
 
   async download(botId: number, id: string) {
     const file = await this.metadata(botId, id);
     const bytes = await readFile(join(this.directory(botId, id), "content"));
-    return new File([bytes], file.name, { type: "application/octet-stream" });
+    return new File([bytes], file.name, { type: file.mimeType });
   }
 
   async publish(botId: number, path: string, context: Context) {

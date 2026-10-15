@@ -62,6 +62,24 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
     const groupId = message.turnId ?? message.id;
     const active = groupId === view.activeTurnId;
     if (message.role === "toolResult") {
+      if (message.delivery)
+        items.push({
+          kind: "message",
+          id: message.id,
+          message: {
+            id: message.id,
+            turnId: message.turnId,
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text: message.delivery.text,
+                key: `${message.id}:delivery`,
+              },
+            ],
+            stopped: false,
+          },
+        });
       if (message.attachments?.length)
         items.push({
           kind: "attachments",
@@ -93,6 +111,7 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
           });
       } else if (part.type === "toolCall") {
         const result = results.get(`${message.turnId}:${part.id}`);
+        if (result?.delivery) continue;
         const live = active
           ? view.tools.find((tool) => tool.callId === part.id)
           : undefined;

@@ -17,6 +17,7 @@ import {
 } from "@earendil-works/pi-ai/providers/faux";
 import {
   createRegistry,
+  defineDoc,
   defineExtension,
   defineTool,
   Harness,
@@ -185,7 +186,7 @@ test("adopts the existing root conversation with its history and configuration",
   const runtime = await openAgent(file, options, agent, context);
   try {
     expect(await runtime.bots.list(context)).toEqual([
-      { id: root.id, name: "Domos" },
+      { id: root.id, name: "Domos", avatar: expect.any(String) },
     ]);
     const conversation = await runtime.bots.conversation(root.id, context);
     expect(conversation?.id).toBe(root.id);
@@ -198,6 +199,58 @@ test("adopts the existing root conversation with its history and configuration",
     ).toMatchObject({ content: [{ type: "text", text: "Existing answer" }] });
   } finally {
     await runtime.harness.close(context);
+  }
+});
+
+test("existing contacts receive stable identities across repeated starts", async () => {
+  const file = await database(onTestFinished);
+  const { models } = model();
+  const options = { models, registry: createRegistry() };
+  const first = await openAgent(file, options, agent, context);
+  const directory = defineDoc<{
+    items: {
+      id: number;
+      name: string;
+      requestId: string | null;
+      avatar?: string;
+    }[];
+  }>({
+    kind: "domos.bots",
+    version: 1,
+    scope: "session",
+    initial: () => ({ items: [] }),
+  });
+  try {
+    await first.bots.create(
+      {
+        name: "Research",
+        instructions: "Research",
+        model: agent.model,
+        requestId: crypto.randomUUID(),
+      },
+      context,
+    );
+    await first.harness.commit(async (tx) => {
+      for (const bot of (await tx.doc(directory)).items) delete bot.avatar;
+    }, context);
+  } finally {
+    await first.harness.close(context);
+  }
+  const second = await openAgent(file, options, agent, context);
+  let contacts: Awaited<ReturnType<typeof second.bots.list>>;
+  try {
+    contacts = await second.bots.list(context);
+    expect(contacts.map((bot) => bot.name)).toEqual(["Domos", "Research"]);
+    expect(new Set(contacts.map((bot) => bot.avatar)).size).toBe(2);
+    for (const bot of contacts) expect(bot.avatar).toMatch(/^[a-f\d-]{36}$/);
+  } finally {
+    await second.harness.close(context);
+  }
+  const third = await openAgent(file, options, agent, context);
+  try {
+    expect(await third.bots.list(context)).toEqual(contacts);
+  } finally {
+    await third.harness.close(context);
   }
 });
 

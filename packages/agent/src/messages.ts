@@ -6,6 +6,7 @@ import type {
   ToolCall,
 } from "@earendil-works/pi-ai";
 import type { Attachment } from "./attachments.ts";
+import type { MessageDelivery } from "./delivery.ts";
 
 export type ChatContent =
   | Pick<TextContent, "type" | "text">
@@ -24,6 +25,7 @@ export type ChatMessage = {
   toolName?: string;
   isError?: boolean;
   attachments?: Attachment[];
+  delivery?: MessageDelivery;
   toolStatus?: "pending" | "running" | "done" | "failed" | "stopped";
 };
 

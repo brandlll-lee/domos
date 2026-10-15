@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openAgent } from "@domos/agent";
@@ -26,6 +26,7 @@ const botInput = (name: string, modelId = "faux-1") => ({
   instructions: `Work as ${name}.`,
   model: { provider: "faux", modelId },
   requestId: crypto.randomUUID(),
+  avatar: crypto.randomUUID(),
 });
 
 async function setup() {
@@ -67,7 +68,7 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
   try {
     const events = await first.client.bots.subscribe();
     expect((await events.next()).value).toEqual([
-      { id: first.conversation.id, name: "Domos" },
+      { id: first.conversation.id, name: "Domos", avatar: expect.any(String) },
     ]);
     const [bot, repeated] = await Promise.all([
       first.client.bots.create(input),
@@ -75,8 +76,9 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
     ]);
     botId = bot.id;
     expect(repeated).toEqual(bot);
+    expect(bot.avatar).toBe(input.avatar);
     expect((await events.next()).value).toEqual([
-      { id: first.conversation.id, name: "Domos" },
+      { id: first.conversation.id, name: "Domos", avatar: expect.any(String) },
       bot,
     ]);
     await events.return();
@@ -127,6 +129,7 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
     expect(await second.client.bots.create(input)).toEqual({
       id: botId,
       name: input.name,
+      avatar: input.avatar,
     });
     expect(await second.client.bots.list()).toHaveLength(2);
     const view = await second.client.get({ botId });
@@ -136,6 +139,66 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
       "Research question",
       "Research answer",
     ]);
+  } finally {
+    await second.harness.close(context);
+  }
+});
+
+test("image previews use file content, retain Bot ownership, and restore stored images", async () => {
+  const { open } = await setup();
+  const first = await open();
+  const bytes = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1kAAAAASUVORK5CYII=",
+    "base64",
+  );
+  let image: Awaited<ReturnType<typeof first.files.upload>>;
+  const botId = first.conversation.id;
+  try {
+    image = await first.client.files.upload({
+      botId,
+      file: new File([bytes], "source.dat", { type: "text/plain" }),
+    });
+    expect(image.mimeType).toBe("image/png");
+    const preview = await first.app.request(`/files/${botId}/${image.id}`);
+    expect(preview.status).toBe(200);
+    expect(preview.headers.get("Content-Type")).toBe("image/png");
+    expect(preview.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(Buffer.from(await preview.arrayBuffer())).toEqual(bytes);
+    const other = await first.client.bots.create(botInput("Other"));
+    expect(
+      (await first.app.request(`/files/${other.id}/${image.id}`)).status,
+    ).toBe(404);
+    const text = await first.client.files.upload({
+      botId,
+      file: new File(["<svg></svg>"], "image.png", { type: "image/png" }),
+    });
+    expect(text.mimeType).toBe("application/octet-stream");
+    expect((await first.app.request(`/files/${botId}/${text.id}`)).status).toBe(
+      404,
+    );
+    const { mimeType: _mimeType, ...metadata } = image;
+    await writeFile(
+      join(
+        first.files.root,
+        String(botId),
+        "artifacts",
+        image.id,
+        "metadata.json",
+      ),
+      JSON.stringify(metadata),
+    );
+  } finally {
+    await first.harness.close(context);
+  }
+  const second = await open();
+  try {
+    const preview = await second.app.request(`/files/${botId}/${image.id}`);
+    expect(preview.status).toBe(200);
+    expect(preview.headers.get("Content-Type")).toBe("image/png");
+    expect(Buffer.from(await preview.arrayBuffer())).toEqual(bytes);
+    expect(
+      (await second.client.files.download({ botId, id: image.id })).type,
+    ).toBe("image/png");
   } finally {
     await second.harness.close(context);
   }

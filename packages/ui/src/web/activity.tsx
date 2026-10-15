@@ -3,21 +3,25 @@ import type { ReactNode } from "react";
 export function ActivityText({
   active = false,
   children,
+  indicator,
 }: {
   active?: boolean;
   children: ReactNode;
+  indicator?: ReactNode;
 }) {
   return (
     <span className="activity-text" data-active={active || undefined}>
-      <svg
-        className="activity-indicator"
-        viewBox="0 0 24 24"
-        aria-hidden="true"
-      >
-        <circle cx="5" cy="12" r="2" />
-        <circle cx="12" cy="12" r="2" />
-        <circle cx="19" cy="12" r="2" />
-      </svg>
+      {indicator ?? (
+        <svg
+          className="activity-indicator"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <circle cx="5" cy="12" r="2" />
+          <circle cx="12" cy="12" r="2" />
+          <circle cx="19" cy="12" r="2" />
+        </svg>
+      )}
       <span className="activity-label">{children}</span>
     </span>
   );
@@ -25,27 +29,23 @@ export function ActivityText({
 
 export function ActivityDisclosure({
   label,
-  active = false,
   attention = false,
   notice,
   children,
 }: {
   label: string;
-  active?: boolean;
   attention?: boolean;
   notice?: string;
   children: ReactNode;
 }) {
   return (
     <details
-      key={active ? "running" : "settled"}
       className="activity-disclosure"
-      open={active}
       data-attention={attention || undefined}
     >
       <summary className="activity-summary" title={label}>
         <span role="status" aria-live="polite" aria-atomic="true">
-          <ActivityText active={active}>{label}</ActivityText>
+          <ActivityText>{label}</ActivityText>
         </span>
         {notice && <span className="activity-notice">{notice}</span>}
         <span className="activity-chevron" aria-hidden="true" />

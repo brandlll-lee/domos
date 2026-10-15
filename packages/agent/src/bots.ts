@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Context } from "@earendil-works/chord/context";
 import {
   type ConversationId,
@@ -7,12 +8,13 @@ import {
   type ModelRef,
 } from "@earendil-works/pi-durable";
 
-export type Bot = { id: ConversationId; name: string };
+export type Bot = { id: ConversationId; name: string; avatar: string };
 export type CreateBot = {
   name: string;
   instructions: string;
   model: ModelRef;
   requestId: string;
+  avatar?: string;
 };
 
 const BotDirectory = defineDoc<{
@@ -38,14 +40,19 @@ export class Bots {
         directory.items.push({
           id: conversationId,
           name: "Domos",
+          avatar: randomUUID(),
           requestId: null,
         });
+      for (const bot of directory.items) bot.avatar ??= randomUUID();
     }, context);
   }
 
   async list(context: Context): Promise<Bot[]> {
     const directory = await this.harness.snapshot(BotDirectory, context);
-    return directory?.items.map(({ id, name }) => ({ id, name })) ?? [];
+    return (
+      directory?.items.map(({ id, name, avatar }) => ({ id, name, avatar })) ??
+      []
+    );
   }
 
   async conversation(id: number, context: Context) {
@@ -59,7 +66,12 @@ export class Bots {
       const existing = directory.items.find(
         (bot) => bot.requestId === input.requestId,
       );
-      if (existing) return { id: existing.id, name: existing.name };
+      if (existing)
+        return {
+          id: existing.id,
+          name: existing.name,
+          avatar: existing.avatar,
+        };
       const conversation = await tx.createConversation({
         ownership: { kind: "ownerless" },
       });
@@ -67,7 +79,11 @@ export class Bots {
         model: input.model,
         instructions: input.instructions,
       });
-      const bot = { id: conversation.id, name: input.name };
+      const bot = {
+        id: conversation.id,
+        name: input.name,
+        avatar: input.avatar ?? randomUUID(),
+      };
       directory.items.push({ ...bot, requestId: input.requestId });
       return bot;
     }, context);

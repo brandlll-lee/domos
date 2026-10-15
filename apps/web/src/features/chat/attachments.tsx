@@ -39,6 +39,11 @@ export function Attachments({
           key={file.id}
           name={file.name}
           size={file.size}
+          preview={
+            !file.mimeType || file.mimeType.startsWith("image/")
+              ? `/files/${botId}/${file.id}`
+              : undefined
+          }
           action={
             <Button
               type="button"

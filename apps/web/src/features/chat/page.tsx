@@ -1,9 +1,12 @@
 import type { Bot } from "@domos/agent/bots";
 import { messageText } from "@domos/agent/messages";
+import { chatTranscript } from "@domos/agent/transcript";
+import { BotAvatar } from "@domos/ui/avatar";
 import { SearchPicker } from "@domos/ui/picker";
 import { AppearancePicker } from "../appearance/picker.tsx";
 import { CreateBot } from "../bots/create-bot.tsx";
 import { selectBot, useBots } from "../bots/use-bots.ts";
+import { WorkingActivity } from "./activity.tsx";
 import { Composer } from "./composer.tsx";
 import { chatCopy } from "./copy.ts";
 import { Messages } from "./messages.tsx";
@@ -39,14 +42,16 @@ function BotChat({
   directoryError: string | null;
 }) {
   const chat = useChat(bot.id);
+  const items = chat.view ? chatTranscript(chat.view) : [];
+  const active = items.find(
+    (item) => item.kind === "activity" && item.status === "running",
+  );
   const connection = chat.connected
     ? chatCopy.connected
     : chat.view
       ? chatCopy.reconnecting
       : chatCopy.connecting;
-  const latest = chat.view?.messages.findLast(
-    (message) => message.role !== "toolResult",
-  );
+  const latest = items.findLast((item) => item.kind === "message");
   const error =
     chat.error ??
     directoryError ??
@@ -67,19 +72,24 @@ function BotChat({
         selected={bot}
         model={chat.view?.model ?? null}
         connection={connection}
+        busy={chat.view?.busy ?? false}
         preview={
           chat.view?.busy
             ? chatCopy.working
-            : latest
-              ? messageText(latest)
+            : latest?.kind === "message"
+              ? messageText(latest.message)
               : "开始对话"
         }
       />
       <main className="conversation" id="conversation" tabIndex={-1}>
         <header className="topbar">
           <div className="conversation-heading">
-            <strong>{chatCopy.conversation(bot.name)}</strong>
+            <div className="conversation-title">
+              <BotAvatar seed={bot.avatar} size="small" />
+              <strong>{chatCopy.conversation(bot.name)}</strong>
+            </div>
             <div className="mobile-contacts">
+              <BotAvatar seed={bot.avatar} size="small" />
               <SearchPicker
                 label="联系人"
                 searchLabel="搜索联系人…"
@@ -118,7 +128,7 @@ function BotChat({
             <AppearancePicker />
           </div>
         </header>
-        <Messages view={chat.view} botName={bot.name} />
+        <Messages view={chat.view} botName={bot.name} items={items} />
         {chat.view ? (
           <Composer
             key={chat.view.id}
@@ -131,6 +141,11 @@ function BotChat({
             error={error}
             onSend={chat.send}
             onStop={chat.stop}
+            status={
+              active?.kind === "activity" ? (
+                <WorkingActivity activity={active} bot={bot} />
+              ) : null
+            }
           />
         ) : (
           error && (

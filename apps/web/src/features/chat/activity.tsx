@@ -1,10 +1,13 @@
+import type { Bot } from "@domos/agent/bots";
 import type {
   Activity,
   ActivityStep,
   ToolStatus,
 } from "@domos/agent/transcript";
 import { ActivityDetails, ActivityDisclosure } from "@domos/ui/activity";
+import { BotAvatar } from "@domos/ui/avatar";
 import { MessageMarkdown } from "@domos/ui/markdown";
+import { WorkStatus } from "@domos/ui/work-status";
 import { chatCopy } from "./copy.ts";
 import { MessageContent } from "./message-content.tsx";
 
@@ -53,14 +56,13 @@ function Step({ step }: { step: ActivityStep }) {
   );
 }
 
-export function ExecutionActivity({ activity }: { activity: Activity }) {
+export function activityLabel(activity: Activity) {
   const tools = activity.steps.filter((step) => step.type === "tool");
-  const failures = tools.filter((step) => step.status === "failed").length;
   const current =
     tools.find((step) => step.status === "running") ??
     tools.find((step) => step.status === "pending");
   const active = activity.status === "running";
-  const label = active
+  return active
     ? current
       ? `${toolStatus(current.status)} · ${current.name}`
       : activity.responding
@@ -73,6 +75,40 @@ export function ExecutionActivity({ activity }: { activity: Activity }) {
         : tools.length
           ? chatCopy.activityComplete(tools.length)
           : chatCopy.thinkingComplete;
+}
+
+function Steps({ activity }: { activity: Activity }) {
+  return activity.steps.map((step) => <Step key={step.id} step={step} />);
+}
+
+export function WorkingActivity({
+  activity,
+  bot,
+}: {
+  activity: Activity;
+  bot: Bot;
+}) {
+  return (
+    <section
+      className="execution-activity"
+      data-state="running"
+      aria-label={chatCopy.activity}
+    >
+      <WorkStatus
+        avatar={<BotAvatar seed={bot.avatar} state="running" size="small" />}
+        label={`${bot.name} 正在工作`}
+        summary={activityLabel(activity)}
+      >
+        <Steps activity={activity} />
+      </WorkStatus>
+    </section>
+  );
+}
+
+export function ExecutionActivity({ activity }: { activity: Activity }) {
+  const failures = activity.steps.filter(
+    (step) => step.type === "tool" && step.status === "failed",
+  ).length;
   return (
     <section
       className="execution-activity"
@@ -80,14 +116,11 @@ export function ExecutionActivity({ activity }: { activity: Activity }) {
       data-state={activity.status}
     >
       <ActivityDisclosure
-        label={label}
-        active={active}
+        label={activityLabel(activity)}
         attention={activity.status === "failed"}
         notice={failures ? chatCopy.activityFailures(failures) : undefined}
       >
-        {activity.steps.map((step) => (
-          <Step key={step.id} step={step} />
-        ))}
+        <Steps activity={activity} />
       </ActivityDisclosure>
     </section>
   );

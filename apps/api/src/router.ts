@@ -30,6 +30,7 @@ export function createRouter(bots: Bots, models: Models, files: Files) {
               modelId: z.string().min(1),
             }),
             requestId: z.uuid(),
+            avatar: z.uuid().optional(),
           }),
         )
         .handler(async ({ input }) => {
@@ -42,7 +43,11 @@ export function createRouter(bots: Bots, models: Models, files: Files) {
           : BACKGROUND_CONTEXT;
         const watch = await bots.watch(context);
         for await (const directory of watchValues(watch, signal))
-          yield directory?.items.map(({ id, name }) => ({ id, name })) ?? [];
+          yield directory?.items.map(({ id, name, avatar }) => ({
+            id,
+            name,
+            avatar,
+          })) ?? [];
       }),
     },
     models: modelRouter(bots, models),

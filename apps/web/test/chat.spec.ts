@@ -246,7 +246,9 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
   await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog", { name: "新建 Bot", exact: true });
   const name = dialog.getByLabel("名字", { exact: true });
-  await expect(name).toBeFocused();
+  await expect(
+    dialog.getByRole("button", { name: "换个形象", exact: true }),
+  ).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
@@ -398,14 +400,10 @@ test("a reply arrives complete while generation stays in the process across relo
   await page.getByLabel("消息", { exact: true }).fill("完整交付");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   const process = page.getByRole("region", { name: "执行过程", exact: true });
-  await expect(process.locator(":scope > details > summary")).toHaveText(
-    "正在回复…",
-  );
+  await expect(process.getByRole("status")).toHaveText("正在回复…");
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
   await page.reload();
-  await expect(process.locator(":scope > details > summary")).toHaveText(
-    "正在回复…",
-  );
+  await expect(process.getByRole("status")).toHaveText("正在回复…");
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
   await expect(page.getByLabel("Domos 的回复")).toHaveText(answer);
   const frames = await page.evaluate(
@@ -431,9 +429,7 @@ test("stopping generation keeps its partial out of reply bubbles after reload", 
   await page.getByLabel("消息", { exact: true }).fill("停止这次回答");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   const process = page.getByRole("region", { name: "执行过程", exact: true });
-  await expect(process.locator(":scope > details > summary")).toHaveText(
-    "正在回复…",
-  );
+  await expect(process.getByRole("status")).toHaveText("正在回复…");
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
   await page.getByRole("button", { name: "停止生成", exact: true }).click();
   await expect(process).toHaveAttribute("data-state", "stopped");
@@ -795,9 +791,7 @@ test("structured messages show Markdown, thinking, tool states, and restored res
   const process = page
     .getByRole("region", { name: "执行过程", exact: true })
     .last();
-  await expect(process.locator(":scope > details > summary")).toContainText(
-    toolName,
-  );
+  await expect(process.getByRole("status")).toContainText(toolName);
   await control("release");
   await expect(process).toHaveAttribute("data-state", "failed");
   await expect(process.getByText("1 项失败", { exact: true })).toBeVisible();
@@ -1180,15 +1174,11 @@ test("tool progress follows the Bot and stop and restart retain accurate results
   await input.fill("生成文件");
   await send.click();
   const running = page.locator('.execution-activity[data-state="running"]');
-  await expect(running.locator(":scope > details > summary")).toContainText(
-    "正在执行 · write",
-  );
+  await expect(running.getByRole("status")).toContainText("正在执行 · write");
   await createBot(page, "旁观助手");
   await expect(running).toHaveCount(0);
   await page.goto(primary);
-  await expect(running.locator(":scope > details > summary")).toContainText(
-    "正在执行 · write",
-  );
+  await expect(running.getByRole("status")).toContainText("正在执行 · write");
   await page.getByRole("button", { name: "停止生成", exact: true }).click();
   await expect(send).toBeVisible();
   await expect(
@@ -1198,9 +1188,7 @@ test("tool progress follows the Bot and stop and restart retain accurate results
   await control(call("interrupted.md"));
   await input.fill("再次生成");
   await send.click();
-  await expect(running.locator(":scope > details > summary")).toContainText(
-    "正在执行 · write",
-  );
+  await expect(running.getByRole("status")).toContainText("正在执行 · write");
   const port = Number(new URL(url).port);
   await stop();
   await start(port);
@@ -1257,57 +1245,62 @@ test("one live process shares motion, keyboard disclosure, themes, and restored 
   await page.getByLabel("消息", { exact: true }).fill("核对并整理资料");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   const process = page.getByRole("region", { name: "执行过程", exact: true });
-  const disclosure = process.locator(":scope > details");
-  const summary = disclosure.locator(":scope > summary");
+  const trigger = process.getByRole("button", { name: "Domos 正在工作" });
+  const status = process.getByRole("status");
   await expect(process).toHaveCount(1);
-  await expect(summary).toContainText(`正在执行 · ${toolName}`);
-  await expect(disclosure).toHaveAttribute("open");
+  await expect(status).toContainText(`正在执行 · ${toolName}`);
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator(".composer-area")).toContainText("Domos 正在工作");
+  await expect(
+    page.getByRole("log").locator(".execution-activity"),
+  ).toHaveCount(0);
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
-  await expect(summary.locator("svg circle")).toHaveCount(3);
-  await expect(summary.locator(".activity-label")).toHaveCSS(
+  await expect(trigger.locator(".bot-avatar")).toHaveCount(1);
+  await expect(trigger.locator(".activity-label")).toHaveCSS(
     "animation-name",
     "activity-sweep",
   );
-  await expect(summary.locator("circle").first()).toHaveCSS(
+  await expect(trigger.locator(".character-body")).toHaveCSS(
     "animation-name",
-    "activity-pulse",
+    "character-breathe",
   );
   for (const [theme, label] of [
     ["dark", "深色"],
     ["light", "浅色"],
   ] as const) {
     await chooseAppearance(page, label);
-    await summary.click();
-    await expect(disclosure).not.toHaveAttribute("open");
+    await trigger.hover();
+    await expect(page.locator(".work-tooltip")).toHaveText(
+      `正在执行 · ${toolName}`,
+    );
     await page.screenshot({ path: `test-results/activity-${theme}-live.png` });
-    await summary.focus();
-    await summary.press("Space");
-    await expect(disclosure).toHaveAttribute("open");
+    await trigger.focus();
+    await trigger.press("Space");
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
     await expect(
       process.getByText("先核对资料，再整理结果。", { exact: true }),
     ).toBeVisible();
     await page.screenshot({
       path: `test-results/activity-${theme}-expanded.png`,
     });
-    await summary.press("Enter");
-    await expect(disclosure).not.toHaveAttribute("open");
-    await summary.press("Enter");
+    await trigger.press("Enter");
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
   }
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await expect(summary.locator(".activity-label")).toHaveCSS(
+  await expect(trigger.locator(".activity-label")).toHaveCSS(
     "animation-name",
     "none",
   );
-  await expect(summary.locator("circle").first()).toHaveCSS(
+  await expect(trigger.locator(".character-body")).toHaveCSS(
     "animation-name",
     "none",
   );
-  await expect(summary.locator(".activity-label")).not.toHaveCSS(
+  await expect(trigger.locator(".activity-label")).not.toHaveCSS(
     "color",
     "rgba(0, 0, 0, 0)",
   );
   await page.emulateMedia({ forcedColors: "active" });
-  await expect(summary.locator(".activity-label")).not.toHaveCSS(
+  await expect(trigger.locator(".activity-label")).not.toHaveCSS(
     "color",
     "rgba(0, 0, 0, 0)",
   );
@@ -1316,8 +1309,9 @@ test("one live process shares motion, keyboard disclosure, themes, and restored 
     reducedMotion: "no-preference",
   });
   await page.reload();
-  await expect(summary).toContainText(`正在执行 · ${toolName}`);
-  await expect(disclosure).toHaveAttribute("open");
+  await expect(status).toContainText(`正在执行 · ${toolName}`);
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await trigger.click();
   const step = process.locator(".activity-content > details");
   await step.locator("summary").click();
   await page.setViewportSize({ width: 390, height: 844 });
@@ -1325,8 +1319,8 @@ test("one live process shares motion, keyboard disclosure, themes, and restored 
     await page.locator("body").evaluate((element) => element.scrollWidth),
   ).toBe(390);
   const row = step.locator(":scope > summary");
-  const labelBounds = await summary.locator('[role="status"]').boundingBox();
-  const arrowBounds = await summary.locator(".activity-chevron").boundingBox();
+  const labelBounds = await trigger.locator(".activity-text").boundingBox();
+  const arrowBounds = await trigger.locator(".activity-chevron").boundingBox();
   expect(labelBounds).toBeTruthy();
   expect(arrowBounds).toBeTruthy();
   if (labelBounds && arrowBounds)
@@ -1347,13 +1341,21 @@ test("one live process shares motion, keyboard disclosure, themes, and restored 
   ).toBeLessThanOrEqual(rowBounds ? rowBounds.x + rowBounds.width + 1 : 0);
   await page.screenshot({ path: "test-results/activity-mobile-live.png" });
   await control("release");
+  await expect(trigger).toHaveCount(0);
+  const disclosure = process.locator(":scope > details");
+  const summary = disclosure.locator(":scope > summary");
   await expect(summary).toHaveText("已完成 1 项操作");
   await expect(disclosure).not.toHaveAttribute("open");
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(1);
   await expect(page.getByLabel("Domos 的回复").locator("strong")).toHaveText(
     "整理完成。",
   );
-  await expect(summary.locator("[data-active]")).toHaveCount(0);
+  await expect(
+    page.locator(".mobile-contacts .character-eye").first(),
+  ).toHaveCSS("animation-name", "none");
+  await expect(
+    page.locator('.bot-avatar svg[data-state="running"]'),
+  ).toHaveCount(0);
   await summary.click();
   await step.locator("summary").click();
   await expect(
@@ -1364,6 +1366,156 @@ test("one live process shares motion, keyboard disclosure, themes, and restored 
   await expect(summary).toHaveText("已完成 1 项操作");
   await expect(disclosure).not.toHaveAttribute("open");
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(1);
+});
+
+test("complete progress messages arrive before completion and remain unique after restart", async ({
+  page,
+}) => {
+  await control("gate-tool");
+  await control({
+    responses: [
+      {
+        stopReason: "toolUse",
+        content: [
+          {
+            type: "toolCall",
+            id: crypto.randomUUID(),
+            name: "message_user",
+            arguments: { message: "收到，我先核对资料。" },
+          },
+        ],
+      },
+      {
+        stopReason: "toolUse",
+        content: [
+          {
+            type: "toolCall",
+            id: crypto.randomUUID(),
+            name: "message_user",
+            arguments: { message: "已找到资料，正在整理。" },
+          },
+        ],
+      },
+      {
+        stopReason: "toolUse",
+        content: [
+          { type: "text", text: "工具内部说明。" },
+          {
+            type: "toolCall",
+            id: crypto.randomUUID(),
+            name: toolName,
+            arguments: { text: "已核对。" },
+          },
+        ],
+      },
+      { content: "**报告已完成。**" },
+    ],
+  });
+  await page.goto(url);
+  await page.getByLabel("消息", { exact: true }).fill("请整理资料");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const replies = page.getByLabel("Domos 的回复", { exact: true });
+  await expect(replies).toHaveText([
+    "收到，我先核对资料。",
+    "已找到资料，正在整理。",
+  ]);
+  await expect(
+    page.getByRole("button", { name: "停止生成", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("log")).not.toContainText("工具内部说明。");
+  await page.reload();
+  await expect(replies).toHaveText([
+    "收到，我先核对资料。",
+    "已找到资料，正在整理。",
+  ]);
+  await expect(
+    page.getByRole("button", { name: "Domos 正在工作" }),
+  ).toBeVisible();
+  await control("release");
+  await expect(replies).toHaveText([
+    "收到，我先核对资料。",
+    "已找到资料，正在整理。",
+    "报告已完成。",
+  ]);
+  await expect(page.locator(".work-status")).toHaveCount(0);
+  await expect(
+    page.locator(".execution-activity > details > summary"),
+  ).toHaveText("已完成 1 项操作");
+  const port = Number(new URL(url).port);
+  await stop();
+  await start(port);
+  await page.reload();
+  await expect(replies).toHaveText([
+    "收到，我先核对资料。",
+    "已找到资料，正在整理。",
+    "报告已完成。",
+  ]);
+  await page.screenshot({
+    path: "test-results/message-delivery.png",
+    fullPage: true,
+  });
+});
+
+test("Bot identity stays consistent and image previews work in drafts and history", async ({
+  page,
+}) => {
+  await page.goto(url);
+  await chooseAppearance(page, "浅色");
+  await page.getByRole("button", { name: "新建 Bot", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "新建 Bot", exact: true });
+  const avatar = dialog.locator(".bot-avatar");
+  const initial = await avatar.getAttribute("data-seed");
+  await dialog.getByRole("button", { name: "换个形象", exact: true }).click();
+  await expect(avatar).not.toHaveAttribute("data-seed", initial ?? "");
+  const seed = await avatar.getAttribute("data-seed");
+  expect(seed).toBeTruthy();
+  await dialog.getByLabel("名字", { exact: true }).fill("视觉助手");
+  await dialog.getByRole("button", { name: "创建", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  const selected = page.locator(
+    '.contact-row[aria-current="page"] .bot-avatar',
+  );
+  await expect(selected).toHaveAttribute("data-seed", seed ?? "");
+  await expect(page.locator(".conversation-title .bot-avatar")).toHaveAttribute(
+    "data-seed",
+    seed ?? "",
+  );
+  await expect(page.locator(".brand-mark .character-mouth")).toHaveCount(1);
+  await expect(page.locator(".bot-avatar .character-mouth")).toHaveCount(0);
+  const bytes = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1kAAAAASUVORK5CYII=",
+    "base64",
+  );
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "sample.png",
+    mimeType: "image/png",
+    buffer: bytes,
+  });
+  const draft = page.locator(".composer-attachments img");
+  await expect(draft).toBeVisible();
+  await expect(draft).toHaveJSProperty("naturalWidth", 1);
+  await page.reload();
+  await expect(selected).toHaveAttribute("data-seed", seed ?? "");
+  await expect(draft).toBeVisible();
+  await page.getByLabel("消息", { exact: true }).fill("查看图片");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const history = page
+    .getByLabel("你的消息", { exact: true })
+    .getByRole("img", { name: "sample.png" });
+  await expect(history).toHaveJSProperty("naturalWidth", 1);
+  await expect(page.getByLabel("视觉助手 的回复")).toHaveCount(1);
+  await page.reload();
+  await expect(history).toHaveJSProperty("naturalWidth", 1);
+  await expect(selected).toHaveAttribute("data-seed", seed ?? "");
+  await page.screenshot({
+    path: "test-results/characters-light.png",
+    fullPage: true,
+  });
+  await chooseAppearance(page, "深色");
+  await page.screenshot({
+    path: "test-results/characters-dark.png",
+    fullPage: true,
+  });
 });
 
 test("attachment retry keeps its request and draft after a lost receipt", async ({

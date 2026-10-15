@@ -3,17 +3,20 @@ import {
   type AgentChange,
   Harness,
   type HarnessOptions,
+  type Registry,
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { Bots } from "./bots.ts";
+import { messaging } from "./delivery.ts";
 import { Files } from "./files.ts";
 
 export async function openAgent(
   database: string,
-  options: HarnessOptions,
+  options: HarnessOptions & { registry: Registry },
   agent: AgentChange,
   context: Context,
 ) {
+  options.registry.install(messaging);
   const storage = await openNodeSqliteStorage(database);
   const harness = await Harness.open(storage, options, context);
   try {
