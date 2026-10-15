@@ -3,6 +3,8 @@ export const chatCopy = {
   conversation: "与 Domos 对话",
   workspace: "本地工作空间",
   conversations: "对话",
+  search: "搜索对话",
+  searchEmpty: "没有找到对话",
   skip: "跳到对话",
   connected: "已连接",
   reconnecting: "正在重连…",

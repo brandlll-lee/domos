@@ -5,12 +5,15 @@
   "exports": {
     "./tokens": "./src/tokens.ts",
     "./controls": "./src/web/controls.tsx",
+    "./picker": "./src/web/picker.tsx",
+    "./message": "./src/web/message.tsx",
     "./composer": "./src/web/composer.tsx",
     "./markdown": "./src/web/markdown.tsx",
     "./theme": "./src/web/theme.tsx",
     "./style.css": "./src/web/style.css"
   },
   "dependencies": {
+    "@base-ui/react": "1.9.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1"
   },

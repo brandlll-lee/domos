@@ -15,8 +15,9 @@ export const themes = {
     link: "#a3c7ff",
     danger: "#ffb4ab",
     "danger-surface": "#342321",
-    user: "#242528",
-    "on-user": "#ececee",
+    user: "#ececea",
+    "on-user": "#171819",
+    "popup-shadow": "0 8px 32px #00000040",
   },
   light: {
     background: "#fafaf8",
@@ -34,8 +35,9 @@ export const themes = {
     link: "#235db0",
     danger: "#a92520",
     "danger-surface": "#fcecea",
-    user: "#eaeae5",
-    "on-user": "#202123",
+    user: "#242527",
+    "on-user": "#fafaf8",
+    "popup-shadow": "0 8px 32px #00000018",
   },
 } as const;
 
@@ -73,7 +75,7 @@ export const metrics = {
   "radius-composer": "1.75rem",
   "radius-round": "999px",
   "content-width": "46rem",
-  "sidebar-width": "15.5rem",
+  "sidebar-width": "17rem",
   "control-height": "2.75rem",
   "composer-max-height": "10rem",
   "motion-feedback": "140ms",

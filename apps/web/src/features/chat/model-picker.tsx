@@ -1,5 +1,5 @@
 import type { ChatView } from "@domos/agent/view";
-import { Select } from "@domos/ui/controls";
+import { SearchPicker } from "@domos/ui/picker";
 import { useEffect, useState } from "react";
 import { client } from "../../client.ts";
 import { rejectionMessage } from "./request-error.ts";
@@ -36,24 +36,28 @@ export function ModelPicker({
     return () => controller.abort();
   }, [connected]);
   const selected = model ? key(model) : "";
-  const configured =
-    choices?.some((choice) => key(choice) === selected) ?? false;
   return (
     <div className="model-picker">
-      <label className="sr-only" htmlFor="model">
-        模型
-      </label>
-      <Select
-        variant="quiet"
-        id="model"
-        name="model"
-        title="所选模型用于下一次回复"
+      <SearchPicker
+        label="模型"
+        searchLabel="搜索模型…"
+        emptyLabel="没有找到模型"
+        placeholder={
+          model
+            ? `${model.provider} / ${model.modelId}${choices === null ? "" : "（未配置）"}`
+            : "正在加载…"
+        }
+        items={
+          choices?.map((choice) => ({
+            value: key(choice),
+            label: `${choice.providerName} · ${choice.name}`,
+          })) ?? []
+        }
         value={selected}
-        disabled={!connected || choices === null || saving}
-        onChange={async (event) => {
-          const choice = choices?.find(
-            (item) => key(item) === event.target.value,
-          );
+        disabled={!connected || choices === null}
+        readOnly={saving}
+        onValueChange={async (value) => {
+          const choice = choices?.find((item) => key(item) === value);
           if (!choice) return;
           setSaving(true);
           setError(null);
@@ -68,20 +72,7 @@ export function ModelPicker({
             setSaving(false);
           }
         }}
-      >
-        {!configured && (
-          <option value={selected} disabled>
-            {model
-              ? `${model.provider} / ${model.modelId}${choices === null ? "" : "（未配置）"}`
-              : "正在加载…"}
-          </option>
-        )}
-        {choices?.map((choice) => (
-          <option key={key(choice)} value={key(choice)}>
-            {choice.providerName} · {choice.name}
-          </option>
-        ))}
-      </Select>
+      />
       <span
         className={saving || choices?.length === 0 ? "model-help" : "sr-only"}
         role="status"

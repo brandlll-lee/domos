@@ -49,6 +49,14 @@ async function control(
   await receipt;
 }
 
+async function chooseAppearance(
+  page: import("@playwright/test").Page,
+  label: string,
+) {
+  await page.getByRole("combobox", { name: "外观", exact: true }).click();
+  await page.getByRole("option", { name: label, exact: true }).click();
+}
+
 async function expectTextContrast(page: import("@playwright/test").Page) {
   const ratios = await page.evaluate(() => {
     const luminance = (color: string) => {
@@ -66,7 +74,7 @@ async function expectTextContrast(page: import("@playwright/test").Page) {
     };
     return [
       ...document.querySelectorAll<HTMLElement>(
-        ".sidebar-label, .sidebar-footer, .model-picker select, .appearance-picker select",
+        ".sidebar-label, .sidebar-footer span, .chat-preview span, .picker-trigger, .message-bubble, .picker-item",
       ),
     ].map((element) => {
       let background: Element | null = element;
@@ -113,10 +121,13 @@ test("model choices load from the server and selection survives a restart", asyn
   await expect(picker).not.toContainText("DeepSeek");
   subscription.resolve();
   await expect(picker).toBeEnabled();
-  await picker.selectOption({ label: "faux · 测试模型二" });
-  await expect(picker).toHaveValue(JSON.stringify(["faux", "faux-2"]));
+  await picker.click();
+  await page
+    .getByRole("option", { name: "faux · 测试模型二", exact: true })
+    .click();
+  await expect(picker).toContainText("faux · 测试模型二");
   await page.reload();
-  await expect(picker).toHaveValue(JSON.stringify(["faux", "faux-2"]));
+  await expect(picker).toContainText("faux · 测试模型二");
   const port = Number(new URL(url).port);
   await stop();
   await start(port);
@@ -386,20 +397,20 @@ test("appearance follows the system, persists, and syncs between tabs", async ({
   await page.goto(url);
   const root = page.locator("html");
   const appearance = page.getByRole("combobox", { name: "外观" });
-  await expect(appearance).toHaveValue("system");
+  await expect(appearance).toContainText("跟随系统");
   await expect(root).toHaveAttribute("data-theme", "light");
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(root).toHaveAttribute("data-theme", "dark");
-  await appearance.selectOption("light");
+  await chooseAppearance(page, "浅色");
   await page.reload();
-  await expect(appearance).toHaveValue("light");
+  await expect(appearance).toContainText("浅色");
   await expect(root).toHaveAttribute("data-theme", "light");
   const other = await context.newPage();
   await other.goto(url);
-  await expect(other.getByRole("combobox", { name: "外观" })).toHaveValue(
-    "light",
+  await expect(other.getByRole("combobox", { name: "外观" })).toContainText(
+    "浅色",
   );
-  await appearance.selectOption("dark");
+  await chooseAppearance(page, "深色");
   await expect(other.locator("html")).toHaveAttribute("data-theme", "dark");
   await other.close();
 });
@@ -414,7 +425,7 @@ test("appearance remains usable when storage is blocked", async ({ page }) => {
     };
   });
   await page.goto(url);
-  await page.getByRole("combobox", { name: "外观" }).selectOption("light");
+  await chooseAppearance(page, "浅色");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await expect(
     page.getByRole("alert").filter({ hasText: "外观已应用" }),
@@ -447,8 +458,11 @@ test("composer grows, shrinks, and keeps one focus surface in both themes", asyn
   await expect
     .poll(async () => (await form.boundingBox())?.height)
     .toBe(initial?.height);
-  for (const theme of ["light", "dark"]) {
-    await page.getByRole("combobox", { name: "外观" }).selectOption(theme);
+  for (const [theme, label] of [
+    ["light", "浅色"],
+    ["dark", "深色"],
+  ] as const) {
+    await chooseAppearance(page, label);
     await expectTextContrast(page);
     await input.focus();
     await expect(input).toHaveCSS("outline-style", "none");
@@ -566,4 +580,119 @@ test("measured text sizing grows with wrapping and resets after clearing", async
   await expect
     .poll(async () => (await input.boundingBox())?.height)
     .toBe(initial?.height);
+});
+
+test("model search and themed popups support keyboard, dismissal, and narrow screens", async ({
+  page,
+}) => {
+  await page.goto(url);
+  const model = page.getByRole("combobox", { name: "模型", exact: true });
+  const appearance = page.getByRole("combobox", { name: "外观", exact: true });
+  await expect(model).toBeEnabled();
+  await model.focus();
+  await page.keyboard.press("Enter");
+  const search = page.getByRole("combobox", { name: "搜索模型…", exact: true });
+  await expect(search).toBeFocused();
+  await search.fill(crypto.randomUUID());
+  await expect(page.getByText("没有找到模型", { exact: true })).toBeVisible();
+  await expect(page.getByRole("option")).toHaveCount(0);
+  await search.fill("测试模型二");
+  await expect(page.getByRole("option")).toHaveCount(1);
+  await search.press("ArrowDown");
+  await search.press("Enter");
+  await expect(model).toContainText("测试模型二");
+  await expect(search).toHaveCount(0);
+  await expect(model).toBeFocused();
+  await model.click();
+  await expect(search).toHaveValue("");
+  await search.press("Escape");
+  await expect(model).toBeFocused();
+  await appearance.click();
+  await expect(page.getByRole("option")).toHaveCount(3);
+  await page.keyboard.press("Escape");
+  await expect(appearance).toBeFocused();
+  await expect(page.locator("select:visible")).toHaveCount(0);
+  await page.setViewportSize({ width: 320, height: 568 });
+  await model.click();
+  const popup = page.locator(".picker-search-popup");
+  await expect(popup).toBeVisible();
+  const bounds = await popup.boundingBox();
+  if (!bounds) throw new Error("Popup is not visible");
+  expect(bounds.x).toBeGreaterThanOrEqual(0);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(320);
+  expect(bounds.y + bounds.height).toBeLessThanOrEqual(568);
+  await page.screenshot({ path: "test-results/model-popup-mobile.png" });
+  await page.getByLabel("消息", { exact: true }).click();
+  await expect(popup).toHaveCount(0);
+});
+
+test("IM bubbles, sidebar search, and popup surfaces share both themes", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await control({
+    content:
+      "**已整理好。**\n\n- 核对参考源码\n- 统一交互与主题\n- 验证窄屏和键盘\n\n```ts\nconst result = { status: 'complete', message: '内容在气泡内展示' };\n```\n\n接下来可以直接继续对话。",
+  });
+  await page.goto(url);
+  await expect(
+    page.getByRole("combobox", { name: "模型", exact: true }),
+  ).toBeEnabled();
+  await page.getByLabel("消息", { exact: true }).fill("帮我整理一下");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByRole("button", { name: "停止生成" })).toHaveCount(0);
+  const incoming = page.getByLabel("Domos 的回复").locator(".message-bubble");
+  const outgoing = page.getByLabel("你的消息").locator(".message-bubble");
+  await expect(incoming.locator("strong")).toHaveText("已整理好。");
+  const column = await page.getByRole("log").boundingBox();
+  const received = await incoming.boundingBox();
+  const sent = await outgoing.boundingBox();
+  if (!column || !received || !sent)
+    throw new Error("Messages are not visible");
+  expect(sent.width).toBeLessThan(200);
+  expect(received.x).toBe(column.x);
+  expect(received.width).toBeLessThanOrEqual(column.width * 0.85 + 1);
+  expect(sent.x + sent.width).toBeCloseTo(column.x + column.width, 0);
+  const search = page.getByRole("searchbox", { name: "搜索对话" });
+  await search.fill(crypto.randomUUID());
+  await expect(page.getByText("没有找到对话", { exact: true })).toBeVisible();
+  const navigation = page.getByRole("navigation", {
+    name: "对话",
+    exact: true,
+  });
+  await expect(navigation.getByRole("link")).toHaveCount(0);
+  await search.fill("统一交互");
+  await expect(navigation.getByRole("link")).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await search.fill("");
+  for (const [theme, label] of [
+    ["light", "浅色"],
+    ["dark", "深色"],
+  ] as const) {
+    await chooseAppearance(page, label);
+    await expectTextContrast(page);
+    await page.screenshot({ path: `test-results/im-${theme}.png` });
+    await page.getByRole("combobox", { name: "模型", exact: true }).click();
+    await expect(page.getByRole("option").first()).toBeVisible();
+    await expectTextContrast(page);
+    await page.screenshot({ path: `test-results/im-model-${theme}.png` });
+    await page.keyboard.press("Escape");
+    await page.getByRole("combobox", { name: "外观", exact: true }).click();
+    await expect(
+      page.getByRole("option", { name: label, exact: true }),
+    ).toBeVisible();
+    await page.screenshot({ path: `test-results/im-appearance-${theme}.png` });
+    await page.keyboard.press("Escape");
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: "test-results/im-mobile.png" });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  expect(errors).toEqual([]);
 });

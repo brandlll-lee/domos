@@ -1,5 +1,6 @@
 import type { ChatView } from "@domos/agent/view";
 import { Button } from "@domos/ui/controls";
+import { MessageBubble } from "@domos/ui/message";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { chatCopy } from "./copy.ts";
 import { MessageContent } from "./message-content.tsx";
@@ -63,9 +64,11 @@ export function Messages({ view }: { view: ChatView | null }) {
                   : chatCopy.toolOutput
             }
           >
-            <div className="message-body">
+            <MessageBubble
+              side={message.role === "user" ? "outgoing" : "incoming"}
+            >
               <MessageContent message={message} results={results} />
-            </div>
+            </MessageBubble>
             {message.stopped && (
               <div className="message-note">{chatCopy.stopped}</div>
             )}

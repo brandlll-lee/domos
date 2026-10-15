@@ -4,6 +4,7 @@ import { Composer } from "./composer.tsx";
 import { chatCopy } from "./copy.ts";
 import { Messages } from "./messages.tsx";
 import { ModelPicker } from "./model-picker.tsx";
+import { Sidebar } from "./sidebar.tsx";
 import { useChat } from "./use-chat.ts";
 
 export function ChatPage() {
@@ -23,25 +24,16 @@ export function ChatPage() {
       <a className="skip-link" href="#conversation">
         {chatCopy.skip}
       </a>
-      <aside className="sidebar">
-        <a className="wordmark" href="/">
-          domos.
-        </a>
-        <div className="sidebar-label">{chatCopy.conversations}</div>
-        <nav aria-label={chatCopy.conversations}>
-          <a className="active-chat" href="#conversation" aria-current="page">
-            <strong>{chatCopy.conversation}</strong>
-            <span>
-              {chat.view?.busy
-                ? chatCopy.working
-                : latest
-                  ? messageText(latest)
-                  : chatCopy.name}
-            </span>
-          </a>
-        </nav>
-        <div className="sidebar-footer">{chatCopy.workspace}</div>
-      </aside>
+      <Sidebar
+        connection={connection}
+        preview={
+          chat.view?.busy
+            ? chatCopy.working
+            : latest
+              ? messageText(latest)
+              : chatCopy.name
+        }
+      />
       <main className="conversation" id="conversation" tabIndex={-1}>
         <header className="topbar">
           <div className="conversation-heading">

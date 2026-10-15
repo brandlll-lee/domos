@@ -18,19 +18,3 @@ export function Button({
     />
   );
 }
-
-export function Select({
-  variant = "default",
-  className = "",
-  ...props
-}: ComponentProps<"select"> & {
-  variant?: "default" | "quiet";
-}) {
-  return (
-    <select
-      className={`select ${className}`}
-      data-variant={variant}
-      {...props}
-    />
-  );
-}
