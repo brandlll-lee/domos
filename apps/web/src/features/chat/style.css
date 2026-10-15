@@ -123,8 +123,8 @@
   font-size: var(--text-small);
 }
 .conversation {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 0;
 }
@@ -180,14 +180,18 @@
 .appearance-picker {
   flex-shrink: 0;
 }
-.transcript {
-  flex: 1;
+.transcript-pane {
+  position: relative;
+  min-width: 0;
   min-height: 0;
+}
+.transcript {
+  height: 100%;
   overflow-y: auto;
   overflow-anchor: none;
   scrollbar-width: thin;
   scrollbar-color: var(--color-border) transparent;
-  padding: var(--space-8) var(--space-6);
+  padding: var(--space-6);
 }
 .welcome,
 .messages {
@@ -207,7 +211,7 @@
 .messages {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--message-gap);
 }
 .message {
   display: flex;
@@ -222,7 +226,7 @@
 .user-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  line-height: 1.8;
+  line-height: inherit;
 }
 .message-note,
 .working {
@@ -263,14 +267,13 @@
   height: auto;
   border-radius: var(--radius-control);
 }
-.transcript-end {
-  height: 1px;
-}
 .return-latest {
-  position: sticky;
-  bottom: 0;
+  position: absolute;
+  bottom: var(--space-3);
+  left: 50%;
+  translate: -50% 0;
   display: flex;
-  margin: var(--space-3) auto 0;
+  margin: 0;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-round);
 }

@@ -696,3 +696,73 @@ test("IM bubbles, sidebar search, and popup surfaces share both themes", async (
   ).toBe(true);
   expect(errors).toEqual([]);
 });
+
+test("latest bubbles stay above the composer after typing, resizing, and reloading", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1360, height: 700 });
+  await page.goto(url);
+  const input = page.getByLabel("消息", { exact: true });
+  const send = page.getByRole("button", { name: "发送", exact: true });
+  await expect(send).toBeDisabled();
+  for (let turn = 0; turn < 2; turn++) {
+    await control({
+      content: Array.from(
+        { length: 8 },
+        (_, index) => `第 ${index + 1} 项：核对源码，统一消息布局。`,
+      ).join("\n\n"),
+    });
+    await input.fill(`整理第 ${turn + 1} 轮结果`);
+    await send.click();
+    const replies = page.getByLabel("Domos 的回复");
+    await expect(replies).toHaveCount(turn + 1);
+    await expect(replies.last()).toContainText(
+      "第 8 项：核对源码，统一消息布局。",
+    );
+    await expect(send).toBeVisible();
+  }
+  const last = page.getByLabel("Domos 的回复").last();
+  const expectLatest = async () => {
+    await expect
+      .poll(() =>
+        last.evaluate((element) => {
+          const viewport = element.closest(".transcript");
+          if (!viewport) throw new Error("Missing transcript");
+          return (
+            element.getBoundingClientRect().bottom <=
+            viewport.getBoundingClientRect().bottom
+          );
+        }),
+      )
+      .toBe(true);
+    await expect(page.getByRole("button", { name: "返回最新" })).toHaveCount(0);
+  };
+  await expectLatest();
+  await input.fill(
+    Array.from({ length: 12 }, (_, index) => `草稿第 ${index + 1} 行`).join(
+      "\n",
+    ),
+  );
+  await expectLatest();
+  await page.setViewportSize({ width: 390, height: 700 });
+  await expectLatest();
+  await input.fill("");
+  await page.reload();
+  await expectLatest();
+  await page.locator(".transcript").evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  const latest = page.getByRole("button", { name: "返回最新" });
+  await expect(latest).toBeVisible();
+  const heightBefore = await page
+    .locator(".transcript")
+    .evaluate((element) => element.scrollHeight);
+  await latest.click();
+  await expectLatest();
+  expect(
+    await page
+      .locator(".transcript")
+      .evaluate((element) => element.scrollHeight),
+  ).toBe(heightBefore);
+  await page.screenshot({ path: "test-results/chat-spacing-mobile.png" });
+});
