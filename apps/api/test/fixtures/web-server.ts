@@ -73,15 +73,13 @@ const answer: FauxResponseFactory = async (input, options, _state, model) => {
   );
 };
 faux.setResponses([answer]);
-const { harness, conversation } = await openAgent(
+const { harness, bots } = await openAgent(
   database,
   { models, registry },
   { model: { provider: "faux", modelId: "faux-1" } },
   BACKGROUND_CONTEXT,
 );
-const server = createServer(
-  getRequestListener(createApp(conversation, models).fetch),
-);
+const server = createServer(getRequestListener(createApp(bots, models).fetch));
 server.listen(Number(process.argv[3] ?? 0), "127.0.0.1", () => {
   const address = server.address();
   if (address && typeof address === "object")

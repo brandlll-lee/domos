@@ -107,6 +107,186 @@ test.afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
+async function createBot(
+  page: import("@playwright/test").Page,
+  name: string,
+  model?: string,
+) {
+  await page.getByRole("button", { name: "新建 Bot", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "新建 Bot", exact: true });
+  await dialog.getByLabel("名字", { exact: true }).fill(name);
+  await dialog
+    .getByLabel("职责与指令", { exact: true })
+    .fill(`负责${name}的工作。`);
+  const picker = dialog.getByRole("combobox", {
+    name: "默认模型",
+    exact: true,
+  });
+  await expect(picker).toBeEnabled();
+  if (model) {
+    await picker.click();
+    await page
+      .getByRole("option", { name: `faux · ${model}`, exact: true })
+      .click();
+  }
+  await dialog.getByRole("button", { name: "创建", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByLabel("消息", { exact: true })).toHaveAttribute(
+    "placeholder",
+    `发送消息给 ${name}…`,
+  );
+}
+
+test("contacts keep independent histories, drafts, models, and locations after restart", async ({
+  page,
+  context,
+}) => {
+  await page.goto(url);
+  const input = page.getByLabel("消息", { exact: true });
+  const send = page.getByRole("button", { name: "发送", exact: true });
+  await expect(input).toBeEnabled();
+  await input.fill("原来的对话");
+  await send.click();
+  await expect(page.getByLabel("Domos 的回复")).toContainText("完整回复。");
+  await expect(send).toBeVisible();
+  await input.fill("原来的草稿");
+  const other = await context.newPage();
+  await other.goto(url);
+  await createBot(page, "研究员", "测试模型二");
+  const researchUrl = page.url();
+  const contacts = page.getByRole("navigation", {
+    name: "联系人",
+    exact: true,
+  });
+  await expect(
+    other
+      .getByRole("navigation", { name: "联系人", exact: true })
+      .getByRole("link", { name: "研究员" }),
+  ).toBeVisible();
+  await input.fill("研究问题");
+  await send.click();
+  await expect(page.getByLabel("研究员 的回复")).toContainText("faux-2");
+  await expect(send).toBeVisible();
+  await input.fill("研究草稿");
+  await contacts.getByRole("link", { name: /^Domos/ }).click();
+  await expect(input).toHaveValue("原来的草稿");
+  await expect(
+    page.getByRole("combobox", { name: "模型", exact: true }),
+  ).toContainText("测试模型一");
+  await createBot(page, "写作助手");
+  await input.fill("写作问题");
+  await send.click();
+  await expect(page.getByLabel("写作助手 的回复")).toContainText("faux-1");
+  await expect(send).toBeVisible();
+  await input.fill("写作草稿");
+  await contacts.getByRole("link", { name: "研究员", exact: true }).click();
+  await expect(input).toHaveValue("研究草稿");
+  await expect(page.getByLabel("你的消息")).toHaveText("研究问题");
+  await expect(
+    page.getByRole("combobox", { name: "模型", exact: true }),
+  ).toContainText("测试模型二");
+  await page.reload();
+  await expect(input).toHaveValue("研究草稿");
+  await other.close();
+  const port = Number(new URL(url).port);
+  await stop();
+  await start(port);
+  await expect(
+    page.getByRole("combobox", { name: "模型", exact: true }),
+  ).toBeEnabled();
+  expect(page.url()).toBe(researchUrl);
+  await expect(contacts.getByRole("link")).toHaveCount(3);
+  await expect(page.getByLabel("研究员 的回复")).toContainText("faux-2");
+  await contacts.getByRole("link", { name: "写作助手", exact: true }).click();
+  await expect(input).toHaveValue("写作草稿");
+  await expect(page.getByLabel("你的消息")).toHaveText("写作问题");
+  await page.screenshot({ path: "test-results/bot-contacts.png" });
+});
+
+test("switching contacts keeps the first Bot running while another Bot replies", async ({
+  page,
+}) => {
+  await page.goto(url);
+  await createBot(page, "助手");
+  const contacts = page.getByRole("navigation", {
+    name: "联系人",
+    exact: true,
+  });
+  await contacts.getByRole("link", { name: /^Domos/ }).click();
+  const input = page.getByLabel("消息", { exact: true });
+  const send = page.getByRole("button", { name: "发送", exact: true });
+  await expect(input).toHaveAttribute("placeholder", "发送消息给 Domos…");
+  await control("gate");
+  await input.fill("后台任务");
+  await send.click();
+  await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
+  await contacts.getByRole("link", { name: "助手", exact: true }).click();
+  await expect(input).toHaveAttribute("placeholder", "发送消息给 助手…");
+  await input.fill("另一个任务");
+  await send.click();
+  await expect(page.getByLabel("助手 的回复")).toContainText("完整回复。");
+  await expect(send).toBeVisible();
+  await contacts.getByRole("link", { name: /^Domos/ }).click();
+  await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
+  await control("release");
+  await expect(page.getByLabel("Domos 的回复")).toContainText("后台任务");
+  await expect(send).toBeVisible();
+  await expect(page.getByLabel("你的消息")).toHaveText("后台任务");
+});
+
+test("creation retries keep one contact and themed dialogs work on narrow screens", async ({
+  page,
+}) => {
+  await page.goto(url);
+  const trigger = page.getByRole("button", { name: "新建 Bot", exact: true });
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "新建 Bot", exact: true });
+  const name = dialog.getByLabel("名字", { exact: true });
+  await expect(name).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  for (const theme of ["浅色", "深色"]) {
+    await chooseAppearance(page, theme);
+    await trigger.click();
+    await name.fill("设计助手");
+    await expect(
+      dialog.getByRole("combobox", { name: "默认模型", exact: true }),
+    ).toBeEnabled();
+    await page.screenshot({ path: `test-results/bot-dialog-${theme}.png` });
+    await page.keyboard.press("Escape");
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  let first = true;
+  await page.route("**/rpc/bots/create", async (route) => {
+    if (first) {
+      first = false;
+      await route.fetch();
+      await route.abort("failed");
+    } else await route.continue();
+  });
+  await trigger.click();
+  await name.fill("设计助手");
+  const create = dialog.getByRole("button", { name: "创建", exact: true });
+  await expect(create).toBeEnabled();
+  await page.screenshot({ path: "test-results/bot-dialog-mobile.png" });
+  await create.click();
+  await expect(dialog.getByRole("alert")).toContainText("创建未确认");
+  await create.click();
+  await expect(dialog).toHaveCount(0);
+  const picker = page.getByRole("combobox", { name: "联系人", exact: true });
+  await expect(picker).toContainText("设计助手");
+  await picker.click();
+  await expect(page.getByRole("option")).toHaveCount(2);
+  await page.getByRole("option", { name: "Domos", exact: true }).click();
+  await expect(page.getByLabel("消息", { exact: true })).toHaveAttribute(
+    "placeholder",
+    "发送消息给 Domos…",
+  );
+  await page.screenshot({ path: "test-results/bot-contacts-mobile.png" });
+});
+
 test("model choices load from the server and selection survives a restart", async ({
   page,
 }) => {
@@ -504,6 +684,9 @@ test("structured messages show Markdown, thinking, tool states, and restored res
   await expect(response.locator("strong")).toHaveText("重点");
   await expect(response.getByRole("table")).toBeVisible();
   await expect(response.locator("pre code")).toHaveText("const ready = true;");
+  await expect(
+    page.getByRole("button", { name: "发送", exact: true }),
+  ).toBeVisible();
   await response.getByText("思考过程", { exact: true }).click();
   await expect(
     response.getByText("核对已有资料。", { exact: true }),
@@ -654,11 +837,11 @@ test("IM bubbles, sidebar search, and popup surfaces share both themes", async (
   expect(received.x).toBe(column.x);
   expect(received.width).toBeLessThanOrEqual(column.width * 0.85 + 1);
   expect(sent.x + sent.width).toBeCloseTo(column.x + column.width, 0);
-  const search = page.getByRole("searchbox", { name: "搜索对话" });
+  const search = page.getByRole("searchbox", { name: "搜索联系人" });
   await search.fill(crypto.randomUUID());
-  await expect(page.getByText("没有找到对话", { exact: true })).toBeVisible();
+  await expect(page.getByText("没有找到联系人", { exact: true })).toBeVisible();
   const navigation = page.getByRole("navigation", {
-    name: "对话",
+    name: "联系人",
     exact: true,
   });
   await expect(navigation.getByRole("link")).toHaveCount(0);

@@ -1,21 +1,49 @@
+import type { Bots } from "@domos/agent/bots";
 import { chatView } from "@domos/agent/view";
 import {
   BACKGROUND_CONTEXT,
   withAbortSignal,
 } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai/models";
-import {
-  type Conversation,
-  ConversationBusy,
-} from "@earendil-works/pi-durable";
+import { ConversationBusy } from "@earendil-works/pi-durable";
 import { ORPCError, os } from "@orpc/server";
 import { z } from "zod";
+import { botConversation, botTarget } from "./conversation.ts";
 import { modelRouter, requireConfiguredModel } from "./models.ts";
+import { watchValues } from "./subscribe.ts";
 
-export function createRouter(conversation: Conversation, models: Models) {
+export function createRouter(bots: Bots, models: Models) {
   return {
-    models: modelRouter(conversation, models),
-    get: os.handler(async () => {
+    bots: {
+      list: os.handler(() => bots.list(BACKGROUND_CONTEXT)),
+      create: os
+        .input(
+          z.object({
+            name: z.string().trim().min(1).max(80),
+            instructions: z.string().trim(),
+            model: z.object({
+              provider: z.string().min(1),
+              modelId: z.string().min(1),
+            }),
+            requestId: z.uuid(),
+          }),
+        )
+        .handler(async ({ input }) => {
+          await requireConfiguredModel(models, input.model);
+          return bots.create(input, BACKGROUND_CONTEXT);
+        }),
+      subscribe: os.handler(async function* ({ signal }) {
+        const context = signal
+          ? withAbortSignal(signal, BACKGROUND_CONTEXT)
+          : BACKGROUND_CONTEXT;
+        const watch = await bots.watch(context);
+        for await (const directory of watchValues(watch, signal))
+          yield directory?.items.map(({ id, name }) => ({ id, name })) ?? [];
+      }),
+    },
+    models: modelRouter(bots, models),
+    get: os.input(botTarget).handler(async ({ input }) => {
+      const conversation = await botConversation(bots, input.botId);
       const view = await conversation.viewState(BACKGROUND_CONTEXT);
       try {
         return chatView(view.value);
@@ -24,8 +52,14 @@ export function createRouter(conversation: Conversation, models: Models) {
       }
     }),
     send: os
-      .input(z.object({ text: z.string().trim().min(1), requestId: z.uuid() }))
+      .input(
+        botTarget.extend({
+          text: z.string().trim().min(1),
+          requestId: z.uuid(),
+        }),
+      )
       .handler(async ({ input }) => {
+        const conversation = await botConversation(bots, input.botId);
         try {
           await requireConfiguredModel(
             models,
@@ -47,41 +81,19 @@ export function createRouter(conversation: Conversation, models: Models) {
           throw error;
         }
       }),
-    stop: os.handler(async () => {
+    stop: os.input(botTarget).handler(async ({ input }) => {
+      const conversation = await botConversation(bots, input.botId);
       await conversation.abort(BACKGROUND_CONTEXT);
       return { ok: true };
     }),
-    subscribe: os.handler(async function* ({ signal }) {
+    subscribe: os.input(botTarget).handler(async function* ({ input, signal }) {
+      const conversation = await botConversation(bots, input.botId);
       const context = signal
         ? withAbortSignal(signal, BACKGROUND_CONTEXT)
         : BACKGROUND_CONTEXT;
       const watch = await conversation.watch(context);
-      let pending: typeof watch.value | undefined = watch.value;
-      let changed = Promise.withResolvers<void>();
-      let closed = false;
-      watch.start(async (value) => {
-        pending = value;
-        changed.resolve();
-      });
-      void watch.closed.then(() => {
-        closed = true;
-        changed.resolve();
-      });
-      try {
-        while (!closed && !signal?.aborted) {
-          if (pending) {
-            const value = pending;
-            pending = undefined;
-            yield chatView(value);
-          } else {
-            await changed.promise;
-            changed = Promise.withResolvers<void>();
-          }
-        }
-        if (!signal?.aborted) throw new ORPCError("SERVICE_UNAVAILABLE");
-      } finally {
-        await watch.stop();
-      }
+      for await (const value of watchValues(watch, signal))
+        yield chatView(value);
     }),
   };
 }

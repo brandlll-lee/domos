@@ -12,6 +12,7 @@ import type { ChatContent, ChatMessage } from "./messages.ts";
 export type ChatView = {
   id: number;
   model: ModelRef | null;
+  instructions: string;
   messages: ChatMessage[];
   busy: boolean;
   failed: boolean;
@@ -76,6 +77,7 @@ export function chatView(view: ConversationView): ChatView {
   return {
     id: view.conversation.id,
     model: agent?.model ?? null,
+    instructions: agent?.instructions ?? "",
     messages,
     busy: Boolean(live?.run),
     failed: failed && !live?.run,

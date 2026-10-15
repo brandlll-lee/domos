@@ -19,6 +19,7 @@ export const themes = {
     user: "#22242b",
     "on-user": "#ececee",
     "popup-shadow": "0 8px 32px #00000040",
+    scrim: "#00000080",
   },
   light: {
     background: "#fafaf8",
@@ -40,6 +41,7 @@ export const themes = {
     user: "#e2e2dc",
     "on-user": "#202123",
     "popup-shadow": "0 8px 32px #00000018",
+    scrim: "#00000040",
   },
 } as const;
 

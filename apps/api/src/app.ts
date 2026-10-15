@@ -1,13 +1,13 @@
+import type { Bots } from "@domos/agent/bots";
 import type { Models } from "@earendil-works/pi-ai/models";
-import type { Conversation } from "@earendil-works/pi-durable";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
 import { createRouter } from "./router.ts";
 
-export function createApp(conversation: Conversation, models: Models) {
+export function createApp(bots: Bots, models: Models) {
   const app = new Hono();
-  const handler = new RPCHandler(createRouter(conversation, models));
+  const handler = new RPCHandler(createRouter(bots, models));
   app.use("/rpc/*", async (c, next) => {
     const { matched, response } = await handler.handle(c.req.raw, {
       prefix: "/rpc",

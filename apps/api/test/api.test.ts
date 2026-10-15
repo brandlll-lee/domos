@@ -19,6 +19,13 @@ import type { AppRouter } from "../src/router.ts";
 
 const context = BACKGROUND_CONTEXT;
 
+const botInput = (name: string, modelId = "faux-1") => ({
+  name,
+  instructions: `Work as ${name}.`,
+  model: { provider: "faux", modelId },
+  requestId: crypto.randomUUID(),
+});
+
 async function setup() {
   const directory = await mkdtemp(join(tmpdir(), "domos-api-"));
   onTestFinished(() => rm(directory, { recursive: true, force: true }));
@@ -34,7 +41,7 @@ async function setup() {
       agent,
       context,
     );
-    const app = createApp(runtime.conversation, models);
+    const app = createApp(runtime.bots, models);
     const client: RouterClient<AppRouter> = createORPCClient(
       new RPCLink({
         url: "http://localhost/rpc",
@@ -45,6 +52,164 @@ async function setup() {
   };
   return { faux, open, models };
 }
+
+test("Bot creation is atomic, idempotent, observable, and durable", async () => {
+  const { open, faux } = await setup();
+  const first = await open();
+  const input = botInput("Research");
+  let botId: number;
+  try {
+    const events = await first.client.bots.subscribe();
+    expect((await events.next()).value).toEqual([
+      { id: first.conversation.id, name: "Domos" },
+    ]);
+    const [bot, repeated] = await Promise.all([
+      first.client.bots.create(input),
+      first.client.bots.create(input),
+    ]);
+    botId = bot.id;
+    expect(repeated).toEqual(bot);
+    expect((await events.next()).value).toEqual([
+      { id: first.conversation.id, name: "Domos" },
+      bot,
+    ]);
+    await events.return();
+    const initial = await first.client.get({ botId });
+    expect(initial).toMatchObject({
+      id: botId,
+      model: input.model,
+      instructions: input.instructions,
+      messages: [],
+    });
+    faux.setResponses([
+      async (request) => {
+        expect(JSON.stringify(request)).toContain(input.instructions);
+        return fauxAssistantMessage("Research answer");
+      },
+    ]);
+    await first.client.send({
+      botId,
+      text: "Research question",
+      requestId: crypto.randomUUID(),
+    });
+    await (await first.bots.conversation(botId, context))?.waitForIdle(context);
+    expect(
+      (await first.client.get({ botId: first.conversation.id })).messages,
+    ).toEqual([]);
+    await expect(
+      first.client.bots.create({ ...botInput(""), name: "  " }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(
+      first.client.bots.create(botInput("Invalid", "missing-model")),
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    await expect(first.client.get({ botId: -1 })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await expect(
+      first.client.send({
+        botId: Number.MAX_SAFE_INTEGER,
+        text: "Hello",
+        requestId: crypto.randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(await first.client.bots.list()).toHaveLength(2);
+  } finally {
+    await first.harness.close(context);
+  }
+  const second = await open();
+  try {
+    expect(await second.client.bots.create(input)).toEqual({
+      id: botId,
+      name: input.name,
+    });
+    expect(await second.client.bots.list()).toHaveLength(2);
+    const view = await second.client.get({ botId });
+    expect(view.model).toEqual(input.model);
+    expect(view.instructions).toBe(input.instructions);
+    expect(view.messages.map(messageText)).toEqual([
+      "Research question",
+      "Research answer",
+    ]);
+  } finally {
+    await second.harness.close(context);
+  }
+});
+
+test("Bot execution, stop, model selection, and history stay independent", async () => {
+  const { open, faux, models } = await setup();
+  const other = fauxProvider({
+    provider: "other",
+    models: [{ id: "other-1", name: "Other model" }],
+  });
+  models.setProvider(other.provider);
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const secondEntered = Promise.withResolvers<void>();
+  faux.setResponses([
+    async () => {
+      entered.resolve();
+      await release.promise;
+      return fauxAssistantMessage("Root answer");
+    },
+  ]);
+  other.setResponses([
+    async (_input, options) => {
+      secondEntered.resolve();
+      await new Promise<void>((resolve) =>
+        options?.signal?.addEventListener("abort", () => resolve(), {
+          once: true,
+        }),
+      );
+      return fauxAssistantMessage("", { stopReason: "aborted" });
+    },
+  ]);
+  const runtime = await open();
+  try {
+    const rootId = runtime.conversation.id;
+    const bot = await runtime.client.bots.create(botInput("Writer"));
+    await runtime.client.models.select({
+      botId: bot.id,
+      provider: "other",
+      modelId: "other-1",
+    });
+    expect((await runtime.client.get({ botId: rootId })).model).toEqual({
+      provider: "faux",
+      modelId: "faux-1",
+    });
+    const events = await runtime.client.subscribe({ botId: rootId });
+    await events.next();
+    const requestId = crypto.randomUUID();
+    await runtime.client.send({
+      botId: rootId,
+      text: "Root question",
+      requestId,
+    });
+    await entered.promise;
+    await events.return();
+    await runtime.client.send({
+      botId: bot.id,
+      text: "Writer question",
+      requestId,
+    });
+    await secondEntered.promise;
+    await runtime.client.stop({ botId: bot.id });
+    expect((await runtime.client.get({ botId: bot.id })).busy).toBe(false);
+    expect((await runtime.client.get({ botId: rootId })).busy).toBe(true);
+    release.resolve();
+    await runtime.conversation.waitForIdle(context);
+    expect(
+      (await runtime.client.get({ botId: rootId })).messages.map(messageText),
+    ).toEqual(["Root question", "Root answer"]);
+    expect(
+      (await runtime.client.get({ botId: bot.id })).messages
+        .filter((message) => message.role === "user")
+        .map(messageText),
+    ).toEqual(["Writer question"]);
+  } finally {
+    release.resolve();
+    await runtime.harness.close(context);
+  }
+});
 
 test("SDK models can be selected, persist after reopening and leave active requests pinned", async () => {
   const { faux, open, models } = await setup();
@@ -71,19 +236,33 @@ test("SDK models can be selected, persist after reopening and leave active reque
       name: "New catalog model",
       providerName: next.provider.name,
     });
-    await first.client.send({ text: "First", requestId: crypto.randomUUID() });
+    await first.client.send({
+      botId: first.conversation.id,
+      text: "First",
+      requestId: crypto.randomUUID(),
+    });
     await entered.promise;
-    await first.client.models.select(selection);
-    expect((await first.client.get()).model).toEqual(selection);
+    await first.client.models.select({
+      ...selection,
+      botId: first.conversation.id,
+    });
+    expect(
+      (await first.client.get({ botId: first.conversation.id })).model,
+    ).toEqual(selection);
     release.resolve();
     await first.conversation.waitForIdle(context);
     expect(faux.state.callCount).toBe(1);
     expect(next.state.callCount).toBe(0);
-    await first.client.send({ text: "Second", requestId: crypto.randomUUID() });
+    await first.client.send({
+      botId: first.conversation.id,
+      text: "Second",
+      requestId: crypto.randomUUID(),
+    });
     await first.conversation.waitForIdle(context);
     expect(next.state.callCount).toBe(1);
     await expect(
       first.client.models.select({
+        botId: first.conversation.id,
         provider: crypto.randomUUID(),
         modelId: crypto.randomUUID(),
       }),
@@ -94,8 +273,14 @@ test("SDK models can be selected, persist after reopening and leave active reque
   }
   const second = await open();
   try {
-    expect((await second.client.get()).model).toEqual(selection);
-    expect((await second.client.get()).messages.map(messageText)).toEqual([
+    expect(
+      (await second.client.get({ botId: second.conversation.id })).model,
+    ).toEqual(selection);
+    expect(
+      (await second.client.get({ botId: second.conversation.id })).messages.map(
+        messageText,
+      ),
+    ).toEqual([
       "First",
       "Original model answer",
       "Second",
@@ -113,12 +298,22 @@ test("unconfigured models leave history accessible and reject execution", async 
   const runtime = await open();
   try {
     expect(await runtime.client.models.list()).toEqual([]);
-    expect((await runtime.client.get()).busy).toBe(false);
+    expect(
+      (await runtime.client.get({ botId: runtime.conversation.id })).busy,
+    ).toBe(false);
     await expect(
-      runtime.client.models.select({ provider: "faux", modelId: "faux-1" }),
+      runtime.client.models.select({
+        botId: runtime.conversation.id,
+        provider: "faux",
+        modelId: "faux-1",
+      }),
     ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
     await expect(
-      runtime.client.send({ text: "Wait", requestId: crypto.randomUUID() }),
+      runtime.client.send({
+        botId: runtime.conversation.id,
+        text: "Wait",
+        requestId: crypto.randomUUID(),
+      }),
     ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
     expect(faux.state.callCount).toBe(0);
   } finally {
@@ -141,34 +336,50 @@ test("HTTP subscription starts with a snapshot and detaching keeps the run alive
   const request = { text: "Remember this", requestId: crypto.randomUUID() };
   try {
     const controller = new AbortController();
-    const events = await first.client.subscribe(undefined, {
-      signal: controller.signal,
-    });
+    const events = await first.client.subscribe(
+      { botId: first.conversation.id },
+      {
+        signal: controller.signal,
+      },
+    );
     expect((await events.next()).value).toMatchObject({
       messages: [],
       busy: false,
     });
-    const receipt = await first.client.send(request);
+    const receipt = await first.client.send({
+      ...request,
+      botId: first.conversation.id,
+    });
     await entered.promise;
-    const same = await first.client.send(request);
+    const same = await first.client.send({
+      ...request,
+      botId: first.conversation.id,
+    });
     expect(same.id).toBe(receipt.id);
-    expect((await first.client.get()).busy).toBe(true);
+    expect(
+      (await first.client.get({ botId: first.conversation.id })).busy,
+    ).toBe(true);
     controller.abort();
     await events.return();
-    expect((await first.client.get()).busy).toBe(true);
+    expect(
+      (await first.client.get({ botId: first.conversation.id })).busy,
+    ).toBe(true);
     release.resolve();
     await first.conversation.waitForIdle(context);
-    expect((await first.client.get()).messages.map(messageText)).toEqual([
-      "Remember this",
-      "Saved answer",
-    ]);
+    expect(
+      (await first.client.get({ botId: first.conversation.id })).messages.map(
+        messageText,
+      ),
+    ).toEqual(["Remember this", "Saved answer"]);
   } finally {
     release.resolve();
     await first.harness.close(context);
   }
   const second = await open();
   try {
-    const events = await second.client.subscribe();
+    const events = await second.client.subscribe({
+      botId: second.conversation.id,
+    });
     expect((await events.next()).value).toMatchObject({
       busy: false,
       messages: [
@@ -177,7 +388,10 @@ test("HTTP subscription starts with a snapshot and detaching keeps the run alive
       ],
     });
     await events.return();
-    expect((await second.client.send(request)).id).toBeDefined();
+    expect(
+      (await second.client.send({ ...request, botId: second.conversation.id }))
+        .id,
+    ).toBeDefined();
     expect(faux.state.callCount).toBe(1);
   } finally {
     await second.harness.close(context);
@@ -200,19 +414,33 @@ test("stop cancels the task and the stopped result survives reopening", async ()
   ]);
   const first = await open();
   try {
-    await first.client.send({ text: "Wait", requestId: crypto.randomUUID() });
+    await first.client.send({
+      botId: first.conversation.id,
+      text: "Wait",
+      requestId: crypto.randomUUID(),
+    });
     await entered.promise;
     await expect(
-      first.client.send({ text: "Another", requestId: crypto.randomUUID() }),
+      first.client.send({
+        botId: first.conversation.id,
+        text: "Another",
+        requestId: crypto.randomUUID(),
+      }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
-    expect(await first.client.stop()).toEqual({ ok: true });
-    expect((await first.client.get()).busy).toBe(false);
+    expect(await first.client.stop({ botId: first.conversation.id })).toEqual({
+      ok: true,
+    });
+    expect(
+      (await first.client.get({ botId: first.conversation.id })).busy,
+    ).toBe(false);
   } finally {
     await first.harness.close(context);
   }
   const second = await open();
   try {
-    expect((await second.client.get()).busy).toBe(false);
+    expect(
+      (await second.client.get({ botId: second.conversation.id })).busy,
+    ).toBe(false);
     expect(faux.state.callCount).toBe(1);
   } finally {
     await second.harness.close(context);
@@ -228,15 +456,27 @@ test("validation rejects empty input and snapshots hide provider error details",
   const { client, harness, conversation } = await open();
   try {
     await expect(
-      client.send({ text: "  ", requestId: crypto.randomUUID() }),
+      client.send({
+        botId: conversation.id,
+        text: "  ",
+        requestId: crypto.randomUUID(),
+      }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(
-      client.send({ text: "Hello", requestId: "bad-id" }),
+      client.send({
+        botId: conversation.id,
+        text: "Hello",
+        requestId: "bad-id",
+      }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect(faux.state.callCount).toBe(0);
-    await client.send({ text: "Hello", requestId: crypto.randomUUID() });
+    await client.send({
+      botId: conversation.id,
+      text: "Hello",
+      requestId: crypto.randomUUID(),
+    });
     await conversation.waitForIdle(context);
-    const view = await client.get();
+    const view = await client.get({ botId: conversation.id });
     expect(view.failed).toBe(true);
     expect(JSON.stringify(view)).not.toContain(secret);
   } finally {
@@ -266,11 +506,12 @@ test("snapshots retain display content and omit provider signatures and redacted
   const first = await open();
   try {
     await first.client.send({
+      botId: first.conversation.id,
       text: "Inspect the response",
       requestId: crypto.randomUUID(),
     });
     await first.conversation.waitForIdle(context);
-    const view = await first.client.get();
+    const view = await first.client.get({ botId: first.conversation.id });
     expect(view.messages.at(-1)?.content).toEqual([
       expect.objectContaining({
         type: "thinking",
@@ -284,12 +525,16 @@ test("snapshots retain display content and omit provider signatures and redacted
   }
   const second = await open();
   try {
-    expect((await second.client.get()).messages.at(-1)?.content).toHaveLength(
-      2,
-    );
-    expect(JSON.stringify(await second.client.get())).not.toContain(
-      privateValue,
-    );
+    expect(
+      (await second.client.get({ botId: second.conversation.id })).messages.at(
+        -1,
+      )?.content,
+    ).toHaveLength(2);
+    expect(
+      JSON.stringify(
+        await second.client.get({ botId: second.conversation.id }),
+      ),
+    ).not.toContain(privateValue);
   } finally {
     await second.harness.close(context);
   }

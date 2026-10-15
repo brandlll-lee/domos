@@ -19,8 +19,10 @@ import {
   createRegistry,
   defineExtension,
   defineTool,
+  Harness,
   type Submission,
 } from "@earendil-works/pi-durable";
+import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { expect, onTestFinished, test } from "vitest";
 import { openAgent } from "../src/open-agent.ts";
 
@@ -39,6 +41,47 @@ async function database(cleanup: (fn: () => Promise<void>) => void) {
   cleanup(() => rm(directory, { recursive: true, force: true }));
   return join(directory, "agent.sqlite");
 }
+
+test("adopts the existing root conversation with its history and configuration", async () => {
+  const file = await database(onTestFinished);
+  const { faux, models } = model();
+  const options = { models, registry: createRegistry() };
+  const harness = await Harness.open(
+    await openNodeSqliteStorage(file),
+    options,
+    context,
+  );
+  const root = await harness.root(context, {
+    agent: { ...agent, instructions: "Existing instructions" },
+  });
+  faux.setResponses([fauxAssistantMessage("Existing answer")]);
+  try {
+    const submission = await root.submit(
+      { type: "input", content: "Existing question" },
+      context,
+    );
+    await submission.wait(context);
+  } finally {
+    await harness.close(context);
+  }
+  const runtime = await openAgent(file, options, agent, context);
+  try {
+    expect(await runtime.bots.list(context)).toEqual([
+      { id: root.id, name: "Domos" },
+    ]);
+    const conversation = await runtime.bots.conversation(root.id, context);
+    expect(conversation?.id).toBe(root.id);
+    expect(await conversation?.agent(context)).toMatchObject({
+      ...agent,
+      instructions: "Existing instructions",
+    });
+    expect(
+      (await conversation?.context(context))?.messages.at(-1),
+    ).toMatchObject({ content: [{ type: "text", text: "Existing answer" }] });
+  } finally {
+    await runtime.harness.close(context);
+  }
+});
 
 test("retains the transcript and deduplicates a request after reopening", async () => {
   const file = await database(onTestFinished);

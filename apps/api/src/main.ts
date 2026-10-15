@@ -5,12 +5,12 @@ import { getRequestListener } from "@hono/node-server";
 import { createApp } from "./app.ts";
 
 async function main() {
-  const { harness, conversation, models } = await openChat(
+  const { harness, bots, models } = await openChat(
     "data/agent.sqlite",
     BACKGROUND_CONTEXT,
   );
   const server = createServer(
-    getRequestListener(createApp(conversation, models).fetch),
+    getRequestListener(createApp(bots, models).fetch),
   );
   let closing = false;
   const close = async () => {

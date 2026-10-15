@@ -6,6 +6,7 @@ import { chatCopy } from "./copy.ts";
 import { type SendMessage, useComposer } from "./use-composer.ts";
 
 export function Composer({
+  botName,
   conversationId,
   connected,
   busy,
@@ -15,6 +16,7 @@ export function Composer({
   onSend,
   onStop,
 }: {
+  botName: string;
   conversationId: number;
   connected: boolean;
   busy: boolean;
@@ -58,7 +60,7 @@ export function Composer({
         onValueChange={composer.change}
         onSubmit={() => void composer.submit()}
         label={chatCopy.message}
-        placeholder={chatCopy.placeholder}
+        placeholder={chatCopy.placeholder(botName)}
         action={
           <Button
             type={busy ? "button" : "submit"}

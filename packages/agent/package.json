@@ -5,6 +5,7 @@
   "exports": {
     ".": "./src/open-agent.ts",
     "./chat": "./src/open-chat.ts",
+    "./bots": "./src/bots.ts",
     "./models": "./src/models.ts",
     "./messages": "./src/messages.ts",
     "./view": "./src/chat-view.ts"

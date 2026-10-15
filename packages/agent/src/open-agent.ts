@@ -5,6 +5,7 @@ import {
   type HarnessOptions,
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { Bots } from "./bots.ts";
 
 export async function openAgent(
   database: string,
@@ -16,8 +17,10 @@ export async function openAgent(
   const harness = await Harness.open(storage, options, context);
   try {
     const conversation = await harness.root(context, { agent });
+    const bots = new Bots(harness);
+    await bots.initialize(conversation.id, context);
     harness.resume();
-    return { harness, conversation, models: options.models };
+    return { harness, conversation, bots, models: options.models };
   } catch (error) {
     await harness.close(context);
     throw error;

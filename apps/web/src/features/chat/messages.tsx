@@ -6,7 +6,13 @@ import { chatCopy } from "./copy.ts";
 import { MessageContent } from "./message-content.tsx";
 import { useTranscript } from "./use-transcript.ts";
 
-export function Messages({ view }: { view: ChatView | null }) {
+export function Messages({
+  view,
+  botName,
+}: {
+  view: ChatView | null;
+  botName: string;
+}) {
   const results = new Map(
     view?.messages.flatMap((message) =>
       message.role === "toolResult" && message.toolCallId
@@ -48,7 +54,7 @@ export function Messages({ view }: { view: ChatView | null }) {
                 message.role === "user"
                   ? chatCopy.userMessage
                   : message.role === "assistant"
-                    ? chatCopy.assistantMessage
+                    ? chatCopy.assistantMessage(botName)
                     : chatCopy.toolOutput
               }
             >

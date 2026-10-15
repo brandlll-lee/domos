@@ -6,7 +6,7 @@ import { rejectionMessage } from "./request-error.ts";
 
 export type SendInput = { text: string; requestId: string };
 
-export function useChat() {
+export function useChat(botId: number) {
   const [view, setView] = useState<ChatView | null>(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -17,15 +17,18 @@ export function useChat() {
     const controller = new AbortController();
     void (async () => {
       try {
-        const events = await client.subscribe(undefined, {
-          signal: controller.signal,
-          context: {
-            retry: Number.POSITIVE_INFINITY,
-            onRetry: () => {
-              if (!controller.signal.aborted) setConnected(false);
+        const events = await client.subscribe(
+          { botId },
+          {
+            signal: controller.signal,
+            context: {
+              retry: Number.POSITIVE_INFINITY,
+              onRetry: () => {
+                if (!controller.signal.aborted) setConnected(false);
+              },
             },
           },
-        });
+        );
         for await (const next of events) {
           if (controller.signal.aborted) return;
           setView(next);
@@ -38,13 +41,13 @@ export function useChat() {
       }
     })();
     return () => controller.abort();
-  }, []);
+  }, [botId]);
 
   async function send(input: SendInput) {
     setSending(true);
     setError(null);
     try {
-      await client.send(input);
+      await client.send({ ...input, botId });
       return "accepted" as const;
     } catch (cause) {
       const message = rejectionMessage(cause);
@@ -59,7 +62,7 @@ export function useChat() {
     setStopping(true);
     setError(null);
     try {
-      await client.stop();
+      await client.stop({ botId });
     } catch {
       setError(chatCopy.errors.stop);
     } finally {

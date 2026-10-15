@@ -5,6 +5,8 @@
   "exports": {
     "./tokens": "./src/tokens.ts",
     "./controls": "./src/web/controls.tsx",
+    "./dialog": "./src/web/dialog.tsx",
+    "./field": "./src/web/field.tsx",
     "./picker": "./src/web/picker.tsx",
     "./message": "./src/web/message.tsx",
     "./composer": "./src/web/composer.tsx",

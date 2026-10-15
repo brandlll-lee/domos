@@ -1,41 +1,23 @@
 import type { ChatView } from "@domos/agent/view";
 import { SearchPicker } from "@domos/ui/picker";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { client } from "../../client.ts";
+import { modelItems, modelKey, useModels } from "../models/use-models.ts";
 import { rejectionMessage } from "./request-error.ts";
 
-type Choice = Awaited<ReturnType<typeof client.models.list>>[number];
-const key = (model: { provider: string; modelId: string }) =>
-  JSON.stringify([model.provider, model.modelId]);
-
 export function ModelPicker({
+  botId,
   model,
   connected,
 }: {
+  botId: number;
   model: ChatView["model"];
   connected: boolean;
 }) {
-  const [choices, setChoices] = useState<Choice[] | null>(null);
+  const { choices, error: catalogError } = useModels(connected);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    if (!connected) return;
-    const controller = new AbortController();
-    void client.models
-      .list(undefined, { signal: controller.signal })
-      .then((next) => {
-        if (!controller.signal.aborted) {
-          setChoices(next);
-          setError(null);
-        }
-      })
-      .catch(() => {
-        if (!controller.signal.aborted)
-          setError("模型目录加载失败。请刷新重试。");
-      });
-    return () => controller.abort();
-  }, [connected]);
-  const selected = model ? key(model) : "";
+  const selected = model ? modelKey(model) : "";
   return (
     <div className="model-picker">
       <SearchPicker
@@ -47,22 +29,18 @@ export function ModelPicker({
             ? `${model.provider} / ${model.modelId}${choices === null ? "" : "（未配置）"}`
             : "正在加载…"
         }
-        items={
-          choices?.map((choice) => ({
-            value: key(choice),
-            label: `${choice.providerName} · ${choice.name}`,
-          })) ?? []
-        }
+        items={modelItems(choices)}
         value={selected}
         disabled={!connected || choices === null}
         readOnly={saving}
         onValueChange={async (value) => {
-          const choice = choices?.find((item) => key(item) === value);
+          const choice = choices?.find((item) => modelKey(item) === value);
           if (!choice) return;
           setSaving(true);
           setError(null);
           try {
             await client.models.select({
+              botId,
               provider: choice.provider,
               modelId: choice.modelId,
             });
@@ -83,9 +61,9 @@ export function ModelPicker({
             ? "请配置服务商凭据后重启服务。"
             : "所选模型用于下一次回复。"}
       </span>
-      {error && (
+      {(error ?? catalogError) && (
         <p className="alert" role="alert">
-          {error}
+          {error ?? catalogError}
         </p>
       )}
     </div>
