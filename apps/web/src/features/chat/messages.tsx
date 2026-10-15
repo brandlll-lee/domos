@@ -86,9 +86,6 @@ export function Messages({
                       />
                     ) : null}
                   </MessageBubble>
-                  {message.stopped && (
-                    <div className="message-note">{chatCopy.stopped}</div>
-                  )}
                 </article>
               );
             })}

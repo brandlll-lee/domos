@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef } from "react";
+import type { ReactNode } from "react";
 
 export function ActivityText({
   active = false,
@@ -36,14 +36,11 @@ export function ActivityDisclosure({
   notice?: string;
   children: ReactNode;
 }) {
-  const disclosure = useRef<HTMLDetailsElement>(null);
-  useEffect(() => {
-    if (!active && disclosure.current) disclosure.current.open = false;
-  }, [active]);
   return (
     <details
+      key={active ? "running" : "settled"}
       className="activity-disclosure"
-      ref={disclosure}
+      open={active}
       data-attention={attention || undefined}
     >
       <summary className="activity-summary" title={label}>
@@ -54,6 +51,31 @@ export function ActivityDisclosure({
         <span className="activity-chevron" aria-hidden="true" />
       </summary>
       <div className="activity-content">{children}</div>
+    </details>
+  );
+}
+
+export function ActivityDetails({
+  label,
+  status,
+  attention = false,
+  children,
+}: {
+  label: string;
+  status: string;
+  attention?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <details className="activity-step" data-attention={attention || undefined}>
+      <summary className="activity-step-summary">
+        <span className="activity-chevron" aria-hidden="true" />
+        <span className="activity-step-label" title={label}>
+          {label}
+        </span>
+        <span className="activity-step-status">{status}</span>
+      </summary>
+      <div className="activity-detail">{children}</div>
     </details>
   );
 }

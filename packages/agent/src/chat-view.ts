@@ -16,6 +16,7 @@ export type ChatView = {
   model: ModelRef | null;
   instructions: string;
   messages: ChatMessage[];
+  draft: ChatMessage | null;
   activeTurnId: string | null;
   busy: boolean;
   failed: boolean;
@@ -32,18 +33,18 @@ export function chatView(view: ConversationView): ChatView {
   const messages: ChatMessage[] = [];
   let turnId: string | undefined;
   let failed = false;
-  const append = (
+  const project = (
     message: Message,
     id: string,
     attachments?: Attachment[],
     text?: string,
     stopped = false,
-  ) => {
-    if (message.role === "system") return;
+  ): ChatMessage | null => {
+    if (message.role === "system") return null;
     if (message.role === "user") turnId = id;
-    failed = message.role === "assistant" && message.stopReason === "error";
-    if (failed) return;
-    messages.push({
+    if (message.role === "assistant" && message.stopReason === "error")
+      return null;
+    return {
       id,
       turnId,
       role: message.role,
@@ -94,7 +95,7 @@ export function chatView(view: ConversationView): ChatView {
                 : "done",
           }
         : {}),
-    });
+    };
   };
   for (const entry of view.entries) {
     const input =
@@ -112,21 +113,26 @@ export function chatView(view: ConversationView): ChatView {
           ? (message.details as { attachment?: Attachment } | undefined)
               ?.attachment
           : undefined;
-      append(
+      failed = message.role === "assistant" && message.stopReason === "error";
+      const projected = project(
         message,
         `${entry.id}:${index}`,
         input?.attachments ?? (attachment ? [attachment] : undefined),
         input?.text,
         stopped,
       );
+      if (projected) messages.push(projected);
     });
   }
-  if (live?.generation?.message) append(live.generation.message, "stream");
+  const draft = live?.generation?.message
+    ? project(live.generation.message, "draft")
+    : null;
   return {
     id: view.conversation.id,
     model: agent?.model ?? null,
     instructions: agent?.instructions ?? "",
     messages,
+    draft,
     activeTurnId: live?.run ? (turnId ?? null) : null,
     busy: Boolean(live?.run),
     failed: failed && !live?.run,

@@ -24,7 +24,10 @@ import {
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { expect, onTestFinished, test } from "vitest";
+import { chatView } from "../src/chat-view.ts";
+import { messageText } from "../src/messages.ts";
 import { openAgent } from "../src/open-agent.ts";
+import { chatTranscript } from "../src/transcript.ts";
 
 const context = BACKGROUND_CONTEXT;
 const agent = { model: { provider: "faux", modelId: "faux-1" } };
@@ -35,6 +38,121 @@ function model() {
   models.setProvider(faux.provider);
   return { faux, models };
 }
+
+test("generation drafts stay separate until one complete answer is stored", async () => {
+  const file = await database(onTestFinished);
+  const faux = fauxProvider({
+    tokensPerSecond: 100,
+    tokenSize: { min: 1, max: 1 },
+  });
+  const models = createModels();
+  models.setProvider(faux.provider);
+  const answer =
+    "A complete answer with enough text to observe several generation updates.";
+  faux.setResponses([fauxAssistantMessage(answer)]);
+  const options = { models, registry: createRegistry() };
+  const first = await openAgent(file, options, agent, context);
+  const state = await first.conversation.viewState(context);
+  const snapshots: ReturnType<typeof chatView>[] = [];
+  const drafting = Promise.withResolvers<void>();
+  state.subscribe((value) => {
+    const view = chatView(value);
+    snapshots.push(view);
+    if (view.draft?.content.some((part) => part.type === "text" && part.text))
+      drafting.resolve();
+  });
+  let answerId: string | undefined;
+  try {
+    const submission = await first.conversation.submit(
+      { type: "input", content: "Reply" },
+      context,
+    );
+    await drafting.promise;
+    const partial = chatView(state.value);
+    expect(partial.busy).toBe(true);
+    expect(partial.messages.map((message) => message.role)).toEqual(["user"]);
+    expect(partial.draft && messageText(partial.draft)).not.toBe(answer);
+    await submission.wait(context);
+    const completed = chatView(state.value);
+    expect(completed.draft).toBeNull();
+    expect(completed.busy).toBe(false);
+    const replies = completed.messages.filter(
+      (message) => message.role === "assistant",
+    );
+    expect(replies.map(messageText)).toEqual([answer]);
+    answerId = replies[0]?.id;
+    for (const snapshot of snapshots)
+      for (const reply of snapshot.messages.filter(
+        (message) => message.role === "assistant",
+      )) {
+        expect(messageText(reply)).toBe(answer);
+        expect(reply.id).toBe(answerId);
+      }
+  } finally {
+    state.dispose();
+    await first.harness.close(context);
+  }
+  const second = await openAgent(file, options, agent, context);
+  const restored = await second.conversation.viewState(context);
+  try {
+    const view = chatView(restored.value);
+    expect(view.draft).toBeNull();
+    expect(
+      view.messages.filter((message) => message.role === "assistant"),
+    ).toMatchObject([{ id: answerId, content: [{ text: answer }] }]);
+  } finally {
+    restored.dispose();
+    await second.harness.close(context);
+  }
+});
+
+test.each(["aborted", "error"] as const)(
+  "a %s model response remains a process outcome after reopening",
+  async (stopReason) => {
+    const file = await database(onTestFinished);
+    const { faux, models } = model();
+    faux.setResponses([
+      fauxAssistantMessage("Unfinished answer", {
+        stopReason,
+        errorMessage: "Request ended",
+      }),
+    ]);
+    const options = {
+      models,
+      registry: createRegistry(),
+      settings: { retry: { enabled: false } },
+    };
+    const first = await openAgent(file, options, agent, context);
+    try {
+      const submission = await first.conversation.submit(
+        { type: "input", content: "Reply" },
+        context,
+      );
+      expect((await submission.wait(context)).status).toBe("unanswered");
+    } finally {
+      await first.harness.close(context);
+    }
+    const second = await openAgent(file, options, agent, context);
+    const state = await second.conversation.viewState(context);
+    try {
+      const view = chatView(state.value);
+      expect(view.draft).toBeNull();
+      expect(chatTranscript(view)).toMatchObject([
+        { kind: "message", message: { role: "user" } },
+        {
+          kind: "activity",
+          status: stopReason === "aborted" ? "stopped" : "failed",
+        },
+      ]);
+      expect(
+        chatTranscript(view).filter((item) => item.kind === "message"),
+      ).toHaveLength(1);
+    } finally {
+      state.dispose();
+      await second.harness.close(context);
+    }
+  },
+);
 
 async function database(cleanup: (fn: () => Promise<void>) => void) {
   const directory = await mkdtemp(join(tmpdir(), "domos-agent-"));

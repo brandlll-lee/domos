@@ -29,6 +29,7 @@ function view(
     model: null,
     instructions: "",
     messages,
+    draft: null,
     activeTurnId: null,
     busy: false,
     failed: false,
@@ -184,4 +185,34 @@ test("live work uses runtime state and completed text chats have no empty proces
     status: "running",
     steps: [{ status: "running", liveOutput: "Live output" }],
   });
+});
+
+test("draft text never becomes a reply and draft thinking stays in the live process", () => {
+  const turnId = crypto.randomUUID();
+  const user = message("user", turnId, [{ type: "text", text: "Question" }]);
+  const draft = message("assistant", turnId, [
+    { type: "thinking", thinking: "Checking facts" },
+    { type: "text", text: "Partial answer" },
+  ]);
+  const items = chatTranscript(
+    view([user], {
+      draft,
+      activeTurnId: turnId,
+      busy: true,
+    }),
+  );
+  expect(items).toMatchObject([
+    { kind: "message", message: user },
+    {
+      kind: "activity",
+      status: "running",
+      responding: true,
+      steps: [{ type: "thinking", text: "Checking facts" }],
+    },
+  ]);
+  expect(items.filter((item) => item.kind === "message")).toHaveLength(1);
+  expect(chatTranscript(view([user], { failed: true }))).toMatchObject([
+    { kind: "message" },
+    { kind: "activity", status: "failed" },
+  ]);
 });

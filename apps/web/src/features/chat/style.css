@@ -253,7 +253,6 @@
   overflow-wrap: anywhere;
   line-height: inherit;
 }
-.message-note,
 .working {
   margin: 0;
   color: var(--color-muted);

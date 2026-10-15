@@ -3,7 +3,7 @@ import type {
   ActivityStep,
   ToolStatus,
 } from "@domos/agent/transcript";
-import { ActivityDisclosure } from "@domos/ui/activity";
+import { ActivityDetails, ActivityDisclosure } from "@domos/ui/activity";
 import { MessageMarkdown } from "@domos/ui/markdown";
 import { chatCopy } from "./copy.ts";
 import { MessageContent } from "./message-content.tsx";
@@ -36,22 +36,20 @@ function Step({ step }: { step: ActivityStep }) {
       </div>
     );
   return (
-    <ActivityDisclosure
-      label={`${step.name} · ${toolStatus(step.status)}`}
-      active={step.status === "running" || step.status === "pending"}
+    <ActivityDetails
+      label={step.name}
+      status={toolStatus(step.status)}
       attention={step.status === "failed"}
     >
-      <div className="activity-detail">
-        <span className="activity-caption">{chatCopy.toolInput}</span>
-        <pre>{JSON.stringify(step.arguments, null, 2)}</pre>
-        <span className="activity-caption">{chatCopy.toolOutput}</span>
-        {step.output.length ? (
-          <MessageContent content={step.output} />
-        ) : (
-          <pre>{step.liveOutput ?? chatCopy.toolWaiting}</pre>
-        )}
-      </div>
-    </ActivityDisclosure>
+      <span className="activity-caption">{chatCopy.toolInput}</span>
+      <pre>{JSON.stringify(step.arguments, null, 2)}</pre>
+      <span className="activity-caption">{chatCopy.toolOutput}</span>
+      {step.output.length ? (
+        <MessageContent content={step.output} />
+      ) : (
+        <pre>{step.liveOutput ?? chatCopy.toolWaiting}</pre>
+      )}
+    </ActivityDetails>
   );
 }
 
@@ -87,11 +85,9 @@ export function ExecutionActivity({ activity }: { activity: Activity }) {
         attention={activity.status === "failed"}
         notice={failures ? chatCopy.activityFailures(failures) : undefined}
       >
-        {activity.steps.length ? (
-          activity.steps.map((step) => <Step key={step.id} step={step} />)
-        ) : (
-          <p className="activity-caption">{chatCopy.thinkingActive}</p>
-        )}
+        {activity.steps.map((step) => (
+          <Step key={step.id} step={step} />
+        ))}
       </ActivityDisclosure>
     </section>
   );

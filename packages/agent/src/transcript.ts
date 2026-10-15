@@ -110,7 +110,6 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
       }
     }
     if (message.stopped) activity(groupId).status = "stopped";
-    if (active && content.length) activity(groupId).responding = true;
     if (content.length || message.attachments?.length)
       items.push({
         kind: "message",
@@ -122,6 +121,20 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
   const lastTurnId = view.messages.findLast(
     (message) => message.role === "user",
   )?.turnId;
+  if (view.failed && lastTurnId) activity(lastTurnId).status = "failed";
+  if (view.draft && view.activeTurnId) {
+    const current = activity(view.activeTurnId);
+    current.responding = view.draft.content.some(
+      (part) => part.type === "text" && part.text.length > 0,
+    );
+    for (const part of view.draft.content)
+      if (part.type === "thinking" && part.thinking)
+        current.steps.push({
+          type: "thinking",
+          id: part.key,
+          text: part.thinking,
+        });
+  }
   for (const value of activities.values()) {
     if (value.status === "running") continue;
     if (
