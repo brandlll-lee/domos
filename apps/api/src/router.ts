@@ -41,13 +41,7 @@ export function createRouter(bots: Bots, models: Models, files: Files) {
         const context = signal
           ? withAbortSignal(signal, BACKGROUND_CONTEXT)
           : BACKGROUND_CONTEXT;
-        const watch = await bots.watch(context);
-        for await (const directory of watchValues(watch, signal))
-          yield directory?.items.map(({ id, name, avatar }) => ({
-            id,
-            name,
-            avatar,
-          })) ?? [];
+        yield* bots.watch(context);
       }),
     },
     models: modelRouter(bots, models),

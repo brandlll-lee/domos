@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import type { Context } from "@earendil-works/chord/context";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { createRegistry, type ModelRef } from "@earendil-works/pi-durable";
+import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node";
+import { computer } from "./computer.ts";
 import { Files } from "./files.ts";
 import { openAgent } from "./open-agent.ts";
 
@@ -17,7 +19,8 @@ export async function openChat(database: string, context: Context) {
     throw new Error("请检查 domos.config.json 中的初始模型。");
   const files = new Files(database);
   const registry = createRegistry();
-  registry.install(files.extension());
+  registry.install(files.extension(await createNodePhotonImages()));
+  registry.install(computer);
   return openAgent(
     database,
     {

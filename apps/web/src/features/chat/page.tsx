@@ -1,4 +1,4 @@
-import type { Bot } from "@domos/agent/bots";
+import type { Bot, BotPresence } from "@domos/agent/bots";
 import { messageText } from "@domos/agent/messages";
 import { chatTranscript } from "@domos/agent/transcript";
 import { BotAvatar } from "@domos/ui/avatar";
@@ -28,6 +28,7 @@ export function ChatPage() {
       bot={bots.selected}
       bots={bots.items}
       directoryError={bots.error}
+      directoryConnected={bots.connected}
     />
   );
 }
@@ -36,10 +37,12 @@ function BotChat({
   bot,
   bots,
   directoryError,
+  directoryConnected,
 }: {
   bot: Bot;
-  bots: Bot[];
+  bots: BotPresence[];
   directoryError: string | null;
+  directoryConnected: boolean;
 }) {
   const chat = useChat(bot.id);
   const items = chat.view ? chatTranscript(chat.view) : [];
@@ -71,8 +74,8 @@ function BotChat({
         bots={bots}
         selected={bot}
         model={chat.view?.model ?? null}
-        connection={connection}
-        busy={chat.view?.busy ?? false}
+        connection={directoryConnected ? connection : chatCopy.reconnecting}
+        connected={directoryConnected}
         preview={
           chat.view?.busy
             ? chatCopy.working

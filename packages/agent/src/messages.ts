@@ -5,6 +5,7 @@ import type {
   ThinkingContent,
   ToolCall,
 } from "@earendil-works/pi-ai";
+import type { ToolDiagnostic } from "@earendil-works/pi-durable";
 import type { Attachment } from "./attachments.ts";
 import type { MessageDelivery } from "./delivery.ts";
 
@@ -27,6 +28,7 @@ export type ChatMessage = {
   attachments?: Attachment[];
   delivery?: MessageDelivery;
   toolStatus?: "pending" | "running" | "done" | "failed" | "stopped";
+  diagnostics?: readonly ToolDiagnostic[];
 };
 
 export function messageText(message: {

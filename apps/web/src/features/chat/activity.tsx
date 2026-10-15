@@ -50,7 +50,14 @@ function Step({ step }: { step: ActivityStep }) {
       {step.output.length ? (
         <MessageContent content={step.output} />
       ) : (
-        <pre>{step.liveOutput ?? chatCopy.toolWaiting}</pre>
+        !step.diagnostics?.length && (
+          <pre>{step.liveOutput ?? chatCopy.toolWaiting}</pre>
+        )
+      )}
+      {!!step.diagnostics?.length && (
+        <pre>
+          {step.diagnostics.map((diagnostic) => diagnostic.message).join("\n")}
+        </pre>
       )}
     </ActivityDetails>
   );

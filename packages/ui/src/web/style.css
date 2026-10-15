@@ -266,7 +266,7 @@ textarea.field-control {
 .message-bubble {
   width: fit-content;
   min-width: 0;
-  max-width: min(var(--message-incoming-width), var(--message-max-width));
+  max-width: var(--message-incoming-width);
   padding: var(--message-padding-block) var(--message-padding-inline);
   border-radius: var(--radius-message);
   background: var(--color-assistant);
@@ -275,7 +275,7 @@ textarea.field-control {
   line-height: var(--message-leading);
 }
 .message-bubble[data-side="outgoing"] {
-  max-width: min(var(--message-outgoing-width), var(--message-max-width));
+  max-width: var(--message-outgoing-width);
   background: var(--color-user);
   color: var(--color-on-user);
 }
@@ -672,12 +672,23 @@ textarea.field-control {
 }
 .bot-avatar,
 .brand-mark {
+  position: relative;
   display: inline-flex;
   width: var(--avatar-medium);
   height: var(--avatar-medium);
   flex-shrink: 0;
   --character-eye: var(--color-avatar-eye);
   --character-pupil: var(--color-avatar-pupil);
+}
+.avatar-status {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: var(--avatar-status-size);
+  height: var(--avatar-status-size);
+  border-radius: var(--radius-round);
+  background: var(--color-working);
+  box-shadow: 0 0 0 2px var(--color-background);
 }
 .bot-avatar[data-size="small"] {
   width: var(--avatar-small);

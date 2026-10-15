@@ -221,12 +221,11 @@
   overflow-anchor: none;
   scrollbar-width: thin;
   scrollbar-color: var(--color-border) transparent;
-  padding: var(--space-6);
+  padding: var(--space-6) var(--chat-gutter);
 }
 .welcome,
 .messages {
-  max-width: var(--content-width);
-  margin: 0 auto;
+  width: 100%;
 }
 .welcome {
   padding-block: clamp(3rem, 20dvh, 10rem) var(--space-8);
@@ -266,7 +265,6 @@
 .execution-activity,
 .delivered-files {
   width: var(--message-incoming-width);
-  max-width: var(--message-max-width);
   min-width: 0;
 }
 .execution-activity {
@@ -290,9 +288,7 @@
 }
 .composer-area {
   width: 100%;
-  max-width: calc(var(--content-width) + var(--space-12));
-  margin-inline: auto;
-  padding: var(--space-3) var(--space-6)
+  padding: var(--space-3) var(--chat-gutter)
     max(var(--space-6), env(safe-area-inset-bottom));
 }
 .composer-area .alert {
@@ -336,11 +332,7 @@
   .model-picker .picker-trigger {
     max-width: 100%;
   }
-  .transcript {
-    padding: var(--space-6) var(--space-4);
-  }
   .composer-area {
-    padding-inline: var(--space-3);
     padding-bottom: max(var(--space-3), env(safe-area-inset-bottom));
   }
 }

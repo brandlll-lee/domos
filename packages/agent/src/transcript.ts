@@ -14,6 +14,7 @@ export type ActivityStep =
       status: ToolStatus;
       output: ChatMessage["content"];
       liveOutput?: string;
+      diagnostics?: ChatMessage["diagnostics"];
     };
 
 export type Activity = {
@@ -123,6 +124,7 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
           status: result?.toolStatus ?? live?.status ?? "waiting",
           output: result?.content ?? [],
           liveOutput: live?.output,
+          diagnostics: result?.diagnostics,
         });
       } else if (visibleContent(part)) {
         content.push(part);

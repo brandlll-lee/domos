@@ -5,10 +5,12 @@ import {
   configure,
   defineDoc,
   type Harness,
+  LiveDoc,
   type ModelRef,
 } from "@earendil-works/pi-durable";
 
 export type Bot = { id: ConversationId; name: string; avatar: string };
+export type BotPresence = Bot & { busy: boolean };
 export type CreateBot = {
   name: string;
   instructions: string;
@@ -47,11 +49,15 @@ export class Bots {
     }, context);
   }
 
-  async list(context: Context): Promise<Bot[]> {
+  async list(context: Context): Promise<BotPresence[]> {
     const directory = await this.harness.snapshot(BotDirectory, context);
-    return (
-      directory?.items.map(({ id, name, avatar }) => ({ id, name, avatar })) ??
-      []
+    return Promise.all(
+      (directory?.items ?? []).map(async ({ id, name, avatar }) => ({
+        id,
+        name,
+        avatar,
+        busy: Boolean((await this.harness.snapshot(LiveDoc, id, context))?.run),
+      })),
     );
   }
 
@@ -89,9 +95,52 @@ export class Bots {
     }, context);
   }
 
-  async watch(context: Context) {
-    const watch = await this.harness.watchDoc(BotDirectory, context);
-    if (!watch) throw new Error("Bot directory is unavailable");
-    return watch;
+  async *watch(context: Context) {
+    let pending = true;
+    let closed = false;
+    let previous: string | undefined;
+    let changed = Promise.withResolvers<void>();
+    const notify = () => {
+      pending = true;
+      changed.resolve();
+    };
+    const unsubscribe = this.harness.subscribeCommits(({ changes }) => {
+      if (
+        changes.some(
+          (change) =>
+            (change.type === "document" || change.type === "document.copy") &&
+            (change.record.kind === BotDirectory.definition.kind ||
+              change.record.kind === LiveDoc.definition.kind),
+        )
+      )
+        notify();
+    });
+    const unsubscribeClose = this.harness.subscribeClose(() => {
+      closed = true;
+      notify();
+    });
+    context.abortSignal?.addEventListener("abort", notify);
+    try {
+      while (!closed && !context.abortSignal?.aborted) {
+        if (pending) {
+          pending = false;
+          const items = await this.list(context);
+          const revision = JSON.stringify(items);
+          if (revision !== previous) {
+            previous = revision;
+            yield items;
+          }
+        } else {
+          await changed.promise;
+          changed = Promise.withResolvers<void>();
+        }
+      }
+      if (closed && !context.abortSignal?.aborted)
+        throw new Error("Bot directory is unavailable");
+    } finally {
+      unsubscribe();
+      unsubscribeClose();
+      context.abortSignal?.removeEventListener("abort", notify);
+    }
   }
 }

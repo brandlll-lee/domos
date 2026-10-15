@@ -19,6 +19,7 @@ export const chatCopy = {
   stopping: "正在停止…",
   stopped: "已停止",
   working: "正在回复…",
+  botWorking: "正在工作",
   complete: "回复已结束",
   history: "聊天记录",
   userMessage: "你的消息",

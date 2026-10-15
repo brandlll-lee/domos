@@ -40,6 +40,7 @@ export function chatView(view: ConversationView): ChatView {
     attachments?: Attachment[],
     text?: string,
     stopped = false,
+    diagnostics?: ChatMessage["diagnostics"],
   ): ChatMessage | null => {
     if (message.role === "system") return null;
     if (message.role === "user") turnId = id;
@@ -89,6 +90,7 @@ export function chatView(view: ConversationView): ChatView {
             toolCallId: message.toolCallId,
             toolName: message.toolName,
             isError: message.isError,
+            diagnostics,
             toolStatus: stopped
               ? "stopped"
               : message.isError
@@ -103,11 +105,15 @@ export function chatView(view: ConversationView): ChatView {
       entry.kind === FileInput
         ? (entry.data as { text: string; attachments: Attachment[] })
         : undefined;
-    const stopped =
-      entry.kind === "pi.tool-result" &&
-      (
-        entry.data as { diagnostics?: { code?: string }[] } | undefined
-      )?.diagnostics?.some((item) => item.code === "aborted");
+    const diagnostics =
+      entry.kind === "pi.tool-result"
+        ? (
+            entry.data as
+              | { diagnostics?: ChatMessage["diagnostics"] }
+              | undefined
+          )?.diagnostics
+        : undefined;
+    const stopped = diagnostics?.some((item) => item.code === "aborted");
     entry.model?.forEach((message, index) => {
       const attachment =
         message.role === "toolResult"
@@ -126,6 +132,7 @@ export function chatView(view: ConversationView): ChatView {
         input?.attachments ?? (attachment ? [attachment] : undefined),
         input?.text,
         stopped,
+        diagnostics,
       );
       if (projected)
         messages.push({ ...projected, ...(delivery ? { delivery } : {}) });

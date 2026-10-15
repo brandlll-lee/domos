@@ -1,4 +1,4 @@
-import type { Bot } from "@domos/agent/bots";
+import type { Bot, BotPresence } from "@domos/agent/bots";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { client } from "../../client.ts";
 
@@ -12,7 +12,8 @@ export const selectBot = (bot: Bot) => {
 };
 
 export function useBots() {
-  const [items, setItems] = useState<Bot[]>([]);
+  const [items, setItems] = useState<BotPresence[]>([]);
+  const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hash = useSyncExternalStore(
     subscribeLocation,
@@ -24,16 +25,24 @@ export function useBots() {
       try {
         const events = await client.bots.subscribe(undefined, {
           signal: controller.signal,
-          context: { retry: Number.POSITIVE_INFINITY },
+          context: {
+            retry: Number.POSITIVE_INFINITY,
+            onRetry: () => {
+              if (!controller.signal.aborted) setConnected(false);
+            },
+          },
         });
         for await (const next of events) {
           if (controller.signal.aborted) return;
           setItems(next);
+          setConnected(true);
           setError(null);
         }
       } catch {
         if (!controller.signal.aborted)
           setError("联系人加载失败。请刷新重试。");
+      } finally {
+        if (!controller.signal.aborted) setConnected(false);
       }
     })();
     return () => controller.abort();
@@ -41,5 +50,5 @@ export function useBots() {
   const match = /^#bot\/(\d+)$/.exec(hash);
   const selected =
     items.find((bot) => bot.id === Number(match?.[1])) ?? items[0];
-  return { items, selected, error };
+  return { items, selected, error, connected };
 }

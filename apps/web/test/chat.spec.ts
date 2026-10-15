@@ -368,14 +368,112 @@ test("a killed server resumes unfinished work and the page reconnects", async ({
   await page.getByLabel("消息", { exact: true }).fill("恢复未完成任务");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
+  const contact = page.locator('.sidebar a[href="#bot/1"]');
+  await expect(contact.getByRole("img", { name: "正在工作" })).toBeVisible();
   const port = Number(new URL(url).port);
   await stop();
+  await expect(contact.locator(".avatar-status")).toHaveCount(0);
+  await expect(page.locator(".sidebar-footer")).toContainText("正在重连");
   await start(port);
   await expect(page.getByLabel("Domos 的回复")).toContainText("完整回复。");
   await expect(page.getByLabel("你的消息")).toHaveCount(1);
   await expect(
     page.getByRole("combobox", { name: "模型", exact: true }),
   ).toBeEnabled();
+  await expect(contact.locator(".avatar-status")).toHaveCount(0);
+});
+
+test("working contacts retain green status across switches, concurrent work, reload, and stop", async ({
+  page,
+}) => {
+  await page.goto(url);
+  const input = page.getByLabel("消息", { exact: true });
+  await expect(input).toBeEnabled();
+  await control("gate");
+  await input.fill("后台任务");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const first = page.locator('.sidebar a[href="#bot/1"]');
+  await expect(first.getByRole("img", { name: "正在工作" })).toBeVisible();
+  await createBot(page, "第二位助手");
+  const second = page
+    .getByRole("navigation", { name: "联系人", exact: true })
+    .getByRole("link", { name: "第二位助手" });
+  await expect(first.locator(".avatar-status")).toBeVisible();
+  await expect(second.locator(".avatar-status")).toHaveCount(0);
+  await control("gate");
+  await input.fill("另一个任务");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.locator(".sidebar .avatar-status")).toHaveCount(2);
+  await page.reload();
+  await expect(page.locator(".sidebar .avatar-status")).toHaveCount(2);
+  for (const [theme, label] of [
+    ["light", "浅色"],
+    ["dark", "深色"],
+  ] as const) {
+    await chooseAppearance(page, label);
+    const dot = first.locator(".avatar-status");
+    const avatar = first.locator(".bot-avatar");
+    const bounds = await dot.boundingBox();
+    const frame = await avatar.boundingBox();
+    if (!bounds || !frame) throw new Error("Working avatar missing");
+    expect(bounds.x + bounds.width).toBeCloseTo(frame.x + frame.width, 0);
+    expect(bounds.y + bounds.height).toBeCloseTo(frame.y + frame.height, 0);
+    await page.screenshot({
+      path: `test-results/contacts-${theme}-working.png`,
+    });
+  }
+  await control("release");
+  await expect(second.locator(".avatar-status")).toHaveCount(0);
+  await expect(first.locator(".avatar-status")).toBeVisible();
+  await first.click();
+  await page.getByRole("button", { name: "停止生成", exact: true }).click();
+  await expect(page.locator(".sidebar .avatar-status")).toHaveCount(0);
+});
+
+test("chat content, work status, and composer share full panel gutters on desktop and mobile", async ({
+  page,
+}) => {
+  const answer =
+    "这是一段完整交付的长消息，用来检查聊天区域的可用宽度和自然换行。".repeat(
+      5,
+    );
+  await control({ content: answer });
+  await page.goto(url);
+  const input = page.getByLabel("消息", { exact: true });
+  await expect(input).toBeEnabled();
+  await input.fill("请完整回复。");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const reply = page.getByLabel("Domos 的回复").locator(".message-bubble");
+  await expect(reply).toHaveText(answer);
+  for (const viewport of [
+    { width: 1600, height: 900 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport);
+    for (const [theme, label] of [
+      ["light", "浅色"],
+      ["dark", "深色"],
+    ] as const) {
+      await chooseAppearance(page, label);
+      const panel = await page.locator(".conversation").boundingBox();
+      const messages = await page.getByRole("log").boundingBox();
+      const composer = await page.locator(".message-composer").boundingBox();
+      const bubble = await reply.boundingBox();
+      if (!panel || !messages || !composer || !bubble)
+        throw new Error("Chat layout missing");
+      expect(messages.x).toBeCloseTo(composer.x, 0);
+      expect(messages.width).toBeCloseTo(composer.width, 0);
+      expect(messages.width).toBeGreaterThan(panel.width * 0.9);
+      expect(bubble.width).toBeGreaterThan(messages.width * 0.8);
+      expect(bubble.width).toBeLessThanOrEqual(messages.width * 0.88 + 1);
+      expect(
+        await page.locator("body").evaluate((element) => element.scrollWidth),
+      ).toBe(viewport.width);
+      await page.screenshot({
+        path: `test-results/full-chat-${viewport.width}-${theme}.png`,
+      });
+    }
+  }
 });
 
 test("a reply arrives complete while generation stays in the process across reloads", async ({
@@ -631,9 +729,16 @@ test("text contrast, keyboard focus and message scrolling meet the UI contract",
         .evaluate((element) => getComputedStyle(element).borderColor),
     )
     .not.toBe(restingBorder);
-  await input.fill("长消息".repeat(400));
+  await input.fill("长消息\n".repeat(80));
   await input.press("Enter");
   await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
+  await expect
+    .poll(() =>
+      page
+        .locator(".transcript")
+        .evaluate((element) => element.scrollHeight > element.clientHeight),
+    )
+    .toBe(true);
   await page.locator(".transcript").evaluate((element) => {
     element.scrollTop = 0;
   });
@@ -912,7 +1017,7 @@ test("IM bubbles, sidebar search, and popup surfaces share both themes", async (
     throw new Error("Messages are not visible");
   expect(sent.width).toBeLessThan(200);
   expect(received.x).toBe(column.x);
-  expect(received.width).toBeLessThanOrEqual(column.width * 0.85 + 1);
+  expect(received.width).toBeLessThanOrEqual(column.width * 0.88 + 1);
   expect(sent.x + sent.width).toBeCloseTo(column.x + column.width, 0);
   const search = page.getByRole("searchbox", { name: "搜索联系人" });
   await search.fill(crypto.randomUUID());

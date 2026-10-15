@@ -1,4 +1,4 @@
-import type { Bot } from "@domos/agent/bots";
+import type { Bot, BotPresence } from "@domos/agent/bots";
 import type { ChatView } from "@domos/agent/view";
 import { BotAvatar, BrandMark } from "@domos/ui/avatar";
 import { DesktopIcon as Desktop } from "@phosphor-icons/react/dist/csr/Desktop";
@@ -14,14 +14,14 @@ export function Sidebar({
   model,
   preview,
   connection,
-  busy,
+  connected,
 }: {
-  bots: Bot[];
+  bots: BotPresence[];
   selected: Bot;
   model: ChatView["model"];
   preview: string;
   connection: string;
-  busy: boolean;
+  connected: boolean;
 }) {
   const [query, setQuery] = useState("");
   const matches = bots.filter((bot) =>
@@ -56,11 +56,13 @@ export function Sidebar({
               className="contact-row"
               key={bot.id}
               href={`#bot/${bot.id}`}
+              aria-label={bot.name}
               aria-current={bot.id === selected.id ? "page" : undefined}
             >
               <BotAvatar
                 seed={bot.avatar}
-                state={bot.id === selected.id && busy ? "running" : "idle"}
+                state={connected && bot.busy ? "running" : "idle"}
+                statusLabel={chatCopy.botWorking}
               />
               <div className="chat-preview">
                 <strong>{bot.name}</strong>

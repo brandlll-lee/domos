@@ -20,6 +20,7 @@ import {
   createEditTool,
   createReadTool,
   createWriteTool,
+  type ImageProcessor,
 } from "@earendil-works/pi-durable/tools";
 import { fileTypeFromBuffer } from "file-type";
 import { type Attachment, MAX_FILE_BYTES } from "./attachments.ts";
@@ -158,14 +159,16 @@ export class Files {
     }
   }
 
-  extension() {
+  extension(images?: ImageProcessor) {
     const files = this;
     return defineExtension({
       name: "domos-files",
       tools: [
-        ...[createReadTool(), createWriteTool(), createEditTool()].map(
-          (tool) => ({ ...tool, executionMode: "sequential" as const }),
-        ),
+        ...[
+          createReadTool({ images }),
+          createWriteTool(),
+          createEditTool(),
+        ].map((tool) => ({ ...tool, executionMode: "sequential" as const })),
         defineTool({
           name: "attach_file",
           description:

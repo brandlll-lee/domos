@@ -68,7 +68,12 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
   try {
     const events = await first.client.bots.subscribe();
     expect((await events.next()).value).toEqual([
-      { id: first.conversation.id, name: "Domos", avatar: expect.any(String) },
+      {
+        id: first.conversation.id,
+        name: "Domos",
+        avatar: expect.any(String),
+        busy: false,
+      },
     ]);
     const [bot, repeated] = await Promise.all([
       first.client.bots.create(input),
@@ -78,8 +83,13 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
     expect(repeated).toEqual(bot);
     expect(bot.avatar).toBe(input.avatar);
     expect((await events.next()).value).toEqual([
-      { id: first.conversation.id, name: "Domos", avatar: expect.any(String) },
-      bot,
+      {
+        id: first.conversation.id,
+        name: "Domos",
+        avatar: expect.any(String),
+        busy: false,
+      },
+      { ...bot, busy: false },
     ]);
     await events.return();
     const initial = await first.client.get({ botId });
@@ -141,6 +151,107 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
     ]);
   } finally {
     await second.harness.close(context);
+  }
+});
+
+test("contact presence follows each Bot through concurrent runs, cancellation, failure, and reconnect", async () => {
+  const { open, faux } = await setup();
+  const runtime = await open();
+  const second = await runtime.client.bots.create(botInput("Second"));
+  const firstId = runtime.conversation.id;
+  const events = await runtime.client.bots.subscribe();
+  const firstGate = Promise.withResolvers<void>();
+  const secondGate = Promise.withResolvers<void>();
+  const firstStarted = Promise.withResolvers<void>();
+  const secondStarted = Promise.withResolvers<void>();
+  faux.setResponses(
+    [
+      [firstGate, firstStarted],
+      [secondGate, secondStarted],
+    ].map(([gate, started]) => async (_input, options) => {
+      if (!gate || !started) throw new Error("Run gate missing");
+      started.resolve();
+      options?.signal?.addEventListener("abort", () => gate.resolve(), {
+        once: true,
+      });
+      await gate.promise;
+      return fauxAssistantMessage("Finished");
+    }),
+  );
+  const next = async (busy: number[]) => {
+    while (true) {
+      const event = await events.next();
+      if (event.done) throw new Error("Contact stream ended");
+      const items = event.value;
+      if (
+        JSON.stringify(
+          items.filter((item) => item.busy).map((item) => item.id),
+        ) === JSON.stringify(busy)
+      )
+        return items;
+    }
+  };
+  try {
+    expect((await events.next()).value?.every((bot) => !bot.busy)).toBe(true);
+    await runtime.client.send({
+      botId: firstId,
+      text: "First task",
+      requestId: crypto.randomUUID(),
+    });
+    await next([firstId]);
+    await firstStarted.promise;
+    await runtime.client.send({
+      botId: second.id,
+      text: "Second task",
+      requestId: crypto.randomUUID(),
+    });
+    await next([firstId, second.id]);
+    await secondStarted.promise;
+    const reconnected = await runtime.client.bots.subscribe();
+    expect((await reconnected.next()).value?.every((bot) => bot.busy)).toBe(
+      true,
+    );
+    await reconnected.return();
+    await runtime.client.stop({ botId: firstId });
+    await next([second.id]);
+    secondGate.resolve();
+    await next([]);
+    faux.setResponses([
+      fauxAssistantMessage(
+        [fauxToolCall("read", { path: `${crypto.randomUUID()}.txt` })],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("File unavailable"),
+    ]);
+    await runtime.client.send({
+      botId: second.id,
+      text: "Read a missing file",
+      requestId: crypto.randomUUID(),
+    });
+    await (await runtime.bots.conversation(second.id, context))?.waitForIdle(
+      context,
+    );
+    expect(
+      (await runtime.client.get({ botId: second.id })).messages.some(
+        (message) => message.toolStatus === "failed",
+      ),
+    ).toBe(true);
+    expect((await runtime.client.bots.list()).every((bot) => !bot.busy)).toBe(
+      true,
+    );
+  } finally {
+    firstGate.resolve();
+    secondGate.resolve();
+    await events.return();
+    await runtime.harness.close(context);
+  }
+  const restored = await open();
+  try {
+    expect((await restored.client.bots.list()).every((bot) => !bot.busy)).toBe(
+      true,
+    );
+  } finally {
+    await restored.harness.close(context);
   }
 });
 

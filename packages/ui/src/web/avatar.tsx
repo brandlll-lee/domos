@@ -57,10 +57,12 @@ export function BotAvatar({
   seed,
   state = "idle",
   size = "medium",
+  statusLabel,
 }: {
   seed: string;
   state?: Motion;
   size?: "small" | "medium" | "large";
+  statusLabel?: string;
 }) {
   const identity = characterIdentity(seed);
   return (
@@ -71,6 +73,9 @@ export function BotAvatar({
       style={{ "--character-fill": identity.color } as CSSProperties}
     >
       <Character path={identity.path} state={state} />
+      {state === "running" && statusLabel && (
+        <span className="avatar-status" role="img" aria-label={statusLabel} />
+      )}
     </span>
   );
 }
