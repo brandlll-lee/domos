@@ -1,0 +1,9 @@
+export const BOT_NAME_LENGTH = 80;
+export const WORK_TEXT_LENGTH = 16000;
+export const MEMORY_CONTEXT_BYTES = 32 * 1024;
+export const SKILL_FILE_BYTES = 256 * 1024;
+export const SKILL_NAME_LENGTH = 64;
+export const SKILL_DESCRIPTION_LENGTH = 1024;
+export const SCHEDULE_EXPRESSION_LENGTH = 256;
+export const TIME_ZONE_LENGTH = 128;
+export const ROUTINE_SKILLS_LIMIT = 50;

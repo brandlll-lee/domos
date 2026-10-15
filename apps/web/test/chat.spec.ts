@@ -140,6 +140,123 @@ async function createBot(
   );
 }
 
+test("Bot details manage identity, memory, shared skills, routines and actual prompts", async ({
+  page,
+}) => {
+  await page.goto(url);
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const sections = dialog.getByRole("navigation", { name: "Bot设置分区" });
+  await expect(dialog.getByLabel("名字", { exact: true })).toBeEnabled();
+  await dialog.getByLabel("名字", { exact: true }).fill("档案员");
+  await dialog.getByLabel("职责与长期指令").fill("整理资料，用简洁中文回复。");
+  await dialog.getByRole("button", { name: "保存身份", exact: true }).click();
+  await expect(dialog).toHaveAccessibleName("档案员的详情");
+  await sections.getByRole("button", { name: "记忆", exact: true }).click();
+  await dialog.getByLabel("新增记忆").fill("报告使用公制单位。");
+  await dialog.getByLabel("共享给所有Bot").check();
+  await dialog.getByRole("button", { name: "保存记忆", exact: true }).click();
+  await expect(dialog.locator(".detail-list")).toContainText(
+    "报告使用公制单位。",
+  );
+  await sections.getByRole("button", { name: "技能", exact: true }).click();
+  await dialog.getByLabel("导入SKILL.md").setInputFiles({
+    name: "SKILL.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from(
+      "---\nname: report\ndescription: 整理资料并生成报告\n---\n\n使用保存的偏好。检查文件后交付。\n",
+    ),
+  });
+  await expect(dialog.getByLabel("新建SKILL.md")).toHaveValue(/name: report/);
+  await dialog.getByRole("button", { name: "保存技能", exact: true }).click();
+  const skill = dialog.locator(".detail-list li").filter({ hasText: "report" });
+  await expect(skill).toContainText("此Bot未启用");
+  await skill.getByRole("button", { name: "启用", exact: true }).click();
+  await expect(skill).toContainText("此Bot已启用");
+  const download = page.waitForEvent("download");
+  await skill.getByRole("button", { name: "导出", exact: true }).click();
+  expect((await download).suggestedFilename()).toBe("report.md");
+  await sections.getByRole("button", { name: "定时", exact: true }).click();
+  await dialog.getByLabel("新任务名称").fill("早间报告");
+  await dialog
+    .getByLabel("工作要求与交付方式")
+    .fill("整理报告，发回当前聊天。");
+  await dialog.getByLabel("report", { exact: true }).check();
+  await dialog.getByRole("button", { name: "保存为暂停", exact: true }).click();
+  const routine = dialog
+    .locator(".detail-list li")
+    .filter({ has: page.getByRole("button", { name: "试跑", exact: true }) });
+  await expect(routine).toContainText("已暂停");
+  await routine.getByRole("button", { name: "启用", exact: true }).click();
+  await expect(routine).toContainText("已启用");
+  await routine.getByRole("button", { name: "暂停", exact: true }).click();
+  await expect(routine).toContainText("已暂停");
+  await control({ content: "报告已交付。" });
+  await routine.getByRole("button", { name: "试跑", exact: true }).click();
+  await expect(dialog).toContainText("试跑 · 已完成");
+  await sections.getByRole("button", { name: "提示词", exact: true }).click();
+  await dialog
+    .getByRole("button", { name: "读取实际提示词", exact: true })
+    .click();
+  await expect(dialog.getByText("identity", { exact: true })).toBeVisible();
+  await dialog.getByText("identity", { exact: true }).click();
+  await expect(
+    dialog
+      .locator("details")
+      .filter({ has: page.locator("summary", { hasText: /^identity$/ }) })
+      .locator("pre"),
+  ).toContainText("档案员");
+  await page.screenshot({ path: "test-results/bot-work-desktop.png" });
+  await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(page.getByLabel("档案员 的回复")).toContainText("报告已交付。");
+  await expect(page.getByLabel("你的消息")).toHaveText("试跑：早间报告");
+  const port = Number(new URL(url).port);
+  await stop();
+  await start(port);
+  await page.reload();
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  await sections.getByRole("button", { name: "记忆", exact: true }).click();
+  await expect(dialog.locator(".detail-list")).toContainText(
+    "报告使用公制单位。",
+  );
+  await sections.getByRole("button", { name: "定时", exact: true }).click();
+  await expect(dialog).toContainText("试跑 · 已完成");
+});
+
+test("Bot details retain invalid skill edits and fit a narrow viewport", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.goto(url);
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const sections = dialog.getByRole("navigation", { name: "Bot设置分区" });
+  await sections.getByRole("button", { name: "技能", exact: true }).click();
+  await dialog.getByLabel("新建SKILL.md").fill("invalid skill");
+  await dialog.getByRole("button", { name: "保存技能", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("YAML");
+  await expect(dialog.getByLabel("新建SKILL.md")).toHaveValue("invalid skill");
+  expect(
+    await dialog.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({ path: "test-results/bot-work-mobile.png" });
+  await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Bot详情", exact: true }),
+  ).toBeFocused();
+  await chooseAppearance(page, "深色");
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  await expect(dialog.getByLabel("名字", { exact: true })).toBeEnabled();
+  expect(
+    await dialog.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({ path: "test-results/bot-work-mobile-dark.png" });
+});
+
 test("contacts keep independent histories, drafts, models, and locations after restart", async ({
   page,
   context,

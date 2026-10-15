@@ -6,6 +6,7 @@ import { SearchPicker } from "@domos/ui/picker";
 import type { CSSProperties } from "react";
 import { AppearancePicker } from "../appearance/picker.tsx";
 import { CreateBot } from "../bots/create-bot.tsx";
+import { BotDetails } from "../bots/details/index.tsx";
 import { selectBot, useBots } from "../bots/use-bots.ts";
 import { WorkingActivity } from "./activity.tsx";
 import { Composer } from "./composer.tsx";
@@ -133,6 +134,7 @@ function BotChat({
             </span>
           </div>
           <div className="header-actions">
+            <BotDetails bot={bot} />
             <ModelPicker
               botId={bot.id}
               model={chat.view?.model ?? null}

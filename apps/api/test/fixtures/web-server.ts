@@ -95,7 +95,7 @@ const answer: FauxResponseFactory = async (input, options, _state, model) => {
   );
 };
 faux.setResponses([answer]);
-const { harness, bots } = await openAgent(
+const { harness, bots, work } = await openAgent(
   database,
   {
     models,
@@ -106,7 +106,7 @@ const { harness, bots } = await openAgent(
   BACKGROUND_CONTEXT,
 );
 const server = createServer(
-  getRequestListener(createApp(bots, models, files).fetch),
+  getRequestListener(createApp(bots, models, files, work).fetch),
 );
 server.listen(Number(process.argv[3] ?? 0), "127.0.0.1", () => {
   const address = server.address();

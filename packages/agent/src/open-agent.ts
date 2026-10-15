@@ -6,9 +6,13 @@ import {
   type Registry,
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import { Bots } from "./bots.ts";
+import { Bots, identity } from "./bots.ts";
 import { messaging } from "./delivery.ts";
 import { Files } from "./files.ts";
+import { botWork } from "./work/index.ts";
+import { memory } from "./work/memory.ts";
+import { routineExtension } from "./work/routines.ts";
+import { skills } from "./work/skills.ts";
 
 export async function openAgent(
   database: string,
@@ -17,6 +21,10 @@ export async function openAgent(
   context: Context,
 ) {
   options.registry.install(messaging);
+  options.registry.install(identity);
+  options.registry.install(memory);
+  options.registry.install(skills);
+  options.registry.install(routineExtension(options.now));
   const storage = await openNodeSqliteStorage(database);
   const harness = await Harness.open(storage, options, context);
   try {
@@ -28,6 +36,7 @@ export async function openAgent(
       harness,
       conversation,
       bots,
+      work: botWork(harness, options.now),
       files: new Files(database),
       models: options.models,
     };

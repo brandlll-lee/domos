@@ -2,6 +2,7 @@ import { MAX_ATTACHMENTS } from "@domos/agent/attachments";
 import type { Bots } from "@domos/agent/bots";
 import { FileInput, type Files } from "@domos/agent/files";
 import { chatView } from "@domos/agent/view";
+import type { BotWork } from "@domos/agent/work";
 import {
   BACKGROUND_CONTEXT,
   withAbortSignal,
@@ -14,9 +15,16 @@ import { botConversation, botTarget } from "./conversation.ts";
 import { fileRouter } from "./files.ts";
 import { modelRouter, requireConfiguredModel } from "./models.ts";
 import { watchValues } from "./subscribe.ts";
+import { workRouter } from "./work.ts";
 
-export function createRouter(bots: Bots, models: Models, files: Files) {
+export function createRouter(
+  bots: Bots,
+  models: Models,
+  files: Files,
+  work: BotWork,
+) {
   return {
+    work: workRouter(bots, work),
     files: fileRouter(bots, files),
     bots: {
       list: os.handler(() => bots.list(BACKGROUND_CONTEXT)),

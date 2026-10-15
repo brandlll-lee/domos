@@ -48,7 +48,7 @@ async function setup() {
   const agent = { model: { provider: "faux", modelId: "faux-1" } };
   const open = async () => {
     const runtime = await openAgent(database, options, agent, context);
-    const app = createApp(runtime.bots, models, runtime.files);
+    const app = createApp(runtime.bots, models, runtime.files, runtime.work);
     const client: RouterClient<AppRouter> = createORPCClient(
       new RPCLink({
         url: "http://localhost/rpc",
@@ -59,6 +59,123 @@ async function setup() {
   };
   return { faux, open, models };
 }
+
+test("Bot work routes enforce ownership, revisions, validation and live updates", async () => {
+  const { open } = await setup();
+  const runtime = await open();
+  let events:
+    | AsyncGenerator<Awaited<ReturnType<typeof runtime.client.work.get>>>
+    | undefined;
+  try {
+    const botId = runtime.conversation.id;
+    const other = await runtime.client.bots.create(botInput("Second"));
+    const profile = await runtime.client.work.profile({ botId });
+    const updated = await runtime.client.work.update({
+      botId,
+      name: "Archivist",
+      avatar: profile.avatar,
+      instructions: "Organize reports",
+      revision: profile.revision,
+      requestId: crypto.randomUUID(),
+    });
+    expect(updated.name).toBe("Archivist");
+    await expect(
+      runtime.client.work.update({
+        botId,
+        name: "Stale",
+        avatar: profile.avatar,
+        instructions: "Stale",
+        revision: profile.revision,
+        requestId: crypto.randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    events = await runtime.client.work.subscribe({ botId });
+    expect((await events.next()).value?.memory).toEqual([]);
+    const pending = events.next();
+    const input = {
+      botId,
+      id: crypto.randomUUID(),
+      text: "Use concise reports",
+      shared: false,
+      revision: 0,
+      requestId: crypto.randomUUID(),
+    };
+    const memory = await runtime.client.work.memory.save(input);
+    expect((await pending).value?.memory[0]?.text).toBe(input.text);
+    expect(await runtime.client.work.memory.save(input)).toEqual(memory);
+    expect((await runtime.client.work.get({ botId: other.id })).memory).toEqual(
+      [],
+    );
+    await expect(
+      runtime.client.work.memory.save({
+        ...input,
+        botId: other.id,
+        revision: memory.revision,
+        requestId: crypto.randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(
+      runtime.client.work.skills.save({
+        botId,
+        id: crypto.randomUUID(),
+        content: "Invalid SKILL.md",
+        revision: 0,
+        requestId: crypto.randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    const routine = await runtime.client.work.routines.save({
+      botId,
+      id: crypto.randomUUID(),
+      title: "Report",
+      instructions: "Prepare a report",
+      schedule: {
+        type: "cron",
+        expression: "0 9 * * *",
+        timeZone: "Asia/Shanghai",
+      },
+      skillIds: [],
+      revision: 0,
+      requestId: crypto.randomUUID(),
+    });
+    expect(routine.enabled).toBe(false);
+    await expect(
+      runtime.client.work.routines.enable({
+        botId: other.id,
+        id: routine.id,
+        enabled: true,
+        revision: routine.revision,
+        requestId: crypto.randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(
+      runtime.client.work.get({ botId: Number.MAX_SAFE_INTEGER }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(
+      runtime.client.work.routines.save({
+        ...routine,
+        schedule: { type: "cron", expression: "invalid", timeZone: "UTC" },
+        requestId: crypto.randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await runtime.client.work.memory.delete({
+      botId,
+      id: memory.id,
+      revision: memory.revision,
+    });
+    await runtime.client.work.routines.delete({
+      botId,
+      id: routine.id,
+      revision: routine.revision,
+    });
+    expect((await runtime.client.work.get({ botId })).routines.items).toEqual(
+      [],
+    );
+    expect((await runtime.client.work.get({ botId })).memory).toEqual([]);
+  } finally {
+    await events?.return(undefined as never);
+    await runtime.harness.close(context);
+  }
+});
 
 test("Bot creation is atomic, idempotent, observable, and durable", async () => {
   const { open, faux } = await setup();
@@ -341,7 +458,9 @@ test("uploaded text becomes a real edited deliverable with durable downloads and
         stopReason: "toolUse",
       }),
       async (input) => {
-        const read = input.messages.at(-1);
+        const read = input.messages.findLast(
+          (message) => message.role === "toolResult",
+        );
         expect(read?.role).toBe("toolResult");
         expect(
           messageText(read as Parameters<typeof messageText>[0]),

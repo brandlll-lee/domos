@@ -1,6 +1,7 @@
 import { MAX_FILE_BYTES } from "@domos/agent/attachments";
 import type { Bots } from "@domos/agent/bots";
 import type { Files } from "@domos/agent/files";
+import type { BotWork } from "@domos/agent/work";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai/models";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -9,9 +10,14 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { createRouter } from "./router.ts";
 
-export function createApp(bots: Bots, models: Models, files: Files) {
+export function createApp(
+  bots: Bots,
+  models: Models,
+  files: Files,
+  work: BotWork,
+) {
   const app = new Hono();
-  const handler = new RPCHandler(createRouter(bots, models, files));
+  const handler = new RPCHandler(createRouter(bots, models, files, work));
   app.use(
     "/rpc/files/upload",
     bodyLimit({ maxSize: MAX_FILE_BYTES + 1024 * 1024 }),

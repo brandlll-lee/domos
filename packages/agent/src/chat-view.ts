@@ -11,6 +11,7 @@ import type { Attachment } from "./attachments.ts";
 import type { MessageDelivery } from "./delivery.ts";
 import { FileInput } from "./files.ts";
 import type { ChatContent, ChatMessage } from "./messages.ts";
+import { RoutineInput } from "./work/routine-state.ts";
 
 export type ChatView = {
   id: number;
@@ -102,8 +103,8 @@ export function chatView(view: ConversationView): ChatView {
   };
   for (const entry of view.entries) {
     const input =
-      entry.kind === FileInput
-        ? (entry.data as { text: string; attachments: Attachment[] })
+      entry.kind === FileInput || entry.kind === RoutineInput
+        ? (entry.data as { text: string; attachments?: Attachment[] })
         : undefined;
     const diagnostics =
       entry.kind === "pi.tool-result"

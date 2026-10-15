@@ -11,12 +11,16 @@
     "./models": "./src/models.ts",
     "./messages": "./src/messages.ts",
     "./transcript": "./src/transcript.ts",
-    "./view": "./src/chat-view.ts"
+    "./view": "./src/chat-view.ts",
+    "./work": "./src/work/index.ts",
+    "./work/limits": "./src/work/limits.ts"
   },
   "dependencies": {
     "@earendil-works/chord": "1.2.0",
     "@earendil-works/pi-ai": "1.2.0",
     "@earendil-works/pi-durable": "1.2.0",
-    "file-type": "^22.2.0"
+    "croner": "10.0.1",
+    "file-type": "^22.2.0",
+    "yaml": "2.9.0"
   }
 }
