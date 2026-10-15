@@ -1,3 +1,5 @@
+import { ArrowUpIcon } from "@phosphor-icons/react/dist/csr/ArrowUp";
+import { StopIcon } from "@phosphor-icons/react/dist/csr/Stop";
 import { useRef } from "react";
 import { Button, Textarea } from "../../ui/controls.tsx";
 import type { useChat } from "./use-chat.ts";
@@ -62,9 +64,9 @@ export function Composer({
           id="message"
           name="message"
           autoComplete="off"
-          placeholder="和 Domos 说点什么…"
+          placeholder="发送消息给 Domos…"
           value={draft.draft.text}
-          rows={3}
+          rows={2}
           onChange={(event) => draft.update({ text: event.target.value })}
           onKeyDown={(event) => {
             if (
@@ -85,26 +87,36 @@ export function Composer({
             <Button
               type="button"
               variant="secondary"
+              className="send-button"
+              title={chat.stopping ? "正在停止…" : "停止生成"}
               disabled={chat.stopping || !chat.connected}
               onClick={() => void chat.stop()}
             >
-              {chat.stopping ? "正在停止…" : "停止生成"}
+              <StopIcon weight="fill" />
+              <span className="sr-only">
+                {chat.stopping ? "正在停止…" : "停止生成"}
+              </span>
             </Button>
           ) : (
             <Button
               type="submit"
+              className="send-button"
+              title={chat.sending ? "发送中…" : pending ? "重试发送" : "发送"}
               disabled={
                 (!draft.draft.text.trim() && !pending) ||
                 !chat.connected ||
                 chat.sending
               }
             >
-              {chat.sending ? "发送中…" : pending ? "重试发送" : "发送"}
+              <ArrowUpIcon />
+              <span className="sr-only">
+                {chat.sending ? "发送中…" : pending ? "重试发送" : "发送"}
+              </span>
             </Button>
           )}
         </div>
       </form>
-      <p className="composer-note">对话保存在本地服务，草稿保存在此浏览器。</p>
+      <p className="composer-note">对话自动保存 · 草稿仅保存在此浏览器</p>
     </footer>
   );
 }

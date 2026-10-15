@@ -6,7 +6,8 @@
   color: var(--color-text);
   background: var(--color-background);
   font-synthesis: none;
-  color-scheme: light;
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
 }
 * {
   box-sizing: border-box;
@@ -19,7 +20,21 @@ textarea,
 select {
   font: inherit;
 }
+button,
+a,
+select {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+::selection {
+  background: var(--color-accent);
+  color: var(--color-on-primary);
+}
 .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
   cursor: pointer;
   border: 1px solid transparent;
   border-radius: var(--radius-control);
@@ -28,13 +43,21 @@ select {
   min-height: var(--control-height);
   padding: var(--space-2) var(--space-4);
   font-size: var(--text-label);
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background-color var(--motion-feedback),
+    transform var(--motion-feedback);
 }
 .button:hover {
   background: var(--color-primary-hover);
 }
+.button:active:not(:disabled) {
+  transform: translateY(1px);
+}
 .button[data-variant="secondary"] {
   background: var(--color-secondary);
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 .button[data-variant="secondary"]:hover {
   background: var(--color-secondary-hover);
@@ -42,7 +65,7 @@ select {
 .button:disabled,
 .control:disabled {
   cursor: default;
-  opacity: 0.5;
+  opacity: 0.45;
 }
 .control {
   font-size: var(--text-label);
@@ -51,7 +74,10 @@ select {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
   min-height: var(--control-height);
-  padding: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  transition:
+    border-color var(--motion-feedback),
+    background-color var(--motion-feedback);
 }
 .control::placeholder {
   color: var(--color-muted);
@@ -79,6 +105,29 @@ a:focus-visible {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+.skip-link {
+  position: fixed;
+  top: var(--space-3);
+  left: var(--space-3);
+  z-index: 1;
+  padding: var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  transform: translateY(-200%);
+}
+.skip-link:focus {
+  transform: translateY(0);
+}
 kbd {
   font: inherit;
+}
+@media (prefers-reduced-motion: reduce) {
+  .button,
+  .control {
+    transition: none;
+  }
+  .button:active:not(:disabled) {
+    transform: none;
+  }
 }

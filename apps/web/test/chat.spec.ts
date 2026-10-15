@@ -93,7 +93,7 @@ test("send, reload, disconnect, reconnect and restart preserve the conversation"
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
   await page.reload();
-  await expect(page.getByText("记住这句话", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("你的消息")).toContainText("记住这句话");
   await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
   await page.goto("about:blank");
   await control("release");
@@ -104,6 +104,7 @@ test("send, reload, disconnect, reconnect and restart preserve the conversation"
   await expect(
     page.getByRole("button", { name: "发送", exact: true }),
   ).toBeVisible();
+  await page.screenshot({ path: "test-results/chat-conversation.png" });
   const port = Number(new URL(url).port);
   await stop();
   await start(port);

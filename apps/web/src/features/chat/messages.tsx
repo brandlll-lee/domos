@@ -1,4 +1,5 @@
 import type { ChatView } from "@domos/agent/view";
+import { ChatCircleDotsIcon } from "@phosphor-icons/react/dist/csr/ChatCircleDots";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "../../ui/controls.tsx";
 
@@ -32,13 +33,11 @@ export function Messages({ view }: { view: ChatView | null }) {
       ) : (
         !view.messages.length && (
           <section className="welcome">
-            <div className="eyebrow">DOMOS / YOUR PERSONAL SPACE</div>
-            <h1>从一个想法开始。</h1>
-            <p>
-              说说你正在想什么，
-              <br />
-              我们一起把下一步理清楚。
-            </p>
+            <span className="welcome-avatar">
+              <ChatCircleDotsIcon size={26} />
+            </span>
+            <h1>今天想聊些什么？</h1>
+            <p>一个问题，一个想法。随时开始。</p>
           </section>
         )
       )}
@@ -61,7 +60,7 @@ export function Messages({ view }: { view: ChatView | null }) {
             {message.stopped && <div className="message-note">已停止</div>}
           </article>
         ))}
-        <p className="working" role="status">
+        <p className={view?.busy ? "working" : "sr-only"} role="status">
           {view?.busy
             ? "Domos 正在回复…"
             : view?.messages.length

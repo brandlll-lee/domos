@@ -40,10 +40,13 @@ export function ModelPicker({
     choices?.some((choice) => key(choice) === selected) ?? false;
   return (
     <div className="model-picker">
-      <label htmlFor="model">模型</label>
+      <label className="sr-only" htmlFor="model">
+        模型
+      </label>
       <Select
         id="model"
         name="model"
+        title="所选模型用于下一次回复"
         value={selected}
         disabled={!connected || choices === null || saving}
         onChange={async (event) => {
@@ -78,7 +81,10 @@ export function ModelPicker({
           </option>
         ))}
       </Select>
-      <span className="model-help" role="status">
+      <span
+        className={saving || choices?.length === 0 ? "model-help" : "sr-only"}
+        role="status"
+      >
         {saving
           ? "正在保存…"
           : choices?.length === 0
