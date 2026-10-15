@@ -1,8 +1,89 @@
-.bot-details,
+.bot-details {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-inline-start: 1px solid var(--color-border);
+  background: var(--color-background);
+  outline: none;
+}
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 4rem;
+  padding-inline: var(--space-5);
+}
+.detail-header h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0;
+  font-size: var(--text-label);
+  font-weight: 500;
+}
+.detail-nav {
+  display: flex;
+  flex-shrink: 0;
+  padding-inline: var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+.detail-nav button {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--control-height);
+  padding: var(--space-2) 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: var(--text-label);
+  cursor: pointer;
+}
+.detail-nav button[aria-pressed="true"] {
+  border-bottom-color: var(--color-text);
+  color: var(--color-text);
+}
+.detail-nav button:hover {
+  color: var(--color-text);
+}
+.detail-nav button:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+.detail-content,
 .detail-stack {
   display: grid;
   gap: var(--space-4);
   min-width: 0;
+}
+.detail-content {
+  align-content: start;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-5);
+  scrollbar-width: thin;
+}
+.bot-details .field-label {
+  color: var(--color-muted);
+}
+.bot-details :is(.field-control, .button) {
+  min-height: var(--details-control-height);
+  padding: var(--space-1) var(--space-3);
+}
+.bot-details .button {
+  justify-self: start;
+}
+.bot-details .avatar-customize {
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-block: var(--space-3);
+}
+.bot-details .avatar-customize .button {
+  background: transparent;
+  color: var(--color-muted);
+  font-size: var(--text-small);
 }
 .bot-details p,
 .bot-details h3 {
@@ -56,4 +137,23 @@
 .bot-details summary {
   cursor: pointer;
   font-size: var(--text-label);
+}
+@media (max-width: 64rem) {
+  .bot-details {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
+    z-index: 2;
+    width: min(100%, var(--details-width));
+  }
+}
+@media (max-width: 44rem) {
+  .bot-details {
+    width: 100%;
+    border: 0;
+    --details-control-height: var(--control-height);
+  }
+  .detail-content {
+    padding-bottom: max(var(--space-5), env(safe-area-inset-bottom));
+  }
 }

@@ -2,8 +2,9 @@ import type { Bot, BotPresence } from "@domos/agent/bots";
 import { messageText } from "@domos/agent/messages";
 import { chatTranscript } from "@domos/agent/transcript";
 import { BotAvatar } from "@domos/ui/avatar";
+import { Button } from "@domos/ui/controls";
 import { SearchPicker } from "@domos/ui/picker";
-import type { CSSProperties } from "react";
+import { type CSSProperties, useState } from "react";
 import { AppearancePicker } from "../appearance/picker.tsx";
 import { CreateBot } from "../bots/create-bot.tsx";
 import { BotDetails } from "../bots/details/index.tsx";
@@ -49,6 +50,7 @@ function BotChat({
 }) {
   const chat = useChat(bot.id);
   const dock = useComposerDock();
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const items = chat.view ? chatTranscript(chat.view) : [];
   const active = items.find(
     (item) => item.kind === "activity" && item.status === "running",
@@ -64,7 +66,7 @@ function BotChat({
     directoryError ??
     (chat.view?.failed ? chatCopy.errors.reply : null);
   return (
-    <div className="workspace">
+    <div className="workspace" data-details={detailsOpen || undefined}>
       <button
         className="skip-link"
         type="button"
@@ -98,12 +100,18 @@ function BotChat({
       >
         <header className="topbar">
           <div className="conversation-heading">
-            <div className="conversation-title">
+            <Button
+              variant="ghost"
+              className="conversation-title"
+              aria-label="Bot详情"
+              aria-expanded={detailsOpen}
+              aria-controls={detailsOpen ? "bot-details" : undefined}
+              onClick={() => setDetailsOpen(!detailsOpen)}
+            >
               <BotAvatar seed={bot.avatar} size="small" />
               <strong>{chatCopy.conversation(bot.name)}</strong>
-            </div>
+            </Button>
             <div className="mobile-contacts">
-              <BotAvatar seed={bot.avatar} size="small" />
               <SearchPicker
                 label="联系人"
                 searchLabel="搜索联系人…"
@@ -134,7 +142,6 @@ function BotChat({
             </span>
           </div>
           <div className="header-actions">
-            <BotDetails bot={bot} />
             <ModelPicker
               botId={bot.id}
               model={chat.view?.model ?? null}
@@ -171,6 +178,9 @@ function BotChat({
           )
         )}
       </main>
+      {detailsOpen && (
+        <BotDetails bot={bot} onClose={() => setDetailsOpen(false)} />
+      )}
     </div>
   );
 }

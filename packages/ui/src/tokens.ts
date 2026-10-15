@@ -93,6 +93,8 @@ export const metrics = {
   "radius-round": "999px",
   "chat-gutter": "clamp(1rem, 2vw, 1.5rem)",
   "sidebar-width": "17rem",
+  "details-width": "24rem",
+  "details-control-height": "2rem",
   "control-height": "2.75rem",
   "composer-max-height": "10rem",
   "composer-control-size": "2.5rem",

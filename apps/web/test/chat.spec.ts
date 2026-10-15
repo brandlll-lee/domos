@@ -145,7 +145,7 @@ test("Bot details manage identity, memory, shared skills, routines and actual pr
 }) => {
   await page.goto(url);
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.getByRole("complementary", { name: /的详情$/ });
   const sections = dialog.getByRole("navigation", { name: "Bot设置分区" });
   await expect(dialog.getByLabel("名字", { exact: true })).toBeEnabled();
   await dialog.getByLabel("名字", { exact: true }).fill("档案员");
@@ -229,7 +229,7 @@ test("Bot details retain invalid skill edits and fit a narrow viewport", async (
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto(url);
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.getByRole("complementary", { name: /的详情$/ });
   const sections = dialog.getByRole("navigation", { name: "Bot设置分区" });
   await sections.getByRole("button", { name: "技能", exact: true }).click();
   await dialog.getByLabel("新建SKILL.md").fill("invalid skill");
@@ -255,6 +255,63 @@ test("Bot details retain invalid skill edits and fit a narrow viewport", async (
     ),
   ).toBe(true);
   await page.screenshot({ path: "test-results/bot-work-mobile-dark.png" });
+});
+
+test("Bot details share the desktop with chat and cover narrow screens", async ({
+  page,
+}) => {
+  await page.goto(url);
+  const trigger = page.getByRole("button", { name: "Bot详情", exact: true });
+  const panel = page.getByRole("complementary", { name: /的详情$/ });
+  await trigger.click();
+  await expect(panel.getByLabel("名字", { exact: true })).toBeEnabled();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const chat = page.locator(".conversation");
+  const chatBox = await chat.boundingBox();
+  const panelBox = await panel.boundingBox();
+  if (!chatBox || !panelBox) throw new Error("Chat details layout missing");
+  expect(panelBox.x).toBeCloseTo(chatBox.x + chatBox.width, 0);
+  expect(panelBox.x + panelBox.width).toBeCloseTo(1360, 0);
+  const input = page.getByLabel("消息", { exact: true });
+  await input.fill("面板打开时继续聊天");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByLabel("Domos 的回复")).toContainText("完整回复。");
+  await page.screenshot({
+    path: "test-results/bot-details-side-light.png",
+    animations: "disabled",
+  });
+  await chooseAppearance(page, "深色");
+  await page.screenshot({
+    path: "test-results/bot-details-side-dark.png",
+    animations: "disabled",
+  });
+  await panel.getByRole("button", { name: "提示词", exact: true }).click();
+  await panel.getByRole("button", { name: "读取实际提示词" }).click();
+  await panel.getByText("完整提示词", { exact: true }).click();
+  await panel.locator(".detail-content").evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  expect(
+    await panel
+      .locator(".detail-content")
+      .evaluate((element) => element.scrollTop),
+  ).toBeGreaterThan(0);
+  await expect(input).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(chat).toBeHidden();
+  await panel.getByRole("button", { name: "身份", exact: true }).click();
+  await expect(panel.getByLabel("名字", { exact: true })).toBeVisible();
+  const mobileBox = await panel.boundingBox();
+  expect(mobileBox?.x).toBe(0);
+  expect(mobileBox?.width).toBe(390);
+  expect(
+    await page.locator("body").evaluate((element) => element.scrollWidth),
+  ).toBe(390);
+  await page.screenshot({ path: "test-results/bot-details-side-mobile.png" });
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await expect(chat).toBeVisible();
 });
 
 test("contacts keep independent histories, drafts, models, and locations after restart", async ({

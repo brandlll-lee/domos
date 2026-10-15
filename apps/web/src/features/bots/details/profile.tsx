@@ -62,10 +62,6 @@ export function ProfileEditor({
           multiline
           maxLength={WORK_TEXT_LENGTH}
         />
-        <p className="detail-note">
-          模型：{profile.model?.provider} · {profile.model?.modelId}
-          。修改后在下一次模型请求生效。
-        </p>
         <Button type="submit" disabled={!name.trim()}>
           保存身份
         </Button>
