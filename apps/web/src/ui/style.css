@@ -1,0 +1,84 @@
+@import "./tokens.css";
+
+:root {
+  font-family: var(--font-body);
+  font-size: 100%;
+  color: var(--color-text);
+  background: var(--color-background);
+  font-synthesis: none;
+  color-scheme: light;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button,
+textarea,
+select {
+  font: inherit;
+}
+.button {
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  min-height: var(--control-height);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-label);
+}
+.button:hover {
+  background: var(--color-primary-hover);
+}
+.button[data-variant="secondary"] {
+  background: var(--color-secondary);
+  color: var(--color-accent);
+}
+.button[data-variant="secondary"]:hover {
+  background: var(--color-secondary-hover);
+}
+.button:disabled,
+.control:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.control {
+  font-size: var(--text-label);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  min-height: var(--control-height);
+  padding: var(--space-2);
+}
+.control::placeholder {
+  color: var(--color-muted);
+}
+.button:focus-visible,
+.control:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 3px;
+}
+.alert {
+  color: var(--color-danger);
+  background: var(--color-danger-surface);
+  font-size: var(--text-label);
+  line-height: 1.7;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+kbd {
+  font: inherit;
+}

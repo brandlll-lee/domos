@@ -20,10 +20,10 @@ export type ChatView = {
   model: ModelRef | null;
   messages: ChatMessage[];
   busy: boolean;
-  error: string | null;
+  failed: boolean;
 };
 
-function text(message: Message) {
+export function messageText(message: Message) {
   return typeof message.content === "string"
     ? message.content
     : message.content
@@ -44,7 +44,7 @@ export function chatView(view: ConversationView): ChatView {
     messages.push({
       id,
       role: message.role,
-      text: text(message),
+      text: messageText(message),
       stopped: message.role === "assistant" && message.stopReason === "aborted",
     });
   };
@@ -59,7 +59,6 @@ export function chatView(view: ConversationView): ChatView {
     model: agent?.model ?? null,
     messages,
     busy: Boolean(live?.run),
-    error:
-      failed && !live?.run ? "回复失败。请检查模型配置、余额或网络。" : null,
+    failed: failed && !live?.run,
   };
 }

@@ -1,23 +1,15 @@
 import { randomUUID } from "node:crypto";
+import { messageText } from "@domos/agent/view";
 import {
   BACKGROUND_CONTEXT,
   type Context,
 } from "@earendil-works/chord/context";
-import type { Message } from "@earendil-works/pi-ai";
 import {
   type Conversation,
   type ConversationView,
   LiveDoc,
   type LiveState,
 } from "@earendil-works/pi-durable";
-
-export function messageText(message: Message): string {
-  if (typeof message.content === "string") return message.content;
-  return message.content
-    .filter((part) => part.type === "text")
-    .map((part) => part.text)
-    .join("");
-}
 
 export async function reply(
   conversation: Conversation,

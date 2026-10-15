@@ -1,6 +1,8 @@
 import type { ChatView } from "@domos/agent/view";
 import { useEffect, useState } from "react";
-import { client } from "./client.ts";
+import { client } from "../../client.ts";
+import { Select } from "../../ui/controls.tsx";
+import { rejectionMessage } from "./request-error.ts";
 
 type Choice = Awaited<ReturnType<typeof client.models.list>>[number];
 const key = (model: { provider: string; modelId: string }) =>
@@ -21,7 +23,12 @@ export function ModelPicker({
     const controller = new AbortController();
     void client.models
       .list(undefined, { signal: controller.signal })
-      .then(setChoices)
+      .then((next) => {
+        if (!controller.signal.aborted) {
+          setChoices(next);
+          setError(null);
+        }
+      })
       .catch(() => {
         if (!controller.signal.aborted)
           setError("模型目录加载失败。请刷新重试。");
@@ -34,8 +41,9 @@ export function ModelPicker({
   return (
     <div className="model-picker">
       <label htmlFor="model">模型</label>
-      <select
+      <Select
         id="model"
+        name="model"
         value={selected}
         disabled={!connected || choices === null || saving}
         onChange={async (event) => {
@@ -50,8 +58,8 @@ export function ModelPicker({
               provider: choice.provider,
               modelId: choice.modelId,
             });
-          } catch {
-            setError("模型切换失败。请重试。");
+          } catch (cause) {
+            setError(rejectionMessage(cause) ?? "模型切换失败。请重试。");
           } finally {
             setSaving(false);
           }
@@ -69,7 +77,7 @@ export function ModelPicker({
             {choice.providerName} · {choice.name}
           </option>
         ))}
-      </select>
+      </Select>
       <span className="model-help" role="status">
         {saving
           ? "正在保存…"
@@ -78,7 +86,7 @@ export function ModelPicker({
             : "所选模型用于下一次回复。"}
       </span>
       {error && (
-        <p className="error" role="alert">
+        <p className="alert" role="alert">
           {error}
         </p>
       )}

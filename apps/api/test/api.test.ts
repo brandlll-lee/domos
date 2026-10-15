@@ -234,7 +234,7 @@ test("validation rejects empty input and snapshots hide provider error details",
     await client.send({ text: "Hello", requestId: crypto.randomUUID() });
     await conversation.waitForIdle(context);
     const view = await client.get();
-    expect(view.error).toBeTruthy();
+    expect(view.failed).toBe(true);
     expect(JSON.stringify(view)).not.toContain(secret);
   } finally {
     await harness.close(context);

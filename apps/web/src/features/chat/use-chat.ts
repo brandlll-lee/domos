@@ -1,6 +1,9 @@
 import type { ChatView } from "@domos/agent/view";
-import { useEffect, useRef, useState } from "react";
-import { client } from "./client.ts";
+import { useEffect, useState } from "react";
+import { client } from "../../client.ts";
+import { rejectionMessage } from "./request-error.ts";
+
+export type SendInput = { text: string; requestId: string };
 
 export function useChat() {
   const [view, setView] = useState<ChatView | null>(null);
@@ -8,7 +11,6 @@ export function useChat() {
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [stopping, setStopping] = useState(false);
-  const pending = useRef<{ text: string; requestId: string } | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -19,7 +21,7 @@ export function useChat() {
           context: {
             retry: Number.POSITIVE_INFINITY,
             onRetry: () => {
-              setConnected(false);
+              if (!controller.signal.aborted) setConnected(false);
             },
           },
         });
@@ -37,22 +39,16 @@ export function useChat() {
     return () => controller.abort();
   }, []);
 
-  async function send(text: string) {
-    if (sending) return false;
+  async function send(input: SendInput) {
     setSending(true);
     setError(null);
-    const input =
-      pending.current?.text === text
-        ? pending.current
-        : { text, requestId: crypto.randomUUID() };
-    pending.current = input;
     try {
       await client.send(input);
-      pending.current = null;
-      return true;
-    } catch {
-      setError("发送未确认。可再次发送，系统会核对同一条请求。");
-      return false;
+      return "accepted" as const;
+    } catch (cause) {
+      const message = rejectionMessage(cause);
+      setError(message ?? "发送未确认。重试会核对原请求。");
+      return message ? ("rejected" as const) : ("unconfirmed" as const);
     } finally {
       setSending(false);
     }

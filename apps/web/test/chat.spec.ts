@@ -175,8 +175,163 @@ test("retrying a send with a lost receipt does not repeat the message", async ({
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("发送未确认");
   await expect(page.getByLabel("Domos 的回复")).toContainText("完整回复。");
-  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await page.reload();
+  await expect(page.getByRole("alert")).toContainText("发送未确认");
+  await page.getByRole("button", { name: "重试发送", exact: true }).click();
   await expect(page.getByLabel("消息", { exact: true })).toHaveValue("");
   await expect(page.getByLabel("你的消息")).toHaveCount(1);
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(1);
+});
+
+test("drafts survive reload and reopening in the same browser", async ({
+  page,
+  context,
+}) => {
+  await page.goto(url);
+  const input = page.getByLabel("消息", { exact: true });
+  await input.fill("尚未发送的想法");
+  await page.reload();
+  await expect(input).toHaveValue("尚未发送的想法");
+  await page.close();
+  const reopened = await context.newPage();
+  await reopened.goto(url);
+  await expect(reopened.getByLabel("消息", { exact: true })).toHaveValue(
+    "尚未发送的想法",
+  );
+  await expect(reopened.getByLabel("你的消息")).toHaveCount(0);
+});
+
+test("editing during a send preserves the next draft", async ({ page }) => {
+  await page.goto(url);
+  await expect(page.getByText("已连接", { exact: true })).toBeVisible();
+  const receipt = Promise.withResolvers<void>();
+  const sent = Promise.withResolvers<void>();
+  await page.route("**/rpc/send", async (route) => {
+    const response = await route.fetch();
+    sent.resolve();
+    await receipt.promise;
+    await route.fulfill({ response });
+  });
+  const input = page.getByLabel("消息", { exact: true });
+  await input.fill("第一条消息");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await sent.promise;
+  await input.fill("下一条草稿");
+  receipt.resolve();
+  await expect(
+    page.getByRole("button", { name: "发送", exact: true }),
+  ).toBeVisible();
+  await expect(input).toHaveValue("下一条草稿");
+  await page.reload();
+  await expect(input).toHaveValue("下一条草稿");
+});
+
+test("storage failures keep the draft and prevent an unrecorded send", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Storage.prototype.setItem = () => {
+      throw new DOMException("Blocked", "SecurityError");
+    };
+  });
+  await page.goto(url);
+  await expect(page.getByText("已连接", { exact: true })).toBeVisible();
+  const input = page.getByLabel("消息", { exact: true });
+  await input.fill("保留在输入框");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("草稿保存失败");
+  await expect(input).toHaveValue("保留在输入框");
+  await expect(page.getByLabel("你的消息")).toHaveCount(0);
+});
+
+test("a busy conversation shows the server rejection and keeps the draft", async ({
+  page,
+  browser,
+}) => {
+  await page.goto(url);
+  await expect(page.getByText("已连接", { exact: true })).toBeVisible();
+  const other = await browser.newPage();
+  await other.goto(url);
+  await expect(other.getByText("已连接", { exact: true })).toBeVisible();
+  await control("gate");
+  await page.route("**/rpc/send", async (route) => {
+    await other.getByLabel("消息", { exact: true }).fill("占用会话");
+    await other.getByRole("button", { name: "发送", exact: true }).click();
+    await expect(other.getByRole("button", { name: "停止生成" })).toBeVisible();
+    await route.continue();
+  });
+  await page.getByLabel("消息", { exact: true }).fill("被拒绝的消息");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("会话正在回复");
+  await expect(page.getByRole("alert")).not.toContainText("发送未确认");
+  await expect(page.getByLabel("消息", { exact: true })).toHaveValue(
+    "被拒绝的消息",
+  );
+  await page.unroute("**/rpc/send");
+  await other.getByRole("button", { name: "停止生成" }).click();
+  await expect(
+    page.getByRole("button", { name: "发送", exact: true }),
+  ).toBeVisible();
+  await other.close();
+});
+
+test("text contrast, keyboard focus and message scrolling meet the UI contract", async ({
+  page,
+}) => {
+  await page.goto(url);
+  await expect(
+    page.getByRole("combobox", { name: "模型", exact: true }),
+  ).toBeEnabled();
+  const ratios = await page.evaluate(() => {
+    const luminance = (color: string) => {
+      const channels = (color.match(/[\d.]+/g) ?? [])
+        .slice(0, 3)
+        .map(Number)
+        .map((value) => {
+          const s = value / 255;
+          return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+        });
+      const [red, green, blue] = channels;
+      if (red === undefined || green === undefined || blue === undefined)
+        throw new Error("Invalid computed color");
+      return red * 0.2126 + green * 0.7152 + blue * 0.0722;
+    };
+    return [
+      ...document.querySelectorAll<HTMLElement>(
+        ".sidebar-label, .sidebar-note, .sidebar-footer, .model-help, .connection, .eyebrow, .welcome p, .composer-controls > span, .composer-note",
+      ),
+    ].map((element) => {
+      let background: Element | null = element;
+      while (
+        background &&
+        getComputedStyle(background).backgroundColor === "rgba(0, 0, 0, 0)"
+      )
+        background = background.parentElement;
+      const foreground = luminance(getComputedStyle(element).color);
+      if (!background) throw new Error("Missing opaque background");
+      const surface = luminance(getComputedStyle(background).backgroundColor);
+      return (
+        (Math.max(foreground, surface) + 0.05) /
+        (Math.min(foreground, surface) + 0.05)
+      );
+    });
+  });
+  expect(ratios.length).toBeGreaterThan(0);
+  for (const ratio of ratios) expect(ratio).toBeGreaterThanOrEqual(4.5);
+  const picker = page.getByRole("combobox", { name: "模型", exact: true });
+  await picker.focus();
+  await page.keyboard.press("Tab");
+  const input = page.getByLabel("消息", { exact: true });
+  await expect(input).toBeFocused();
+  await expect(input).toHaveCSS("outline-style", "solid");
+  await input.fill("长消息".repeat(400));
+  await input.press("Enter");
+  await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
+  await page.locator(".transcript").evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await expect(page.getByRole("button", { name: "返回最新" })).toBeVisible();
+  await page.getByRole("button", { name: "停止生成" }).click();
+  await page.getByRole("button", { name: "返回最新" }).click();
+  await expect(page.getByRole("button", { name: "返回最新" })).toHaveCount(0);
 });

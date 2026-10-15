@@ -1,10 +1,11 @@
 import { createInterface, type Interface } from "node:readline";
 import { openChat } from "@domos/agent/chat";
+import { messageText } from "@domos/agent/view";
 import {
   BACKGROUND_CONTEXT,
   withAbortSignal,
 } from "@earendil-works/chord/context";
-import { messageText, reply } from "./chat.ts";
+import { reply } from "./chat.ts";
 
 async function main() {
   const { harness, conversation } = await openChat(
