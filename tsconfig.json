@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["apps/**/*.ts", "packages/**/*.ts", "vitest.config.ts"]
+}

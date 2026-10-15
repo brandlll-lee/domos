@@ -1,0 +1,21 @@
+{
+  "name": "domos",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.20.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "chat": "node --env-file-if-exists=.env apps/cli/src/main.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check apps packages package.json tsconfig.json biome.json vitest.config.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2",
+    "vitest": "5.0.4"
+  }
+}

@@ -1,0 +1,7 @@
+/references/
+node_modules/
+/data/
+/coverage/
+.env
+.env.*
+!.env.example
