@@ -9,6 +9,11 @@ import type { RouterClient } from "@orpc/server";
 
 const link = new RPCLink<ClientRetryPluginContext>({
   url: new URL("/rpc", window.location.origin),
+  fetch: async (request, init) => {
+    const response = await fetch(request, init);
+    if (response.status === 401) window.dispatchEvent(new Event("domos:pair"));
+    return response;
+  },
   plugins: [new ClientRetryPlugin()],
 });
 

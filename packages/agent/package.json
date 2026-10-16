@@ -7,6 +7,7 @@
     "./chat": "./src/open-chat.ts",
     "./computer": "./src/computer/index.ts",
     "./config": "./src/runtime/config.ts",
+    "./lease": "./src/runtime/lease.ts",
     "./bots": "./src/bots.ts",
     "./files": "./src/files.ts",
     "./attachments": "./src/attachments.ts",

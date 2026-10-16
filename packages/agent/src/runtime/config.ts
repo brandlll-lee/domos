@@ -44,7 +44,9 @@ const schema = z
   .object({
     model: z
       .object({ provider: z.string().min(1), modelId: z.string().min(1) })
-      .strict(),
+      .strict()
+      .optional(),
+    publicUrl: z.url().optional(),
     host: z.string().min(1).default("127.0.0.1"),
     port: z.coerce.number().int().min(1).max(65535).default(4310),
     dataDir: z.string().min(1).default("data"),
@@ -80,6 +82,7 @@ export function parseConfig(
   }
   return {
     ...value,
+    configFile: resolve(filename),
     dataDir: path(value.dataDir),
     staticDir: value.staticDir
       ? path(value.staticDir)

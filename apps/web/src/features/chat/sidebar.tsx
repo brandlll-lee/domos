@@ -8,6 +8,7 @@ import { useState } from "react";
 import { CreateBot } from "../bots/create-bot.tsx";
 import { selectBot } from "../bots/use-bots.ts";
 import { ComputerLocation } from "../computer/location.tsx";
+import { HostingButton } from "../hosting/root.tsx";
 import { chatCopy } from "./copy.ts";
 
 export function Sidebar({
@@ -81,6 +82,7 @@ export function Sidebar({
       <footer className="sidebar-footer">
         <Desktop size={18} aria-hidden="true" />
         <ComputerLocation status={computer} connected={connected} />
+        <HostingButton />
       </footer>
     </aside>
   );

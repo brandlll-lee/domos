@@ -1,17 +1,11 @@
 import { createServer } from "node:http";
-import { openChat } from "@domos/agent/chat";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { getRequestListener } from "@hono/node-server";
-import { createApp } from "./app.ts";
+import { openHostedRuntime } from "./hosting/runtime.ts";
 
 async function main() {
-  const runtime = await openChat(BACKGROUND_CONTEXT);
-  const { bots, models, files, work, computer, config } = runtime;
-  const server = createServer(
-    getRequestListener(
-      createApp(bots, models, files, work, computer, config.staticDir).fetch,
-    ),
-  );
+  const runtime = await openHostedRuntime();
+  const { config } = runtime;
+  const server = createServer(getRequestListener(runtime.app.fetch));
   let closing = false;
   const close = async () => {
     if (closing) return;

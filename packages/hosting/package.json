@@ -1,0 +1,17 @@
+{
+  "name": "@domos/hosting",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./store": "./src/store.ts",
+    "./credentials": "./src/credentials.ts",
+    "./sessions": "./src/sessions.ts",
+    "./instance": "./src/instance.ts",
+    "./install": "./src/install.ts",
+    "./maintenance": "./src/maintenance.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "1.2.0",
+    "zod": "4.6.7"
+  }
+}

@@ -4,6 +4,7 @@
   "type": "module",
   "exports": "./src/router.ts",
   "dependencies": {
+    "@domos/hosting": "workspace:*",
     "@domos/agent": "workspace:*",
     "@earendil-works/chord": "1.2.0",
     "@earendil-works/pi-durable": "1.2.0",
