@@ -29,7 +29,7 @@ export function Sidebar({
         <input
           type="search"
           aria-label={chatCopy.search}
-          placeholder={chatCopy.search}
+          placeholder="搜索"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />

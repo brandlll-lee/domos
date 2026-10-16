@@ -1,21 +1,16 @@
 import { Brand } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { DotsThreeIcon } from "@phosphor-icons/react/dist/csr/DotsThree";
-import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
 import { ListIcon } from "@phosphor-icons/react/dist/csr/List";
 import { type ReactNode, useEffect } from "react";
 import "./style.css";
 
 export function Titlebar({
-  onSettings,
   onContacts,
   actions,
-  children,
 }: {
-  onSettings?: () => void;
   onContacts?: () => void;
   actions?: ReactNode;
-  children?: ReactNode;
 }) {
   const desktop = window.domosDesktop;
   useEffect(() => {
@@ -50,7 +45,6 @@ export function Titlebar({
         )}
         {actions}
       </div>
-      <div className="workspace-toolbar">{children}</div>
       {desktop && (
         <Button
           variant="ghost"
@@ -59,17 +53,6 @@ export function Titlebar({
           onClick={() => void desktop.menu()}
         >
           <DotsThreeIcon />
-        </Button>
-      )}
-      {onSettings && (
-        <Button
-          id="settings-trigger"
-          variant="ghost"
-          size="icon-small"
-          aria-label="设置"
-          onClick={onSettings}
-        >
-          <GearSixIcon />
         </Button>
       )}
     </header>

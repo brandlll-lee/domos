@@ -69,9 +69,9 @@ summary:focus-visible {
   max-width: 100%;
   min-height: var(--control-height);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid transparent;
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
-  background: transparent;
+  background: var(--color-control);
   color: var(--color-text);
   font-size: var(--text-label);
   line-height: var(--leading-control);
@@ -93,12 +93,14 @@ summary:focus-visible {
 }
 .picker-caret {
   display: block;
-  width: 0.45rem;
-  height: 0.45rem;
-  margin: 0 var(--space-1) var(--space-1);
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: rotate(45deg);
+  width: var(--space-4);
+  height: var(--space-4);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--color-muted);
 }
 .picker-positioner {
   z-index: 10;
@@ -187,8 +189,8 @@ textarea.field-control {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  min-height: var(--control-height);
-  padding: var(--space-2) var(--space-3);
+  min-height: var(--control-small);
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--space-1);
   font-size: var(--text-label);
   overflow-wrap: anywhere;
@@ -239,6 +241,9 @@ input[type="checkbox"] {
 .setting-caption,
 .setting-control {
   min-width: 0;
+}
+.setting-control .picker-trigger {
+  width: var(--settings-control-width);
 }
 .setting-caption {
   display: grid;

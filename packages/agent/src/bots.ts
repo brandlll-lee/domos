@@ -17,7 +17,12 @@ import { watchCommits } from "./watch.ts";
 import { BOT_NAME_LENGTH } from "./work/limits.ts";
 import { requiredText, requireRevision, WorkError } from "./work/state.ts";
 
-export type Bot = { id: ConversationId; name: string; avatar: string };
+export type Bot = {
+  id: ConversationId;
+  name: string;
+  avatar: string;
+  createdAt?: number;
+};
 export type BotPresence = Bot & { busy: boolean; preview: string };
 export type CreateBot = {
   name: string;
@@ -59,6 +64,7 @@ export class Bots {
           name: "Domos",
           avatar: randomUUID(),
           requestId: null,
+          createdAt: Date.now(),
         });
       for (const bot of directory.items) bot.avatar ??= randomUUID();
     }, context);
@@ -67,7 +73,7 @@ export class Bots {
   async list(context: Context): Promise<BotPresence[]> {
     const directory = await this.harness.snapshot(BotDirectory, context);
     return Promise.all(
-      (directory?.items ?? []).map(async ({ id, name, avatar }) => {
+      (directory?.items ?? []).map(async ({ id, name, avatar, createdAt }) => {
         const [live, agent, conversation] = await Promise.all([
           this.harness.snapshot(LiveDoc, id, context),
           this.harness.snapshot(AgentDoc, id, context),
@@ -77,6 +83,7 @@ export class Bots {
           id,
           name,
           avatar,
+          createdAt,
           busy: Boolean(live?.run),
           preview: conversation
             ? await botPreview(conversation, agent?.instructions ?? "", context)
@@ -149,6 +156,7 @@ export class Bots {
           id: existing.id,
           name: existing.name,
           avatar: existing.avatar,
+          createdAt: existing.createdAt,
         };
       const conversation = await tx.createConversation({
         ownership: { kind: "ownerless" },
@@ -161,6 +169,7 @@ export class Bots {
         id: conversation.id,
         name: input.name,
         avatar: input.avatar ?? randomUUID(),
+        createdAt: Date.now(),
       };
       await this.computers?.attach(tx, bot.id, input.computerId);
       directory.items.push({ ...bot, requestId: input.requestId });

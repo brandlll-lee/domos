@@ -7,7 +7,6 @@
   height: var(--titlebar-height);
   padding-inline: var(--space-5) var(--space-3);
   background: var(--color-background);
-  border-bottom: 1px solid var(--color-divider);
   user-select: none;
   -webkit-app-region: drag;
 }
@@ -30,14 +29,9 @@
   align-items: center;
   justify-content: space-between;
   width: calc(var(--sidebar-size, var(--sidebar-width)) - var(--space-5));
+  margin-inline-end: auto;
   padding-inline-end: var(--space-4);
   flex-shrink: 0;
-}
-.workspace-toolbar {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  min-width: 0;
 }
 .workspace {
   position: relative;
@@ -47,12 +41,14 @@
     );
   grid-template-rows: var(--titlebar-height) minmax(0, 1fr);
   height: 100dvh;
+  background: var(--color-background);
   isolation: isolate;
 }
 .workspace > .conversation {
   grid-column: 2;
   grid-row: 2;
   background: var(--color-canvas);
+  border-start-start-radius: var(--radius-panel);
   overflow: hidden;
 }
 .workspace-panel {
@@ -66,11 +62,10 @@
 .workspace-panel[data-side="sidebar"] {
   inset-inline-start: 0;
   background: var(--color-sidebar);
-  border-inline-end: 1px solid var(--color-divider);
 }
 .workspace-panel[data-side="inspector"] {
   inset-inline-end: 0;
-  border-inline-start: 1px solid var(--color-divider);
+  background: var(--color-canvas);
 }
 .workspace-panel[data-modal] {
   z-index: 3;
@@ -82,12 +77,29 @@
 .panel-backdrop[data-closed] {
   display: none;
 }
-.panel-body,
-.panel-body > .sidebar {
-  height: 100%;
-}
 .panel-body {
+  height: 100%;
   min-width: 0;
+}
+.workspace-panel[data-side="sidebar"] .panel-body {
+  display: flex;
+  flex-direction: column;
+}
+.workspace-panel[data-side="sidebar"] .sidebar {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+.sidebar-footer {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+.sidebar-footer > .button[data-size="small"] {
+  flex: 1;
+  justify-content: flex-start;
 }
 .panel-backdrop {
   position: absolute;
@@ -128,20 +140,13 @@
 .panel-resizer:focus-visible {
   outline: none;
 }
-.contacts-close {
-  position: absolute;
-  bottom: var(--space-3);
-  inset-inline-end: var(--space-3);
-}
-.workspace-panel[data-modal] .sidebar {
-  padding-bottom: calc(var(--control-height) + var(--space-6));
-}
 .workspace[data-mobile] .titlebar-brand {
   width: auto;
   padding-inline-end: 0;
 }
 .workspace[data-mobile] > .conversation {
   margin: 0;
+  border-radius: 0;
 }
 .workspace[data-mobile] .workspace-panel[data-side="inspector"] {
   width: 100%;

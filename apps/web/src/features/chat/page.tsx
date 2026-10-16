@@ -1,7 +1,5 @@
 import type { Bot, BotPresence } from "@domos/agent/bots";
 import { chatTranscript } from "@domos/agent/transcript";
-import { BotAvatar } from "@domos/ui/avatar";
-import { Button } from "@domos/ui/controls";
 import { type CSSProperties, useState } from "react";
 import { CreateBot } from "../bots/create-bot.tsx";
 import { BotDetails, type BotPanel } from "../bots/details/index.tsx";
@@ -13,6 +11,7 @@ import { Workspace } from "../shell/workspace.tsx";
 import { WorkingActivity } from "./activity.tsx";
 import { Composer } from "./composer.tsx";
 import { chatCopy } from "./copy.ts";
+import { ChatHeader } from "./header.tsx";
 import { Messages } from "./messages.tsx";
 import { ModelPicker } from "./model-picker.tsx";
 import { Sidebar } from "./sidebar.tsx";
@@ -71,6 +70,10 @@ function BotChat({
     chat.error ??
     directoryError ??
     (chat.view?.failed ? chatCopy.errors.reply : null);
+  const showPanel = (panel: BotPanel) => {
+    setDetailPanel(panel);
+    setDetailsOpen(!detailsOpen || detailPanel !== panel);
+  };
   return (
     <Workspace
       detailsOpen={detailsOpen}
@@ -78,29 +81,6 @@ function BotChat({
       onSettings={() => settings.open()}
       actions={
         <CreateBot model={chat.view?.model ?? null} onCreated={selectBot} />
-      }
-      toolbar={
-        <div className="chat-header">
-          <Button
-            id="details-trigger"
-            variant="ghost"
-            size="small"
-            className="conversation-title"
-            aria-label="Bot详情"
-            aria-expanded={detailsOpen}
-            aria-controls={detailsOpen ? "bot-details" : undefined}
-            onClick={() => {
-              setDetailPanel("profile");
-              setDetailsOpen(!detailsOpen);
-            }}
-          >
-            <BotAvatar seed={bot.avatar} size="small" />
-            <span>{bot.name}</span>
-          </Button>
-          <span className="sr-only" role="status">
-            {connection}
-          </span>
-        </div>
       }
       sidebar={
         <Sidebar bots={bots} selected={bot} connected={directoryConnected} />
@@ -141,10 +121,19 @@ function BotChat({
           { "--composer-dock-height": `${dock.height}px` } as CSSProperties
         }
       >
+        <ChatHeader
+          bot={bot}
+          detailsOpen={detailsOpen}
+          onProfile={() => showPanel("profile")}
+          onComputer={() => showPanel("computer")}
+        />
+        <span className="sr-only" role="status">
+          {connection}
+        </span>
         <Messages
           view={chat.view}
           botName={bot.name}
-          botAvatar={bot.avatar}
+          createdAt={bot.createdAt}
           items={items}
         />
         {chat.view ? (

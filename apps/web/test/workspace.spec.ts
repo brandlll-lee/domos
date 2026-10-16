@@ -151,7 +151,58 @@ test("settings stay readable in both themes and compact layouts", async ({
     });
   }
   await page.keyboard.press("Escape");
-  await expect(trigger).toBeFocused();
+  await expect(
+    page.getByRole("button", { name: "设置", exact: true }),
+  ).toBeFocused();
+});
+
+test("empty chats retain their creation time and compact controls across layouts", async ({
+  page,
+}) => {
+  await page.goto(url);
+  const time = page.locator(".conversation-time");
+  await expect(time).toBeVisible();
+  const createdAt = await time.getAttribute("datetime");
+  expect(Date.parse(createdAt ?? "")).toBeLessThanOrEqual(Date.now());
+  await expect(page.locator(".transcript .bot-avatar")).toHaveCount(0);
+  const header = await page.locator(".chat-header").boundingBox();
+  expect((await time.boundingBox())?.y).toBeGreaterThan(
+    (header?.y ?? 0) + (header?.height ?? 0),
+  );
+  const input = page.getByRole("textbox", { name: "消息", exact: true });
+  const composer = page.locator(".message-composer");
+  expect((await composer.boundingBox())?.height).toBeLessThanOrEqual(48);
+  const border = await composer.evaluate(
+    (item) => getComputedStyle(item).borderColor,
+  );
+  await input.click();
+  await expect(composer).toHaveCSS("border-color", border);
+  await expect(input).toHaveCSS("outline-style", "none");
+  await expect(page.getByRole("searchbox")).toHaveAttribute(
+    "placeholder",
+    "搜索",
+  );
+  await page.reload();
+  await expect(time).toHaveAttribute("datetime", createdAt ?? "");
+  await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
+  const details = page.getByRole("complementary", { name: "Domos的详情" });
+  await expect(
+    details.getByRole("combobox", { name: "分配电脑" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Bot设置", exact: true }).click();
+  await expect(
+    details.getByRole("textbox", { name: "名字", exact: true }),
+  ).toBeVisible();
+  await details.getByRole("button", { name: "关闭", exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "联系人", exact: true }).click();
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "设置", exact: true });
+  await settings.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "联系人", exact: true }),
+  ).toBeFocused();
+  await expect(input).toBeVisible();
 });
 
 test("contact rows keep their density and searchable previews across selections", async ({

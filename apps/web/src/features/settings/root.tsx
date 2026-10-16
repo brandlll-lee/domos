@@ -57,7 +57,12 @@ export function SettingsRoot({
         title="设置"
         description="管理此 Domos 的外观、连接与设备。"
         className={`settings-dialog${compact ? " settings-compact" : ""}`}
-        finalFocus={() => document.getElementById("settings-trigger")}
+        finalFocus={() => {
+          const trigger = document.getElementById("settings-trigger");
+          return trigger?.checkVisibility()
+            ? trigger
+            : document.getElementById("contacts-trigger");
+        }}
       >
         <Tabs.Root
           className="settings-layout"

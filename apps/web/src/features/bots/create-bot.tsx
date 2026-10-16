@@ -4,7 +4,7 @@ import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
 import { TextField } from "@domos/ui/field";
-import { SearchPicker } from "@domos/ui/picker";
+import { ChoicePicker, SearchPicker } from "@domos/ui/picker";
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { useEffect, useRef, useState } from "react";
 import { client } from "../../client.ts";
@@ -161,23 +161,21 @@ function BotForm({
             onValueChange={setSelection}
           />
         </div>
-        <label className="hosting-stack">
-          工作电脑
-          <select
-            className="field-control"
+        <div className="field">
+          <span className="field-label">工作电脑</span>
+          <ChoicePicker
+            label="工作电脑"
             value={computerId ?? computers?.defaultId ?? ""}
-            onChange={(event) => setComputerId(event.target.value)}
-          >
-            <option value="">暂不分配</option>
-            {computers?.items
-              .filter((item) => item.authorized)
-              .map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-          </select>
-        </label>
+            onValueChange={setComputerId}
+            disabled={saving}
+            items={[
+              { value: "", label: "暂不分配" },
+              ...(computers?.items
+                .filter((item) => item.authorized)
+                .map((item) => ({ value: item.id, label: item.name })) ?? []),
+            ]}
+          />
+        </div>
       </fieldset>
       {(error ?? catalogError) && (
         <p className="alert" role="alert">

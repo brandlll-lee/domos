@@ -194,6 +194,7 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
   const first = await open();
   const input = botInput("Research");
   let botId: number;
+  let createdAt: number | undefined;
   try {
     const events = await first.client.bots.subscribe();
     expect((await events.next()).value?.items).toEqual([
@@ -201,6 +202,7 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
         id: first.conversation.id,
         name: "Domos",
         avatar: expect.any(String),
+        createdAt: expect.any(Number),
         busy: false,
         preview: "",
       },
@@ -210,6 +212,8 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
       first.client.bots.create(input),
     ]);
     botId = bot.id;
+    createdAt = bot.createdAt;
+    expect(createdAt).toEqual(expect.any(Number));
     expect(repeated).toEqual(bot);
     expect(bot.avatar).toBe(input.avatar);
     let created = await events.next();
@@ -220,6 +224,7 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
         id: first.conversation.id,
         name: "Domos",
         avatar: expect.any(String),
+        createdAt: expect.any(Number),
         busy: false,
         preview: "",
       },
@@ -274,6 +279,7 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
       id: botId,
       name: input.name,
       avatar: input.avatar,
+      createdAt,
     });
     expect(await second.client.bots.list()).toHaveLength(2);
     const view = await second.client.get({ botId });

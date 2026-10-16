@@ -1,4 +1,5 @@
 import { Button } from "@domos/ui/controls";
+import { ChoicePicker } from "@domos/ui/picker";
 import { useSettings } from "../settings/context.ts";
 import { computerLabels } from "./copy.ts";
 import type { useComputer } from "./use-computer.ts";
@@ -12,24 +13,21 @@ export function ComputerPanel({
   const settings = useSettings();
   return (
     <section className="detail-stack" aria-label="工作电脑" aria-busy={busy}>
-      <label className="hosting-stack">
-        分配电脑
-        <select
-          className="field-control"
+      <div className="field">
+        <span className="field-label">分配电脑</span>
+        <ChoicePicker
+          label="分配电脑"
           value={status?.id ?? ""}
           disabled={busy}
-          onChange={(event) => void assign(event.target.value || null)}
-        >
-          <option value="">暂不分配</option>
-          {choices
-            .filter((item) => item.authorized)
-            .map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-        </select>
-      </label>
+          onValueChange={(value) => void assign(value || null)}
+          items={[
+            { value: "", label: "暂不分配" },
+            ...choices
+              .filter((item) => item.authorized)
+              .map((item) => ({ value: item.id, label: item.name })),
+          ]}
+        />
+      </div>
       {status ? (
         <>
           <h3>{computerLabels.boundary[status.boundary]}</h3>

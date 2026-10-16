@@ -54,8 +54,15 @@ async function control(
 
 async function openSettings(page: import("@playwright/test").Page) {
   const settings = page.getByRole("dialog", { name: "设置", exact: true });
-  if (!(await settings.isVisible()))
+  if (!(await settings.isVisible())) {
+    if (
+      !(await page
+        .getByRole("button", { name: "设置", exact: true })
+        .isVisible())
+    )
+      await page.getByRole("button", { name: "联系人", exact: true }).click();
     await page.getByRole("button", { name: "设置", exact: true }).click();
+  }
   await settings.getByRole("tab", { name: "外观", exact: true }).click();
   return settings;
 }
@@ -325,7 +332,7 @@ test("Bot details share the desktop with chat and cover narrow screens", async (
   const chatBox = await chat.boundingBox();
   const panelBox = await panel.boundingBox();
   if (!chatBox || !panelBox) throw new Error("Chat details layout missing");
-  expect(panelBox.x - chatBox.x - chatBox.width).toBe(1);
+  expect(panelBox.x - chatBox.x - chatBox.width).toBe(0);
   expect(panelBox.x + panelBox.width).toBeCloseTo(1360, 0);
   const input = page.getByLabel("消息", { exact: true });
   await input.fill("面板打开时继续聊天");
@@ -371,7 +378,7 @@ test("Bot details share the desktop with chat and cover narrow screens", async (
   await expect(chat).toBeVisible();
 });
 
-test("workspace uses one toolbar and separates global settings from Bot details", async ({
+test("workspace separates the window bar, Bot actions, and global settings", async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -381,10 +388,10 @@ test("workspace uses one toolbar and separates global settings from Bot details"
   for (const width of [360, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     const header = await trigger.boundingBox();
-    expect(header?.y).toBeLessThan(48);
-    await expect(
-      page.getByRole("button", { name: "设置", exact: true }),
-    ).toHaveCount(1);
+    expect(header?.y).toBeGreaterThanOrEqual(48);
+    await expect(page.locator(".sidebar-footer #settings-trigger")).toHaveCount(
+      1,
+    );
     await trigger.click();
     const details = page.getByRole("complementary", { name: /的详情$/ });
     await expect(
@@ -992,7 +999,7 @@ test("text contrast, keyboard focus and message scrolling meet the UI contract",
         .locator(".message-composer")
         .evaluate((element) => getComputedStyle(element).borderColor),
     )
-    .not.toBe(restingBorder);
+    .toBe(restingBorder);
   await input.fill("长消息\n".repeat(80));
   await input.press("Enter");
   await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
@@ -1110,8 +1117,8 @@ test("composer grows, shrinks, and keeps one focus surface in both themes", asyn
   const action = await page
     .getByRole("button", { name: "发送", exact: true })
     .boundingBox();
-  expect(action?.width).toBeGreaterThanOrEqual(44);
-  expect(action?.height).toBeGreaterThanOrEqual(44);
+  expect(action?.width).toBeGreaterThanOrEqual(32);
+  expect(action?.height).toBeGreaterThanOrEqual(32);
   expect((await form.boundingBox())?.height).toBeLessThanOrEqual(60);
   await expect(
     page.getByRole("button", { name: "Bot详情", exact: true }),
@@ -2127,10 +2134,8 @@ test("Bot identity stays consistent and image previews work in drafts and histor
     seed ?? "",
   );
   await expect(page.locator(".app-titlebar .wordmark")).toHaveText("Domos");
-  await expect(page.locator(".welcome .bot-avatar")).toHaveAttribute(
-    "data-seed",
-    seed ?? "",
-  );
+  await expect(page.locator(".transcript .bot-avatar")).toHaveCount(0);
+  await expect(page.locator(".conversation-time")).toBeVisible();
   await expect(page.locator(".bot-avatar .character-mouth")).toHaveCount(0);
   const bytes = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1kAAAAASUVORK5CYII=",

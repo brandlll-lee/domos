@@ -1,5 +1,6 @@
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
+import { ChoicePicker } from "@domos/ui/picker";
 import { useState } from "react";
 import { client } from "../../client.ts";
 
@@ -142,17 +143,18 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
               onChange={(event) => setImage(event.target.value)}
             />
           </label>
-          <label>
-            Docker 位置
-            <select
-              className="field-control"
+          <div className="field">
+            <span className="field-label">Docker 位置</span>
+            <ChoicePicker
+              label="Docker 位置"
               value={remote ? "remote" : "local"}
-              onChange={(event) => setRemote(event.target.value === "remote")}
-            >
-              <option value="local">本地 Docker</option>
-              <option value="remote">远程 Docker</option>
-            </select>
-          </label>
+              onValueChange={(value) => setRemote(value === "remote")}
+              items={[
+                { value: "local", label: "本地 Docker" },
+                { value: "remote", label: "远程 Docker" },
+              ]}
+            />
+          </div>
           {remote && (
             <>
               <label>

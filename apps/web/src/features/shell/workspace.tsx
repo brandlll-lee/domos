@@ -1,6 +1,8 @@
 import { Button } from "@domos/ui/controls";
 import { PanelDialog } from "@domos/ui/dialog";
 import { layout } from "@domos/ui/tokens";
+import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
+import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 import { useWorkspaceLayout } from "./layout.ts";
 import { ResizeHandle } from "./resize-handle.tsx";
@@ -13,7 +15,6 @@ export function Workspace({
   detailsOpen,
   onDetailsChange,
   children,
-  toolbar,
   actions,
   onSettings,
 }: {
@@ -22,7 +23,6 @@ export function Workspace({
   detailsOpen: boolean;
   onDetailsChange: (open: boolean) => void;
   children: ReactNode;
-  toolbar: ReactNode;
   actions: ReactNode;
   onSettings: () => void;
 }) {
@@ -64,12 +64,9 @@ export function Workspace({
       }
     >
       <Titlebar
-        onSettings={onSettings}
         onContacts={sizing.mobile ? () => setContactsOpen(true) : undefined}
         actions={actions}
-      >
-        {toolbar}
-      </Titlebar>
+      />
       {children}
       {panels.map(({ side, title, modal, open, change, content }) => (
         <PanelDialog.Root
@@ -100,13 +97,6 @@ export function Workspace({
               }
             >
               <PanelDialog.Title className="sr-only">{title}</PanelDialog.Title>
-              {modal && side === "sidebar" && (
-                <PanelDialog.Close
-                  render={<Button className="contacts-close" variant="ghost" />}
-                >
-                  关闭联系人
-                </PanelDialog.Close>
-              )}
               {!modal && (
                 <ResizeHandle
                   side={side}
@@ -117,7 +107,33 @@ export function Workspace({
                   onCommit={(width) => sizing.resize(side, width, true)}
                 />
               )}
-              <div className="panel-body">{content}</div>
+              <div className="panel-body">
+                {content}
+                {side === "sidebar" && (
+                  <footer className="sidebar-footer">
+                    <Button
+                      id="settings-trigger"
+                      variant="ghost"
+                      size="small"
+                      onClick={() => {
+                        setContactsOpen(false);
+                        onSettings();
+                      }}
+                    >
+                      <GearSixIcon aria-hidden="true" />
+                      设置
+                    </Button>
+                    {modal && (
+                      <PanelDialog.Close
+                        aria-label="关闭联系人"
+                        render={<Button variant="ghost" size="icon-small" />}
+                      >
+                        <XIcon />
+                      </PanelDialog.Close>
+                    )}
+                  </footer>
+                )}
+              </div>
             </PanelDialog.Popup>
           </PanelDialog.Portal>
         </PanelDialog.Root>

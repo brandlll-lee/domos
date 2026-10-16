@@ -135,8 +135,6 @@
 }
 .detail-content .picker-trigger {
   width: 100%;
-  border-color: var(--color-border);
-  background: var(--color-control);
 }
 .detail-model {
   display: grid;

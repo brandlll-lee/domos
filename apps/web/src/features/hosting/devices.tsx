@@ -1,4 +1,5 @@
 import { Button } from "@domos/ui/controls";
+import { ChoicePicker } from "@domos/ui/picker";
 import { useCallback, useEffect, useState } from "react";
 import { hostingRequest } from "./api.ts";
 
@@ -38,17 +39,18 @@ export function Devices({ current }: { current: string }) {
           <p className="detail-note">
             在另一台设备打开此实例地址，输入一次性配对码。远程连接使用 HTTPS。
           </p>
-          <label>
-            设备权限
-            <select
-              className="field-control"
+          <div className="field">
+            <span className="field-label">设备权限</span>
+            <ChoicePicker
+              label="设备权限"
               value={scope}
-              onChange={(event) => setScope(event.target.value)}
-            >
-              <option value="client">使用 Bot</option>
-              <option value="admin">管理实例</option>
-            </select>
-          </label>
+              onValueChange={setScope}
+              items={[
+                { value: "client", label: "使用 Bot" },
+                { value: "admin", label: "管理实例" },
+              ]}
+            />
+          </div>
           <Button
             variant="secondary"
             onClick={() =>

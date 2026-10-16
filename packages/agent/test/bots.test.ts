@@ -15,6 +15,8 @@ test("directory previews follow committed messages and survive reopening", async
     context,
   );
   const events = runtime.bots.watch(context);
+  const createdAt = bot.createdAt;
+  expect(createdAt).toEqual(expect.any(Number));
   try {
     expect((await events.next()).value).toEqual(
       expect.arrayContaining([
@@ -63,7 +65,11 @@ test("directory previews follow committed messages and survive reopening", async
     }, context);
     expect((await events.next()).value).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: bot.id, preview: "Release checked." }),
+        expect.objectContaining({
+          id: bot.id,
+          preview: "Release checked.",
+          createdAt,
+        }),
       ]),
     );
   } finally {

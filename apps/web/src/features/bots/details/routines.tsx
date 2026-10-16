@@ -6,6 +6,7 @@ import {
 } from "@domos/agent/work/limits";
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
+import { ChoicePicker } from "@domos/ui/picker";
 import { useState } from "react";
 import { client } from "../../../client.ts";
 import type { WorkAction, WorkData } from "./use-bot-work.ts";
@@ -247,17 +248,18 @@ function RoutineEditor({
           required
           maxLength={WORK_TEXT_LENGTH}
         />
-        <label className="field">
+        <div className="field">
           <span className="field-label">执行方式</span>
-          <select
-            className="field-control"
+          <ChoicePicker
+            label="执行方式"
             value={type}
-            onChange={(event) => setType(event.target.value as "once" | "cron")}
-          >
-            <option value="cron">周期执行</option>
-            <option value="once">执行一次</option>
-          </select>
-        </label>
+            onValueChange={(value) => setType(value as "once" | "cron")}
+            items={[
+              { value: "cron", label: "周期执行" },
+              { value: "once", label: "执行一次" },
+            ]}
+          />
+        </div>
         {type === "once" ? (
           <label className="field">
             <span className="field-label">执行时间（{localZone}）</span>

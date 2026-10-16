@@ -23,8 +23,7 @@ body {
 }
 button,
 textarea,
-input,
-select {
+input {
   font: inherit;
 }
 button,

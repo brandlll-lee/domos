@@ -39,7 +39,9 @@ test("onboarding preserves drafts and requests computer authorization only when 
     const details = page.getByRole("complementary", { name: "Writer的详情" });
     await details.getByRole("combobox", { name: "Bot设置分区" }).click();
     await page.getByRole("option", { name: "电脑", exact: true }).click();
-    await expect(details.getByLabel("分配电脑")).toHaveValue("");
+    await expect(
+      details.getByRole("combobox", { name: "分配电脑" }),
+    ).toHaveText("暂不分配");
     await details.getByRole("button", { name: "关闭", exact: true }).click();
     await page
       .getByRole("textbox", { name: "消息", exact: true })
@@ -61,9 +63,8 @@ test("onboarding preserves drafts and requests computer authorization only when 
     await details
       .getByRole("button", { name: "连接模型", exact: true })
       .click();
-    await settings
-      .getByLabel("此 Bot 的模型")
-      .selectOption({ label: "Faux Model" });
+    await settings.getByRole("combobox", { name: "此 Bot 的模型" }).click();
+    await page.getByRole("option", { name: "Faux Model", exact: true }).click();
     await settings
       .getByRole("button", { name: "保存模型", exact: true })
       .click();
@@ -90,7 +91,8 @@ test("onboarding preserves drafts and requests computer authorization only when 
       .click();
     await expect(settings.getByText(/已授权/)).toBeVisible();
     await settings.getByRole("button", { name: "关闭", exact: true }).click();
-    await details.getByLabel("分配电脑").selectOption("process");
+    await details.getByRole("combobox", { name: "分配电脑" }).click();
+    await page.getByRole("option", { name: "本机", exact: true }).click();
     await expect(
       details.getByText(
         "工具使用服务进程的系统权限。工作目录不是安全隔离边界。",
@@ -113,6 +115,7 @@ test("onboarding preserves drafts and requests computer authorization only when 
     );
     await page.screenshot({ path: testInfo.outputPath("onboarding.png") });
     await page.setViewportSize({ width: 360, height: 800 });
+    await page.getByRole("button", { name: "联系人", exact: true }).click();
     await page.getByRole("button", { name: "设置", exact: true }).click();
     await expect(settings).toBeVisible();
     await page.keyboard.press("Escape");

@@ -1,4 +1,6 @@
 import { Button } from "@domos/ui/controls";
+import { ChoicePicker } from "@domos/ui/picker";
+import { SettingRow } from "@domos/ui/setting-row";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../client.ts";
 import { hostingRequest } from "./api.ts";
@@ -114,22 +116,24 @@ export function HostingModels({
       data-dirty={Boolean(value || selection || (loginId && !login?.done))}
     >
       <h2>连接模型</h2>
-      <label>
-        模型提供方
-        <select
-          className="field-control"
-          value={provider}
-          onChange={(event) => setProvider(event.target.value)}
-        >
-          <option value="">选择提供方</option>
-          {catalog?.providers.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name}
-              {item.configured ? " · 已连接" : ""}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="settings-card">
+        <SettingRow title="模型提供方" description="连接用于对话的模型账号。">
+          <ChoicePicker
+            label="模型提供方"
+            size="small"
+            value={provider}
+            disabled={busy}
+            onValueChange={setProvider}
+            items={[
+              { value: "", label: "选择提供方" },
+              ...(catalog?.providers.map((item) => ({
+                value: item.id,
+                label: `${item.name}${item.configured ? " · 已连接" : ""}`,
+              })) ?? []),
+            ]}
+          />
+        </SettingRow>
+      </div>
       {selected?.methods.map((method) => (
         <Button
           key={method.type}
@@ -203,19 +207,20 @@ export function HostingModels({
           <label htmlFor="model-login-input">
             {prompt.message}
             {prompt.options ? (
-              <select
-                className="field-control"
+              <ChoicePicker
                 id="model-login-input"
+                label={prompt.message}
                 value={value}
-                onChange={(event) => setValue(event.target.value)}
-              >
-                <option value="">请选择</option>
-                {prompt.options.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
+                onValueChange={setValue}
+                disabled={busy}
+                items={[
+                  { value: "", label: "请选择" },
+                  ...prompt.options.map((item) => ({
+                    value: item.id,
+                    label: item.label,
+                  })),
+                ]}
+              />
             ) : (
               <input
                 className="field-control"
@@ -249,27 +254,27 @@ export function HostingModels({
       )}
       {botId !== undefined && (
         <>
-          <label>
-            此 Bot 的模型
-            <select
-              className="field-control"
-              value={selection}
-              onChange={(event) => setSelection(event.target.value)}
-            >
-              <option value="">选择已连接的模型</option>
-              {catalog?.models.map((item) => (
-                <option
-                  key={`${item.provider}/${item.modelId}`}
-                  value={JSON.stringify({
-                    provider: item.provider,
-                    modelId: item.modelId,
-                  })}
-                >
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="settings-card">
+            <SettingRow title="此 Bot 的模型">
+              <ChoicePicker
+                label="此 Bot 的模型"
+                size="small"
+                value={selection}
+                disabled={busy}
+                onValueChange={setSelection}
+                items={[
+                  { value: "", label: "选择已连接的模型" },
+                  ...(catalog?.models.map((item) => ({
+                    value: JSON.stringify({
+                      provider: item.provider,
+                      modelId: item.modelId,
+                    }),
+                    label: item.name,
+                  })) ?? []),
+                ]}
+              />
+            </SettingRow>
+          </div>
           <Button
             disabled={busy || !selection}
             onClick={() =>

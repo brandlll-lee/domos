@@ -1,7 +1,6 @@
 import type { TranscriptItem } from "@domos/agent/transcript";
 import type { ChatView } from "@domos/agent/view";
 import { ActivityText } from "@domos/ui/activity";
-import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { MessageBubble } from "@domos/ui/message";
 import { ArrowDownIcon } from "@phosphor-icons/react/dist/csr/ArrowDown";
@@ -14,12 +13,12 @@ import { useTranscript } from "./use-transcript.ts";
 export function Messages({
   view,
   botName,
-  botAvatar,
+  createdAt,
   items,
 }: {
   view: ChatView | null;
   botName: string;
-  botAvatar: string;
+  createdAt?: number;
   items: TranscriptItem[];
 }) {
   const transcript = useTranscript(view);
@@ -35,11 +34,18 @@ export function Messages({
             <ActivityText active>{chatCopy.loading}</ActivityText>
           </p>
         ) : (
-          !view.messages.length && (
-            <section className="welcome">
-              <BotAvatar seed={botAvatar} size="large" />
-              <h1>{botName}</h1>
-            </section>
+          !view.messages.length &&
+          createdAt !== undefined && (
+            <time
+              className="conversation-time"
+              dateTime={new Date(createdAt).toISOString()}
+              title="创建时间"
+            >
+              {new Date(createdAt).toLocaleString(undefined, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
+            </time>
           )
         )}
         <div

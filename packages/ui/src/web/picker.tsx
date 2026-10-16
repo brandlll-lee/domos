@@ -12,7 +12,11 @@ type PickerProps = {
 };
 
 function Caret() {
-  return <span className="picker-caret" aria-hidden="true" />;
+  return (
+    <svg className="picker-caret" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="m5.5 6 2.5-2.5L10.5 6m-5 4 2.5 2.5 2.5-2.5" />
+    </svg>
+  );
 }
 
 function Check() {
@@ -26,7 +30,8 @@ export function ChoicePicker({
   onValueChange,
   disabled,
   size = "default",
-}: PickerProps & { size?: "default" | "small" }) {
+  id,
+}: PickerProps & { size?: "default" | "small"; id?: string }) {
   return (
     <Select.Root
       items={items}
@@ -39,6 +44,7 @@ export function ChoicePicker({
       <Select.Trigger
         className="picker-trigger"
         aria-label={label}
+        id={id}
         data-size={size}
       >
         <Select.Value className="picker-value" />

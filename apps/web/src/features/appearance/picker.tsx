@@ -8,6 +8,7 @@ export function AppearancePicker() {
     <div className="appearance-picker">
       <ChoicePicker
         label="外观"
+        size="small"
         value={theme.preference}
         onValueChange={(value) => theme.select(themePreference(value))}
         items={[
