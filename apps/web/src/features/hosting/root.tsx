@@ -6,6 +6,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { hostingRequest } from "./api.ts";
@@ -36,6 +37,16 @@ export function HostingRoot({ children }: { children: ReactNode }) {
   const [code, setCode] = useState("");
   const [label, setLabel] = useState("我的设备");
   const [busy, setBusy] = useState(false);
+  const panel = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement;
+    panel.current?.focus();
+    return () => {
+      if (previous instanceof HTMLElement && previous.isConnected)
+        previous.focus();
+    };
+  }, [open]);
   const refresh = useCallback(async () => {
     const info = await fetch("/hosting/info");
     if (info.status === 404) {
@@ -81,6 +92,8 @@ export function HostingRoot({ children }: { children: ReactNode }) {
           <aside
             className="hosting-panel"
             aria-label="实例管理"
+            ref={panel}
+            tabIndex={-1}
             onKeyDown={(event) => {
               if (event.key === "Escape") setOpen(false);
             }}
@@ -126,7 +139,7 @@ export function HostingRoot({ children }: { children: ReactNode }) {
         {state === "loading" && <p role="status">正在连接实例…</p>}
         {state === "setup" &&
           (session?.device.scope === "admin" ? (
-            <HostingModels onConfigured={() => void refresh()} />
+            <HostingModels initial onConfigured={() => void refresh()} />
           ) : (
             <p role="status">请让管理员完成模型配置。</p>
           ))}

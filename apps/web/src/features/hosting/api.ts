@@ -16,6 +16,7 @@ export async function hostingRequest<T>(
         }),
   });
   if (!response.ok) {
+    if (response.status === 401) window.dispatchEvent(new Event("domos:pair"));
     const body = await response.json().catch(() => ({}));
     throw new Error(body.error ?? "连接未完成。请重试。");
   }

@@ -30,7 +30,13 @@ type Login = {
   };
 };
 
-export function HostingModels({ onConfigured }: { onConfigured: () => void }) {
+export function HostingModels({
+  onConfigured,
+  initial = false,
+}: {
+  onConfigured: () => void;
+  initial?: boolean;
+}) {
   const [catalog, setCatalog] = useState<Catalog>();
   const [provider, setProvider] = useState("");
   const [loginId, setLoginId] = useState<string>();
@@ -219,37 +225,41 @@ export function HostingModels({ onConfigured }: { onConfigured: () => void }) {
           取消登录
         </Button>
       )}
-      <label>
-        默认模型
-        <select
-          value={selection}
-          onChange={(event) => setSelection(event.target.value)}
-        >
-          <option value="">选择已连接的模型</option>
-          {catalog?.models.map((item) => (
-            <option
-              key={`${item.provider}/${item.modelId}`}
-              value={JSON.stringify({
-                provider: item.provider,
-                modelId: item.modelId,
-              })}
+      {initial && (
+        <>
+          <label>
+            默认模型
+            <select
+              value={selection}
+              onChange={(event) => setSelection(event.target.value)}
             >
-              {item.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <Button
-        disabled={busy || !selection}
-        onClick={() =>
-          void action(async () => {
-            await hostingRequest("setup", JSON.parse(selection));
-            onConfigured();
-          })
-        }
-      >
-        保存并使用
-      </Button>
+              <option value="">选择已连接的模型</option>
+              {catalog?.models.map((item) => (
+                <option
+                  key={`${item.provider}/${item.modelId}`}
+                  value={JSON.stringify({
+                    provider: item.provider,
+                    modelId: item.modelId,
+                  })}
+                >
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button
+            disabled={busy || !selection}
+            onClick={() =>
+              void action(async () => {
+                await hostingRequest("setup", JSON.parse(selection));
+                onConfigured();
+              })
+            }
+          >
+            保存并使用
+          </Button>
+        </>
+      )}
       {error && <p role="alert">{error}</p>}
     </section>
   );

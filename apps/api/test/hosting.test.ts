@@ -1,10 +1,11 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseConfig } from "@domos/agent/config";
 import { Sessions } from "@domos/hosting/sessions";
 import { HostingStore } from "@domos/hosting/store";
 import { createModels } from "@earendil-works/pi-ai/models";
+import { fauxProvider } from "@earendil-works/pi-ai/providers/faux";
 import { expect, onTestFinished, test } from "vitest";
 import { hostingApp } from "../src/hosting/routes.ts";
 
@@ -12,6 +13,7 @@ test("hosting authenticates RPC, files, admin operations, origins and pairing", 
   const directory = await mkdtemp(join(tmpdir(), "domos-auth-"));
   const store = await HostingStore.open(directory);
   const sessions = new Sessions(store);
+  let streamClosed = false;
   const hosted = hostingApp({
     config: parseConfig(
       { publicUrl: "https://domos.test", dataDir: directory },
@@ -20,8 +22,20 @@ test("hosting authenticates RPC, files, admin operations, origins and pairing", 
     sessions,
     models: createModels(),
     start: async () => {},
-    forward: async (request) =>
-      Response.json({ path: new URL(request.url).pathname }),
+    forward: async (request) => {
+      if (new URL(request.url).pathname.endsWith("/watch"))
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("ready"));
+            },
+            cancel() {
+              streamClosed = true;
+            },
+          }),
+        );
+      return Response.json({ path: new URL(request.url).pathname });
+    },
   });
   onTestFinished(async () => {
     hosted.close();
@@ -84,8 +98,59 @@ test("hosting authenticates RPC, files, admin operations, origins and pairing", 
     ).status,
   ).toBe(200);
   const device = (await login.json()).device;
+  const stream = await request("/rpc/watch", { headers: { Cookie: cookie } });
+  const reader = stream.body?.getReader();
+  expect((await reader?.read())?.done).toBe(false);
   sessions.revoke(device.id);
+  expect((await reader?.read())?.done).toBe(true);
+  expect(streamClosed).toBe(true);
   expect(
     (await request("/files/1/test", { headers: { Cookie: cookie } })).status,
   ).toBe(401);
+});
+
+test("initial model setup restores configuration after a failed start and accepts one successful setup", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "domos-model-setup-"));
+  const store = await HostingStore.open(directory);
+  const sessions = new Sessions(store);
+  const owner = sessions.exchange(sessions.pairing("admin").code, "Owner");
+  const filename = join(directory, "config.json");
+  const input = { dataDir: directory, publicUrl: "https://domos.test" };
+  await writeFile(filename, JSON.stringify(input));
+  const config = parseConfig(input, filename);
+  const models = createModels();
+  models.setProvider(fauxProvider().provider);
+  let attempts = 0;
+  const hosted = hostingApp({
+    config,
+    sessions,
+    models,
+    start: async () => {
+      if (++attempts === 1) throw new Error("Startup failed");
+    },
+    forward: async () => new Response(),
+  });
+  onTestFinished(async () => {
+    hosted.close();
+    await store.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const setup = () =>
+    hosted.app.request("https://domos.test/hosting/setup", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${owner?.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ provider: "faux", modelId: "faux-1" }),
+    });
+  expect((await setup()).status).toBe(400);
+  expect(JSON.parse(await readFile(filename, "utf8")).model).toBeUndefined();
+  expect(config.model).toBeUndefined();
+  expect((await setup()).status).toBe(200);
+  expect(JSON.parse(await readFile(filename, "utf8")).model).toEqual(
+    config.model,
+  );
+  expect((await setup()).status).toBe(409);
+  expect(attempts).toBe(2);
 });

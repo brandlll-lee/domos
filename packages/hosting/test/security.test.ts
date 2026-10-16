@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, onTestFinished, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import { persistentCredentials } from "../src/credentials.ts";
 import { serverOrigin } from "../src/instance.ts";
 import { Sessions, sessionPolicy } from "../src/sessions.ts";
@@ -44,6 +44,31 @@ test("pairing is single use, scoped, bounded, and revocation closes active reque
   expect(sessions.exchange(expired.code, "Expired")).toBeUndefined();
   now += sessionPolicy.sessionMs;
   expect(sessions.authenticate(owner?.token ?? "")).toBeUndefined();
+  await sessions.bootstrap(directory);
+  expect(
+    sessions.exchange(
+      await readFile(join(directory, "owner-code"), "utf8"),
+      "Recovered",
+    )?.device.scope,
+  ).toBe("admin");
+});
+
+test("active sessions expire at their recorded deadline", async () => {
+  const { store } = await fixture();
+  vi.useFakeTimers();
+  try {
+    const sessions = new Sessions(store);
+    const device = sessions.exchange(sessions.pairing("admin").code, "Owner");
+    if (!device) throw new Error("Device required");
+    const active = sessions.track(device.device);
+    await vi.advanceTimersByTimeAsync(2_147_483_647);
+    expect(active.signal.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(sessionPolicy.sessionMs - 2_147_483_647);
+    expect(active.signal.aborted).toBe(true);
+    active.release();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("provider credentials persist encrypted and concurrent updates see the committed state", async () => {

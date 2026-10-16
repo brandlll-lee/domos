@@ -54,7 +54,9 @@ export class Sessions {
 
   async bootstrap(directory: string) {
     if (
-      this.store.db.prepare("SELECT 1 FROM devices WHERE scope='admin'").get()
+      this.store.db
+        .prepare("SELECT 1 FROM devices WHERE scope='admin' AND expires>?")
+        .get(this.now())
     )
       return;
     const filename = join(directory, "owner-code");
@@ -117,6 +119,10 @@ export class Sessions {
       this.list().filter((d) => d.scope === "admin").length === 1
     )
       throw new Error("请保留至少一台管理员设备。");
+    this.logout(id);
+  }
+
+  logout(id: string) {
     this.store.db.prepare("DELETE FROM devices WHERE id=?").run(id);
     for (const controller of this.active.get(id) ?? []) controller.abort();
     this.active.delete(id);
@@ -127,11 +133,16 @@ export class Sessions {
     const entries = this.active.get(device.id) ?? new Set();
     entries.add(controller);
     this.active.set(device.id, entries);
-    const timer = setTimeout(
-      () => controller.abort(),
-      Math.min(device.expires - this.now(), 2_147_483_647),
-    );
-    timer.unref();
+    let timer: ReturnType<typeof setTimeout>;
+    const check = () => {
+      const remaining = device.expires - this.now();
+      if (remaining <= 0) controller.abort();
+      else {
+        timer = setTimeout(check, Math.min(remaining, 2_147_483_647));
+        timer.unref();
+      }
+    };
+    check();
     return {
       signal: controller.signal,
       release: () => {

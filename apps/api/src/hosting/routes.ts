@@ -25,6 +25,7 @@ export function hostingApp(options: {
   const { config, sessions, models } = options;
   const publicUrl = config.publicUrl ?? `http://${config.host}:${config.port}`;
   const logins = new ModelLogins(models);
+  let configuring = false;
   const app = new Hono<HostingEnv>();
   app.use("*", originGuard(publicUrl));
   app.get("/health", (c) => c.json({ ok: true }));
@@ -36,6 +37,10 @@ export function hostingApp(options: {
     }),
   );
   app.use("/hosting/*", bodyLimit({ maxSize: 64 * 1024 }));
+  app.use("/hosting/*", async (c, next) => {
+    c.header("Cache-Control", "no-store");
+    await next();
+  });
   app.post("/hosting/exchange", async (c) => {
     const input = z
       .object({
@@ -59,8 +64,10 @@ export function hostingApp(options: {
   app.get("/hosting/session", (c) =>
     c.json({ device: c.get("device"), configured: Boolean(config.model) }),
   );
-  app.post("/hosting/logout", (c) => {
+  app.post("/hosting/logout", async (c) => {
     logins.cancel(c.get("device").id);
+    sessions.logout(c.get("device").id);
+    await sessions.bootstrap(config.dataDir);
     sessionCookie(c, "", 0, new URL(publicUrl).protocol === "https:");
     return c.json({ ok: true });
   });
@@ -129,6 +136,8 @@ export function hostingApp(options: {
     return c.json({ ok: true });
   });
   app.post("/hosting/setup", async (c) => {
+    if (configuring || config.model)
+      return c.json({ error: "实例已配置或正在配置。请刷新后继续。" }, 409);
     const model = z
       .object({ provider: z.string(), modelId: z.string() })
       .parse(await c.req.json());
@@ -138,13 +147,29 @@ export function hostingApp(options: {
       )
     )
       return c.json({ error: "请先配置这个模型。" }, 400);
-    await options.start(model);
-    const persisted = { ...config, model };
-    const { configFile: _configFile, ...value } = persisted;
+    if (configuring || config.model)
+      return c.json({ error: "实例已配置或正在配置。请刷新后继续。" }, 409);
+    configuring = true;
+    const { configFile: _configFile, ...value } = config;
     const temporary = `${config.configFile}.pending`;
-    await writeFile(temporary, JSON.stringify(value, null, 2), { mode: 0o600 });
-    await rename(temporary, config.configFile);
-    config.model = model;
+    const persist = async (content: unknown) => {
+      await writeFile(temporary, JSON.stringify(content, null, 2), {
+        mode: 0o600,
+      });
+      await rename(temporary, config.configFile);
+    };
+    try {
+      await persist({ ...value, model });
+      try {
+        await options.start(model);
+      } catch (error) {
+        await persist(value);
+        throw error;
+      }
+      config.model = model;
+    } finally {
+      configuring = false;
+    }
     return c.json({ ok: true });
   });
   const protectedApp = new Hono<HostingEnv>();
@@ -162,6 +187,12 @@ export function hostingApp(options: {
         return response;
       }
       const reader = response.body.getReader();
+      signal.addEventListener(
+        "abort",
+        () => void reader.cancel(signal.reason).catch(() => {}),
+        { once: true },
+      );
+      if (signal.aborted) await reader.cancel(signal.reason);
       const body = new ReadableStream({
         async pull(controller) {
           try {
@@ -180,7 +211,14 @@ export function hostingApp(options: {
           await reader.cancel(reason);
         },
       });
-      return new Response(body, response);
+      const headers = new Headers(response.headers);
+      if (new URL(c.req.url).pathname.startsWith("/files/"))
+        headers.set("Cache-Control", "private, no-store");
+      return new Response(body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
     } catch (error) {
       tracked.release();
       throw error;
