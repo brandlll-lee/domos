@@ -11,7 +11,7 @@ import {
   instanceSchema,
   probeInstance,
 } from "@domos/hosting/instance";
-import { themes } from "@domos/ui/tokens";
+import { themes, windowOverlay } from "@domos/ui/tokens";
 import { app, type BrowserWindow, dialog, ipcMain, Menu, Tray } from "electron";
 import { z } from "zod";
 import { LocalHost } from "./host.ts";
@@ -200,7 +200,7 @@ async function main() {
       current?.setBackgroundColor(themes[theme].background);
       if (process.platform !== "darwin")
         current?.setTitleBarOverlay({
-          color: themes[theme].background,
+          ...windowOverlay,
           symbolColor: themes[theme].text,
         });
     },

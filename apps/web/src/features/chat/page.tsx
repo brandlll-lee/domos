@@ -79,6 +79,7 @@ function BotChat({
       detailsOpen={detailsOpen}
       onDetailsChange={setDetailsOpen}
       onSettings={() => settings.open()}
+      page={settings.page}
       actions={
         <CreateBot model={chat.view?.model ?? null} onCreated={selectBot} />
       }

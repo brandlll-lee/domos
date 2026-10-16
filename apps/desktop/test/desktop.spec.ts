@@ -88,7 +88,7 @@ test("desktop starts locally, pairs and restores a saved instance", async ({
       .getByRole("button", { name: "设置", exact: true })
       .first()
       .click();
-    const settings = local.getByRole("dialog", {
+    const settings = local.getByRole("main", {
       name: "设置",
       exact: true,
     });
@@ -109,6 +109,31 @@ test("desktop starts locally, pairs and restores a saved instance", async ({
         ?.slice(0, 3)
         .map((part) => Number.parseInt(part, 16));
       expect(header).toBe(`rgb(${rgb?.join(", ")})`);
+      await expect(settings).toBeVisible();
+      await local.screenshot({
+        path: testInfo.outputPath(`settings-${label}.png`),
+      });
+    }
+    const chrome = await local.evaluate(() => {
+      const overlay = Reflect.get(navigator, "windowControlsOverlay") as {
+        visible: boolean;
+        getTitlebarAreaRect: () => DOMRect;
+      };
+      return {
+        visible: overlay?.visible,
+        area: overlay?.getTitlebarAreaRect().toJSON(),
+      };
+    });
+    if (process.platform !== "darwin") {
+      const menu = await local
+        .getByRole("button", { name: "应用菜单" })
+        .boundingBox();
+      expect(chrome.visible).toBe(true);
+      expect(chrome.area.height).toBe(48);
+      expect(menu).not.toBeNull();
+      expect((menu?.x ?? 0) + (menu?.width ?? 0)).toBeLessThanOrEqual(
+        chrome.area.right,
+      );
     }
     await desktop.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(2),
@@ -117,7 +142,7 @@ test("desktop starts locally, pairs and restores a saved instance", async ({
       settings.getByRole("tablist", { name: "设置分区" }),
     ).toHaveAttribute("data-orientation", "horizontal");
     await expect(
-      settings.getByRole("button", { name: "关闭", exact: true }),
+      settings.getByRole("button", { name: "返回对话", exact: true }),
     ).toBeInViewport();
     expect(
       await local.evaluate(
@@ -132,6 +157,18 @@ test("desktop starts locally, pairs and restores a saved instance", async ({
     await settings
       .getByLabel("服务器地址")
       .fill(`http://127.0.0.1:${ready.port}`);
+    await settings.getByRole("tab", { name: "外观", exact: true }).click();
+    await settings
+      .getByRole("button", { name: "返回对话", exact: true })
+      .click();
+    const discard = local.getByRole("dialog", { name: "放弃未保存的配置？" });
+    await expect(discard).toBeVisible();
+    await discard.getByRole("button", { name: "继续编辑" }).click();
+    await expect(settings).toBeVisible();
+    await settings.getByRole("tab", { name: "实例", exact: true }).click();
+    await expect(settings.getByLabel("服务器地址")).toHaveValue(
+      `http://127.0.0.1:${ready.port}`,
+    );
     const opened = desktop.waitForEvent("window");
     await settings
       .getByRole("button", { name: "连接已有 Domos", exact: true })

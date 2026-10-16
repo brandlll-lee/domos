@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { layout, themes } from "@domos/ui/tokens";
+import { themes, windowOverlay } from "@domos/ui/tokens";
 import { BrowserWindow, nativeTheme, shell } from "electron";
 
 export async function openInstance(
@@ -18,10 +18,7 @@ export async function openInstance(
     ...(process.platform !== "darwin"
       ? {
           titleBarOverlay: {
-            height: layout.titlebar,
-            color:
-              themes[nativeTheme.shouldUseDarkColors ? "dark" : "light"]
-                .background,
+            ...windowOverlay,
             symbolColor:
               themes[nativeTheme.shouldUseDarkColors ? "dark" : "light"].text,
           },

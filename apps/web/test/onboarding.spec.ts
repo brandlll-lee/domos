@@ -47,7 +47,7 @@ test("onboarding preserves drafts and requests computer authorization only when 
       .getByRole("textbox", { name: "消息", exact: true })
       .fill("保留这份草稿");
     await page.getByRole("button", { name: "发送", exact: true }).click();
-    const settings = page.getByRole("dialog", {
+    const settings = page.getByRole("main", {
       name: "设置",
       exact: true,
     });
@@ -55,7 +55,9 @@ test("onboarding preserves drafts and requests computer authorization only when 
     await expect(
       settings.getByRole("heading", { name: "连接模型" }),
     ).toBeVisible();
-    await settings.getByRole("button", { name: "关闭", exact: true }).click();
+    await settings
+      .getByRole("button", { name: "返回对话", exact: true })
+      .click();
     await expect(
       page.getByRole("textbox", { name: "消息", exact: true }),
     ).toHaveValue("保留这份草稿");
@@ -90,7 +92,9 @@ test("onboarding preserves drafts and requests computer authorization only when 
       .getByRole("button", { name: "确认授权", exact: true })
       .click();
     await expect(settings.getByText(/已授权/)).toBeVisible();
-    await settings.getByRole("button", { name: "关闭", exact: true }).click();
+    await settings
+      .getByRole("button", { name: "返回对话", exact: true })
+      .click();
     await details.getByRole("combobox", { name: "分配电脑" }).click();
     await page.getByRole("option", { name: "本机", exact: true }).click();
     await expect(

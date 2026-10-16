@@ -67,6 +67,14 @@ test("panels resize live, persist only on release, and retain drafts across layo
   await page.getByRole("option", { name: "Bot设置", exact: true }).click();
   await expect(name).toHaveValue("尚未保存的名字");
   const right = page.getByRole("separator", { name: "调整详情宽度" });
+  const inspectorPanel = page.locator(
+    '.workspace-panel[data-side="inspector"]',
+  );
+  await expect(inspectorPanel).toHaveCSS("border-inline-start-width", "1px");
+  const divider = await page
+    .locator(".chat-header")
+    .evaluate((element) => getComputedStyle(element).borderBottomColor);
+  await expect(inspectorPanel).toHaveCSS("border-inline-start-color", divider);
   await right.focus();
   await right.press("End");
   await expect(right).toHaveAttribute(
@@ -95,9 +103,18 @@ test("settings stay readable in both themes and compact layouts", async ({
   page,
 }, testInfo) => {
   await page.goto(url);
+  const input = page.getByRole("textbox", { name: "消息", exact: true });
+  await input.fill("返回后继续编辑");
   const trigger = page.getByRole("button", { name: "设置", exact: true });
   await trigger.click();
-  const settings = page.getByRole("dialog", { name: "设置", exact: true });
+  const settings = page.getByRole("main", { name: "设置", exact: true });
+  await expect(page.locator(".app-titlebar")).toHaveCount(1);
+  await expect(page.locator(".app-titlebar")).toBeVisible();
+  await expect(input).toBeHidden();
+  await expect(
+    page.getByRole("dialog", { name: "设置", exact: true }),
+  ).toHaveCount(0);
+  expect((await settings.boundingBox())?.y).toBe(48);
   expect((await settings.boundingBox())?.width).toBeGreaterThan(800);
   for (const [theme, label] of [
     ["dark", "深色"],
@@ -112,7 +129,25 @@ test("settings stay readable in both themes and compact layouts", async ({
       path: testInfo.outputPath(`settings-${theme}.png`),
     });
   }
-  await settings.getByRole("tab", { name: "电脑", exact: true }).click();
+  const search = settings.getByRole("searchbox", { name: "搜索设置" });
+  await search.fill("主题");
+  await expect(
+    settings.getByRole("tab", { name: "外观", exact: true }),
+  ).toBeVisible();
+  await expect(
+    settings.getByRole("tab", { name: "电脑", exact: true }),
+  ).toHaveCount(0);
+  await search.fill("不存在的设置");
+  await expect(settings.getByRole("status")).toHaveText("没有匹配的设置");
+  await search.press("Escape");
+  await expect(search).toHaveValue("");
+  await expect(settings).toBeVisible();
+  await search.fill("授权");
+  await search.press("Enter");
+  await expect(
+    settings.getByRole("tab", { name: "电脑", exact: true }),
+  ).toBeFocused();
+  await expect(search).toHaveValue("");
   await settings
     .getByRole("button", { name: "添加 Docker 电脑", exact: true })
     .click();
@@ -135,8 +170,9 @@ test("settings stay readable in both themes and compact layouts", async ({
     "尚未添加",
   );
   await page.keyboard.press("Escape");
+  await expect(settings).toBeVisible();
   expect(additions).toBe(0);
-  for (const width of [360, 768]) {
+  for (const width of [320, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 800 });
     await expect(
       settings.getByRole("tab", { name: "实例", exact: true }),
@@ -154,6 +190,7 @@ test("settings stay readable in both themes and compact layouts", async ({
   await expect(
     page.getByRole("button", { name: "设置", exact: true }),
   ).toBeFocused();
+  await expect(input).toHaveValue("返回后继续编辑");
 });
 
 test("empty chats retain their creation time and compact controls across layouts", async ({
@@ -197,8 +234,8 @@ test("empty chats retain their creation time and compact controls across layouts
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "联系人", exact: true }).click();
   await page.getByRole("button", { name: "设置", exact: true }).click();
-  const settings = page.getByRole("dialog", { name: "设置", exact: true });
-  await settings.getByRole("button", { name: "关闭", exact: true }).click();
+  const settings = page.getByRole("main", { name: "设置", exact: true });
+  await settings.getByRole("button", { name: "返回对话", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "联系人", exact: true }),
   ).toBeFocused();
@@ -341,7 +378,7 @@ test("control geometry and interaction states stay consistent", async ({
   await expect(checkbox).toBeChecked();
   await details.getByRole("button", { name: "关闭", exact: true }).click();
   await page.getByRole("button", { name: "设置", exact: true }).click();
-  const settings = page.getByRole("dialog", { name: "设置", exact: true });
+  const settings = page.getByRole("main", { name: "设置", exact: true });
   const nav = settings.getByRole("tablist", { name: "设置分区" });
   await expect(nav).toHaveAttribute("aria-orientation", "vertical");
   const appearance = settings.getByRole("tab", { name: "外观", exact: true });

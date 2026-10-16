@@ -1,12 +1,13 @@
-import { createContext, useContext } from "react";
+import { createContext, type ReactNode, useContext } from "react";
+import type { SettingsSection } from "./sections.tsx";
 
-export type SettingsSection =
-  | "appearance"
-  | "models"
-  | "computers"
-  | "devices"
-  | "instance";
 export const SettingsContext = createContext<{
   open: (section?: SettingsSection, botId?: number) => void;
-}>({ open: () => {} });
-export const useSettings = () => useContext(SettingsContext);
+  page: ReactNode;
+} | null>(null);
+
+export function useSettings() {
+  const value = useContext(SettingsContext);
+  if (!value) throw new Error("SettingsRoot required");
+  return value;
+}

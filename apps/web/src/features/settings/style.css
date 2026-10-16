@@ -1,57 +1,69 @@
-.dialog-popup.settings-dialog {
-  width: min(var(--settings-width), calc(100% - var(--space-8)));
-  height: min(var(--settings-height), calc(100dvh - var(--space-8)));
-  display: flex;
-  padding: 0;
-  overflow: hidden;
-  background: var(--color-canvas);
-}
-.settings-dialog > .dialog-title,
-.settings-dialog > .dialog-description {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-}
-.settings-layout {
+.settings-page {
   display: grid;
-  grid-template-columns: var(--settings-nav-width) minmax(0, 1fr);
-  width: 100%;
+  grid-template-columns: max(var(--sidebar-size), var(--settings-nav-width)) minmax(
+      0,
+      1fr
+    );
+  height: 100%;
   min-height: 0;
 }
 .settings-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
   min-width: 0;
-  overflow-y: auto;
-  background: var(--color-sidebar);
+  min-height: 0;
+  padding: var(--space-4) var(--space-3);
   border-inline-end: 1px solid var(--color-divider);
+  background: var(--color-sidebar);
 }
-.settings-sidebar > h2,
-.settings-header {
+.settings-sidebar-heading {
   display: flex;
   align-items: center;
-  min-height: var(--settings-header-height);
-  margin: 0;
-  padding: var(--space-5) var(--space-6);
+  gap: var(--space-2);
 }
-.settings-sidebar > h2,
-.settings-header h2 {
+.settings-sidebar h1 {
   margin: 0;
-  font-size: var(--text-title);
-  line-height: var(--leading-body);
+  font-size: var(--text-heading);
+  line-height: var(--leading-control);
   font-weight: var(--weight-semibold);
-  letter-spacing: -0.02em;
+}
+.settings-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.settings-search > svg {
+  position: absolute;
+  inset-inline-start: var(--space-3);
+  width: var(--space-4);
+  height: var(--space-4);
+  color: var(--color-muted);
+  pointer-events: none;
+}
+.settings-search .field-control {
+  min-height: var(--control-small);
+  height: var(--control-small);
+  padding-inline-start: var(--space-8);
+  border-color: var(--color-divider);
+  border-radius: var(--radius-round);
+}
+.settings-search .field-control::placeholder {
+  color: var(--color-muted);
 }
 .settings-nav {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  padding: 0 var(--space-3) var(--space-3);
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 .settings-nav button {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  flex-shrink: 0;
   min-height: var(--control-height);
   padding: var(--space-2) var(--space-3);
   border: 0;
@@ -63,12 +75,12 @@
   text-align: start;
   cursor: pointer;
 }
-.settings-nav button[data-active] {
+.settings-nav button[aria-current="page"] {
   background: var(--color-selection);
   color: var(--color-text);
   font-weight: var(--weight-medium);
 }
-.settings-nav button:not([data-active]):hover {
+.settings-nav button:not([aria-current="page"]):hover {
   background: var(--color-hover);
   color: var(--color-text);
 }
@@ -76,25 +88,55 @@
   outline: 2px solid var(--color-focus);
   outline-offset: -2px;
 }
+.settings-empty {
+  margin: 0;
+  padding-inline: var(--space-3);
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+}
 .settings-main {
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  border-start-start-radius: var(--radius-panel);
+  background: var(--color-canvas);
+  overflow: hidden;
+  outline: none;
+}
+.settings-header,
+.settings-content {
+  width: 100%;
+  max-width: var(--settings-content-width);
+  margin-inline: auto;
+  padding-inline: var(--space-8);
 }
 .settings-header {
-  justify-content: space-between;
-  gap: var(--space-4);
   flex-shrink: 0;
-  border-bottom: 1px solid var(--color-divider);
+  padding-block: var(--space-8) var(--space-6);
 }
-.settings-content {
-  min-width: 0;
+.settings-header h2 {
+  margin: 0;
+  font-size: var(--text-title);
+  line-height: var(--leading-body);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.02em;
+}
+.settings-header p {
+  margin: var(--space-2) 0 0;
+  color: var(--color-muted);
+  font-size: var(--text-label);
+  line-height: var(--leading-body);
+}
+.settings-scroll {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
-  padding: var(--space-6);
+  scrollbar-gutter: stable;
+}
+.settings-content {
+  padding-bottom: max(var(--space-8), env(safe-area-inset-bottom));
 }
 .settings-content [hidden] {
   display: none;
@@ -122,7 +164,7 @@
 .settings-card {
   padding: var(--space-4);
   border-radius: var(--radius-control);
-  background: var(--color-surface);
+  background: var(--color-control);
 }
 .settings-card .hosting-device + .hosting-device,
 .settings-card .setting-row + .setting-row {
@@ -134,43 +176,47 @@
 .settings-card > .setting-row:last-child {
   padding-bottom: 0;
 }
-.settings-layout[data-compact] {
-  grid-template-columns: 1fr;
+.settings-page[data-compact] {
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
 }
-.settings-layout[data-compact] .settings-sidebar {
+.settings-page[data-compact] .settings-sidebar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  padding-block: var(--space-3) var(--space-2);
   border-inline-end: 0;
   border-bottom: 1px solid var(--color-divider);
 }
-.settings-layout[data-compact] .settings-sidebar > h2 {
-  display: none;
-}
-.settings-layout[data-compact] .settings-nav {
+.settings-page[data-compact] .settings-nav {
+  grid-column: 1 / -1;
   flex-direction: row;
   overflow-x: auto;
-  padding: var(--space-2);
 }
-.settings-layout[data-compact] .settings-nav button {
+.settings-page[data-compact] .settings-nav button {
   flex: 1;
   justify-content: center;
-  padding: var(--space-2);
   gap: var(--space-1);
+  padding: var(--space-2);
 }
-.settings-layout[data-compact] .settings-nav button svg {
+.settings-page[data-compact] .settings-nav button svg {
   display: none;
 }
-.settings-layout[data-compact] .settings-header,
-.settings-layout[data-compact] .settings-content {
-  padding: var(--space-5);
+.settings-page[data-compact] .settings-empty {
+  grid-column: 1 / -1;
 }
-.settings-layout[data-compact] .setting-row {
+.settings-page[data-compact] .settings-main {
+  border-radius: 0;
+}
+.settings-page[data-compact] .settings-header,
+.settings-page[data-compact] .settings-content {
+  padding-inline: var(--space-4);
+}
+.settings-page[data-compact] .settings-header {
+  padding-block: var(--space-6);
+}
+.settings-page[data-compact] .setting-row {
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
-}
-.dialog-popup.settings-compact {
-  width: 100%;
-  height: 100dvh;
-  max-height: 100dvh;
-  border-radius: 0;
-  border: 0;
 }

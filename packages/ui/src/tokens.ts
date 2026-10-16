@@ -1,12 +1,13 @@
 export const themes = {
   dark: {
     background: "#0c0c0d",
-    canvas: "#111112",
+    canvas: "#0f0f10",
     sidebar: "#0c0c0d",
-    surface: "#1a1a1c",
-    control: "#161618",
-    hover: "#202022",
-    selection: "#272729",
+    surface: "#18181a",
+    control: "#141416",
+    "control-hover": "#1c1c1f",
+    hover: "#151517",
+    selection: "#1b1b1e",
     text: "#efeff0",
     muted: "#a0a0a7",
     border: "#2e2e32",
@@ -31,12 +32,13 @@ export const themes = {
   },
   light: {
     background: "#ffffff",
-    canvas: "#fafafa",
+    canvas: "#fdfdfd",
     sidebar: "#ffffff",
-    surface: "#f1f1f3",
-    control: "#f5f5f6",
-    hover: "#f1f1f3",
-    selection: "#e7e7eb",
+    surface: "#f5f5f7",
+    control: "#f9f9fa",
+    "control-hover": "#f2f2f4",
+    hover: "#f7f7f8",
+    selection: "#f0f0f3",
     text: "#202123",
     muted: "#64646c",
     border: "#d4d4da",
@@ -83,14 +85,17 @@ export const layout = {
   resizeStep: 24,
 } as const;
 
+export const windowOverlay = {
+  color: "#00000000",
+  height: layout.titlebar,
+} as const;
+
 export const metrics = {
   "titlebar-height": `${layout.titlebar}px`,
-  "settings-width": "58rem",
-  "settings-height": "42rem",
+  "settings-content-width": "49rem",
   "mac-controls-width": "5rem",
   "profile-text-height": "10rem",
   "settings-nav-width": "12.5rem",
-  "settings-header-height": "4.5rem",
   "resize-hit-width": "0.5rem",
   "window-controls-width": "9rem",
   "font-body":

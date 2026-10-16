@@ -53,7 +53,7 @@ async function control(
 }
 
 async function openSettings(page: import("@playwright/test").Page) {
-  const settings = page.getByRole("dialog", { name: "设置", exact: true });
+  const settings = page.getByRole("main", { name: "设置", exact: true });
   if (!(await settings.isVisible())) {
     if (
       !(await page
@@ -71,13 +71,15 @@ async function chooseAppearance(
   page: import("@playwright/test").Page,
   label: string,
 ) {
-  const settings = page.getByRole("dialog", { name: "设置", exact: true });
+  const settings = page.getByRole("main", { name: "设置", exact: true });
   const opened = !(await settings.isVisible());
   await openSettings(page);
   await page.getByRole("combobox", { name: "外观", exact: true }).click();
   await page.getByRole("option", { name: label, exact: true }).click();
   if (opened)
-    await settings.getByRole("button", { name: "关闭", exact: true }).click();
+    await settings
+      .getByRole("button", { name: "返回对话", exact: true })
+      .click();
 }
 
 async function chooseDetail(
@@ -330,7 +332,9 @@ test("Bot details share the desktop with chat and cover narrow screens", async (
   ).not.toHaveAttribute("aria-modal", "true");
   const chat = page.locator(".conversation");
   const chatBox = await chat.boundingBox();
-  const panelBox = await panel.boundingBox();
+  const panelBox = await page
+    .locator('.workspace-panel[data-side="inspector"]')
+    .boundingBox();
   if (!chatBox || !panelBox) throw new Error("Chat details layout missing");
   expect(panelBox.x - chatBox.x - chatBox.width).toBe(0);
   expect(panelBox.x + panelBox.width).toBeCloseTo(1360, 0);
@@ -1411,7 +1415,7 @@ test("model search and themed popups support keyboard, dismissal, and narrow scr
   await expect(page.getByRole("option")).toHaveCount(3);
   await page.keyboard.press("Escape");
   await expect(appearance).toBeFocused();
-  await settings.getByRole("button", { name: "关闭", exact: true }).click();
+  await settings.getByRole("button", { name: "返回对话", exact: true }).click();
   await expect(page.locator("select:visible")).toHaveCount(0);
   await page.setViewportSize({ width: 320, height: 568 });
   await model.click();
@@ -1487,7 +1491,9 @@ test("IM bubbles, sidebar search, and popup surfaces share both themes", async (
     ).toBeVisible();
     await page.screenshot({ path: `test-results/im-appearance-${theme}.png` });
     await page.keyboard.press("Escape");
-    await settings.getByRole("button", { name: "关闭", exact: true }).click();
+    await settings
+      .getByRole("button", { name: "返回对话", exact: true })
+      .click();
     await details.getByRole("button", { name: "关闭", exact: true }).click();
   }
   await page.setViewportSize({ width: 390, height: 844 });
@@ -2232,7 +2238,7 @@ test("computer details share live directory status and recover a failed refresh"
     0,
   );
   await computer.getByRole("button", { name: "管理电脑" }).click();
-  const settings = page.getByRole("dialog", {
+  const settings = page.getByRole("main", {
     name: "设置",
     exact: true,
   });
@@ -2242,7 +2248,7 @@ test("computer details share live directory status and recover a failed refresh"
   await page.unroute("**/rpc/computer/list");
   await settings.getByRole("button", { name: "刷新电脑状态" }).click();
   await expect(settings.getByRole("alert")).toHaveCount(0);
-  await settings.getByRole("button", { name: "关闭", exact: true }).click();
+  await settings.getByRole("button", { name: "返回对话", exact: true }).click();
   await page.screenshot({ path: "test-results/computer-light.png" });
   await chooseAppearance(page, "深色");
   await page.setViewportSize({ width: 375, height: 812 });

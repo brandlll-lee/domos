@@ -17,6 +17,7 @@ export function Workspace({
   children,
   actions,
   onSettings,
+  page,
 }: {
   sidebar: ReactNode;
   inspector: ReactNode;
@@ -25,6 +26,7 @@ export function Workspace({
   children: ReactNode;
   actions: ReactNode;
   onSettings: () => void;
+  page?: ReactNode;
 }) {
   const sizing = useWorkspaceLayout(detailsOpen);
   const [contactsOpen, setContactsOpen] = useState(false);
@@ -64,15 +66,24 @@ export function Workspace({
       }
     >
       <Titlebar
-        onContacts={sizing.mobile ? () => setContactsOpen(true) : undefined}
-        actions={actions}
+        onContacts={
+          !page && sizing.mobile ? () => setContactsOpen(true) : undefined
+        }
+        actions={page ? undefined : actions}
       />
-      {children}
+      <div
+        className="workspace-content"
+        hidden={Boolean(page)}
+        inert={Boolean(page)}
+      >
+        {children}
+      </div>
+      {page && <div className="workspace-page">{page}</div>}
       {panels.map(({ side, title, modal, open, change, content }) => (
         <PanelDialog.Root
           key={side}
-          open={open}
-          modal={modal}
+          open={!page && open}
+          modal={!page && modal}
           disablePointerDismissal={!modal}
           onOpenChange={change}
         >
@@ -89,11 +100,16 @@ export function Workspace({
                     ? undefined
                     : sizing.widths[side],
               }}
-              initialFocus={modal || side === "inspector"}
-              finalFocus={() =>
-                document.getElementById(
-                  side === "sidebar" ? "contacts-trigger" : "details-trigger",
-                )
+              initialFocus={!page && (modal || side === "inspector")}
+              finalFocus={
+                page
+                  ? false
+                  : () =>
+                      document.getElementById(
+                        side === "sidebar"
+                          ? "contacts-trigger"
+                          : "details-trigger",
+                      )
               }
             >
               <PanelDialog.Title className="sr-only">{title}</PanelDialog.Title>

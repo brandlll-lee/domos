@@ -4,12 +4,12 @@ import { DesktopIcon } from "@phosphor-icons/react/dist/csr/Desktop";
 import { HardDrivesIcon } from "@phosphor-icons/react/dist/csr/HardDrives";
 import { PaletteIcon } from "@phosphor-icons/react/dist/csr/Palette";
 import { ShieldCheckIcon } from "@phosphor-icons/react/dist/csr/ShieldCheck";
+import type { ReactNode } from "react";
 import { AppearancePicker } from "../appearance/picker.tsx";
 import { ComputerSettings } from "../computer/settings.tsx";
 import { DesktopSettings } from "../hosting/desktop.tsx";
 import { Devices } from "../hosting/devices.tsx";
 import { HostingModels } from "../hosting/models.tsx";
-import type { SettingsSection } from "./context.ts";
 
 export type SettingsAccess = {
   admin: boolean;
@@ -24,6 +24,7 @@ type SectionProps = SettingsAccess & {
 export const sections = {
   appearance: {
     label: "外观",
+    description: "调整主题，选择浅色、深色或跟随系统的显示方式。",
     icon: PaletteIcon,
     render: () => (
       <div className="settings-card">
@@ -35,6 +36,7 @@ export const sections = {
   },
   models: {
     label: "模型",
+    description: "连接模型账号，管理提供方和 Bot 使用的模型。",
     icon: CpuIcon,
     render: ({ admin, standalone, botId, onConfigured }: SectionProps) =>
       admin && !standalone ? (
@@ -47,11 +49,13 @@ export const sections = {
   },
   computers: {
     label: "电脑",
+    description: "管理工作电脑、Docker 容器和 Bot 的工具授权。",
     icon: DesktopIcon,
     render: ({ admin }: SectionProps) => <ComputerSettings admin={admin} />,
   },
   devices: {
     label: "设备",
+    description: "配对其他设备，管理访问权限和已连接的设备。",
     icon: ShieldCheckIcon,
     render: ({ admin, deviceId }: SectionProps) =>
       admin && deviceId ? (
@@ -62,14 +66,19 @@ export const sections = {
   },
   instance: {
     label: "实例",
+    description: "连接与管理 Domos 实例，创建加密备份或恢复数据。",
     icon: HardDrivesIcon,
     render: () => <DesktopSettings />,
   },
 } satisfies Record<
-  SettingsSection,
+  string,
   {
     label: string;
+    description: string;
     icon: typeof PaletteIcon;
-    render: (props: SectionProps) => React.ReactNode;
+    render: (props: SectionProps) => ReactNode;
   }
 >;
+
+export type SettingsSection = keyof typeof sections;
+export const defaultSection: SettingsSection = "appearance";
