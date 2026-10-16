@@ -1,6 +1,7 @@
 import type { TranscriptItem } from "@domos/agent/transcript";
 import type { ChatView } from "@domos/agent/view";
 import { ActivityText } from "@domos/ui/activity";
+import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { MessageBubble } from "@domos/ui/message";
 import { ArrowDownIcon } from "@phosphor-icons/react/dist/csr/ArrowDown";
@@ -13,10 +14,12 @@ import { useTranscript } from "./use-transcript.ts";
 export function Messages({
   view,
   botName,
+  botAvatar,
   items,
 }: {
   view: ChatView | null;
   botName: string;
+  botAvatar: string;
   items: TranscriptItem[];
 }) {
   const transcript = useTranscript(view);
@@ -34,6 +37,7 @@ export function Messages({
         ) : (
           !view.messages.length && (
             <section className="welcome">
+              <BotAvatar seed={botAvatar} size="large" />
               <h1>{botName}</h1>
             </section>
           )

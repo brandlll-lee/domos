@@ -1,5 +1,4 @@
 import type { Bot, BotPresence } from "@domos/agent/bots";
-import { messageText } from "@domos/agent/messages";
 import { chatTranscript } from "@domos/agent/transcript";
 import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
@@ -68,7 +67,6 @@ function BotChat({
     : chat.view
       ? chatCopy.reconnecting
       : chatCopy.connecting;
-  const latest = items.findLast((item) => item.kind === "message");
   const error =
     chat.error ??
     directoryError ??
@@ -86,6 +84,7 @@ function BotChat({
           <Button
             id="details-trigger"
             variant="ghost"
+            size="small"
             className="conversation-title"
             aria-label="Bot详情"
             aria-expanded={detailsOpen}
@@ -104,18 +103,7 @@ function BotChat({
         </div>
       }
       sidebar={
-        <Sidebar
-          bots={bots}
-          selected={bot}
-          connected={directoryConnected}
-          preview={
-            chat.view?.busy
-              ? chatCopy.working
-              : latest?.kind === "message"
-                ? messageText(latest.message)
-                : "开始对话"
-          }
-        />
+        <Sidebar bots={bots} selected={bot} connected={directoryConnected} />
       }
       inspector={
         <BotDetails
@@ -153,7 +141,12 @@ function BotChat({
           { "--composer-dock-height": `${dock.height}px` } as CSSProperties
         }
       >
-        <Messages view={chat.view} botName={bot.name} items={items} />
+        <Messages
+          view={chat.view}
+          botName={bot.name}
+          botAvatar={bot.avatar}
+          items={items}
+        />
         {chat.view ? (
           <Composer
             ref={dock.ref}

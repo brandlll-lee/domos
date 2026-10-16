@@ -44,7 +44,7 @@ export function ProfileEditor({
           <Button
             type="button"
             variant="secondary"
-            size="icon"
+            size="icon-small"
             aria-label="换个形象"
             onClick={() => setAvatar(crypto.randomUUID())}
           >

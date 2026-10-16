@@ -23,11 +23,11 @@ export function botWork(harness: Harness, now = Date.now) {
     watch: (botId: number, context: Context) =>
       watchCommits(
         harness,
-        [
-          MemoryDoc.definition.kind,
-          SkillsDoc.definition.kind,
-          RoutinesDoc.definition.kind,
-        ],
+        (change) =>
+          (change.type === "document" || change.type === "document.copy") &&
+          [MemoryDoc, SkillsDoc, RoutinesDoc].some(
+            (doc) => doc.definition.kind === change.record.kind,
+          ),
         () => read(botId, context),
         context,
       ),

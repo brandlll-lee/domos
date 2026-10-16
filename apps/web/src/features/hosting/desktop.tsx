@@ -71,7 +71,6 @@ export function DesktopSettings() {
       aria-busy={busy}
       data-dirty={Boolean(url || password)}
     >
-      <h3>实例</h3>
       <p className="detail-note">
         本机后台在这台电脑上运行。自托管无需云账号。
       </p>
@@ -93,7 +92,7 @@ export function DesktopSettings() {
         </Button>
       ))}
       <form
-        className="hosting-stack"
+        className="hosting-stack settings-card"
         onSubmit={(event) => {
           event.preventDefault();
           void run(() => desktop.connect(url, name));
@@ -102,6 +101,7 @@ export function DesktopSettings() {
         <label>
           实例名称
           <input
+            className="field-control"
             value={name}
             maxLength={80}
             required
@@ -111,6 +111,7 @@ export function DesktopSettings() {
         <label>
           服务器地址
           <input
+            className="field-control"
             value={url}
             placeholder="https://domos.example.com"
             required
@@ -129,6 +130,7 @@ export function DesktopSettings() {
         <label className="hosting-stack">
           备份密码
           <input
+            className="field-control"
             type="password"
             value={password}
             minLength={12}

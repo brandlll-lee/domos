@@ -186,7 +186,13 @@ test("adopts the existing root conversation with its history and configuration",
   const runtime = await openAgent(file, options, agent, context);
   try {
     expect(await runtime.bots.list(context)).toEqual([
-      { id: root.id, name: "Domos", avatar: expect.any(String), busy: false },
+      {
+        id: root.id,
+        name: "Domos",
+        avatar: expect.any(String),
+        busy: false,
+        preview: "Existing answer",
+      },
     ]);
     const conversation = await runtime.bots.conversation(root.id, context);
     expect(conversation?.id).toBe(root.id);

@@ -89,6 +89,7 @@ export function BotDetails({
       <header className="detail-header">
         <ChoicePicker
           label="Bot设置分区"
+          size="small"
           value={panel}
           onValueChange={(value) => onPanelChange(value as BotPanel)}
           items={Object.entries(panels).map(([value, item]) => ({
@@ -96,7 +97,12 @@ export function BotDetails({
             label: item.label,
           }))}
         />
-        <Button variant="ghost" size="icon" aria-label="关闭" onClick={onClose}>
+        <Button
+          variant="ghost"
+          size="icon-small"
+          aria-label="关闭"
+          onClick={onClose}
+        >
           <XIcon />
         </Button>
       </header>

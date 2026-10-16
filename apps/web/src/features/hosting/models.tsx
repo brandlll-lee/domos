@@ -117,6 +117,7 @@ export function HostingModels({
       <label>
         模型提供方
         <select
+          className="field-control"
           value={provider}
           onChange={(event) => setProvider(event.target.value)}
         >
@@ -203,6 +204,7 @@ export function HostingModels({
             {prompt.message}
             {prompt.options ? (
               <select
+                className="field-control"
                 id="model-login-input"
                 value={value}
                 onChange={(event) => setValue(event.target.value)}
@@ -216,6 +218,7 @@ export function HostingModels({
               </select>
             ) : (
               <input
+                className="field-control"
                 id="model-login-input"
                 type={prompt.type === "secret" ? "password" : "text"}
                 value={value}
@@ -249,6 +252,7 @@ export function HostingModels({
           <label>
             此 Bot 的模型
             <select
+              className="field-control"
               value={selection}
               onChange={(event) => setSelection(event.target.value)}
             >

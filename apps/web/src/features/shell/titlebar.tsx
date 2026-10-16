@@ -1,3 +1,4 @@
+import { Brand } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { DotsThreeIcon } from "@phosphor-icons/react/dist/csr/DotsThree";
 import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
@@ -38,14 +39,14 @@ export function Titlebar({
           <Button
             id="contacts-trigger"
             variant="ghost"
-            size="icon"
+            size="icon-small"
             aria-label="联系人"
             onClick={onContacts}
           >
             <ListIcon />
           </Button>
         ) : (
-          <span className="app-name">Domos</span>
+          <Brand />
         )}
         {actions}
       </div>
@@ -53,7 +54,7 @@ export function Titlebar({
       {desktop && (
         <Button
           variant="ghost"
-          size="icon"
+          size="icon-small"
           aria-label="应用菜单"
           onClick={() => void desktop.menu()}
         >
@@ -64,7 +65,7 @@ export function Titlebar({
         <Button
           id="settings-trigger"
           variant="ghost"
-          size="icon"
+          size="icon-small"
           aria-label="设置"
           onClick={onSettings}
         >

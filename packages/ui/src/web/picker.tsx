@@ -25,7 +25,8 @@ export function ChoicePicker({
   items,
   onValueChange,
   disabled,
-}: PickerProps) {
+  size = "default",
+}: PickerProps & { size?: "default" | "small" }) {
   return (
     <Select.Root
       items={items}
@@ -35,7 +36,11 @@ export function ChoicePicker({
         if (next !== null) onValueChange(next);
       }}
     >
-      <Select.Trigger className="picker-trigger" aria-label={label}>
+      <Select.Trigger
+        className="picker-trigger"
+        aria-label={label}
+        data-size={size}
+      >
         <Select.Value className="picker-value" />
         <Select.Icon>
           <Caret />

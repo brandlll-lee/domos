@@ -200,7 +200,7 @@ async function main() {
       current?.setBackgroundColor(themes[theme].background);
       if (process.platform !== "darwin")
         current?.setTitleBarOverlay({
-          color: themes[theme].sidebar,
+          color: themes[theme].background,
           symbolColor: themes[theme].text,
         });
     },

@@ -325,8 +325,8 @@ test("Bot details share the desktop with chat and cover narrow screens", async (
   const chatBox = await chat.boundingBox();
   const panelBox = await panel.boundingBox();
   if (!chatBox || !panelBox) throw new Error("Chat details layout missing");
-  expect(panelBox.x - chatBox.x - chatBox.width).toBe(8);
-  expect(panelBox.x + panelBox.width).toBeCloseTo(1352, 0);
+  expect(panelBox.x - chatBox.x - chatBox.width).toBe(1);
+  expect(panelBox.x + panelBox.width).toBeCloseTo(1360, 0);
   const input = page.getByLabel("消息", { exact: true });
   await input.fill("面板打开时继续聊天");
   await page.getByRole("button", { name: "发送", exact: true }).click();
@@ -1271,7 +1271,7 @@ test("Markdown keeps one message scale across elements, themes, and text enlarge
   ).toBeEnabled();
 });
 
-test("bundled Chinese and Latin faces render fractional message weights", async ({
+test("bundled Chinese and Latin faces render shared text weights", async ({
   page,
 }) => {
   await control({ content: "中文消息与 Latin 文字。**重点内容**" });
@@ -1281,8 +1281,8 @@ test("bundled Chinese and Latin faces render fractional message weights", async 
   const paragraph = page.getByLabel("Domos 的回复").locator("p");
   await expect(paragraph).toContainText("中文消息与 Latin 文字。");
   await page.evaluate(() => document.fonts.ready);
-  await expect(paragraph).toHaveCSS("font-weight", "320");
-  await expect(paragraph.locator("strong")).toHaveCSS("font-weight", "450");
+  await expect(paragraph).toHaveCSS("font-weight", "400");
+  await expect(paragraph.locator("strong")).toHaveCSS("font-weight", "600");
   const session = await page.context().newCDPSession(page);
   await session.send("DOM.enable");
   await session.send("CSS.enable");
@@ -2126,7 +2126,11 @@ test("Bot identity stays consistent and image previews work in drafts and histor
     "data-seed",
     seed ?? "",
   );
-  await expect(page.locator(".app-name")).toHaveText("Domos");
+  await expect(page.locator(".app-titlebar .wordmark")).toHaveText("Domos");
+  await expect(page.locator(".welcome .bot-avatar")).toHaveAttribute(
+    "data-seed",
+    seed ?? "",
+  );
   await expect(page.locator(".bot-avatar .character-mouth")).toHaveCount(0);
   const bytes = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1kAAAAASUVORK5CYII=",

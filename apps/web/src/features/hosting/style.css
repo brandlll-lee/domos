@@ -15,22 +15,13 @@
   gap: var(--space-3);
   min-width: 0;
 }
-.hosting-stack label {
+.hosting-stack label,
+label.hosting-stack {
   display: grid;
   gap: var(--space-2);
   font-size: var(--text-label);
-}
-.hosting-stack input,
-.hosting-stack select {
-  width: 100%;
-  min-width: 0;
-  min-height: var(--control-height);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
-  color: var(--color-text);
-  font: inherit;
+  color: var(--color-muted);
+  line-height: var(--leading-control);
 }
 .computer-record {
   padding-inline: var(--space-4);
@@ -43,12 +34,33 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
+  padding-block: var(--space-3);
+}
+.hosting-device:first-child {
+  padding-top: 0;
+}
+.hosting-device:last-child {
+  padding-bottom: 0;
+}
+.computer-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.computer-heading > .hosting-stack {
+  gap: var(--space-1);
+}
+.computer-heading strong,
+.hosting-device strong {
+  font-weight: var(--weight-medium);
 }
 .hosting-card h1,
 .hosting-card h2 {
   margin: 0;
-  font-size: var(--text-body);
-  font-weight: 500;
+  font-size: var(--text-title);
+  font-weight: var(--weight-semibold);
 }
 .pairing-code {
   display: block;

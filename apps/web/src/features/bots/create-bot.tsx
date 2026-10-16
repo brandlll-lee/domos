@@ -31,7 +31,7 @@ export function CreateBot({
       trigger={
         <Button
           variant="ghost"
-          size="icon"
+          size="icon-small"
           aria-label="新建 Bot"
           title="新建 Bot"
         >
@@ -164,6 +164,7 @@ function BotForm({
         <label className="hosting-stack">
           工作电脑
           <select
+            className="field-control"
             value={computerId ?? computers?.defaultId ?? ""}
             onChange={(event) => setComputerId(event.target.value)}
           >

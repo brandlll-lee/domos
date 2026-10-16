@@ -14,7 +14,9 @@ export function SettingRow({
     <fieldset className="setting-row" aria-labelledby={id}>
       <div className="setting-caption">
         <strong id={id}>{title}</strong>
-        {description && <div className="detail-note">{description}</div>}
+        {description && (
+          <div className="setting-description">{description}</div>
+        )}
       </div>
       <div className="setting-control">{children}</div>
     </fieldset>

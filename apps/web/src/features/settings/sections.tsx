@@ -26,9 +26,11 @@ export const sections = {
     label: "外观",
     icon: PaletteIcon,
     render: () => (
-      <SettingRow title="主题" description="选择适合当前环境的显示方式。">
-        <AppearancePicker />
-      </SettingRow>
+      <div className="settings-card">
+        <SettingRow title="主题" description="选择适合当前环境的显示方式。">
+          <AppearancePicker />
+        </SettingRow>
+      </div>
     ),
   },
   models: {

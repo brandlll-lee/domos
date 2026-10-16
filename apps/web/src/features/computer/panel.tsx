@@ -15,6 +15,7 @@ export function ComputerPanel({
       <label className="hosting-stack">
         分配电脑
         <select
+          className="field-control"
           value={status?.id ?? ""}
           disabled={busy}
           onChange={(event) => void assign(event.target.value || null)}

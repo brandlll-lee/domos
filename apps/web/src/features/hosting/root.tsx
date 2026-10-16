@@ -1,4 +1,4 @@
-import { BrandMark } from "@domos/ui/avatar";
+import { Brand } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { SettingsRoot } from "../settings/root.tsx";
@@ -58,10 +58,7 @@ export function HostingRoot({ children }: { children: ReactNode }) {
       <Titlebar />
       <main className="hosting-welcome">
         <div className="hosting-card">
-          <div className="wordmark">
-            <BrandMark />
-            domos.
-          </div>
+          <Brand />
           {state === "loading" && <p role="status">正在连接实例…</p>}
           {state === "pair" && (
             <form
@@ -88,6 +85,7 @@ export function HostingRoot({ children }: { children: ReactNode }) {
               <label>
                 设备名称
                 <input
+                  className="field-control"
                   value={label}
                   maxLength={80}
                   onChange={(event) => setLabel(event.target.value)}
@@ -97,6 +95,7 @@ export function HostingRoot({ children }: { children: ReactNode }) {
               <label>
                 配对码
                 <input
+                  className="field-control"
                   value={code}
                   autoComplete="off"
                   onChange={(event) => setCode(event.target.value)}

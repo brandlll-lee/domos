@@ -7,6 +7,7 @@
   height: var(--titlebar-height);
   padding-inline: var(--space-5) var(--space-3);
   background: var(--color-background);
+  border-bottom: 1px solid var(--color-divider);
   user-select: none;
   -webkit-app-region: drag;
 }
@@ -20,15 +21,9 @@
 .app-titlebar button {
   -webkit-app-region: no-drag;
 }
-.app-titlebar .button[data-size="icon"] {
-  width: var(--details-control-height);
-  min-height: var(--details-control-height);
-  border-radius: var(--radius-control);
-}
-.app-name {
-  font-size: var(--text-label);
-  font-weight: 600;
-  letter-spacing: -0.03em;
+.app-titlebar .brand-mark {
+  width: var(--avatar-small);
+  height: var(--avatar-small);
 }
 .titlebar-brand {
   display: flex;
@@ -57,8 +52,6 @@
 .workspace > .conversation {
   grid-column: 2;
   grid-row: 2;
-  margin-inline-end: var(--space-2);
-  border-radius: var(--radius-message) var(--radius-message) 0 0;
   background: var(--color-canvas);
   overflow: hidden;
 }
@@ -73,10 +66,11 @@
 .workspace-panel[data-side="sidebar"] {
   inset-inline-start: 0;
   background: var(--color-sidebar);
+  border-inline-end: 1px solid var(--color-divider);
 }
 .workspace-panel[data-side="inspector"] {
   inset-inline-end: 0;
-  padding-inline-end: var(--space-2);
+  border-inline-start: 1px solid var(--color-divider);
 }
 .workspace-panel[data-modal] {
   z-index: 3;
@@ -152,5 +146,6 @@
 .workspace[data-mobile] .workspace-panel[data-side="inspector"] {
   width: 100%;
   padding: 0;
+  border: 0;
   top: 0;
 }

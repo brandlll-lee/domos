@@ -92,6 +92,42 @@ test("desktop starts locally, pairs and restores a saved instance", async ({
       name: "设置",
       exact: true,
     });
+    for (const label of ["深色", "浅色"]) {
+      await settings
+        .getByRole("combobox", { name: "外观", exact: true })
+        .click();
+      await local.getByRole("option", { name: label, exact: true }).click();
+      const background = await desktop.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]?.getBackgroundColor(),
+      );
+      expect(background).toBeTruthy();
+      const header = await local
+        .locator(".app-titlebar")
+        .evaluate((item) => getComputedStyle(item).backgroundColor);
+      const rgb = background
+        ?.match(/[a-f0-9]{2}/gi)
+        ?.slice(0, 3)
+        .map((part) => Number.parseInt(part, 16));
+      expect(header).toBe(`rgb(${rgb?.join(", ")})`);
+    }
+    await desktop.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(2),
+    );
+    await expect(
+      settings.getByRole("tablist", { name: "设置分区" }),
+    ).toHaveAttribute("data-orientation", "horizontal");
+    await expect(
+      settings.getByRole("button", { name: "关闭", exact: true }),
+    ).toBeInViewport();
+    expect(
+      await local.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await local.screenshot({ path: testInfo.outputPath("settings-zoom.png") });
+    await desktop.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(1),
+    );
     await settings.getByRole("tab", { name: "实例", exact: true }).click();
     await settings
       .getByLabel("服务器地址")

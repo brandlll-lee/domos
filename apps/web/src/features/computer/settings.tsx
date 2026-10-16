@@ -35,7 +35,6 @@ export function ComputerSettings({ admin }: { admin: boolean }) {
   }
   return (
     <section className="hosting-stack" aria-label="电脑管理" aria-busy={busy}>
-      <h3>工作电脑</h3>
       <p className="detail-note">
         普通聊天不需要电脑。多个 Bot 可共用一台电脑。共享电脑上的 Bot
         共享文件和系统权限。
@@ -53,27 +52,31 @@ export function ComputerSettings({ admin }: { admin: boolean }) {
           key={item.id}
           aria-label={item.name}
         >
-          <strong>{item.name}</strong>
-          <span className="detail-note">
-            {computerLabels.boundary[item.boundary]} ·{" "}
-            {computerLabels.state[item.state]} ·{" "}
-            {item.authorized ? "已授权" : "待授权"}
-          </span>
-          <ComputerDetails name={item.name}>
-            <dl className="computer-facts">
-              <dt>工作根目录</dt>
-              <dd>{item.directory}</dd>
-              <dt>能力</dt>
-              <dd>
-                {item.capabilities.commands ? "命令与文件" : "当前不可执行"}
-              </dd>
-              <dt>网络</dt>
-              <dd>{computerLabels.network[item.network]}</dd>
-            </dl>
-          </ComputerDetails>
+          <div className="computer-heading">
+            <div className="hosting-stack">
+              <strong>{item.name}</strong>
+              <span className="detail-note">
+                {computerLabels.boundary[item.boundary]} ·{" "}
+                {computerLabels.state[item.state]} ·{" "}
+                {item.authorized ? "已授权" : "待授权"}
+              </span>
+            </div>
+            <ComputerDetails name={item.name}>
+              <dl className="computer-facts">
+                <dt>工作根目录</dt>
+                <dd>{item.directory}</dd>
+                <dt>能力</dt>
+                <dd>
+                  {item.capabilities.commands ? "命令与文件" : "当前不可执行"}
+                </dd>
+                <dt>网络</dt>
+                <dd>{computerLabels.network[item.network]}</dd>
+              </dl>
+            </ComputerDetails>
+          </div>
           {item.error && <p role="alert">{item.error}</p>}
           {admin && (
-            <>
+            <div className="detail-actions">
               {item.authorized ? (
                 <Button
                   variant="ghost"
@@ -166,7 +169,7 @@ export function ComputerSettings({ admin }: { admin: boolean }) {
                   />
                 </div>
               )}
-            </>
+            </div>
           )}
         </section>
       ))}

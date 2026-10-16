@@ -105,6 +105,9 @@ test("settings stay readable in both themes and compact layouts", async ({
   ]) {
     await page.getByRole("combobox", { name: "外观", exact: true }).click();
     await page.getByRole("option", { name: label, exact: true }).click();
+    await page.evaluate(() => document.fonts.ready);
+    if (process.platform === "win32")
+      await expect(settings).toHaveScreenshot(`settings-${theme}.png`);
     await page.screenshot({
       path: testInfo.outputPath(`settings-${theme}.png`),
     });
@@ -149,6 +152,163 @@ test("settings stay readable in both themes and compact layouts", async ({
   }
   await page.keyboard.press("Escape");
   await expect(trigger).toBeFocused();
+});
+
+test("contact rows keep their density and searchable previews across selections", async ({
+  page,
+}) => {
+  await page.goto(url);
+  await page.getByRole("button", { name: "新建 Bot", exact: true }).click();
+  let create = page.getByRole("dialog", { name: "新建 Bot", exact: true });
+  await create
+    .getByRole("textbox", { name: "名字", exact: true })
+    .fill("研究助手");
+  await create
+    .getByRole("textbox", { name: "职责与指令", exact: true })
+    .fill("整理研究资料");
+  await create.getByRole("button", { name: "创建", exact: true }).click();
+  await expect(create).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Bot详情", exact: true }),
+  ).toContainText("研究助手");
+  await page.getByRole("button", { name: "新建 Bot", exact: true }).click();
+  create = page.getByRole("dialog", { name: "新建 Bot", exact: true });
+  const longName = "负责跨语言内容审校与排版的 Editorial Assistant";
+  await create
+    .getByRole("textbox", { name: "名字", exact: true })
+    .fill(longName);
+  await create.getByRole("button", { name: "创建", exact: true }).click();
+  await expect(create).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Bot详情", exact: true }),
+  ).toContainText(longName);
+  const contacts = page.getByRole("navigation", {
+    name: "联系人",
+    exact: true,
+  });
+  await expect(contacts.getByRole("link")).toHaveCount(3);
+  const rows = page.locator(".contact-row");
+  const geometry = await rows.evaluateAll((items) =>
+    items.map((item) => ({
+      height: item.getBoundingClientRect().height,
+      lines: item.querySelectorAll(".chat-preview > *").length,
+      nameWeight: getComputedStyle(item.querySelector("strong") as HTMLElement)
+        .fontWeight,
+    })),
+  );
+  expect(
+    geometry.every(
+      (item) => item.height === geometry[0]?.height && item.lines === 2,
+    ),
+  ).toBe(true);
+  expect(geometry[0]?.height).toBe(54);
+  expect(geometry[0]?.nameWeight).toBe("500");
+  const search = page.getByRole("searchbox", { name: "搜索联系人" });
+  await search.fill("开始对话");
+  await expect(contacts.getByRole("link")).toHaveCount(2);
+  await search.fill("整理研究资料");
+  await expect(
+    contacts.getByRole("link", { name: "研究助手", exact: true }),
+  ).toBeVisible();
+  await search.clear();
+  const root = contacts.getByRole("link", { name: "Domos", exact: true });
+  await root.click();
+  await expect(
+    page.getByRole("button", { name: "Bot详情", exact: true }),
+  ).toContainText("Domos");
+  await page
+    .getByRole("textbox", { name: "消息", exact: true })
+    .fill("核对列表预览");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(root).toContainText("已收到：核对列表预览");
+  await contacts.getByRole("link", { name: "研究助手", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Bot详情", exact: true }),
+  ).toContainText("研究助手");
+  await search.fill("已收到：核对列表预览");
+  await expect(root).toBeVisible();
+  await search.clear();
+  const active = contacts.getByRole("link", { name: "研究助手", exact: true });
+  const selectedColor = await active.evaluate(
+    (item) => getComputedStyle(item).backgroundColor,
+  );
+  await root.hover();
+  expect(
+    await root.evaluate((item) => getComputedStyle(item).backgroundColor),
+  ).not.toBe(selectedColor);
+  await page.reload();
+  await expect(root).toContainText("已收到：核对列表预览");
+});
+
+test("control geometry and interaction states stay consistent", async ({
+  page,
+}) => {
+  await page.goto(url);
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  const details = page.getByRole("complementary", { name: "Domos的详情" });
+  const picker = details.getByRole("combobox", { name: "Bot设置分区" });
+  const inset = await picker.evaluate((item) => {
+    const box = item.getBoundingClientRect();
+    const value = item.querySelector(".picker-value")?.getBoundingClientRect();
+    const header = item.parentElement?.getBoundingClientRect();
+    return {
+      left: (value?.left ?? 0) - box.left,
+      top: box.top - (header?.top ?? 0),
+      bottom: (header?.bottom ?? 0) - box.bottom,
+    };
+  });
+  expect(inset.left).toBeGreaterThanOrEqual(8);
+  expect(inset.top).toBeGreaterThanOrEqual(8);
+  expect(inset.bottom).toBeGreaterThanOrEqual(8);
+  const name = details.getByRole("textbox", { name: "名字", exact: true });
+  const model = details.getByRole("combobox", { name: "模型", exact: true });
+  const inputHeight = (await name.boundingBox())?.height;
+  expect((await name.boundingBox())?.height).toBe(
+    (await model.boundingBox())?.height,
+  );
+  const save = details.getByRole("button", { name: "保存身份", exact: true });
+  await expect(save).toBeDisabled();
+  const color = await save.evaluate(
+    (item) => getComputedStyle(item).backgroundColor,
+  );
+  await save.hover();
+  await expect(save).toHaveCSS("background-color", color);
+  await picker.click();
+  await page.getByRole("option", { name: "电脑", exact: true }).click();
+  const select = details.getByRole("combobox", {
+    name: "分配电脑",
+    exact: true,
+  });
+  expect((await select.boundingBox())?.height).toBe(inputHeight);
+  await expect(select).toHaveCSS("font-size", "14px");
+  await picker.click();
+  await page.getByRole("option", { name: "记忆", exact: true }).click();
+  const checkbox = details.getByRole("checkbox", { name: "共享给所有Bot" });
+  await expect(checkbox).toHaveCSS("width", "16px");
+  await expect(checkbox).toHaveCSS("margin", "0px");
+  await checkbox.check();
+  await expect(checkbox).toBeChecked();
+  await details.getByRole("button", { name: "关闭", exact: true }).click();
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "设置", exact: true });
+  const nav = settings.getByRole("tablist", { name: "设置分区" });
+  await expect(nav).toHaveAttribute("aria-orientation", "vertical");
+  const appearance = settings.getByRole("tab", { name: "外观", exact: true });
+  const computer = settings.getByRole("tab", { name: "电脑", exact: true });
+  const active = await appearance.evaluate(
+    (item) => getComputedStyle(item).backgroundColor,
+  );
+  await computer.hover();
+  expect(
+    await computer.evaluate((item) => getComputedStyle(item).backgroundColor),
+  ).not.toBe(active);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(nav).toHaveAttribute("data-orientation", "horizontal");
+  await appearance.focus();
+  await appearance.press("ArrowRight");
+  await expect(
+    settings.getByRole("tab", { name: "模型", exact: true }),
+  ).toBeFocused();
 });
 
 test("resizing tolerates blocked preferences and pointer cancellation", async ({

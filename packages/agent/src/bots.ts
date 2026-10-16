@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Context } from "@earendil-works/chord/context";
 import {
+  AgentDoc,
   type ConversationId,
   configure,
   defineDoc,
@@ -10,13 +11,14 @@ import {
   type ModelRef,
   section,
 } from "@earendil-works/pi-durable";
+import { botPreview } from "./bot-preview.ts";
 import type { Computers } from "./computer/catalog.ts";
 import { watchCommits } from "./watch.ts";
 import { BOT_NAME_LENGTH } from "./work/limits.ts";
 import { requiredText, requireRevision, WorkError } from "./work/state.ts";
 
 export type Bot = { id: ConversationId; name: string; avatar: string };
-export type BotPresence = Bot & { busy: boolean };
+export type BotPresence = Bot & { busy: boolean; preview: string };
 export type CreateBot = {
   name: string;
   instructions?: string;
@@ -65,17 +67,29 @@ export class Bots {
   async list(context: Context): Promise<BotPresence[]> {
     const directory = await this.harness.snapshot(BotDirectory, context);
     return Promise.all(
-      (directory?.items ?? []).map(async ({ id, name, avatar }) => ({
-        id,
-        name,
-        avatar,
-        busy: Boolean((await this.harness.snapshot(LiveDoc, id, context))?.run),
-      })),
+      (directory?.items ?? []).map(async ({ id, name, avatar }) => {
+        const [live, agent, conversation] = await Promise.all([
+          this.harness.snapshot(LiveDoc, id, context),
+          this.harness.snapshot(AgentDoc, id, context),
+          this.harness.conversation(id, context),
+        ]);
+        return {
+          id,
+          name,
+          avatar,
+          busy: Boolean(live?.run),
+          preview: conversation
+            ? await botPreview(conversation, agent?.instructions ?? "", context)
+            : "",
+        };
+      }),
     );
   }
 
   async conversation(id: number, context: Context) {
-    const bot = (await this.list(context)).find((item) => item.id === id);
+    const bot = (
+      await this.harness.snapshot(BotDirectory, context)
+    )?.items.find((item) => item.id === id);
     return bot ? this.harness.conversation(bot.id, context) : undefined;
   }
 
@@ -157,7 +171,12 @@ export class Bots {
   watch(context: Context) {
     return watchCommits(
       this.harness,
-      [BotDirectory.definition.kind, LiveDoc.definition.kind],
+      (change) =>
+        change.type === "entry" ||
+        ((change.type === "document" || change.type === "document.copy") &&
+          [BotDirectory, AgentDoc, LiveDoc].some(
+            (doc) => doc.definition.kind === change.record.kind,
+          )),
       () => this.list(context),
       context,
     );

@@ -11,7 +11,7 @@
   color: var(--color-text);
   font-size: var(--text-message);
   line-height: var(--message-leading);
-  font-weight: var(--message-weight);
+  font-weight: var(--weight-regular);
 }
 .message-bubble[data-side="outgoing"] {
   max-width: var(--message-outgoing-width);
@@ -55,10 +55,12 @@
   min-height: var(--composer-control-size);
   border: 0;
   background: transparent;
+  border-radius: var(--radius-round);
 }
 .composer-action .button[data-size="icon"] {
   width: var(--composer-control-size);
   min-height: var(--composer-control-size);
+  border-radius: var(--radius-round);
 }
 .message-composer textarea {
   display: block;
@@ -83,7 +85,7 @@
   background: transparent;
   color: var(--color-text);
   font-size: var(--text-composer);
-  font-weight: var(--message-weight);
+  font-weight: var(--weight-regular);
   line-height: var(--message-leading);
   scrollbar-width: thin;
 }
@@ -124,7 +126,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--text-label);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 .file-caption span {
   color: var(--color-muted);
@@ -158,11 +160,11 @@
   margin-block: var(--message-paragraph-gap);
   font-size: inherit;
   line-height: inherit;
-  font-weight: var(--message-emphasis-weight);
+  font-weight: var(--weight-semibold);
 }
 .markdown strong,
 .markdown th {
-  font-weight: var(--message-emphasis-weight);
+  font-weight: var(--weight-semibold);
 }
 .markdown ul,
 .markdown ol {

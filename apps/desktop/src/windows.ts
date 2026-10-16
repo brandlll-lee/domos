@@ -21,7 +21,7 @@ export async function openInstance(
             height: layout.titlebar,
             color:
               themes[nativeTheme.shouldUseDarkColors ? "dark" : "light"]
-                .sidebar,
+                .background,
             symbolColor:
               themes[nativeTheme.shouldUseDarkColors ? "dark" : "light"].text,
           },

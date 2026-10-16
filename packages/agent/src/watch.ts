@@ -1,9 +1,9 @@
 import type { Context } from "@earendil-works/chord/context";
-import type { Harness } from "@earendil-works/pi-durable";
+import type { CommitChange, Harness } from "@earendil-works/pi-durable";
 
 export async function* watchCommits<T>(
   harness: Harness,
-  kinds: readonly string[],
+  accepts: (change: CommitChange) => boolean,
   read: () => Promise<T>,
   context: Context,
 ) {
@@ -16,14 +16,7 @@ export async function* watchCommits<T>(
     changed.resolve();
   };
   const unsubscribe = harness.subscribeCommits(({ changes }) => {
-    if (
-      changes.some(
-        (change) =>
-          (change.type === "document" || change.type === "document.copy") &&
-          kinds.includes(change.record.kind),
-      )
-    )
-      notify();
+    if (changes.some(accepts)) notify();
   });
   const unsubscribeClose = harness.subscribeClose(() => {
     closed = true;

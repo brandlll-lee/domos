@@ -202,6 +202,7 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
         name: "Domos",
         avatar: expect.any(String),
         busy: false,
+        preview: "",
       },
     ]);
     const [bot, repeated] = await Promise.all([
@@ -220,8 +221,9 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
         name: "Domos",
         avatar: expect.any(String),
         busy: false,
+        preview: "",
       },
-      { ...bot, busy: false },
+      { ...bot, busy: false, preview: input.instructions },
     ]);
     await events.return();
     const initial = await first.client.get({ botId });

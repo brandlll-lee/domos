@@ -7,7 +7,7 @@ export function Button({
   ...props
 }: ComponentProps<"button"> & {
   variant?: "primary" | "secondary" | "ghost";
-  size?: "default" | "icon";
+  size?: "default" | "small" | "icon" | "icon-small";
 }) {
   return (
     <button

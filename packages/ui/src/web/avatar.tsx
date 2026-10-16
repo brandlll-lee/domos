@@ -87,3 +87,12 @@ export function BrandMark() {
     </span>
   );
 }
+
+export function Brand() {
+  return (
+    <span className="wordmark">
+      <BrandMark />
+      <span>Domos</span>
+    </span>
+  );
+}

@@ -4,20 +4,21 @@ import { MagnifyingGlassIcon as MagnifyingGlass } from "@phosphor-icons/react/di
 import { useState } from "react";
 import { chatCopy } from "./copy.ts";
 
+const contactPreview = (bot: BotPresence) =>
+  bot.busy ? chatCopy.working : bot.preview || "开始对话";
+
 export function Sidebar({
   bots,
   selected,
-  preview,
   connected,
 }: {
   bots: BotPresence[];
   selected: Bot;
-  preview: string;
   connected: boolean;
 }) {
   const [query, setQuery] = useState("");
   const matches = bots.filter((bot) =>
-    `${bot.name}\n${bot.id === selected.id ? preview : ""}`
+    `${bot.name}\n${contactPreview(bot)}`
       .toLocaleLowerCase()
       .includes(query.toLocaleLowerCase()),
   );
@@ -50,7 +51,7 @@ export function Sidebar({
               />
               <div className="chat-preview">
                 <strong>{bot.name}</strong>
-                {bot.id === selected.id && <span>{preview}</span>}
+                <span>{contactPreview(bot)}</span>
               </div>
             </a>
           ))

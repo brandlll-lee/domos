@@ -116,6 +116,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
           <label>
             电脑名称
             <input
+              className="field-control"
               value={name}
               maxLength={80}
               required
@@ -125,6 +126,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
           <label>
             电脑标识
             <input
+              className="field-control"
               value={id}
               pattern="[a-z0-9][a-z0-9_.-]{0,62}"
               required
@@ -134,6 +136,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
           <label>
             工作镜像
             <input
+              className="field-control"
               value={image}
               required
               onChange={(event) => setImage(event.target.value)}
@@ -142,6 +145,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
           <label>
             Docker 位置
             <select
+              className="field-control"
               value={remote ? "remote" : "local"}
               onChange={(event) => setRemote(event.target.value === "remote")}
             >
@@ -154,6 +158,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
               <label>
                 SSH 主机
                 <input
+                  className="field-control"
                   value={host}
                   required
                   onChange={(event) => setHost(event.target.value)}
@@ -162,6 +167,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
               <label>
                 SSH 用户
                 <input
+                  className="field-control"
                   value={user}
                   onChange={(event) => setUser(event.target.value)}
                 />
@@ -169,6 +175,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
               <label>
                 主机密钥文件路径
                 <input
+                  className="field-control"
                   value={knownHostsFile}
                   required
                   onChange={(event) => setKnownHostsFile(event.target.value)}
@@ -177,6 +184,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
               <label>
                 身份文件路径
                 <input
+                  className="field-control"
                   value={identityFile}
                   onChange={(event) => setIdentityFile(event.target.value)}
                 />
