@@ -22,6 +22,14 @@
 .message-composer {
   display: grid;
   gap: var(--space-2);
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-composer);
+  background: var(--color-surface);
+  transition: border-color var(--motion-feedback);
+}
+.message-composer:focus-within {
+  border-color: var(--color-focus);
 }
 .composer-row {
   display: flex;
@@ -35,14 +43,7 @@
   min-width: 0;
   gap: var(--space-2);
   padding: var(--composer-padding);
-  padding-inline-start: var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-composer);
-  background: var(--color-surface);
-  transition: border-color var(--motion-feedback);
-}
-.composer-field:focus-within {
-  border-color: var(--color-focus);
+  background: transparent;
 }
 .composer-leading,
 .composer-action {
@@ -50,9 +51,10 @@
   flex-shrink: 0;
 }
 .composer-leading .button[data-size="icon"] {
-  width: var(--composer-height);
-  min-height: var(--composer-height);
-  border-color: var(--color-border);
+  width: var(--composer-control-size);
+  min-height: var(--composer-control-size);
+  border: 0;
+  background: transparent;
 }
 .composer-action .button[data-size="icon"] {
   width: var(--composer-control-size);

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { client } from "../../client.ts";
 import { AddComputer } from "./add.tsx";
 import { computerLabels } from "./copy.ts";
+import { ComputerDetails, ConfirmComputerAction } from "./dialogs.tsx";
 
 export function ComputerSettings({ admin }: { admin: boolean }) {
   const [catalog, setCatalog] =
@@ -22,10 +23,12 @@ export function ComputerSettings({ admin }: { admin: boolean }) {
     try {
       await action();
       await refresh();
+      return true;
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "操作未确认。请刷新状态。",
       );
+      return false;
     } finally {
       setBusy(false);
     }
@@ -56,16 +59,18 @@ export function ComputerSettings({ admin }: { admin: boolean }) {
             {computerLabels.state[item.state]} ·{" "}
             {item.authorized ? "已授权" : "待授权"}
           </span>
-          <dl className="computer-facts">
-            <dt>工作根目录</dt>
-            <dd>{item.directory}</dd>
-            <dt>能力</dt>
-            <dd>
-              {item.capabilities.commands ? "命令与文件" : "当前不可执行"}
-            </dd>
-            <dt>网络</dt>
-            <dd>{computerLabels.network[item.network]}</dd>
-          </dl>
+          <ComputerDetails name={item.name}>
+            <dl className="computer-facts">
+              <dt>工作根目录</dt>
+              <dd>{item.directory}</dd>
+              <dt>能力</dt>
+              <dd>
+                {item.capabilities.commands ? "命令与文件" : "当前不可执行"}
+              </dd>
+              <dt>网络</dt>
+              <dd>{computerLabels.network[item.network]}</dd>
+            </dl>
+          </ComputerDetails>
           {item.error && <p role="alert">{item.error}</p>}
           {admin && (
             <>
@@ -85,26 +90,21 @@ export function ComputerSettings({ admin }: { admin: boolean }) {
                   撤销授权
                 </Button>
               ) : (
-                <details>
-                  <summary>授权使用{item.name}</summary>
-                  <p className="detail-note">
-                    命令和文件工具使用服务进程的系统权限。工作目录不提供安全隔离。仅在信任
-                    Bot 的任务时授权。
-                  </p>
-                  <Button
-                    disabled={busy}
-                    onClick={() =>
-                      void run(() =>
-                        client.computer.authorize({
-                          id: item.id,
-                          authorized: true,
-                        }),
-                      )
-                    }
-                  >
-                    确认授权
-                  </Button>
-                </details>
+                <ConfirmComputerAction
+                  title={`授权使用${item.name}`}
+                  description="命令和文件工具使用服务进程的系统权限。工作目录不提供安全隔离。仅在信任 Bot 的任务时授权。"
+                  label="确认授权"
+                  busy={busy}
+                  error={error}
+                  onConfirm={() =>
+                    run(() =>
+                      client.computer.authorize({
+                        id: item.id,
+                        authorized: true,
+                      }),
+                    )
+                  }
+                />
               )}
               {item.authorized && (
                 <Button
@@ -149,25 +149,21 @@ export function ComputerSettings({ admin }: { admin: boolean }) {
                   >
                     停止电脑
                   </Button>
-                  <details>
-                    <summary>重建工作容器</summary>
-                    <p className="detail-note">
-                      工作卷保留。容器内的进程将结束。
-                    </p>
-                    <Button
-                      disabled={busy}
-                      onClick={() =>
-                        void run(() =>
-                          client.computer.manage({
-                            id: item.id,
-                            action: "rebuild",
-                          }),
-                        )
-                      }
-                    >
-                      确认重建
-                    </Button>
-                  </details>
+                  <ConfirmComputerAction
+                    title="重建工作容器"
+                    description="工作卷保留。容器内的进程将结束。"
+                    label="确认重建"
+                    busy={busy}
+                    error={error}
+                    onConfirm={() =>
+                      run(() =>
+                        client.computer.manage({
+                          id: item.id,
+                          action: "rebuild",
+                        }),
+                      )
+                    }
+                  />
                 </div>
               )}
             </>

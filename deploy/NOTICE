@@ -18,3 +18,18 @@ Copyright (c) 2025 Mario Zechner
 Licensed under the MIT License. See licenses/pi.txt.
 Source: https://github.com/earendil-works/pi
 The work image distributes the official pi-env 1.2.0 daemon.
+
+UI adaptations
+
+apps/web/src/features/shell/resize-handle.tsx adapts
+Rakazo apps/web/src/pages/ResizableSidePanel.tsx under Apache-2.0.
+Domos supplies layout limits and saves preferences after interaction.
+apps/web/src/features/settings uses the navigation and content composition
+of Rakazo apps/web/src/pages/SettingsOverlay.tsx with Domos panels and tokens.
+
+OpenMausBot
+Licensed under the Apache License, Version 2.0. See licenses/openmausbot.txt.
+Source: https://github.com/milind-soni/OpenMausBot
+packages/ui/src/web/setting-row.tsx adapts
+src/components/SettingsPrimitives.tsx:SettingRow.
+Domos uses a fieldset, existing controls, and semantic theme variables.

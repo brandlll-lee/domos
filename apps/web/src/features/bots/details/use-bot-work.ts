@@ -40,12 +40,13 @@ export function useWorkAction() {
   return { busy, error, run };
 }
 
-export function useBotWork(botId: number) {
+export function useBotWork(botId: number, active: boolean) {
   const [data, setData] = useState<WorkData | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   useEffect(() => {
+    if (!active) return;
     const controller = new AbortController();
     void client.work
       .profile({ botId }, { signal: controller.signal })
@@ -83,6 +84,6 @@ export function useBotWork(botId: number) {
       }
     })();
     return () => controller.abort();
-  }, [botId]);
-  return { data, profile, setProfile, error, connected };
+  }, [botId, active]);
+  return { data, profile, setProfile, error, connected: active && connected };
 }

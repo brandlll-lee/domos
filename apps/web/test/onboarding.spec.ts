@@ -27,7 +27,6 @@ test("onboarding preserves drafts and requests computer authorization only when 
     await page.getByLabel("配对码", { exact: true }).fill(ready.code);
     await page.getByRole("button", { name: "连接", exact: true }).click();
     await expect(page.getByRole("button", { name: "Bot详情" })).toBeVisible();
-    await expect(page.getByText("暂不分配电脑", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "新建 Bot" }).first().click();
     await page
       .getByRole("textbox", { name: "名字", exact: true })
@@ -38,14 +37,15 @@ test("onboarding preserves drafts and requests computer authorization only when 
     );
     await page.getByRole("button", { name: "Bot详情" }).click();
     const details = page.getByRole("complementary", { name: "Writer的详情" });
-    await details.getByRole("button", { name: "电脑", exact: true }).click();
+    await details.getByRole("combobox", { name: "Bot设置分区" }).click();
+    await page.getByRole("option", { name: "电脑", exact: true }).click();
     await expect(details.getByLabel("分配电脑")).toHaveValue("");
     await details.getByRole("button", { name: "关闭", exact: true }).click();
     await page
       .getByRole("textbox", { name: "消息", exact: true })
       .fill("保留这份草稿");
     await page.getByRole("button", { name: "发送", exact: true }).click();
-    const settings = page.getByRole("complementary", {
+    const settings = page.getByRole("dialog", {
       name: "设置",
       exact: true,
     });
@@ -84,7 +84,8 @@ test("onboarding preserves drafts and requests computer authorization only when 
       .getByRole("button", { name: "管理电脑", exact: true })
       .click();
     await settings.getByText("授权使用本机", { exact: true }).click();
-    await settings
+    await page
+      .getByRole("dialog", { name: "授权使用本机", exact: true })
       .getByRole("button", { name: "确认授权", exact: true })
       .click();
     await expect(settings.getByText(/已授权/)).toBeVisible();
@@ -98,11 +99,13 @@ test("onboarding preserves drafts and requests computer authorization only when 
     ).toBeVisible();
     await details.getByRole("button", { name: "关闭", exact: true }).click();
 
-    await page.locator('input[type="file"]').setInputFiles({
-      name: "input.txt",
-      mimeType: "text/plain",
-      buffer: Buffer.from("source"),
-    });
+    await page
+      .locator('input[type="file"][aria-label="添加文件"]')
+      .setInputFiles({
+        name: "input.txt",
+        mimeType: "text/plain",
+        buffer: Buffer.from("source"),
+      });
     await expect(page.getByText("input.txt", { exact: true })).toBeVisible();
     await page.reload();
     await expect(page.getByRole("button", { name: "Bot详情" })).toContainText(

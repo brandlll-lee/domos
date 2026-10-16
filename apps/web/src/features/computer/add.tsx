@@ -1,8 +1,10 @@
 import { Button } from "@domos/ui/controls";
+import { Dialog } from "@domos/ui/dialog";
 import { useState } from "react";
 import { client } from "../../client.ts";
 
 export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
+  const [open, setOpen] = useState(false);
   const [name, setName] = useState("工作电脑");
   const [id, setId] = useState(() => `work-${crypto.randomUUID().slice(0, 8)}`);
   const [image, setImage] = useState("domos-workspace:1.2.0");
@@ -19,10 +21,18 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
   const [error, setError] = useState("");
   const desktop = window.domosDesktop;
   return (
-    <details>
-      <summary>添加 Docker 电脑</summary>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!busy) setOpen(next);
+      }}
+      title="添加 Docker 电脑"
+      description="连接已准备好工作环境的 Docker 主机。"
+      trigger={<Button variant="secondary">添加 Docker 电脑</Button>}
+    >
       <form
         className="hosting-stack"
+        aria-busy={busy}
         onSubmit={async (event) => {
           event.preventDefault();
           setBusy(true);
@@ -60,6 +70,8 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
               },
             });
             await onAdded();
+            setOpen(false);
+            setId(`work-${crypto.randomUUID().slice(0, 8)}`);
           } catch (cause) {
             setError(
               cause instanceof Error ? cause.message : "电脑添加未确认。",
@@ -75,6 +87,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
         </p>
         {!remote && desktop && (
           <Button
+            type="button"
             variant="secondary"
             disabled={busy}
             onClick={async () => {
@@ -171,11 +184,21 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
             </>
           )}
         </fieldset>
-        <Button type="submit" disabled={busy}>
-          {busy ? "正在添加…" : "添加电脑"}
-        </Button>
+        <div className="dialog-actions">
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => setOpen(false)}
+          >
+            取消
+          </Button>
+          <Button type="submit" disabled={busy}>
+            {busy ? "正在添加…" : "添加电脑"}
+          </Button>
+        </div>
         {error && <p role="alert">{error}</p>}
       </form>
-    </details>
+    </Dialog>
   );
 }

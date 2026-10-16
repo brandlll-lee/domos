@@ -1,7 +1,8 @@
 export const themes = {
   dark: {
-    background: "#0d0e10",
-    sidebar: "#111214",
+    background: "#111113",
+    canvas: "#18181a",
+    sidebar: "#111113",
     surface: "#191a1d",
     hover: "#232427",
     selection: "#202124",
@@ -27,8 +28,9 @@ export const themes = {
     "avatar-pupil": "#080808",
   },
   light: {
-    background: "#fafaf8",
-    sidebar: "#f0f0ed",
+    background: "#f4f4f2",
+    canvas: "#ffffff",
+    sidebar: "#f4f4f2",
     surface: "#ffffff",
     hover: "#e8e8e4",
     selection: "#e4e4df",
@@ -69,7 +71,23 @@ export function resolveTheme(
   return preference === "system" ? system : preference;
 }
 
+export const layout = {
+  titlebar: 48,
+  chatMin: 400,
+  sidebar: { min: 208, initial: 272, max: 360 },
+  inspector: { min: 320, initial: 384, max: 640 },
+  resizeStep: 24,
+} as const;
+
 export const metrics = {
+  "titlebar-height": `${layout.titlebar}px`,
+  "settings-width": "58rem",
+  "settings-height": "42rem",
+  "mac-controls-width": "5rem",
+  "profile-text-height": "10rem",
+  "settings-nav-width": "11rem",
+  "resize-hit-width": "0.5rem",
+  "window-controls-width": "9rem",
   "font-body":
     '"Geist Variable", "Noto Sans SC Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
   "text-small": "0.75rem",
@@ -101,7 +119,6 @@ export const metrics = {
   "composer-max-height": "10rem",
   "composer-control-size": "2.5rem",
   "composer-padding": "0.1875rem",
-  "composer-height": "3rem",
   "message-padding-block": "0.625rem",
   "message-padding-inline": "0.875rem",
   "message-gap": "0.625rem",

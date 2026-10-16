@@ -1,5 +1,5 @@
 .hosting-welcome {
-  min-height: 100dvh;
+  min-height: calc(100dvh - var(--titlebar-height));
   display: grid;
   place-items: center;
   padding: var(--space-6);
@@ -32,34 +32,18 @@
   color: var(--color-text);
   font: inherit;
 }
-.hosting-panel {
-  position: fixed;
-  inset: 0 0 0 auto;
-  z-index: 30;
-  width: min(100%, var(--details-width));
-  padding: var(--space-5);
-  overflow-y: auto;
-  background: var(--color-surface);
-  border-left: 1px solid var(--color-border);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-}
 .computer-record {
-  border-block-start: 1px solid var(--color-border);
+  padding-inline: var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
   padding-block: var(--space-4);
 }
-.hosting-tabs {
-  flex-wrap: wrap;
-}
-.hosting-device,
-.hosting-tabs {
+.hosting-device {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
 }
-.hosting-panel h2,
 .hosting-card h1,
 .hosting-card h2 {
   margin: 0;

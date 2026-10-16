@@ -109,6 +109,9 @@ importers:
       '@domos/hosting':
         specifier: workspace:*
         version: link:../../packages/hosting
+      '@domos/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       zod:
         specifier: 4.6.7
         version: 4.6.7

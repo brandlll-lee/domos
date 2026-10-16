@@ -45,11 +45,27 @@ test("desktop starts locally, pairs and restores a saved instance", async ({
   try {
     const local = await desktop.firstWindow();
     await expect(local.getByRole("button", { name: "Bot详情" })).toBeVisible();
+    await expect(local.getByRole("button", { name: "应用菜单" })).toBeVisible();
+    expect(
+      await desktop.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]?.isMenuBarVisible(),
+      ),
+    ).toBe(false);
+    await desktop.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.setSize(390, 844),
+    );
+    await expect
+      .poll(() =>
+        local.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      )
+      .toBe(true);
+    await desktop.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.setSize(1200, 820),
+    );
     expect(new URL(local.url()).hostname).toBe("127.0.0.1");
     expect(new URL(local.url()).hash).toBe("");
-    await expect(
-      local.getByText("暂不分配电脑", { exact: true }),
-    ).toBeVisible();
     expect(
       await desktop.evaluate(async ({ BrowserWindow }) => {
         const window = BrowserWindow.getAllWindows()[0];
@@ -72,11 +88,11 @@ test("desktop starts locally, pairs and restores a saved instance", async ({
       .getByRole("button", { name: "设置", exact: true })
       .first()
       .click();
-    const settings = local.getByRole("complementary", {
+    const settings = local.getByRole("dialog", {
       name: "设置",
       exact: true,
     });
-    await settings.getByRole("button", { name: "实例", exact: true }).click();
+    await settings.getByRole("tab", { name: "实例", exact: true }).click();
     await settings
       .getByLabel("服务器地址")
       .fill(`http://127.0.0.1:${ready.port}`);

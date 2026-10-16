@@ -107,7 +107,12 @@ export function HostingModels({
   const selected = catalog?.providers.find((item) => item.id === provider);
   const prompt = login?.prompt;
   return (
-    <section className="hosting-stack" aria-label="模型配置" aria-busy={busy}>
+    <section
+      className="hosting-stack"
+      aria-label="模型配置"
+      aria-busy={busy}
+      data-dirty={Boolean(value || selection || (loginId && !login?.done))}
+    >
       <h2>连接模型</h2>
       <label>
         模型提供方

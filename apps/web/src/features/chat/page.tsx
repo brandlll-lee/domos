@@ -4,16 +4,18 @@ import { chatTranscript } from "@domos/agent/transcript";
 import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { type CSSProperties, useState } from "react";
-import { BotDetails } from "../bots/details/index.tsx";
-import { useBots } from "../bots/use-bots.ts";
+import { CreateBot } from "../bots/create-bot.tsx";
+import { BotDetails, type BotPanel } from "../bots/details/index.tsx";
+import { selectBot, useBots } from "../bots/use-bots.ts";
 import { ComputerPanel } from "../computer/panel.tsx";
 import { useComputer } from "../computer/use-computer.ts";
-import { HostingButton, useHosting } from "../hosting/root.tsx";
+import { useSettings } from "../settings/context.ts";
+import { Workspace } from "../shell/workspace.tsx";
 import { WorkingActivity } from "./activity.tsx";
 import { Composer } from "./composer.tsx";
 import { chatCopy } from "./copy.ts";
 import { Messages } from "./messages.tsx";
-import { ChatSettings } from "./settings.tsx";
+import { ModelPicker } from "./model-picker.tsx";
 import { Sidebar } from "./sidebar.tsx";
 import { useChat } from "./use-chat.ts";
 import { useComposerDock } from "./use-composer-dock.ts";
@@ -51,14 +53,12 @@ function BotChat({
   directoryConnected: boolean;
   directory: ReturnType<typeof useBots>;
 }) {
-  const settings = useHosting();
+  const settings = useSettings();
   const chat = useChat(bot.id, () => settings.open("models", bot.id));
   const computer = useComputer(bot.id, directory);
   const dock = useComposerDock();
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [detailPanel, setDetailPanel] = useState<"profile" | "computer">(
-    "profile",
-  );
+  const [detailPanel, setDetailPanel] = useState<BotPanel>("profile");
   const items = chat.view ? chatTranscript(chat.view) : [];
   const active = items.find(
     (item) => item.kind === "activity" && item.status === "running",
@@ -74,41 +74,18 @@ function BotChat({
     directoryError ??
     (chat.view?.failed ? chatCopy.errors.reply : null);
   return (
-    <div className="workspace" data-details={detailsOpen || undefined}>
-      <button
-        className="skip-link"
-        type="button"
-        onClick={() => {
-          document.getElementById("conversation")?.focus();
-        }}
-      >
-        {chatCopy.skip}
-      </button>
-      <Sidebar
-        bots={bots}
-        selected={bot}
-        model={chat.view?.model ?? null}
-        connected={directoryConnected}
-        computer={computer.status}
-        preview={
-          chat.view?.busy
-            ? chatCopy.working
-            : latest?.kind === "message"
-              ? messageText(latest.message)
-              : "开始对话"
-        }
-      />
-      <main
-        className="conversation chat-surface"
-        id="conversation"
-        tabIndex={-1}
-        style={
-          { "--composer-dock-height": `${dock.height}px` } as CSSProperties
-        }
-      >
-        <header className="chat-header">
+    <Workspace
+      detailsOpen={detailsOpen}
+      onDetailsChange={setDetailsOpen}
+      onSettings={() => settings.open()}
+      actions={
+        <CreateBot model={chat.view?.model ?? null} onCreated={selectBot} />
+      }
+      toolbar={
+        <div className="chat-header">
           <Button
-            variant="secondary"
+            id="details-trigger"
+            variant="ghost"
             className="conversation-title"
             aria-label="Bot详情"
             aria-expanded={detailsOpen}
@@ -121,11 +98,61 @@ function BotChat({
             <BotAvatar seed={bot.avatar} size="small" />
             <span>{bot.name}</span>
           </Button>
-          <HostingButton />
           <span className="sr-only" role="status">
             {connection}
           </span>
-        </header>
+        </div>
+      }
+      sidebar={
+        <Sidebar
+          bots={bots}
+          selected={bot}
+          connected={directoryConnected}
+          preview={
+            chat.view?.busy
+              ? chatCopy.working
+              : latest?.kind === "message"
+                ? messageText(latest.message)
+                : "开始对话"
+          }
+        />
+      }
+      inspector={
+        <BotDetails
+          active={detailsOpen}
+          bot={bot}
+          panel={detailPanel}
+          onPanelChange={setDetailPanel}
+          onClose={() => setDetailsOpen(false)}
+          computer={<ComputerPanel computer={computer} />}
+          model={
+            <ModelPicker
+              botId={bot.id}
+              model={chat.view?.model ?? null}
+              connected={chat.connected}
+            />
+          }
+        />
+      }
+    >
+      <button
+        className="skip-link"
+        type="button"
+        onClick={() => {
+          document.getElementById("conversation")?.focus();
+        }}
+      >
+        {chatCopy.skip}
+      </button>
+
+      <main
+        className="conversation chat-surface"
+        id="conversation"
+        tabIndex={-1}
+        style={
+          { "--composer-dock-height": `${dock.height}px` } as CSSProperties
+        }
+      >
         <Messages view={chat.view} botName={bot.name} items={items} />
         {chat.view ? (
           <Composer
@@ -159,21 +186,6 @@ function BotChat({
           )
         )}
       </main>
-      {detailsOpen && (
-        <BotDetails
-          bot={bot}
-          initialPanel={detailPanel}
-          onClose={() => setDetailsOpen(false)}
-          computer={<ComputerPanel computer={computer} />}
-        >
-          <ChatSettings
-            bot={bot}
-            bots={bots}
-            model={chat.view?.model ?? null}
-            connected={chat.connected}
-          />
-        </BotDetails>
-      )}
-    </div>
+    </Workspace>
   );
 }

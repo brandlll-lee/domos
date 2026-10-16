@@ -34,7 +34,7 @@ export function Messages({
         ) : (
           !view.messages.length && (
             <section className="welcome">
-              <h1>{chatCopy.welcome}</h1>
+              <h1>{botName}</h1>
             </section>
           )
         )}

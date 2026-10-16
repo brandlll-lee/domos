@@ -3,8 +3,8 @@ import { Button } from "@domos/ui/controls";
 import { SearchPicker } from "@domos/ui/picker";
 import { useState } from "react";
 import { client } from "../../client.ts";
-import { useHosting } from "../hosting/root.tsx";
 import { modelItems, modelKey, useModels } from "../models/use-models.ts";
+import { useSettings } from "../settings/context.ts";
 import { rejectionMessage } from "./request-error.ts";
 
 export function ModelPicker({
@@ -16,7 +16,7 @@ export function ModelPicker({
   model: ChatView["model"];
   connected: boolean;
 }) {
-  const settings = useHosting();
+  const settings = useSettings();
   const { choices, error: catalogError } = useModels(connected);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

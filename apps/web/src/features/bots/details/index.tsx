@@ -1,7 +1,8 @@
 import type { Bot } from "@domos/agent/bots";
 import { Button } from "@domos/ui/controls";
+import { ChoicePicker } from "@domos/ui/picker";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { MemoryPanel } from "./memory.tsx";
 import { ProfileEditor } from "./profile.tsx";
 import { PromptPanel } from "./prompt.tsx";
@@ -10,81 +11,96 @@ import { SkillsPanel } from "./skills.tsx";
 import { useBotWork, useWorkAction } from "./use-bot-work.ts";
 import "./style.css";
 
-const panels = {
-  profile: "身份",
-  memory: "记忆",
-  skills: "技能",
-  routines: "定时",
-  computer: "电脑",
-  prompt: "提示词",
-};
-type Panel = keyof typeof panels;
+export type BotPanel =
+  | "profile"
+  | "computer"
+  | "memory"
+  | "skills"
+  | "routines"
+  | "prompt";
 
 export function BotDetails({
   bot,
+  active,
   onClose,
   computer,
-  children,
-  initialPanel = "profile",
+  model,
+  panel,
+  onPanelChange,
 }: {
   bot: Bot;
-  initialPanel?: Panel;
+  active: boolean;
+  panel: BotPanel;
+  onPanelChange: (panel: BotPanel) => void;
   onClose: () => void;
-  children?: ReactNode;
   computer: ReactNode;
+  model: ReactNode;
 }) {
-  const work = useBotWork(bot.id);
+  const work = useBotWork(bot.id, active);
   const action = useWorkAction();
-  const [panel, setPanel] = useState<Panel>(initialPanel);
-  const root = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const previous = document.activeElement;
-    root.current?.focus();
-    return () => {
-      if (previous instanceof HTMLElement && previous.isConnected)
-        previous.focus();
-    };
-  }, []);
+  const panels = {
+    profile: {
+      label: "Bot设置",
+      content: work.profile && (
+        <ProfileEditor
+          key={work.profile.revision}
+          profile={work.profile}
+          action={action}
+          onSaved={work.setProfile}
+        />
+      ),
+    },
+    computer: { label: "电脑", content: computer },
+    memory: {
+      label: "记忆",
+      content: work.data && (
+        <MemoryPanel botId={bot.id} items={work.data.memory} action={action} />
+      ),
+    },
+    skills: {
+      label: "技能",
+      content: work.data && (
+        <SkillsPanel botId={bot.id} items={work.data.skills} action={action} />
+      ),
+    },
+    routines: {
+      label: "定时",
+      content: work.data && (
+        <RoutinesPanel
+          botId={bot.id}
+          data={work.data.routines}
+          skills={work.data.skills}
+          action={action}
+        />
+      ),
+    },
+    prompt: {
+      label: "提示词",
+      content: <PromptPanel botId={bot.id} action={action} />,
+    },
+  };
   return (
     <aside
+      tabIndex={-1}
       id="bot-details"
       className="bot-details"
       aria-label={`${bot.name}的详情`}
-      ref={root}
-      tabIndex={-1}
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && !action.busy && !event.defaultPrevented) {
-          event.stopPropagation();
-          onClose();
-        }
-      }}
     >
       <header className="detail-header">
-        <h2>{bot.name}</h2>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="关闭"
-          disabled={action.busy}
-          onClick={onClose}
-        >
-          <XIcon size={18} aria-hidden="true" />
+        <ChoicePicker
+          label="Bot设置分区"
+          value={panel}
+          onValueChange={(value) => onPanelChange(value as BotPanel)}
+          items={Object.entries(panels).map(([value, item]) => ({
+            value,
+            label: item.label,
+          }))}
+        />
+        <Button variant="ghost" size="icon" aria-label="关闭" onClick={onClose}>
+          <XIcon />
         </Button>
       </header>
-      <nav className="detail-nav" aria-label="Bot设置分区">
-        {Object.entries(panels).map(([key, label]) => (
-          <button
-            type="button"
-            key={key}
-            aria-pressed={panel === key}
-            disabled={action.busy}
-            onClick={() => setPanel(key as Panel)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-      <div className="detail-content" key={panel}>
+      <div className="detail-content">
         {!work.connected && (
           <p className="detail-note" role="status">
             正在连接详情…
@@ -95,44 +111,22 @@ export function BotDetails({
             {action.error ?? work.error}
           </p>
         )}
-        <fieldset
-          className="bot-fields"
-          disabled={!work.connected || action.busy}
-        >
-          {panel === "profile" && work.profile && (
-            <ProfileEditor
-              key={work.profile.revision}
-              profile={work.profile}
-              action={action}
-              onSaved={work.setProfile}
-            />
-          )}
-          {panel === "memory" && work.data && (
-            <MemoryPanel
-              botId={bot.id}
-              items={work.data.memory}
-              action={action}
-            />
-          )}
-          {panel === "skills" && work.data && (
-            <SkillsPanel
-              botId={bot.id}
-              items={work.data.skills}
-              action={action}
-            />
-          )}
-          {panel === "routines" && work.data && (
-            <RoutinesPanel
-              botId={bot.id}
-              data={work.data.routines}
-              skills={work.data.skills}
-              action={action}
-            />
-          )}
-          {panel === "prompt" && <PromptPanel botId={bot.id} action={action} />}
-          {panel === "computer" && computer}
-        </fieldset>
-        {children}
+        {Object.entries(panels).map(([key, item]) => (
+          <section key={key} hidden={panel !== key} aria-label={item.label}>
+            <fieldset
+              className="bot-fields"
+              disabled={!work.connected || action.busy}
+            >
+              {item.content}
+              {key === "profile" && (
+                <section className="detail-model">
+                  <h3>模型</h3>
+                  {model}
+                </section>
+              )}
+            </fieldset>
+          </section>
+        ))}
       </div>
     </aside>
   );

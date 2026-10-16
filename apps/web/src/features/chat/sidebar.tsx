@@ -1,30 +1,19 @@
 import type { Bot, BotPresence } from "@domos/agent/bots";
-import type { ComputerStatus } from "@domos/agent/computer";
-import type { ChatView } from "@domos/agent/view";
-import { BotAvatar, BrandMark } from "@domos/ui/avatar";
-import { DesktopIcon as Desktop } from "@phosphor-icons/react/dist/csr/Desktop";
+import { BotAvatar } from "@domos/ui/avatar";
 import { MagnifyingGlassIcon as MagnifyingGlass } from "@phosphor-icons/react/dist/csr/MagnifyingGlass";
 import { useState } from "react";
-import { CreateBot } from "../bots/create-bot.tsx";
-import { selectBot } from "../bots/use-bots.ts";
-import { ComputerLocation } from "../computer/location.tsx";
-import { HostingButton } from "../hosting/root.tsx";
 import { chatCopy } from "./copy.ts";
 
 export function Sidebar({
   bots,
   selected,
-  model,
   preview,
   connected,
-  computer,
 }: {
   bots: BotPresence[];
   selected: Bot;
-  model: ChatView["model"];
   preview: string;
   connected: boolean;
-  computer: ComputerStatus | null;
 }) {
   const [query, setQuery] = useState("");
   const matches = bots.filter((bot) =>
@@ -34,13 +23,6 @@ export function Sidebar({
   );
   return (
     <aside className="sidebar">
-      <header className="sidebar-header">
-        <a className="wordmark" href="/">
-          <BrandMark />
-          domos.
-        </a>
-        <CreateBot model={model} onCreated={selectBot} />
-      </header>
       <label className="sidebar-search">
         <MagnifyingGlass size={16} aria-hidden="true" />
         <input
@@ -51,7 +33,6 @@ export function Sidebar({
           onChange={(event) => setQuery(event.target.value)}
         />
       </label>
-      <div className="sidebar-label">{chatCopy.conversations}</div>
       <nav aria-label={chatCopy.conversations}>
         {matches.length ? (
           matches.map((bot) => (
@@ -79,11 +60,6 @@ export function Sidebar({
           </p>
         )}
       </nav>
-      <footer className="sidebar-footer">
-        <Desktop size={18} aria-hidden="true" />
-        <ComputerLocation status={computer} connected={connected} />
-        <HostingButton />
-      </footer>
     </aside>
   );
 }

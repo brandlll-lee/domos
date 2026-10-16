@@ -11,6 +11,7 @@ import {
   instanceSchema,
   probeInstance,
 } from "@domos/hosting/instance";
+import { themes } from "@domos/ui/tokens";
 import { app, type BrowserWindow, dialog, ipcMain, Menu, Tray } from "electron";
 import { z } from "zod";
 import { LocalHost } from "./host.ts";
@@ -158,7 +159,11 @@ async function main() {
     ]),
   );
   tray.on("click", restore);
-  const handle = (name: string, run: (input: unknown) => Promise<unknown>) =>
+  const handle = (
+    name: string,
+    run: (input: unknown) => Promise<unknown>,
+    exclusive = true,
+  ) =>
     ipcMain.handle(name, async (event, input) => {
       const instance = instances.find((item) => item.id === selected);
       if (
@@ -174,8 +179,9 @@ async function main() {
         instance.mode !== "local"
       )
         return { ok: false, error: "请先打开本机 Domos，再管理本机托管。" };
-      if (busy) return { ok: false, error: "请等待当前操作结束。" };
-      busy = true;
+      if (exclusive && busy)
+        return { ok: false, error: "请等待当前操作结束。" };
+      if (exclusive) busy = true;
       try {
         return { ok: true, value: await run(input) };
       } catch (error) {
@@ -184,9 +190,29 @@ async function main() {
           error: error instanceof Error ? error.message : "操作未完成。",
         };
       } finally {
-        busy = false;
+        if (exclusive) busy = false;
       }
     });
+  handle(
+    "desktop:appearance",
+    async (input) => {
+      const theme = z.enum(["light", "dark"]).parse(input);
+      current?.setBackgroundColor(themes[theme].background);
+      if (process.platform !== "darwin")
+        current?.setTitleBarOverlay({
+          color: themes[theme].sidebar,
+          symbolColor: themes[theme].text,
+        });
+    },
+    false,
+  );
+  handle(
+    "desktop:menu",
+    async () => {
+      if (current) Menu.getApplicationMenu()?.popup({ window: current });
+    },
+    false,
+  );
   handle("desktop:prepare", async () => {
     await prepareWorkImages(release, () => {});
     return { image: release.workImage, proxyImage: release.proxyImage };

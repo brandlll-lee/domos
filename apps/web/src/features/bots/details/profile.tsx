@@ -2,6 +2,7 @@ import { BOT_NAME_LENGTH, WORK_TEXT_LENGTH } from "@domos/agent/work/limits";
 import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
+import { PencilSimpleIcon } from "@phosphor-icons/react/dist/csr/PencilSimple";
 import { useState } from "react";
 import { client } from "../../../client.ts";
 import type { Profile, WorkAction } from "./use-bot-work.ts";
@@ -43,9 +44,11 @@ export function ProfileEditor({
           <Button
             type="button"
             variant="secondary"
+            size="icon"
+            aria-label="换个形象"
             onClick={() => setAvatar(crypto.randomUUID())}
           >
-            换个形象
+            <PencilSimpleIcon size={14} />
           </Button>
         </div>
         <TextField
@@ -62,7 +65,16 @@ export function ProfileEditor({
           multiline
           maxLength={WORK_TEXT_LENGTH}
         />
-        <Button type="submit" disabled={!name.trim()}>
+        <Button
+          type="submit"
+          variant="secondary"
+          disabled={
+            !name.trim() ||
+            (name === profile.name &&
+              instructions === profile.instructions &&
+              avatar === profile.avatar)
+          }
+        >
           保存身份
         </Button>
       </fieldset>

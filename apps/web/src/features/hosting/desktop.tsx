@@ -14,6 +14,9 @@ type State = {
 declare global {
   interface Window {
     domosDesktop?: {
+      platform: string;
+      appearance(theme: "light" | "dark"): Promise<Result>;
+      menu(): Promise<Result>;
       prepare(): Promise<Result<{ image: string; proxyImage?: string }>>;
       state(): Promise<Result<State>>;
       local(): Promise<Result>;
@@ -62,7 +65,12 @@ export function DesktopSettings() {
     }
   }
   return (
-    <section className="hosting-stack" aria-label="实例管理" aria-busy={busy}>
+    <section
+      className="hosting-stack"
+      aria-label="实例管理"
+      aria-busy={busy}
+      data-dirty={Boolean(url || password)}
+    >
       <h3>实例</h3>
       <p className="detail-note">
         本机后台在这台电脑上运行。自托管无需云账号。

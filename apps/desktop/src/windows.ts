@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { BrowserWindow, shell } from "electron";
+import { layout, themes } from "@domos/ui/tokens";
+import { BrowserWindow, nativeTheme, shell } from "electron";
 
 export async function openInstance(
   url: string,
@@ -10,6 +11,22 @@ export async function openInstance(
   const partition = `persist:domos-${createHash("sha256").update(origin).digest("hex").slice(0, 24)}`;
   const window = new BrowserWindow({
     title: "Domos",
+    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "hidden",
+    autoHideMenuBar: true,
+    backgroundColor:
+      themes[nativeTheme.shouldUseDarkColors ? "dark" : "light"].background,
+    ...(process.platform !== "darwin"
+      ? {
+          titleBarOverlay: {
+            height: layout.titlebar,
+            color:
+              themes[nativeTheme.shouldUseDarkColors ? "dark" : "light"]
+                .sidebar,
+            symbolColor:
+              themes[nativeTheme.shouldUseDarkColors ? "dark" : "light"].text,
+          },
+        }
+      : {}),
     width: 1200,
     height: 820,
     minWidth: 360,

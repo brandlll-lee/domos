@@ -7,7 +7,6 @@ export const chatCopy = {
   reconnecting: "正在重连…",
   connecting: "正在连接…",
   loading: "正在加载对话…",
-  welcome: "今天想聊些什么？",
   message: "消息",
   placeholder: (name: string) => `发送消息给 ${name}…`,
   send: "发送",

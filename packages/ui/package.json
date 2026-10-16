@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./tabs": "./src/web/tabs.tsx",
+    "./setting-row": "./src/web/setting-row.tsx",
     "./avatar": "./src/web/avatar.tsx",
     "./characters": "./src/characters.ts",
     "./work-status": "./src/web/work-status.tsx",

@@ -1,5 +1,5 @@
 import { Button } from "@domos/ui/controls";
-import { useHosting } from "../hosting/root.tsx";
+import { useSettings } from "../settings/context.ts";
 import { computerLabels } from "./copy.ts";
 import type { useComputer } from "./use-computer.ts";
 
@@ -9,7 +9,7 @@ export function ComputerPanel({
   computer: ReturnType<typeof useComputer>;
 }) {
   const { status, busy, error, assign, choices } = computer;
-  const settings = useHosting();
+  const settings = useSettings();
   return (
     <section className="detail-stack" aria-label="工作电脑" aria-busy={busy}>
       <label className="hosting-stack">

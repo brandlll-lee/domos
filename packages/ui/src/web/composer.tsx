@@ -49,8 +49,8 @@ export function MessageComposer({
     >
       {attachments && <div className="composer-attachments">{attachments}</div>}
       <div className="composer-row">
-        {leading && <div className="composer-leading">{leading}</div>}
         <div className="composer-field">
+          {leading && <div className="composer-leading">{leading}</div>}
           <label className="sr-only" htmlFor={id}>
             {label}
           </label>
