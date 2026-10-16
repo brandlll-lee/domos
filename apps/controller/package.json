@@ -1,0 +1,15 @@
+{
+  "name": "@domos/controller",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@domos/hosting": "workspace:*",
+    "@domos/agent": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-env": "1.2.0",
+    "@earendil-works/chord": "1.2.0",
+    "@earendil-works/pi-durable": "1.2.0"
+  }
+}

@@ -3,7 +3,7 @@ import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
-const identifier = z.string().regex(/^[a-z0-9][a-z0-9_.-]{0,62}$/);
+export const identifier = z.string().regex(/^[a-z0-9][a-z0-9_.-]{0,62}$/);
 const ssh = z
   .object({
     host: z
@@ -30,12 +30,26 @@ export const computerSchema = z.discriminatedUnion("kind", [
       id: identifier,
       image: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_./:@-]+$/),
       volume: identifier,
-      network: z.enum(["none", "restricted"]).default("none"),
+      network: z.enum(["none", "restricted", "web"]).default("none"),
+      proxyImage: z
+        .string()
+        .regex(/^[a-zA-Z0-9][a-zA-Z0-9_./:@-]+$/)
+        .optional(),
       cpus: z.number().positive().default(2),
       memoryMiB: z.number().int().min(128).default(1024),
       pids: z.number().int().min(16).default(256),
       timeoutSeconds: z.number().int().positive().default(120),
       ssh: ssh.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("controller"),
+      id: identifier,
+      endpoint: z.url(),
+      credentialFile: z.string().min(1),
+      network: z.enum(["none", "restricted", "web"]),
+      timeoutSeconds: z.number().int().positive().default(120),
     })
     .strict(),
 ]);
@@ -46,7 +60,22 @@ const schema = z
       .object({ provider: z.string().min(1), modelId: z.string().min(1) })
       .strict()
       .optional(),
-    publicUrl: z.url().optional(),
+    publicUrl: z
+      .url()
+      .refine((value) => {
+        const url = new URL(value);
+        return (
+          !url.username &&
+          !url.password &&
+          !url.search &&
+          !url.hash &&
+          url.pathname === "/" &&
+          (url.protocol === "https:" ||
+            (url.protocol === "http:" &&
+              ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)))
+        );
+      }, "远程访问需要 HTTPS，并使用独立域名源。")
+      .optional(),
     host: z.string().min(1).default("127.0.0.1"),
     port: z.coerce.number().int().min(1).max(65535).default(4310),
     dataDir: z.string().min(1).default("data"),
@@ -80,6 +109,8 @@ export function parseConfig(
     if (target.identityFile) target.identityFile = path(target.identityFile);
     if (target.configFile) target.configFile = path(target.configFile);
   }
+  if (value.computer.kind === "controller")
+    value.computer.credentialFile = path(value.computer.credentialFile);
   return {
     ...value,
     configFile: resolve(filename),
@@ -100,5 +131,6 @@ export async function loadConfig() {
     dataDir: process.env.DOMOS_DATA_DIR,
     staticDir: process.env.DOMOS_STATIC_DIR,
     deployment: process.env.DOMOS_DEPLOYMENT,
+    publicUrl: process.env.DOMOS_PUBLIC_URL,
   });
 }

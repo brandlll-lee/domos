@@ -6,6 +6,8 @@
     ".": "./src/open-agent.ts",
     "./chat": "./src/open-chat.ts",
     "./computer": "./src/computer/index.ts",
+    "./computer/docker": "./src/computer/docker.ts",
+    "./computer/driver": "./src/computer/driver.ts",
     "./config": "./src/runtime/config.ts",
     "./lease": "./src/runtime/lease.ts",
     "./bots": "./src/bots.ts",

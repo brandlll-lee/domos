@@ -29,7 +29,7 @@ const context = BACKGROUND_CONTEXT;
 const enabled = process.env.DOMOS_CONTAINER_TESTS === "1";
 const idle = async () => {};
 
-async function setup(network: "none" | "restricted" = "none") {
+async function setup(network: "none" | "restricted" | "web" = "none") {
   const directory = await mkdtemp(join(tmpdir(), "domos-container-"));
   const input = process.env.DOMOS_TEST_CONFIG
     ? JSON.parse(await readFile(process.env.DOMOS_TEST_CONFIG, "utf8"))
@@ -47,6 +47,7 @@ async function setup(network: "none" | "restricted" = "none") {
         image: "domos-workspace:1.2.0",
         volume: `${id}-work`,
         network,
+        ...(network === "web" ? { proxyImage: "domos-egress:1" } : {}),
       },
     },
     join(directory, "config.json"),
@@ -70,7 +71,14 @@ async function setup(network: "none" | "restricted" = "none") {
           sandboxNames(driver.config).container,
         ]);
         await driver.command(["docker", "volume", "rm", driver.config.volume]);
-        if (network === "restricted")
+        if (network === "web")
+          await driver.command([
+            "docker",
+            "rm",
+            "-f",
+            `${sandboxNames(driver.config).network}-egress`,
+          ]);
+        if (network !== "none")
           await driver.command([
             "docker",
             "network",
@@ -83,6 +91,73 @@ async function setup(network: "none" | "restricted" = "none") {
     },
   };
 }
+
+test.runIf(enabled)(
+  "HTTP(S) egress blocks private destinations and direct connections",
+  async () => {
+    const fixture = await setup("web");
+    try {
+      const env = await fixture.computer.workspace(1, context);
+      const publicResult = getOrThrow(
+        await env.exec(
+          [
+            "curl",
+            "--fail",
+            "--head",
+            "--max-time",
+            "15",
+            "https://example.com",
+          ],
+          { timeout: 20 },
+          context,
+        ),
+      );
+      expect(publicResult.exitCode).toBe(0);
+      const denied = [
+        "http://127.0.0.1/",
+        "http://localhost/",
+        "http://169.254.169.254/",
+        "http://10.0.0.1/",
+        "http://[::ffff:127.0.0.1]/",
+      ];
+      for (const url of denied) {
+        let output = "";
+        getOrThrow(
+          await env.exec(
+            [
+              "curl",
+              "--silent",
+              "--output",
+              "/dev/null",
+              "--write-out",
+              "%{http_code}",
+              "--max-time",
+              "5",
+              url,
+            ],
+            {
+              onOutput: (text) => {
+                output += text;
+              },
+            },
+            context,
+          ),
+        );
+        expect(output).toBe("403");
+      }
+      const direct = getOrThrow(
+        await env.exec(
+          ["curl", "--noproxy", "*", "--max-time", "3", "http://1.1.1.1/"],
+          undefined,
+          context,
+        ),
+      );
+      expect(direct.exitCode).not.toBe(0);
+    } finally {
+      await fixture.close();
+    }
+  },
+);
 
 test.runIf(enabled)(
   "sandbox Agent processes uploaded CSV, publishes results, and restores work after rebuild",

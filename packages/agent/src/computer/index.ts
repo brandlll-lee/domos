@@ -7,25 +7,27 @@ import { getOrThrow } from "@earendil-works/pi-durable/env";
 import { Connection, nodePlatform } from "@earendil-works/pi-env";
 import type { RuntimeConfig } from "../runtime/config.ts";
 import { Workspace } from "../workspace.ts";
-import { DockerComputer, sandboxHome } from "./docker.ts";
+import { ControllerComputer } from "./controller.ts";
+import { DockerComputer } from "./docker.ts";
+import type { ComputerDriver } from "./driver.ts";
 import { SandboxWorkspace } from "./workspace.ts";
 
 export type ComputerStatus = {
   id: string;
-  kind: "process" | "docker";
+  kind: "process" | "docker" | "controller";
   deployment: "native" | "container";
   state: "running" | "stopped" | "missing" | "unavailable";
   os: string | null;
   arch: string | null;
   directory: string;
   boundary: "host" | "application" | "sandbox";
-  network: "host" | "none" | "restricted";
+  network: "host" | "none" | "restricted" | "web";
   error: string | null;
 };
 
 export class Computer {
   readonly config: RuntimeConfig;
-  private readonly driver: DockerComputer | undefined;
+  private readonly driver: ComputerDriver | undefined;
   private readonly environments = new Map<
     number,
     Promise<Workspace | SandboxWorkspace>
@@ -40,6 +42,8 @@ export class Computer {
     this.config = config;
     if (config.computer.kind === "docker")
       this.driver = new DockerComputer(config.computer);
+    if (config.computer.kind === "controller")
+      this.driver = new ControllerComputer(config.computer);
   }
 
   async bind() {
@@ -48,14 +52,7 @@ export class Computer {
     const binding =
       config.kind === "process"
         ? { kind: config.kind, deployment: this.config.deployment }
-        : {
-            kind: config.kind,
-            id: config.id,
-            volume: config.volume,
-            host: config.ssh?.host ?? "docker-local",
-            user: config.ssh?.user,
-            port: config.ssh?.port,
-          };
+        : this.driver?.binding;
     try {
       const previous = JSON.parse(await readFile(filename, "utf8"));
       if (JSON.stringify(previous) !== JSON.stringify(binding))
@@ -118,7 +115,7 @@ export class Computer {
       {
         connection,
         id: `domos:${this.driver.config.id}`,
-        cwd: posix.join(sandboxHome, "bots", String(botId)),
+        cwd: posix.join(this.driver.directory, "bots", String(botId)),
       },
       remote.tmpdir,
     );
@@ -163,11 +160,11 @@ export class Computer {
     return {
       ...base,
       id: this.driver.config.id,
-      kind: "docker",
+      kind: this.config.computer.kind,
       state,
       os: this.remote?.platform ?? null,
       arch: this.remote?.arch ?? null,
-      directory: sandboxHome,
+      directory: this.driver.directory,
       boundary: "sandbox",
       network: this.driver.config.network,
       error,

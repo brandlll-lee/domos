@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 import { sshArguments } from "@earendil-works/pi-env";
 import type { DockerConfig } from "../runtime/config.ts";
+import { proxyUrl, WebNetwork } from "./web-network.ts";
 
 const execute = promisify(execFile);
 export const sandboxHome = "/home/domos";
@@ -68,6 +69,18 @@ export function createArguments(config: DockerConfig) {
     config.network === "none" ? "none" : names.network,
     "--mount",
     `type=volume,source=${config.volume},target=${sandboxHome}`,
+    ...(config.network === "web"
+      ? [
+          "--env",
+          `HTTP_PROXY=${proxyUrl}`,
+          "--env",
+          `HTTPS_PROXY=${proxyUrl}`,
+          "--env",
+          `http_proxy=${proxyUrl}`,
+          "--env",
+          `https_proxy=${proxyUrl}`,
+        ]
+      : []),
     "--tmpfs",
     "/tmp:rw,nosuid,nodev,size=128m,mode=1777",
     config.image,
@@ -96,9 +109,29 @@ const inspection =
 
 export class DockerComputer {
   readonly config: DockerConfig;
+  readonly directory = sandboxHome;
+  private readonly web?: WebNetwork;
+
+  get binding() {
+    const config = this.config;
+    return {
+      kind: config.kind,
+      id: config.id,
+      volume: config.volume,
+      host: config.ssh?.host ?? "docker-local",
+      user: config.ssh?.user,
+      port: config.ssh?.port,
+    };
+  }
 
   constructor(config: DockerConfig) {
     this.config = config;
+    if (config.network === "web")
+      this.web = new WebNetwork(
+        config,
+        this.command.bind(this),
+        sandboxNames(config).network,
+      );
   }
 
   async command(args: readonly string[]) {
@@ -166,11 +199,13 @@ export class DockerComputer {
   }
 
   async checkNetwork() {
+    if (this.web) return this.web.check();
     if (this.config.network !== "restricted") return;
     await this.command(["sudo", "-n", firewallCommand, "--check"]);
   }
 
   async provision() {
+    if (this.web) await this.web.start();
     await this.checkNetwork();
     if (this.config.network === "restricted") {
       const names = sandboxNames(this.config);
@@ -212,6 +247,7 @@ export class DockerComputer {
   async start() {
     const state = await this.inspect();
     if (state === "missing") await this.provision();
+    else if (this.web) await this.web.start();
     await this.checkNetwork();
     if (state !== "running")
       await this.command([
@@ -232,6 +268,7 @@ export class DockerComputer {
         "10",
         sandboxNames(this.config).container,
       ]);
+    await this.web?.stop();
   }
 
   async rebuild() {
@@ -247,6 +284,7 @@ export class DockerComputer {
       `name=^/${name}$`,
     ]);
     if (id) await this.command(["docker", "container", "rm", "--force", name]);
+    await this.web?.rebuild();
     await this.provision();
     await this.start();
   }
