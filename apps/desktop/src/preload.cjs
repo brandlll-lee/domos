@@ -1,14 +1,10 @@
 const { contextBridge, ipcRenderer } = require("electron");
-contextBridge.exposeInMainWorld("domos", {
-  state: () => ipcRenderer.invoke("setup:state"),
-  host: () => ipcRenderer.invoke("setup:host"),
-  connect: (url, name) => ipcRenderer.invoke("setup:connect", { url, name }),
-  cancel: () => ipcRenderer.invoke("setup:cancel"),
+contextBridge.exposeInMainWorld("domosDesktop", {
+  prepare: () => ipcRenderer.invoke("desktop:prepare"),
+  state: () => ipcRenderer.invoke("desktop:state"),
+  connect: (url, name) => ipcRenderer.invoke("desktop:connect", { url, name }),
+  local: () => ipcRenderer.invoke("desktop:local"),
+  select: (id) => ipcRenderer.invoke("desktop:select", { id }),
   maintain: (action, password) =>
-    ipcRenderer.invoke("setup:maintain", { action, password }),
-  progress: (callback) => {
-    const handler = (_event, value) => callback(value);
-    ipcRenderer.on("setup:progress", handler);
-    return () => ipcRenderer.removeListener("setup:progress", handler);
-  },
+    ipcRenderer.invoke("desktop:maintain", { action, password }),
 });

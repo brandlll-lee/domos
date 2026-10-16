@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { MAX_FILE_BYTES } from "@domos/agent/attachments";
 import type { Bots } from "@domos/agent/bots";
-import type { Computer } from "@domos/agent/computer";
+import type { Computers } from "@domos/agent/computer/catalog";
 import type { Files } from "@domos/agent/files";
 import type { BotWork } from "@domos/agent/work";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -17,7 +17,7 @@ export function createApp(
   models: Models,
   files: Files,
   work: BotWork,
-  computer?: Computer,
+  computer?: Computers,
   staticDir = fileURLToPath(new URL("../../web/dist", import.meta.url)),
 ) {
   const app = new Hono();

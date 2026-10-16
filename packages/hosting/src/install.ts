@@ -69,14 +69,40 @@ async function allocatePort() {
   return address.port;
 }
 
+export async function prepareLocalInstallation(
+  directory: string,
+  release: Release,
+) {
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const configFile = join(directory, "domos.config.json");
+  const controllerFile = join(directory, "controller.json");
+  try {
+    return {
+      configFile,
+      controllerFile,
+      config: JSON.parse(await readFile(configFile, "utf8")),
+    };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  const config = {
+    host: "127.0.0.1",
+    port: await allocatePort(),
+    dataDir: join(directory, "data"),
+    staticDir: release.staticDir,
+    computer: { kind: "process" },
+  };
+  await writeConfiguration(configFile, config);
+  return { configFile, controllerFile, config };
+}
+
 export async function writeConfiguration(filename: string, value: unknown) {
   const temporary = `${filename}.pending`;
   await writeFile(temporary, JSON.stringify(value, null, 2), { mode: 0o600 });
   await rename(temporary, filename);
 }
 
-export async function prepareInstallation(
-  directory: string,
+export async function prepareWorkImages(
   release: Release,
   progress: (value: InstallProgress) => void,
   signal?: AbortSignal,
@@ -94,9 +120,6 @@ export async function prepareInstallation(
     if (JSON.parse(value) !== "linux")
       throw new Error("请将 Docker 切换为 Linux 容器模式。");
   });
-  await mkdir(directory, { recursive: true, mode: 0o700 });
-  const configFile = join(directory, "domos.config.json");
-  const controllerFile = join(directory, "controller.json");
   stage("image", "正在准备 Linux 工作镜像…");
   for (const { image, build } of [
     { image: release.workImage, build: release.workBuild },
@@ -131,6 +154,23 @@ export async function prepareInstallation(
         });
     }
   }
+}
+
+export async function prepareInstallation(
+  directory: string,
+  release: Release,
+  progress: (value: InstallProgress) => void,
+  signal?: AbortSignal,
+  execute: typeof runCommand = runCommand,
+) {
+  const stage = (phase: string, message: string) => {
+    signal?.throwIfAborted();
+    progress({ phase, message });
+  };
+  await prepareWorkImages(release, progress, signal, execute);
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const configFile = join(directory, "domos.config.json");
+  const controllerFile = join(directory, "controller.json");
   stage("configuration", "正在准备配置…");
   let existing: unknown;
   try {

@@ -19,50 +19,41 @@ export async function openHostedRuntime() {
     const sessions = new Sessions(store);
     await sessions.bootstrap(config.dataDir);
     const models = builtinModels({ credentials: persistentCredentials(store) });
-    let app: ReturnType<typeof createApp> | undefined;
-    let pending: Promise<void> | undefined;
-    const start = (model: NonNullable<typeof config.model>) => {
-      if (runtime) return Promise.resolve();
-      if (pending) return pending;
-      pending = (async () => {
-        runtime = await openChat(
-          BACKGROUND_CONTEXT,
-          { ...config, model },
-          { models, lease: false },
-        );
-        app = createApp(
-          runtime.bots,
-          models,
-          runtime.files,
-          runtime.work,
-          runtime.computer,
-          config.staticDir,
-        );
-      })().finally(() => {
-        pending = undefined;
-      });
-      return pending;
-    };
-    if (config.model) await start(config.model);
+    runtime = await openChat(BACKGROUND_CONTEXT, config, {
+      models,
+      lease: false,
+    });
+    const app = createApp(
+      runtime.bots,
+      models,
+      runtime.files,
+      runtime.work,
+      runtime.computer,
+      config.staticDir,
+    );
     const hosted = hostingApp({
       config,
       sessions,
       models,
-      start,
-      forward: async (request) =>
-        app
-          ? app.fetch(request)
-          : Response.json({ error: "请先完成模型配置。" }, { status: 503 }),
+      forward: async (request) => app.fetch(request),
     });
     let closed = false;
     return {
       config,
       app: hosted.app,
+      async pairDesktop() {
+        const result = sessions.exchange(
+          sessions.pairing("admin").code,
+          "Domos 桌面",
+        );
+        if (!result) throw new Error("桌面配对未完成。");
+        await sessions.removeBootstrap(config.dataDir);
+        return { token: result.token, expires: result.device.expires };
+      },
       async close() {
         if (closed) return;
         closed = true;
         hosted.close();
-        await pending?.catch(() => {});
         try {
           await runtime?.close();
         } finally {

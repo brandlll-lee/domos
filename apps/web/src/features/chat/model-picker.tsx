@@ -1,7 +1,9 @@
 import type { ChatView } from "@domos/agent/view";
+import { Button } from "@domos/ui/controls";
 import { SearchPicker } from "@domos/ui/picker";
 import { useState } from "react";
 import { client } from "../../client.ts";
+import { useHosting } from "../hosting/root.tsx";
 import { modelItems, modelKey, useModels } from "../models/use-models.ts";
 import { rejectionMessage } from "./request-error.ts";
 
@@ -14,6 +16,7 @@ export function ModelPicker({
   model: ChatView["model"];
   connected: boolean;
 }) {
+  const settings = useHosting();
   const { choices, error: catalogError } = useModels(connected);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +30,7 @@ export function ModelPicker({
         placeholder={
           model
             ? `${model.provider} / ${model.modelId}${choices === null ? "" : "（未配置）"}`
-            : "正在加载…"
+            : "稍后连接"
         }
         items={modelItems(choices)}
         value={selected}
@@ -58,9 +61,12 @@ export function ModelPicker({
         {saving
           ? "正在保存…"
           : choices?.length === 0
-            ? "请配置服务商凭据后重启服务。"
+            ? "连接模型后即可聊天。"
             : "所选模型用于下一次回复。"}
       </span>
+      <Button variant="ghost" onClick={() => settings.open("models", botId)}>
+        连接模型
+      </Button>
       {(error ?? catalogError) && (
         <p className="alert" role="alert">
           {error ?? catalogError}

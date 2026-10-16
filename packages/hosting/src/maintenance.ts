@@ -31,7 +31,11 @@ import {
 } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { DockerComputer, hostCommand } from "@domos/agent/computer/docker";
-import { parseConfig } from "@domos/agent/config";
+import {
+  restoreComputers,
+  storedComputers,
+} from "@domos/agent/computer/storage";
+import { type DockerConfig, parseConfig } from "@domos/agent/config";
 import { acquireDataLease } from "@domos/agent/lease";
 import { create, extract } from "tar";
 import { runCommand, writeConfiguration } from "./install.ts";
@@ -58,22 +62,32 @@ async function workArchive(
   ).computer;
   if (config.kind !== "docker")
     throw new Error("此工作环境需要先导出工作文件。");
+  const result = await archiveComputer(config, archive, restore);
+  if (restore) {
+    controller.computer = result.config;
+    await writeConfiguration(controllerFile, controller);
+  }
+  return result;
+}
+
+async function archiveComputer(
+  config: DockerConfig,
+  archive: string,
+  restore: boolean,
+) {
   const driver = new DockerComputer(config);
   if (!restore) await driver.stop();
   if (restore) {
     config.id = randomBytes(6).toString("hex");
-    const volume = `domos-${config.id}-work`;
-    config.volume = volume;
+    config.volume = `domos-${config.id}-work`;
     const [program, ...args] = hostCommand(config, [
       "docker",
       "volume",
       "create",
-      volume,
+      config.volume,
     ]);
     if (!program) throw new Error("Docker 不可用。");
     await runCommand(program, args);
-    controller.computer = config;
-    await writeConfiguration(controllerFile, controller);
   }
   const command = hostCommand(config, [
     "docker",
@@ -159,6 +173,16 @@ export async function backupInstallation(
   const release = await acquireDataLease(config.dataDir);
   const stage = await mkdtemp(join(tmpdir(), "domos-backup-"));
   try {
+    const computers = await storedComputers(
+      join(config.dataDir, "agent.sqlite"),
+    );
+    const computerArchives: { id: string; archive: string }[] = [];
+    for (const [index, item] of computers.entries()) {
+      if (item.config.kind !== "docker") continue;
+      const archive = `computer-${index}.tar`;
+      await archiveComputer(item.config, join(stage, archive), false);
+      computerArchives.push({ id: item.id, archive });
+    }
     await cp(root, join(stage, "installation"), {
       recursive: true,
       filter: (path) =>
@@ -172,7 +196,11 @@ export async function backupInstallation(
       throw new Error("请先将持久数据迁入托管安装目录。");
     await workArchive(root, join(stage, "work.tar"), false);
     const plaintext = join(stage, "backup.tar.gz");
-    const entries = ["manifest.json", "installation"];
+    const entries = [
+      "manifest.json",
+      "installation",
+      ...computerArchives.map((item) => item.archive),
+    ];
     try {
       await stat(join(stage, "work.tar"));
       entries.push("work.tar");
@@ -185,6 +213,7 @@ export async function backupInstallation(
         version: 1,
         created: Date.now(),
         work: entries.includes("work.tar"),
+        computers: computerArchives,
       }),
     );
     await create(
@@ -234,6 +263,7 @@ export async function restoreInstallation(
   await mkdir(dirname(target), { recursive: true });
   const stage = await mkdtemp(join(dirname(target), ".domos-restore-"));
   let work: Awaited<ReturnType<typeof workArchive>>;
+  const restoredVolumes: Awaited<ReturnType<typeof archiveComputer>>[] = [];
   try {
     const handle = await open(archive, "r");
     const size = (await handle.stat()).size;
@@ -281,6 +311,22 @@ export async function restoreInstallation(
     config.dataDir = join(target, "data");
     if (config.computer.kind === "controller")
       config.computer.credentialFile = join(target, "controller-token");
+    const database = join(restored, "data", "agent.sqlite");
+    const computers = await storedComputers(database);
+    for (const entry of manifest.computers ?? []) {
+      if (!/^computer-[0-9]+[.]tar$/.test(entry.archive))
+        throw new Error("电脑备份路径无效。");
+      const item = computers.find((item) => item.id === entry.id);
+      if (item?.config.kind !== "docker")
+        throw new Error("电脑备份配置不完整。");
+      const volume = await archiveComputer(
+        item.config,
+        join(stage, entry.archive),
+        true,
+      );
+      restoredVolumes.push(volume);
+      item.config = volume.config;
+    }
     if (manifest.work) {
       const controllerFile = join(restored, "controller.json");
       const controller = JSON.parse(await readFile(controllerFile, "utf8"));
@@ -289,13 +335,34 @@ export async function restoreInstallation(
       work = await workArchive(restored, join(stage, "work.tar"), true);
       if (!work || config.computer.kind !== "controller")
         throw new Error("备份的工作电脑配置不完整。");
+      for (const item of computers) {
+        if (
+          item.config.kind === "controller" &&
+          item.config.id === config.computer.id
+        )
+          item.config = {
+            ...item.config,
+            id: work.config.id,
+            credentialFile: join(target, "controller-token"),
+          };
+      }
       config.computer.id = work.config.id;
-      await rm(join(restored, "data/computer.json"), { force: true });
+      if (computers.length)
+        await rm(join(restored, "data/computer.json"), { force: true });
+      else
+        await writeConfiguration(join(restored, "data/computer.json"), {
+          kind: "controller",
+          id: work.config.id,
+          endpoint: config.computer.endpoint,
+        });
     }
+    await restoreComputers(database, computers);
     await writeConfiguration(filename, config);
     await rename(restored, target);
     work = undefined;
+    restoredVolumes.length = 0;
   } finally {
+    await Promise.all(restoredVolumes.map((volume) => volume.removeVolume()));
     await work?.removeVolume();
     await rm(stage, { recursive: true, force: true });
   }

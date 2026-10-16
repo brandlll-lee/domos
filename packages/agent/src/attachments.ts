@@ -6,4 +6,5 @@ export type Attachment = {
   size: number;
   path: string;
   mimeType?: string;
+  computerId?: string;
 };

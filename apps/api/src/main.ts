@@ -3,6 +3,7 @@ import { getRequestListener } from "@hono/node-server";
 import { openHostedRuntime } from "./hosting/runtime.ts";
 
 async function main() {
+  if (process.versions.electron) process.env.ELECTRON_RUN_AS_NODE = "1";
   const runtime = await openHostedRuntime();
   const { config } = runtime;
   const server = createServer(getRequestListener(runtime.app.fetch));
@@ -23,6 +24,7 @@ async function main() {
   const parent = (
     process as NodeJS.Process & {
       parentPort?: {
+        postMessage(message: unknown): void;
         on(
           event: "message",
           listener: (event: { data: unknown }) => void,
@@ -32,6 +34,12 @@ async function main() {
   ).parentPort;
   parent?.on("message", (event) => {
     if (event.data === "shutdown") void close().then(() => process.exit());
+    if (event.data === "pair-desktop" && config.host === "127.0.0.1")
+      void runtime
+        .pairDesktop()
+        .then((session) =>
+          parent.postMessage({ type: "desktop-session", ...session }),
+        );
   });
   server.once("error", () => {
     console.error("服务启动失败。请检查端口和数据目录。");

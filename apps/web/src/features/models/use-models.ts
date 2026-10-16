@@ -18,19 +18,26 @@ export function useModels(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return;
     const controller = new AbortController();
-    void client.models.list(undefined, { signal: controller.signal }).then(
-      (next) => {
-        if (!controller.signal.aborted) {
-          setChoices(next);
-          setError(null);
-        }
-      },
-      () => {
-        if (!controller.signal.aborted)
-          setError("模型目录加载失败。请刷新重试。");
-      },
-    );
-    return () => controller.abort();
+    const refresh = () => {
+      void client.models.list(undefined, { signal: controller.signal }).then(
+        (next) => {
+          if (!controller.signal.aborted) {
+            setChoices(next);
+            setError(null);
+          }
+        },
+        () => {
+          if (!controller.signal.aborted)
+            setError("模型目录加载失败。请刷新重试。");
+        },
+      );
+    };
+    refresh();
+    window.addEventListener("domos:models", refresh);
+    return () => {
+      controller.abort();
+      window.removeEventListener("domos:models", refresh);
+    };
   }, [enabled]);
   return { choices, error };
 }

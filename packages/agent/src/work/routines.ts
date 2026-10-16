@@ -15,7 +15,7 @@ import {
   RoutinesDoc,
   saveRoutine,
 } from "./routine-state.ts";
-import { routineTask } from "./routine-task.ts";
+import { createRoutineTask, routineTask } from "./routine-task.ts";
 import { nextScheduled, validateSchedule } from "./schedule.ts";
 import { requireRevision, toolResult } from "./state.ts";
 
@@ -147,10 +147,13 @@ export class Routines {
   }
 }
 
-export function routineExtension(now = Date.now) {
+export function routineExtension(
+  now = Date.now,
+  preflight?: (botId: number, context: Context) => Promise<void>,
+) {
   return defineExtension({
     name: "domos-routines",
-    tasks: [routineTask],
+    tasks: [createRoutineTask(preflight)],
     sections: [
       section(
         "routines",

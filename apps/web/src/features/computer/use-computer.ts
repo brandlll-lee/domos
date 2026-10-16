@@ -1,32 +1,36 @@
-import type { ComputerStatus } from "@domos/agent/computer";
 import { useState } from "react";
 import { client } from "../../client.ts";
+import type { useBots } from "../bots/use-bots.ts";
 
 export function useComputer(
   botId: number,
-  status: ComputerStatus | null,
-  setStatus: (value: ComputerStatus) => void,
+  directory: Pick<ReturnType<typeof useBots>, "computers" | "updateComputers">,
 ) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  async function run(action?: "start" | "stop" | "rebuild") {
+  const binding = directory.computers.bindings[String(botId)];
+  const status =
+    directory.computers.items.find((item) => item.id === binding?.computerId) ??
+    null;
+  async function assign(computerId: string | null) {
     if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      setStatus(
-        action
-          ? await client.computer.manage({ botId, action })
-          : await client.computer.get({ botId }),
-      );
+      await client.computer.assign({
+        botId,
+        computerId,
+        revision: binding?.revision ?? 0,
+        requestId: crypto.randomUUID(),
+      });
+      directory.updateComputers(await client.computer.list());
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "操作未确认。请刷新状态。",
+        cause instanceof Error ? cause.message : "分配未确认。请刷新后重试。",
       );
     } finally {
       setBusy(false);
     }
   }
-  return { status, busy, error, run };
+  return { status, busy, error, assign, choices: directory.computers.items };
 }

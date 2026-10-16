@@ -23,6 +23,8 @@ export function Composer({
   onSend,
   onStop,
   status,
+  computerReady = true,
+  onComputerRequired,
 }: {
   ref: Ref<HTMLElement>;
   botName: string;
@@ -35,6 +37,8 @@ export function Composer({
   onSend: SendMessage;
   onStop: () => Promise<void>;
   status?: ReactNode;
+  computerReady?: boolean;
+  onComputerRequired?: () => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -126,7 +130,9 @@ export function Composer({
               composer.pending ||
               composer.attachments.length >= MAX_ATTACHMENTS
             }
-            onClick={() => input.current?.click()}
+            onClick={() =>
+              computerReady ? input.current?.click() : onComputerRequired?.()
+            }
           >
             <PlusIcon />
           </Button>

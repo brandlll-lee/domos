@@ -3,7 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { acquireDataLease } from "@domos/agent/lease";
 import { expect, onTestFinished, test } from "vitest";
-import { prepareInstallation, type Release } from "../src/install.ts";
+import {
+  prepareInstallation,
+  prepareLocalInstallation,
+  type Release,
+} from "../src/install.ts";
 import { backupInstallation, restoreInstallation } from "../src/maintenance.ts";
 
 async function fixture() {
@@ -19,6 +23,22 @@ const release: Release = {
   bridgeEntry: "bridge.ts",
   staticDir: "web",
 };
+
+test("local installation creates a loopback service and preserves existing configuration", async () => {
+  const directory = await fixture();
+  const first = await prepareLocalInstallation(directory, release);
+  expect(first.config).toMatchObject({
+    host: "127.0.0.1",
+    computer: { kind: "process" },
+    dataDir: join(directory, "data"),
+  });
+  expect(first.config.port).toBeGreaterThan(0);
+  const config = { ...first.config, port: 34567 };
+  await writeFile(first.configFile, JSON.stringify(config));
+  expect((await prepareLocalInstallation(directory, release)).config).toEqual(
+    config,
+  );
+});
 
 test("installation checks Linux mode, preserves configuration and retries image setup", async () => {
   const directory = await fixture();

@@ -1,5 +1,5 @@
 import type { Bots } from "@domos/agent/bots";
-import type { Computer, ComputerStatus } from "@domos/agent/computer";
+import type { Computers } from "@domos/agent/computer/catalog";
 import {
   BACKGROUND_CONTEXT,
   withAbortSignal,
@@ -7,7 +7,7 @@ import {
 
 export async function* watchDirectory(
   bots: Bots,
-  computer?: Computer,
+  computer?: Computers,
   signal?: AbortSignal,
 ) {
   const controller = new AbortController();
@@ -17,7 +17,7 @@ export async function* watchDirectory(
   const contacts = bots.watch(
     withAbortSignal(controller.signal, BACKGROUND_CONTEXT),
   );
-  const states = computer?.watch(controller.signal);
+  const states = computer?.watch(controller.signal, BACKGROUND_CONTEXT);
   const failure = (error: unknown) => ({ kind: "error" as const, error });
   const readContacts = () =>
     contacts
@@ -30,7 +30,7 @@ export async function* watchDirectory(
   let nextContacts = readContacts();
   let nextComputer = readComputer();
   let items: Awaited<ReturnType<Bots["list"]>> | undefined;
-  let status: ComputerStatus | null = null;
+  let status: Awaited<ReturnType<Computers["list"]>> | null = null;
   try {
     while (!controller.signal.aborted) {
       const next = await Promise.race(
@@ -45,7 +45,13 @@ export async function* watchDirectory(
         status = next.value.value;
         nextComputer = readComputer();
       }
-      if (items) yield { items, computer: status };
+      if (items)
+        yield {
+          items,
+          computers: status?.items ?? [],
+          defaultComputerId: status?.defaultId ?? null,
+          bindings: status?.bindings ?? {},
+        };
     }
   } finally {
     controller.abort();

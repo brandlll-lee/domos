@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openAgent } from "@domos/agent";
-import { Computer } from "@domos/agent/computer";
+import { Computers } from "@domos/agent/computer/catalog";
 import { parseConfig } from "@domos/agent/config";
 import { Files } from "@domos/agent/files";
 import { messageText } from "@domos/agent/messages";
@@ -50,9 +50,10 @@ async function setup() {
   const agent = { model: { provider: "faux", modelId: "faux-1" } };
   const open = async () => {
     const runtime = await openAgent(database, options, agent, context);
-    const computer = new Computer(
+    const computer = new Computers(
       parseConfig({ model: agent.model, dataDir: directory }, database),
     );
+    await computer.initialize(runtime.harness, runtime.bots, context, true);
     const app = createApp(
       runtime.bots,
       models,
@@ -1022,7 +1023,9 @@ test("computer routes expose actual execution boundaries and validate Bot owners
   const controller = new AbortController();
   try {
     const botId = runtime.conversation.id;
-    expect(await runtime.client.computer.get({ botId })).toMatchObject({
+    expect(
+      (await runtime.client.computer.get({ botId })).computer,
+    ).toMatchObject({
       kind: "process",
       state: "running",
       boundary: "host",
@@ -1031,15 +1034,16 @@ test("computer routes expose actual execution boundaries and validate Bot owners
       signal: controller.signal,
     });
     let update = await events.next();
-    while (!update.done && !update.value.computer) update = await events.next();
-    expect(update.value?.computer).toMatchObject({ boundary: "host" });
+    while (!update.done && !update.value.computers.length)
+      update = await events.next();
+    expect(update.value?.computers[0]).toMatchObject({ boundary: "host" });
     expect(update.value?.items).toHaveLength(1);
     controller.abort();
     await expect(
       runtime.client.computer.get({ botId: Number.MAX_SAFE_INTEGER }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(
-      runtime.client.computer.manage({ botId, action: "stop" }),
+      runtime.client.computer.manage({ id: "process", action: "stop" }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   } finally {
     controller.abort();

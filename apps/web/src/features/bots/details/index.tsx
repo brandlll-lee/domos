@@ -25,15 +25,17 @@ export function BotDetails({
   onClose,
   computer,
   children,
+  initialPanel = "profile",
 }: {
   bot: Bot;
+  initialPanel?: Panel;
   onClose: () => void;
   children?: ReactNode;
   computer: ReactNode;
 }) {
   const work = useBotWork(bot.id);
   const action = useWorkAction();
-  const [panel, setPanel] = useState<Panel>("profile");
+  const [panel, setPanel] = useState<Panel>(initialPanel);
   const root = useRef<HTMLElement>(null);
   useEffect(() => {
     const previous = document.activeElement;

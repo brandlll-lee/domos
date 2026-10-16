@@ -950,6 +950,10 @@ test("text contrast, keyboard focus and message scrolling meet the UI contract",
     .evaluate((element) => getComputedStyle(element).borderColor);
   await picker.focus();
   await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("button", { name: "连接模型", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
   await expect(page.getByRole("combobox", { name: "外观" })).toBeFocused();
   await expect(
     page.getByRole("button", { name: "添加文件", exact: true }),
@@ -2195,17 +2199,23 @@ test("computer details share live directory status and recover a failed refresh"
   await expect(computer.getByRole("button", { name: "启动电脑" })).toHaveCount(
     0,
   );
-  await page.route("**/rpc/computer/get", (route) => route.abort("failed"));
-  await computer.getByRole("button", { name: "刷新状态" }).click();
-  await expect(computer.getByRole("alert")).toBeVisible();
-  await page.unroute("**/rpc/computer/get");
-  await computer.getByRole("button", { name: "刷新状态" }).click();
-  await expect(computer.getByRole("alert")).toHaveCount(0);
+  await computer.getByRole("button", { name: "管理电脑" }).click();
+  const settings = page.getByRole("complementary", {
+    name: "设置",
+    exact: true,
+  });
+  await page.route("**/rpc/computer/list", (route) => route.abort("failed"));
+  await settings.getByRole("button", { name: "刷新电脑状态" }).click();
+  await expect(settings.getByRole("alert")).toBeVisible();
+  await page.unroute("**/rpc/computer/list");
+  await settings.getByRole("button", { name: "刷新电脑状态" }).click();
+  await expect(settings.getByRole("alert")).toHaveCount(0);
+  await settings.getByRole("button", { name: "关闭", exact: true }).click();
   await page.screenshot({ path: "test-results/computer-light.png" });
   await chooseAppearance(page, "深色");
   await page.setViewportSize({ width: 375, height: 812 });
   await expect(
-    computer.getByRole("button", { name: "刷新状态" }),
+    computer.getByRole("button", { name: "管理电脑" }),
   ).toBeInViewport();
   expect(
     await page.evaluate(
@@ -2213,7 +2223,7 @@ test("computer details share live directory status and recover a failed refresh"
     ),
   ).toBe(true);
   await page.screenshot({ path: "test-results/computer-mobile-dark.png" });
-  await computer.getByRole("button", { name: "刷新状态" }).focus();
+  await computer.getByRole("button", { name: "管理电脑" }).focus();
   await page.keyboard.press("Escape");
   await expect(details).toHaveCount(0);
   await expect(

@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { BrowserWindow, shell } from "electron";
 
-export function openInstance(url: string) {
+export async function openInstance(
+  url: string,
+  desktopSession?: { token: string; expires: number },
+) {
   const origin = new URL(url).origin;
   const partition = `persist:domos-${createHash("sha256").update(origin).digest("hex").slice(0, 24)}`;
   const window = new BrowserWindow({
@@ -16,6 +19,7 @@ export function openInstance(url: string) {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
+      preload: fileURLToPath(new URL("./preload.cjs", import.meta.url)),
     },
   });
   const guard = (event: Electron.Event, target: string) => {
@@ -41,26 +45,17 @@ export function openInstance(url: string) {
     (_webContents, _permission, callback) => callback(false),
   );
   window.webContents.session.setPermissionCheckHandler(() => false);
+  if (desktopSession)
+    await window.webContents.session.cookies.set({
+      url: origin,
+      name: "domos_session",
+      value: desktopSession.token,
+      httpOnly: true,
+      secure: origin.startsWith("https:"),
+      sameSite: "strict",
+      path: "/",
+      expirationDate: desktopSession.expires / 1000,
+    });
   void window.loadURL(url);
-  return window;
-}
-
-export function setupWindow() {
-  const window = new BrowserWindow({
-    title: "连接 Domos",
-    width: 560,
-    height: 740,
-    minWidth: 360,
-    minHeight: 600,
-    webPreferences: {
-      contextIsolation: true,
-      sandbox: true,
-      nodeIntegration: false,
-      preload: fileURLToPath(new URL("./preload.cjs", import.meta.url)),
-    },
-  });
-  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  window.webContents.on("will-navigate", (event) => event.preventDefault());
-  void window.loadURL("domos-setup://app/setup.html");
   return window;
 }

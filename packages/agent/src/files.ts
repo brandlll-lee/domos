@@ -24,6 +24,13 @@ export const FileInput = "domos.file-input";
 
 export class Files {
   readonly root: string;
+  private readonly target?: (
+    botId: number,
+    context: Context,
+  ) => Promise<string | null>;
+  private readonly attachmentComputerId?: (
+    context: Context,
+  ) => Promise<string | null>;
   private readonly environment:
     | ((botId: number, context: Context) => Promise<WorkEnvironment>)
     | undefined;
@@ -31,9 +38,13 @@ export class Files {
   constructor(
     database: string,
     environment?: (botId: number, context: Context) => Promise<WorkEnvironment>,
+    target?: (botId: number, context: Context) => Promise<string | null>,
+    attachmentComputerId?: (context: Context) => Promise<string | null>,
   ) {
     this.root = resolve(`${database}.files`);
     this.environment = environment;
+    this.target = target;
+    this.attachmentComputerId = attachmentComputerId;
   }
 
   async workspace(botId: number, context = BACKGROUND_CONTEXT) {
@@ -52,6 +63,7 @@ export class Files {
     botId: number,
     path: string,
     bytes: Uint8Array,
+    computerId?: string,
   ): Promise<Attachment> {
     if (bytes.byteLength > MAX_FILE_BYTES)
       throw new Error("File exceeds 10 MiB");
@@ -59,6 +71,7 @@ export class Files {
       .update(path)
       .update("\0")
       .update(bytes)
+      .update(computerId ?? "")
       .digest("hex");
     const mimeType =
       (await fileTypeFromBuffer(bytes).catch(() => undefined))?.mime ??
@@ -69,6 +82,7 @@ export class Files {
       size: bytes.byteLength,
       path,
       mimeType,
+      ...(computerId ? { computerId } : {}),
     };
     const directory = this.directory(botId, id);
     await mkdir(directory, { recursive: true });
@@ -117,7 +131,8 @@ export class Files {
     } finally {
       await workspace.remove(temporary, { force: true }, context);
     }
-    return this.store(botId, filePath, bytes);
+    const computerId = await this.target?.(botId, context);
+    return this.store(botId, filePath, bytes, computerId ?? undefined);
   }
 
   async metadata(botId: number, id: string): Promise<Attachment> {
@@ -143,6 +158,23 @@ export class Files {
     return new File([bytes], file.name, { type: file.mimeType });
   }
 
+  async verify(
+    botId: number,
+    attachments: readonly Attachment[],
+    context: Context,
+  ) {
+    if (!this.target || !attachments.length) return;
+    const computerId = await this.target(botId, context);
+    if (!computerId) throw new Error("请先为 Bot 分配电脑，再处理附件。");
+    const attachmentComputerId = await this.attachmentComputerId?.(context);
+    if (
+      attachments.some(
+        (file) => (file.computerId ?? attachmentComputerId) !== computerId,
+      )
+    )
+      throw new Error("附件属于另一台电脑。请在当前电脑上重新上传。");
+  }
+
   async publish(botId: number, path: string, context: Context) {
     const workspace = await this.workspace(botId, context);
     const resolved = await workspace.path(path);
@@ -165,6 +197,7 @@ export class Files {
           .relative(workspace.cwd, resolved)
           .replaceAll("\\", "/"),
         bytes.value,
+        (await this.target?.(botId, context)) ?? undefined,
       );
     } finally {
       await reader.value.close(context);
@@ -206,10 +239,10 @@ export class Files {
         }),
       ],
       sections: [
-        section(
-          "workspace",
-          () =>
-            "File paths are relative to this Bot's working directory on the selected computer. Bots sharing a computer share its OS permissions. Read uploaded text files with read. Create or edit deliverables with write/edit, then publish them with attach_file. Published files are durable snapshots, available even when the work computer is stopped. Do not claim to process unsupported file formats.",
+        section("workspace", ({ env }) =>
+          env
+            ? "File paths are relative to this Bot's working directory on the selected computer. Bots sharing a computer share its OS permissions. Read uploaded text files with read. Create or edit deliverables with write/edit, then publish them with attach_file. Published files are durable snapshots, available even when the work computer is stopped. Do not claim to process unsupported file formats."
+            : undefined,
         ),
       ],
     });

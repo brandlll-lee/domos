@@ -9,31 +9,39 @@ import {
   useRef,
   useState,
 } from "react";
+import { ComputerSettings } from "../computer/settings.tsx";
 import { hostingRequest } from "./api.ts";
+import { DesktopSettings } from "./desktop.tsx";
 import { Devices } from "./devices.tsx";
 import { HostingModels } from "./models.tsx";
 import "./style.css";
 
-const HostingContext = createContext<(() => void) | undefined>(undefined);
-type Session = { device: { id: string; scope: string }; configured: boolean };
+type SettingsTab = "devices" | "models" | "computers" | "instance";
+const HostingContext = createContext<{
+  open: (tab?: SettingsTab, botId?: number) => void;
+  admin: boolean;
+}>({ open: () => {}, admin: false });
+export const useHosting = () => useContext(HostingContext);
+type Session = { device: { id: string; scope: string } };
 
 export function HostingButton() {
-  const open = useContext(HostingContext);
-  return open ? (
-    <Button variant="ghost" onClick={open}>
-      管理实例
+  const settings = useHosting();
+  return (
+    <Button variant="ghost" onClick={() => settings.open()}>
+      设置
     </Button>
-  ) : null;
+  );
 }
 
 export function HostingRoot({ children }: { children: ReactNode }) {
   const [state, setState] = useState<
-    "loading" | "pair" | "ready" | "setup" | "standalone"
+    "loading" | "pair" | "ready" | "standalone"
   >("loading");
   const [session, setSession] = useState<Session>();
   const [error, setError] = useState("");
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState("devices");
+  const [tab, setTab] = useState<SettingsTab>("computers");
+  const [botId, setBotId] = useState<number>();
   const [code, setCode] = useState("");
   const [label, setLabel] = useState("我的设备");
   const [busy, setBusy] = useState(false);
@@ -62,15 +70,9 @@ export function HostingRoot({ children }: { children: ReactNode }) {
     if (!response.ok) throw new Error("无法读取设备状态。");
     const value: Session = await response.json();
     setSession(value);
-    setState(value.configured ? "ready" : "setup");
+    setState("ready");
   }, []);
   useEffect(() => {
-    const parameters = new URLSearchParams(window.location.hash.slice(1));
-    const owner = parameters.get("pair");
-    if (owner) {
-      setCode(owner);
-      window.history.replaceState(null, "", window.location.pathname);
-    }
     void refresh().catch((error) => setError(error.message));
     const unauthorized = () => {
       setSession(undefined);
@@ -79,19 +81,23 @@ export function HostingRoot({ children }: { children: ReactNode }) {
     window.addEventListener("domos:pair", unauthorized);
     return () => window.removeEventListener("domos:pair", unauthorized);
   }, [refresh]);
-  if (state === "standalone") return children;
-  if (state === "ready")
+  if (state === "ready" || state === "standalone")
     return (
       <HostingContext
-        value={
-          session?.device.scope === "admin" ? () => setOpen(true) : undefined
-        }
+        value={{
+          open: (next = "computers", target) => {
+            setTab(next);
+            setBotId(target);
+            setOpen(true);
+          },
+          admin: session?.device.scope === "admin" || state === "standalone",
+        }}
       >
         {children}
         {open && (
           <aside
             className="hosting-panel"
-            aria-label="实例管理"
+            aria-label="设置"
             ref={panel}
             tabIndex={-1}
             onKeyDown={(event) => {
@@ -99,32 +105,55 @@ export function HostingRoot({ children }: { children: ReactNode }) {
             }}
           >
             <header className="hosting-device">
-              <h2>实例管理</h2>
+              <h2>设置</h2>
               <Button variant="ghost" onClick={() => setOpen(false)}>
                 关闭
               </Button>
             </header>
-            <nav className="hosting-tabs" aria-label="实例设置分区">
-              <Button
-                variant="ghost"
-                aria-pressed={tab === "devices"}
-                onClick={() => setTab("devices")}
-              >
-                设备
-              </Button>
-              <Button
-                variant="ghost"
-                aria-pressed={tab === "models"}
-                onClick={() => setTab("models")}
-              >
-                模型
-              </Button>
+            <nav className="hosting-tabs" aria-label="设置分区">
+              {(
+                [
+                  ["computers", "电脑"],
+                  ["models", "模型"],
+                  ["devices", "设备"],
+                  ["instance", "实例"],
+                ] as const
+              ).map(([key, name]) => (
+                <Button
+                  key={key}
+                  variant="ghost"
+                  aria-pressed={tab === key}
+                  onClick={() => setTab(key)}
+                >
+                  {name}
+                </Button>
+              ))}
             </nav>
-            {tab === "devices" ? (
-              <Devices current={session?.device.id ?? ""} />
-            ) : (
-              <HostingModels onConfigured={() => setOpen(false)} />
+            {tab === "computers" && (
+              <ComputerSettings
+                admin={
+                  session?.device.scope === "admin" || state === "standalone"
+                }
+              />
             )}
+            {tab === "models" &&
+              (session?.device.scope === "admin" ? (
+                <HostingModels
+                  botId={botId}
+                  onConfigured={() => setOpen(false)}
+                />
+              ) : (
+                <p role="status">
+                  请让管理员连接模型。已连接的模型可在 Bot 详情中选择。
+                </p>
+              ))}
+            {tab === "devices" &&
+              (session?.device.scope === "admin" ? (
+                <Devices current={session.device.id} />
+              ) : (
+                <p role="status">请让管理员管理设备。</p>
+              ))}
+            {tab === "instance" && <DesktopSettings />}
           </aside>
         )}
       </HostingContext>
@@ -137,12 +166,6 @@ export function HostingRoot({ children }: { children: ReactNode }) {
           domos.
         </div>
         {state === "loading" && <p role="status">正在连接实例…</p>}
-        {state === "setup" &&
-          (session?.device.scope === "admin" ? (
-            <HostingModels initial onConfigured={() => void refresh()} />
-          ) : (
-            <p role="status">请让管理员完成模型配置。</p>
-          ))}
         {state === "pair" && (
           <form
             className="hosting-stack"

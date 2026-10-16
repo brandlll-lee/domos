@@ -1,11 +1,10 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseConfig } from "@domos/agent/config";
 import { Sessions } from "@domos/hosting/sessions";
 import { HostingStore } from "@domos/hosting/store";
 import { createModels } from "@earendil-works/pi-ai/models";
-import { fauxProvider } from "@earendil-works/pi-ai/providers/faux";
 import { expect, onTestFinished, test } from "vitest";
 import { hostingApp } from "../src/hosting/routes.ts";
 
@@ -21,7 +20,6 @@ test("hosting authenticates RPC, files, admin operations, origins and pairing", 
     ),
     sessions,
     models: createModels(),
-    start: async () => {},
     forward: async (request) => {
       if (new URL(request.url).pathname.endsWith("/watch"))
         return new Response(
@@ -72,14 +70,16 @@ test("hosting authenticates RPC, files, admin operations, origins and pairing", 
   expect(
     (await request("/hosting/devices", { headers: { Cookie: cookie } })).status,
   ).toBe(403);
-  expect(
-    (
-      await request("/rpc/computer/manage", {
-        method: "POST",
-        headers: { Cookie: cookie, Origin: "https://domos.test" },
-      })
-    ).status,
-  ).toBe(403);
+  for (const operation of ["manage", "add", "authorize", "default"]) {
+    expect(
+      (
+        await request(`/rpc/computer/${operation}`, {
+          method: "POST",
+          headers: { Cookie: cookie, Origin: "https://domos.test" },
+        })
+      ).status,
+    ).toBe(403);
+  }
   expect(
     (
       await request("/rpc/bots/create", {
@@ -114,50 +114,4 @@ test("hosting authenticates RPC, files, admin operations, origins and pairing", 
   expect(
     (await request("/files/1/test", { headers: { Cookie: cookie } })).status,
   ).toBe(401);
-});
-
-test("initial model setup restores configuration after a failed start and accepts one successful setup", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "domos-model-setup-"));
-  const store = await HostingStore.open(directory);
-  const sessions = new Sessions(store);
-  const owner = sessions.exchange(sessions.pairing("admin").code, "Owner");
-  const filename = join(directory, "config.json");
-  const input = { dataDir: directory, publicUrl: "https://domos.test" };
-  await writeFile(filename, JSON.stringify(input));
-  const config = parseConfig(input, filename);
-  const models = createModels();
-  models.setProvider(fauxProvider().provider);
-  let attempts = 0;
-  const hosted = hostingApp({
-    config,
-    sessions,
-    models,
-    start: async () => {
-      if (++attempts === 1) throw new Error("Startup failed");
-    },
-    forward: async () => new Response(),
-  });
-  onTestFinished(async () => {
-    hosted.close();
-    await store.close();
-    await rm(directory, { recursive: true, force: true });
-  });
-  const setup = () =>
-    hosted.app.request("https://domos.test/hosting/setup", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${owner?.token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ provider: "faux", modelId: "faux-1" }),
-    });
-  expect((await setup()).status).toBe(400);
-  expect(JSON.parse(await readFile(filename, "utf8")).model).toBeUndefined();
-  expect(config.model).toBeUndefined();
-  expect((await setup()).status).toBe(200);
-  expect(JSON.parse(await readFile(filename, "utf8")).model).toEqual(
-    config.model,
-  );
-  expect((await setup()).status).toBe(409);
-  expect(attempts).toBe(2);
 });

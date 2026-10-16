@@ -101,9 +101,9 @@ export class ModelLogins {
     return { events, prompt, done, error };
   }
 
-  cancel(owner: string) {
+  cancel(owner: string, flowId?: string) {
     for (const [id, flow] of this.flows)
-      if (flow.owner === owner) {
+      if (flow.owner === owner && (flowId === undefined || flowId === id)) {
         flow.controller.abort();
         this.flows.delete(id);
       }

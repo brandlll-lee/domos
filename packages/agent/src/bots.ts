@@ -10,6 +10,7 @@ import {
   type ModelRef,
   section,
 } from "@earendil-works/pi-durable";
+import type { Computers } from "./computer/catalog.ts";
 import { watchCommits } from "./watch.ts";
 import { BOT_NAME_LENGTH } from "./work/limits.ts";
 import { requiredText, requireRevision, WorkError } from "./work/state.ts";
@@ -18,8 +19,9 @@ export type Bot = { id: ConversationId; name: string; avatar: string };
 export type BotPresence = Bot & { busy: boolean };
 export type CreateBot = {
   name: string;
-  instructions: string;
-  model: ModelRef;
+  instructions?: string;
+  model?: ModelRef;
+  computerId?: string | null;
   requestId: string;
   avatar?: string;
 };
@@ -39,9 +41,11 @@ const BotDirectory = defineDoc<{
 
 export class Bots {
   private readonly harness: Harness;
+  private readonly computers?: Computers;
 
-  constructor(harness: Harness) {
+  constructor(harness: Harness, computers?: Computers) {
     this.harness = harness;
+    this.computers = computers;
   }
 
   async initialize(conversationId: ConversationId, context: Context) {
@@ -144,6 +148,7 @@ export class Bots {
         name: input.name,
         avatar: input.avatar ?? randomUUID(),
       };
+      await this.computers?.attach(tx, bot.id, input.computerId);
       directory.items.push({ ...bot, requestId: input.requestId });
       return bot;
     }, context);

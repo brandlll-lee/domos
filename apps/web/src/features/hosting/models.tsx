@@ -1,5 +1,6 @@
 import { Button } from "@domos/ui/controls";
 import { useCallback, useEffect, useState } from "react";
+import { client } from "../../client.ts";
 import { hostingRequest } from "./api.ts";
 
 type Catalog = {
@@ -32,10 +33,10 @@ type Login = {
 
 export function HostingModels({
   onConfigured,
-  initial = false,
+  botId,
 }: {
   onConfigured: () => void;
-  initial?: boolean;
+  botId?: number;
 }) {
   const [catalog, setCatalog] = useState<Catalog>();
   const [provider, setProvider] = useState("");
@@ -46,7 +47,11 @@ export function HostingModels({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const refresh = useCallback(
-    () => hostingRequest<Catalog>("models").then(setCatalog),
+    () =>
+      hostingRequest<Catalog>("models").then((value) => {
+        setCatalog(value);
+        window.dispatchEvent(new Event("domos:models"));
+      }),
     [],
   );
   useEffect(() => {
@@ -90,6 +95,15 @@ export function HostingModels({
       setBusy(false);
     }
   };
+  useEffect(
+    () => () => {
+      if (loginId)
+        void hostingRequest(`login/${loginId}`, undefined, "DELETE").catch(
+          () => {},
+        );
+    },
+    [loginId],
+  );
   const selected = catalog?.providers.find((item) => item.id === provider);
   const prompt = login?.prompt;
   return (
@@ -225,10 +239,10 @@ export function HostingModels({
           取消登录
         </Button>
       )}
-      {initial && (
+      {botId !== undefined && (
         <>
           <label>
-            默认模型
+            此 Bot 的模型
             <select
               value={selection}
               onChange={(event) => setSelection(event.target.value)}
@@ -251,12 +265,13 @@ export function HostingModels({
             disabled={busy || !selection}
             onClick={() =>
               void action(async () => {
-                await hostingRequest("setup", JSON.parse(selection));
+                await client.models.select({ botId, ...JSON.parse(selection) });
+                window.dispatchEvent(new Event("domos:models"));
                 onConfigured();
               })
             }
           >
-            保存并使用
+            保存模型
           </Button>
         </>
       )}

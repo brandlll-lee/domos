@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { dirname } from "node:path";
 import { openAgent } from "@domos/agent";
-import { Computer } from "@domos/agent/computer";
+import { Computers } from "@domos/agent/computer/catalog";
 import { parseConfig } from "@domos/agent/config";
 import { Files } from "@domos/agent/files";
 import { Sessions } from "@domos/hosting/sessions";
@@ -111,21 +111,17 @@ const { harness, bots, work } = await openAgent(
   { model: { provider: "faux", modelId: "faux-1" } },
   BACKGROUND_CONTEXT,
 );
-const app = createApp(
-  bots,
-  models,
-  files,
-  work,
-  new Computer(
-    parseConfig(
-      {
-        model: { provider: "faux", modelId: "faux-1" },
-        dataDir: dirname(database),
-      },
-      database,
-    ),
+const computer = new Computers(
+  parseConfig(
+    {
+      model: { provider: "faux", modelId: "faux-1" },
+      dataDir: dirname(database),
+    },
+    database,
   ),
 );
+await computer.initialize(harness, bots, BACKGROUND_CONTEXT, true);
+const app = createApp(bots, models, files, work, computer);
 let hosted: ReturnType<typeof hostingApp> | undefined;
 const store =
   process.argv[4] === "hosting"
@@ -151,7 +147,6 @@ server.listen(Number(process.argv[3] ?? 0), "127.0.0.1", () => {
         ),
         sessions,
         models,
-        start: async () => {},
         forward: async (request) => app.fetch(request),
       });
     process.send?.({

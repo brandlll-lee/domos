@@ -6,7 +6,7 @@ import { Dialog } from "@domos/ui/dialog";
 import { TextField } from "@domos/ui/field";
 import { SearchPicker } from "@domos/ui/picker";
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { client } from "../../client.ts";
 import { rejectionMessage } from "../chat/request-error.ts";
 import { modelItems, modelKey, useModels } from "../models/use-models.ts";
@@ -78,25 +78,31 @@ function BotForm({
   const preferred = choices?.find(
     (choice) => model && modelKey(choice) === modelKey(model),
   );
-  const selected =
-    selection ??
-    (preferred
-      ? modelKey(preferred)
-      : choices?.[0]
-        ? modelKey(choices[0])
-        : "");
+  const selected = selection ?? (preferred ? modelKey(preferred) : "");
+  const [computerId, setComputerId] = useState<string | undefined>();
+  const [computers, setComputers] =
+    useState<Awaited<ReturnType<typeof client.computer.list>>>();
+  useEffect(() => {
+    void client.computer
+      .list()
+      .then(setComputers)
+      .catch(() => {});
+  }, []);
   const choice = choices?.find((item) => modelKey(item) === selected);
   return (
     <form
       className="bot-form"
       onSubmit={async (event) => {
         event.preventDefault();
-        if (!choice || !name.trim() || saving) return;
+        if (!name.trim() || saving) return;
         const input = {
           name: name.trim(),
           instructions: instructions.trim(),
           avatar,
-          model: { provider: choice.provider, modelId: choice.modelId },
+          model: choice
+            ? { provider: choice.provider, modelId: choice.modelId }
+            : undefined,
+          computerId: (computerId ?? computers?.defaultId) || null,
         };
         const payload = JSON.stringify(input);
         if (request.current?.payload !== payload)
@@ -148,22 +154,33 @@ function BotForm({
             label="默认模型"
             searchLabel="搜索模型…"
             emptyLabel="没有找到模型"
-            placeholder={choices === null ? "正在加载…" : "没有可用模型"}
-            items={modelItems(choices)}
+            placeholder="稍后连接"
+            items={[{ value: "", label: "稍后连接" }, ...modelItems(choices)]}
             value={selected}
-            disabled={choices === null || choices.length === 0 || saving}
+            disabled={saving}
             onValueChange={setSelection}
           />
         </div>
+        <label className="hosting-stack">
+          工作电脑
+          <select
+            value={computerId ?? computers?.defaultId ?? ""}
+            onChange={(event) => setComputerId(event.target.value)}
+          >
+            <option value="">暂不分配</option>
+            {computers?.items
+              .filter((item) => item.authorized)
+              .map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+          </select>
+        </label>
       </fieldset>
       {(error ?? catalogError) && (
         <p className="alert" role="alert">
           {error ?? catalogError}
-        </p>
-      )}
-      {choices?.length === 0 && (
-        <p className="alert" role="status">
-          请配置服务商凭据后重启服务。
         </p>
       )}
       <div className="dialog-actions">
@@ -175,7 +192,7 @@ function BotForm({
         >
           取消
         </Button>
-        <Button type="submit" disabled={saving || !name.trim() || !choice}>
+        <Button type="submit" disabled={saving || !name.trim()}>
           {saving ? "正在创建…" : "创建"}
         </Button>
       </div>

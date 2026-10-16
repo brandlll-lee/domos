@@ -1,4 +1,5 @@
 import type { ChatView } from "@domos/agent/view";
+import { ORPCError } from "@orpc/client";
 import { useEffect, useState } from "react";
 import { client } from "../../client.ts";
 import { chatCopy } from "./copy.ts";
@@ -10,7 +11,7 @@ export type SendInput = {
   attachments?: string[];
 };
 
-export function useChat(botId: number) {
+export function useChat(botId: number, onModelRequired?: () => void) {
   const [view, setView] = useState<ChatView | null>(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +55,8 @@ export function useChat(botId: number) {
       await client.send({ ...input, botId });
       return "accepted" as const;
     } catch (cause) {
+      if (cause instanceof ORPCError && cause.code === "PRECONDITION_FAILED")
+        onModelRequired?.();
       const message = rejectionMessage(cause);
       setError(message ?? chatCopy.errors.unconfirmed);
       return message ? ("rejected" as const) : ("unconfirmed" as const);

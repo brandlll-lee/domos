@@ -1,9 +1,9 @@
 import { MAX_ATTACHMENTS } from "@domos/agent/attachments";
 import type { Bots } from "@domos/agent/bots";
-import type { Computer } from "@domos/agent/computer";
+import type { Computers } from "@domos/agent/computer/catalog";
 import { FileInput, type Files } from "@domos/agent/files";
 import { chatView } from "@domos/agent/view";
-import type { BotWork } from "@domos/agent/work";
+import { type BotWork, WorkError } from "@domos/agent/work";
 import {
   BACKGROUND_CONTEXT,
   withAbortSignal,
@@ -25,30 +25,39 @@ export function createRouter(
   models: Models,
   files: Files,
   work: BotWork,
-  computer?: Computer,
+  computer?: Computers,
 ) {
   return {
     computer: computerRouter(bots, computer),
     work: workRouter(bots, work),
-    files: fileRouter(bots, files),
+    files: fileRouter(bots, files, computer),
     bots: {
       list: os.handler(() => bots.list(BACKGROUND_CONTEXT)),
       create: os
         .input(
           z.object({
             name: z.string().trim().min(1).max(80),
-            instructions: z.string().trim(),
-            model: z.object({
-              provider: z.string().min(1),
-              modelId: z.string().min(1),
-            }),
+            instructions: z.string().trim().default(""),
+            model: z
+              .object({
+                provider: z.string().min(1),
+                modelId: z.string().min(1),
+              })
+              .optional(),
+            computerId: z.string().min(1).nullable().optional(),
             requestId: z.uuid(),
             avatar: z.uuid().optional(),
           }),
         )
         .handler(async ({ input }) => {
-          await requireConfiguredModel(models, input.model);
-          return bots.create(input, BACKGROUND_CONTEXT);
+          if (input.model) await requireConfiguredModel(models, input.model);
+          try {
+            return await bots.create(input, BACKGROUND_CONTEXT);
+          } catch (error) {
+            if (error instanceof WorkError)
+              throw new ORPCError(error.code, { message: error.message });
+            throw error;
+          }
         }),
       subscribe: os.handler(async function* ({ signal }) {
         yield* watchDirectory(bots, computer, signal);
@@ -93,28 +102,41 @@ export function createRouter(
             models,
             (await conversation.agent(BACKGROUND_CONTEXT)).model,
           );
-          const submission = await conversation.submit(
-            {
-              type: "input",
-              content: [
-                input.text,
-                ...attachments.map((file) => `Uploaded file: ${file.path}`),
-              ]
-                .filter(Boolean)
-                .join("\n\n"),
-              ...(attachments.length
-                ? {
-                    entry: {
-                      kind: FileInput,
-                      data: { text: input.text, attachments },
-                    },
-                  }
-                : {}),
-              requestId: input.requestId,
-              whenBusy: "reject",
-            },
-            BACKGROUND_CONTEXT,
-          );
+          const submit = async () => {
+            try {
+              await files.verify(input.botId, attachments, BACKGROUND_CONTEXT);
+            } catch (error) {
+              throw new ORPCError("BAD_REQUEST", {
+                message:
+                  error instanceof Error ? error.message : "附件目标无效。",
+              });
+            }
+            return conversation.submit(
+              {
+                type: "input",
+                content: [
+                  input.text,
+                  ...attachments.map((file) => `Uploaded file: ${file.path}`),
+                ]
+                  .filter(Boolean)
+                  .join("\n\n"),
+                ...(attachments.length
+                  ? {
+                      entry: {
+                        kind: FileInput,
+                        data: { text: input.text, attachments },
+                      },
+                    }
+                  : {}),
+                requestId: input.requestId,
+                whenBusy: "reject",
+              },
+              BACKGROUND_CONTEXT,
+            );
+          };
+          const submission = await (computer
+            ? computer.transfer(input.botId, submit, BACKGROUND_CONTEXT)
+            : submit());
           return { id: submission.id };
         } catch (error) {
           if (error instanceof ConversationBusy)

@@ -1,14 +1,13 @@
 import { fork } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 
-test("desktop connects, pairs and restores a saved instance with isolated browser permissions", async ({
+test("desktop starts locally, pairs and restores a saved instance", async ({
   playwright,
 }, testInfo) => {
   const directory = await mkdtemp(join(tmpdir(), "domos-desktop-"));
@@ -44,80 +43,68 @@ test("desktop connects, pairs and restores a saved instance with isolated browse
     env,
   });
   try {
-    const setup = await desktop.firstWindow();
+    const local = await desktop.firstWindow();
+    await expect(local.getByRole("button", { name: "Bot详情" })).toBeVisible();
+    expect(new URL(local.url()).hostname).toBe("127.0.0.1");
+    expect(new URL(local.url()).hash).toBe("");
     await expect(
-      setup.getByRole("heading", { name: "让 Bot 开始工作" }),
+      local.getByText("暂不分配电脑", { exact: true }),
     ).toBeVisible();
-    const listener = createServer();
-    listener.listen(0, "127.0.0.1");
-    await once(listener, "listening");
-    const address = listener.address();
-    if (!address || typeof address === "string")
-      throw new Error("Port required");
-    await new Promise<void>((resolve) => listener.close(() => resolve()));
-    const config = join(directory, "runtime.json");
-    await writeFile(
-      config,
-      JSON.stringify({
-        port: address.port,
-        dataDir: join(directory, "runtime-data"),
-      }),
-    );
-    await desktop.evaluate(
-      ({ utilityProcess }, { entry, config }) => {
-        const child = utilityProcess.fork(entry, [], {
-          env: { ...process.env, DOMOS_CONFIG: config },
-          stdio: "pipe",
+    expect(
+      await desktop.evaluate(async ({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        if (!window) throw new Error("Desktop window missing");
+        const cookies = await window.webContents.session.cookies.get({
+          name: "domos_session",
         });
-        child.stdout?.resume();
-        child.stderr?.resume();
-        Reflect.set(globalThis, "runtimeUnderTest", child);
-      },
-      {
-        entry: fileURLToPath(new URL("../runtime/server.mjs", import.meta.url)),
-        config,
-      },
+        return cookies.some((cookie) => cookie.httpOnly);
+      }),
+    ).toBe(true);
+    await local.getByRole("button", { name: "新建 Bot" }).first().click();
+    await local
+      .getByRole("textbox", { name: "名字", exact: true })
+      .fill("Local Writer");
+    await local.getByRole("button", { name: "创建", exact: true }).click();
+    await expect(local.getByRole("button", { name: "Bot详情" })).toContainText(
+      "Local Writer",
     );
-    await expect
-      .poll(async () => {
-        try {
-          return (await fetch(`http://127.0.0.1:${address.port}/hosting/info`))
-            .status;
-        } catch {
-          return 0;
-        }
-      })
-      .toBe(200);
-    await desktop.evaluate(async () => {
-      const child = Reflect.get(globalThis, "runtimeUnderTest");
-      await new Promise<void>((resolve) => {
-        child.once("exit", () => resolve());
-        child.postMessage("shutdown");
-      });
+    await local
+      .getByRole("button", { name: "设置", exact: true })
+      .first()
+      .click();
+    const settings = local.getByRole("complementary", {
+      name: "设置",
+      exact: true,
     });
-    await setup.getByRole("radio", { name: /连接已有 Domos/ }).check();
-    await setup.getByLabel("服务器地址").fill(`http://127.0.0.1:${ready.port}`);
+    await settings.getByRole("button", { name: "实例", exact: true }).click();
+    await settings
+      .getByLabel("服务器地址")
+      .fill(`http://127.0.0.1:${ready.port}`);
     const opened = desktop.waitForEvent("window");
-    await setup.getByRole("button", { name: "继续", exact: true }).click();
+    await settings
+      .getByRole("button", { name: "连接已有 Domos", exact: true })
+      .click();
     const page = await opened;
     await expect(
       page.getByRole("heading", { name: "连接这个 Domos" }),
     ).toBeVisible();
     await page.getByLabel("配对码", { exact: true }).fill(ready.pairing);
     await page.getByRole("button", { name: "连接", exact: true }).click();
-    await expect(page.getByRole("button", { name: "管理实例" })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "设置", exact: true }).first(),
+    ).toBeVisible();
     expect(
       await page.evaluate(() => ({
         require: typeof Reflect.get(window, "require"),
-        ipc: typeof Reflect.get(window, "domos"),
+        ipc: typeof Reflect.get(window, "domosDesktop"),
       })),
-    ).toEqual({ require: "undefined", ipc: "undefined" });
+    ).toEqual({ require: "undefined", ipc: "object" });
     await page.screenshot({ path: testInfo.outputPath("connected.png") });
     await desktop.close();
     desktop = await playwright._electron.launch({ executablePath, args, env });
     const reopened = await desktop.firstWindow();
     await expect(
-      reopened.getByRole("button", { name: "管理实例" }),
+      reopened.getByRole("button", { name: "设置", exact: true }).first(),
     ).toBeVisible();
     expect(reopened.url()).toBe(`http://127.0.0.1:${ready.port}/`);
   } finally {

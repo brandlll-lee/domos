@@ -8,6 +8,7 @@ import { BotDetails } from "../bots/details/index.tsx";
 import { useBots } from "../bots/use-bots.ts";
 import { ComputerPanel } from "../computer/panel.tsx";
 import { useComputer } from "../computer/use-computer.ts";
+import { HostingButton, useHosting } from "../hosting/root.tsx";
 import { WorkingActivity } from "./activity.tsx";
 import { Composer } from "./composer.tsx";
 import { chatCopy } from "./copy.ts";
@@ -32,8 +33,7 @@ export function ChatPage() {
       bots={bots.items}
       directoryError={bots.error}
       directoryConnected={bots.connected}
-      computerStatus={bots.computer}
-      onComputerStatus={bots.setComputer}
+      directory={bots}
     />
   );
 }
@@ -43,20 +43,22 @@ function BotChat({
   bots,
   directoryError,
   directoryConnected,
-  computerStatus,
-  onComputerStatus,
+  directory,
 }: {
   bot: Bot;
   bots: BotPresence[];
   directoryError: string | null;
   directoryConnected: boolean;
-  computerStatus: ReturnType<typeof useBots>["computer"];
-  onComputerStatus: ReturnType<typeof useBots>["setComputer"];
+  directory: ReturnType<typeof useBots>;
 }) {
-  const chat = useChat(bot.id);
-  const computer = useComputer(bot.id, computerStatus, onComputerStatus);
+  const settings = useHosting();
+  const chat = useChat(bot.id, () => settings.open("models", bot.id));
+  const computer = useComputer(bot.id, directory);
   const dock = useComposerDock();
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailPanel, setDetailPanel] = useState<"profile" | "computer">(
+    "profile",
+  );
   const items = chat.view ? chatTranscript(chat.view) : [];
   const active = items.find(
     (item) => item.kind === "activity" && item.status === "running",
@@ -111,11 +113,15 @@ function BotChat({
             aria-label="Bot详情"
             aria-expanded={detailsOpen}
             aria-controls={detailsOpen ? "bot-details" : undefined}
-            onClick={() => setDetailsOpen(!detailsOpen)}
+            onClick={() => {
+              setDetailPanel("profile");
+              setDetailsOpen(!detailsOpen);
+            }}
           >
             <BotAvatar seed={bot.avatar} size="small" />
             <span>{bot.name}</span>
           </Button>
+          <HostingButton />
           <span className="sr-only" role="status">
             {connection}
           </span>
@@ -134,6 +140,11 @@ function BotChat({
             error={error}
             onSend={chat.send}
             onStop={chat.stop}
+            computerReady={Boolean(computer.status?.authorized)}
+            onComputerRequired={() => {
+              setDetailPanel("computer");
+              setDetailsOpen(true);
+            }}
             status={
               active?.kind === "activity" ? (
                 <WorkingActivity activity={active} bot={bot} />
@@ -151,6 +162,7 @@ function BotChat({
       {detailsOpen && (
         <BotDetails
           bot={bot}
+          initialPanel={detailPanel}
           onClose={() => setDetailsOpen(false)}
           computer={<ComputerPanel computer={computer} />}
         >

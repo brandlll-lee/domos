@@ -1,10 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { metrics, themes } from "../../packages/ui/src/tokens.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../..");
@@ -32,6 +30,7 @@ pnpm(
   "--prod",
   runtime,
 );
+await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 const banner = {
   js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);',
@@ -69,38 +68,7 @@ for (const [entry, output] of [
     external,
     banner,
   });
-for (const name of ["setup.html", "setup.css", "setup.js", "preload.cjs"])
-  await cp(join(here, "src", name), join(dist, name));
-const variables = Object.entries(metrics)
-  .map(([key, value]) => `--${key}:${value}`)
-  .join(";");
-const colors = Object.entries(themes.light)
-  .map(
-    ([key, value]) => `--color-${key}:light-dark(${value},${themes.dark[key]})`,
-  )
-  .join(";");
-await writeFile(join(dist, "theme.css"), `:root{${variables};${colors}}`);
-const brand = join(dist, "brand.cjs");
-await build({
-  stdin: {
-    contents:
-      'import { createElement } from "react"; import { renderToStaticMarkup } from "react-dom/server"; import { BrandMark } from "@domos/ui/avatar"; export const html = renderToStaticMarkup(createElement(BrandMark));',
-    resolveDir: join(root, "apps/web"),
-    loader: "tsx",
-  },
-  outfile: brand,
-  bundle: true,
-  platform: "node",
-  format: "cjs",
-  jsx: "automatic",
-});
-const logo = createRequire(import.meta.url)(brand).html;
-const html = await readFile(join(dist, "setup.html"), "utf8");
-await writeFile(
-  join(dist, "setup.html"),
-  html.replace('<span class="brand" aria-hidden="true">◉</span>', logo),
-);
-await rm(brand);
+await cp(join(here, "src/preload.cjs"), join(dist, "preload.cjs"));
 await cp(join(root, "apps/web/dist"), join(runtime, "web"), {
   recursive: true,
 });

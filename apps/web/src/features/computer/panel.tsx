@@ -1,4 +1,5 @@
 import { Button } from "@domos/ui/controls";
+import { useHosting } from "../hosting/root.tsx";
 import { computerLabels } from "./copy.ts";
 import type { useComputer } from "./use-computer.ts";
 
@@ -7,9 +8,27 @@ export function ComputerPanel({
 }: {
   computer: ReturnType<typeof useComputer>;
 }) {
-  const { status, busy, error, run } = computer;
+  const { status, busy, error, assign, choices } = computer;
+  const settings = useHosting();
   return (
     <section className="detail-stack" aria-label="工作电脑" aria-busy={busy}>
+      <label className="hosting-stack">
+        分配电脑
+        <select
+          value={status?.id ?? ""}
+          disabled={busy}
+          onChange={(event) => void assign(event.target.value || null)}
+        >
+          <option value="">暂不分配</option>
+          {choices
+            .filter((item) => item.authorized)
+            .map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+        </select>
+      </label>
       {status ? (
         <>
           <h3>{computerLabels.boundary[status.boundary]}</h3>
@@ -43,7 +62,7 @@ export function ComputerPanel({
         </>
       ) : (
         <p className="detail-note" role="status">
-          正在读取工作电脑…
+          普通聊天不需要电脑。处理工作文件或执行命令时，请先分配电脑。
         </p>
       )}
       {error && (
@@ -51,41 +70,9 @@ export function ComputerPanel({
           {error}
         </p>
       )}
-      <div className="detail-actions">
-        <Button variant="secondary" disabled={busy} onClick={() => void run()}>
-          刷新状态
-        </Button>
-        {status?.kind === "docker" && (
-          <>
-            <Button
-              disabled={busy || status.state === "running"}
-              onClick={() => void run("start")}
-            >
-              启动电脑
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={busy || status.state !== "running"}
-              onClick={() => void run("stop")}
-            >
-              停止电脑
-            </Button>
-            <details>
-              <summary>重建工作容器</summary>
-              <p className="detail-note">
-                保留工作卷。容器内未保存的进程将结束。
-              </p>
-              <Button
-                variant="secondary"
-                disabled={busy}
-                onClick={() => void run("rebuild")}
-              >
-                确认重建
-              </Button>
-            </details>
-          </>
-        )}
-      </div>
+      <Button variant="secondary" onClick={() => settings.open("computers")}>
+        管理电脑
+      </Button>
     </section>
   );
 }

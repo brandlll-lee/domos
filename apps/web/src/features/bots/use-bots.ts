@@ -1,5 +1,4 @@
 import type { Bot, BotPresence } from "@domos/agent/bots";
-import type { ComputerStatus } from "@domos/agent/computer";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { client } from "../../client.ts";
 
@@ -14,7 +13,9 @@ export const selectBot = (bot: Bot) => {
 
 export function useBots() {
   const [items, setItems] = useState<BotPresence[]>([]);
-  const [computer, setComputer] = useState<ComputerStatus | null>(null);
+  const [computers, updateComputers] = useState<
+    Awaited<ReturnType<typeof client.computer.list>>
+  >({ items: [], defaultId: null, bindings: {} });
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hash = useSyncExternalStore(
@@ -37,7 +38,11 @@ export function useBots() {
         for await (const next of events) {
           if (controller.signal.aborted) return;
           setItems(next.items);
-          setComputer(next.computer);
+          updateComputers({
+            items: next.computers,
+            defaultId: next.defaultComputerId,
+            bindings: next.bindings,
+          });
           setConnected(true);
           setError(null);
         }
@@ -53,5 +58,5 @@ export function useBots() {
   const match = /^#bot\/(\d+)$/.exec(hash);
   const selected =
     items.find((bot) => bot.id === Number(match?.[1])) ?? items[0];
-  return { items, selected, error, connected, computer, setComputer };
+  return { items, selected, error, connected, computers, updateComputers };
 }

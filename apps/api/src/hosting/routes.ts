@@ -1,4 +1,3 @@
-import { rename, writeFile } from "node:fs/promises";
 import type { RuntimeConfig } from "@domos/agent/config";
 import type { Sessions } from "@domos/hosting/sessions";
 import type { Models } from "@earendil-works/pi-ai";
@@ -19,13 +18,11 @@ export function hostingApp(options: {
   config: RuntimeConfig;
   sessions: Sessions;
   models: Models;
-  start: (model: { provider: string; modelId: string }) => Promise<void>;
   forward: (request: Request) => Promise<Response>;
 }) {
   const { config, sessions, models } = options;
   const publicUrl = config.publicUrl ?? `http://${config.host}:${config.port}`;
   const logins = new ModelLogins(models);
-  let configuring = false;
   const app = new Hono<HostingEnv>();
   app.get("/health", (c) => c.json({ ok: true }));
   app.use("*", originGuard(publicUrl));
@@ -33,7 +30,6 @@ export function hostingApp(options: {
     c.json({
       product: "domos",
       version: "1",
-      configured: Boolean(config.model),
     }),
   );
   app.use("/hosting/*", bodyLimit({ maxSize: 64 * 1024 }));
@@ -61,9 +57,7 @@ export function hostingApp(options: {
     return c.json({ device: result.device });
   });
   app.use("/hosting/*", authenticate(sessions));
-  app.get("/hosting/session", (c) =>
-    c.json({ device: c.get("device"), configured: Boolean(config.model) }),
-  );
+  app.get("/hosting/session", (c) => c.json({ device: c.get("device") }));
   app.post("/hosting/logout", async (c) => {
     logins.cancel(c.get("device").id);
     sessions.logout(c.get("device").id);
@@ -127,6 +121,11 @@ export function hostingApp(options: {
     flow.answer(input.value);
     return c.json({ ok: true });
   });
+  app.delete("/hosting/login/:id", (c) => {
+    logins.get(c.req.param("id"), c.get("device").id);
+    logins.cancel(c.get("device").id, c.req.param("id"));
+    return c.json({ ok: true });
+  });
   app.delete("/hosting/login", (c) => {
     logins.cancel(c.get("device").id);
     return c.json({ ok: true });
@@ -135,46 +134,12 @@ export function hostingApp(options: {
     await models.logout(c.req.param("provider"));
     return c.json({ ok: true });
   });
-  app.post("/hosting/setup", async (c) => {
-    if (configuring || config.model)
-      return c.json({ error: "实例已配置或正在配置。请刷新后继续。" }, 409);
-    const model = z
-      .object({ provider: z.string(), modelId: z.string() })
-      .parse(await c.req.json());
-    if (
-      !(await models.getAvailable(model.provider)).some(
-        (item) => item.id === model.modelId,
-      )
-    )
-      return c.json({ error: "请先配置这个模型。" }, 400);
-    if (configuring || config.model)
-      return c.json({ error: "实例已配置或正在配置。请刷新后继续。" }, 409);
-    configuring = true;
-    const { configFile: _configFile, ...value } = config;
-    const temporary = `${config.configFile}.pending`;
-    const persist = async (content: unknown) => {
-      await writeFile(temporary, JSON.stringify(content, null, 2), {
-        mode: 0o600,
-      });
-      await rename(temporary, config.configFile);
-    };
-    try {
-      await persist({ ...value, model });
-      try {
-        await options.start(model);
-      } catch (error) {
-        await persist(value);
-        throw error;
-      }
-      config.model = model;
-    } finally {
-      configuring = false;
-    }
-    return c.json({ ok: true });
-  });
   const protectedApp = new Hono<HostingEnv>();
   protectedApp.use("*", authenticate(sessions));
   protectedApp.use("/computer/manage", administrator);
+  protectedApp.use("/computer/add", administrator);
+  protectedApp.use("/computer/authorize", administrator);
+  protectedApp.use("/computer/default", administrator);
   protectedApp.all("*", async (c) => {
     const tracked = sessions.track(c.get("device"));
     const signal = AbortSignal.any([c.req.raw.signal, tracked.signal]);
