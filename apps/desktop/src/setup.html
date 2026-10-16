@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>连接 Domos</title>
+  <link rel="stylesheet" href="setup.css">
+  <link rel="stylesheet" href="theme.css">
+</head>
+<body>
+  <main>
+    <header><span class="brand" aria-hidden="true">◉</span><strong>domos.</strong></header>
+    <h1>让 Bot 开始工作</h1>
+    <p class="muted">在这台电脑上托管，或连接你的 Domos。</p>
+    <form id="setup">
+      <fieldset>
+        <legend>使用方式</legend>
+        <label class="choice"><input type="radio" name="mode" value="local" checked><span>在这台电脑上托管<small>自动准备服务与独立 Linux 工作环境</small></span></label>
+        <label class="choice"><input type="radio" name="mode" value="existing"><span>连接已有 Domos<small>使用另一台电脑或服务器上的实例</small></span></label>
+      </fieldset>
+      <section id="remote" hidden>
+        <label>实例名称<input id="name" value="我的 Domos" maxlength="80"></label>
+        <label>服务器地址<input id="url" type="text" placeholder="https://domos.example.com" autocomplete="url" spellcheck="false"></label>
+      </section>
+      <p id="hint" class="muted">本机托管需要 Docker 运行环境，并使用 Linux 容器模式。配置和工作文件保存在本机。</p>
+      <p id="status" role="status" aria-live="polite"></p>
+      <p id="error" role="alert"></p>
+      <div class="actions"><button id="cancel" type="button" hidden>取消</button><button id="continue" type="submit">继续</button></div>
+    </form>
+    <details>
+      <summary>维护本机托管</summary>
+      <p class="muted">备份会停止托管，并保存配置、会话、凭据和工作文件。恢复将使用新目录。</p>
+      <label>备份密码<input id="password" type="password" minlength="12" autocomplete="new-password" placeholder="至少 12 个字符"></label>
+      <div class="actions"><button id="backup" type="button">加密备份</button><button id="restore" type="button">从备份恢复</button></div>
+    </details>
+  </main>
+  <script src="setup.js"></script>
+</body>
+</html>

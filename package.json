@@ -8,6 +8,8 @@
   },
   "scripts": {
     "chat": "node --env-file-if-exists=.env apps/cli/src/main.ts",
+    "host": "node apps/cli/src/host.ts",
+    "desktop": "pnpm --filter @domos/desktop dev",
     "start": "node --env-file-if-exists=.env apps/api/src/main.ts",
     "web": "pnpm --filter @domos/web dev",
     "build": "pnpm --filter @domos/web build",

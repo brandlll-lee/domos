@@ -3,10 +3,12 @@ node_modules/
 /data/
 /coverage/
 dist/
-/test-results/
+test-results/
 /playwright-report/
 .env
 .env.*
 !.env.example
 /deploy/ssh/
 /deploy/domos.config.json
+/apps/desktop/runtime/
+/apps/desktop/release/

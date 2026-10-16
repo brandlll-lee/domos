@@ -1,110 +1,112 @@
-# 部署与工作沙箱
+# 自托管与工作电脑
 
-服务部署、工具执行目标、持久数据分别配置。多个 Bot 共用当前实例配置的工作电脑。不同隔离环境必须使用不同的电脑 ID 和工作卷。
+Domos 服务保存会话、模型凭据和附件。工作电脑执行 Bot 命令并保存工作文件。多个 Bot 共享实例的工作电脑。Bot 子目录用于组织文件。
 
-| 服务 | computer.kind | 工具在哪里执行 |
-| --- | --- | --- |
-| 原生进程 | process | 启动 Domos 的电脑，使用服务用户权限 |
-| 应用容器 | process | 应用容器内，与服务共享权限 |
-| 原生进程或应用容器 | docker | 独立 Linux 工作容器 |
+## 桌面
 
-`process` 是直接访问服务环境的显式模式。应用容器化不等于工具隔离。工作容器隔离文件、进程和权限，但仍共享 Docker 主机内核。此版本不提供多租户登录或自动分配机器。
+选择“在这台电脑上托管”或“连接已有 Domos”。本机托管需要 Docker Engine 或 Docker Desktop 的 Linux 容器模式。安装器检查环境，准备镜像，生成配置，并启动后台和控制端。失败后可以重试。已有配置会保留。
 
-## 配置
-
-API 和 CLI 共用 `openChat()`。默认读取项目内 `domos.config.json`，不依赖启动目录。配置文件中的相对路径以该文件为基准。
-
-优先级为环境覆盖、配置文件、默认值。支持 `DOMOS_CONFIG`、`DOMOS_HOST`、`DOMOS_PORT`、`DOMOS_DATA_DIR`、`DOMOS_STATIC_DIR`、`DOMOS_DEPLOYMENT`。模型密钥只由运行环境提供。配置文件不保存密钥。
-
-原生使用继续运行 `pnpm start` 或 `pnpm chat`。默认监听 `127.0.0.1:4310`，数据保存在 `data`。一份数据目录只允许一个进程使用。SQLite 文件锁在进程退出后由系统释放。数据卷需要支持 SQLite 文件锁；不要使用 NFS。
-
-原生服务接入本机 Docker 时，在配置中增加：
-
-```json
-{
-  "model": { "provider": "deepseek", "modelId": "deepseek-flash" },
-  "computer": {
-    "kind": "docker",
-    "id": "personal",
-    "image": "domos-workspace:1.2.0",
-    "volume": "domos-personal-work",
-    "network": "none",
-    "cpus": 2,
-    "memoryMiB": 1024,
-    "pids": 256,
-    "timeoutSeconds": 120
-  }
-}
-```
-
-Docker 控制端需要访问 Docker。该权限接近主机 root 权限。Bot 的工具只连接工作容器内的 Pi daemon，不获得 Docker socket、控制端 SSH 密钥、服务数据库或模型密钥。
-
-## 构建和启动
-
-在工作电脑所在的 Docker 主机构建工作镜像：
+首次管理员配对完成后，在网页连接模型。凭据通过 Pi 管理，并加密保存于服务端。桌面保存各实例地址，各实例使用独立浏览器会话。
 
 ```sh
-docker build -f deploy/workspace.Dockerfile -t domos-workspace:1.2.0 .
+pnpm install --frozen-lockfile
+pnpm --filter @domos/desktop dist --win --config.win.signAndEditExecutable=false
 ```
 
-支持 Linux amd64、arm64。官方 Pi daemon 版本与 SDK 固定为 1.2.0。镜像包含 Bash、Python、Git 和 Curl。其他工具通过修改工作镜像加入。启动不会自动拉取镜像。
+测试包位于 `apps/desktop/release`。开发包尚未签名。公开发行前需要签名凭据。macOS 和 Linux 打包配置已提供，但仍须分别验收。
 
-在服务主机准备 `deploy/domos.config.json`，参照 `domos.config.example.json`。Compose 读取前者。文件只含配置。将模型密钥提供给现有根目录 `.env`，或通过部署平台注入服务环境。
-
-应用容器通过 SSH 连接工作主机。准备 `deploy/ssh/id_ed25519` 与 `deploy/ssh/known_hosts`。从管理员可信渠道核对主机公钥，再写入配置的 `hostKeyAlias`。不关闭主机密钥检查。容器用户为 UID 1000；该用户必须能读取密钥。私钥权限设为 0600。
-
-SSH 用户需要 Docker 权限。此用户和主机属于受信任控制端。`deploy/ssh` 与本地部署配置已被 Git 和镜像构建忽略。应用容器不挂 Docker socket。若使用 Docker Desktop，工作容器位于其 Linux 虚拟机内。
+## 服务器
 
 ```sh
-docker compose -f deploy/compose.yaml up --build -d
+sh deploy/install.sh
 ```
 
-Compose 要求 2.24 或以上。默认仅向宿主机回环地址发布 4310。当前 API 没有公网用户鉴权，不要直接发布到公网。
+脚本准备镜像、Compose 和初始配置。应用默认发布到 `127.0.0.1:4310`。应用以非 root 运行。受信控制端独占 Docker socket。Bot 工作容器不挂载控制凭据、模型密钥、服务数据或 Docker socket。
 
-应用镜像使用非 root 用户、多阶段构建、只读根目录和健康检查。可通过构建参数 `NODE_IMAGE`、`DOCKER_CLI_IMAGE`、`WORK_IMAGE` 固定部署环境批准的镜像摘要。
+镜像和入口由 `deploy/release.json` 管理。配置保存在 `control-data` 卷。会话、凭据和附件保存在 `app-data` 卷。工作文件使用独立 Docker 卷。
 
-打开 Bot 右侧栏的“电脑”，检查真实目标，然后启动工作电脑。停止和重建要求所有 Bot 空闲。工作容器使用非 root、只读根目录、`cap-drop=ALL`、`no-new-privileges` 和配置的资源上限。工作卷持续挂载于 `/home/domos`。
+原生服务安装：
+
+```sh
+pnpm build
+pnpm host install --directory /srv/domos
+pnpm host start --directory /srv/domos
+```
+
+`data/owner-code` 保存首次管理员码。失效后可运行 `pnpm host pair --directory /srv/domos` 刷新。已有管理员应在“管理实例”生成设备配对码。
+
+## 远程连接
+
+连接已有实例的客户端无需 Docker。管理员从“管理实例 → 设备”生成一次性码。新设备输入地址及配对码。权限分为使用 Bot 和管理实例。撤销设备会终止其订阅，并拒绝后续请求。
+
+其他设备通过 HTTPS 访问服务。将 `publicUrl` 或 `DOMOS_PUBLIC_URL` 设为实际 HTTPS 源。使用独立域名源，不使用路径前缀。宿主机可使用 `deploy/Caddyfile`，配置 `DOMOS_DOMAIN`。域名、证书和网络入口由部署环境提供。不要公开控制端。
+
+配置优先级为环境覆盖、配置文件、默认值。相对路径按配置文件位置解析。支持 `DOMOS_CONFIG`、`DOMOS_HOST`、`DOMOS_PORT`、`DOMOS_DATA_DIR`、`DOMOS_STATIC_DIR`、`DOMOS_DEPLOYMENT`、`DOMOS_PUBLIC_URL`。配置文件不保存模型密钥。
+
+## 执行环境
+
+| computer.kind | 实际执行位置 |
+| --- | --- |
+| process | 当前服务环境，使用服务用户权限 |
+| docker | 本地或 SSH 主机上的独立 Linux 工作容器 |
+| controller | 由受信控制端管理的独立 Linux 工作容器 |
+
+标准安装使用控制端。直接访问服务环境须显式配置 `process`。应用容器内的 `process` 与服务共享权限。
+
+工作容器使用 UID 1000、只读根目录、移除额外能力、禁止提权，以及 CPU、内存和进程限制。命令、上传、读写、图片处理和成果发布使用同一执行环境。已发布成果使用服务端快照。
+
+SSH 配置参考 `domos.config.example.json`。必须提供已核验的 `knownHostsFile` 和 `hostKeyAlias`。SSH 用户需要 Docker 权限。私钥仅供受信控制端使用。
+
+当前后端实现为 Docker。`sbx` 和 SPACE 尚未接入，不显示为可用选项。工作电脑接口与部署入口独立。
 
 ## 网络
 
-默认 `network: "none"`，只有回环接口。需要公网时使用 `restricted`。先在工作主机安装防火墙：
+`none` 关闭外部网络。
+
+`web` 使用隔离内部网桥和 Squid HTTP(S) 代理。代理只允许 80、443 端口，并拒绝私有地址和其他特殊地址。工作容器不能直接路由到外部。需要支持 isolated 网桥的 Docker Engine。Docker Desktop 的实际网络行为仍须实机验收。此模式不提供任意协议的公网访问。
+
+`restricted` 使用 Linux Docker Engine 的主机防火墙规则：
 
 ```sh
 sudo bash deploy/restrict-computer-egress.sh
 sudo /usr/local/sbin/domos-computer-egress --check
 ```
 
-为受信任控制用户配置精确的免交互 sudo 权限，例如：
+控制用户需要该检查命令的精确 sudo 权限。此模式不适用于 Docker Desktop、rootless 或原生 nftables。启动和连接会核验网络、权限和挂载。核验失败则拒绝连接。
 
-```text
-domos-control ALL=(root) NOPASSWD: /usr/local/sbin/domos-computer-egress --check
+## 备份与更新
+
+桌面维护入口先停止托管，再备份配置、会话、凭据、附件和工作文件。备份使用认证加密。密码至少 12 个字符。请单独保存密码。恢复使用新目录和新工作卷。
+
+```sh
+pnpm host backup --directory /srv/domos --file /backup/domos.domos --password-file /secure/backup-password
+pnpm host restore --directory /srv/domos-restored --file /backup/domos.domos --password-file /secure/backup-password
 ```
 
-脚本使用 Rakazo 的 iptables 规则。它限制 `domos-c*` 网桥访问私有地址、元数据地址、其他电脑及 Docker 主机。公网流量仍可通过。需要 Linux、rootful Docker、iptables 后端。Docker Desktop、rootless 和原生 nftables 后端不支持此模式；这些环境使用 `none`。IPv6 启用时也必须通过规则检查。
+原生备份要求服务停止。Compose 安装须停写后备份 `app-data`、`control-data` 和工作卷。原生备份命令不支持 Compose 分卷布局。
 
-创建、连接与检查时会核验规则。检查失败就拒绝连接，不回退主机或普通网桥。系统管理员需确保其他防火墙或 Docker 重启后仍保留这些规则。外部修改容器状态后，在页面刷新状态。
+更新前停止任务并备份。安装新版本后，检查实例和工作电脑状态。失败时恢复原程序及匹配的数据备份。当前采用手动安装更新。卸载默认保留数据。普通升级不要执行 `docker compose down -v`。
 
-## 文件、恢复与备份
-
-命令、读写、编辑、图片读取和上传均使用同一目标。Bot 目录组织文件，不隔离同一电脑的 Bot。上传失败不返回成功附件。已交付成果保存在服务端附件快照中；工作容器停止后仍可下载。
-
-`app-data` 保存 Pi 数据库、附件、运行锁和目标绑定。工作卷保存上传与生成文件。关闭服务不会删除卷。重建工作容器保留工作卷，但会结束进程；Docker 不恢复原来的 exec 进程。
-Pi 的长命令输出保存在工作容器临时目录。文件工具可以读取它们。重建容器会清除临时文件。
-
-断线时，命令可能已执行。界面报告未确认结果。先核对实际状态，再决定是否重试。Pi 沿用现有中断和重放规则，不把有副作用的命令声明为可安全重放。
-
-切换电脑或从原生目录迁移到卷时，先停止服务与工作容器，备份两份存储并完成显式文件迁移。确认后移除数据目录内的 `computer.json` 绑定，再启动服务。不要删除运行中实例的 `runtime.sqlite`。
-
-回滚时先停止服务，恢复配置或应用镜像，再恢复匹配的数据备份。保留附件与工作卷。不要运行 `docker compose down -v`，除非明确要删除服务数据。
+一份数据目录只允许一个实例接管。磁盘须支持 SQLite 文件锁，不使用 NFS。容器重建不会恢复原 exec 进程。连接中断后，先核对命令结果，再决定是否重试。
 
 ## 验收
 
-在具备 Docker 的 Linux 主机或 CI 执行：
+```sh
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+pnpm --filter @domos/desktop build
+pnpm exec playwright test --config apps/desktop/playwright.config.ts
+node --test apps/desktop/test/package.test.mjs
+```
+
+分发包测试须先构建 Windows 包。它校验依赖位于包内，并启动包内后台。
+
+Docker 主机先构建工作镜像及代理镜像，再运行：
 
 ```sh
 DOMOS_CONTAINER_TESTS=1 pnpm exec vitest run packages/agent/test/container.test.ts
 ```
 
-测试使用真实 Docker 和 Pi daemon。覆盖上传 CSV、执行、下载、重建恢复、两个 Bot 共享、不同电脑隔离、网络、超时、取消，以及 Pi 官方环境一致性。设置 `DOMOS_TEST_CONFIG` 可使用仅含 SSH 接入信息的测试配置。测试不调用付费模型。工作镜像须已构建；受限网络须已安装规则。
-
-本地常规测试不启用此套件。CI 分别运行本机 Docker 和 SSH 传输，并检查应用镜像重建后的数据保留。
+容器套件覆盖文件任务、恢复、共享与隔离、网络、超时、取消和 Pi 环境一致性。Linux CI 包含本地 Docker 和 SSH 测试。Windows Docker Desktop 和真实远程主机仍须实机验收。跳过测试不代表通过验收。

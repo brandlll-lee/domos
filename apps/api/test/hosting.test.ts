@@ -45,6 +45,13 @@ test("hosting authenticates RPC, files, admin operations, origins and pairing", 
   const request = (path: string, init: RequestInit = {}) =>
     hosted.app.request(`https://domos.test${path}`, init);
   expect((await request("/rpc/bots/list")).status).toBe(401);
+  expect(
+    (
+      await hosted.app.request("http://127.0.0.1/health", {
+        headers: { Host: "127.0.0.1" },
+      })
+    ).status,
+  ).toBe(200);
   expect((await request("/files/1/test")).status).toBe(401);
   const pairing = sessions.pairing("client");
   const login = await request("/hosting/exchange", {

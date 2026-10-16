@@ -13,13 +13,38 @@ services:
       - path: ../.env
         required: false
     environment:
-      DOMOS_CONFIG: /app/config.json
+      DOMOS_CONFIG: /control/domos.config.json
+      DOMOS_PUBLIC_URL: ${DOMOS_PUBLIC_URL:-http://localhost:4310}
     volumes:
       - app-data:/data
-      - ./domos.config.json:/app/config.json:ro
-      - ./ssh:/home/node/.ssh:ro
+      - control-data:/control
+    networks: [default, control]
     tmpfs: [/tmp]
     stop_grace_period: 30s
     restart: unless-stopped
+    depends_on:
+      controller:
+        condition: service_started
+  controller:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    init: true
+    user: "0:0"
+    command: [node, apps/controller/src/main.ts, /control/controller.json]
+    volumes:
+      - control-data:/control
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [control]
+    read_only: true
+    tmpfs: [/tmp]
+    stop_grace_period: 30s
+    restart: unless-stopped
+    healthcheck:
+      disable: true
 volumes:
   app-data:
+  control-data:
+networks:
+  control:
+    internal: true

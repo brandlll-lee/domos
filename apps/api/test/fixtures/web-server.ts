@@ -4,6 +4,8 @@ import { openAgent } from "@domos/agent";
 import { Computer } from "@domos/agent/computer";
 import { parseConfig } from "@domos/agent/config";
 import { Files } from "@domos/agent/files";
+import { Sessions } from "@domos/hosting/sessions";
+import { HostingStore } from "@domos/hosting/store";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
 import { createModels } from "@earendil-works/pi-ai/models";
@@ -19,6 +21,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { getRequestListener } from "@hono/node-server";
 import { createApp } from "../../src/app.ts";
+import { hostingApp } from "../../src/hosting/routes.ts";
 
 const database = process.argv[2];
 if (!database) throw new Error("Database required");
@@ -108,29 +111,56 @@ const { harness, bots, work } = await openAgent(
   { model: { provider: "faux", modelId: "faux-1" } },
   BACKGROUND_CONTEXT,
 );
-const server = createServer(
-  getRequestListener(
-    createApp(
-      bots,
-      models,
-      files,
-      work,
-      new Computer(
-        parseConfig(
+const app = createApp(
+  bots,
+  models,
+  files,
+  work,
+  new Computer(
+    parseConfig(
+      {
+        model: { provider: "faux", modelId: "faux-1" },
+        dataDir: dirname(database),
+      },
+      database,
+    ),
+  ),
+);
+let hosted: ReturnType<typeof hostingApp> | undefined;
+const store =
+  process.argv[4] === "hosting"
+    ? await HostingStore.open(dirname(database))
+    : undefined;
+const sessions = store ? new Sessions(store) : undefined;
+const server = createServer((request, response) =>
+  getRequestListener(hosted?.app.fetch ?? app.fetch)(request, response),
+);
+server.listen(Number(process.argv[3] ?? 0), "127.0.0.1", () => {
+  const address = server.address();
+  if (address && typeof address === "object") {
+    if (sessions)
+      hosted = hostingApp({
+        config: parseConfig(
           {
             model: { provider: "faux", modelId: "faux-1" },
+            host: "127.0.0.1",
+            port: address.port,
             dataDir: dirname(database),
           },
           database,
         ),
-      ),
-    ).fetch,
-  ),
-);
-server.listen(Number(process.argv[3] ?? 0), "127.0.0.1", () => {
-  const address = server.address();
-  if (address && typeof address === "object")
-    process.send?.({ type: "ready", port: address.port, toolName });
+        sessions,
+        models,
+        start: async () => {},
+        forward: async (request) => app.fetch(request),
+      });
+    process.send?.({
+      type: "ready",
+      port: address.port,
+      toolName,
+      pairing: sessions?.pairing("admin").code,
+    });
+  }
 });
 let release: (() => void) | undefined;
 process.on("message", (message) => {
@@ -182,4 +212,6 @@ process.on("disconnect", () => {
   server.closeAllConnections();
   server.close();
   void harness.close(BACKGROUND_CONTEXT);
+  hosted?.close();
+  void store?.close();
 });

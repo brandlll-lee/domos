@@ -11,6 +11,12 @@
     "noEmit": true,
     "jsx": "react-jsx"
   },
+  "exclude": [
+    "apps/desktop/runtime",
+    "apps/desktop/release",
+    "**/dist",
+    "**/node_modules"
+  ],
   "include": [
     "apps/**/*.ts",
     "apps/**/*.tsx",

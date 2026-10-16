@@ -25,6 +25,23 @@ jobs:
       - run: pnpm test
       - run: pnpm exec playwright install chromium --only-shell --with-deps
       - run: pnpm test:e2e
+  desktop:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .node-version
+      - uses: pnpm/action-setup@v6.1.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @domos/desktop build
+      - run: pnpm exec playwright test --config apps/desktop/playwright.config.ts
+      - run: pnpm --filter @domos/desktop exec electron-builder --win nsis --config.win.signAndEditExecutable=false
+      - run: node --test apps/desktop/test/package.test.mjs
+      - uses: actions/upload-artifact@v6
+        with:
+          name: domos-windows-test
+          path: apps/desktop/release/*.exe
   sandbox:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -42,6 +59,7 @@ jobs:
       - name: Build work image and install egress rules
         run: |
           docker build -f deploy/workspace.Dockerfile -t domos-workspace:1.2.0 .
+          docker build -f deploy/proxy.Dockerfile -t domos-egress:1 .
           sudo bash deploy/restrict-computer-egress.sh
           sudo /usr/local/sbin/domos-computer-egress --check
       - name: Prepare SSH transport
@@ -75,7 +93,7 @@ jobs:
           docker build -f deploy/Dockerfile -t domos-app:test .
           docker volume create domos-app-test
           for cycle in 1 2; do
-            docker run -d --name domos-app-test --read-only --cap-drop=ALL --security-opt=no-new-privileges:true --tmpfs /tmp -v domos-app-test:/data -p 127.0.0.1:4310:4310 domos-app:test
+            docker run -d --name domos-app-test --read-only --cap-drop=ALL --security-opt=no-new-privileges:true --tmpfs /tmp -v domos-app-test:/data -p 127.0.0.1:4310:4310 -e DOMOS_PUBLIC_URL=http://127.0.0.1:4310 domos-app:test
             for attempt in $(seq 1 45); do
               if curl --fail --silent http://127.0.0.1:4310/health >/dev/null; then break; fi
               sleep 1

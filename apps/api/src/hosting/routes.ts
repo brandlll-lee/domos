@@ -27,8 +27,8 @@ export function hostingApp(options: {
   const logins = new ModelLogins(models);
   let configuring = false;
   const app = new Hono<HostingEnv>();
-  app.use("*", originGuard(publicUrl));
   app.get("/health", (c) => c.json({ ok: true }));
+  app.use("*", originGuard(publicUrl));
   app.get("/hosting/info", (c) =>
     c.json({
       product: "domos",
