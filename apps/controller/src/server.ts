@@ -13,6 +13,7 @@ export function controlServer(driver: ComputerDriver, token: string) {
       hash(`Bearer ${token}`),
     );
   let pending: Promise<unknown> = Promise.resolve();
+  let closing: Promise<void> | undefined;
   const actions = {
     start: () => driver.start(),
     stop: () => driver.stop(),
@@ -22,6 +23,17 @@ export function controlServer(driver: ComputerDriver, token: string) {
     const state = await driver.inspect();
     if (state === "running") await driver.checkNetwork();
     return { state, network: driver.config.network };
+  };
+  const change = (action: () => Promise<void>) => {
+    const result = pending
+      .catch(() => {})
+      .then(async () => {
+        for (const child of processes) child.kill();
+        await action();
+        return status();
+      });
+    pending = result;
+    return result;
   };
   const server = createServer(async (request, response) => {
     response.setHeader("Content-Type", "application/json");
@@ -33,6 +45,7 @@ export function controlServer(driver: ComputerDriver, token: string) {
     try {
       const path = request.url ?? "";
       if (request.method === "GET" && path === `/${driver.config.id}/status`) {
+        await pending.catch(() => {});
         response.end(JSON.stringify(await status()));
         return;
       }
@@ -43,15 +56,7 @@ export function controlServer(driver: ComputerDriver, token: string) {
         response.writeHead(404).end("{}");
         return;
       }
-      const result = pending
-        .catch(() => {})
-        .then(async () => {
-          for (const child of processes) child.kill();
-          await action();
-          return status();
-        });
-      pending = result;
-      response.end(JSON.stringify(await result));
+      response.end(JSON.stringify(await change(action)));
     } catch {
       response
         .writeHead(503)
@@ -105,11 +110,16 @@ export function controlServer(driver: ComputerDriver, token: string) {
   });
   return {
     server,
-    async close() {
-      for (const child of processes) child.kill();
-      await pending.catch(() => {});
-      server.close();
-      server.closeAllConnections();
+    start: () => change(actions.start),
+    close() {
+      closing ??= (async () => {
+        for (const child of processes) child.kill();
+        await pending.catch(() => {});
+        server.close();
+        server.closeAllConnections();
+        await driver.stop();
+      })();
+      return closing;
     },
   };
 }

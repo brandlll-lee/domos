@@ -18,7 +18,7 @@ test("the authenticated controller preserves the Pi byte stream, binary files an
   const token = crypto.randomUUID();
   const tokenFile = join(directory, "token");
   await writeFile(tokenFile, token);
-  let state: "running" | "stopped" = "running";
+  let state: "running" | "stopped" = "stopped";
   const control = controlServer(
     {
       config: { id: "test", timeoutSeconds: 30, network: "none" },
@@ -37,6 +37,7 @@ test("the authenticated controller preserves the Pi byte stream, binary files an
     },
     token,
   );
+  await control.start();
   control.server.listen(0, "127.0.0.1");
   await once(control.server, "listening");
   const address = control.server.address();

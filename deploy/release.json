@@ -1,0 +1,11 @@
+{
+  "version": "0.1.0",
+  "workImage": "domos-workspace:1.2.0",
+  "proxyImage": "domos-egress:1",
+  "proxyBuild": { "context": ".", "dockerfile": "deploy/proxy.Dockerfile" },
+  "controllerEntry": "apps/controller/src/main.ts",
+  "serverEntry": "apps/api/src/main.ts",
+  "bridgeEntry": "packages/agent/src/computer/bridge.ts",
+  "staticDir": "apps/web/dist",
+  "workBuild": { "context": ".", "dockerfile": "deploy/workspace.Dockerfile" }
+}

@@ -24,6 +24,9 @@ async function main() {
   ).trim();
   if (token.length < 32) throw new Error("控制端凭据无效。");
   const controller = controlServer(new DockerComputer(config.computer), token);
+  void controller.start().catch(() => {
+    console.error("工作电脑未启动。请检查运行时及网络策略。");
+  });
   const close = () =>
     void controller.close().then(() => {
       if (process.connected) process.disconnect();
