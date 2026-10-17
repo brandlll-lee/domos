@@ -19,13 +19,23 @@ export const characterColors = [
   "#798995",
 ] as const;
 
+export const characterBaseColor = "#b3df32";
+export const brandCharacter = {
+  color: characterBaseColor,
+  shape: "cat",
+} as const;
+
+export type CharacterShape = keyof typeof characterShapes | "cat";
+
 export function characterIdentity(seed: string) {
   let hash = 2166136261;
   for (const character of seed)
     hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
-  const shapes = Object.values(characterShapes);
+  const shapes = Object.keys(
+    characterShapes,
+  ) as (keyof typeof characterShapes)[];
   return {
-    path: shapes[(hash >>> 0) % shapes.length] ?? characterShapes.soft,
+    shape: shapes[(hash >>> 0) % shapes.length] ?? "soft",
     color:
       characterColors[((hash >>> 0) >>> 8) % characterColors.length] ??
       characterColors[0],

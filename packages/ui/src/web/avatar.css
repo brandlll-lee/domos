@@ -1,0 +1,163 @@
+.bot-avatar,
+.brand-mark {
+  position: relative;
+  display: inline-flex;
+  width: var(--avatar-medium);
+  height: var(--avatar-medium);
+  flex-shrink: 0;
+}
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text);
+  font-size: var(--text-heading);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-control);
+  letter-spacing: -0.03em;
+}
+.avatar-status {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: var(--avatar-status-size);
+  height: var(--avatar-status-size);
+  border-radius: var(--radius-round);
+  background: var(--color-working);
+  box-shadow: 0 0 0 2px var(--color-background);
+}
+.bot-avatar[data-size="small"] {
+  width: var(--avatar-small);
+  height: var(--avatar-small);
+}
+.bot-avatar[data-size="large"] {
+  width: var(--avatar-large);
+  height: var(--avatar-large);
+}
+.character {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.character-pose {
+  transform-origin: 50px 82px;
+  animation: character-curiosity var(--motion-character-look) ease-in-out
+    infinite;
+}
+.character-body {
+  transform-origin: 50px 80px;
+  animation: character-breathe var(--motion-character-breathe) ease-in-out
+    infinite;
+}
+.character-face {
+  animation: character-follow var(--motion-character-look) ease-in-out infinite;
+}
+.character-pupils {
+  animation: character-gaze var(--motion-character-look) ease-in-out infinite;
+}
+.character-eyelid {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: character-blink var(--motion-character-blink) linear infinite;
+}
+.character-eyelid[data-side="1"] {
+  animation-delay: 24ms;
+}
+.avatar-customize {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+@keyframes character-breathe {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-0.5px) scale(1.006, 1.009);
+  }
+}
+@keyframes character-curiosity {
+  0%,
+  14%,
+  53%,
+  59%,
+  94%,
+  100% {
+    transform: rotate(0deg);
+  }
+  29%,
+  39% {
+    transform: rotate(-1.8deg);
+  }
+  72%,
+  80% {
+    transform: rotate(1.5deg);
+  }
+}
+@keyframes character-follow {
+  0%,
+  13%,
+  52%,
+  59%,
+  94%,
+  100% {
+    transform: translate(0);
+  }
+  27%,
+  39% {
+    transform: translate(-0.45px, -0.25px);
+  }
+  71%,
+  80% {
+    transform: translate(0.4px, 0.1px);
+  }
+}
+@keyframes character-gaze {
+  0%,
+  11%,
+  49%,
+  57%,
+  91%,
+  100% {
+    transform: translate(0);
+  }
+  19%,
+  39% {
+    transform: translate(-1.7px, -0.6px);
+  }
+  65%,
+  80% {
+    transform: translate(1.6px, 0.2px);
+  }
+}
+@keyframes character-blink {
+  0%,
+  40%,
+  46%,
+  100% {
+    transform: scaleY(1);
+  }
+  41.3% {
+    transform: scaleY(0.38);
+  }
+  42%,
+  43% {
+    transform: scaleY(0.025);
+  }
+  44.2% {
+    transform: scaleY(0.4);
+  }
+  45% {
+    transform: scaleY(0.84);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .character-pose,
+  .character-body,
+  .character-face,
+  .character-pupils,
+  .character-eyelid {
+    animation: none;
+  }
+}

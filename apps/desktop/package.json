@@ -28,6 +28,7 @@
     "productName": "Domos",
     "asar": true,
     "directories": {
+      "buildResources": "../../packages/ui/assets",
       "output": "release"
     },
     "files": [

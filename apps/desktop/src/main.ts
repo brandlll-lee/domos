@@ -15,6 +15,7 @@ import { themes, windowOverlay } from "@domos/ui/tokens";
 import { app, type BrowserWindow, dialog, ipcMain, Menu, Tray } from "electron";
 import { z } from "zod";
 import { LocalHost } from "./host.ts";
+import { applicationIcon } from "./icons.ts";
 import { maintain } from "./maintenance.ts";
 import { openInstance } from "./windows.ts";
 
@@ -105,6 +106,7 @@ async function main() {
     return;
   }
   await app.whenReady();
+  app.dock?.setIcon(applicationIcon);
   const resource = fileURLToPath(new URL(".", import.meta.url));
   const runtime = app.isPackaged
     ? join(process.resourcesPath, "runtime")
@@ -144,7 +146,7 @@ async function main() {
       });
   }
   host = new LocalHost(hostingDirectory, release, runtime);
-  tray = new Tray(await app.getFileIcon(process.execPath, { size: "small" }));
+  tray = new Tray(applicationIcon.resize({ width: 20, height: 20 }));
   tray.setToolTip("Domos");
   const restore = () => {
     if (current) {

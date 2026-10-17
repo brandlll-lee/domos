@@ -69,6 +69,7 @@ for (const [entry, output] of [
     banner,
   });
 await cp(join(here, "src/preload.cjs"), join(dist, "preload.cjs"));
+await cp(join(root, "packages/ui/assets/icon.png"), join(dist, "icon.png"));
 await cp(join(root, "apps/web/dist"), join(runtime, "web"), {
   recursive: true,
 });

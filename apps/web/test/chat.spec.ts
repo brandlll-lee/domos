@@ -2022,8 +2022,8 @@ test("one live process shares motion, keyboard disclosure, themes, and restored 
     "整理完成。",
   );
   await expect(
-    page.locator(".conversation-title .character-eye").first(),
-  ).toHaveCSS("animation-name", "none");
+    page.locator(".conversation-title .character-eyelid").first(),
+  ).toHaveCSS("animation-name", "character-blink");
   await expect(
     page.locator('.bot-avatar svg[data-state="running"]'),
   ).toHaveCount(0);
@@ -2154,7 +2154,7 @@ test("Bot identity stays consistent and image previews work in drafts and histor
   await expect(page.locator(".app-titlebar .wordmark")).toHaveText("Domos");
   await expect(page.locator(".transcript .bot-avatar")).toHaveCount(0);
   await expect(page.locator(".conversation-time")).toBeVisible();
-  await expect(page.locator(".bot-avatar .character-mouth")).toHaveCount(0);
+  await expect(selected.locator(".character-pupils")).toHaveCount(2);
   const bytes = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1kAAAAASUVORK5CYII=",
     "base64",
