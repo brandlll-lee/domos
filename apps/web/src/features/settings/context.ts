@@ -4,6 +4,7 @@ import type { SettingsSection } from "./sections.tsx";
 export const SettingsContext = createContext<{
   open: (section?: SettingsSection, botId?: number) => void;
   page: ReactNode;
+  admin: boolean;
 } | null>(null);
 
 export function useSettings() {

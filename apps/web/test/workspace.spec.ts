@@ -132,22 +132,26 @@ test("settings stay readable in both themes and compact layouts", async ({
   const search = settings.getByRole("searchbox", { name: "搜索设置" });
   await search.fill("主题");
   await expect(
-    settings.getByRole("tab", { name: "外观", exact: true }),
+    settings.getByRole("tab", { name: "通用", exact: true }),
   ).toBeVisible();
   await expect(
-    settings.getByRole("tab", { name: "电脑", exact: true }),
+    settings.getByRole("tab", { name: "电脑高级管理", exact: true }),
   ).toHaveCount(0);
   await search.fill("不存在的设置");
   await expect(settings.getByRole("status")).toHaveText("没有匹配的设置");
   await search.press("Escape");
   await expect(search).toHaveValue("");
   await expect(settings).toBeVisible();
-  await search.fill("授权");
+  await search.fill("访问");
   await search.press("Enter");
   await expect(
-    settings.getByRole("tab", { name: "电脑", exact: true }),
+    settings.getByRole("tab", { name: "通用", exact: true }),
   ).toBeFocused();
   await expect(search).toHaveValue("");
+  await settings
+    .getByRole("group", { name: "电脑高级管理", exact: true })
+    .getByRole("button", { name: "打开", exact: true })
+    .click();
   await settings
     .getByRole("button", { name: "添加 Docker 电脑", exact: true })
     .click();
@@ -161,8 +165,11 @@ test("settings stay readable in both themes and compact layouts", async ({
   });
   await add.getByLabel("电脑名称", { exact: true }).fill("尚未添加");
   await add.getByRole("button", { name: "取消", exact: true }).click();
-  await settings.getByRole("tab", { name: "外观", exact: true }).click();
-  await settings.getByRole("tab", { name: "电脑", exact: true }).click();
+  await settings.getByRole("tab", { name: "通用", exact: true }).click();
+  await settings
+    .getByRole("group", { name: "电脑高级管理", exact: true })
+    .getByRole("button", { name: "打开", exact: true })
+    .click();
   await settings
     .getByRole("button", { name: "添加 Docker 电脑", exact: true })
     .click();
@@ -175,7 +182,7 @@ test("settings stay readable in both themes and compact layouts", async ({
   for (const width of [320, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 800 });
     await expect(
-      settings.getByRole("tab", { name: "实例", exact: true }),
+      settings.getByRole("tab", { name: "模型", exact: true }),
     ).toBeInViewport();
     expect(
       await page.evaluate(
@@ -224,7 +231,7 @@ test("empty chats retain their creation time and compact controls across layouts
   await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
   const details = page.getByRole("complementary", { name: "Domos的详情" });
   await expect(
-    details.getByRole("combobox", { name: "分配电脑" }),
+    details.getByRole("group", { name: "Bot 运行位置" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Bot设置", exact: true }).click();
   await expect(
@@ -374,8 +381,9 @@ test("control geometry and interaction states stay consistent", async ({
   await details.getByRole("button", { name: "还原", exact: true }).click();
   await picker.click();
   await page.getByRole("option", { name: "电脑", exact: true }).click();
+  await details.getByRole("button", { name: "高级选项", exact: true }).click();
   const select = details.getByRole("combobox", {
-    name: "分配电脑",
+    name: "连接已有电脑",
     exact: true,
   });
   expect((await select.boundingBox())?.height).toBe(inputHeight);
@@ -392,8 +400,8 @@ test("control geometry and interaction states stay consistent", async ({
   const settings = page.getByRole("main", { name: "设置", exact: true });
   const nav = settings.getByRole("tablist", { name: "设置分区" });
   await expect(nav).toHaveAttribute("aria-orientation", "vertical");
-  const appearance = settings.getByRole("tab", { name: "外观", exact: true });
-  const computer = settings.getByRole("tab", { name: "电脑", exact: true });
+  const appearance = settings.getByRole("tab", { name: "通用", exact: true });
+  const computer = settings.getByRole("tab", { name: "模型", exact: true });
   const active = await appearance.evaluate(
     (item) => getComputedStyle(item).backgroundColor,
   );

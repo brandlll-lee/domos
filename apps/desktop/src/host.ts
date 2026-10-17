@@ -3,8 +3,10 @@ import { parseConfig } from "@domos/agent/config";
 import {
   type InstallProgress,
   prepareLocalInstallation,
+  prepareWorkImages,
   type Release,
   waitForService,
+  workComputer,
   writeConfiguration,
 } from "@domos/hosting/install";
 import { type UtilityProcess, utilityProcess } from "electron";
@@ -41,6 +43,7 @@ export class LocalHost {
     signal: AbortSignal,
   ) {
     await this.pending;
+    await prepareWorkImages(this.release, progress, signal);
     const prepared = await prepareLocalInstallation(
       this.directory,
       this.release,
@@ -48,11 +51,12 @@ export class LocalHost {
     const config = parseConfig(prepared.config, prepared.configFile);
     if (config.host !== "127.0.0.1" || config.publicUrl)
       throw new Error("桌面本机后台必须仅监听回环地址。");
-    if (config.staticDir !== this.release.staticDir) {
+    if (config.staticDir !== this.release.staticDir || !config.workComputer) {
       const { configFile: _configFile, ...value } = config;
       await writeConfiguration(prepared.configFile, {
         ...value,
         staticDir: this.release.staticDir,
+        workComputer: config.workComputer ?? workComputer(this.release),
       });
     }
     const origin = config.publicUrl ?? `http://${config.host}:${config.port}`;

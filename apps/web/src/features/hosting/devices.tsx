@@ -39,7 +39,7 @@ export function Devices({ current }: { current: string }) {
   return (
     <section
       className="settings-sections"
-      aria-label="设备管理"
+      aria-label="访问授权"
       aria-busy={busy}
     >
       <section className="settings-group">
@@ -54,13 +54,13 @@ export function Devices({ current }: { current: string }) {
               onValueChange={setScope}
               items={[
                 { value: "client", label: "使用 Bot" },
-                { value: "admin", label: "管理实例" },
+                { value: "admin", label: "管理 Domos" },
               ]}
             />
           </SettingRow>
           <SettingRow
             title="一次性配对码"
-            description="在另一台设备打开此实例地址并输入配对码。远程连接使用 HTTPS。"
+            description="在另一台设备打开这个 Domos 的地址，再输入配对码。远程连接需要可访问的 HTTPS 地址。"
           >
             <Button
               size="small"
@@ -86,7 +86,7 @@ export function Devices({ current }: { current: string }) {
         </div>
       </section>
       <section className="settings-group">
-        <h3>已连接设备</h3>
+        <h3>已授权访问</h3>
         <div className="settings-card">
           {items.map((item) => (
             <SettingRow

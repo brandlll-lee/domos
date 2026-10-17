@@ -93,7 +93,7 @@ function BotChat({
           panel={detailPanel}
           onPanelChange={setDetailPanel}
           onClose={() => setDetailsOpen(false)}
-          computer={<ComputerPanel computer={computer} />}
+          computer={<ComputerPanel computer={computer} botId={bot.id} />}
           model={
             <ModelPicker
               botId={bot.id}
@@ -150,7 +150,10 @@ function BotChat({
             error={error}
             onSend={chat.send}
             onStop={chat.stop}
-            computerReady={Boolean(computer.status?.authorized)}
+            computerReady={Boolean(
+              computer.status?.authorized &&
+                (computer.status.capabilities.files || computer.status.scope),
+            )}
             onComputerRequired={() => {
               setDetailPanel("computer");
               setDetailsOpen(true);

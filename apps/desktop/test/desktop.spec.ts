@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 
-test("desktop starts locally, pairs and restores a saved instance", async ({
+test("desktop opens setup, pairs a remote Domos and restores the connection", async ({
   playwright,
 }, testInfo) => {
   const directory = await mkdtemp(join(tmpdir(), "domos-desktop-"));
@@ -37,169 +37,106 @@ test("desktop starts locally, pairs and restores a saved instance", async ({
     ),
   );
   delete env.ELECTRON_RUN_AS_NODE;
+  env.PATH = directory;
   let desktop = await playwright._electron.launch({
     executablePath,
     args,
     env,
   });
   try {
-    const local = await desktop.firstWindow();
-    await expect(local.getByRole("button", { name: "Bot详情" })).toBeVisible();
-    await expect(local.getByRole("button", { name: "应用菜单" })).toBeVisible();
-    expect(
-      await desktop.evaluate(({ BrowserWindow }) =>
-        BrowserWindow.getAllWindows()[0]?.isMenuBarVisible(),
-      ),
-    ).toBe(false);
-    await desktop.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0]?.setSize(390, 844),
-    );
-    await expect
-      .poll(() =>
-        local.evaluate(
-          () => document.documentElement.scrollWidth <= innerWidth,
-        ),
-      )
-      .toBe(true);
-    await desktop.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0]?.setSize(1200, 820),
-    );
-    expect(new URL(local.url()).hostname).toBe("127.0.0.1");
-    expect(new URL(local.url()).hash).toBe("");
-    expect(
-      await desktop.evaluate(async ({ BrowserWindow }) => {
-        const window = BrowserWindow.getAllWindows()[0];
-        if (!window) throw new Error("Desktop window missing");
-        const cookies = await window.webContents.session.cookies.get({
-          name: "domos_session",
-        });
-        return cookies.some((cookie) => cookie.httpOnly);
-      }),
-    ).toBe(true);
-    await local.getByRole("button", { name: "新建 Bot" }).first().click();
-    await local
-      .getByRole("textbox", { name: "名字", exact: true })
-      .fill("Local Writer");
-    await local.getByRole("button", { name: "创建", exact: true }).click();
-    await expect(local.getByRole("button", { name: "Bot详情" })).toContainText(
-      "Local Writer",
-    );
-    await local
-      .getByRole("button", { name: "设置", exact: true })
-      .first()
-      .click();
-    const settings = local.getByRole("main", {
-      name: "设置",
-      exact: true,
-    });
-    for (const label of ["深色", "浅色"]) {
-      await settings
-        .getByRole("combobox", { name: "外观", exact: true })
-        .click();
-      await local.getByRole("option", { name: label, exact: true }).click();
-      const background = await desktop.evaluate(({ BrowserWindow }) =>
-        BrowserWindow.getAllWindows()[0]?.getBackgroundColor(),
-      );
-      expect(background).toBeTruthy();
-      const header = await local
-        .locator(".app-titlebar")
-        .evaluate((item) => getComputedStyle(item).backgroundColor);
-      const rgb = background
-        ?.match(/[a-f0-9]{2}/gi)
-        ?.slice(0, 3)
-        .map((part) => Number.parseInt(part, 16));
-      expect(header).toBe(`rgb(${rgb?.join(", ")})`);
-      await expect(settings).toBeVisible();
-      await local.screenshot({
-        path: testInfo.outputPath(`settings-${label}.png`),
-      });
-    }
-    const chrome = await local.evaluate(() => {
-      const overlay = Reflect.get(navigator, "windowControlsOverlay") as {
-        visible: boolean;
-        getTitlebarAreaRect: () => DOMRect;
-      };
-      return {
-        visible: overlay?.visible,
-        area: overlay?.getTitlebarAreaRect().toJSON(),
-      };
-    });
-    if (process.platform !== "darwin") {
-      const menu = await local
-        .getByRole("button", { name: "应用菜单" })
-        .boundingBox();
-      expect(chrome.visible).toBe(true);
-      expect(chrome.area.height).toBe(48);
-      expect(menu).not.toBeNull();
-      expect((menu?.x ?? 0) + (menu?.width ?? 0)).toBeLessThanOrEqual(
-        chrome.area.right,
-      );
-    }
-    await desktop.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(2),
-    );
+    const setup = await desktop.firstWindow();
     await expect(
-      settings.getByRole("tablist", { name: "设置分区" }),
-    ).toHaveAttribute("data-orientation", "horizontal");
+      setup.getByRole("heading", { name: "欢迎使用 Domos" }),
+    ).toBeVisible();
+    await setup.getByRole("button", { name: "继续", exact: true }).click();
+    await expect(setup.getByRole("alert")).toContainText("Docker Desktop");
     await expect(
-      settings.getByRole("button", { name: "返回对话", exact: true }),
-    ).toBeInViewport();
-    expect(
-      await local.evaluate(
-        () => document.documentElement.scrollWidth <= innerWidth,
-      ),
-    ).toBe(true);
-    await local.screenshot({ path: testInfo.outputPath("settings-zoom.png") });
-    await desktop.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(1),
-    );
-    await settings.getByRole("tab", { name: "实例", exact: true }).click();
-    await settings
-      .getByLabel("服务器地址")
-      .fill(`http://127.0.0.1:${ready.port}`);
-    await settings.getByRole("tab", { name: "外观", exact: true }).click();
-    await settings
-      .getByRole("button", { name: "返回对话", exact: true })
-      .click();
-    const discard = local.getByRole("dialog", { name: "放弃未保存的配置？" });
-    await expect(discard).toBeVisible();
-    await discard.getByRole("button", { name: "继续编辑" }).click();
-    await expect(settings).toBeVisible();
-    await settings.getByRole("tab", { name: "实例", exact: true }).click();
-    await expect(settings.getByLabel("服务器地址")).toHaveValue(
-      `http://127.0.0.1:${ready.port}`,
-    );
+      setup.getByRole("button", { name: "重试", exact: true }),
+    ).toBeEnabled();
+    await setup.getByLabel("连接已有 Domos", { exact: false }).check();
+    await setup.getByLabel("服务器地址").fill(`http://127.0.0.1:${ready.port}`);
     const opened = desktop.waitForEvent("window");
-    await settings
-      .getByRole("button", { name: "连接已有 Domos", exact: true })
-      .click();
+    await setup.getByRole("button", { name: "重试", exact: true }).click();
     const page = await opened;
     await expect(
       page.getByRole("heading", { name: "连接这个 Domos" }),
     ).toBeVisible();
     await page.getByLabel("配对码", { exact: true }).fill(ready.pairing);
     await page.getByRole("button", { name: "连接", exact: true }).click();
-    await expect(
-      page.getByRole("button", { name: "设置", exact: true }).first(),
-    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Bot详情" })).toBeVisible();
     expect(
       await page.evaluate(() => ({
         require: typeof Reflect.get(window, "require"),
-        ipc: typeof Reflect.get(window, "domosDesktop"),
+        setup: typeof Reflect.get(window, "domosSetup"),
       })),
-    ).toEqual({ require: "undefined", ipc: "object" });
-    await page.screenshot({ path: testInfo.outputPath("connected.png") });
+    ).toEqual({ require: "undefined", setup: "undefined" });
+    const restricted = await page.evaluate(() =>
+      window.domosDesktop?.prepare(),
+    );
+    expect(restricted?.ok).toBe(false);
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    const settings = page.getByRole("main", { name: "设置", exact: true });
+    await expect(settings.getByRole("tab")).toHaveCount(2);
+    for (const label of ["深色", "浅色"]) {
+      await settings
+        .getByRole("combobox", { name: "外观", exact: true })
+        .click();
+      await page.getByRole("option", { name: label, exact: true }).click();
+      const background = await desktop.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]?.getBackgroundColor(),
+      );
+      const rgb = background
+        ?.match(/[a-f0-9]{2}/gi)
+        ?.slice(0, 3)
+        .map((part) => Number.parseInt(part, 16));
+      await expect(page.locator(".app-titlebar")).toHaveCSS(
+        "background-color",
+        `rgb(${rgb?.join(", ")})`,
+      );
+    }
+    const nativeMenu = await desktop.evaluate(({ Menu }) =>
+      Menu.getApplicationMenu()?.items[0]?.submenu?.items.map(
+        (item) => item.label,
+      ),
+    );
+    expect(nativeMenu).toContain("连接其他 Domos…");
+    await desktop.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(2),
+    );
+    await expect(settings.getByRole("tablist")).toHaveAttribute(
+      "data-orientation",
+      "horizontal",
+    );
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath("settings-zoom.png") });
     await desktop.close();
     desktop = await playwright._electron.launch({ executablePath, args, env });
     const reopened = await desktop.firstWindow();
     await expect(
-      reopened.getByRole("button", { name: "设置", exact: true }).first(),
+      reopened.getByRole("button", { name: "Bot详情" }),
     ).toBeVisible();
     expect(reopened.url()).toBe(`http://127.0.0.1:${ready.port}/`);
+    const choosing = desktop.waitForEvent("window");
+    await desktop.evaluate(({ Menu }) =>
+      Menu.getApplicationMenu()
+        ?.items[0]?.submenu?.items.find(
+          (item) => item.label === "连接其他 Domos…",
+        )
+        ?.click(),
+    );
+    const chooser = await choosing;
+    await expect(
+      chooser.getByRole("heading", { name: "欢迎使用 Domos" }),
+    ).toBeVisible();
   } finally {
     await desktop.close();
+    const exited = once(worker, "exit");
     worker.disconnect();
-    await once(worker, "exit");
+    await exited;
     await rm(directory, { recursive: true, force: true });
   }
 });

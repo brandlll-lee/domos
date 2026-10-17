@@ -4,9 +4,9 @@ import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
 import { TextField } from "@domos/ui/field";
-import { ChoicePicker, SearchPicker } from "@domos/ui/picker";
+import { SearchPicker } from "@domos/ui/picker";
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { client } from "../../client.ts";
 import { rejectionMessage } from "../chat/request-error.ts";
 import { modelItems, modelKey, useModels } from "../models/use-models.ts";
@@ -79,15 +79,6 @@ function BotForm({
     (choice) => model && modelKey(choice) === modelKey(model),
   );
   const selected = selection ?? (preferred ? modelKey(preferred) : "");
-  const [computerId, setComputerId] = useState<string | undefined>();
-  const [computers, setComputers] =
-    useState<Awaited<ReturnType<typeof client.computer.list>>>();
-  useEffect(() => {
-    void client.computer
-      .list()
-      .then(setComputers)
-      .catch(() => {});
-  }, []);
   const choice = choices?.find((item) => modelKey(item) === selected);
   return (
     <form
@@ -102,7 +93,6 @@ function BotForm({
           model: choice
             ? { provider: choice.provider, modelId: choice.modelId }
             : undefined,
-          computerId: (computerId ?? computers?.defaultId) || null,
         };
         const payload = JSON.stringify(input);
         if (request.current?.payload !== payload)
@@ -159,21 +149,6 @@ function BotForm({
             value={selected}
             disabled={saving}
             onValueChange={setSelection}
-          />
-        </div>
-        <div className="field">
-          <span className="field-label">工作电脑</span>
-          <ChoicePicker
-            label="工作电脑"
-            value={computerId ?? computers?.defaultId ?? ""}
-            onValueChange={setComputerId}
-            disabled={saving}
-            items={[
-              { value: "", label: "暂不分配" },
-              ...(computers?.items
-                .filter((item) => item.authorized)
-                .map((item) => ({ value: item.id, label: item.name })) ?? []),
-            ]}
           />
         </div>
       </fieldset>

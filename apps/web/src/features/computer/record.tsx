@@ -41,7 +41,7 @@ export function ComputerRecord(props: RecordProps) {
         </p>
       )}
       {admin && <ComputerAccess {...props} />}
-      {admin && item.authorized && (
+      {admin && item.authorized && item.scope?.kind !== "dedicated" && (
         <SettingRow
           title="默认电脑"
           description="新建 Bot 时自动分配。已有 Bot 的归属保持不变。"
@@ -113,7 +113,7 @@ function ContainerSettings({ item, busy, error, run }: RecordProps) {
     <>
       <SettingRow
         title="容器运行"
-        description="停止后，此电脑上的 Bot 将无法使用工具。"
+        description="停止容器内的进程。下次使用工具时，自动准备的电脑会重新启动。"
       >
         <Button
           variant="secondary"

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'" />
+    <title>设置 Domos</title>
+    <link rel="stylesheet" href="setup-theme.css" />
+    <link rel="stylesheet" href="setup.css" />
+  </head>
+  <body>
+    <header class="titlebar"><img src="icon.png" alt="" /><span>Domos</span></header>
+    <main>
+      <h1>欢迎使用 Domos</h1>
+      <p class="muted">选择在哪里运行 Domos。</p>
+      <form id="setup">
+        <fieldset id="choices">
+          <legend class="sr-only">运行方式</legend>
+          <label class="choice"><input name="mode" type="radio" value="local" checked /><span><strong>在这台电脑运行</strong><small>自动准备 Docker 工作环境，并启动本机服务。</small></span></label>
+          <label class="choice"><input name="mode" type="radio" value="existing" /><span><strong>连接已有 Domos</strong><small>使用另一台电脑或服务器上的 Bot 和聊天记录。</small></span></label>
+        </fieldset>
+        <section id="remote" hidden>
+          <label>连接名称<input id="name" type="text" maxlength="80" value="我的 Domos" /></label>
+          <label>服务器地址<input id="url" type="url" placeholder="https://domos.example.com" spellcheck="false" /></label>
+          <label id="saved-label" hidden>已保存的连接<select id="saved"><option value="">选择连接</option></select></label>
+        </section>
+        <div id="progress" role="status" aria-live="polite" hidden><progress></progress><span id="phase"></span></div>
+        <p id="error" role="alert" hidden></p>
+        <button id="docker" type="button" class="link" hidden>安装或启动 Docker Desktop</button>
+        <div class="actions"><button id="cancel" type="button" class="secondary" hidden>取消准备</button><button id="continue" type="submit">继续</button></div>
+      </form>
+      <p class="muted footnote">数据保存在所选电脑上。连接其他 Domos 后仍需完成配对。</p>
+    </main>
+    <script src="setup.js"></script>
+  </body>
+</html>

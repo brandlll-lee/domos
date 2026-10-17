@@ -31,7 +31,9 @@ export async function maintain(host: LocalHost, input: unknown) {
   if (action === "backup") {
     await host.stop();
     await backupInstallation(host.directory, filename, password);
-    return { message: "备份已加密保存。托管已停止。可重新打开本机实例。" };
+    return {
+      message: "备份已加密保存。后台已停止。请从应用菜单打开本机 Domos。",
+    };
   }
   const folder = await dialog.showOpenDialog({
     title: "选择恢复目录的上级文件夹",
@@ -41,5 +43,5 @@ export async function maintain(host: LocalHost, input: unknown) {
   await host.stop();
   const directory = join(folder.filePaths[0], `Domos-${Date.now()}`);
   await restoreInstallation(filename, directory, password);
-  return { directory, message: "恢复完成。可重新打开本机实例。" };
+  return { directory, message: "恢复完成。请从应用菜单打开本机 Domos。" };
 }

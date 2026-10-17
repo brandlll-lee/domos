@@ -9,6 +9,7 @@
   "scripts": {
     "build": "node build.mjs",
     "dev": "pnpm build && electron .",
+    "test": "pnpm build && playwright test --config playwright.config.ts",
     "pack": "pnpm build && electron-builder --dir",
     "dist": "pnpm build && electron-builder"
   },

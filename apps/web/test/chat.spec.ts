@@ -55,15 +55,18 @@ async function control(
 async function openSettings(page: import("@playwright/test").Page) {
   const settings = page.getByRole("main", { name: "设置", exact: true });
   if (!(await settings.isVisible())) {
+    await expect(
+      page.getByRole("button", { name: "Bot详情", exact: true }),
+    ).toBeVisible();
     if (
-      !(await page
-        .getByRole("button", { name: "设置", exact: true })
-        .isVisible())
+      await page
+        .getByRole("button", { name: "联系人", exact: true })
+        .isVisible()
     )
       await page.getByRole("button", { name: "联系人", exact: true }).click();
     await page.getByRole("button", { name: "设置", exact: true }).click();
   }
-  await settings.getByRole("tab", { name: "外观", exact: true }).click();
+  await settings.getByRole("tab", { name: "通用", exact: true }).click();
   return settings;
 }
 
@@ -2240,16 +2243,18 @@ test("computer details share live directory status and recover a failed refresh"
   const details = await openDetails(page);
   await chooseDetail(details, "电脑");
   const computer = details.getByRole("region", {
-    name: "工作电脑",
+    name: "工作环境",
     exact: true,
   });
-  await expect(computer).toContainText(/win32|linux|darwin/);
-  await expect(computer).toContainText("原生进程");
-  await expect(computer).toContainText("工作目录不是安全隔离边界");
+  await expect(computer).toContainText("可执行命令");
+  await expect(computer).toContainText("可处理文件");
   await expect(computer.getByRole("button", { name: "启动电脑" })).toHaveCount(
     0,
   );
-  await computer.getByRole("button", { name: "管理电脑" }).click();
+  await computer.getByRole("button", { name: "高级选项" }).click();
+  await computer
+    .getByRole("button", { name: "电脑高级管理", exact: true })
+    .click();
   const settings = page.getByRole("main", {
     name: "设置",
     exact: true,
@@ -2265,7 +2270,7 @@ test("computer details share live directory status and recover a failed refresh"
   await chooseAppearance(page, "深色");
   await page.setViewportSize({ width: 375, height: 812 });
   await expect(
-    computer.getByRole("button", { name: "管理电脑" }),
+    computer.getByRole("button", { name: "电脑高级管理", exact: true }),
   ).toBeInViewport();
   expect(
     await page.evaluate(
@@ -2273,7 +2278,9 @@ test("computer details share live directory status and recover a failed refresh"
     ),
   ).toBe(true);
   await page.screenshot({ path: "test-results/computer-mobile-dark.png" });
-  await computer.getByRole("button", { name: "管理电脑" }).focus();
+  await computer
+    .getByRole("button", { name: "电脑高级管理", exact: true })
+    .focus();
   await page.keyboard.press("Escape");
   await expect(details).toHaveCount(0);
   await expect(

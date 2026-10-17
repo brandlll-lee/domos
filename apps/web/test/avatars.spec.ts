@@ -24,6 +24,9 @@ test("plush identities load, animate and survive profile changes", async ({
   try {
     const [ready] = (await once(worker, "message")) as [{ port: number }];
     await page.goto(`http://127.0.0.1:${ready.port}`);
+    await expect(
+      page.getByRole("button", { name: "Bot详情", exact: true }),
+    ).toBeVisible();
     const brand = page.locator(".brand-mark .character");
     await expect(brand).toHaveAttribute("data-shape", "cat");
     await page.locator(".bot-avatar").first().waitFor();

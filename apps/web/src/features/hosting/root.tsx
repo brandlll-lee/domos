@@ -1,6 +1,7 @@
 import { Brand } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { Onboarding } from "../onboarding/root.tsx";
 import { SettingsRoot } from "../settings/root.tsx";
 import { Titlebar } from "../shell/titlebar.tsx";
 import { hostingRequest } from "./api.ts";
@@ -50,7 +51,13 @@ export function HostingRoot({ children }: { children: ReactNode }) {
         deviceId={session?.device.id}
         standalone={state === "standalone"}
       >
-        {children}
+        <Onboarding
+          admin={session?.device.scope === "admin" || state === "standalone"}
+          deviceId={session?.device.id}
+          standalone={state === "standalone"}
+        >
+          {children}
+        </Onboarding>
       </SettingsRoot>
     );
   return (

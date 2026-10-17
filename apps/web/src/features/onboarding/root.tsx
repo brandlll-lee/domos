@@ -1,0 +1,116 @@
+import { Brand } from "@domos/ui/avatar";
+import { Button } from "@domos/ui/controls";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { client } from "../../client.ts";
+import { ComputerLocation } from "../computer/location.tsx";
+import { HostingModels } from "../hosting/models.tsx";
+import type { SettingsAccess } from "../settings/sections.tsx";
+import { Titlebar } from "../shell/titlebar.tsx";
+import "./style.css";
+
+type Setup = {
+  botId: number;
+  model: boolean;
+  computer: boolean;
+  canIsolate: boolean;
+};
+
+export function Onboarding({
+  children,
+  admin,
+  standalone,
+}: SettingsAccess & { children: ReactNode }) {
+  const [setup, setSetup] = useState<Setup>();
+  const [error, setError] = useState("");
+  const refresh = useCallback(async () => {
+    setError("");
+    const bots = await client.bots.list();
+    const bot = bots[0];
+    if (!bot) throw new Error("未找到初始 Bot。请重新连接 Domos。");
+    const [chat, binding, location, models] = await Promise.all([
+      client.get({ botId: bot.id }),
+      client.computer.get({ botId: bot.id }),
+      client.computer.setup(),
+      client.models.list(),
+    ]);
+    setSetup({
+      botId: bot.id,
+      model: Boolean(
+        chat.model &&
+          models.some(
+            (item) =>
+              item.provider === chat.model?.provider &&
+              item.modelId === chat.model.modelId,
+          ),
+      ),
+      computer: Boolean(
+        location.host ||
+          (binding.computer?.authorized && !binding.computer.scope),
+      ),
+      canIsolate: location.canIsolate,
+    });
+  }, []);
+  useEffect(() => {
+    void refresh().catch((cause) => setError(cause.message));
+  }, [refresh]);
+  if (setup?.model && setup.computer) return children;
+  const model = !setup?.model;
+  return (
+    <>
+      <Titlebar />
+      <main className="onboarding" aria-label="首次设置">
+        <div className="onboarding-content">
+          <Brand />
+          <header>
+            <p className="detail-note">
+              {model ? "第 1 步，共 2 步" : "第 2 步，共 2 步"}
+            </p>
+            <h1>{model ? "连接对话模型" : "Bot 在哪里工作？"}</h1>
+            <p className="detail-note">
+              {model
+                ? "选择一个模型账号，供你的第一个 Bot 使用。"
+                : "选择后，Domos 会完成准备、授权和绑定。"}
+            </p>
+          </header>
+          {setup &&
+            (admin && !standalone ? (
+              model ? (
+                <HostingModels
+                  botId={setup.botId}
+                  onConfigured={() =>
+                    void refresh().catch((cause) => setError(cause.message))
+                  }
+                />
+              ) : (
+                <ComputerLocation
+                  botId={setup.botId}
+                  canIsolate={setup.canIsolate}
+                  onReady={() =>
+                    void refresh().catch((cause) => setError(cause.message))
+                  }
+                />
+              )
+            ) : (
+              <p role="status">请让管理员完成首次设置，然后重试。</p>
+            ))}
+          {!setup && !error && <p role="status">正在读取配置…</p>}
+          {error && (
+            <p role="alert" className="alert">
+              {error}
+            </p>
+          )}
+          {(error || (setup && (!admin || standalone))) && (
+            <Button
+              variant="secondary"
+              onClick={() =>
+                void refresh().catch((cause) => setError(cause.message))
+              }
+            >
+              重试
+            </Button>
+          )}
+        </div>
+      </main>
+    </>
+  );
+}

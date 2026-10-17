@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { metrics, themes } from "@domos/ui/tokens";
 import { build } from "esbuild";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -69,6 +70,16 @@ for (const [entry, output] of [
     banner,
   });
 await cp(join(here, "src/preload.cjs"), join(dist, "preload.cjs"));
+for (const name of ["setup.html", "setup.css", "setup.js", "setup-preload.cjs"])
+  await cp(join(here, "src", name), join(dist, name));
+const variables = (values, prefix = "") =>
+  Object.entries(values)
+    .map(([key, value]) => `--${prefix}${key}:${value};`)
+    .join("");
+await writeFile(
+  join(dist, "setup-theme.css"),
+  `:root{${variables(metrics)}${variables(themes.light, "color-")}}@media(prefers-color-scheme:dark){:root{${variables(themes.dark, "color-")}}}`,
+);
 await cp(join(root, "packages/ui/assets/icon.png"), join(dist, "icon.png"));
 await cp(join(root, "apps/web/dist"), join(runtime, "web"), {
   recursive: true,

@@ -36,7 +36,7 @@ export function ComputerSettings({ admin }: { admin: boolean }) {
   return (
     <section className="settings-group" aria-label="电脑管理" aria-busy={busy}>
       <div className="section-heading">
-        <strong>工作电脑</strong>
+        <strong>已连接的电脑</strong>
         <div className="form-actions">
           <Button
             variant="secondary"
@@ -52,8 +52,7 @@ export function ComputerSettings({ admin }: { admin: boolean }) {
         </div>
       </div>
       <p className="detail-note">
-        普通聊天不需要电脑。多个 Bot 可共用一台电脑。共享电脑上的 Bot
-        共享文件和系统权限。
+        这些操作会影响使用同一电脑的 Bot。请在 Bot 的电脑页选择共享或独立环境。
       </p>
       {catalog?.items.map((item) => (
         <ComputerRecord

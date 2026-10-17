@@ -1,88 +1,164 @@
 import { Button } from "@domos/ui/controls";
+import { Dialog } from "@domos/ui/dialog";
 import { ChoicePicker } from "@domos/ui/picker";
 import { SettingRow } from "@domos/ui/setting-row";
-import { ArrowUpRightIcon } from "@phosphor-icons/react/dist/csr/ArrowUpRight";
+import { useState } from "react";
 import { useSettings } from "../settings/context.ts";
 import { computerLabels } from "./copy.ts";
+import { ComputerLocation } from "./location.tsx";
+import { ComputerModes } from "./modes.tsx";
 import type { useComputer } from "./use-computer.ts";
 
 export function ComputerPanel({
   computer,
+  botId,
 }: {
   computer: ReturnType<typeof useComputer>;
+  botId: number;
 }) {
-  const { status, busy, error, assign, choices } = computer;
+  const { status, busy, error, setup, refresh, prepare, assign, choices } =
+    computer;
   const settings = useSettings();
+  const [location, setLocation] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
+  const ready = () => {
+    setLocation(false);
+    void refresh();
+  };
   return (
-    <section className="detail-stack" aria-label="工作电脑" aria-busy={busy}>
-      <div className="field">
-        <span className="field-label">分配电脑</span>
-        <ChoicePicker
-          label="分配电脑"
-          value={status?.id ?? ""}
-          disabled={busy}
-          onValueChange={(value) => void assign(value || null)}
-          items={[
-            { value: "", label: "暂不分配" },
-            ...choices
-              .filter((item) => item.authorized)
-              .map((item) => ({ value: item.id, label: item.name })),
-          ]}
+    <section className="detail-stack" aria-label="工作环境" aria-busy={busy}>
+      <p className="detail-note">
+        选择此 Bot 使用的电脑。Domos 会自动准备并连接。
+      </p>
+      {setup?.host ? (
+        <ComputerModes
+          value={
+            status?.scope?.kind ??
+            (status?.id === setup.sharedId ? "shared" : undefined)
+          }
+          disabled={busy || Boolean(status?.busy)}
+          canIsolate={setup.host === "docker" && setup.canIsolate}
+          onChange={(mode) => void prepare(mode)}
         />
-      </div>
-      {status ? (
-        <>
-          <h3>{computerLabels.boundary[status.boundary]}</h3>
-          <p className="detail-note">
-            {computerLabels.state[status.state]} · {status.id}
-          </p>
-          <dl className="computer-facts">
-            <dt>系统</dt>
-            <dd>
-              {status.os ? `${status.os} ${status.arch ?? ""}` : "连接后确认"}
-            </dd>
-            <dt>工作根目录</dt>
-            <dd>{status.directory}</dd>
-            <dt>网络</dt>
-            <dd>{computerLabels.network[status.network]}</dd>
-            <dt>服务部署</dt>
-            <dd>
-              {status.deployment === "container" ? "应用容器" : "原生进程"}
-            </dd>
-          </dl>
-          <p className="detail-note">
-            {status.boundary === "sandbox"
-              ? "命令和工作文件在独立容器内执行。共享这台电脑的 Bot 共享文件和权限。停止或重建容器会中断全部 Bot 的进程，工作卷保留。"
-              : "工具使用服务进程的系统权限。工作目录不是安全隔离边界。"}
-          </p>
-          {status.error && (
-            <p className="alert" role="alert">
-              {status.error}
-            </p>
-          )}
-        </>
+      ) : settings.admin && setup ? (
+        <ComputerLocation
+          botId={botId}
+          canIsolate={setup.canIsolate}
+          onReady={ready}
+        />
       ) : (
-        <p className="detail-note" role="status">
-          普通聊天不需要电脑。处理工作文件或执行命令时，请先分配电脑。
+        <p role="status">
+          {setup ? "请让管理员选择运行位置。" : "正在读取工作环境…"}
+        </p>
+      )}
+      {busy && <p role="status">正在准备并连接电脑…</p>}
+      {status && (
+        <div className="settings-card">
+          <SettingRow
+            title={status.name}
+            description={`${computerLabels.state[status.state]} · ${status.authorized ? "已授权" : "授权已撤销"}`}
+          >
+            <span className="status-label">
+              {status.capabilities.commands && status.capabilities.files
+                ? "可用"
+                : "待连接"}
+            </span>
+          </SettingRow>
+          <div className="computer-capabilities settings-form">
+            <span>
+              {status.capabilities.commands ? "✓ 可执行命令" : "命令暂不可用"}
+            </span>
+            <span>
+              {status.capabilities.files ? "✓ 可处理文件" : "文件暂不可用"}
+            </span>
+          </div>
+        </div>
+      )}
+      {status?.error && (
+        <p role="alert" className="alert">
+          {status.error}
         </p>
       )}
       {error && (
-        <p className="alert" role="alert">
+        <p role="alert" className="alert">
           {error}
         </p>
       )}
-      <div className="settings-card">
-        <SettingRow title="电脑目录" description="添加电脑，管理连接与授权。">
+      <div className="form-actions">
+        {settings.admin && setup?.host && (
           <Button
             variant="secondary"
             size="small"
-            onClick={() => settings.open("computers")}
+            disabled={busy}
+            onClick={() => setLocation(true)}
           >
-            管理电脑
-            <ArrowUpRightIcon size={14} />
+            更改运行位置
           </Button>
-        </SettingRow>
+        )}
+        <Button
+          variant="ghost"
+          size="small"
+          onClick={() => setAdvanced(!advanced)}
+          aria-expanded={advanced}
+        >
+          高级选项
+        </Button>
       </div>
+      {advanced && (
+        <div className="detail-stack">
+          <div className="field">
+            <span className="field-label">连接已有电脑</span>
+            <ChoicePicker
+              label="连接已有电脑"
+              value={status?.id ?? ""}
+              disabled={busy}
+              onValueChange={(value) => void assign(value || null)}
+              items={[
+                { value: "", label: "仅聊天" },
+                ...choices
+                  .filter((item) => item.authorized)
+                  .map((item) => ({ value: item.id, label: item.name })),
+              ]}
+            />
+          </div>
+          {settings.admin && (
+            <Button
+              variant="secondary"
+              size="small"
+              onClick={() => settings.open("computers")}
+            >
+              电脑高级管理
+            </Button>
+          )}
+        </div>
+      )}
+      <Dialog
+        open={location}
+        onOpenChange={(open) => {
+          if (!preparing) setLocation(open);
+        }}
+        title="Bot 在哪里工作？"
+        description="变更只应用到此 Bot。新 Bot 会使用新的共享电脑。"
+      >
+        {setup && (
+          <ComputerLocation
+            botId={botId}
+            canIsolate={setup.canIsolate}
+            onReady={ready}
+            onBusyChange={setPreparing}
+          />
+        )}
+        <div className="dialog-actions">
+          <Button
+            variant="secondary"
+            disabled={preparing}
+            onClick={() => setLocation(false)}
+          >
+            取消
+          </Button>
+        </div>
+      </Dialog>
     </section>
   );
 }

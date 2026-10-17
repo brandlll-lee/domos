@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
+import { computerSchema } from "@domos/agent/config";
 import { z } from "zod";
 
 export type InstallProgress = { phase: string; message: string };
@@ -24,6 +25,18 @@ export const releaseSchema = z
   })
   .strict();
 export type Release = z.infer<typeof releaseSchema>;
+
+export function workComputer(release: Release) {
+  const id = `team-${randomBytes(6).toString("hex")}`;
+  return computerSchema.options[1].parse({
+    kind: "docker",
+    id,
+    image: release.workImage,
+    volume: `domos-${id}-work`,
+    network: release.proxyImage ? "web" : "none",
+    ...(release.proxyImage ? { proxyImage: release.proxyImage } : {}),
+  });
+}
 
 export async function runCommand(
   command: string,
@@ -91,6 +104,7 @@ export async function prepareLocalInstallation(
     dataDir: join(directory, "data"),
     staticDir: release.staticDir,
     computer: { kind: "process" },
+    workComputer: workComputer(release),
   };
   await writeConfiguration(configFile, config);
   return { configFile, controllerFile, config };
@@ -113,13 +127,19 @@ export async function prepareWorkImages(
     progress({ phase, message });
   };
   stage("checking", "正在检查 Docker 和目录权限…");
-  await execute("docker", ["info", "--format", "{{json .OSType}}"], {
-    signal,
-    timeout: 30_000,
-  }).then((value) => {
-    if (JSON.parse(value) !== "linux")
-      throw new Error("请将 Docker 切换为 Linux 容器模式。");
+  const system = await execute(
+    "docker",
+    ["info", "--format", "{{json .OSType}}"],
+    {
+      signal,
+      timeout: 30_000,
+    },
+  ).catch(() => {
+    signal?.throwIfAborted();
+    throw new Error("无法连接 Docker。请安装并启动 Docker Desktop，然后重试。");
   });
+  if (JSON.parse(system) !== "linux")
+    throw new Error("请将 Docker 切换为 Linux 容器模式。");
   stage("image", "正在准备 Linux 工作镜像…");
   for (const { image, build } of [
     { image: release.workImage, build: release.workBuild },

@@ -281,11 +281,11 @@ export function HostingModels({
       )}
       {botId !== undefined && (
         <section className="settings-group">
-          <h3>应用到 Bot</h3>
+          <h3>对话模型</h3>
           <div className="settings-card">
             <SettingRow
               title="此 Bot 的模型"
-              description="保存后返回对话。草稿会保留，发送前仍需确认。"
+              description="选择此 Bot 用于回复消息的模型。"
             >
               <ChoicePicker
                 label="此 Bot 的模型"

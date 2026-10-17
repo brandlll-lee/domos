@@ -63,11 +63,13 @@ export function SettingsRoot({
   return (
     <SettingsContext
       value={{
+        admin: access.admin,
         open: show,
         page: open ? (
           <SettingsPage
             {...access}
             initialSection={section}
+            onSectionChange={setSection}
             botId={botId}
             contentRef={content}
             message={message}

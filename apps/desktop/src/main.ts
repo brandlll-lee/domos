@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  type InstallProgress,
   prepareWorkImages,
   releaseSchema,
   writeConfiguration,
@@ -14,6 +15,7 @@ import {
 import { themes, windowOverlay } from "@domos/ui/tokens";
 import { app, type BrowserWindow, dialog, ipcMain, Menu, Tray } from "electron";
 import { z } from "zod";
+import { ConnectionSetup } from "./connection.ts";
 import { LocalHost } from "./host.ts";
 import { applicationIcon } from "./icons.ts";
 import { maintain } from "./maintenance.ts";
@@ -27,6 +29,7 @@ let selected: string | undefined;
 let hostingDirectory: string;
 let tray: Tray;
 let busy = false;
+let connection: ConnectionSetup;
 
 async function save() {
   await writeConfiguration(join(app.getPath("userData"), "instances.json"), {
@@ -44,6 +47,7 @@ function updateMenu() {
         label: "Domos",
         submenu: [
           { label: "打开本机 Domos", click: () => void local().catch(failure) },
+          { label: "连接其他 Domos…", click: () => connection.open() },
           ...instances.map((instance) => ({
             label: instance.name,
             type: "radio" as const,
@@ -60,20 +64,31 @@ function updateMenu() {
   );
 }
 
-function failure() {
+function failure(error: unknown) {
+  const message =
+    error instanceof Error ? error.message : "连接未完成。请重试。";
+  if (!current) {
+    connection.open(message);
+    return;
+  }
   void dialog.showMessageBox({
     type: "error",
-    message: "无法连接 Domos。请检查后台和实例地址。",
+    message,
   });
 }
 
-async function connect(instance: Instance) {
+async function connect(
+  instance: Instance,
+  progress: (value: InstallProgress) => void = () => {},
+  signal = new AbortController().signal,
+) {
   let session: { token: string; expires: number } | undefined;
   let url = instance.url;
   if (instance.mode === "local") {
-    url = (await host.start(() => {}, new AbortController().signal)).origin;
+    url = (await host.start(progress, signal)).origin;
     session = await host.pair();
   } else await probeInstance(url);
+  signal.throwIfAborted();
   const next = await openInstance(url, session);
   const previous = current;
   current = next;
@@ -86,7 +101,10 @@ async function connect(instance: Instance) {
   await save();
 }
 
-async function local() {
+async function local(
+  progress?: (value: InstallProgress) => void,
+  signal?: AbortSignal,
+) {
   let instance = instances.find((item) => item.mode === "local");
   if (!instance) {
     instance = {
@@ -97,7 +115,18 @@ async function local() {
     };
     instances.push(instance);
   }
-  await connect(instance);
+  await connect(instance, progress, signal);
+}
+
+async function remote(url: string, name: string, signal: AbortSignal) {
+  const { origin } = await probeInstance(url);
+  signal.throwIfAborted();
+  let instance = instances.find((item) => item.url === origin);
+  if (!instance) {
+    instance = { id: crypto.randomUUID(), name, mode: "existing", url: origin };
+    instances.push(instance);
+  }
+  await connect(instance, undefined, signal);
 }
 
 async function main() {
@@ -142,17 +171,23 @@ async function main() {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT")
       await dialog.showMessageBox({
         type: "warning",
-        message: "实例配置无法读取。请重新连接。",
+        message: "连接配置无法读取。请重新连接。",
       });
   }
   host = new LocalHost(hostingDirectory, release, runtime);
+  connection = new ConnectionSetup({
+    instances: () => instances,
+    selected: () => instances.find((item) => item.id === selected),
+    local,
+    remote,
+  });
   tray = new Tray(applicationIcon.resize({ width: 20, height: 20 }));
   tray.setToolTip("Domos");
   const restore = () => {
     if (current) {
       current.show();
       current.focus();
-    } else void local().catch(failure);
+    } else connection.open();
   };
   tray.setContextMenu(
     Menu.buildFromTemplate([
@@ -223,31 +258,8 @@ async function main() {
     instances,
     selected,
     running: host.running,
+    mode: instances.find((item) => item.id === selected)?.mode,
   }));
-  handle("desktop:local", local);
-  handle("desktop:select", async (input) => {
-    const { id } = z.object({ id: z.uuid() }).parse(input);
-    const instance = instances.find((item) => item.id === id);
-    if (!instance) throw new Error("实例不存在。");
-    await connect(instance);
-  });
-  handle("desktop:connect", async (input) => {
-    const value = z
-      .object({ url: z.string(), name: z.string().trim().min(1).max(80) })
-      .parse(input);
-    const { origin } = await probeInstance(value.url);
-    let instance = instances.find((item) => item.url === origin);
-    if (!instance) {
-      instance = {
-        id: crypto.randomUUID(),
-        name: value.name,
-        mode: "existing",
-        url: origin,
-      };
-      instances.push(instance);
-    }
-    await connect(instance);
-  });
   handle("desktop:maintain", async (input) => {
     const result = await maintain(host, input);
     if (result?.directory) {
@@ -271,13 +283,14 @@ async function main() {
     void host.stop().finally(() => app.quit());
   });
   const saved = instances.find((item) => item.id === selected);
-  if (saved) {
+  if (saved?.mode === "local") connection.open("", true);
+  else if (saved) {
     try {
       await connect(saved);
-    } catch {
-      await local();
+    } catch (error) {
+      failure(error);
     }
-  } else await local();
+  } else connection.open();
 }
 
 main().catch(() => {

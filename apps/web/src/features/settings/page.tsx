@@ -11,7 +11,8 @@ import {
 } from "./sections.tsx";
 
 export function SettingsPage({
-  initialSection,
+  initialSection: section,
+  onSectionChange: setSection,
   botId,
   contentRef,
   message,
@@ -20,14 +21,14 @@ export function SettingsPage({
   ...access
 }: SettingsAccess & {
   initialSection: SettingsSection;
+  onSectionChange: (section: SettingsSection) => void;
   botId?: number;
   contentRef: RefObject<HTMLDivElement | null>;
   message: string;
   onBack: () => void;
   onConfigured: () => void;
 }) {
-  const [section, setSection] = useState(initialSection);
-  const [visited, setVisited] = useState([initialSection]);
+  const [visited, setVisited] = useState([section]);
   const [query, setQuery] = useState("");
   const [compact, setCompact] = useState(
     () => matchMedia(`(max-width: ${compactChat.maxWidth})`).matches,
@@ -37,10 +38,17 @@ export function SettingsPage({
   const needle = query.trim().toLocaleLowerCase();
   const matches = (Object.keys(sections) as SettingsSection[]).filter((id) => {
     const item = sections[id];
+    if (!item.primary && (section !== id || !access.admin)) return false;
     return `${item.label} ${item.description}`
       .toLocaleLowerCase()
       .includes(needle);
   });
+
+  useEffect(() => {
+    setVisited((current) =>
+      current.includes(section) ? current : [...current, section],
+    );
+  }, [section]);
 
   useEffect(() => {
     main.current?.focus({ preventScroll: true });

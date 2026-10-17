@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 
-test("onboarding preserves drafts and requests computer authorization only when needed", async ({
+test("first use connects a model and authorizes a computer before opening chat", async ({
   page,
 }, testInfo) => {
   const directory = await mkdtemp(join(tmpdir(), "domos-onboarding-web-"));
@@ -26,124 +26,77 @@ test("onboarding preserves drafts and requests computer authorization only when 
     await page.goto(`http://127.0.0.1:${ready.port}`);
     await page.getByLabel("配对码", { exact: true }).fill(ready.code);
     await page.getByRole("button", { name: "连接", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Bot详情" })).toBeVisible();
-    await page.getByRole("button", { name: "新建 Bot" }).first().click();
-    await page
-      .getByRole("textbox", { name: "名字", exact: true })
-      .fill("Writer");
-    await page.getByRole("button", { name: "创建", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Bot详情" })).toContainText(
-      "Writer",
-    );
-    await page.getByRole("button", { name: "Bot详情" }).click();
-    const details = page.getByRole("complementary", { name: "Writer的详情" });
-    await details.getByRole("combobox", { name: "Bot设置分区" }).click();
-    await page.getByRole("option", { name: "电脑", exact: true }).click();
+    const setup = page.getByRole("main", { name: "首次设置" });
     await expect(
-      details.getByRole("combobox", { name: "分配电脑" }),
-    ).toHaveText("暂不分配");
-    await details.getByRole("button", { name: "关闭", exact: true }).click();
-    await page
-      .getByRole("textbox", { name: "消息", exact: true })
-      .fill("保留这份草稿");
-    await page.getByRole("button", { name: "发送", exact: true }).click();
-    const settings = page.getByRole("main", {
-      name: "设置",
-      exact: true,
-    });
-    await expect(settings).toBeVisible();
-    await expect(
-      settings.getByRole("heading", { name: "连接模型" }),
+      setup.getByRole("heading", { name: "连接对话模型" }),
     ).toBeVisible();
-    await settings
-      .getByRole("button", { name: "返回对话", exact: true })
-      .click();
     await expect(
       page.getByRole("textbox", { name: "消息", exact: true }),
-    ).toHaveValue("保留这份草稿");
-    await page.getByRole("button", { name: "Bot详情" }).click();
-    await details
-      .getByRole("button", { name: "连接模型", exact: true })
-      .click();
-    await settings.getByRole("combobox", { name: "此 Bot 的模型" }).click();
+    ).toBeHidden();
+    await setup.getByRole("combobox", { name: "此 Bot 的模型" }).click();
     await page.getByRole("option", { name: "Faux Model", exact: true }).click();
-    await settings
-      .getByRole("button", { name: "保存模型", exact: true })
+    await setup.getByRole("button", { name: "保存模型", exact: true }).click();
+    await expect(
+      setup.getByRole("heading", { name: "Bot 在哪里工作？" }),
+    ).toBeVisible();
+    await expect(
+      setup.getByRole("button", { name: /^隔离环境/ }),
+    ).toBeDisabled();
+    await page.route("**/rpc/computer/configure", (route) => route.abort());
+    await setup
+      .getByRole("button", { name: "授权并继续", exact: true })
       .click();
-    await expect(settings).toBeHidden();
-    await expect(page.getByText("模型已回复。", { exact: true })).toHaveCount(
-      0,
-    );
-    await details.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(setup.getByRole("alert")).toBeVisible();
+    await expect(setup).toBeVisible();
+    await page.unroute("**/rpc/computer/configure");
+    await setup
+      .getByRole("button", { name: "授权并继续", exact: true })
+      .click();
+    await expect(setup).toBeHidden();
+    await page
+      .getByRole("textbox", { name: "消息", exact: true })
+      .fill("确认首次配置成功");
     await page.getByRole("button", { name: "发送", exact: true }).click();
     await expect(
       page
         .getByRole("log", { name: "聊天记录" })
         .getByText("模型已回复。", { exact: true }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "添加文件", exact: true }).click();
-    await expect(details.getByLabel("分配电脑")).toBeVisible();
-    await details
-      .getByRole("button", { name: "管理电脑", exact: true })
-      .click();
-    await settings.getByText("授权使用本机", { exact: true }).click();
-    await page
-      .getByRole("dialog", { name: "授权使用本机", exact: true })
-      .getByRole("button", { name: "确认授权", exact: true })
-      .click();
-    await expect(settings.getByText(/已授权/)).toBeVisible();
-    const defaultComputer = settings.getByRole("switch", {
-      name: "新 Bot 默认使用本机",
-    });
-    await expect(defaultComputer).not.toBeChecked();
-    await page.route("**/rpc/computer/default", (route) => route.abort());
-    await defaultComputer.click();
-    await expect(settings.getByRole("alert")).toBeVisible();
-    await expect(defaultComputer).not.toBeChecked();
-    await page.unroute("**/rpc/computer/default");
-    await defaultComputer.click();
-    await expect(defaultComputer).toBeChecked();
-    await settings.getByRole("button", { name: "刷新电脑状态" }).click();
-    await expect(defaultComputer).toBeChecked();
-    await defaultComputer.click();
-    await expect(defaultComputer).not.toBeChecked();
-    await settings
-      .getByRole("button", { name: "返回对话", exact: true })
-      .click();
-    await details.getByRole("combobox", { name: "分配电脑" }).click();
-    await page.getByRole("option", { name: "本机", exact: true }).click();
-    await expect(
-      details.getByText(
-        "工具使用服务进程的系统权限。工作目录不是安全隔离边界。",
-        { exact: true },
-      ),
-    ).toBeVisible();
-    await details.getByRole("button", { name: "关闭", exact: true }).click();
-
-    await page
-      .locator('input[type="file"][aria-label="添加文件"]')
-      .setInputFiles({
-        name: "input.txt",
-        mimeType: "text/plain",
-        buffer: Buffer.from("source"),
-      });
-    await expect(page.getByText("input.txt", { exact: true })).toBeVisible();
     await page.reload();
-    await expect(page.getByRole("button", { name: "Bot详情" })).toContainText(
-      "Writer",
-    );
-    await page.screenshot({ path: testInfo.outputPath("onboarding.png") });
-    await page.setViewportSize({ width: 360, height: 800 });
-    await page.getByRole("button", { name: "联系人", exact: true }).click();
+    await expect(setup).toBeHidden();
+    await expect(page.getByRole("button", { name: "Bot详情" })).toBeVisible();
+    await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
+    const computer = page.getByRole("complementary", { name: "Domos的详情" });
+    await expect(
+      computer.getByRole("button", { name: /^共享电脑/ }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      computer.getByText("✓ 可执行命令", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      computer.getByText("✓ 可处理文件", { exact: true }),
+    ).toBeVisible();
+    await computer.getByRole("button", { name: "关闭", exact: true }).click();
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await expect(settings).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(settings).toBeHidden();
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= innerWidth,
-      ),
-    ).toBe(true);
+    const settings = page.getByRole("main", { name: "设置", exact: true });
+    await expect(settings.getByRole("tab")).toHaveText(["通用", "模型"]);
+    await settings
+      .getByRole("button", { name: "连接设备", exact: true })
+      .click();
+    const access = page.getByRole("dialog", {
+      name: "在其他设备上使用",
+      exact: true,
+    });
+    await expect(
+      access.getByRole("heading", { name: "已授权访问", exact: true }),
+    ).toBeVisible();
+    await access
+      .getByRole("button", { name: "生成配对码", exact: true })
+      .click();
+    await expect(access.locator(".pairing-code")).not.toBeEmpty();
+    await access.getByRole("button", { name: "完成", exact: true }).click();
+    await expect(access).toBeHidden();
+    await page.screenshot({ path: testInfo.outputPath("configured.png") });
   } finally {
     const exited = once(worker, "exit");
     worker.disconnect();
