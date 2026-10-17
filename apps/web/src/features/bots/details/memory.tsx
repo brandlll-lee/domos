@@ -1,6 +1,6 @@
 import { WORK_TEXT_LENGTH } from "@domos/agent/work/limits";
 import { Button } from "@domos/ui/controls";
-import { TextField } from "@domos/ui/field";
+import { Checkbox, TextField } from "@domos/ui/field";
 import { useState } from "react";
 import { client } from "../../../client.ts";
 import type { WorkAction, WorkData } from "./use-bot-work.ts";
@@ -58,23 +58,26 @@ export function MemoryPanel({
             required
             maxLength={WORK_TEXT_LENGTH}
           />
-          <label className="detail-check">
-            <input
-              type="checkbox"
-              checked={shared}
-              onChange={(event) => setShared(event.target.checked)}
-            />
-            共享给所有Bot
-          </label>
-          <div className="detail-actions">
-            <Button type="submit" disabled={!text.trim()}>
-              保存记忆
-            </Button>
+          <Checkbox
+            label="共享给所有Bot"
+            checked={shared}
+            onCheckedChange={setShared}
+            disabled={action.busy}
+          />
+          <div className="form-actions">
             {editing && (
-              <Button type="button" variant="ghost" onClick={clear}>
+              <Button
+                type="button"
+                size="small"
+                variant="secondary"
+                onClick={clear}
+              >
                 取消编辑
               </Button>
             )}
+            <Button type="submit" size="small" disabled={!text.trim()}>
+              保存记忆
+            </Button>
           </div>
         </fieldset>
       </form>
@@ -89,6 +92,7 @@ export function MemoryPanel({
             <div className="detail-actions">
               <Button
                 variant="ghost"
+                size="small"
                 disabled={action.busy}
                 onClick={() => {
                   setEditing(entry);
@@ -100,6 +104,7 @@ export function MemoryPanel({
               </Button>
               <Button
                 variant="ghost"
+                size="small"
                 disabled={action.busy}
                 onClick={() => {
                   if (window.confirm("删除这条记忆？"))

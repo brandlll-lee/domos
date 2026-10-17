@@ -1,9 +1,9 @@
 import { Button } from "@domos/ui/controls";
+import { ArrowClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../client.ts";
 import { AddComputer } from "./add.tsx";
-import { computerLabels } from "./copy.ts";
-import { ComputerDetails, ConfirmComputerAction } from "./dialogs.tsx";
+import { ComputerRecord } from "./record.tsx";
 
 export function ComputerSettings({ admin }: { admin: boolean }) {
   const [catalog, setCatalog] =
@@ -34,147 +34,43 @@ export function ComputerSettings({ admin }: { admin: boolean }) {
     }
   }
   return (
-    <section className="hosting-stack" aria-label="电脑管理" aria-busy={busy}>
+    <section className="settings-group" aria-label="电脑管理" aria-busy={busy}>
+      <div className="section-heading">
+        <strong>工作电脑</strong>
+        <div className="form-actions">
+          <Button
+            variant="secondary"
+            size="icon-small"
+            aria-label="刷新电脑状态"
+            title="刷新电脑状态"
+            disabled={busy}
+            onClick={() => void run(refresh)}
+          >
+            <ArrowClockwiseIcon size={16} />
+          </Button>
+          {admin && <AddComputer onAdded={refresh} />}
+        </div>
+      </div>
       <p className="detail-note">
         普通聊天不需要电脑。多个 Bot 可共用一台电脑。共享电脑上的 Bot
         共享文件和系统权限。
       </p>
-      <Button
-        variant="secondary"
-        disabled={busy}
-        onClick={() => void run(refresh)}
-      >
-        刷新电脑状态
-      </Button>
       {catalog?.items.map((item) => (
-        <section
-          className="computer-record hosting-stack"
+        <ComputerRecord
           key={item.id}
-          aria-label={item.name}
-        >
-          <div className="computer-heading">
-            <div className="hosting-stack">
-              <strong>{item.name}</strong>
-              <span className="detail-note">
-                {computerLabels.boundary[item.boundary]} ·{" "}
-                {computerLabels.state[item.state]} ·{" "}
-                {item.authorized ? "已授权" : "待授权"}
-              </span>
-            </div>
-            <ComputerDetails name={item.name}>
-              <dl className="computer-facts">
-                <dt>工作根目录</dt>
-                <dd>{item.directory}</dd>
-                <dt>能力</dt>
-                <dd>
-                  {item.capabilities.commands ? "命令与文件" : "当前不可执行"}
-                </dd>
-                <dt>网络</dt>
-                <dd>{computerLabels.network[item.network]}</dd>
-              </dl>
-            </ComputerDetails>
-          </div>
-          {item.error && <p role="alert">{item.error}</p>}
-          {admin && (
-            <div className="detail-actions">
-              {item.authorized ? (
-                <Button
-                  variant="ghost"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(() =>
-                      client.computer.authorize({
-                        id: item.id,
-                        authorized: false,
-                      }),
-                    )
-                  }
-                >
-                  撤销授权
-                </Button>
-              ) : (
-                <ConfirmComputerAction
-                  title={`授权使用${item.name}`}
-                  description="命令和文件工具使用服务进程的系统权限。工作目录不提供安全隔离。仅在信任 Bot 的任务时授权。"
-                  label="确认授权"
-                  busy={busy}
-                  error={error}
-                  onConfirm={() =>
-                    run(() =>
-                      client.computer.authorize({
-                        id: item.id,
-                        authorized: true,
-                      }),
-                    )
-                  }
-                />
-              )}
-              {item.authorized && (
-                <Button
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(() =>
-                      client.computer.default({
-                        id: catalog.defaultId === item.id ? null : item.id,
-                      }),
-                    )
-                  }
-                >
-                  {catalog.defaultId === item.id
-                    ? "取消默认电脑"
-                    : "设为新 Bot 的默认电脑"}
-                </Button>
-              )}
-              {item.authorized && item.kind !== "process" && (
-                <div className="detail-actions">
-                  <Button
-                    disabled={busy || item.state === "running"}
-                    onClick={() =>
-                      void run(() =>
-                        client.computer.manage({
-                          id: item.id,
-                          action: "start",
-                        }),
-                      )
-                    }
-                  >
-                    启动电脑
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    disabled={busy || item.state !== "running"}
-                    onClick={() =>
-                      void run(() =>
-                        client.computer.manage({ id: item.id, action: "stop" }),
-                      )
-                    }
-                  >
-                    停止电脑
-                  </Button>
-                  <ConfirmComputerAction
-                    title="重建工作容器"
-                    description="工作卷保留。容器内的进程将结束。"
-                    label="确认重建"
-                    busy={busy}
-                    error={error}
-                    onConfirm={() =>
-                      run(() =>
-                        client.computer.manage({
-                          id: item.id,
-                          action: "rebuild",
-                        }),
-                      )
-                    }
-                  />
-                </div>
-              )}
-            </div>
-          )}
-        </section>
+          item={item}
+          admin={admin}
+          busy={busy}
+          error={error}
+          defaultId={catalog.defaultId}
+          run={run}
+        />
       ))}
-      {admin && <AddComputer onAdded={refresh} />}
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p className="alert" role="alert">
+          {error}
+        </p>
+      )}
     </section>
   );
 }

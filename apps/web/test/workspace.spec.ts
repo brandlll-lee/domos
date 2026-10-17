@@ -351,16 +351,27 @@ test("control geometry and interaction states stay consistent", async ({
   const name = details.getByRole("textbox", { name: "名字", exact: true });
   const model = details.getByRole("combobox", { name: "模型", exact: true });
   const inputHeight = (await name.boundingBox())?.height;
-  expect((await name.boundingBox())?.height).toBe(
-    (await model.boundingBox())?.height,
+  expect(inputHeight).toBe(40);
+  expect((await model.boundingBox())?.height).toBe(32);
+  await expect(details.locator(".detail-header")).toHaveCSS(
+    "border-bottom-width",
+    "0px",
   );
   const save = details.getByRole("button", { name: "保存身份", exact: true });
+  await expect(save).toHaveCount(0);
+  await name.fill("编辑中的名字");
+  await expect(save).toBeEnabled();
+  await details.getByRole("button", { name: "还原", exact: true }).click();
+  await expect(name).toHaveValue("Domos");
+  await expect(save).toHaveCount(0);
+  await name.fill("");
   await expect(save).toBeDisabled();
   const color = await save.evaluate(
     (item) => getComputedStyle(item).backgroundColor,
   );
   await save.hover();
   await expect(save).toHaveCSS("background-color", color);
+  await details.getByRole("button", { name: "还原", exact: true }).click();
   await picker.click();
   await page.getByRole("option", { name: "电脑", exact: true }).click();
   const select = details.getByRole("combobox", {

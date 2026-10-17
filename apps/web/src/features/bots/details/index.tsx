@@ -124,12 +124,7 @@ export function BotDetails({
               disabled={!work.connected || action.busy}
             >
               {item.content}
-              {key === "profile" && (
-                <section className="detail-model">
-                  <h3>模型</h3>
-                  {model}
-                </section>
-              )}
+              {key === "profile" && model}
             </fieldset>
           </section>
         ))}

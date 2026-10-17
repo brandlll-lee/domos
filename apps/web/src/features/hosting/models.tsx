@@ -1,4 +1,5 @@
 import { Button } from "@domos/ui/controls";
+import { TextField } from "@domos/ui/field";
 import { ChoicePicker } from "@domos/ui/picker";
 import { SettingRow } from "@domos/ui/setting-row";
 import { useCallback, useEffect, useState } from "react";
@@ -110,69 +111,87 @@ export function HostingModels({
   const prompt = login?.prompt;
   return (
     <section
-      className="hosting-stack"
+      className="settings-sections"
       aria-label="模型配置"
       aria-busy={busy}
       data-dirty={Boolean(value || selection || (loginId && !login?.done))}
     >
-      <h2>连接模型</h2>
-      <div className="settings-card">
-        <SettingRow title="模型提供方" description="连接用于对话的模型账号。">
-          <ChoicePicker
-            label="模型提供方"
-            size="small"
-            value={provider}
-            disabled={busy}
-            onValueChange={setProvider}
-            items={[
-              { value: "", label: "选择提供方" },
-              ...(catalog?.providers.map((item) => ({
-                value: item.id,
-                label: `${item.name}${item.configured ? " · 已连接" : ""}`,
-              })) ?? []),
-            ]}
-          />
-        </SettingRow>
-      </div>
-      {selected?.methods.map((method) => (
-        <Button
-          key={method.type}
-          variant="secondary"
-          disabled={busy}
-          onClick={() =>
-            void action(async () => {
-              await hostingRequest("login", undefined, "DELETE");
-              const result = await hostingRequest<{ id: string }>("login", {
-                provider,
-                type: method.type,
-              });
-              setLogin(undefined);
-              setLoginId(result.id);
-              setValue("");
-            })
-          }
-        >
-          {method.name}
-        </Button>
-      ))}
-      {selected?.configured && (
-        <Button
-          variant="ghost"
-          disabled={busy}
-          onClick={() =>
-            void action(async () => {
-              await hostingRequest(
-                `models/${encodeURIComponent(provider)}`,
-                undefined,
-                "DELETE",
-              );
-              await refresh();
-            })
-          }
-        >
-          断开模型账号
-        </Button>
-      )}
+      <section className="settings-group">
+        <h2>连接模型</h2>
+        <div className="settings-card">
+          <SettingRow title="模型提供方" description="连接用于对话的模型账号。">
+            <ChoicePicker
+              label="模型提供方"
+              size="small"
+              value={provider}
+              disabled={busy}
+              onValueChange={setProvider}
+              items={[
+                { value: "", label: "选择提供方" },
+                ...(catalog?.providers.map((item) => ({
+                  value: item.id,
+                  label: `${item.name}${item.configured ? " · 已连接" : ""}`,
+                })) ?? []),
+              ]}
+            />
+          </SettingRow>
+          {selected?.methods.map((method) => (
+            <SettingRow
+              key={method.type}
+              title={method.name}
+              description={`连接 ${selected.name} 账号。`}
+            >
+              <Button
+                variant="secondary"
+                size="small"
+                aria-label={method.name}
+                disabled={busy}
+                onClick={() =>
+                  void action(async () => {
+                    await hostingRequest("login", undefined, "DELETE");
+                    const result = await hostingRequest<{ id: string }>(
+                      "login",
+                      {
+                        provider,
+                        type: method.type,
+                      },
+                    );
+                    setLogin(undefined);
+                    setLoginId(result.id);
+                    setValue("");
+                  })
+                }
+              >
+                {selected.configured ? "重新连接" : "连接"}
+              </Button>
+            </SettingRow>
+          ))}
+          {selected?.configured && (
+            <SettingRow
+              title="账号状态"
+              description="此提供方的模型已可用于对话。"
+            >
+              <Button
+                variant="secondary"
+                size="small"
+                disabled={busy}
+                onClick={() =>
+                  void action(async () => {
+                    await hostingRequest(
+                      `models/${encodeURIComponent(provider)}`,
+                      undefined,
+                      "DELETE",
+                    );
+                    await refresh();
+                  })
+                }
+              >
+                断开模型账号
+              </Button>
+            </SettingRow>
+          )}
+        </div>
+      </section>
       {login?.events.map((event) => (
         <p key={event.id} className="detail-note">
           {event.message} {event.userCode}
@@ -189,7 +208,7 @@ export function HostingModels({
       ))}
       {prompt && (
         <form
-          className="hosting-stack"
+          className="settings-form settings-card"
           onSubmit={(event) => {
             event.preventDefault();
             void action(async () => {
@@ -204,9 +223,11 @@ export function HostingModels({
             });
           }}
         >
-          <label htmlFor="model-login-input">
-            {prompt.message}
-            {prompt.options ? (
+          {prompt.options ? (
+            <div className="field">
+              <label className="field-label" htmlFor="model-login-input">
+                {prompt.message}
+              </label>
               <ChoicePicker
                 id="model-login-input"
                 label={prompt.message}
@@ -221,41 +242,51 @@ export function HostingModels({
                   })),
                 ]}
               />
-            ) : (
-              <input
-                className="field-control"
-                id="model-login-input"
-                type={prompt.type === "secret" ? "password" : "text"}
-                value={value}
-                autoComplete="off"
-                onChange={(event) => setValue(event.target.value)}
-              />
-            )}
-          </label>
-          <Button disabled={busy || !value} type="submit">
-            继续
-          </Button>
+            </div>
+          ) : (
+            <TextField
+              label={prompt.message}
+              type={prompt.type === "secret" ? "password" : "text"}
+              value={value}
+              autoComplete="off"
+              onValueChange={setValue}
+              disabled={busy}
+            />
+          )}
+          <div className="form-actions">
+            <Button size="small" disabled={busy || !value} type="submit">
+              继续
+            </Button>
+          </div>
         </form>
       )}
       {login?.error && <p role="alert">{login.error}</p>}
       {loginId && !login?.done && (
-        <Button
-          variant="ghost"
-          onClick={() =>
-            void action(async () => {
-              await hostingRequest("login", undefined, "DELETE");
-              setLoginId(undefined);
-              setLogin(undefined);
-            })
-          }
-        >
-          取消登录
-        </Button>
+        <div className="form-actions">
+          <Button
+            variant="secondary"
+            size="small"
+            disabled={busy}
+            onClick={() =>
+              void action(async () => {
+                await hostingRequest("login", undefined, "DELETE");
+                setLoginId(undefined);
+                setLogin(undefined);
+              })
+            }
+          >
+            取消登录
+          </Button>
+        </div>
       )}
       {botId !== undefined && (
-        <>
+        <section className="settings-group">
+          <h3>应用到 Bot</h3>
           <div className="settings-card">
-            <SettingRow title="此 Bot 的模型">
+            <SettingRow
+              title="此 Bot 的模型"
+              description="保存后返回对话。草稿会保留，发送前仍需确认。"
+            >
               <ChoicePicker
                 label="此 Bot 的模型"
                 size="small"
@@ -275,19 +306,27 @@ export function HostingModels({
               />
             </SettingRow>
           </div>
-          <Button
-            disabled={busy || !selection}
-            onClick={() =>
-              void action(async () => {
-                await client.models.select({ botId, ...JSON.parse(selection) });
-                window.dispatchEvent(new Event("domos:models"));
-                onConfigured();
-              })
-            }
-          >
-            保存模型
-          </Button>
-        </>
+          {selection && (
+            <div className="form-actions">
+              <Button
+                size="small"
+                disabled={busy}
+                onClick={() =>
+                  void action(async () => {
+                    await client.models.select({
+                      botId,
+                      ...JSON.parse(selection),
+                    });
+                    window.dispatchEvent(new Event("domos:models"));
+                    onConfigured();
+                  })
+                }
+              >
+                保存模型
+              </Button>
+            </div>
+          )}
+        </section>
       )}
       {error && <p role="alert">{error}</p>}
     </section>

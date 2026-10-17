@@ -16,7 +16,11 @@ export function ComputerDetails({
       onOpenChange={setOpen}
       title={name}
       description="查看电脑的工作目录、能力与网络。"
-      trigger={<Button variant="ghost">查看详情</Button>}
+      trigger={
+        <Button variant="secondary" size="small">
+          查看详情
+        </Button>
+      }
     >
       {children}
       <div className="dialog-actions">
@@ -35,6 +39,7 @@ export function ConfirmComputerAction({
   busy,
   error,
   onConfirm,
+  variant = "secondary",
 }: {
   title: string;
   description: string;
@@ -42,6 +47,7 @@ export function ConfirmComputerAction({
   busy: boolean;
   error: string;
   onConfirm: () => Promise<boolean>;
+  variant?: "primary" | "secondary";
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -53,7 +59,7 @@ export function ConfirmComputerAction({
       title={title}
       description={description}
       trigger={
-        <Button variant="secondary" disabled={busy}>
+        <Button variant={variant} size="small" disabled={busy}>
           {title}
         </Button>
       }

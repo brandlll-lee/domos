@@ -1,4 +1,6 @@
 import { Button } from "@domos/ui/controls";
+import { TextField } from "@domos/ui/field";
+import { SettingRow } from "@domos/ui/setting-row";
 import { useEffect, useState } from "react";
 
 type Result<T = { message?: string }> = {
@@ -66,96 +68,121 @@ export function DesktopSettings() {
   }
   return (
     <section
-      className="hosting-stack"
+      className="settings-sections"
       aria-label="实例管理"
       aria-busy={busy}
       data-dirty={Boolean(url || password)}
     >
-      <p className="detail-note">
-        本机后台在这台电脑上运行。自托管无需云账号。
-      </p>
-      <Button
-        variant="secondary"
-        disabled={busy}
-        onClick={() => void run(() => desktop.local())}
-      >
-        打开本机 Domos
-      </Button>
-      {state?.instances.map((instance) => (
-        <Button
-          key={instance.id}
-          variant="ghost"
-          disabled={busy || state.selected === instance.id}
-          onClick={() => void run(() => desktop.select(instance.id))}
+      <section className="settings-group">
+        <h3>已有实例</h3>
+        <div className="settings-card">
+          <SettingRow
+            title="本机后台"
+            description="在这台电脑上运行。自托管无需云账号。"
+          >
+            <Button
+              variant="secondary"
+              size="small"
+              disabled={busy}
+              onClick={() => void run(() => desktop.local())}
+            >
+              打开本机 Domos
+            </Button>
+          </SettingRow>
+          {state?.instances.map((instance) => (
+            <SettingRow
+              title={instance.name}
+              description="已保存的实例连接"
+              key={instance.id}
+            >
+              {state.selected === instance.id ? (
+                <span className="status-label">当前实例</span>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="small"
+                  aria-label={`打开${instance.name}`}
+                  disabled={busy}
+                  onClick={() => void run(() => desktop.select(instance.id))}
+                >
+                  打开
+                </Button>
+              )}
+            </SettingRow>
+          ))}
+        </div>
+      </section>
+      <section className="settings-group">
+        <h3>连接实例</h3>
+        <form
+          className="settings-form settings-card"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(() => desktop.connect(url, name));
+          }}
         >
-          {instance.name}
-        </Button>
-      ))}
-      <form
-        className="hosting-stack settings-card"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void run(() => desktop.connect(url, name));
-        }}
-      >
-        <label>
-          实例名称
-          <input
-            className="field-control"
+          <TextField
+            label="实例名称"
             value={name}
             maxLength={80}
             required
-            onChange={(event) => setName(event.target.value)}
+            disabled={busy}
+            onValueChange={setName}
           />
-        </label>
-        <label>
-          服务器地址
-          <input
-            className="field-control"
+          <TextField
+            label="服务器地址"
             value={url}
             placeholder="https://domos.example.com"
             required
-            onChange={(event) => setUrl(event.target.value)}
+            disabled={busy}
+            onValueChange={setUrl}
           />
-        </label>
-        <Button type="submit" disabled={busy}>
-          连接已有 Domos
-        </Button>
-      </form>
-      <details>
-        <summary>备份与恢复</summary>
+          <div className="form-actions">
+            <Button type="submit" size="small" disabled={busy}>
+              连接已有 Domos
+            </Button>
+          </div>
+        </form>
+      </section>
+      <section className="settings-group">
+        <h3>备份与恢复</h3>
         <p className="detail-note">
           备份会停止本机后台。恢复使用新目录。完成后可重新打开本机实例。
         </p>
-        <label className="hosting-stack">
-          备份密码
-          <input
-            className="field-control"
-            type="password"
-            value={password}
-            minLength={12}
-            autoComplete="new-password"
-            onChange={(event) => setPassword(event.target.value)}
-          />
-        </label>
-        <div className="detail-actions">
+        <div className="settings-card">
+          <div className="settings-form">
+            <TextField
+              label="备份密码"
+              type="password"
+              value={password}
+              minLength={12}
+              placeholder="至少 12 个字符"
+              autoComplete="new-password"
+              disabled={busy}
+              onValueChange={setPassword}
+            />
+          </div>
           {(
             [
-              ["backup", "加密备份"],
-              ["restore", "从备份恢复"],
+              ["backup", "加密备份", "选择保存位置并创建加密备份。"],
+              ["restore", "从备份恢复", "选择备份文件，恢复到新目录。"],
             ] as const
-          ).map(([action, label]) => (
-            <Button
-              key={action}
-              variant="secondary"
-              disabled={busy || password.length < 12}
-              onClick={() => void run(() => desktop.maintain(action, password))}
-            >
-              {label}
-            </Button>
+          ).map(([action, label, description]) => (
+            <SettingRow key={action} title={label} description={description}>
+              <Button
+                variant="secondary"
+                size="small"
+                disabled={busy || password.length < 12}
+                onClick={() =>
+                  void run(() => desktop.maintain(action, password))
+                }
+              >
+                {label}
+              </Button>
+            </SettingRow>
           ))}
         </div>
-      </details>
+      </section>
       {message && <p role="status">{message}</p>}
       {error && <p role="alert">{error}</p>}
     </section>

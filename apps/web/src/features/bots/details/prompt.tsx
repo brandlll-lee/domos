@@ -20,6 +20,7 @@ export function PromptPanel({
       </p>
       <Button
         variant="secondary"
+        size="small"
         disabled={action.busy}
         onClick={() =>
           void action.run(

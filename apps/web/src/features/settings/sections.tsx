@@ -27,11 +27,14 @@ export const sections = {
     description: "调整主题，选择浅色、深色或跟随系统的显示方式。",
     icon: PaletteIcon,
     render: () => (
-      <div className="settings-card">
-        <SettingRow title="主题" description="选择适合当前环境的显示方式。">
-          <AppearancePicker />
-        </SettingRow>
-      </div>
+      <section className="settings-group">
+        <h3>显示</h3>
+        <div className="settings-card">
+          <SettingRow title="主题" description="选择适合当前环境的显示方式。">
+            <AppearancePicker />
+          </SettingRow>
+        </div>
+      </section>
     ),
   },
   models: {

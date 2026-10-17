@@ -1624,6 +1624,18 @@ test("composer fades scrolling messages and covers content below its edge", asyn
     await page.setViewportSize({ width, height: 700 });
     for (const label of ["浅色", "深色"]) {
       await chooseAppearance(page, label);
+      await expect
+        .poll(() =>
+          page.locator(".transcript").evaluate((element) => {
+            const dock = document.querySelector(".composer-area");
+            if (!dock) throw new Error("Missing composer dock");
+            return (
+              Number.parseFloat(getComputedStyle(element).paddingBottom) -
+              dock.getBoundingClientRect().height
+            );
+          }),
+        )
+        .toBeGreaterThan(0);
       const point = await page.evaluate(() => {
         const dock = document.querySelector(".composer-area");
         const transcript = document.querySelector(".transcript");

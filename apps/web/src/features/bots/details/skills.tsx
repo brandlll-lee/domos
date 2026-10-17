@@ -82,12 +82,18 @@ export function SkillsPanel({
             <Button
               type="button"
               variant="secondary"
+              size="small"
               onClick={() => file.current?.click()}
             >
               导入文件
             </Button>
             {editing && (
-              <Button type="button" variant="ghost" onClick={clear}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="small"
+                onClick={clear}
+              >
                 新建技能
               </Button>
             )}
@@ -100,7 +106,11 @@ export function SkillsPanel({
             required
             maxLength={SKILL_FILE_BYTES}
           />
-          <Button type="submit">保存技能</Button>
+          <div className="form-actions">
+            <Button type="submit" size="small">
+              保存技能
+            </Button>
+          </div>
         </fieldset>
       </form>
       <ul className="detail-list">
@@ -117,6 +127,7 @@ export function SkillsPanel({
             <div className="detail-actions">
               <Button
                 variant="secondary"
+                size="small"
                 disabled={action.busy}
                 onClick={() =>
                   void action.run(
@@ -136,6 +147,7 @@ export function SkillsPanel({
               </Button>
               <Button
                 variant="ghost"
+                size="small"
                 disabled={action.busy}
                 onClick={() => {
                   setEditing(skill);
@@ -146,6 +158,7 @@ export function SkillsPanel({
               </Button>
               <Button
                 variant="ghost"
+                size="small"
                 onClick={() => {
                   const url = URL.createObjectURL(
                     new Blob([skill.content], {
@@ -163,6 +176,7 @@ export function SkillsPanel({
               </Button>
               <Button
                 variant="ghost"
+                size="small"
                 disabled={action.busy}
                 onClick={() => {
                   if (window.confirm("从共享库删除这个技能？"))

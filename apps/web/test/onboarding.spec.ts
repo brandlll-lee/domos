@@ -92,6 +92,21 @@ test("onboarding preserves drafts and requests computer authorization only when 
       .getByRole("button", { name: "确认授权", exact: true })
       .click();
     await expect(settings.getByText(/已授权/)).toBeVisible();
+    const defaultComputer = settings.getByRole("switch", {
+      name: "新 Bot 默认使用本机",
+    });
+    await expect(defaultComputer).not.toBeChecked();
+    await page.route("**/rpc/computer/default", (route) => route.abort());
+    await defaultComputer.click();
+    await expect(settings.getByRole("alert")).toBeVisible();
+    await expect(defaultComputer).not.toBeChecked();
+    await page.unroute("**/rpc/computer/default");
+    await defaultComputer.click();
+    await expect(defaultComputer).toBeChecked();
+    await settings.getByRole("button", { name: "刷新电脑状态" }).click();
+    await expect(defaultComputer).toBeChecked();
+    await defaultComputer.click();
+    await expect(defaultComputer).not.toBeChecked();
     await settings
       .getByRole("button", { name: "返回对话", exact: true })
       .click();

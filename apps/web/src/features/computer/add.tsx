@@ -1,6 +1,8 @@
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
+import { TextField } from "@domos/ui/field";
 import { ChoicePicker } from "@domos/ui/picker";
+import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { useState } from "react";
 import { client } from "../../client.ts";
 
@@ -29,7 +31,12 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
       }}
       title="添加 Docker 电脑"
       description="连接已准备好工作环境的 Docker 主机。"
-      trigger={<Button variant="secondary">添加 Docker 电脑</Button>}
+      trigger={
+        <Button variant="secondary" size="small">
+          <PlusIcon size={14} />
+          添加 Docker 电脑
+        </Button>
+      }
     >
       <form
         className="hosting-stack"
@@ -114,35 +121,26 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
           </Button>
         )}
         <fieldset className="bot-fields hosting-stack" disabled={busy}>
-          <label>
-            电脑名称
-            <input
-              className="field-control"
-              value={name}
-              maxLength={80}
-              required
-              onChange={(event) => setName(event.target.value)}
-            />
-          </label>
-          <label>
-            电脑标识
-            <input
-              className="field-control"
-              value={id}
-              pattern="[a-z0-9][a-z0-9_.-]{0,62}"
-              required
-              onChange={(event) => setId(event.target.value)}
-            />
-          </label>
-          <label>
-            工作镜像
-            <input
-              className="field-control"
-              value={image}
-              required
-              onChange={(event) => setImage(event.target.value)}
-            />
-          </label>
+          <TextField
+            label="电脑名称"
+            value={name}
+            maxLength={80}
+            required
+            onValueChange={setName}
+          />
+          <TextField
+            label="电脑标识"
+            value={id}
+            pattern="[a-z0-9][a-z0-9_.-]{0,62}"
+            required
+            onValueChange={setId}
+          />
+          <TextField
+            label="工作镜像"
+            value={image}
+            required
+            onValueChange={setImage}
+          />
           <div className="field">
             <span className="field-label">Docker 位置</span>
             <ChoicePicker
@@ -157,40 +155,28 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
           </div>
           {remote && (
             <>
-              <label>
-                SSH 主机
-                <input
-                  className="field-control"
-                  value={host}
-                  required
-                  onChange={(event) => setHost(event.target.value)}
-                />
-              </label>
-              <label>
-                SSH 用户
-                <input
-                  className="field-control"
-                  value={user}
-                  onChange={(event) => setUser(event.target.value)}
-                />
-              </label>
-              <label>
-                主机密钥文件路径
-                <input
-                  className="field-control"
-                  value={knownHostsFile}
-                  required
-                  onChange={(event) => setKnownHostsFile(event.target.value)}
-                />
-              </label>
-              <label>
-                身份文件路径
-                <input
-                  className="field-control"
-                  value={identityFile}
-                  onChange={(event) => setIdentityFile(event.target.value)}
-                />
-              </label>
+              <TextField
+                label="SSH 主机"
+                value={host}
+                required
+                onValueChange={setHost}
+              />
+              <TextField
+                label="SSH 用户"
+                value={user}
+                onValueChange={setUser}
+              />
+              <TextField
+                label="主机密钥文件路径"
+                value={knownHostsFile}
+                required
+                onValueChange={setKnownHostsFile}
+              />
+              <TextField
+                label="身份文件路径"
+                value={identityFile}
+                onValueChange={setIdentityFile}
+              />
             </>
           )}
         </fieldset>

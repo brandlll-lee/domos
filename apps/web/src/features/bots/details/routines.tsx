@@ -5,7 +5,7 @@ import {
   WORK_TEXT_LENGTH,
 } from "@domos/agent/work/limits";
 import { Button } from "@domos/ui/controls";
-import { TextField } from "@domos/ui/field";
+import { Checkbox, TextField } from "@domos/ui/field";
 import { ChoicePicker } from "@domos/ui/picker";
 import { useState } from "react";
 import { client } from "../../../client.ts";
@@ -56,7 +56,11 @@ export function RoutinesPanel({
         onSaved={() => setEditing(null)}
       />
       {editing && (
-        <Button variant="ghost" onClick={() => setEditing(null)}>
+        <Button
+          variant="secondary"
+          size="small"
+          onClick={() => setEditing(null)}
+        >
           取消编辑
         </Button>
       )}
@@ -80,6 +84,7 @@ export function RoutinesPanel({
             <div className="detail-actions">
               <Button
                 variant="secondary"
+                size="small"
                 disabled={action.busy}
                 onClick={() =>
                   void action.run(
@@ -99,6 +104,7 @@ export function RoutinesPanel({
               </Button>
               <Button
                 variant="ghost"
+                size="small"
                 disabled={action.busy}
                 onClick={() =>
                   void action.run(["routines.test", routine.id], (requestId) =>
@@ -114,6 +120,7 @@ export function RoutinesPanel({
               </Button>
               <Button
                 variant="ghost"
+                size="small"
                 disabled={action.busy}
                 onClick={() => setEditing(routine)}
               >
@@ -121,6 +128,7 @@ export function RoutinesPanel({
               </Button>
               <Button
                 variant="ghost"
+                size="small"
                 disabled={action.busy}
                 onClick={() => {
                   if (window.confirm("删除定时任务？已开始的工作仍会完成。"))
@@ -292,22 +300,25 @@ function RoutineEditor({
         {skills
           .filter((skill) => skill.enabledBots.includes(botId))
           .map((skill) => (
-            <label className="detail-check" key={skill.id}>
-              <input
-                type="checkbox"
-                checked={skillIds.includes(skill.id)}
-                onChange={(event) =>
-                  setSkillIds(
-                    event.target.checked
-                      ? [...skillIds, skill.id]
-                      : skillIds.filter((id) => id !== skill.id),
-                  )
-                }
-              />
-              {skill.name}
-            </label>
+            <Checkbox
+              key={skill.id}
+              label={skill.name}
+              checked={skillIds.includes(skill.id)}
+              disabled={action.busy}
+              onCheckedChange={(checked) =>
+                setSkillIds(
+                  checked
+                    ? [...skillIds, skill.id]
+                    : skillIds.filter((id) => id !== skill.id),
+                )
+              }
+            />
           ))}
-        <Button type="submit">{routine ? "保存并暂停" : "保存为暂停"}</Button>
+        <div className="form-actions">
+          <Button type="submit" size="small">
+            {routine ? "保存并暂停" : "保存为暂停"}
+          </Button>
+        </div>
       </fieldset>
     </form>
   );

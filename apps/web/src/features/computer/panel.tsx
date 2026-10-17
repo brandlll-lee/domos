@@ -1,5 +1,7 @@
 import { Button } from "@domos/ui/controls";
 import { ChoicePicker } from "@domos/ui/picker";
+import { SettingRow } from "@domos/ui/setting-row";
+import { ArrowUpRightIcon } from "@phosphor-icons/react/dist/csr/ArrowUpRight";
 import { useSettings } from "../settings/context.ts";
 import { computerLabels } from "./copy.ts";
 import type { useComputer } from "./use-computer.ts";
@@ -69,9 +71,18 @@ export function ComputerPanel({
           {error}
         </p>
       )}
-      <Button variant="secondary" onClick={() => settings.open("computers")}>
-        管理电脑
-      </Button>
+      <div className="settings-card">
+        <SettingRow title="电脑目录" description="添加电脑，管理连接与授权。">
+          <Button
+            variant="secondary"
+            size="small"
+            onClick={() => settings.open("computers")}
+          >
+            管理电脑
+            <ArrowUpRightIcon size={14} />
+          </Button>
+        </SettingRow>
+      </div>
     </section>
   );
 }

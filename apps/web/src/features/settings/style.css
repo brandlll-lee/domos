@@ -151,31 +151,6 @@
 .settings-content p {
   margin-block: 0;
 }
-.settings-content .hosting-stack > .button {
-  justify-self: start;
-}
-.settings-group {
-  display: grid;
-  gap: var(--space-4);
-}
-.settings-group + .settings-group {
-  margin-top: var(--space-6);
-}
-.settings-card {
-  padding: var(--space-4);
-  border-radius: var(--radius-control);
-  background: var(--color-control);
-}
-.settings-card .hosting-device + .hosting-device,
-.settings-card .setting-row + .setting-row {
-  border-top: 1px solid var(--color-divider);
-}
-.settings-card > .setting-row:first-child {
-  padding-top: 0;
-}
-.settings-card > .setting-row:last-child {
-  padding-bottom: 0;
-}
 .settings-page[data-compact] {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
@@ -215,8 +190,4 @@
 }
 .settings-page[data-compact] .settings-header {
   padding-block: var(--space-6);
-}
-.settings-page[data-compact] .setting-row {
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3);
 }

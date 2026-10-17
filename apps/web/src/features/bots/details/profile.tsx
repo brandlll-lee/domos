@@ -19,6 +19,10 @@ export function ProfileEditor({
   const [name, setName] = useState(profile.name);
   const [instructions, setInstructions] = useState(profile.instructions);
   const [avatar, setAvatar] = useState(profile.avatar);
+  const dirty =
+    name !== profile.name ||
+    instructions !== profile.instructions ||
+    avatar !== profile.avatar;
   const input = {
     botId: profile.id,
     name,
@@ -65,18 +69,25 @@ export function ProfileEditor({
           multiline
           maxLength={WORK_TEXT_LENGTH}
         />
-        <Button
-          type="submit"
-          variant="secondary"
-          disabled={
-            !name.trim() ||
-            (name === profile.name &&
-              instructions === profile.instructions &&
-              avatar === profile.avatar)
-          }
-        >
-          保存身份
-        </Button>
+        {dirty && (
+          <div className="form-actions">
+            <Button
+              type="button"
+              variant="secondary"
+              size="small"
+              onClick={() => {
+                setName(profile.name);
+                setInstructions(profile.instructions);
+                setAvatar(profile.avatar);
+              }}
+            >
+              还原
+            </Button>
+            <Button type="submit" size="small" disabled={!name.trim()}>
+              保存身份
+            </Button>
+          </div>
+        )}
       </fieldset>
     </form>
   );

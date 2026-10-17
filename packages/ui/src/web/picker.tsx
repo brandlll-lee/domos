@@ -91,11 +91,13 @@ export function SearchPicker({
   placeholder,
   searchLabel,
   emptyLabel,
+  size = "default",
 }: PickerProps & {
   placeholder: string;
   readOnly?: boolean;
   searchLabel: string;
   emptyLabel: string;
+  size?: "default" | "small";
 }) {
   const collection = useMemo(
     () =>
@@ -115,7 +117,11 @@ export function SearchPicker({
         if (next !== null) onValueChange(next);
       }}
     >
-      <Combobox.Trigger className="picker-trigger" aria-label={label}>
+      <Combobox.Trigger
+        className="picker-trigger"
+        aria-label={label}
+        data-size={size}
+      >
         <Combobox.Value>
           {(selected: string | null) => (
             <span className="picker-value">
