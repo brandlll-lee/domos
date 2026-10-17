@@ -2,10 +2,11 @@
 
 # Domos
 
-Your personal AI teammates, with memory and a place to work.
+An AI team that lives on your computer.
 
-Chat with your Bots. Give them files and tasks. Return to the same conversations later.
-Run Domos on your computer, or connect to an existing Domos.
+Domos is an open-source AI team you can run yourself. Each teammate has a role, memory, and a place to work. They use tools, work with files, and run tasks on your schedule. Hand off the work and step away. They can keep working in the background and pick up where they left off.
+
+Run Domos on your own computer or server. Keep it running, and your team stays ready around the clock.
 
 **English** · [简体中文](README.zh-CN.md)
 
