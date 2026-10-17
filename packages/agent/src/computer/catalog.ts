@@ -17,6 +17,7 @@ import {
 } from "../runtime/config.ts";
 import { requiredText, requireRevision, WorkError } from "../work/state.ts";
 import { Computer, type ComputerStatus } from "./index.ts";
+import { ComputerPreparation } from "./preparation.ts";
 import {
   type ComputerRecord,
   ComputersDoc,
@@ -28,6 +29,8 @@ export type ComputerView = ComputerStatus & {
   name: string;
   authorized: boolean;
   capabilities: { commands: boolean; files: boolean; desktop: false };
+  scope?: ComputerRecord["scope"];
+  busy: boolean;
 };
 
 export class Computers {
@@ -35,11 +38,13 @@ export class Computers {
   private readonly targets = new Map<string, Computer>();
   private readonly changing = new Set<string>();
   private readonly transfers = new Map<number, number>();
+  private readonly starting = new Map<string, Promise<void>>();
   private tools: readonly ToolRegistration[] = [];
   private shells: readonly ToolRegistration[] = [];
   private readonly events = new EventEmitter();
 
   readonly config: RuntimeConfig;
+  preparation!: ComputerPreparation;
   constructor(config: RuntimeConfig) {
     this.config = config;
   }
@@ -59,6 +64,7 @@ export class Computers {
     legacy = false,
   ) {
     this.harness = harness;
+    this.preparation = new ComputerPreparation(harness, this);
     if (await harness.snapshot(ComputersDoc, context)) return;
     if (legacy) await new Computer(this.config).bind();
     const contacts = await bots.list(context);
@@ -93,6 +99,8 @@ export class Computers {
       throw new WorkError("CONFLICT", "工作电脑正在操作中。");
     if (item && !item.authorized)
       throw new WorkError("BAD_REQUEST", "请先授权这台电脑。");
+    if (item?.scope?.kind === "dedicated" && item.scope.botId !== botId)
+      throw new WorkError("BAD_REQUEST", "这台独立电脑属于另一个 Bot。");
     doc.bindings[String(botId)] = {
       computerId: id,
       revision: 0,
@@ -169,6 +177,8 @@ export class Computers {
       id: item.id,
       name: item.name,
       authorized: item.authorized,
+      scope: item.scope,
+      busy: this.changing.has(item.id),
       capabilities: { commands: available, files: available, desktop: false },
     };
   }
@@ -202,6 +212,7 @@ export class Computers {
     const item = requireComputer(doc?.items ?? [], id);
     if (!item.authorized)
       throw new WorkError("BAD_REQUEST", "这台电脑的授权已撤销。");
+    if (item.scope) await this.ensureReady(id, context);
     if (this.changing.has(id))
       throw new WorkError("CONFLICT", "工作电脑正在操作中。");
     return this.target(item).workspace(botId, context);
@@ -214,7 +225,11 @@ export class Computers {
   }
 
   async preflight(botId: number, context: Context) {
-    const binding = await this.binding(botId, context);
+    let binding = await this.binding(botId, context);
+    if (binding.computer?.authorized && binding.computer.scope) {
+      await this.ensureReady(binding.computer.id, context);
+      binding = await this.binding(botId, context);
+    }
     if (binding.computer && !binding.computer.capabilities.commands)
       throw new WorkError(
         "BAD_REQUEST",
@@ -255,6 +270,25 @@ export class Computers {
     if (this.transfers.has(botId))
       throw new WorkError("CONFLICT", "请等待文件传输或消息提交完成。");
     await requireIdle(tx, botId);
+  }
+
+  async assertIdle(botId: number, context: Context) {
+    await this.harness.commit((tx) => this.idle(tx, botId), context);
+  }
+
+  ensureReady(id: string, context: Context) {
+    const existing = this.starting.get(id);
+    if (existing) return existing;
+    const pending = (async () => {
+      const doc = await this.harness.snapshot(ComputersDoc, context);
+      const item = requireComputer(doc?.items ?? [], id);
+      if (!item.authorized)
+        throw new WorkError("BAD_REQUEST", "这台电脑的授权已撤销。");
+      if ((await this.target(item).status()).state !== "running")
+        await this.manage(id, "start", context);
+    })().finally(() => this.starting.delete(id));
+    this.starting.set(id, pending);
+    return pending;
   }
 
   async assign(
@@ -320,6 +354,8 @@ export class Computers {
       const doc = await tx.doc(ComputersDoc);
       if (id && !requireComputer(doc.items, id).authorized)
         throw new WorkError("BAD_REQUEST", "请先授权这台电脑。");
+      if (id && requireComputer(doc.items, id).scope?.kind === "dedicated")
+        throw new WorkError("BAD_REQUEST", "独立电脑不能设为共享电脑。");
       doc.defaultId = id;
     }, context);
     return this.list(context);
@@ -337,6 +373,7 @@ export class Computers {
     if (this.changing.has(id))
       throw new WorkError("CONFLICT", "工作电脑正在操作中。");
     this.changing.add(id);
+    this.events.emit("change");
     try {
       await this.target(item).manage(action, context, () =>
         this.harness.commit(async (tx) => {

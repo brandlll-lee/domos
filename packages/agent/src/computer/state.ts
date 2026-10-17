@@ -13,7 +13,17 @@ export type ComputerRecord = {
   name: string;
   config: ComputerConfig;
   authorized: boolean;
+  scope?: { kind: "shared" } | { kind: "dedicated"; botId: number };
 };
+
+export const ComputerSetupDoc = defineDoc<{
+  host: "process" | "docker" | null;
+}>({
+  kind: "domos.computer-setup",
+  version: 1,
+  scope: "session",
+  initial: () => ({ host: null }),
+});
 
 export const ComputersDoc = defineDoc<{
   items: ComputerRecord[];

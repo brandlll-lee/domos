@@ -31,6 +31,33 @@ export function computerRouter(bots: Bots, computers?: Computers) {
   const id = z.string().min(1);
   const context = BACKGROUND_CONTEXT;
   return {
+    setup: os.handler(() =>
+      access((target) => target.preparation.state(context)),
+    ),
+    configure: os
+      .input(
+        botTarget.extend({
+          host: z.enum(["process", "docker"]),
+          revision: z.number().int().nonnegative(),
+          requestId: z.uuid(),
+        }),
+      )
+      .handler(async ({ input }) => {
+        await botConversation(bots, input.botId);
+        return access((target) => target.preparation.configure(input, context));
+      }),
+    prepare: os
+      .input(
+        botTarget.extend({
+          mode: z.enum(["shared", "dedicated"]),
+          revision: z.number().int().nonnegative(),
+          requestId: z.uuid(),
+        }),
+      )
+      .handler(async ({ input }) => {
+        await botConversation(bots, input.botId);
+        return access((target) => target.preparation.prepare(input, context));
+      }),
     list: os.handler(() => access((target) => target.list(context))),
     add: os
       .input(

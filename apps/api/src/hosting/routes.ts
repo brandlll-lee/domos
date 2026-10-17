@@ -140,6 +140,7 @@ export function hostingApp(options: {
   protectedApp.use("/computer/add", administrator);
   protectedApp.use("/computer/authorize", administrator);
   protectedApp.use("/computer/default", administrator);
+  protectedApp.use("/computer/configure", administrator);
   protectedApp.all("*", async (c) => {
     const tracked = sessions.track(c.get("device"));
     const signal = AbortSignal.any([c.req.raw.signal, tracked.signal]);

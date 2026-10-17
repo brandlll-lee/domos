@@ -82,6 +82,7 @@ const schema = z
     staticDir: z.string().min(1).optional(),
     deployment: z.enum(["native", "container"]).default("native"),
     computer: computerSchema.default({ kind: "process" }),
+    workComputer: computerSchema.options[1].optional(),
   })
   .strict();
 
@@ -105,6 +106,12 @@ export function parseConfig(
     isAbsolute(value) ? value : resolve(base, value);
   if (value.computer.kind === "docker" && value.computer.ssh) {
     const target = value.computer.ssh;
+    target.knownHostsFile = path(target.knownHostsFile);
+    if (target.identityFile) target.identityFile = path(target.identityFile);
+    if (target.configFile) target.configFile = path(target.configFile);
+  }
+  if (value.workComputer?.ssh) {
+    const target = value.workComputer.ssh;
     target.knownHostsFile = path(target.knownHostsFile);
     if (target.identityFile) target.identityFile = path(target.identityFile);
     if (target.configFile) target.configFile = path(target.configFile);
