@@ -3,7 +3,6 @@ import { parseConfig } from "@domos/agent/config";
 import {
   type InstallProgress,
   prepareLocalInstallation,
-  prepareWorkImages,
   type Release,
   waitForService,
   workComputer,
@@ -43,7 +42,6 @@ export class LocalHost {
     signal: AbortSignal,
   ) {
     await this.pending;
-    await prepareWorkImages(this.release, progress, signal);
     const prepared = await prepareLocalInstallation(
       this.directory,
       this.release,

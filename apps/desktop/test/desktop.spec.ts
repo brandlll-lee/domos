@@ -7,6 +7,55 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 
+test("native setup starts and resumes with Docker unavailable", async ({
+  playwright,
+}) => {
+  const directory = await mkdtemp(join(tmpdir(), "domos-native-"));
+  const executablePath = createRequire(
+    new URL("../package.json", import.meta.url),
+  )("electron") as string;
+  const args = [
+    fileURLToPath(new URL("./entry.mjs", import.meta.url)),
+    `--test-data-dir=${directory}`,
+  ];
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(
+      (entry): entry is [string, string] => entry[1] !== undefined,
+    ),
+  );
+  delete env.ELECTRON_RUN_AS_NODE;
+  env.PATH = directory;
+  let desktop = await playwright._electron.launch({
+    executablePath,
+    args,
+    env,
+  });
+  try {
+    const setup = await desktop.firstWindow();
+    await expect(
+      setup.getByRole("heading", { name: "欢迎使用 Domos" }),
+    ).toBeVisible();
+    const opened = desktop.waitForEvent("window");
+    await setup.getByRole("button", { name: "继续", exact: true }).click();
+    const page = await opened;
+    await expect(
+      page.getByRole("heading", { name: "连接对话模型" }),
+    ).toBeVisible();
+    const origin = new URL(page.url()).origin;
+    await desktop.close();
+    desktop = await playwright._electron.launch({ executablePath, args, env });
+    const resumed = await desktop.waitForEvent("window", {
+      predicate: (window) => window.url().startsWith(origin),
+    });
+    await expect(
+      resumed.getByRole("heading", { name: "连接对话模型" }),
+    ).toBeVisible();
+  } finally {
+    await desktop.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("desktop opens setup, pairs a remote Domos and restores the connection", async ({
   playwright,
 }, testInfo) => {
@@ -48,15 +97,10 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     await expect(
       setup.getByRole("heading", { name: "欢迎使用 Domos" }),
     ).toBeVisible();
-    await setup.getByRole("button", { name: "继续", exact: true }).click();
-    await expect(setup.getByRole("alert")).toContainText("Docker Desktop");
-    await expect(
-      setup.getByRole("button", { name: "重试", exact: true }),
-    ).toBeEnabled();
     await setup.getByLabel("连接已有 Domos", { exact: false }).check();
     await setup.getByLabel("服务器地址").fill(`http://127.0.0.1:${ready.port}`);
     const opened = desktop.waitForEvent("window");
-    await setup.getByRole("button", { name: "重试", exact: true }).click();
+    await setup.getByRole("button", { name: "继续", exact: true }).click();
     const page = await opened;
     await expect(
       page.getByRole("heading", { name: "连接这个 Domos" }),
