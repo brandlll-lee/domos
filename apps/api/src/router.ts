@@ -139,6 +139,8 @@ export function createRouter(
             : submit());
           return { id: submission.id };
         } catch (error) {
+          if (error instanceof WorkError)
+            throw new ORPCError(error.code, { message: error.message });
           if (error instanceof ConversationBusy)
             throw new ORPCError("CONFLICT");
           throw error;

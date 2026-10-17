@@ -18,15 +18,17 @@ type Selection = {
 export type ComputerMode = "shared" | "dedicated";
 
 export class ComputerPreparation {
+  private readonly harness: Harness;
+  private readonly computers: Computers;
   private readonly pending = new Map<
     number,
     { requestId: string; result: ReturnType<Computers["binding"]> }
   >();
 
-  constructor(
-    private readonly harness: Harness,
-    private readonly computers: Computers,
-  ) {}
+  constructor(harness: Harness, computers: Computers) {
+    this.harness = harness;
+    this.computers = computers;
+  }
 
   private get template() {
     const { workComputer, computer } = this.computers.config;
@@ -41,13 +43,11 @@ export class ComputerPreparation {
     const shared = directory?.items.find(
       (item) => item.id === directory.defaultId,
     );
-    const host =
-      setup?.host ??
-      (shared
-        ? shared.config.kind === "process"
-          ? "process"
-          : "docker"
-        : null);
+    const host = shared
+      ? shared.config.kind === "process"
+        ? "process"
+        : "docker"
+      : (setup?.host ?? null);
     return {
       host,
       canIsolate: Boolean(this.template),

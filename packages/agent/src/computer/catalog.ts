@@ -253,6 +253,7 @@ export class Computers {
   }
 
   async transfer<T>(botId: number, action: () => Promise<T>, context: Context) {
+    await this.preflight(botId, context);
     await this.harness.commit(async (tx) => {
       await tx.doc(ComputersDoc);
       this.transfers.set(botId, (this.transfers.get(botId) ?? 0) + 1);

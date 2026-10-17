@@ -175,7 +175,16 @@ test("private preparation isolates volumes, refuses foreign bindings and retries
   if (!ready.computerId) throw new Error("Expected an assigned computer");
   state.states.set(ready.computerId, "stopped");
   await state.reopen();
-  await state.runtime.computer.preflight(conversation.id, context);
+  await state.runtime.computer.transfer(
+    conversation.id,
+    async () => {
+      expect(
+        (await state.runtime.computer.binding(conversation.id, context))
+          .computer?.state,
+      ).toBe("running");
+    },
+    context,
+  );
   expect(
     (await state.runtime.computer.binding(conversation.id, context)).computer
       ?.state,
