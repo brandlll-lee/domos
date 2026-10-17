@@ -24,7 +24,7 @@ services:
     restart: unless-stopped
     depends_on:
       controller:
-        condition: service_started
+        condition: service_healthy
   controller:
     build:
       context: ..
@@ -41,7 +41,10 @@ services:
     stop_grace_period: 30s
     restart: unless-stopped
     healthcheck:
-      disable: true
+      test: ["CMD", "node", "apps/controller/src/health.ts", "/control/controller.json"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
 volumes:
   app-data:
   control-data:

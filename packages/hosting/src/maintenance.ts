@@ -35,13 +35,46 @@ import {
   restoreComputers,
   storedComputers,
 } from "@domos/agent/computer/storage";
-import { type DockerConfig, parseConfig } from "@domos/agent/config";
+import {
+  type ComputerConfig,
+  type DockerConfig,
+  parseConfig,
+  type RuntimeConfig,
+} from "@domos/agent/config";
 import { acquireDataLease } from "@domos/agent/lease";
 import { create, extract } from "tar";
 import { runCommand, writeConfiguration } from "./install.ts";
 
 const magic = Buffer.from("DOMOS001");
 const headerSize = magic.length + 16 + 12;
+
+async function archiveTarget(
+  directory: string,
+  config: RuntimeConfig,
+  computer: ComputerConfig,
+): Promise<DockerConfig | undefined> {
+  if (computer.kind === "process") return;
+  if (computer.kind === "docker") return computer;
+  const managed =
+    config.workComputer?.kind === "controller"
+      ? config.workComputer
+      : config.computer;
+  if (
+    managed.kind !== "controller" ||
+    managed.endpoint !== computer.endpoint ||
+    managed.credentialFile !== computer.credentialFile
+  )
+    throw new Error("请先从远端电脑导出工作文件。");
+  const controllerFile = join(directory, "controller.json");
+  const controller = parseConfig(
+    { computer: JSON.parse(await readFile(controllerFile, "utf8")).computer },
+    controllerFile,
+  ).computer;
+  if (controller.kind !== "docker") throw new Error("工作电脑配置无效。");
+  return computer.id === controller.id
+    ? controller
+    : { ...controller, id: computer.id, volume: `domos-${computer.id}-work` };
+}
 
 async function workArchive(
   directory: string,
@@ -178,9 +211,16 @@ export async function backupInstallation(
     );
     const computerArchives: { id: string; archive: string }[] = [];
     for (const [index, item] of computers.entries()) {
-      if (item.config.kind !== "docker") continue;
+      if (
+        item.config.kind === "controller" &&
+        config.computer.kind === "controller" &&
+        item.config.id === config.computer.id
+      )
+        continue;
+      const target = await archiveTarget(root, config, item.config);
+      if (!target) continue;
       const archive = `computer-${index}.tar`;
-      await archiveComputer(item.config, join(stage, archive), false);
+      await archiveComputer(target, join(stage, archive), false);
       computerArchives.push({ id: item.id, archive });
     }
     await cp(root, join(stage, "installation"), {
@@ -194,7 +234,8 @@ export async function backupInstallation(
     });
     if (config.dataDir !== join(root, "data"))
       throw new Error("请先将持久数据迁入托管安装目录。");
-    await workArchive(root, join(stage, "work.tar"), false);
+    if (config.computer.kind === "controller")
+      await workArchive(root, join(stage, "work.tar"), false);
     const plaintext = join(stage, "backup.tar.gz");
     const entries = [
       "manifest.json",
@@ -308,6 +349,7 @@ export async function restoreInstallation(
     const restored = join(stage, "installation");
     const filename = join(restored, "domos.config.json");
     const config = JSON.parse(await readFile(filename, "utf8"));
+    const sourceConfig = parseConfig(config, filename);
     config.dataDir = join(target, "data");
     if (config.computer.kind === "controller")
       config.computer.credentialFile = join(target, "controller-token");
@@ -317,15 +359,24 @@ export async function restoreInstallation(
       if (!/^computer-[0-9]+[.]tar$/.test(entry.archive))
         throw new Error("电脑备份路径无效。");
       const item = computers.find((item) => item.id === entry.id);
-      if (item?.config.kind !== "docker")
+      if (!item || item.config.kind === "process")
         throw new Error("电脑备份配置不完整。");
-      const volume = await archiveComputer(
+      const targetConfig = await archiveTarget(
+        restored,
+        sourceConfig,
         item.config,
+      );
+      if (!targetConfig) throw new Error("电脑备份配置不完整。");
+      const volume = await archiveComputer(
+        targetConfig,
         join(stage, entry.archive),
         true,
       );
       restoredVolumes.push(volume);
-      item.config = volume.config;
+      item.config =
+        item.config.kind === "controller"
+          ? { ...item.config, id: volume.config.id }
+          : volume.config;
     }
     if (manifest.work) {
       const controllerFile = join(restored, "controller.json");

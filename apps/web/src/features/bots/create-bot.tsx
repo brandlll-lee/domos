@@ -9,6 +9,7 @@ import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { useRef, useState } from "react";
 import { client } from "../../client.ts";
 import { rejectionMessage } from "../chat/request-error.ts";
+import { ComputerLocation } from "../computer/location.tsx";
 import { modelItems, modelKey, useModels } from "../models/use-models.ts";
 
 export function CreateBot({
@@ -74,12 +75,28 @@ function BotForm({
   const [avatar, setAvatar] = useState(() => crypto.randomUUID());
   const [selection, setSelection] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [created, setCreated] = useState<{
+    bot: Bot;
+    setup: Awaited<ReturnType<typeof client.computer.setup>>;
+  }>();
   const request = useRef<{ id: string; payload: string } | null>(null);
   const preferred = choices?.find(
     (choice) => model && modelKey(choice) === modelKey(model),
   );
   const selected = selection ?? (preferred ? modelKey(preferred) : "");
   const choice = choices?.find((item) => modelKey(item) === selected);
+  if (created)
+    return (
+      <div className="detail-stack">
+        <h2>Bot 在哪里工作？</h2>
+        <ComputerLocation
+          botId={created.bot.id}
+          {...created.setup}
+          onBusyChange={onSavingChange}
+          onReady={() => onCreated(created.bot)}
+        />
+      </div>
+    );
   return (
     <form
       className="bot-form"
@@ -100,11 +117,13 @@ function BotForm({
         onSavingChange(true);
         setError(null);
         try {
+          const setup = await client.computer.setup();
           const bot = await client.bots.create({
             ...input,
+            computerId: null,
             requestId: request.current.id,
           });
-          onCreated(bot);
+          setCreated({ bot, setup });
         } catch (cause) {
           setError(
             rejectionMessage(cause) ?? "创建未确认。请重试，系统会核对原请求。",

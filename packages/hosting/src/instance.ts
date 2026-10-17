@@ -5,6 +5,7 @@ export const instanceSchema = z
     id: z.uuid(),
     name: z.string().trim().min(1).max(80),
     mode: z.enum(["local", "existing"]),
+    runtime: z.enum(["native", "docker"]).optional(),
     url: z.url(),
   })
   .strict();
@@ -27,7 +28,10 @@ export function serverOrigin(input: string) {
 export async function probeInstance(input: string, signal?: AbortSignal) {
   const origin = serverOrigin(input);
   const response = await fetch(new URL("/hosting/info", origin), {
-    signal: signal ?? AbortSignal.timeout(10_000),
+    signal: AbortSignal.any([
+      ...(signal ? [signal] : []),
+      AbortSignal.timeout(10_000),
+    ]),
     redirect: "error",
   });
   if (!response.ok) throw new Error("无法连接 Domos。");

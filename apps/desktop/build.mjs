@@ -94,10 +94,50 @@ for (const name of ["proxy.Dockerfile", "squid.conf"])
 await cp(join(root, "deploy/licenses"), join(runtime, "work/deploy/licenses"), {
   recursive: true,
 });
+const service = join(runtime, "service");
+await mkdir(service, { recursive: true });
+for (const name of [
+  "package.json",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "domos.config.json",
+  ".dockerignore",
+])
+  await cp(join(root, name), join(service, name));
+for (const name of [
+  "apps/api",
+  "apps/cli",
+  "apps/controller",
+  "apps/web",
+  "packages/agent",
+  "packages/hosting",
+  "packages/ui",
+])
+  await cp(join(root, name), join(service, name), {
+    recursive: true,
+    filter: (path) =>
+      !path
+        .split(/[\\/]/)
+        .some((part) =>
+          ["node_modules", "dist", "test", "runtime", "release"].includes(part),
+        ),
+  });
+await mkdir(join(service, "apps/desktop"), { recursive: true });
+await cp(
+  join(here, "package.json"),
+  join(service, "apps/desktop/package.json"),
+);
+await mkdir(join(service, "deploy"), { recursive: true });
+for (const name of ["Dockerfile", "release.json", "NOTICE", "licenses"])
+  await cp(join(root, "deploy", name), join(service, "deploy", name), {
+    recursive: true,
+  });
 await writeFile(
   join(runtime, "release.json"),
   JSON.stringify({
     version: release.version,
+    serviceImage: release.serviceImage,
+    serviceBuild: { context: "service", dockerfile: "deploy/Dockerfile" },
     workImage: release.workImage,
     proxyImage: release.proxyImage,
     proxyBuild: { context: "work", dockerfile: "deploy/proxy.Dockerfile" },

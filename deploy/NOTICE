@@ -13,6 +13,11 @@ resource configuration from
 infra/sandboxes/supervisor/src/computer-spec.ts:containerCreateOptions.
 Domos uses the Docker CLI and Pi execution environments.
 
+packages/hosting/src/stack.ts adapts the managed startup sequence from
+apps/desktop/src/local-stack.ts.
+apps/controller/src/server.ts adapts per-computer lifecycle serialization from
+infra/sandboxes/supervisor/src/index.ts.
+
 Pi
 Copyright (c) 2025 Mario Zechner
 Licensed under the MIT License. See licenses/pi.txt.

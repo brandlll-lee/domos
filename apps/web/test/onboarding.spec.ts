@@ -37,10 +37,23 @@ test("first use connects a model and authorizes a computer before opening chat",
     await page.getByRole("option", { name: "Faux Model", exact: true }).click();
     await setup.getByRole("button", { name: "保存模型", exact: true }).click();
     await expect(
+      setup.getByRole("heading", { name: "认识你的第一个 Bot" }),
+    ).toBeVisible();
+    await setup.getByRole("button", { name: "继续", exact: true }).click();
+    const service = setup.getByRole("button", { name: /^使用服务所在电脑/ });
+    const title = await service.locator("strong").boundingBox();
+    const description = await service.locator("span").boundingBox();
+    expect(description?.y).toBeGreaterThan(
+      (title?.y ?? 0) + (title?.height ?? 0),
+    );
+    await page.screenshot({
+      path: testInfo.outputPath("work-environment.png"),
+    });
+    await expect(
       setup.getByRole("heading", { name: "Bot 在哪里工作？" }),
     ).toBeVisible();
     await expect(
-      setup.getByRole("button", { name: /^隔离环境/ }),
+      setup.getByRole("button", { name: /^共用一台隔离电脑/ }),
     ).toBeDisabled();
     await page.route("**/rpc/computer/configure", (route) => route.abort());
     await setup
@@ -68,8 +81,8 @@ test("first use connects a model and authorizes a computer before opening chat",
     await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
     const computer = page.getByRole("complementary", { name: "Domos的详情" });
     await expect(
-      computer.getByRole("button", { name: /^共享电脑/ }),
-    ).toHaveAttribute("aria-pressed", "true");
+      computer.getByText("服务所在电脑", { exact: true }),
+    ).toBeVisible();
     await expect(
       computer.getByText("✓ 可执行命令", { exact: true }),
     ).toBeVisible();

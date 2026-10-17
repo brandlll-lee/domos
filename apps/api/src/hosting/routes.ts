@@ -1,4 +1,7 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import type { RuntimeConfig } from "@domos/agent/config";
+import { desktopSession } from "@domos/hosting/desktop";
 import type { Sessions } from "@domos/hosting/sessions";
 import type { Models } from "@earendil-works/pi-ai";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -55,6 +58,20 @@ export function hostingApp(options: {
     if (result.device.scope === "admin")
       await sessions.removeBootstrap(config.dataDir);
     return c.json({ device: result.device });
+  });
+  app.post("/hosting/desktop", async (c) => {
+    if (!config.desktopCredentialFile) return c.json({}, 404);
+    const token = (await readFile(config.desktopCredentialFile, "utf8")).trim();
+    const hash = (value: string) => createHash("sha256").update(value).digest();
+    if (
+      token.length < 32 ||
+      !timingSafeEqual(
+        hash(c.req.header("authorization") ?? ""),
+        hash(`Bearer ${token}`),
+      )
+    )
+      return c.json({}, 401);
+    return c.json(await desktopSession(sessions, config.dataDir));
   });
   app.use("/hosting/*", authenticate(sessions));
   app.get("/hosting/session", (c) => c.json({ device: c.get("device") }));

@@ -57,7 +57,5 @@ export function useComputer(
     ),
     assign: (computerId: string | null) =>
       run(() => client.computer.assign({ ...selection(), computerId })),
-    prepare: (mode: "shared" | "dedicated") =>
-      run(() => client.computer.prepare({ ...selection(), mode })),
   };
 }

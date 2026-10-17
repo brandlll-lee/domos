@@ -231,8 +231,20 @@ test("empty chats retain their creation time and compact controls across layouts
   await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
   const details = page.getByRole("complementary", { name: "Domos的详情" });
   await expect(
-    details.getByRole("group", { name: "Bot 运行位置" }),
+    details.getByRole("group", { name: "服务所在电脑" }),
   ).toBeVisible();
+  await details
+    .getByRole("button", { name: "更换工作环境", exact: true })
+    .click();
+  const environment = page.getByRole("dialog", {
+    name: "Bot 在哪里工作？",
+    exact: true,
+  });
+  await expect(
+    environment.getByRole("group", { name: "此 Bot 的工作环境" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(environment).toBeHidden();
   await page.getByRole("button", { name: "Bot设置", exact: true }).click();
   await expect(
     details.getByRole("textbox", { name: "名字", exact: true }),
@@ -262,6 +274,7 @@ test("contact rows keep their density and searchable previews across selections"
     .getByRole("textbox", { name: "职责与指令", exact: true })
     .fill("整理研究资料");
   await create.getByRole("button", { name: "创建", exact: true }).click();
+  await create.getByRole("button", { name: "授权并继续", exact: true }).click();
   await expect(create).toBeHidden();
   await expect(
     page.getByRole("button", { name: "Bot详情", exact: true }),
@@ -273,6 +286,7 @@ test("contact rows keep their density and searchable previews across selections"
     .getByRole("textbox", { name: "名字", exact: true })
     .fill(longName);
   await create.getByRole("button", { name: "创建", exact: true }).click();
+  await create.getByRole("button", { name: "授权并继续", exact: true }).click();
   await expect(create).toBeHidden();
   await expect(
     page.getByRole("button", { name: "Bot详情", exact: true }),

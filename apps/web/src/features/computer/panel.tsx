@@ -6,7 +6,6 @@ import { useState } from "react";
 import { useSettings } from "../settings/context.ts";
 import { computerLabels } from "./copy.ts";
 import { ComputerLocation } from "./location.tsx";
-import { ComputerModes } from "./modes.tsx";
 import type { useComputer } from "./use-computer.ts";
 
 export function ComputerPanel({
@@ -16,8 +15,7 @@ export function ComputerPanel({
   computer: ReturnType<typeof useComputer>;
   botId: number;
 }) {
-  const { status, busy, error, setup, refresh, prepare, assign, choices } =
-    computer;
+  const { status, busy, error, setup, refresh, assign, choices } = computer;
   const settings = useSettings();
   const [location, setLocation] = useState(false);
   const [preparing, setPreparing] = useState(false);
@@ -31,26 +29,19 @@ export function ComputerPanel({
       <p className="detail-note">
         选择此 Bot 使用的电脑。Domos 会自动准备并连接。
       </p>
-      {setup?.host ? (
-        <ComputerModes
-          value={
-            status?.scope?.kind ??
-            (status?.id === setup.sharedId ? "shared" : undefined)
-          }
-          disabled={busy || Boolean(status?.busy)}
-          canIsolate={setup.host === "docker" && setup.canIsolate}
-          onChange={(mode) => void prepare(mode)}
-        />
-      ) : settings.admin && setup ? (
+      {!status && settings.admin && setup ? (
         <ComputerLocation
           botId={botId}
           canIsolate={setup.canIsolate}
+          deployment={setup.deployment}
           onReady={ready}
         />
       ) : (
-        <p role="status">
-          {setup ? "请让管理员选择运行位置。" : "正在读取工作环境…"}
-        </p>
+        !status && (
+          <p role="status">
+            {setup ? "请让管理员选择运行位置。" : "正在读取工作环境…"}
+          </p>
+        )
       )}
       {busy && <p role="status">正在准备并连接电脑…</p>}
       {status && (
@@ -86,14 +77,14 @@ export function ComputerPanel({
         </p>
       )}
       <div className="form-actions">
-        {settings.admin && setup?.host && (
+        {settings.admin && status && setup && (
           <Button
             variant="secondary"
             size="small"
-            disabled={busy}
+            disabled={busy || status.busy}
             onClick={() => setLocation(true)}
           >
-            更改运行位置
+            更换工作环境
           </Button>
         )}
         <Button
@@ -139,12 +130,13 @@ export function ComputerPanel({
           if (!preparing) setLocation(open);
         }}
         title="Bot 在哪里工作？"
-        description="变更只应用到此 Bot。新 Bot 会使用新的共享电脑。"
+        description="选择只应用到此 Bot。"
       >
         {setup && (
           <ComputerLocation
             botId={botId}
             canIsolate={setup.canIsolate}
+            deployment={setup.deployment}
             onReady={ready}
             onBusyChange={setPreparing}
           />

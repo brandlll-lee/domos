@@ -10,6 +10,10 @@ export type InstallProgress = { phase: string; message: string };
 export const releaseSchema = z
   .object({
     version: z.string(),
+    serviceImage: z.string().min(1).optional(),
+    serviceBuild: z
+      .object({ context: z.string(), dockerfile: z.string() })
+      .optional(),
     workImage: z.string().min(1),
     proxyImage: z.string().min(1).optional(),
     proxyBuild: z
@@ -70,7 +74,7 @@ export async function runCommand(
   });
 }
 
-async function allocatePort() {
+export async function allocatePort() {
   const server = createServer();
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);

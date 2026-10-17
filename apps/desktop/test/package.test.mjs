@@ -15,6 +15,18 @@ test("the Windows distribution contains its server dependencies and starts its p
     "../release/win-unpacked/resources/runtime",
   );
   const entry = join(runtime, "server.mjs");
+  const release = JSON.parse(
+    await readFile(join(runtime, "release.json"), "utf8"),
+  );
+  const context = join(runtime, release.serviceBuild.context);
+  for (const path of [
+    release.serviceBuild.dockerfile,
+    "pnpm-lock.yaml",
+    "apps/controller/src/health.ts",
+    "packages/hosting/src/stack.ts",
+    "packages/ui/assets/icon.png",
+  ])
+    assert.ok(await readFile(join(context, path)));
   for (const dependency of [
     "@earendil-works/pi-ai/models",
     "@earendil-works/pi-env",

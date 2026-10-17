@@ -9,7 +9,7 @@ import { expect, test } from "@playwright/test";
 
 test("native setup starts and resumes with Docker unavailable", async ({
   playwright,
-}) => {
+}, testInfo) => {
   const directory = await mkdtemp(join(tmpdir(), "domos-native-"));
   const executablePath = createRequire(
     new URL("../package.json", import.meta.url),
@@ -35,6 +35,32 @@ test("native setup starts and resumes with Docker unavailable", async ({
     await expect(
       setup.getByRole("heading", { name: "欢迎使用 Domos" }),
     ).toBeVisible();
+    await desktop.evaluate(({ nativeTheme }) => {
+      nativeTheme.themeSource = "dark";
+    });
+    await setup.emulateMedia({ colorScheme: "dark" });
+    await expect(setup.locator("body")).toHaveCSS(
+      "background-color",
+      "rgb(12, 12, 13)",
+    );
+    await setup.screenshot({
+      path: testInfo.outputPath("service-choice-dark.png"),
+    });
+    await desktop.evaluate(({ nativeTheme }) => {
+      nativeTheme.themeSource = "light";
+    });
+    await setup.emulateMedia({ colorScheme: "light" });
+    await expect(setup.locator("body")).toHaveCSS(
+      "background-color",
+      "rgb(255, 255, 255)",
+    );
+    await setup.screenshot({
+      path: testInfo.outputPath("service-choice-light.png"),
+    });
+    await setup.getByLabel("在 Docker 中运行", { exact: false }).check();
+    await setup.getByRole("button", { name: "继续", exact: true }).click();
+    await expect(setup.getByRole("alert")).toContainText("Docker Desktop");
+    await setup.getByLabel("直接运行", { exact: false }).check();
     const opened = desktop.waitForEvent("window");
     await setup.getByRole("button", { name: "继续", exact: true }).click();
     const page = await opened;

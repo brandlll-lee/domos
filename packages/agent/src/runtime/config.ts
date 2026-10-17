@@ -81,8 +81,14 @@ const schema = z
     dataDir: z.string().min(1).default("data"),
     staticDir: z.string().min(1).optional(),
     deployment: z.enum(["native", "container"]).default("native"),
+    desktopCredentialFile: z.string().min(1).optional(),
     computer: computerSchema.default({ kind: "process" }),
-    workComputer: computerSchema.options[1].optional(),
+    workComputer: z
+      .discriminatedUnion("kind", [
+        computerSchema.options[1],
+        computerSchema.options[2],
+      ])
+      .optional(),
   })
   .strict();
 
@@ -110,7 +116,7 @@ export function parseConfig(
     if (target.identityFile) target.identityFile = path(target.identityFile);
     if (target.configFile) target.configFile = path(target.configFile);
   }
-  if (value.workComputer?.ssh) {
+  if (value.workComputer?.kind === "docker" && value.workComputer.ssh) {
     const target = value.workComputer.ssh;
     target.knownHostsFile = path(target.knownHostsFile);
     if (target.identityFile) target.identityFile = path(target.identityFile);
@@ -118,6 +124,8 @@ export function parseConfig(
   }
   if (value.computer.kind === "controller")
     value.computer.credentialFile = path(value.computer.credentialFile);
+  if (value.workComputer?.kind === "controller")
+    value.workComputer.credentialFile = path(value.workComputer.credentialFile);
   return {
     ...value,
     configFile: resolve(filename),
@@ -125,6 +133,9 @@ export function parseConfig(
     staticDir: value.staticDir
       ? path(value.staticDir)
       : fileURLToPath(new URL("../../../../apps/web/dist", import.meta.url)),
+    desktopCredentialFile: value.desktopCredentialFile
+      ? path(value.desktopCredentialFile)
+      : undefined,
   };
 }
 

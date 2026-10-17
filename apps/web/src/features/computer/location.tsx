@@ -1,22 +1,32 @@
 import { Button } from "@domos/ui/controls";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { client } from "../../client.ts";
 import "./style.css";
 
 export function ComputerLocation({
   botId,
   canIsolate,
+  deployment,
   onReady,
   onBusyChange,
 }: {
   botId: number;
   canIsolate: boolean;
+  deployment: "native" | "container";
   onReady: () => void;
   onBusyChange?: (busy: boolean) => void;
 }) {
-  const [host, setHost] = useState<"docker" | "process">(
-    canIsolate ? "docker" : "process",
+  const [mode, setMode] = useState<"process" | "shared" | "dedicated">(
+    "process",
   );
+  const [local, setLocal] = useState(false);
+  const request = useRef(crypto.randomUUID());
+  const active = useRef(false);
+  useEffect(() => {
+    void window.domosDesktop
+      ?.state()
+      .then((result) => setLocal(result.value?.mode === "local"));
+  }, []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   return (
@@ -25,58 +35,101 @@ export function ComputerLocation({
       aria-busy={busy}
       onSubmit={async (event) => {
         event.preventDefault();
-        if (busy) return;
+        if (active.current) return;
+        active.current = true;
         setBusy(true);
         onBusyChange?.(true);
         setError("");
         try {
+          if (mode !== "process" && local) {
+            const result = await window.domosDesktop?.prepare();
+            if (result && !result.ok) throw new Error(result.error);
+          }
           const binding = await client.computer.get({ botId });
-          await client.computer.configure({
+          const input = {
             botId,
-            host,
             revision: binding.revision,
-            requestId: crypto.randomUUID(),
-          });
+            requestId: request.current,
+          };
+          if (mode === "process") {
+            const directory = await client.computer.list();
+            const process = directory.items.find(
+              (item) => item.kind === "process" && item.authorized,
+            );
+            if (process)
+              await client.computer.assign({
+                ...input,
+                computerId: process.id,
+              });
+            else await client.computer.configure({ ...input, mode });
+          } else await client.computer.prepare({ ...input, mode });
           onReady();
         } catch (cause) {
           setError(
             cause instanceof Error ? cause.message : "电脑准备未完成。请重试。",
           );
         } finally {
+          active.current = false;
           setBusy(false);
           onBusyChange?.(false);
         }
       }}
     >
-      <fieldset className="computer-options" aria-label="Bot 运行位置">
+      <fieldset className="computer-options" aria-label="此 Bot 的工作环境">
         <Button
           type="button"
           variant="secondary"
           className="computer-option"
-          aria-pressed={host === "docker"}
-          disabled={busy || !canIsolate}
-          onClick={() => setHost("docker")}
+          aria-pressed={mode === "process"}
+          disabled={busy}
+          onClick={() => {
+            setMode("process");
+            request.current = crypto.randomUUID();
+          }}
         >
-          <strong>隔离环境</strong>
-          <span>自动创建 Docker 电脑。Bot 在容器中执行命令和处理文件。</span>
-          {!canIsolate && <span>请让管理员先安装工作镜像。</span>}
+          <strong>
+            {deployment === "container"
+              ? "使用服务容器"
+              : local
+                ? "使用这台电脑"
+                : "使用服务所在电脑"}
+          </strong>
+          <span>使用 Domos 所在环境的文件和命令。</span>
         </Button>
         <Button
           type="button"
           variant="secondary"
           className="computer-option"
-          aria-pressed={host === "process"}
-          disabled={busy}
-          onClick={() => setHost("process")}
+          aria-pressed={mode === "shared"}
+          disabled={busy || !canIsolate}
+          onClick={() => {
+            setMode("shared");
+            request.current = crypto.randomUUID();
+          }}
         >
-          <strong>使用本机</strong>
-          <span>允许 Bot 使用 Domos 所在电脑的命令和文件。</span>
+          <strong>共用一台隔离电脑</strong>
+          <span>与其他 Bot 共用文件。需要 Docker。</span>
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          className="computer-option"
+          aria-pressed={mode === "dedicated"}
+          disabled={busy || !canIsolate}
+          onClick={() => {
+            setMode("dedicated");
+            request.current = crypto.randomUUID();
+          }}
+        >
+          <strong>单独一台隔离电脑</strong>
+          <span>仅供此 Bot 使用。需要 Docker。</span>
         </Button>
       </fieldset>
       <p className="detail-note">
-        {host === "process"
-          ? "工具将使用 Domos 服务的系统权限。仅在信任 Bot 的任务时授权。"
-          : "系统会准备共享电脑。之后可为每个 Bot 切换到独立电脑。"}
+        {mode === "process"
+          ? "确认后，允许 Bot 使用此环境的文件和系统权限。"
+          : "确认后才会下载并准备。聊天记录仍保存在 Domos 中。"}
+        {!canIsolate && " 此服务尚未提供隔离电脑。"}
       </p>
       {busy && <p role="status">正在准备电脑并绑定 Bot…</p>}
       {error && (
@@ -87,11 +140,11 @@ export function ComputerLocation({
       <div className="form-actions">
         <Button
           type="submit"
-          disabled={busy || (host === "docker" && !canIsolate)}
+          disabled={busy || (mode !== "process" && !canIsolate)}
         >
           {busy
             ? "正在准备…"
-            : host === "process"
+            : mode === "process"
               ? "授权并继续"
               : "准备隔离电脑"}
         </Button>

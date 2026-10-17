@@ -2,6 +2,7 @@ const bridge = window.domosSetup;
 const form = document.querySelector("#setup");
 const choices = document.querySelector("#choices");
 const remote = document.querySelector("#remote");
+const localOptions = document.querySelector("#local");
 const address = document.querySelector("#url");
 const name = document.querySelector("#name");
 const saved = document.querySelector("#saved");
@@ -17,10 +18,12 @@ let stage;
 function updateMode() {
   const local = new FormData(form).get("mode") === "local";
   remote.hidden = local;
+  localOptions.hidden = !local;
   address.required = !local;
   name.required = !local;
   error.hidden = true;
   docker.hidden = true;
+  next.textContent = "继续";
 }
 form.addEventListener("change", updateMode);
 saved.addEventListener("change", () => {
@@ -37,12 +40,14 @@ cancel.addEventListener("click", () => bridge.cancel());
 docker.addEventListener("click", () => bridge.docker());
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const local = new FormData(form).get("mode") === "local";
+  const data = new FormData(form);
+  const local = data.get("mode") === "local";
   choices.disabled = true;
   next.disabled = true;
   remote.inert = true;
+  localOptions.disabled = true;
   progress.hidden = false;
-  cancel.hidden = !local;
+  cancel.hidden = false;
   error.hidden = true;
   docker.hidden = true;
   stage = undefined;
@@ -50,7 +55,7 @@ form.addEventListener("submit", async (event) => {
   try {
     const result = await bridge.submit(
       local
-        ? { mode: "local" }
+        ? { mode: "local", runtime: data.get("runtime") }
         : { mode: "existing", url: address.value, name: name.value },
     );
     if (result.cancelled) {
@@ -68,6 +73,7 @@ form.addEventListener("submit", async (event) => {
     choices.disabled = false;
     next.disabled = false;
     remote.inert = false;
+    localOptions.disabled = false;
     progress.hidden = true;
     cancel.hidden = true;
   }
@@ -81,6 +87,10 @@ bridge.state().then((state) => {
     saved.append(option);
   }
   document.querySelector("#saved-label").hidden = !connections.length;
+  if (state.selected?.mode === "local")
+    form.querySelector(
+      `[name="runtime"][value="${state.selected.runtime ?? "native"}"]`,
+    ).checked = true;
   if (!state.prepare && state.selected?.mode === "existing") {
     form.querySelector('[value="existing"]').checked = true;
     address.value = state.selected.url;

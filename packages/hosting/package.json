@@ -6,6 +6,8 @@
     "./store": "./src/store.ts",
     "./credentials": "./src/credentials.ts",
     "./sessions": "./src/sessions.ts",
+    "./desktop": "./src/desktop.ts",
+    "./stack": "./src/stack.ts",
     "./instance": "./src/instance.ts",
     "./install": "./src/install.ts",
     "./maintenance": "./src/maintenance.ts"

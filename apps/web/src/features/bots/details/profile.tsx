@@ -11,10 +11,12 @@ export function ProfileEditor({
   profile,
   action,
   onSaved,
+  submitLabel,
 }: {
   profile: Profile;
   action: WorkAction;
   onSaved: (profile: Profile) => void;
+  submitLabel?: string;
 }) {
   const [name, setName] = useState(profile.name);
   const [instructions, setInstructions] = useState(profile.instructions);
@@ -69,22 +71,24 @@ export function ProfileEditor({
           multiline
           maxLength={WORK_TEXT_LENGTH}
         />
-        {dirty && (
+        {(dirty || submitLabel) && (
           <div className="form-actions">
-            <Button
-              type="button"
-              variant="secondary"
-              size="small"
-              onClick={() => {
-                setName(profile.name);
-                setInstructions(profile.instructions);
-                setAvatar(profile.avatar);
-              }}
-            >
-              还原
-            </Button>
+            {!submitLabel && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="small"
+                onClick={() => {
+                  setName(profile.name);
+                  setInstructions(profile.instructions);
+                  setAvatar(profile.avatar);
+                }}
+              >
+                还原
+              </Button>
+            )}
             <Button type="submit" size="small" disabled={!name.trim()}>
-              保存身份
+              {submitLabel ?? "保存身份"}
             </Button>
           </div>
         )}

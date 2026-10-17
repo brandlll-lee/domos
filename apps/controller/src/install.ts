@@ -36,6 +36,10 @@ try {
     port: 4310,
     dataDir: "/data",
     deployment: "container",
+    workComputer: {
+      ...(config.computer as object),
+      endpoint: "http://controller:4311",
+    },
     computer: {
       ...(config.computer as object),
       endpoint: "http://controller:4311",

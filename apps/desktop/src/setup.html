@@ -16,8 +16,14 @@
       <form id="setup">
         <fieldset id="choices">
           <legend class="sr-only">运行方式</legend>
-          <label class="choice"><input name="mode" type="radio" value="local" checked /><span><strong>在这台电脑运行</strong><small>自动准备 Docker 工作环境，并启动本机服务。</small></span></label>
+          <label class="choice"><input name="mode" type="radio" value="local" checked /><span><strong>在这台电脑运行</strong><small>Bot 和聊天记录保存在这里。</small></span></label>
           <label class="choice"><input name="mode" type="radio" value="existing" /><span><strong>连接已有 Domos</strong><small>使用另一台电脑或服务器上的 Bot 和聊天记录。</small></span></label>
+        </fieldset>
+        <fieldset id="local">
+          <legend>运行方式</legend>
+          <label class="choice"><input name="runtime" type="radio" value="native" checked /><span><strong>直接运行</strong><small>使用这台电脑，无需 Docker。</small></span></label>
+          <label class="choice"><input name="runtime" type="radio" value="docker" /><span><strong>在 Docker 中运行</strong><small>需要安装并启动 Docker。首次会下载运行包。</small></span></label>
+          <small>Bot 的工作环境稍后单独选择。</small>
         </fieldset>
         <section id="remote" hidden>
           <label>连接名称<input id="name" type="text" maxlength="80" value="我的 Domos" /></label>
@@ -29,7 +35,6 @@
         <button id="docker" type="button" class="link" hidden>安装或启动 Docker Desktop</button>
         <div class="actions"><button id="cancel" type="button" class="secondary" hidden>取消准备</button><button id="continue" type="submit">继续</button></div>
       </form>
-      <p class="muted footnote">数据保存在所选电脑上。连接其他 Domos 后仍需完成配对。</p>
     </main>
     <script src="setup.js"></script>
   </body>

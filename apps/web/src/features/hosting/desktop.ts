@@ -3,7 +3,11 @@ type Result<T = { message?: string }> = {
   value?: T;
   error?: string;
 };
-export type DesktopState = { mode?: "local" | "existing"; running: boolean };
+export type DesktopState = {
+  mode?: "local" | "existing";
+  runtime?: "native" | "docker";
+  running: boolean;
+};
 
 declare global {
   interface Window {

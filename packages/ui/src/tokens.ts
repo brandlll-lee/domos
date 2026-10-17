@@ -85,6 +85,7 @@ export const windowOverlay = {
 export const metrics = {
   "titlebar-height": `${layout.titlebar}px`,
   "settings-content-width": "49rem",
+  "setup-content-width": "32rem",
   "mac-controls-width": "5rem",
   "profile-text-height": "7.5rem",
   "settings-nav-width": "12.5rem",

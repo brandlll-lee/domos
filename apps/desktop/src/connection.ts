@@ -18,6 +18,7 @@ export class ConnectionSetup {
       instances: () => Instance[];
       selected: () => Instance | undefined;
       local: (
+        runtime: "native" | "docker",
         progress: (value: InstallProgress) => void,
         signal: AbortSignal,
       ) => Promise<void>;
@@ -38,7 +39,10 @@ export class ConnectionSetup {
       if (this.busy) return { ok: false, error: "请等待当前连接完成。" };
       const input = z
         .discriminatedUnion("mode", [
-          z.object({ mode: z.literal("local") }),
+          z.object({
+            mode: z.literal("local"),
+            runtime: z.enum(["native", "docker"]),
+          }),
           z.object({
             mode: z.literal("existing"),
             url: z.string().min(1),
@@ -52,10 +56,14 @@ export class ConnectionSetup {
       const window = this.window;
       try {
         if (input.mode === "local")
-          await this.options.local((progress) => {
-            if (window && !window.isDestroyed())
-              window.webContents.send("setup:progress", progress);
-          }, controller.signal);
+          await this.options.local(
+            input.runtime,
+            (progress) => {
+              if (window && !window.isDestroyed())
+                window.webContents.send("setup:progress", progress);
+            },
+            controller.signal,
+          );
         else
           await this.options.remote(input.url, input.name, controller.signal);
         window?.close();

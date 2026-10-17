@@ -175,7 +175,12 @@ export class Computers {
     return {
       ...status,
       id: item.id,
-      name: item.name,
+      name:
+        item.config.kind === "process"
+          ? this.config.deployment === "container"
+            ? "服务所在容器"
+            : "服务所在电脑"
+          : item.name,
       authorized: item.authorized,
       scope: item.scope,
       busy: this.changing.has(item.id),

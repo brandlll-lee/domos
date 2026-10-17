@@ -10,7 +10,7 @@ import { expect, onTestFinished, test, vi } from "vitest";
 
 const context = BACKGROUND_CONTEXT;
 
-async function fixture() {
+async function fixture(overrides: Record<string, unknown> = {}) {
   const directory = await mkdtemp(join(tmpdir(), "domos-prepare-"));
   const states = new Map<string, ComputerStatus["state"]>();
   const volumes = new Set<string>();
@@ -54,6 +54,7 @@ async function fixture() {
         image: "fixture:1",
         volume: "template-work",
       },
+      ...overrides,
     },
     join(directory, "config.json"),
   );
@@ -77,11 +78,11 @@ async function fixture() {
   };
 }
 
-test("shared preparation persists, deduplicates requests and assigns new Bots", async () => {
+test("shared preparation persists and new Bots choose their own environment", async () => {
   const state = await fixture();
   const { computer, conversation, bots } = state.runtime;
   const input = {
-    host: "docker" as const,
+    mode: "shared" as const,
     botId: conversation.id,
     revision: 0,
     requestId: crypto.randomUUID(),
@@ -96,12 +97,20 @@ test("shared preparation persists, deduplicates requests and assigns new Bots", 
     { name: "Research", requestId: crypto.randomUUID() },
     context,
   );
-  expect((await computer.binding(second.id, context)).computerId).toBe(
-    first.computerId,
+  expect((await computer.binding(second.id, context)).computerId).toBe(null);
+  const secondBinding = await computer.preparation.configure(
+    {
+      mode: "shared",
+      botId: second.id,
+      revision: 0,
+      requestId: crypto.randomUUID(),
+    },
+    context,
   );
+  expect(secondBinding.computerId).toBe(first.computerId);
   await state.reopen();
   expect(await state.runtime.computer.preparation.state(context)).toMatchObject(
-    { host: "docker", sharedId: first.computerId },
+    { deployment: "native", canIsolate: true },
   );
   expect(
     (await state.runtime.computer.binding(conversation.id, context)).computerId,
@@ -113,7 +122,7 @@ test("private preparation isolates volumes, refuses foreign bindings and retries
   const { computer, conversation, bots } = state.runtime;
   const shared = await computer.preparation.configure(
     {
-      host: "docker",
+      mode: "shared",
       botId: conversation.id,
       revision: 0,
       requestId: crypto.randomUUID(),
@@ -127,7 +136,7 @@ test("private preparation isolates volumes, refuses foreign bindings and retries
     requestId: crypto.randomUUID(),
   };
   state.start.mockRejectedValueOnce(new Error("Preparation interrupted"));
-  await expect(computer.preparation.prepare(input, context)).rejects.toThrow(
+  await expect(computer.preparation.configure(input, context)).rejects.toThrow(
     "Preparation interrupted",
   );
   expect((await computer.binding(conversation.id, context)).computerId).toBe(
@@ -136,7 +145,7 @@ test("private preparation isolates volumes, refuses foreign bindings and retries
   const failed = (await computer.list(context)).items.find(
     (item) => item.scope?.kind === "dedicated",
   );
-  const ready = await computer.preparation.prepare(input, context);
+  const ready = await computer.preparation.configure(input, context);
   expect(ready.computerId).toBe(failed?.id);
   expect(ready.computerId).not.toBe(shared.computerId);
   const second = await bots.create(
@@ -154,7 +163,7 @@ test("private preparation isolates volumes, refuses foreign bindings and retries
       context,
     ),
   ).rejects.toThrow("另一个 Bot");
-  const secondPrivate = await computer.preparation.prepare(
+  const secondPrivate = await computer.preparation.configure(
     {
       mode: "dedicated",
       botId: second.id,
@@ -196,7 +205,7 @@ test("host choice grants access and stale switches leave the binding intact", as
   const { computer, conversation } = runtime;
   expect((await computer.list(context)).items[0]?.authorized).toBe(false);
   const input = {
-    host: "process" as const,
+    mode: "process" as const,
     botId: conversation.id,
     revision: 0,
     requestId: crypto.randomUUID(),
@@ -207,7 +216,7 @@ test("host choice grants access and stale switches leave the binding intact", as
     files: true,
   });
   await expect(
-    computer.preparation.prepare(
+    computer.preparation.configure(
       { ...input, requestId: crypto.randomUUID(), mode: "shared" },
       context,
     ),
@@ -215,15 +224,62 @@ test("host choice grants access and stale switches leave the binding intact", as
   expect((await computer.binding(conversation.id, context)).computerId).toBe(
     "process",
   );
-  await expect(
-    computer.preparation.prepare(
-      {
-        ...input,
-        revision: binding.revision,
-        requestId: crypto.randomUUID(),
-        mode: "dedicated",
-      },
-      context,
-    ),
-  ).rejects.toThrow("隔离环境");
+  const isolated = await computer.preparation.configure(
+    {
+      ...input,
+      revision: binding.revision,
+      requestId: crypto.randomUUID(),
+      mode: "dedicated",
+    },
+    context,
+  );
+  expect(isolated.computer?.scope?.kind).toBe("dedicated");
+  expect(isolated.computerId).not.toBe("process");
+  const native = await computer.preparation.configure(
+    { ...input, revision: isolated.revision, requestId: crypto.randomUUID() },
+    context,
+  );
+  expect(native.computerId).toBe("process");
+});
+
+test("container services report their boundary and prepare controller computers", async () => {
+  const { runtime } = await fixture({
+    deployment: "container",
+    workComputer: {
+      kind: "controller",
+      id: "template",
+      endpoint: "http://controller:4311",
+      credentialFile: "controller-token",
+      network: "none",
+    },
+  });
+  const { computer, conversation } = runtime;
+  expect(await computer.preparation.state(context)).toEqual({
+    deployment: "container",
+    canIsolate: true,
+  });
+  const native = await computer.preparation.configure(
+    {
+      mode: "process",
+      botId: conversation.id,
+      revision: 0,
+      requestId: crypto.randomUUID(),
+    },
+    context,
+  );
+  expect(native.computer).toMatchObject({
+    name: "服务所在容器",
+    boundary: "application",
+  });
+  const isolated = await computer.preparation.configure(
+    {
+      mode: "dedicated",
+      botId: conversation.id,
+      revision: native.revision,
+      requestId: crypto.randomUUID(),
+    },
+    context,
+  );
+  expect(isolated.computer?.kind).toBe("controller");
+  expect(isolated.computerId).not.toBe("template");
 });

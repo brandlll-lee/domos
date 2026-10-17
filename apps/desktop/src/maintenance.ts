@@ -7,7 +7,10 @@ import { dialog } from "electron";
 import { z } from "zod";
 import type { LocalHost } from "./host.ts";
 
-export async function maintain(host: LocalHost, input: unknown) {
+export async function maintain(
+  host: Pick<LocalHost, "directory" | "stop">,
+  input: unknown,
+) {
   const { action, password } = z
     .object({
       action: z.enum(["backup", "restore"]),

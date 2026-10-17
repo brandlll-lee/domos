@@ -2,6 +2,7 @@ import { openChat } from "@domos/agent/chat";
 import { loadConfig } from "@domos/agent/config";
 import { acquireDataLease } from "@domos/agent/lease";
 import { persistentCredentials } from "@domos/hosting/credentials";
+import { desktopSession } from "@domos/hosting/desktop";
 import { Sessions } from "@domos/hosting/sessions";
 import { HostingStore } from "@domos/hosting/store";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -41,15 +42,7 @@ export async function openHostedRuntime() {
     return {
       config,
       app: hosted.app,
-      async pairDesktop() {
-        const result = sessions.exchange(
-          sessions.pairing("admin").code,
-          "Domos 桌面",
-        );
-        if (!result) throw new Error("桌面配对未完成。");
-        await sessions.removeBootstrap(config.dataDir);
-        return { token: result.token, expires: result.device.expires };
-      },
+      pairDesktop: () => desktopSession(sessions, config.dataDir),
       async close() {
         if (closed) return;
         closed = true;

@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseConfig } from "@domos/agent/config";
@@ -7,6 +7,52 @@ import { HostingStore } from "@domos/hosting/store";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { expect, onTestFinished, test } from "vitest";
 import { hostingApp } from "../src/hosting/routes.ts";
+
+test("managed desktop pairing requires its private installation credential", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "domos-desktop-auth-"));
+  const credentialFile = join(directory, "desktop-token");
+  const credential = crypto.randomUUID();
+  await writeFile(credentialFile, credential);
+  const store = await HostingStore.open(directory);
+  const sessions = new Sessions(store);
+  const hosted = hostingApp({
+    config: parseConfig(
+      { dataDir: directory, desktopCredentialFile: credentialFile },
+      join(directory, "config.json"),
+    ),
+    sessions,
+    models: createModels(),
+    forward: async () => Response.json({ ok: true }),
+  });
+  onTestFinished(async () => {
+    hosted.close();
+    await store.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const request = (authorization: string) =>
+    hosted.app.request("http://127.0.0.1:4310/hosting/desktop", {
+      method: "POST",
+      headers: { Authorization: authorization },
+    });
+  expect((await request("Bearer wrong")).status).toBe(401);
+  const client = sessions.exchange(sessions.pairing("client").code, "Phone");
+  expect((await request(`Bearer ${client?.token}`)).status).toBe(401);
+  const response = await request(`Bearer ${credential}`);
+  expect(response.status).toBe(200);
+  const session = await response.json();
+  expect(sessions.authenticate(session.token)?.scope).toBe("admin");
+  expect(
+    (
+      await hosted.app.request("http://127.0.0.1:4310/hosting/desktop", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${credential}`,
+          Origin: "https://other.test",
+        },
+      })
+    ).status,
+  ).toBe(403);
+});
 
 test("hosting authenticates RPC, files, admin operations, origins and pairing", async () => {
   const directory = await mkdtemp(join(tmpdir(), "domos-auth-"));
@@ -70,7 +116,13 @@ test("hosting authenticates RPC, files, admin operations, origins and pairing", 
   expect(
     (await request("/hosting/devices", { headers: { Cookie: cookie } })).status,
   ).toBe(403);
-  for (const operation of ["manage", "add", "authorize", "default"]) {
+  for (const operation of [
+    "manage",
+    "add",
+    "authorize",
+    "default",
+    "configure",
+  ]) {
     expect(
       (
         await request(`/rpc/computer/${operation}`, {

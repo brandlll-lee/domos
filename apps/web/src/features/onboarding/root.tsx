@@ -2,6 +2,8 @@ import { Brand } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { client } from "../../client.ts";
+import { ProfileEditor } from "../bots/details/profile.tsx";
+import { type Profile, useWorkAction } from "../bots/details/use-bot-work.ts";
 import { ComputerLocation } from "../computer/location.tsx";
 import { HostingModels } from "../hosting/models.tsx";
 import type { SettingsAccess } from "../settings/sections.tsx";
@@ -13,6 +15,8 @@ type Setup = {
   model: boolean;
   computer: boolean;
   canIsolate: boolean;
+  deployment: "native" | "container";
+  profile: Profile;
 };
 
 export function Onboarding({
@@ -22,16 +26,18 @@ export function Onboarding({
 }: SettingsAccess & { children: ReactNode }) {
   const [setup, setSetup] = useState<Setup>();
   const [error, setError] = useState("");
+  const action = useWorkAction();
   const refresh = useCallback(async () => {
     setError("");
     const bots = await client.bots.list();
     const bot = bots[0];
     if (!bot) throw new Error("未找到初始 Bot。请重新连接 Domos。");
-    const [chat, binding, location, models] = await Promise.all([
+    const [chat, binding, location, models, profile] = await Promise.all([
       client.get({ botId: bot.id }),
       client.computer.get({ botId: bot.id }),
       client.computer.setup(),
       client.models.list(),
+      client.work.profile({ botId: bot.id }),
     ]);
     setSetup({
       botId: bot.id,
@@ -43,11 +49,10 @@ export function Onboarding({
               item.modelId === chat.model.modelId,
           ),
       ),
-      computer: Boolean(
-        location.host ||
-          (binding.computer?.authorized && !binding.computer.scope),
-      ),
+      computer: Boolean(binding.computer?.authorized),
       canIsolate: location.canIsolate,
+      deployment: location.deployment,
+      profile,
     });
   }, []);
   useEffect(() => {
@@ -55,6 +60,8 @@ export function Onboarding({
   }, [refresh]);
   if (setup?.model && setup.computer) return children;
   const model = !setup?.model;
+  const identity = !model && setup?.profile.revision === 0;
+  const reload = () => void refresh().catch((cause) => setError(cause.message));
   return (
     <>
       <Titlebar />
@@ -63,13 +70,25 @@ export function Onboarding({
           <Brand />
           <header>
             <p className="detail-note">
-              {model ? "第 1 步，共 2 步" : "第 2 步，共 2 步"}
+              {model
+                ? "第 1 步，共 3 步"
+                : identity
+                  ? "第 2 步，共 3 步"
+                  : "第 3 步，共 3 步"}
             </p>
-            <h1>{model ? "连接对话模型" : "Bot 在哪里工作？"}</h1>
+            <h1>
+              {model
+                ? "连接对话模型"
+                : identity
+                  ? "认识你的第一个 Bot"
+                  : "Bot 在哪里工作？"}
+            </h1>
             <p className="detail-note">
               {model
                 ? "选择一个模型账号，供你的第一个 Bot 使用。"
-                : "选择后，Domos 会完成准备、授权和绑定。"}
+                : identity
+                  ? "取个名字，告诉它要做什么。"
+                  : "选择一个工作环境。之后也可以更换。"}
             </p>
           </header>
           {setup &&
@@ -81,10 +100,18 @@ export function Onboarding({
                     void refresh().catch((cause) => setError(cause.message))
                   }
                 />
+              ) : identity ? (
+                <ProfileEditor
+                  profile={setup.profile}
+                  action={action}
+                  onSaved={reload}
+                  submitLabel="继续"
+                />
               ) : (
                 <ComputerLocation
                   botId={setup.botId}
                   canIsolate={setup.canIsolate}
+                  deployment={setup.deployment}
                   onReady={() =>
                     void refresh().catch((cause) => setError(cause.message))
                   }
@@ -94,9 +121,9 @@ export function Onboarding({
               <p role="status">请让管理员完成首次设置，然后重试。</p>
             ))}
           {!setup && !error && <p role="status">正在读取配置…</p>}
-          {error && (
+          {(error || action.error) && (
             <p role="alert" className="alert">
-              {error}
+              {error || action.error}
             </p>
           )}
           {(error || (setup && (!admin || standalone))) && (

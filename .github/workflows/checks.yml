@@ -110,6 +110,11 @@ jobs:
             docker rm domos-app-test
           done
           docker volume rm domos-app-test
+      - name: Verify managed services and Bot work environments
+        if: matrix.transport == 'docker'
+        env:
+          DOMOS_CONTAINER_TESTS: "1"
+        run: pnpm exec vitest run apps/api/test/stack-container.test.ts
       - name: Verify application container to SSH work sandbox
         if: matrix.transport == 'ssh'
         run: |

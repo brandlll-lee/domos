@@ -198,6 +198,7 @@ async function createBot(
       .click();
   }
   await dialog.getByRole("button", { name: "创建", exact: true }).click();
+  await dialog.getByRole("button", { name: "授权并继续", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByLabel("消息", { exact: true })).toHaveAttribute(
     "placeholder",
@@ -550,6 +551,7 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
   await create.click();
   await expect(dialog.getByRole("alert")).toContainText("创建未确认");
   await create.click();
+  await dialog.getByRole("button", { name: "授权并继续", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await page.getByRole("button", { name: "联系人", exact: true }).click();
   const contacts = page.getByRole("navigation", {
@@ -2145,6 +2147,7 @@ test("Bot identity stays consistent and image previews work in drafts and histor
   expect(seed).toBeTruthy();
   await dialog.getByLabel("名字", { exact: true }).fill("视觉助手");
   await dialog.getByRole("button", { name: "创建", exact: true }).click();
+  await dialog.getByRole("button", { name: "授权并继续", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   const selected = page.locator(
     '.contact-row[aria-current="page"] .bot-avatar',
