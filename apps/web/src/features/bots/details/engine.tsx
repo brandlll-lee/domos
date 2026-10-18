@@ -1,11 +1,13 @@
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
 import { SearchPicker } from "@domos/ui/picker";
+import { SettingRow } from "@domos/ui/setting-row";
 import { type ReactNode, useEffect, useState } from "react";
 import { HostingModels } from "../../hosting/models.tsx";
 import { EngineSelect } from "../engine-select.tsx";
 import { EngineAccount } from "./engine-account.tsx";
 import { type EngineSetup, useEngine } from "./use-engine.ts";
+import "./engine.css";
 
 export function EnginePanel({
   botId,
@@ -13,18 +15,37 @@ export function EnginePanel({
   canManage = false,
   piModel,
   onReady,
+  onBack,
+  onBusyChange,
 }: {
   botId: number;
   active?: boolean;
   canManage?: boolean;
   piModel?: ReactNode;
   onReady?: () => void;
+  onBack?: () => void;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const setup = useEngine(botId, active);
   const { profile, connection, busy, error } = setup;
   const provider = profile?.config.provider;
+  const [modelBusy, setModelBusy] = useState(false);
+  const blocked = Boolean(busy || modelBusy);
+  useEffect(() => onBusyChange?.(blocked), [blocked, onBusyChange]);
+  const status =
+    setup.login?.state === "waiting"
+      ? "等待登录"
+      : profile?.prepared
+        ? "已就绪"
+        : connection?.authenticated
+          ? "已连接"
+          : "待连接";
   return (
-    <section className="detail-stack engine-panel" aria-label="任务引擎">
+    <section
+      className="engine-panel"
+      aria-label="任务引擎"
+      aria-busy={Boolean(setup.pending)}
+    >
       {!onReady && (
         <header>
           <h3>任务引擎</h3>
@@ -34,39 +55,41 @@ export function EnginePanel({
       {profile && (
         <EngineSelect
           value={profile.config.provider}
-          disabled={busy}
+          disabled={blocked}
+          presentation={onReady ? "list" : "menu"}
+          status={status}
           onChange={(provider) => void setup.save({ provider, model: null })}
         />
       )}
       <div className="settings-card">
-        <div className="setting-row">
-          <div>
-            <strong>工作电脑上的引擎</strong>
-            <p className="detail-note" role="status">
-              {connection
-                ? connection.authenticated
-                  ? connection.message
-                  : "已安装。请连接账号。"
-                : profile?.prepared
-                  ? "已就绪"
-                  : "检查后继续。"}
-            </p>
-          </div>
+        <SettingRow
+          title="连接状态"
+          description={
+            connection
+              ? connection.authenticated
+                ? connection.message
+                : "已安装。请连接账号。"
+              : profile?.prepared
+                ? "已就绪"
+                : "连接账号后，检查是否可以开始工作。"
+          }
+        >
           <Button
             variant="secondary"
             size="small"
-            disabled={busy || !profile}
+            disabled={blocked}
+            pending={setup.pending === "inspect"}
             onClick={() => void setup.inspect()}
           >
-            {busy ? "正在处理…" : "检查连接"}
+            {setup.pending === "inspect" ? "正在检查…" : "检查连接"}
           </Button>
-        </div>
+        </SettingRow>
         {canManage && provider && provider !== "pi" && !connection && (
           <details
             className="engine-account-options"
             open={Boolean(error) || undefined}
           >
-            <summary>尚未安装？</summary>
+            <summary>安装引擎</summary>
             <p className="detail-note">
               仅在所选工作电脑下载和安装。需要允许联网。
             </p>
@@ -75,12 +98,26 @@ export function EnginePanel({
                 variant="secondary"
                 size="small"
                 disabled={busy}
+                pending={setup.pending === "install"}
                 onClick={() => void setup.install()}
               >
-                在工作电脑安装
+                {setup.pending === "install" ? "正在安装…" : "在工作电脑安装"}
               </Button>
             </div>
           </details>
+        )}
+        {error && (
+          <p className="alert" role="alert">
+            {error}
+          </p>
+        )}
+        {provider && provider !== "pi" && (
+          <EngineAccount
+            key={provider}
+            provider={provider}
+            setup={setup}
+            canManage={canManage}
+          />
         )}
       </div>
       {provider === "pi"
@@ -89,28 +126,29 @@ export function EnginePanel({
             <HostingModels
               botId={botId}
               onConfigured={() => void setup.refresh()}
+              onBusyChange={setModelBusy}
             />
           ) : (
             <p className="detail-note">请让管理员连接模型账号。</p>
           )))
-        : provider && (
-            <EngineAccount
-              key={provider}
-              provider={provider}
-              setup={setup}
-              canManage={canManage}
-            />
-          )}
+        : null}
       {provider && provider !== "pi" && <EngineModel setup={setup} />}
-      {error && (
-        <p className="alert" role="alert">
-          {error}
-        </p>
-      )}
       {onReady && (
-        <Button disabled={busy || !profile?.prepared} onClick={onReady}>
-          开始使用
-        </Button>
+        <footer className="engine-footer">
+          {!profile?.prepared && (
+            <p className="detail-note">连接账号并完成检查后，即可开始使用。</p>
+          )}
+          <div className="setup-actions">
+            {onBack && (
+              <Button variant="secondary" disabled={blocked} onClick={onBack}>
+                返回
+              </Button>
+            )}
+            <Button disabled={blocked || !profile?.prepared} onClick={onReady}>
+              开始使用
+            </Button>
+          </div>
+        </footer>
       )}
     </section>
   );
@@ -130,8 +168,8 @@ function EngineModel({ setup }: { setup: EngineSetup }) {
       model: value.trim() || null,
     });
   return (
-    <details className="engine-model">
-      <summary>模型 · {profile.config.model || "自动选择"}</summary>
+    <details className="engine-model" key={profile.config.provider}>
+      <summary>高级选项 · 模型</summary>
       {connection?.models.length ? (
         <SearchPicker
           label="引擎模型"

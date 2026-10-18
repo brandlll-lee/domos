@@ -10,6 +10,7 @@
     "./work-status": "./src/web/work-status.tsx",
     "./tokens": "./src/tokens.ts",
     "./controls": "./src/web/controls.tsx",
+    "./choice": "./src/web/choice.tsx",
     "./dialog": "./src/web/dialog.tsx",
     "./field": "./src/web/field.tsx",
     "./setup": "./src/web/setup.tsx",

@@ -98,6 +98,7 @@ function BotForm({
         <EnginePanel
           botId={created.bot.id}
           canManage={settings.admin}
+          onBusyChange={onSavingChange}
           onReady={() => onCreated(created.bot)}
         />
       );
@@ -205,7 +206,7 @@ function BotForm({
         >
           取消
         </Button>
-        <Button type="submit" disabled={saving || !name.trim()}>
+        <Button type="submit" pending={saving} disabled={!name.trim()}>
           {saving ? "正在创建…" : "创建"}
         </Button>
       </div>

@@ -37,9 +37,11 @@ type Login = {
 export function HostingModels({
   onConfigured,
   botId,
+  onBusyChange,
 }: {
   onConfigured: () => void;
   botId?: number;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const [catalog, setCatalog] = useState<Catalog>();
   const [provider, setProvider] = useState("");
@@ -49,6 +51,11 @@ export function HostingModels({
   const [selection, setSelection] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const waiting = Boolean(loginId && !login?.done);
+  useEffect(
+    () => onBusyChange?.(busy || waiting),
+    [busy, waiting, onBusyChange],
+  );
   const refresh = useCallback(
     () =>
       hostingRequest<Catalog>("models").then((value) => {
@@ -254,8 +261,8 @@ export function HostingModels({
             />
           )}
           <div className="form-actions">
-            <Button size="small" disabled={busy || !value} type="submit">
-              继续
+            <Button size="small" pending={busy} disabled={!value} type="submit">
+              {busy ? "正在连接…" : "继续"}
             </Button>
           </div>
         </form>
@@ -310,7 +317,7 @@ export function HostingModels({
             <div className="form-actions">
               <Button
                 size="small"
-                disabled={busy}
+                pending={busy}
                 onClick={() =>
                   void action(async () => {
                     await client.models.select({
@@ -322,7 +329,7 @@ export function HostingModels({
                   })
                 }
               >
-                保存模型
+                {busy ? "正在保存…" : "保存模型"}
               </Button>
             </div>
           )}

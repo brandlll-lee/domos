@@ -241,7 +241,7 @@ test("empty chats retain their creation time and compact controls across layouts
     exact: true,
   });
   await expect(
-    environment.getByRole("group", { name: "此 Bot 的工作环境" }),
+    environment.getByRole("radiogroup", { name: "此 Bot 的工作环境" }),
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(environment).toBeHidden();

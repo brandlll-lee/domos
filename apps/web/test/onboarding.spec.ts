@@ -78,10 +78,15 @@ test("first use selects identity, computer and native engine before shared chat"
     expect(change?.x).toBeLessThan((avatar?.x ?? 0) + (avatar?.width ?? 0));
     expect(change?.y).toBeLessThan((avatar?.y ?? 0) + (avatar?.height ?? 0));
     await page.setViewportSize({ width: 1360, height: 900 });
+    await setup
+      .getByRole("textbox", { name: "职责与长期指令" })
+      .fill("帮我整理每周工作计划。");
     await setup.getByRole("button", { name: "继续", exact: true }).click();
-    const service = setup.getByRole("button", { name: /^使用服务所在电脑/ });
+    const service = setup.getByRole("radio", { name: /^使用服务所在电脑/ });
     const title = await service.locator("strong").boundingBox();
-    const description = await service.locator("span").boundingBox();
+    const description = await service
+      .locator(".choice-description")
+      .boundingBox();
     expect(description?.y).toBeGreaterThan(
       (title?.y ?? 0) + (title?.height ?? 0),
     );
@@ -92,8 +97,17 @@ test("first use selects identity, computer and native engine before shared chat"
       setup.getByRole("heading", { name: "Bot 在哪里工作？" }),
     ).toBeVisible();
     await expect(
-      setup.getByRole("button", { name: /^共用一台隔离电脑/ }),
+      setup.getByRole("radio", { name: /^共用一台隔离电脑/ }),
     ).toBeDisabled();
+    await setup.getByRole("button", { name: "返回", exact: true }).click();
+    await expect(
+      setup.getByRole("textbox", { name: "名字", exact: true }),
+    ).toHaveValue("Domos");
+    await expect(
+      setup.getByRole("textbox", { name: "职责与长期指令" }),
+    ).toHaveValue("帮我整理每周工作计划。");
+    await setup.getByRole("button", { name: "继续", exact: true }).click();
+    await expect(service).toBeChecked();
     await page.route("**/rpc/computer/configure", (route) => route.abort());
     await setup
       .getByRole("button", { name: "授权并继续", exact: true })
@@ -107,13 +121,54 @@ test("first use selects identity, computer and native engine before shared chat"
     await expect(
       setup.getByRole("heading", { name: "由谁处理任务？" }),
     ).toBeVisible();
+    await expect(
+      setup.getByRole("heading", { name: "由谁处理任务？" }),
+    ).toBeFocused();
+    await setup.getByRole("button", { name: "返回", exact: true }).click();
+    await expect(service).toBeChecked();
+    await setup
+      .getByRole("button", { name: "授权并继续", exact: true })
+      .click();
+    const engines = setup.getByRole("radiogroup", {
+      name: "任务引擎",
+      exact: true,
+    });
+    await expect(engines.getByRole("radio")).toHaveCount(4);
+    const installs: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().endsWith("/engines/install"))
+        installs.push(request.url());
+    });
+    await engines.getByRole("radio", { name: /^Codex/ }).click();
+    await expect(
+      setup.getByRole("button", { name: "登录 Codex", exact: true }),
+    ).toBeVisible();
+    await capture(page, testInfo, "engine-selection");
+    expect(installs).toHaveLength(0);
+    await engines.getByRole("radio", { name: /^Pi/ }).click();
     await setup.getByRole("combobox", { name: "此 Bot 的模型" }).click();
     await page.getByRole("option", { name: "Faux Model", exact: true }).click();
     await setup.getByRole("button", { name: "保存模型", exact: true }).click();
+    let release = () => {};
+    const checking = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route("**/rpc/engines/inspect", async (route) => {
+      await checking;
+      await route.continue();
+    });
     await setup.getByRole("button", { name: "检查连接", exact: true }).click();
+    await expect(
+      setup.getByRole("button", { name: "正在检查…", exact: true }),
+    ).toHaveAttribute("aria-busy", "true");
+    await expect(
+      setup.getByRole("button", { name: "返回", exact: true }),
+    ).toBeDisabled();
+    release();
     await expect(
       setup.getByRole("button", { name: "开始使用", exact: true }),
     ).toBeEnabled();
+    await page.unroute("**/rpc/engines/inspect");
     await capture(page, testInfo, "engine-setup");
     await setup.getByRole("button", { name: "开始使用", exact: true }).click();
     await expect(setup).toBeHidden();

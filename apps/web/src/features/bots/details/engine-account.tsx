@@ -1,6 +1,7 @@
 import type { EngineId } from "@domos/agent/harness/types";
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
+import { SettingRow } from "@domos/ui/setting-row";
 import { useState } from "react";
 import type { EngineSetup } from "./use-engine.ts";
 
@@ -15,27 +16,29 @@ export function EngineAccount({
 }) {
   const [key, setKey] = useState("");
   return (
-    <div className="settings-card">
-      <div className="setting-row">
-        <div>
-          <strong>账号</strong>
-          <p className="detail-note">
-            {setup.connection?.authenticated
-              ? "已连接"
-              : "连接后即可开始工作。"}
-          </p>
-        </div>
+    <div className="engine-account">
+      <SettingRow
+        title="账号"
+        description={
+          setup.connection?.authenticated ? "已连接" : "连接后即可开始工作。"
+        }
+      >
         {canManage && provider === "codex" && (
           <Button
             size="small"
             variant="secondary"
             disabled={setup.busy}
+            pending={setup.pending === "login"}
             onClick={() => void setup.signIn()}
           >
-            登录 Codex
+            {setup.pending === "login"
+              ? "正在连接…"
+              : setup.connection?.authenticated
+                ? "重新登录 Codex"
+                : "登录 Codex"}
           </Button>
         )}
-      </div>
+      </SettingRow>
       {canManage ? (
         <>
           <details
@@ -65,22 +68,28 @@ export function EngineAccount({
                 value={key}
                 onValueChange={setKey}
                 disabled={setup.busy}
+                description="密钥加密保存在此 Domos 服务中。"
               />
               <div className="form-actions">
-                <Button size="small" disabled={setup.busy || !key.trim()}>
-                  连接
-                </Button>
                 <Button
-                  type="button"
-                  variant="ghost"
                   size="small"
-                  disabled={setup.busy}
-                  onClick={() => void setup.key(null)}
+                  disabled={setup.busy || !key.trim()}
+                  pending={setup.pending === "key"}
                 >
-                  移除密钥
+                  {setup.pending === "key" ? "正在连接…" : "连接"}
                 </Button>
+                {setup.connection?.authenticated && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="small"
+                    disabled={setup.busy}
+                    onClick={() => void setup.key(null)}
+                  >
+                    移除密钥
+                  </Button>
+                )}
               </div>
-              <p className="detail-note">密钥加密保存在此 Domos 服务中。</p>
             </form>
           </details>
           {setup.login?.state === "waiting" && (

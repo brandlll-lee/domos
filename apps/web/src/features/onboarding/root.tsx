@@ -26,6 +26,8 @@ export function Onboarding({
 }: SettingsAccess & { children: ReactNode }) {
   const [setup, setSetup] = useState<Setup>();
   const [error, setError] = useState("");
+  const [step, setStep] = useState<0 | 1 | 2>();
+  const [finished, setFinished] = useState(false);
   const action = useWorkAction();
   const refresh = useCallback(async () => {
     setError("");
@@ -41,7 +43,7 @@ export function Onboarding({
         client.work.profile({ botId: bot.id }),
         client.engines.get({ botId: bot.id }),
       ]);
-    setSetup({
+    const next: Setup = {
       botId: bot.id,
       computer: Boolean(binding.computer?.authorized),
       canIsolate: location.canIsolate,
@@ -59,27 +61,35 @@ export function Onboarding({
             ) &&
             binding.computer?.authorized,
         ),
-    });
+    };
+    setSetup(next);
+    return next;
   }, []);
-  useEffect(() => {
-    void refresh().catch((cause) => setError(cause.message));
+  const initialize = useCallback(async () => {
+    const next = await refresh();
+    setFinished(
+      next.existing ||
+        (next.prepared && next.computer && next.profile.revision > 0),
+    );
+    setStep(next.profile.revision === 0 ? 0 : next.computer ? 2 : 1);
   }, [refresh]);
-  if (
-    setup &&
-    (setup.existing ||
-      (setup.prepared && setup.computer && setup.profile.revision > 0))
-  )
-    return children;
-  const identity = setup?.profile.revision === 0;
-  const computer = !identity && !setup?.computer;
-  const reload = () => void refresh().catch((cause) => setError(cause.message));
+  useEffect(() => {
+    void initialize().catch((cause) => setError(cause.message));
+  }, [initialize]);
+  if (finished) return children;
+  const identity = step === 0;
+  const computer = step === 1;
+  const advance = (next: 1 | 2) =>
+    void refresh()
+      .then(() => setStep(next))
+      .catch((cause) => setError(cause.message));
   return (
     <div className="setup-window">
       <Titlebar />
       <SetupPage
         label="首次设置"
         title={
-          !setup
+          step === undefined
             ? "正在读取配置…"
             : identity
               ? "认识你的第一个 Bot"
@@ -88,7 +98,7 @@ export function Onboarding({
                 : "由谁处理任务？"
         }
         description={
-          !setup
+          step === undefined
             ? undefined
             : identity
               ? "取个名字，告诉它要做什么。"
@@ -97,36 +107,46 @@ export function Onboarding({
                 : "选择引擎并连接账号，开始第一项工作。"
         }
         progress={
-          setup
-            ? { current: identity ? 1 : computer ? 2 : 3, total: 3 }
-            : undefined
+          step !== undefined ? { current: step + 1, total: 3 } : undefined
         }
       >
         {setup &&
+          step !== undefined &&
           (admin && !standalone ? (
-            identity ? (
-              <ProfileEditor
-                profile={setup.profile}
-                action={action}
-                onSaved={reload}
-                submitLabel="继续"
-              />
-            ) : computer ? (
-              <ComputerLocation
-                botId={setup.botId}
-                canIsolate={setup.canIsolate}
-                deployment={setup.deployment}
-                onReady={() =>
-                  void refresh().catch((cause) => setError(cause.message))
-                }
-              />
-            ) : (
-              <EnginePanel
-                botId={setup.botId}
-                canManage={admin}
-                onReady={reload}
-              />
-            )
+            <>
+              <div hidden={!identity}>
+                <ProfileEditor
+                  profile={setup.profile}
+                  action={action}
+                  onSaved={() => advance(1)}
+                  submitLabel="继续"
+                />
+              </div>
+              <div hidden={!computer}>
+                <ComputerLocation
+                  botId={setup.botId}
+                  canIsolate={setup.canIsolate}
+                  deployment={setup.deployment}
+                  onReady={() => advance(2)}
+                  onBack={() => setStep(0)}
+                />
+              </div>
+              {step === 2 && (
+                <EnginePanel
+                  botId={setup.botId}
+                  canManage={admin}
+                  onBack={() => setStep(1)}
+                  onReady={() =>
+                    void refresh()
+                      .then((next) => {
+                        if (next.prepared) setFinished(true);
+                        else setError("请先完成连接检查。");
+                      })
+                      .catch((cause) => setError(cause.message))
+                  }
+                />
+              )}
+            </>
           ) : (
             <p role="status">请让管理员完成首次设置，然后重试。</p>
           ))}
@@ -140,7 +160,7 @@ export function Onboarding({
           <Button
             variant="secondary"
             onClick={() =>
-              void refresh().catch((cause) => setError(cause.message))
+              void initialize().catch((cause) => setError(cause.message))
             }
           >
             重试

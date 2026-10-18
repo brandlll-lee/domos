@@ -1,0 +1,43 @@
+.engine-panel,
+.engine-panel header,
+.engine-footer {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+  align-content: start;
+}
+.engine-panel h3,
+.engine-panel p {
+  margin: 0;
+}
+.engine-panel h3 {
+  font-size: var(--text-heading);
+  font-weight: var(--weight-medium);
+}
+.engine-panel .picker-trigger {
+  max-width: 100%;
+}
+.engine-account {
+  border-top: 1px solid var(--color-divider);
+}
+.engine-account-options,
+.engine-sign-in {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.engine-model {
+  min-width: 0;
+}
+.engine-panel summary {
+  cursor: pointer;
+  color: var(--color-muted);
+  font-size: var(--text-label);
+  line-height: var(--leading-control);
+}
+.engine-panel summary + * {
+  margin-top: var(--space-3);
+}
+.engine-panel .alert {
+  margin-bottom: var(--space-4);
+}

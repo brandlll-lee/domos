@@ -1,3 +1,4 @@
+import { ChoiceCards } from "@domos/ui/choice";
 import { Button } from "@domos/ui/controls";
 import { useEffect, useRef, useState } from "react";
 import { client } from "../../client.ts";
@@ -9,12 +10,14 @@ export function ComputerLocation({
   deployment,
   onReady,
   onBusyChange,
+  onBack,
 }: {
   botId: number;
   canIsolate: boolean;
   deployment: "native" | "container";
   onReady: () => void;
   onBusyChange?: (busy: boolean) => void;
+  onBack?: () => void;
 }) {
   const [mode, setMode] = useState<"process" | "shared" | "dedicated">(
     "process",
@@ -31,7 +34,7 @@ export function ComputerLocation({
   const [error, setError] = useState("");
   return (
     <form
-      className="detail-stack"
+      className="setup-form"
       aria-busy={busy}
       onSubmit={async (event) => {
         event.preventDefault();
@@ -63,6 +66,7 @@ export function ComputerLocation({
               });
             else await client.computer.configure({ ...input, mode });
           } else await client.computer.prepare({ ...input, mode });
+          request.current = crypto.randomUUID();
           onReady();
         } catch (cause) {
           setError(
@@ -75,56 +79,39 @@ export function ComputerLocation({
         }
       }}
     >
-      <fieldset className="computer-options" aria-label="此 Bot 的工作环境">
-        <Button
-          type="button"
-          variant="secondary"
-          className="computer-option"
-          aria-pressed={mode === "process"}
-          disabled={busy}
-          onClick={() => {
-            setMode("process");
-            request.current = crypto.randomUUID();
-          }}
-        >
-          <strong>
-            {deployment === "container"
-              ? "使用服务容器"
-              : local
-                ? "使用这台电脑"
-                : "使用服务所在电脑"}
-          </strong>
-          <span>使用 Domos 所在环境的文件和命令。</span>
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          className="computer-option"
-          aria-pressed={mode === "shared"}
-          disabled={busy || !canIsolate}
-          onClick={() => {
-            setMode("shared");
-            request.current = crypto.randomUUID();
-          }}
-        >
-          <strong>共用一台隔离电脑</strong>
-          <span>与其他 Bot 共用文件。需要 Docker。</span>
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          className="computer-option"
-          aria-pressed={mode === "dedicated"}
-          disabled={busy || !canIsolate}
-          onClick={() => {
-            setMode("dedicated");
-            request.current = crypto.randomUUID();
-          }}
-        >
-          <strong>单独一台隔离电脑</strong>
-          <span>仅供此 Bot 使用。需要 Docker。</span>
-        </Button>
-      </fieldset>
+      <ChoiceCards
+        label="此 Bot 的工作环境"
+        value={mode}
+        disabled={busy}
+        onValueChange={(value) => {
+          setMode(value);
+          request.current = crypto.randomUUID();
+        }}
+        options={[
+          {
+            value: "process",
+            label:
+              deployment === "container"
+                ? "使用服务容器"
+                : local
+                  ? "使用这台电脑"
+                  : "使用服务所在电脑",
+            description: "使用 Domos 所在环境的文件和命令。",
+          },
+          {
+            value: "shared",
+            label: "共用一台隔离电脑",
+            description: "与其他 Bot 共用文件。需要 Docker。",
+            disabled: !canIsolate,
+          },
+          {
+            value: "dedicated",
+            label: "单独一台隔离电脑",
+            description: "仅供此 Bot 使用。需要 Docker。",
+            disabled: !canIsolate,
+          },
+        ]}
+      />
       <p className="detail-note">
         {mode === "process"
           ? "确认后，允许 Bot 使用此环境的文件和系统权限。"
@@ -137,9 +124,20 @@ export function ComputerLocation({
           {error}
         </p>
       )}
-      <div className="form-actions">
+      <div className={onBack ? "setup-actions" : "form-actions"}>
+        {onBack && (
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={busy}
+            onClick={onBack}
+          >
+            返回
+          </Button>
+        )}
         <Button
           type="submit"
+          pending={busy}
           disabled={busy || (mode !== "process" && !canIsolate)}
         >
           {busy

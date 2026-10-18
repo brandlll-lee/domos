@@ -11,7 +11,22 @@ export function useEngine(botId: number, active: boolean) {
   const [login, setLogin] =
     useState<Awaited<ReturnType<typeof client.engines.loginState>>>(null);
   const [error, setError] = useState("");
+  const [pending, setPending] = useState<string | null>(null);
   const action = useWorkAction();
+  const run = <T>(
+    name: string,
+    key: unknown,
+    operation: (requestId: string) => Promise<T>,
+  ) =>
+    action.run(key, async (requestId) => {
+      setPending(name);
+      setError("");
+      try {
+        return await operation(requestId);
+      } finally {
+        setPending(null);
+      }
+    });
   const refresh = useCallback(async () => {
     setProfile(await client.engines.get({ botId }));
   }, [botId]);
@@ -52,12 +67,13 @@ export function useEngine(botId: number, active: boolean) {
     profile,
     connection,
     login,
+    pending,
     error: action.error || error,
     busy: action.busy || profile?.busy || login?.state === "waiting",
     refresh,
-    inspect: () => action.run(["inspect", botId], inspect),
+    inspect: () => run("inspect", ["inspect", botId], inspect),
     save: (config: EngineConfig) =>
-      action.run(["engine", botId, config], async (requestId) => {
+      run("configure", ["engine", botId, config], async (requestId) => {
         if (!profile) return;
         setProfile(
           await client.engines.configure({
@@ -72,22 +88,22 @@ export function useEngine(botId: number, active: boolean) {
         setError("");
       }),
     key: (key: string | null) =>
-      action.run(["key", botId], async () => {
+      run("key", ["key", botId], async () => {
         await client.engines.key({ botId, key });
         setConnection(undefined);
         if (key) await inspect();
       }),
     install: () =>
-      action.run(["install", botId], async () => {
+      run("install", ["install", botId], async () => {
         await client.engines.install({ botId });
         await inspect();
       }),
     signIn: () =>
-      action.run(["login", botId], async () => {
+      run("login", ["login", botId], async () => {
         setLogin(await client.engines.login({ botId }));
       }),
     cancel: () =>
-      action.run(["cancel-login", botId], async () => {
+      run("cancel", ["cancel-login", botId], async () => {
         await client.engines.cancelLogin({ botId });
         setLogin(null);
       }),
