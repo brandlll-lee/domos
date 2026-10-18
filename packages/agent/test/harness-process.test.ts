@@ -1,4 +1,5 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -163,25 +164,57 @@ test("bundled Pi opens a native session in the selected work directory", async (
   });
 }, 40_000);
 
-test("Pi applies native command tools when it restores a session", async () => {
-  const { process, directory } = await worker();
-  const ready = await process.ready;
-  const probe = join(directory, "probe.mjs");
-  const result = join(directory, "tools.json");
-  await writeFile(
-    probe,
-    `import { writeFileSync } from "node:fs";
-export default function(pi) {
-  pi.registerCommand("probe", { handler: async () => {
-    writeFileSync(${JSON.stringify(result)}, JSON.stringify(pi.getActiveTools()));
-  }});
-}`,
-  );
-  const native = SessionManager.create(ready.cwd, join(directory, "sessions"));
-  const bash = createBashTool(ready.cwd);
+test.each([false, true])(
+  "Pi executes the native command declared to the model (restored: %s)",
+  async (restored) => {
+    const { process, directory } = await worker();
+    const ready = await process.ready;
+    const command =
+      globalThis.process.platform === "win32" ? "powershell" : "bash";
+    const { requests, extension } = await commandModel(directory, command);
+    const launch = process.launch.bind(process);
+    process.launch = (spec) =>
+      launch({ ...spec, args: [...spec.args, "--extension", extension] });
+    const results: { text: string; failed: boolean }[] = [];
+    const session = await piProvider.open({
+      process,
+      config: { provider: "pi", model: "command-test/command-model" },
+      sessionId: restored ? commandSession(ready.cwd, directory) : null,
+      instructions: "Use the native command tool.",
+      emit: async (event) => {
+        if (event.type === "tool_result")
+          results.push({ text: event.text, failed: event.failed });
+      },
+    });
+    await session.prompt("Run echo domos-native-command.");
+    expect(requests).toHaveLength(3);
+    expect(requests[0]?.tools?.map((tool) => tool.function.name)).toContain(
+      command,
+    );
+    if (globalThis.process.platform === "win32")
+      expect(
+        requests[0]?.tools?.map((tool) => tool.function.name),
+      ).not.toContain("bash");
+    expect(results).toEqual([
+      { text: expect.stringContaining("not found"), failed: true },
+      { text: expect.stringContaining("domos-native-command"), failed: false },
+    ]);
+    expect(requests[1]?.messages.at(-1)?.content).toContain(command);
+  },
+  40_000,
+);
+
+type CommandRequest = {
+  tools?: { function: { name: string } }[];
+  messages: { role: string; content: string }[];
+};
+
+function commandSession(cwd: string, directory: string) {
+  const native = SessionManager.create(cwd, join(directory, "sessions"));
+  const bash = createBashTool(cwd);
   native.appendMessage({
     role: "system",
-    content: "Test",
+    content: "Use the command tool.",
     toolsAdded: [
       {
         name: bash.name,
@@ -196,24 +229,91 @@ export default function(pi) {
     content: "Test",
     timestamp: Date.now(),
   });
-  const launch = process.launch.bind(process);
-  process.launch = (spec) =>
-    launch({ ...spec, args: [...spec.args, "--extension", probe] });
-  const session = await piProvider.open({
-    process,
-    config: { provider: "pi", model: null },
-    sessionId: native.getSessionFile() ?? null,
-    instructions: "Test",
-    emit: async () => {},
+  return native.getSessionFile() ?? null;
+}
+
+function commandReply(payload: CommandRequest, command: string) {
+  const result = payload.messages
+    .filter((message) => message.role === "tool")
+    .at(-1);
+  const completed = result?.content.includes("domos-native-command");
+  const canRetry = result?.content.includes(command);
+  const done = completed || (result && !canRetry);
+  return {
+    id: "native-command",
+    object: "chat.completion.chunk",
+    created: 0,
+    model: "command-model",
+    choices: [
+      {
+        index: 0,
+        delta: done
+          ? { content: "Command completed." }
+          : {
+              role: "assistant",
+              tool_calls: [
+                {
+                  index: 0,
+                  id: canRetry ? "native-shell" : "previous-shell",
+                  type: "function",
+                  function: {
+                    name: canRetry ? command : "previous_command",
+                    arguments: JSON.stringify({
+                      command: "echo domos-native-command",
+                      timeout: 10,
+                    }),
+                  },
+                },
+              ],
+            },
+        finish_reason: done ? "stop" : "tool_calls",
+      },
+    ],
+  };
+}
+
+async function commandModel(directory: string, command: string) {
+  const requests: CommandRequest[] = [];
+  const server = createServer(async (request, response) => {
+    let body = "";
+    for await (const chunk of request) body += chunk;
+    const payload: CommandRequest = JSON.parse(body);
+    requests.push(payload);
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.end(
+      `data: ${JSON.stringify(commandReply(payload, command))}\n\ndata: [DONE]\n\n`,
+    );
   });
-  await session.prompt("/probe");
-  const tools: string[] = JSON.parse(await readFile(result, "utf8"));
-  expect(tools).toContain(
-    globalThis.process.platform === "win32" ? "powershell" : "bash",
+  onTestFinished(
+    () => new Promise<void>((resolve) => server.close(() => resolve())),
   );
-  if (globalThis.process.platform === "win32")
-    expect(tools).not.toContain("bash");
-}, 40_000);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string")
+    throw new Error("Server address required");
+  const provider = {
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    api: "openai-completions",
+    apiKey: "fixture-key",
+    models: [
+      {
+        id: "command-model",
+        name: "Command model",
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 32000,
+        maxTokens: 1000,
+      },
+    ],
+  };
+  const extension = join(directory, "provider.mjs");
+  await writeFile(
+    extension,
+    `export default function(pi) { pi.registerProvider("command-test", ${JSON.stringify(provider)}); }`,
+  );
+  return { requests, extension };
+}
 
 test("Pi account seeding keeps native refreshes and merges a second provider", async () => {
   const directory = await mkdtemp(join(tmpdir(), "domos-account-test-"));

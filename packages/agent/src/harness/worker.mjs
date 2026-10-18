@@ -173,6 +173,15 @@ async function launch(frame) {
   if (process.platform === "win32") pi.on("session_start", () => {
     pi.setActiveTools([...pi.getActiveTools().filter(name => name !== "bash"), "powershell"]);
   });
+  pi.on("message_end", ({ message }) => {
+    if (message.role !== "toolResult" || !message.isError) return;
+    const tools = pi.getActiveTools();
+    if (tools.includes(message.toolName)) return;
+    return { message: { ...message, content: [{
+      type: "text",
+      text: "The requested tool is not active. Nothing was executed. Currently active tools: " + tools.join(", ") + ". Select an active tool by its exact name."
+    }] } };
+  });
 }\n`,
       { mode: 0o600 },
     );
