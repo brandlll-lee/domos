@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 
 export function ActivityText({
   active = false,
@@ -38,10 +38,15 @@ export function ActivityDisclosure({
   notice?: string;
   children: ReactNode;
 }) {
+  const [expanded, setExpanded] = useState(false);
   return (
     <details
       className="activity-disclosure"
       data-attention={attention || undefined}
+      onToggle={(event) => {
+        if (event.target === event.currentTarget)
+          setExpanded(event.currentTarget.open);
+      }}
     >
       <summary className="activity-summary" title={label}>
         <span role="status" aria-live="polite" aria-atomic="true">
@@ -50,7 +55,7 @@ export function ActivityDisclosure({
         {notice && <span className="activity-notice">{notice}</span>}
         <span className="activity-chevron" aria-hidden="true" />
       </summary>
-      <div className="activity-content">{children}</div>
+      {expanded && <div className="activity-content">{children}</div>}
     </details>
   );
 }
@@ -66,8 +71,16 @@ export function ActivityDetails({
   attention?: boolean;
   children: ReactNode;
 }) {
+  const [expanded, setExpanded] = useState(false);
   return (
-    <details className="activity-step" data-attention={attention || undefined}>
+    <details
+      className="activity-step"
+      data-attention={attention || undefined}
+      onToggle={(event) => {
+        if (event.target === event.currentTarget)
+          setExpanded(event.currentTarget.open);
+      }}
+    >
       <summary className="activity-step-summary">
         <span className="activity-chevron" aria-hidden="true" />
         <span className="activity-step-label" title={label}>
@@ -75,7 +88,7 @@ export function ActivityDetails({
         </span>
         <span className="activity-step-status">{status}</span>
       </summary>
-      <div className="activity-detail">{children}</div>
+      {expanded && <div className="activity-detail">{children}</div>}
     </details>
   );
 }

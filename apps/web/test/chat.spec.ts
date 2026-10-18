@@ -44,6 +44,7 @@ async function stop() {
 async function control(
   command:
     | string
+    | { history: number }
     | { content: unknown; stopReason?: "stop" | "toolUse" }
     | { responses: { content: unknown; stopReason?: "stop" | "toolUse" }[] },
 ) {
@@ -929,6 +930,213 @@ test("stopping generation keeps its partial out of reply bubbles after reload", 
   await page.reload();
   await expect(process).toHaveAttribute("data-state", "stopped");
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
+  await process.locator(":scope > details > summary").click();
+  await expect(
+    process.locator(".activity-narration .markdown"),
+  ).not.toBeEmpty();
+  await process.getByRole("button", { name: "重试任务", exact: true }).click();
+  await expect(page.getByLabel("消息", { exact: true })).toHaveValue(
+    "停止这次回答",
+  );
+  await expect(
+    page.getByRole("button", { name: "停止生成", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("long replies start at the top and new messages preserve a reader's place", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1360, height: 600 });
+  await control({ history: 12 });
+  const answer = Array.from(
+    { length: 18 },
+    (_, index) => `第 ${index + 1} 项：资料已核对。`,
+  ).join("\n\n");
+  await control({ content: answer });
+  await page.addInitScript(() => {
+    const arrivals: string[] = [];
+    Object.assign(window, { arrivals });
+    document.addEventListener("animationstart", (event) => {
+      if (
+        event.animationName === "message-in" &&
+        event.target instanceof HTMLElement
+      )
+        arrivals.push(event.target.dataset.transcriptKey ?? "");
+    });
+  });
+  await page.goto(url);
+  const input = page.getByLabel("消息", { exact: true });
+  const send = page.getByRole("button", { name: "发送", exact: true });
+  await input.fill("长报告");
+  await send.click();
+  const last = page.getByLabel("Domos 的回复", { exact: true }).last();
+  await expect(last).toHaveText(answer, { timeout: 20_000 });
+  await expect
+    .poll(() =>
+      last.evaluate((node) => {
+        const viewport = node.closest(".transcript");
+        if (!viewport) throw new Error("Transcript required");
+        return Math.abs(
+          node.getBoundingClientRect().top -
+            viewport.getBoundingClientRect().top -
+            Number.parseFloat(getComputedStyle(viewport).paddingTop),
+        );
+      }),
+    )
+    .toBeLessThan(2);
+  const count = await page.evaluate(
+    () => (window as unknown as { arrivals: string[] }).arrivals.length,
+  );
+  expect(count).toBe(1);
+  await page.screenshot({ path: "test-results/chat-long-reply.png" });
+  await page.locator(".transcript").evaluate((node) => {
+    node.scrollTop = 50;
+  });
+  await expect(
+    page.getByRole("button", { name: "返回最新", exact: true }),
+  ).toBeVisible();
+  await control({ content: "已完成。" });
+  await input.fill("下一项任务");
+  await send.click();
+  await expect
+    .poll(() => page.locator(".transcript").evaluate((node) => node.scrollTop))
+    .toBe(50);
+  await expect(
+    page.getByRole("button", { name: "有新消息", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "有新消息", exact: true }).click();
+  await expect(page.getByLabel("Domos 的回复").last()).toHaveText("已完成。");
+  await expect(page.getByLabel("Domos 的回复").last()).toBeInViewport();
+  await page.reload();
+  await expect(page.getByLabel("Domos 的回复").last()).toHaveText("已完成。");
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { arrivals: string[] }).arrivals,
+    ),
+  ).toEqual([]);
+});
+
+test("background replies and reduced motion show complete messages without entry animation", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const state = { hidden: false, arrivals: 0 };
+    Object.assign(window, { deliveryMotion: state });
+    Object.defineProperty(document, "hidden", { get: () => state.hidden });
+    document.addEventListener("animationstart", (event) => {
+      if (event.animationName === "message-in") state.arrivals++;
+    });
+  });
+  await page.goto(url);
+  await control("gate");
+  const input = page.getByLabel("消息", { exact: true });
+  await input.fill("后台完成");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
+  await page.evaluate(() => {
+    (
+      window as unknown as { deliveryMotion: { hidden: boolean } }
+    ).deliveryMotion.hidden = true;
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await control("release");
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(1);
+  await page.evaluate(() => {
+    (
+      window as unknown as { deliveryMotion: { hidden: boolean } }
+    ).deliveryMotion.hidden = false;
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await input.fill("减少动画");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const avatar = page.locator(".work-status .bot-avatar");
+  await expect(avatar).toBeVisible();
+  expect(
+    await avatar.evaluate((node) => getComputedStyle(node).animationName),
+  ).toBe("none");
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(2);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { deliveryMotion: { arrivals: number } })
+            .deliveryMotion.arrivals,
+      ),
+    )
+    .toBe(0);
+});
+
+test("large histories render a bounded window and retain the earlier reading anchor", async ({
+  page,
+}) => {
+  await control({ history: 240 });
+  await page.goto(url);
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(60);
+  const older = page.getByRole("button", {
+    name: "查看更早的消息",
+    exact: true,
+  });
+  await older.scrollIntoViewIfNeeded();
+  const first = page.getByLabel("你的消息", { exact: true }).first();
+  const key = await first.getAttribute("data-transcript-key");
+  const before = await first.boundingBox();
+  await older.click();
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(120);
+  const retained = page.locator(`[data-transcript-key="${key}"]`);
+  await expect
+    .poll(async () =>
+      Math.abs(((await retained.boundingBox())?.y ?? 0) - (before?.y ?? 0)),
+    )
+    .toBeLessThan(2);
+  await older.scrollIntoViewIfNeeded();
+  await older.click();
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(120);
+  await page.getByRole("button", { name: "返回最新", exact: true }).click();
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(60);
+  await expect(page.getByLabel("Domos 的回复").last()).toContainText(
+    "报告 240",
+  );
+  await page.screenshot({ path: "test-results/chat-history-window.png" });
+});
+
+test("published files wait for the complete reply", async ({ page }) => {
+  await control("gate");
+  const call = (name: string, args: Record<string, unknown>) => ({
+    type: "toolCall",
+    id: crypto.randomUUID(),
+    name,
+    arguments: args,
+  });
+  await control({
+    responses: [
+      {
+        content: [call("write", { path: "report.md", content: "# Report" })],
+        stopReason: "toolUse",
+      },
+      {
+        content: [call("attach_file", { path: "report.md" })],
+        stopReason: "toolUse",
+      },
+    ],
+  });
+  await page.goto(url);
+  await page.getByLabel("消息", { exact: true }).fill("生成报告");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const process = page.getByRole("region", { name: "执行过程", exact: true });
+  await process
+    .getByRole("button", { name: "Domos 正在工作", exact: true })
+    .click();
+  await expect(process.getByText("report.md", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "下载 report.md", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
+  await control("release");
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(1);
+  await expect(
+    page.getByRole("button", { name: "下载 report.md", exact: true }),
+  ).toBeVisible();
 });
 
 test("stop and Chinese input work on a narrow screen", async ({ page }) => {
@@ -2035,7 +2243,8 @@ test("one live process shares motion, keyboard disclosure, themes, and restored 
   await expect(process).toHaveCount(1);
   await expect(status).toContainText(`正在执行 · ${toolName}`);
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
-  await expect(page.locator(".composer-area")).toContainText("Domos 正在工作");
+  await expect(trigger).toContainText(`正在执行 · ${toolName}`);
+  await expect(process.locator(".activity-narration")).toHaveCount(0);
   await expect(
     page.getByRole("log").locator(".execution-activity"),
   ).toHaveCount(0);
@@ -2043,11 +2252,11 @@ test("one live process shares motion, keyboard disclosure, themes, and restored 
   await expect(trigger.locator(".bot-avatar")).toHaveCount(1);
   await expect(trigger.locator(".activity-label")).toHaveCSS(
     "animation-name",
-    "activity-sweep",
+    "none",
   );
   await expect(trigger.locator(".character-body")).toHaveCSS(
     "animation-name",
-    "character-breathe",
+    "none",
   );
   for (const [theme, label] of [
     ["dark", "深色"],
@@ -2055,9 +2264,7 @@ test("one live process shares motion, keyboard disclosure, themes, and restored 
   ] as const) {
     await chooseAppearance(page, label);
     await trigger.hover();
-    await expect(page.locator(".work-tooltip")).toHaveText(
-      `正在执行 · ${toolName}`,
-    );
+    await expect(trigger).toHaveAttribute("title", `正在执行 · ${toolName}`);
     await page.screenshot({ path: `test-results/activity-${theme}-live.png` });
     await trigger.focus();
     await trigger.press("Space");
@@ -2153,7 +2360,7 @@ test("one live process shares motion, keyboard disclosure, themes, and restored 
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(1);
 });
 
-test("complete progress messages arrive before completion and remain unique after restart", async ({
+test("questions arrive during work and progress messages wait for completion across restart", async ({
   page,
 }) => {
   await control("gate-tool");
@@ -2166,7 +2373,7 @@ test("complete progress messages arrive before completion and remain unique afte
             type: "toolCall",
             id: crypto.randomUUID(),
             name: "message_user",
-            arguments: { message: "收到，我先核对资料。" },
+            arguments: { message: "你想先核对哪份资料？", kind: "question" },
           },
         ],
       },
@@ -2200,25 +2407,19 @@ test("complete progress messages arrive before completion and remain unique afte
   await page.getByLabel("消息", { exact: true }).fill("请整理资料");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   const replies = page.getByLabel("Domos 的回复", { exact: true });
-  await expect(replies).toHaveText([
-    "收到，我先核对资料。",
-    "已找到资料，正在整理。",
-  ]);
+  await expect(replies).toHaveText(["你想先核对哪份资料？"]);
   await expect(
     page.getByRole("button", { name: "停止生成", exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("log")).not.toContainText("工具内部说明。");
   await page.reload();
-  await expect(replies).toHaveText([
-    "收到，我先核对资料。",
-    "已找到资料，正在整理。",
-  ]);
+  await expect(replies).toHaveText(["你想先核对哪份资料？"]);
   await expect(
     page.getByRole("button", { name: "Domos 正在工作" }),
   ).toBeVisible();
   await control("release");
   await expect(replies).toHaveText([
-    "收到，我先核对资料。",
+    "你想先核对哪份资料？",
     "已找到资料，正在整理。",
     "报告已完成。",
   ]);
@@ -2231,7 +2432,7 @@ test("complete progress messages arrive before completion and remain unique afte
   await start(port);
   await page.reload();
   await expect(replies).toHaveText([
-    "收到，我先核对资料。",
+    "你想先核对哪份资料？",
     "已找到资料，正在整理。",
     "报告已完成。",
   ]);

@@ -1,31 +1,97 @@
+import type { ChatMessage } from "@domos/agent/messages";
 import type { TranscriptItem } from "@domos/agent/transcript";
-import type { ChatView } from "@domos/agent/view";
 import { ActivityText } from "@domos/ui/activity";
 import { Button } from "@domos/ui/controls";
 import { MessageBubble } from "@domos/ui/message";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { ArrowDownIcon } from "@phosphor-icons/react/dist/csr/ArrowDown";
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 import { ExecutionActivity } from "./activity.tsx";
 import { Attachments } from "./attachments.tsx";
 import { chatCopy } from "./copy.ts";
 import { MessageContent } from "./message-content.tsx";
 import { useTranscript } from "./use-transcript.ts";
 
-export function Messages({
-  view,
+const MessageRow = memo(function MessageRow({
+  item,
+  botId,
+  botName,
+  original,
+  onRetry,
+}: {
+  item: TranscriptItem;
+  botId: number;
+  botName: string;
+  original?: ChatMessage;
+  onRetry: (message: ChatMessage) => void;
+}) {
+  const key = `${item.kind}:${item.id}`;
+  if (item.kind === "activity")
+    return (
+      <div data-transcript-key={key}>
+        <ExecutionActivity
+          activity={item}
+          onRetry={original ? () => onRetry(original) : undefined}
+        />
+      </div>
+    );
+  if (item.kind === "attachments")
+    return (
+      <div className="delivered-files" data-transcript-key={key}>
+        <Attachments botId={botId} files={item.files} />
+      </div>
+    );
+  const { message } = item;
+  return (
+    <article
+      className={`message ${message.role}`}
+      data-transcript-key={key}
+      aria-label={
+        message.role === "user"
+          ? chatCopy.userMessage
+          : chatCopy.assistantMessage(botName)
+      }
+    >
+      <MessageBubble side={message.role === "user" ? "outgoing" : "incoming"}>
+        <MessageContent
+          content={message.content}
+          user={message.role === "user"}
+        />
+        {!!message.attachments?.length && (
+          <Attachments botId={botId} files={message.attachments} />
+        )}
+      </MessageBubble>
+    </article>
+  );
+});
+
+export const Messages = memo(function Messages({
+  botId,
+  ready,
+  busy,
   botName,
   createdAt,
   items,
   welcome,
+  onRetry,
 }: {
-  view: ChatView | null;
+  botId: number;
+  ready: boolean;
+  busy: boolean;
   botName: string;
   createdAt?: number;
   items: TranscriptItem[];
   welcome?: ReactNode;
+  onRetry: (message: ChatMessage) => void;
 }) {
-  const transcript = useTranscript(view);
+  const transcript = useTranscript(items, ready);
+  const originals = new Map(
+    items.flatMap((item) =>
+      item.kind === "message" && item.message.role === "user"
+        ? [[item.message.turnId, item.message] as const]
+        : [],
+    ),
+  );
   return (
     <div className="transcript-pane">
       <ScrollArea
@@ -37,12 +103,12 @@ export function Messages({
             transcript.onScroll();
         }}
       >
-        {!view ? (
+        {!ready ? (
           <p className="working" role="status">
             <ActivityText active>{chatCopy.loading}</ActivityText>
           </p>
         ) : (
-          !view.messages.length &&
+          !items.length &&
           createdAt !== undefined && (
             <time
               className="conversation-time"
@@ -56,7 +122,7 @@ export function Messages({
             </time>
           )
         )}
-        {view && !view.messages.length && welcome}
+        {ready && !items.length && welcome}
         <div
           className="messages"
           ref={transcript.content}
@@ -64,53 +130,33 @@ export function Messages({
           aria-label={chatCopy.history}
           aria-live="off"
         >
-          {view &&
-            items.map((item) => {
-              if (item.kind === "activity")
-                return item.status === "running" ? null : (
-                  <ExecutionActivity
-                    key={`activity:${item.id}`}
-                    activity={item}
-                  />
-                );
-              if (item.kind === "attachments")
-                return (
-                  <div className="delivered-files" key={item.id}>
-                    <Attachments botId={view.id} files={item.files} />
-                  </div>
-                );
-              const { message } = item;
-              return (
-                <article
-                  className={`message ${message.role}`}
-                  key={message.id}
-                  aria-label={
-                    message.role === "user"
-                      ? chatCopy.userMessage
-                      : message.role === "assistant"
-                        ? chatCopy.assistantMessage(botName)
-                        : chatCopy.toolOutput
-                  }
-                >
-                  <MessageBubble
-                    side={message.role === "user" ? "outgoing" : "incoming"}
-                  >
-                    <MessageContent
-                      content={message.content}
-                      user={message.role === "user"}
-                    />
-                    {message.attachments?.length ? (
-                      <Attachments
-                        botId={view.id}
-                        files={message.attachments}
-                      />
-                    ) : null}
-                  </MessageBubble>
-                </article>
-              );
-            })}
+          {transcript.hasEarlier && (
+            <Button
+              className="history-page"
+              variant="ghost"
+              size="small"
+              onClick={transcript.loadEarlier}
+            >
+              {chatCopy.earlier}
+            </Button>
+          )}
+          {ready &&
+            transcript.visible.map((item) => (
+              <MessageRow
+                key={`${item.kind}:${item.id}`}
+                item={item}
+                botId={botId}
+                botName={botName}
+                original={
+                  item.kind === "activity" && !busy
+                    ? originals.get(item.id)
+                    : undefined
+                }
+                onRetry={onRetry}
+              />
+            ))}
           <p className="sr-only" role="status">
-            {!view?.busy && view?.messages.length ? chatCopy.complete : ""}
+            {!busy && items.length ? chatCopy.complete : ""}
           </p>
         </div>
       </ScrollArea>
@@ -118,15 +164,16 @@ export function Messages({
         <Button
           type="button"
           variant="secondary"
-          size="icon"
+          size={transcript.unread ? "small" : "icon"}
           className="return-latest"
-          aria-label={chatCopy.latest}
+          aria-label={transcript.unread ? chatCopy.newMessage : chatCopy.latest}
           title={chatCopy.latest}
           onClick={transcript.jumpToLatest}
         >
           <ArrowDownIcon />
+          {transcript.unread && chatCopy.newMessage}
         </Button>
       )}
     </div>
   );
-}
+});

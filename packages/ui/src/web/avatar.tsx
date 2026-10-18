@@ -1,9 +1,10 @@
+import { memo } from "react";
 import { brandCharacter, characterIdentity } from "../characters.ts";
 import { Character } from "./character.tsx";
 
 type Motion = "idle" | "running";
 
-export function BotAvatar({
+export const BotAvatar = memo(function BotAvatar({
   seed,
   color,
   state = "idle",
@@ -29,7 +30,7 @@ export function BotAvatar({
       )}
     </span>
   );
-}
+});
 
 export function BrandMark() {
   return (

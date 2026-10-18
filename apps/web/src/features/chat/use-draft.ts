@@ -1,5 +1,5 @@
 import type { Attachment } from "@domos/agent/attachments";
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { chatCopy } from "./copy.ts";
 import type { SendInput } from "./use-chat.ts";
 
@@ -45,17 +45,20 @@ export function useDraft(conversationId: number) {
   const key = `domos:composer:v1:${conversationId}`;
   const [state, setState] = useState(() => load(key));
   const current = useRef(state.draft);
-  function update(patch: Partial<Draft>) {
-    const draft = { ...current.current, ...patch };
-    current.current = draft;
-    try {
-      localStorage.setItem(key, JSON.stringify(draft));
-      setState({ draft, error: null });
-      return true;
-    } catch {
-      setState({ draft, error: storageError });
-      return false;
-    }
-  }
+  const update = useCallback(
+    (patch: Partial<Draft>) => {
+      const draft = { ...current.current, ...patch };
+      current.current = draft;
+      try {
+        localStorage.setItem(key, JSON.stringify(draft));
+        setState({ draft, error: null });
+        return true;
+      } catch {
+        setState({ draft, error: storageError });
+        return false;
+      }
+    },
+    [key],
+  );
   return { ...state, current, update };
 }

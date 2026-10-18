@@ -171,6 +171,26 @@
 .message.user {
   align-items: flex-end;
 }
+.message[data-arrival] > .message-bubble,
+.delivered-files[data-arrival] > .attachments {
+  animation: message-in var(--motion-message-in) var(--ease-message-in) both;
+}
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-1));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .message[data-arrival] > .message-bubble,
+  .delivered-files[data-arrival] > .attachments {
+    animation: none;
+  }
+}
 .user-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -187,7 +207,28 @@
   min-width: 0;
 }
 .execution-activity {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   padding-block: var(--space-1);
+}
+.execution-activity > details {
+  flex: 1;
+  min-width: 0;
+}
+.activity-error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--color-danger);
+  font-size: var(--text-small);
+  overflow-wrap: anywhere;
+}
+.history-page {
+  align-self: center;
+}
+.composer-area .execution-activity {
+  width: 100%;
 }
 .message-image {
   display: block;

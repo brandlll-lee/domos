@@ -1,6 +1,6 @@
 import type { Bot, BotPresence } from "@domos/agent/bots";
-import { chatTranscript } from "@domos/agent/transcript";
-import { type CSSProperties, useRef, useState } from "react";
+import { type ChatMessage, messageText } from "@domos/agent/messages";
+import { type CSSProperties, useCallback, useRef, useState } from "react";
 import { CreateBot } from "../bots/create-bot.tsx";
 import { EnginePanel } from "../bots/details/engine.tsx";
 import { BotDetails, type BotPanel } from "../bots/details/index.tsx";
@@ -61,12 +61,20 @@ function BotChat({
   const dock = useComposerDock();
   const draft = useDraft(bot.id);
   const input = useRef<HTMLTextAreaElement>(null);
+  const retry = useCallback(
+    (original: ChatMessage) => {
+      draft.update({
+        text: messageText(original),
+        attachments: original.attachments ?? [],
+        pending: null,
+      });
+      input.current?.focus();
+    },
+    [draft.update],
+  );
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailPanel, setDetailPanel] = useState<BotPanel>("profile");
-  const items = chat.view ? chatTranscript(chat.view) : [];
-  const active = items.find(
-    (item) => item.kind === "activity" && item.status === "running",
-  );
+  const { items, active } = chat;
   const connection = chat.connected
     ? chatCopy.connected
     : chat.view
@@ -75,8 +83,11 @@ function BotChat({
   const error =
     chat.error ??
     directoryError ??
-    chat.view?.error ??
-    (chat.view?.failed ? chatCopy.errors.reply : null);
+    (!items.some(
+      (item) => item.kind === "activity" && item.status === "failed",
+    ) && chat.view?.failed
+      ? chatCopy.errors.reply
+      : null);
   const showPanel = (panel: BotPanel) => {
     setDetailPanel(panel);
     setDetailsOpen(!detailsOpen || detailPanel !== panel);
@@ -145,12 +156,16 @@ function BotChat({
           {connection}
         </span>
         <Messages
-          view={chat.view}
+          botId={bot.id}
+          ready={Boolean(chat.view)}
+          busy={Boolean(chat.view?.busy)}
           botName={bot.name}
           createdAt={bot.createdAt}
           items={items}
+          onRetry={retry}
           welcome={
-            !bot.welcomeComplete && (
+            !bot.welcomeComplete &&
+            !chat.view?.messages.length && (
               <ChatWelcome
                 botId={bot.id}
                 disabled={!chat.connected || Boolean(draft.draft.pending)}

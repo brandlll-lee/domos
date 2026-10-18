@@ -20,6 +20,7 @@ import {
   defineTool,
 } from "@earendil-works/pi-durable";
 import { getRequestListener } from "@hono/node-server";
+import { EngineMessage } from "../../../../packages/agent/src/harness/state.ts";
 import { createApp } from "../../src/app.ts";
 import { hostingApp } from "../../src/hosting/routes.ts";
 
@@ -158,8 +159,43 @@ server.listen(Number(process.argv[3] ?? 0), "127.0.0.1", () => {
   }
 });
 let release: (() => void) | undefined;
-process.on("message", (message) => {
+process.on("message", async (message) => {
   if (
+    typeof message === "object" &&
+    message !== null &&
+    "history" in message &&
+    typeof message.history === "number"
+  ) {
+    const count = message.history;
+    const bot = (await bots.list(BACKGROUND_CONTEXT))[0];
+    if (!bot) throw new Error("Bot required");
+    await harness.commit(async (tx) => {
+      for (let index = 0; index < count; index++) {
+        const turnId = `history:${index}`;
+        for (const role of ["user", "assistant"] as const)
+          await tx.appendEntry(bot.id, {
+            kind: EngineMessage,
+            data: {
+              id: `${turnId}:${role}`,
+              turnId,
+              role,
+              stopped: false,
+              content: [
+                {
+                  type: "text",
+                  key: `${turnId}:${role}:text`,
+                  text:
+                    role === "user"
+                      ? `历史任务 ${index + 1}`
+                      : `## 报告 ${index + 1}\n\n**资料已核对。**\n\n- 第一项结果\n- 第二项结果`,
+                },
+              ],
+            },
+          });
+      }
+    }, BACKGROUND_CONTEXT);
+    process.send?.({ type: "seeded" });
+  } else if (
     typeof message === "object" &&
     message !== null &&
     "responses" in message &&

@@ -1,9 +1,11 @@
+import type { Activity, TranscriptItem } from "@domos/agent/transcript";
 import type { ChatView } from "@domos/agent/view";
 import { ORPCError } from "@orpc/client";
 import { useEffect, useState } from "react";
 import { client } from "../../client.ts";
 import { chatCopy } from "./copy.ts";
 import { rejectionMessage } from "./request-error.ts";
+import { transcriptState } from "./transcript-state.ts";
 
 export type SendInput = {
   text: string;
@@ -13,6 +15,8 @@ export type SendInput = {
 
 export function useChat(botId: number, onModelRequired?: () => void) {
   const [view, setView] = useState<ChatView | null>(null);
+  const [items, setItems] = useState<TranscriptItem[]>([]);
+  const [active, setActive] = useState<Activity>();
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -20,6 +24,25 @@ export function useChat(botId: number, onModelRequired?: () => void) {
 
   useEffect(() => {
     const controller = new AbortController();
+    const project = transcriptState();
+    let pending: ChatView | undefined;
+    let frame: number | undefined;
+    const flush = () => {
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      frame = undefined;
+      if (!pending || controller.signal.aborted) return;
+      const next = pending;
+      pending = undefined;
+      const transcript = project(next);
+      setView(next);
+      setItems(transcript.items);
+      setActive(transcript.active);
+      setConnected(true);
+    };
+    const visible = () => {
+      if (!document.hidden) flush();
+    };
+    document.addEventListener("visibilitychange", visible);
     void (async () => {
       try {
         const events = await client.subscribe(
@@ -36,16 +59,25 @@ export function useChat(botId: number, onModelRequired?: () => void) {
         );
         for await (const next of events) {
           if (controller.signal.aborted) return;
-          setView(next);
-          setConnected(true);
+          pending = next;
+          if (document.hidden) {
+            if (!next.busy || next.approvals?.length) flush();
+          } else if (frame === undefined) frame = requestAnimationFrame(flush);
         }
       } catch {
         if (!controller.signal.aborted) setError(chatCopy.errors.connect);
       } finally {
-        if (!controller.signal.aborted) setConnected(false);
+        if (!controller.signal.aborted) {
+          flush();
+          setConnected(false);
+        }
       }
     })();
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      document.removeEventListener("visibilitychange", visible);
+    };
   }, [botId]);
 
   async function send(input: SendInput) {
@@ -77,5 +109,15 @@ export function useChat(botId: number, onModelRequired?: () => void) {
     }
   }
 
-  return { view, connected, error, sending, stopping, send, stop };
+  return {
+    view,
+    items,
+    active,
+    connected,
+    error,
+    sending,
+    stopping,
+    send,
+    stop,
+  };
 }
