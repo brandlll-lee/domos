@@ -1,6 +1,6 @@
 import type { Bot, BotPresence } from "@domos/agent/bots";
 import { chatTranscript } from "@domos/agent/transcript";
-import { type CSSProperties, useState } from "react";
+import { type CSSProperties, useRef, useState } from "react";
 import { CreateBot } from "../bots/create-bot.tsx";
 import { EnginePanel } from "../bots/details/engine.tsx";
 import { BotDetails, type BotPanel } from "../bots/details/index.tsx";
@@ -19,6 +19,8 @@ import { ModelPicker } from "./model-picker.tsx";
 import { Sidebar } from "./sidebar.tsx";
 import { useChat } from "./use-chat.ts";
 import { useComposerDock } from "./use-composer-dock.ts";
+import { useDraft } from "./use-draft.ts";
+import { ChatWelcome } from "./welcome.tsx";
 
 export function ChatPage() {
   const bots = useBots();
@@ -57,6 +59,8 @@ function BotChat({
   const chat = useChat(bot.id, () => settings.open("models", bot.id));
   const computer = useComputer(bot.id, directory);
   const dock = useComposerDock();
+  const draft = useDraft(bot.id);
+  const input = useRef<HTMLTextAreaElement>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailPanel, setDetailPanel] = useState<BotPanel>("profile");
   const items = chat.view ? chatTranscript(chat.view) : [];
@@ -83,9 +87,7 @@ function BotChat({
       onDetailsChange={setDetailsOpen}
       onSettings={() => settings.open()}
       page={settings.page}
-      actions={
-        <CreateBot model={chat.view?.model ?? null} onCreated={selectBot} />
-      }
+      actions={<CreateBot onCreated={selectBot} />}
       sidebar={
         <Sidebar bots={bots} selected={bot} connected={directoryConnected} />
       }
@@ -146,10 +148,28 @@ function BotChat({
           botName={bot.name}
           createdAt={bot.createdAt}
           items={items}
+          welcome={
+            !bot.welcomeComplete && (
+              <ChatWelcome
+                botId={bot.id}
+                disabled={!chat.connected || Boolean(draft.draft.pending)}
+                onChoose={(text) => {
+                  const current = draft.current.current.text;
+                  draft.update({
+                    text: current.trim() ? `${current}\n\n${text}` : text,
+                  });
+                  input.current?.focus();
+                }}
+                onDismissed={() => input.current?.focus()}
+              />
+            )
+          }
         />
         {chat.view ? (
           <Composer
             ref={dock.ref}
+            inputRef={input}
+            draft={draft}
             key={chat.view.id}
             botName={bot.name}
             conversationId={chat.view.id}

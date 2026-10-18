@@ -72,6 +72,62 @@ async function setup() {
   return { faux, open, models };
 }
 
+test("welcome dismissal is shared, idempotent and survives a service restart", async () => {
+  const { open } = await setup();
+  const first = await open();
+  const botId = first.conversation.id;
+  const events = await first.client.bots.subscribe();
+  try {
+    expect((await events.next()).value?.items[0]).toMatchObject({
+      id: botId,
+      welcomeComplete: false,
+    });
+    const other = await first.client.bots.create(botInput("Second"));
+    await first.client.bots.completeWelcome({ botId });
+    let update = await events.next();
+    while (!update.done && !update.value.items[0]?.welcomeComplete)
+      update = await events.next();
+    expect(update.value?.items[0]?.welcomeComplete).toBe(true);
+    await first.client.bots.completeWelcome({ botId });
+    expect(await first.client.bots.list()).toEqual([
+      expect.objectContaining({ id: botId, welcomeComplete: true }),
+      expect.objectContaining({ id: other.id, welcomeComplete: false }),
+    ]);
+    await expect(
+      first.client.bots.completeWelcome({ botId: Number.MAX_SAFE_INTEGER }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  } finally {
+    await events.return();
+    await first.harness.close(context);
+  }
+  const second = await open();
+  try {
+    expect((await second.client.bots.list())[0]?.welcomeComplete).toBe(true);
+  } finally {
+    await second.harness.close(context);
+  }
+});
+
+test("welcome completes only after a message is accepted", async () => {
+  const { open, faux } = await setup();
+  const runtime = await open();
+  const botId = runtime.conversation.id;
+  try {
+    await expect(
+      runtime.client.send({ botId, text: "", requestId: crypto.randomUUID() }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect((await runtime.client.bots.list())[0]?.welcomeComplete).toBe(false);
+    faux.setResponses([fauxAssistantMessage("Ready")]);
+    const input = { botId, text: "Hello", requestId: crypto.randomUUID() };
+    const receipt = await runtime.client.send(input);
+    expect((await runtime.client.bots.list())[0]?.welcomeComplete).toBe(true);
+    expect(await runtime.client.send(input)).toEqual(receipt);
+    await runtime.conversation.waitForIdle(context);
+  } finally {
+    await runtime.harness.close(context);
+  }
+});
+
 test("Bot work routes enforce ownership, revisions, validation and live updates", async () => {
   const { open } = await setup();
   const runtime = await open();
@@ -203,6 +259,7 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
         name: "Domos",
         avatar: expect.any(String),
         createdAt: expect.any(Number),
+        welcomeComplete: false,
         busy: false,
         preview: "",
       },
@@ -225,10 +282,16 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
         name: "Domos",
         avatar: expect.any(String),
         createdAt: expect.any(Number),
+        welcomeComplete: false,
         busy: false,
         preview: "",
       },
-      { ...bot, busy: false, preview: input.instructions },
+      {
+        ...bot,
+        welcomeComplete: false,
+        busy: false,
+        preview: input.instructions,
+      },
     ]);
     await events.return();
     const initial = await first.client.get({ botId });

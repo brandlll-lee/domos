@@ -3,7 +3,7 @@ import { Button } from "@domos/ui/controls";
 import { SearchPicker } from "@domos/ui/picker";
 import { SettingRow } from "@domos/ui/setting-row";
 import { ArrowUpRightIcon } from "@phosphor-icons/react/dist/csr/ArrowUpRight";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { client } from "../../client.ts";
 import { modelItems, modelKey, useModels } from "../models/use-models.ts";
 import { useSettings } from "../settings/context.ts";
@@ -13,15 +13,20 @@ export function ModelPicker({
   botId,
   model,
   connected,
+  onSelected,
+  onBusyChange,
 }: {
   botId: number;
   model: ChatView["model"];
   connected: boolean;
+  onSelected?: () => Promise<void>;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const settings = useSettings();
   const { choices, error: catalogError } = useModels(connected);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => onBusyChange?.(saving), [saving, onBusyChange]);
   const selected = model ? modelKey(model) : "";
   return (
     <section className="settings-group" aria-label="模型设置">
@@ -64,6 +69,7 @@ export function ModelPicker({
                   provider: choice.provider,
                   modelId: choice.modelId,
                 });
+                await onSelected?.();
               } catch (cause) {
                 setError(rejectionMessage(cause) ?? "模型切换失败。请重试。");
               } finally {

@@ -45,7 +45,11 @@ export class Engines {
       revision: doc?.revision ?? 0,
       busy: Boolean(doc?.tasks.length),
       error: doc?.error ?? null,
-      prepared: doc?.prepared ?? false,
+      prepared: Boolean(
+        doc?.prepared &&
+          (doc.preparedComputerId ?? doc.computerId) ===
+            (await this.execution.computers.computerId(botId, context)),
+      ),
       providers: [...providers.values()].map(({ id, name, capabilities }) => ({
         id,
         name,
@@ -222,14 +226,25 @@ export class Engines {
 
   async prepare(botId: number, context: Context) {
     const profile = await this.profile(botId, context);
+    const computerId = await this.execution.computers.computerId(
+      botId,
+      context,
+    );
     const result = await this.connections.inspect(
       botId,
       profile.config,
       context,
     );
+    if (
+      computerId !== (await this.execution.computers.computerId(botId, context))
+    )
+      throw new WorkError("CONFLICT", "工作电脑已更换。请重新检查连接。");
     await this.harness.commit(async (tx) => {
-      (await tx.doc(EngineDoc, botId as ConversationId)).prepared =
-        result.authenticated;
+      const doc = await tx.doc(EngineDoc, botId as ConversationId);
+      if (doc.revision !== profile.revision)
+        throw new WorkError("CONFLICT", "配置已更新。请重新检查连接。");
+      doc.prepared = result.authenticated;
+      doc.preparedComputerId = computerId;
     }, context);
     return result;
   }

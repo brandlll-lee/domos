@@ -23,6 +23,7 @@ export type Bot = {
   name: string;
   avatar: string;
   createdAt?: number;
+  welcomeComplete?: boolean;
 };
 export type BotPresence = Bot & { busy: boolean; preview: string };
 export type CreateBot = {
@@ -74,24 +75,31 @@ export class Bots {
   async list(context: Context): Promise<BotPresence[]> {
     const directory = await this.harness.snapshot(BotDirectory, context);
     return Promise.all(
-      (directory?.items ?? []).map(async ({ id, name, avatar, createdAt }) => {
-        const [live, agent, conversation, engine] = await Promise.all([
-          this.harness.snapshot(LiveDoc, id, context),
-          this.harness.snapshot(AgentDoc, id, context),
-          this.harness.conversation(id, context),
-          this.harness.snapshot(EngineDoc, id, context),
-        ]);
-        return {
-          id,
-          name,
-          avatar,
-          createdAt,
-          busy: Boolean(live?.run || engine?.tasks.length),
-          preview: conversation
-            ? await botPreview(conversation, agent?.instructions ?? "", context)
-            : "",
-        };
-      }),
+      (directory?.items ?? []).map(
+        async ({ id, name, avatar, createdAt, welcomeComplete }) => {
+          const [live, agent, conversation, engine] = await Promise.all([
+            this.harness.snapshot(LiveDoc, id, context),
+            this.harness.snapshot(AgentDoc, id, context),
+            this.harness.conversation(id, context),
+            this.harness.snapshot(EngineDoc, id, context),
+          ]);
+          return {
+            id,
+            name,
+            avatar,
+            createdAt,
+            welcomeComplete: Boolean(welcomeComplete),
+            busy: Boolean(live?.run || engine?.tasks.length),
+            preview: conversation
+              ? await botPreview(
+                  conversation,
+                  agent?.instructions ?? "",
+                  context,
+                )
+              : "",
+          };
+        },
+      ),
     );
   }
 
@@ -100,6 +108,16 @@ export class Bots {
       await this.harness.snapshot(BotDirectory, context)
     )?.items.find((item) => item.id === id);
     return bot ? this.harness.conversation(bot.id, context) : undefined;
+  }
+
+  async completeWelcome(id: number, context: Context) {
+    await this.harness.commit(async (tx) => {
+      const bot = (await tx.doc(BotDirectory)).items.find(
+        (item) => item.id === id,
+      );
+      if (!bot) throw new WorkError("NOT_FOUND", "Bot不存在。");
+      bot.welcomeComplete = true;
+    }, context);
   }
 
   async profile(id: number, context: Context) {

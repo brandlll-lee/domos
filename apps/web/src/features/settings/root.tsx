@@ -64,6 +64,7 @@ export function SettingsRoot({
     <SettingsContext
       value={{
         admin: access.admin,
+        standalone: access.standalone,
         open: show,
         page: open ? (
           <SettingsPage

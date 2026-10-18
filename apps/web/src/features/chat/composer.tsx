@@ -10,9 +10,12 @@ import { type ReactNode, type Ref, useRef, useState } from "react";
 import { client } from "../../client.ts";
 import { chatCopy } from "./copy.ts";
 import { type SendMessage, useComposer } from "./use-composer.ts";
+import type { useDraft } from "./use-draft.ts";
 
 export function Composer({
   ref,
+  inputRef,
+  draft,
   botName,
   conversationId,
   connected,
@@ -27,6 +30,8 @@ export function Composer({
   onComputerRequired,
 }: {
   ref: Ref<HTMLElement>;
+  inputRef: Ref<HTMLTextAreaElement>;
+  draft: ReturnType<typeof useDraft>;
   botName: string;
   conversationId: number;
   connected: boolean;
@@ -44,7 +49,7 @@ export function Composer({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const composer = useComposer(
-    conversationId,
+    draft,
     connected && !busy && !sending && !uploading,
     onSend,
   );
@@ -112,6 +117,7 @@ export function Composer({
         </p>
       )}
       <MessageComposer
+        ref={inputRef}
         value={composer.value}
         onValueChange={composer.change}
         onSubmit={() => void composer.submit()}

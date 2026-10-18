@@ -10,6 +10,59 @@ import type { Computers } from "../src/computer/catalog.ts";
 import { openAgent } from "../src/open-agent.ts";
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
 
+test("engine connection readiness follows the selected work computer", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "domos-engine-computer-"));
+  const models = createModels();
+  models.setProvider(fauxProvider().provider);
+  let computerId = "shared";
+  const computers = {
+    initialize: async () => {},
+    computerId: async () => computerId,
+    process: async () => {
+      const worker = new ProtocolProcess();
+      worker.receive = (request) => {
+        worker.response(
+          request,
+          request.method === "account/read"
+            ? { account: { type: "apiKey" } }
+            : { thread: { id: "connection-check" }, data: [] },
+        );
+      };
+      return worker;
+    },
+  } as unknown as Computers;
+  const runtime = await openAgent(
+    join(directory, "agent.sqlite"),
+    { registry: createRegistry(), models, computers },
+    {},
+    context,
+  );
+  onTestFinished(async () => {
+    await runtime.harness.close(context);
+    await rm(directory, { recursive: true, force: true });
+  });
+  const engines = runtime.engines;
+  if (!engines) throw new Error("Native engines required");
+  const botId = runtime.conversation.id;
+  await engines.configure(
+    botId,
+    {
+      config: { provider: "codex", model: null },
+      revision: 0,
+      requestId: crypto.randomUUID(),
+    },
+    context,
+  );
+  await engines.prepare(botId, context);
+  expect((await engines.profile(botId, context)).prepared).toBe(true);
+  computerId = "dedicated";
+  expect((await engines.profile(botId, context)).prepared).toBe(false);
+  await engines.prepare(botId, context);
+  expect((await engines.profile(botId, context)).prepared).toBe(true);
+  computerId = "shared";
+  expect((await engines.profile(botId, context)).prepared).toBe(false);
+});
+
 test("routines use the selected native engine and stopping settles queued work", async () => {
   const directory = await mkdtemp(join(tmpdir(), "domos-native-routine-"));
   const models = createModels();

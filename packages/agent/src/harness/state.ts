@@ -21,6 +21,7 @@ export type EngineState = {
   approvals: EngineApproval[];
   error: string | null;
   prepared: boolean;
+  preparedComputerId?: string | null;
   prompt: {
     text: string;
     sections: Record<string, string>;

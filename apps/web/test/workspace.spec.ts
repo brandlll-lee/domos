@@ -270,16 +270,27 @@ test("contact rows keep their density and searchable previews across selections"
   await create
     .getByRole("textbox", { name: "名字", exact: true })
     .fill("研究助手");
-  await create
-    .getByRole("textbox", { name: "职责与指令", exact: true })
-    .fill("整理研究资料");
   await create.getByRole("button", { name: "创建", exact: true }).click();
   await create.getByRole("button", { name: "授权并继续", exact: true }).click();
+  await create.getByRole("combobox", { name: "模型", exact: true }).click();
+  await page
+    .getByRole("option", { name: "faux · 测试模型一", exact: true })
+    .click();
   await create.getByRole("button", { name: "开始使用", exact: true }).click();
   await expect(create).toBeHidden();
   await expect(
     page.getByRole("button", { name: "Bot详情", exact: true }),
   ).toContainText("研究助手");
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  const details = page.getByRole("complementary", {
+    name: "研究助手的详情",
+    exact: true,
+  });
+  await details
+    .getByRole("textbox", { name: "职责与长期指令" })
+    .fill("整理研究资料");
+  await details.getByRole("button", { name: "保存身份", exact: true }).click();
+  await details.getByRole("button", { name: "关闭", exact: true }).click();
   await page.getByRole("button", { name: "新建 Bot", exact: true }).click();
   create = page.getByRole("dialog", { name: "新建 Bot", exact: true });
   const longName = "负责跨语言内容审校与排版的 Editorial Assistant";
@@ -288,6 +299,10 @@ test("contact rows keep their density and searchable previews across selections"
     .fill(longName);
   await create.getByRole("button", { name: "创建", exact: true }).click();
   await create.getByRole("button", { name: "授权并继续", exact: true }).click();
+  await create.getByRole("combobox", { name: "模型", exact: true }).click();
+  await page
+    .getByRole("option", { name: "faux · 测试模型一", exact: true })
+    .click();
   await create.getByRole("button", { name: "开始使用", exact: true }).click();
   await expect(create).toBeHidden();
   await expect(

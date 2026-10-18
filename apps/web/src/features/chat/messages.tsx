@@ -4,6 +4,7 @@ import { ActivityText } from "@domos/ui/activity";
 import { Button } from "@domos/ui/controls";
 import { MessageBubble } from "@domos/ui/message";
 import { ArrowDownIcon } from "@phosphor-icons/react/dist/csr/ArrowDown";
+import type { ReactNode } from "react";
 import { ExecutionActivity } from "./activity.tsx";
 import { Attachments } from "./attachments.tsx";
 import { chatCopy } from "./copy.ts";
@@ -15,11 +16,13 @@ export function Messages({
   botName,
   createdAt,
   items,
+  welcome,
 }: {
   view: ChatView | null;
   botName: string;
   createdAt?: number;
   items: TranscriptItem[];
+  welcome?: ReactNode;
 }) {
   const transcript = useTranscript(view);
   return (
@@ -48,6 +51,7 @@ export function Messages({
             </time>
           )
         )}
+        {view && !view.messages.length && welcome}
         <div
           className="messages"
           ref={transcript.content}

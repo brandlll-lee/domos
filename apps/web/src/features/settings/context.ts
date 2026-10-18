@@ -5,6 +5,7 @@ export const SettingsContext = createContext<{
   open: (section?: SettingsSection, botId?: number) => void;
   page: ReactNode;
   admin: boolean;
+  standalone: boolean;
 } | null>(null);
 
 export function useSettings() {

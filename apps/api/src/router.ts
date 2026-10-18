@@ -37,6 +37,10 @@ export function createRouter(
     files: fileRouter(bots, files, computer),
     bots: {
       list: os.handler(() => bots.list(BACKGROUND_CONTEXT)),
+      completeWelcome: os.input(botTarget).handler(async ({ input }) => {
+        await botConversation(bots, input.botId);
+        await bots.completeWelcome(input.botId, BACKGROUND_CONTEXT);
+      }),
       create: os
         .input(
           z.object({
@@ -161,6 +165,7 @@ export function createRouter(
           const submission = await (computer
             ? computer.transfer(input.botId, submit, BACKGROUND_CONTEXT)
             : submit());
+          await bots.completeWelcome(input.botId, BACKGROUND_CONTEXT);
           return { id: submission.id };
         } catch (error) {
           if (error instanceof WorkError)

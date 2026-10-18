@@ -1,6 +1,14 @@
-import { type ReactNode, useId, useLayoutEffect, useRef } from "react";
+import {
+  type ReactNode,
+  type Ref,
+  useId,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+} from "react";
 
 export function MessageComposer({
+  ref,
   value,
   onValueChange,
   onSubmit,
@@ -10,6 +18,7 @@ export function MessageComposer({
   leading,
   attachments,
 }: {
+  ref?: Ref<HTMLTextAreaElement>;
   value: string;
   onValueChange: (value: string) => void;
   onSubmit: () => void;
@@ -21,6 +30,11 @@ export function MessageComposer({
 }) {
   const id = useId();
   const input = useRef<HTMLTextAreaElement>(null);
+  useImperativeHandle<HTMLTextAreaElement | null, HTMLTextAreaElement | null>(
+    ref,
+    () => input.current,
+    [],
+  );
   useLayoutEffect(() => {
     const field = input.current;
     if (!field || CSS.supports("field-sizing", "content")) return;

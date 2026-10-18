@@ -69,9 +69,12 @@ pnpm desktop
 The desktop app guides you through setup:
 
 1. **Choose where Domos runs.** Use this computer or connect to an existing Domos.
-2. **Meet your first companion.** Give your Bot a name and a role.
-3. **Choose where the Bot works.** Confirm access to commands and files. Domos prepares and binds the selected environment.
-4. **Choose who handles tasks.** Select Pi, Codex, Claude Code, or OpenCode. Connect an account and check the connection. Then start chatting.
+2. **Choose where the Bot works.** Confirm access to commands and files. Domos prepares and binds the selected environment.
+3. **Choose who handles tasks.** Select Pi, Codex, Claude Code, or OpenCode. Connect an account and check the connection. Then start chatting.
+
+Domos prepares your first Bot. If its setup is ready, you go straight to chat. Pick a suggested task to fill the message box, then send it when you are ready. Dismiss the hints or send your first message to finish the introduction.
+
+For each new Bot, choose a name and avatar, then select its work computer and engine. Add standing instructions in Bot settings when needed.
 
 On this computer, **Run directly** needs no Docker. **Run in Docker** needs an installed and running Linux Docker engine and Compose. The app checks the engine and prepares images after you confirm a Docker option. The first setup can include downloads and builds.
 
@@ -91,7 +94,7 @@ pnpm start
 
 1. Open **http://127.0.0.1:4310**.
 2. Enter the first administrator code from `data/owner-code`.
-3. Name your Bot, choose its work computer, and connect its engine.
+3. Choose a work computer and connect an engine for the default Bot. If its setup is ready, you go straight to chat.
 
 The default address is available only on this computer. See [Self-Hosting & Other Devices](#-self-hosting--other-devices) to connect another device.
 

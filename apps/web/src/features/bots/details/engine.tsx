@@ -3,7 +3,9 @@ import { TextField } from "@domos/ui/field";
 import { SearchPicker } from "@domos/ui/picker";
 import { SettingRow } from "@domos/ui/setting-row";
 import { type ReactNode, useEffect, useState } from "react";
+import { ModelPicker } from "../../chat/model-picker.tsx";
 import { HostingModels } from "../../hosting/models.tsx";
+import { useSettings } from "../../settings/context.ts";
 import { EngineSelect } from "../engine-select.tsx";
 import { EngineAccount } from "./engine-account.tsx";
 import { type EngineSetup, useEngine } from "./use-engine.ts";
@@ -27,8 +29,18 @@ export function EnginePanel({
   onBusyChange?: (busy: boolean) => void;
 }) {
   const setup = useEngine(botId, active);
+  const settings = useSettings();
   const { profile, connection, busy, error } = setup;
   const provider = profile?.config.provider;
+  const model = profile?.config.model;
+  const separator = model?.indexOf("/") ?? -1;
+  const selection =
+    model && separator > 0
+      ? {
+          provider: model.slice(0, separator),
+          modelId: model.slice(separator + 1),
+        }
+      : null;
   const [modelBusy, setModelBusy] = useState(false);
   const blocked = Boolean(busy || modelBusy);
   useEffect(() => onBusyChange?.(blocked), [blocked, onBusyChange]);
@@ -122,14 +134,20 @@ export function EnginePanel({
       </div>
       {provider === "pi"
         ? (piModel ??
-          (canManage ? (
+          (canManage && !settings.standalone ? (
             <HostingModels
               botId={botId}
               onConfigured={() => void setup.refresh()}
               onBusyChange={setModelBusy}
             />
           ) : (
-            <p className="detail-note">请让管理员连接模型账号。</p>
+            <ModelPicker
+              botId={botId}
+              model={selection}
+              connected={Boolean(profile)}
+              onSelected={setup.refresh}
+              onBusyChange={setModelBusy}
+            />
           )))
         : null}
       {provider && provider !== "pi" && <EngineModel setup={setup} />}

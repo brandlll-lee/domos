@@ -10,12 +10,10 @@ export function ProfileEditor({
   profile,
   action,
   onSaved,
-  submitLabel,
 }: {
   profile: Profile;
   action: WorkAction;
   onSaved: (profile: Profile) => void;
-  submitLabel?: string;
 }) {
   const [name, setName] = useState(profile.name);
   const [instructions, setInstructions] = useState(profile.instructions);
@@ -63,29 +61,27 @@ export function ProfileEditor({
           maxLength={WORK_TEXT_LENGTH}
           placeholder="例如：帮我整理资料、准备每周工作计划。"
         />
-        {(dirty || submitLabel) && (
-          <div className={submitLabel ? "setup-actions" : "form-actions"}>
-            {!submitLabel && (
-              <Button
-                type="button"
-                variant="secondary"
-                size="small"
-                onClick={() => {
-                  setName(profile.name);
-                  setInstructions(profile.instructions);
-                  setAvatar(profile.avatar);
-                }}
-              >
-                还原
-              </Button>
-            )}
+        {dirty && (
+          <div className="form-actions">
+            <Button
+              type="button"
+              variant="secondary"
+              size="small"
+              onClick={() => {
+                setName(profile.name);
+                setInstructions(profile.instructions);
+                setAvatar(profile.avatar);
+              }}
+            >
+              还原
+            </Button>
             <Button
               type="submit"
-              size={submitLabel ? "default" : "small"}
+              size="small"
               pending={action.busy}
               disabled={!name.trim()}
             >
-              {action.busy ? "正在保存…" : (submitLabel ?? "保存身份")}
+              {action.busy ? "正在保存…" : "保存身份"}
             </Button>
           </div>
         )}

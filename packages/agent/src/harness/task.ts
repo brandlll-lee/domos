@@ -92,7 +92,10 @@ async function finish(
       doc.activeId = null;
       doc.activeTurn = null;
       doc.error = error;
-      if (!error) doc.prepared = true;
+      if (!error) {
+        doc.prepared = true;
+        doc.preparedComputerId = doc.computerId;
+      }
     }
     if (!answer && !error)
       answer = (

@@ -193,6 +193,7 @@ test("adopts the existing root conversation with its history and configuration",
         createdAt: expect.any(Number),
         busy: false,
         preview: "Existing answer",
+        welcomeComplete: false,
       },
     ]);
     const conversation = await runtime.bots.conversation(root.id, context);

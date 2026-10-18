@@ -183,22 +183,17 @@ async function createBot(
   await page.getByRole("button", { name: "新建 Bot", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "新建 Bot", exact: true });
   await dialog.getByLabel("名字", { exact: true }).fill(name);
-  await dialog
-    .getByLabel("职责与指令", { exact: true })
-    .fill(`负责${name}的工作。`);
-  const picker = dialog.getByRole("combobox", {
-    name: "默认模型",
-    exact: true,
-  });
-  await expect(picker).toBeEnabled();
-  if (model) {
-    await picker.click();
-    await page
-      .getByRole("option", { name: `faux · ${model}`, exact: true })
-      .click();
-  }
+  await expect(dialog.getByRole("textbox")).toHaveCount(1);
+  await expect(dialog.getByRole("combobox")).toHaveCount(0);
   await dialog.getByRole("button", { name: "创建", exact: true }).click();
   await dialog.getByRole("button", { name: "授权并继续", exact: true }).click();
+  await dialog.getByRole("combobox", { name: "模型", exact: true }).click();
+  await page
+    .getByRole("option", {
+      name: `faux · ${model ?? "测试模型一"}`,
+      exact: true,
+    })
+    .click();
   await dialog.getByRole("button", { name: "开始使用", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByLabel("消息", { exact: true })).toHaveAttribute(
@@ -206,6 +201,73 @@ async function createBot(
     `发送消息给 ${name}…`,
   );
 }
+
+test("chat suggestions fill the draft and dismissal stays complete on other devices and after restart", async ({
+  page,
+  browser,
+}, testInfo) => {
+  await page.goto(url);
+  const welcome = page.getByRole("region", { name: "入门提示", exact: true });
+  const input = page.getByRole("textbox", { name: "消息", exact: true });
+  await expect(welcome).toBeVisible();
+  let sends = 0;
+  page.on("request", (request) => {
+    if (request.url().endsWith("/rpc/send")) sends++;
+  });
+  await welcome
+    .getByRole("button", { name: "起草一份文档", exact: true })
+    .click();
+  await expect(input).toHaveValue("帮我起草一份文档。先问我用途和要求。");
+  await expect(input).toBeFocused();
+  await expect(page.getByLabel("你的消息", { exact: true })).toHaveCount(0);
+  expect(sends).toBe(0);
+  await input.fill("我已有的草稿");
+  await welcome
+    .getByRole("button", { name: "分析一份资料", exact: true })
+    .click();
+  await expect(input).toHaveValue(
+    "我已有的草稿\n\n帮我分析一份资料。先问我资料内容和我关心的问题。",
+  );
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    for (const width of [1360, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(welcome).toBeInViewport({ ratio: 1 });
+      await page.screenshot({
+        path: testInfo.outputPath(`welcome-${colorScheme}-${width}.png`),
+        animations: "disabled",
+      });
+    }
+  }
+  const remote = await browser.newContext();
+  try {
+    const second = await remote.newPage();
+    await second.goto(url);
+    await expect(
+      second.getByRole("region", { name: "入门提示", exact: true }),
+    ).toBeVisible();
+    await page.route("**/rpc/bots/completeWelcome", (route) => route.abort());
+    await welcome.getByRole("button", { name: "关闭入门提示" }).click();
+    await expect(welcome.getByRole("alert")).toContainText("请重试");
+    await expect(input).toHaveValue(/我已有的草稿/);
+    await page.unroute("**/rpc/bots/completeWelcome");
+    await welcome.getByRole("button", { name: "关闭入门提示" }).click();
+    await expect(welcome).toBeHidden();
+    await expect(input).toBeFocused();
+    await expect(
+      second.getByRole("region", { name: "入门提示", exact: true }),
+    ).toBeHidden();
+    const port = Number(new URL(url).port);
+    await stop();
+    await start(port);
+    await page.reload();
+    await expect(input).toBeVisible();
+    await expect(welcome).toBeHidden();
+    await expect(input).toHaveValue(/我已有的草稿/);
+  } finally {
+    await remote.close();
+  }
+});
 
 test("Bot details manage identity, memory, shared skills, routines and actual prompts", async ({
   page,
@@ -530,8 +592,10 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
     await trigger.click();
     await name.fill("设计助手");
     await expect(
-      dialog.getByRole("combobox", { name: "默认模型", exact: true }),
+      dialog.getByRole("textbox", { name: "名字", exact: true }),
     ).toBeEnabled();
+    await expect(dialog.getByRole("textbox")).toHaveCount(1);
+    await expect(dialog.getByRole("combobox")).toHaveCount(0);
     await page.screenshot({ path: `test-results/bot-dialog-${theme}.png` });
     await page.keyboard.press("Escape");
   }
@@ -553,6 +617,10 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
   await expect(dialog.getByRole("alert")).toContainText("创建未确认");
   await create.click();
   await dialog.getByRole("button", { name: "授权并继续", exact: true }).click();
+  await dialog.getByRole("combobox", { name: "模型", exact: true }).click();
+  await page
+    .getByRole("option", { name: "faux · 测试模型一", exact: true })
+    .click();
   await dialog.getByRole("button", { name: "开始使用", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await page.getByRole("button", { name: "联系人", exact: true }).click();
@@ -2150,6 +2218,10 @@ test("Bot identity stays consistent and image previews work in drafts and histor
   await dialog.getByLabel("名字", { exact: true }).fill("视觉助手");
   await dialog.getByRole("button", { name: "创建", exact: true }).click();
   await dialog.getByRole("button", { name: "授权并继续", exact: true }).click();
+  await dialog.getByRole("combobox", { name: "模型", exact: true }).click();
+  await page
+    .getByRole("option", { name: "faux · 测试模型一", exact: true })
+    .click();
   await dialog.getByRole("button", { name: "开始使用", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   const selected = page.locator(

@@ -2,18 +2,17 @@ import type { Attachment } from "@domos/agent/attachments";
 import { useRef } from "react";
 import { chatCopy } from "./copy.ts";
 import type { SendInput } from "./use-chat.ts";
-import { useDraft } from "./use-draft.ts";
+import type { useDraft } from "./use-draft.ts";
 
 export type SendMessage = (
   input: SendInput,
 ) => Promise<"accepted" | "rejected" | "unconfirmed">;
 
 export function useComposer(
-  conversationId: number,
+  draft: ReturnType<typeof useDraft>,
   canSubmit: boolean,
   send: SendMessage,
 ) {
-  const draft = useDraft(conversationId);
   const submitting = useRef(false);
   const pending = draft.draft.pending;
   async function submit() {
