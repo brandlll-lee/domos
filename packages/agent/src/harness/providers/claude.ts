@@ -134,8 +134,6 @@ export const claudeProvider: EngineProvider = {
     return {
       id,
       models: async () => [],
-      authenticated: async () =>
-        Boolean(env?.ANTHROPIC_API_KEY || ready.accounts?.claude),
       async prompt(text) {
         completion = Promise.withResolvers<void>();
         void completion.promise.catch(() => {});

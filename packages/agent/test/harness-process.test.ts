@@ -95,6 +95,52 @@ test("a work computer prepares the private Codex directory before launch", async
   expect(output.join("").trim()).toBe("true");
 });
 
+test("native account HTTP stays inside the selected work computer and closes pending calls", async () => {
+  const { process } = await worker();
+  process.output.resume();
+  process.error.resume();
+  await process.launch({
+    command: globalThis.process.execPath,
+    args: [
+      "--input-type=module",
+      "-e",
+      `
+      import { createServer } from 'node:http';
+      const server = createServer((request, response) => {
+        const auth = 'Basic ' + Buffer.from('opencode:' + process.env.OPENCODE_SERVER_PASSWORD).toString('base64');
+        if (request.headers.authorization !== auth) { response.writeHead(401).end(); return; }
+        if (request.url === '/provider/auth') return;
+        let body = '';
+        request.on('data', chunk => body += chunk);
+        request.on('end', () => response.end(JSON.stringify({ path: request.url, method: request.method, body: body ? JSON.parse(body) : null })));
+      });
+      server.listen(0, '127.0.0.1', () => {
+        const address = 'server listening on http://127.0.0.1:' + server.address().port;
+        process.stdout.write(address.slice(0, -1));
+        setTimeout(() => console.log(address.slice(-1)), 50);
+      });
+    `,
+    ],
+    http: { timeoutMs: 30_000, readyMs: 10_000 },
+  });
+  await expect(
+    process.request("/auth/example", "PUT", {
+      type: "api",
+      key: "fixture-key",
+    }),
+  ).resolves.toEqual({
+    path: "/auth/example",
+    method: "PUT",
+    body: { type: "api", key: "fixture-key" },
+  });
+  await expect(process.request("https://example.com/private")).rejects.toThrow(
+    "连接未完成",
+  );
+  const pending = expect(process.request("/provider/auth")).rejects.toThrow();
+  await process.close();
+  await pending;
+});
+
 test("bundled Pi opens a native session in the selected work directory", async () => {
   const { process, directory } = await worker();
   const session = await piProvider.open({

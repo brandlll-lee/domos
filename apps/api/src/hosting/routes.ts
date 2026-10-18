@@ -158,7 +158,15 @@ export function hostingApp(options: {
   protectedApp.use("/computer/authorize", administrator);
   protectedApp.use("/computer/default", administrator);
   protectedApp.use("/computer/configure", administrator);
-  for (const path of ["key", "install", "login", "loginState", "cancelLogin"])
+  for (const path of [
+    "accounts",
+    "key",
+    "install",
+    "login",
+    "loginState",
+    "answerLogin",
+    "cancelLogin",
+  ])
     protectedApp.use(`/engines/${path}`, administrator);
   protectedApp.all("*", async (c) => {
     const tracked = sessions.track(c.get("device"));

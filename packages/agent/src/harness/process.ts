@@ -26,6 +26,15 @@ export class WorkProcess implements EngineProcess {
   readonly closed = this.ended.promise;
   private readonly child: ChildProcessWithoutNullStreams;
   private closing?: Promise<void>;
+  private sequence = 0;
+  private readonly requests = new Map<
+    number,
+    {
+      resolve: (value: unknown) => void;
+      reject: (error: Error) => void;
+      timer: NodeJS.Timeout;
+    }
+  >();
 
   constructor(
     command: readonly string[],
@@ -68,7 +77,14 @@ export class WorkProcess implements EngineProcess {
         else if (frame.type === "spawn") this.started.resolve();
         else if (frame.type === "stdout") this.output.write(frame.data);
         else if (frame.type === "stderr") this.error.write(frame.data);
-        else if (frame.type === "tool") {
+        else if (frame.type === "http") {
+          const request = this.requests.get(frame.id);
+          if (!request) return;
+          this.requests.delete(frame.id);
+          clearTimeout(request.timer);
+          if (frame.error) request.reject(new Error(frame.error));
+          else request.resolve(frame.result);
+        } else if (frame.type === "tool") {
           void invoke(frame.callId, frame.name, frame.args)
             .catch(() => ({
               content: [
@@ -147,8 +163,36 @@ export class WorkProcess implements EngineProcess {
     this.preparation.reject(error);
     this.started.reject(error);
     this.ended.resolve({ code, ...(errorCode ? { error: errorCode } : {}) });
+    for (const request of this.requests.values()) {
+      clearTimeout(request.timer);
+      request.reject(error);
+    }
+    this.requests.clear();
     this.output.end();
     this.error.end();
+  }
+
+  request<T = unknown>(path: string, method = "GET", body?: unknown) {
+    const id = ++this.sequence;
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.requests.delete(id);
+        reject(new Error("登录等待已结束。请重试。"));
+      }, engineLimits.approvalMs);
+      timer.unref();
+      this.requests.set(id, {
+        resolve: (value) => resolve(value as T),
+        reject,
+        timer,
+      });
+      void this.send({ type: "http", id, path, method, body }).catch(
+        (error) => {
+          clearTimeout(timer);
+          this.requests.delete(id);
+          reject(error);
+        },
+      );
+    });
   }
 
   close() {

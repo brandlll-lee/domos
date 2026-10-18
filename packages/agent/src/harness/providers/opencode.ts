@@ -169,8 +169,6 @@ export const opencodeProvider: EngineProvider = {
                   })),
             )
           : [],
-      authenticated: async () =>
-        Boolean(env?.OPENAI_API_KEY || ready.accounts?.opencode),
       async prompt(text) {
         active = true;
         messageId = `opencode:${++sequence}`;

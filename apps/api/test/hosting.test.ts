@@ -132,6 +132,16 @@ test("hosting authenticates RPC, files, admin operations, origins and pairing", 
       ).status,
     ).toBe(403);
   }
+  for (const operation of ["accounts", "answerLogin"]) {
+    expect(
+      (
+        await request(`/rpc/engines/${operation}`, {
+          method: "POST",
+          headers: { Cookie: cookie, Origin: "https://domos.test" },
+        })
+      ).status,
+    ).toBe(403);
+  }
   expect(
     (
       await request("/rpc/bots/create", {

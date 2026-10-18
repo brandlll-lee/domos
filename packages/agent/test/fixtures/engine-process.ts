@@ -26,7 +26,8 @@ export class ProtocolProcess implements EngineProcess {
   spec?: ProcessSpec;
   receive: (request: Request) => void = () => {};
 
-  constructor() {
+  constructor(mode: "protocol" | "cli" = "protocol") {
+    if (mode === "cli") return;
     const lines = createInterface({ input: this.input });
     lines.on("line", (line) => {
       const request: Request = JSON.parse(line);
@@ -46,6 +47,13 @@ export class ProtocolProcess implements EngineProcess {
       this.output.write("test-cli 1.0.0\n");
       this.ended.resolve({ code: 0 });
     }
+  }
+  async request<T = unknown>(
+    _path: string,
+    _method?: string,
+    _body?: unknown,
+  ): Promise<T> {
+    throw new Error("Service unavailable");
   }
   async close() {
     this.input.end();

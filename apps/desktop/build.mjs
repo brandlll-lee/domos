@@ -70,7 +70,12 @@ for (const [entry, output] of [
     banner,
   });
 await cp(join(here, "src/preload.cjs"), join(dist, "preload.cjs"));
-for (const name of ["worker.mjs", "gateway.mjs", "pi-account.mjs"])
+for (const name of [
+  "worker.mjs",
+  "gateway.mjs",
+  "pi-account.mjs",
+  "http-service.mjs",
+])
   await cp(join(root, "packages/agent/src/harness", name), join(runtime, name));
 for (const name of ["setup.html", "setup.css", "setup.js", "setup-preload.cjs"])
   await cp(join(here, "src", name), join(dist, name));
@@ -98,7 +103,12 @@ await mkdir(join(runtime, "work/deploy"), { recursive: true });
 await mkdir(join(runtime, "work/packages/agent/src/harness"), {
   recursive: true,
 });
-for (const name of ["worker.mjs", "gateway.mjs", "pi-account.mjs"])
+for (const name of [
+  "worker.mjs",
+  "gateway.mjs",
+  "pi-account.mjs",
+  "http-service.mjs",
+])
   await cp(
     join(root, "packages/agent/src/harness", name),
     join(runtime, "work/packages/agent/src/harness", name),

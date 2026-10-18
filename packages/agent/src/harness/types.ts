@@ -41,12 +41,12 @@ export type ProcessSpec = {
   env?: Record<string, string>;
   instructions?: string;
   mcp?: { url: string };
+  http?: { timeoutMs: number; readyMs: number };
 };
 export type ProcessReady = {
   url: string;
   cwd: string;
   home: string;
-  accounts?: { claude: boolean; opencode: boolean };
 };
 export interface EngineProcess {
   readonly input: Writable;
@@ -55,13 +55,18 @@ export interface EngineProcess {
   readonly ready: Promise<ProcessReady>;
   readonly closed: Promise<{ code: number | null; error?: string }>;
   launch(spec: ProcessSpec): Promise<void>;
+  request<T = unknown>(
+    path: string,
+    method?: string,
+    body?: unknown,
+  ): Promise<T>;
   close(): Promise<void>;
 }
 
 export interface EngineSession {
   readonly id: string;
   models(): Promise<EngineModel[]>;
-  authenticated(): Promise<boolean>;
+  authenticated?(): Promise<boolean>;
   prompt(text: string): Promise<void>;
   interrupt(): Promise<void>;
   answer(id: string, answer: EngineAnswer): Promise<void>;

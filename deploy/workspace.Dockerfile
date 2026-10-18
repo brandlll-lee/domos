@@ -10,7 +10,7 @@ FROM ${WORK_IMAGE}
 RUN apt-get update && apt-get install -y --no-install-recommends bash ca-certificates coreutils curl git python3 && rm -rf /var/lib/apt/lists/* && groupmod --new-name domos node && usermod --login domos --home /home/domos --move-home node
 COPY --from=daemon --chmod=0755 /build/pi-env /usr/local/bin/pi-env
 COPY --from=daemon /opt/domos /opt/domos
-COPY packages/agent/src/harness/worker.mjs packages/agent/src/harness/gateway.mjs packages/agent/src/harness/pi-account.mjs /opt/domos/
+COPY packages/agent/src/harness/worker.mjs packages/agent/src/harness/gateway.mjs packages/agent/src/harness/pi-account.mjs packages/agent/src/harness/http-service.mjs /opt/domos/
 COPY deploy/licenses/pi.txt /usr/share/doc/pi/LICENSE
 COPY deploy/licenses/mcp-sdk.txt deploy/licenses/cross-spawn.txt deploy/licenses/proper-lockfile.txt /usr/share/doc/domos/licenses/
 ENV HOME=/home/domos

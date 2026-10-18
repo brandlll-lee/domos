@@ -1,10 +1,11 @@
 import { once } from "node:events";
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { delimiter, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import spawn from "cross-spawn";
 import { openGateway } from "./gateway.mjs";
+import { openHttpService } from "./http-service.mjs";
 import { seedPiAccount } from "./pi-account.mjs";
 
 let child;
@@ -13,12 +14,14 @@ let closing;
 let configured = false;
 let sequence = 0;
 let home;
+let http;
 const pending = new Map();
 const emit = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 
 async function close() {
   closing ??= (async () => {
     gateway?.close();
+    http?.close();
     for (const item of pending.values())
       item.reject(new Error("Connection closed"));
     pending.clear();
@@ -72,22 +75,11 @@ async function configure(frame) {
         emit({ type: "tool", id, callId, name, args });
       }),
   );
-  const exists = (path) =>
-    access(path).then(
-      () => true,
-      () => false,
-    );
   emit({
     type: "ready",
     url: gateway.url,
     cwd: frame.cwd,
     home: frame.home,
-    accounts: {
-      claude: await exists(join(home, "claude", ".credentials.json")),
-      opencode: await exists(
-        join(home, "opencode", "data", "opencode", "auth.json"),
-      ),
-    },
   });
 }
 
@@ -125,8 +117,18 @@ async function launch(frame) {
       .map((key) => [key, process.env[key]]),
   );
   Object.assign(env, { HOME: home, USERPROFILE: home }, frame.env);
-  if (env.CODEX_HOME)
-    await mkdir(env.CODEX_HOME, { recursive: true, mode: 0o700 });
+  if (frame.http) {
+    http = openHttpService(emit, frame.http);
+    env.OPENCODE_SERVER_PASSWORD = http.password;
+  }
+  for (const directory of [
+    env.CODEX_HOME,
+    env.CLAUDE_CONFIG_DIR,
+    env.XDG_DATA_HOME,
+    env.XDG_CONFIG_HOME,
+  ]) {
+    if (directory) await mkdir(directory, { recursive: true, mode: 0o700 });
+  }
   env.NODE_USE_ENV_PROXY = "1";
   env.NO_PROXY = [env.NO_PROXY, "127.0.0.1", "localhost"]
     .filter(Boolean)
@@ -192,12 +194,14 @@ async function launch(frame) {
     },
   );
   child.stdin.on("error", () => {});
-  child.stdout
-    .setEncoding("utf8")
-    .on("data", (data) => emit({ type: "stdout", data }));
-  child.stderr
-    .setEncoding("utf8")
-    .on("data", (data) => emit({ type: "stderr", data }));
+  child.stdout.setEncoding("utf8").on("data", (data) => {
+    http?.capture(data);
+    emit({ type: "stdout", data });
+  });
+  child.stderr.setEncoding("utf8").on("data", (data) => {
+    http?.capture(data);
+    emit({ type: "stderr", data });
+  });
   child.once("spawn", () => emit({ type: "spawn" }));
   child.once("error", (error) =>
     emit({
@@ -207,6 +211,7 @@ async function launch(frame) {
     }),
   );
   child.once("close", (code) => {
+    http?.close();
     emit({ type: "exit", code });
     gateway?.close();
   });
@@ -223,7 +228,10 @@ lines.on("line", (line) => {
       if (frame.type === "configure") await configure(frame);
       else if (frame.type === "launch") await launch(frame);
       else if (frame.type === "input") child?.stdin.write(frame.data);
-      else if (frame.type === "result") {
+      else if (frame.type === "http") {
+        if (!http) throw new Error("Service unavailable");
+        void http.request(frame);
+      } else if (frame.type === "result") {
         const call = pending.get(frame.id);
         pending.delete(frame.id);
         call?.resolve(frame.result);

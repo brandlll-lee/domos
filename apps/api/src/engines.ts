@@ -12,6 +12,7 @@ export const engineConfig = z
   })
   .strict();
 export function engineRouter(bots: Bots, engines?: Engines) {
+  const providerId = z.string().trim().min(1).max(256);
   async function target(botId: number, idle = false) {
     await botConversation(bots, botId);
     if (!engines) throw new ORPCError("NOT_IMPLEMENTED");
@@ -92,21 +93,63 @@ export function engineRouter(bots: Bots, engines?: Engines) {
       .input(
         botTarget.extend({
           key: z.string().trim().min(1).max(16384).nullable(),
+          providerId: providerId.optional(),
         }),
       )
       .handler(({ input }) =>
         operation(async () => {
           const { engines, profile } = await target(input.botId, true);
-          await engines.connections.key(profile.config, input.key);
+          await engines.connections.key(
+            input.botId,
+            profile.config,
+            input.key,
+            context,
+            input.providerId,
+          );
           return { ok: true };
         }),
       ),
-    login: os.input(botTarget).handler(({ input }) =>
+    accounts: os.input(botTarget).handler(({ input }) =>
       operation(async () => {
         const { engines, profile } = await target(input.botId, true);
-        return engines.connections.login(input.botId, profile.config, context);
+        return engines.connections.accounts(
+          input.botId,
+          profile.config,
+          context,
+        );
       }),
     ),
+    login: os
+      .input(
+        botTarget.extend({
+          providerId: providerId.optional(),
+          method: z.number().int().min(0).max(100).optional(),
+          inputs: z
+            .record(z.string().min(1).max(256), z.string().max(16384))
+            .optional(),
+        }),
+      )
+      .handler(({ input }) =>
+        operation(async () => {
+          const { engines, profile } = await target(input.botId, true);
+          return engines.connections.login(
+            input.botId,
+            profile.config,
+            context,
+            input,
+          );
+        }),
+      ),
+    answerLogin: os
+      .input(botTarget.extend({ code: z.string().trim().min(1).max(4096) }))
+      .handler(({ input }) =>
+        operation(async () => {
+          await (
+            await target(input.botId, true)
+          ).engines.connections.answerLogin(input.botId, input.code);
+          return { ok: true };
+        }),
+      ),
     loginState: os
       .input(botTarget)
       .handler(async ({ input }) =>
