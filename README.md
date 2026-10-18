@@ -47,7 +47,7 @@ Grok Bot and Meta Muse offer persistent AI companions. Domos lets you host the s
 | ⚙️ **Your choice of engine** | Use Pi, Codex, Claude Code, or OpenCode. Keep each engine's native tools and session. |
 | ⏰ **Scheduled tasks** | Run tasks once or on a repeating schedule. Review results and run records. |
 | 📱 **Access from other devices** | Pair a device with a one-time code, connect through a browser, and revoke access when needed. |
-| 🔑 **Your accounts** | Connect model accounts for Pi, sign in to Codex, or enter an API key for another engine. Keys stored by the service are encrypted. |
+| 🔑 **Your accounts** | Connect model services for Pi. Use an engine's supported sign-in or API key option. Keys stored by the service are encrypted. |
 
 Computer tools currently support commands and files. They do not control a graphical desktop. Phones and tablets use the browser interface.
 
@@ -124,10 +124,10 @@ An engine runs your Bot's tasks. Its own tools read files, run commands, and man
 
 | Engine | Connection | Account setup in Domos |
 | :--- | :--- | :--- |
-| **Pi** | Bundled Coding Agent, native RPC | Connect a supported model account or key. |
+| **Pi** | Bundled Coding Agent, native RPC | Connect model services, then choose a model for each Bot. Keep several services connected. |
 | **Codex** | Native app-server | Sign in in your browser or enter an OpenAI API key. |
-| **Claude Code** | Native CLI | Enter an Anthropic API key. |
-| **OpenCode** | Native ACP | Enter an OpenAI API key and select an available model. |
+| **Claude Code** | Native CLI | Sign in with the official CLI, or enter an Anthropic API key. |
+| **OpenCode** | Native ACP | Use an available model, or connect a provider with its supported sign-in or key option. |
 
 **Engines run on the Bot's work computer.** For example, a Windows computer can run the Domos service in one container and Pi and Codex in a shared Linux work container. Each Bot keeps its own session. The second Windows computer connects to the same service to send tasks and view progress.
 
@@ -135,7 +135,7 @@ Pi comes with Domos. For other engines, use **Check connection** first. If neede
 
 Choose an engine in the Bot's settings. Switch while the Bot is idle. Chats stay in Domos; the new engine starts a new native session with recent conversation context. Native sessions cannot be converted between engines.
 
-The account must be available where the engine runs. A login on your client computer does not sign in a remote work computer. Domos manages engine accounts in each work computer's data directory. Bots on that computer share these account files and system access. Removing a service API key does not sign out a native CLI account.
+The account must be available where the engine runs. Domos reuses installed programs and keeps its own account and session directories. It does not import your existing CLI login. A login on your client computer does not sign in a remote work computer. Bots on one work computer share its Domos account files and system access. OpenCode saves provider credentials in its private directory there. Removing a service API key does not sign out a native CLI account.
 
 ---
 
