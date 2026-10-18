@@ -1,5 +1,6 @@
-import { Brand } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
+import { TextField } from "@domos/ui/field";
+import { SetupPage } from "@domos/ui/setup";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Onboarding } from "../onboarding/root.tsx";
 import { SettingsRoot } from "../settings/root.tsx";
@@ -24,7 +25,7 @@ export function HostingRoot({ children }: { children: ReactNode }) {
       setState("standalone");
       return;
     }
-    if (!info.ok) throw new Error("实例暂时不可用。");
+    if (!info.ok) throw new Error("暂时无法连接 Domos。");
     const response = await fetch("/hosting/session");
     if (response.status === 401) {
       setState("pair");
@@ -61,72 +62,85 @@ export function HostingRoot({ children }: { children: ReactNode }) {
       </SettingsRoot>
     );
   return (
-    <>
+    <div className="setup-window">
       <Titlebar />
-      <main className="hosting-welcome">
-        <div className="hosting-card">
-          <Brand />
-          {state === "loading" && <p role="status">正在连接实例…</p>}
-          {state === "pair" && (
-            <form
-              className="hosting-stack"
-              onSubmit={async (event) => {
-                event.preventDefault();
-                setBusy(true);
-                setError("");
-                try {
-                  await hostingRequest("exchange", { code, label });
-                  setCode("");
-                  await refresh();
-                } catch (error) {
-                  setError((error as Error).message);
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              <h1>连接这个 Domos</h1>
-              <p className="detail-note">
-                输入管理员提供的配对码。首次托管请使用安装器提供的管理员码。
-              </p>
-              <label>
-                设备名称
-                <input
-                  className="field-control"
-                  value={label}
-                  maxLength={80}
-                  onChange={(event) => setLabel(event.target.value)}
-                  required
-                />
-              </label>
-              <label>
-                配对码
-                <input
-                  className="field-control"
-                  value={code}
-                  autoComplete="off"
-                  onChange={(event) => setCode(event.target.value)}
-                  required
-                />
-              </label>
-              <Button type="submit" disabled={busy}>
-                连接
-              </Button>
-            </form>
-          )}
-          {error && <p role="alert">{error}</p>}
-          {state === "loading" && error && (
-            <Button
-              variant="secondary"
-              onClick={() =>
-                void refresh().catch((error) => setError(error.message))
+      <SetupPage
+        title={state === "pair" ? "连接这个 Domos" : "正在连接 Domos…"}
+        description={
+          state === "pair"
+            ? "输入管理员提供的配对码，继续使用 Bot。"
+            : undefined
+        }
+      >
+        {state === "loading" && (
+          <p role="status" className="detail-note">
+            正在读取连接信息…
+          </p>
+        )}
+        {state === "pair" && (
+          <form
+            className="setup-form"
+            aria-busy={busy}
+            onSubmit={async (event) => {
+              event.preventDefault();
+              if (busy) return;
+              setBusy(true);
+              setError("");
+              try {
+                await hostingRequest("exchange", { code, label });
+                setCode("");
+                await refresh();
+              } catch (error) {
+                setError((error as Error).message);
+              } finally {
+                setBusy(false);
               }
-            >
-              重试
-            </Button>
-          )}
-        </div>
-      </main>
-    </>
+            }}
+          >
+            <TextField
+              label="设备名称"
+              value={label}
+              maxLength={80}
+              onValueChange={setLabel}
+              required
+              disabled={busy}
+            />
+            <TextField
+              label="配对码"
+              value={code}
+              autoComplete="off"
+              onValueChange={setCode}
+              required
+              disabled={busy}
+            />
+            {error && (
+              <p className="alert" role="alert">
+                {error}
+              </p>
+            )}
+            <div className="setup-actions">
+              <Button type="submit" pending={busy}>
+                {busy ? "正在连接…" : "连接"}
+              </Button>
+            </div>
+          </form>
+        )}
+        {state === "loading" && error && (
+          <p className="alert" role="alert">
+            {error}
+          </p>
+        )}
+        {state === "loading" && error && (
+          <Button
+            variant="secondary"
+            onClick={() =>
+              void refresh().catch((error) => setError(error.message))
+            }
+          >
+            重试
+          </Button>
+        )}
+      </SetupPage>
+    </div>
   );
 }

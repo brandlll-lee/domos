@@ -3,6 +3,14 @@ import { useCallback, useEffect, useState } from "react";
 import { client } from "../../../client.ts";
 import { useWorkAction } from "./use-bot-work.ts";
 
+type EngineAction =
+  | "inspect"
+  | "configure"
+  | "key"
+  | "install"
+  | "login"
+  | "cancel";
+
 export function useEngine(botId: number, active: boolean) {
   const [profile, setProfile] =
     useState<Awaited<ReturnType<typeof client.engines.get>>>();
@@ -11,10 +19,10 @@ export function useEngine(botId: number, active: boolean) {
   const [login, setLogin] =
     useState<Awaited<ReturnType<typeof client.engines.loginState>>>(null);
   const [error, setError] = useState("");
-  const [pending, setPending] = useState<string | null>(null);
+  const [pending, setPending] = useState<EngineAction | null>(null);
   const action = useWorkAction();
   const run = <T>(
-    name: string,
+    name: EngineAction,
     key: unknown,
     operation: (requestId: string) => Promise<T>,
   ) =>

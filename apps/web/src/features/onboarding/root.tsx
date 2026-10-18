@@ -12,6 +12,7 @@ import { Titlebar } from "../shell/titlebar.tsx";
 type Setup = {
   botId: number;
   computer: boolean;
+  binding: Awaited<ReturnType<typeof client.computer.get>>;
   canIsolate: boolean;
   deployment: "native" | "container";
   profile: Profile;
@@ -46,6 +47,7 @@ export function Onboarding({
     const next: Setup = {
       botId: bot.id,
       computer: Boolean(binding.computer?.authorized),
+      binding,
       canIsolate: location.canIsolate,
       deployment: location.deployment,
       profile,
@@ -127,6 +129,7 @@ export function Onboarding({
                   botId={setup.botId}
                   canIsolate={setup.canIsolate}
                   deployment={setup.deployment}
+                  initialComputer={setup.binding.computer}
                   onReady={() => advance(2)}
                   onBack={() => setStep(0)}
                 />

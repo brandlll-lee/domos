@@ -1,11 +1,37 @@
 import { fork } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, test } from "@playwright/test";
+import {
+  type ElectronApplication,
+  expect,
+  type Page,
+  test,
+} from "@playwright/test";
+
+async function captureWindow(
+  desktop: ElectronApplication,
+  page: Page,
+  path: string,
+) {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+  const png = await desktop.evaluate(async ({ BrowserWindow }, url) => {
+    const window = BrowserWindow.getAllWindows().find(
+      (window) => window.webContents.getURL() === url,
+    );
+    if (!window) throw new Error("Window not found");
+    return (await window.capturePage()).toPNG().toString("base64");
+  }, page.url());
+  await writeFile(path, Buffer.from(png, "base64"));
+}
 
 test("native setup starts and resumes with Docker unavailable", async ({
   playwright,
@@ -41,7 +67,7 @@ test("native setup starts and resumes with Docker unavailable", async ({
     await setup.emulateMedia({ colorScheme: "dark" });
     await expect(setup.locator("body")).toHaveCSS(
       "background-color",
-      "rgb(12, 12, 13)",
+      "rgb(15, 15, 16)",
     );
     await setup.screenshot({
       path: testInfo.outputPath("service-choice-dark.png"),
@@ -52,10 +78,37 @@ test("native setup starts and resumes with Docker unavailable", async ({
     await setup.emulateMedia({ colorScheme: "light" });
     await expect(setup.locator("body")).toHaveCSS(
       "background-color",
-      "rgb(255, 255, 255)",
+      "rgb(253, 253, 253)",
     );
     await setup.screenshot({
       path: testInfo.outputPath("service-choice-light.png"),
+    });
+    await expect(setup.getByRole("progressbar")).toBeHidden();
+    await desktop.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      window?.setSize(420, 640);
+      window?.webContents.setZoomFactor(1.25);
+    });
+    await expect.poll(() => setup.evaluate(() => innerWidth)).toBeLessThan(400);
+    await expect
+      .poll(() =>
+        setup
+          .locator("main")
+          .evaluate((main) => main.scrollWidth <= main.clientWidth),
+      )
+      .toBe(true);
+    const next = setup.getByRole("button", { name: "继续", exact: true });
+    await next.scrollIntoViewIfNeeded();
+    await expect(next).toBeInViewport({ ratio: 1 });
+    await captureWindow(
+      desktop,
+      setup,
+      testInfo.outputPath("service-choice-zoom.png"),
+    );
+    await desktop.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      window?.setSize(680, 760);
+      window?.webContents.setZoomFactor(1);
     });
     await setup.getByLabel("在 Docker 中运行", { exact: false }).check();
     await setup.getByRole("button", { name: "继续", exact: true }).click();
@@ -67,6 +120,30 @@ test("native setup starts and resumes with Docker unavailable", async ({
     await expect(
       page.getByRole("heading", { name: "认识你的第一个 Bot" }),
     ).toBeVisible();
+    await desktop.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows().find((window) =>
+        window.webContents.getURL().startsWith("http"),
+      );
+      window?.setSize(640, 680);
+      window?.webContents.setZoomFactor(1.25);
+    });
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBeLessThan(600);
+    expect(
+      await page
+        .locator("main")
+        .evaluate((main) => main.scrollWidth <= main.clientWidth),
+    ).toBe(true);
+    const continueSetup = page.getByRole("button", {
+      name: "继续",
+      exact: true,
+    });
+    await continueSetup.scrollIntoViewIfNeeded();
+    await expect(continueSetup).toBeInViewport({ ratio: 1 });
+    await captureWindow(
+      desktop,
+      page,
+      testInfo.outputPath("identity-zoom.png"),
+    );
     const origin = new URL(page.url()).origin;
     await desktop.close();
     desktop = await playwright._electron.launch({ executablePath, args, env });
@@ -182,7 +259,11 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     ).toBe(true);
-    await page.screenshot({ path: testInfo.outputPath("settings-zoom.png") });
+    await captureWindow(
+      desktop,
+      page,
+      testInfo.outputPath("settings-zoom.png"),
+    );
     await desktop.close();
     desktop = await playwright._electron.launch({ executablePath, args, env });
     const reopened = await desktop.firstWindow();

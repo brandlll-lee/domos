@@ -14,6 +14,18 @@ const cancel = document.querySelector("#cancel");
 const next = document.querySelector("#continue");
 let connections = [];
 let stage;
+document.documentElement.dataset.platform = bridge.platform;
+
+function setNext(label, pending = false) {
+  next.textContent = label;
+  next.setAttribute("aria-busy", String(pending));
+  if (pending) {
+    const spinner = document.createElement("span");
+    spinner.className = "button-spinner";
+    spinner.setAttribute("aria-hidden", "true");
+    next.prepend(spinner);
+  }
+}
 
 function updateMode() {
   const local = new FormData(form).get("mode") === "local";
@@ -23,7 +35,7 @@ function updateMode() {
   name.required = !local;
   error.hidden = true;
   docker.hidden = true;
-  next.textContent = "继续";
+  setNext("继续");
 }
 form.addEventListener("change", updateMode);
 saved.addEventListener("change", () => {
@@ -40,9 +52,12 @@ cancel.addEventListener("click", () => bridge.cancel());
 docker.addEventListener("click", () => bridge.docker());
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (next.disabled) return;
   const data = new FormData(form);
   const local = data.get("mode") === "local";
   choices.disabled = true;
+  form.setAttribute("aria-busy", "true");
+  setNext(local ? "正在启动…" : "正在连接…", true);
   next.disabled = true;
   remote.inert = true;
   localOptions.disabled = true;
@@ -68,9 +83,11 @@ form.addEventListener("submit", async (event) => {
     error.textContent = cause.message;
     error.hidden = false;
     docker.hidden = !local || stage !== "checking";
-    next.textContent = "重试";
+    error.focus();
   } finally {
     choices.disabled = false;
+    form.setAttribute("aria-busy", "false");
+    setNext(error.hidden ? "继续" : "重试");
     next.disabled = false;
     remote.inert = false;
     localOptions.disabled = false;

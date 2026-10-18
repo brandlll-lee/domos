@@ -57,7 +57,18 @@ test("first use selects identity, computer and native engine before shared chat"
       { port: number; code: string; clientCode: string },
     ];
     await page.goto(`http://127.0.0.1:${ready.port}`);
+    await expect(
+      page.getByRole("heading", { name: "连接这个 Domos" }),
+    ).toBeVisible();
+    await capture(page, testInfo, "pairing");
     await page.getByLabel("配对码", { exact: true }).fill(ready.code);
+    await page.route("**/hosting/exchange", (route) => route.abort());
+    await page.getByRole("button", { name: "连接", exact: true }).click();
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(page.getByLabel("配对码", { exact: true })).toHaveValue(
+      ready.code,
+    );
+    await page.unroute("**/hosting/exchange");
     await page.getByRole("button", { name: "连接", exact: true }).click();
     const setup = page.getByRole("main", { name: "首次设置" });
     await expect(

@@ -448,6 +448,25 @@ textarea.field-control {
   font-size: var(--text-caption);
   white-space: nowrap;
 }
+.alert {
+  margin: 0;
+  color: var(--color-danger);
+  background: var(--color-danger-surface);
+  font-size: var(--text-label);
+  line-height: var(--leading-body);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  overflow-wrap: anywhere;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .choice-list {
   display: grid;
   gap: var(--space-2);
@@ -500,7 +519,8 @@ textarea.field-control {
   font-size: var(--text-caption);
   line-height: var(--leading-body);
 }
-.choice-card[data-disabled] {
+.choice-card[data-disabled],
+.choice-card:has(:disabled) {
   opacity: 0.45;
   cursor: default;
 }
@@ -510,7 +530,7 @@ textarea.field-control {
   outline-offset: 3px;
 }
 @media (hover: hover) and (pointer: fine) {
-  .choice-card:not([data-disabled]):hover {
+  .choice-card:not([data-disabled], :has(:disabled)):hover {
     background: var(--color-control-hover);
   }
 }

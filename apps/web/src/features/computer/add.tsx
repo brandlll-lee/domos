@@ -39,7 +39,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
       }
     >
       <form
-        className="hosting-stack"
+        className="setup-form"
         aria-busy={busy}
         onSubmit={async (event) => {
           event.preventDefault();
@@ -120,7 +120,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
             准备本地 Docker 镜像
           </Button>
         )}
-        <fieldset className="bot-fields hosting-stack" disabled={busy}>
+        <fieldset className="setup-form" disabled={busy}>
           <TextField
             label="电脑名称"
             value={name}
@@ -189,7 +189,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
           >
             取消
           </Button>
-          <Button type="submit" disabled={busy}>
+          <Button type="submit" pending={busy}>
             {busy ? "正在添加…" : "添加电脑"}
           </Button>
         </div>

@@ -11,6 +11,7 @@ export function ComputerLocation({
   onReady,
   onBusyChange,
   onBack,
+  initialComputer,
 }: {
   botId: number;
   canIsolate: boolean;
@@ -18,9 +19,12 @@ export function ComputerLocation({
   onReady: () => void;
   onBusyChange?: (busy: boolean) => void;
   onBack?: () => void;
+  initialComputer?: Awaited<ReturnType<typeof client.computer.get>>["computer"];
 }) {
   const [mode, setMode] = useState<"process" | "shared" | "dedicated">(
-    "process",
+    initialComputer && initialComputer.kind !== "process"
+      ? (initialComputer.scope?.kind ?? "shared")
+      : "process",
   );
   const [local, setLocal] = useState(false);
   const request = useRef(crypto.randomUUID());

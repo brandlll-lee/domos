@@ -76,23 +76,6 @@ a,
   justify-content: flex-end;
   gap: var(--space-2);
 }
-.alert {
-  color: var(--color-danger);
-  background: var(--color-danger-surface);
-  font-size: var(--text-label);
-  line-height: 1.7;
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-control);
-}
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
 .skip-link {
   position: fixed;
   top: var(--space-3);

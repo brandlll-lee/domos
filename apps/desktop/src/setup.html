@@ -6,35 +6,41 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'" />
     <title>设置 Domos</title>
     <link rel="stylesheet" href="setup-theme.css" />
+    <link rel="stylesheet" href="controls.css" />
+    <link rel="stylesheet" href="setup-layout.css" />
     <link rel="stylesheet" href="setup.css" />
   </head>
-  <body>
+  <body class="setup-window">
     <header class="titlebar"><img src="icon.png" alt="" /><span>Domos</span></header>
-    <main>
+    <main class="setup-page">
+      <div class="setup-content">
+      <header class="setup-heading">
       <h1>欢迎使用 Domos</h1>
-      <p class="muted">选择在哪里运行 Domos。</p>
-      <form id="setup">
-        <fieldset id="choices">
+      <p>选择在哪里运行 Domos。</p>
+      </header>
+      <form id="setup" class="setup-form">
+        <fieldset id="choices" class="choice-list">
           <legend class="sr-only">运行方式</legend>
-          <label class="choice"><input name="mode" type="radio" value="local" checked /><span><strong>在这台电脑运行</strong><small>Bot 和聊天记录保存在这里。</small></span></label>
-          <label class="choice"><input name="mode" type="radio" value="existing" /><span><strong>连接已有 Domos</strong><small>使用另一台电脑或服务器上的 Bot 和聊天记录。</small></span></label>
+          <label class="choice-card"><input name="mode" type="radio" value="local" checked /><span class="choice-content"><strong>在这台电脑运行</strong><span class="choice-description">Bot 和聊天记录保存在这里。</span></span></label>
+          <label class="choice-card"><input name="mode" type="radio" value="existing" /><span class="choice-content"><strong>连接已有 Domos</strong><span class="choice-description">使用另一台电脑或服务器上的 Bot 和聊天记录。</span></span></label>
         </fieldset>
-        <fieldset id="local">
+        <fieldset id="local" class="choice-list">
           <legend>运行方式</legend>
-          <label class="choice"><input name="runtime" type="radio" value="native" checked /><span><strong>直接运行</strong><small>使用这台电脑，无需 Docker。</small></span></label>
-          <label class="choice"><input name="runtime" type="radio" value="docker" /><span><strong>在 Docker 中运行</strong><small>需要安装并启动 Docker。首次会下载运行包。</small></span></label>
-          <small>Bot 的工作环境稍后单独选择。</small>
+          <label class="choice-card"><input name="runtime" type="radio" value="native" checked /><span class="choice-content"><strong>直接运行</strong><span class="choice-description">使用这台电脑，无需 Docker。</span></span></label>
+          <label class="choice-card"><input name="runtime" type="radio" value="docker" /><span class="choice-content"><strong>在 Docker 中运行</strong><span class="choice-description">需要安装并启动 Docker。首次会下载运行包。</span></span></label>
+          <p class="detail-note">Bot 的工作环境稍后单独选择。</p>
         </fieldset>
-        <section id="remote" hidden>
-          <label>连接名称<input id="name" type="text" maxlength="80" value="我的 Domos" /></label>
-          <label>服务器地址<input id="url" type="url" placeholder="https://domos.example.com" spellcheck="false" /></label>
-          <label id="saved-label" hidden>已保存的连接<select id="saved"><option value="">选择连接</option></select></label>
+        <section id="remote" class="setup-form" hidden>
+          <label class="field"><span class="field-label">连接名称</span><input id="name" class="field-control" type="text" maxlength="80" value="我的 Domos" /></label>
+          <label class="field"><span class="field-label">服务器地址</span><input id="url" class="field-control" type="url" placeholder="https://domos.example.com" spellcheck="false" /></label>
+          <label class="field" id="saved-label" hidden><span class="field-label">已保存的连接</span><select id="saved" class="field-control"><option value="">选择连接</option></select></label>
         </section>
-        <div id="progress" role="status" aria-live="polite" hidden><progress></progress><span id="phase"></span></div>
-        <p id="error" role="alert" hidden></p>
-        <button id="docker" type="button" class="link" hidden>安装或启动 Docker Desktop</button>
-        <div class="actions"><button id="cancel" type="button" class="secondary" hidden>取消准备</button><button id="continue" type="submit">继续</button></div>
+        <div id="progress" class="connection-progress" role="status" aria-live="polite" hidden><progress></progress><span id="phase"></span></div>
+        <p id="error" class="alert" role="alert" tabindex="-1" hidden></p>
+        <button id="docker" type="button" class="button" data-variant="secondary" hidden>安装或启动 Docker Desktop</button>
+        <div class="setup-actions"><button id="cancel" type="button" class="button" data-variant="secondary" hidden>取消准备</button><button id="continue" type="submit" class="button" data-variant="primary">继续</button></div>
       </form>
+      </div>
     </main>
     <script src="setup.js"></script>
   </body>
