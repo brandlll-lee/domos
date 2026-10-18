@@ -51,6 +51,14 @@ test("Pi waits for settlement after tool and agent-end events", async () => {
         assistantMessageEvent: { type: "text_delta", delta: "Hello" },
       });
       process.frame({
+        type: "message_end",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Hello" }],
+          stopReason: "toolUse",
+        },
+      });
+      process.frame({
         type: "tool_execution_start",
         toolCallId: "file",
         toolName: "write",
@@ -74,14 +82,25 @@ test("Pi waits for settlement after tool and agent-end events", async () => {
   await prompted.promise;
   await new Promise((resolve) => setImmediate(resolve));
   expect(settled).toBe(false);
+  expect(events).toContainEqual({ type: "message", id: "pi:1", text: "Hello" });
   process.frame({
     type: "tool_execution_end",
     toolCallId: "file",
     toolName: "write",
     result: { content: [{ type: "text", text: "Saved" }] },
   });
+  process.frame({ type: "message_start", message: { role: "assistant" } });
+  process.frame({
+    type: "message_end",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "Done" }],
+      stopReason: "stop",
+    },
+  });
   process.frame({ type: "agent_settled" });
   await task;
+  expect(events).toContainEqual({ type: "message", id: "pi:2", text: "Done" });
   expect(events).toContainEqual({
     type: "tool_result",
     id: "file",
@@ -216,7 +235,12 @@ test("Claude uses the native stream protocol and keeps its own session", async (
     text: "Done",
     failed: false,
   });
-  expect(events.filter((event) => event.type === "text")).toHaveLength(2);
+  expect(events).toContainEqual({ type: "text", id: "message", text: "Saved" });
+  expect(events).toContainEqual({
+    type: "message",
+    id: "message",
+    text: "Saved",
+  });
 });
 
 test("OpenCode uses ACP model discovery, permissions and native session load", async () => {

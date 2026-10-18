@@ -9,7 +9,6 @@ import { ComputerPanel } from "../computer/panel.tsx";
 import { useComputer } from "../computer/use-computer.ts";
 import { useSettings } from "../settings/context.ts";
 import { Workspace } from "../shell/workspace.tsx";
-import { WorkingActivity } from "./activity.tsx";
 import { Approvals } from "./approvals.tsx";
 import { Composer } from "./composer.tsx";
 import { chatCopy } from "./copy.ts";
@@ -74,7 +73,7 @@ function BotChat({
   );
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailPanel, setDetailPanel] = useState<BotPanel>("profile");
-  const { items, active } = chat;
+  const { items } = chat;
   const connection = chat.connected
     ? chatCopy.connected
     : chat.view
@@ -84,7 +83,7 @@ function BotChat({
     chat.error ??
     directoryError ??
     (!items.some(
-      (item) => item.kind === "activity" && item.status === "failed",
+      (item) => item.kind === "notice" && item.status === "failed",
     ) && chat.view?.failed
       ? chatCopy.errors.reply
       : null);
@@ -160,6 +159,7 @@ function BotChat({
           ready={Boolean(chat.view)}
           busy={Boolean(chat.view?.busy)}
           botName={bot.name}
+          avatar={bot.avatar}
           createdAt={bot.createdAt}
           items={items}
           onRetry={retry}
@@ -205,14 +205,9 @@ function BotChat({
               setDetailsOpen(true);
             }}
             status={
-              <>
-                {!!chat.view.approvals?.length && (
-                  <Approvals botId={bot.id} approvals={chat.view.approvals} />
-                )}
-                {active?.kind === "activity" && (
-                  <WorkingActivity activity={active} bot={bot} />
-                )}
-              </>
+              !!chat.view.approvals?.length && (
+                <Approvals botId={bot.id} approvals={chat.view.approvals} />
+              )
             }
           />
         ) : (

@@ -1029,7 +1029,7 @@ test("validation rejects empty input and snapshots hide provider error details",
     expect(view.failed).toBe(true);
     expect(JSON.stringify(view)).not.toContain(secret);
     expect(chatTranscript(view).at(-1)).toMatchObject({
-      kind: "activity",
+      kind: "notice",
       status: "failed",
       error: "回复失败。请检查模型配置、余额或网络。",
     });
@@ -1043,7 +1043,7 @@ test("validation rejects empty input and snapshots hide provider error details",
     const recovered = await client.get({ botId: conversation.id });
     expect(JSON.stringify(recovered)).not.toContain(secret);
     expect(chatTranscript(recovered)).toContainEqual(
-      expect.objectContaining({ kind: "activity", status: "failed" }),
+      expect.objectContaining({ kind: "notice", status: "failed" }),
     );
   } finally {
     await harness.close(context);

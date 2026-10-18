@@ -104,10 +104,9 @@ export const codexProvider: EngineProvider = {
           if (frame.method === "item/completed" && item) {
             if (item.type === "agentMessage")
               await emit({
-                type: "text",
+                type: "message",
                 id: item.id,
                 text: item.text ?? "",
-                replace: true,
               });
             else if (
               ["commandExecution", "fileChange", "mcpToolCall"].includes(
@@ -244,10 +243,9 @@ export const codexProvider: EngineProvider = {
         for (const item of turn.items ?? [])
           if (item.type === "agentMessage")
             await emit({
-              type: "text",
+              type: "message",
               id: item.id,
               text: item.text ?? "",
-              replace: true,
             });
         return true;
       },

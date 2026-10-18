@@ -1,241 +1,102 @@
 import type { Attachment } from "./attachments.ts";
 import type { ChatView } from "./chat-view.ts";
-import type { ChatContent, ChatMessage } from "./messages.ts";
+import type { ChatMessage } from "./messages.ts";
 
-export type ActivityStatus = "running" | "done" | "failed" | "stopped";
-export type ToolStatus = ActivityStatus | "pending" | "waiting";
-export type ActivityStep =
-  | { type: "text" | "thinking"; id: string; text: string }
-  | { type: "attachments"; id: string; files: Attachment[] }
-  | {
-      type: "tool";
-      id: string;
-      name: string;
-      arguments: Record<string, unknown>;
-      status: ToolStatus;
-      output: ChatMessage["content"];
-      liveOutput?: string;
-      diagnostics?: ChatMessage["diagnostics"];
-    };
-
-export type Activity = {
-  kind: "activity";
+export type TaskNotice = {
+  kind: "notice";
   id: string;
-  status: ActivityStatus;
-  responding: boolean;
-  steps: ActivityStep[];
+  status: "failed" | "stopped";
   error?: string;
 };
 
 export type TranscriptItem =
-  | Activity
+  | TaskNotice
   | { kind: "message"; id: string; message: ChatMessage }
   | { kind: "attachments"; id: string; files: Attachment[] };
 
 export function chatTranscript(view: ChatView): TranscriptItem[] {
   const items: TranscriptItem[] = [];
-  const activities = new Map<string, Activity>();
-  const lastTurnId = view.messages.findLast(
+  const notices = new Map<string, TaskNotice>();
+  const ends = new Map<string, number>();
+  const lastTurn = view.messages.findLast(
     (message) => message.role === "user",
   )?.turnId;
-  const interrupted = new Set(
-    view.messages
-      .filter((message) => message.stopped || message.stopReason === "error")
-      .map((message) => message.turnId ?? message.id),
-  );
-  if (view.failed && !view.busy && lastTurnId) interrupted.add(lastTurnId);
-  const results = new Map(
-    view.messages.flatMap((message) =>
-      message.role === "toolResult" && message.toolCallId
-        ? [[`${message.turnId}:${message.toolCallId}`, message] as const]
-        : [],
-    ),
-  );
-  const activity = (id: string) => {
-    let value = activities.get(id);
-    if (!value) {
-      value = {
-        kind: "activity",
+  view.messages.forEach((message, index) => {
+    const id = message.turnId ?? message.id;
+    ends.set(id, index);
+    if (message.role !== "assistant") return;
+    if (message.stopped || message.stopReason === "error")
+      notices.set(id, {
+        kind: "notice",
         id,
-        status: "done",
-        responding: false,
-        steps: [],
-      };
-      activities.set(id, value);
-      items.push(value);
-    }
-    return value;
-  };
-  for (const message of view.messages) {
-    if (message.role === "user") {
-      items.push({ kind: "message", id: message.id, message });
-      continue;
-    }
-    const groupId = message.turnId ?? message.id;
-    const active = groupId === view.activeTurnId;
-    const held = active || interrupted.has(groupId);
-    if (message.role === "toolResult") {
-      if (message.delivery) {
-        if (held && message.delivery.kind !== "question")
-          activity(groupId).steps.push({
-            type: "text",
-            id: `${message.id}:delivery`,
-            text: message.delivery.text,
-          });
-        else
-          items.push({
-            kind: "message",
-            id: message.id,
-            message: {
-              id: message.id,
-              turnId: message.turnId,
-              role: "assistant",
-              content: [
-                {
-                  type: "text",
-                  text: message.delivery.text,
-                  key: `${message.id}:delivery`,
-                },
-              ],
-              stopped: false,
-            },
-          });
-      }
-      if (message.attachments?.length) {
-        if (held)
-          activity(groupId).steps.push({
-            type: "attachments",
-            id: message.id,
-            files: message.attachments,
-          });
-        else
-          items.push({
-            kind: "attachments",
-            id: message.id,
-            files: message.attachments,
-          });
-      }
-      continue;
-    }
-    if (active) activity(groupId);
-    const progress =
-      held ||
-      message.stopReason === "toolUse" ||
-      message.stopped ||
-      message.content.some((part) => part.type === "toolCall");
-    const content: ChatMessage["content"] = [];
-    for (const part of message.content) {
-      if (part.type === "thinking") {
-        if (part.thinking)
-          activity(groupId).steps.push({
-            type: "thinking",
-            id: part.key,
-            text: part.thinking,
-          });
-      } else if (part.type === "text" && progress) {
-        if (part.text) {
-          if (active) activity(groupId).responding = true;
-          activity(groupId).steps.push({
-            type: "text",
-            id: part.key,
-            text: part.text,
-          });
-        }
-      } else if (part.type === "toolCall") {
-        const result = results.get(`${message.turnId}:${part.id}`);
-        if (result?.delivery) continue;
-        const live = active
-          ? view.tools.find((tool) => tool.callId === part.id)
-          : undefined;
-        activity(groupId).steps.push({
-          type: "tool",
-          id: part.id,
-          name: part.name,
-          arguments: part.arguments,
-          status:
-            result?.toolStatus ??
-            live?.status ??
-            (active ? "running" : "waiting"),
-          output: result?.content ?? [],
-          liveOutput: live?.output,
-          diagnostics: result?.diagnostics,
-        });
-      } else if (!held && visibleContent(part)) {
-        content.push(part);
-      }
-    }
-    if (message.stopped) activity(groupId).status = "stopped";
-    if (message.stopReason === "error") {
-      const current = activity(groupId);
-      current.status = "failed";
-      current.error = message.error;
-    }
-    if (held && message.attachments?.length)
-      activity(groupId).steps.push({
-        type: "attachments",
-        id: message.id,
-        files: message.attachments,
+        status: message.stopReason === "error" ? "failed" : "stopped",
+        ...(message.error ? { error: message.error } : {}),
       });
-    if (content.length || (!held && message.attachments?.length))
-      items.push({
-        kind: "message",
-        id: message.id,
-        message: { ...message, content },
-      });
-  }
-  if (view.activeTurnId) activity(view.activeTurnId).status = "running";
+  });
   if (
     view.failed &&
     !view.busy &&
-    lastTurnId &&
-    activities.get(lastTurnId)?.status !== "stopped"
+    lastTurn &&
+    notices.get(lastTurn)?.status !== "stopped"
   ) {
-    const current = activity(lastTurnId);
-    current.status = "failed";
-    if (view.error) current.error = view.error;
+    const error = view.error ?? notices.get(lastTurn)?.error;
+    notices.set(lastTurn, {
+      kind: "notice",
+      id: lastTurn,
+      status: "failed",
+      ...(error ? { error } : {}),
+    });
   }
-  if (view.draft && view.activeTurnId) {
-    const current = activity(view.activeTurnId);
-    current.responding = view.draft.content.some(
-      (part) => part.type === "text" && part.text.length > 0,
-    );
-    for (const part of view.draft.content)
-      if (part.type === "thinking" && part.thinking)
-        current.steps.push({
-          type: "thinking",
-          id: part.key,
-          text: part.thinking,
+  view.messages.forEach((message, index) => {
+    const id = message.turnId ?? message.id;
+    const held = id === view.activeTurnId || notices.has(id);
+    if (message.role === "user")
+      items.push({ kind: "message", id: message.id, message });
+    else if (message.role === "toolResult") {
+      if (message.delivery)
+        items.push({
+          kind: "message",
+          id: message.id,
+          message: {
+            id: message.id,
+            turnId: message.turnId,
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text: message.delivery.text,
+                key: `${message.id}:delivery`,
+              },
+            ],
+            stopped: false,
+          },
         });
-  }
-  for (const value of activities.values()) {
-    if (
-      value.status === "running" ||
-      value.status === "failed" ||
-      value.status === "stopped"
-    )
-      continue;
-    if (
-      value.steps.some(
-        (step) => step.type === "tool" && step.status === "stopped",
-      )
-    )
-      value.status = "stopped";
-    else if (
-      value.steps.some(
-        (step) => step.type === "tool" && step.status === "failed",
-      ) ||
-      (view.failed && value.id === lastTurnId)
-    )
-      value.status = "failed";
-  }
-  return items.filter(
-    (item) =>
-      item.kind !== "activity" || item.steps.length || item.status !== "done",
-  );
-}
-
-function visibleContent(part: ChatContent) {
-  return (
-    part.type === "image" || (part.type === "text" && part.text.length > 0)
-  );
+      if (!held && message.attachments?.length)
+        items.push({
+          kind: "attachments",
+          id: message.id,
+          files: message.attachments,
+        });
+    } else if (
+      !message.pending &&
+      !message.stopped &&
+      message.stopReason !== "error"
+    ) {
+      const content = message.content.filter(
+        (part) =>
+          part.type === "image" ||
+          (part.type === "text" && part.text.length > 0),
+      );
+      const attachments = held ? undefined : message.attachments;
+      if (content.length || attachments?.length)
+        items.push({
+          kind: "message",
+          id: message.id,
+          message: { ...message, content, attachments },
+        });
+    }
+    const notice = notices.get(id);
+    if (notice && index === ends.get(id)) items.push(notice);
+  });
+  return items;
 }

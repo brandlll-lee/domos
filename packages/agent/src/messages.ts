@@ -21,6 +21,7 @@ export type ChatMessage = {
   role: "user" | "assistant" | "toolResult";
   content: (ChatContent & { key: string })[];
   stopped: boolean;
+  pending?: boolean;
   stopReason?: AssistantMessage["stopReason"];
   error?: string;
   toolCallId?: string;

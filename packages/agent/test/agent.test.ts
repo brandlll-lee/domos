@@ -28,6 +28,7 @@ import { expect, onTestFinished, test } from "vitest";
 import { chatView } from "../src/chat-view.ts";
 import { messageText } from "../src/messages.ts";
 import { openAgent } from "../src/open-agent.ts";
+import { stopChat } from "../src/stop-chat.ts";
 import { chatTranscript } from "../src/transcript.ts";
 
 const context = BACKGROUND_CONTEXT;
@@ -141,7 +142,7 @@ test.each(["aborted", "error"] as const)(
       expect(chatTranscript(view)).toMatchObject([
         { kind: "message", message: { role: "user" } },
         {
-          kind: "activity",
+          kind: "notice",
           status: stopReason === "aborted" ? "stopped" : "failed",
         },
       ]);
@@ -372,61 +373,89 @@ test("detaching a viewer and cancelling a wait keep the task running", async () 
   }
 });
 
-test("an explicit stop ends active work and remains stopped after reopening", async () => {
-  const file = await database(onTestFinished);
-  const { faux, models } = model();
-  const entered = Promise.withResolvers<void>();
-  const registry = createRegistry();
-  registry.install(
-    defineExtension({
-      name: "gate",
-      tools: [
-        defineTool({
-          name: "gate",
-          description: "Wait for cancellation.",
-          parameters: Type.Object({}),
-          execute: async (_args, _api, taskContext) => {
-            entered.resolve();
-            await once(taskContext.abortSignal as AbortSignal, "abort");
-            return {};
-          },
-        }),
-      ],
-    }),
-  );
-  faux.setResponses([
-    fauxAssistantMessage(fauxToolCall("gate", {}), { stopReason: "toolUse" }),
-  ]);
-  const options = { models, registry };
-  const first = await openAgent(file, options, agent, context);
-  let submissionId: Submission["id"];
-  try {
-    const submission = await first.conversation.submit(
-      { type: "input", content: "Work." },
-      context,
+test.each(["generation", "tool"])(
+  "stopping during %s remains stopped after reopening",
+  async (phase) => {
+    const file = await database(onTestFinished);
+    const { faux, models } = model();
+    const entered = Promise.withResolvers<void>();
+    const registry = createRegistry();
+    registry.install(
+      defineExtension({
+        name: "gate",
+        tools: [
+          defineTool({
+            name: "gate",
+            description: "Wait for cancellation.",
+            parameters: Type.Object({}),
+            execute: async (_args, _api, taskContext) => {
+              entered.resolve();
+              await once(taskContext.abortSignal as AbortSignal, "abort");
+              return {};
+            },
+          }),
+        ],
+      }),
     );
-    submissionId = submission.id;
-    await entered.promise;
-    await first.conversation.abort(context);
-    expect(await submission.wait(context)).toMatchObject({
-      status: "unanswered",
-      reason: "aborted",
-    });
-  } finally {
-    await first.harness.close(context);
-  }
-  const second = await openAgent(file, options, agent, context);
-  try {
-    const submission = await second.harness.submission(submissionId, context);
-    expect(await submission?.wait(context)).toMatchObject({
-      status: "unanswered",
-      reason: "aborted",
-    });
-    expect(faux.state.callCount).toBe(1);
-  } finally {
-    await second.harness.close(context);
-  }
-});
+    faux.setResponses([
+      phase === "tool"
+        ? fauxAssistantMessage(fauxToolCall("gate", {}), {
+            stopReason: "toolUse",
+          })
+        : async (_input, options) => {
+            entered.resolve();
+            await once(options?.signal as AbortSignal, "abort");
+            return fauxAssistantMessage("Draft");
+          },
+    ]);
+    const options = { models, registry };
+    const first = await openAgent(file, options, agent, context);
+    let submissionId: Submission["id"];
+    try {
+      const submission = await first.conversation.submit(
+        { type: "input", content: "Work." },
+        context,
+      );
+      submissionId = submission.id;
+      await entered.promise;
+      await Promise.all([
+        stopChat(first.conversation, context),
+        stopChat(first.conversation, context),
+      ]);
+      expect(await submission.wait(context)).toMatchObject({
+        status: "unanswered",
+        reason: "aborted",
+      });
+    } finally {
+      await first.harness.close(context);
+    }
+    const second = await openAgent(file, options, agent, context);
+    try {
+      const submission = await second.harness.submission(submissionId, context);
+      expect(await submission?.wait(context)).toMatchObject({
+        status: "unanswered",
+        reason: "aborted",
+      });
+      const state = await second.conversation.viewState(context);
+      try {
+        expect(chatTranscript(chatView(state.value)).at(-1)).toMatchObject({
+          kind: "notice",
+          status: "stopped",
+        });
+        expect(
+          state.value.entries.filter(
+            (entry) => entry.kind === "domos.engine-message",
+          ),
+        ).toHaveLength(1);
+      } finally {
+        state.dispose();
+      }
+      expect(faux.state.callCount).toBe(1);
+    } finally {
+      await second.harness.close(context);
+    }
+  },
+);
 
 test.each(["safe", "unsafe"] as const)(
   "a process crash follows the interrupted tool's replay=%s policy",

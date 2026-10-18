@@ -76,30 +76,19 @@ async function finish(
     let answer: EntryId | undefined;
     if (doc.activeId === runtime.taskId) {
       for (const draft of doc.drafts) {
-        if (error) draft.stopped = true;
+        if (error && draft.pending !== false) draft.stopped = true;
+        if (!error) draft.pending = false;
         const entry = await tx.appendEntry(runtime.conversationId, {
           kind: EngineMessage,
           data: stored(draft),
         });
         if (
           draft.role === "assistant" &&
-          draft.content.some((part) => part.type === "text")
+          !draft.stopped &&
+          draft.content.some((part) => part.type === "text" && part.text)
         )
           answer = entry.id;
       }
-      if (error)
-        await tx.appendEntry(runtime.conversationId, {
-          kind: EngineMessage,
-          data: stored({
-            id: `${runtime.taskId}:terminal`,
-            turnId: current.input.turnId,
-            role: "assistant",
-            content: [],
-            stopped: reason === "aborted",
-            stopReason: reason === "aborted" ? "aborted" : "error",
-            ...(reason === "aborted" ? {} : { error }),
-          }),
-        });
       doc.drafts = [];
       doc.approvals = [];
       doc.activeId = null;
@@ -110,6 +99,19 @@ async function finish(
         doc.preparedComputerId = doc.computerId;
       }
     }
+    if (error)
+      await tx.appendEntry(runtime.conversationId, {
+        kind: EngineMessage,
+        data: stored({
+          id: `${runtime.taskId}:terminal`,
+          turnId: current.input.turnId,
+          role: "assistant",
+          content: [],
+          stopped: reason === "aborted",
+          stopReason: reason === "aborted" ? "aborted" : "error",
+          ...(reason === "aborted" ? {} : { error }),
+        }),
+      });
     if (!answer && !error)
       answer = (
         await tx.appendEntry(runtime.conversationId, {

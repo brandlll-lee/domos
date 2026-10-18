@@ -164,7 +164,12 @@ export function chatView(
   const draft = live?.generation?.message
     ? project(live.generation.message, "draft")
     : null;
-  messages.push(...((engine?.drafts ?? []) as ChatMessage[]));
+  messages.push(
+    ...((engine?.drafts ?? []).map((message) => ({
+      ...message,
+      pending: message.pending ?? true,
+    })) as ChatMessage[]),
+  );
   return {
     id: view.conversation.id,
     model: agent?.model ?? null,

@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { characterIdentity } from "@domos/ui/characters";
 import { expect, test } from "@playwright/test";
 
 let worker: ChildProcess;
@@ -46,7 +47,12 @@ async function control(
     | string
     | { history: number }
     | { content: unknown; stopReason?: "stop" | "toolUse" }
-    | { responses: { content: unknown; stopReason?: "stop" | "toolUse" }[] },
+    | {
+        responses: {
+          content: unknown;
+          stopReason?: "stop" | "toolUse" | "error";
+        }[];
+      },
 ) {
   const receipt = once(worker, "message");
   worker.send(command);
@@ -870,7 +876,7 @@ test("chat gutters stay full width while bubbles follow the available panel", as
   }
 });
 
-test("a reply arrives complete while generation stays in the process across reloads", async ({
+test("a reply arrives complete while typing survives reloads", async ({
   page,
 }) => {
   const answer = "完整回答。资料已经核对，以下内容一次交付。".repeat(8);
@@ -888,14 +894,16 @@ test("a reply arrives complete while generation stays in the process across relo
     });
   });
   await page.goto(url);
-  await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   await page.getByLabel("消息", { exact: true }).fill("完整交付");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  const process = page.getByRole("region", { name: "执行过程", exact: true });
-  await expect(process.getByRole("status")).toHaveText("正在回复…");
+  const typing = page.getByRole("status", {
+    name: "Domos 正在回复",
+    exact: true,
+  });
+  await expect(typing).toBeVisible();
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
   await page.reload();
-  await expect(process.getByRole("status")).toHaveText("正在回复…");
+  await expect(typing).toBeVisible();
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
   await expect(page.getByLabel("Domos 的回复")).toHaveText(answer);
   const frames = await page.evaluate(
@@ -903,7 +911,7 @@ test("a reply arrives complete while generation stays in the process across relo
   );
   expect(frames.length).toBeGreaterThan(0);
   expect(new Set(frames)).toEqual(new Set([answer]));
-  await expect(process).toHaveCount(0);
+  await expect(typing).toHaveCount(0);
   const port = Number(new URL(url).port);
   await stop();
   await start(port);
@@ -912,35 +920,26 @@ test("a reply arrives complete while generation stays in the process across relo
   await expect(page.getByLabel("Domos 的回复")).toHaveText(answer);
 });
 
-test("stopping generation keeps its partial out of reply bubbles after reload", async ({
+test("stopping generation preserves a short notice and a manual retry", async ({
   page,
 }) => {
   await control({ content: "这份尚未生成完毕的回答。".repeat(30) });
   await page.goto(url);
-  await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   await page.getByLabel("消息", { exact: true }).fill("停止这次回答");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  const process = page.getByRole("region", { name: "执行过程", exact: true });
-  await expect(process.getByRole("status")).toHaveText("正在回复…");
+  await expect(page.locator(".typing-dots")).toBeVisible();
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
   await page.getByRole("button", { name: "停止生成", exact: true }).click();
-  await expect(process).toHaveAttribute("data-state", "stopped");
-  await expect(process.locator(":scope > details")).not.toHaveAttribute("open");
-  await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
+  const notice = page.locator('.task-notice[data-state="stopped"]');
+  await expect(notice.getByRole("status")).toHaveText("已停止");
+  await expect(page.locator(".typing-dots")).toHaveCount(0);
   await page.reload();
-  await expect(process).toHaveAttribute("data-state", "stopped");
+  await expect(notice.getByRole("status")).toHaveText("已停止");
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
-  await process.locator(":scope > details > summary").click();
-  await expect(
-    process.locator(".activity-narration .markdown"),
-  ).not.toBeEmpty();
-  await process.getByRole("button", { name: "重试任务", exact: true }).click();
+  await notice.getByRole("button", { name: "重试任务", exact: true }).click();
   await expect(page.getByLabel("消息", { exact: true })).toHaveValue(
     "停止这次回答",
   );
-  await expect(
-    page.getByRole("button", { name: "停止生成", exact: true }),
-  ).toHaveCount(0);
 });
 
 test("long replies start at the top and new messages preserve a reader's place", async ({
@@ -1050,11 +1049,9 @@ test("background replies and reduced motion show complete messages without entry
   await page.emulateMedia({ reducedMotion: "reduce" });
   await input.fill("减少动画");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  const avatar = page.locator(".work-status .bot-avatar");
-  await expect(avatar).toBeVisible();
-  expect(
-    await avatar.evaluate((node) => getComputedStyle(node).animationName),
-  ).toBe("none");
+  const circle = page.locator(".typing-dots circle").first();
+  await expect(circle).toBeVisible();
+  await expect(circle).toHaveCSS("animation-name", "none");
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(2);
   await expect
     .poll(() =>
@@ -1123,11 +1120,7 @@ test("published files wait for the complete reply", async ({ page }) => {
   await page.goto(url);
   await page.getByLabel("消息", { exact: true }).fill("生成报告");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  const process = page.getByRole("region", { name: "执行过程", exact: true });
-  await process
-    .getByRole("button", { name: "Domos 正在工作", exact: true })
-    .click();
-  await expect(process.getByText("report.md", { exact: true })).toBeVisible();
+  await expect(page.locator(".typing-dots")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "下载 report.md", exact: true }),
   ).toHaveCount(0);
@@ -1451,7 +1444,7 @@ test("composer grows, shrinks, and keeps one focus surface in both themes", asyn
   await page.screenshot({ path: "test-results/workspace-mobile.png" });
 });
 
-test("structured messages show Markdown, thinking, tool states, and restored results", async ({
+test("structured messages keep Markdown and private tool results across reloads", async ({
   page,
 }) => {
   const markdown =
@@ -1477,8 +1470,9 @@ test("structured messages show Markdown, thinking, tool states, and restored res
   await expect(
     page.getByRole("button", { name: "发送", exact: true }),
   ).toBeVisible();
-  await page.getByText("已思考", { exact: true }).click();
-  await expect(page.getByText("核对已有资料。", { exact: true })).toBeVisible();
+  await expect(page.getByText("核对已有资料。", { exact: true })).toHaveCount(
+    0,
+  );
   await expect(
     response.getByRole("link", { name: "官方资料" }),
   ).toHaveAttribute("href", "https://example.com");
@@ -1504,23 +1498,18 @@ test("structured messages show Markdown, thinking, tool states, and restored res
   });
   await page.getByLabel("消息", { exact: true }).fill("调用工具");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  const process = page
-    .getByRole("region", { name: "执行过程", exact: true })
-    .last();
-  await expect(process.getByRole("status")).toContainText(toolName);
+  await expect(page.locator(".typing-dots")).toBeVisible();
   await control("release");
-  await expect(process).toHaveAttribute("data-state", "failed");
-  await expect(process.getByText("1 项失败", { exact: true })).toBeVisible();
-  await process.locator(":scope > details > summary").click();
-  const result = process.locator(".activity-content > details");
-  await result.locator(":scope > summary").click();
-  await expect(result.locator("strong")).toHaveText("工具结果");
   await expect(
     page.getByRole("button", { name: "发送", exact: true }),
   ).toBeVisible();
+  await expect(page.locator(".task-notice")).toHaveCount(0);
+  await expect(
+    page.getByRole("log").getByText("工具结果", { exact: true }),
+  ).toHaveCount(0);
   await page.screenshot({ path: "test-results/workspace-content.png" });
   await page.reload();
-  await expect(page.getByText("1 项失败", { exact: true })).toBeVisible();
+  await expect(page.locator(".task-notice")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "调研结果" })).toBeVisible();
 });
 
@@ -2091,18 +2080,8 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
   await expect(
     page.getByRole("button", { name: "下载 资料.txt", exact: true }),
   ).toBeVisible();
-  const activity = page.getByRole("region", { name: "执行过程", exact: true });
-  await expect(activity).toHaveCount(1);
-  await expect(activity.locator(":scope > details > summary")).toHaveText(
-    "已完成 4 项操作",
-  );
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(1);
   await expect(page.locator(".message.toolResult")).toHaveCount(0);
-  await activity.locator(":scope > details > summary").click();
-  const read = activity.locator(".activity-content > details").first();
-  await read.locator(":scope > summary").click();
-  await expect(read).toContainText(source);
-  await activity.locator(":scope > details > summary").click();
   await chooseAppearance(page, "深色");
   await page.screenshot({
     path: "test-results/files-dark.png",
@@ -2135,16 +2114,13 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
   );
 });
 
-test("tool progress follows the Bot and stop and restart retain accurate results", async ({
+test("typing follows the Bot and failed tasks retain a retry notice", async ({
   page,
 }) => {
   await page.goto(url);
   const primary = page.url();
   const input = page.getByLabel("消息", { exact: true });
   const send = page.getByRole("button", { name: "发送", exact: true });
-  await expect(
-    page.getByRole("button", { name: "添加文件", exact: true }),
-  ).toBeEnabled();
   const call = (path: string) => ({
     content: [
       {
@@ -2160,52 +2136,41 @@ test("tool progress follows the Bot and stop and restart retain accurate results
   await control(call("stopped.md"));
   await input.fill("生成文件");
   await send.click();
-  const running = page.locator('.execution-activity[data-state="running"]');
-  await expect(running.getByRole("status")).toContainText(
-    "正在执行 · 写入文件 · stopped.md",
-  );
+  await expect(page.locator(".typing-dots")).toBeVisible();
   await createBot(page, "旁观助手");
-  await expect(running).toHaveCount(0);
+  await expect(page.locator(".typing-dots")).toHaveCount(0);
   await page.goto(primary);
-  await expect(running.getByRole("status")).toContainText(
-    "正在执行 · 写入文件 · stopped.md",
-  );
+  await expect(page.locator(".typing-dots")).toBeVisible();
   await page.getByRole("button", { name: "停止生成", exact: true }).click();
-  await expect(send).toBeVisible();
-  await expect(
-    page.locator(".execution-activity > details > summary"),
-  ).toHaveText("已停止");
-  await control("gate-tool");
-  await control(call("interrupted.md"));
+  await expect(page.locator('.task-notice[data-state="stopped"] p')).toHaveText(
+    "已停止",
+  );
+  await control({ responses: [{ content: "", stopReason: "error" }] });
   await input.fill("再次生成");
   await send.click();
-  await expect(running.getByRole("status")).toContainText(
-    "正在执行 · 写入文件 · interrupted.md",
+  await expect(page.locator('.task-notice[data-state="failed"]')).toHaveCount(
+    1,
   );
   const port = Number(new URL(url).port);
   await stop();
   await start(port);
   await page.reload();
   await expect(send).toBeVisible();
-  await expect(
-    page.locator('.execution-activity[data-state="failed"]'),
-  ).toHaveCount(1);
+  await expect(page.locator('.task-notice[data-state="failed"]')).toHaveCount(
+    1,
+  );
   await expect(page.getByRole("button", { name: /^下载/ })).toHaveCount(0);
-  await expect(
-    page.locator(
-      '.execution-activity[data-state="stopped"] > details > summary',
-    ),
-  ).toHaveText("已停止");
-  await control(call("../escape.md"));
-  await input.fill("检查文件边界");
-  await send.click();
-  await expect(
-    page.locator('.execution-activity[data-state="failed"]'),
-  ).toHaveCount(2);
-  await expect(send).toBeVisible();
+  await expect(page.locator('.task-notice[data-state="stopped"] p')).toHaveText(
+    "已停止",
+  );
+  await page
+    .locator('.task-notice[data-state="failed"]')
+    .getByRole("button", { name: "重试任务" })
+    .click();
+  await expect(input).toHaveValue("再次生成");
 });
 
-test("one live process shares motion, keyboard disclosure, themes, and restored results", async ({
+test("typing dots share the avatar color and follow complete messages", async ({
   page,
 }) => {
   await control("gate-tool");
@@ -2232,135 +2197,125 @@ test("one live process shares motion, keyboard disclosure, themes, and restored 
     ],
   });
   await page.goto(url);
-  await expect(
-    page.getByRole("button", { name: "发送", exact: true }),
-  ).toBeDisabled();
   await page.getByLabel("消息", { exact: true }).fill("核对并整理资料");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  const process = page.getByRole("region", { name: "执行过程", exact: true });
-  const trigger = process.getByRole("button", { name: "Domos 正在工作" });
-  const status = process.getByRole("status");
-  await expect(process).toHaveCount(1);
-  await expect(status).toContainText(`正在执行 · ${toolName}`);
-  await expect(trigger).toHaveAttribute("aria-expanded", "false");
-  await expect(trigger).toContainText(`正在执行 · ${toolName}`);
-  await expect(process.locator(".activity-narration")).toHaveCount(0);
+  const typing = page.getByRole("status", {
+    name: "Domos 正在回复",
+    exact: true,
+  });
+  const replies = page.getByLabel("Domos 的回复");
+  await expect(replies).toHaveText(["先核对资料，再整理结果。"]);
+  await expect(typing).toBeVisible();
+  await expect(typing).toHaveText("");
+  await expect(typing.locator("svg circle")).toHaveCount(3);
+  await expect(page.getByRole("log").locator("details")).toHaveCount(0);
+  await expect(page.locator(".composer-area .bot-avatar")).toHaveCount(0);
   await expect(
-    page.getByRole("log").locator(".execution-activity"),
+    page.getByText("核对资料的内容与来源。", { exact: true }),
   ).toHaveCount(0);
-  await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
-  await expect(trigger.locator(".bot-avatar")).toHaveCount(1);
-  await expect(trigger.locator(".activity-label")).toHaveCSS(
-    "animation-name",
-    "none",
+  const position = await typing.boundingBox();
+  const reply = await replies.boundingBox();
+  expect(position && reply && position.y >= reply.y + reply.height).toBe(true);
+  const seed = await page
+    .locator(".conversation-title .bot-avatar")
+    .getAttribute("data-seed");
+  const color = characterIdentity(seed ?? "").color;
+  const rgb = [1, 3, 5].map((index) =>
+    Number.parseInt(color.slice(index, index + 2), 16),
   );
-  await expect(trigger.locator(".character-body")).toHaveCSS(
-    "animation-name",
-    "none",
+  await expect(typing).toHaveCSS("color", `rgb(${rgb.join(", ")})`);
+  const animation = await typing.locator("span").evaluateAll((nodes) =>
+    nodes.map((node) => ({
+      name: getComputedStyle(node).animationName,
+      delay: Number.parseFloat(getComputedStyle(node).animationDelay),
+      fill: getComputedStyle(node.querySelector("circle") as Element).fill,
+    })),
   );
+  expect(animation.map((item) => item.name)).toEqual([
+    "typing-pulse",
+    "typing-pulse",
+    "typing-pulse",
+  ]);
+  const [first, second, third] = animation;
+  if (!first || !second || !third) throw new Error("Three dots required");
+  expect(first.delay).toBeLessThan(second.delay);
+  expect(second.delay).toBeLessThan(third.delay);
+  expect(new Set(animation.map((item) => item.fill)).size).toBe(1);
+  const surroundingAnimations = await typing.evaluateHandle((element) =>
+    document.getAnimations().filter((animation) => {
+      const target = (animation.effect as KeyframeEffect | null)?.target;
+      if (!(target instanceof Element) || element.contains(target))
+        return false;
+      animation.pause();
+      return true;
+    }),
+  );
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  const performance = await page.context().newCDPSession(page);
+  await performance.send("Performance.enable");
+  const before = await performance.send("Performance.getMetrics");
+  const intervals = await page.evaluate(
+    () =>
+      new Promise<number[]>((resolve) => {
+        const samples: number[] = [];
+        let start = 0;
+        let previous = 0;
+        const sample = (time: number) => {
+          if (!start) start = time;
+          if (previous) samples.push(time - previous);
+          previous = time;
+          if (time - start < 1000) requestAnimationFrame(sample);
+          else resolve(samples);
+        };
+        requestAnimationFrame(sample);
+      }),
+  );
+  const after = await performance.send("Performance.getMetrics");
+  const metric = (metrics: typeof before, name: string) =>
+    metrics.metrics.find((item) => item.name === name)?.value ?? 0;
+  const layouts = metric(after, "LayoutCount") - metric(before, "LayoutCount");
+  await performance.detach();
+  await test.info().attach("typing-performance", {
+    body: JSON.stringify({ layouts, intervals }),
+    contentType: "application/json",
+  });
+  await surroundingAnimations.evaluate((animations) => {
+    for (const animation of animations) animation.play();
+  });
+  await surroundingAnimations.dispose();
+  expect(layouts).toBe(0);
   for (const [theme, label] of [
     ["dark", "深色"],
     ["light", "浅色"],
   ] as const) {
     await chooseAppearance(page, label);
-    await trigger.hover();
-    await expect(trigger).toHaveAttribute("title", `正在执行 · ${toolName}`);
-    await page.screenshot({ path: `test-results/activity-${theme}-live.png` });
-    await trigger.focus();
-    await trigger.press("Space");
-    await expect(trigger).toHaveAttribute("aria-expanded", "true");
-    await expect(
-      process.getByText("先核对资料，再整理结果。", { exact: true }),
-    ).toBeVisible();
-    await page.screenshot({
-      path: `test-results/activity-${theme}-expanded.png`,
-    });
-    await trigger.press("Enter");
-    await expect(trigger).toHaveAttribute("aria-expanded", "false");
+    await expect(typing).toBeVisible();
+    await page.screenshot({ path: `test-results/typing-${theme}.png` });
   }
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await expect(trigger.locator(".activity-label")).toHaveCSS(
-    "animation-name",
-    "none",
-  );
-  await expect(trigger.locator(".character-body")).toHaveCSS(
-    "animation-name",
-    "none",
-  );
-  await expect(trigger.locator(".activity-label")).not.toHaveCSS(
-    "color",
-    "rgba(0, 0, 0, 0)",
-  );
+  for (const dot of await typing.locator("span").all())
+    await expect(dot).toHaveCSS("animation-name", "none");
   await page.emulateMedia({ forcedColors: "active" });
-  await expect(trigger.locator(".activity-label")).not.toHaveCSS(
-    "color",
-    "rgba(0, 0, 0, 0)",
-  );
+  await expect(typing).toBeVisible();
   await page.emulateMedia({
     forcedColors: "none",
     reducedMotion: "no-preference",
   });
   await page.reload();
-  await expect(status).toContainText(`正在执行 · ${toolName}`);
-  await expect(trigger).toHaveAttribute("aria-expanded", "false");
-  await trigger.click();
-  const step = process.locator(".activity-content > details");
-  await step.locator(":scope > summary").click();
+  await expect(replies).toHaveText(["先核对资料，再整理结果。"]);
+  await expect(typing).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
-  expect(
-    await page.locator("body").evaluate((element) => element.scrollWidth),
-  ).toBe(390);
-  const row = step.locator(":scope > summary");
-  const labelBounds = await trigger.locator(".activity-text").boundingBox();
-  const arrowBounds = await trigger.locator(".activity-chevron").boundingBox();
-  expect(labelBounds).toBeTruthy();
-  expect(arrowBounds).toBeTruthy();
-  if (labelBounds && arrowBounds)
-    expect(
-      Math.abs(
-        labelBounds.y +
-          labelBounds.height / 2 -
-          arrowBounds.y -
-          arrowBounds.height / 2,
-      ),
-    ).toBeLessThanOrEqual(1);
-  const rowBounds = await row.boundingBox();
-  const statusBounds = await row.locator(".activity-step-status").boundingBox();
-  expect(rowBounds).toBeTruthy();
-  expect(statusBounds).toBeTruthy();
-  expect(
-    statusBounds && statusBounds.x + statusBounds.width,
-  ).toBeLessThanOrEqual(rowBounds ? rowBounds.x + rowBounds.width + 1 : 0);
-  await page.screenshot({ path: "test-results/activity-mobile-live.png" });
+  await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
+  await page.screenshot({ path: "test-results/typing-mobile.png" });
   await control("release");
-  await expect(trigger).toHaveCount(0);
-  const disclosure = process.locator(":scope > details");
-  const summary = disclosure.locator(":scope > summary");
-  await expect(summary).toHaveText("已完成 1 项操作");
-  await expect(disclosure).not.toHaveAttribute("open");
-  await expect(page.getByLabel("Domos 的回复")).toHaveCount(1);
-  await expect(page.getByLabel("Domos 的回复").locator("strong")).toHaveText(
-    "整理完成。",
-  );
-  await expect(
-    page.locator(".conversation-title .character-eyelid").first(),
-  ).toHaveCSS("animation-name", "character-blink");
-  await expect(
-    page.locator('.bot-avatar svg[data-state="running"]'),
-  ).toHaveCount(0);
-  await summary.click();
-  await step.locator(":scope > summary").click();
-  await expect(
-    step.getByText("已核对完整资料。", { exact: true }),
-  ).toBeVisible();
-  await page.screenshot({ path: "test-results/activity-mobile-complete.png" });
+  await expect(replies).toHaveCount(2);
+  await expect(replies.last().locator("strong")).toHaveText("整理完成。");
+  await expect(typing).toHaveCount(0);
   await page.reload();
-  await expect(summary).toHaveText("已完成 1 项操作");
-  await expect(disclosure).not.toHaveAttribute("open");
-  await expect(page.getByLabel("Domos 的回复")).toHaveCount(1);
+  await expect(replies).toHaveCount(2);
 });
 
-test("questions arrive during work and progress messages wait for completion across restart", async ({
+test("complete product messages arrive during work and survive restart", async ({
   page,
 }) => {
   await control("gate-tool");
@@ -2391,7 +2346,7 @@ test("questions arrive during work and progress messages wait for completion acr
       {
         stopReason: "toolUse",
         content: [
-          { type: "text", text: "工具内部说明。" },
+          { type: "text", text: "我会继续核对资料。" },
           {
             type: "toolCall",
             id: crypto.randomUUID(),
@@ -2407,26 +2362,30 @@ test("questions arrive during work and progress messages wait for completion acr
   await page.getByLabel("消息", { exact: true }).fill("请整理资料");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   const replies = page.getByLabel("Domos 的回复", { exact: true });
-  await expect(replies).toHaveText(["你想先核对哪份资料？"]);
+  await expect(replies).toHaveText([
+    "你想先核对哪份资料？",
+    "已找到资料，正在整理。",
+    "我会继续核对资料。",
+  ]);
   await expect(
     page.getByRole("button", { name: "停止生成", exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole("log")).not.toContainText("工具内部说明。");
+  await expect(page.locator(".typing-dots")).toBeVisible();
   await page.reload();
-  await expect(replies).toHaveText(["你想先核对哪份资料？"]);
-  await expect(
-    page.getByRole("button", { name: "Domos 正在工作" }),
-  ).toBeVisible();
+  await expect(replies).toHaveText([
+    "你想先核对哪份资料？",
+    "已找到资料，正在整理。",
+    "我会继续核对资料。",
+  ]);
+  await expect(page.locator(".typing-dots")).toBeVisible();
   await control("release");
   await expect(replies).toHaveText([
     "你想先核对哪份资料？",
     "已找到资料，正在整理。",
+    "我会继续核对资料。",
     "报告已完成。",
   ]);
-  await expect(page.locator(".work-status")).toHaveCount(0);
-  await expect(
-    page.locator(".execution-activity > details > summary"),
-  ).toHaveText("已完成 1 项操作");
+  await expect(page.locator(".typing-dots")).toHaveCount(0);
   const port = Number(new URL(url).port);
   await stop();
   await start(port);
@@ -2434,6 +2393,7 @@ test("questions arrive during work and progress messages wait for completion acr
   await expect(replies).toHaveText([
     "你想先核对哪份资料？",
     "已找到资料，正在整理。",
+    "我会继续核对资料。",
     "报告已完成。",
   ]);
   await page.screenshot({

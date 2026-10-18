@@ -126,7 +126,7 @@ test("native turns share product tools, queue in order and keep separate session
 });
 
 test.each(engineIds)(
-  "%s keeps failed drafts in the process after later successful work",
+  "%s preserves complete replies and failure notices after later work",
   async (provider) => {
     const directory = await mkdtemp(join(tmpdir(), "domos-delivery-turns-"));
     const registry = createRegistry();
@@ -142,6 +142,7 @@ test.each(engineIds)(
         emit: (event: EngineEvent) => Promise<void>,
       ) {
         if (text === "fail") {
+          await emit({ type: "message", id: "first", text: "First result" });
           await emit({ type: "text", id: "answer", text: "Unfinished draft" });
           await emit({
             type: "approval",
@@ -197,9 +198,13 @@ test.each(engineIds)(
     ]);
     expect(
       chatTranscript(working).filter((item) => item.kind === "message"),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
     release.resolve();
     expect(await failed.wait(context)).toMatchObject({ status: "unanswered" });
+    expect(
+      (await runtime.bots.list(context)).find((bot) => bot.id === botId)
+        ?.preview,
+    ).toBe("First result");
     const complete = await engines.submit(
       botId,
       { text: "complete", requestId: crypto.randomUUID() },
@@ -207,15 +212,17 @@ test.each(engineIds)(
     );
     await complete.wait(context);
     const items = chatTranscript(await engines.view(botId, context));
-    expect(items.find((item) => item.kind === "activity")).toMatchObject({
+    expect(items.find((item) => item.kind === "notice")).toMatchObject({
       status: "failed",
       error: "Connection lost",
-      steps: [{ text: "Unfinished draft" }],
     });
     expect(
       items.filter(
         (item) => item.kind === "message" && item.message.role === "assistant",
       ),
-    ).toMatchObject([{ message: { content: [{ text: "Complete result" }] } }]);
+    ).toMatchObject([
+      { message: { content: [{ text: "First result" }] } },
+      { message: { content: [{ text: "Complete result" }] } },
+    ]);
   },
 );

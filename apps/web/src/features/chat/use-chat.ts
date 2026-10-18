@@ -1,4 +1,4 @@
-import type { Activity, TranscriptItem } from "@domos/agent/transcript";
+import type { TranscriptItem } from "@domos/agent/transcript";
 import type { ChatView } from "@domos/agent/view";
 import { ORPCError } from "@orpc/client";
 import { useEffect, useState } from "react";
@@ -16,7 +16,6 @@ export type SendInput = {
 export function useChat(botId: number, onModelRequired?: () => void) {
   const [view, setView] = useState<ChatView | null>(null);
   const [items, setItems] = useState<TranscriptItem[]>([]);
-  const [active, setActive] = useState<Activity>();
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -36,7 +35,6 @@ export function useChat(botId: number, onModelRequired?: () => void) {
       const transcript = project(next);
       setView(next);
       setItems(transcript.items);
-      setActive(transcript.active);
       setConnected(true);
     };
     const visible = () => {
@@ -112,7 +110,6 @@ export function useChat(botId: number, onModelRequired?: () => void) {
   return {
     view,
     items,
-    active,
     connected,
     error,
     sending,

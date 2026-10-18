@@ -80,7 +80,10 @@ export class EngineProjection {
           },
         ],
       });
-    else {
+    else if (event.type === "message") {
+      message.content = [{ type: "text", text: event.text, key: id }];
+      message.pending = false;
+    } else {
       const previous = message.content[0];
       const text =
         `${event.replace ? "" : (previous && (previous.type === "text" ? previous.text : previous.type === "thinking" ? previous.thinking : "")) || ""}${event.text}`.slice(
@@ -91,9 +94,14 @@ export class EngineProjection {
           ? { type: "text", text, key: id }
           : { type: "thinking", thinking: text, key: id },
       ];
+      message.pending = true;
     }
     this.changed = true;
-    if (Date.now() - this.flushed >= engineLimits.flushMs) await this.flush();
+    if (
+      event.type === "message" ||
+      Date.now() - this.flushed >= engineLimits.flushMs
+    )
+      await this.flush();
   }
 
   async flush() {

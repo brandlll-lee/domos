@@ -38,260 +38,164 @@ function view(
   };
 }
 
-test("a tool call and its result form one step while the final answer stays visible", () => {
-  const turnId = crypto.randomUUID();
-  const callId = crypto.randomUUID();
-  const name = crypto.randomUUID();
+test("complete replies arrive during work while partial text and tools stay private", () => {
   const messages = [
-    message("user", turnId, [{ type: "text", text: "Prepare a report" }]),
+    message("user", "turn", [{ type: "text", text: "Prepare a report" }]),
     message(
       "assistant",
-      turnId,
+      "turn",
       [
-        { type: "text", text: "Checking the source" },
-        { type: "toolCall", id: callId, name, arguments: { source: "input" } },
-      ],
-      { stopReason: "toolUse" },
-    ),
-    message("toolResult", turnId, [{ type: "text", text: "Source content" }], {
-      toolCallId: callId,
-      toolStatus: "done",
-    }),
-    message("assistant", turnId, [{ type: "text", text: "Report ready" }], {
-      stopReason: "stop",
-    }),
-  ];
-  const original = structuredClone(messages);
-  const items = chatTranscript(view(messages));
-  expect(items.map((item) => item.kind)).toEqual([
-    "message",
-    "activity",
-    "message",
-  ]);
-  expect(items[1]).toMatchObject({
-    status: "done",
-    steps: [
-      { type: "text", text: "Checking the source" },
-      {
-        type: "tool",
-        name,
-        status: "done",
-        output: [{ text: "Source content" }],
-      },
-    ],
-  });
-  expect(items[2]).toMatchObject({
-    message: { content: [{ text: "Report ready" }] },
-  });
-  expect(messages).toEqual(original);
-});
-
-test("input identity separates turns even when a provider repeats a call ID", () => {
-  const callId = crypto.randomUUID();
-  const messages = ["first", "second"].flatMap((turnId) => [
-    message("user", turnId, []),
-    message(
-      "assistant",
-      turnId,
-      [
+        { type: "thinking", thinking: "Private reasoning" },
+        { type: "text", text: "I will check the source." },
         {
           type: "toolCall",
-          id: callId,
+          id: "call",
           name: crypto.randomUUID(),
           arguments: {},
         },
       ],
       { stopReason: "toolUse" },
     ),
-    message("toolResult", turnId, [{ type: "text", text: turnId }], {
-      toolCallId: callId,
-      toolStatus: "done",
+    message("toolResult", "turn", [{ type: "text", text: "Private output" }], {
+      toolStatus: "failed",
     }),
-  ]);
-  const activities = chatTranscript(view(messages)).filter(
-    (item) => item.kind === "activity",
-  );
-  expect(activities).toHaveLength(2);
-  expect(activities.map((item) => item.steps)).toMatchObject([
-    [{ output: [{ text: "first" }] }],
-    [{ output: [{ text: "second" }] }],
-  ]);
-});
-
-test("thinking and interrupted narration stay in the process while the answer stays outside", () => {
-  const turnId = crypto.randomUUID();
-  const items = chatTranscript(
-    view([
-      message("user", turnId, []),
-      message(
-        "assistant",
-        turnId,
-        [
-          { type: "thinking", thinking: "Check the data" },
-          { type: "text", text: "Answer" },
-        ],
-        { stopReason: "stop" },
-      ),
+    message("assistant", "turn", [
+      { type: "text", text: "The source is ready." },
     ]),
-  );
-  expect(items.map((item) => item.kind)).toEqual([
-    "message",
-    "activity",
-    "message",
-  ]);
-  expect(items[1]).toMatchObject({
-    steps: [{ type: "thinking", text: "Check the data" }],
-  });
-  expect(items[2]).toMatchObject({
-    message: { content: [{ type: "text", text: "Answer" }] },
-  });
-  const stopped = chatTranscript(
-    view([
-      message("user", turnId, []),
-      message(
-        "assistant",
-        turnId,
-        [{ type: "text", text: "Partial progress" }],
-        { stopped: true, stopReason: "aborted" },
-      ),
-    ]),
-  );
-  expect(stopped[1]).toMatchObject({
-    status: "stopped",
-    steps: [{ text: "Partial progress" }],
-  });
-});
-
-test("live work uses runtime state and completed text chats have no empty process", () => {
-  const turnId = crypto.randomUUID();
-  const user = message("user", turnId, []);
-  expect(
-    chatTranscript(view([user], { activeTurnId: turnId, busy: true }))[1],
-  ).toMatchObject({ status: "running", steps: [] });
-  expect(chatTranscript(view([user]))).toHaveLength(1);
-  const callId = crypto.randomUUID();
-  const tool = message("assistant", turnId, [
-    { type: "toolCall", id: callId, name: crypto.randomUUID(), arguments: {} },
-  ]);
-  expect(
-    chatTranscript(
-      view([user, tool], {
-        activeTurnId: turnId,
-        busy: true,
-        tools: [{ callId, status: "running", output: "Live output" }],
-      }),
-    )[1],
-  ).toMatchObject({
-    status: "running",
-    steps: [{ status: "running", liveOutput: "Live output" }],
-  });
-});
-
-test("draft text never becomes a reply and draft thinking stays in the live process", () => {
-  const turnId = crypto.randomUUID();
-  const user = message("user", turnId, [{ type: "text", text: "Question" }]);
-  const draft = message("assistant", turnId, [
-    { type: "thinking", thinking: "Checking facts" },
-    { type: "text", text: "Partial answer" },
-  ]);
+    message("assistant", "turn", [{ type: "text", text: "Incomplete" }], {
+      pending: true,
+    }),
+  ];
+  const original = structuredClone(messages);
   const items = chatTranscript(
-    view([user], {
-      draft,
-      activeTurnId: turnId,
+    view(messages, {
+      activeTurnId: "turn",
       busy: true,
+      draft: message("assistant", "turn", [
+        { type: "text", text: "Another draft" },
+      ]),
     }),
   );
   expect(items).toMatchObject([
-    { kind: "message", message: user },
+    { kind: "message", message: { role: "user" } },
     {
-      kind: "activity",
-      status: "running",
-      responding: true,
-      steps: [{ type: "thinking", text: "Checking facts" }],
+      kind: "message",
+      message: {
+        content: [{ type: "text", text: "I will check the source." }],
+      },
+    },
+    {
+      kind: "message",
+      message: { content: [{ type: "text", text: "The source is ready." }] },
     },
   ]);
-  expect(items.filter((item) => item.kind === "message")).toHaveLength(1);
-  expect(chatTranscript(view([user], { failed: true }))).toMatchObject([
-    { kind: "message" },
-    { kind: "activity", status: "failed" },
-  ]);
+  expect(messages).toEqual(original);
 });
 
-test("an active engine turn delivers its answer and files together after completion", () => {
-  const turnId = "report";
-  const file = { id: "file", name: "report.txt", size: 12, path: "report.txt" };
-  const messages = [
-    message("user", turnId, [{ type: "text", text: "Prepare a report" }]),
-    message("toolResult", turnId, [], { attachments: [file] }),
-    message("assistant", turnId, [{ type: "text", text: "Report ready" }]),
-  ];
-  const active = chatTranscript(
-    view(messages, { activeTurnId: turnId, busy: true }),
-  );
-  expect(active.filter((item) => item.kind === "message")).toHaveLength(1);
-  expect(active.some((item) => item.kind === "attachments")).toBe(false);
-  expect(active.find((item) => item.kind === "activity")).toMatchObject({
-    status: "running",
-    responding: true,
-    steps: expect.arrayContaining([
-      { type: "text", id: expect.any(String), text: "Report ready" },
-    ]),
-  });
-  const complete = chatTranscript(view(messages));
-  expect(complete.find((item) => item.kind === "attachments")).toMatchObject({
-    files: [file],
-  });
-  expect(complete.at(-1)).toMatchObject({
-    kind: "message",
-    message: { content: [{ text: "Report ready" }] },
-  });
-});
-
-test("stopped and failed answers remain in the process with their files", () => {
-  const file = { id: "file", name: "draft.txt", size: 12, path: "draft.txt" };
-  const messages = [
-    message("user", "turn", [{ type: "text", text: "Prepare a report" }]),
-    message("toolResult", "turn", [], { attachments: [file] }),
-    message("assistant", "turn", [{ type: "text", text: "Unfinished answer" }]),
-  ];
-  for (const fields of [{ failed: true, error: "Connection lost" }, {}]) {
-    const input = structuredClone(messages);
-    const answer = input.at(-1);
-    if (!fields.failed && answer) answer.stopped = true;
-    const items = chatTranscript(view(input, fields));
-    expect(items.filter((item) => item.kind === "message")).toHaveLength(1);
-    expect(items.some((item) => item.kind === "attachments")).toBe(false);
-    expect(items.find((item) => item.kind === "activity")).toMatchObject({
-      status: fields.failed ? "failed" : "stopped",
-      steps: expect.arrayContaining([
-        { type: "attachments", id: input[1]?.id, files: [file] },
-        { type: "text", id: expect.any(String), text: "Unfinished answer" },
+test("complete replies survive later failure and stopped drafts stay hidden", () => {
+  for (const status of ["failed", "stopped"] as const) {
+    const items = chatTranscript(
+      view([
+        message("user", "turn", [{ type: "text", text: "Task" }]),
+        message("assistant", "turn", [{ type: "text", text: "First result" }], {
+          pending: false,
+        }),
+        message("assistant", "turn", [{ type: "text", text: "Draft" }], {
+          pending: true,
+          stopped: true,
+        }),
+        message(
+          "assistant",
+          "turn",
+          [],
+          status === "failed"
+            ? { stopReason: "error", error: "Connection lost" }
+            : { stopped: true, stopReason: "aborted" },
+        ),
       ]),
-    });
+    );
+    expect(items).toMatchObject([
+      { kind: "message", message: { role: "user" } },
+      { kind: "message", message: { content: [{ text: "First result" }] } },
+      { kind: "notice", id: "turn", status },
+    ]);
   }
 });
 
-test("questions arrive during work while progress messages wait for completion", () => {
+test("task failures use the runtime error and tool errors can recover", () => {
   const messages = [
-    message("user", "turn", [{ type: "text", text: "Prepare a report" }]),
+    message("user", "turn", []),
+    message("toolResult", "turn", [], { toolStatus: "failed", isError: true }),
+    message("assistant", "turn", [{ type: "text", text: "Recovered" }]),
+  ];
+  expect(chatTranscript(view(messages)).map((item) => item.kind)).toEqual([
+    "message",
+    "message",
+  ]);
+  expect(
+    chatTranscript(
+      view(messages, { failed: true, error: "Connection lost" }),
+    ).at(-1),
+  ).toEqual({
+    kind: "notice",
+    id: "turn",
+    status: "failed",
+    error: "Connection lost",
+  });
+  expect(
+    chatTranscript(
+      view(messages.slice(0, 1), { activeTurnId: "turn", busy: true }),
+    ),
+  ).toHaveLength(1);
+});
+
+test("files arrive at task completion and stay hidden for interrupted tasks", () => {
+  const file = { id: "file", name: "report.txt", size: 12, path: "report.txt" };
+  const messages = [
+    message("user", "turn", []),
+    message("toolResult", "turn", [], { attachments: [file] }),
+    message("assistant", "turn", [{ type: "text", text: "Result" }], {
+      attachments: [file],
+    }),
+  ];
+  const working = chatTranscript(
+    view(messages, { activeTurnId: "turn", busy: true }),
+  );
+  expect(working).toMatchObject([
+    { kind: "message", message: { role: "user" } },
+    {
+      kind: "message",
+      message: { content: [{ text: "Result" }], attachments: undefined },
+    },
+  ]);
+  const complete = chatTranscript(view(messages));
+  expect(complete[1]).toMatchObject({ kind: "attachments", files: [file] });
+  expect(complete[2]).toMatchObject({
+    kind: "message",
+    message: { attachments: [file] },
+  });
+  const failed = chatTranscript(view(messages, { failed: true }));
+  expect(failed.some((item) => item.kind === "attachments")).toBe(false);
+  expect(failed[1]).toMatchObject({ message: { attachments: undefined } });
+});
+
+test("complete product messages and questions arrive immediately", () => {
+  const messages = [
+    message("user", "turn", []),
     message("toolResult", "turn", [], {
       delivery: { text: "Checking sources" },
     }),
     message("toolResult", "turn", [], {
-      delivery: { text: "Which folder should I use?", kind: "question" },
+      delivery: { text: "Which folder?", kind: "question" },
     }),
   ];
-  const active = chatTranscript(
+  const items = chatTranscript(
     view(messages, { activeTurnId: "turn", busy: true }),
   );
-  expect(
-    active.flatMap((item) =>
-      item.kind === "message" && item.message.role === "assistant"
-        ? item.message.content.map((part) => part.type === "text" && part.text)
-        : [],
-    ),
-  ).toEqual(["Which folder should I use?"]);
-  expect(
-    chatTranscript(view(messages)).filter((item) => item.kind === "message"),
-  ).toHaveLength(3);
+  expect(items).toMatchObject([
+    { kind: "message", message: { role: "user" } },
+    { kind: "message", message: { content: [{ text: "Checking sources" }] } },
+    { kind: "message", message: { content: [{ text: "Which folder?" }] } },
+  ]);
+  expect(new Set(items.map((item) => item.id)).size).toBe(items.length);
 });

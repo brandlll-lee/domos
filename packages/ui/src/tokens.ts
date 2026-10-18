@@ -151,7 +151,7 @@ export const metrics = {
   "motion-spinner": "800ms",
   "motion-message-in": "220ms",
   "ease-message-in": "cubic-bezier(0.22, 1, 0.36, 1)",
-  "motion-activity-pulse": "1.4s",
+  "motion-typing": "1.2s",
   "activity-detail-height": "20rem",
   "avatar-small": "1.5rem",
   "avatar-medium": "2.25rem",

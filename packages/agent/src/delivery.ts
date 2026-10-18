@@ -13,7 +13,7 @@ export const messaging = defineExtension({
     defineTool({
       name: "message_user",
       description:
-        "Send a complete message. Updates arrive with the completed task. Set kind to question when user input is needed immediately. Deliver the final answer in your normal reply.",
+        "Send a complete message to the user immediately. Set kind to question when user input is needed. Deliver the final answer in your normal reply.",
       parameters: Type.Object({
         message: Type.String({ minLength: 1 }),
         kind: Type.Optional(
@@ -32,7 +32,7 @@ export const messaging = defineExtension({
               text:
                 kind === "question"
                   ? "Question delivered."
-                  : "Message queued for task completion.",
+                  : "Message delivered.",
             },
           ],
           details: {
@@ -49,7 +49,7 @@ export const messaging = defineExtension({
     section(
       "messaging",
       () =>
-        "Deliver the complete result in your final reply after finishing the task. The user sees live tool activity while you work. Use message_user with kind question when you need an immediate answer from the user. Other messages wait for task completion. Keep reasoning in the thinking channel. Write conversational replies in short, natural paragraphs. Use headings, lists, and tables when they help the user. Follow requests for detailed reports or structured documents.",
+        "Each complete reply reaches the user immediately. Use message_user for a complete update or a question while you work. Deliver the final result in your normal reply. Keep reasoning in the thinking channel. Write conversational replies in short, natural paragraphs. Use headings, lists, and tables when they help the user. Follow requests for detailed reports or structured documents.",
     ),
   ],
 });

@@ -61,10 +61,9 @@ export const claudeProvider: EngineProvider = {
           if (frame.type === "assistant" && frame.message) {
             const message = frame.message;
             await emit({
-              type: "text",
+              type: "message",
               id: message.id,
               text: textContent(message.content),
-              replace: true,
             });
             for (const part of message.content ?? []) {
               if (part.type === "thinking" && part.thinking)

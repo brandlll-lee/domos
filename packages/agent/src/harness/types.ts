@@ -16,6 +16,7 @@ export type EngineEvent =
   | { type: "session"; id: string }
   | { type: "accepted"; id?: string }
   | { type: "text" | "thinking"; id: string; text: string; replace?: boolean }
+  | { type: "message"; id: string; text: string }
   | { type: "tool"; id: string; name: string; input: Record<string, unknown> }
   | {
       type: "tool_result";

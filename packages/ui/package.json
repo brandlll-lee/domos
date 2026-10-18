@@ -7,7 +7,6 @@
     "./setting-row": "./src/web/setting-row.tsx",
     "./avatar": "./src/web/avatar.tsx",
     "./characters": "./src/characters.ts",
-    "./work-status": "./src/web/work-status.tsx",
     "./tokens": "./src/tokens.ts",
     "./controls": "./src/web/controls.tsx",
     "./choice": "./src/web/choice.tsx",

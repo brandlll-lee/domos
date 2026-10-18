@@ -19,7 +19,15 @@ const excerpt = (text: string) =>
 function entryText(entry: EntryRecord) {
   if (entry.kind === EngineMessage) {
     const message = entry.data as unknown as ChatMessage;
-    return message.delivery?.text ?? messageText(message);
+    return (
+      message.delivery?.text ??
+      (!message.pending &&
+      !message.stopped &&
+      message.stopReason !== "error" &&
+      (message.role === "user" || message.role === "assistant")
+        ? messageText(message)
+        : "")
+    );
   }
   for (const message of [...(entry.model ?? [])].reverse()) {
     if (message.role === "user") {
@@ -31,8 +39,8 @@ function entryText(entry: EntryRecord) {
     }
     if (
       message.role === "assistant" &&
-      (message.stopReason === "stop" || message.stopReason === "length") &&
-      !message.content.some((part) => part.type === "toolCall")
+      message.stopReason !== "error" &&
+      message.stopReason !== "aborted"
     ) {
       const text = messageText(message);
       if (text.trim()) return text;

@@ -1,15 +1,15 @@
 import type { ChatMessage } from "@domos/agent/messages";
 import type { TranscriptItem } from "@domos/agent/transcript";
-import { ActivityText } from "@domos/ui/activity";
 import { Button } from "@domos/ui/controls";
 import { MessageBubble } from "@domos/ui/message";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { ArrowDownIcon } from "@phosphor-icons/react/dist/csr/ArrowDown";
 import { memo, type ReactNode } from "react";
-import { ExecutionActivity } from "./activity.tsx";
 import { Attachments } from "./attachments.tsx";
 import { chatCopy } from "./copy.ts";
 import { MessageContent } from "./message-content.tsx";
+import { TaskNotice } from "./task-notice.tsx";
+import { TypingDots } from "./typing-dots.tsx";
 import { useTranscript } from "./use-transcript.ts";
 
 const MessageRow = memo(function MessageRow({
@@ -26,11 +26,11 @@ const MessageRow = memo(function MessageRow({
   onRetry: (message: ChatMessage) => void;
 }) {
   const key = `${item.kind}:${item.id}`;
-  if (item.kind === "activity")
+  if (item.kind === "notice")
     return (
       <div data-transcript-key={key}>
-        <ExecutionActivity
-          activity={item}
+        <TaskNotice
+          notice={item}
           onRetry={original ? () => onRetry(original) : undefined}
         />
       </div>
@@ -70,6 +70,7 @@ export const Messages = memo(function Messages({
   ready,
   busy,
   botName,
+  avatar,
   createdAt,
   items,
   welcome,
@@ -79,6 +80,7 @@ export const Messages = memo(function Messages({
   ready: boolean;
   busy: boolean;
   botName: string;
+  avatar: string;
   createdAt?: number;
   items: TranscriptItem[];
   welcome?: ReactNode;
@@ -105,7 +107,7 @@ export const Messages = memo(function Messages({
       >
         {!ready ? (
           <p className="working" role="status">
-            <ActivityText active>{chatCopy.loading}</ActivityText>
+            {chatCopy.loading}
           </p>
         ) : (
           !items.length &&
@@ -148,13 +150,16 @@ export const Messages = memo(function Messages({
                 botId={botId}
                 botName={botName}
                 original={
-                  item.kind === "activity" && !busy
+                  item.kind === "notice" && !busy
                     ? originals.get(item.id)
                     : undefined
                 }
                 onRetry={onRetry}
               />
             ))}
+          {ready && busy && transcript.atLatest && (
+            <TypingDots avatar={avatar} label={chatCopy.typing(botName)} />
+          )}
           <p className="sr-only" role="status">
             {!busy && items.length ? chatCopy.complete : ""}
           </p>

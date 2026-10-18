@@ -15,7 +15,6 @@ import { computer } from "../src/computer.ts";
 import { Files } from "../src/files.ts";
 import { messageText } from "../src/messages.ts";
 import { openAgent } from "../src/open-agent.ts";
-import { chatTranscript } from "../src/transcript.ts";
 
 test.runIf(platform() === "win32")(
   "host commands report hardware, working directory, exit status, and durable errors",
@@ -86,15 +85,6 @@ test.runIf(platform() === "win32")(
         );
         expect(
           result?.diagnostics?.some((item) => item.message.includes("17")),
-        ).toBe(true);
-        const activity = chatTranscript(view).find(
-          (item) => item.kind === "activity",
-        );
-        expect(
-          activity?.kind === "activity" &&
-            activity.steps.some(
-              (step) => step.type === "tool" && step.diagnostics?.length,
-            ),
         ).toBe(true);
       } finally {
         state.dispose();

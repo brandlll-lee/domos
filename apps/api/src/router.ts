@@ -3,6 +3,7 @@ import type { Bots } from "@domos/agent/bots";
 import type { Computers } from "@domos/agent/computer/catalog";
 import { FileInput, type Files } from "@domos/agent/files";
 import type { Engines } from "@domos/agent/harness";
+import { stopChat } from "@domos/agent/stop";
 import { chatView } from "@domos/agent/view";
 import { type BotWork, WorkError } from "@domos/agent/work";
 import {
@@ -178,7 +179,7 @@ export function createRouter(
     stop: os.input(botTarget).handler(async ({ input }) => {
       const conversation = await botConversation(bots, input.botId);
       await engines?.stop(input.botId, BACKGROUND_CONTEXT);
-      await conversation.abort(BACKGROUND_CONTEXT);
+      await stopChat(conversation, BACKGROUND_CONTEXT);
       return { ok: true };
     }),
     subscribe: os.input(botTarget).handler(async function* ({ input, signal }) {

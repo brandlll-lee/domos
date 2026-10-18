@@ -184,6 +184,7 @@ export function useTranscript(items: TranscriptItem[], ready: boolean) {
     content,
     visible,
     hasEarlier: start > 0,
+    atLatest: end === items.length,
     atBottom,
     unread,
     onScroll() {

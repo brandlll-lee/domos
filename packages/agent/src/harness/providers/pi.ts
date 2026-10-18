@@ -65,6 +65,15 @@ export const piProvider: EngineProvider = {
                 failure =
                   message.errorMessage ?? "Pi 未完成回复。请检查账号和网络。";
               if (message.stopReason === "aborted") failure = "工作已停止。";
+              if (
+                message.stopReason !== "error" &&
+                message.stopReason !== "aborted"
+              )
+                await emit({
+                  type: "message",
+                  id: messageId,
+                  text: textContent(message.content),
+                });
             }
             if (frame.type === "tool_execution_start")
               await emit({

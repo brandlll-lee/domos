@@ -63,17 +63,6 @@
 .character-eyelid[data-side="1"] {
   animation-delay: 24ms;
 }
-.work-status .character-pose,
-.work-status .character-body,
-.work-status .character-face,
-.work-status .character-pupils,
-.work-status .character-eyelid {
-  animation: none;
-}
-.work-status .bot-avatar {
-  animation: character-breathe var(--motion-character-breathe) ease-in-out
-    infinite;
-}
 @keyframes character-breathe {
   0%,
   100% {
@@ -159,7 +148,6 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .work-status .bot-avatar,
   .character-pose,
   .character-body,
   .character-face,

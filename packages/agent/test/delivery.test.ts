@@ -19,7 +19,7 @@ import { chatView } from "../src/chat-view.ts";
 import { openAgent } from "../src/open-agent.ts";
 import { chatTranscript } from "../src/transcript.ts";
 
-test("questions arrive during work and updates arrive with the result after restart", async () => {
+test("complete messages arrive during work and survive restart", async () => {
   const directory = await mkdtemp(join(tmpdir(), "domos-delivery-"));
   onTestFinished(() => rm(directory, { recursive: true, force: true }));
   const database = join(directory, "agent.sqlite");
@@ -68,7 +68,7 @@ test("questions arrive during work and updates arrive with the result after rest
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage(
-      [{ type: "text", text: "Internal tool narration" }, work],
+      [{ type: "text", text: "I will check the source." }, work],
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage("Complete result"),
@@ -100,7 +100,11 @@ test("questions arrive during work and updates arrive with the result after rest
       )
       .toBe(true);
     expect(chatView(state.value).busy).toBe(true);
-    expect(delivered()).toEqual(["Which source should I check?"]);
+    expect(delivered()).toEqual([
+      "Which source should I check?",
+      "The source is available.",
+      "I will check the source.",
+    ]);
   } finally {
     state.dispose();
     await first.harness.close(context);
@@ -121,6 +125,7 @@ test("questions arrive during work and updates arrive with the result after rest
       expect(texts).toEqual([
         "Which source should I check?",
         "The source is available.",
+        "I will check the source.",
         "Complete result",
       ]);
       expect(new Set(items.map((item) => `${item.kind}:${item.id}`)).size).toBe(
@@ -135,7 +140,7 @@ test("questions arrive during work and updates arrive with the result after rest
   }
 });
 
-test("an invalid user message stays a failed tool step", async () => {
+test("a recovered product tool error leaves the final reply visible", async () => {
   const directory = await mkdtemp(join(tmpdir(), "domos-delivery-"));
   onTestFinished(() => rm(directory, { recursive: true, force: true }));
   const faux = fauxProvider();
@@ -163,10 +168,7 @@ test("an invalid user message stays a failed tool step", async () => {
     try {
       const items = chatTranscript(chatView(state.value));
       expect(items.filter((item) => item.kind === "message")).toHaveLength(2);
-      expect(items.find((item) => item.kind === "activity")).toMatchObject({
-        status: "failed",
-        steps: [{ type: "tool", status: "failed" }],
-      });
+      expect(items.map((item) => item.kind)).toEqual(["message", "message"]);
     } finally {
       state.dispose();
     }

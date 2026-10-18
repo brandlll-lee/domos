@@ -19,6 +19,7 @@
     "./harness": "./src/harness/index.ts",
     "./harness/types": "./src/harness/types.ts",
     "./messages": "./src/messages.ts",
+    "./stop": "./src/stop-chat.ts",
     "./transcript": "./src/transcript.ts",
     "./view": "./src/chat-view.ts",
     "./work": "./src/work/index.ts",
