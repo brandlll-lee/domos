@@ -1,13 +1,16 @@
 .engine-panel,
 .engine-panel header,
+.engine-content,
 .engine-footer {
   display: grid;
   gap: var(--space-4);
   min-width: 0;
+  min-height: 0;
   align-content: start;
 }
 .engine-panel h3,
-.engine-panel p {
+.engine-panel p,
+.engine-dialog p {
   margin: 0;
 }
 .engine-panel h3 {
@@ -17,27 +20,102 @@
 .engine-panel .picker-trigger {
   max-width: 100%;
 }
-.engine-account {
-  border-top: 1px solid var(--color-divider);
+.engine-panel[data-setup] {
+  grid-template-rows: minmax(0, 1fr) auto;
 }
-.engine-account-options,
-.engine-sign-in {
+.engine-content {
+  overflow-y: auto;
+}
+.engine-panel[data-setup] .choice-list {
+  gap: var(--space-2);
+}
+.engine-panel[data-setup] .choice-card {
+  min-height: var(--control-height);
+  padding: var(--space-3);
+}
+.engine-mark {
+  flex-shrink: 0;
+  width: var(--space-5);
+  height: var(--space-5);
+  fill: currentColor;
+}
+.engine-connection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+.engine-connection-copy {
   display: grid;
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
-}
-.engine-model {
+  gap: var(--space-1);
   min-width: 0;
 }
-.engine-panel summary {
-  cursor: pointer;
-  color: var(--color-muted);
+.engine-connection-copy > strong {
   font-size: var(--text-label);
-  line-height: var(--leading-control);
+  font-weight: var(--weight-medium);
 }
-.engine-panel summary + * {
+.engine-version {
+  margin-inline-start: var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-regular);
+}
+.engine-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.engine-footer {
+  padding-top: var(--space-2);
+}
+.engine-dialog {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  width: min(var(--setup-content-width), calc(100% - var(--space-8)));
+}
+.engine-dialog .dialog-description {
+  margin: var(--space-2) 0 var(--space-5);
+}
+.engine-dialog-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+.engine-dialog .dialog-actions {
+  margin-top: var(--space-5);
+}
+.engine-dialog .settings-card {
+  padding: 0;
+}
+.engine-dialog .setting-row {
+  gap: var(--space-3);
+}
+.engine-dialog .setting-caption {
+  flex-basis: 100%;
+}
+.engine-dialog .setting-control,
+.engine-dialog .setting-control > .picker-trigger {
+  width: 100%;
+}
+.engine-dialog .setting-control > .button {
+  margin-inline-start: auto;
+}
+.engine-account,
+.engine-sign-in {
+  display: grid;
+  gap: var(--space-4);
+}
+.engine-auth-methods {
+  display: flex;
+  gap: var(--space-2);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-divider);
+}
+.engine-dialog .alert {
   margin-top: var(--space-3);
-}
-.engine-panel .alert {
-  margin-bottom: var(--space-4);
 }

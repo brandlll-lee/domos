@@ -104,13 +104,15 @@ function BotChat({
               botId={bot.id}
               active={detailsOpen}
               canManage={settings.admin}
-              piModel={
+              piModel={(onSelected, onBusyChange) => (
                 <ModelPicker
                   botId={bot.id}
                   model={chat.view?.model ?? null}
                   connected={chat.connected}
+                  onSelected={onSelected}
+                  onBusyChange={onBusyChange}
                 />
-              }
+              )}
             />
           }
         />

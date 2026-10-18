@@ -4,6 +4,7 @@ import { client } from "../../../client.ts";
 import { useWorkAction } from "./use-bot-work.ts";
 
 type EngineAction =
+  | "read"
   | "inspect"
   | "configure"
   | "key"
@@ -79,6 +80,7 @@ export function useEngine(botId: number, active: boolean) {
     error: action.error || error,
     busy: action.busy || profile?.busy || login?.state === "waiting",
     refresh,
+    reload: () => run("read", ["engine", botId], refresh),
     inspect: () => run("inspect", ["inspect", botId], inspect),
     save: (config: EngineConfig) =>
       run("configure", ["engine", botId, config], async (requestId) => {

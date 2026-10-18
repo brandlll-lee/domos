@@ -25,7 +25,9 @@ async function capture(page: Page, info: TestInfo, name: string) {
         expect(box?.height).toBe(900);
         await expect(page.locator(".setup-page")).toHaveCSS(
           "overflow-y",
-          "auto",
+          (await page.locator(".engine-panel[data-setup]").count())
+            ? "hidden"
+            : "auto",
         );
       }
       await page.screenshot({
@@ -38,10 +40,59 @@ async function capture(page: Page, info: TestInfo, name: string) {
   await page.emulateMedia({ colorScheme: "light" });
 }
 
+async function engineLayout(page: Page, info: TestInfo) {
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    for (const [width, height, fontSize] of [
+      [1366, 768, "100%"],
+      [1360, 900, "100%"],
+      [390, 500, "100%"],
+      [1366, 768, "125%"],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      await page.evaluate((size) => {
+        document.documentElement.style.fontSize = size;
+      }, fontSize);
+      const start = await page
+        .getByRole("button", { name: "开始使用", exact: true })
+        .boundingBox();
+      expect(start).not.toBeNull();
+      if (!start) throw new Error("Setup actions required");
+      expect(start.y + start.height).toBeLessThanOrEqual(height);
+      expect(start.y).toBeGreaterThan(0);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollHeight <= innerHeight,
+        ),
+      ).toBe(true);
+      if (width > 1000 && fontSize === "100%")
+        expect(
+          await page
+            .locator(".engine-content")
+            .evaluate(
+              (element) => element.scrollHeight <= element.clientHeight,
+            ),
+        ).toBe(true);
+      await page.screenshot({
+        path: info.outputPath(
+          `engine-${colorScheme}-${width}-${height}-${fontSize}.png`,
+        ),
+        animations: "disabled",
+      });
+    }
+  }
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = "";
+  });
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await page.emulateMedia({ colorScheme: "light" });
+}
+
 test("first use prepares the default Bot with a computer and engine before shared chat", async ({
   page,
   browser,
 }, testInfo) => {
+  test.setTimeout(60_000);
   const directory = await mkdtemp(join(tmpdir(), "domos-onboarding-web-"));
   const worker = fork(
     fileURLToPath(
@@ -137,21 +188,14 @@ test("first use prepares the default Bot with a computer and engine before share
       exact: true,
     });
     await expect(engines.getByRole("radio")).toHaveCount(4);
+    await expect(engines.locator("svg.engine-mark")).toHaveCount(4);
+    await expect(setup.locator("details, summary")).toHaveCount(0);
+    await expect(setup.getByRole("combobox")).toHaveCount(0);
     const installs: string[] = [];
     page.on("request", (request) => {
       if (request.url().endsWith("/engines/install"))
         installs.push(request.url());
     });
-    await engines.getByRole("radio", { name: /^Codex/ }).click();
-    await expect(
-      setup.getByRole("button", { name: "登录 Codex", exact: true }),
-    ).toBeVisible();
-    await capture(page, testInfo, "engine-selection");
-    expect(installs).toHaveLength(0);
-    await engines.getByRole("radio", { name: /^Pi/ }).click();
-    await setup.getByRole("combobox", { name: "此 Bot 的模型" }).click();
-    await page.getByRole("option", { name: "Faux Model", exact: true }).click();
-    await setup.getByRole("button", { name: "保存模型", exact: true }).click();
     let release = () => {};
     const checking = new Promise<void>((resolve) => {
       release = resolve;
@@ -160,7 +204,7 @@ test("first use prepares the default Bot with a computer and engine before share
       await checking;
       await route.continue();
     });
-    await setup.getByRole("button", { name: "检查连接", exact: true }).click();
+    await engines.getByRole("radio", { name: /^Codex/ }).click();
     await expect(
       setup.getByRole("button", { name: "正在检查…", exact: true }),
     ).toHaveAttribute("aria-busy", "true");
@@ -172,6 +216,96 @@ test("first use prepares the default Bot with a computer and engine before share
       setup.getByRole("button", { name: "开始使用", exact: true }),
     ).toBeEnabled();
     await page.unroute("**/rpc/engines/inspect");
+    await expect(setup.getByText("1.0.0", { exact: true })).toBeVisible();
+    await page.route("**/rpc/engines/inspect", (route) => route.abort());
+    await setup.getByRole("button", { name: "重新检查", exact: true }).click();
+    await expect(setup.getByRole("alert")).toBeVisible();
+    await expect(
+      setup.getByRole("button", { name: "开始使用", exact: true }),
+    ).toBeDisabled();
+    await page.unroute("**/rpc/engines/inspect");
+    await setup.getByRole("button", { name: "重新检查", exact: true }).click();
+    await expect(setup.getByRole("alert")).toHaveCount(0);
+    await expect(
+      setup.getByRole("button", { name: "开始使用", exact: true }),
+    ).toBeEnabled();
+    await engineLayout(page, testInfo);
+    await setup.getByRole("button", { name: "账号设置", exact: true }).click();
+    const account = page.getByRole("dialog", {
+      name: "连接 Codex",
+      exact: true,
+    });
+    await expect(
+      account.getByRole("button", { name: "登录 Codex", exact: true }),
+    ).toBeVisible();
+    await account
+      .getByRole("button", { name: "使用 API 密钥", exact: true })
+      .click();
+    await expect(
+      account.getByLabel("OpenAI API 密钥", { exact: true }),
+    ).toHaveAttribute("type", "password");
+    await page.screenshot({
+      path: testInfo.outputPath("codex-account-dialog.png"),
+    });
+    await page.keyboard.press("Escape");
+    await expect(account).toBeHidden();
+    await expect(
+      setup.getByRole("button", { name: "账号设置", exact: true }),
+    ).toBeFocused();
+    expect(installs).toHaveLength(0);
+    await engines.getByRole("radio", { name: /^Claude Code/ }).click();
+    await setup
+      .getByRole("button", { name: "安装 Claude Code", exact: true })
+      .click();
+    const install = page.getByRole("dialog", {
+      name: "安装 Claude Code",
+      exact: true,
+    });
+    await expect(
+      install.getByText("只在所选工作电脑下载和安装。", { exact: true }),
+    ).toBeVisible();
+    await install.getByRole("button", { name: "完成", exact: true }).click();
+    await engines.getByRole("radio", { name: /^OpenCode/ }).click();
+    await expect(setup.getByRole("alert")).toContainText("引擎未能启动");
+    await expect(setup.getByRole("button", { name: /^安装/ })).toHaveCount(0);
+    await setup.getByRole("button", { name: "重新检查", exact: true }).click();
+    await expect(setup.getByRole("alert")).toContainText("引擎未能启动");
+    await engines.getByRole("radio", { name: /^Pi/ }).click();
+    await setup.getByRole("button", { name: "连接模型", exact: true }).click();
+    const model = page.getByRole("dialog", { name: "连接模型", exact: true });
+    await page.setViewportSize({ width: 390, height: 500 });
+    await expect(model).toBeVisible();
+    const done = await model
+      .getByRole("button", { name: "完成", exact: true })
+      .boundingBox();
+    if (!done) throw new Error("Dialog actions required");
+    expect(done.y + done.height).toBeLessThanOrEqual(500);
+    await expect(model.locator(".engine-dialog-body")).toHaveCSS(
+      "overflow-y",
+      "auto",
+    );
+    await page.screenshot({
+      path: testInfo.outputPath("model-dialog-small.png"),
+    });
+    await page.setViewportSize({ width: 1360, height: 900 });
+    await page.screenshot({ path: testInfo.outputPath("model-dialog.png") });
+    await model.getByRole("combobox", { name: "模型提供方" }).click();
+    await expect(page.getByRole("option").first()).toContainText("已连接");
+    await page
+      .getByLabel("搜索提供方…", { exact: true })
+      .fill("not-a-provider");
+    await expect(
+      page.getByText("没有找到提供方", { exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await model.getByRole("combobox", { name: "此 Bot 的模型" }).click();
+    await page.getByLabel("搜索模型…", { exact: true }).fill("Faux");
+    await page.getByRole("option", { name: "Faux Model", exact: true }).click();
+    await model.getByRole("button", { name: "保存模型", exact: true }).click();
+    await expect(model).toBeHidden();
+    await expect(
+      setup.getByRole("button", { name: "开始使用", exact: true }),
+    ).toBeEnabled();
     await capture(page, testInfo, "engine-setup");
     await setup.getByRole("button", { name: "开始使用", exact: true }).click();
     await expect(setup).toBeHidden();
@@ -218,24 +352,46 @@ test("first use prepares the default Bot with a computer and engine before share
         .getByRole("button", { name: "授权并继续", exact: true })
         .click();
       await pairedCreate
+        .getByRole("button", { name: "连接模型", exact: true })
+        .click();
+      const pairedModel = second.getByRole("dialog", {
+        name: "连接模型",
+        exact: true,
+      });
+      await pairedModel
         .getByRole("combobox", { name: "模型", exact: true })
         .click();
       await second
         .getByRole("option", { name: "faux · Faux Model", exact: true })
         .click();
-      await pairedCreate
-        .getByRole("button", { name: "检查连接", exact: true })
-        .click();
+      await expect(pairedModel).toBeHidden();
       await pairedCreate
         .getByRole("button", { name: "开始使用", exact: true })
         .click();
       await expect(pairedCreate).toBeHidden();
       await second.getByRole("link", { name: "Domos", exact: true }).click();
       await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+      const detailsModel = page.getByRole("combobox", {
+        name: "模型",
+        exact: true,
+      });
+      await detailsModel.click();
+      await Promise.all([
+        page.waitForResponse("**/rpc/engines/get"),
+        page
+          .getByRole("option", { name: "faux · Faux Model 2", exact: true })
+          .click(),
+      ]);
+      await expect(detailsModel).toContainText("Faux Model 2");
       const engine = page.getByRole("region", {
         name: "任务引擎",
         exact: true,
       });
+      await Promise.all([
+        page.waitForResponse("**/rpc/engines/inspect"),
+        engine.getByRole("button", { name: "检查连接", exact: true }).click(),
+      ]);
+      await expect(engine.getByRole("alert")).toHaveCount(0);
       await engine
         .getByRole("combobox", { name: "任务引擎", exact: true })
         .click();
@@ -345,7 +501,6 @@ test("first use prepares the default Bot with a computer and engine before share
       .getByRole("button", { name: "授权并继续", exact: true })
       .click();
     await freshEngines.getByRole("radio", { name: /^Codex/ }).click();
-    await create.getByRole("button", { name: "检查连接", exact: true }).click();
     await expect(
       create.getByRole("button", { name: "开始使用", exact: true }),
     ).toBeEnabled();

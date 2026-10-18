@@ -221,7 +221,6 @@ textarea.field-control {
   overflow-y: auto;
   overscroll-behavior: contain;
   max-height: 20rem;
-  scrollbar-width: thin;
 }
 .picker-list {
   padding: var(--space-1) 0;
@@ -512,6 +511,9 @@ textarea.field-control {
   min-width: 0;
 }
 .choice-content strong {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
   font-weight: var(--weight-medium);
 }
 .choice-description {

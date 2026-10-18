@@ -1,6 +1,6 @@
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
-import { ChoicePicker } from "@domos/ui/picker";
+import { ChoicePicker, SearchPicker } from "@domos/ui/picker";
 import { SettingRow } from "@domos/ui/setting-row";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../client.ts";
@@ -60,6 +60,12 @@ export function HostingModels({
     () =>
       hostingRequest<Catalog>("models").then((value) => {
         setCatalog(value);
+        setProvider(
+          (current) =>
+            current ||
+            value.providers.find((item) => item.configured)?.id ||
+            "",
+        );
         window.dispatchEvent(new Event("domos:models"));
       }),
     [],
@@ -127,18 +133,25 @@ export function HostingModels({
         <h2>连接模型</h2>
         <div className="settings-card">
           <SettingRow title="模型提供方" description="连接用于对话的模型账号。">
-            <ChoicePicker
+            <SearchPicker
               label="模型提供方"
+              placeholder="选择提供方"
+              searchLabel="搜索提供方…"
+              emptyLabel="没有找到提供方"
               size="small"
               value={provider}
               disabled={busy}
               onValueChange={setProvider}
               items={[
-                { value: "", label: "选择提供方" },
-                ...(catalog?.providers.map((item) => ({
-                  value: item.id,
-                  label: `${item.name}${item.configured ? " · 已连接" : ""}`,
-                })) ?? []),
+                ...(catalog?.providers
+                  .toSorted(
+                    (left, right) =>
+                      Number(right.configured) - Number(left.configured),
+                  )
+                  .map((item) => ({
+                    value: item.id,
+                    label: `${item.name}${item.configured ? " · 已连接" : ""}`,
+                  })) ?? []),
               ]}
             />
           </SettingRow>
@@ -294,14 +307,16 @@ export function HostingModels({
               title="此 Bot 的模型"
               description="选择此 Bot 用于回复消息的模型。"
             >
-              <ChoicePicker
+              <SearchPicker
                 label="此 Bot 的模型"
+                placeholder="选择已连接的模型"
+                searchLabel="搜索模型…"
+                emptyLabel="请先连接模型账号"
                 size="small"
                 value={selection}
                 disabled={busy}
                 onValueChange={setSelection}
                 items={[
-                  { value: "", label: "选择已连接的模型" },
                   ...(catalog?.models.map((item) => ({
                     value: JSON.stringify({
                       provider: item.provider,

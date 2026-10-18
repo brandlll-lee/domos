@@ -3,6 +3,7 @@ import { ChoiceCards } from "@domos/ui/choice";
 import { ChoicePicker } from "@domos/ui/picker";
 import { useEffect, useState } from "react";
 import { client } from "../../client.ts";
+import { EngineMark } from "./engine-mark.tsx";
 
 export function EngineSelect({
   value,
@@ -46,6 +47,7 @@ export function EngineSelect({
           options={providers.map(({ id, name }) => ({
             value: id,
             label: name,
+            icon: <EngineMark provider={id} />,
             status: id === value ? status : undefined,
           }))}
         />

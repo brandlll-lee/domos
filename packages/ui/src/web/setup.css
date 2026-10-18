@@ -92,6 +92,13 @@
 .setup-content [hidden] {
   display: none;
 }
+.setup-page:has(.engine-panel[data-setup]) {
+  overflow: hidden;
+}
+.setup-content:has(.engine-panel[data-setup]) {
+  max-height: 100%;
+  grid-template-rows: auto minmax(0, 1fr);
+}
 @media (max-width: 30rem), (max-height: 40rem) {
   .setup-page {
     padding: var(--space-5);

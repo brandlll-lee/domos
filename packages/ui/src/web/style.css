@@ -76,6 +76,18 @@ a,
   justify-content: flex-end;
   gap: var(--space-2);
 }
+.scroll-area,
+.picker-popup,
+.picker-viewport {
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+.scroll-area:hover,
+.picker-popup:hover,
+.picker-viewport:hover {
+  scrollbar-color: var(--color-muted) transparent;
+}
 .skip-link {
   position: fixed;
   top: var(--space-3);

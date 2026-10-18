@@ -14,7 +14,12 @@ import { hostingApp } from "../../src/hosting/routes.ts";
 
 const directory = process.argv[2];
 if (!directory) throw new Error("Directory required");
-const faux = fauxProvider();
+const faux = fauxProvider({
+  models: [
+    { id: "faux-1", name: "Faux Model" },
+    { id: "faux-2", name: "Faux Model 2" },
+  ],
+});
 const models = createModels();
 models.setProvider(faux.provider);
 const config = parseConfig(
@@ -24,6 +29,16 @@ const config = parseConfig(
 const runtime = await openChat(BACKGROUND_CONTEXT, config, { models });
 runtime.computer.process = async () => {
   const worker = new ProtocolProcess();
+  const launch = worker.launch.bind(worker);
+  worker.launch = async (spec) => {
+    if (spec.command === "claude")
+      throw Object.assign(new Error("Program not found"), { code: "ENOENT" });
+    if (spec.command === "opencode") {
+      worker.ended.resolve({ code: 1 });
+      return;
+    }
+    await launch(spec);
+  };
   worker.receive = (request) => {
     if (request.type) {
       worker.frame({
@@ -37,6 +52,7 @@ runtime.computer.process = async () => {
               ? {
                   models: [
                     { provider: "faux", id: "faux-1", name: "Faux Model" },
+                    { provider: "faux", id: "faux-2", name: "Faux Model 2" },
                   ],
                 }
               : {},

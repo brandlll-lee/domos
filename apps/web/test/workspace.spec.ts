@@ -272,10 +272,18 @@ test("contact rows keep their density and searchable previews across selections"
     .fill("研究助手");
   await create.getByRole("button", { name: "创建", exact: true }).click();
   await create.getByRole("button", { name: "授权并继续", exact: true }).click();
-  await create.getByRole("combobox", { name: "模型", exact: true }).click();
+  await create.getByRole("button", { name: "连接模型", exact: true }).click();
+  const modelDialog = page.getByRole("dialog", {
+    name: "连接模型",
+    exact: true,
+  });
+  await modelDialog
+    .getByRole("combobox", { name: "模型", exact: true })
+    .click();
   await page
     .getByRole("option", { name: "faux · 测试模型一", exact: true })
     .click();
+  await expect(modelDialog).toBeHidden();
   await create.getByRole("button", { name: "开始使用", exact: true }).click();
   await expect(create).toBeHidden();
   await expect(
@@ -299,10 +307,14 @@ test("contact rows keep their density and searchable previews across selections"
     .fill(longName);
   await create.getByRole("button", { name: "创建", exact: true }).click();
   await create.getByRole("button", { name: "授权并继续", exact: true }).click();
-  await create.getByRole("combobox", { name: "模型", exact: true }).click();
+  await create.getByRole("button", { name: "连接模型", exact: true }).click();
+  await modelDialog
+    .getByRole("combobox", { name: "模型", exact: true })
+    .click();
   await page
     .getByRole("option", { name: "faux · 测试模型一", exact: true })
     .click();
+  await expect(modelDialog).toBeHidden();
   await create.getByRole("button", { name: "开始使用", exact: true }).click();
   await expect(create).toBeHidden();
   await expect(

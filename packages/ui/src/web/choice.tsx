@@ -1,5 +1,6 @@
 import { Radio } from "@base-ui/react/radio";
 import { RadioGroup } from "@base-ui/react/radio-group";
+import type { ReactNode } from "react";
 
 export function ChoiceCards<Value extends string>({
   label,
@@ -14,6 +15,7 @@ export function ChoiceCards<Value extends string>({
   options: readonly {
     value: Value;
     label: string;
+    icon?: ReactNode;
     description?: string;
     status?: string;
     disabled?: boolean;
@@ -36,7 +38,10 @@ export function ChoiceCards<Value extends string>({
           disabled={option.disabled}
         >
           <span className="choice-content">
-            <strong>{option.label}</strong>
+            <strong>
+              {option.icon}
+              {option.label}
+            </strong>
             {option.description && (
               <span className="choice-description">{option.description}</span>
             )}
