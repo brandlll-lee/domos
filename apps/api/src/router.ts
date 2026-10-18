@@ -2,6 +2,7 @@ import { MAX_ATTACHMENTS } from "@domos/agent/attachments";
 import type { Bots } from "@domos/agent/bots";
 import type { Computers } from "@domos/agent/computer/catalog";
 import { FileInput, type Files } from "@domos/agent/files";
+import type { Engines } from "@domos/agent/harness";
 import { chatView } from "@domos/agent/view";
 import { type BotWork, WorkError } from "@domos/agent/work";
 import {
@@ -15,6 +16,7 @@ import { z } from "zod";
 import { computerRouter } from "./computer.ts";
 import { botConversation, botTarget } from "./conversation.ts";
 import { watchDirectory } from "./directory.ts";
+import { engineConfig, engineRouter } from "./engines.ts";
 import { fileRouter } from "./files.ts";
 import { modelRouter, requireConfiguredModel } from "./models.ts";
 import { watchValues } from "./subscribe.ts";
@@ -26,10 +28,12 @@ export function createRouter(
   files: Files,
   work: BotWork,
   computer?: Computers,
+  engines?: Engines,
 ) {
   return {
     computer: computerRouter(bots, computer),
-    work: workRouter(bots, work),
+    engines: engineRouter(bots, engines),
+    work: workRouter(bots, work, engines),
     files: fileRouter(bots, files, computer),
     bots: {
       list: os.handler(() => bots.list(BACKGROUND_CONTEXT)),
@@ -47,12 +51,24 @@ export function createRouter(
             computerId: z.string().min(1).nullable().optional(),
             requestId: z.uuid(),
             avatar: z.uuid().optional(),
+            engine: engineConfig.optional(),
           }),
         )
         .handler(async ({ input }) => {
           if (input.model) await requireConfiguredModel(models, input.model);
           try {
-            return await bots.create(input, BACKGROUND_CONTEXT);
+            const bot = await bots.create(input, BACKGROUND_CONTEXT);
+            if (input.engine && engines)
+              await engines.configure(
+                bot.id,
+                {
+                  config: input.engine,
+                  revision: 0,
+                  requestId: input.requestId,
+                },
+                BACKGROUND_CONTEXT,
+              );
+            return bot;
           } catch (error) {
             if (error instanceof WorkError)
               throw new ORPCError(error.code, { message: error.message });
@@ -63,9 +79,10 @@ export function createRouter(
         yield* watchDirectory(bots, computer, signal);
       }),
     },
-    models: modelRouter(bots, models),
+    models: modelRouter(bots, models, engines),
     get: os.input(botTarget).handler(async ({ input }) => {
       const conversation = await botConversation(bots, input.botId);
+      if (engines) return engines.view(input.botId, BACKGROUND_CONTEXT);
       const view = await conversation.viewState(BACKGROUND_CONTEXT);
       try {
         return chatView(view.value);
@@ -98,10 +115,11 @@ export function createRouter(
           }),
         );
         try {
-          await requireConfiguredModel(
-            models,
-            (await conversation.agent(BACKGROUND_CONTEXT)).model,
-          );
+          if (!engines)
+            await requireConfiguredModel(
+              models,
+              (await conversation.agent(BACKGROUND_CONTEXT)).model,
+            );
           const submit = async () => {
             try {
               await files.verify(input.botId, attachments, BACKGROUND_CONTEXT);
@@ -111,6 +129,12 @@ export function createRouter(
                   error instanceof Error ? error.message : "附件目标无效。",
               });
             }
+            if (engines)
+              return engines.submit(
+                input.botId,
+                { text: input.text, attachments, requestId: input.requestId },
+                BACKGROUND_CONTEXT,
+              );
             return conversation.submit(
               {
                 type: "input",
@@ -148,6 +172,7 @@ export function createRouter(
       }),
     stop: os.input(botTarget).handler(async ({ input }) => {
       const conversation = await botConversation(bots, input.botId);
+      await engines?.stop(input.botId, BACKGROUND_CONTEXT);
       await conversation.abort(BACKGROUND_CONTEXT);
       return { ok: true };
     }),
@@ -156,6 +181,10 @@ export function createRouter(
       const context = signal
         ? withAbortSignal(signal, BACKGROUND_CONTEXT)
         : BACKGROUND_CONTEXT;
+      if (engines) {
+        yield* engines.watch(input.botId, context);
+        return;
+      }
       const watch = await conversation.watch(context);
       for await (const value of watchValues(watch, signal))
         yield chatView(value);

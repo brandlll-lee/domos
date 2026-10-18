@@ -4,13 +4,13 @@ import { request as httpsRequest } from "node:https";
 
 const [endpoint, id, credentialFile, command, flag, token] =
   process.argv.slice(2);
+const worker = command === "process" && /^[1-9][0-9]*$/.test(flag ?? "");
 if (
   !endpoint ||
   !id ||
   !credentialFile ||
-  command !== "serve" ||
-  flag !== "--token" ||
-  !token?.match(/^[a-f0-9]+$/)
+  (!worker &&
+    (command !== "serve" || flag !== "--token" || !token?.match(/^[a-f0-9]+$/)))
 )
   throw new Error("工作电脑连接参数无效。");
 const url = new URL(endpoint);
@@ -18,11 +18,13 @@ const request = (url.protocol === "https:" ? httpsRequest : httpRequest)({
   protocol: url.protocol,
   hostname: url.hostname,
   port: url.port,
-  path: `/${encodeURIComponent(id)}/daemon`,
+  path: `/${encodeURIComponent(id)}/${worker ? "process" : "daemon"}`,
   method: "CONNECT",
   headers: {
     Authorization: `Bearer ${(await readFile(credentialFile, "utf8")).trim()}`,
-    "X-Domos-Daemon-Token": token,
+    ...(worker
+      ? { "X-Domos-Bot-Id": flag ?? "" }
+      : { "X-Domos-Daemon-Token": token ?? "" }),
   },
 });
 request.on("connect", (response, socket, head) => {

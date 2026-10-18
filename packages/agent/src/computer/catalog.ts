@@ -10,6 +10,11 @@ import {
   type Tx,
 } from "@earendil-works/pi-durable";
 import type { Bots } from "../bots.ts";
+import type {
+  EngineProcess,
+  ProductResult,
+  ProductTool,
+} from "../harness/types.ts";
 import {
   type ComputerConfig,
   computerSchema,
@@ -227,6 +232,34 @@ export class Computers {
     const doc = await read.snapshot(ComputersDoc, context);
     if (!doc?.bindings[String(botId)]?.computerId) return undefined;
     return this.workspace(botId, context, read);
+  }
+
+  async process(
+    botId: number,
+    tools: ProductTool[],
+    invoke: (
+      callId: string,
+      name: string,
+      args: Record<string, unknown>,
+    ) => Promise<ProductResult>,
+    context: Context,
+  ): Promise<EngineProcess> {
+    const ready = Promise.withResolvers<EngineProcess>();
+    void this.transfer(
+      botId,
+      async () => {
+        const doc = await this.harness.snapshot(ComputersDoc, context);
+        const id = doc?.bindings[String(botId)]?.computerId;
+        if (!id) throw new WorkError("BAD_REQUEST", "请先选择工作电脑。");
+        const worker = await this.target(
+          requireComputer(doc?.items ?? [], id),
+        ).process(botId, tools, invoke, context);
+        ready.resolve(worker);
+        await worker.closed;
+      },
+      context,
+    ).catch(ready.reject);
+    return ready.promise;
   }
 
   async preflight(botId: number, context: Context) {

@@ -12,4 +12,5 @@ export interface ComputerDriver {
   stop(): Promise<void>;
   rebuild(): Promise<void>;
   daemon(): readonly string[] | Promise<readonly string[]>;
+  process?(botId: number): readonly string[] | Promise<readonly string[]>;
 }

@@ -19,8 +19,9 @@
     "lint": "biome check apps packages package.json domos.config.json tsconfig.json biome.json vitest.config.ts playwright.config.ts"
   },
   "devDependencies": {
-    "@playwright/test": "1.64.1",
     "@biomejs/biome": "2.5.15",
+    "@playwright/test": "1.64.1",
+    "@types/cross-spawn": "6.0.6",
     "@types/node": "24.13.3",
     "typescript": "7.0.2",
     "vitest": "5.0.4"

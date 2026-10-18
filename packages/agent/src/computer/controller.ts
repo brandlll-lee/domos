@@ -71,4 +71,8 @@ export class ControllerComputer implements ComputerDriver {
       this.config.credentialFile,
     ];
   }
+
+  process(botId: number) {
+    return [...this.daemon(), "process", String(botId)];
+  }
 }

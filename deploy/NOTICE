@@ -24,6 +24,22 @@ Licensed under the MIT License. See licenses/pi.txt.
 Source: https://github.com/earendil-works/pi
 The work image distributes the official pi-env 1.2.0 daemon.
 
+Model Context Protocol TypeScript SDK
+Copyright (c) 2024 Anthropic, PBC
+Licensed under the MIT License. See licenses/mcp-sdk.txt.
+Source: https://github.com/modelcontextprotocol/typescript-sdk
+
+Agent Client Protocol TypeScript SDK
+Licensed under the Apache License, Version 2.0. See licenses/acp-sdk.txt.
+Source: https://github.com/agentclientprotocol/typescript-sdk
+
+cross-spawn and proper-lockfile
+Copyright (c) 2018 Made With MOXY Lda
+Licensed under the MIT License.
+See licenses/cross-spawn.txt and licenses/proper-lockfile.txt.
+Source: https://github.com/moxystudio/node-cross-spawn
+Source: https://github.com/moxystudio/node-proper-lockfile
+
 UI adaptations
 
 apps/web/src/features/shell/resize-handle.tsx adapts

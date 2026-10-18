@@ -20,7 +20,8 @@ export function controlServer(
       hash(`Bearer ${token}`),
     );
   const target = (path: string) => {
-    const match = /^\/([^/]+)\/(status|start|stop|rebuild|daemon)$/.exec(path);
+    const match =
+      /^\/([^/]+)\/(status|start|stop|rebuild|daemon|process)$/.exec(path);
     if (!match || !identifier.safeParse(match[1]).success) return;
     const id = match[1] as string;
     let value = targets.get(id);
@@ -66,17 +67,26 @@ export function controlServer(
   server.on("connect", async (request, socket, head) => {
     socket.on("error", () => socket.destroy());
     const token = request.headers["x-domos-daemon-token"];
+    const botId = Number(request.headers["x-domos-bot-id"]);
     const item = trusted(request) ? target(request.url ?? "") : undefined;
     if (
-      item?.action !== "daemon" ||
-      typeof token !== "string" ||
-      !/^[a-f0-9]{32,128}$/.test(token)
+      !item ||
+      (item.action === "process"
+        ? !Number.isSafeInteger(botId) || botId < 1
+        : item.action !== "daemon" ||
+          typeof token !== "string" ||
+          !/^[a-f0-9]{32,128}$/.test(token))
     ) {
       socket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
       return;
     }
     try {
-      await item.value.connect(socket, head, token);
+      await item.value.connect(
+        socket,
+        head,
+        typeof token === "string" ? token : undefined,
+        item.action === "process" ? botId : undefined,
+      );
     } catch {
       socket.end("HTTP/1.1 503 Service Unavailable\r\n\r\n");
     }

@@ -10,6 +10,8 @@ import {
 import type { Attachment } from "./attachments.ts";
 import type { MessageDelivery } from "./delivery.ts";
 import { FileInput } from "./files.ts";
+import { EngineMessage, type EngineState } from "./harness/state.ts";
+import type { EngineApproval, EngineConfig } from "./harness/types.ts";
 import type { ChatContent, ChatMessage } from "./messages.ts";
 import { RoutineInput } from "./work/routine-state.ts";
 
@@ -22,6 +24,9 @@ export type ChatView = {
   activeTurnId: string | null;
   busy: boolean;
   failed: boolean;
+  engine?: EngineConfig;
+  approvals?: EngineApproval[];
+  error?: string | null;
   tools: {
     callId: string;
     status: "pending" | "running" | "done";
@@ -29,7 +34,10 @@ export type ChatView = {
   }[];
 };
 
-export function chatView(view: ConversationView): ChatView {
+export function chatView(
+  view: ConversationView,
+  engine?: EngineState | null,
+): ChatView {
   const live = view.docs[LiveDoc.definition.kind] as LiveState | undefined;
   const agent = view.docs[AgentDoc.definition.kind] as AgentState | undefined;
   const messages: ChatMessage[] = [];
@@ -102,6 +110,12 @@ export function chatView(view: ConversationView): ChatView {
     };
   };
   for (const entry of view.entries) {
+    if (entry.kind === EngineMessage) {
+      const message = entry.data as unknown as ChatMessage;
+      if (message.role === "user") turnId = message.turnId;
+      messages.push(message);
+      continue;
+    }
     const input =
       entry.kind === FileInput || entry.kind === RoutineInput
         ? (entry.data as { text: string; attachments?: Attachment[] })
@@ -142,15 +156,23 @@ export function chatView(view: ConversationView): ChatView {
   const draft = live?.generation?.message
     ? project(live.generation.message, "draft")
     : null;
+  messages.push(...((engine?.drafts ?? []) as ChatMessage[]));
   return {
     id: view.conversation.id,
     model: agent?.model ?? null,
     instructions: agent?.instructions ?? "",
     messages,
     draft,
-    activeTurnId: live?.run ? (turnId ?? null) : null,
-    busy: Boolean(live?.run),
-    failed: failed && !live?.run,
+    activeTurnId: engine?.activeTurn ?? (live?.run ? (turnId ?? null) : null),
+    busy: Boolean(live?.run || engine?.tasks.length),
+    failed: Boolean(engine?.error) || (failed && !live?.run),
+    ...(engine
+      ? {
+          engine: engine.config,
+          approvals: [...engine.approvals],
+          error: engine.error,
+        }
+      : {}),
     tools:
       live?.tools?.map(({ callId, status, output }) => ({
         callId,

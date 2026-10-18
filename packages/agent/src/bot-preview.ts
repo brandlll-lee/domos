@@ -6,6 +6,8 @@ import type {
 } from "@earendil-works/pi-durable";
 import type { MessageDelivery } from "./delivery.ts";
 import { FileInput } from "./files.ts";
+import { EngineMessage } from "./harness/state.ts";
+import type { ChatMessage } from "./messages.ts";
 import { messageText } from "./messages.ts";
 import { RoutineInput } from "./work/routine-state.ts";
 
@@ -15,6 +17,10 @@ const excerpt = (text: string) =>
   Array.from(text.trim()).slice(0, previewLength).join("");
 
 function entryText(entry: EntryRecord) {
+  if (entry.kind === EngineMessage) {
+    const message = entry.data as unknown as ChatMessage;
+    return message.delivery?.text ?? messageText(message);
+  }
   for (const message of [...(entry.model ?? [])].reverse()) {
     if (message.role === "user") {
       const input =

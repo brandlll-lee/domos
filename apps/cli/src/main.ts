@@ -1,6 +1,7 @@
 import { createInterface, type Interface } from "node:readline";
 import { openChat } from "@domos/agent/chat";
 import { messageText } from "@domos/agent/messages";
+import { chatView } from "@domos/agent/view";
 import {
   BACKGROUND_CONTEXT,
   withAbortSignal,
@@ -21,9 +22,15 @@ async function main() {
   process.once("SIGTERM", stop);
   const send = async (input: string) => {
     process.stdout.write("Domos> ");
-    const success = await reply(conversation, input, context, (text) => {
-      process.stdout.write(text);
-    });
+    const success = await reply(
+      conversation,
+      input,
+      context,
+      (text) => {
+        process.stdout.write(text);
+      },
+      runtime.engines,
+    );
     process.stdout.write("\n");
     if (!success) {
       console.error("模型未完成回复。请检查密钥、账户余额或网络。");
@@ -37,8 +44,12 @@ async function main() {
       return;
     }
     await conversation.waitForIdle(context);
-    const history = await conversation.context(context);
-    for (const message of history.messages) {
+    const history = await conversation.viewState(context);
+    const messages = runtime.engines
+      ? (await runtime.engines.view(conversation.id, context)).messages
+      : chatView(history.value).messages;
+    history.dispose();
+    for (const message of messages) {
       if (message.role === "user" || message.role === "assistant") {
         const text = messageText(message);
         if (text)

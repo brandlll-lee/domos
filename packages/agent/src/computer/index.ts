@@ -2,9 +2,12 @@ import { EventEmitter, on } from "node:events";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { arch, platform, release } from "node:os";
 import { join, posix } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Context } from "@earendil-works/chord/context";
 import { getOrThrow } from "@earendil-works/pi-durable/env";
 import { Connection, nodePlatform } from "@earendil-works/pi-env";
+import { WorkProcess } from "../harness/process.ts";
+import type { ProductResult, ProductTool } from "../harness/types.ts";
 import type { RuntimeConfig } from "../runtime/config.ts";
 import { Workspace } from "../workspace.ts";
 import { ControllerComputer } from "./controller.ts";
@@ -33,6 +36,7 @@ export class Computer {
     Promise<Workspace | SandboxWorkspace>
   >();
   private readonly connections = new Map<number, Connection>();
+  private readonly processes = new Set<WorkProcess>();
   private pending: Promise<unknown> = Promise.resolve();
   private changing = false;
   private readonly events = new EventEmitter();
@@ -79,6 +83,39 @@ export class Computer {
         this.environments.delete(botId);
     });
     return created;
+  }
+
+  async process(
+    botId: number,
+    tools: ProductTool[],
+    invoke: (
+      callId: string,
+      name: string,
+      args: Record<string, unknown>,
+    ) => Promise<ProductResult>,
+    context: Context,
+  ) {
+    const workspace = await this.workspace(botId, context);
+    const command = this.driver
+      ? await this.driver.process?.(botId)
+      : [
+          process.execPath,
+          process.env.DOMOS_WORKER_ENTRY ??
+            fileURLToPath(new URL("../harness/worker.mjs", import.meta.url)),
+        ];
+    if (!command) throw new Error("工作电脑需要更新，才能运行所选引擎。");
+    const home = this.driver
+      ? posix.join(this.driver.directory, ".domos", "engines")
+      : join(this.config.dataDir, "engines");
+    const worker = new WorkProcess(
+      command,
+      { cwd: workspace.cwd, home },
+      tools,
+      invoke,
+    );
+    this.processes.add(worker);
+    void worker.closed.then(() => this.processes.delete(worker));
+    return worker;
   }
 
   private async createWorkspace(botId: number, context: Context) {
@@ -209,6 +246,7 @@ export class Computer {
   }
 
   async close(context: Context) {
+    await Promise.all([...this.processes].map((worker) => worker.close()));
     const environments = await Promise.allSettled(this.environments.values());
     try {
       await Promise.all(

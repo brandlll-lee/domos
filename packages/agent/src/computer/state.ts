@@ -5,6 +5,7 @@ import {
   LiveDoc,
   type Tx,
 } from "@earendil-works/pi-durable";
+import { EngineDoc } from "../harness/state.ts";
 import type { ComputerConfig } from "../runtime/config.ts";
 import { WorkError } from "../work/state.ts";
 
@@ -40,7 +41,8 @@ export async function requireIdle(tx: Tx, botId: number) {
   const id = botId as ConversationId;
   if (
     (await tx.doc(LiveDoc, id)).run ||
-    (await tx.doc(InboxDoc, id)).items.length
+    (await tx.doc(InboxDoc, id)).items.length ||
+    (await tx.doc(EngineDoc, id)).tasks.length
   )
     throw new WorkError("CONFLICT", "请先停止 Bot 的工作，再切换或操作电脑。");
 }

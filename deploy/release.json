@@ -2,12 +2,13 @@
   "version": "0.1.0",
   "serviceImage": "domos-service:0.1.0",
   "serviceBuild": { "context": ".", "dockerfile": "deploy/Dockerfile" },
-  "workImage": "domos-workspace:1.2.0",
+  "workImage": "domos-workspace:2",
   "proxyImage": "domos-egress:1",
   "proxyBuild": { "context": ".", "dockerfile": "deploy/proxy.Dockerfile" },
   "controllerEntry": "apps/controller/src/main.ts",
   "serverEntry": "apps/api/src/main.ts",
   "bridgeEntry": "packages/agent/src/computer/bridge.ts",
+  "workerEntry": "packages/agent/src/harness/worker.mjs",
   "staticDir": "apps/web/dist",
   "workBuild": { "context": ".", "dockerfile": "deploy/workspace.Dockerfile" }
 }

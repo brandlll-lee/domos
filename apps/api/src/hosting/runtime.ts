@@ -19,9 +19,11 @@ export async function openHostedRuntime() {
     store = await HostingStore.open(config.dataDir);
     const sessions = new Sessions(store);
     await sessions.bootstrap(config.dataDir);
-    const models = builtinModels({ credentials: persistentCredentials(store) });
+    const credentials = persistentCredentials(store);
+    const models = builtinModels({ credentials });
     runtime = await openChat(BACKGROUND_CONTEXT, config, {
       models,
+      credentials,
       lease: false,
     });
     const app = createApp(
@@ -31,6 +33,7 @@ export async function openHostedRuntime() {
       runtime.work,
       runtime.computer,
       config.staticDir,
+      runtime.engines,
     );
     const hosted = hostingApp({
       config,

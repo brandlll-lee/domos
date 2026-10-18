@@ -38,19 +38,28 @@ export class ControlTarget {
     return result;
   }
 
-  async connect(socket: Duplex, head: Buffer, token: string) {
+  async connect(socket: Duplex, head: Buffer, token?: string, botId?: number) {
     await this.pending;
     const generation = this.generation;
     if ((await this.driver.inspect()) !== "running") throw new Error("Stopped");
     await this.driver.checkNetwork();
-    const [program, ...args] = await this.driver.daemon();
+    const command = botId
+      ? await this.driver.process?.(botId)
+      : await this.driver.daemon();
+    if (!command) throw new Error("Process channel required");
+    const [program, ...args] = command;
     if (!program) throw new Error("Daemon required");
+    if (!botId && !token) throw new Error("Daemon token required");
     if (generation !== this.generation) throw new Error("Computer changed");
     this.used = true;
-    const child = spawn(program, [...args, "serve", "--token", token], {
-      stdio: ["pipe", "pipe", "ignore"],
-      windowsHide: true,
-    });
+    const child = spawn(
+      program,
+      botId ? args : [...args, "serve", "--token", token ?? ""],
+      {
+        stdio: ["pipe", "pipe", "ignore"],
+        windowsHide: true,
+      },
+    );
     this.processes.add(child);
     child.once("spawn", () => {
       socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");

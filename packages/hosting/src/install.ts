@@ -22,6 +22,7 @@ export const releaseSchema = z
     controllerEntry: z.string(),
     serverEntry: z.string(),
     bridgeEntry: z.string(),
+    workerEntry: z.string().optional(),
     staticDir: z.string(),
     workBuild: z
       .object({ context: z.string(), dockerfile: z.string() })

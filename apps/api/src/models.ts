@@ -1,4 +1,6 @@
+import { randomUUID } from "node:crypto";
 import type { Bots } from "@domos/agent/bots";
+import type { Engines } from "@domos/agent/harness";
 import { modelCatalog } from "@domos/agent/models";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai/models";
@@ -20,7 +22,7 @@ export async function requireConfiguredModel(
     throw new ORPCError("PRECONDITION_FAILED");
 }
 
-export function modelRouter(bots: Bots, models: Models) {
+export function modelRouter(bots: Bots, models: Models, engines?: Engines) {
   return {
     list: os.handler(() => modelCatalog(models)),
     select: os
@@ -34,7 +36,28 @@ export function modelRouter(bots: Bots, models: Models) {
         await requireConfiguredModel(models, input);
         const conversation = await botConversation(bots, input.botId);
         const model = { provider: input.provider, modelId: input.modelId };
-        await conversation.configure({ model }, BACKGROUND_CONTEXT);
+        if (engines) {
+          const profile = await engines.profile(
+            input.botId,
+            BACKGROUND_CONTEXT,
+          );
+          if (profile.config.provider !== "pi")
+            throw new ORPCError("CONFLICT", {
+              message: "请在 Bot 设置中选择此引擎的模型。",
+            });
+          await engines.configure(
+            input.botId,
+            {
+              config: {
+                provider: "pi",
+                model: `${model.provider}/${model.modelId}`,
+              },
+              revision: profile.revision,
+              requestId: randomUUID(),
+            },
+            BACKGROUND_CONTEXT,
+          );
+        } else await conversation.configure({ model }, BACKGROUND_CONTEXT);
         return model;
       }),
   };

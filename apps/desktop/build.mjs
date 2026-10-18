@@ -70,6 +70,8 @@ for (const [entry, output] of [
     banner,
   });
 await cp(join(here, "src/preload.cjs"), join(dist, "preload.cjs"));
+for (const name of ["worker.mjs", "gateway.mjs", "pi-account.mjs"])
+  await cp(join(root, "packages/agent/src/harness", name), join(runtime, name));
 for (const name of ["setup.html", "setup.css", "setup.js", "setup-preload.cjs"])
   await cp(join(here, "src", name), join(dist, name));
 const variables = (values, prefix = "") =>
@@ -85,6 +87,14 @@ await cp(join(root, "apps/web/dist"), join(runtime, "web"), {
   recursive: true,
 });
 await mkdir(join(runtime, "work/deploy"), { recursive: true });
+await mkdir(join(runtime, "work/packages/agent/src/harness"), {
+  recursive: true,
+});
+for (const name of ["worker.mjs", "gateway.mjs", "pi-account.mjs"])
+  await cp(
+    join(root, "packages/agent/src/harness", name),
+    join(runtime, "work/packages/agent/src/harness", name),
+  );
 await cp(
   join(root, "deploy/workspace.Dockerfile"),
   join(runtime, "work/deploy/workspace.Dockerfile"),
@@ -144,6 +154,7 @@ await writeFile(
     controllerEntry: "controller.mjs",
     serverEntry: "server.mjs",
     bridgeEntry: "bridge.mjs",
+    workerEntry: "worker.mjs",
     staticDir: "web",
     workBuild: { context: "work", dockerfile: "deploy/workspace.Dockerfile" },
   }),

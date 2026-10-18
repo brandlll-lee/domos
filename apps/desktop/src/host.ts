@@ -65,6 +65,10 @@ export class LocalHost {
       const childEnv: NodeJS.ProcessEnv = {
         ...process.env,
         DOMOS_CONFIG: prepared.configFile,
+        DOMOS_WORKER_ENTRY: resolve(
+          this.runtimeDirectory,
+          this.release.workerEntry ?? "worker.mjs",
+        ),
         DOMOS_BRIDGE_ENTRY: resolve(
           this.runtimeDirectory,
           this.release.bridgeEntry,

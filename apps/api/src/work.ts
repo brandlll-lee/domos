@@ -1,4 +1,5 @@
 import type { Bots } from "@domos/agent/bots";
+import type { Engines } from "@domos/agent/harness";
 import { actualPrompt, type BotWork, WorkError } from "@domos/agent/work";
 import {
   BOT_NAME_LENGTH,
@@ -34,7 +35,7 @@ const schedule = z.discriminatedUnion("type", [
   }),
 ]);
 
-export function workRouter(bots: Bots, work: BotWork) {
+export function workRouter(bots: Bots, work: BotWork, engines?: Engines) {
   async function access<T>(botId: number, action: () => Promise<T>) {
     try {
       await botConversation(bots, botId);
@@ -68,7 +69,9 @@ export function workRouter(bots: Bots, work: BotWork) {
       .input(botTarget)
       .handler(({ input }) =>
         access(input.botId, async () =>
-          actualPrompt(await botConversation(bots, input.botId), context),
+          engines
+            ? engines.prompt(input.botId, context)
+            : actualPrompt(await botConversation(bots, input.botId), context),
         ),
       ),
     get: os

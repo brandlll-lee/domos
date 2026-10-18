@@ -303,4 +303,20 @@ export class DockerComputer {
       sandboxDaemon,
     ]);
   }
+
+  process(botId: number) {
+    return hostCommand(this.config, [
+      "docker",
+      "container",
+      "exec",
+      "-i",
+      "--user",
+      sandboxUser,
+      "--workdir",
+      `${sandboxHome}/bots/${botId}`,
+      sandboxNames(this.config).container,
+      "node",
+      "/opt/domos/worker.mjs",
+    ]);
+  }
 }

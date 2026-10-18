@@ -16,6 +16,8 @@
     "./files": "./src/files.ts",
     "./attachments": "./src/attachments.ts",
     "./models": "./src/models.ts",
+    "./harness": "./src/harness/index.ts",
+    "./harness/types": "./src/harness/types.ts",
     "./messages": "./src/messages.ts",
     "./transcript": "./src/transcript.ts",
     "./view": "./src/chat-view.ts",
@@ -23,12 +25,17 @@
     "./work/limits": "./src/work/limits.ts"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "1.9.0",
     "@earendil-works/chord": "1.2.0",
     "@earendil-works/pi-ai": "1.2.0",
+    "@earendil-works/pi-coding-agent": "1.2.0",
     "@earendil-works/pi-durable": "1.2.0",
     "@earendil-works/pi-env": "1.2.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "croner": "10.0.1",
+    "cross-spawn": "7.0.6",
     "file-type": "^22.2.0",
+    "proper-lockfile": "4.1.2",
     "yaml": "2.9.0",
     "zod": "4.6.7"
   }

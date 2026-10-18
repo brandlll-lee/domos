@@ -1,5 +1,6 @@
 import { once } from "node:events";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,7 +13,101 @@ import {
   RemoteExecutionEnv,
 } from "@earendil-works/pi-env";
 import { expect, onTestFinished, test, vi } from "vitest";
+import { WorkProcess } from "../../../packages/agent/src/harness/process.ts";
 import { controlServer } from "../src/server.ts";
+
+test("native engine transport checks authorization and starts in the assigned computer", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "domos-engine-control-"));
+  const token = crypto.randomUUID();
+  const credentialFile = join(directory, "controller-token");
+  await writeFile(credentialFile, token);
+  const calls: number[] = [];
+  const control = controlServer(
+    {
+      config: { id: "work", timeoutSeconds: 30, network: "none" },
+      binding: {},
+      directory,
+      inspect: async () => "running",
+      checkNetwork: async () => {},
+      start: async () => {},
+      stop: async () => {},
+      rebuild: async () => {},
+      daemon: () => [],
+      process: (botId) => {
+        calls.push(botId);
+        return [
+          process.execPath,
+          fileURLToPath(
+            new URL(
+              "../../../packages/agent/src/harness/worker.mjs",
+              import.meta.url,
+            ),
+          ),
+        ];
+      },
+    },
+    token,
+  );
+  let worker: WorkProcess | undefined;
+  onTestFinished(async () => {
+    await worker?.close();
+    await control.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  control.server.listen(0, "127.0.0.1");
+  await once(control.server, "listening");
+  const address = control.server.address();
+  if (!address || typeof address === "string") throw new Error("Port required");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const rejected = await new Promise<number | undefined>((resolve, reject) => {
+    const connection = request(`${origin}/work/process`, {
+      method: "CONNECT",
+      headers: { "X-Domos-Bot-Id": "1" },
+    });
+    connection.on("connect", (response, socket) => {
+      socket.destroy();
+      resolve(response.statusCode);
+    });
+    connection.on("error", reject);
+    connection.end();
+  });
+  expect(rejected).toBe(403);
+  expect(calls).toEqual([]);
+  worker = new WorkProcess(
+    [
+      process.execPath,
+      fileURLToPath(
+        new URL(
+          "../../../packages/agent/src/computer/bridge.ts",
+          import.meta.url,
+        ),
+      ),
+      origin,
+      "work",
+      credentialFile,
+      "process",
+      "7",
+    ],
+    { cwd: join(directory, "bot"), home: join(directory, "accounts") },
+    [],
+    async () => ({ content: [] }),
+  );
+  await worker.ready;
+  worker.output.resume();
+  worker.error.resume();
+  await worker.launch({
+    command: process.execPath,
+    args: [
+      "-e",
+      "require('node:fs').writeFileSync('result.txt',process.cwd())",
+    ],
+  });
+  expect(await worker.closed).toMatchObject({ code: 0 });
+  expect(calls).toEqual([7]);
+  expect(await readFile(join(directory, "bot/result.txt"), "utf8")).toBe(
+    join(directory, "bot"),
+  );
+});
 
 test("computer lifecycles stay independent and controller readiness does not start Docker", async () => {
   const states = new Map<string, "running" | "stopped">();
