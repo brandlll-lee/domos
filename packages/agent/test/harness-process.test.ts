@@ -77,6 +77,24 @@ test("a missing work computer command reports a missing program", async () => {
   });
 });
 
+test("a work computer prepares the private Codex directory before launch", async () => {
+  const { process } = await worker();
+  const ready = await process.ready;
+  const output: string[] = [];
+  process.output.on("data", (data) => output.push(data.toString()));
+  await process.launch({
+    command: globalThis.process.execPath,
+    args: [
+      "--input-type=module",
+      "-e",
+      'import { stat } from "node:fs/promises"; console.log((await stat(process.env.CODEX_HOME)).isDirectory());',
+    ],
+    env: { CODEX_HOME: join(ready.home, "codex") },
+  });
+  await expect(process.closed).resolves.toMatchObject({ code: 0 });
+  expect(output.join("").trim()).toBe("true");
+});
+
 test("bundled Pi opens a native session in the selected work directory", async () => {
   const { process, directory } = await worker();
   const session = await piProvider.open({

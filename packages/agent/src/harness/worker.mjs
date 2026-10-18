@@ -125,6 +125,8 @@ async function launch(frame) {
       .map((key) => [key, process.env[key]]),
   );
   Object.assign(env, { HOME: home, USERPROFILE: home }, frame.env);
+  if (env.CODEX_HOME)
+    await mkdir(env.CODEX_HOME, { recursive: true, mode: 0o700 });
   env.NODE_USE_ENV_PROXY = "1";
   env.NO_PROXY = [env.NO_PROXY, "127.0.0.1", "localhost"]
     .filter(Boolean)

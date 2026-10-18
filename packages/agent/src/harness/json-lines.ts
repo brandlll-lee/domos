@@ -16,6 +16,7 @@ export class JsonLines extends EventEmitter {
   private readonly process: EngineProcess;
   private readonly pi: boolean;
   private sequence = 0;
+  private connected = false;
   private readonly pending = new Map<
     string | number,
     {
@@ -38,6 +39,7 @@ export class JsonLines extends EventEmitter {
         if (Buffer.byteLength(line) > engineLimits.frameBytes)
           throw new Error("引擎输出过大。");
         const frame: Frame = JSON.parse(line);
+        this.connected = true;
         const pending =
           frame.id === undefined ? undefined : this.pending.get(frame.id);
         if (
@@ -63,7 +65,13 @@ export class JsonLines extends EventEmitter {
     });
     void process.closed.then(() => {
       lines.close();
-      this.fail(new Error("引擎连接已关闭。请核对任务结果。"));
+      this.fail(
+        new Error(
+          this.connected
+            ? "引擎连接已关闭。请核对任务结果。"
+            : "引擎未能启动。请检查安装和工作电脑。",
+        ),
+      );
     });
   }
 
