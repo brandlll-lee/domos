@@ -43,7 +43,7 @@ Grok Bot and Meta Muse offer persistent AI companions. Domos lets you host the s
 | :--- | :--- |
 | 👥 **Companions and teams** | Create Bots with different roles. Manage their identities, models, chats, and skills. |
 | 🧠 **Lasting memory** | Save useful information across conversations. Keep chats, memories, and skills across restarts. |
-| 💬 **Complete replies** | See what your Bot is doing. Receive its reply and files when the task completes. Questions and approval requests appear at once. |
+| 💬 **Complete replies** | Receive each complete message as it is ready. Dots show when your Bot is still working. Files arrive when the task completes. Questions and approval requests appear at once. |
 | 💻 **Commands and files** | Upload files, run commands, edit work files, and download results. |
 | ⚙️ **Your choice of engine** | Use Pi, Codex, Claude Code, or OpenCode. Keep each engine's native tools and session. |
 | ⏰ **Scheduled tasks** | Run tasks once or on a repeating schedule. Review results and run records. |
