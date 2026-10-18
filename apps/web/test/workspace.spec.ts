@@ -275,6 +275,7 @@ test("contact rows keep their density and searchable previews across selections"
     .fill("整理研究资料");
   await create.getByRole("button", { name: "创建", exact: true }).click();
   await create.getByRole("button", { name: "授权并继续", exact: true }).click();
+  await create.getByRole("button", { name: "开始使用", exact: true }).click();
   await expect(create).toBeHidden();
   await expect(
     page.getByRole("button", { name: "Bot详情", exact: true }),
@@ -287,6 +288,7 @@ test("contact rows keep their density and searchable previews across selections"
     .fill(longName);
   await create.getByRole("button", { name: "创建", exact: true }).click();
   await create.getByRole("button", { name: "授权并继续", exact: true }).click();
+  await create.getByRole("button", { name: "开始使用", exact: true }).click();
   await expect(create).toBeHidden();
   await expect(
     page.getByRole("button", { name: "Bot详情", exact: true }),

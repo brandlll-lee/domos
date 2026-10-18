@@ -257,3 +257,11 @@
 .composer-area > form {
   margin-inline: auto;
 }
+.native-approval pre {
+  max-height: 12rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--color-muted);
+  font-size: var(--text-label);
+}

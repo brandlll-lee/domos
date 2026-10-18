@@ -6,11 +6,9 @@ import { Sessions } from "@domos/hosting/sessions";
 import { HostingStore } from "@domos/hosting/store";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
-import {
-  fauxAssistantMessage,
-  fauxProvider,
-} from "@earendil-works/pi-ai/providers/faux";
+import { fauxProvider } from "@earendil-works/pi-ai/providers/faux";
 import { getRequestListener } from "@hono/node-server";
+import { ProtocolProcess } from "../../../../packages/agent/test/fixtures/engine-process.ts";
 import { createApp } from "../../src/app.ts";
 import { hostingApp } from "../../src/hosting/routes.ts";
 
@@ -19,16 +17,71 @@ if (!directory) throw new Error("Directory required");
 const faux = fauxProvider();
 const models = createModels();
 models.setProvider(faux.provider);
-const response = () => {
-  faux.appendResponses([response]);
-  return fauxAssistantMessage("模型已回复。");
-};
-faux.setResponses([response]);
 const config = parseConfig(
   { dataDir: directory },
   `${dirname(directory)}/config.json`,
 );
 const runtime = await openChat(BACKGROUND_CONTEXT, config, { models });
+runtime.computer.process = async () => {
+  const worker = new ProtocolProcess();
+  worker.receive = (request) => {
+    if (request.type) {
+      worker.frame({
+        type: "response",
+        id: request.id,
+        success: true,
+        data:
+          request.type === "get_state"
+            ? { sessionFile: "/work/pi-session" }
+            : request.type === "get_available_models"
+              ? {
+                  models: [
+                    { provider: "faux", id: "faux-1", name: "Faux Model" },
+                  ],
+                }
+              : {},
+      });
+      if (request.type === "prompt") {
+        worker.frame({ type: "message_start", message: { role: "assistant" } });
+        worker.frame({
+          type: "message_update",
+          assistantMessageEvent: { type: "text_delta", delta: "模型已回复。" },
+        });
+        worker.frame({ type: "agent_settled" });
+      }
+    } else if (request.id === "approval") {
+      worker.frame({
+        method: "item/completed",
+        params: {
+          item: { id: "answer", type: "agentMessage", text: "Codex 已完成。" },
+        },
+      });
+      worker.frame({
+        method: "turn/completed",
+        params: { turn: { id: "turn", status: "completed" } },
+      });
+    } else if (
+      request.method === "thread/start" ||
+      request.method === "thread/resume"
+    )
+      worker.response(request, { thread: { id: "codex-session" } });
+    else if (request.method === "account/read")
+      worker.response(request, { account: { type: "apiKey" } });
+    else if (request.method === "model/list")
+      worker.response(request, {
+        data: [{ id: "test/model", displayName: "Test Model" }],
+      });
+    else if (request.method === "turn/start") {
+      worker.response(request, { turn: { id: "turn" } });
+      worker.frame({
+        id: "approval",
+        method: "item/commandExecution/requestApproval",
+        params: { command: "write report.md", cwd: "/work/bots/1" },
+      });
+    } else if (request.id !== undefined) worker.response(request, {});
+  };
+  return worker;
+};
 const store = await HostingStore.open(directory);
 const sessions = new Sessions(store);
 const api = createApp(
@@ -37,6 +90,8 @@ const api = createApp(
   runtime.files,
   runtime.work,
   runtime.computer,
+  undefined,
+  runtime.engines,
 );
 let hosted: ReturnType<typeof hostingApp>;
 const server = createServer((request, response) =>
@@ -52,7 +107,11 @@ server.listen(0, "127.0.0.1", () => {
     models,
     forward: async (request) => api.fetch(request),
   });
-  process.send?.({ port: address.port, code: sessions.pairing("admin").code });
+  process.send?.({
+    port: address.port,
+    code: sessions.pairing("admin").code,
+    clientCode: sessions.pairing("client").code,
+  });
 });
 process.on("disconnect", () => {
   server.close();

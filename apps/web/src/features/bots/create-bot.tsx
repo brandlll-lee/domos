@@ -1,4 +1,5 @@
 import type { Bot } from "@domos/agent/bots";
+import type { EngineId } from "@domos/agent/harness/types";
 import type { ChatView } from "@domos/agent/view";
 import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
@@ -11,6 +12,9 @@ import { client } from "../../client.ts";
 import { rejectionMessage } from "../chat/request-error.ts";
 import { ComputerLocation } from "../computer/location.tsx";
 import { modelItems, modelKey, useModels } from "../models/use-models.ts";
+import { useSettings } from "../settings/context.ts";
+import { EnginePanel } from "./details/engine.tsx";
+import { EngineSelect } from "./engine-select.tsx";
 
 export function CreateBot({
   model,
@@ -70,6 +74,9 @@ function BotForm({
   onCreated: (bot: Bot) => void;
 }) {
   const { choices, error: catalogError } = useModels(true);
+  const settings = useSettings();
+  const [engine, setEngine] = useState<EngineId>("pi");
+  const [computerReady, setComputerReady] = useState(false);
   const [name, setName] = useState("");
   const [instructions, setInstructions] = useState("");
   const [avatar, setAvatar] = useState(() => crypto.randomUUID());
@@ -86,17 +93,26 @@ function BotForm({
   const selected = selection ?? (preferred ? modelKey(preferred) : "");
   const choice = choices?.find((item) => modelKey(item) === selected);
   if (created)
-    return (
-      <div className="detail-stack">
-        <h2>Bot 在哪里工作？</h2>
-        <ComputerLocation
+    if (computerReady)
+      return (
+        <EnginePanel
           botId={created.bot.id}
-          {...created.setup}
-          onBusyChange={onSavingChange}
+          canManage={settings.admin}
           onReady={() => onCreated(created.bot)}
         />
-      </div>
-    );
+      );
+    else
+      return (
+        <div className="detail-stack">
+          <h2>Bot 在哪里工作？</h2>
+          <ComputerLocation
+            botId={created.bot.id}
+            {...created.setup}
+            onBusyChange={onSavingChange}
+            onReady={() => setComputerReady(true)}
+          />
+        </div>
+      );
   return (
     <form
       className="bot-form"
@@ -107,9 +123,17 @@ function BotForm({
           name: name.trim(),
           instructions: instructions.trim(),
           avatar,
-          model: choice
-            ? { provider: choice.provider, modelId: choice.modelId }
-            : undefined,
+          engine: {
+            provider: engine,
+            model:
+              engine === "pi" && choice
+                ? `${choice.provider}/${choice.modelId}`
+                : null,
+          },
+          model:
+            engine === "pi" && choice
+              ? { provider: choice.provider, modelId: choice.modelId }
+              : undefined,
         };
         const payload = JSON.stringify(input);
         if (request.current?.payload !== payload)
@@ -157,21 +181,24 @@ function BotForm({
           onValueChange={setInstructions}
           multiline
         />
-        <div className="field">
-          <span className="field-label">默认模型</span>
-          <SearchPicker
-            label="默认模型"
-            searchLabel="搜索模型…"
-            emptyLabel="没有找到模型"
-            placeholder="稍后连接"
-            items={[{ value: "", label: "稍后连接" }, ...modelItems(choices)]}
-            value={selected}
-            disabled={saving}
-            onValueChange={setSelection}
-          />
-        </div>
+        <EngineSelect value={engine} onChange={setEngine} disabled={saving} />
+        {engine === "pi" && (
+          <div className="field">
+            <span className="field-label">默认模型</span>
+            <SearchPicker
+              label="默认模型"
+              searchLabel="搜索模型…"
+              emptyLabel="没有找到模型"
+              placeholder="稍后连接"
+              items={[{ value: "", label: "稍后连接" }, ...modelItems(choices)]}
+              value={selected}
+              disabled={saving}
+              onValueChange={setSelection}
+            />
+          </div>
+        )}
       </fieldset>
-      {(error ?? catalogError) && (
+      {(error ?? (engine === "pi" && catalogError)) && (
         <p className="alert" role="alert">
           {error ?? catalogError}
         </p>

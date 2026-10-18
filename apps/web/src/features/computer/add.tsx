@@ -10,7 +10,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("工作电脑");
   const [id, setId] = useState(() => `work-${crypto.randomUUID().slice(0, 8)}`);
-  const [image, setImage] = useState("domos-workspace:1.2.0");
+  const [image, setImage] = useState("domos-workspace:2");
   const [prepared, setPrepared] = useState<{
     image: string;
     proxyImage?: string;

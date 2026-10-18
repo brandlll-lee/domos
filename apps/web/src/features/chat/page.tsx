@@ -2,6 +2,7 @@ import type { Bot, BotPresence } from "@domos/agent/bots";
 import { chatTranscript } from "@domos/agent/transcript";
 import { type CSSProperties, useState } from "react";
 import { CreateBot } from "../bots/create-bot.tsx";
+import { EnginePanel } from "../bots/details/engine.tsx";
 import { BotDetails, type BotPanel } from "../bots/details/index.tsx";
 import { selectBot, useBots } from "../bots/use-bots.ts";
 import { ComputerPanel } from "../computer/panel.tsx";
@@ -9,6 +10,7 @@ import { useComputer } from "../computer/use-computer.ts";
 import { useSettings } from "../settings/context.ts";
 import { Workspace } from "../shell/workspace.tsx";
 import { WorkingActivity } from "./activity.tsx";
+import { Approvals } from "./approvals.tsx";
 import { Composer } from "./composer.tsx";
 import { chatCopy } from "./copy.ts";
 import { ChatHeader } from "./header.tsx";
@@ -69,6 +71,7 @@ function BotChat({
   const error =
     chat.error ??
     directoryError ??
+    chat.view?.error ??
     (chat.view?.failed ? chatCopy.errors.reply : null);
   const showPanel = (panel: BotPanel) => {
     setDetailPanel(panel);
@@ -95,10 +98,17 @@ function BotChat({
           onClose={() => setDetailsOpen(false)}
           computer={<ComputerPanel computer={computer} botId={bot.id} />}
           model={
-            <ModelPicker
+            <EnginePanel
               botId={bot.id}
-              model={chat.view?.model ?? null}
-              connected={chat.connected}
+              active={detailsOpen}
+              canManage={settings.admin}
+              piModel={
+                <ModelPicker
+                  botId={bot.id}
+                  model={chat.view?.model ?? null}
+                  connected={chat.connected}
+                />
+              }
             />
           }
         />
@@ -159,9 +169,14 @@ function BotChat({
               setDetailsOpen(true);
             }}
             status={
-              active?.kind === "activity" ? (
-                <WorkingActivity activity={active} bot={bot} />
-              ) : null
+              <>
+                {!!chat.view.approvals?.length && (
+                  <Approvals botId={bot.id} approvals={chat.view.approvals} />
+                )}
+                {active?.kind === "activity" && (
+                  <WorkingActivity activity={active} bot={bot} />
+                )}
+              </>
             }
           />
         ) : (

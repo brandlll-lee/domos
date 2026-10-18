@@ -16,7 +16,7 @@ export function PromptPanel({
   return (
     <div className="detail-stack">
       <p className="detail-note">
-        读取最近一次已准备请求的提示词记录。新设置在下次模型请求生效。此处可能含有私人记忆，请谨慎分享。
+        查看最近交给引擎的指令和产品工具。引擎自带的指令不在此处。此处可能含有私人记忆，请谨慎分享。
       </p>
       <Button
         variant="secondary"

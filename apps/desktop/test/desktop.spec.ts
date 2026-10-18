@@ -65,7 +65,7 @@ test("native setup starts and resumes with Docker unavailable", async ({
     await setup.getByRole("button", { name: "继续", exact: true }).click();
     const page = await opened;
     await expect(
-      page.getByRole("heading", { name: "连接对话模型" }),
+      page.getByRole("heading", { name: "认识你的第一个 Bot" }),
     ).toBeVisible();
     const origin = new URL(page.url()).origin;
     await desktop.close();
@@ -74,7 +74,7 @@ test("native setup starts and resumes with Docker unavailable", async ({
       predicate: (window) => window.url().startsWith(origin),
     });
     await expect(
-      resumed.getByRole("heading", { name: "连接对话模型" }),
+      resumed.getByRole("heading", { name: "认识你的第一个 Bot" }),
     ).toBeVisible();
   } finally {
     await desktop.close();
