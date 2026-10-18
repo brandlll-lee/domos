@@ -38,12 +38,6 @@ function updateMode() {
   setNext("继续");
 }
 form.addEventListener("change", updateMode);
-saved.addEventListener("change", () => {
-  const connection = connections.find((item) => item.id === saved.value);
-  if (!connection) return;
-  address.value = connection.url;
-  name.value = connection.name;
-});
 bridge.progress((value) => {
   stage = value.phase;
   phase.textContent = value.message;
@@ -98,10 +92,17 @@ form.addEventListener("submit", async (event) => {
 bridge.state().then((state) => {
   connections = state.instances.filter((item) => item.mode === "existing");
   for (const connection of connections) {
-    const option = document.createElement("option");
-    option.value = connection.id;
-    option.textContent = connection.name;
-    saved.append(option);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "button";
+    button.dataset.variant = "secondary";
+    button.textContent = connection.name;
+    button.addEventListener("click", () => {
+      address.value = connection.url;
+      name.value = connection.name;
+      address.focus();
+    });
+    saved.append(button);
   }
   document.querySelector("#saved-label").hidden = !connections.length;
   if (state.selected?.mode === "local")
@@ -112,7 +113,6 @@ bridge.state().then((state) => {
     form.querySelector('[value="existing"]').checked = true;
     address.value = state.selected.url;
     name.value = state.selected.name;
-    saved.value = state.selected.id;
     updateMode();
   }
   if (state.error) {

@@ -68,7 +68,7 @@ async function engineLayout(page: Page, info: TestInfo) {
       if (width > 1000 && fontSize === "100%")
         expect(
           await page
-            .locator(".engine-content")
+            .locator(".engine-scroll .scroll-viewport")
             .evaluate(
               (element) => element.scrollHeight <= element.clientHeight,
             ),

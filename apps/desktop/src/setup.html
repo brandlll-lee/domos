@@ -31,9 +31,9 @@
           <p class="detail-note">Bot 的工作环境稍后单独选择。</p>
         </fieldset>
         <section id="remote" class="setup-form" hidden>
+          <div id="saved-label" class="field" hidden><span class="field-label">已保存的连接</span><div id="saved" class="saved-connections"></div></div>
           <label class="field"><span class="field-label">连接名称</span><input id="name" class="field-control" type="text" maxlength="80" value="我的 Domos" /></label>
-          <label class="field"><span class="field-label">服务器地址</span><input id="url" class="field-control" type="url" placeholder="https://domos.example.com" spellcheck="false" /></label>
-          <label class="field" id="saved-label" hidden><span class="field-label">已保存的连接</span><select id="saved" class="field-control"><option value="">选择连接</option></select></label>
+          <label class="field"><span class="field-label">Domos 地址</span><input id="url" class="field-control" type="url" placeholder="https://domos.example.com" spellcheck="false" /></label>
         </section>
         <div id="progress" class="connection-progress" role="status" aria-live="polite" hidden><progress></progress><span id="phase"></span></div>
         <p id="error" class="alert" role="alert" tabindex="-1" hidden></p>

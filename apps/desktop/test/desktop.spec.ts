@@ -201,7 +201,7 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
       setup.getByRole("heading", { name: "欢迎使用 Domos" }),
     ).toBeVisible();
     await setup.getByLabel("连接已有 Domos", { exact: false }).check();
-    await setup.getByLabel("服务器地址").fill(`http://127.0.0.1:${ready.port}`);
+    await setup.getByLabel("Domos 地址").fill(`http://127.0.0.1:${ready.port}`);
     const opened = desktop.waitForEvent("window");
     await setup.getByRole("button", { name: "继续", exact: true }).click();
     const page = await opened;
@@ -283,6 +283,13 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     await expect(
       chooser.getByRole("heading", { name: "欢迎使用 Domos" }),
     ).toBeVisible();
+    await chooser.getByLabel("连接已有 Domos", { exact: false }).check();
+    await chooser
+      .getByRole("button", { name: "我的 Domos", exact: true })
+      .click();
+    await expect(chooser.getByLabel("Domos 地址")).toHaveValue(
+      `http://127.0.0.1:${ready.port}`,
+    );
   } finally {
     await desktop.close();
     const exited = once(worker, "exit");
