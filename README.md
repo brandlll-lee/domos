@@ -27,7 +27,7 @@ Keep a personal assistant that remembers your preferences. Or build a team with 
 
 Domos gives these companions lasting memory, useful tools, and a steady place to work. Come back tomorrow and continue the conversation. You choose where they run, which models they use, and which work environments they can access.
 
-- 🤖 **Companions with a role**: Give each Bot a name, instructions, a model, and skills. Save useful memories so it can carry context into future work.
+- 🤖 **Companions with a role**: Give each Bot a name, instructions, an engine, and skills. Save useful memories so it can carry context into future work.
 - 🌐 **A home you choose**: Run the service on your computer, home server, or cloud VM. Return through the desktop app or a browser.
 - 💻 **A place to do real work**: Run commands, edit files, and create results. Use the service environment, a shared Docker computer, or a separate one for each Bot.
 - ⏰ **Hand off work and step away**: Start a task or schedule a briefing or file routine. Work can continue in the background while the service runs.
@@ -44,9 +44,10 @@ Grok Bot and Meta Muse offer persistent AI companions. Domos lets you host the s
 | 👥 **Companions and teams** | Create Bots with different roles. Manage their identities, models, chats, and skills. |
 | 🧠 **Lasting memory** | Save useful information across conversations. Keep chats, memories, and skills across restarts. |
 | 💻 **Commands and files** | Upload files, run commands, edit work files, and download results. |
+| ⚙️ **Your choice of engine** | Use Pi, Codex, Claude Code, or OpenCode. Keep each engine's native tools and session. |
 | ⏰ **Scheduled tasks** | Run tasks once or on a repeating schedule. Review results and run records. |
 | 📱 **Access from other devices** | Pair a device with a one-time code, connect through a browser, and revoke access when needed. |
-| 🔑 **Your model accounts** | Sign in or enter a key in the app. Select a connected model. Model credentials are encrypted at rest. |
+| 🔑 **Your accounts** | Connect model accounts for Pi, sign in to Codex, or enter an API key for another engine. Keys stored by the service are encrypted. |
 
 Computer tools currently support commands and files. They do not control a graphical desktop. Phones and tablets use the browser interface.
 
@@ -68,8 +69,9 @@ pnpm desktop
 The desktop app guides you through setup:
 
 1. **Choose where Domos runs.** Use this computer or connect to an existing Domos.
-2. **Connect a model and meet your first companion.** Sign in to a model account or enter a key. Then give your Bot a name and a role.
+2. **Meet your first companion.** Give your Bot a name and a role.
 3. **Choose where the Bot works.** Confirm access to commands and files. Domos prepares and binds the selected environment.
+4. **Choose who handles tasks.** Select Pi, Codex, Claude Code, or OpenCode. Connect an account and check the connection. Then start chatting.
 
 On this computer, **Run directly** needs no Docker. **Run in Docker** needs an installed and running Linux Docker engine and Compose. The app checks the engine and prepares images after you confirm a Docker option. The first setup can include downloads and builds.
 
@@ -89,7 +91,7 @@ pnpm start
 
 1. Open **http://127.0.0.1:4310**.
 2. Enter the first administrator code from `data/owner-code`.
-3. Connect a model, set up your Bot, and choose its work environment.
+3. Name your Bot, choose its work computer, and connect its engine.
 
 The default address is available only on this computer. See [Self-Hosting & Other Devices](#-self-hosting--other-devices) to connect another device.
 
@@ -113,6 +115,27 @@ Separate folders in one environment do not isolate Bots. Changing work environme
 
 ---
 
+## ⚙️ Choose an Engine
+
+An engine runs your Bot's tasks. Its own tools read files, run commands, and manage its conversation. Domos adds memories, skills, scheduled tasks, progress messages, and downloadable results.
+
+| Engine | Connection | Account setup in Domos |
+| :--- | :--- | :--- |
+| **Pi** | Bundled Coding Agent, native RPC | Connect a supported model account or key. |
+| **Codex** | Native app-server | Sign in in your browser or enter an OpenAI API key. |
+| **Claude Code** | Native CLI | Enter an Anthropic API key. |
+| **OpenCode** | Native ACP | Enter an OpenAI API key and select an available model. |
+
+**Engines run on the Bot's work computer.** For example, a Windows computer can run the Domos service in one container and Pi and Codex in a shared Linux work container. Each Bot keeps its own session. The second Windows computer connects to the same service to send tasks and view progress.
+
+Pi comes with Domos. For other engines, use **Check connection** first. If needed, choose **Install on work computer**. Domos downloads an engine only after this action. Direct installations need Node.js 24+ and npm on the work computer. The supplied work image includes them.
+
+Choose an engine in the Bot's settings. Switch while the Bot is idle. Chats stay in Domos; the new engine starts a new native session with recent conversation context. Native sessions cannot be converted between engines.
+
+The account must be available where the engine runs. A login on your client computer does not sign in a remote work computer. Domos manages engine accounts in each work computer's data directory. Bots on that computer share these account files and system access. Removing a service API key does not sign out a native CLI account.
+
+---
+
 ## 🧠 How It Works
 
 Domos separates the interface, service, and task execution. The desktop app and browsers connect to the same service. Each Bot uses its selected work environment.
@@ -120,20 +143,20 @@ Domos separates the interface, service, and task execution. The desktop app and 
 ```mermaid
 graph TD
     Client["Desktop app / Browser"] --> Service["Domos service<br/>Computer / Server / Cloud VM"]
-    Service --> Models["Selected model provider"]
-    Service --> Native["Service environment"]
-    Service --> Docker["Docker / Trusted controller"]
-    Docker --> Shared["Shared isolated computer"]
-    Docker --> Dedicated["Separate computer for one Bot"]
+    Service --> Work["Selected work computer<br/>Service environment / Shared container / Separate container"]
+    Work --> Engine["Pi / Codex / Claude Code / OpenCode<br/>Native loop, tools, and session"]
+    Engine --> Models["Selected model provider"]
+    Engine --> Tools["Domos product tools via MCP"]
+    Tools --> Service
 ```
 
 1. **Interface**: Chat, upload files, view results, and manage Bots and tasks.
-2. **Service**: Store chats and memories, connect models, and schedule background work.
-3. **Work environment**: Run commands and process files in the service environment or a separate container.
+2. **Service**: Store chats and memories, manage access, and schedule background work.
+3. **Work computer and engine**: Run the selected engine and its tools in the assigned environment.
 
-Domos uses Pi and Pi Durable for model access and persistent Agent work.
+Pi Durable stores outer requests, product tool results, and task records. Each engine owns its native session. After a restart, Domos checks a recorded Codex turn for a completed result. When it cannot confirm the result, it asks you to check the work. It does not resend an uncertain task automatically.
 
-**Chats and files are stored in the service you deploy.** Model credentials use AES-256-GCM encryption at rest. Chats, memories, and attachments are not encrypted at rest. When you use a cloud model, request context and required authentication data are sent to that provider.
+**Chats and published files are stored in the service you deploy.** Server account credentials use AES-256-GCM encryption at rest. Native engine account files and sessions stay on the work computer and use that CLI's storage format. These files, chats, memories, and attachments do not have whole-store encryption. When you use a cloud model, request context and required authentication data are sent to that provider.
 
 ---
 
@@ -155,7 +178,7 @@ The script builds images, creates the initial configuration, and starts the serv
 
 1. Configure an **HTTPS address** that the other devices can reach. Pairing grants access; it does not open a network route.
 2. As an administrator, open **Settings → General → Use on other devices** and create a one-time pairing code.
-3. Enter the address in the desktop app on another computer, or open it in a phone or tablet browser. Then enter the pairing code.
+3. On another computer, choose **Connect to an existing Domos** and enter that address. On a phone or tablet, open the address in a browser. Then enter the pairing code.
 
 You can revoke a device's access at any time. The service can keep working after you close a client. Its computer must stay on and awake.
 
@@ -178,7 +201,7 @@ Domos uses TypeScript. The interface uses React 19 and Vite.
 | `apps/api` | Authenticated service and file access. |
 | `apps/controller` | Isolated computer lifecycle and transport. |
 | `apps/cli` | Terminal chat and service management commands. |
-| `packages/agent` | Persistent Agents, tools, memory, and routines. |
+| `packages/agent` | Engine adapters, product tools, memory, and scheduled tasks. |
 | `packages/hosting` | Pairing, credentials, service setup, and backups. |
 | `packages/ui` | Shared controls, theme, and identity. |
 

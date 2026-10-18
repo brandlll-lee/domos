@@ -10,7 +10,7 @@ Domos 服务保存会话、模型凭据和附件。工作电脑执行 Bot 命令
 
 两种本机方式分别保存数据。切换不迁移聊天和工作文件。桌面 Docker 服务使用独立的 Compose 项目与回环端口。服务数据保存在应用管理的目录中。受信控制端持有 Docker socket，应用与 Bot 工作容器均不持有。
 
-本机桌面自动完成配对。随后连接模型、设置 Bot 身份，再选择工作环境。已有服务使用配对码连接。凭据通过 Pi 管理，并加密保存于服务端。各服务使用独立浏览器会话。再次启动会恢复所选方式。
+本机桌面自动完成配对。随后设置 Bot 身份、选择工作电脑，再选择任务引擎并连接账号。已有服务使用配对码连接。服务端凭据加密保存。各服务使用独立浏览器会话。再次启动会恢复所选方式。
 
 ```sh
 pnpm install --frozen-lockfile
@@ -25,7 +25,7 @@ pnpm --filter @domos/desktop dist --win --config.win.signAndEditExecutable=false
 sh deploy/install.sh
 ```
 
-脚本准备镜像、Compose 和初始配置。应用默认发布到 `127.0.0.1:4310`。应用以非 root 运行。受信控制端独占 Docker socket。Bot 工作容器不挂载控制凭据、模型密钥、服务数据或 Docker socket。
+脚本准备镜像、Compose 和初始配置。应用默认发布到 `127.0.0.1:4310`。应用以非 root 运行。受信控制端独占 Docker socket。Bot 工作容器不挂载控制凭据、服务数据库或 Docker socket。任务引擎只取得所选账号的凭据。
 
 镜像和入口由 `deploy/release.json` 管理。配置保存在 `control-data` 卷。会话、凭据和附件保存在 `app-data` 卷。工作文件使用独立 Docker 卷。
 
@@ -73,6 +73,18 @@ SSH 配置参考 `domos.config.example.json`。必须提供已核验的 `knownHo
 
 隔离电脑使用 Docker。工作电脑接口与服务部署入口独立。
 
+## 任务引擎
+
+每个 Bot 分别选择 Pi、Codex、Claude Code 或 OpenCode。原生引擎运行在它绑定的工作电脑中。服务通过标准输入输出管理会话、任务与审批。记忆、技能、定时任务、消息与附件使用现有产品工具，通过仅绑定工作电脑回环地址的 MCP 网关调用。网关只在引擎运行时开放。
+
+Pi 使用内置的 Coding Agent。其他引擎只在管理员点击安装后下载。它们安装在工作电脑的 `engines/runtime` 目录；Docker 工作电脑使用 `/home/domos/.domos/engines/runtime`。原生工作电脑需要 Node.js 24+ 和 npm。系统已有的 CLI 也可使用。命令和文件操作使用该电脑的系统权限。
+
+Codex 可从界面完成设备登录。Claude Code 使用 Anthropic API 密钥。OpenCode 支持 OpenAI API 密钥和原生账号配置。原生账号保存在工作电脑的引擎数据目录，并按 CLI 格式保存。客户端机器的登录不会自动传入远端。服务中的账号密钥不出现在日志中；只有所选引擎取得相应凭据。同一工作电脑上的 Bot 共用账号目录和文件权限。
+
+引擎空闲时关闭进程，原生会话文件保留。更换引擎或工作电脑会新建会话，并带上近期聊天。旧聊天保留在服务中。Pi Durable 保存外层排队、请求和产品工具结果。它不接管原生循环，也不保证重做任意原生工具。重启时只核对能够证明完成的 Codex 轮次。其他不确定任务显示“执行结果未确认”。先核对文件与外部操作，再决定是否重试。
+
+现有隔离电脑须升级到含引擎连接程序的工作镜像。新建电脑默认使用 `domos-workspace:2`。旧电脑先停止任务并备份，再用原有镜像标签重新构建 `deploy/workspace.Dockerfile`，最后在电脑高级管理中重建容器。工作卷保留。重建不会恢复旧的运行进程。此升级不会自动执行。
+
 ## 网络
 
 `none` 关闭外部网络。
@@ -90,7 +102,7 @@ sudo /usr/local/sbin/domos-computer-egress --check
 
 ## 备份与更新
 
-桌面维护入口先停止托管，再备份配置、会话、凭据、附件和工作文件。备份使用认证加密。密码至少 12 个字符。请单独保存密码。恢复使用新目录和新工作卷。
+桌面维护入口先停止托管，再备份配置、会话、凭据、附件和工作文件。引擎账号目录及原生会话随服务数据目录或工作卷一并保存。备份使用认证加密。密码至少 12 个字符。请单独保存密码。恢复使用新目录和新工作卷。
 
 ```sh
 pnpm host backup --directory /srv/domos --file /backup/domos.domos --password-file /secure/backup-password
