@@ -73,6 +73,7 @@ await cp(join(here, "src/preload.cjs"), join(dist, "preload.cjs"));
 for (const name of [
   "worker.mjs",
   "gateway.mjs",
+  "pi-entry.mjs",
   "pi-account.mjs",
   "http-service.mjs",
 ])
@@ -106,6 +107,7 @@ await mkdir(join(runtime, "work/packages/agent/src/harness"), {
 for (const name of [
   "worker.mjs",
   "gateway.mjs",
+  "pi-entry.mjs",
   "pi-account.mjs",
   "http-service.mjs",
 ])

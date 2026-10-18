@@ -2,6 +2,10 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  createBashTool,
+  SessionManager,
+} from "@earendil-works/pi-coding-agent";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { expect, onTestFinished, test } from "vitest";
@@ -157,6 +161,58 @@ test("bundled Pi opens a native session in the selected work directory", async (
   await expect(process.closed).resolves.toMatchObject({
     code: expect.any(Number),
   });
+}, 40_000);
+
+test("Pi applies native command tools when it restores a session", async () => {
+  const { process, directory } = await worker();
+  const ready = await process.ready;
+  const probe = join(directory, "probe.mjs");
+  const result = join(directory, "tools.json");
+  await writeFile(
+    probe,
+    `import { writeFileSync } from "node:fs";
+export default function(pi) {
+  pi.registerCommand("probe", { handler: async () => {
+    writeFileSync(${JSON.stringify(result)}, JSON.stringify(pi.getActiveTools()));
+  }});
+}`,
+  );
+  const native = SessionManager.create(ready.cwd, join(directory, "sessions"));
+  const bash = createBashTool(ready.cwd);
+  native.appendMessage({
+    role: "system",
+    content: "Test",
+    toolsAdded: [
+      {
+        name: bash.name,
+        description: bash.description,
+        parameters: bash.parameters,
+      },
+    ],
+    timestamp: Date.now(),
+  });
+  native.appendMessage({
+    role: "user",
+    content: "Test",
+    timestamp: Date.now(),
+  });
+  const launch = process.launch.bind(process);
+  process.launch = (spec) =>
+    launch({ ...spec, args: [...spec.args, "--extension", probe] });
+  const session = await piProvider.open({
+    process,
+    config: { provider: "pi", model: null },
+    sessionId: native.getSessionFile() ?? null,
+    instructions: "Test",
+    emit: async () => {},
+  });
+  await session.prompt("/probe");
+  const tools: string[] = JSON.parse(await readFile(result, "utf8"));
+  expect(tools).toContain(
+    globalThis.process.platform === "win32" ? "powershell" : "bash",
+  );
+  if (globalThis.process.platform === "win32")
+    expect(tools).not.toContain("bash");
 }, 40_000);
 
 test("Pi account seeding keeps native refreshes and merges a second provider", async () => {

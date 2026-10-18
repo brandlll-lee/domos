@@ -19,6 +19,22 @@ function protocol() {
   };
 }
 
+test("Pi reports a command check failure before opening a session", async () => {
+  const { process, emit } = protocol();
+  process.launch = async () =>
+    process.frame({ type: "domos_ready", error: "命令工具无法运行。" });
+  await expect(
+    piProvider.open({
+      process,
+      config: { provider: "pi", model: null },
+      sessionId: null,
+      instructions: "Test",
+      emit,
+    }),
+  ).rejects.toThrow("命令工具无法运行");
+  expect(process.requests).toEqual([]);
+});
+
 test("Pi waits for settlement after tool and agent-end events", async () => {
   const { process, events, emit } = protocol();
   const prompted = Promise.withResolvers<void>();

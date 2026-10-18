@@ -168,7 +168,12 @@ async function launch(frame) {
     const path = join(process.cwd(), ".domos-pi.mjs");
     await writeFile(
       path,
-      'export default function(pi) { pi.registerMcpServer("domos", { url: process.env.DOMOS_PI_MCP_URL, exposure: "direct" }); }\n',
+      `export default function(pi) {
+  pi.registerMcpServer("domos", { url: process.env.DOMOS_PI_MCP_URL, exposure: "direct" });
+  if (process.platform === "win32") pi.on("session_start", () => {
+    pi.setActiveTools([...pi.getActiveTools().filter(name => name !== "bash"), "powershell"]);
+  });
+}\n`,
       { mode: 0o600 },
     );
     frame.args.push("--extension", path);
@@ -179,9 +184,7 @@ async function launch(frame) {
     bundledPi ? process.execPath : frame.command,
     bundledPi
       ? [
-          fileURLToPath(
-            import.meta.resolve("@earendil-works/pi-coding-agent/rpc-entry"),
-          ),
+          fileURLToPath(new URL("./pi-entry.mjs", import.meta.url)),
           ...frame.args,
         ]
       : frame.args,

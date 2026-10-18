@@ -22,61 +22,77 @@ export const piProvider: EngineProvider = {
   }: EngineOpen) {
     const ready = await process.ready;
     const rpc = new JsonLines(process, true);
+    const preparation = Promise.withResolvers<void>();
+    void preparation.promise.catch(() => {});
     let messageId = "";
     let sequence = 0;
     let failure: string | null = null;
     let completion: ReturnType<typeof Promise.withResolvers<void>> | undefined;
     let events = Promise.resolve();
-    rpc.on("frame", (frame: AgentSessionEvent) => {
-      events = events
-        .then(async () => {
-          if (
-            frame.type === "message_start" &&
-            frame.message?.role === "assistant"
-          )
-            messageId = `pi:${++sequence}`;
-          if (frame.type === "message_update") {
-            const part = frame.assistantMessageEvent;
-            if (part?.type === "text_delta" || part?.type === "thinking_delta")
+    rpc.on(
+      "frame",
+      (frame: AgentSessionEvent | { type: "domos_ready"; error?: string }) => {
+        if (frame.type === "domos_ready") {
+          if (frame.error) preparation.reject(new Error(frame.error));
+          else preparation.resolve();
+          return;
+        }
+        events = events
+          .then(async () => {
+            if (
+              frame.type === "message_start" &&
+              frame.message?.role === "assistant"
+            )
+              messageId = `pi:${++sequence}`;
+            if (frame.type === "message_update") {
+              const part = frame.assistantMessageEvent;
+              if (
+                part?.type === "text_delta" ||
+                part?.type === "thinking_delta"
+              )
+                await emit({
+                  type: part.type === "text_delta" ? "text" : "thinking",
+                  id: messageId,
+                  text: part.delta,
+                });
+            }
+            if (
+              frame.type === "message_end" &&
+              frame.message?.role === "assistant"
+            ) {
+              const message = frame.message;
+              if (message.stopReason === "error")
+                failure =
+                  message.errorMessage ?? "Pi 未完成回复。请检查账号和网络。";
+              if (message.stopReason === "aborted") failure = "工作已停止。";
+            }
+            if (frame.type === "tool_execution_start")
               await emit({
-                type: part.type === "text_delta" ? "text" : "thinking",
-                id: messageId,
-                text: part.delta,
+                type: "tool",
+                id: frame.toolCallId,
+                name: frame.toolName,
+                input: frame.args ?? {},
               });
-          }
-          if (
-            frame.type === "message_end" &&
-            frame.message?.role === "assistant"
-          ) {
-            const message = frame.message;
-            if (message.stopReason === "error")
-              failure =
-                message.errorMessage ?? "Pi 未完成回复。请检查账号和网络。";
-            if (message.stopReason === "aborted") failure = "工作已停止。";
-          }
-          if (frame.type === "tool_execution_start")
-            await emit({
-              type: "tool",
-              id: frame.toolCallId,
-              name: frame.toolName,
-              input: frame.args ?? {},
-            });
-          if (frame.type === "tool_execution_end")
-            await emit({
-              type: "tool_result",
-              id: frame.toolCallId,
-              name: frame.toolName,
-              text: textContent(frame.result?.content),
-              failed: Boolean(frame.isError),
-            });
-          if (frame.type === "agent_settled") {
-            if (failure) completion?.reject(new Error(failure));
-            else completion?.resolve();
-          }
-        })
-        .catch((error) => completion?.reject(error));
+            if (frame.type === "tool_execution_end")
+              await emit({
+                type: "tool_result",
+                id: frame.toolCallId,
+                name: frame.toolName,
+                text: textContent(frame.result?.content),
+                failed: Boolean(frame.isError),
+              });
+            if (frame.type === "agent_settled") {
+              if (failure) completion?.reject(new Error(failure));
+              else completion?.resolve();
+            }
+          })
+          .catch((error) => completion?.reject(error));
+      },
+    );
+    rpc.on("closed", (error) => {
+      preparation.reject(error);
+      completion?.reject(error);
     });
-    rpc.on("closed", (error) => completion?.reject(error));
     await process.launch({
       command: "pi",
       args: [
@@ -92,6 +108,7 @@ export const piProvider: EngineProvider = {
         DOMOS_PI_MCP_URL: ready.url,
       },
     });
+    await preparation.promise;
     if (sessionId)
       await rpc.request("switch_session", { sessionPath: sessionId });
     else await rpc.request("new_session");

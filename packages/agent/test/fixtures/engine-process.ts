@@ -43,6 +43,7 @@ export class ProtocolProcess implements EngineProcess {
   }
   async launch(spec: ProcessSpec) {
     this.spec = spec;
+    if (spec.command === "pi") this.frame({ type: "domos_ready" });
     if (spec.args.includes("--version")) {
       this.output.write("test-cli 1.0.0\n");
       this.ended.resolve({ code: 0 });
