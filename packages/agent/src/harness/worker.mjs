@@ -197,9 +197,10 @@ async function launch(frame) {
     .setEncoding("utf8")
     .on("data", (data) => emit({ type: "stderr", data }));
   child.once("spawn", () => emit({ type: "spawn" }));
-  child.once("error", () =>
+  child.once("error", (error) =>
     emit({
       type: "failure",
+      code: error.code,
       message: "所选电脑未能启动引擎。请检查安装和权限。",
     }),
   );

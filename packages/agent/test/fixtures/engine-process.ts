@@ -42,6 +42,10 @@ export class ProtocolProcess implements EngineProcess {
   }
   async launch(spec: ProcessSpec) {
     this.spec = spec;
+    if (spec.args.includes("--version")) {
+      this.output.write("test-cli 1.0.0\n");
+      this.ended.resolve({ code: 0 });
+    }
   }
   async close() {
     this.input.end();

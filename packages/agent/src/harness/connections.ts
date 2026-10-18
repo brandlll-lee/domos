@@ -4,6 +4,7 @@ import type { EngineExecution } from "./execution.ts";
 import { engineProvider } from "./providers/index.ts";
 import {
   type EngineConfig,
+  type EngineModel,
   type EngineProcess,
   engineLimits,
 } from "./types.ts";
@@ -27,6 +28,15 @@ export class EngineConnections {
 
   async inspect(botId: number, config: EngineConfig, context: Context) {
     return this.exclusive(botId, async () => {
+      const installation = await this.installed(botId, config, context);
+      if (!installation.available)
+        return {
+          ready: false,
+          authenticated: false,
+          models: [] as EngineModel[],
+          version: null,
+          message: "这台工作电脑还未安装此引擎。",
+        };
       const worker = await this.execution.computers.process(
         botId,
         [],
@@ -46,6 +56,7 @@ export class EngineConnections {
         });
         return {
           ready: true,
+          version: installation.version,
           authenticated: await session.authenticated(),
           models: await session.models(),
           message:
@@ -71,6 +82,7 @@ export class EngineConnections {
   async install(botId: number, config: EngineConfig, context: Context) {
     if (config.provider === "pi") return;
     return this.exclusive(botId, async () => {
+      if ((await this.installed(botId, config, context)).available) return;
       const worker = await this.execution.computers.process(
         botId,
         [],
@@ -179,6 +191,54 @@ export class EngineConnections {
     const login = this.logins.get(botId);
     if (login?.state === "waiting") await login.process.close();
     this.logins.delete(botId);
+  }
+  private async installed(
+    botId: number,
+    config: EngineConfig,
+    context: Context,
+  ) {
+    if (config.provider === "pi") return { available: true, version: null };
+    const worker = await this.execution.computers.process(
+      botId,
+      [],
+      async () => {
+        throw new Error("工具不可用。");
+      },
+      context,
+    );
+    let output = "";
+    worker.output.on("data", (chunk) => {
+      output = (output + chunk.toString()).slice(
+        -engineLimits.outputCharacters,
+      );
+    });
+    worker.error.resume();
+    const timer = setTimeout(
+      () => void worker.close(),
+      engineLimits.handshakeMs,
+    );
+    timer.unref();
+    try {
+      await worker.launch({
+        command: engineProvider(config.provider).command,
+        args: ["--version"],
+      });
+      const result = await worker.closed;
+      if (result.error === "ENOENT") return { available: false, version: null };
+      if (result.code !== 0)
+        throw new Error("引擎未能启动。请检查程序后重试。");
+      return {
+        available: true,
+        version: output.match(/\d+\.\d+\.\d+(?:-[\w.-]+)?/)?.[0] ?? null,
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT")
+        return { available: false, version: null };
+      throw error;
+    } finally {
+      clearTimeout(timer);
+      await worker.close();
+    }
   }
   private async exclusive<T>(botId: number, action: () => Promise<T>) {
     if (this.operations.has(botId)) throw new Error("请先完成当前连接操作。");

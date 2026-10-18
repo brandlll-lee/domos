@@ -66,6 +66,17 @@ test("workspace MCP routes tools through the authenticated process channel", asy
   }
 });
 
+test("a missing work computer command reports a missing program", async () => {
+  const { process } = await worker();
+  await process
+    .launch({ command: `domos-test-${crypto.randomUUID()}`, args: [] })
+    .catch(() => {});
+  await expect(process.closed).resolves.toMatchObject({
+    code: 1,
+    error: "ENOENT",
+  });
+});
+
 test("bundled Pi opens a native session in the selected work directory", async () => {
   const { process, directory } = await worker();
   const session = await piProvider.open({

@@ -53,7 +53,7 @@ export interface EngineProcess {
   readonly output: Readable;
   readonly error: Readable;
   readonly ready: Promise<ProcessReady>;
-  readonly closed: Promise<{ code: number | null }>;
+  readonly closed: Promise<{ code: number | null; error?: string }>;
   launch(spec: ProcessSpec): Promise<void>;
   close(): Promise<void>;
 }

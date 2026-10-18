@@ -18,7 +18,10 @@ export class WorkProcess implements EngineProcess {
   readonly input: Writable;
   private readonly preparation = Promise.withResolvers<ProcessReady>();
   private readonly started = Promise.withResolvers<void>();
-  private readonly ended = Promise.withResolvers<{ code: number | null }>();
+  private readonly ended = Promise.withResolvers<{
+    code: number | null;
+    error?: string;
+  }>();
   readonly ready = this.preparation.promise;
   readonly closed = this.ended.promise;
   private readonly child: ChildProcessWithoutNullStreams;
@@ -78,7 +81,10 @@ export class WorkProcess implements EngineProcess {
             )
             .catch(() => {});
         } else if (frame.type === "exit") this.finish(frame.code);
-        else if (frame.type === "failure") this.fail(new Error(frame.message));
+        else if (frame.type === "failure")
+          this.fail(
+            Object.assign(new Error(frame.message), { code: frame.code }),
+          );
       } catch {
         this.fail(new Error("工作电脑返回了无效数据。"));
       }
@@ -132,15 +138,15 @@ export class WorkProcess implements EngineProcess {
   private fail(error: Error) {
     this.preparation.reject(error);
     this.started.reject(error);
-    this.finish(1);
+    this.finish(1, (error as NodeJS.ErrnoException).code);
     void this.close();
   }
 
-  private finish(code: number | null) {
+  private finish(code: number | null, errorCode?: string) {
     const error = new Error("引擎连接已关闭。");
     this.preparation.reject(error);
     this.started.reject(error);
-    this.ended.resolve({ code });
+    this.ended.resolve({ code, ...(errorCode ? { error: errorCode } : {}) });
     this.output.end();
     this.error.end();
   }
