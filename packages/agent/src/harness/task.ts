@@ -87,6 +87,19 @@ async function finish(
         )
           answer = entry.id;
       }
+      if (error)
+        await tx.appendEntry(runtime.conversationId, {
+          kind: EngineMessage,
+          data: stored({
+            id: `${runtime.taskId}:terminal`,
+            turnId: current.input.turnId,
+            role: "assistant",
+            content: [],
+            stopped: reason === "aborted",
+            stopReason: reason === "aborted" ? "aborted" : "error",
+            ...(reason === "aborted" ? {} : { error }),
+          }),
+        });
       doc.drafts = [];
       doc.approvals = [];
       doc.activeId = null;

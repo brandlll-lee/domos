@@ -6,8 +6,10 @@ import type {
 } from "@domos/agent/transcript";
 import { ActivityDetails, ActivityDisclosure } from "@domos/ui/activity";
 import { BotAvatar } from "@domos/ui/avatar";
+import { Button } from "@domos/ui/controls";
 import { MessageMarkdown } from "@domos/ui/markdown";
 import { WorkStatus } from "@domos/ui/work-status";
+import { memo } from "react";
 import { chatCopy } from "./copy.ts";
 import { MessageContent } from "./message-content.tsx";
 
@@ -23,15 +25,28 @@ const toolLabels: Record<string, string> = {
   web_search: "搜索资料",
   web_fetch: "读取网页",
   attach_file: "交付文件",
+  commandExecution: "执行命令",
+  fileChange: "修改文件",
+  mcpToolCall: "调用工具",
+  Read: "读取文件",
+  Write: "写入文件",
+  Edit: "编辑文件",
+  Bash: "执行命令",
+  Glob: "查找文件",
+  Grep: "搜索内容",
+  WebSearch: "搜索资料",
+  WebFetch: "读取网页",
 };
 
 function toolLabel(step: Extract<ActivityStep, { type: "tool" }>) {
   const target = [
     step.arguments.path,
     step.arguments.file_path,
+    step.arguments.filePath,
     step.arguments.command,
     step.arguments.url,
     step.arguments.query,
+    step.arguments.pattern,
   ].find((value) => typeof value === "string");
   const name = toolLabels[step.name] ?? step.name;
   return typeof target === "string"
@@ -56,7 +71,13 @@ function toolStatus(status: ToolStatus) {
   }
 }
 
-function Step({ step }: { step: ActivityStep }) {
+const Step = memo(function Step({ step }: { step: ActivityStep }) {
+  if (step.type === "attachments")
+    return (
+      <span className="activity-caption">
+        {step.files.map((file) => file.name).join("、")}
+      </span>
+    );
   if (step.type !== "tool")
     return (
       <div className="activity-narration" data-kind={step.type}>
@@ -90,7 +111,7 @@ function Step({ step }: { step: ActivityStep }) {
       )}
     </ActivityDetails>
   );
-}
+});
 
 export function activityLabel(activity: Activity) {
   const tools = activity.steps.filter((step) => step.type === "tool");
@@ -141,7 +162,13 @@ export function WorkingActivity({
   );
 }
 
-export function ExecutionActivity({ activity }: { activity: Activity }) {
+export const ExecutionActivity = memo(function ExecutionActivity({
+  activity,
+  onRetry,
+}: {
+  activity: Activity;
+  onRetry?: () => void;
+}) {
   const failures = activity.steps.filter(
     (step) => step.type === "tool" && step.status === "failed",
   ).length;
@@ -158,6 +185,19 @@ export function ExecutionActivity({ activity }: { activity: Activity }) {
       >
         <Steps activity={activity} />
       </ActivityDisclosure>
+      {onRetry &&
+        (activity.status === "failed" || activity.status === "stopped") && (
+          <Button
+            type="button"
+            size="small"
+            variant="ghost"
+            onClick={onRetry}
+            title="将原任务放入输入框"
+          >
+            {chatCopy.retryTask}
+          </Button>
+        )}
+      {activity.error && <p className="activity-error">{activity.error}</p>}
     </section>
   );
-}
+});

@@ -6,6 +6,7 @@ export type ActivityStatus = "running" | "done" | "failed" | "stopped";
 export type ToolStatus = ActivityStatus | "pending" | "waiting";
 export type ActivityStep =
   | { type: "text" | "thinking"; id: string; text: string }
+  | { type: "attachments"; id: string; files: Attachment[] }
   | {
       type: "tool";
       id: string;
@@ -23,6 +24,7 @@ export type Activity = {
   status: ActivityStatus;
   responding: boolean;
   steps: ActivityStep[];
+  error?: string;
 };
 
 export type TranscriptItem =
@@ -33,6 +35,15 @@ export type TranscriptItem =
 export function chatTranscript(view: ChatView): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   const activities = new Map<string, Activity>();
+  const lastTurnId = view.messages.findLast(
+    (message) => message.role === "user",
+  )?.turnId;
+  const interrupted = new Set(
+    view.messages
+      .filter((message) => message.stopped || message.stopReason === "error")
+      .map((message) => message.turnId ?? message.id),
+  );
+  if (view.failed && !view.busy && lastTurnId) interrupted.add(lastTurnId);
   const results = new Map(
     view.messages.flatMap((message) =>
       message.role === "toolResult" && message.toolCallId
@@ -62,35 +73,53 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
     }
     const groupId = message.turnId ?? message.id;
     const active = groupId === view.activeTurnId;
+    const held = active || interrupted.has(groupId);
     if (message.role === "toolResult") {
-      if (message.delivery)
-        items.push({
-          kind: "message",
-          id: message.id,
-          message: {
+      if (message.delivery) {
+        if (held && message.delivery.kind !== "question")
+          activity(groupId).steps.push({
+            type: "text",
+            id: `${message.id}:delivery`,
+            text: message.delivery.text,
+          });
+        else
+          items.push({
+            kind: "message",
             id: message.id,
-            turnId: message.turnId,
-            role: "assistant",
-            content: [
-              {
-                type: "text",
-                text: message.delivery.text,
-                key: `${message.id}:delivery`,
-              },
-            ],
-            stopped: false,
-          },
-        });
-      if (message.attachments?.length)
-        items.push({
-          kind: "attachments",
-          id: message.id,
-          files: message.attachments,
-        });
+            message: {
+              id: message.id,
+              turnId: message.turnId,
+              role: "assistant",
+              content: [
+                {
+                  type: "text",
+                  text: message.delivery.text,
+                  key: `${message.id}:delivery`,
+                },
+              ],
+              stopped: false,
+            },
+          });
+      }
+      if (message.attachments?.length) {
+        if (held)
+          activity(groupId).steps.push({
+            type: "attachments",
+            id: message.id,
+            files: message.attachments,
+          });
+        else
+          items.push({
+            kind: "attachments",
+            id: message.id,
+            files: message.attachments,
+          });
+      }
       continue;
     }
     if (active) activity(groupId);
     const progress =
+      held ||
       message.stopReason === "toolUse" ||
       message.stopped ||
       message.content.some((part) => part.type === "toolCall");
@@ -104,12 +133,14 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
             text: part.thinking,
           });
       } else if (part.type === "text" && progress) {
-        if (part.text)
+        if (part.text) {
+          if (active) activity(groupId).responding = true;
           activity(groupId).steps.push({
             type: "text",
             id: part.key,
             text: part.text,
           });
+        }
       } else if (part.type === "toolCall") {
         const result = results.get(`${message.turnId}:${part.id}`);
         if (result?.delivery) continue;
@@ -121,17 +152,31 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
           id: part.id,
           name: part.name,
           arguments: part.arguments,
-          status: result?.toolStatus ?? live?.status ?? "waiting",
+          status:
+            result?.toolStatus ??
+            live?.status ??
+            (active ? "running" : "waiting"),
           output: result?.content ?? [],
           liveOutput: live?.output,
           diagnostics: result?.diagnostics,
         });
-      } else if (visibleContent(part)) {
+      } else if (!held && visibleContent(part)) {
         content.push(part);
       }
     }
     if (message.stopped) activity(groupId).status = "stopped";
-    if (content.length || message.attachments?.length)
+    if (message.stopReason === "error") {
+      const current = activity(groupId);
+      current.status = "failed";
+      current.error = message.error;
+    }
+    if (held && message.attachments?.length)
+      activity(groupId).steps.push({
+        type: "attachments",
+        id: message.id,
+        files: message.attachments,
+      });
+    if (content.length || (!held && message.attachments?.length))
       items.push({
         kind: "message",
         id: message.id,
@@ -139,10 +184,16 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
       });
   }
   if (view.activeTurnId) activity(view.activeTurnId).status = "running";
-  const lastTurnId = view.messages.findLast(
-    (message) => message.role === "user",
-  )?.turnId;
-  if (view.failed && lastTurnId) activity(lastTurnId).status = "failed";
+  if (
+    view.failed &&
+    !view.busy &&
+    lastTurnId &&
+    activities.get(lastTurnId)?.status !== "stopped"
+  ) {
+    const current = activity(lastTurnId);
+    current.status = "failed";
+    if (view.error) current.error = view.error;
+  }
   if (view.draft && view.activeTurnId) {
     const current = activity(view.activeTurnId);
     current.responding = view.draft.content.some(
@@ -157,7 +208,12 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
         });
   }
   for (const value of activities.values()) {
-    if (value.status === "running") continue;
+    if (
+      value.status === "running" ||
+      value.status === "failed" ||
+      value.status === "stopped"
+    )
+      continue;
     if (
       value.steps.some(
         (step) => step.type === "tool" && step.status === "stopped",

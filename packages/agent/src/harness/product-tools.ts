@@ -7,6 +7,7 @@ import {
   type TaskId,
   ToolTask,
 } from "@earendil-works/pi-durable";
+import type { MessageDelivery } from "../delivery.ts";
 import { EngineDoc, EngineMessage } from "./state.ts";
 import { type EngineRuntime, stored } from "./task-types.ts";
 import type { ProductResult, ProductTool } from "./types.ts";
@@ -113,7 +114,7 @@ export async function callProductTool(
   )?.result;
   if (!result) throw new Error("产品工具结果未确认。");
   const details = result.details as
-    | { attachment?: unknown; delivery?: { text: string } }
+    | { attachment?: unknown; delivery?: MessageDelivery }
     | undefined;
   if (details?.attachment || details?.delivery) {
     await runtime.commit(async (tx) => {

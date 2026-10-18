@@ -216,3 +216,82 @@ test("draft text never becomes a reply and draft thinking stays in the live proc
     { kind: "activity", status: "failed" },
   ]);
 });
+
+test("an active engine turn delivers its answer and files together after completion", () => {
+  const turnId = "report";
+  const file = { id: "file", name: "report.txt", size: 12, path: "report.txt" };
+  const messages = [
+    message("user", turnId, [{ type: "text", text: "Prepare a report" }]),
+    message("toolResult", turnId, [], { attachments: [file] }),
+    message("assistant", turnId, [{ type: "text", text: "Report ready" }]),
+  ];
+  const active = chatTranscript(
+    view(messages, { activeTurnId: turnId, busy: true }),
+  );
+  expect(active.filter((item) => item.kind === "message")).toHaveLength(1);
+  expect(active.some((item) => item.kind === "attachments")).toBe(false);
+  expect(active.find((item) => item.kind === "activity")).toMatchObject({
+    status: "running",
+    responding: true,
+    steps: expect.arrayContaining([
+      { type: "text", id: expect.any(String), text: "Report ready" },
+    ]),
+  });
+  const complete = chatTranscript(view(messages));
+  expect(complete.find((item) => item.kind === "attachments")).toMatchObject({
+    files: [file],
+  });
+  expect(complete.at(-1)).toMatchObject({
+    kind: "message",
+    message: { content: [{ text: "Report ready" }] },
+  });
+});
+
+test("stopped and failed answers remain in the process with their files", () => {
+  const file = { id: "file", name: "draft.txt", size: 12, path: "draft.txt" };
+  const messages = [
+    message("user", "turn", [{ type: "text", text: "Prepare a report" }]),
+    message("toolResult", "turn", [], { attachments: [file] }),
+    message("assistant", "turn", [{ type: "text", text: "Unfinished answer" }]),
+  ];
+  for (const fields of [{ failed: true, error: "Connection lost" }, {}]) {
+    const input = structuredClone(messages);
+    const answer = input.at(-1);
+    if (!fields.failed && answer) answer.stopped = true;
+    const items = chatTranscript(view(input, fields));
+    expect(items.filter((item) => item.kind === "message")).toHaveLength(1);
+    expect(items.some((item) => item.kind === "attachments")).toBe(false);
+    expect(items.find((item) => item.kind === "activity")).toMatchObject({
+      status: fields.failed ? "failed" : "stopped",
+      steps: expect.arrayContaining([
+        { type: "attachments", id: input[1]?.id, files: [file] },
+        { type: "text", id: expect.any(String), text: "Unfinished answer" },
+      ]),
+    });
+  }
+});
+
+test("questions arrive during work while progress messages wait for completion", () => {
+  const messages = [
+    message("user", "turn", [{ type: "text", text: "Prepare a report" }]),
+    message("toolResult", "turn", [], {
+      delivery: { text: "Checking sources" },
+    }),
+    message("toolResult", "turn", [], {
+      delivery: { text: "Which folder should I use?", kind: "question" },
+    }),
+  ];
+  const active = chatTranscript(
+    view(messages, { activeTurnId: "turn", busy: true }),
+  );
+  expect(
+    active.flatMap((item) =>
+      item.kind === "message" && item.message.role === "assistant"
+        ? item.message.content.map((part) => part.type === "text" && part.text)
+        : [],
+    ),
+  ).toEqual(["Which folder should I use?"]);
+  expect(
+    chatTranscript(view(messages)).filter((item) => item.kind === "message"),
+  ).toHaveLength(3);
+});

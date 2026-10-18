@@ -54,7 +54,15 @@ export function chatView(
     if (message.role === "system") return null;
     if (message.role === "user") turnId = id;
     if (message.role === "assistant" && message.stopReason === "error")
-      return null;
+      return {
+        id,
+        turnId,
+        role: message.role,
+        content: [],
+        stopReason: "error",
+        stopped: false,
+        error: "回复失败。请检查模型配置、余额或网络。",
+      };
     return {
       id,
       turnId,

@@ -22,6 +22,7 @@ export type ChatMessage = {
   content: (ChatContent & { key: string })[];
   stopped: boolean;
   stopReason?: AssistantMessage["stopReason"];
+  error?: string;
   toolCallId?: string;
   toolName?: string;
   isError?: boolean;

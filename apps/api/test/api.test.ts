@@ -6,6 +6,7 @@ import { Computers } from "@domos/agent/computer/catalog";
 import { parseConfig } from "@domos/agent/config";
 import { Files } from "@domos/agent/files";
 import { messageText } from "@domos/agent/messages";
+import { chatTranscript } from "@domos/agent/transcript";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import {
@@ -1027,6 +1028,23 @@ test("validation rejects empty input and snapshots hide provider error details",
     const view = await client.get({ botId: conversation.id });
     expect(view.failed).toBe(true);
     expect(JSON.stringify(view)).not.toContain(secret);
+    expect(chatTranscript(view).at(-1)).toMatchObject({
+      kind: "activity",
+      status: "failed",
+      error: "回复失败。请检查模型配置、余额或网络。",
+    });
+    faux.setResponses([fauxAssistantMessage("Complete")]);
+    await client.send({
+      botId: conversation.id,
+      text: "Retry",
+      requestId: crypto.randomUUID(),
+    });
+    await conversation.waitForIdle(context);
+    const recovered = await client.get({ botId: conversation.id });
+    expect(JSON.stringify(recovered)).not.toContain(secret);
+    expect(chatTranscript(recovered)).toContainEqual(
+      expect.objectContaining({ kind: "activity", status: "failed" }),
+    );
   } finally {
     await harness.close(context);
   }

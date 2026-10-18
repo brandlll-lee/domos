@@ -19,7 +19,7 @@ import { chatView } from "../src/chat-view.ts";
 import { openAgent } from "../src/open-agent.ts";
 import { chatTranscript } from "../src/transcript.ts";
 
-test("complete messages persist during work, stay distinct from narration, and survive restart once", async () => {
+test("questions arrive during work and updates arrive with the result after restart", async () => {
   const directory = await mkdtemp(join(tmpdir(), "domos-delivery-"));
   onTestFinished(() => rm(directory, { recursive: true, force: true }));
   const database = join(directory, "agent.sqlite");
@@ -55,7 +55,12 @@ test("complete messages persist during work, stay distinct from narration, and s
   );
   faux.setResponses([
     fauxAssistantMessage(
-      [fauxToolCall("message_user", { message: "I will check the source." })],
+      [
+        fauxToolCall("message_user", {
+          message: "Which source should I check?",
+          kind: "question",
+        }),
+      ],
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage(
@@ -88,9 +93,6 @@ test("complete messages persist during work, stay distinct from narration, and s
       context,
     );
     await expect
-      .poll(delivered)
-      .toEqual(["I will check the source.", "The source is available."]);
-    await expect
       .poll(() =>
         chatView(state.value).tools.some(
           (tool) => tool.callId === work.id && tool.status === "running",
@@ -98,10 +100,7 @@ test("complete messages persist during work, stay distinct from narration, and s
       )
       .toBe(true);
     expect(chatView(state.value).busy).toBe(true);
-    expect(delivered()).toEqual([
-      "I will check the source.",
-      "The source is available.",
-    ]);
+    expect(delivered()).toEqual(["Which source should I check?"]);
   } finally {
     state.dispose();
     await first.harness.close(context);
@@ -120,7 +119,7 @@ test("complete messages persist during work, stay distinct from narration, and s
           : [],
       );
       expect(texts).toEqual([
-        "I will check the source.",
+        "Which source should I check?",
         "The source is available.",
         "Complete result",
       ]);
