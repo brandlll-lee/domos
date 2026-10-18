@@ -145,6 +145,7 @@ export const metrics = {
   "message-outgoing-width": "60%",
   "message-paragraph-gap": "0.5em",
   "motion-feedback": "140ms",
+  "motion-spinner": "800ms",
   "motion-activity-sweep": "2.8s",
   "motion-activity-pulse": "1.4s",
   "activity-detail-height": "20rem",

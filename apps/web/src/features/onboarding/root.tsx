@@ -1,5 +1,5 @@
-import { Brand } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
+import { SetupPage } from "@domos/ui/setup";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { client } from "../../client.ts";
 import { EnginePanel } from "../bots/details/engine.tsx";
@@ -8,7 +8,6 @@ import { type Profile, useWorkAction } from "../bots/details/use-bot-work.ts";
 import { ComputerLocation } from "../computer/location.tsx";
 import type { SettingsAccess } from "../settings/sections.tsx";
 import { Titlebar } from "../shell/titlebar.tsx";
-import "./style.css";
 
 type Setup = {
   botId: number;
@@ -75,80 +74,79 @@ export function Onboarding({
   const computer = !identity && !setup?.computer;
   const reload = () => void refresh().catch((cause) => setError(cause.message));
   return (
-    <>
+    <div className="setup-window">
       <Titlebar />
-      <main className="onboarding" aria-label="首次设置">
-        <div className="onboarding-content">
-          <Brand />
-          <header>
-            <p className="detail-note">
-              {identity
-                ? "第 1 步，共 3 步"
-                : computer
-                  ? "第 2 步，共 3 步"
-                  : "第 3 步，共 3 步"}
-            </p>
-            <h1>
-              {identity
-                ? "认识你的第一个 Bot"
-                : computer
-                  ? "Bot 在哪里工作？"
-                  : "由谁处理任务？"}
-            </h1>
-            <p className="detail-note">
-              {identity
-                ? "取个名字，告诉它要做什么。"
-                : computer
-                  ? "选择一台工作电脑。之后也可以更换。"
-                  : "选择引擎并连接账号，开始第一项工作。"}
-            </p>
-          </header>
-          {setup &&
-            (admin && !standalone ? (
-              identity ? (
-                <ProfileEditor
-                  profile={setup.profile}
-                  action={action}
-                  onSaved={reload}
-                  submitLabel="继续"
-                />
-              ) : computer ? (
-                <ComputerLocation
-                  botId={setup.botId}
-                  canIsolate={setup.canIsolate}
-                  deployment={setup.deployment}
-                  onReady={() =>
-                    void refresh().catch((cause) => setError(cause.message))
-                  }
-                />
-              ) : (
-                <EnginePanel
-                  botId={setup.botId}
-                  canManage={admin}
-                  onReady={reload}
-                />
-              )
+      <SetupPage
+        label="首次设置"
+        title={
+          !setup
+            ? "正在读取配置…"
+            : identity
+              ? "认识你的第一个 Bot"
+              : computer
+                ? "Bot 在哪里工作？"
+                : "由谁处理任务？"
+        }
+        description={
+          !setup
+            ? undefined
+            : identity
+              ? "取个名字，告诉它要做什么。"
+              : computer
+                ? "选择一台工作电脑。之后也可以更换。"
+                : "选择引擎并连接账号，开始第一项工作。"
+        }
+        progress={
+          setup
+            ? { current: identity ? 1 : computer ? 2 : 3, total: 3 }
+            : undefined
+        }
+      >
+        {setup &&
+          (admin && !standalone ? (
+            identity ? (
+              <ProfileEditor
+                profile={setup.profile}
+                action={action}
+                onSaved={reload}
+                submitLabel="继续"
+              />
+            ) : computer ? (
+              <ComputerLocation
+                botId={setup.botId}
+                canIsolate={setup.canIsolate}
+                deployment={setup.deployment}
+                onReady={() =>
+                  void refresh().catch((cause) => setError(cause.message))
+                }
+              />
             ) : (
-              <p role="status">请让管理员完成首次设置，然后重试。</p>
-            ))}
-          {!setup && !error && <p role="status">正在读取配置…</p>}
-          {(error || action.error) && (
-            <p role="alert" className="alert">
-              {error || action.error}
-            </p>
-          )}
-          {(error || (setup && (!admin || standalone))) && (
-            <Button
-              variant="secondary"
-              onClick={() =>
-                void refresh().catch((cause) => setError(cause.message))
-              }
-            >
-              重试
-            </Button>
-          )}
-        </div>
-      </main>
-    </>
+              <EnginePanel
+                botId={setup.botId}
+                canManage={admin}
+                onReady={reload}
+              />
+            )
+          ) : (
+            <p role="status">请让管理员完成首次设置，然后重试。</p>
+          ))}
+        {!setup && !error && <p role="status">正在读取配置…</p>}
+        {(error || action.error) && (
+          <p role="alert" className="alert">
+            {error || action.error}
+          </p>
+        )}
+        {(error || (setup && (!admin || standalone))) && (
+          <Button
+            variant="secondary"
+            onClick={() =>
+              void refresh().catch((cause) => setError(cause.message))
+            }
+          >
+            重试
+          </Button>
+        )}
+      </SetupPage>
+    </div>
   );
 }

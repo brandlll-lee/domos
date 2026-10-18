@@ -63,11 +63,6 @@
 .character-eyelid[data-side="1"] {
   animation-delay: 24ms;
 }
-.avatar-customize {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-}
 @keyframes character-breathe {
   0%,
   100% {

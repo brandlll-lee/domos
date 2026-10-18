@@ -31,28 +31,6 @@
   padding: var(--space-5);
   scrollbar-width: thin;
 }
-.bot-details .avatar-customize {
-  position: relative;
-  justify-self: center;
-  width: var(--avatar-large);
-  margin: 0 auto;
-}
-.bot-details .avatar-customize .button {
-  position: absolute;
-  right: calc(-1 * var(--space-1));
-  bottom: 0;
-  box-shadow: var(--color-popup-shadow);
-}
-.bot-details textarea.field-control {
-  min-height: var(--profile-text-height);
-  resize: none;
-}
-.bot-details .bot-form {
-  gap: var(--space-6);
-}
-.bot-details .bot-form > .bot-fields {
-  gap: var(--space-5);
-}
 .bot-details p,
 .bot-details h3 {
   margin: 0;
@@ -60,12 +38,6 @@
 .bot-details h3 {
   font-size: var(--text-heading);
   font-weight: var(--weight-medium);
-}
-.detail-note {
-  color: var(--color-muted);
-  font-size: var(--text-caption);
-  line-height: var(--leading-body);
-  overflow-wrap: anywhere;
 }
 .computer-facts {
   display: grid;

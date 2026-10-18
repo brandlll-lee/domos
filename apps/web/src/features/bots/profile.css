@@ -1,0 +1,34 @@
+.bot-form,
+.bot-fields {
+  display: grid;
+  gap: var(--space-5);
+  min-width: 0;
+}
+.bot-fields {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.bot-form .picker-trigger {
+  width: 100%;
+}
+.bot-form textarea.field-control {
+  min-height: var(--profile-text-height);
+}
+.profile-identity {
+  display: grid;
+  grid-template-columns: var(--avatar-large) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-5);
+}
+.avatar-editor {
+  position: relative;
+  width: var(--avatar-large);
+  height: var(--avatar-large);
+}
+.avatar-editor .button {
+  position: absolute;
+  right: calc(-1 * var(--space-1));
+  bottom: 0;
+  box-shadow: var(--color-popup-shadow);
+}

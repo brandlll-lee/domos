@@ -1,10 +1,9 @@
 import { BOT_NAME_LENGTH, WORK_TEXT_LENGTH } from "@domos/agent/work/limits";
-import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
-import { PencilSimpleIcon } from "@phosphor-icons/react/dist/csr/PencilSimple";
 import { useState } from "react";
 import { client } from "../../../client.ts";
+import { AvatarEditor } from "../avatar-editor.tsx";
 import type { Profile, WorkAction } from "./use-bot-work.ts";
 
 export function ProfileEditor({
@@ -35,6 +34,7 @@ export function ProfileEditor({
   return (
     <form
       className="bot-form"
+      aria-busy={action.busy}
       onSubmit={(event) => {
         event.preventDefault();
         void action.run(
@@ -45,34 +45,26 @@ export function ProfileEditor({
       }}
     >
       <fieldset className="bot-fields" disabled={action.busy}>
-        <div className="avatar-customize">
-          <BotAvatar seed={avatar} size="large" />
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon-small"
-            aria-label="换个形象"
-            onClick={() => setAvatar(crypto.randomUUID())}
-          >
-            <PencilSimpleIcon size={14} />
-          </Button>
+        <div className="profile-identity">
+          <AvatarEditor value={avatar} onChange={setAvatar} />
+          <TextField
+            label="名字"
+            value={name}
+            onValueChange={setName}
+            required
+            maxLength={BOT_NAME_LENGTH}
+          />
         </div>
-        <TextField
-          label="名字"
-          value={name}
-          onValueChange={setName}
-          required
-          maxLength={BOT_NAME_LENGTH}
-        />
         <TextField
           label="职责与长期指令"
           value={instructions}
           onValueChange={setInstructions}
           multiline
           maxLength={WORK_TEXT_LENGTH}
+          placeholder="例如：帮我整理资料、准备每周工作计划。"
         />
         {(dirty || submitLabel) && (
-          <div className="form-actions">
+          <div className={submitLabel ? "setup-actions" : "form-actions"}>
             {!submitLabel && (
               <Button
                 type="button"
@@ -87,8 +79,13 @@ export function ProfileEditor({
                 还原
               </Button>
             )}
-            <Button type="submit" size="small" disabled={!name.trim()}>
-              {submitLabel ?? "保存身份"}
+            <Button
+              type="submit"
+              size={submitLabel ? "default" : "small"}
+              pending={action.busy}
+              disabled={!name.trim()}
+            >
+              {action.busy ? "正在保存…" : (submitLabel ?? "保存身份")}
             </Button>
           </div>
         )}

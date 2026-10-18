@@ -21,6 +21,25 @@
 .button:active:not(:disabled) {
   transform: translateY(1px);
 }
+.button-spinner {
+  width: var(--space-4);
+  height: var(--space-4);
+  flex-shrink: 0;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: var(--radius-round);
+  animation: button-spin var(--motion-spinner) linear infinite;
+}
+@keyframes button-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .button-spinner {
+    animation: none;
+  }
+}
 .button[data-variant="secondary"] {
   background: var(--color-control);
   border-color: var(--color-border);
@@ -109,6 +128,25 @@ summary:focus-visible {
 .field {
   display: grid;
   gap: var(--space-2);
+  min-width: 0;
+}
+.field-description,
+.field-error,
+.detail-note {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+  overflow-wrap: anywhere;
+}
+.field-error {
+  color: var(--color-danger);
+}
+.field-control[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+.field-control:disabled {
+  opacity: 0.6;
 }
 .field-label {
   color: var(--color-muted);

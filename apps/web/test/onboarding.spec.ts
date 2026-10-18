@@ -18,8 +18,19 @@ async function capture(page: Page, info: TestInfo, name: string) {
           ),
         )
         .toBe(true);
+      const frame = page.locator(".setup-window");
+      if (await frame.count()) {
+        const box = await frame.boundingBox();
+        expect(box?.y).toBe(0);
+        expect(box?.height).toBe(900);
+        await expect(page.locator(".setup-page")).toHaveCSS(
+          "overflow-y",
+          "auto",
+        );
+      }
       await page.screenshot({
         path: info.outputPath(`${name}-${colorScheme}-${width}.png`),
+        animations: "disabled",
       });
     }
   }
@@ -55,6 +66,18 @@ test("first use selects identity, computer and native engine before shared chat"
     await expect(
       page.getByRole("textbox", { name: "消息", exact: true }),
     ).toBeHidden();
+    await capture(page, testInfo, "identity");
+    await page.setViewportSize({ width: 390, height: 600 });
+    const next = setup.getByRole("button", { name: "继续", exact: true });
+    await next.scrollIntoViewIfNeeded();
+    await expect(next).toBeInViewport();
+    const avatar = await setup.locator(".avatar-editor").boundingBox();
+    const change = await setup
+      .getByRole("button", { name: "换个形象" })
+      .boundingBox();
+    expect(change?.x).toBeLessThan((avatar?.x ?? 0) + (avatar?.width ?? 0));
+    expect(change?.y).toBeLessThan((avatar?.y ?? 0) + (avatar?.height ?? 0));
+    await page.setViewportSize({ width: 1360, height: 900 });
     await setup.getByRole("button", { name: "继续", exact: true }).click();
     const service = setup.getByRole("button", { name: /^使用服务所在电脑/ });
     const title = await service.locator("strong").boundingBox();

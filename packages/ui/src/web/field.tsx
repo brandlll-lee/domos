@@ -9,6 +9,8 @@ export function TextField({
   multiline = false,
   required,
   maxLength,
+  description,
+  error,
   ...props
 }: {
   label: string;
@@ -17,12 +19,21 @@ export function TextField({
   multiline?: boolean;
   required?: boolean;
   maxLength?: number;
+  description?: string;
+  error?: string;
 } & Pick<
   ComponentProps<"input">,
-  "type" | "placeholder" | "minLength" | "autoComplete" | "pattern" | "disabled"
+  | "type"
+  | "placeholder"
+  | "minLength"
+  | "autoComplete"
+  | "pattern"
+  | "disabled"
+  | "autoFocus"
+  | "inputMode"
 >) {
   return (
-    <Field.Root className="field">
+    <Field.Root className="field" invalid={Boolean(error) || undefined}>
       <Field.Label className="field-label">{label}</Field.Label>
       <Field.Control
         className="field-control"
@@ -33,6 +44,16 @@ export function TextField({
         render={multiline ? <textarea rows={4} /> : undefined}
         {...props}
       />
+      {description && (
+        <Field.Description className="field-description">
+          {description}
+        </Field.Description>
+      )}
+      {error && (
+        <Field.Error className="field-error" match>
+          {error}
+        </Field.Error>
+      )}
     </Field.Root>
   );
 }

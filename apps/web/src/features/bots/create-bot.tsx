@@ -1,7 +1,6 @@
 import type { Bot } from "@domos/agent/bots";
 import type { EngineId } from "@domos/agent/harness/types";
 import type { ChatView } from "@domos/agent/view";
-import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
 import { TextField } from "@domos/ui/field";
@@ -13,6 +12,7 @@ import { rejectionMessage } from "../chat/request-error.ts";
 import { ComputerLocation } from "../computer/location.tsx";
 import { modelItems, modelKey, useModels } from "../models/use-models.ts";
 import { useSettings } from "../settings/context.ts";
+import { AvatarEditor } from "./avatar-editor.tsx";
 import { EnginePanel } from "./details/engine.tsx";
 import { EngineSelect } from "./engine-select.tsx";
 
@@ -79,7 +79,7 @@ function BotForm({
   const [computerReady, setComputerReady] = useState(false);
   const [name, setName] = useState("");
   const [instructions, setInstructions] = useState("");
-  const [avatar, setAvatar] = useState(() => crypto.randomUUID());
+  const [avatar, setAvatar] = useState<string>(() => crypto.randomUUID());
   const [selection, setSelection] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<{
@@ -158,23 +158,16 @@ function BotForm({
       }}
     >
       <fieldset disabled={saving} className="bot-fields">
-        <div className="avatar-customize">
-          <BotAvatar seed={avatar} size="large" />
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => setAvatar(crypto.randomUUID())}
-          >
-            换个形象
-          </Button>
+        <div className="profile-identity">
+          <AvatarEditor value={avatar} onChange={setAvatar} />
+          <TextField
+            label="名字"
+            value={name}
+            onValueChange={setName}
+            required
+            maxLength={80}
+          />
         </div>
-        <TextField
-          label="名字"
-          value={name}
-          onValueChange={setName}
-          required
-          maxLength={80}
-        />
         <TextField
           label="职责与指令"
           value={instructions}

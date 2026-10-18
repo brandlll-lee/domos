@@ -122,20 +122,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.bot-form,
-.bot-fields {
-  display: grid;
-  gap: var(--space-4);
-}
-.bot-fields {
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-.bot-form .picker-trigger {
-  width: 100%;
-}
 .transcript-pane {
   grid-area: 2 / 1;
   position: relative;
