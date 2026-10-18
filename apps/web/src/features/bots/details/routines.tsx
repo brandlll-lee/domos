@@ -1,14 +1,11 @@
-import {
-  BOT_NAME_LENGTH,
-  SCHEDULE_EXPRESSION_LENGTH,
-  TIME_ZONE_LENGTH,
-  WORK_TEXT_LENGTH,
-} from "@domos/agent/work/limits";
+import { BOT_NAME_LENGTH, WORK_TEXT_LENGTH } from "@domos/agent/work/limits";
 import { Button } from "@domos/ui/controls";
+import { ConfirmButton } from "@domos/ui/dialog";
 import { Checkbox, TextField } from "@domos/ui/field";
 import { ChoicePicker } from "@domos/ui/picker";
 import { useState } from "react";
 import { client } from "../../../client.ts";
+import { RoutineSchedule, routineTimeLabel } from "./routine-schedule.tsx";
 import type { WorkAction, WorkData } from "./use-bot-work.ts";
 
 type Routine = WorkData["routines"]["items"][number];
@@ -45,7 +42,8 @@ export function RoutinesPanel({
   return (
     <div className="detail-stack">
       <p className="detail-note">
-        只有本机Domos运行时才能执行。重启后会合并补跑错过的周期。启用后使用当前Bot的工具权限。试跑会真实执行并发回结果。暂停只停止后续计划，已开始的工作会继续完成。
+        Domos 服务运行时，Bot
+        会按计划工作。新任务保存后需手动启用。试跑会真实执行。
       </p>
       <RoutineEditor
         key={editing?.id ?? "new"}
@@ -73,7 +71,7 @@ export function RoutinesPanel({
               {routine.enabled ? "已启用" : "已暂停"} ·{" "}
               {routine.schedule.type === "once"
                 ? new Date(routine.schedule.at).toLocaleString()
-                : routine.schedule.expression}{" "}
+                : routineTimeLabel(routine.schedule.expression)}{" "}
               · {routine.schedule.timeZone}
             </p>
             {routine.nextAt && (
@@ -126,25 +124,24 @@ export function RoutinesPanel({
               >
                 编辑
               </Button>
-              <Button
-                variant="ghost"
-                size="small"
+              <ConfirmButton
+                title="删除这个定时任务？"
+                description="已开始的工作仍会完成。"
                 disabled={action.busy}
-                onClick={() => {
-                  if (window.confirm("删除定时任务？已开始的工作仍会完成。"))
-                    void action.run(
-                      ["routines.delete", routine.id, routine.revision],
-                      () =>
-                        client.work.routines.delete({
-                          botId,
-                          id: routine.id,
-                          revision: routine.revision,
-                        }),
-                    );
+                onConfirm={() => {
+                  void action.run(
+                    ["routines.delete", routine.id, routine.revision],
+                    () =>
+                      client.work.routines.delete({
+                        botId,
+                        id: routine.id,
+                        revision: routine.revision,
+                      }),
+                  );
                 }}
               >
                 删除
-              </Button>
+              </ConfirmButton>
             </div>
           </li>
         ))}
@@ -280,22 +277,12 @@ function RoutineEditor({
             />
           </label>
         ) : (
-          <>
-            <TextField
-              label="Cron（分 时 日 月 星期）"
-              value={expression}
-              onValueChange={setExpression}
-              required
-              maxLength={SCHEDULE_EXPRESSION_LENGTH}
-            />
-            <TextField
-              label="时区"
-              value={timeZone}
-              onValueChange={setTimeZone}
-              required
-              maxLength={TIME_ZONE_LENGTH}
-            />
-          </>
+          <RoutineSchedule
+            expression={expression}
+            onExpressionChange={setExpression}
+            timeZone={timeZone}
+            onTimeZoneChange={setTimeZone}
+          />
         )}
         {skills
           .filter((skill) => skill.enabledBots.includes(botId))

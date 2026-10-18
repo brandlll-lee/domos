@@ -12,11 +12,13 @@ export function PiEngineModel({
   setup,
   canManage,
   onBusyChange,
+  formId,
 }: {
   botId: number;
   setup: EngineSetup;
   canManage: boolean;
   onBusyChange: (busy: boolean) => void;
+  formId?: string;
 }) {
   const settings = useSettings();
   const model = setup.profile?.config.model;
@@ -32,6 +34,8 @@ export function PiEngineModel({
     return (
       <HostingModels
         botId={botId}
+        model={model}
+        formId={formId}
         onConfigured={() => void setup.refresh()}
         onBusyChange={onBusyChange}
       />

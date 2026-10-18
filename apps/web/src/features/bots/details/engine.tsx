@@ -1,4 +1,5 @@
 import { Button } from "@domos/ui/controls";
+import { ScrollArea } from "@domos/ui/scroll-area";
 import { type ReactNode, type Ref, useEffect, useRef, useState } from "react";
 import { EngineSelect } from "../engine-select.tsx";
 import { EngineDialog, type EngineDialogKind } from "./engine-dialog.tsx";
@@ -74,73 +75,77 @@ export function EnginePanel({
       aria-label="任务引擎"
       aria-busy={Boolean(pending)}
     >
-      <div className="engine-content scroll-area">
-        {!onReady && (
-          <header>
-            <h3>任务引擎</h3>
-            <p className="detail-note">更换后开始新会话，聊天记录会保留。</p>
-          </header>
-        )}
-        {profile ? (
-          <EngineSelect
-            value={provider}
-            disabled={blocked}
-            presentation={onReady ? "list" : "menu"}
-            status={status}
-            onChange={(provider) => void setup.save({ provider, model: null })}
-          />
-        ) : (
-          <p role="status">正在读取引擎…</p>
-        )}
-        {provider === "pi" && piModel ? (
-          <>
-            {piModel(setup.refresh, setModelBusy)}
-            <Button
-              ref={action}
-              variant="secondary"
-              size="small"
+      <ScrollArea className="engine-scroll">
+        <div className="engine-content">
+          {!onReady && (
+            <header>
+              <h3>任务引擎</h3>
+              <p className="detail-note">更换后开始新会话，聊天记录会保留。</p>
+            </header>
+          )}
+          {profile ? (
+            <EngineSelect
+              value={provider}
               disabled={blocked}
-              pending={pending === "inspect"}
-              onClick={() => void setup.inspect()}
-            >
-              {pending === "inspect" ? "正在检查…" : "检查连接"}
-            </Button>
-          </>
-        ) : (
-          <EngineConnection
-            setup={setup}
-            name={name}
-            blocked={blocked}
-            onConfigure={setDialog}
-            actionRef={action}
-          />
-        )}
-        {error && (
-          <p className="alert" role="alert">
-            {error}
-          </p>
-        )}
-        {provider !== "pi" && connection?.ready && !error && (
-          <div className="engine-options">
-            <Button
-              variant="ghost"
-              size="small"
-              disabled={blocked}
-              onClick={() => setDialog("model")}
-            >
-              模型设置
-            </Button>
-            <Button
-              variant="ghost"
-              size="small"
-              disabled={blocked}
-              onClick={() => void setup.inspect()}
-            >
-              重新检查
-            </Button>
-          </div>
-        )}
-      </div>
+              presentation={onReady ? "list" : "menu"}
+              status={status}
+              onChange={(provider) =>
+                void setup.save({ provider, model: null })
+              }
+            />
+          ) : (
+            <p role="status">正在读取引擎…</p>
+          )}
+          {provider === "pi" && piModel ? (
+            <>
+              {piModel(setup.refresh, setModelBusy)}
+              <Button
+                ref={action}
+                variant="secondary"
+                size="small"
+                disabled={blocked}
+                pending={pending === "inspect"}
+                onClick={() => void setup.inspect()}
+              >
+                {pending === "inspect" ? "正在检查…" : "检查连接"}
+              </Button>
+            </>
+          ) : (
+            <EngineConnection
+              setup={setup}
+              name={name}
+              blocked={blocked}
+              onConfigure={setDialog}
+              actionRef={action}
+            />
+          )}
+          {error && (
+            <p className="alert" role="alert">
+              {error}
+            </p>
+          )}
+          {provider !== "pi" && connection?.ready && !error && (
+            <div className="engine-options">
+              <Button
+                variant="ghost"
+                size="small"
+                disabled={blocked}
+                onClick={() => setDialog("model")}
+              >
+                模型设置
+              </Button>
+              <Button
+                variant="ghost"
+                size="small"
+                disabled={blocked}
+                onClick={() => void setup.inspect()}
+              >
+                重新检查
+              </Button>
+            </div>
+          )}
+        </div>
+      </ScrollArea>
       {onReady && (
         <footer className="engine-footer">
           <div className="setup-actions">

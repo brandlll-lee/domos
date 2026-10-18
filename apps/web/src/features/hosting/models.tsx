@@ -1,356 +1,273 @@
 import { Button } from "@domos/ui/controls";
+import { ConfirmDialog } from "@domos/ui/dialog";
 import { TextField } from "@domos/ui/field";
 import { ChoicePicker, SearchPicker } from "@domos/ui/picker";
-import { SettingRow } from "@domos/ui/setting-row";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { client } from "../../client.ts";
-import { hostingRequest } from "./api.ts";
-
-type Catalog = {
-  providers: {
-    id: string;
-    name: string;
-    configured: boolean;
-    methods: { type: string; name: string }[];
-  }[];
-  models: { provider: string; modelId: string; name: string }[];
-};
-type Login = {
-  done: boolean;
-  error?: string;
-  events: {
-    id: string;
-    type: string;
-    message?: string;
-    url?: string;
-    verificationUri?: string;
-    userCode?: string;
-  }[];
-  prompt?: {
-    id: string;
-    type: string;
-    message: string;
-    options?: { id: string; label: string }[];
-  };
-};
+import { useModelAccount } from "./use-model-account.ts";
 
 export function HostingModels({
   onConfigured,
   botId,
+  model,
   onBusyChange,
+  formId,
 }: {
   onConfigured: () => void;
   botId?: number;
+  model?: string | null;
   onBusyChange?: (busy: boolean) => void;
+  formId?: string;
 }) {
-  const [catalog, setCatalog] = useState<Catalog>();
-  const [provider, setProvider] = useState("");
-  const [loginId, setLoginId] = useState<string>();
-  const [login, setLogin] = useState<Login>();
-  const [value, setValue] = useState("");
-  const [selection, setSelection] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const waiting = Boolean(loginId && !login?.done);
-  useEffect(
-    () => onBusyChange?.(busy || waiting),
-    [busy, waiting, onBusyChange],
-  );
-  const refresh = useCallback(
-    () =>
-      hostingRequest<Catalog>("models").then((value) => {
-        setCatalog(value);
-        setProvider(
-          (current) =>
-            current ||
-            value.providers.find((item) => item.configured)?.id ||
-            "",
-        );
-        window.dispatchEvent(new Event("domos:models"));
-      }),
-    [],
-  );
-  useEffect(() => {
-    void refresh().catch((error) => setError(error.message));
-  }, [refresh]);
-  useEffect(() => {
-    if (!loginId) return;
-    const controller = new AbortController();
-    const poll = async () => {
-      try {
-        const result = await hostingRequest<Login>(
-          `login/${loginId}`,
-          undefined,
-          "GET",
-          controller.signal,
-        );
-        setLogin(result);
-        if (result.done) {
-          await refresh();
-          clearInterval(timer);
+  const separator = model?.indexOf("/") ?? -1;
+  const initial =
+    model && separator > 0
+      ? {
+          provider: model.slice(0, separator),
+          modelId: model.slice(separator + 1),
         }
-      } catch (error) {
-        if (!controller.signal.aborted) setError((error as Error).message);
-      }
-    };
-    const timer = setInterval(() => void poll(), 750);
-    void poll();
-    return () => {
-      clearInterval(timer);
-      controller.abort();
-    };
-  }, [loginId, refresh]);
-  const action = async (run: () => Promise<unknown>) => {
-    setBusy(true);
-    setError("");
-    try {
-      await run();
-    } catch (error) {
-      setError((error as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-  useEffect(
-    () => () => {
-      if (loginId)
-        void hostingRequest(`login/${loginId}`, undefined, "DELETE").catch(
-          () => {},
-        );
-    },
-    [loginId],
+      : null;
+  const account = useModelAccount(onBusyChange, initial?.provider);
+  const { catalog, selected, provider, login, busy, waiting } = account;
+  const [editing, setEditing] = useState(false);
+  const [method, setMethod] = useState("");
+  const [value, setValue] = useState("");
+  const [selection, setSelection] = useState(
+    initial ? JSON.stringify(initial) : "",
   );
-  const selected = catalog?.providers.find((item) => item.id === provider);
+  const [disconnecting, setDisconnecting] = useState(false);
   const prompt = login?.prompt;
+  const models =
+    catalog?.models.filter((item) => item.provider === provider) ?? [];
+  const selectedModel = models.find(
+    (item) =>
+      JSON.stringify({ provider: item.provider, modelId: item.modelId }) ===
+      selection,
+  );
+  const changed =
+    selectedModel &&
+    `${selectedModel.provider}/${selectedModel.modelId}` !== model;
+  const chooseProvider = (provider: string) => {
+    account.setProvider(provider);
+    setEditing(false);
+    setMethod("");
+    setValue("");
+    setSelection("");
+  };
+  useEffect(() => {
+    if (login?.done && !login.error) setEditing(false);
+  }, [login]);
   return (
     <section
-      className="settings-sections"
+      className="model-connection detail-stack"
       aria-label="模型配置"
       aria-busy={busy}
-      data-dirty={Boolean(value || selection || (loginId && !login?.done))}
+      data-dirty={Boolean(value || changed || waiting)}
     >
-      <section className="settings-group">
-        <h2>连接模型</h2>
-        <div className="settings-card">
-          <SettingRow title="模型提供方" description="连接用于对话的模型账号。">
-            <SearchPicker
-              label="模型提供方"
-              placeholder="选择提供方"
-              searchLabel="搜索提供方…"
-              emptyLabel="没有找到提供方"
-              size="small"
-              value={provider}
+      {!catalog && (
+        <p className="detail-note" role="status">
+          正在读取账号…
+        </p>
+      )}
+      {(!selected?.configured || editing) && (
+        <div className="field">
+          <span className="field-label">模型提供方</span>
+          <SearchPicker
+            label="模型提供方"
+            placeholder="选择提供方"
+            searchLabel="搜索提供方…"
+            emptyLabel="没有找到提供方"
+            value={provider}
+            disabled={busy || waiting}
+            onValueChange={chooseProvider}
+            items={
+              catalog?.providers
+                .toSorted((a, b) => Number(b.configured) - Number(a.configured))
+                .map((item) => ({
+                  value: item.id,
+                  label: `${item.name}${item.configured ? " · 已连接" : ""}`,
+                })) ?? []
+            }
+          />
+        </div>
+      )}
+      {selected?.configured && !editing && (
+        <div className="account-summary">
+          <div>
+            <strong>{selected.name}</strong>
+            <span className="detail-note">已连接</span>
+          </div>
+          <Button variant="ghost" size="small" onClick={() => setEditing(true)}>
+            更换账号
+          </Button>
+        </div>
+      )}
+      {selected && (!selected.configured || editing) && !waiting && (
+        <div className="detail-stack">
+          {selected.methods.length > 1 && (
+            <ChoicePicker
+              label="连接方式"
+              value={method || selected.methods[0]?.type || ""}
+              onValueChange={setMethod}
               disabled={busy}
-              onValueChange={setProvider}
-              items={[
-                ...(catalog?.providers
-                  .toSorted(
-                    (left, right) =>
-                      Number(right.configured) - Number(left.configured),
-                  )
-                  .map((item) => ({
-                    value: item.id,
-                    label: `${item.name}${item.configured ? " · 已连接" : ""}`,
-                  })) ?? []),
-              ]}
+              items={selected.methods.map((item) => ({
+                value: item.type,
+                label: item.name,
+              }))}
             />
-          </SettingRow>
-          {selected?.methods.map((method) => (
-            <SettingRow
-              key={method.type}
-              title={method.name}
-              description={`连接 ${selected.name} 账号。`}
+          )}
+          {!!selected.methods.length && (
+            <Button
+              pending={busy}
+              onClick={() =>
+                void account.connect(method || selected.methods[0]?.type || "")
+              }
             >
+              {selected.configured ? "重新登录" : `连接 ${selected.name}`}
+            </Button>
+          )}
+          {editing && (
+            <div className="detail-actions">
               <Button
-                variant="secondary"
-                size="small"
-                aria-label={method.name}
-                disabled={busy}
-                onClick={() =>
-                  void action(async () => {
-                    await hostingRequest("login", undefined, "DELETE");
-                    const result = await hostingRequest<{ id: string }>(
-                      "login",
-                      {
-                        provider,
-                        type: method.type,
-                      },
-                    );
-                    setLogin(undefined);
-                    setLoginId(result.id);
-                    setValue("");
-                  })
-                }
-              >
-                {selected.configured ? "重新连接" : "连接"}
-              </Button>
-            </SettingRow>
-          ))}
-          {selected?.configured && (
-            <SettingRow
-              title="账号状态"
-              description="此提供方的模型已可用于对话。"
-            >
-              <Button
-                variant="secondary"
+                variant="ghost"
                 size="small"
                 disabled={busy}
-                onClick={() =>
-                  void action(async () => {
-                    await hostingRequest(
-                      `models/${encodeURIComponent(provider)}`,
-                      undefined,
-                      "DELETE",
-                    );
-                    await refresh();
-                  })
-                }
+                onClick={() => setEditing(false)}
               >
-                断开模型账号
+                返回模型选择
               </Button>
-            </SettingRow>
+              <Button
+                variant="ghost"
+                size="small"
+                disabled={busy}
+                onClick={() => setDisconnecting(true)}
+              >
+                断开账号
+              </Button>
+            </div>
           )}
         </div>
-      </section>
-      {login?.events.map((event) => (
-        <p key={event.id} className="detail-note">
-          {event.message} {event.userCode}
-          {(event.url ?? event.verificationUri)?.startsWith("https://") && (
-            <a
-              href={event.url ?? event.verificationUri}
-              target="_blank"
-              rel="noreferrer"
-            >
-              打开登录页面
-            </a>
-          )}
-        </p>
-      ))}
-      {prompt && (
-        <form
-          className="settings-form settings-card"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void action(async () => {
-              await hostingRequest(`login/${loginId}`, {
-                promptId: prompt.id,
-                value,
-              });
-              setValue("");
-              setLogin((current) =>
-                current ? { ...current, prompt: undefined } : current,
-              );
-            });
-          }}
-        >
-          {prompt.options ? (
-            <div className="field">
-              <label className="field-label" htmlFor="model-login-input">
-                {prompt.message}
-              </label>
-              <ChoicePicker
-                id="model-login-input"
-                label={prompt.message}
-                value={value}
-                onValueChange={setValue}
-                disabled={busy}
-                items={[
-                  { value: "", label: "请选择" },
-                  ...prompt.options.map((item) => ({
-                    value: item.id,
-                    label: item.label,
-                  })),
-                ]}
-              />
-            </div>
-          ) : (
-            <TextField
-              label={prompt.message}
-              type={prompt.type === "secret" ? "password" : "text"}
-              value={value}
-              autoComplete="off"
-              onValueChange={setValue}
-              disabled={busy}
-            />
-          )}
-          <div className="form-actions">
-            <Button size="small" pending={busy} disabled={!value} type="submit">
-              {busy ? "正在连接…" : "继续"}
-            </Button>
-          </div>
-        </form>
       )}
-      {login?.error && <p role="alert">{login.error}</p>}
-      {loginId && !login?.done && (
-        <div className="form-actions">
+      {waiting && (
+        <div className="detail-stack">
+          {login?.events.map((event) => (
+            <div key={event.id} className="detail-note">
+              {event.message}{" "}
+              {event.userCode && (
+                <code className="pairing-code">{event.userCode}</code>
+              )}
+              {(event.url ?? event.verificationUri)?.startsWith("https://") && (
+                <a
+                  href={event.url ?? event.verificationUri}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  打开登录页面
+                </a>
+              )}
+            </div>
+          ))}
+          {prompt && (
+            <form
+              className="detail-stack"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void account.answer(value).then(() => setValue(""));
+              }}
+            >
+              {prompt.options ? (
+                <ChoicePicker
+                  label={prompt.message}
+                  value={value}
+                  onValueChange={setValue}
+                  disabled={busy}
+                  items={[
+                    { value: "", label: "请选择" },
+                    ...prompt.options.map((item) => ({
+                      value: item.id,
+                      label: item.label,
+                    })),
+                  ]}
+                />
+              ) : (
+                <TextField
+                  label={prompt.message}
+                  type={prompt.type === "secret" ? "password" : "text"}
+                  value={value}
+                  onValueChange={setValue}
+                  autoComplete="off"
+                  disabled={busy}
+                />
+              )}
+              <Button pending={busy} disabled={!value}>
+                继续
+              </Button>
+            </form>
+          )}
           <Button
             variant="secondary"
             size="small"
             disabled={busy}
-            onClick={() =>
-              void action(async () => {
-                await hostingRequest("login", undefined, "DELETE");
-                setLoginId(undefined);
-                setLogin(undefined);
-              })
-            }
+            onClick={() => void account.cancel()}
           >
             取消登录
           </Button>
         </div>
       )}
-      {botId !== undefined && (
-        <section className="settings-group">
-          <h3>对话模型</h3>
-          <div className="settings-card">
-            <SettingRow
-              title="此 Bot 的模型"
-              description="选择此 Bot 用于回复消息的模型。"
-            >
-              <SearchPicker
-                label="此 Bot 的模型"
-                placeholder="选择已连接的模型"
-                searchLabel="搜索模型…"
-                emptyLabel="请先连接模型账号"
-                size="small"
-                value={selection}
-                disabled={busy}
-                onValueChange={setSelection}
-                items={[
-                  ...(catalog?.models.map((item) => ({
-                    value: JSON.stringify({
-                      provider: item.provider,
-                      modelId: item.modelId,
-                    }),
-                    label: item.name,
-                  })) ?? []),
-                ]}
-              />
-            </SettingRow>
+      {botId !== undefined && selected?.configured && !editing && !waiting && (
+        <form
+          className="detail-stack"
+          id={formId}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void account.action(async () => {
+              if (!selection) throw new Error("请选择一个模型。");
+              await client.models.select({ botId, ...JSON.parse(selection) });
+              window.dispatchEvent(new Event("domos:models"));
+              setSelection("");
+              onConfigured();
+            });
+          }}
+        >
+          <div className="field">
+            <span className="field-label">对话模型</span>
+            <SearchPicker
+              label="此 Bot 的模型"
+              placeholder="选择已连接的模型"
+              searchLabel="搜索模型…"
+              emptyLabel="没有可用模型"
+              value={selection}
+              disabled={busy}
+              onValueChange={setSelection}
+              items={models.map((item) => ({
+                value: JSON.stringify({
+                  provider: item.provider,
+                  modelId: item.modelId,
+                }),
+                label: item.name,
+              }))}
+            />
           </div>
-          {selection && (
-            <div className="form-actions">
-              <Button
-                size="small"
-                pending={busy}
-                onClick={() =>
-                  void action(async () => {
-                    await client.models.select({
-                      botId,
-                      ...JSON.parse(selection),
-                    });
-                    window.dispatchEvent(new Event("domos:models"));
-                    onConfigured();
-                  })
-                }
-              >
-                {busy ? "正在保存…" : "保存模型"}
-              </Button>
-            </div>
+          {!formId && (
+            <Button type="submit" pending={busy} disabled={!selection}>
+              保存模型
+            </Button>
           )}
-        </section>
+        </form>
       )}
-      {error && <p role="alert">{error}</p>}
+      {(account.error || login?.error) && (
+        <p className="alert" role="alert">
+          {account.error || login?.error}
+        </p>
+      )}
+      <ConfirmDialog
+        open={disconnecting}
+        onOpenChange={setDisconnecting}
+        title="断开这个账号？"
+        description="使用此账号的 Bot 需要重新连接模型。"
+        confirmLabel="断开账号"
+        onConfirm={() => void account.disconnect()}
+      />
     </section>
   );
 }

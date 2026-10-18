@@ -3,6 +3,7 @@ import type { ChatView } from "@domos/agent/view";
 import { ActivityText } from "@domos/ui/activity";
 import { Button } from "@domos/ui/controls";
 import { MessageBubble } from "@domos/ui/message";
+import { ScrollArea } from "@domos/ui/scroll-area";
 import { ArrowDownIcon } from "@phosphor-icons/react/dist/csr/ArrowDown";
 import type { ReactNode } from "react";
 import { ExecutionActivity } from "./activity.tsx";
@@ -27,10 +28,14 @@ export function Messages({
   const transcript = useTranscript(view);
   return (
     <div className="transcript-pane">
-      <div
-        className="transcript"
-        ref={transcript.viewport}
-        onScroll={transcript.onScroll}
+      <ScrollArea
+        className="transcript-scroll"
+        viewportClassName="transcript"
+        viewportRef={transcript.viewport}
+        onScrollCapture={(event) => {
+          if (event.target === transcript.viewport.current)
+            transcript.onScroll();
+        }}
       >
         {!view ? (
           <p className="working" role="status">
@@ -108,7 +113,7 @@ export function Messages({
             {!view?.busy && view?.messages.length ? chatCopy.complete : ""}
           </p>
         </div>
-      </div>
+      </ScrollArea>
       {!transcript.atBottom && (
         <Button
           type="button"

@@ -1,6 +1,7 @@
 import type { Bot } from "@domos/agent/bots";
 import { Button } from "@domos/ui/controls";
-import { ChoicePicker } from "@domos/ui/picker";
+import { ScrollArea } from "@domos/ui/scroll-area";
+import { Tabs } from "@domos/ui/tabs";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import type { ReactNode } from "react";
 import { MemoryPanel } from "./memory.tsx";
@@ -80,23 +81,17 @@ export function BotDetails({
     },
   };
   return (
-    <aside
+    <Tabs.Root
+      render={<aside />}
+      value={panel}
+      onValueChange={(value) => onPanelChange(value as BotPanel)}
       tabIndex={-1}
       id="bot-details"
       className="bot-details"
       aria-label={`${bot.name}的详情`}
     >
       <header className="detail-header">
-        <ChoicePicker
-          label="Bot设置分区"
-          size="small"
-          value={panel}
-          onValueChange={(value) => onPanelChange(value as BotPanel)}
-          items={Object.entries(panels).map(([value, item]) => ({
-            value,
-            label: item.label,
-          }))}
-        />
+        <strong>{bot.name}</strong>
         <Button
           variant="ghost"
           size="icon-small"
@@ -106,7 +101,14 @@ export function BotDetails({
           <XIcon />
         </Button>
       </header>
-      <div className="detail-content">
+      <Tabs.List className="detail-nav" aria-label="Bot设置分区">
+        {Object.entries(panels).map(([key, item]) => (
+          <Tabs.Tab key={key} value={key}>
+            {item.label}
+          </Tabs.Tab>
+        ))}
+      </Tabs.List>
+      <ScrollArea className="detail-scroll" viewportClassName="detail-content">
         {!work.connected && (
           <p className="detail-note" role="status">
             正在连接详情…
@@ -118,7 +120,7 @@ export function BotDetails({
           </p>
         )}
         {Object.entries(panels).map(([key, item]) => (
-          <section key={key} hidden={panel !== key} aria-label={item.label}>
+          <Tabs.Panel key={key} value={key} keepMounted aria-label={item.label}>
             <fieldset
               className="bot-fields"
               disabled={!work.connected || action.busy}
@@ -126,9 +128,9 @@ export function BotDetails({
               {item.content}
               {key === "profile" && model}
             </fieldset>
-          </section>
+          </Tabs.Panel>
         ))}
-      </div>
-    </aside>
+      </ScrollArea>
+    </Tabs.Root>
   );
 }

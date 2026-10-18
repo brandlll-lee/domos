@@ -1,6 +1,7 @@
 import { Combobox } from "@base-ui/react/combobox";
 import { Select } from "@base-ui/react/select";
 import { useMemo } from "react";
+import { ScrollArea } from "./scroll-area.tsx";
 
 type Choice = { value: string; label: string };
 type PickerProps = {
@@ -60,20 +61,22 @@ export function ChoicePicker({
           alignItemWithTrigger={false}
         >
           <Select.Popup className="picker-popup" aria-label={label}>
-            <Select.List className="picker-list">
-              {items.map((item) => (
-                <Select.Item
-                  key={item.value}
-                  value={item.value}
-                  className="picker-item"
-                >
-                  <Select.ItemText>{item.label}</Select.ItemText>
-                  <Select.ItemIndicator className="picker-check">
-                    <Check />
-                  </Select.ItemIndicator>
-                </Select.Item>
-              ))}
-            </Select.List>
+            <ScrollArea className="picker-scroll">
+              <Select.List className="picker-list">
+                {items.map((item) => (
+                  <Select.Item
+                    key={item.value}
+                    value={item.value}
+                    className="picker-item"
+                  >
+                    <Select.ItemText>{item.label}</Select.ItemText>
+                    <Select.ItemIndicator className="picker-check">
+                      <Check />
+                    </Select.ItemIndicator>
+                  </Select.Item>
+                ))}
+              </Select.List>
+            </ScrollArea>
           </Select.Popup>
         </Select.Positioner>
       </Select.Portal>
@@ -149,7 +152,7 @@ export function SearchPicker({
               aria-label={searchLabel}
               placeholder={searchLabel}
             />
-            <div className="picker-viewport">
+            <ScrollArea className="picker-scroll">
               <Combobox.Empty>
                 <div className="picker-empty">{emptyLabel}</div>
               </Combobox.Empty>
@@ -167,7 +170,7 @@ export function SearchPicker({
                   </Combobox.Item>
                 )}
               </Combobox.List>
-            </div>
+            </ScrollArea>
           </Combobox.Popup>
         </Combobox.Positioner>
       </Combobox.Portal>

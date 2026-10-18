@@ -1,0 +1,47 @@
+.scroll-root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.scroll-viewport {
+  min-width: 0;
+  min-height: 0;
+  max-height: inherit;
+  overflow: auto;
+  overscroll-behavior: contain;
+  outline: none;
+}
+.scroll-viewport > div {
+  min-width: 0;
+}
+.scroll-viewport:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+.scroll-bar {
+  display: flex;
+  justify-content: center;
+  width: var(--space-3);
+  padding: var(--space-1);
+  margin-block: var(--space-1);
+  border-radius: var(--radius-round);
+  opacity: 0;
+  transition: opacity var(--motion-feedback);
+}
+.scroll-bar[data-hovering],
+.scroll-bar[data-scrolling],
+.scroll-root:focus-within .scroll-bar {
+  opacity: 1;
+}
+.scroll-thumb {
+  width: 100%;
+  min-height: var(--space-6);
+  border-radius: var(--radius-round);
+  background: color-mix(in srgb, var(--color-muted) 45%, transparent);
+}
+.scroll-bar:hover .scroll-thumb {
+  background: var(--color-muted);
+}

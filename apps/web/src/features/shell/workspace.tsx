@@ -17,7 +17,6 @@ export function Workspace({
   children,
   actions,
   onSettings,
-  page,
 }: {
   sidebar: ReactNode;
   inspector: ReactNode;
@@ -26,7 +25,6 @@ export function Workspace({
   children: ReactNode;
   actions: ReactNode;
   onSettings: () => void;
-  page?: ReactNode;
 }) {
   const sizing = useWorkspaceLayout(detailsOpen);
   const [contactsOpen, setContactsOpen] = useState(false);
@@ -66,24 +64,15 @@ export function Workspace({
       }
     >
       <Titlebar
-        onContacts={
-          !page && sizing.mobile ? () => setContactsOpen(true) : undefined
-        }
-        actions={page ? undefined : actions}
+        onContacts={sizing.mobile ? () => setContactsOpen(true) : undefined}
+        actions={actions}
       />
-      <div
-        className="workspace-content"
-        hidden={Boolean(page)}
-        inert={Boolean(page)}
-      >
-        {children}
-      </div>
-      {page && <div className="workspace-page">{page}</div>}
+      <div className="workspace-content">{children}</div>
       {panels.map(({ side, title, modal, open, change, content }) => (
         <PanelDialog.Root
           key={side}
-          open={!page && open}
-          modal={!page && modal}
+          open={open}
+          modal={modal}
           disablePointerDismissal={!modal}
           onOpenChange={change}
         >
@@ -100,16 +89,11 @@ export function Workspace({
                     ? undefined
                     : sizing.widths[side],
               }}
-              initialFocus={!page && (modal || side === "inspector")}
-              finalFocus={
-                page
-                  ? false
-                  : () =>
-                      document.getElementById(
-                        side === "sidebar"
-                          ? "contacts-trigger"
-                          : "details-trigger",
-                      )
+              initialFocus={modal || side === "inspector"}
+              finalFocus={() =>
+                document.getElementById(
+                  side === "sidebar" ? "contacts-trigger" : "details-trigger",
+                )
               }
             >
               <PanelDialog.Title className="sr-only">{title}</PanelDialog.Title>

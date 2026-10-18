@@ -184,7 +184,7 @@ textarea.field-control {
   min-width: max(var(--anchor-width), 9rem);
   max-width: var(--available-width);
   max-height: var(--available-height);
-  overflow: auto;
+  overflow: hidden;
   padding: var(--space-1);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
@@ -217,10 +217,11 @@ textarea.field-control {
 .picker-search:focus-visible {
   outline-offset: -2px;
 }
-.picker-viewport {
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  max-height: 20rem;
+.picker-scroll {
+  max-height: min(20rem, calc(var(--available-height) - var(--control-height)));
+}
+.picker-scroll .scroll-viewport {
+  padding-inline-end: var(--space-3);
 }
 .picker-list {
   padding: var(--space-1) 0;

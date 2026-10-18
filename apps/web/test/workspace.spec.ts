@@ -61,10 +61,8 @@ test("panels resize live, persist only on release, and retain drafts across layo
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   const name = page.getByRole("textbox", { name: "名字", exact: true });
   await name.fill("尚未保存的名字");
-  await page.getByRole("combobox", { name: "Bot设置分区" }).click();
-  await page.getByRole("option", { name: "电脑", exact: true }).click();
-  await page.getByRole("combobox", { name: "Bot设置分区" }).click();
-  await page.getByRole("option", { name: "Bot设置", exact: true }).click();
+  await page.getByRole("tab", { name: "电脑", exact: true }).click();
+  await page.getByRole("tab", { name: "Bot设置", exact: true }).click();
   await expect(name).toHaveValue("尚未保存的名字");
   const right = page.getByRole("separator", { name: "调整详情宽度" });
   const inspectorPanel = page.locator(
@@ -113,8 +111,9 @@ test("settings stay readable in both themes and compact layouts", async ({
   await expect(input).toBeHidden();
   await expect(
     page.getByRole("dialog", { name: "设置", exact: true }),
-  ).toHaveCount(0);
-  expect((await settings.boundingBox())?.y).toBe(48);
+  ).toHaveCount(1);
+  expect((await settings.boundingBox())?.y).toBeGreaterThan(100);
+  expect((await settings.boundingBox())?.height).toBeLessThan(700);
   expect((await settings.boundingBox())?.width).toBeGreaterThan(800);
   for (const [theme, label] of [
     ["dark", "深色"],
@@ -384,20 +383,19 @@ test("control geometry and interaction states stay consistent", async ({
   await page.goto(url);
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   const details = page.getByRole("complementary", { name: "Domos的详情" });
-  const picker = details.getByRole("combobox", { name: "Bot设置分区" });
+  const picker = details.getByRole("tab", { name: "Bot设置", exact: true });
   const inset = await picker.evaluate((item) => {
     const box = item.getBoundingClientRect();
-    const value = item.querySelector(".picker-value")?.getBoundingClientRect();
     const header = item.parentElement?.getBoundingClientRect();
     return {
-      left: (value?.left ?? 0) - box.left,
+      left: Number.parseFloat(getComputedStyle(item).paddingLeft),
       top: box.top - (header?.top ?? 0),
       bottom: (header?.bottom ?? 0) - box.bottom,
     };
   });
   expect(inset.left).toBeGreaterThanOrEqual(8);
-  expect(inset.top).toBeGreaterThanOrEqual(8);
-  expect(inset.bottom).toBeGreaterThanOrEqual(8);
+  expect(inset.top).toBeGreaterThanOrEqual(0);
+  expect(inset.bottom).toBeGreaterThanOrEqual(0);
   const name = details.getByRole("textbox", { name: "名字", exact: true });
   const model = details.getByRole("combobox", { name: "模型", exact: true });
   const inputHeight = (await name.boundingBox())?.height;
@@ -422,8 +420,7 @@ test("control geometry and interaction states stay consistent", async ({
   await save.hover();
   await expect(save).toHaveCSS("background-color", color);
   await details.getByRole("button", { name: "还原", exact: true }).click();
-  await picker.click();
-  await page.getByRole("option", { name: "电脑", exact: true }).click();
+  await details.getByRole("tab", { name: "电脑", exact: true }).click();
   await details.getByRole("button", { name: "高级选项", exact: true }).click();
   const select = details.getByRole("combobox", {
     name: "连接已有电脑",
@@ -431,8 +428,7 @@ test("control geometry and interaction states stay consistent", async ({
   });
   expect((await select.boundingBox())?.height).toBe(inputHeight);
   await expect(select).toHaveCSS("font-size", "14px");
-  await picker.click();
-  await page.getByRole("option", { name: "记忆", exact: true }).click();
+  await details.getByRole("tab", { name: "记忆", exact: true }).click();
   const checkbox = details.getByRole("checkbox", { name: "共享给所有Bot" });
   await expect(checkbox).toHaveCSS("width", "16px");
   await expect(checkbox).toHaveCSS("margin", "0px");

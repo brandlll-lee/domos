@@ -1,8 +1,10 @@
 import { Button } from "@domos/ui/controls";
+import { ScrollArea } from "@domos/ui/scroll-area";
 import { Tabs } from "@domos/ui/tabs";
 import { compactChat } from "@domos/ui/tokens";
 import { ArrowLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowLeft";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react/dist/csr/MagnifyingGlass";
+import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import {
   type SettingsAccess,
@@ -84,6 +86,7 @@ export function SettingsPage({
         )
           return;
         event.preventDefault();
+        event.stopPropagation();
         if (query) setQuery("");
         else onBack();
       }}
@@ -152,10 +155,20 @@ export function SettingsPage({
         tabIndex={-1}
       >
         <header className="settings-header">
-          <h2>{sections[section].label}</h2>
-          <p>{sections[section].description}</p>
+          <div>
+            <h2>{sections[section].label}</h2>
+            <p>{sections[section].description}</p>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon-small"
+            aria-label="关闭设置"
+            onClick={onBack}
+          >
+            <XIcon />
+          </Button>
         </header>
-        <div className="settings-scroll" ref={scroll}>
+        <ScrollArea className="settings-scroll" viewportRef={scroll}>
           <div className="settings-content">
             {visited.map((id) => (
               <Tabs.Panel key={id} value={id} keepMounted>
@@ -168,7 +181,7 @@ export function SettingsPage({
               </p>
             )}
           </div>
-        </div>
+        </ScrollArea>
       </section>
     </Tabs.Root>
   );

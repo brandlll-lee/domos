@@ -90,11 +90,7 @@ async function chooseDetail(
   label: string,
 ) {
   await details
-    .getByRole("combobox", { name: "Bot设置分区", exact: true })
-    .click();
-  await details
-    .page()
-    .getByRole("option", {
+    .getByRole("tab", {
       name: label === "身份" ? "Bot设置" : label,
       exact: true,
     })
@@ -319,11 +315,17 @@ test("Bot details manage identity, memory, shared skills, routines and actual pr
     .getByLabel("工作要求与交付方式")
     .fill("整理报告，发回当前聊天。");
   await dialog.getByLabel("report", { exact: true }).check();
+  await dialog.getByRole("combobox", { name: "重复频率", exact: true }).click();
+  await page.getByRole("option", { name: "每周", exact: true }).click();
+  await dialog.getByRole("combobox", { name: "星期", exact: true }).click();
+  await page.getByRole("option", { name: "周三", exact: true }).click();
+  await dialog.getByLabel("每天执行时间", { exact: true }).fill("08:30");
   await dialog.getByRole("button", { name: "保存为暂停", exact: true }).click();
   const routine = dialog
     .locator(".detail-list li")
     .filter({ has: page.getByRole("button", { name: "试跑", exact: true }) });
   await expect(routine).toContainText("已暂停");
+  await expect(routine).toContainText("每周三 08:30");
   await routine.getByRole("button", { name: "启用", exact: true }).click();
   await expect(routine).toContainText("已启用");
   await routine.getByRole("button", { name: "暂停", exact: true }).click();
@@ -358,6 +360,21 @@ test("Bot details manage identity, memory, shared skills, routines and actual pr
   );
   await chooseDetail(sections, "定时");
   await expect(dialog).toContainText("试跑 · 已完成");
+  await chooseDetail(sections, "记忆");
+  const memory = dialog
+    .locator(".detail-list li")
+    .filter({ hasText: "报告使用公制单位。" });
+  const remove = memory.getByRole("button", { name: "删除", exact: true });
+  await remove.click();
+  const confirmation = page.getByRole("dialog", {
+    name: "删除这条记忆？",
+    exact: true,
+  });
+  await confirmation.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(remove).toBeFocused();
+  await remove.click();
+  await confirmation.getByRole("button", { name: "删除", exact: true }).click();
+  await expect(memory).toHaveCount(0);
 });
 
 test("Bot details retain invalid skill edits and fit a narrow viewport", async ({
@@ -1288,7 +1305,7 @@ test("structured messages show Markdown, thinking, tool states, and restored res
   await expect(process.getByText("1 项失败", { exact: true })).toBeVisible();
   await process.locator(":scope > details > summary").click();
   const result = process.locator(".activity-content > details");
-  await result.locator("summary").click();
+  await result.locator(":scope > summary").click();
   await expect(result.locator("strong")).toHaveText("工具结果");
   await expect(
     page.getByRole("button", { name: "发送", exact: true }),
@@ -1875,7 +1892,7 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
   await expect(page.locator(".message.toolResult")).toHaveCount(0);
   await activity.locator(":scope > details > summary").click();
   const read = activity.locator(".activity-content > details").first();
-  await read.locator("summary").click();
+  await read.locator(":scope > summary").click();
   await expect(read).toContainText(source);
   await activity.locator(":scope > details > summary").click();
   await chooseAppearance(page, "深色");
@@ -1936,11 +1953,15 @@ test("tool progress follows the Bot and stop and restart retain accurate results
   await input.fill("生成文件");
   await send.click();
   const running = page.locator('.execution-activity[data-state="running"]');
-  await expect(running.getByRole("status")).toContainText("正在执行 · write");
+  await expect(running.getByRole("status")).toContainText(
+    "正在执行 · 写入文件 · stopped.md",
+  );
   await createBot(page, "旁观助手");
   await expect(running).toHaveCount(0);
   await page.goto(primary);
-  await expect(running.getByRole("status")).toContainText("正在执行 · write");
+  await expect(running.getByRole("status")).toContainText(
+    "正在执行 · 写入文件 · stopped.md",
+  );
   await page.getByRole("button", { name: "停止生成", exact: true }).click();
   await expect(send).toBeVisible();
   await expect(
@@ -1950,7 +1971,9 @@ test("tool progress follows the Bot and stop and restart retain accurate results
   await control(call("interrupted.md"));
   await input.fill("再次生成");
   await send.click();
-  await expect(running.getByRole("status")).toContainText("正在执行 · write");
+  await expect(running.getByRole("status")).toContainText(
+    "正在执行 · 写入文件 · interrupted.md",
+  );
   const port = Number(new URL(url).port);
   await stop();
   await start(port);
@@ -2075,7 +2098,7 @@ test("one live process shares motion, keyboard disclosure, themes, and restored 
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
   await trigger.click();
   const step = process.locator(".activity-content > details");
-  await step.locator("summary").click();
+  await step.locator(":scope > summary").click();
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
     await page.locator("body").evaluate((element) => element.scrollWidth),
@@ -2119,7 +2142,7 @@ test("one live process shares motion, keyboard disclosure, themes, and restored 
     page.locator('.bot-avatar svg[data-state="running"]'),
   ).toHaveCount(0);
   await summary.click();
-  await step.locator("summary").click();
+  await step.locator(":scope > summary").click();
   await expect(
     step.getByText("已核对完整资料。", { exact: true }),
   ).toBeVisible();

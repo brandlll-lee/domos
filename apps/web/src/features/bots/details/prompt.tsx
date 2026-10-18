@@ -1,3 +1,4 @@
+import { ActivityDetails } from "@domos/ui/activity";
 import { Button } from "@domos/ui/controls";
 import { useState } from "react";
 import { client } from "../../../client.ts";
@@ -37,15 +38,13 @@ export function PromptPanel({
           <>
             <p className="detail-note">工具：{prompt.tools.join("、")}</p>
             {Object.entries(prompt.sections).map(([key, text]) => (
-              <details key={key}>
-                <summary>{key}</summary>
+              <ActivityDetails key={key} label={key} status="">
                 <pre className="detail-prompt">{text}</pre>
-              </details>
+              </ActivityDetails>
             ))}
-            <details>
-              <summary>完整提示词</summary>
+            <ActivityDetails label="完整提示词" status="">
               <pre className="detail-prompt">{prompt.text}</pre>
-            </details>
+            </ActivityDetails>
           </>
         ) : (
           <p>尚无提示词请求记录。先与此Bot对话。</p>

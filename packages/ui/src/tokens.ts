@@ -89,6 +89,9 @@ export const metrics = {
   "mac-controls-width": "5rem",
   "profile-text-height": "7.5rem",
   "settings-nav-width": "12.5rem",
+  "settings-window-width": "55rem",
+  "settings-window-height": "37.5rem",
+  "dialog-max-height": "38rem",
   "resize-hit-width": "0.5rem",
   "window-controls-width": "9rem",
   "font-body":

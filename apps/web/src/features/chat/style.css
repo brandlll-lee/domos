@@ -41,8 +41,12 @@
   align-content: start;
   gap: var(--space-1);
   min-height: 0;
-  overflow-y: auto;
+}
+.sidebar-scroll {
   flex: 1;
+}
+.sidebar-scroll .scroll-viewport {
+  padding-right: var(--space-3);
 }
 .contact-row {
   display: flex;
@@ -128,12 +132,13 @@
   min-width: 0;
   min-height: 0;
 }
+.transcript-scroll,
 .transcript {
   height: 100%;
+}
+.transcript {
   overflow-y: auto;
   overflow-anchor: none;
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-border) transparent;
   padding: var(--space-6) var(--chat-gutter);
   padding-bottom: calc(var(--composer-dock-height, 0px) + var(--composer-fade));
   scroll-padding-block: calc(var(--control-height) + var(--space-6))
@@ -243,11 +248,16 @@
 .composer-area > form {
   margin-inline: auto;
 }
-.native-approval pre {
+.approval-detail {
+  margin: 0;
   max-height: 12rem;
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--color-muted);
   font-size: var(--text-label);
+}
+.native-approval {
+  padding: var(--space-4);
+  margin-bottom: var(--space-3);
 }

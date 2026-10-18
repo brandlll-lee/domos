@@ -270,6 +270,29 @@ test("first use prepares the default Bot with a computer and engine before share
     await expect(setup.getByRole("button", { name: /^安装/ })).toHaveCount(0);
     await setup.getByRole("button", { name: "重新检查", exact: true }).click();
     await expect(setup.getByRole("alert")).toContainText("引擎未能启动");
+    await page.route("**/hosting/models", async (route) => {
+      const response = await route.fetch();
+      const catalog = await response.json();
+      catalog.providers = catalog.providers.map((provider: { id: string }) =>
+        provider.id === "faux"
+          ? {
+              ...provider,
+              methods: [
+                { type: "api_key", name: "API 密钥" },
+                { type: "oauth", name: "网页登录" },
+              ],
+            }
+          : provider,
+      );
+      catalog.models.push(
+        ...Array.from({ length: 80 }, (_, index) => ({
+          provider: "faux",
+          modelId: `sample-${index}`,
+          name: `示例模型 ${index}`,
+        })),
+      );
+      await route.fulfill({ response, json: catalog });
+    });
     await engines.getByRole("radio", { name: /^Pi/ }).click();
     await setup.getByRole("button", { name: "连接模型", exact: true }).click();
     const model = page.getByRole("dialog", { name: "连接模型", exact: true });
@@ -280,15 +303,68 @@ test("first use prepares the default Bot with a computer and engine before share
       .boundingBox();
     if (!done) throw new Error("Dialog actions required");
     expect(done.y + done.height).toBeLessThanOrEqual(500);
-    await expect(model.locator(".engine-dialog-body")).toHaveCSS(
+    await expect(model.locator(".dialog-body > .scroll-viewport")).toHaveCSS(
       "overflow-y",
-      "auto",
+      "scroll",
     );
     await page.screenshot({
       path: testInfo.outputPath("model-dialog-small.png"),
     });
     await page.setViewportSize({ width: 1360, height: 900 });
+    const modelBox = await model.boundingBox();
+    expect(modelBox?.height).toBeLessThan(550);
+    expect(modelBox?.y).toBeGreaterThan(80);
+    await expect(
+      model.getByRole("button", { name: "重新登录", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      model.getByRole("button", { name: "断开账号", exact: true }),
+    ).toHaveCount(0);
+    await model.getByRole("button", { name: "更换账号", exact: true }).click();
+    await expect(
+      model.getByRole("combobox", { name: "连接方式", exact: true }),
+    ).toBeVisible();
+    await expect(
+      model.getByRole("button", { name: "重新登录", exact: true }),
+    ).toHaveCount(1);
+    let loginDone = false;
+    await page.route("**/hosting/login", async (route) => {
+      await route.fulfill({
+        json: route.request().method() === "POST" ? { id: "ui-login" } : {},
+      });
+    });
+    await page.route("**/hosting/login/ui-login", async (route) => {
+      if (route.request().method() === "POST") loginDone = true;
+      await route.fulfill({
+        json: {
+          done: loginDone,
+          events: [],
+          ...(loginDone
+            ? {}
+            : {
+                prompt: { id: "key", type: "secret", message: "模型 API 密钥" },
+              }),
+        },
+      });
+    });
+    await model.getByRole("button", { name: "重新登录", exact: true }).click();
+    const key = model.getByLabel("模型 API 密钥", { exact: true });
+    await expect(key).toHaveAttribute("type", "password");
+    await expect(
+      model.getByRole("button", { name: "完成", exact: true }),
+    ).toBeDisabled();
+    await key.fill("test-login-value");
+    await model.getByRole("button", { name: "继续", exact: true }).click();
+    await expect(
+      model.getByRole("button", { name: "更换账号", exact: true }),
+    ).toBeVisible();
+    await expect(key).toHaveCount(0);
+    await model.getByRole("button", { name: "更换账号", exact: true }).click();
+    await model
+      .getByRole("button", { name: "返回模型选择", exact: true })
+      .click();
     await page.screenshot({ path: testInfo.outputPath("model-dialog.png") });
+    await model.getByRole("button", { name: "更换账号", exact: true }).click();
     await model.getByRole("combobox", { name: "模型提供方" }).click();
     await expect(page.getByRole("option").first()).toContainText("已连接");
     await page
@@ -298,10 +374,25 @@ test("first use prepares the default Bot with a computer and engine before share
       page.getByText("没有找到提供方", { exact: true }),
     ).toBeVisible();
     await page.keyboard.press("Escape");
+    await model
+      .getByRole("button", { name: "返回模型选择", exact: true })
+      .click();
     await model.getByRole("combobox", { name: "此 Bot 的模型" }).click();
+    const list = page.locator(".picker-search-popup .scroll-viewport");
+    expect(
+      await list.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    ).toBe(true);
+    const lastOption = page.getByRole("option", {
+      name: "示例模型 79",
+      exact: true,
+    });
+    await lastOption.scrollIntoViewIfNeeded();
+    await expect(lastOption).toBeInViewport();
     await page.getByLabel("搜索模型…", { exact: true }).fill("Faux");
     await page.getByRole("option", { name: "Faux Model", exact: true }).click();
-    await model.getByRole("button", { name: "保存模型", exact: true }).click();
+    await model.getByRole("button", { name: "完成", exact: true }).click();
     await expect(model).toBeHidden();
     await expect(
       setup.getByRole("button", { name: "开始使用", exact: true }),

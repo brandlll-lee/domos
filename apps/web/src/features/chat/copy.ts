@@ -29,7 +29,6 @@ export const chatCopy = {
   activityComplete: (count: number) => `已完成 ${count} 项操作`,
   activityFailed: "执行过程有异常",
   activityFailures: (count: number) => `${count} 项失败`,
-  toolInput: "输入",
   toolOutput: "返回结果",
   toolWaiting: "等待结果",
   toolReturned: "已返回",

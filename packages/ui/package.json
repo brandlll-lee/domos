@@ -12,6 +12,7 @@
     "./controls": "./src/web/controls.tsx",
     "./choice": "./src/web/choice.tsx",
     "./dialog": "./src/web/dialog.tsx",
+    "./scroll-area": "./src/web/scroll-area.tsx",
     "./field": "./src/web/field.tsx",
     "./setup": "./src/web/setup.tsx",
     "./picker": "./src/web/picker.tsx",

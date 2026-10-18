@@ -1,5 +1,5 @@
 import { Button } from "@domos/ui/controls";
-import { Dialog } from "@domos/ui/dialog";
+import { Dialog, PanelDialog } from "@domos/ui/dialog";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { SettingsContext } from "./context.ts";
 import { SettingsPage } from "./page.tsx";
@@ -66,21 +66,37 @@ export function SettingsRoot({
         admin: access.admin,
         standalone: access.standalone,
         open: show,
-        page: open ? (
-          <SettingsPage
-            {...access}
-            initialSection={section}
-            onSectionChange={setSection}
-            botId={botId}
-            contentRef={content}
-            message={message}
-            onBack={close}
-            onConfigured={finish}
-          />
-        ) : null,
       }}
     >
       {children}
+      <PanelDialog.Root
+        open={open}
+        onOpenChange={(next) => {
+          if (!next) close();
+        }}
+      >
+        <PanelDialog.Portal>
+          <PanelDialog.Backdrop className="dialog-backdrop" />
+          <PanelDialog.Popup
+            className="settings-window"
+            finalFocus={returnTarget}
+          >
+            <PanelDialog.Title className="sr-only">设置</PanelDialog.Title>
+            {open && (
+              <SettingsPage
+                {...access}
+                initialSection={section}
+                onSectionChange={setSection}
+                botId={botId}
+                contentRef={content}
+                message={message}
+                onBack={close}
+                onConfigured={finish}
+              />
+            )}
+          </PanelDialog.Popup>
+        </PanelDialog.Portal>
+      </PanelDialog.Root>
       <Dialog
         open={discard}
         onOpenChange={setDiscard}

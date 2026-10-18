@@ -10,7 +10,7 @@
 }
 .engine-panel h3,
 .engine-panel p,
-.engine-dialog p {
+.engine-dialog-body p {
   margin: 0;
 }
 .engine-panel h3 {
@@ -22,9 +22,6 @@
 }
 .engine-panel[data-setup] {
   grid-template-rows: minmax(0, 1fr) auto;
-}
-.engine-content {
-  overflow-y: auto;
 }
 .engine-panel[data-setup] .choice-list {
   gap: var(--space-2);
@@ -74,36 +71,25 @@
   padding-top: var(--space-2);
 }
 .engine-dialog {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
-  overflow: hidden;
-  width: min(var(--setup-content-width), calc(100% - var(--space-8)));
-}
-.engine-dialog .dialog-description {
-  margin: var(--space-2) 0 var(--space-5);
+  width: min(28rem, calc(100% - var(--space-8)));
 }
 .engine-dialog-body {
   min-height: 0;
-  overflow-y: auto;
 }
-.engine-dialog .dialog-actions {
-  margin-top: var(--space-5);
-}
-.engine-dialog .settings-card {
-  padding: 0;
-}
-.engine-dialog .setting-row {
-  gap: var(--space-3);
-}
-.engine-dialog .setting-caption {
-  flex-basis: 100%;
-}
-.engine-dialog .setting-control,
-.engine-dialog .setting-control > .picker-trigger {
+.model-connection .picker-trigger {
   width: 100%;
 }
-.engine-dialog .setting-control > .button {
-  margin-inline-start: auto;
+.account-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-block: var(--space-3);
+  border-block: 1px solid var(--color-divider);
+}
+.account-summary > div {
+  display: grid;
+  gap: var(--space-1);
 }
 .engine-account,
 .engine-sign-in {

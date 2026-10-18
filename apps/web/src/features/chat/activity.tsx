@@ -11,6 +11,34 @@ import { WorkStatus } from "@domos/ui/work-status";
 import { chatCopy } from "./copy.ts";
 import { MessageContent } from "./message-content.tsx";
 
+const toolLabels: Record<string, string> = {
+  read: "读取文件",
+  read_file: "读取文件",
+  write: "写入文件",
+  write_file: "写入文件",
+  edit: "编辑文件",
+  bash: "执行命令",
+  shell: "执行命令",
+  exec_command: "执行命令",
+  web_search: "搜索资料",
+  web_fetch: "读取网页",
+  attach_file: "交付文件",
+};
+
+function toolLabel(step: Extract<ActivityStep, { type: "tool" }>) {
+  const target = [
+    step.arguments.path,
+    step.arguments.file_path,
+    step.arguments.command,
+    step.arguments.url,
+    step.arguments.query,
+  ].find((value) => typeof value === "string");
+  const name = toolLabels[step.name] ?? step.name;
+  return typeof target === "string"
+    ? `${name} · ${target.replace(/\s+/g, " ").slice(0, 160)}`
+    : name;
+}
+
 function toolStatus(status: ToolStatus) {
   switch (status) {
     case "running":
@@ -40,12 +68,13 @@ function Step({ step }: { step: ActivityStep }) {
     );
   return (
     <ActivityDetails
-      label={step.name}
+      label={toolLabel(step)}
       status={toolStatus(step.status)}
       attention={step.status === "failed"}
     >
-      <span className="activity-caption">{chatCopy.toolInput}</span>
-      <pre>{JSON.stringify(step.arguments, null, 2)}</pre>
+      <ActivityDetails label="操作详情" status="">
+        <pre>{JSON.stringify(step.arguments, null, 2)}</pre>
+      </ActivityDetails>
       <span className="activity-caption">{chatCopy.toolOutput}</span>
       {step.output.length ? (
         <MessageContent content={step.output} />
@@ -71,7 +100,7 @@ export function activityLabel(activity: Activity) {
   const active = activity.status === "running";
   return active
     ? current
-      ? `${toolStatus(current.status)} · ${current.name}`
+      ? `${toolStatus(current.status)} · ${toolLabel(current)}`
       : activity.responding
         ? chatCopy.working
         : chatCopy.thinkingActive

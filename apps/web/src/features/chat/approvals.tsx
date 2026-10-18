@@ -14,7 +14,10 @@ export function Approvals({
 }) {
   return (
     <div className="detail-stack" aria-live="polite">
-      {approvals.map((approval) => (
+      {approvals.length > 1 && (
+        <span className="activity-caption">{approvals.length} 项需要确认</span>
+      )}
+      {approvals.slice(0, 1).map((approval) => (
         <Approval key={approval.id} botId={botId} approval={approval} />
       ))}
     </div>
@@ -44,7 +47,7 @@ function Approval({
       aria-label={approval.title}
     >
       <strong>{approval.title}</strong>
-      <pre>{approval.detail}</pre>
+      <p className="approval-detail">{approval.detail}</p>
       {approval.kind === "question" && (
         <TextField
           label="你的回答"

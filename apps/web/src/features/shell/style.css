@@ -62,15 +62,6 @@
 .workspace-content > .conversation {
   height: 100%;
 }
-.workspace-content[hidden] {
-  display: none;
-}
-.workspace-page {
-  grid-column: 1 / -1;
-  grid-row: 2;
-  min-width: 0;
-  min-height: 0;
-}
 .workspace-panel {
   position: absolute;
   top: var(--titlebar-height);

@@ -1,5 +1,7 @@
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
+import { useId } from "react";
+import { useSettings } from "../../settings/context.ts";
 import { EngineAccount } from "./engine-account.tsx";
 import { EngineModel, PiEngineModel } from "./engine-model.tsx";
 import type { EngineSetup } from "./use-engine.ts";
@@ -28,6 +30,13 @@ export function EngineDialog({
   finalFocus: () => HTMLElement | null;
 }) {
   const provider = setup.profile?.config.provider ?? "pi";
+  const settings = useSettings();
+  const formId = useId();
+  const modelForm =
+    dialog === "model" &&
+    provider === "pi" &&
+    canManage &&
+    !settings.standalone;
   const pending = Boolean(setup.pending || modelBusy);
   const title =
     dialog === "install"
@@ -53,8 +62,21 @@ export function EngineDialog({
       className="engine-dialog"
       title={title}
       description={description}
+      footer={
+        <div className="dialog-actions">
+          <Button
+            variant={modelForm ? "primary" : "secondary"}
+            type={modelForm ? "submit" : "button"}
+            form={modelForm ? formId : undefined}
+            disabled={pending}
+            onClick={modelForm ? undefined : onClose}
+          >
+            {setup.login?.state === "waiting" ? "取消登录" : "完成"}
+          </Button>
+        </div>
+      }
     >
-      <div className="engine-dialog-body scroll-area">
+      <div className="engine-dialog-body">
         {dialog === "install" && (
           <div className="detail-stack">
             <p className="detail-note">需要联网。已有可用程序时会直接复用。</p>
@@ -81,6 +103,7 @@ export function EngineDialog({
               setup={setup}
               canManage={canManage}
               onBusyChange={onModelBusyChange}
+              formId={modelForm ? formId : undefined}
             />
           ) : (
             <EngineModel setup={setup} />
@@ -90,11 +113,6 @@ export function EngineDialog({
             {setup.error}
           </p>
         )}
-      </div>
-      <div className="dialog-actions">
-        <Button variant="secondary" disabled={pending} onClick={onClose}>
-          {setup.login?.state === "waiting" ? "取消登录" : "完成"}
-        </Button>
       </div>
     </Dialog>
   );

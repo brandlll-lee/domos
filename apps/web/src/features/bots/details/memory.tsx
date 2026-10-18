@@ -1,5 +1,6 @@
 import { WORK_TEXT_LENGTH } from "@domos/agent/work/limits";
 import { Button } from "@domos/ui/controls";
+import { ConfirmButton } from "@domos/ui/dialog";
 import { Checkbox, TextField } from "@domos/ui/field";
 import { useState } from "react";
 import { client } from "../../../client.ts";
@@ -102,28 +103,27 @@ export function MemoryPanel({
               >
                 编辑
               </Button>
-              <Button
-                variant="ghost"
-                size="small"
+              <ConfirmButton
+                title="删除这条记忆？"
+                description="删除后，Bot 将不再使用这条记忆。"
                 disabled={action.busy}
-                onClick={() => {
-                  if (window.confirm("删除这条记忆？"))
-                    void action.run(
-                      ["memory.delete", entry.id, entry.revision],
-                      () =>
-                        client.work.memory.delete({
-                          botId,
-                          id: entry.id,
-                          revision: entry.revision,
-                        }),
-                      () => {
-                        if (editing?.id === entry.id) clear();
-                      },
-                    );
+                onConfirm={() => {
+                  void action.run(
+                    ["memory.delete", entry.id, entry.revision],
+                    () =>
+                      client.work.memory.delete({
+                        botId,
+                        id: entry.id,
+                        revision: entry.revision,
+                      }),
+                    () => {
+                      if (editing?.id === entry.id) clear();
+                    },
+                  );
                 }}
               >
                 删除
-              </Button>
+              </ConfirmButton>
             </div>
           </li>
         ))}

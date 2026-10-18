@@ -1,5 +1,6 @@
 import { SKILL_FILE_BYTES } from "@domos/agent/work/limits";
 import { Button } from "@domos/ui/controls";
+import { ConfirmButton } from "@domos/ui/dialog";
 import { TextField } from "@domos/ui/field";
 import { useRef, useState } from "react";
 import { client } from "../../../client.ts";
@@ -174,28 +175,27 @@ export function SkillsPanel({
               >
                 导出
               </Button>
-              <Button
-                variant="ghost"
-                size="small"
+              <ConfirmButton
+                title="删除这个技能？"
+                description="此技能会从共享库移除。"
                 disabled={action.busy}
-                onClick={() => {
-                  if (window.confirm("从共享库删除这个技能？"))
-                    void action.run(
-                      ["skills.delete", skill.id, skill.revision],
-                      () =>
-                        client.work.skills.delete({
-                          botId,
-                          id: skill.id,
-                          revision: skill.revision,
-                        }),
-                      () => {
-                        if (editing?.id === skill.id) clear();
-                      },
-                    );
+                onConfirm={() => {
+                  void action.run(
+                    ["skills.delete", skill.id, skill.revision],
+                    () =>
+                      client.work.skills.delete({
+                        botId,
+                        id: skill.id,
+                        revision: skill.revision,
+                      }),
+                    () => {
+                      if (editing?.id === skill.id) clear();
+                    },
+                  );
                 }}
               >
                 删除
-              </Button>
+              </ConfirmButton>
             </div>
           </li>
         ))}

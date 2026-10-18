@@ -36,6 +36,10 @@ export function FileAttachment({
         </a>
       )}
       <div className="file-attachment">
+        <svg className="file-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8l-5-5Z" />
+          <path d="M14 3v5h5M8 13h8M8 17h5" />
+        </svg>
         <div className="file-caption">
           <strong title={name}>{name}</strong>
           <span>{units}</span>

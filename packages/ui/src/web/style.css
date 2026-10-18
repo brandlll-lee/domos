@@ -2,6 +2,7 @@
 @import "./controls.css";
 @import "./setup.css";
 @import "./avatar.css";
+@import "./scroll-area.css";
 
 :root {
   font-family: var(--font-body);
@@ -45,20 +46,51 @@ a,
   background: var(--color-scrim);
 }
 .dialog-popup {
+  display: flex;
+  flex-direction: column;
   position: fixed;
   top: 50%;
   left: 50%;
   z-index: 3;
   transform: translate(-50%, -50%);
   width: min(28rem, calc(100% - var(--space-8)));
-  max-height: calc(100dvh - var(--space-8));
-  overflow-y: auto;
+  max-height: min(var(--dialog-max-height), calc(100dvh - var(--space-12)));
+  overflow: hidden;
   padding: var(--space-6);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-message);
+  border-radius: var(--radius-panel);
   background: var(--color-surface);
   color: var(--color-text);
   box-shadow: var(--color-popup-shadow);
+}
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+.dialog-header svg {
+  width: var(--space-4);
+  height: var(--space-4);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+.dialog-body {
+  flex: 0 1 auto;
+}
+.dialog-body > .scroll-viewport {
+  padding-inline-end: var(--space-3);
+}
+.dialog-body:has(.scroll-viewport > div:empty) {
+  display: none;
+}
+.dialog-footer {
+  flex-shrink: 0;
+  padding-top: var(--space-5);
 }
 .dialog-title {
   margin: 0;
@@ -66,7 +98,8 @@ a,
   font-weight: var(--weight-semibold);
 }
 .dialog-description {
-  margin: var(--space-2) 0 var(--space-6);
+  flex-shrink: 0;
+  margin: 0 0 var(--space-5);
   color: var(--color-muted);
   font-size: var(--text-label);
   line-height: 1.5;
@@ -75,18 +108,6 @@ a,
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
-}
-.scroll-area,
-.picker-popup,
-.picker-viewport {
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-border) transparent;
-}
-.scroll-area:hover,
-.picker-popup:hover,
-.picker-viewport:hover {
-  scrollbar-color: var(--color-muted) transparent;
 }
 .skip-link {
   position: fixed;
@@ -210,9 +231,6 @@ a,
   font-size: var(--text-label);
   line-height: var(--message-leading);
   overflow-wrap: anywhere;
-  max-height: var(--activity-detail-height);
-  overflow: auto;
-  scrollbar-width: thin;
 }
 .activity-step-summary {
   width: 100%;
@@ -273,6 +291,9 @@ a,
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: inherit;
+  max-height: var(--activity-detail-height);
+  overflow: auto;
+  scrollbar-width: thin;
 }
 @keyframes activity-sweep {
   from {

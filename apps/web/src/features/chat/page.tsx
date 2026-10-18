@@ -86,7 +86,6 @@ function BotChat({
       detailsOpen={detailsOpen}
       onDetailsChange={setDetailsOpen}
       onSettings={() => settings.open()}
-      page={settings.page}
       actions={<CreateBot onCreated={selectBot} />}
       sidebar={
         <Sidebar bots={bots} selected={bot} connected={directoryConnected} />
