@@ -27,10 +27,88 @@ const config = parseConfig(
   `${dirname(directory)}/config.json`,
 );
 const runtime = await openChat(BACKGROUND_CONTEXT, config, { models });
+const accountMode = process.argv[3] === "accounts";
+let claudeConnected = false;
+const connectedProviders = new Set<string>();
 runtime.computer.process = async () => {
-  const worker = new ProtocolProcess();
+  const worker = new ProtocolProcess(accountMode ? "cli" : "protocol");
+  let authorizing = "";
+  if (accountMode) {
+    worker.input.on("data", (data) => {
+      if (
+        worker.spec?.command !== "claude" ||
+        !worker.spec.args.includes("login")
+      )
+        return;
+      claudeConnected = data.toString().trim() === "fixture-code";
+      worker.ended.resolve({ code: claudeConnected ? 0 : 1 });
+    });
+    worker.request = async <T>(
+      path: string,
+      method?: string,
+      body?: unknown,
+    ) => {
+      const input = body as { key?: string; code?: string } | undefined;
+      const providers = [
+        {
+          id: "openai",
+          name: "OpenAI",
+          models: { one: { id: "one", name: "Fixture OpenCode Model" } },
+        },
+        {
+          id: "other",
+          name: "Other",
+          models: { two: { id: "two", name: "Other Model" } },
+        },
+      ];
+      const id = path.split("/")[2] ?? "";
+      if (path.endsWith("/authorize")) authorizing = id;
+      if (path.endsWith("/callback")) {
+        if (authorizing !== id || input?.code !== "fixture-code")
+          throw new Error("Login failed");
+        connectedProviders.add(id);
+      }
+      if (path.startsWith("/auth/")) {
+        if (method === "PUT") connectedProviders.add(id);
+        else connectedProviders.delete(id);
+      }
+      return (
+        path === "/provider"
+          ? { all: providers, connected: [...connectedProviders] }
+          : path === "/provider/auth"
+            ? {
+                openai: [
+                  { type: "oauth", label: "网页登录" },
+                  { type: "api", label: "API 密钥" },
+                ],
+              }
+            : path.endsWith("/authorize")
+              ? {
+                  url: "https://example.com/login",
+                  method: "code",
+                  instructions: "在浏览器中完成登录。",
+                }
+              : true
+      ) as T;
+    };
+  }
   const launch = worker.launch.bind(worker);
   worker.launch = async (spec) => {
+    worker.spec = spec;
+    if (accountMode && spec.command === "claude") {
+      if (spec.args.includes("--version")) {
+        worker.output.write("claude-cli 2.1.284\n");
+        worker.ended.resolve({ code: 0 });
+      } else if (spec.args.includes("status")) {
+        worker.output.write(JSON.stringify({ loggedIn: claudeConnected }));
+        worker.ended.resolve({ code: claudeConnected ? 0 : 1 });
+      } else
+        worker.output.write(
+          "https://claude.com/cai/oauth/authorize?state=fixture\nPaste code here: ",
+        );
+      return;
+    }
+    if (accountMode && spec.command === "opencode") return launch(spec);
     if (spec.command === "claude")
       throw Object.assign(new Error("Program not found"), { code: "ENOENT" });
     if (spec.command === "opencode") {

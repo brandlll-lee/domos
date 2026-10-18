@@ -1,273 +1,220 @@
 import { Button } from "@domos/ui/controls";
-import { ConfirmDialog } from "@domos/ui/dialog";
 import { TextField } from "@domos/ui/field";
-import { ChoicePicker, SearchPicker } from "@domos/ui/picker";
-import { useEffect, useState } from "react";
+import { ScrollArea } from "@domos/ui/scroll-area";
+import { CheckIcon as Check } from "@phosphor-icons/react/dist/csr/Check";
+import { CircleNotchIcon as LoaderCircle } from "@phosphor-icons/react/dist/csr/CircleNotch";
+import { PlusIcon as Plus } from "@phosphor-icons/react/dist/csr/Plus";
+import { useState } from "react";
 import { client } from "../../client.ts";
+import { PiAccountFlow } from "./model-account-flow.tsx";
 import { useModelAccount } from "./use-model-account.ts";
+import "./models.css";
 
 export function HostingModels({
   onConfigured,
   botId,
   model,
   onBusyChange,
-  formId,
 }: {
-  onConfigured: () => void;
+  onConfigured: () => void | Promise<void>;
   botId?: number;
   model?: string | null;
   onBusyChange?: (busy: boolean) => void;
-  formId?: string;
 }) {
   const separator = model?.indexOf("/") ?? -1;
-  const initial =
-    model && separator > 0
-      ? {
-          provider: model.slice(0, separator),
-          modelId: model.slice(separator + 1),
-        }
-      : null;
-  const account = useModelAccount(onBusyChange, initial?.provider);
-  const { catalog, selected, provider, login, busy, waiting } = account;
-  const [editing, setEditing] = useState(false);
-  const [method, setMethod] = useState("");
-  const [value, setValue] = useState("");
-  const [selection, setSelection] = useState(
-    initial ? JSON.stringify(initial) : "",
+  const initialProvider =
+    model && separator > 0 ? model.slice(0, separator) : "";
+  const account = useModelAccount(onBusyChange, initialProvider);
+  const [adding, setAdding] = useState(false);
+  const [query, setQuery] = useState("");
+  const [selectingModel, setSelectingModel] = useState("");
+  const { catalog, provider, selected, busy, waiting } = account;
+  const configuredProviders =
+    catalog?.providers.filter((item) => item.configured) ?? [];
+  const models = (catalog?.models ?? []).filter(
+    (item) => item.provider === provider,
   );
-  const [disconnecting, setDisconnecting] = useState(false);
-  const prompt = login?.prompt;
-  const models =
-    catalog?.models.filter((item) => item.provider === provider) ?? [];
-  const selectedModel = models.find(
-    (item) =>
-      JSON.stringify({ provider: item.provider, modelId: item.modelId }) ===
-      selection,
+  const visibleModels = models.filter((item) =>
+    `${item.name} ${item.modelId}`
+      .toLocaleLowerCase()
+      .includes(query.trim().toLocaleLowerCase()),
   );
-  const changed =
-    selectedModel &&
-    `${selectedModel.provider}/${selectedModel.modelId}` !== model;
-  const chooseProvider = (provider: string) => {
-    account.setProvider(provider);
-    setEditing(false);
-    setMethod("");
-    setValue("");
-    setSelection("");
-  };
-  useEffect(() => {
-    if (login?.done && !login.error) setEditing(false);
-  }, [login]);
+
+  function chooseProvider(value: string) {
+    account.setProvider(value);
+    setAdding(false);
+    setQuery("");
+  }
+
+  function addProvider() {
+    if (adding) {
+      setAdding(false);
+      account.setProvider(initialProvider || configuredProviders[0]?.id || "");
+      return;
+    }
+    account.setProvider("");
+    setAdding(true);
+    setQuery("");
+  }
+
+  async function chooseModel(item: (typeof models)[number]) {
+    if (botId === undefined) return;
+    setSelectingModel(item.modelId);
+    await account.action(async () => {
+      await client.models.select({
+        botId,
+        provider: item.provider,
+        modelId: item.modelId,
+      });
+      window.dispatchEvent(new Event("domos:models"));
+      await onConfigured();
+    });
+    setSelectingModel("");
+  }
+
   return (
-    <section
-      className="model-connection detail-stack"
-      aria-label="模型配置"
-      aria-busy={busy}
-      data-dirty={Boolean(value || changed || waiting)}
-    >
-      {!catalog && (
-        <p className="detail-note" role="status">
-          正在读取账号…
-        </p>
-      )}
-      {(!selected?.configured || editing) && (
-        <div className="field">
-          <span className="field-label">模型提供方</span>
-          <SearchPicker
-            label="模型提供方"
-            placeholder="选择提供方"
-            searchLabel="搜索提供方…"
-            emptyLabel="没有找到提供方"
-            value={provider}
-            disabled={busy || waiting}
-            onValueChange={chooseProvider}
-            items={
-              catalog?.providers
-                .toSorted((a, b) => Number(b.configured) - Number(a.configured))
-                .map((item) => ({
-                  value: item.id,
-                  label: `${item.name}${item.configured ? " · 已连接" : ""}`,
-                })) ?? []
-            }
-          />
-        </div>
-      )}
-      {selected?.configured && !editing && (
-        <div className="account-summary">
-          <div>
-            <strong>{selected.name}</strong>
-            <span className="detail-note">已连接</span>
-          </div>
-          <Button variant="ghost" size="small" onClick={() => setEditing(true)}>
-            更换账号
-          </Button>
-        </div>
-      )}
-      {selected && (!selected.configured || editing) && !waiting && (
-        <div className="detail-stack">
-          {selected.methods.length > 1 && (
-            <ChoicePicker
-              label="连接方式"
-              value={method || selected.methods[0]?.type || ""}
-              onValueChange={setMethod}
-              disabled={busy}
-              items={selected.methods.map((item) => ({
-                value: item.type,
-                label: item.name,
-              }))}
-            />
-          )}
-          {!!selected.methods.length && (
-            <Button
-              pending={busy}
-              onClick={() =>
-                void account.connect(method || selected.methods[0]?.type || "")
-              }
-            >
-              {selected.configured ? "重新登录" : `连接 ${selected.name}`}
-            </Button>
-          )}
-          {editing && (
-            <div className="detail-actions">
-              <Button
-                variant="ghost"
-                size="small"
-                disabled={busy}
-                onClick={() => setEditing(false)}
-              >
-                返回模型选择
-              </Button>
-              <Button
-                variant="ghost"
-                size="small"
-                disabled={busy}
-                onClick={() => setDisconnecting(true)}
-              >
-                断开账号
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
-      {waiting && (
-        <div className="detail-stack">
-          {login?.events.map((event) => (
-            <div key={event.id} className="detail-note">
-              {event.message}{" "}
-              {event.userCode && (
-                <code className="pairing-code">{event.userCode}</code>
-              )}
-              {(event.url ?? event.verificationUri)?.startsWith("https://") && (
-                <a
-                  href={event.url ?? event.verificationUri}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  打开登录页面
-                </a>
-              )}
-            </div>
-          ))}
-          {prompt && (
-            <form
-              className="detail-stack"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void account.answer(value).then(() => setValue(""));
-              }}
-            >
-              {prompt.options ? (
-                <ChoicePicker
-                  label={prompt.message}
-                  value={value}
-                  onValueChange={setValue}
-                  disabled={busy}
-                  items={[
-                    { value: "", label: "请选择" },
-                    ...prompt.options.map((item) => ({
-                      value: item.id,
-                      label: item.label,
-                    })),
-                  ]}
-                />
-              ) : (
-                <TextField
-                  label={prompt.message}
-                  type={prompt.type === "secret" ? "password" : "text"}
-                  value={value}
-                  onValueChange={setValue}
-                  autoComplete="off"
-                  disabled={busy}
-                />
-              )}
-              <Button pending={busy} disabled={!value}>
-                继续
-              </Button>
-            </form>
-          )}
-          <Button
-            variant="secondary"
-            size="small"
-            disabled={busy}
-            onClick={() => void account.cancel()}
-          >
-            取消登录
-          </Button>
-        </div>
-      )}
-      {botId !== undefined && selected?.configured && !editing && !waiting && (
-        <form
-          className="detail-stack"
-          id={formId}
-          onSubmit={(event) => {
-            event.preventDefault();
-            void account.action(async () => {
-              if (!selection) throw new Error("请选择一个模型。");
-              await client.models.select({ botId, ...JSON.parse(selection) });
-              window.dispatchEvent(new Event("domos:models"));
-              setSelection("");
-              onConfigured();
-            });
-          }}
+    <section className="hosting-models" aria-label="模型配置" aria-busy={busy}>
+      <aside className="hosting-model-rail">
+        <span className="hosting-model-rail-label">已连接</span>
+        <ScrollArea
+          className="hosting-model-rail-scroll"
+          viewportClassName="hosting-model-rail-viewport"
         >
-          <div className="field">
-            <span className="field-label">对话模型</span>
-            <SearchPicker
-              label="此 Bot 的模型"
-              placeholder="选择已连接的模型"
-              searchLabel="搜索模型…"
-              emptyLabel="没有可用模型"
-              value={selection}
-              disabled={busy}
-              onValueChange={setSelection}
-              items={models.map((item) => ({
-                value: JSON.stringify({
-                  provider: item.provider,
-                  modelId: item.modelId,
-                }),
-                label: item.name,
-              }))}
-            />
-          </div>
-          {!formId && (
-            <Button type="submit" pending={busy} disabled={!selection}>
-              保存模型
-            </Button>
+          <fieldset
+            className="hosting-model-provider-list"
+            aria-label="已连接的模型提供方"
+          >
+            {configuredProviders.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className="hosting-model-provider"
+                aria-pressed={provider === item.id}
+                disabled={busy || waiting}
+                onClick={() => chooseProvider(item.id)}
+                title={item.name}
+              >
+                <span className="hosting-model-provider-name">{item.name}</span>
+                {provider === item.id && <Check size={14} aria-hidden="true" />}
+              </button>
+            ))}
+            {catalog && configuredProviders.length === 0 && (
+              <p className="hosting-model-rail-note">尚未连接提供方</p>
+            )}
+          </fieldset>
+        </ScrollArea>
+        <Button
+          className="hosting-model-add"
+          variant={adding ? "secondary" : "ghost"}
+          size="small"
+          disabled={!catalog || busy || waiting}
+          aria-pressed={adding}
+          onClick={addProvider}
+        >
+          <Plus size={15} aria-hidden="true" />
+          添加提供方
+        </Button>
+      </aside>
+
+      <div className="hosting-model-main">
+        <header className="hosting-model-header">
+          <strong>
+            {selected?.name ?? (adding ? "添加提供方" : "模型列表")}
+          </strong>
+          {selected?.configured && (
+            <span className="hosting-model-status">已连接</span>
           )}
-        </form>
-      )}
-      {(account.error || login?.error) && (
-        <p className="alert" role="alert">
-          {account.error || login?.error}
-        </p>
-      )}
-      <ConfirmDialog
-        open={disconnecting}
-        onOpenChange={setDisconnecting}
-        title="断开这个账号？"
-        description="使用此账号的 Bot 需要重新连接模型。"
-        confirmLabel="断开账号"
-        onConfirm={() => void account.disconnect()}
-      />
+        </header>
+        {!catalog ? (
+          <p className="detail-note" role="status">
+            正在读取账号…
+          </p>
+        ) : (
+          <>
+            <PiAccountFlow
+              key={provider}
+              account={account}
+              adding={adding}
+              onAddingChange={setAdding}
+            />
+            {selected?.configured && (
+              <div className="hosting-model-catalog">
+                <TextField
+                  label="搜索模型"
+                  type="search"
+                  value={query}
+                  onValueChange={setQuery}
+                  placeholder="输入模型名称或 ID"
+                  disabled={busy || waiting}
+                />
+                <ScrollArea
+                  className="hosting-model-list-scroll"
+                  viewportClassName="hosting-model-list-viewport"
+                >
+                  {visibleModels.length ? (
+                    <fieldset
+                      className="hosting-model-list"
+                      aria-label="可用模型"
+                    >
+                      {visibleModels.map((item) => {
+                        const current =
+                          `${item.provider}/${item.modelId}` === model;
+                        const pending = selectingModel === item.modelId;
+                        const content = (
+                          <>
+                            <span className="hosting-model-option-copy">
+                              <span className="hosting-model-option-name">
+                                {item.name}
+                              </span>
+                              <span className="hosting-model-option-id">
+                                {item.modelId}
+                              </span>
+                            </span>
+                            {pending ? (
+                              <LoaderCircle
+                                className="hosting-model-spinner"
+                                size={15}
+                                aria-label="正在保存"
+                              />
+                            ) : (
+                              current && <Check size={15} aria-hidden="true" />
+                            )}
+                          </>
+                        );
+
+                        return botId === undefined ? (
+                          <div
+                            key={`${item.provider}/${item.modelId}`}
+                            className="hosting-model-option"
+                            aria-current={current ? "true" : undefined}
+                          >
+                            {content}
+                          </div>
+                        ) : (
+                          <button
+                            key={`${item.provider}/${item.modelId}`}
+                            type="button"
+                            className="hosting-model-option"
+                            aria-pressed={current}
+                            disabled={busy || waiting}
+                            onClick={() => void chooseModel(item)}
+                          >
+                            {content}
+                          </button>
+                        );
+                      })}
+                    </fieldset>
+                  ) : (
+                    <p className="detail-note hosting-model-empty">
+                      {query ? "没有找到模型" : "没有可用模型"}
+                    </p>
+                  )}
+                </ScrollArea>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </section>
   );
 }

@@ -1,7 +1,7 @@
+import { BrandMark } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
-import { useId } from "react";
-import { useSettings } from "../../settings/context.ts";
+import { EngineMark } from "../engine-mark.tsx";
 import { EngineAccount } from "./engine-account.tsx";
 import { EngineModel, PiEngineModel } from "./engine-model.tsx";
 import type { EngineSetup } from "./use-engine.ts";
@@ -14,7 +14,6 @@ export function EngineDialog({
   botId,
   setup,
   canManage,
-  modelBusy,
   onModelBusyChange,
   onClose,
   finalFocus,
@@ -24,20 +23,11 @@ export function EngineDialog({
   botId: number;
   setup: EngineSetup;
   canManage: boolean;
-  modelBusy: boolean;
   onModelBusyChange: (busy: boolean) => void;
   onClose: () => void;
   finalFocus: () => HTMLElement | null;
 }) {
   const provider = setup.profile?.config.provider ?? "pi";
-  const settings = useSettings();
-  const formId = useId();
-  const modelForm =
-    dialog === "model" &&
-    provider === "pi" &&
-    canManage &&
-    !settings.standalone;
-  const pending = Boolean(setup.pending || modelBusy);
   const title =
     dialog === "install"
       ? `安装 ${name}`
@@ -56,27 +46,23 @@ export function EngineDialog({
     <Dialog
       open={dialog !== null}
       onOpenChange={(open) => {
-        if (!open && !pending) onClose();
+        if (!open && !setup.pending) onClose();
       }}
       finalFocus={finalFocus}
-      className="engine-dialog"
-      title={title}
-      description={description}
-      footer={
-        <div className="dialog-actions">
-          <Button
-            variant={modelForm ? "primary" : "secondary"}
-            type={modelForm ? "submit" : "button"}
-            form={modelForm ? formId : undefined}
-            disabled={pending}
-            onClick={modelForm ? undefined : onClose}
-          >
-            {setup.login?.state === "waiting" ? "取消登录" : "完成"}
-          </Button>
-        </div>
+      className={`engine-dialog${dialog === "model" && provider === "pi" ? " engine-dialog-models" : ""}`}
+      title={
+        <span className="engine-dialog-title">
+          <BrandMark />
+          {title}
+        </span>
       }
+      description={description}
     >
       <div className="engine-dialog-body">
+        <div className="engine-dialog-identity">
+          <EngineMark provider={provider} />
+          <span>{name}</span>
+        </div>
         {dialog === "install" && (
           <div className="detail-stack">
             <p className="detail-note">需要联网。已有可用程序时会直接复用。</p>
@@ -92,8 +78,10 @@ export function EngineDialog({
         {dialog === "account" && (
           <EngineAccount
             provider={provider}
+            botId={botId}
             setup={setup}
             canManage={canManage}
+            onConnected={onClose}
           />
         )}
         {dialog === "model" &&
@@ -103,10 +91,10 @@ export function EngineDialog({
               setup={setup}
               canManage={canManage}
               onBusyChange={onModelBusyChange}
-              formId={modelForm ? formId : undefined}
+              onSelected={onClose}
             />
           ) : (
-            <EngineModel setup={setup} />
+            <EngineModel setup={setup} onSelected={onClose} />
           ))}
         {setup.error && (
           <p className="alert" role="alert">

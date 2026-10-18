@@ -60,10 +60,22 @@ export function EnginePanel({
   useEffect(() => {
     if (blocked) return;
     if (profile?.prepared && !prepared.current) setDialog(null);
+    if (
+      dialog === "account" &&
+      setup.login?.state === "done" &&
+      profile?.prepared
+    )
+      setDialog(null);
     prepared.current = Boolean(profile?.prepared);
     if (dialog === "install" && connection?.ready)
       setDialog(profile?.prepared ? null : "account");
-  }, [profile?.prepared, dialog, connection?.ready, blocked]);
+  }, [
+    profile?.prepared,
+    dialog,
+    connection?.ready,
+    blocked,
+    setup.login?.state,
+  ]);
   const close = async () => {
     if (setup.login?.state === "waiting") await setup.cancel();
     setDialog(null);
@@ -124,26 +136,6 @@ export function EnginePanel({
               {error}
             </p>
           )}
-          {provider !== "pi" && connection?.ready && !error && (
-            <div className="engine-options">
-              <Button
-                variant="ghost"
-                size="small"
-                disabled={blocked}
-                onClick={() => setDialog("model")}
-              >
-                模型设置
-              </Button>
-              <Button
-                variant="ghost"
-                size="small"
-                disabled={blocked}
-                onClick={() => void setup.inspect()}
-              >
-                重新检查
-              </Button>
-            </div>
-          )}
         </div>
       </ScrollArea>
       {onReady && (
@@ -169,7 +161,6 @@ export function EnginePanel({
         botId={botId}
         setup={setup}
         canManage={canManage}
-        modelBusy={modelBusy}
         onModelBusyChange={setModelBusy}
         onClose={() => void close()}
         finalFocus={() => action.current}
@@ -240,6 +231,29 @@ function EngineConnection({
       >
         {profile ? label : error ? "重新读取" : "正在读取…"}
       </Button>
+      {connection?.ready && !needsCheck && (
+        <div className="engine-connection-actions">
+          {!pi && connection.authenticated && (
+            <Button
+              variant="ghost"
+              size="small"
+              disabled={blocked}
+              onClick={() => onConfigure("model")}
+            >
+              选择模型
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="small"
+            disabled={blocked}
+            pending={checking}
+            onClick={() => void setup.inspect()}
+          >
+            重新检查
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

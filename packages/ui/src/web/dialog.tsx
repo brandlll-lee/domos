@@ -19,7 +19,7 @@ export function Dialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   trigger?: ReactElement;
-  title: string;
+  title: ReactNode;
   description?: string;
   children: ReactNode;
   className?: string;

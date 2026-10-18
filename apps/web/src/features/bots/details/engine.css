@@ -65,10 +65,13 @@
   font-size: var(--text-caption);
   font-weight: var(--weight-regular);
 }
-.engine-options {
+.engine-connection-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+  flex-basis: 100%;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-divider);
 }
 .engine-footer {
   padding-top: var(--space-2);
@@ -77,22 +80,75 @@
   width: min(28rem, calc(100% - var(--space-8)));
 }
 .engine-dialog-body {
+  display: grid;
+  gap: var(--space-4);
   min-height: 0;
 }
-.model-connection .picker-trigger {
-  width: 100%;
+.dialog-popup.engine-dialog-models {
+  width: min(44rem, calc(100% - var(--space-8)));
 }
-.account-summary {
+.engine-dialog-title,
+.engine-dialog-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.engine-dialog-title .brand-mark {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+.engine-dialog-identity {
+  color: var(--color-muted);
+  font-size: var(--text-label);
+}
+.engine-model-list {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.engine-model-scroll {
+  max-height: min(22rem, 48vh);
+}
+.engine-model-options {
+  display: grid;
+  gap: var(--space-1);
+  padding-inline-end: var(--space-2);
+  padding-block: 0;
+  padding-inline-start: 0;
+  margin: 0;
+  border: 0;
+  min-width: 0;
+}
+.engine-model-option {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding-block: var(--space-3);
-  border-block: 1px solid var(--color-divider);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
 }
-.account-summary > div {
-  display: grid;
-  gap: var(--space-1);
+.engine-model-option span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.engine-model-option:hover:not(:disabled),
+.engine-model-option[aria-pressed="true"] {
+  background: var(--color-hover);
+}
+.engine-model-option:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+.engine-model-option:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 .engine-account,
 .engine-sign-in {

@@ -1,6 +1,6 @@
-import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
-import { SearchPicker } from "@domos/ui/picker";
+import { ScrollArea } from "@domos/ui/scroll-area";
+import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
 import { useState } from "react";
 import { ModelPicker } from "../../chat/model-picker.tsx";
 import { HostingModels } from "../../hosting/models.tsx";
@@ -12,13 +12,13 @@ export function PiEngineModel({
   setup,
   canManage,
   onBusyChange,
-  formId,
+  onSelected,
 }: {
   botId: number;
   setup: EngineSetup;
   canManage: boolean;
   onBusyChange: (busy: boolean) => void;
-  formId?: string;
+  onSelected: () => void;
 }) {
   const settings = useSettings();
   const model = setup.profile?.config.model;
@@ -30,13 +30,20 @@ export function PiEngineModel({
           modelId: model.slice(separator + 1),
         }
       : null;
+  const configured = async () => {
+    if (settings.standalone) {
+      await setup.refresh();
+      onSelected();
+      return;
+    }
+    if (await setup.inspect()) onSelected();
+  };
   if (canManage && !settings.standalone)
     return (
       <HostingModels
         botId={botId}
         model={model}
-        formId={formId}
-        onConfigured={() => void setup.refresh()}
+        onConfigured={configured}
         onBusyChange={onBusyChange}
       />
     );
@@ -45,61 +52,67 @@ export function PiEngineModel({
       botId={botId}
       model={selection}
       connected={Boolean(setup.profile)}
-      onSelected={setup.refresh}
+      onSelected={configured}
       onBusyChange={onBusyChange}
     />
   );
 }
 
-export function EngineModel({ setup }: { setup: EngineSetup }) {
+export function EngineModel({
+  setup,
+  onSelected,
+}: {
+  setup: EngineSetup;
+  onSelected: () => void;
+}) {
+  const [query, setQuery] = useState("");
   const { profile, connection, busy } = setup;
-  const [model, setModel] = useState(profile?.config.model ?? "");
   if (!profile) return null;
+  const models = [
+    { id: "", name: "使用引擎默认模型" },
+    ...(connection?.models ?? []),
+  ].filter((item) =>
+    `${item.name} ${item.id}`
+      .toLowerCase()
+      .includes(query.trim().toLowerCase()),
+  );
+  const choose = async (id: string) => {
+    if (
+      await setup.save({ provider: profile.config.provider, model: id || null })
+    ) {
+      if (await setup.inspect()) onSelected();
+    }
+  };
   return (
-    <form
-      className="detail-stack"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void setup.save({
-          provider: profile.config.provider,
-          model: model.trim() || null,
-        });
-      }}
-    >
-      {connection?.models.length ? (
-        <SearchPicker
-          label="引擎模型"
-          value={model}
-          searchLabel="搜索模型…"
-          emptyLabel="没有找到模型"
-          placeholder="使用引擎默认模型"
-          items={[
-            { value: "", label: "使用引擎默认模型" },
-            ...connection.models.map(({ id, name }) => ({
-              value: id,
-              label: name,
-            })),
-          ]}
-          disabled={busy}
-          onValueChange={setModel}
-        />
-      ) : (
-        <TextField
-          label="模型（可选）"
-          value={model}
-          onValueChange={setModel}
-          disabled={busy}
-          placeholder="留空使用引擎默认模型"
-        />
-      )}
-      <div className="form-actions">
-        <Button
-          disabled={busy || model === (profile.config.model ?? "")}
-          pending={setup.pending === "configure"}
-        >
-          保存模型
-        </Button>
-      </div>
-    </form>
+    <div className="engine-model-list">
+      <TextField
+        label="搜索模型"
+        type="search"
+        placeholder="输入模型名称"
+        value={query}
+        onValueChange={setQuery}
+        disabled={busy}
+      />
+      <ScrollArea className="engine-model-scroll">
+        <fieldset className="engine-model-options" aria-label="可用模型">
+          {models.map((item) => (
+            <button
+              type="button"
+              key={item.id}
+              className="engine-model-option"
+              disabled={busy}
+              aria-pressed={item.id === (profile.config.model ?? "")}
+              onClick={() => void choose(item.id)}
+            >
+              <span>{item.name}</span>
+              {item.id === (profile.config.model ?? "") && (
+                <CheckIcon size={16} aria-hidden="true" />
+              )}
+            </button>
+          ))}
+          {!models.length && <p className="detail-note">没有找到模型。</p>}
+        </fieldset>
+      </ScrollArea>
+    </div>
   );
 }

@@ -27,6 +27,7 @@ export function ModelPicker({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => onBusyChange?.(saving), [saving, onBusyChange]);
+  useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
   const selected = model ? modelKey(model) : "";
   return (
     <section className="settings-group" aria-label="模型设置">

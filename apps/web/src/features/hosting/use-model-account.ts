@@ -53,6 +53,7 @@ export function useModelAccount(
     );
     window.dispatchEvent(new Event("domos:models"));
   }, []);
+  useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
   useEffect(() => {
     void refresh().catch((error) => setError(error.message));
   }, [refresh]);
@@ -67,6 +68,7 @@ export function useModelAccount(
           "GET",
           controller.signal,
         );
+        if (controller.signal.aborted) return;
         setLogin(result);
         if (result.done) {
           await refresh();
@@ -106,7 +108,11 @@ export function useModelAccount(
   return {
     catalog,
     provider,
-    setProvider,
+    setProvider: (value: string) => {
+      setProvider(value);
+      setLoginId(undefined);
+      setLogin(undefined);
+    },
     login,
     busy,
     waiting,
@@ -115,7 +121,8 @@ export function useModelAccount(
     selected: catalog?.providers.find((item) => item.id === provider),
     connect: (type: string) =>
       action(async () => {
-        await hostingRequest("login", undefined, "DELETE");
+        if (loginId)
+          await hostingRequest(`login/${loginId}`, undefined, "DELETE");
         const result = await hostingRequest<{ id: string }>("login", {
           provider,
           type,

@@ -10,7 +10,9 @@ type EngineAction =
   | "key"
   | "install"
   | "login"
-  | "cancel";
+  | "cancel"
+  | "answer";
+type LoginInput = Omit<Parameters<typeof client.engines.login>[0], "botId">;
 
 export function useEngine(botId: number, active: boolean) {
   const [profile, setProfile] =
@@ -22,26 +24,37 @@ export function useEngine(botId: number, active: boolean) {
   const [error, setError] = useState("");
   const [pending, setPending] = useState<EngineAction | null>(null);
   const action = useWorkAction();
-  const run = <T>(
+  const run = async <T>(
     name: EngineAction,
     key: unknown,
     operation: (requestId: string) => Promise<T>,
-  ) =>
-    action.run(key, async (requestId) => {
-      setPending(name);
-      setError("");
-      try {
-        return await operation(requestId);
-      } finally {
-        setPending(null);
-      }
-    });
+  ) => {
+    let success = false;
+    await action.run(
+      key,
+      async (requestId) => {
+        setPending(name);
+        setError("");
+        try {
+          return await operation(requestId);
+        } finally {
+          setPending(null);
+        }
+      },
+      () => {
+        success = true;
+      },
+    );
+    return success;
+  };
   const refresh = useCallback(async () => {
     setProfile(await client.engines.get({ botId }));
   }, [botId]);
   const inspect = async () => {
-    setConnection(await client.engines.inspect({ botId }));
+    const result = await client.engines.inspect({ botId });
+    setConnection(result);
     await refresh();
+    return result;
   };
   useEffect(() => {
     if (active) void refresh().catch((error) => setError(error.message));
@@ -49,29 +62,32 @@ export function useEngine(botId: number, active: boolean) {
   useEffect(() => {
     if (login?.state !== "waiting") return;
     let current = true;
-    const timer = setInterval(() => {
-      void client.engines
-        .loginState({ botId })
-        .then(async (value) => {
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const value = await client.engines.loginState({ botId });
+        if (!current) return;
+        if (value?.state === "done") {
+          const result = await client.engines.inspect({ botId });
+          const profile = await client.engines.get({ botId });
           if (!current) return;
-          setLogin(value);
-          if (value?.state === "done") {
-            setConnection(await client.engines.inspect({ botId }));
-            await refresh();
-          }
-        })
-        .catch((error) => {
-          if (current) {
-            setError(error.message);
-            setLogin(null);
-          }
-        });
-    }, 1000);
+          setConnection(result);
+          setProfile(profile);
+        }
+        setError("");
+        setLogin(value);
+        if (value?.state !== "waiting") return;
+      } catch (error) {
+        if (current) setError((error as Error).message);
+      }
+      if (current) timer = setTimeout(() => void poll(), 1000);
+    };
+    timer = setTimeout(() => void poll(), 1000);
     return () => {
       current = false;
-      clearInterval(timer);
+      clearTimeout(timer);
     };
-  }, [login?.state, botId, refresh]);
+  }, [login?.state, botId]);
   return {
     profile,
     connection,
@@ -84,7 +100,7 @@ export function useEngine(botId: number, active: boolean) {
     inspect: () => run("inspect", ["inspect", botId], inspect),
     save: (config: EngineConfig) =>
       run("configure", ["engine", botId, config], async (requestId) => {
-        if (!profile) return;
+        if (!profile) throw new Error("请等待引擎配置加载。");
         setProfile(
           await client.engines.configure({
             botId,
@@ -95,22 +111,34 @@ export function useEngine(botId: number, active: boolean) {
         );
         setConnection(undefined);
         setLogin(null);
-        setError("");
       }),
-    key: (key: string | null) =>
-      run("key", ["key", botId], async () => {
-        await client.engines.key({ botId, key });
+    key: (key: string | null, providerId?: string) =>
+      run("key", ["key", botId, providerId], async () => {
+        await client.engines.key({ botId, key, providerId });
         setConnection(undefined);
-        if (key) await inspect();
+        if (key && !(await inspect()).authenticated)
+          throw new Error("账号还不可用。请检查连接方式和模型。");
+        if (!key) await inspect();
       }),
     install: () =>
       run("install", ["install", botId], async () => {
         await client.engines.install({ botId });
         await inspect();
       }),
-    signIn: () =>
-      run("login", ["login", botId], async () => {
-        setLogin(await client.engines.login({ botId }));
+    signIn: (input: LoginInput = {}) =>
+      run(
+        "login",
+        ["login", botId, input.providerId, input.method],
+        async () => {
+          setLogin(await client.engines.login({ botId, ...input }));
+        },
+      ),
+    answerLogin: (code: string) =>
+      run("answer", ["login-answer", botId], async () => {
+        await client.engines.answerLogin({ botId, code });
+        setLogin((current) =>
+          current?.state === "waiting" ? { ...current, prompt: null } : current,
+        );
       }),
     cancel: () =>
       run("cancel", ["cancel-login", botId], async () => {

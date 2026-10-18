@@ -1,0 +1,360 @@
+.hosting-models {
+  display: grid;
+  grid-template-columns: minmax(7rem, 8rem) minmax(0, 1fr);
+  width: 100%;
+  height: min(22rem, calc(100dvh - 16rem));
+  min-width: 0;
+  min-height: 12rem;
+  border-block: 1px solid var(--color-divider);
+  color: var(--color-text);
+}
+
+.hosting-model-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 0;
+  padding: var(--space-3) var(--space-2) var(--space-2) 0;
+  border-inline-end: 1px solid var(--color-divider);
+}
+
+.hosting-model-rail-label {
+  padding-inline: var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+}
+
+.hosting-model-rail-scroll,
+.hosting-model-list-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.hosting-model-rail-scroll .scroll-viewport,
+.hosting-model-list-scroll .scroll-viewport {
+  flex: 1;
+}
+
+.hosting-model-rail-viewport {
+  padding-inline-end: var(--space-1);
+}
+
+.hosting-model-provider-list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.hosting-model-provider {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-small);
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: var(--text-caption);
+  text-align: start;
+  cursor: pointer;
+}
+
+.hosting-model-provider[aria-pressed="true"] {
+  background: var(--color-selection);
+  color: var(--color-text);
+  font-weight: var(--weight-medium);
+}
+
+.hosting-model-provider:hover:not(:disabled),
+.hosting-model-option:hover:not(:disabled) {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+
+.hosting-model-provider:focus-visible,
+.hosting-model-option:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+.hosting-model-provider:disabled,
+.hosting-model-option:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.hosting-model-provider-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hosting-model-rail-note {
+  padding-inline: var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+}
+
+.hosting-model-add {
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  padding-inline: var(--space-2);
+  text-align: start;
+}
+
+.hosting-model-add svg {
+  flex-shrink: 0;
+}
+
+.hosting-model-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: 0;
+  padding: var(--space-3) 0 var(--space-2) var(--space-3);
+}
+
+.hosting-model-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--control-small);
+  font-size: var(--text-label);
+}
+
+.hosting-model-header strong {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: var(--weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hosting-model-status {
+  flex-shrink: 0;
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+}
+
+.hosting-account-flow {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.hosting-account-provider-search .picker-trigger {
+  width: 100%;
+}
+
+.hosting-account-summary,
+.hosting-account-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.hosting-account-summary {
+  min-height: var(--control-small);
+  padding-block: var(--space-1);
+  border-bottom: 1px solid var(--color-divider);
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+}
+
+.hosting-account-summary .button,
+.hosting-account-actions .button {
+  gap: var(--space-1);
+}
+
+.hosting-account-setup,
+.hosting-account-login,
+.hosting-account-prompt {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.hosting-account-actions {
+  justify-content: flex-start;
+}
+
+.hosting-account-login .detail-note {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.hosting-account-login code {
+  width: fit-content;
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  overflow-wrap: anywhere;
+}
+
+.hosting-model-catalog {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 0;
+}
+
+.hosting-model-list-viewport {
+  padding-inline-end: var(--space-2);
+}
+
+.hosting-model-list {
+  display: grid;
+  gap: var(--space-1);
+  padding-block: var(--space-1);
+  margin: 0;
+  border: 0;
+  padding-inline: 0;
+  min-width: 0;
+}
+
+.hosting-model-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  min-width: 0;
+  min-height: 3rem;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  text-align: start;
+}
+
+button.hosting-model-option {
+  cursor: pointer;
+}
+
+.hosting-model-option[aria-pressed="true"],
+.hosting-model-option[aria-current="true"] {
+  background: var(--color-selection);
+}
+
+.hosting-model-option-copy {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.hosting-model-option-name,
+.hosting-model-option-id {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hosting-model-option-name {
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+}
+
+.hosting-model-option-id {
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+}
+
+.hosting-model-spinner {
+  flex-shrink: 0;
+  animation: hosting-model-spin 900ms linear infinite;
+}
+
+.hosting-model-empty {
+  padding: var(--space-2);
+}
+
+@keyframes hosting-model-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hosting-model-spinner {
+    animation: none;
+  }
+}
+
+@media (max-width: 32rem) {
+  .hosting-models {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .hosting-model-rail {
+    flex-direction: row;
+    align-items: center;
+    padding: var(--space-2) 0;
+    border-inline-end: 0;
+    border-bottom: 1px solid var(--color-divider);
+  }
+
+  .hosting-model-rail-label {
+    display: none;
+  }
+
+  .hosting-model-rail-scroll {
+    min-width: 0;
+  }
+
+  .hosting-model-rail-viewport {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .hosting-model-provider-list {
+    display: flex;
+    width: max-content;
+    min-height: var(--control-height);
+  }
+
+  .hosting-model-provider {
+    width: auto;
+    max-width: 9rem;
+    min-height: var(--control-height);
+  }
+
+  .hosting-model-rail-note {
+    align-self: center;
+  }
+
+  .hosting-model-add {
+    width: auto;
+    flex-shrink: 0;
+    padding-inline: var(--space-2);
+  }
+
+  .hosting-model-main {
+    padding-inline-start: 0;
+  }
+
+  .hosting-model-header {
+    display: none;
+  }
+}
