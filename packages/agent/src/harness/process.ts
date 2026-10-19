@@ -27,6 +27,7 @@ export class WorkProcess implements EngineProcess {
   private readonly child: ChildProcessWithoutNullStreams;
   private closing?: Promise<void>;
   private sequence = 0;
+  private readonly calls = new Map<number, AbortController>();
   private readonly requests = new Map<
     number,
     {
@@ -44,6 +45,7 @@ export class WorkProcess implements EngineProcess {
       callId: string,
       name: string,
       args: Record<string, unknown>,
+      signal: AbortSignal,
     ) => Promise<ProductResult>,
   ) {
     const [program, ...args] = command;
@@ -85,7 +87,9 @@ export class WorkProcess implements EngineProcess {
           if (frame.error) request.reject(new Error(frame.error));
           else request.resolve(frame.result);
         } else if (frame.type === "tool") {
-          void invoke(frame.callId, frame.name, frame.args)
+          const controller = new AbortController();
+          this.calls.set(frame.id, controller);
+          void invoke(frame.callId, frame.name, frame.args, controller.signal)
             .catch(() => ({
               content: [
                 { type: "text" as const, text: "产品工具未完成。请核对结果。" },
@@ -95,7 +99,10 @@ export class WorkProcess implements EngineProcess {
             .then((result) =>
               this.send({ type: "result", id: frame.id, result }),
             )
-            .catch(() => {});
+            .catch(() => {})
+            .finally(() => this.calls.delete(frame.id));
+        } else if (frame.type === "cancel") {
+          this.calls.get(frame.id)?.abort();
         } else if (frame.type === "exit") this.finish(frame.code);
         else if (frame.type === "failure")
           this.fail(
@@ -168,6 +175,8 @@ export class WorkProcess implements EngineProcess {
       request.reject(error);
     }
     this.requests.clear();
+    for (const call of this.calls.values()) call.abort();
+    this.calls.clear();
     this.output.end();
     this.error.end();
   }
@@ -197,6 +206,7 @@ export class WorkProcess implements EngineProcess {
 
   close() {
     this.closing ??= (async () => {
+      for (const call of this.calls.values()) call.abort();
       const exited = once(this.child, "close").catch(() => {});
       if (this.child.exitCode !== null || this.child.signalCode !== null)
         return;

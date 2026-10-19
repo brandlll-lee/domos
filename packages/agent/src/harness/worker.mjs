@@ -68,10 +68,18 @@ async function configure(frame) {
   process.chdir(frame.cwd);
   gateway = await openGateway(
     frame.tools,
-    (callId, name, args) =>
+    (callId, name, args, signal) =>
       new Promise((resolve, reject) => {
         const id = ++sequence;
-        pending.set(id, { resolve, reject });
+        const abort = () => emit({ type: "cancel", id });
+        signal.addEventListener("abort", abort, { once: true });
+        pending.set(id, {
+          resolve: (result) => {
+            signal.removeEventListener("abort", abort);
+            resolve(result);
+          },
+          reject,
+        });
         emit({ type: "tool", id, callId, name, args });
       }),
   );

@@ -92,6 +92,7 @@ export class Computer {
       callId: string,
       name: string,
       args: Record<string, unknown>,
+      signal: AbortSignal,
     ) => Promise<ProductResult>,
     context: Context,
   ) {

@@ -82,6 +82,52 @@ test("a missing work computer command reports a missing program", async () => {
   });
 });
 
+test("a work computer forwards MCP cancellation to its active product call", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "domos-cancel-"));
+  const entered = Promise.withResolvers<void>();
+  const cancelled = Promise.withResolvers<void>();
+  const process = new WorkProcess(
+    [
+      globalThis.process.execPath,
+      fileURLToPath(new URL("../src/harness/worker.mjs", import.meta.url)),
+    ],
+    { cwd: directory, home: join(directory, "accounts") },
+    [{ name: "wait", description: "Wait", inputSchema: { type: "object" } }],
+    async (_id, _name, _args, signal) => {
+      entered.resolve();
+      await new Promise<void>((resolve) =>
+        signal.addEventListener(
+          "abort",
+          () => {
+            cancelled.resolve();
+            resolve();
+          },
+          { once: true },
+        ),
+      );
+      return { content: [{ type: "text", text: "Stopped" }] };
+    },
+  );
+  const client = new Client({ name: "test", version: "1" });
+  onTestFinished(async () => {
+    await client.close();
+    await process.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL((await process.ready).url)),
+  );
+  const controller = new AbortController();
+  const call = expect(
+    client.callTool({ name: "wait" }, undefined, { signal: controller.signal }),
+  ).rejects.toThrow();
+  await entered.promise;
+  controller.abort();
+  await call;
+  await cancelled.promise;
+  expect((await client.listTools()).tools[0]?.name).toBe("wait");
+});
+
 test("a work computer prepares the private Codex directory before launch", async () => {
   const { process } = await worker();
   const ready = await process.ready;

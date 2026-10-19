@@ -1,65 +1,79 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
+  isInitializeRequest,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
 export async function openGateway(tools, invoke) {
   const path = `/mcp/${randomBytes(32).toString("hex")}`;
   let sequence = 0;
+  const sessions = new Map();
   const server = createServer(async (request, response) => {
-    if (request.url !== path || request.method !== "POST") {
+    if (request.url !== path) {
       response.writeHead(404).end();
       return;
     }
-    const chunks = [];
-    let length = 0;
-    for await (const chunk of request) {
-      length += chunk.length;
-      if (length > 1024 * 1024) {
-        response.writeHead(413).end();
+    try {
+      let body;
+      if (request.method === "POST") {
+        const chunks = [];
+        let length = 0;
+        for await (const chunk of request) {
+          length += chunk.length;
+          if (length > 1024 * 1024) {
+            response.writeHead(413).end();
+            return;
+          }
+          chunks.push(chunk);
+        }
+        body = JSON.parse(Buffer.concat(chunks).toString());
+      }
+      const sessionId = request.headers["mcp-session-id"];
+      let session = sessions.get(sessionId);
+      if (!session && !sessionId && isInitializeRequest(body)) {
+        const mcp = new Server(
+          { name: "domos", version: "1.0.0" },
+          { capabilities: { tools: {} } },
+        );
+        mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
+        mcp.setRequestHandler(
+          CallToolRequestSchema,
+          async ({ params }, extra) => {
+            if (!tools.some((tool) => tool.name === params.name))
+              throw new Error("工具不可用。");
+            return invoke(
+              `${++sequence}:${extra.requestId}`,
+              params.name,
+              params.arguments ?? {},
+              extra.signal,
+            );
+          },
+        );
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: randomUUID,
+          enableJsonResponse: true,
+          onsessioninitialized: (id) => sessions.set(id, { mcp, transport }),
+        });
+        await mcp.connect(transport);
+        const onclose = transport.onclose;
+        transport.onclose = () => {
+          sessions.delete(transport.sessionId);
+          onclose?.();
+        };
+        session = { mcp, transport };
+      }
+      if (!session) {
+        response.writeHead(sessionId ? 404 : 400).end();
         return;
       }
-      chunks.push(chunk);
-    }
-    const mcp = new Server(
-      { name: "domos", version: "1.0.0" },
-      { capabilities: { tools: {} } },
-    );
-    mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
-    mcp.setRequestHandler(CallToolRequestSchema, async ({ params }, extra) =>
-      invoke(
-        `${++sequence}:${extra.requestId}`,
-        params.name,
-        params.arguments ?? {},
-      ),
-    );
-    const transport = new WebStandardStreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-      enableJsonResponse: true,
-    });
-    try {
-      await mcp.connect(transport);
-      const result = await transport.handleRequest(
-        new Request(`http://127.0.0.1${path}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json, text/event-stream",
-          },
-          body: Buffer.concat(chunks),
-        }),
-      );
-      response.writeHead(result.status, Object.fromEntries(result.headers));
-      response.end(await result.text());
+      await session.transport.handleRequest(request, response, body);
     } catch {
       if (!response.headersSent) response.writeHead(503);
       response.end();
-    } finally {
-      await mcp.close();
     }
   });
   await new Promise((resolve, reject) => {
@@ -68,7 +82,9 @@ export async function openGateway(tools, invoke) {
   });
   return {
     url: `http://127.0.0.1:${server.address().port}${path}`,
-    close: () => {
+    close: async () => {
+      await Promise.all([...sessions.values()].map(({ mcp }) => mcp.close()));
+      sessions.clear();
       server.close();
       server.closeAllConnections();
     },

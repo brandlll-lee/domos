@@ -32,10 +32,8 @@ export type ProductTool = {
   description: string;
   inputSchema: Record<string, unknown>;
 };
-export type ProductResult = {
-  content: { type: "text"; text: string }[];
-  isError?: boolean;
-};
+export type ProductResult =
+  import("@modelcontextprotocol/sdk/types.js").CallToolResult;
 export type ProcessSpec = {
   command: string;
   args: string[];
