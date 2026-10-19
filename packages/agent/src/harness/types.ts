@@ -31,6 +31,7 @@ export type ProductTool = {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  annotations?: import("@modelcontextprotocol/sdk/types.js").ToolAnnotations;
 };
 export type ProductResult =
   import("@modelcontextprotocol/sdk/types.js").CallToolResult;

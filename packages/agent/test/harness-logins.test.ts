@@ -24,6 +24,7 @@ function fixture() {
       };
       return worker;
     },
+    tools: { catalog: async () => [], finish: () => {} },
   } as unknown as Computers;
   return {
     workers,
@@ -115,6 +116,7 @@ test.each(["auto", "code"])(
     const computers = {
       computerId: async () => "shared-computer",
       process: async () => worker,
+      tools: { catalog: async () => [], finish: () => {} },
     } as unknown as Computers;
     const connections = new EngineConnections(new EngineExecution(computers));
     await connections.login(1, { provider: "opencode", model: null }, context, {

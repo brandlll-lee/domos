@@ -23,7 +23,12 @@ export const ComputersDoc = defineDoc<{
   attachmentComputerId: string | null;
   bindings: Record<
     string,
-    { computerId: string | null; revision: number; requestId: string }
+    {
+      computerId: string | null;
+      revision: number;
+      requestId: string;
+      services?: { browser?: boolean; desktop?: boolean };
+    }
   >;
 }>({
   kind: "domos.computers",

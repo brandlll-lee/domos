@@ -30,6 +30,7 @@ test("engine connection readiness follows the selected work computer", async () 
       };
       return worker;
     },
+    tools: { catalog: async () => [], finish: () => {} },
   } as unknown as Computers;
   const runtime = await openAgent(
     join(directory, "agent.sqlite"),
@@ -98,6 +99,7 @@ test("routines use the selected native engine and stopping settles queued work",
       };
       return worker;
     },
+    tools: { catalog: async () => [], finish: () => {} },
   } as unknown as Computers;
   const runtime = await openAgent(
     join(directory, "agent.sqlite"),
@@ -173,6 +175,9 @@ test("routines use the selected native engine and stopping settles queued work",
     )
     .toEqual(expect.any(Number));
   await engines.stop(botId, context);
+  expect(
+    workers[1]?.requests.some((request) => request.method === "turn/interrupt"),
+  ).toBe(true);
   await runtime.harness.waitForTask(queued, context);
   expect(await active.wait(context)).toMatchObject({
     status: "unanswered",

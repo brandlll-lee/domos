@@ -212,6 +212,7 @@ export class Engines {
   }
 
   async stop(botId: number, context: Context) {
+    const stopped = this.execution.stop(botId);
     const doc = await this.harness.snapshot(
       EngineDoc,
       botId as ConversationId,
@@ -222,6 +223,7 @@ export class Engines {
         .reverse()
         .map((id) => this.harness.abortTask(id, context)),
     );
+    await stopped;
   }
 
   async prepare(botId: number, context: Context) {

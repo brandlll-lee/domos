@@ -61,6 +61,7 @@ test.each(["completed", "running", "sending"] as const)(
         };
         return worker;
       },
+      tools: { catalog: async () => [], finish: () => {} },
     } as unknown as Computers;
     async function open() {
       const models = createModels();
@@ -159,6 +160,7 @@ test("switching from embedded Pi imports recent conversation into the first nati
     preflight: async () => {},
     computerId: async () => "shared",
     process: async () => worker,
+    tools: { catalog: async () => [], finish: () => {} },
   } as unknown as Computers);
   const registry = createRegistry();
   registry.install(

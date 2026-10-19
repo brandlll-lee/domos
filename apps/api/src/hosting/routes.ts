@@ -158,6 +158,7 @@ export function hostingApp(options: {
   protectedApp.use("/computer/authorize", administrator);
   protectedApp.use("/computer/default", administrator);
   protectedApp.use("/computer/configure", administrator);
+  protectedApp.use("/computer/service", administrator);
   for (const path of [
     "accounts",
     "key",

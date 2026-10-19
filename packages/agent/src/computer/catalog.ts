@@ -23,12 +23,14 @@ import {
 import { requiredText, requireRevision, WorkError } from "../work/state.ts";
 import { Computer, type ComputerStatus } from "./index.ts";
 import { ComputerPreparation } from "./preparation.ts";
+import type { ComputerService } from "./service-types.ts";
 import {
   type ComputerRecord,
   ComputersDoc,
   requireComputer,
   requireIdle,
 } from "./state.ts";
+import { ComputerTools } from "./tools.ts";
 
 export type ComputerView = ComputerStatus & {
   name: string;
@@ -39,12 +41,13 @@ export type ComputerView = ComputerStatus & {
 };
 
 export class Computers {
+  readonly tools = new ComputerTools(this);
   private harness!: Harness;
   private readonly targets = new Map<string, Computer>();
   private readonly changing = new Set<string>();
   private readonly transfers = new Map<number, number>();
   private readonly starting = new Map<string, Promise<void>>();
-  private tools: readonly ToolRegistration[] = [];
+  private registrations: readonly ToolRegistration[] = [];
   private shells: readonly ToolRegistration[] = [];
   private readonly events = new EventEmitter();
 
@@ -58,7 +61,7 @@ export class Computers {
     tools: readonly ToolRegistration[],
     shells: readonly ToolRegistration[],
   ) {
-    this.tools = tools;
+    this.registrations = tools;
     this.shells = shells;
   }
 
@@ -123,7 +126,7 @@ export class Computers {
       tools: {
         remove: item?.authorized
           ? this.shells.filter((tool) => tool !== shell)
-          : this.tools,
+          : this.registrations,
       },
     });
   }
@@ -282,6 +285,35 @@ export class Computers {
         String(botId)
       ]?.computerId ?? null
     );
+  }
+
+  async serviceTarget(botId: number, context: Context) {
+    await this.workspace(botId, context);
+    const doc = await this.harness.snapshot(ComputersDoc, context);
+    const binding = doc?.bindings[String(botId)];
+    if (!binding?.computerId)
+      throw new WorkError("BAD_REQUEST", "请先选择工作电脑。");
+    return {
+      id: binding.computerId,
+      target: this.target(
+        requireComputer(doc?.items ?? [], binding.computerId),
+      ),
+      enabled: binding.services ?? {},
+    };
+  }
+
+  async serviceSettings(
+    botId: number,
+    service: ComputerService,
+    enabled: boolean,
+    context: Context,
+  ) {
+    await this.harness.commit(async (tx) => {
+      const binding = (await tx.doc(ComputersDoc)).bindings[String(botId)];
+      if (!binding?.computerId)
+        throw new WorkError("BAD_REQUEST", "请先选择工作电脑。");
+      binding.services = { ...binding.services, [service]: enabled };
+    }, context);
   }
 
   async attachmentComputerId(context: Context) {

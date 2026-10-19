@@ -62,6 +62,7 @@ test("native turns share product tools, queue in order and keep separate session
   const execution = new Execution({
     preflight: async () => {},
     computerId: async () => "shared",
+    tools: { catalog: async () => [], finish: () => {} },
   } as unknown as Computers);
   registry.install(
     defineExtension({ name: "domos-engines", tasks: [engineTask(execution)] }),
@@ -163,6 +164,7 @@ test.each(engineIds)(
     const execution = new Execution({
       preflight: async () => {},
       computerId: async () => "shared",
+      tools: { catalog: async () => [], finish: () => {} },
     } as unknown as Computers);
     registry.install(
       defineExtension({

@@ -30,7 +30,53 @@ export function computerRouter(bots: Bots, computers?: Computers) {
   }
   const id = z.string().min(1);
   const context = BACKGROUND_CONTEXT;
+  const service = z.enum(["browser", "desktop"]);
   return {
+    services: os.input(botTarget).handler(async ({ input }) => {
+      await botConversation(bots, input.botId);
+      return access((target) => target.tools.state(input.botId, context));
+    }),
+    service: os
+      .input(
+        botTarget.extend({
+          service,
+          enabled: z.boolean(),
+          install: z.boolean().default(false),
+        }),
+      )
+      .handler(async ({ input }) => {
+        await botConversation(bots, input.botId);
+        return access((target) =>
+          target.tools.configure(
+            input.botId,
+            input.service,
+            input.enabled,
+            context,
+            input.install,
+          ),
+        );
+      }),
+    takeover: os
+      .input(botTarget.extend({ service }))
+      .handler(async ({ input }) => {
+        await botConversation(bots, input.botId);
+        return access((target) =>
+          target.tools.takeover(input.botId, input.service, context),
+        );
+      }),
+    release: os
+      .input(botTarget.extend({ service, lease: z.uuid() }))
+      .handler(async ({ input }) => {
+        await botConversation(bots, input.botId);
+        return access((target) =>
+          target.tools.release(
+            input.botId,
+            input.service,
+            input.lease,
+            context,
+          ),
+        );
+      }),
     setup: os.handler(() =>
       access((target) => target.preparation.state(context)),
     ),

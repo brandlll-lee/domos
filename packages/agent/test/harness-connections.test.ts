@@ -32,6 +32,7 @@ function fixture(installed: boolean, exitCode = 0) {
       };
       return worker;
     },
+    tools: { catalog: async () => [], finish: () => {} },
   } as unknown as Computers;
   return {
     launches,
