@@ -1,6 +1,7 @@
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { expect, test } from "vitest";
 import { FileInput } from "../src/files.ts";
+import { EngineMessage } from "../src/harness/state.ts";
 import { context, setup } from "./fixtures/work.ts";
 
 test("directory previews follow committed messages and survive reopening", async () => {
@@ -55,7 +56,7 @@ test("directory previews follow committed messages and survive reopening", async
     await runtime.harness.commit(async (tx) => {
       await tx.appendEntry(bot.id, {
         kind: crypto.randomUUID(),
-        model: [fauxAssistantMessage("Release checked.")],
+        model: [fauxAssistantMessage("**Release** checked.")],
       });
       for (let index = 0; index < 80; index++)
         await tx.appendEntry(bot.id, {
@@ -98,7 +99,7 @@ test("directory previews use displayed input and delivered text", async () => {
     await runtime.harness.commit(async (tx) => {
       await tx.appendEntry(id, {
         kind: FileInput,
-        data: { text: "Read this attachment", attachments: [] },
+        data: { text: "Read **this** attachment", attachments: [] },
         model: [
           {
             role: "user",
@@ -108,7 +109,7 @@ test("directory previews use displayed input and delivered text", async () => {
         ],
       });
     }, context);
-    expect(await preview()).toBe("Read this attachment");
+    expect(await preview()).toBe("Read **this** attachment");
     await runtime.harness.commit(async (tx) => {
       await tx.appendEntry(id, {
         kind: crypto.randomUUID(),
@@ -119,7 +120,7 @@ test("directory previews use displayed input and delivered text", async () => {
         ],
       });
     }, context);
-    expect(await preview()).toBe("Read this attachment");
+    expect(await preview()).toBe("Read **this** attachment");
     await runtime.harness.commit(async (tx) => {
       await tx.appendEntry(id, {
         kind: crypto.randomUUID(),
@@ -131,12 +132,34 @@ test("directory previews use displayed input and delivered text", async () => {
             content: [{ type: "text", text: "Tool bookkeeping" }],
             isError: false,
             timestamp: Date.now(),
-            details: { delivery: { text: "Your file is ready." } },
+            details: { delivery: { text: "Your **file** is ready." } },
           },
         ],
       });
     }, context);
     expect(await preview()).toBe("Your file is ready.");
+    await runtime.harness.commit(async (tx) => {
+      await tx.appendEntry(id, {
+        kind: EngineMessage,
+        data: {
+          role: "assistant",
+          content: [
+            { type: "text", text: "[Report](https://example.com) ready." },
+          ],
+        },
+      });
+    }, context);
+    expect(await preview()).toBe("Report ready.");
+    await runtime.harness.commit(async (tx) => {
+      await tx.appendEntry(id, {
+        kind: EngineMessage,
+        data: {
+          role: "user",
+          content: "Keep **these** characters.",
+        },
+      });
+    }, context);
+    expect(await preview()).toBe("Keep **these** characters.");
     await runtime.harness.commit(async (tx) => {
       await tx.appendEntry(id, {
         kind: crypto.randomUUID(),
@@ -154,7 +177,7 @@ test("directory previews use displayed input and delivered text", async () => {
         ],
       });
     }, context);
-    expect(await preview()).toBe("Your file is ready.");
+    expect(await preview()).toBe("Keep **these** characters.");
   } finally {
     await runtime.harness.close(context);
   }

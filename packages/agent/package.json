@@ -37,7 +37,13 @@
     "cross-spawn": "7.0.6",
     "file-type": "^22.2.0",
     "proper-lockfile": "4.1.2",
+    "remark-gfm": "4.0.1",
+    "remark-parse": "11.0.0",
+    "unified": "11.0.5",
     "yaml": "2.9.0",
     "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/mdast": "4.0.4"
   }
 }

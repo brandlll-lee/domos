@@ -207,12 +207,25 @@ importers:
       proper-lockfile:
         specifier: 4.1.2
         version: 4.1.2
+      remark-gfm:
+        specifier: 4.0.1
+        version: 4.0.1
+      remark-parse:
+        specifier: 11.0.0
+        version: 11.0.0
+      unified:
+        specifier: 11.0.5
+        version: 11.0.5
       yaml:
         specifier: 2.9.0
         version: 2.9.0
       zod:
         specifier: 4.6.7
         version: 4.6.7
+    devDependencies:
+      '@types/mdast':
+        specifier: 4.0.4
+        version: 4.0.4
 
   packages/hosting:
     dependencies:

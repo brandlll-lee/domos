@@ -9,6 +9,7 @@ import { FileInput } from "./files.ts";
 import { EngineMessage } from "./harness/state.ts";
 import type { ChatMessage } from "./messages.ts";
 import { messageText } from "./messages.ts";
+import { previewText } from "./preview-text.ts";
 import { RoutineInput } from "./work/routine-state.ts";
 
 const pageSize = 32;
@@ -20,12 +21,14 @@ function entryText(entry: EntryRecord) {
   if (entry.kind === EngineMessage) {
     const message = entry.data as unknown as ChatMessage;
     return (
-      message.delivery?.text ??
+      (message.delivery && previewText(message.delivery.text)) ??
       (!message.pending &&
       !message.stopped &&
       message.stopReason !== "error" &&
       (message.role === "user" || message.role === "assistant")
-        ? messageText(message)
+        ? message.role === "assistant"
+          ? previewText(messageText(message))
+          : messageText(message)
         : "")
     );
   }
@@ -43,7 +46,7 @@ function entryText(entry: EntryRecord) {
       message.stopReason !== "aborted"
     ) {
       const text = messageText(message);
-      if (text.trim()) return text;
+      if (text.trim()) return previewText(text);
     }
     if (message.role === "toolResult" && !message.isError) {
       const delivery = (message.details as { delivery?: MessageDelivery })
@@ -51,7 +54,7 @@ function entryText(entry: EntryRecord) {
       const diagnostics = (entry.data as { diagnostics?: { code: string }[] })
         ?.diagnostics;
       if (delivery && !diagnostics?.some((item) => item.code === "aborted"))
-        return delivery.text;
+        return previewText(delivery.text);
     }
   }
   return "";
