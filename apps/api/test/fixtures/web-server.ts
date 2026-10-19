@@ -242,7 +242,10 @@ process.on("message", async (message) => {
 process.on("disconnect", () => {
   server.closeAllConnections();
   server.close();
-  void harness.close(BACKGROUND_CONTEXT);
   hosted?.close();
-  void store?.close();
+  void (async () => {
+    await computer.close(BACKGROUND_CONTEXT);
+    await harness.close(BACKGROUND_CONTEXT);
+    await store?.close();
+  })().finally(() => process.exit());
 });

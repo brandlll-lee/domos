@@ -1,10 +1,12 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { setTimeout } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { openBrowserView } from "./browser-view.mjs";
 
 export async function openBrowserService(directory, home) {
   const session = createHash("sha256")
@@ -79,6 +81,7 @@ export async function openBrowserService(directory, home) {
     AGENT_BROWSER_CONFIG: config,
     AGENT_BROWSER_SESSION: session,
     AGENT_BROWSER_NAMESPACE: session,
+    AGENT_BROWSER_SOCKET_DIR: join(state, "run"),
   });
   const client = new Client({ name: "domos", version: "1" });
   try {
@@ -132,20 +135,79 @@ export async function openBrowserService(directory, home) {
         else reject(new Error(stderr.trim() || "浏览器命令未完成。"));
       });
     });
-  const call = (name, args, signal) =>
-    client.callTool(
-      {
-        name,
-        arguments: {
-          ...args,
-          session,
-          namespace: session,
-          extraArgs: ["--profile", profile, "--download-path", downloads],
-        },
-      },
-      undefined,
-      { signal, timeout: 120000 },
+  const stop = async () => {
+    const path = join(
+      state,
+      "run",
+      "namespaces",
+      session,
+      "run",
+      `${session}.pid`,
     );
+    let pid;
+    try {
+      pid = Number((await readFile(path, "utf8")).trim());
+    } catch (error) {
+      if (error.code === "ENOENT") return;
+      throw error;
+    }
+    if (!Number.isSafeInteger(pid) || pid < 1 || pid === process.pid)
+      throw new Error("浏览器进程身份未确认。");
+    if (process.platform === "win32")
+      await new Promise((resolve, reject) => {
+        const child = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], {
+          windowsHide: true,
+          stdio: "ignore",
+        });
+        child.once("error", reject);
+        child.once("exit", resolve);
+      });
+    else {
+      try {
+        process.kill(-pid, "SIGKILL");
+      } catch (error) {
+        if (error.code !== "ESRCH") throw error;
+      }
+    }
+    const timeout = AbortSignal.timeout(5000);
+    while (true) {
+      try {
+        process.kill(pid, 0);
+      } catch (error) {
+        if (error.code === "ESRCH") return;
+        throw error;
+      }
+      await setTimeout(50, undefined, { signal: timeout });
+    }
+  };
+  const call = async (name, args, signal) => {
+    signal.throwIfAborted();
+    let draining;
+    const abort = () => {
+      draining = stop();
+      void draining.catch(() => {});
+    };
+    signal.addEventListener("abort", abort, { once: true });
+    try {
+      return await client.callTool(
+        {
+          name,
+          arguments: {
+            ...args,
+            session,
+            namespace: session,
+            all: false,
+            extraArgs: ["--profile", profile, "--download-path", downloads],
+          },
+        },
+        undefined,
+        { signal, timeout: 120000 },
+      );
+    } finally {
+      signal.removeEventListener("abort", abort);
+      if (draining) await draining;
+    }
+  };
   return {
     async install(signal) {
       await run(["install", "--use-system-ca"], signal);
@@ -166,8 +228,9 @@ export async function openBrowserService(directory, home) {
       return tools;
     },
     call,
+    view: (signal) => openBrowserView(run, call, signal),
     async close() {
-      await run(["close"], AbortSignal.timeout(3000)).catch(() => {});
+      await run(["close"], AbortSignal.timeout(3000)).catch(stop);
       await client.close();
     },
   };

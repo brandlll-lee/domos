@@ -213,7 +213,7 @@ export class WorkProcess implements EngineProcess {
       const timer = setTimeout(() => {
         this.requests.delete(id);
         clean();
-        reject(new Error("登录等待已结束。请重试。"));
+        reject(new Error("工作电脑请求已超时。请检查连接和操作结果。"));
       }, engineLimits.approvalMs);
       timer.unref();
       this.requests.set(id, {

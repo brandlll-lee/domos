@@ -77,6 +77,8 @@ for (const name of [
   "pi-account.mjs",
   "http-service.mjs",
   "browser-service.mjs",
+  "browser-view.mjs",
+  "desktop-view.mjs",
   "computer-service.mjs",
 ])
   await cp(join(root, "packages/agent/src/harness", name), join(runtime, name));
@@ -113,6 +115,8 @@ for (const name of [
   "pi-account.mjs",
   "http-service.mjs",
   "browser-service.mjs",
+  "browser-view.mjs",
+  "desktop-view.mjs",
   "computer-service.mjs",
 ])
   await cp(

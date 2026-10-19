@@ -27,9 +27,32 @@ test.beforeEach(async () => {
 
 test.afterEach(async () => {
   const exited = once(worker, "exit");
-  worker.kill("SIGKILL");
+  worker.disconnect();
   await exited;
-  await rm(directory, { recursive: true, force: true });
+  await rm(directory, { recursive: true, force: true, maxRetries: 5 });
+});
+
+test("computer viewing requires takeover and releases control when closed", async ({
+  page,
+}) => {
+  await page.goto(url);
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  await page.getByRole("tab", { name: "电脑", exact: true }).click();
+  await page.getByRole("switch", { name: "允许浏览器" }).click();
+  await page.getByRole("button", { name: "观看浏览器", exact: true }).click();
+  const view = page.getByRole("dialog", { name: "浏览器", exact: true });
+  await expect(view.getByRole("img", { name: "工作电脑画面" })).toBeVisible();
+  const address = view.getByRole("textbox", { name: "网址", exact: true });
+  await expect(address).toBeDisabled();
+  await view.getByRole("button", { name: "接管", exact: true }).click();
+  await expect(address).toBeEnabled();
+  await view.getByRole("button", { name: "交还控制权", exact: true }).click();
+  await expect(address).toBeDisabled();
+  await view.getByRole("button", { name: "关闭弹窗", exact: true }).click();
+  await page.getByRole("button", { name: "观看浏览器", exact: true }).click();
+  await view.getByRole("button", { name: "接管", exact: true }).click();
+  await expect(address).toBeEnabled();
+  await view.getByRole("button", { name: "关闭弹窗", exact: true }).click();
 });
 
 test("panels resize live, persist only on release, and retain drafts across layouts", async ({

@@ -2,25 +2,34 @@ import { randomUUID } from "node:crypto";
 import type { Context } from "@earendil-works/chord/context";
 import type { WorkProcess } from "../harness/process.ts";
 import type { ProductResult } from "../harness/types.ts";
-import type { ComputerService, ServiceState } from "./service-types.ts";
+import type {
+  ComputerRequest,
+  ComputerService,
+  ServiceState,
+} from "./service-types.ts";
 
 type Control = {
   owner?: string;
   lease?: string;
   revision: number;
-  calls: Set<{ controller: AbortController; done: Promise<unknown> }>;
+  calls: Set<{
+    botId: number;
+    controller: AbortController;
+    done: Promise<unknown>;
+  }>;
 };
 
 export class ComputerServices {
   private readonly workers = new Map<number, Promise<WorkProcess>>();
   private readonly controls = new Map<string, Control>();
+  private readonly open: (
+    botId: number,
+    context: Context,
+  ) => Promise<WorkProcess>;
 
-  constructor(
-    private readonly open: (
-      botId: number,
-      context: Context,
-    ) => Promise<WorkProcess>,
-  ) {}
+  constructor(open: (botId: number, context: Context) => Promise<WorkProcess>) {
+    this.open = open;
+  }
 
   private worker(botId: number, context: Context) {
     let worker = this.workers.get(botId);
@@ -76,6 +85,22 @@ export class ComputerServices {
     });
   }
 
+  async viewer<T>(
+    botId: number,
+    input: Extract<ComputerRequest, { operation: "view" }>,
+    signal: AbortSignal,
+    context: Context,
+  ) {
+    return (await this.worker(botId, context)).computer<T>(input, signal);
+  }
+
+  viewAccess(botId: number, service: ComputerService, lease?: string) {
+    const control = this.control(botId, service);
+    if (control.lease && control.lease !== lease)
+      throw new Error("用户正在另一窗口接管。请等待交还控制权。");
+    if (lease && control.lease !== lease) throw new Error("这次接管已失效。");
+  }
+
   async call(
     botId: number,
     service: ComputerService,
@@ -102,13 +127,17 @@ export class ComputerServices {
         combined,
       );
     })();
-    const pending = { controller, done };
+    const pending = { botId, controller, done };
     control.calls.add(pending);
     try {
       const result = await done;
       if (combined.aborted || revision !== control.revision)
         throw new Error("操作结果待核对。请重新观察画面，不要直接重试。");
       return result;
+    } catch (error) {
+      if (combined.aborted || revision !== control.revision)
+        throw new Error("操作结果待核对。请重新观察画面，不要直接重试。");
+      throw error;
     } finally {
       control.calls.delete(pending);
     }
@@ -130,6 +159,13 @@ export class ComputerServices {
     if (control.lease !== lease) throw new Error("这次接管已失效。");
     control.lease = undefined;
     control.revision++;
+  }
+
+  async disable(botId: number, service: ComputerService) {
+    const control = this.control(botId, service);
+    const calls = [...control.calls].filter((call) => call.botId === botId);
+    for (const call of calls) call.controller.abort();
+    await Promise.allSettled(calls.map((call) => call.done));
   }
 
   finish(owner: string) {

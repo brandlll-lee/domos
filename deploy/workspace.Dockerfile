@@ -12,6 +12,7 @@ COPY --from=daemon --chmod=0755 /build/pi-env /usr/local/bin/pi-env
 COPY --from=daemon /opt/domos /opt/domos
 COPY packages/agent/src/harness/worker.mjs packages/agent/src/harness/gateway.mjs packages/agent/src/harness/pi-entry.mjs packages/agent/src/harness/pi-account.mjs packages/agent/src/harness/http-service.mjs packages/agent/src/harness/browser-service.mjs packages/agent/src/harness/computer-service.mjs /opt/domos/
 COPY deploy/licenses/pi.txt /usr/share/doc/pi/LICENSE
+COPY packages/agent/src/harness/browser-view.mjs packages/agent/src/harness/desktop-view.mjs /opt/domos/
 COPY deploy/licenses/mcp-sdk.txt deploy/licenses/cross-spawn.txt deploy/licenses/proper-lockfile.txt /usr/share/doc/domos/licenses/
 ENV HOME=/home/domos
 USER 1000:1000

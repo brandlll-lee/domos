@@ -10,6 +10,13 @@ export type ComputerRequest =
   | { operation: "prepare"; service: ComputerService }
   | { operation: "install"; service: "browser" }
   | {
+      operation: "view";
+      service: ComputerService;
+      id: string;
+      action: "open" | "next" | "send" | "close";
+      message?: import("./viewer-types.ts").ViewerAction;
+    }
+  | {
       operation: "call";
       service: ComputerService;
       name: string;

@@ -31,6 +31,7 @@ import {
   requireIdle,
 } from "./state.ts";
 import { ComputerTools } from "./tools.ts";
+import { ComputerViews } from "./views.ts";
 
 export type ComputerView = ComputerStatus & {
   name: string;
@@ -42,6 +43,7 @@ export type ComputerView = ComputerStatus & {
 
 export class Computers {
   readonly tools = new ComputerTools(this);
+  readonly views = new ComputerViews(this);
   private harness!: Harness;
   private readonly targets = new Map<string, Computer>();
   private readonly changing = new Set<string>();

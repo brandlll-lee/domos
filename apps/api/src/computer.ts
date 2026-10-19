@@ -1,5 +1,6 @@
 import type { Bots } from "@domos/agent/bots";
 import type { Computers } from "@domos/agent/computer/catalog";
+import { viewerAction } from "@domos/agent/computer/viewer-types";
 import { computerSchema } from "@domos/agent/config";
 import { WorkError } from "@domos/agent/work";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -32,6 +33,44 @@ export function computerRouter(bots: Bots, computers?: Computers) {
   const context = BACKGROUND_CONTEXT;
   const service = z.enum(["browser", "desktop"]);
   return {
+    watch: os.input(botTarget.extend({ service })).handler(async function* ({
+      input,
+      signal,
+    }) {
+      await botConversation(bots, input.botId);
+      const target = await access(async (target) => target);
+      const aborted = signal ?? new AbortController().signal;
+      const id = await target.views.open(
+        input.botId,
+        input.service,
+        aborted,
+        context,
+      );
+      try {
+        yield { type: "ready" as const, id };
+        while (!aborted.aborted)
+          yield {
+            type: "frame" as const,
+            frame: await target.views.next(input.botId, id, aborted, context),
+          };
+      } finally {
+        await target.views.close(id, context).catch(() => {});
+      }
+    }),
+    input: os
+      .input(botTarget.extend({ view: z.uuid(), action: viewerAction }))
+      .handler(async ({ input, signal }) => {
+        await botConversation(bots, input.botId);
+        return access((target) =>
+          target.views.action(
+            input.botId,
+            input.view,
+            input.action,
+            signal ?? new AbortController().signal,
+            context,
+          ),
+        );
+      }),
     services: os.input(botTarget).handler(async ({ input }) => {
       await botConversation(bots, input.botId);
       return access((target) => target.tools.state(input.botId, context));
@@ -53,27 +92,6 @@ export function computerRouter(bots: Bots, computers?: Computers) {
             input.enabled,
             context,
             input.install,
-          ),
-        );
-      }),
-    takeover: os
-      .input(botTarget.extend({ service }))
-      .handler(async ({ input }) => {
-        await botConversation(bots, input.botId);
-        return access((target) =>
-          target.tools.takeover(input.botId, input.service, context),
-        );
-      }),
-    release: os
-      .input(botTarget.extend({ service, lease: z.uuid() }))
-      .handler(async ({ input }) => {
-        await botConversation(bots, input.botId);
-        return access((target) =>
-          target.tools.release(
-            input.botId,
-            input.service,
-            input.lease,
-            context,
           ),
         );
       }),

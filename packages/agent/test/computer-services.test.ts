@@ -41,6 +41,46 @@ test("browser profiles persist across a restart and stay separate for each Bot",
     (await computer.services.prepare(1, "browser", context)).available,
   ).toBe(true);
   await call(1, "agent_browser_open", { url });
+  const viewId = crypto.randomUUID();
+  const signal = AbortSignal.timeout(10000);
+  await computer.services.viewer(
+    1,
+    { operation: "view", service: "browser", id: viewId, action: "open" },
+    signal,
+    context,
+  );
+  const frame = await computer.services.viewer<{
+    seq: number;
+    data: string;
+    width: number;
+    height: number;
+  }>(
+    1,
+    { operation: "view", service: "browser", id: viewId, action: "next" },
+    signal,
+    context,
+  );
+  expect(frame.width).toBeGreaterThan(0);
+  expect(frame.height).toBeGreaterThan(0);
+  expect(Buffer.from(frame.data, "base64").length).toBeGreaterThan(100);
+  await computer.services.viewer(
+    1,
+    {
+      operation: "view",
+      service: "browser",
+      id: viewId,
+      action: "send",
+      message: { type: "ack", seq: frame.seq },
+    },
+    signal,
+    context,
+  );
+  await computer.services.viewer(
+    1,
+    { operation: "view", service: "browser", id: viewId, action: "close" },
+    signal,
+    context,
+  );
   await computer.services.prepare(1, "browser", context);
   expect(
     JSON.stringify((await call(1, "agent_browser_get_url", {})).content),
@@ -70,6 +110,13 @@ test("browser profiles persist across a restart and stay separate for each Bot",
     script: "localStorage.getItem('marker')",
   });
   expect(JSON.stringify(second.content)).not.toContain("saved");
+  const blocked = call(2, "agent_browser_eval", {
+    script: "new Promise(resolve => setTimeout(() => resolve('late'), 30000))",
+  }).catch((error: Error) => error.message);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const lease = await computer.services.takeover(2, "browser");
+  expect(await blocked).toContain("待核对");
+  await computer.services.release(2, "browser", lease);
 }, 60000);
 
 test.runIf(platform() === "win32")(

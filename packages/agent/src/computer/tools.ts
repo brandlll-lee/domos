@@ -7,7 +7,10 @@ import type { ComputerService, ServiceState } from "./service-types.ts";
 export class ComputerTools {
   private readonly targets = new Set<Computer>();
   private readonly states = new Map<string, ServiceState>();
-  constructor(private readonly computers: Computers) {}
+  private readonly computers: Computers;
+  constructor(computers: Computers) {
+    this.computers = computers;
+  }
 
   async state(botId: number, context: Context) {
     const { target, enabled, id } = await this.computers.serviceTarget(
@@ -47,6 +50,10 @@ export class ComputerTools {
             await target.services.prepare(botId, service, context, install),
           );
         await this.computers.serviceSettings(botId, service, enabled, context);
+        if (!enabled) {
+          await this.computers.views.closeBot(botId, service, context);
+          await target.services.disable(botId, service);
+        }
         return this.state(botId, context);
       },
       context,

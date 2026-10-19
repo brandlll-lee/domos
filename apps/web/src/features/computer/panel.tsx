@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useSettings } from "../settings/context.ts";
 import { computerLabels } from "./copy.ts";
 import { ComputerLocation } from "./location.tsx";
+import { ComputerServices } from "./services.tsx";
 import type { useComputer } from "./use-computer.ts";
 
 export function ComputerPanel({
@@ -70,6 +71,13 @@ export function ComputerPanel({
         <p role="alert" className="alert">
           {status.error}
         </p>
+      )}
+      {status?.authorized && (
+        <ComputerServices
+          key={status.id}
+          botId={botId}
+          admin={settings.admin}
+        />
       )}
       {error && (
         <p role="alert" className="alert">

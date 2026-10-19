@@ -64,6 +64,55 @@ test.runIf(platform() === "win32")(
         (tool) => tool.name === "desktop_get_desktop_state",
       ),
     ).toBe(true);
+    const controller = new AbortController();
+    const stream = await client().computer.watch(
+      { botId, service: "desktop" },
+      { signal: controller.signal },
+    );
+    const ready = (await stream.next()).value;
+    expect(ready).toMatchObject({ type: "ready" });
+    if (ready?.type !== "ready") throw new Error("View required");
+    await expect(
+      client().computer.input({
+        botId,
+        view: ready.id,
+        action: { type: "text", text: "Test" },
+      }),
+    ).rejects.toThrow("接管");
+    expect(
+      await client().computer.input({
+        botId,
+        view: ready.id,
+        action: { type: "take" },
+      }),
+    ).toEqual({ controlling: true });
+    const frame = (await stream.next()).value;
+    expect(frame).toMatchObject({
+      type: "frame",
+      frame: { mimeType: "image/png" },
+    });
+    controller.abort();
+    await stream.return?.();
+    await expect
+      .poll(async () => {
+        try {
+          const lease = await runtime.computer.tools.takeover(
+            botId,
+            "desktop",
+            context,
+          );
+          await runtime.computer.tools.release(
+            botId,
+            "desktop",
+            lease,
+            context,
+          );
+          return true;
+        } catch {
+          return false;
+        }
+      })
+      .toBe(true);
     await runtime.close();
     runtime = await openChat(context, config, { models: createModels() });
     expect((await client().computer.services({ botId })).desktop.enabled).toBe(
