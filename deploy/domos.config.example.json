@@ -5,7 +5,7 @@
   "computer": {
     "kind": "docker",
     "id": "personal",
-    "image": "domos-workspace:2",
+    "image": "domos-workspace:3",
     "volume": "domos-personal-work",
     "network": "none",
     "cpus": 2,

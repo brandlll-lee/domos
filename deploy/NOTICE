@@ -54,3 +54,17 @@ Source: https://github.com/milind-soni/OpenMausBot
 packages/ui/src/web/setting-row.tsx adapts
 src/components/SettingsPrimitives.tsx:SettingRow.
 Domos uses a fieldset, existing controls, and semantic theme variables.
+
+agent-browser
+Licensed under the Apache License, Version 2.0. See licenses/agent-browser.txt.
+Source: https://github.com/vercel-labs/agent-browser
+
+Cua Driver
+Copyright (c) 2025 Cua AI, Inc.
+Licensed under the MIT License. See licenses/cua-driver.txt.
+Source: https://github.com/trycua/cua
+
+Claude Agent SDK
+Copyright Anthropic PBC. All rights reserved.
+See licenses/claude-agent-sdk.txt for the publisher's legal agreements.
+Source: https://code.claude.com/docs/en/agent-sdk/overview

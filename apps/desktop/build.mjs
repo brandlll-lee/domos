@@ -104,6 +104,10 @@ await cp(join(root, "packages/ui/assets/icon.png"), join(dist, "icon.png"));
 await cp(join(root, "apps/web/dist"), join(runtime, "web"), {
   recursive: true,
 });
+await cp(join(root, "deploy/NOTICE"), join(runtime, "NOTICE"));
+await cp(join(root, "deploy/licenses"), join(runtime, "licenses"), {
+  recursive: true,
+});
 await mkdir(join(runtime, "work/deploy"), { recursive: true });
 await mkdir(join(runtime, "work/packages/agent/src/harness"), {
   recursive: true,
@@ -126,6 +130,10 @@ for (const name of [
 await cp(
   join(root, "deploy/workspace.Dockerfile"),
   join(runtime, "work/deploy/workspace.Dockerfile"),
+);
+await cp(
+  join(root, "deploy/workspace.mjs"),
+  join(runtime, "work/deploy/workspace.mjs"),
 );
 for (const name of ["proxy.Dockerfile", "squid.conf"])
   await cp(join(root, "deploy", name), join(runtime, "work/deploy", name));
