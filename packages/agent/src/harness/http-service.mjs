@@ -1,9 +1,11 @@
 import { randomBytes } from "node:crypto";
+import { createServer } from "node:net";
+import { setTimeout as delay } from "node:timers/promises";
 import { stripVTControlCharacters } from "node:util";
 
 const outputLimit = 8000;
 
-export function openHttpService(emit, limits) {
+export async function openHttpService(emit, limits) {
   const endpoint = Promise.withResolvers();
   const abort = new AbortController();
   const password = randomBytes(32).toString("hex");
@@ -14,8 +16,39 @@ export function openHttpService(emit, limits) {
   );
   timer.unref();
   void endpoint.promise.catch(() => {});
+  let port;
+  if (limits.listen) {
+    const server = createServer();
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    port = server.address().port;
+    await new Promise((resolve) => server.close(resolve));
+    void (async () => {
+      const address = `http://127.0.0.1:${port}`;
+      while (!abort.signal.aborted) {
+        try {
+          const health = await fetch(`${address}/global/health`, {
+            headers: {
+              Authorization: `Basic ${Buffer.from(`opencode:${password}`).toString("base64")}`,
+            },
+            signal: abort.signal,
+          });
+          if (health.ok) {
+            clearTimeout(timer);
+            endpoint.resolve(address);
+            return;
+          }
+        } catch {}
+        await delay(100, undefined, { signal: abort.signal });
+      }
+    })().catch(() => {});
+  }
+  void endpoint.promise.catch(() => abort.abort());
   return {
     password,
+    port,
     capture(data) {
       output = (output + stripVTControlCharacters(data)).slice(-outputLimit);
       const address = output.match(/http:\/\/127\.0\.0\.1:\d+(?=[\s/])/)?.[0];
@@ -28,7 +61,11 @@ export function openHttpService(emit, limits) {
       try {
         if (
           typeof frame.path !== "string" ||
-          !/^\/(?:provider(?:\/|$)|auth\/)/.test(frame.path) ||
+          !(
+            /^\/(?:provider(?:\/|$)|auth\/)/.test(frame.path) ||
+            (frame.method === "GET" &&
+              /^\/session\/[A-Za-z0-9_-]+\/message$/.test(frame.path))
+          ) ||
           frame.path.includes("..") ||
           !["GET", "POST", "PUT", "DELETE"].includes(frame.method)
         )

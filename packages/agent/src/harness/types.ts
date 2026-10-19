@@ -42,7 +42,7 @@ export type ProcessSpec = {
   env?: Record<string, string>;
   instructions?: string;
   mcp?: { url: string };
-  http?: { timeoutMs: number; readyMs: number };
+  http?: { timeoutMs: number; readyMs: number; listen?: boolean };
 };
 export type ProcessReady = {
   url: string;
@@ -61,6 +61,7 @@ export interface EngineProcess {
     method?: string,
     body?: unknown,
   ): Promise<T>;
+  history?(sessionId: string): Promise<unknown[]>;
   close(): Promise<void>;
 }
 

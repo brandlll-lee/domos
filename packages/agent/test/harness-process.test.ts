@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -266,6 +266,84 @@ test("native account HTTP stays inside the selected work computer and closes pen
   const pending = expect(process.request("/provider/auth")).rejects.toThrow();
   await process.close();
   await pending;
+});
+
+test("a work computer allocates its native history endpoint without reading child logs", async () => {
+  const { process } = await worker();
+  process.output.resume();
+  process.error.resume();
+  await process.launch({
+    command: globalThis.process.execPath,
+    args: [
+      "--input-type=module",
+      "-e",
+      `
+      import { createServer } from 'node:http';
+      createServer((request, response) => response.end(JSON.stringify(request.url === '/global/health' ? { healthy: true } : [{ info: { id: 'saved' } }]))).listen(Number(process.argv[1]), '127.0.0.1');
+    `,
+      "__DOMOS_PORT__",
+    ],
+    http: { timeoutMs: 1000, readyMs: 3000, listen: true },
+  });
+  await expect(
+    process.request("/session/native-session/message"),
+  ).resolves.toEqual([{ info: { id: "saved" } }]);
+  await expect(
+    process.request("/session/native-session/message", "POST"),
+  ).rejects.toThrow();
+});
+
+test("a work computer reads its private Claude transcript through the native SDK", async () => {
+  const { process } = await worker();
+  const { cwd, home } = await process.ready;
+  const sessionId = crypto.randomUUID();
+  const project = join(
+    home,
+    "claude",
+    "projects",
+    cwd.replace(/[^a-zA-Z0-9]/g, "-"),
+  );
+  await mkdir(project, { recursive: true });
+  const user = crypto.randomUUID();
+  await writeFile(
+    join(project, `${sessionId}.jsonl`),
+    [
+      {
+        type: "user",
+        uuid: user,
+        parentUuid: null,
+        sessionId,
+        cwd,
+        message: { role: "user", content: "Work" },
+      },
+      {
+        type: "assistant",
+        uuid: crypto.randomUUID(),
+        parentUuid: user,
+        sessionId,
+        cwd,
+        message: {
+          id: "answer",
+          role: "assistant",
+          content: [{ type: "text", text: "Saved" }],
+          stop_reason: "end_turn",
+        },
+      },
+    ]
+      .map((message) => JSON.stringify(message))
+      .join("\n") + "\n",
+  );
+  await expect(process.history(sessionId)).resolves.toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        type: "assistant",
+        message: expect.objectContaining({
+          id: "answer",
+          stop_reason: "end_turn",
+        }),
+      }),
+    ]),
+  );
 });
 
 test("bundled Pi opens a native session in the selected work directory", async () => {

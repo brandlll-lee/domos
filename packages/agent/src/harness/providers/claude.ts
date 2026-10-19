@@ -31,7 +31,7 @@ export const claudeProvider: EngineProvider = {
   command: "claude",
   package: "@anthropic-ai/claude-code@2.1.284",
   login: ["auth", "login"],
-  capabilities: { approvals: true, models: false, recovery: false },
+  capabilities: { approvals: true, models: false, recovery: true },
   async open({
     process,
     config,
@@ -155,8 +155,11 @@ export const claudeProvider: EngineProvider = {
       async prompt(text, images = []) {
         completion = Promise.withResolvers<void>();
         void completion.promise.catch(() => {});
+        const uuid = randomUUID();
+        await emit({ type: "accepted", id: `claude:${uuid}` });
         await rpc.send({
           type: "user",
+          uuid,
           message: {
             role: "user",
             content: images.length
@@ -174,7 +177,6 @@ export const claudeProvider: EngineProvider = {
               : text,
           },
         });
-        await emit({ type: "accepted" });
         await completion.promise;
         await events;
       },
@@ -183,12 +185,59 @@ export const claudeProvider: EngineProvider = {
           id: randomUUID(),
           result: Promise.withResolvers<void>(),
         };
+        void interruption.result.promise.catch(() => {});
         await rpc.send({
           type: "control_request",
           request_id: interruption.id,
           request: { subtype: "interrupt" },
         });
         await interruption.result.promise;
+      },
+      async recover(cursor) {
+        if (!cursor?.startsWith("claude:") || !process.history) return false;
+        const history = (await process.history(id)) as {
+          type: string;
+          uuid: string;
+          parent_tool_use_id?: string | null;
+          message: { id?: string; content?: unknown; stop_reason?: string };
+        }[];
+        const messages = history.filter(
+          (message) => !message.parent_tool_use_id,
+        );
+        const start = messages.findIndex(
+          (message) =>
+            message.type === "user" && message.uuid === cursor.slice(7),
+        );
+        if (start < 0) return false;
+        const turn = messages.slice(start);
+        const final = turn.at(-1);
+        if (
+          final?.type !== "assistant" ||
+          final.message.stop_reason !== "end_turn"
+        )
+          return false;
+        if (
+          turn
+            .slice(1)
+            .some(
+              (entry) =>
+                entry.type === "user" &&
+                (!Array.isArray(entry.message.content) ||
+                  entry.message.content.some(
+                    (part) => part.type !== "tool_result",
+                  )),
+            )
+        )
+          return false;
+        for (const entry of turn) {
+          if (entry.type === "assistant" && entry.message.id)
+            await emit({
+              type: "message",
+              id: entry.message.id,
+              text: textContent(entry.message.content),
+            });
+        }
+        return true;
       },
       answer: async () => {
         throw new Error("请回复当前确认卡片。");

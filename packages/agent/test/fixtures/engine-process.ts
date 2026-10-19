@@ -25,6 +25,9 @@ export class ProtocolProcess implements EngineProcess {
   readonly requests: Request[] = [];
   spec?: ProcessSpec;
   receive: (request: Request) => void = () => {};
+  history: (sessionId: string) => Promise<unknown[]> = async () => {
+    throw new Error("History unavailable");
+  };
 
   constructor(mode: "protocol" | "cli" = "protocol") {
     if (mode === "cli") return;
@@ -54,6 +57,7 @@ export class ProtocolProcess implements EngineProcess {
     _method?: string,
     _body?: unknown,
   ): Promise<T> {
+    if (/^\/session\/[^/]+\/message$/.test(_path)) return [] as T;
     throw new Error("Service unavailable");
   }
   async close() {

@@ -19,6 +19,102 @@ function protocol() {
   };
 }
 
+test("Pi reconciles a completed native turn without sending the request again", async () => {
+  const { process, events, emit } = protocol();
+  let complete = true;
+  process.receive = (request) =>
+    process.frame({
+      type: "response",
+      id: request.id,
+      success: true,
+      data:
+        request.type === "get_state"
+          ? { sessionFile: "/work/session.jsonl" }
+          : request.type === "get_entries"
+            ? {
+                leafId: "answer",
+                entries: [
+                  {
+                    type: "message",
+                    id: "request",
+                    parentId: "previous",
+                    message: { role: "user", content: "Work" },
+                  },
+                  {
+                    type: "message",
+                    id: "answer",
+                    parentId: "request",
+                    message: {
+                      role: "assistant",
+                      stopReason: complete ? "stop" : "toolUse",
+                      content: [{ type: "text", text: "Saved result" }],
+                    },
+                  },
+                ],
+              }
+            : {},
+    });
+  const session = await piProvider.open({
+    process,
+    config: { provider: "pi", model: null },
+    sessionId: "/work/session.jsonl",
+    instructions: "Role",
+    emit,
+  });
+  expect(await session.recover?.("pi:previous")).toBe(true);
+  expect(events).toContainEqual({
+    type: "message",
+    id: "pi:1",
+    text: "Saved result",
+  });
+  complete = false;
+  expect(await session.recover?.("pi:previous")).toBe(false);
+  expect(process.requests.some((request) => request.type === "prompt")).toBe(
+    false,
+  );
+});
+
+test("Claude reconciles the matching user UUID and refuses an unfinished turn", async () => {
+  const { process, events, emit } = protocol();
+  let reason = "end_turn";
+  process.history = async () => [
+    {
+      type: "user",
+      uuid: "request-uuid",
+      parent_tool_use_id: null,
+      message: { role: "user", content: "Work" },
+    },
+    {
+      type: "assistant",
+      uuid: "answer-uuid",
+      parent_tool_use_id: null,
+      message: {
+        id: "native-answer",
+        role: "assistant",
+        stop_reason: reason,
+        content: [{ type: "text", text: "Complete result" }],
+      },
+    },
+  ];
+  const session = await claudeProvider.open({
+    process,
+    config: { provider: "claude", model: null },
+    sessionId: crypto.randomUUID(),
+    instructions: "Role",
+    emit,
+  });
+  expect(await session.recover?.("claude:request-uuid")).toBe(true);
+  expect(events).toContainEqual({
+    type: "message",
+    id: "native-answer",
+    text: "Complete result",
+  });
+  reason = "tool_use";
+  expect(await session.recover?.("claude:request-uuid")).toBe(false);
+  expect(await session.recover?.("claude:other-request")).toBe(false);
+  expect(process.requests).toEqual([]);
+});
+
 test("Pi reports a command check failure before opening a session", async () => {
   const { process, emit } = protocol();
   process.launch = async () =>
@@ -246,6 +342,7 @@ test("Claude uses the native stream protocol and keeps its own session", async (
 test("OpenCode uses ACP model discovery, permissions and native session load", async () => {
   const { process, events, emit } = protocol();
   let promptId: string | number | undefined;
+  process.request = async <T>() => [] as T;
   process.receive = (request) => {
     if (request.id === "permission") {
       process.frame({
@@ -322,4 +419,57 @@ test("OpenCode uses ACP model discovery, permissions and native session load", a
   expect(
     process.requests.find((request) => request.id === "permission")?.result,
   ).toEqual({ outcome: { outcome: "selected", optionId: "allow" } });
+});
+
+test("OpenCode reconciles native history after its saved checkpoint", async () => {
+  const { process, events, emit } = protocol();
+  let finish = "stop";
+  process.request = async <T>() =>
+    [
+      {
+        info: {
+          id: "baseline",
+          role: "assistant",
+          finish: "stop",
+          time: { completed: 1 },
+        },
+        parts: [],
+      },
+      { info: { id: "user", role: "user" }, parts: [] },
+      {
+        info: {
+          id: "result",
+          role: "assistant",
+          parentID: "user",
+          finish,
+          time: { completed: 2 },
+        },
+        parts: [{ type: "text", text: "Recovered answer" }],
+      },
+    ] as T;
+  process.receive = (request) =>
+    process.response(
+      request,
+      request.method === "initialize"
+        ? { protocolVersion: 1, agentCapabilities: { loadSession: true } }
+        : {},
+    );
+  const session = await opencodeProvider.open({
+    process,
+    config: { provider: "opencode", model: null },
+    sessionId: "session-1",
+    instructions: "Role",
+    emit,
+  });
+  expect(await session.recover?.("opencode:baseline")).toBe(true);
+  expect(events).toContainEqual({
+    type: "message",
+    id: "result",
+    text: "Recovered answer",
+  });
+  finish = "tool-calls";
+  expect(await session.recover?.("opencode:baseline")).toBe(false);
+  expect(
+    process.requests.some((request) => request.method === "session/prompt"),
+  ).toBe(false);
 });

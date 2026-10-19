@@ -70,6 +70,7 @@ async function configure(frame) {
   await mkdir(frame.cwd, { recursive: true, mode: 0o700 });
   await mkdir(frame.home, { recursive: true, mode: 0o700 });
   home = frame.home;
+  process.env.CLAUDE_CONFIG_DIR = join(home, "claude");
   process.chdir(frame.cwd);
   computer = openComputerService(frame.cwd, frame.home);
   gateway = await openGateway(
@@ -132,8 +133,11 @@ async function launch(frame) {
   );
   Object.assign(env, { HOME: home, USERPROFILE: home }, frame.env);
   if (frame.http) {
-    http = openHttpService(emit, frame.http);
+    http = await openHttpService(emit, frame.http);
     env.OPENCODE_SERVER_PASSWORD = http.password;
+    frame.args = frame.args.map((arg) =>
+      arg === "__DOMOS_PORT__" ? String(http.port) : arg,
+    );
   }
   for (const directory of [
     env.CODEX_HOME,
@@ -257,6 +261,19 @@ lines.on("line", (line) => {
       else if (frame.type === "http") {
         if (!http) throw new Error("Service unavailable");
         void http.request(frame);
+      } else if (frame.type === "history") {
+        void import("@anthropic-ai/claude-agent-sdk")
+          .then(({ getSessionMessages }) =>
+            getSessionMessages(frame.sessionId, { dir: process.cwd() }),
+          )
+          .then((result) => emit({ type: "http", id: frame.id, result }))
+          .catch(() =>
+            emit({
+              type: "http",
+              id: frame.id,
+              error: "原生会话记录无法读取。请检查工作电脑和会话文件。",
+            }),
+          );
       } else if (frame.type === "computer") {
         const controller = new AbortController();
         operations.set(frame.id, controller);

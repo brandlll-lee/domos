@@ -186,6 +186,10 @@ export class WorkProcess implements EngineProcess {
     return this.exchange<T>({ type: "http", path, method, body });
   }
 
+  history(sessionId: string) {
+    return this.exchange<unknown[]>({ type: "history", sessionId });
+  }
+
   computer(
     input: { operation: "catalog"; service: "browser" | "desktop" },
     signal?: AbortSignal,

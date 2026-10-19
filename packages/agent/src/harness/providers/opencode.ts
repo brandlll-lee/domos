@@ -12,13 +12,25 @@ import {
   engineLimits,
 } from "../types.ts";
 
+type NativeMessage = {
+  info: {
+    id: string;
+    role: string;
+    parentID?: string;
+    finish?: string;
+    error?: unknown;
+    time?: { completed?: number };
+  };
+  parts: { type: string; text?: string }[];
+};
+
 export const opencodeProvider: EngineProvider = {
   id: "opencode",
   name: "OpenCode",
   command: "opencode",
   package: "opencode-ai@1.19.0",
   login: ["auth", "login"],
-  capabilities: { approvals: true, models: true, recovery: false },
+  capabilities: { approvals: true, models: true, recovery: true },
   async open({
     process,
     config,
@@ -82,7 +94,8 @@ export const opencodeProvider: EngineProvider = {
             (update.sessionUpdate === "agent_message_chunk" ||
               update.sessionUpdate === "agent_thought_chunk") &&
             update.content.type === "text"
-          )
+          ) {
+            if (update.messageId) messageId = update.messageId;
             await emit({
               type:
                 update.sessionUpdate === "agent_message_chunk"
@@ -91,6 +104,7 @@ export const opencodeProvider: EngineProvider = {
               id: messageId,
               text: update.content.text,
             });
+          }
           if (update.sessionUpdate === "tool_call")
             await emit({
               type: "tool",
@@ -118,7 +132,12 @@ export const opencodeProvider: EngineProvider = {
     );
     await process.launch({
       command: "opencode",
-      args: ["acp"],
+      args: ["acp", "--hostname", "127.0.0.1", "--port", "__DOMOS_PORT__"],
+      http: {
+        timeoutMs: engineLimits.handshakeMs,
+        readyMs: engineLimits.handshakeMs,
+        listen: true,
+      },
       instructions,
       env: {
         ...env,
@@ -156,6 +175,10 @@ export const opencodeProvider: EngineProvider = {
         value: config.model,
       });
     await emit({ type: "session", id });
+    const messages = () =>
+      process.request<NativeMessage[]>(
+        `/session/${encodeURIComponent(id)}/message`,
+      );
     return {
       id,
       vision: async () =>
@@ -179,7 +202,11 @@ export const opencodeProvider: EngineProvider = {
           throw new Error("当前引擎协议不支持图片。请更换引擎或使用文本资料。");
         active = true;
         messageId = `opencode:${++sequence}`;
-        await emit({ type: "accepted" });
+        const history = await messages();
+        await emit({
+          type: "accepted",
+          id: `opencode:${history.at(-1)?.info.id ?? ""}`,
+        });
         try {
           const outcome = await rpc.prompt({
             sessionId: id,
@@ -187,6 +214,16 @@ export const opencodeProvider: EngineProvider = {
           });
           if (outcome.stopReason === "cancelled")
             throw new Error("工作已停止。");
+          for (const message of (await messages()).slice(history.length))
+            if (message.info.role === "assistant")
+              await emit({
+                type: "message",
+                id: message.info.id,
+                text: message.parts
+                  .filter((part) => part.type === "text")
+                  .map((part) => part.text ?? "")
+                  .join("\n"),
+              });
         } finally {
           active = false;
         }
@@ -194,6 +231,39 @@ export const opencodeProvider: EngineProvider = {
       async interrupt() {
         for (const item of pending.values()) item.answer({ allow: false });
         await rpc.cancel({ sessionId: id });
+      },
+      async recover(cursor) {
+        if (!cursor?.startsWith("opencode:")) return false;
+        const history = await messages();
+        const baseline = cursor.slice(9);
+        const start = baseline
+          ? history.findIndex((message) => message.info.id === baseline)
+          : -1;
+        if (baseline && start < 0) return false;
+        const turn = history.slice(start + 1);
+        const users = turn.filter((message) => message.info.role === "user");
+        const final = turn.at(-1)?.info;
+        if (
+          users.length !== 1 ||
+          final?.role !== "assistant" ||
+          !final.time?.completed ||
+          !final.finish ||
+          ["tool-calls", "unknown"].includes(final.finish) ||
+          final.error ||
+          final.parentID !== users[0]?.info.id
+        )
+          return false;
+        for (const message of turn)
+          if (message.info.role === "assistant")
+            await emit({
+              type: "message",
+              id: message.info.id,
+              text: message.parts
+                .filter((part) => part.type === "text")
+                .map((part) => part.text ?? "")
+                .join("\n"),
+            });
+        return true;
       },
       async answer(requestId, answer) {
         const item = pending.get(requestId);

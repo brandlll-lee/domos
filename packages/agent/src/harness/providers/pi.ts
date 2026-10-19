@@ -1,6 +1,7 @@
 import type {
   AgentSessionEvent,
   RpcSessionState,
+  SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 import { JsonLines } from "../json-lines.ts";
 import type { EngineOpen, EngineProvider } from "../types.ts";
@@ -11,7 +12,7 @@ export const piProvider: EngineProvider = {
   command: "pi",
   package: "@earendil-works/pi-coding-agent@1.2.0",
   login: null,
-  capabilities: { approvals: false, models: true, recovery: false },
+  capabilities: { approvals: false, models: true, recovery: true },
   async open({
     process,
     config,
@@ -166,11 +167,16 @@ export const piProvider: EngineProvider = {
         completion = Promise.withResolvers<void>();
         failure = null;
         void completion.promise.catch(() => {});
+        const before = await rpc.request<{ leafId?: string | null }>(
+          "get_entries",
+        );
+        const cursor = `pi:${before.leafId ?? ""}`;
+        await emit({ type: "accepted", id: cursor });
         const result = await rpc.request("prompt", {
           message: text,
           ...(images.length ? { images } : {}),
         });
-        await emit({ type: "accepted" });
+        await emit({ type: "accepted", id: cursor });
         if (result.disposition === "handled") completion.resolve();
         await completion.promise;
         await events;
@@ -178,6 +184,62 @@ export const piProvider: EngineProvider = {
       async interrupt() {
         await rpc.request("clear_queue");
         await rpc.request("abort");
+      },
+      async recover(cursor) {
+        if (!cursor?.startsWith("pi:")) return false;
+        const since = cursor.slice(3);
+        const history = await rpc.request<{
+          entries: SessionEntry[];
+          leafId: string | null;
+        }>("get_entries", since ? { since } : {});
+        const entries = new Map(
+          history.entries.map((entry) => [entry.id, entry]),
+        );
+        const branch: SessionEntry[] = [];
+        let id = history.leafId;
+        while (id && id !== since) {
+          const entry = entries.get(id);
+          if (!entry || branch.some((item) => item.id === id)) return false;
+          branch.unshift(entry);
+          id = entry.parentId;
+        }
+        if ((id ?? "") !== since) return false;
+        const messages = branch
+          .filter((entry) => entry.type === "message")
+          .map((entry) => entry.message);
+        const final = messages.at(-1);
+        if (
+          messages.filter((message) => message.role === "user").length !== 1 ||
+          final?.role !== "assistant" ||
+          final.stopReason !== "stop"
+        )
+          return false;
+        let index = 0;
+        for (const message of messages) {
+          if (message.role === "assistant") {
+            await emit({
+              type: "message",
+              id: `pi:${++index}`,
+              text: textContent(message.content),
+            });
+            for (const part of message.content)
+              if (part.type === "toolCall")
+                await emit({
+                  type: "tool",
+                  id: part.id,
+                  name: part.name,
+                  input: part.arguments,
+                });
+          } else if (message.role === "toolResult")
+            await emit({
+              type: "tool_result",
+              id: message.toolCallId,
+              name: message.toolName,
+              text: textContent(message.content),
+              failed: message.isError,
+            });
+        }
+        return true;
       },
       answer: async () => {
         throw new Error("Pi 使用工作电脑的授权。");
