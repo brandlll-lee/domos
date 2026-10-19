@@ -17,7 +17,11 @@ import {
   type ImageProcessor,
 } from "@earendil-works/pi-durable/tools";
 import { fileTypeFromBuffer } from "file-type";
-import { type Attachment, MAX_FILE_BYTES } from "./attachments.ts";
+import {
+  type Attachment,
+  type EvidenceSource,
+  MAX_FILE_BYTES,
+} from "./attachments.ts";
 import { type WorkEnvironment, Workspace } from "./workspace.ts";
 
 export const FileInput = "domos.file-input";
@@ -64,6 +68,7 @@ export class Files {
     path: string,
     bytes: Uint8Array,
     computerId?: string,
+    source?: EvidenceSource,
   ): Promise<Attachment> {
     if (bytes.byteLength > MAX_FILE_BYTES)
       throw new Error("File exceeds 10 MiB");
@@ -83,6 +88,7 @@ export class Files {
       path,
       mimeType,
       ...(computerId ? { computerId } : {}),
+      ...(source ? { source } : {}),
     };
     const directory = this.directory(botId, id);
     await mkdir(directory, { recursive: true });
@@ -229,6 +235,24 @@ export class Files {
     } finally {
       await reader.value.close(context);
     }
+  }
+
+  async capture(
+    botId: number,
+    bytes: Uint8Array,
+    source: EvidenceSource,
+    context: Context,
+  ) {
+    const type = await fileTypeFromBuffer(bytes);
+    if (!type?.mime.startsWith("image/"))
+      throw new Error("截图不是有效的图片。");
+    return this.store(
+      botId,
+      `evidence/${randomUUID()}.${type.ext}`,
+      bytes,
+      (await this.target?.(botId, context)) ?? undefined,
+      source,
+    );
   }
 
   extension(images?: ImageProcessor) {

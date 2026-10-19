@@ -5,6 +5,7 @@ import type { Models } from "@earendil-works/pi-ai/models";
 import type { Attachment } from "../attachments.ts";
 import type { Computers } from "../computer/catalog.ts";
 import type { Files } from "../files.ts";
+import { computerEvidence } from "./evidence.ts";
 import { conversationHistory } from "./history.ts";
 import {
   callProductTool,
@@ -107,8 +108,8 @@ export class EngineExecution {
             active.controller.signal,
           ]);
           combined.throwIfAborted();
-          if (computerTools.some((tool) => tool.name === name))
-            return this.computers.tools.invoke(
+          if (computerTools.some((tool) => tool.name === name)) {
+            let result = await this.computers.tools.invoke(
               runtime.conversationId,
               name,
               args,
@@ -116,6 +117,43 @@ export class EngineExecution {
               combined,
               context,
             );
+            if (this.files) {
+              const evidence = await computerEvidence(
+                this.files,
+                runtime.conversationId,
+                String(runtime.taskId),
+                callId,
+                name,
+                result,
+                context,
+              );
+              result = evidence.result;
+              if (evidence.attachments.length)
+                await emit({
+                  type: "tool_result",
+                  id: `computer:${callId}`,
+                  name,
+                  text: "画面已保存。",
+                  failed: Boolean(result.isError),
+                  attachments: evidence.attachments,
+                });
+            }
+            if (
+              result.content.some((part) => part.type === "image") &&
+              (await active.session?.vision?.()) === false
+            )
+              return {
+                ...result,
+                content: [
+                  ...result.content.filter((part) => part.type !== "image"),
+                  {
+                    type: "text",
+                    text: "当前模型不能接收截图。画面已保存为附件。需要看图时，请更换支持图片的模型。",
+                  },
+                ],
+              };
+            return result;
+          }
           if (name !== "approve")
             return callProductTool(runtime, callId, name, args, context);
           if (provider.id !== "claude") throw new Error("确认方式不可用。");

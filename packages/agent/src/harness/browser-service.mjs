@@ -71,6 +71,9 @@ export async function openBrowserService(directory, home) {
       "DISPLAY",
       "XAUTHORITY",
       "XDG_RUNTIME_DIR",
+      "AGENT_BROWSER_EXECUTABLE_PATH",
+      "AGENT_BROWSER_HEADED",
+      "AGENT_BROWSER_ARGS",
     ]
       .filter((key) => process.env[key] !== undefined)
       .map((key) => [key, process.env[key]]),
@@ -189,7 +192,8 @@ export async function openBrowserService(directory, home) {
     };
     signal.addEventListener("abort", abort, { once: true });
     try {
-      return await client.callTool(
+      const capturedAt = new Date().toISOString();
+      const result = await client.callTool(
         {
           name,
           arguments: {
@@ -203,6 +207,14 @@ export async function openBrowserService(directory, home) {
         undefined,
         { signal, timeout: 120000 },
       );
+      if (result.content.some((part) => part.type === "image")) {
+        const page = JSON.parse(await run(["get", "url", "--json"], signal));
+        result.structuredContent = {
+          ...result.structuredContent,
+          source: { capturedAt, url: page.data.url },
+        };
+      }
+      return result;
     } finally {
       signal.removeEventListener("abort", abort);
       if (draining) await draining;

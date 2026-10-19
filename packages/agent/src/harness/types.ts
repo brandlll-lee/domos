@@ -25,6 +25,7 @@ export type EngineEvent =
       name: string;
       text: string;
       failed: boolean;
+      attachments?: Attachment[];
     }
   | { type: "approval"; approval: EngineApproval };
 

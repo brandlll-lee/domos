@@ -41,6 +41,11 @@ test("browser profiles persist across a restart and stay separate for each Bot",
     (await computer.services.prepare(1, "browser", context)).available,
   ).toBe(true);
   await call(1, "agent_browser_open", { url });
+  const screenshot = await call(1, "agent_browser_screenshot", {});
+  expect(screenshot.structuredContent?.source).toMatchObject({
+    url: `${url}/`,
+    capturedAt: expect.any(String),
+  });
   const viewId = crypto.randomUUID();
   const signal = AbortSignal.timeout(10000);
   await computer.services.viewer(

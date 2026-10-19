@@ -39,6 +39,24 @@ export function Attachments({
           key={file.id}
           name={file.name}
           size={file.size}
+          caption={
+            file.source && (
+              <p className="detail-note">
+                <time dateTime={file.source.capturedAt}>
+                  {new Date(file.source.capturedAt).toLocaleString()}
+                </time>
+                {file.source.url && (
+                  <>
+                    {" "}
+                    ·{" "}
+                    <a href={file.source.url} target="_blank" rel="noreferrer">
+                      网页来源
+                    </a>
+                  </>
+                )}
+              </p>
+            )
+          }
           preview={
             !file.mimeType || file.mimeType.startsWith("image/")
               ? `/files/${botId}/${file.id}`

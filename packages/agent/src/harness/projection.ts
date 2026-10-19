@@ -79,6 +79,7 @@ export class EngineProjection {
             key: id,
           },
         ],
+        ...(event.attachments ? { attachments: event.attachments } : {}),
       });
     else if (event.type === "message") {
       message.content = [{ type: "text", text: event.text, key: id }];
