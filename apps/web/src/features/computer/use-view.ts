@@ -2,11 +2,15 @@ import type {
   ViewerAction,
   ViewFrame,
 } from "@domos/agent/computer/viewer-types";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../client.ts";
 
 export function useView(botId: number, service: "browser" | "desktop") {
-  const [controller, setController] = useState(() => new AbortController());
+  const [attempt, setAttempt] = useState(0);
+  const connection = useMemo(
+    () => ({ botId, service, attempt }),
+    [botId, service, attempt],
+  );
   const [frame, setFrame] = useState<ViewFrame>();
   const [connected, setConnected] = useState(false);
   const [controlling, setControlling] = useState(false);
@@ -14,6 +18,8 @@ export function useView(botId: number, service: "browser" | "desktop") {
   const session = useRef<{ id: string; signal: AbortSignal }>(undefined);
   const queue = useRef(Promise.resolve());
   useEffect(() => {
+    const { botId, service } = connection;
+    const controller = new AbortController();
     setFrame(undefined);
     setConnected(false);
     setControlling(false);
@@ -47,7 +53,7 @@ export function useView(botId: number, service: "browser" | "desktop") {
       controller.abort();
       session.current = undefined;
     };
-  }, [botId, service, controller]);
+  }, [connection]);
   const send = useCallback(
     (action: ViewerAction) => {
       const target = session.current;
@@ -74,6 +80,6 @@ export function useView(botId: number, service: "browser" | "desktop") {
     controlling,
     error,
     send,
-    reconnect: () => setController(new AbortController()),
+    reconnect: () => setAttempt((value) => value + 1),
   };
 }

@@ -237,6 +237,9 @@ process.on("message", async (message) => {
   } else if (message === "release") {
     release?.();
     process.send?.({ type: "released" });
+  } else if (message === "disconnect-computer") {
+    await computer.close(BACKGROUND_CONTEXT);
+    process.send?.({ type: "computer-disconnected" });
   }
 });
 process.on("disconnect", () => {

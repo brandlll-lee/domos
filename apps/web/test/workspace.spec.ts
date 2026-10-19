@@ -34,24 +34,75 @@ test.afterEach(async () => {
 
 test("computer viewing requires takeover and releases control when closed", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.goto(url);
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   await page.getByRole("tab", { name: "电脑", exact: true }).click();
   await page.getByRole("switch", { name: "允许浏览器" }).click();
   await page.getByRole("button", { name: "观看浏览器", exact: true }).click();
   const view = page.getByRole("dialog", { name: "浏览器", exact: true });
-  await expect(view.getByRole("img", { name: "工作电脑画面" })).toBeVisible();
+  const screen = view.getByRole("img", { name: "工作电脑画面" });
+  await expect(screen).toBeVisible();
   const address = view.getByRole("textbox", { name: "网址", exact: true });
   await expect(address).toBeDisabled();
   await view.getByRole("button", { name: "接管", exact: true }).click();
   await expect(address).toBeEnabled();
+  const first = await screen.getAttribute("src");
+  await address.fill(`${url}/health`);
+  await view.getByRole("button", { name: "打开", exact: true }).click();
+  await expect(screen).not.toHaveAttribute("src", first ?? "");
+  expect((await view.boundingBox())?.width).toBeGreaterThan(800);
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await expect
+      .poll(() =>
+        view
+          .getByRole("button", { name: "交还控制权", exact: true })
+          .evaluate((item) => {
+            const style = getComputedStyle(item);
+            const sample = document.createElement("span");
+            sample.style.backgroundColor = "var(--color-control)";
+            item.append(sample);
+            const expected = getComputedStyle(sample).backgroundColor;
+            sample.remove();
+            return style.backgroundColor === expected;
+          }),
+      )
+      .toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath(`computer-${theme}.png`),
+    });
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    view.getByRole("button", { name: "交还控制权", exact: true }),
+  ).toBeInViewport();
+  expect(
+    await view.evaluate((item) => item.scrollWidth <= item.clientWidth),
+  ).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("computer-compact.png") });
+  await page.setViewportSize({ width: 1360, height: 900 });
   await view.getByRole("button", { name: "交还控制权", exact: true }).click();
   await expect(address).toBeDisabled();
   await view.getByRole("button", { name: "关闭弹窗", exact: true }).click();
   await page.getByRole("button", { name: "观看浏览器", exact: true }).click();
   await view.getByRole("button", { name: "接管", exact: true }).click();
   await expect(address).toBeEnabled();
+  const disconnected = once(worker, "message");
+  worker.send("disconnect-computer");
+  await disconnected;
+  await expect(view.getByRole("status")).toHaveText("连接已断开");
+  await expect(address).toBeDisabled();
+  await view.getByRole("button", { name: "重新连接", exact: true }).click();
+  await expect(view.getByRole("status")).toHaveText("正在观看");
+  await expect(screen).toBeVisible();
+  await view.getByRole("button", { name: "接管", exact: true }).click();
+  await expect(address).toBeEnabled();
+  const restored = await screen.getAttribute("src");
+  await address.fill(`${url}/`);
+  await view.getByRole("button", { name: "打开", exact: true }).click();
+  await expect(screen).not.toHaveAttribute("src", restored ?? "");
   await view.getByRole("button", { name: "关闭弹窗", exact: true }).click();
 });
 

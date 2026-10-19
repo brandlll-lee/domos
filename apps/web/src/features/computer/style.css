@@ -5,8 +5,9 @@
   color: var(--color-muted);
   font-size: var(--text-caption);
 }
-.computer-view-dialog {
+.dialog-popup.computer-view-dialog {
   width: min(68rem, calc(100vw - var(--space-6)));
+  max-height: calc(100dvh - var(--space-12));
 }
 .computer-viewer {
   display: grid;
@@ -41,7 +42,7 @@
 .computer-view-screen img {
   display: block;
   max-width: 100%;
-  max-height: 55dvh;
+  max-height: 45dvh;
   width: auto;
   height: auto;
   touch-action: none;

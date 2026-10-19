@@ -307,7 +307,7 @@ test("a work computer reads its private Claude transcript through the native SDK
   const user = crypto.randomUUID();
   await writeFile(
     join(project, `${sessionId}.jsonl`),
-    [
+    `${[
       {
         type: "user",
         uuid: user,
@@ -331,7 +331,7 @@ test("a work computer reads its private Claude transcript through the native SDK
       },
     ]
       .map((message) => JSON.stringify(message))
-      .join("\n") + "\n",
+      .join("\n")}\n`,
   );
   await expect(process.history(sessionId)).resolves.toEqual(
     expect.arrayContaining([
