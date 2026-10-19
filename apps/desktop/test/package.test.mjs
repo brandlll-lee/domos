@@ -5,7 +5,7 @@ import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { findPackageJSON } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 
@@ -36,6 +36,9 @@ test("the Windows distribution contains its server dependencies and starts its p
     "@orpc/server/fetch",
     "hono",
     "zod",
+    "agent-browser",
+    "@trycua/cua-driver",
+    "@anthropic-ai/claude-agent-sdk",
   ]) {
     const manifest = findPackageJSON(dependency, pathToFileURL(entry));
     assert.ok(manifest);
@@ -45,6 +48,27 @@ test("the Windows distribution contains its server dependencies and starts its p
       `${dependency} must be inside the distribution`,
     );
   }
+  const manifest = findPackageJSON("@trycua/cua-driver", pathToFileURL(entry));
+  const { main } = JSON.parse(await readFile(manifest, "utf8"));
+  const { CuaDriver } = await import(
+    pathToFileURL(join(dirname(manifest), main)).href
+  );
+  const driver = CuaDriver.create();
+  try {
+    const catalog = JSON.parse(
+      await driver.listToolsJson({ signal: AbortSignal.timeout(10000) }),
+    );
+    assert.ok(catalog.tools.some((tool) => tool.name === "get_desktop_state"));
+  } finally {
+    await driver.shutdown();
+    driver.uniffiDestroy();
+  }
+  assert.ok(await readFile(join(runtime, "licenses/cua-driver.txt")));
+  assert.ok(
+    await readFile(
+      join(runtime, release.workBuild.context, "deploy/workspace.mjs"),
+    ),
+  );
   const directory = await mkdtemp(join(tmpdir(), "domos-package-"));
   const listener = createServer();
   listener.listen(0, "127.0.0.1");

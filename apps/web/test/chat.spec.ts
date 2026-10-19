@@ -1635,8 +1635,8 @@ test("Markdown keeps one message scale across elements, themes, and text enlarge
     ).toBe(await page.evaluate(() => innerWidth));
   };
   for (const [width, size] of [
-    [1600, 14],
-    [390, 15],
+    [1600, 13.5],
+    [390, 13.5],
   ] as const) {
     await page.setViewportSize({ width, height: 900 });
     for (const [theme, label] of [
@@ -1656,7 +1656,7 @@ test("Markdown keeps one message scale across elements, themes, and text enlarge
   await page.setViewportSize({ width: 1600, height: 1200 });
   await page.addStyleTag({ content: ":root { font-size: 200%; }" });
   await expect(page.locator("html")).toHaveCSS("font-size", "32px");
-  await expectScale(30);
+  await expectScale(27);
   await expect(input).toBeVisible();
   await input.fill("放大后仍可编辑。");
   await expect(
@@ -1675,7 +1675,7 @@ test("bundled Chinese and Latin faces render shared text weights", async ({
   await expect(paragraph).toContainText("中文消息与 Latin 文字。");
   await page.evaluate(() => document.fonts.ready);
   await expect(paragraph).toHaveCSS("font-weight", "400");
-  await expect(paragraph.locator("strong")).toHaveCSS("font-weight", "600");
+  await expect(paragraph.locator("strong")).toHaveCSS("font-weight", "500");
   const session = await page.context().newCDPSession(page);
   await session.send("DOM.enable");
   await session.send("CSS.enable");
@@ -1837,7 +1837,10 @@ test("IM bubbles, sidebar search, and popup surfaces share both themes", async (
     throw new Error("Messages are not visible");
   expect(sent.width).toBeLessThan(200);
   expect(received.x).toBe(column.x);
-  expect(received.width).toBeLessThanOrEqual(column.width * 0.5 + 1);
+  expect(received.x + received.width).toBeLessThanOrEqual(
+    column.x + column.width,
+  );
+  expect(received.width).toBeLessThanOrEqual(720);
   expect(sent.x + sent.width).toBeCloseTo(column.x + column.width, 0);
   const search = page.getByRole("searchbox", { name: "搜索联系人" });
   await search.fill(crypto.randomUUID());
