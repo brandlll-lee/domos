@@ -27,9 +27,6 @@ export function ComputerPanel({
   };
   return (
     <section className="detail-stack" aria-label="工作环境" aria-busy={busy}>
-      <p className="detail-note">
-        选择此 Bot 使用的电脑。Domos 会自动准备并连接。
-      </p>
       {!status && settings.admin && setup ? (
         <ComputerLocation
           botId={botId}
@@ -46,7 +43,7 @@ export function ComputerPanel({
       )}
       {busy && <p role="status">正在准备并连接电脑…</p>}
       {status && (
-        <div className="settings-card">
+        <div className="detail-stack">
           <SettingRow
             title={status.name}
             description={`${computerLabels.state[status.state]} · ${status.authorized ? "已授权" : "授权已撤销"}`}
@@ -57,14 +54,14 @@ export function ComputerPanel({
                 : "待连接"}
             </span>
           </SettingRow>
-          <div className="computer-capabilities settings-form">
-            <span>
-              {status.capabilities.commands ? "✓ 可执行命令" : "命令暂不可用"}
-            </span>
-            <span>
-              {status.capabilities.files ? "✓ 可处理文件" : "文件暂不可用"}
-            </span>
-          </div>
+          <dl className="computer-facts">
+            <dt>命令</dt>
+            <dd>
+              {status.capabilities.commands ? "可执行命令" : "命令暂不可用"}
+            </dd>
+            <dt>文件</dt>
+            <dd>{status.capabilities.files ? "可处理文件" : "文件暂不可用"}</dd>
+          </dl>
         </div>
       )}
       {status?.error && (

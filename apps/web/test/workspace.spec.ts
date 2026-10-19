@@ -37,7 +37,7 @@ test("computer viewing requires takeover and releases control when closed", asyn
 }, testInfo) => {
   await page.goto(url);
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
-  await page.getByRole("tab", { name: "电脑", exact: true }).click();
+  await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
   await page.getByRole("switch", { name: "允许浏览器" }).click();
   await page.getByRole("button", { name: "观看浏览器", exact: true }).click();
   const view = page.getByRole("dialog", { name: "浏览器", exact: true });
@@ -135,18 +135,22 @@ test("panels resize live, persist only on release, and retain drafts across layo
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   const name = page.getByRole("textbox", { name: "名字", exact: true });
   await name.fill("尚未保存的名字");
-  await page.getByRole("tab", { name: "电脑", exact: true }).click();
-  await page.getByRole("tab", { name: "Bot设置", exact: true }).click();
+  await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
+  await page
+    .getByRole("complementary", { name: /的详情$/ })
+    .getByRole("button", { name: "Bot设置", exact: true })
+    .click();
   await expect(name).toHaveValue("尚未保存的名字");
   const right = page.getByRole("separator", { name: "调整详情宽度" });
   const inspectorPanel = page.locator(
     '.workspace-panel[data-side="inspector"]',
   );
   await expect(inspectorPanel).toHaveCSS("border-inline-start-width", "1px");
-  const divider = await page
-    .locator(".chat-header")
-    .evaluate((element) => getComputedStyle(element).borderBottomColor);
-  await expect(inspectorPanel).toHaveCSS("border-inline-start-color", divider);
+  await expect(page.locator(".chat-header")).toHaveCSS(
+    "border-bottom-width",
+    "0px",
+  );
+  await expect(inspectorPanel).toHaveCSS("border-inline-start-width", "1px");
   await right.focus();
   await right.press("End");
   await expect(right).toHaveAttribute(
@@ -318,7 +322,7 @@ test("empty chats retain their creation time and compact controls across layouts
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(environment).toBeHidden();
-  await page.getByRole("button", { name: "Bot设置", exact: true }).click();
+  await details.getByRole("button", { name: "Bot设置", exact: true }).click();
   await expect(
     details.getByRole("textbox", { name: "名字", exact: true }),
   ).toBeVisible();
@@ -457,7 +461,7 @@ test("control geometry and interaction states stay consistent", async ({
   await page.goto(url);
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   const details = page.getByRole("complementary", { name: "Domos的详情" });
-  const picker = details.getByRole("tab", { name: "Bot设置", exact: true });
+  const picker = details.getByRole("button", { name: "Bot设置", exact: true });
   const inset = await picker.evaluate((item) => {
     const box = item.getBoundingClientRect();
     const header = item.parentElement?.getBoundingClientRect();
@@ -494,7 +498,7 @@ test("control geometry and interaction states stay consistent", async ({
   await save.hover();
   await expect(save).toHaveCSS("background-color", color);
   await details.getByRole("button", { name: "还原", exact: true }).click();
-  await details.getByRole("tab", { name: "电脑", exact: true }).click();
+  await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
   await details.getByRole("button", { name: "高级选项", exact: true }).click();
   const select = details.getByRole("combobox", {
     name: "连接已有电脑",
@@ -502,7 +506,8 @@ test("control geometry and interaction states stay consistent", async ({
   });
   expect((await select.boundingBox())?.height).toBe(inputHeight);
   await expect(select).toHaveCSS("font-size", "14px");
-  await details.getByRole("tab", { name: "记忆", exact: true }).click();
+  await details.getByRole("button", { name: "Bot设置", exact: true }).click();
+  await details.getByRole("button", { name: "工作配置", exact: true }).click();
   const checkbox = details.getByRole("checkbox", { name: "共享给所有Bot" });
   await expect(checkbox).toHaveCSS("width", "16px");
   await expect(checkbox).toHaveCSS("margin", "0px");

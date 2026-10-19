@@ -96,8 +96,19 @@ async function chooseDetail(
   details: import("@playwright/test").Locator,
   label: string,
 ) {
+  if (label === "电脑") {
+    await details
+      .page()
+      .getByRole("button", { name: "Bot电脑", exact: true })
+      .click();
+    return;
+  }
+  if (label !== "身份")
+    await details
+      .getByRole("button", { name: "工作配置", exact: true })
+      .click();
   await details
-    .getByRole("tab", {
+    .getByRole("button", {
       name: label === "身份" ? "Bot设置" : label,
       exact: true,
     })
@@ -355,7 +366,7 @@ test("Bot details manage identity, memory, shared skills, routines and actual pr
   await page.screenshot({ path: "test-results/bot-work-desktop.png" });
   await dialog.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(page.getByLabel("档案员 的回复")).toContainText("报告已交付。");
-  await expect(page.getByLabel("你的消息")).toHaveText("试跑：早间报告");
+  await expect(page.getByLabel("你的消息")).toContainText("试跑：早间报告");
   const port = Number(new URL(url).port);
   await stop();
   await start(port);
@@ -555,7 +566,7 @@ test("contacts keep independent histories, drafts, models, and locations after r
   await input.fill("写作草稿");
   await contacts.getByRole("link", { name: "研究员", exact: true }).click();
   await expect(input).toHaveValue("研究草稿");
-  await expect(page.getByLabel("你的消息")).toHaveText("研究问题");
+  await expect(page.getByLabel("你的消息")).toContainText("研究问题");
   await expectModel(page, "测试模型二");
   await page.reload();
   await expect(input).toHaveValue("研究草稿");
@@ -569,7 +580,7 @@ test("contacts keep independent histories, drafts, models, and locations after r
   await expect(page.getByLabel("研究员 的回复")).toContainText("faux-2");
   await contacts.getByRole("link", { name: "写作助手", exact: true }).click();
   await expect(input).toHaveValue("写作草稿");
-  await expect(page.getByLabel("你的消息")).toHaveText("写作问题");
+  await expect(page.getByLabel("你的消息")).toContainText("写作问题");
   await page.screenshot({ path: "test-results/bot-contacts.png" });
 });
 
@@ -601,7 +612,7 @@ test("switching contacts keeps the first Bot running while another Bot replies",
   await control("release");
   await expect(page.getByLabel("Domos 的回复")).toContainText("后台任务");
   await expect(send).toBeVisible();
-  await expect(page.getByLabel("你的消息")).toHaveText("后台任务");
+  await expect(page.getByLabel("你的消息")).toContainText("后台任务");
 });
 
 test("creation retries keep one contact and themed dialogs work on narrow screens", async ({

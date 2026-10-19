@@ -28,7 +28,7 @@
 .detail-scroll {
   flex: 1;
 }
-.detail-content > div {
+.detail-content > section:not([hidden]) {
   display: grid;
   gap: var(--space-4);
 }
@@ -49,7 +49,7 @@
   font: inherit;
   cursor: pointer;
 }
-.detail-nav button[aria-selected="true"] {
+.detail-nav button[aria-pressed="true"] {
   background: var(--color-selection);
   color: var(--color-text);
   font-weight: var(--weight-medium);

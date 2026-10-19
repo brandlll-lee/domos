@@ -1,7 +1,6 @@
 import type { Bot } from "@domos/agent/bots";
 import { Button } from "@domos/ui/controls";
 import { ScrollArea } from "@domos/ui/scroll-area";
-import { Tabs } from "@domos/ui/tabs";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import type { ReactNode } from "react";
 import { MemoryPanel } from "./memory.tsx";
@@ -81,17 +80,23 @@ export function BotDetails({
     },
   };
   return (
-    <Tabs.Root
-      render={<aside />}
-      value={panel}
-      onValueChange={(value) => onPanelChange(value as BotPanel)}
+    <aside
       tabIndex={-1}
       id="bot-details"
       className="bot-details"
       aria-label={`${bot.name}的详情`}
     >
       <header className="detail-header">
-        <strong>{bot.name}</strong>
+        <strong>{panel === "computer" ? "工作环境" : bot.name}</strong>
+        {panel === "computer" && (
+          <Button
+            variant="ghost"
+            size="small"
+            onClick={() => onPanelChange("profile")}
+          >
+            Bot设置
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon-small"
@@ -101,13 +106,38 @@ export function BotDetails({
           <XIcon />
         </Button>
       </header>
-      <Tabs.List className="detail-nav" aria-label="Bot设置分区">
-        {Object.entries(panels).map(([key, item]) => (
-          <Tabs.Tab key={key} value={key}>
-            {item.label}
-          </Tabs.Tab>
-        ))}
-      </Tabs.List>
+      {panel !== "computer" && (
+        <nav className="detail-nav" aria-label="Bot设置分区">
+          <Button
+            variant="ghost"
+            aria-pressed={panel === "profile"}
+            onClick={() => onPanelChange("profile")}
+          >
+            Bot设置
+          </Button>
+          <Button
+            variant="ghost"
+            aria-pressed={panel !== "profile"}
+            onClick={() => onPanelChange("memory")}
+          >
+            工作配置
+          </Button>
+        </nav>
+      )}
+      {panel !== "profile" && panel !== "computer" && (
+        <nav className="detail-nav" aria-label="工作配置">
+          {(["memory", "skills", "routines", "prompt"] as const).map((key) => (
+            <Button
+              key={key}
+              variant="ghost"
+              aria-pressed={panel === key}
+              onClick={() => onPanelChange(key)}
+            >
+              {panels[key].label}
+            </Button>
+          ))}
+        </nav>
+      )}
       <ScrollArea className="detail-scroll" viewportClassName="detail-content">
         {!work.connected && (
           <p className="detail-note" role="status">
@@ -120,7 +150,7 @@ export function BotDetails({
           </p>
         )}
         {Object.entries(panels).map(([key, item]) => (
-          <Tabs.Panel key={key} value={key} keepMounted aria-label={item.label}>
+          <section key={key} hidden={panel !== key} aria-label={item.label}>
             <fieldset
               className="bot-fields"
               disabled={!work.connected || action.busy}
@@ -128,9 +158,9 @@ export function BotDetails({
               {item.content}
               {key === "profile" && model}
             </fieldset>
-          </Tabs.Panel>
+          </section>
         ))}
       </ScrollArea>
-    </Tabs.Root>
+    </aside>
   );
 }
