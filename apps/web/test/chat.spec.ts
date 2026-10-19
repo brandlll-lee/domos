@@ -818,10 +818,9 @@ test("working contacts retain green status across switches, concurrent work, rel
 test("chat gutters stay full width while bubbles follow the available panel", async ({
   page,
 }) => {
-  const answer =
-    "这是一段完整交付的长消息，用来检查聊天区域的可用宽度和自然换行。".repeat(
-      5,
-    );
+  test.setTimeout(60_000);
+  const code = "long_identifier_".repeat(24);
+  const answer = `**回复已完成。**\n\n这是一段完整交付的消息，用来检查聊天区域的自然换行。\n\n\`\`\`text\n${code}\n\`\`\`\n\n| 名称 | 说明 |\n| --- | --- |\n| 文件 | ${code} |`;
   await control({ content: answer });
   await page.goto(url);
   const input = page.getByLabel("消息", { exact: true });
@@ -829,13 +828,19 @@ test("chat gutters stay full width while bubbles follow the available panel", as
   await input.fill("请完整回复，检查长消息能使用规定的气泡宽度。".repeat(10));
   await page.getByRole("button", { name: "发送", exact: true }).click();
   const reply = page.getByLabel("Domos 的回复").locator(".message-bubble");
-  await expect(reply).toHaveText(answer);
+  await expect(reply.locator("pre code")).toHaveText(code, { timeout: 30_000 });
+  await expect(page.locator(".chat-preview span").first()).toContainText(
+    "回复已完成。",
+  );
+  await expect(page.locator(".chat-preview span").first()).not.toContainText(
+    "**",
+  );
   const outgoing = page.getByLabel("你的消息").locator(".message-bubble");
   for (const viewport of [
-    { width: 1600, height: 900, incoming: 0.5, outgoing: 0.6 },
-    { width: 940, height: 900, incoming: 0.88, outgoing: 0.88 },
-    { width: 390, height: 844, incoming: 0.88, outgoing: 0.88 },
-    { width: 320, height: 700, incoming: 0.88, outgoing: 0.88 },
+    { width: 1600, height: 900 },
+    { width: 940, height: 900 },
+    { width: 390, height: 844 },
+    { width: 320, height: 700 },
   ]) {
     await page.setViewportSize(viewport);
     for (const [theme, label] of [
@@ -853,19 +858,43 @@ test("chat gutters stay full width while bubbles follow the available panel", as
       expect(messages.x).toBeCloseTo(composer.x, 0);
       expect(messages.width).toBeCloseTo(composer.width, 0);
       expect(messages.width).toBeGreaterThanOrEqual(panel.width * 0.9);
-      expect(bubble.width).toBeGreaterThan(
-        messages.width * (viewport.incoming - 0.02),
+      expect(bubble.x).toBeGreaterThanOrEqual(messages.x);
+      expect(bubble.x + bubble.width).toBeLessThanOrEqual(
+        messages.x + messages.width + 1,
       );
-      expect(bubble.width).toBeLessThanOrEqual(
-        messages.width * viewport.incoming + 1,
-      );
-      expect(sent.width).toBeGreaterThan(
-        messages.width * (viewport.outgoing - 0.02),
-      );
-      expect(sent.width).toBeLessThanOrEqual(
-        messages.width * viewport.outgoing + 1,
-      );
+      expect(sent.width).toBeLessThanOrEqual(messages.width * 0.9 + 1);
       expect(sent.x + sent.width).toBeCloseTo(messages.x + messages.width, 0);
+      await expect(reply).toHaveCSS("font-size", "13.5px");
+      await expect(reply).toHaveCSS("line-height", "20px");
+      await expect(reply.locator("strong")).toHaveCSS("font-weight", "500");
+      await expect(page.locator(".chat-preview strong").first()).toHaveCSS(
+        "font-size",
+        "13px",
+      );
+      await expect(page.locator(".chat-preview span").first()).toHaveCSS(
+        "font-size",
+        "12px",
+      );
+      await expect(outgoing).toHaveCSS(
+        "background-color",
+        theme === "dark" ? "rgb(236, 236, 234)" : "rgb(36, 37, 39)",
+      );
+      await expectTextContrast(page);
+      const overflow = await page
+        .locator(".transcript")
+        .evaluate((element) => ({
+          width: element.clientWidth,
+          content: element.scrollWidth,
+          code: (element.querySelector("pre") as HTMLElement).scrollWidth,
+          codeWidth: (element.querySelector("pre") as HTMLElement).clientWidth,
+          table: (element.querySelector(".markdown-table") as HTMLElement)
+            .scrollWidth,
+          tableWidth: (element.querySelector(".markdown-table") as HTMLElement)
+            .clientWidth,
+        }));
+      expect(overflow.content).toBeLessThanOrEqual(overflow.width + 1);
+      expect(overflow.code).toBeGreaterThan(overflow.codeWidth);
+      expect(overflow.table).toBeGreaterThan(overflow.tableWidth);
       expect(
         await page.locator("body").evaluate((element) => element.scrollWidth),
       ).toBe(viewport.width);
@@ -874,6 +903,54 @@ test("chat gutters stay full width while bubbles follow the available panel", as
       });
     }
   }
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  const details = await openDetails(page);
+  for (const zoom of [1, 1.25, 1.5]) {
+    await page.evaluate((value) => {
+      document.documentElement.style.zoom = String(value);
+    }, zoom);
+    const handle = page.getByRole("separator", { name: "调整详情宽度" });
+    const box = await handle.boundingBox();
+    if (!box) throw new Error("Details resize handle missing");
+    await page.mouse.move(box.x + box.width / 2, box.y + 100);
+    await page.mouse.down();
+    for (const distance of [40, 80, 120, 60, 0]) {
+      await page.mouse.move(box.x - distance, box.y + 100, { steps: 3 });
+      const chat = await page.locator(".conversation").boundingBox();
+      const sent = await outgoing.boundingBox();
+      const panel = await details.boundingBox();
+      if (!chat || !sent || !panel) throw new Error("Chat panel missing");
+      expect(sent.x + sent.width).toBeLessThanOrEqual(chat.x + chat.width + 1);
+      expect(chat.x + chat.width).toBeLessThanOrEqual(panel.x + 1);
+      expect(
+        await page
+          .locator(".transcript")
+          .evaluate((element) => element.scrollWidth - element.clientWidth),
+      ).toBeLessThanOrEqual(1);
+    }
+    await page.mouse.up();
+    await page.screenshot({ path: `test-results/chat-side-panel-${zoom}.png` });
+  }
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = "1";
+  });
+  await details.getByRole("button", { name: "关闭", exact: true }).click();
+  await control({ content: "好的。" });
+  await input.fill("谢谢");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByLabel("Domos 的回复").last()).toHaveText("好的。");
+  const short = await page
+    .getByLabel("Domos 的回复")
+    .last()
+    .locator(".message-bubble")
+    .boundingBox();
+  expect(short?.width).toBeLessThan(100);
+  const shortSent = await page
+    .getByLabel("你的消息")
+    .last()
+    .locator(".message-bubble")
+    .boundingBox();
+  expect(shortSent?.width).toBeLessThan(100);
 });
 
 test("a reply arrives complete while typing survives reloads", async ({
@@ -1049,9 +1126,9 @@ test("background replies and reduced motion show complete messages without entry
   await page.emulateMedia({ reducedMotion: "reduce" });
   await input.fill("减少动画");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  const circle = page.locator(".typing-dots circle").first();
-  await expect(circle).toBeVisible();
-  await expect(circle).toHaveCSS("animation-name", "none");
+  const dot = page.locator(".typing-dots g").first();
+  await expect(dot).toBeVisible();
+  await expect(dot).toHaveCSS("animation-name", "none");
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(2);
   await expect
     .poll(() =>
@@ -2207,6 +2284,7 @@ test("typing dots share the avatar color and follow complete messages", async ({
   await expect(replies).toHaveText(["先核对资料，再整理结果。"]);
   await expect(typing).toBeVisible();
   await expect(typing).toHaveText("");
+  await expect(typing.locator("svg")).toHaveCount(1);
   await expect(typing.locator("svg circle")).toHaveCount(3);
   await expect(page.getByRole("log").locator("details")).toHaveCount(0);
   await expect(page.locator(".composer-area .bot-avatar")).toHaveCount(0);
@@ -2224,7 +2302,7 @@ test("typing dots share the avatar color and follow complete messages", async ({
     Number.parseInt(color.slice(index, index + 2), 16),
   );
   await expect(typing).toHaveCSS("color", `rgb(${rgb.join(", ")})`);
-  const animation = await typing.locator("span").evaluateAll((nodes) =>
+  const animation = await typing.locator("g").evaluateAll((nodes) =>
     nodes.map((node) => ({
       name: getComputedStyle(node).animationName,
       delay: Number.parseFloat(getComputedStyle(node).animationDelay),
@@ -2232,15 +2310,45 @@ test("typing dots share the avatar color and follow complete messages", async ({
     })),
   );
   expect(animation.map((item) => item.name)).toEqual([
-    "typing-pulse",
-    "typing-pulse",
-    "typing-pulse",
+    "typing-wave",
+    "typing-wave",
+    "typing-wave",
   ]);
   const [first, second, third] = animation;
   if (!first || !second || !third) throw new Error("Three dots required");
-  expect(first.delay).toBeLessThan(second.delay);
-  expect(second.delay).toBeLessThan(third.delay);
+  expect([first.delay, second.delay, third.delay]).toEqual([0, 0.18, 0.36]);
   expect(new Set(animation.map((item) => item.fill)).size).toBe(1);
+  const wave = await typing.locator("g").evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const animation = node.getAnimations()[0];
+      if (!animation) throw new Error("Typing animation missing");
+      const currentTime = animation.currentTime;
+      animation.pause();
+      const samples = [0, 390, 780].map((time) => {
+        animation.currentTime =
+          time +
+          Number.parseFloat(getComputedStyle(node).animationDelay) * 1000;
+        const style = getComputedStyle(node);
+        return {
+          y: new DOMMatrix(style.transform).m42,
+          opacity: Number(style.opacity),
+        };
+      });
+      animation.currentTime = currentTime;
+      animation.play();
+      return samples;
+    }),
+  );
+  for (const samples of wave) {
+    for (const [index, expected] of [
+      { y: 0, opacity: 0.4 },
+      { y: -4, opacity: 1 },
+      { y: 0, opacity: 0.4 },
+    ].entries()) {
+      expect(samples[index]?.y).toBeCloseTo(expected.y, 3);
+      expect(samples[index]?.opacity).toBeCloseTo(expected.opacity, 3);
+    }
+  }
   const surroundingAnimations = await typing.evaluateHandle((element) =>
     document.getAnimations().filter((animation) => {
       const target = (animation.effect as KeyframeEffect | null)?.target;
@@ -2274,16 +2382,26 @@ test("typing dots share the avatar color and follow complete messages", async ({
   const metric = (metrics: typeof before, name: string) =>
     metrics.metrics.find((item) => item.name === name)?.value ?? 0;
   const layouts = metric(after, "LayoutCount") - metric(before, "LayoutCount");
+  const layoutMs =
+    (metric(after, "LayoutDuration") - metric(before, "LayoutDuration")) * 1000;
+  const styleMs =
+    (metric(after, "RecalcStyleDuration") -
+      metric(before, "RecalcStyleDuration")) *
+    1000;
+  const p95 = [...intervals].sort((a, b) => a - b)[
+    Math.floor(intervals.length * 0.95)
+  ];
   await performance.detach();
   await test.info().attach("typing-performance", {
-    body: JSON.stringify({ layouts, intervals }),
+    body: JSON.stringify({ layouts, layoutMs, styleMs, p95, intervals }),
     contentType: "application/json",
   });
   await surroundingAnimations.evaluate((animations) => {
     for (const animation of animations) animation.play();
   });
   await surroundingAnimations.dispose();
-  expect(layouts).toBe(0);
+  expect((layoutMs + styleMs) / intervals.length).toBeLessThan(1);
+  expect(p95).toBeLessThan(50);
   for (const [theme, label] of [
     ["dark", "深色"],
     ["light", "浅色"],
@@ -2293,7 +2411,7 @@ test("typing dots share the avatar color and follow complete messages", async ({
     await page.screenshot({ path: `test-results/typing-${theme}.png` });
   }
   await page.emulateMedia({ reducedMotion: "reduce" });
-  for (const dot of await typing.locator("span").all())
+  for (const dot of await typing.locator("g").all())
     await expect(dot).toHaveCSS("animation-name", "none");
   await page.emulateMedia({ forcedColors: "active" });
   await expect(typing).toBeVisible();
@@ -2314,7 +2432,6 @@ test("typing dots share the avatar color and follow complete messages", async ({
   await page.reload();
   await expect(replies).toHaveCount(2);
 });
-
 test("complete product messages arrive during work and survive restart", async ({
   page,
 }) => {

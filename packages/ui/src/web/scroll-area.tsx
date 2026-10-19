@@ -18,7 +18,9 @@ export function ScrollArea({
         ref={viewportRef}
         className={`scroll-viewport ${viewportClassName}`}
       >
-        <BaseScrollArea.Content>{children}</BaseScrollArea.Content>
+        <BaseScrollArea.Content style={{ minWidth: 0, width: "100%" }}>
+          {children}
+        </BaseScrollArea.Content>
       </BaseScrollArea.Viewport>
       <BaseScrollArea.Scrollbar className="scroll-bar">
         <BaseScrollArea.Thumb className="scroll-thumb" />

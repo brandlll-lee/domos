@@ -75,7 +75,7 @@
   white-space: nowrap;
 }
 .chat-preview strong {
-  font-size: var(--text-label);
+  font-size: var(--text-caption);
   font-weight: var(--weight-medium);
   line-height: var(--leading-control);
 }
@@ -84,6 +84,9 @@
   font-size: var(--text-caption);
   line-height: var(--leading-caption);
   color: var(--color-muted);
+}
+.chat-preview span {
+  font-size: var(--text-small);
 }
 .sidebar-empty {
   margin: var(--space-3);
@@ -203,7 +206,7 @@
 }
 .task-notice,
 .delivered-files {
-  width: var(--message-incoming-width);
+  width: var(--message-max-width);
   min-width: 0;
 }
 .task-notice {
@@ -230,41 +233,39 @@
   display: flex;
   align-items: center;
   align-self: flex-start;
-  min-height: var(--space-6);
-  padding-inline: var(--space-1);
+  border-radius: var(--radius-message);
+  background: var(--color-assistant);
 }
 .typing-dots svg {
   display: block;
-  width: 100%;
-  height: var(--space-4);
-  overflow: visible;
+  width: 4.25rem;
+  height: 2.5rem;
   fill: currentColor;
 }
-.typing-dots > span {
-  width: calc(var(--space-8) / 3);
-  opacity: 0.35;
-  animation: typing-pulse var(--motion-typing) ease-in-out infinite;
+.typing-dots g {
+  opacity: 0.4;
+  animation: typing-wave var(--motion-typing) ease-in-out infinite;
 }
-.typing-dots > span:nth-child(2) {
-  animation-delay: calc(var(--motion-typing) / 3);
+.typing-dots g:nth-child(2) {
+  animation-delay: 0.18s;
 }
-.typing-dots > span:nth-child(3) {
-  animation-delay: calc(var(--motion-typing) * 2 / 3);
+.typing-dots g:nth-child(3) {
+  animation-delay: 0.36s;
 }
-@keyframes typing-pulse {
+@keyframes typing-wave {
   0%,
-  33.333%,
+  60%,
   100% {
-    opacity: 0.35;
-    transform: scale(0.8);
+    opacity: 0.4;
+    transform: translateY(0);
   }
-  16.667% {
+  30% {
     opacity: 1;
-    transform: scale(1.2);
+    transform: translateY(-4px);
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .typing-dots > span {
+  .typing-dots g {
     animation: none;
     opacity: 0.7;
   }

@@ -14,9 +14,6 @@
   overscroll-behavior: contain;
   outline: none;
 }
-.scroll-viewport > div {
-  min-width: 0;
-}
 .scroll-viewport:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: -2px;
