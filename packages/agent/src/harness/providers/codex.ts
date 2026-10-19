@@ -1,5 +1,10 @@
 import { JsonLines } from "../json-lines.ts";
-import type { EngineAnswer, EngineOpen, EngineProvider } from "../types.ts";
+import type {
+  EngineAnswer,
+  EngineOpen,
+  EngineProvider,
+  EngineSession,
+} from "../types.ts";
 import {
   type CodexFrame,
   type CodexTurn,
@@ -199,7 +204,7 @@ export const codexProvider: EngineProvider = {
         ? model.inputModalities.includes("image")
         : null;
     }
-    return {
+    const session: EngineSession = {
       id,
       models: async () =>
         (await catalog()).map((model) => ({
@@ -240,6 +245,8 @@ export const codexProvider: EngineProvider = {
         await events;
       },
       async interrupt() {
+        for (const requestId of requests.keys())
+          await session.answer(requestId, { allow: false });
         if (turnId)
           await rpc.request("turn/interrupt", { threadId: id, turnId });
       },
@@ -288,5 +295,6 @@ export const codexProvider: EngineProvider = {
         return true;
       },
     };
+    return session;
   },
 };

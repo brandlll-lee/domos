@@ -191,7 +191,10 @@ export const opencodeProvider: EngineProvider = {
           active = false;
         }
       },
-      interrupt: () => rpc.cancel({ sessionId: id }),
+      async interrupt() {
+        for (const item of pending.values()) item.answer({ allow: false });
+        await rpc.cancel({ sessionId: id });
+      },
       async answer(requestId, answer) {
         const item = pending.get(requestId);
         if (!item) throw new Error("这次确认已经失效。");

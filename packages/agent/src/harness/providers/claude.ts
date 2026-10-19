@@ -15,6 +15,7 @@ type ClaudePart = {
 };
 type ClaudeFrame = {
   type: string;
+  response?: { request_id: string; subtype: string; error?: string };
   is_error?: boolean;
   message?: { id: string; content?: ClaudePart[] };
   event?: {
@@ -45,7 +46,21 @@ export const claudeProvider: EngineProvider = {
     let completion: ReturnType<typeof Promise.withResolvers<void>> | undefined;
     let events = Promise.resolve();
     let messageId = "";
+    let interruption:
+      | { id: string; result: ReturnType<typeof Promise.withResolvers<void>> }
+      | undefined;
     rpc.on("frame", (frame: ClaudeFrame) => {
+      if (
+        frame.type === "control_response" &&
+        frame.response?.request_id === interruption?.id
+      ) {
+        if (frame.response?.subtype === "error")
+          interruption?.result.reject(
+            new Error(frame.response.error ?? "中断未确认。"),
+          );
+        else interruption?.result.resolve();
+        return;
+      }
       events = events
         .then(async () => {
           if (frame.type === "stream_event") {
@@ -103,7 +118,10 @@ export const claudeProvider: EngineProvider = {
         })
         .catch((error) => completion?.reject(error));
     });
-    rpc.on("closed", (error) => completion?.reject(error));
+    rpc.on("closed", (error) => {
+      completion?.reject(error);
+      interruption?.result.reject(error);
+    });
     await process.launch({
       command: "claude",
       args: [
@@ -160,7 +178,18 @@ export const claudeProvider: EngineProvider = {
         await completion.promise;
         await events;
       },
-      interrupt: () => process.close(),
+      async interrupt() {
+        interruption ??= {
+          id: randomUUID(),
+          result: Promise.withResolvers<void>(),
+        };
+        await rpc.send({
+          type: "control_request",
+          request_id: interruption.id,
+          request: { subtype: "interrupt" },
+        });
+        await interruption.result.promise;
+      },
       answer: async () => {
         throw new Error("请回复当前确认卡片。");
       },

@@ -175,7 +175,10 @@ export const piProvider: EngineProvider = {
         await completion.promise;
         await events;
       },
-      interrupt: () => rpc.request("abort").then(() => {}),
+      async interrupt() {
+        await rpc.request("clear_queue");
+        await rpc.request("abort");
+      },
       answer: async () => {
         throw new Error("Pi 使用工作电脑的授权。");
       },
