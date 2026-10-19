@@ -129,6 +129,7 @@ export async function callProductTool(
           role: "toolResult",
           content: [],
           stopped: false,
+          timestamp: Date.now(),
           toolCallId: callId,
           toolName: name,
           toolStatus: "done",

@@ -36,6 +36,7 @@ export function userMessage(
     role: "user",
     content: [{ type: "text", text, key: id }],
     stopped: false,
+    timestamp: Date.now(),
     ...(attachments?.length ? { attachments } : {}),
   } satisfies ChatMessage);
 }

@@ -61,12 +61,14 @@ export function chatView(
         content: [],
         stopReason: "error",
         stopped: false,
+        timestamp: message.timestamp,
         error: "回复失败。请检查模型配置、余额或网络。",
       };
     return {
       id,
       turnId,
       role: message.role,
+      timestamp: message.timestamp,
       ...(message.role === "assistant"
         ? { stopReason: message.stopReason }
         : {}),

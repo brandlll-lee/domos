@@ -113,6 +113,7 @@ async function finish(
           content: [],
           stopped: reason === "aborted",
           stopReason: reason === "aborted" ? "aborted" : "error",
+          timestamp: Date.now(),
           ...(reason === "aborted" ? {} : { error }),
         }),
       });
@@ -126,6 +127,7 @@ async function finish(
             role: "assistant",
             content: [{ type: "text", text: "任务已完成。", key: "done" }],
             stopped: false,
+            timestamp: Date.now(),
           }),
         })
       ).id;

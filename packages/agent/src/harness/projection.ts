@@ -53,6 +53,7 @@ export class EngineProjection {
         role: event.type === "tool_result" ? "toolResult" : "assistant",
         content: [],
         stopped: false,
+        timestamp: Date.now(),
       };
       this.messages.push(message);
     }

@@ -82,6 +82,8 @@ test("generation drafts stay separate until one complete answer is stored", asyn
       (message) => message.role === "assistant",
     );
     expect(replies.map(messageText)).toEqual([answer]);
+    const stamps = completed.messages.map((message) => message.timestamp);
+    expect(stamps).toEqual([expect.any(Number), expect.any(Number)]);
     answerId = replies[0]?.id;
     for (const snapshot of snapshots)
       for (const reply of snapshot.messages.filter(
