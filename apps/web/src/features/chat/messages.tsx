@@ -4,9 +4,10 @@ import { Button } from "@domos/ui/controls";
 import { MessageBubble } from "@domos/ui/message";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { ArrowDownIcon } from "@phosphor-icons/react/dist/csr/ArrowDown";
-import { memo, type ReactNode } from "react";
+import { Fragment, memo, type ReactNode } from "react";
 import { Attachments } from "./attachments.tsx";
 import { chatCopy } from "./copy.ts";
+import { clockTime, dayLabel, messageDay } from "./format.ts";
 import { MessageContent } from "./message-content.tsx";
 import { TaskNotice } from "./task-notice.tsx";
 import { TypingDots } from "./typing-dots.tsx";
@@ -60,6 +61,14 @@ const MessageRow = memo(function MessageRow({
         {!!message.attachments?.length && (
           <Attachments botId={botId} files={message.attachments} />
         )}
+        {message.role === "user" && message.timestamp !== undefined && (
+          <time
+            className="message-time"
+            dateTime={new Date(message.timestamp).toISOString()}
+          >
+            {clockTime(message.timestamp)}
+          </time>
+        )}
       </MessageBubble>
     </article>
   );
@@ -87,6 +96,29 @@ export const Messages = memo(function Messages({
   onRetry: (message: ChatMessage) => void;
 }) {
   const transcript = useTranscript(items, ready);
+  const dates = new Map<string, ReactNode>();
+  let previousDay: number | undefined;
+  for (const item of items) {
+    const currentDay = messageDay(item);
+    if (currentDay === undefined) continue;
+    if (
+      currentDay !== previousDay &&
+      item.kind === "message" &&
+      item.message.timestamp !== undefined
+    ) {
+      const at = item.message.timestamp;
+      dates.set(
+        item.id,
+        <time
+          className="conversation-time"
+          dateTime={new Date(at).toISOString()}
+        >
+          {dayLabel(at)}
+        </time>,
+      );
+    }
+    previousDay = currentDay;
+  }
   const originals = new Map(
     items.flatMap((item) =>
       item.kind === "message" && item.message.role === "user"
@@ -144,18 +176,20 @@ export const Messages = memo(function Messages({
           )}
           {ready &&
             transcript.visible.map((item) => (
-              <MessageRow
-                key={`${item.kind}:${item.id}`}
-                item={item}
-                botId={botId}
-                botName={botName}
-                original={
-                  item.kind === "notice" && !busy
-                    ? originals.get(item.id)
-                    : undefined
-                }
-                onRetry={onRetry}
-              />
+              <Fragment key={`${item.kind}:${item.id}`}>
+                {item.kind === "message" && dates.get(item.id)}
+                <MessageRow
+                  item={item}
+                  botId={botId}
+                  botName={botName}
+                  original={
+                    item.kind === "notice" && !busy
+                      ? originals.get(item.id)
+                      : undefined
+                  }
+                  onRetry={onRetry}
+                />
+              </Fragment>
             ))}
           {ready && busy && transcript.atLatest && (
             <TypingDots avatar={avatar} label={chatCopy.typing(botName)} />
