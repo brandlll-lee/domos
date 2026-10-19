@@ -136,11 +136,17 @@ export const piProvider: EngineProvider = {
       id: state.sessionFile,
       models: async () => {
         const result = await rpc.request<{
-          models: { provider: string; id: string; name?: string }[];
+          models: {
+            provider: string;
+            id: string;
+            name?: string;
+            input?: string[];
+          }[];
         }>("get_available_models");
         return (result.models ?? []).map((model) => ({
           id: `${model.provider}/${model.id}`,
           name: model.name ?? model.id,
+          ...(model.input ? { images: model.input.includes("image") } : {}),
         }));
       },
       authenticated: async () =>
@@ -148,11 +154,22 @@ export const piProvider: EngineProvider = {
           (await rpc.request<{ models: unknown[] }>("get_available_models"))
             .models?.length,
         ),
-      async prompt(text) {
+      vision: async () =>
+        state.model?.input ? state.model.input.includes("image") : null,
+      async prompt(text, images = []) {
+        if (
+          images.length &&
+          state.model?.input &&
+          !state.model.input.includes("image")
+        )
+          throw new Error("当前模型不支持图片。请选择支持图片的模型。");
         completion = Promise.withResolvers<void>();
         failure = null;
         void completion.promise.catch(() => {});
-        const result = await rpc.request("prompt", { message: text });
+        const result = await rpc.request("prompt", {
+          message: text,
+          ...(images.length ? { images } : {}),
+        });
         await emit({ type: "accepted" });
         if (result.disposition === "handled") completion.resolve();
         await completion.promise;

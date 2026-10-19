@@ -4,7 +4,8 @@ import type { Attachment } from "../attachments.ts";
 export const engineIds = ["pi", "codex", "claude", "opencode"] as const;
 export type EngineId = (typeof engineIds)[number];
 export type EngineConfig = { provider: EngineId; model: string | null };
-export type EngineModel = { id: string; name: string };
+export type EngineModel = { id: string; name: string; images?: boolean };
+export type EngineImage = { type: "image"; data: string; mimeType: string };
 export type EngineApproval = {
   id: string;
   title: string;
@@ -67,7 +68,8 @@ export interface EngineSession {
   readonly id: string;
   models(): Promise<EngineModel[]>;
   authenticated?(): Promise<boolean>;
-  prompt(text: string): Promise<void>;
+  vision?(): Promise<boolean | null>;
+  prompt(text: string, images?: EngineImage[]): Promise<void>;
   interrupt(): Promise<void>;
   answer(id: string, answer: EngineAnswer): Promise<void>;
   recover?(turnId: string | null): Promise<boolean>;

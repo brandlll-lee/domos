@@ -45,6 +45,7 @@ export class EngineConnections {
             version: installation.version,
             authenticated: await readClaudeAccount(worker, env),
             models: [] as EngineModel[],
+            vision: null,
             message: "已检查账号。",
           };
         if (config.provider === "opencode") {
@@ -55,6 +56,9 @@ export class EngineConnections {
             version: installation.version,
             authenticated: result.authenticated,
             models: result.models,
+            vision:
+              result.models.find((model) => model.id === config.model)
+                ?.images ?? null,
             message: result.authenticated
               ? "引擎已就绪。"
               : "请连接账号或选择可用模型。",
@@ -73,6 +77,7 @@ export class EngineConnections {
           version: installation.version,
           authenticated: (await session.authenticated?.()) ?? false,
           models: await session.models(),
+          vision: (await session.vision?.()) ?? null,
           message: "引擎已就绪。",
         };
       } finally {

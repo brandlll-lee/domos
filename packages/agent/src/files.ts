@@ -158,6 +158,33 @@ export class Files {
     return new File([bytes], file.name, { type: file.mimeType });
   }
 
+  async images(
+    botId: number,
+    attachments: readonly Attachment[],
+    context: Context,
+  ) {
+    await this.verify(botId, attachments, context);
+    const images = [];
+    for (const attachment of attachments) {
+      const file = await this.download(botId, attachment.id);
+      if (!file.type.startsWith("image/")) continue;
+      if (
+        !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
+          file.type,
+        )
+      )
+        throw new Error(
+          `图片格式 ${file.type} 暂不支持。请转换为 PNG、JPEG、WebP 或 GIF。`,
+        );
+      images.push({
+        type: "image" as const,
+        data: Buffer.from(await file.arrayBuffer()).toString("base64"),
+        mimeType: file.type,
+      });
+    }
+    return images;
+  }
+
   async verify(
     botId: number,
     attachments: readonly Attachment[],

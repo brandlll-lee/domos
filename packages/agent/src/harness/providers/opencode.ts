@@ -158,6 +158,8 @@ export const opencodeProvider: EngineProvider = {
     await emit({ type: "session", id });
     return {
       id,
+      vision: async () =>
+        hello.agentCapabilities?.promptCapabilities?.image ? null : false,
       models: async () =>
         modelOption?.type === "select"
           ? modelOption.options.flatMap((item) =>
@@ -169,14 +171,19 @@ export const opencodeProvider: EngineProvider = {
                   })),
             )
           : [],
-      async prompt(text) {
+      async prompt(text, images = []) {
+        if (
+          images.length &&
+          !hello.agentCapabilities?.promptCapabilities?.image
+        )
+          throw new Error("当前引擎协议不支持图片。请更换引擎或使用文本资料。");
         active = true;
         messageId = `opencode:${++sequence}`;
         await emit({ type: "accepted" });
         try {
           const outcome = await rpc.prompt({
             sessionId: id,
-            prompt: [{ type: "text", text }],
+            prompt: [{ type: "text", text }, ...images],
           });
           if (outcome.stopReason === "cancelled")
             throw new Error("工作已停止。");

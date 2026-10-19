@@ -133,12 +133,28 @@ export const claudeProvider: EngineProvider = {
     return {
       id,
       models: async () => [],
-      async prompt(text) {
+      vision: async () => null,
+      async prompt(text, images = []) {
         completion = Promise.withResolvers<void>();
         void completion.promise.catch(() => {});
         await rpc.send({
           type: "user",
-          message: { role: "user", content: text },
+          message: {
+            role: "user",
+            content: images.length
+              ? [
+                  { type: "text", text },
+                  ...images.map((image) => ({
+                    type: "image",
+                    source: {
+                      type: "base64",
+                      media_type: image.mimeType,
+                      data: image.data,
+                    },
+                  })),
+                ]
+              : text,
+          },
         });
         await emit({ type: "accepted" });
         await completion.promise;

@@ -22,7 +22,15 @@ export type AccountProvider = {
 type NativeProvider = {
   id: string;
   name: string;
-  models: Record<string, { id: string; name: string; status?: string }>;
+  models: Record<
+    string,
+    {
+      id: string;
+      name: string;
+      status?: string;
+      capabilities?: { input?: { image?: boolean } };
+    }
+  >;
 };
 type Authorization = {
   url: string;
@@ -67,6 +75,9 @@ export async function openOpenCodeAccount(
           .map((item) => ({
             id: `${provider.id}/${item.id}`,
             name: item.name,
+            ...(typeof item.capabilities?.input?.image === "boolean"
+              ? { images: item.capabilities.input.image }
+              : {}),
           })),
       );
     return {

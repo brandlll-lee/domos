@@ -168,18 +168,48 @@ export const codexProvider: EngineProvider = {
     const id = response.thread?.id;
     if (typeof id !== "string") throw new Error("Codex 没有返回会话记录。");
     await emit({ type: "session", id });
+    async function catalog() {
+      type Model = {
+        id: string;
+        model?: string;
+        displayName?: string;
+        inputModalities?: string[];
+        isDefault?: boolean;
+      };
+      const models: Model[] = [];
+      let cursor: string | null = null;
+      do {
+        const page: { data?: Model[]; nextCursor?: string | null } =
+          await rpc.request("model/list", {
+            limit: 100,
+            ...(cursor ? { cursor } : {}),
+          });
+        models.push(...(page.data ?? []));
+        cursor = page.nextCursor ?? null;
+      } while (cursor);
+      return models;
+    }
+    async function vision() {
+      const model = (await catalog()).find((item) =>
+        config.model
+          ? item.id === config.model || item.model === config.model
+          : item.isDefault,
+      );
+      return model?.inputModalities
+        ? model.inputModalities.includes("image")
+        : null;
+    }
     return {
       id,
       models: async () =>
-        (
-          await rpc.request<{ data: { id: string; displayName?: string }[] }>(
-            "model/list",
-            { limit: 100 },
-          )
-        ).data.map((model) => ({
+        (await catalog()).map((model) => ({
           id: model.id,
           name: model.displayName ?? model.id,
+          ...(model.inputModalities
+            ? { images: model.inputModalities.includes("image") }
+            : {}),
         })),
+      vision,
       authenticated: async () => {
         const account = await rpc.request<{
           account?: unknown;
@@ -189,12 +219,20 @@ export const codexProvider: EngineProvider = {
         });
         return Boolean(account.account) || account.requiresOpenaiAuth === false;
       },
-      async prompt(text) {
+      async prompt(text, images = []) {
+        if (images.length && (await vision()) === false)
+          throw new Error("当前模型不支持图片。请选择支持图片的模型。");
         completion = Promise.withResolvers<void>();
         void completion.promise.catch(() => {});
         const result = await rpc.request<{ turn: CodexTurn }>("turn/start", {
           threadId: id,
-          input: [{ type: "text", text }],
+          input: [
+            { type: "text", text },
+            ...images.map((image) => ({
+              type: "image",
+              url: `data:${image.mimeType};base64,${image.data}`,
+            })),
+          ],
         });
         turnId = result.turn?.id ?? null;
         await emit({ type: "accepted", ...(turnId ? { id: turnId } : {}) });

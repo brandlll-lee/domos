@@ -36,7 +36,7 @@ export async function openAgent(
   options.registry.install(skills);
   const computers = options.computers;
   const execution = computers
-    ? new EngineExecution(computers, options.credentials, options.models)
+    ? new EngineExecution(computers, options.credentials, options.models, files)
     : undefined;
   if (execution)
     options.registry.install(

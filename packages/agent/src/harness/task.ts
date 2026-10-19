@@ -44,8 +44,12 @@ export function engineTask(execution: EngineExecution) {
         );
         let error: string | null = null;
         try {
-          await execution.run(runtime, task.input.text, context, (event) =>
-            projection.emit(event),
+          await execution.run(
+            runtime,
+            task.input.text,
+            context,
+            (event) => projection.emit(event),
+            task.input.attachments,
           );
           await projection.flush();
         } catch (cause) {

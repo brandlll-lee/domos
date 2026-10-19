@@ -195,6 +195,9 @@ export class Engines {
           submissionId: submission.id,
           previous: doc.taskId,
           turnId,
+          ...(input.attachments?.length
+            ? { attachments: input.attachments }
+            : {}),
         },
         {
           ownership: { kind: "conversation" },
