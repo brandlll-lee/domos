@@ -13,6 +13,7 @@ import { expect, onTestFinished, test } from "vitest";
 import { seedPiAccount } from "../src/harness/pi-account.mjs";
 import { WorkProcess } from "../src/harness/process.ts";
 import { piProvider } from "../src/harness/providers/pi.ts";
+import type { ProductResult } from "../src/harness/types.ts";
 
 async function worker() {
   const directory = await mkdtemp(join(tmpdir(), "domos-engine-"));
@@ -40,7 +41,7 @@ async function worker() {
   );
   onTestFinished(async () => {
     await process.close();
-    await rm(directory, { recursive: true, force: true });
+    await rm(directory, { recursive: true, force: true, maxRetries: 10 });
   });
   return { process, directory, calls };
 }
@@ -81,6 +82,81 @@ test("a missing work computer command reports a missing program", async () => {
     error: "ENOENT",
   });
 });
+
+test("a work computer discovers desktop tools from its own runtime", async () => {
+  const { process } = await worker();
+  const tools = await process.computer({
+    operation: "catalog",
+    service: "desktop",
+  });
+  expect(tools).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        name: "get_desktop_state",
+        inputSchema: {
+          type: "object",
+          properties: expect.any(Object),
+          additionalProperties: false,
+        },
+      }),
+    ]),
+  );
+});
+
+test("a work computer discovers browser tools from its own runtime", async () => {
+  const { process } = await worker();
+  const tools = await process.computer({
+    operation: "catalog",
+    service: "browser",
+  });
+  expect(tools.some((tool) => tool.name === "agent_browser_screenshot")).toBe(
+    true,
+  );
+});
+
+test.runIf(globalThis.process.platform === "win32")(
+  "a prepared desktop returns an actual screenshot as an MCP image",
+  async () => {
+    const { process } = await worker();
+    expect(
+      await process.computer({ operation: "prepare", service: "desktop" }),
+    ).toEqual({ available: true, error: null });
+    const result = await process.computer<ProductResult>({
+      operation: "call",
+      service: "desktop",
+      name: "get_desktop_state",
+      arguments: { max_image_dimension: 320 },
+    });
+    expect(result.isError).toBe(false);
+    const image = result.content.find((part) => part.type === "image");
+    expect(
+      image?.type === "image" &&
+        Buffer.from(image.data, "base64").subarray(0, 8).toString("hex"),
+    ).toBe("89504e470d0a1a0a");
+  },
+);
+
+test("a browser preparation opens a real page and returns an MCP screenshot", async () => {
+  const { process } = await worker();
+  expect(
+    await process.computer({ operation: "install", service: "browser" }),
+  ).toEqual({ available: true, error: null });
+  expect(
+    await process.computer({ operation: "prepare", service: "browser" }),
+  ).toEqual({ available: true, error: null });
+  const result = await process.computer<ProductResult>({
+    operation: "call",
+    service: "browser",
+    name: "agent_browser_screenshot",
+    arguments: {},
+  });
+  expect(result.isError).not.toBe(true);
+  expect(
+    result.content.some(
+      (part) => part.type === "image" && part.mimeType === "image/png",
+    ),
+  ).toBe(true);
+}, 180_000);
 
 test("a work computer forwards MCP cancellation to its active product call", async () => {
   const directory = await mkdtemp(join(tmpdir(), "domos-cancel-"));

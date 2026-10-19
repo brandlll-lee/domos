@@ -4,6 +4,7 @@ import { delimiter, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import spawn from "cross-spawn";
+import { openComputerService } from "./computer-service.mjs";
 import { openGateway } from "./gateway.mjs";
 import { openHttpService } from "./http-service.mjs";
 import { seedPiAccount } from "./pi-account.mjs";
@@ -16,6 +17,8 @@ let sequence = 0;
 let home;
 let http;
 const pending = new Map();
+const operations = new Map();
+let computer;
 const emit = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 
 async function close() {
@@ -25,6 +28,8 @@ async function close() {
     for (const item of pending.values())
       item.reject(new Error("Connection closed"));
     pending.clear();
+    for (const operation of operations.values()) operation.abort();
+    await computer?.close();
     if (!child?.pid || child.exitCode !== null || child.signalCode !== null)
       return;
     const exited = once(child, "close").catch(() => {});
@@ -66,6 +71,7 @@ async function configure(frame) {
   await mkdir(frame.home, { recursive: true, mode: 0o700 });
   home = frame.home;
   process.chdir(frame.cwd);
+  computer = openComputerService(frame.cwd, frame.home);
   gateway = await openGateway(
     frame.tools,
     (callId, name, args, signal) =>
@@ -251,6 +257,18 @@ lines.on("line", (line) => {
       else if (frame.type === "http") {
         if (!http) throw new Error("Service unavailable");
         void http.request(frame);
+      } else if (frame.type === "computer") {
+        const controller = new AbortController();
+        operations.set(frame.id, controller);
+        void computer
+          .request(frame.input, controller.signal)
+          .then((result) => emit({ type: "http", id: frame.id, result }))
+          .catch((error) =>
+            emit({ type: "http", id: frame.id, error: error.message }),
+          )
+          .finally(() => operations.delete(frame.id));
+      } else if (frame.type === "computer_cancel") {
+        operations.get(frame.id)?.abort();
       } else if (frame.type === "result") {
         const call = pending.get(frame.id);
         pending.delete(frame.id);

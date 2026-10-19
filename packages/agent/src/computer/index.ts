@@ -13,6 +13,7 @@ import { Workspace } from "../workspace.ts";
 import { ControllerComputer } from "./controller.ts";
 import { DockerComputer } from "./docker.ts";
 import type { ComputerDriver } from "./driver.ts";
+import { ComputerServices } from "./services.ts";
 import { SandboxWorkspace } from "./workspace.ts";
 
 export type ComputerStatus = {
@@ -29,6 +30,14 @@ export type ComputerStatus = {
 };
 
 export class Computer {
+  readonly services = new ComputerServices((botId, context) =>
+    this.process(
+      botId,
+      [],
+      async () => ({ content: [], isError: true }),
+      context,
+    ),
+  );
   readonly config: RuntimeConfig;
   private readonly driver: ComputerDriver | undefined;
   private readonly environments = new Map<
@@ -247,6 +256,7 @@ export class Computer {
   }
 
   async close(context: Context) {
+    await this.services.close();
     await Promise.all([...this.processes].map((worker) => worker.close()));
     const environments = await Promise.allSettled(this.environments.values());
     try {

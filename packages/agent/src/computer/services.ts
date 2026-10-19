@@ -1,0 +1,152 @@
+import { randomUUID } from "node:crypto";
+import type { Context } from "@earendil-works/chord/context";
+import type { WorkProcess } from "../harness/process.ts";
+import type { ProductResult } from "../harness/types.ts";
+import type { ComputerService, ServiceState } from "./service-types.ts";
+
+type Control = {
+  owner?: string;
+  lease?: string;
+  revision: number;
+  calls: Set<{ controller: AbortController; done: Promise<unknown> }>;
+};
+
+export class ComputerServices {
+  private readonly workers = new Map<number, Promise<WorkProcess>>();
+  private readonly controls = new Map<string, Control>();
+
+  constructor(
+    private readonly open: (
+      botId: number,
+      context: Context,
+    ) => Promise<WorkProcess>,
+  ) {}
+
+  private worker(botId: number, context: Context) {
+    let worker = this.workers.get(botId);
+    if (!worker) {
+      worker = this.open(botId, context);
+      this.workers.set(botId, worker);
+      void worker
+        .then((process) => process.closed)
+        .catch(() => {})
+        .finally(() => {
+          if (this.workers.get(botId) === worker) this.workers.delete(botId);
+        });
+    }
+    return worker;
+  }
+
+  private control(botId: number, service: ComputerService) {
+    const key = service === "desktop" ? service : `${service}:${botId}`;
+    let control = this.controls.get(key);
+    if (!control) {
+      control = { revision: 0, calls: new Set() };
+      this.controls.set(key, control);
+    }
+    return control;
+  }
+
+  async prepare(
+    botId: number,
+    service: ComputerService,
+    context: Context,
+    install = false,
+  ): Promise<ServiceState> {
+    try {
+      const worker = await this.worker(botId, context);
+      if (install && service === "browser")
+        await worker.computer({ operation: "install", service });
+      return await worker.computer<ServiceState>({
+        operation: "prepare",
+        service,
+      });
+    } catch (error) {
+      return {
+        available: false,
+        error: error instanceof Error ? error.message : "工作电脑服务不可用。",
+      };
+    }
+  }
+
+  async catalog(botId: number, service: ComputerService, context: Context) {
+    return (await this.worker(botId, context)).computer({
+      operation: "catalog",
+      service,
+    });
+  }
+
+  async call(
+    botId: number,
+    service: ComputerService,
+    name: string,
+    args: Record<string, unknown>,
+    owner: string,
+    signal: AbortSignal,
+    context: Context,
+  ) {
+    signal.throwIfAborted();
+    const control = this.control(botId, service);
+    if (control.lease) throw new Error("用户正在接管。交还后请重新观察画面。");
+    if (control.owner && control.owner !== owner)
+      throw new Error("其他任务正在操作这台电脑。请等待该任务结束。");
+    control.owner = owner;
+    const revision = control.revision;
+    const controller = new AbortController();
+    const combined = AbortSignal.any([signal, controller.signal]);
+    const done = (async () => {
+      const worker = await this.worker(botId, context);
+      combined.throwIfAborted();
+      return worker.computer<ProductResult>(
+        { operation: "call", service, name, arguments: args },
+        combined,
+      );
+    })();
+    const pending = { controller, done };
+    control.calls.add(pending);
+    try {
+      const result = await done;
+      if (combined.aborted || revision !== control.revision)
+        throw new Error("操作结果待核对。请重新观察画面，不要直接重试。");
+      return result;
+    } finally {
+      control.calls.delete(pending);
+    }
+  }
+
+  async takeover(botId: number, service: ComputerService) {
+    const control = this.control(botId, service);
+    if (control.lease) throw new Error("用户正在接管这台电脑。");
+    const lease = randomUUID();
+    control.lease = lease;
+    control.revision++;
+    for (const call of control.calls) call.controller.abort();
+    await Promise.allSettled([...control.calls].map((call) => call.done));
+    return lease;
+  }
+
+  async release(botId: number, service: ComputerService, lease: string) {
+    const control = this.control(botId, service);
+    if (control.lease !== lease) throw new Error("这次接管已失效。");
+    control.lease = undefined;
+    control.revision++;
+  }
+
+  finish(owner: string) {
+    for (const control of this.controls.values()) {
+      if (control.owner !== owner) continue;
+      for (const call of control.calls) call.controller.abort();
+      control.owner = undefined;
+    }
+  }
+
+  async close() {
+    for (const control of this.controls.values())
+      for (const call of control.calls) call.controller.abort();
+    await Promise.allSettled(
+      [...this.workers.values()].map(async (worker) => (await worker).close()),
+    );
+    this.workers.clear();
+    this.controls.clear();
+  }
+}

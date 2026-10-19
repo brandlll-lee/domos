@@ -3,6 +3,7 @@ import { once } from "node:events";
 import { createInterface } from "node:readline";
 import { PassThrough, Writable } from "node:stream";
 import spawn from "cross-spawn";
+import type { ComputerRequest } from "../computer/service-types.ts";
 import {
   type EngineProcess,
   engineLimits,
@@ -182,25 +183,55 @@ export class WorkProcess implements EngineProcess {
   }
 
   request<T = unknown>(path: string, method = "GET", body?: unknown) {
+    return this.exchange<T>({ type: "http", path, method, body });
+  }
+
+  computer(
+    input: { operation: "catalog"; service: "browser" | "desktop" },
+    signal?: AbortSignal,
+  ): Promise<ProductTool[]>;
+  computer<T = unknown>(
+    input: ComputerRequest,
+    signal?: AbortSignal,
+  ): Promise<T>;
+  computer<T = unknown>(
+    input: ComputerRequest,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    return this.exchange<T>({ type: "computer", input }, signal);
+  }
+
+  private exchange<T>(frame: object, signal?: AbortSignal) {
+    signal?.throwIfAborted();
     const id = ++this.sequence;
     return new Promise<T>((resolve, reject) => {
+      const abort = () => {
+        void this.send({ type: "computer_cancel", id }).catch(() => {});
+      };
+      signal?.addEventListener("abort", abort, { once: true });
+      const clean = () => signal?.removeEventListener("abort", abort);
       const timer = setTimeout(() => {
         this.requests.delete(id);
+        clean();
         reject(new Error("登录等待已结束。请重试。"));
       }, engineLimits.approvalMs);
       timer.unref();
       this.requests.set(id, {
-        resolve: (value) => resolve(value as T),
-        reject,
-        timer,
-      });
-      void this.send({ type: "http", id, path, method, body }).catch(
-        (error) => {
-          clearTimeout(timer);
-          this.requests.delete(id);
+        resolve: (value) => {
+          clean();
+          resolve(value as T);
+        },
+        reject: (error) => {
+          clean();
           reject(error);
         },
-      );
+        timer,
+      });
+      void this.send({ ...frame, id }).catch((error) => {
+        clearTimeout(timer);
+        this.requests.delete(id);
+        reject(error);
+      });
     });
   }
 
