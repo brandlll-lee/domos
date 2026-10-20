@@ -23,7 +23,7 @@ const pnpm = (...args) => {
 pnpm("build");
 await rm(runtime, { recursive: true, force: true });
 pnpm(
-  "--config.node-linker=hoisted",
+  "--config.node-linker=isolated",
   "--filter",
   "@domos/api",
   "deploy",
@@ -70,18 +70,6 @@ for (const [entry, output] of [
     banner,
   });
 await cp(join(here, "src/preload.cjs"), join(dist, "preload.cjs"));
-for (const name of [
-  "worker.mjs",
-  "gateway.mjs",
-  "pi-entry.mjs",
-  "pi-account.mjs",
-  "http-service.mjs",
-  "browser-service.mjs",
-  "browser-view.mjs",
-  "desktop-view.mjs",
-  "computer-service.mjs",
-])
-  await cp(join(root, "packages/agent/src/harness", name), join(runtime, name));
 for (const name of ["setup.html", "setup.css", "setup.js", "setup-preload.cjs"])
   await cp(join(here, "src", name), join(dist, name));
 await cp(
@@ -190,7 +178,7 @@ await writeFile(
     controllerEntry: "controller.mjs",
     serverEntry: "server.mjs",
     bridgeEntry: "bridge.mjs",
-    workerEntry: "worker.mjs",
+    workerEntry: "node_modules/@domos/agent/src/harness/worker.mjs",
     staticDir: "web",
     workBuild: { context: "work", dockerfile: "deploy/workspace.Dockerfile" },
   }),
