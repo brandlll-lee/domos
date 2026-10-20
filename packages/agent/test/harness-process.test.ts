@@ -1,5 +1,6 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -102,6 +103,35 @@ test("a work computer discovers desktop tools from its own runtime", async () =>
     ]),
   );
 });
+
+test.runIf(globalThis.process.platform === "win32")(
+  "desktop launches an Electron application in its GUI runtime",
+  async () => {
+    const { process, directory } = await worker();
+    const entry = join(directory, "application.cjs");
+    const ready = join(directory, "application-ready.txt");
+    await writeFile(
+      entry,
+      `const { app } = require("electron");
+app.whenReady().then(() => {
+  require("node:fs").writeFileSync(${JSON.stringify(ready)}, "ready");
+  app.quit();
+});`,
+    );
+    const electron = createRequire(
+      new URL("../../../apps/desktop/package.json", import.meta.url),
+    )("electron") as string;
+    await process.computer({
+      operation: "call",
+      service: "desktop",
+      name: "launch_app",
+      arguments: { path: electron, additional_arguments: [entry] },
+    });
+    await expect
+      .poll(() => readFile(ready, "utf8").catch(() => ""), { timeout: 5000 })
+      .toBe("ready");
+  },
+);
 
 test("a work computer discovers browser tools from its own runtime", async () => {
   const { process } = await worker();

@@ -9,6 +9,8 @@ import { openGateway } from "./gateway.mjs";
 import { openHttpService } from "./http-service.mjs";
 import { seedPiAccount } from "./pi-account.mjs";
 
+delete process.env.ELECTRON_RUN_AS_NODE;
+
 let child;
 let gateway;
 let closing;
