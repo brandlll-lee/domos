@@ -137,7 +137,7 @@ async function expectModel(
     name: "模型",
     exact: true,
   });
-  if (!(await picker.count())) await chooseDetail(details, "任务引擎");
+  if (!(await picker.count())) await chooseDetail(details, "连接与账号");
   await expect(picker).toContainText(text);
   await details.getByRole("button", { name: "关闭", exact: true }).click();
 }
@@ -545,7 +545,7 @@ test("workspace separates the window bar, Bot actions, and global settings", asy
     );
     await trigger.click();
     const details = page.getByRole("complementary", { name: /的详情$/ });
-    await chooseDetail(details, "任务引擎");
+    await chooseDetail(details, "连接与账号");
     await expect(
       details.getByRole("combobox", { name: "模型", exact: true }),
     ).toBeEnabled();
@@ -739,7 +739,7 @@ test("model choices load from the server and selection survives a restart", asyn
   });
   await page.goto(url);
   const details = await openDetails(page);
-  await chooseDetail(details, "任务引擎");
+  await chooseDetail(details, "连接与账号");
   const picker = page.getByRole("combobox", { name: "模型", exact: true });
   await expect(picker).toBeDisabled();
   await expect(picker).not.toContainText("DeepSeek");
@@ -751,7 +751,7 @@ test("model choices load from the server and selection survives a restart", asyn
     .click();
   await expect(picker).toContainText("faux · 测试模型二");
   await page.reload();
-  await chooseDetail(await openDetails(page), "任务引擎");
+  await chooseDetail(await openDetails(page), "连接与账号");
   await expect(picker).toContainText("faux · 测试模型二");
   const port = Number(new URL(url).port);
   await stop();
@@ -774,7 +774,7 @@ test("engine controls wait for model selection to finish", async ({ page }) => {
   try {
     await page.goto(url);
     const details = await openDetails(page);
-    await chooseDetail(details, "任务引擎");
+    await chooseDetail(details, "连接与账号");
     const picker = details.getByRole("combobox", { name: "模型", exact: true });
     await picker.click();
     await page
@@ -806,7 +806,7 @@ test("model controls wait for engine checks to finish", async ({ page }) => {
   try {
     await page.goto(url);
     const details = await openDetails(page);
-    await chooseDetail(details, "任务引擎");
+    await chooseDetail(details, "连接与账号");
     const picker = details.getByRole("combobox", { name: "模型", exact: true });
     await expect(picker).toBeEnabled();
     await details
@@ -1480,7 +1480,7 @@ test("text contrast, keyboard focus and message scrolling meet the UI contract",
   await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   await expectTextContrast(page);
   const details = await openDetails(page);
-  await chooseDetail(details, "任务引擎");
+  await chooseDetail(details, "连接与账号");
   const picker = page.getByRole("combobox", { name: "模型", exact: true });
   const restingBorder = await page
     .locator(".message-composer")
@@ -1889,7 +1889,7 @@ test("model search and themed popups support keyboard, dismissal, and narrow scr
   page,
 }) => {
   await page.goto(url);
-  await chooseDetail(await openDetails(page), "任务引擎");
+  await chooseDetail(await openDetails(page), "连接与账号");
   const model = page.getByRole("combobox", { name: "模型", exact: true });
   const appearance = page.getByRole("combobox", { name: "外观", exact: true });
   await expect(model).toBeEnabled();
@@ -1985,7 +1985,7 @@ test("IM bubbles, sidebar search, and popup surfaces share both themes", async (
     await expectTextContrast(page);
     await page.screenshot({ path: `test-results/im-${theme}.png` });
     const details = await openDetails(page);
-    await chooseDetail(details, "任务引擎");
+    await chooseDetail(details, "连接与账号");
     await page.getByRole("combobox", { name: "模型", exact: true }).click();
     await expect(page.getByRole("option").first()).toBeVisible();
     await expectTextContrast(page);
@@ -2511,6 +2511,17 @@ test("chat keeps sending available while the Bot is working", async ({
   await input.fill("third");
   await send.click();
   await expect(input).toHaveValue("");
+  await page
+    .getByRole("button", { name: "选择引擎与模型", exact: true })
+    .click();
+  const selector = page.getByRole("dialog", {
+    name: "任务引擎与模型",
+    exact: true,
+  });
+  await expect(
+    selector.getByRole("button", { name: /测试模型二/ }),
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
   await expect(
     page.getByRole("button", { name: "停止生成", exact: true }),
   ).toBeVisible();
@@ -2523,6 +2534,23 @@ test("chat keeps sending available while the Bot is working", async ({
   await expect(page.getByLabel("Domos 的回复").last()).toContainText(
     "All requests received",
   );
+  const grouped = page.locator(".message.user + .message.user").first();
+  await expect(grouped).toBeVisible();
+  expect(
+    await grouped.evaluate(
+      (element) =>
+        element.getBoundingClientRect().top -
+        (element.previousElementSibling?.getBoundingClientRect().bottom ?? 0),
+    ),
+  ).toBe(4);
+  const reply = page.locator(".message.user + .message.assistant").first();
+  expect(
+    await reply.evaluate(
+      (element) =>
+        element.getBoundingClientRect().top -
+        (element.previousElementSibling?.getBoundingClientRect().bottom ?? 0),
+    ),
+  ).toBe(12);
   await expect(page.locator(".task-notice")).toHaveCount(0);
   await page.screenshot({ path: "test-results/chat-continuous-input.png" });
 });

@@ -485,7 +485,7 @@ test("first use prepares the default Bot with a computer and engine before share
       await page.getByRole("button", { name: "Bot详情", exact: true }).click();
       await page
         .getByRole("complementary", { name: /的详情$/ })
-        .getByRole("button", { name: /^任务引擎(?:\s|$)/ })
+        .getByRole("button", { name: /^连接与账号(?:\s|$)/ })
         .click();
       const detailsModel = page.getByRole("combobox", {
         name: "模型",
@@ -508,13 +508,30 @@ test("first use prepares the default Bot with a computer and engine before share
         engine.getByRole("button", { name: "检查连接", exact: true }).click(),
       ]);
       await expect(engine.getByRole("alert")).toHaveCount(0);
-      await engine
-        .getByRole("combobox", { name: "任务引擎", exact: true })
+      await page.getByRole("button", { name: "关闭", exact: true }).click();
+      await page
+        .getByRole("button", { name: "选择引擎与模型", exact: true })
         .click();
-      await page.getByRole("option", { name: "Codex", exact: true }).click();
+      const selector = page.getByRole("dialog", {
+        name: "任务引擎与模型",
+        exact: true,
+      });
+      await selector.getByRole("tab", { name: "Codex", exact: true }).click();
+      await selector
+        .getByRole("button", { name: "Test Model", exact: true })
+        .click();
+      await expect(selector).toBeHidden();
+      await expect(
+        page.getByRole("button", { name: "选择引擎与模型", exact: true }),
+      ).toContainText("Test Model");
+      await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+      await page
+        .getByRole("complementary", { name: /的详情$/ })
+        .getByRole("button", { name: /^连接与账号\s/ })
+        .click();
       await capture(page, testInfo, "engine-account");
       await engine
-        .getByRole("button", { name: "检查连接", exact: true })
+        .getByRole("button", { name: "重新检查", exact: true })
         .click();
       await page.getByRole("button", { name: "关闭", exact: true }).click();
       await page
@@ -531,7 +548,7 @@ test("first use prepares the default Bot with a computer and engine before share
       await page.getByRole("button", { name: "Bot详情", exact: true }).click();
       await page
         .getByRole("complementary", { name: /的详情$/ })
-        .getByRole("button", { name: /^任务引擎\s/ })
+        .getByRole("button", { name: /^连接与账号\s/ })
         .click();
       const enginePicker = engine.getByRole("combobox", {
         name: "任务引擎",

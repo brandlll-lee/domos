@@ -1,10 +1,8 @@
 import type { Bot } from "@domos/agent/bots";
-import type { ChatView } from "@domos/agent/view";
 import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { PanelGroup, PanelRow } from "@domos/ui/panel";
 import { BrainIcon } from "@phosphor-icons/react/dist/csr/Brain";
-import { ChatCircleDotsIcon } from "@phosphor-icons/react/dist/csr/ChatCircleDots";
 import { ClockIcon } from "@phosphor-icons/react/dist/csr/Clock";
 import { CpuIcon } from "@phosphor-icons/react/dist/csr/Cpu";
 import { DesktopIcon } from "@phosphor-icons/react/dist/csr/Desktop";
@@ -22,7 +20,6 @@ export function RootPanel({
   profile,
   data,
   engine,
-  model,
   computer,
   onNavigate,
 }: {
@@ -30,7 +27,6 @@ export function RootPanel({
   profile: Profile | null;
   data: WorkData | null;
   engine: EngineSetup;
-  model: ChatView["model"];
   computer: ReturnType<typeof useComputer>;
   onNavigate: (view: BotPanelView) => void;
 }) {
@@ -39,20 +35,6 @@ export function RootPanel({
     engine.profile?.providers.find((item) => item.id === provider)?.name ??
     provider ??
     "任务引擎";
-  const engineValue = engine.profile
-    ? engine.profile.prepared
-      ? "已就绪"
-      : "待连接"
-    : engine.error
-      ? "读取失败"
-      : "读取中";
-  const selectedModel =
-    provider === "pi"
-      ? model && `${model.provider} / ${model.modelId}`
-      : engine.profile?.config.model;
-  const modelValue =
-    selectedModel ??
-    (provider && provider !== "pi" ? "使用引擎默认模型" : "未选择");
   const status = computer.status;
   const computerValue = status
     ? status.authorized
@@ -99,14 +81,8 @@ export function RootPanel({
       <PanelGroup title="运行">
         <PanelRow
           icon={<CpuIcon />}
-          title="任务引擎"
-          value={engine.profile?.prepared ? engineName : engineValue}
-          onClick={() => onNavigate("engine")}
-        />
-        <PanelRow
-          icon={<ChatCircleDotsIcon />}
-          title="对话模型"
-          value={modelValue}
+          title="连接与账号"
+          value={engineName}
           onClick={() => onNavigate("engine")}
         />
         <PanelRow

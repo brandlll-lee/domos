@@ -14,7 +14,7 @@ import { RoutinesPanel } from "./routines.tsx";
 import { SkillsPanel } from "./skills.tsx";
 import type { BotPanelView, PanelEditor } from "./types.ts";
 import { useBotWork, useWorkAction } from "./use-bot-work.ts";
-import { useEngine } from "./use-engine.ts";
+import type { EngineSetup } from "./use-engine.ts";
 import "./style.css";
 
 export type { BotPanelView } from "./types.ts";
@@ -38,6 +38,7 @@ export function BotDetails({
   computer,
   chat,
   canManage,
+  engine,
 }: {
   bot: Bot;
   active: boolean;
@@ -45,11 +46,11 @@ export function BotDetails({
   onViewChange: (view: BotPanelView) => void;
   onClose: () => void;
   computer: ReturnType<typeof useComputer>;
-  chat: { model: ChatView["model"]; connected: boolean; busy: boolean };
+  chat: { model: ChatView["model"]; connected: boolean };
   canManage: boolean;
+  engine: EngineSetup;
 }) {
   const work = useBotWork(bot.id, active);
-  const engine = useEngine(bot.id, active, chat.busy);
   const action = useWorkAction();
   const [selection, setSelection] = useState<PanelEditor | null>(null);
   const editor = selection?.view === view ? selection : null;
@@ -66,7 +67,6 @@ export function BotDetails({
         profile={work.profile}
         data={work.data}
         engine={engine}
-        model={chat.model}
         computer={computer}
         onNavigate={navigate}
       />

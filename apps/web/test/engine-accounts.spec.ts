@@ -170,13 +170,45 @@ test("native account flows show login choices, retain providers, and select mode
     await page.keyboard.press("Escape");
     await expect(opencode).toBeHidden();
     await page.getByRole("button", { name: "开始使用", exact: true }).click();
-    await page.getByRole("button", { name: "Bot详情", exact: true }).click();
-    const details = page.getByRole("complementary", { name: /的详情$/ });
     await expect(
-      details.getByRole("button", { name: /^对话模型\s/ }),
+      page.getByRole("button", { name: "选择引擎与模型", exact: true }),
     ).toContainText("openai/one");
     await page.setViewportSize({ width: 1360, height: 900 });
-    await details.getByRole("button", { name: /^任务引擎\s/ }).click();
+    const trigger = page.getByRole("button", {
+      name: "选择引擎与模型",
+      exact: true,
+    });
+    await trigger.click();
+    const selector = page.getByRole("dialog", {
+      name: "任务引擎与模型",
+      exact: true,
+    });
+    await expect(selector.getByRole("tab")).toHaveCount(4);
+    await selector
+      .getByRole("button", { name: "Other Model", exact: true })
+      .click();
+    await expect(selector).toBeHidden();
+    await expect(trigger).toContainText("Other Model");
+    await page.reload();
+    await expect(trigger).toContainText("other/two");
+    await trigger.click();
+    await selector
+      .getByRole("button", { name: "Fixture OpenCode Model", exact: true })
+      .click();
+    await expect(selector).toBeHidden();
+    await trigger.click();
+    await selector
+      .getByRole("button", { name: "管理连接与账号", exact: true })
+      .click();
+    const details = page.getByRole("complementary", { name: /的详情$/ });
+    await expect(
+      details.getByRole("combobox", { name: "任务引擎" }),
+    ).toContainText("OpenCode");
+    await details.getByRole("button", { name: "返回", exact: true }).click();
+    await expect(
+      details.getByRole("button", { name: /^对话模型\s/ }),
+    ).toHaveCount(0);
+    await details.getByRole("button", { name: /^连接与账号\s/ }).click();
     await details.getByRole("combobox", { name: "任务引擎" }).click();
     await page
       .getByRole("option", { name: "Claude Code", exact: true })

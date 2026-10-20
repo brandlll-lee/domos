@@ -1,168 +1,188 @@
-import { Dialog } from "@base-ui/react/dialog";
+import { Popover } from "@base-ui/react/popover";
 import { Tabs } from "@base-ui/react/tabs";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { Button } from "./controls.tsx";
-import { ChoicePicker } from "./picker.tsx";
+import { TextField } from "./field.tsx";
 import { ScrollArea } from "./scroll-area.tsx";
 
-export type Provider = {
-  id: string;
-  name: string;
-  icon?: ReactNode;
-};
-
-export type Model = {
-  id: string;
-  name: string;
-  provider: string;
-};
-
 export function ModelSelector({
+  open,
+  onOpenChange,
   providers,
   models,
-  selectedProvider,
-  selectedModel,
+  provider,
+  value,
+  label,
+  loading,
+  disabled,
+  error,
   onProviderChange,
-  onModelChange,
-  onConfigClick,
+  onSelect,
+  onConfigure,
 }: {
-  providers: Provider[];
-  models: Model[];
-  selectedProvider: string;
-  selectedModel: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  providers: { id: string; name: string; icon: ReactNode }[];
+  models: { id: string; name: string }[];
+  provider: string;
+  value: string;
+  label: string;
+  loading: boolean;
+  disabled: boolean;
+  error?: string | null;
   onProviderChange: (id: string) => void;
-  onModelChange: (id: string) => void;
-  onConfigClick: () => void;
+  onSelect: (id: string) => void;
+  onConfigure: () => void;
 }) {
-  const currentProvider = providers.find((p) => p.id === selectedProvider);
-  const currentModel = models.find((m) => m.id === selectedModel);
-  const providerModels = models.filter((m) => m.provider === selectedProvider);
-
+  const [query, setQuery] = useState("");
+  const selected = providers.find((item) => item.id === provider);
+  const matches = models.filter((item) =>
+    `${item.name} ${item.id}`
+      .toLowerCase()
+      .includes(query.trim().toLowerCase()),
+  );
   return (
-    <Dialog.Root>
-      <Dialog.Trigger
+    <Popover.Root
+      open={open}
+      onOpenChange={(next) => {
+        setQuery("");
+        onOpenChange(next);
+      }}
+    >
+      <Popover.Trigger
         render={
           <Button
             variant="ghost"
             size="small"
             className="model-selector-trigger"
-            title="选择模型"
-          >
-            <span className="model-selector-label">
-              {currentModel?.name || "选择模型"}
-            </span>
-            <svg
-              className="model-selector-icon"
-              viewBox="0 0 16 16"
-              aria-hidden="true"
-            >
-              <path d="m5.5 6 2.5-2.5L10.5 6m-5 4 2.5 2.5 2.5-2.5" />
-            </svg>
-          </Button>
+            aria-label="选择引擎与模型"
+          />
         }
-      />
-      <Dialog.Portal>
-        <Dialog.Backdrop className="dialog-backdrop" />
-        <Dialog.Popup className="model-selector-popup">
-          <header className="model-selector-header">
-            <Dialog.Title className="dialog-title">
-              任务引擎与模型
-            </Dialog.Title>
-            <Dialog.Close
-              render={
-                <Button variant="ghost" size="icon-small" aria-label="关闭" />
-              }
-            >
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <path d="m4 4 8 8m0-8-8 8" />
-              </svg>
-            </Dialog.Close>
-          </header>
-
-          <div className="model-selector-content">
+      >
+        {selected?.icon}
+        <span className="model-selector-label">{label}</span>
+        <svg
+          className="model-selector-chevron"
+          viewBox="0 0 16 16"
+          aria-hidden="true"
+        >
+          <path d="m4 6 4 4 4-4" />
+        </svg>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner
+          side="bottom"
+          align="end"
+          sideOffset={8}
+          collisionPadding={12}
+          className="model-selector-positioner"
+        >
+          <Popover.Popup className="model-selector-popup">
+            <Popover.Title className="sr-only">任务引擎与模型</Popover.Title>
             <Tabs.Root
-              defaultValue="providers"
-              className="model-selector-tabs"
+              value={provider}
+              orientation="vertical"
+              className="model-selector-content"
+              onValueChange={(id) => {
+                setQuery("");
+                onProviderChange(String(id));
+              }}
             >
-              <Tabs.List className="model-selector-tab-list">
-                <Tabs.Tab
-                  value="providers"
-                  className="model-selector-tab"
-                  aria-label="任务引擎"
+              <Tabs.List className="model-selector-rail" aria-label="任务引擎">
+                {providers.map((item) => (
+                  <Tabs.Tab
+                    key={item.id}
+                    value={item.id}
+                    className="model-selector-provider"
+                    disabled={disabled || loading}
+                    aria-label={item.name}
+                    title={item.name}
+                  >
+                    {item.icon}
+                  </Tabs.Tab>
+                ))}
+                <Button
+                  variant="ghost"
+                  size="icon-small"
+                  className="model-selector-config"
+                  aria-label="连接与账号设置"
+                  title="连接与账号设置"
+                  onClick={onConfigure}
                 >
-                  任务引擎
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value="models"
-                  className="model-selector-tab"
-                  aria-label="对话模型"
-                >
-                  对话模型
-                </Tabs.Tab>
+                  <svg viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M4 5h12M4 10h12M4 15h12M7 3v4m6 1v4m-5 1v4" />
+                  </svg>
+                </Button>
               </Tabs.List>
-
-              <Tabs.Panel
-                value="providers"
-                className="model-selector-panel"
-              >
+              <Tabs.Panel value={provider} className="model-selector-panel">
+                <header className="model-selector-heading">
+                  <strong>{selected?.name ?? "任务引擎"}</strong>
+                  <Popover.Close
+                    aria-label="关闭模型选择"
+                    render={<Button variant="ghost" size="icon-small" />}
+                  >
+                    <svg viewBox="0 0 16 16" aria-hidden="true">
+                      <path d="m4 4 8 8m0-8-8 8" />
+                    </svg>
+                  </Popover.Close>
+                </header>
+                <TextField
+                  label="搜索模型"
+                  type="search"
+                  placeholder="搜索模型…"
+                  value={query}
+                  onValueChange={setQuery}
+                />
                 <ScrollArea className="model-selector-scroll">
-                  <div className="model-selector-grid">
-                    {providers.map((provider) => (
-                      <button
-                        key={provider.id}
-                        className="model-selector-item"
-                        data-selected={
-                          selectedProvider === provider.id || undefined
-                        }
-                        onClick={() => onProviderChange(provider.id)}
-                      >
-                        {provider.icon && (
-                          <span className="model-selector-item-icon">
-                            {provider.icon}
-                          </span>
-                        )}
-                        <span className="model-selector-item-name">
-                          {provider.name}
-                        </span>
-                      </button>
-                    ))}
+                  <div className="model-selector-options">
+                    {loading ? (
+                      <p role="status">正在读取模型…</p>
+                    ) : (
+                      matches.map((item) => (
+                        <button
+                          type="button"
+                          key={item.id}
+                          className="model-selector-option"
+                          aria-pressed={item.id === value}
+                          disabled={disabled}
+                          onClick={() => onSelect(item.id)}
+                        >
+                          <span
+                            className="model-selector-radio"
+                            aria-hidden="true"
+                          />
+                          <span>{item.name}</span>
+                        </button>
+                      ))
+                    )}
+                    {!loading && !matches.length && (
+                      <p>
+                        {models.length ? "没有找到模型" : "连接账号后选择模型"}
+                      </p>
+                    )}
                   </div>
                 </ScrollArea>
-              </Tabs.Panel>
-
-              <Tabs.Panel value="models" className="model-selector-panel">
-                <ScrollArea className="model-selector-scroll">
-                  <div className="model-selector-grid">
-                    {providerModels.map((model) => (
-                      <button
-                        key={model.id}
-                        className="model-selector-item"
-                        data-selected={
-                          selectedModel === model.id || undefined
-                        }
-                        onClick={() => onModelChange(model.id)}
-                      >
-                        <span className="model-selector-item-name">
-                          {model.name}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </ScrollArea>
+                {disabled && !loading && (
+                  <p className="model-selector-note">工作结束后可切换</p>
+                )}
+                {error && (
+                  <p className="alert" role="alert">
+                    {error}
+                  </p>
+                )}
+                <Button
+                  variant="ghost"
+                  size="small"
+                  className="model-selector-manage"
+                  onClick={onConfigure}
+                >
+                  管理连接与账号
+                </Button>
               </Tabs.Panel>
             </Tabs.Root>
-          </div>
-
-          <footer className="model-selector-footer">
-            <Button
-              variant="secondary"
-              onClick={onConfigClick}
-            >
-              详细配置
-            </Button>
-          </footer>
-        </Dialog.Popup>
-      </Dialog.Portal>
-    </Dialog.Root>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }

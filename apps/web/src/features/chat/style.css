@@ -127,9 +127,11 @@
 .chat-identity {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: var(--space-2);
   max-width: calc(100% - 5.5rem);
   min-width: 0;
+  flex: 1;
   padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1);
   border-radius: var(--radius-round);
   background: transparent;
@@ -153,6 +155,7 @@
 .chat-actions {
   display: flex;
   flex-shrink: 0;
+  max-width: 75%;
   gap: var(--space-2);
 }
 .chat-action {
@@ -250,7 +253,7 @@
 .messages {
   display: flex;
   flex-direction: column;
-  gap: var(--message-gap);
+  gap: 0;
 }
 .message {
   display: flex;
@@ -259,16 +262,8 @@
   gap: var(--space-2);
   min-width: 0;
 }
-.message + .message {
-  margin-top: var(--space-1);
-}
-.message.user + .message.user,
-.message.assistant + .message.assistant {
-  margin-top: var(--space-1);
-}
-.message.user + .message.assistant,
-.message.assistant + .message.user {
-  margin-top: var(--space-4);
+.messages > * + * {
+  margin-top: var(--message-gap);
 }
 .message-time {
   display: block;
@@ -282,6 +277,14 @@
 .message.user {
   flex-direction: row-reverse;
   align-items: center;
+}
+.message.user + .message.user,
+.message.assistant + .message.assistant {
+  margin-top: var(--space-1);
+}
+.message.user + .message.assistant,
+.message.assistant + .message.user {
+  margin-top: var(--space-3);
 }
 .message.user > .action-menu-trigger {
   opacity: 0;

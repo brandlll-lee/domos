@@ -3,9 +3,11 @@ import { type ChatMessage, messageText } from "@domos/agent/messages";
 import { type CSSProperties, useCallback, useRef, useState } from "react";
 import { CreateBot } from "../bots/create-bot.tsx";
 import { BotDetails, type BotPanelView } from "../bots/details/index.tsx";
+import { useEngine } from "../bots/details/use-engine.ts";
 import { selectBot, useBots } from "../bots/use-bots.ts";
 import { useComputer } from "../computer/use-computer.ts";
 import { ComputerWorkspace } from "../computer/workspace.tsx";
+import { EngineSelector } from "../models/engine-selector.tsx";
 import { useSettings } from "../settings/context.ts";
 import { Workspace } from "../shell/workspace.tsx";
 import { Approvals } from "./approvals.tsx";
@@ -54,6 +56,7 @@ function BotChat({
 }) {
   const settings = useSettings();
   const chat = useChat(bot.id, () => settings.open("models", bot.id));
+  const engine = useEngine(bot.id, chat.connected, Boolean(chat.view?.busy));
   const computer = useComputer(bot.id, directory);
   const dock = useComposerDock();
   const draft = useDraft(bot.id);
@@ -128,9 +131,9 @@ function BotChat({
               chat={{
                 model: chat.view?.model ?? null,
                 connected: chat.connected,
-                busy: Boolean(chat.view?.busy),
               }}
               canManage={settings.admin}
+              engine={engine}
             />
           </div>
           {detailsOpen && panel === "computer" && (
@@ -174,6 +177,15 @@ function BotChat({
           busy={Boolean(chat.view?.busy)}
           detailsOpen={detailsOpen && panel === "settings"}
           computerOpen={detailsOpen && panel === "computer"}
+          modelSelector={
+            <EngineSelector
+              botId={bot.id}
+              setup={engine}
+              model={chat.view?.model ?? null}
+              connected={chat.connected}
+              onConfigure={() => showPanel("engine")}
+            />
+          }
           onDetails={() => showPanel("root")}
           onComputer={() => {
             setPanel("computer");

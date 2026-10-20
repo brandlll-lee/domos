@@ -32,6 +32,64 @@ test.afterEach(async () => {
   await rm(directory, { recursive: true, force: true, maxRetries: 5 });
 });
 
+test("header model selection saves choices and fits both themes", async ({
+  page,
+}, info) => {
+  await page.goto(url);
+  const trigger = page.getByRole("button", {
+    name: "选择引擎与模型",
+    exact: true,
+  });
+  await trigger.click();
+  const selector = page.getByRole("dialog", {
+    name: "任务引擎与模型",
+    exact: true,
+  });
+  const search = selector.getByRole("searchbox", {
+    name: "搜索模型",
+    exact: true,
+  });
+  await search.fill("模型二");
+  const choice = selector.getByRole("button", { name: /测试模型二/ });
+  await expect(choice).toBeVisible();
+  await expect(
+    selector.getByRole("button", { name: /测试模型一/ }),
+  ).toHaveCount(0);
+  await page.route("**/rpc/models/select", (route) => route.abort(), {
+    times: 1,
+  });
+  await choice.click();
+  await expect(selector.getByRole("alert")).toBeVisible();
+  await expect(selector).toBeVisible();
+  await choice.click();
+  await expect(selector).toBeHidden();
+  await expect(trigger).toContainText("测试模型二");
+  await page.reload();
+  await expect(trigger).toContainText("faux-2");
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    for (const width of [1360, 390]) {
+      await page.setViewportSize({ width, height: 600 });
+      await trigger.click();
+      await expect(choice).toHaveAttribute("aria-pressed", "true");
+      const box = await selector.boundingBox();
+      expect(box?.x).toBeGreaterThanOrEqual(0);
+      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(width);
+      expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(600);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      await page.screenshot({
+        path: info.outputPath(`selector-${colorScheme}-${width}.png`),
+        animations: "disabled",
+      });
+      await page.keyboard.press("Escape");
+    }
+  }
+});
+
 test("computer viewing requires takeover and releases control when closed", async ({
   page,
 }, testInfo) => {
@@ -738,7 +796,7 @@ test("control geometry and interaction states stay consistent", async ({
   await expect(save).toHaveCSS("background-color", color);
   await details.getByRole("button", { name: "还原", exact: true }).click();
   await details.getByRole("button", { name: "返回", exact: true }).click();
-  await details.getByRole("button", { name: /^任务引擎(?:\s|$)/ }).click();
+  await details.getByRole("button", { name: /^连接与账号(?:\s|$)/ }).click();
   const model = details.getByRole("combobox", { name: "模型", exact: true });
   expect((await model.boundingBox())?.height).toBeCloseTo(32, 2);
   await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
