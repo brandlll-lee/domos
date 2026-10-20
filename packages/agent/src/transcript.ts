@@ -5,7 +5,7 @@ import type { ChatMessage } from "./messages.ts";
 export type TaskNotice = {
   kind: "notice";
   id: string;
-  status: "failed" | "stopped";
+  status: "failed";
   error?: string;
 };
 
@@ -17,6 +17,7 @@ export type TranscriptItem =
 export function chatTranscript(view: ChatView): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   const notices = new Map<string, TaskNotice>();
+  const interrupted = new Set<string>();
   const ends = new Map<string, number>();
   const lastTurn = view.messages.findLast(
     (message) => message.role === "user",
@@ -25,20 +26,16 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
     const id = message.turnId ?? message.id;
     ends.set(id, index);
     if (message.role !== "assistant") return;
-    if (message.stopped || message.stopReason === "error")
+    if (message.stopped) interrupted.add(id);
+    if (message.stopReason === "error")
       notices.set(id, {
         kind: "notice",
         id,
-        status: message.stopReason === "error" ? "failed" : "stopped",
+        status: "failed",
         ...(message.error ? { error: message.error } : {}),
       });
   });
-  if (
-    view.failed &&
-    !view.busy &&
-    lastTurn &&
-    notices.get(lastTurn)?.status !== "stopped"
-  ) {
+  if (view.failed && !view.busy && lastTurn && !interrupted.has(lastTurn)) {
     const error = view.error ?? notices.get(lastTurn)?.error;
     notices.set(lastTurn, {
       kind: "notice",
@@ -50,7 +47,8 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
   let attachmentTurn: string | undefined;
   view.messages.forEach((message, index) => {
     const id = message.turnId ?? message.id;
-    const held = id === view.activeTurnId || notices.has(id);
+    const held =
+      id === view.activeTurnId || notices.has(id) || interrupted.has(id);
     if (message.role === "user")
       items.push({ kind: "message", id: message.id, message });
     else if (message.role === "toolResult") {

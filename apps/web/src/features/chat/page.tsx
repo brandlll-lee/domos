@@ -57,7 +57,7 @@ function BotChat({
   const dock = useComposerDock();
   const draft = useDraft(bot.id);
   const input = useRef<HTMLTextAreaElement>(null);
-  const retry = useCallback(
+  const resend = useCallback(
     (original: ChatMessage) => {
       draft.update({
         text: messageText(original),
@@ -150,7 +150,7 @@ function BotChat({
           avatar={bot.avatar}
           createdAt={bot.createdAt}
           items={items}
-          onRetry={retry}
+          onResend={resend}
           welcome={
             !bot.welcomeComplete &&
             !chat.view?.messages.length && (

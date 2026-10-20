@@ -1097,7 +1097,7 @@ test("a reply arrives complete while typing survives reloads", async ({
   await expect(page.getByLabel("Domos 的回复")).toHaveText(answer);
 });
 
-test("stopping generation preserves a short notice and a manual retry", async ({
+test("stopping preserves the conversation and resending uses the message menu", async ({
   page,
 }) => {
   await control({ content: "这份尚未生成完毕的回答。".repeat(30) });
@@ -1108,12 +1108,16 @@ test("stopping generation preserves a short notice and a manual retry", async ({
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
   await page.getByRole("button", { name: "停止生成", exact: true }).click();
   const notice = page.locator('.task-notice[data-state="stopped"]');
-  await expect(notice.getByRole("status")).toHaveText("已停止");
+  await expect(notice).toHaveCount(0);
   await expect(page.locator(".typing-dots")).toHaveCount(0);
   await page.reload();
-  await expect(notice.getByRole("status")).toHaveText("已停止");
+  await expect(notice).toHaveCount(0);
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
-  await notice.getByRole("button", { name: "重试任务", exact: true }).click();
+  await page
+    .getByLabel("你的消息")
+    .getByRole("button", { name: "消息操作" })
+    .click();
+  await page.getByRole("menuitem", { name: "重新发送", exact: true }).click();
   await expect(page.getByLabel("消息", { exact: true })).toHaveValue(
     "停止这次回答",
   );
@@ -1424,7 +1428,7 @@ test("storage failures keep the draft and prevent an unrecorded send", async ({
   await expect(page.getByLabel("你的消息")).toHaveCount(0);
 });
 
-test("a busy conversation shows the server rejection and keeps the draft", async ({
+test("two windows can submit while a reply is active", async ({
   page,
   browser,
 }) => {
@@ -1440,15 +1444,22 @@ test("a busy conversation shows the server rejection and keeps the draft", async
     await expect(other.getByRole("button", { name: "停止生成" })).toBeVisible();
     await route.continue();
   });
-  await page.getByLabel("消息", { exact: true }).fill("被拒绝的消息");
+  await page.getByLabel("消息", { exact: true }).fill("追加的消息");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("会话正在回复");
-  await expect(page.getByRole("alert")).not.toContainText("发送未确认");
-  await expect(page.getByLabel("消息", { exact: true })).toHaveValue(
-    "被拒绝的消息",
-  );
+  await expect(page.getByLabel("消息", { exact: true })).toHaveValue("");
+  await expect(page.getByRole("alert")).toHaveCount(0);
   await page.unroute("**/rpc/send");
-  await other.getByRole("button", { name: "停止生成" }).click();
+  await control("release");
+  await page.bringToFront();
+  await expect(page.getByLabel("你的消息")).toHaveText([
+    /占用会话/,
+    /追加的消息/,
+  ]);
+  await other.bringToFront();
+  await expect(other.getByLabel("你的消息")).toHaveText([
+    /占用会话/,
+    /追加的消息/,
+  ]);
   await expect(
     page.getByRole("button", { name: "发送", exact: true }),
   ).toBeVisible();
@@ -2400,7 +2411,7 @@ test("delivered images form a gallery with viewer downloads and keyboard navigat
   await expect(gallery.getByRole("img")).toHaveCount(2);
 });
 
-test("typing follows the Bot and failed tasks retain a retry notice", async ({
+test("typing follows the Bot and failures retain their error message", async ({
   page,
 }) => {
   await page.goto(url);
@@ -2428,8 +2439,8 @@ test("typing follows the Bot and failed tasks retain a retry notice", async ({
   await page.goto(primary);
   await expect(page.locator(".typing-dots")).toBeVisible();
   await page.getByRole("button", { name: "停止生成", exact: true }).click();
-  await expect(page.locator('.task-notice[data-state="stopped"] p')).toHaveText(
-    "已停止",
+  await expect(page.locator('.task-notice[data-state="stopped"]')).toHaveCount(
+    0,
   );
   await control({ responses: [{ content: "", stopReason: "error" }] });
   await input.fill("再次生成");
@@ -2446,14 +2457,65 @@ test("typing follows the Bot and failed tasks retain a retry notice", async ({
     1,
   );
   await expect(page.getByRole("button", { name: /^下载/ })).toHaveCount(0);
-  await expect(page.locator('.task-notice[data-state="stopped"] p')).toHaveText(
-    "已停止",
+  await expect(page.locator('.task-notice[data-state="stopped"]')).toHaveCount(
+    0,
   );
   await page
-    .locator('.task-notice[data-state="failed"]')
-    .getByRole("button", { name: "重试任务" })
+    .getByLabel("你的消息")
+    .last()
+    .getByRole("button", { name: "消息操作" })
     .click();
+  await page.getByRole("menuitem", { name: "重新发送", exact: true }).click();
   await expect(input).toHaveValue("再次生成");
+});
+
+test("chat keeps sending available while the Bot is working", async ({
+  page,
+}) => {
+  await control("gate-tool");
+  await control({
+    responses: [
+      {
+        stopReason: "toolUse",
+        content: [
+          {
+            type: "toolCall",
+            id: crypto.randomUUID(),
+            name: toolName,
+            arguments: { text: "Waiting" },
+          },
+        ],
+      },
+      { content: "All requests received" },
+    ],
+  });
+  await page.goto(url);
+  const input = page.getByLabel("消息", { exact: true });
+  const send = page.getByRole("button", { name: "发送", exact: true });
+  await input.fill("first");
+  await send.click();
+  await expect(page.locator(".typing-dots")).toBeVisible();
+  await input.fill("second");
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect(input).toHaveValue("");
+  await input.fill("third");
+  await send.click();
+  await expect(input).toHaveValue("");
+  await expect(
+    page.getByRole("button", { name: "停止生成", exact: true }),
+  ).toBeVisible();
+  await control("release");
+  await expect(page.getByLabel("你的消息")).toHaveText([
+    /first/,
+    /second/,
+    /third/,
+  ]);
+  await expect(page.getByLabel("Domos 的回复").last()).toContainText(
+    "All requests received",
+  );
+  await expect(page.locator(".task-notice")).toHaveCount(0);
+  await page.screenshot({ path: "test-results/chat-continuous-input.png" });
 });
 
 test("typing dots share the avatar color and follow complete messages", async ({

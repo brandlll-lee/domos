@@ -269,7 +269,20 @@
   opacity: 0.72;
 }
 .message.user {
-  align-items: flex-end;
+  flex-direction: row-reverse;
+  align-items: center;
+}
+.message.user > .action-menu-trigger {
+  opacity: 0;
+}
+.message.user:hover > .action-menu-trigger,
+.message.user:focus-within > .action-menu-trigger {
+  opacity: 1;
+}
+@media (hover: none) {
+  .message.user > .action-menu-trigger {
+    opacity: 1;
+  }
 }
 .message[data-arrival] > .message-bubble,
 .delivered-files[data-arrival] > .attachments {

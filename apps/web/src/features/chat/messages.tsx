@@ -1,6 +1,7 @@
 import type { ChatMessage } from "@domos/agent/messages";
 import type { TranscriptItem } from "@domos/agent/transcript";
 import { Button } from "@domos/ui/controls";
+import { ActionMenu } from "@domos/ui/menu";
 import { MessageBubble } from "@domos/ui/message";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { ArrowDownIcon } from "@phosphor-icons/react/dist/csr/ArrowDown";
@@ -17,23 +18,18 @@ const MessageRow = memo(function MessageRow({
   item,
   botId,
   botName,
-  original,
-  onRetry,
+  onResend,
 }: {
   item: TranscriptItem;
   botId: number;
   botName: string;
-  original?: ChatMessage;
-  onRetry: (message: ChatMessage) => void;
+  onResend: (message: ChatMessage) => void;
 }) {
   const key = `${item.kind}:${item.id}`;
   if (item.kind === "notice")
     return (
       <div data-transcript-key={key}>
-        <TaskNotice
-          notice={item}
-          onRetry={original ? () => onRetry(original) : undefined}
-        />
+        <TaskNotice notice={item} />
       </div>
     );
   if (item.kind === "attachments")
@@ -72,6 +68,14 @@ const MessageRow = memo(function MessageRow({
             </time>
           )}
       </MessageBubble>
+      {message.role === "user" && (
+        <ActionMenu
+          label={chatCopy.messageActions}
+          items={[
+            { label: chatCopy.resend, onSelect: () => onResend(message) },
+          ]}
+        />
+      )}
     </article>
   );
 });
@@ -85,7 +89,7 @@ export const Messages = memo(function Messages({
   createdAt,
   items,
   welcome,
-  onRetry,
+  onResend,
 }: {
   botId: number;
   ready: boolean;
@@ -95,7 +99,7 @@ export const Messages = memo(function Messages({
   createdAt?: number;
   items: TranscriptItem[];
   welcome?: ReactNode;
-  onRetry: (message: ChatMessage) => void;
+  onResend: (message: ChatMessage) => void;
 }) {
   const transcript = useTranscript(items, ready);
   const separators = new Map<string, { at: number; label: string }>();
@@ -108,13 +112,6 @@ export const Messages = memo(function Messages({
       separators.set(`${item.kind}:${item.id}`, { at, label });
     if (at !== undefined && Number.isFinite(at)) previousAt = at;
   }
-  const originals = new Map(
-    items.flatMap((item) =>
-      item.kind === "message" && item.message.role === "user"
-        ? [[item.message.turnId, item.message] as const]
-        : [],
-    ),
-  );
   return (
     <div className="transcript-pane">
       <ScrollArea
@@ -178,12 +175,7 @@ export const Messages = memo(function Messages({
                     item={item}
                     botId={botId}
                     botName={botName}
-                    original={
-                      item.kind === "notice" && !busy
-                        ? originals.get(item.id)
-                        : undefined
-                    }
-                    onRetry={onRetry}
+                    onResend={onResend}
                   />
                 </Fragment>
               );

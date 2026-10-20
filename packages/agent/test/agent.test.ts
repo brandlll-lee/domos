@@ -143,10 +143,9 @@ test.each(["aborted", "error"] as const)(
       expect(view.draft).toBeNull();
       expect(chatTranscript(view)).toMatchObject([
         { kind: "message", message: { role: "user" } },
-        {
-          kind: "notice",
-          status: stopReason === "aborted" ? "stopped" : "failed",
-        },
+        ...(stopReason === "aborted"
+          ? []
+          : [{ kind: "notice", status: "failed" }]),
       ]);
       expect(
         chatTranscript(view).filter((item) => item.kind === "message"),
@@ -440,10 +439,11 @@ test.each(["generation", "tool"])(
       });
       const state = await second.conversation.viewState(context);
       try {
-        expect(chatTranscript(chatView(state.value)).at(-1)).toMatchObject({
-          kind: "notice",
-          status: "stopped",
-        });
+        expect(
+          chatTranscript(chatView(state.value)).every(
+            (item) => item.kind !== "notice",
+          ),
+        ).toBe(true);
         expect(
           state.value.entries.filter(
             (entry) => entry.kind === "domos.engine-message",

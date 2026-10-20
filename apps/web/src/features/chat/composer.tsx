@@ -50,7 +50,7 @@ export function Composer({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const composer = useComposer(
     draft,
-    connected && !busy && !sending && !uploading,
+    connected && !stopping && !sending && !uploading,
     onSend,
   );
   const issue = uploadError ?? error ?? composer.error;
@@ -76,7 +76,12 @@ export function Composer({
       if (input.current) input.current.value = "";
     }
   }
-  const action = busy
+  const stopAction =
+    busy &&
+    !composer.value.trim() &&
+    !composer.attachments.length &&
+    !composer.pending;
+  const action = stopAction
     ? {
         label: stopping ? chatCopy.stopping : chatCopy.stop,
         disabled: stopping || !connected,
@@ -93,6 +98,7 @@ export function Composer({
             !composer.attachments.length) ||
           !connected ||
           sending ||
+          stopping ||
           uploading,
       };
   return (
@@ -173,14 +179,14 @@ export function Composer({
         }
         action={
           <Button
-            type={busy ? "button" : "submit"}
+            type={stopAction ? "button" : "submit"}
             size="icon"
             title={action.label}
             aria-label={action.label}
             disabled={action.disabled}
-            onClick={busy ? () => void onStop() : undefined}
+            onClick={stopAction ? () => void onStop() : undefined}
           >
-            {busy ? <StopIcon weight="fill" /> : <ArrowUpIcon />}
+            {stopAction ? <StopIcon weight="fill" /> : <ArrowUpIcon />}
           </Button>
         }
       />

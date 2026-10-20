@@ -117,7 +117,7 @@ test("complete replies survive later failure and stopped drafts stay hidden", ()
     expect(items).toMatchObject([
       { kind: "message", message: { role: "user" } },
       { kind: "message", message: { content: [{ text: "First result" }] } },
-      { kind: "notice", id: "turn", status },
+      ...(status === "failed" ? [{ kind: "notice", id: "turn", status }] : []),
     ]);
   }
 });
