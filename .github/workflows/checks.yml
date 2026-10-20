@@ -169,5 +169,8 @@ jobs:
       - name: Report application failure
         if: failure()
         run: |
+          docker inspect --format '{{json .State}}' domos-app-test 2>/dev/null || true
+          docker top domos-app-test -eo pid,stat,comm 2>/dev/null || true
           docker logs --tail 30 domos-app-test 2>/dev/null || true
           docker logs --tail 30 domos-app-ssh 2>/dev/null || true
+          docker exec -w /app/apps/api domos-app-test timeout 20 node --input-type=module -e 'console.log("API import started"); await import("./src/hosting/runtime.ts"); console.log("API import completed");' || true

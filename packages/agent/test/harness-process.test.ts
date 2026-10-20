@@ -125,7 +125,11 @@ app.whenReady().then(() => {
       operation: "call",
       service: "desktop",
       name: "launch_app",
-      arguments: { path: electron, additional_arguments: [entry] },
+      arguments: {
+        path: electron,
+        additional_arguments: [entry],
+        start_minimized: true,
+      },
     });
     expect(launched.isError, JSON.stringify(launched.content)).not.toBe(true);
     await expect

@@ -16,9 +16,10 @@ test("browser profiles persist across a restart and stay separate for each Bot",
     join(directory, "config.json"),
   );
   let computer = new Computer(config);
-  const server = createServer((_request, response) =>
-    response.end("<title>Workspace</title>"),
-  );
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    response.end("<title>Workspace</title>");
+  });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   if (!address || typeof address === "string")
@@ -35,8 +36,11 @@ test("browser profiles persist across a restart and stay separate for each Bot",
       context,
     );
   onTestFinished(async () => {
+    console.info("[DEBUG-ci-browser] closing computer");
     await computer.close(context);
+    console.info("[DEBUG-ci-browser] closing page server");
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    console.info("[DEBUG-ci-browser] removing profile");
     await rm(directory, { recursive: true, force: true, maxRetries: 10 });
   });
   expect(await computer.services.prepare(1, "browser", context)).toEqual({
