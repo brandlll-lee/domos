@@ -36,11 +36,11 @@ test("browser profiles persist across a restart and stay separate for each Bot",
       context,
     );
   onTestFinished(async () => {
-    console.info("[DEBUG-ci-browser] closing computer");
     await computer.close(context);
-    console.info("[DEBUG-ci-browser] closing page server");
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-    console.info("[DEBUG-ci-browser] removing profile");
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+      server.closeAllConnections();
+    });
     await rm(directory, { recursive: true, force: true, maxRetries: 10 });
   });
   expect(await computer.services.prepare(1, "browser", context)).toEqual({
