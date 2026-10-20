@@ -16,15 +16,9 @@ export function PromptPanel({
   > | null>(null);
   return (
     <section className="detail-page" aria-label="提示词">
-      <header className="detail-page-head">
-        <p className="detail-note">
-          查看最近交给引擎的指令和产品工具。引擎自带的指令不在此处。此处可能含有私人记忆，请谨慎分享。
-        </p>
-      </header>
       <div className="detail-card detail-prompt-action">
         <div>
           <strong>实际提示词</strong>
-          <p className="detail-note">读取最近一次请求的完整内容。</p>
         </div>
         <Button
           variant="secondary"

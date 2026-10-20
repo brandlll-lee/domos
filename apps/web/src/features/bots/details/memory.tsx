@@ -91,15 +91,8 @@ export function MemoryPanel({
             ))}
           </ul>
         ) : (
-          <p className="detail-empty">
-            还没有记忆。Bot 会在需要时记住长期信息。
-          </p>
+          <p className="detail-empty">暂无记忆</p>
         ))}
-      {!editor && (
-        <p className="detail-note">
-          记忆默认属于此 Bot。共享后，所有 Bot 都能使用。请勿保存密钥。
-        </p>
-      )}
       <ConfirmDialog
         open={Boolean(deleting)}
         onOpenChange={(open) => {

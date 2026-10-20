@@ -86,9 +86,6 @@ export function EngineSettings({
           />
         )}
       </div>
-      <p className="detail-note">
-        更换引擎或模型只影响下一次回复，聊天记录会保留。
-      </p>
       {setup.error && (
         <p className="alert" role="alert">
           {setup.error}

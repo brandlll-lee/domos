@@ -177,9 +177,7 @@ export function RoutinesPanel({
             ))}
           </ul>
         ) : (
-          <p className="detail-empty">
-            还没有定时任务。可以安排一次提醒，或让 Bot 定期整理资料。
-          </p>
+          <p className="detail-empty">暂无定时任务</p>
         ))}
 
       {!editor && (
@@ -221,11 +219,6 @@ export function RoutinesPanel({
             )}
           </div>
         </details>
-      )}
-      {!editor && (
-        <p className="detail-note">
-          服务运行时，Bot 会按计划工作。新任务默认暂停。试跑会真实执行。
-        </p>
       )}
 
       <ConfirmDialog
@@ -320,7 +313,6 @@ function RoutineEditor({
       <fieldset className="bot-fields" disabled={action.busy}>
         <div className="detail-form-head">
           <h3>{routine ? "编辑定时任务" : "新建定时任务"}</h3>
-          <p className="detail-note">保存后默认暂停，需要手动启用。</p>
         </div>
         <TextField
           label={routine ? "修改任务名称" : "新任务名称"}

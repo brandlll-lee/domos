@@ -181,15 +181,8 @@ export function SkillsPanel({
             })}
           </ul>
         ) : (
-          <p className="detail-empty">
-            还没有技能。导入 SKILL.md，或新建一个再启用。
-          </p>
+          <p className="detail-empty">暂无技能</p>
         ))}
-      {!editor && (
-        <p className="detail-note">
-          技能库由所有 Bot 共享。启用前请检查正文。技能不会增加工具权限。
-        </p>
-      )}
 
       <ConfirmDialog
         open={Boolean(deleting)}
@@ -263,7 +256,6 @@ function SkillEditor({
           required
           autoFocus
           maxLength={SKILL_FILE_BYTES}
-          description="保存后仍是停用状态，需要在此 Bot 上启用。"
         />
         <div className="form-actions">
           <Button type="button" variant="ghost" size="small" onClick={onDone}>

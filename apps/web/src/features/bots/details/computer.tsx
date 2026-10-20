@@ -58,11 +58,6 @@ export function ComputerSettings({
           )}
         </div>
       </div>
-      {!status && (
-        <p className="detail-note">
-          选择工作电脑后，Bot 才能操作文件、命令、浏览器和桌面。
-        </p>
-      )}
       {busy && <p role="status">正在准备并连接电脑…</p>}
       {status?.error && (
         <p className="alert" role="alert">

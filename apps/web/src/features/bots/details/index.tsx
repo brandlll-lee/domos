@@ -162,7 +162,14 @@ export function BotDetails({
             />
           </div>
         )}
-        {view !== "identity" && content}
+        {view !== "identity" && (
+          <div
+            className="detail-view"
+            key={`${view}:${editor ? "editor" : "list"}`}
+          >
+            {content}
+          </div>
+        )}
       </ScrollArea>
     </aside>
   );

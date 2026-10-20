@@ -86,7 +86,7 @@ export function RootPanel({
         </Button>
         <div className="bot-hero-copy">
           <h2>{profile?.name ?? bot.name}</h2>
-          <p>{profile?.instructions.trim() || "设置职责与长期指令"}</p>
+          {profile?.instructions.trim() && <p>{profile.instructions}</p>}
         </div>
       </section>
 
