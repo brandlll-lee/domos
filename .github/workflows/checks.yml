@@ -173,5 +173,3 @@ jobs:
           docker top domos-app-test -eo pid,stat,comm 2>/dev/null || true
           docker logs --tail 30 domos-app-test 2>/dev/null || true
           docker logs --tail 30 domos-app-ssh 2>/dev/null || true
-          docker run --rm --read-only --cap-drop=ALL --security-opt=no-new-privileges:true --tmpfs /tmp --entrypoint node domos-app:test --version || true
-          docker run --rm --read-only --cap-drop=ALL --security-opt=no-new-privileges:true --tmpfs /tmp --entrypoint timeout domos-app:test 20 node --input-type=module -e 'import { writeSync } from "node:fs"; const exit = process.exit; process.exit = (code) => { writeSync(2, new Error(`API exit ${code}`).stack + "\n"); exit(code); }; writeSync(2, "API import started\n"); await import("./apps/api/src/hosting/runtime.ts"); writeSync(2, "API import completed\n");' || true

@@ -8,7 +8,7 @@ references
 coverage
 test-results
 playwright-report
-**/runtime
-**/release
+apps/desktop/runtime
+apps/desktop/release
 deploy/ssh
 deploy/domos.config.json
