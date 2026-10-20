@@ -75,7 +75,7 @@
   white-space: nowrap;
 }
 .chat-preview strong {
-  font-size: var(--text-caption);
+  font-size: var(--text-label);
   font-weight: var(--weight-medium);
   line-height: var(--leading-control);
 }

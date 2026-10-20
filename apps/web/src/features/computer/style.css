@@ -1,53 +1,182 @@
-.computer-capabilities {
+.computer-workspace {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-4);
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  background: var(--color-canvas);
+  color: var(--color-text);
+}
+.computer-workspace-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 0 var(--space-4) var(--space-2);
   color: var(--color-muted);
   font-size: var(--text-caption);
 }
-.dialog-popup.computer-view-dialog {
-  width: min(68rem, calc(100vw - var(--space-6)));
-  max-height: calc(100dvh - var(--space-12));
+.computer-workspace-context > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.computer-workspace-tabs {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.workspace-tabs {
+  display: flex;
+  align-items: center;
+  align-self: center;
+  gap: var(--space-1);
+  margin: 0 var(--space-4) var(--space-3);
+  padding: var(--space-1);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+}
+.workspace-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--control-small);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius-control) - 2px);
+  background: transparent;
+  color: var(--color-muted);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition:
+    color var(--motion-feedback),
+    background-color var(--motion-feedback);
+}
+.workspace-tab svg {
+  width: 1rem;
+  height: 1rem;
+}
+.workspace-tab:hover {
+  color: var(--color-text);
+}
+.workspace-tab[data-active] {
+  border-color: var(--color-divider);
+  background: var(--color-canvas);
+  color: var(--color-text);
+}
+.workspace-tab:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+.computer-workspace-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 var(--space-4) var(--space-4);
+  outline: none;
+}
+.computer-workspace-stage[data-hidden] {
+  display: none;
+}
+.computer-workspace-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 100%;
+  padding: var(--space-6);
+  text-align: center;
+}
+.computer-workspace-empty > svg {
+  color: var(--color-muted);
+}
+.computer-workspace-empty h3 {
+  margin: 0;
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+}
+.computer-workspace-empty p {
+  margin: 0;
+  max-width: 32rem;
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+  overflow-wrap: anywhere;
 }
 .computer-viewer {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-3);
   min-width: 0;
+  min-height: 100%;
+  height: 100%;
 }
 .computer-view-toolbar,
 .computer-view-address {
   display: flex;
   align-items: end;
-  gap: var(--space-3);
+  gap: var(--space-2);
+  flex-shrink: 0;
 }
 .computer-view-toolbar {
   justify-content: space-between;
   align-items: center;
-  font-size: var(--text-caption);
   color: var(--color-muted);
+  font-size: var(--text-caption);
 }
 .computer-view-address .field {
   flex: 1;
   min-width: 0;
 }
+.computer-view-address .field-control,
+.computer-view-address .button {
+  min-height: var(--control-small);
+}
 .computer-view-screen {
-  display: grid;
-  place-items: center;
-  min-height: 12rem;
+  position: relative;
+  flex: 1;
+  min-height: 10rem;
   overflow: hidden;
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-control);
   background: var(--color-control);
 }
 .computer-view-screen img {
+  position: absolute;
+  inset: 50% auto auto 50%;
   display: block;
-  max-width: 100%;
-  max-height: 45dvh;
   width: auto;
   height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  transform: translate(-50%, -50%);
   touch-action: none;
+}
+.computer-view-screen > p {
+  display: grid;
+  place-items: center;
+  min-height: 10rem;
+  margin: 0;
 }
 .computer-view-screen img:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: -2px;
+}
+.computer-viewer > .detail-note {
+  flex-shrink: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace-tab {
+    transition: none;
+  }
+}
+@media (forced-colors: active) {
+  .workspace-tab[data-active] {
+    border-color: Highlight;
+  }
 }

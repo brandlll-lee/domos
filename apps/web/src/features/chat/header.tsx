@@ -8,12 +8,14 @@ export function ChatHeader({
   bot,
   busy,
   detailsOpen,
+  computerOpen,
   onDetails,
   onComputer,
 }: {
   bot: Bot;
   busy: boolean;
   detailsOpen: boolean;
+  computerOpen: boolean;
   onDetails: () => void;
   onComputer: () => void;
 }) {
@@ -39,10 +41,12 @@ export function ChatHeader({
       </Button>
       <div className="chat-actions">
         <Button
+          id="computer-trigger"
           variant="ghost"
           size="icon-small"
           className="chat-action"
           aria-label="Bot电脑"
+          aria-expanded={computerOpen}
           title="工作电脑"
           onClick={onComputer}
         >

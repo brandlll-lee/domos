@@ -5,28 +5,36 @@ import { TextField } from "@domos/ui/field";
 import { ActionMenu } from "@domos/ui/menu";
 import { useRef, useState } from "react";
 import { client } from "../../../client.ts";
+import type { PanelEditor } from "./types.ts";
 import type { WorkAction, WorkData } from "./use-bot-work.ts";
 
 const template =
   "---\nname: my-skill\ndescription: 说明何时使用这个技能\n---\n\n## 步骤\n\n## 验证与交付\n";
 
 type Skill = WorkData["skills"][number];
-type Editor = { skill: Skill | null; content: string; token: string };
 
 export function SkillsPanel({
   botId,
   items,
   action,
+  editor,
+  onEditorChange,
 }: {
   botId: number;
   items: WorkData["skills"];
   action: WorkAction;
+  editor: Extract<PanelEditor, { view: "skills" }> | null;
+  onEditorChange: (editor: PanelEditor | null) => void;
 }) {
-  const [editor, setEditor] = useState<Editor | null>(null);
   const [deleting, setDeleting] = useState<Skill | null>(null);
   const file = useRef<HTMLInputElement>(null);
   const start = (skill: Skill | null, content: string) =>
-    setEditor({ skill, content, token: crypto.randomUUID() });
+    onEditorChange({
+      view: "skills",
+      skill,
+      content,
+      token: crypto.randomUUID(),
+    });
   const exportSkill = (skill: Skill) => {
     const url = URL.createObjectURL(
       new Blob([skill.content], {
@@ -41,12 +49,9 @@ export function SkillsPanel({
   };
   return (
     <section className="detail-page" aria-label="技能">
-      <header className="detail-page-head">
-        <p className="detail-note">
-          技能库由所有 Bot 共享。导入后请检查正文，再为此 Bot
-          启用。技能不会增加工具权限。
-        </p>
-        {!editor && (
+      {!editor && (
+        <header className="detail-page-head">
+          <span className="detail-note">{items.length} 个技能</span>
           <div className="detail-inline">
             <Button
               variant="secondary"
@@ -64,8 +69,8 @@ export function SkillsPanel({
               新建技能
             </Button>
           </div>
-        )}
-      </header>
+        </header>
+      )}
 
       <input
         className="sr-only"
@@ -100,79 +105,89 @@ export function SkillsPanel({
           skill={editor.skill}
           content={editor.content}
           action={action}
-          onDone={() => setEditor(null)}
+          onDone={() => onEditorChange(null)}
         />
       )}
 
-      {items.length ? (
-        <ul className="item-list">
-          {items.map((skill) => {
-            const enabled = skill.enabledBots.includes(botId);
-            return (
-              <li key={skill.id} className="item-card">
-                <div className="item-heading">
-                  <div className="item-heading-copy">
-                    <h3>{skill.name}</h3>
-                    <p className="item-description">
-                      {skill.description || "暂无说明"}
-                    </p>
+      {!editor &&
+        (items.length ? (
+          <ul className="item-list">
+            {items.map((skill) => {
+              const enabled = skill.enabledBots.includes(botId);
+              return (
+                <li key={skill.id} className="item-card">
+                  <div className="item-heading">
+                    <button
+                      className="item-heading-copy item-open"
+                      type="button"
+                      onClick={() => start(skill, skill.content)}
+                    >
+                      <h3>{skill.name}</h3>
+                      <p className="item-description">
+                        {skill.description || "暂无说明"}
+                      </p>
+                    </button>
+                    <Switch
+                      label={`为此 Bot 启用 ${skill.name}`}
+                      checked={enabled}
+                      disabled={action.busy}
+                      onCheckedChange={(next) =>
+                        void action.run(
+                          ["skills.enable", skill.id, skill.revision, next],
+                          (requestId) =>
+                            client.work.skills.enable({
+                              botId,
+                              id: skill.id,
+                              enabled: next,
+                              revision: skill.revision,
+                              requestId,
+                            }),
+                        )
+                      }
+                    />
                   </div>
-                  <Switch
-                    label={`为此 Bot 启用 ${skill.name}`}
-                    checked={enabled}
-                    disabled={action.busy}
-                    onCheckedChange={(next) =>
-                      void action.run(
-                        ["skills.enable", skill.id, skill.revision, next],
-                        (requestId) =>
-                          client.work.skills.enable({
-                            botId,
-                            id: skill.id,
-                            enabled: next,
-                            revision: skill.revision,
-                            requestId,
-                          }),
-                      )
-                    }
-                  />
-                </div>
-                <div className="item-meta">
-                  <span
-                    className="item-tag"
-                    data-tone={enabled ? "ready" : undefined}
-                  >
-                    {enabled ? "此 Bot 已启用" : "此 Bot 未启用"}
-                  </span>
-                  <span>{skill.enabledBots.length} 个 Bot 使用</span>
-                </div>
-                <div className="item-actions">
-                  <ActionMenu
-                    label={`${skill.name}的操作`}
-                    disabled={action.busy}
-                    items={[
-                      {
-                        label: "编辑",
-                        onSelect: () => start(skill, skill.content),
-                      },
-                      {
-                        label: "导出",
-                        onSelect: () => exportSkill(skill),
-                      },
-                      {
-                        label: "删除",
-                        tone: "danger",
-                        onSelect: () => setDeleting(skill),
-                      },
-                    ]}
-                  />
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <p className="detail-empty">
-          还没有技能。导入 SKILL.md，或新建一个再启用。
+                  <div className="item-meta">
+                    <span
+                      className="item-tag"
+                      data-tone={enabled ? "ready" : undefined}
+                    >
+                      {enabled ? "此 Bot 已启用" : "此 Bot 未启用"}
+                    </span>
+                    <span>{skill.enabledBots.length} 个 Bot 使用</span>
+                  </div>
+                  <div className="item-actions">
+                    <ActionMenu
+                      label={`${skill.name}的操作`}
+                      disabled={action.busy}
+                      items={[
+                        {
+                          label: "编辑",
+                          onSelect: () => start(skill, skill.content),
+                        },
+                        {
+                          label: "导出",
+                          onSelect: () => exportSkill(skill),
+                        },
+                        {
+                          label: "删除",
+                          tone: "danger",
+                          onSelect: () => setDeleting(skill),
+                        },
+                      ]}
+                    />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="detail-empty">
+            还没有技能。导入 SKILL.md，或新建一个再启用。
+          </p>
+        ))}
+      {!editor && (
+        <p className="detail-note">
+          技能库由所有 Bot 共享。启用前请检查正文。技能不会增加工具权限。
         </p>
       )}
 
@@ -196,7 +211,7 @@ export function SkillsPanel({
                   revision: skill.revision,
                 }),
               () => {
-                if (editor?.skill?.id === skill.id) setEditor(null);
+                if (editor?.skill?.id === skill.id) onEditorChange(null);
               },
             );
         }}

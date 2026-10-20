@@ -559,13 +559,17 @@ test("first use prepares the default Bot with a computer and engine before share
     await expect(setup).toBeHidden();
     await expect(page.getByRole("button", { name: "Bot详情" })).toBeVisible();
     await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
+    await page.getByRole("button", { name: "电脑设置", exact: true }).click();
     const computer = page.getByRole("region", {
       name: "工作电脑",
       exact: true,
     });
     await expect(
-      computer.getByRole("heading", { name: "服务所在电脑", exact: true }),
-    ).toBeVisible();
+      computer.getByRole("combobox", {
+        name: "此 Bot 使用的电脑",
+        exact: true,
+      }),
+    ).toContainText("服务所在电脑");
     await expect(computer.locator(".computer-capabilities")).toContainText(
       "命令",
     );

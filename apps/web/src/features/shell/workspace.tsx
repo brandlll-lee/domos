@@ -17,6 +17,9 @@ export function Workspace({
   children,
   actions,
   onSettings,
+  expanded = false,
+  inspectorTitle = "Bot详情",
+  inspectorTrigger = "details-trigger",
 }: {
   sidebar: ReactNode;
   inspector: ReactNode;
@@ -25,8 +28,11 @@ export function Workspace({
   children: ReactNode;
   actions: ReactNode;
   onSettings: () => void;
+  expanded?: boolean;
+  inspectorTitle?: string;
+  inspectorTrigger?: string;
 }) {
-  const sizing = useWorkspaceLayout(detailsOpen);
+  const sizing = useWorkspaceLayout(detailsOpen && !expanded);
   const [contactsOpen, setContactsOpen] = useState(false);
   useEffect(() => {
     const close = () => setContactsOpen(false);
@@ -44,8 +50,8 @@ export function Workspace({
     },
     {
       side: "inspector" as const,
-      title: "Bot详情",
-      modal: sizing.overlay,
+      title: inspectorTitle,
+      modal: sizing.overlay || expanded,
       open: detailsOpen,
       change: onDetailsChange,
       content: inspector,
@@ -59,7 +65,7 @@ export function Workspace({
       style={
         {
           "--sidebar-size": `${sizing.mobile ? 0 : sizing.widths.sidebar}px`,
-          "--inspector-size": `${detailsOpen && !sizing.overlay ? sizing.widths.inspector : 0}px`,
+          "--inspector-size": `${detailsOpen && !sizing.overlay && !expanded ? sizing.widths.inspector : 0}px`,
         } as CSSProperties
       }
     >
@@ -82,6 +88,7 @@ export function Workspace({
               className="workspace-panel"
               data-side={side}
               data-modal={modal || undefined}
+              data-expanded={(side === "inspector" && expanded) || undefined}
               aria-modal={modal || undefined}
               style={{
                 width:
@@ -92,7 +99,7 @@ export function Workspace({
               initialFocus={modal || side === "inspector"}
               finalFocus={() =>
                 document.getElementById(
-                  side === "sidebar" ? "contacts-trigger" : "details-trigger",
+                  side === "sidebar" ? "contacts-trigger" : inspectorTrigger,
                 )
               }
             >

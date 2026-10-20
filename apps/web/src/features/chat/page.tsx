@@ -5,6 +5,7 @@ import { CreateBot } from "../bots/create-bot.tsx";
 import { BotDetails, type BotPanelView } from "../bots/details/index.tsx";
 import { selectBot, useBots } from "../bots/use-bots.ts";
 import { useComputer } from "../computer/use-computer.ts";
+import { ComputerWorkspace } from "../computer/workspace.tsx";
 import { useSettings } from "../settings/context.ts";
 import { Workspace } from "../shell/workspace.tsx";
 import { Approvals } from "./approvals.tsx";
@@ -69,6 +70,8 @@ function BotChat({
     [draft.update],
   );
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [panel, setPanel] = useState<"settings" | "computer">("settings");
+  const [expanded, setExpanded] = useState(false);
   const [detailPanel, setDetailPanel] = useState<BotPanelView>("root");
   const { items } = chat;
   const connection = chat.connected
@@ -84,34 +87,68 @@ function BotChat({
     ) && chat.view?.failed
       ? chatCopy.errors.reply
       : null);
-  const showPanel = (panel: BotPanelView) => {
-    setDetailPanel(panel);
-    setDetailsOpen(!detailsOpen || detailPanel !== panel);
+  const showPanel = (view: BotPanelView) => {
+    const open = !detailsOpen || panel !== "settings" || detailPanel !== view;
+    setPanel("settings");
+    setExpanded(false);
+    setDetailPanel(view);
+    setDetailsOpen(open);
+  };
+  const closePanel = () => {
+    setDetailsOpen(false);
+    setExpanded(false);
   };
   return (
     <Workspace
       detailsOpen={detailsOpen}
-      onDetailsChange={setDetailsOpen}
+      onDetailsChange={(open) => {
+        if (open) setDetailsOpen(true);
+        else closePanel();
+      }}
+      expanded={panel === "computer" && expanded}
+      inspectorTitle={panel === "computer" ? "工作电脑" : "Bot详情"}
+      inspectorTrigger={
+        panel === "computer" ? "computer-trigger" : "details-trigger"
+      }
       onSettings={() => settings.open()}
       actions={<CreateBot onCreated={selectBot} />}
       sidebar={
         <Sidebar bots={bots} selected={bot} connected={directoryConnected} />
       }
       inspector={
-        <BotDetails
-          active={detailsOpen}
-          bot={bot}
-          view={detailPanel}
-          onViewChange={setDetailPanel}
-          onClose={() => setDetailsOpen(false)}
-          computer={computer}
-          chat={{
-            model: chat.view?.model ?? null,
-            connected: chat.connected,
-            busy: Boolean(chat.view?.busy),
-          }}
-          canManage={settings.admin}
-        />
+        <>
+          <div className="inspector-page" hidden={panel !== "settings"}>
+            <BotDetails
+              active={detailsOpen && panel === "settings"}
+              bot={bot}
+              view={detailPanel}
+              onViewChange={setDetailPanel}
+              onClose={closePanel}
+              computer={computer}
+              chat={{
+                model: chat.view?.model ?? null,
+                connected: chat.connected,
+                busy: Boolean(chat.view?.busy),
+              }}
+              canManage={settings.admin}
+            />
+          </div>
+          {detailsOpen && panel === "computer" && (
+            <ComputerWorkspace
+              bot={bot}
+              computer={computer}
+              admin={settings.admin}
+              expanded={expanded}
+              onExpand={() => setExpanded((value) => !value)}
+              onSettings={() => {
+                setPanel("settings");
+                setExpanded(false);
+                setDetailPanel("computer");
+              }}
+              onClose={closePanel}
+            />
+          )}
+        </>
       }
     >
       <button
@@ -135,9 +172,14 @@ function BotChat({
         <ChatHeader
           bot={bot}
           busy={Boolean(chat.view?.busy)}
-          detailsOpen={detailsOpen}
+          detailsOpen={detailsOpen && panel === "settings"}
+          computerOpen={detailsOpen && panel === "computer"}
           onDetails={() => showPanel("root")}
-          onComputer={() => showPanel("computer")}
+          onComputer={() => {
+            setPanel("computer");
+            setExpanded(false);
+            setDetailsOpen(!detailsOpen || panel !== "computer");
+          }}
         />
         <span className="sr-only" role="status">
           {connection}
@@ -189,6 +231,8 @@ function BotChat({
                 (computer.status.capabilities.files || computer.status.scope),
             )}
             onComputerRequired={() => {
+              setPanel("settings");
+              setExpanded(false);
               setDetailPanel("computer");
               setDetailsOpen(true);
             }}

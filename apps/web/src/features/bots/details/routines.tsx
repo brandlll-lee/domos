@@ -7,10 +7,10 @@ import { ChoicePicker } from "@domos/ui/picker";
 import { useState } from "react";
 import { client } from "../../../client.ts";
 import { RoutineSchedule, routineTimeLabel } from "./routine-schedule.tsx";
+import type { PanelEditor } from "./types.ts";
 import type { WorkAction, WorkData } from "./use-bot-work.ts";
 
 type Routine = WorkData["routines"]["items"][number];
-type Editor = { routine: Routine | null; token: string };
 const runLabels = {
   queued: "已提交／等待结果",
   done: "已完成",
@@ -40,34 +40,38 @@ export function RoutinesPanel({
   data,
   skills,
   action,
+  editor,
+  onEditorChange,
 }: {
   botId: number;
   data: WorkData["routines"];
   skills: WorkData["skills"];
   action: WorkAction;
+  editor: Extract<PanelEditor, { view: "routines" }> | null;
+  onEditorChange: (editor: PanelEditor | null) => void;
 }) {
-  const [editor, setEditor] = useState<Editor | null>(null);
   const [deleting, setDeleting] = useState<Routine | null>(null);
   const runs = [...data.runs].reverse();
   return (
     <section className="detail-page" aria-label="定时">
-      <header className="detail-page-head">
-        <p className="detail-note">
-          Domos 服务运行时，Bot
-          会按计划工作。新任务保存后默认暂停，需要手动启用。试跑会真实执行。
-        </p>
-        {!editor && (
+      {!editor && (
+        <header className="detail-page-head">
+          <span className="detail-note">{data.items.length} 个计划</span>
           <Button
             size="small"
             disabled={action.busy}
             onClick={() =>
-              setEditor({ routine: null, token: crypto.randomUUID() })
+              onEditorChange({
+                view: "routines",
+                routine: null,
+                token: crypto.randomUUID(),
+              })
             }
           >
             新建定时任务
           </Button>
-        )}
-      </header>
+        </header>
+      )}
 
       {editor && (
         <RoutineEditor
@@ -76,134 +80,153 @@ export function RoutinesPanel({
           routine={editor.routine}
           skills={skills}
           action={action}
-          onCancel={() => setEditor(null)}
-          onSaved={() => setEditor(null)}
+          onCancel={() => onEditorChange(null)}
+          onSaved={() => onEditorChange(null)}
         />
       )}
 
-      {data.items.length ? (
-        <ul className="item-list">
-          {data.items.map((routine) => (
-            <li key={routine.id} className="item-card">
-              <div className="item-heading">
-                <div className="item-heading-copy">
-                  <h3>{routine.title}</h3>
-                  <p className="item-description">{routine.instructions}</p>
+      {!editor &&
+        (data.items.length ? (
+          <ul className="item-list">
+            {data.items.map((routine) => (
+              <li key={routine.id} className="item-card">
+                <div className="item-heading">
+                  <button
+                    type="button"
+                    className="item-heading-copy item-open"
+                    onClick={() =>
+                      onEditorChange({
+                        view: "routines",
+                        routine,
+                        token: crypto.randomUUID(),
+                      })
+                    }
+                  >
+                    <h3>{routine.title}</h3>
+                    <p className="item-description">{routine.instructions}</p>
+                  </button>
+                  <Switch
+                    label={`启用 ${routine.title}`}
+                    checked={routine.enabled}
+                    disabled={action.busy}
+                    onCheckedChange={(next) =>
+                      void action.run(
+                        ["routines.enable", routine.id, routine.revision, next],
+                        (requestId) =>
+                          client.work.routines.enable({
+                            botId,
+                            id: routine.id,
+                            enabled: next,
+                            revision: routine.revision,
+                            requestId,
+                          }),
+                      )
+                    }
+                  />
                 </div>
-                <Switch
-                  label={`启用 ${routine.title}`}
-                  checked={routine.enabled}
-                  disabled={action.busy}
-                  onCheckedChange={(next) =>
-                    void action.run(
-                      ["routines.enable", routine.id, routine.revision, next],
-                      (requestId) =>
-                        client.work.routines.enable({
-                          botId,
-                          id: routine.id,
-                          enabled: next,
-                          revision: routine.revision,
-                          requestId,
-                        }),
-                    )
-                  }
-                />
-              </div>
-              <div className="item-meta">
-                <span
-                  className="item-tag"
-                  data-tone={routine.enabled ? "ready" : undefined}
-                >
-                  {routine.enabled ? "运行中" : "已暂停"}
-                </span>
-                <span>{scheduleLabel(routine)}</span>
-              </div>
-              {routine.nextAt && (
-                <p className="item-note">
-                  下次：{new Date(routine.nextAt).toLocaleString()}
-                </p>
-              )}
-              <div className="item-actions">
-                <ActionMenu
-                  label={`${routine.title}的操作`}
-                  disabled={action.busy}
-                  items={[
-                    {
-                      label: "试跑",
-                      onSelect: () =>
-                        void action.run(
-                          ["routines.test", routine.id],
-                          (requestId) =>
-                            client.work.routines.test({
-                              botId,
-                              id: routine.id,
-                              requestId,
-                            }),
-                        ),
-                    },
-                    {
-                      label: "编辑",
-                      onSelect: () =>
-                        setEditor({
-                          routine,
-                          token: crypto.randomUUID(),
-                        }),
-                    },
-                    {
-                      label: "删除",
-                      tone: "danger",
-                      onSelect: () => setDeleting(routine),
-                    },
-                  ]}
-                />
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="detail-empty">
-          还没有定时任务。可以安排一次提醒，或让 Bot 定期整理资料。
+                <div className="item-meta">
+                  <span
+                    className="item-tag"
+                    data-tone={routine.enabled ? "ready" : undefined}
+                  >
+                    {routine.enabled ? "运行中" : "已暂停"}
+                  </span>
+                  <span>{scheduleLabel(routine)}</span>
+                </div>
+                {routine.nextAt && (
+                  <p className="item-note">
+                    下次：{new Date(routine.nextAt).toLocaleString()}
+                  </p>
+                )}
+                <div className="item-actions">
+                  <ActionMenu
+                    label={`${routine.title}的操作`}
+                    disabled={action.busy}
+                    items={[
+                      {
+                        label: "试跑",
+                        onSelect: () =>
+                          void action.run(
+                            ["routines.test", routine.id],
+                            (requestId) =>
+                              client.work.routines.test({
+                                botId,
+                                id: routine.id,
+                                requestId,
+                              }),
+                          ),
+                      },
+                      {
+                        label: "编辑",
+                        onSelect: () =>
+                          onEditorChange({
+                            view: "routines",
+                            routine,
+                            token: crypto.randomUUID(),
+                          }),
+                      },
+                      {
+                        label: "删除",
+                        tone: "danger",
+                        onSelect: () => setDeleting(routine),
+                      },
+                    ]}
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="detail-empty">
+            还没有定时任务。可以安排一次提醒，或让 Bot 定期整理资料。
+          </p>
+        ))}
+
+      {!editor && (
+        <details className="detail-disclosure">
+          <summary>
+            运行记录
+            {runs.length > 0 && (
+              <span className="disclosure-count">{runs.length}</span>
+            )}
+          </summary>
+          <div className="detail-disclosure-body">
+            {runs.length ? (
+              <ul className="run-list">
+                {runs.map((run) => (
+                  <li key={run.id}>
+                    <div className="run-heading">
+                      <strong>{run.title}</strong>
+                      <span>{run.mode === "test" ? "试跑" : "定时"}</span>
+                    </div>
+                    <p className="item-note">{runLabels[run.status]}</p>
+                    <p className="item-note">
+                      计划：{new Date(run.scheduledAt).toLocaleString()}；触发：
+                      {new Date(run.firedAt).toLocaleString()}
+                    </p>
+                    {run.coalesced && (
+                      <p className="item-note">
+                        已将停机期间错过的周期合并为本次执行。
+                      </p>
+                    )}
+                    {run.error && <p role="status">{run.error}</p>}
+                    {run.status === "done" && (
+                      <p className="item-note">结果已发回此 Bot 的聊天。</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="detail-note">还没有运行记录。</p>
+            )}
+          </div>
+        </details>
+      )}
+      {!editor && (
+        <p className="detail-note">
+          服务运行时，Bot 会按计划工作。新任务默认暂停。试跑会真实执行。
         </p>
       )}
-
-      <details className="detail-disclosure">
-        <summary>
-          运行记录
-          {runs.length > 0 && (
-            <span className="disclosure-count">{runs.length}</span>
-          )}
-        </summary>
-        <div className="detail-disclosure-body">
-          {runs.length ? (
-            <ul className="run-list">
-              {runs.map((run) => (
-                <li key={run.id}>
-                  <div className="run-heading">
-                    <strong>{run.title}</strong>
-                    <span>{run.mode === "test" ? "试跑" : "定时"}</span>
-                  </div>
-                  <p className="item-note">{runLabels[run.status]}</p>
-                  <p className="item-note">
-                    计划：{new Date(run.scheduledAt).toLocaleString()}；触发：
-                    {new Date(run.firedAt).toLocaleString()}
-                  </p>
-                  {run.coalesced && (
-                    <p className="item-note">
-                      已将停机期间错过的周期合并为本次执行。
-                    </p>
-                  )}
-                  {run.error && <p role="status">{run.error}</p>}
-                  {run.status === "done" && (
-                    <p className="item-note">结果已发回此 Bot 的聊天。</p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="detail-note">还没有运行记录。</p>
-          )}
-        </div>
-      </details>
 
       <ConfirmDialog
         open={Boolean(deleting)}
@@ -225,7 +248,7 @@ export function RoutinesPanel({
                   revision: routine.revision,
                 }),
               () => {
-                if (editor?.routine?.id === routine.id) setEditor(null);
+                if (editor?.routine?.id === routine.id) onEditorChange(null);
               },
             );
         }}

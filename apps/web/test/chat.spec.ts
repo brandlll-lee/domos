@@ -102,6 +102,10 @@ async function chooseDetail(
       .page()
       .getByRole("button", { name: "Bot电脑", exact: true })
       .click();
+    await details
+      .page()
+      .getByRole("button", { name: "电脑设置", exact: true })
+      .click();
     return;
   }
   const back = details.getByRole("button", { name: "返回", exact: true });
@@ -409,8 +413,9 @@ test("Bot details manage identity, memory, shared skills, routines and actual pr
   const memory = dialog
     .locator(".item-list li")
     .filter({ hasText: "报告使用公制单位。" });
-  const remove = memory.getByRole("button", { name: "删除", exact: true });
+  const remove = memory.getByRole("button", { name: "记忆操作", exact: true });
   await remove.click();
+  await page.getByRole("menuitem", { name: "删除", exact: true }).click();
   const confirmation = page.getByRole("dialog", {
     name: "删除这条记忆？",
     exact: true,
@@ -418,6 +423,7 @@ test("Bot details manage identity, memory, shared skills, routines and actual pr
   await confirmation.getByRole("button", { name: "取消", exact: true }).click();
   await expect(remove).toBeFocused();
   await remove.click();
+  await page.getByRole("menuitem", { name: "删除", exact: true }).click();
   await confirmation.getByRole("button", { name: "删除", exact: true }).click();
   await expect(memory).toHaveCount(0);
 });
@@ -1921,7 +1927,9 @@ test("model search and themed popups support keyboard, dismissal, and narrow scr
   expect(bounds.x + bounds.width).toBeLessThanOrEqual(320);
   expect(bounds.y + bounds.height).toBeLessThanOrEqual(568);
   await page.screenshot({ path: "test-results/model-popup-mobile.png" });
-  await page.locator(".detail-header").click({ position: { x: 190, y: 20 } });
+  await page
+    .locator(".bot-details .panel-header")
+    .click({ position: { x: 190, y: 20 } });
   await expect(popup).toHaveCount(0);
 });
 
@@ -2934,7 +2942,6 @@ test("computer details share live directory status and recover a failed refresh"
   await expect(computer.getByRole("button", { name: "启动电脑" })).toHaveCount(
     0,
   );
-  await computer.locator("summary").filter({ hasText: "高级" }).click();
   await computer
     .getByRole("button", { name: "管理所有电脑", exact: true })
     .click();

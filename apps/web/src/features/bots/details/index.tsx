@@ -1,10 +1,8 @@
 import type { Bot } from "@domos/agent/bots";
 import type { ChatView } from "@domos/agent/view";
-import { Button } from "@domos/ui/controls";
+import { PanelHeader } from "@domos/ui/panel";
 import { ScrollArea } from "@domos/ui/scroll-area";
-import { ArrowLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowLeft";
-import { XIcon } from "@phosphor-icons/react/dist/csr/X";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import type { useComputer } from "../../computer/use-computer.ts";
 import { ComputerSettings } from "./computer.tsx";
 import { EngineSettings } from "./engine-settings.tsx";
@@ -14,7 +12,7 @@ import { PromptPanel } from "./prompt.tsx";
 import { RootPanel } from "./root.tsx";
 import { RoutinesPanel } from "./routines.tsx";
 import { SkillsPanel } from "./skills.tsx";
-import type { BotPanelView } from "./types.ts";
+import type { BotPanelView, PanelEditor } from "./types.ts";
 import { useBotWork, useWorkAction } from "./use-bot-work.ts";
 import { useEngine } from "./use-engine.ts";
 import "./style.css";
@@ -53,6 +51,12 @@ export function BotDetails({
   const work = useBotWork(bot.id, active);
   const engine = useEngine(bot.id, active, chat.busy);
   const action = useWorkAction();
+  const [selection, setSelection] = useState<PanelEditor | null>(null);
+  const editor = selection?.view === view ? selection : null;
+  const navigate = (next: BotPanelView) => {
+    setSelection(null);
+    onViewChange(next);
+  };
   const title = view === "root" ? bot.name : titles[view];
   let content: ReactNode = null;
   if (view === "root")
@@ -64,7 +68,7 @@ export function BotDetails({
         engine={engine}
         model={chat.model}
         computer={computer}
-        onNavigate={onViewChange}
+        onNavigate={navigate}
       />
     );
   else if (view === "engine")
@@ -81,13 +85,25 @@ export function BotDetails({
     content = <ComputerSettings computer={computer} botId={bot.id} />;
   else if (view === "memory")
     content = work.data ? (
-      <MemoryPanel botId={bot.id} items={work.data.memory} action={action} />
+      <MemoryPanel
+        botId={bot.id}
+        items={work.data.memory}
+        action={action}
+        editor={editor?.view === "memory" ? editor : null}
+        onEditorChange={setSelection}
+      />
     ) : (
       <p role="status">正在读取记忆…</p>
     );
   else if (view === "skills")
     content = work.data ? (
-      <SkillsPanel botId={bot.id} items={work.data.skills} action={action} />
+      <SkillsPanel
+        botId={bot.id}
+        items={work.data.skills}
+        action={action}
+        editor={editor?.view === "skills" ? editor : null}
+        onEditorChange={setSelection}
+      />
     ) : (
       <p role="status">正在读取技能…</p>
     );
@@ -98,6 +114,8 @@ export function BotDetails({
         data={work.data.routines}
         skills={work.data.skills}
         action={action}
+        editor={editor?.view === "routines" ? editor : null}
+        onEditorChange={setSelection}
       />
     ) : (
       <p role="status">正在读取定时任务…</p>
@@ -111,28 +129,15 @@ export function BotDetails({
       className="bot-details"
       aria-label={`${bot.name}的详情`}
     >
-      <header className="detail-header">
-        {view !== "root" && (
-          <Button
-            variant="ghost"
-            size="icon-small"
-            aria-label="返回"
-            onClick={() => onViewChange("root")}
-          >
-            <ArrowLeftIcon />
-          </Button>
-        )}
-        <h2 className="detail-title">{title}</h2>
-        <Button
-          variant="ghost"
-          size="icon-small"
-          className="detail-close"
-          aria-label="关闭"
-          onClick={onClose}
-        >
-          <XIcon />
-        </Button>
-      </header>
+      <PanelHeader
+        title={title}
+        onBack={
+          view === "root"
+            ? undefined
+            : () => (editor ? setSelection(null) : navigate("root"))
+        }
+        onClose={onClose}
+      />
       <ScrollArea className="detail-scroll" viewportClassName="detail-content">
         {!work.connected && view !== "root" && (
           <p className="detail-note" role="status">

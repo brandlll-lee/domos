@@ -54,6 +54,12 @@ Source: https://github.com/milind-soni/OpenMausBot
 packages/ui/src/web/setting-row.tsx adapts
 src/components/SettingsPrimitives.tsx:SettingRow.
 Domos uses a fieldset, existing controls, and semantic theme variables.
+packages/ui/src/web/panel.tsx and panel.css adapt the compact settings row
+composition in src/components/bot-settings/SimpleBotPanel.tsx.
+apps/web/src/features/bots/details adapts the list and editor composition
+of SimpleBotPanel with Domos data and controls.
+apps/web/src/features/computer/workspace.tsx adapts the persistent computer
+panel and embedded browser composition of ComputerPanel.tsx and BrowserPanel.tsx.
 
 agent-browser
 Licensed under the Apache License, Version 2.0. See licenses/agent-browser.txt.

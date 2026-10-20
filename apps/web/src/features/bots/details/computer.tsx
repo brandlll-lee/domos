@@ -1,7 +1,7 @@
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
 import { ChoicePicker } from "@domos/ui/picker";
-import { DesktopIcon } from "@phosphor-icons/react/dist/csr/Desktop";
+import { SettingRow } from "@domos/ui/setting-row";
 import { useState } from "react";
 import { computerLabels } from "../../computer/copy.ts";
 import { ComputerLocation } from "../../computer/location.tsx";
@@ -26,62 +26,43 @@ export function ComputerSettings({
   };
   return (
     <section className="detail-page" aria-label="工作电脑" aria-busy={busy}>
-      {status ? (
-        <div className="detail-card computer-status-card">
-          <div className="computer-status">
-            <span className="detail-icon" aria-hidden="true">
-              <DesktopIcon />
-            </span>
-            <div className="computer-status-copy">
-              <h3>{status.name}</h3>
-              <p>{computerLabels.state[status.state]}</p>
-            </div>
-            <span
-              className="status-tag"
-              data-tone={status.authorized ? "ready" : "attention"}
-            >
-              {status.authorized ? "已授权" : "待授权"}
-            </span>
-          </div>
-          <div className="computer-capabilities">
-            <span data-on={status.capabilities.commands}>命令</span>
-            <span data-on={status.capabilities.files}>文件</span>
-          </div>
-          {settings.admin && setup && (
-            <Button
-              variant="secondary"
-              size="small"
-              disabled={busy || status.busy}
-              onClick={() => setLocation(true)}
-            >
-              更换工作电脑
-            </Button>
-          )}
-        </div>
-      ) : (
-        <div className="detail-card computer-empty">
-          <span className="detail-icon" aria-hidden="true">
-            <DesktopIcon />
+      <div className="panel-card computer-binding">
+        <SettingRow title="工作位置">
+          <ChoicePicker
+            label="此 Bot 使用的电脑"
+            value={status?.id ?? ""}
+            disabled={busy}
+            onValueChange={(value) => void assign(value || null)}
+            items={[
+              { value: "", label: "仅聊天" },
+              ...choices
+                .filter((item) => item.authorized)
+                .map((item) => ({ value: item.id, label: item.name })),
+            ]}
+          />
+        </SettingRow>
+        <div className="computer-binding-status">
+          <span
+            className="status-tag"
+            data-tone={status?.authorized ? "ready" : "attention"}
+          >
+            {status
+              ? `${computerLabels.state[status.state]} · ${status.authorized ? "已授权" : "待授权"}`
+              : "仅聊天"}
           </span>
-          <div>
-            <h3>仅聊天</h3>
-            <p className="detail-note">
-              此 Bot 暂时不操作文件和命令。需要时再为它准备一台工作电脑。
-            </p>
-          </div>
-          {settings.admin && setup && (
-            <Button
-              variant="secondary"
-              size="small"
-              disabled={busy}
-              onClick={() => setLocation(true)}
-            >
-              选择工作电脑
-            </Button>
+          {status && (
+            <div className="computer-capabilities">
+              <span data-on={status.capabilities.commands}>命令</span>
+              <span data-on={status.capabilities.files}>文件</span>
+            </div>
           )}
         </div>
+      </div>
+      {!status && (
+        <p className="detail-note">
+          选择工作电脑后，Bot 才能操作文件、命令、浏览器和桌面。
+        </p>
       )}
-
       {busy && <p role="status">正在准备并连接电脑…</p>}
       {status?.error && (
         <p className="alert" role="alert">
@@ -101,35 +82,27 @@ export function ComputerSettings({
         </p>
       )}
 
-      <details className="detail-disclosure">
-        <summary>高级</summary>
-        <div className="detail-disclosure-body">
-          <div className="field">
-            <span className="field-label">此 Bot 使用的电脑</span>
-            <ChoicePicker
-              label="此 Bot 使用的电脑"
-              value={status?.id ?? ""}
-              disabled={busy}
-              onValueChange={(value) => void assign(value || null)}
-              items={[
-                { value: "", label: "仅聊天" },
-                ...choices
-                  .filter((item) => item.authorized)
-                  .map((item) => ({ value: item.id, label: item.name })),
-              ]}
-            />
-          </div>
-          {settings.admin && (
+      {settings.admin && (
+        <div className="detail-page-head">
+          {setup && (
             <Button
-              variant="ghost"
+              variant="secondary"
               size="small"
-              onClick={() => settings.open("computers")}
+              disabled={busy || status?.busy}
+              onClick={() => setLocation(true)}
             >
-              管理所有电脑
+              准备新电脑
             </Button>
           )}
+          <Button
+            variant="ghost"
+            size="small"
+            onClick={() => settings.open("computers")}
+          >
+            管理所有电脑
+          </Button>
         </div>
-      </details>
+      )}
 
       <Dialog
         open={location}

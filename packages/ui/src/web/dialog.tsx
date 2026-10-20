@@ -1,5 +1,5 @@
 import { Dialog as BaseDialog } from "@base-ui/react/dialog";
-import { type ReactElement, type ReactNode, useRef, useState } from "react";
+import { type ReactElement, type ReactNode, useRef } from "react";
 import { Button } from "./controls.tsx";
 import { ScrollArea } from "./scroll-area.tsx";
 
@@ -117,40 +117,5 @@ export function ConfirmDialog({
     >
       {null}
     </Dialog>
-  );
-}
-
-export function ConfirmButton({
-  title,
-  description,
-  onConfirm,
-  disabled,
-  children,
-}: {
-  title: string;
-  description: string;
-  onConfirm: () => void;
-  disabled?: boolean;
-  children: ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <Button
-        variant="ghost"
-        size="small"
-        disabled={disabled}
-        onClick={() => setOpen(true)}
-      >
-        {children}
-      </Button>
-      <ConfirmDialog
-        open={open}
-        onOpenChange={setOpen}
-        title={title}
-        description={description}
-        onConfirm={onConfirm}
-      />
-    </>
   );
 }
