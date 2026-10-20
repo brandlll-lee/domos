@@ -9,6 +9,7 @@
     "./characters": "./src/characters.ts",
     "./tokens": "./src/tokens.ts",
     "./controls": "./src/web/controls.tsx",
+    "./menu": "./src/web/menu.tsx",
     "./choice": "./src/web/choice.tsx",
     "./dialog": "./src/web/dialog.tsx",
     "./scroll-area": "./src/web/scroll-area.tsx",

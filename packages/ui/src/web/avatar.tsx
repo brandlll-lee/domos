@@ -14,7 +14,7 @@ export const BotAvatar = memo(function BotAvatar({
   seed: string;
   color?: string;
   state?: Motion;
-  size?: "small" | "medium" | "large";
+  size?: "small" | "medium" | "panel" | "large";
   statusLabel?: string;
 }) {
   const identity = characterIdentity(seed);

@@ -30,6 +30,10 @@
   width: var(--avatar-small);
   height: var(--avatar-small);
 }
+.bot-avatar[data-size="panel"] {
+  width: var(--avatar-panel);
+  height: var(--avatar-panel);
+}
 .bot-avatar[data-size="large"] {
   width: var(--avatar-large);
   height: var(--avatar-large);
