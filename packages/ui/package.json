@@ -17,6 +17,7 @@
     "./field": "./src/web/field.tsx",
     "./setup": "./src/web/setup.tsx",
     "./picker": "./src/web/picker.tsx",
+    "./model-selector": "./src/web/model-selector.tsx",
     "./message": "./src/web/message.tsx",
     "./activity": "./src/web/activity.tsx",
     "./attachment": "./src/web/attachment.tsx",
