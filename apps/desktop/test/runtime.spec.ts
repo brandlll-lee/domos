@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,9 +24,10 @@ test("desktop runtime starts its worker and discovers computer tools", async () 
     async () => ({ content: [] }),
   );
   try {
-    await expect(worker.ready).resolves.toMatchObject({
-      cwd: join(directory, "workspace"),
-      home: join(directory, "home"),
+    const ready = await worker.ready;
+    expect(ready).toMatchObject({
+      cwd: await realpath(join(directory, "workspace")),
+      home: await realpath(join(directory, "home")),
     });
     const browser = await worker.computer({
       operation: "catalog",
@@ -54,7 +55,7 @@ test("desktop runtime starts its worker and discovers computer tools", async () 
       emit: async () => {},
     });
     expect(session.id.replaceAll("\\", "/")).toContain(
-      `${directory.replaceAll("\\", "/")}/home/pi/sessions/`,
+      `${ready.home.replaceAll("\\", "/")}/pi/sessions/`,
     );
   } finally {
     await worker.close();

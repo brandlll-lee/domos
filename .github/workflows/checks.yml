@@ -23,6 +23,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
+      - name: Select sandboxed system Chrome
+        if: runner.os == 'Linux'
+        run: echo "AGENT_BROWSER_EXECUTABLE_PATH=/opt/google/chrome/chrome" >> "$GITHUB_ENV"
       - run: pnpm test
       - run: pnpm exec playwright install chromium --only-shell --with-deps
       - run: pnpm test:e2e

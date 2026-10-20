@@ -7,6 +7,8 @@ RUN npm install --global pnpm@10.20.0
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps ./apps
 COPY packages ./packages
+COPY deploy/NOTICE ./deploy/NOTICE
+COPY deploy/licenses ./deploy/licenses
 RUN pnpm install --frozen-lockfile --ignore-scripts && pnpm build
 
 FROM ${NODE_IMAGE}

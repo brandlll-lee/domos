@@ -1,5 +1,5 @@
 import { once } from "node:events";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -105,7 +105,7 @@ test("native engine transport checks authorization and starts in the assigned co
   expect(await worker.closed).toMatchObject({ code: 0 });
   expect(calls).toEqual([7]);
   expect(await readFile(join(directory, "bot/result.txt"), "utf8")).toBe(
-    join(directory, "bot"),
+    await realpath(join(directory, "bot")),
   );
 });
 

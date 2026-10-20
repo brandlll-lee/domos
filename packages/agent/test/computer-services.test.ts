@@ -43,9 +43,8 @@ test("browser profiles persist across a restart and stay separate for each Bot",
     available: true,
     error: null,
   });
-  expect(await call(1, "agent_browser_open", { url })).not.toMatchObject({
-    isError: true,
-  });
+  const opened = await call(1, "agent_browser_open", { url });
+  expect(opened.isError, JSON.stringify(opened.content)).not.toBe(true);
   const screenshot = await call(1, "agent_browser_screenshot", {});
   expect(screenshot.structuredContent?.source).toMatchObject({
     url: `${url}/`,

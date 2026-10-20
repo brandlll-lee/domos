@@ -121,14 +121,13 @@ app.whenReady().then(() => {
     const electron = createRequire(
       new URL("../../../apps/desktop/package.json", import.meta.url),
     )("electron") as string;
-    expect(
-      await process.computer({
-        operation: "call",
-        service: "desktop",
-        name: "launch_app",
-        arguments: { path: electron, additional_arguments: [entry] },
-      }),
-    ).not.toMatchObject({ isError: true });
+    const launched = await process.computer<ProductResult>({
+      operation: "call",
+      service: "desktop",
+      name: "launch_app",
+      arguments: { path: electron, additional_arguments: [entry] },
+    });
+    expect(launched.isError, JSON.stringify(launched.content)).not.toBe(true);
     await expect
       .poll(() => readFile(ready, "utf8").catch(() => ""), { timeout: 20000 })
       .toBe("ready");
