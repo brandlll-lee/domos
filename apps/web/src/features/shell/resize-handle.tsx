@@ -1,5 +1,5 @@
 import { layout } from "@domos/ui/tokens";
-import { useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 export function ResizeHandle({
   side,
@@ -17,6 +17,12 @@ export function ResizeHandle({
   onCommit: (width: number) => void;
 }) {
   const drag = useRef<{ x: number; width: number; next: number } | null>(null);
+  const frame = useRef<number | undefined>(undefined);
+  const cancelFrame = useCallback(() => {
+    if (frame.current !== undefined) cancelAnimationFrame(frame.current);
+    frame.current = undefined;
+  }, []);
+  useEffect(() => cancelFrame, [cancelFrame]);
   const direction =
     (side === "sidebar" ? 1 : -1) *
     (document.documentElement.dir === "rtl" ? -1 : 1);
@@ -42,19 +48,26 @@ export function ResizeHandle({
         drag.current.next = clamp(
           drag.current.width + (event.clientX - drag.current.x) * direction,
         );
-        onResize(drag.current.next);
+        if (frame.current === undefined)
+          frame.current = requestAnimationFrame(() => {
+            frame.current = undefined;
+            if (drag.current) onResize(drag.current.next);
+          });
       }}
       onPointerUp={(event) => {
+        cancelFrame();
         if (drag.current) onCommit(drag.current.next);
         drag.current = null;
         if (event.currentTarget.hasPointerCapture(event.pointerId))
           event.currentTarget.releasePointerCapture(event.pointerId);
       }}
       onPointerCancel={() => {
+        cancelFrame();
         if (drag.current) onResize(drag.current.width);
         drag.current = null;
       }}
       onLostPointerCapture={() => {
+        cancelFrame();
         if (drag.current) onResize(drag.current.width);
         drag.current = null;
       }}

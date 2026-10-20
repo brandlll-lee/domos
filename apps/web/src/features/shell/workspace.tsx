@@ -97,11 +97,14 @@ export function Workspace({
                     : sizing.widths[side],
               }}
               initialFocus={modal || side === "inspector"}
-              finalFocus={() =>
-                document.getElementById(
+              finalFocus={() => {
+                const trigger = document.getElementById(
                   side === "sidebar" ? "contacts-trigger" : inspectorTrigger,
-                )
-              }
+                );
+                return trigger?.closest("[inert], [aria-hidden='true']")
+                  ? false
+                  : trigger;
+              }}
             >
               <PanelDialog.Title className="sr-only">{title}</PanelDialog.Title>
               {!modal && (

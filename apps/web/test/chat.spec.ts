@@ -499,6 +499,7 @@ test("Bot details share the desktop with chat and cover narrow screens", async (
   });
   await chooseDetail(panel, "提示词");
   await panel.getByRole("button", { name: "读取实际提示词" }).click();
+  await page.setViewportSize({ width: 1360, height: 500 });
   await panel.getByText("完整提示词", { exact: true }).click();
   await panel.locator(".detail-content").evaluate((element) => {
     element.scrollTop = element.scrollHeight;

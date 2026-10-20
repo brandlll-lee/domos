@@ -170,14 +170,14 @@ export function useTranscript(items: TranscriptItem[], ready: boolean) {
   }, [items, ready, range, start, end, schedule]);
 
   useEffect(() => {
-    const observer = new ResizeObserver(schedule);
+    const observer = new ResizeObserver(() => measure.current());
     if (viewport.current) observer.observe(viewport.current);
     if (content.current) observer.observe(content.current);
     return () => {
       observer.disconnect();
       if (frame.current !== undefined) cancelAnimationFrame(frame.current);
     };
-  }, [schedule]);
+  }, []);
 
   return {
     viewport,
