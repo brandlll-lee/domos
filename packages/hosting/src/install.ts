@@ -56,7 +56,7 @@ export async function runCommand(
     const child = spawn(command, args, {
       ...options,
       windowsHide: true,
-      stdio: ["ignore", "pipe", "ignore"],
+      stdio: ["ignore", "pipe", "pipe"],
     });
     const chunks: Buffer[] = [];
     let size = 0;
@@ -64,13 +64,27 @@ export async function runCommand(
       size += chunk.length;
       if (size <= 1024 * 1024) chunks.push(chunk);
     });
+    const diagnostics: Buffer[] = [];
+    let diagnosticSize = 0;
+    child.stderr.on("data", (chunk: Buffer) => {
+      diagnosticSize += chunk.length;
+      if (diagnosticSize <= 1024 * 1024) diagnostics.push(chunk);
+    });
     child.once("error", () =>
       reject(new Error("无法执行安装命令。请检查运行环境和权限。")),
     );
-    child.once("exit", (code) =>
+    child.once("close", (code) =>
       code === 0
         ? resolve(Buffer.concat(chunks).toString("utf8").trim())
-        : reject(new Error("安装步骤未完成。请检查网络和运行环境后重试。")),
+        : reject(
+            new Error("安装步骤未完成。请检查网络和运行环境后重试。", {
+              cause: {
+                command,
+                exitCode: code,
+                stderr: Buffer.concat(diagnostics).toString("utf8").trim(),
+              },
+            }),
+          ),
     );
   });
 }

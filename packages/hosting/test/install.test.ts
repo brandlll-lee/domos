@@ -7,6 +7,7 @@ import {
   prepareInstallation,
   prepareLocalInstallation,
   type Release,
+  runCommand,
 } from "../src/install.ts";
 import { backupInstallation, restoreInstallation } from "../src/maintenance.ts";
 
@@ -23,6 +24,22 @@ const release: Release = {
   bridgeEntry: "bridge.ts",
   staticDir: "web",
 };
+
+test("installation commands retain exit diagnostics behind a user-facing error", async () => {
+  await expect(
+    runCommand(process.execPath, [
+      "-e",
+      "process.stderr.write('fixture command failed'); process.exitCode = 23",
+    ]),
+  ).rejects.toMatchObject({
+    message: "安装步骤未完成。请检查网络和运行环境后重试。",
+    cause: {
+      command: process.execPath,
+      exitCode: 23,
+      stderr: "fixture command failed",
+    },
+  });
+});
 
 test("local installation creates a loopback service and preserves existing configuration", async () => {
   const directory = await fixture();
