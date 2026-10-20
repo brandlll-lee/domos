@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../client.ts";
 import type { useBots } from "../bots/use-bots.ts";
+import { userError } from "../user-error.ts";
 
 export function useComputer(
   botId: number,
@@ -23,7 +24,9 @@ export function useComputer(
     setSetup(location);
   }, [directory.updateComputers]);
   useEffect(() => {
-    void refresh().catch((cause) => setError(cause.message));
+    void refresh().catch((cause) =>
+      setError(userError(cause, "无法读取工作电脑。请重试。")),
+    );
   }, [refresh]);
   async function run(action: () => Promise<unknown>) {
     if (busy) return;
@@ -33,9 +36,7 @@ export function useComputer(
       await action();
       await refresh();
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "电脑准备未完成。请重试。",
-      );
+      setError(userError(cause, "电脑准备未完成。请重试。"));
       await refresh().catch(() => {});
     } finally {
       setBusy(false);

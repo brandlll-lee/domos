@@ -169,6 +169,69 @@ test("native account flows show login choices, retain providers, and select mode
     }
     await page.keyboard.press("Escape");
     await expect(opencode).toBeHidden();
+    await page.getByRole("button", { name: "开始使用", exact: true }).click();
+    await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+    const details = page.getByRole("complementary", { name: /的详情$/ });
+    await expect(
+      details.getByRole("button", { name: /^对话模型\s/ }),
+    ).toContainText("openai/one");
+    await page.setViewportSize({ width: 1360, height: 900 });
+    await details.getByRole("button", { name: /^任务引擎\s/ }).click();
+    await details.getByRole("combobox", { name: "任务引擎" }).click();
+    await page
+      .getByRole("option", { name: "Claude Code", exact: true })
+      .click();
+    await details
+      .getByRole("button", { name: "检查连接", exact: true })
+      .click();
+    await details
+      .getByRole("button", { name: "账号设置", exact: true })
+      .click();
+    await claude
+      .getByRole("button", { name: "登录 Claude", exact: true })
+      .click();
+    await claude
+      .getByLabel("粘贴登录页面显示的代码", { exact: true })
+      .fill("fixture-code");
+    await claude.getByRole("button", { name: "继续", exact: true }).click();
+    await expect(claude).toBeHidden();
+    await details
+      .getByRole("button", { name: "账号设置", exact: true })
+      .click();
+    await expect(
+      claude.getByRole("button", { name: "登录 Claude", exact: true }),
+    ).toBeVisible();
+    await claude.getByRole("button", { name: "关闭弹窗", exact: true }).click();
+    await details.getByRole("combobox", { name: "任务引擎" }).click();
+    await page.getByRole("option", { name: "OpenCode", exact: true }).click();
+    await page.route(
+      "**/rpc/engines/inspect",
+      (route) =>
+        route.fulfill({
+          json: { json: { ready: false, authenticated: false, models: [] } },
+        }),
+      { times: 1 },
+    );
+    await details
+      .getByRole("button", { name: "检查连接", exact: true })
+      .click();
+    await details
+      .getByRole("button", { name: "安装 OpenCode", exact: true })
+      .click();
+    const installation = page.getByRole("dialog", {
+      name: "安装 OpenCode",
+      exact: true,
+    });
+    await page.route("**/rpc/engines/install", (route) =>
+      route.fulfill({ json: { json: { ok: true } } }),
+    );
+    await installation
+      .getByRole("button", { name: "安装 OpenCode", exact: true })
+      .click();
+    await expect(installation).toBeHidden();
+    await expect(
+      details.getByRole("button", { name: "账号设置", exact: true }),
+    ).toBeVisible();
   } finally {
     const exited = once(worker, "exit");
     worker.disconnect();

@@ -1,6 +1,7 @@
 import { BrandMark } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
+import { useEffect, useRef } from "react";
 import { EngineMark } from "../engine-mark.tsx";
 import { EngineAccount } from "./engine-account.tsx";
 import { EngineModel, PiEngineModel } from "./engine-model.tsx";
@@ -16,6 +17,7 @@ export function EngineDialog({
   canManage,
   onModelBusyChange,
   onClose,
+  onDialogChange,
   finalFocus,
 }: {
   dialog: EngineDialogKind | null;
@@ -25,8 +27,32 @@ export function EngineDialog({
   canManage: boolean;
   onModelBusyChange: (busy: boolean) => void;
   onClose: () => void;
-  finalFocus: () => HTMLElement | null;
+  onDialogChange: (dialog: EngineDialogKind | null) => void;
+  finalFocus?: () => HTMLElement | null;
 }) {
+  const completedLogin = useRef(setup.login);
+  useEffect(() => {
+    if (setup.busy) return;
+    if (
+      dialog === "account" &&
+      setup.login?.state === "done" &&
+      setup.profile?.prepared &&
+      completedLogin.current !== setup.login
+    ) {
+      completedLogin.current = setup.login;
+      onClose();
+    }
+    if (dialog === "install" && setup.connection?.ready)
+      onDialogChange(setup.profile?.prepared ? null : "account");
+  }, [
+    dialog,
+    setup.busy,
+    setup.login,
+    setup.profile?.prepared,
+    setup.connection?.ready,
+    onClose,
+    onDialogChange,
+  ]);
   const provider = setup.profile?.config.provider ?? "pi";
   const title =
     dialog === "install"

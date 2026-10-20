@@ -1,6 +1,7 @@
 import type { EngineConfig } from "@domos/agent/harness/types";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../../client.ts";
+import { userError } from "../../user-error.ts";
 import { useWorkAction } from "./use-bot-work.ts";
 
 type EngineAction =
@@ -14,7 +15,7 @@ type EngineAction =
   | "answer";
 type LoginInput = Omit<Parameters<typeof client.engines.login>[0], "botId">;
 
-export function useEngine(botId: number, active: boolean) {
+export function useEngine(botId: number, active: boolean, running?: boolean) {
   const [profile, setProfile] =
     useState<Awaited<ReturnType<typeof client.engines.get>>>();
   const [connection, setConnection] =
@@ -57,7 +58,10 @@ export function useEngine(botId: number, active: boolean) {
     return result;
   };
   useEffect(() => {
-    if (active) void refresh().catch((error) => setError(error.message));
+    if (active)
+      void refresh().catch((cause) =>
+        setError(userError(cause, "无法读取任务引擎。请重试。")),
+      );
   }, [active, refresh]);
   useEffect(() => {
     if (login?.state !== "waiting") return;
@@ -77,8 +81,8 @@ export function useEngine(botId: number, active: boolean) {
         setError("");
         setLogin(value);
         if (value?.state !== "waiting") return;
-      } catch (error) {
-        if (current) setError((error as Error).message);
+      } catch (cause) {
+        if (current) setError(userError(cause, "登录状态读取失败，请重试。"));
       }
       if (current) timer = setTimeout(() => void poll(), 1000);
     };
@@ -94,7 +98,8 @@ export function useEngine(botId: number, active: boolean) {
     login,
     pending,
     error: action.error || error,
-    busy: action.busy || profile?.busy || login?.state === "waiting",
+    busy:
+      action.busy || (running ?? profile?.busy) || login?.state === "waiting",
     refresh,
     reload: () => run("read", ["engine", botId], refresh),
     inspect: () => run("inspect", ["inspect", botId], inspect),

@@ -2,8 +2,8 @@ import { TextField } from "@domos/ui/field";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
 import { useState } from "react";
-import { ModelPicker } from "../../chat/model-picker.tsx";
 import { HostingModels } from "../../hosting/models.tsx";
+import { ModelSetting } from "../../models/model-setting.tsx";
 import { useSettings } from "../../settings/context.ts";
 import type { EngineSetup } from "./use-engine.ts";
 
@@ -48,13 +48,16 @@ export function PiEngineModel({
       />
     );
   return (
-    <ModelPicker
-      botId={botId}
-      model={selection}
-      connected={Boolean(setup.profile)}
-      onSelected={configured}
-      onBusyChange={onBusyChange}
-    />
+    <div className="settings-card">
+      <ModelSetting
+        botId={botId}
+        model={selection}
+        connected={Boolean(setup.profile)}
+        disabled={Boolean(setup.busy)}
+        onSelected={configured}
+        onBusyChange={onBusyChange}
+      />
+    </div>
   );
 }
 

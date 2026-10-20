@@ -1,7 +1,8 @@
 import { BOT_NAME_LENGTH, WORK_TEXT_LENGTH } from "@domos/agent/work/limits";
-import { Button } from "@domos/ui/controls";
-import { ConfirmButton } from "@domos/ui/dialog";
+import { Button, Switch } from "@domos/ui/controls";
+import { ConfirmDialog } from "@domos/ui/dialog";
 import { Checkbox, TextField } from "@domos/ui/field";
+import { ActionMenu } from "@domos/ui/menu";
 import { ChoicePicker } from "@domos/ui/picker";
 import { useState } from "react";
 import { client } from "../../../client.ts";
@@ -9,6 +10,7 @@ import { RoutineSchedule, routineTimeLabel } from "./routine-schedule.tsx";
 import type { WorkAction, WorkData } from "./use-bot-work.ts";
 
 type Routine = WorkData["routines"]["items"][number];
+type Editor = { routine: Routine | null; token: string };
 const runLabels = {
   queued: "已提交／等待结果",
   done: "已完成",
@@ -27,6 +29,12 @@ function localTime(iso: string) {
   return `${date.getFullYear()}-${parts[0]}-${parts[1]}T${parts[2]}:${parts[3]}`;
 }
 
+function scheduleLabel(routine: Routine) {
+  return routine.schedule.type === "once"
+    ? new Date(routine.schedule.at).toLocaleString()
+    : `${routineTimeLabel(routine.schedule.expression)} · ${routine.schedule.timeZone}`;
+}
+
 export function RoutinesPanel({
   botId,
   data,
@@ -38,139 +46,191 @@ export function RoutinesPanel({
   skills: WorkData["skills"];
   action: WorkAction;
 }) {
-  const [editing, setEditing] = useState<Routine | null>(null);
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const [deleting, setDeleting] = useState<Routine | null>(null);
+  const runs = [...data.runs].reverse();
   return (
-    <div className="detail-stack">
-      <p className="detail-note">
-        Domos 服务运行时，Bot
-        会按计划工作。新任务保存后需手动启用。试跑会真实执行。
-      </p>
-      <RoutineEditor
-        key={editing?.id ?? "new"}
-        botId={botId}
-        routine={editing}
-        skills={skills}
-        action={action}
-        onSaved={() => setEditing(null)}
-      />
-      {editing && (
-        <Button
-          variant="secondary"
-          size="small"
-          onClick={() => setEditing(null)}
-        >
-          取消编辑
-        </Button>
+    <section className="detail-page" aria-label="定时">
+      <header className="detail-page-head">
+        <p className="detail-note">
+          Domos 服务运行时，Bot
+          会按计划工作。新任务保存后默认暂停，需要手动启用。试跑会真实执行。
+        </p>
+        {!editor && (
+          <Button
+            size="small"
+            disabled={action.busy}
+            onClick={() =>
+              setEditor({ routine: null, token: crypto.randomUUID() })
+            }
+          >
+            新建定时任务
+          </Button>
+        )}
+      </header>
+
+      {editor && (
+        <RoutineEditor
+          key={editor.token}
+          botId={botId}
+          routine={editor.routine}
+          skills={skills}
+          action={action}
+          onCancel={() => setEditor(null)}
+          onSaved={() => setEditor(null)}
+        />
       )}
-      <ul className="detail-list">
-        {data.items.map((routine) => (
-          <li key={routine.id}>
-            <strong>{routine.title}</strong>
-            <p className="detail-text">{routine.instructions}</p>
-            <p className="detail-note">
-              {routine.enabled ? "已启用" : "已暂停"} ·{" "}
-              {routine.schedule.type === "once"
-                ? new Date(routine.schedule.at).toLocaleString()
-                : routineTimeLabel(routine.schedule.expression)}{" "}
-              · {routine.schedule.timeZone}
-            </p>
-            {routine.nextAt && (
-              <p className="detail-note">
-                下次：{new Date(routine.nextAt).toLocaleString()}
-              </p>
-            )}
-            <div className="detail-actions">
-              <Button
-                variant="secondary"
-                size="small"
-                disabled={action.busy}
-                onClick={() =>
-                  void action.run(
-                    ["routines.enable", routine.id, routine.revision],
-                    (requestId) =>
-                      client.work.routines.enable({
-                        botId,
-                        id: routine.id,
-                        enabled: !routine.enabled,
-                        revision: routine.revision,
-                        requestId,
-                      }),
-                  )
-                }
-              >
-                {routine.enabled ? "暂停" : "启用"}
-              </Button>
-              <Button
-                variant="ghost"
-                size="small"
-                disabled={action.busy}
-                onClick={() =>
-                  void action.run(["routines.test", routine.id], (requestId) =>
-                    client.work.routines.test({
-                      botId,
-                      id: routine.id,
-                      requestId,
-                    }),
-                  )
-                }
-              >
-                试跑
-              </Button>
-              <Button
-                variant="ghost"
-                size="small"
-                disabled={action.busy}
-                onClick={() => setEditing(routine)}
-              >
-                编辑
-              </Button>
-              <ConfirmButton
-                title="删除这个定时任务？"
-                description="已开始的工作仍会完成。"
-                disabled={action.busy}
-                onConfirm={() => {
-                  void action.run(
-                    ["routines.delete", routine.id, routine.revision],
-                    () =>
-                      client.work.routines.delete({
-                        botId,
-                        id: routine.id,
-                        revision: routine.revision,
-                      }),
-                  );
-                }}
-              >
-                删除
-              </ConfirmButton>
-            </div>
-          </li>
-        ))}
-      </ul>
-      <h3>运行记录</h3>
-      <ul className="detail-list">
-        {[...data.runs].reverse().map((run) => (
-          <li key={run.id}>
-            <strong>{run.title}</strong>
-            <p>
-              {run.mode === "test" ? "试跑" : "定时"} · {runLabels[run.status]}
-            </p>
-            <p className="detail-note">
-              计划：{new Date(run.scheduledAt).toLocaleString()}；触发：
-              {new Date(run.firedAt).toLocaleString()}
-            </p>
-            {run.coalesced && (
-              <p className="detail-note">
-                已将停机期间错过的周期合并为本次执行。
-              </p>
-            )}
-            {run.error && <p role="status">{run.error}</p>}
-            {run.status === "done" && (
-              <p className="detail-note">结果已发回此Bot的聊天。</p>
-            )}
-          </li>
-        ))}
-      </ul>
-    </div>
+
+      {data.items.length ? (
+        <ul className="item-list">
+          {data.items.map((routine) => (
+            <li key={routine.id} className="item-card">
+              <div className="item-heading">
+                <div className="item-heading-copy">
+                  <h3>{routine.title}</h3>
+                  <p className="item-description">{routine.instructions}</p>
+                </div>
+                <Switch
+                  label={`启用 ${routine.title}`}
+                  checked={routine.enabled}
+                  disabled={action.busy}
+                  onCheckedChange={(next) =>
+                    void action.run(
+                      ["routines.enable", routine.id, routine.revision, next],
+                      (requestId) =>
+                        client.work.routines.enable({
+                          botId,
+                          id: routine.id,
+                          enabled: next,
+                          revision: routine.revision,
+                          requestId,
+                        }),
+                    )
+                  }
+                />
+              </div>
+              <div className="item-meta">
+                <span
+                  className="item-tag"
+                  data-tone={routine.enabled ? "ready" : undefined}
+                >
+                  {routine.enabled ? "运行中" : "已暂停"}
+                </span>
+                <span>{scheduleLabel(routine)}</span>
+              </div>
+              {routine.nextAt && (
+                <p className="item-note">
+                  下次：{new Date(routine.nextAt).toLocaleString()}
+                </p>
+              )}
+              <div className="item-actions">
+                <ActionMenu
+                  label={`${routine.title}的操作`}
+                  disabled={action.busy}
+                  items={[
+                    {
+                      label: "试跑",
+                      onSelect: () =>
+                        void action.run(
+                          ["routines.test", routine.id],
+                          (requestId) =>
+                            client.work.routines.test({
+                              botId,
+                              id: routine.id,
+                              requestId,
+                            }),
+                        ),
+                    },
+                    {
+                      label: "编辑",
+                      onSelect: () =>
+                        setEditor({
+                          routine,
+                          token: crypto.randomUUID(),
+                        }),
+                    },
+                    {
+                      label: "删除",
+                      tone: "danger",
+                      onSelect: () => setDeleting(routine),
+                    },
+                  ]}
+                />
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="detail-empty">
+          还没有定时任务。可以安排一次提醒，或让 Bot 定期整理资料。
+        </p>
+      )}
+
+      <details className="detail-disclosure">
+        <summary>
+          运行记录
+          {runs.length > 0 && (
+            <span className="disclosure-count">{runs.length}</span>
+          )}
+        </summary>
+        <div className="detail-disclosure-body">
+          {runs.length ? (
+            <ul className="run-list">
+              {runs.map((run) => (
+                <li key={run.id}>
+                  <div className="run-heading">
+                    <strong>{run.title}</strong>
+                    <span>{run.mode === "test" ? "试跑" : "定时"}</span>
+                  </div>
+                  <p className="item-note">{runLabels[run.status]}</p>
+                  <p className="item-note">
+                    计划：{new Date(run.scheduledAt).toLocaleString()}；触发：
+                    {new Date(run.firedAt).toLocaleString()}
+                  </p>
+                  {run.coalesced && (
+                    <p className="item-note">
+                      已将停机期间错过的周期合并为本次执行。
+                    </p>
+                  )}
+                  {run.error && <p role="status">{run.error}</p>}
+                  {run.status === "done" && (
+                    <p className="item-note">结果已发回此 Bot 的聊天。</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="detail-note">还没有运行记录。</p>
+          )}
+        </div>
+      </details>
+
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        onOpenChange={(open) => {
+          if (!open) setDeleting(null);
+        }}
+        title="删除这个定时任务？"
+        description="已开始的工作仍会完成。"
+        onConfirm={() => {
+          const routine = deleting;
+          setDeleting(null);
+          if (routine)
+            void action.run(
+              ["routines.delete", routine.id, routine.revision],
+              () =>
+                client.work.routines.delete({
+                  botId,
+                  id: routine.id,
+                  revision: routine.revision,
+                }),
+              () => {
+                if (editor?.routine?.id === routine.id) setEditor(null);
+              },
+            );
+        }}
+      />
+    </section>
   );
 }
 
@@ -179,15 +239,17 @@ function RoutineEditor({
   routine,
   skills,
   action,
+  onCancel,
   onSaved,
 }: {
   botId: number;
   routine: Routine | null;
   skills: WorkData["skills"];
   action: WorkAction;
+  onCancel: () => void;
   onSaved: () => void;
 }) {
-  const [id, setId] = useState(() => crypto.randomUUID());
+  const [id] = useState(() => routine?.id ?? crypto.randomUUID());
   const [title, setTitle] = useState(routine?.title ?? "");
   const [instructions, setInstructions] = useState(routine?.instructions ?? "");
   const [type, setType] = useState<"once" | "cron">(
@@ -208,7 +270,8 @@ function RoutineEditor({
   const [skillIds, setSkillIds] = useState(routine?.skillIds ?? []);
   return (
     <form
-      className="bot-form"
+      className="bot-form detail-card"
+      aria-busy={action.busy}
       onSubmit={(event) => {
         event.preventDefault();
         const schedule =
@@ -217,7 +280,7 @@ function RoutineEditor({
             : { type, expression, timeZone };
         const input = {
           botId,
-          id: routine?.id ?? id,
+          id,
           revision: routine?.revision ?? 0,
           title,
           instructions,
@@ -227,17 +290,15 @@ function RoutineEditor({
         void action.run(
           ["routines.save", input],
           (requestId) => client.work.routines.save({ ...input, requestId }),
-          () => {
-            setId(crypto.randomUUID());
-            setTitle("");
-            setInstructions("");
-            setSkillIds([]);
-            onSaved();
-          },
+          onSaved,
         );
       }}
     >
       <fieldset className="bot-fields" disabled={action.busy}>
+        <div className="detail-form-head">
+          <h3>{routine ? "编辑定时任务" : "新建定时任务"}</h3>
+          <p className="detail-note">保存后默认暂停，需要手动启用。</p>
+        </div>
         <TextField
           label={routine ? "修改任务名称" : "新任务名称"}
           value={title}
@@ -302,8 +363,11 @@ function RoutineEditor({
             />
           ))}
         <div className="form-actions">
-          <Button type="submit" size="small">
-            {routine ? "保存并暂停" : "保存为暂停"}
+          <Button type="button" variant="ghost" size="small" onClick={onCancel}>
+            取消
+          </Button>
+          <Button type="submit" size="small" aria-label="保存为暂停">
+            保存
           </Button>
         </div>
       </fieldset>

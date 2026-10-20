@@ -77,6 +77,7 @@ test("plush identities load, animate and survive profile changes", async ({
     const initial = await header.getAttribute("data-seed");
     await page.getByRole("button", { name: "Bot详情", exact: true }).click();
     const details = page.getByRole("complementary", { name: "Domos的详情" });
+    await details.getByRole("button", { name: "编辑", exact: true }).click();
     await details
       .getByRole("button", { name: "换个形象", exact: true })
       .click();

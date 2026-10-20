@@ -7,7 +7,7 @@ import { ArrowDownIcon } from "@phosphor-icons/react/dist/csr/ArrowDown";
 import { Fragment, memo, type ReactNode } from "react";
 import { Attachments } from "./attachments.tsx";
 import { chatCopy } from "./copy.ts";
-import { clockTime, dayLabel, messageDay } from "./format.ts";
+import { clockTime, timeBreak } from "./format.ts";
 import { MessageContent } from "./message-content.tsx";
 import { TaskNotice } from "./task-notice.tsx";
 import { TypingDots } from "./typing-dots.tsx";
@@ -61,14 +61,16 @@ const MessageRow = memo(function MessageRow({
         {!!message.attachments?.length && (
           <Attachments botId={botId} files={message.attachments} />
         )}
-        {message.role === "user" && message.timestamp !== undefined && (
-          <time
-            className="message-time"
-            dateTime={new Date(message.timestamp).toISOString()}
-          >
-            {clockTime(message.timestamp)}
-          </time>
-        )}
+        {message.role === "user" &&
+          message.timestamp !== undefined &&
+          Number.isFinite(message.timestamp) && (
+            <time
+              className="message-time"
+              dateTime={new Date(message.timestamp).toISOString()}
+            >
+              {clockTime(message.timestamp)}
+            </time>
+          )}
       </MessageBubble>
     </article>
   );
@@ -96,28 +98,15 @@ export const Messages = memo(function Messages({
   onRetry: (message: ChatMessage) => void;
 }) {
   const transcript = useTranscript(items, ready);
-  const dates = new Map<string, ReactNode>();
-  let previousDay: number | undefined;
+  const separators = new Map<string, { at: number; label: string }>();
+  let previousAt: number | undefined;
   for (const item of items) {
-    const currentDay = messageDay(item);
-    if (currentDay === undefined) continue;
-    if (
-      currentDay !== previousDay &&
-      item.kind === "message" &&
-      item.message.timestamp !== undefined
-    ) {
-      const at = item.message.timestamp;
-      dates.set(
-        item.id,
-        <time
-          className="conversation-time"
-          dateTime={new Date(at).toISOString()}
-        >
-          {dayLabel(at)}
-        </time>,
-      );
-    }
-    previousDay = currentDay;
+    if (item.kind !== "message") continue;
+    const at = item.message.timestamp;
+    const label = timeBreak(previousAt, at);
+    if (label !== null && at !== undefined)
+      separators.set(`${item.kind}:${item.id}`, { at, label });
+    if (at !== undefined && Number.isFinite(at)) previousAt = at;
   }
   const originals = new Map(
     items.flatMap((item) =>
@@ -144,16 +133,14 @@ export const Messages = memo(function Messages({
         ) : (
           !items.length &&
           createdAt !== undefined && (
-            <time
-              className="conversation-time"
-              dateTime={new Date(createdAt).toISOString()}
-              title="创建时间"
-            >
-              {new Date(createdAt).toLocaleString(undefined, {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })}
-            </time>
+            <div className="conversation-time">
+              <time
+                dateTime={new Date(createdAt).toISOString()}
+                title="创建时间"
+              >
+                {timeBreak(undefined, createdAt)}
+              </time>
+            </div>
           )
         )}
         {ready && !items.length && welcome}
@@ -175,22 +162,32 @@ export const Messages = memo(function Messages({
             </Button>
           )}
           {ready &&
-            transcript.visible.map((item) => (
-              <Fragment key={`${item.kind}:${item.id}`}>
-                {item.kind === "message" && dates.get(item.id)}
-                <MessageRow
-                  item={item}
-                  botId={botId}
-                  botName={botName}
-                  original={
-                    item.kind === "notice" && !busy
-                      ? originals.get(item.id)
-                      : undefined
-                  }
-                  onRetry={onRetry}
-                />
-              </Fragment>
-            ))}
+            transcript.visible.map((item) => {
+              const key = `${item.kind}:${item.id}`;
+              const separator = separators.get(key);
+              return (
+                <Fragment key={key}>
+                  {separator && (
+                    <div className="conversation-time">
+                      <time dateTime={new Date(separator.at).toISOString()}>
+                        {separator.label}
+                      </time>
+                    </div>
+                  )}
+                  <MessageRow
+                    item={item}
+                    botId={botId}
+                    botName={botName}
+                    original={
+                      item.kind === "notice" && !busy
+                        ? originals.get(item.id)
+                        : undefined
+                    }
+                    onRetry={onRetry}
+                  />
+                </Fragment>
+              );
+            })}
           {ready && busy && transcript.atLatest && (
             <TypingDots avatar={avatar} label={chatCopy.typing(botName)} />
           )}

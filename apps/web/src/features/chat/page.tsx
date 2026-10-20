@@ -2,10 +2,8 @@ import type { Bot, BotPresence } from "@domos/agent/bots";
 import { type ChatMessage, messageText } from "@domos/agent/messages";
 import { type CSSProperties, useCallback, useRef, useState } from "react";
 import { CreateBot } from "../bots/create-bot.tsx";
-import { EnginePanel } from "../bots/details/engine.tsx";
-import { BotDetails, type BotPanel } from "../bots/details/index.tsx";
+import { BotDetails, type BotPanelView } from "../bots/details/index.tsx";
 import { selectBot, useBots } from "../bots/use-bots.ts";
-import { ComputerPanel } from "../computer/panel.tsx";
 import { useComputer } from "../computer/use-computer.ts";
 import { useSettings } from "../settings/context.ts";
 import { Workspace } from "../shell/workspace.tsx";
@@ -14,7 +12,6 @@ import { Composer } from "./composer.tsx";
 import { chatCopy } from "./copy.ts";
 import { ChatHeader } from "./header.tsx";
 import { Messages } from "./messages.tsx";
-import { ModelPicker } from "./model-picker.tsx";
 import { Sidebar } from "./sidebar.tsx";
 import { useChat } from "./use-chat.ts";
 import { useComposerDock } from "./use-composer-dock.ts";
@@ -72,7 +69,7 @@ function BotChat({
     [draft.update],
   );
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [detailPanel, setDetailPanel] = useState<BotPanel>("profile");
+  const [detailPanel, setDetailPanel] = useState<BotPanelView>("root");
   const { items } = chat;
   const connection = chat.connected
     ? chatCopy.connected
@@ -87,7 +84,7 @@ function BotChat({
     ) && chat.view?.failed
       ? chatCopy.errors.reply
       : null);
-  const showPanel = (panel: BotPanel) => {
+  const showPanel = (panel: BotPanelView) => {
     setDetailPanel(panel);
     setDetailsOpen(!detailsOpen || detailPanel !== panel);
   };
@@ -104,26 +101,16 @@ function BotChat({
         <BotDetails
           active={detailsOpen}
           bot={bot}
-          panel={detailPanel}
-          onPanelChange={setDetailPanel}
+          view={detailPanel}
+          onViewChange={setDetailPanel}
           onClose={() => setDetailsOpen(false)}
-          computer={<ComputerPanel computer={computer} botId={bot.id} />}
-          model={
-            <EnginePanel
-              botId={bot.id}
-              active={detailsOpen}
-              canManage={settings.admin}
-              piModel={(onSelected, onBusyChange) => (
-                <ModelPicker
-                  botId={bot.id}
-                  model={chat.view?.model ?? null}
-                  connected={chat.connected}
-                  onSelected={onSelected}
-                  onBusyChange={onBusyChange}
-                />
-              )}
-            />
-          }
+          computer={computer}
+          chat={{
+            model: chat.view?.model ?? null,
+            connected: chat.connected,
+            busy: Boolean(chat.view?.busy),
+          }}
+          canManage={settings.admin}
         />
       }
     >
@@ -147,8 +134,9 @@ function BotChat({
       >
         <ChatHeader
           bot={bot}
+          busy={Boolean(chat.view?.busy)}
           detailsOpen={detailsOpen}
-          onProfile={() => showPanel("profile")}
+          onDetails={() => showPanel("root")}
           onComputer={() => showPanel("computer")}
         />
         <span className="sr-only" role="status">

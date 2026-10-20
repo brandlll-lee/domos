@@ -6,7 +6,7 @@ import { client } from "../../../client.ts";
 import { AvatarEditor } from "../avatar-editor.tsx";
 import type { Profile, WorkAction } from "./use-bot-work.ts";
 
-export function ProfileEditor({
+export function IdentityEditor({
   profile,
   action,
   onSaved,
@@ -31,10 +31,11 @@ export function ProfileEditor({
   };
   return (
     <form
-      className="bot-form"
+      className="bot-form detail-card"
       aria-busy={action.busy}
       onSubmit={(event) => {
         event.preventDefault();
+        if (!dirty) return;
         void action.run(
           ["profile", input],
           (requestId) => client.work.update({ ...input, requestId }),
@@ -65,7 +66,7 @@ export function ProfileEditor({
           <div className="form-actions">
             <Button
               type="button"
-              variant="secondary"
+              variant="ghost"
               size="small"
               onClick={() => {
                 setName(profile.name);
@@ -78,10 +79,11 @@ export function ProfileEditor({
             <Button
               type="submit"
               size="small"
+              aria-label="保存身份"
               pending={action.busy}
               disabled={!name.trim()}
             >
-              {action.busy ? "正在保存…" : "保存身份"}
+              保存
             </Button>
           </div>
         )}

@@ -1,34 +1,55 @@
-import type { TranscriptItem } from "@domos/agent/transcript";
-
-const clock = new Intl.DateTimeFormat(undefined, {
+const clock = new Intl.DateTimeFormat("zh-CN", {
   hourCycle: "h23",
   hour: "2-digit",
   minute: "2-digit",
 });
-const day = new Intl.DateTimeFormat(undefined, {
+const shortDate = new Intl.DateTimeFormat("zh-CN", {
   month: "long",
   day: "numeric",
-  weekday: "short",
-  hour: "2-digit",
-  minute: "2-digit",
 });
+const longDate = new Intl.DateTimeFormat("zh-CN", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+});
+const weekday = new Intl.DateTimeFormat("zh-CN", { weekday: "short" });
+const TIME_BREAK_MS = 5 * 60_000;
 
 export function clockTime(at: number) {
   return clock.format(at);
 }
 
-export function dayLabel(at: number) {
-  return day.format(at);
-}
-
-export function messageDay(item: TranscriptItem) {
-  if (item.kind !== "message") return undefined;
-  const at = item.message.timestamp;
-  if (at === undefined || !Number.isFinite(at)) return undefined;
+function startOfDay(at: number) {
   const date = new Date(at);
   return new Date(
     date.getFullYear(),
     date.getMonth(),
     date.getDate(),
   ).getTime();
+}
+
+function dayDifference(from: number, to: number) {
+  return Math.round((startOfDay(to) - startOfDay(from)) / 86_400_000);
+}
+
+export function timeBreak(
+  previousAt: number | undefined,
+  currentAt: number | undefined,
+  now = Date.now(),
+) {
+  if (currentAt === undefined || !Number.isFinite(currentAt)) return null;
+  if (previousAt !== undefined && Number.isFinite(previousAt)) {
+    const sameDay = dayDifference(previousAt, currentAt) === 0;
+    if (sameDay && currentAt - previousAt < TIME_BREAK_MS) return null;
+  }
+  const time = clockTime(currentAt);
+  const age = dayDifference(currentAt, now);
+  if (age <= 0) return `今天 ${time}`;
+  if (age === 1) return `昨天 ${time}`;
+  const date = new Date(currentAt);
+  const dateLabel =
+    date.getFullYear() === new Date(now).getFullYear()
+      ? shortDate.format(date)
+      : longDate.format(date);
+  return `${dateLabel} ${weekday.format(date)} ${time}`;
 }

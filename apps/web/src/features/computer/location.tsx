@@ -2,6 +2,7 @@ import { ChoiceCards } from "@domos/ui/choice";
 import { Button } from "@domos/ui/controls";
 import { useEffect, useRef, useState } from "react";
 import { client } from "../../client.ts";
+import { userError } from "../user-error.ts";
 import "./style.css";
 
 export function ComputerLocation({
@@ -73,9 +74,7 @@ export function ComputerLocation({
           request.current = crypto.randomUUID();
           onReady();
         } catch (cause) {
-          setError(
-            cause instanceof Error ? cause.message : "电脑准备未完成。请重试。",
-          );
+          setError(userError(cause, "电脑准备未完成。请重试。"));
         } finally {
           active.current = false;
           setBusy(false);

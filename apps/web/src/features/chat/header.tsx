@@ -6,13 +6,15 @@ import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
 
 export function ChatHeader({
   bot,
+  busy,
   detailsOpen,
-  onProfile,
+  onDetails,
   onComputer,
 }: {
   bot: Bot;
+  busy: boolean;
   detailsOpen: boolean;
-  onProfile: () => void;
+  onDetails: () => void;
   onComputer: () => void;
 }) {
   return (
@@ -21,19 +23,25 @@ export function ChatHeader({
         id="details-trigger"
         variant="ghost"
         size="small"
-        className="conversation-title"
+        className="chat-identity"
         aria-label="Bot详情"
         aria-expanded={detailsOpen}
         aria-controls={detailsOpen ? "bot-details" : undefined}
-        onClick={onProfile}
+        onClick={onDetails}
       >
-        <BotAvatar seed={bot.avatar} size="small" />
-        <span>{bot.name}</span>
+        <BotAvatar
+          seed={bot.avatar}
+          size="medium"
+          state={busy ? "running" : "idle"}
+          statusLabel="正在工作"
+        />
+        <span className="chat-identity-name">{bot.name}</span>
       </Button>
       <div className="chat-actions">
         <Button
           variant="ghost"
           size="icon-small"
+          className="chat-action"
           aria-label="Bot电脑"
           title="工作电脑"
           onClick={onComputer}
@@ -43,9 +51,10 @@ export function ChatHeader({
         <Button
           variant="ghost"
           size="icon-small"
+          className="chat-action"
           aria-label="Bot设置"
           title="Bot设置"
-          onClick={onProfile}
+          onClick={onDetails}
         >
           <GearSixIcon />
         </Button>

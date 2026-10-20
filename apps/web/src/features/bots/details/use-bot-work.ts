@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { client } from "../../../client.ts";
+import { userError } from "../../user-error.ts";
 
 export type WorkData = Awaited<ReturnType<typeof client.work.get>>;
 export type Profile = Awaited<ReturnType<typeof client.work.profile>>;
@@ -27,11 +28,7 @@ export function useWorkAction() {
       request.current = null;
       onSuccess?.(value);
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "请求未确认。请重试，系统会核对原请求。",
-      );
+      setError(userError(cause, "请求未确认。请重试，系统会核对原请求。"));
     } finally {
       active.current = false;
       setBusy(false);

@@ -483,6 +483,10 @@ test("first use prepares the default Bot with a computer and engine before share
       await expect(pairedCreate).toBeHidden();
       await second.getByRole("link", { name: "Domos", exact: true }).click();
       await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+      await page
+        .getByRole("complementary", { name: /的详情$/ })
+        .getByRole("button", { name: /^任务引擎(?:\s|$)/ })
+        .click();
       const detailsModel = page.getByRole("combobox", {
         name: "模型",
         exact: true,
@@ -524,6 +528,16 @@ test("first use prepares the default Bot with a computer and engine before share
         second.getByRole("region", { name: "允许这次操作？" }),
       ).toBeVisible();
       await capture(page, testInfo, "native-approval");
+      await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+      await page
+        .getByRole("complementary", { name: /的详情$/ })
+        .getByRole("button", { name: /^任务引擎\s/ })
+        .click();
+      const enginePicker = engine.getByRole("combobox", {
+        name: "任务引擎",
+        exact: true,
+      });
+      await expect(enginePicker).toBeDisabled();
       await second
         .getByRole("button", { name: "允许这次操作", exact: true })
         .click();
@@ -537,6 +551,7 @@ test("first use prepares the default Bot with a computer and engine before share
           .getByRole("log", { name: "聊天记录" })
           .getByText("Codex 已完成。", { exact: true }),
       ).toBeVisible();
+      await expect(enginePicker).toBeEnabled();
     } finally {
       await remote.close();
     }
@@ -544,17 +559,23 @@ test("first use prepares the default Bot with a computer and engine before share
     await expect(setup).toBeHidden();
     await expect(page.getByRole("button", { name: "Bot详情" })).toBeVisible();
     await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
-    const computer = page.getByRole("complementary", { name: "Domos的详情" });
+    const computer = page.getByRole("region", {
+      name: "工作电脑",
+      exact: true,
+    });
     await expect(
-      computer.getByText("服务所在电脑", { exact: true }),
+      computer.getByRole("heading", { name: "服务所在电脑", exact: true }),
     ).toBeVisible();
-    await expect(
-      computer.getByText("✓ 可执行命令", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      computer.getByText("✓ 可处理文件", { exact: true }),
-    ).toBeVisible();
-    await computer.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(computer.locator(".computer-capabilities")).toContainText(
+      "命令",
+    );
+    await expect(computer.locator(".computer-capabilities")).toContainText(
+      "文件",
+    );
+    await page
+      .getByRole("complementary", { name: "Domos的详情" })
+      .getByRole("button", { name: "关闭", exact: true })
+      .click();
     await page.getByRole("button", { name: "设置", exact: true }).click();
     const settings = page.getByRole("main", { name: "设置", exact: true });
     await expect(settings.getByRole("tab")).toHaveText(["通用", "模型"]);

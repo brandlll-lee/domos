@@ -3,6 +3,7 @@ import { Dialog } from "@domos/ui/dialog";
 import { SettingRow } from "@domos/ui/setting-row";
 import { useEffect, useState } from "react";
 import { client } from "../../client.ts";
+import { userError } from "../user-error.ts";
 import { ComputerViewer } from "./viewer.tsx";
 
 type Service = "browser" | "desktop";
@@ -26,7 +27,8 @@ export function ComputerServices({
       .services({ botId }, { signal: controller.signal })
       .then(setState)
       .catch((cause) => {
-        if (!controller.signal.aborted) setError(cause.message);
+        if (!controller.signal.aborted)
+          setError(userError(cause, "无法读取浏览器和桌面状态。请重试。"));
       });
     return () => controller.abort();
   }, [botId]);
@@ -43,22 +45,24 @@ export function ComputerServices({
         await client.computer.service({ botId, service, enabled, install }),
       );
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "电脑服务未能连接。");
+      setError(userError(cause, "电脑服务未能连接。请重试。"));
     } finally {
       setBusy(undefined);
     }
   }
   return (
     <section className="detail-stack" aria-label="浏览器和桌面">
-      <h3 className="detail-section-title">浏览器和桌面</h3>
-      <p className="detail-note">
-        Bot 和你可以操作同一工作环境。接管后，Bot 会暂停电脑操作。
-      </p>
-      <div className="settings-card">
+      <div className="detail-form-head">
+        <h3 className="detail-section-title">浏览器和桌面</h3>
+        <p className="detail-note">
+          Bot 和你可以操作同一工作环境。接管后，Bot 会暂停电脑操作。
+        </p>
+      </div>
+      <div className="settings-card computer-services">
         {(["browser", "desktop"] as const).map((service) => {
           const item = state?.[service];
           return (
-            <div key={service}>
+            <div key={service} className="computer-service">
               <SettingRow
                 title={labels[service]}
                 description={
@@ -79,7 +83,7 @@ export function ComputerServices({
                 />
               </SettingRow>
               {item?.enabled && (
-                <div className="settings-form detail-stack">
+                <div className="computer-service-actions">
                   {item.error && (
                     <p role="alert" className="detail-note">
                       {item.error}
@@ -92,7 +96,7 @@ export function ComputerServices({
                       disabled={Boolean(busy)}
                       onClick={() => setView(service)}
                     >
-                      观看{labels[service]}
+                      查看{labels[service]}
                     </Button>
                     {admin && (
                       <Button
