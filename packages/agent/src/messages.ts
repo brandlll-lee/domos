@@ -18,6 +18,7 @@ export type ChatContent =
 export type ChatMessage = {
   id: string;
   turnId?: string;
+  requestId?: string;
   role: "user" | "assistant" | "toolResult";
   content: (ChatContent & { key: string })[];
   stopped: boolean;

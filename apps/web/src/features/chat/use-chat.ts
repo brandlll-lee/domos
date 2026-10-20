@@ -1,7 +1,8 @@
+import type { Attachment } from "@domos/agent/attachments";
 import type { TranscriptItem } from "@domos/agent/transcript";
 import type { ChatView } from "@domos/agent/view";
 import { ORPCError } from "@orpc/client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { client } from "../../client.ts";
 import { chatCopy } from "./copy.ts";
 import { rejectionMessage } from "./request-error.ts";
@@ -20,6 +21,19 @@ export function useChat(botId: number, onModelRequired?: () => void) {
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [sentRequest, setSentRequest] = useState<string>();
+  const [outgoing, setOutgoing] = useState<TranscriptItem[]>([]);
+  const transcript = useMemo(() => {
+    const confirmed = new Set(
+      items.flatMap((item) =>
+        item.kind === "message" && item.message.requestId
+          ? [item.message.requestId]
+          : [],
+      ),
+    );
+    const pending = outgoing.filter((item) => !confirmed.has(item.id));
+    return pending.length ? [...items, ...pending] : items;
+  }, [items, outgoing]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -78,9 +92,33 @@ export function useChat(botId: number, onModelRequired?: () => void) {
     };
   }, [botId]);
 
-  async function send(input: SendInput) {
+  async function send(input: SendInput, attachments?: Attachment[]) {
+    setSentRequest(input.requestId);
     setSending(true);
     setError(null);
+    setOutgoing((current) => [
+      ...current.filter(
+        (item) =>
+          item.id !== input.requestId &&
+          !items.some(
+            (row) =>
+              row.kind === "message" && row.message.requestId === item.id,
+          ),
+      ),
+      {
+        kind: "message",
+        id: input.requestId,
+        message: {
+          id: input.requestId,
+          requestId: input.requestId,
+          role: "user",
+          content: [{ type: "text", text: input.text, key: input.requestId }],
+          stopped: false,
+          timestamp: Date.now(),
+          attachments,
+        },
+      },
+    ]);
     try {
       await client.send({ ...input, botId });
       return "accepted" as const;
@@ -88,6 +126,10 @@ export function useChat(botId: number, onModelRequired?: () => void) {
       if (cause instanceof ORPCError && cause.code === "PRECONDITION_FAILED")
         onModelRequired?.();
       const message = rejectionMessage(cause);
+      if (message)
+        setOutgoing((current) =>
+          current.filter((item) => item.id !== input.requestId),
+        );
       setError(message ?? chatCopy.errors.unconfirmed);
       return message ? ("rejected" as const) : ("unconfirmed" as const);
     } finally {
@@ -109,7 +151,8 @@ export function useChat(botId: number, onModelRequired?: () => void) {
 
   return {
     view,
-    items,
+    items: transcript,
+    sentRequest,
     connected,
     error,
     sending,

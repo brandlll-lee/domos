@@ -6,6 +6,7 @@ import type { useDraft } from "./use-draft.ts";
 
 export type SendMessage = (
   input: SendInput,
+  attachments?: Attachment[],
 ) => Promise<"accepted" | "rejected" | "unconfirmed">;
 
 export function useComposer(
@@ -17,19 +18,20 @@ export function useComposer(
   const pending = draft.draft.pending;
   async function submit() {
     if (!canSubmit || submitting.current) return;
+    const original = draft.current.current;
     const input = pending ?? {
       text: draft.current.current.text.trim(),
       attachments: draft.current.current.attachments.map((file) => file.id),
       requestId: crypto.randomUUID(),
     };
-    if (
-      (!input.text && !input.attachments?.length) ||
-      !draft.update({ pending: input })
-    )
+    if (!input.text && !input.attachments?.length) return;
+    if (!draft.update({ pending: input, text: pending ? original.text : "" })) {
+      draft.update(original);
       return;
+    }
     submitting.current = true;
     try {
-      const result = await send(input);
+      const result = await send(input, draft.current.current.attachments);
       if (result !== "unconfirmed") {
         draft.update({
           pending: null,
@@ -40,9 +42,8 @@ export function useComposer(
                 ),
               }
             : {}),
-          ...(result === "accepted" &&
-          draft.current.current.text.trim() === input.text
-            ? { text: "" }
+          ...(result === "rejected" && !draft.current.current.text
+            ? { text: input.text }
             : {}),
         });
       }

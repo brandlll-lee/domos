@@ -230,7 +230,7 @@ export class Engines {
         kind: input.operation ? "domos.engine-operation" : EngineMessage,
         data: input.operation
           ? { operation: input.operation }
-          : userMessage(turnId, input.text, input.attachments),
+          : userMessage(turnId, input.text, input.attachments, input.requestId),
       });
       tx.placeSubmission(submission.id, entry.id);
       const taskId = await tx.createTask(

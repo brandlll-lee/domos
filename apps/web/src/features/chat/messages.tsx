@@ -8,7 +8,8 @@ import { ArrowDownIcon } from "@phosphor-icons/react/dist/csr/ArrowDown";
 import { Fragment, memo, type ReactNode } from "react";
 import { Attachments } from "./attachments.tsx";
 import { chatCopy } from "./copy.ts";
-import { clockTime, timeBreak } from "./format.ts";
+import { timeBreak } from "./format.ts";
+import { MessageBody } from "./message-body.tsx";
 import { MessageContent } from "./message-content.tsx";
 import { TaskNotice } from "./task-notice.tsx";
 import { TypingDots } from "./typing-dots.tsx";
@@ -50,23 +51,15 @@ const MessageRow = memo(function MessageRow({
       }
     >
       <MessageBubble side={message.role === "user" ? "outgoing" : "incoming"}>
-        <MessageContent
-          content={message.content}
-          user={message.role === "user"}
-        />
-        {!!message.attachments?.length && (
-          <Attachments botId={botId} files={message.attachments} />
-        )}
-        {message.role === "user" &&
-          message.timestamp !== undefined &&
-          Number.isFinite(message.timestamp) && (
-            <time
-              className="message-time"
-              dateTime={new Date(message.timestamp).toISOString()}
-            >
-              {clockTime(message.timestamp)}
-            </time>
+        <MessageBody>
+          <MessageContent
+            content={message.content}
+            user={message.role === "user"}
+          />
+          {!!message.attachments?.length && (
+            <Attachments botId={botId} files={message.attachments} />
           )}
+        </MessageBody>
       </MessageBubble>
       {message.role === "user" && (
         <ActionMenu
@@ -89,6 +82,7 @@ export const Messages = memo(function Messages({
   items,
   welcome,
   onResend,
+  sentRequest,
 }: {
   botId: number;
   ready: boolean;
@@ -98,8 +92,9 @@ export const Messages = memo(function Messages({
   items: TranscriptItem[];
   welcome?: ReactNode;
   onResend: (message: ChatMessage) => void;
+  sentRequest?: string;
 }) {
-  const transcript = useTranscript(items, ready);
+  const transcript = useTranscript(items, ready, sentRequest);
   const separators = new Map<string, { at: number; label: string }>();
   let previousAt: number | undefined;
   for (const item of items) {

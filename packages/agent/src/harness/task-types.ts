@@ -30,10 +30,12 @@ export function userMessage(
   id: string,
   text: string,
   attachments?: Attachment[],
+  requestId?: string,
 ): StoredMessage {
   return stored({
     id,
     turnId: id,
+    ...(requestId ? { requestId } : {}),
     role: "user",
     content: [{ type: "text", text, key: id }],
     stopped: false,

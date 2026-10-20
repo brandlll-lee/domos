@@ -13,7 +13,11 @@ const incoming = (item: TranscriptItem) =>
   item.kind === "attachments" ||
   (item.kind === "message" && item.message.role === "assistant");
 
-export function useTranscript(items: TranscriptItem[], ready: boolean) {
+export function useTranscript(
+  items: TranscriptItem[],
+  ready: boolean,
+  sentRequest?: string,
+) {
   const viewport = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const following = useRef(true);
@@ -33,9 +37,12 @@ export function useTranscript(items: TranscriptItem[], ready: boolean) {
     padding: 0,
   });
   const received = useRef<TranscriptItem[] | null>(null);
+  const sent = useRef(sentRequest);
   const ownedTop = useRef(0);
   const scrolled = useRef(false);
   const jumping = useRef(false);
+  const animate = useRef(false);
+  const scrolling = useRef(false);
   const anchor = useRef<{ key: string; top: number } | null>(null);
   const reply = useRef<string | null>(null);
   const [range, setRange] = useState<{ start: number; end: number } | null>(
@@ -62,9 +69,7 @@ export function useTranscript(items: TranscriptItem[], ready: boolean) {
     ) {
       const known = new Set(received.current.map(keyOf));
       const arrivals = new Set(
-        items
-          .filter((item) => incoming(item) && !known.has(keyOf(item)))
-          .map(keyOf),
+        items.filter((item) => !known.has(keyOf(item))).map(keyOf),
       );
       for (const node of Array.from(content.current?.children ?? [])) {
         if (
@@ -82,11 +87,25 @@ export function useTranscript(items: TranscriptItem[], ready: boolean) {
         );
       }
     }
+    if (received.current && sentRequest && sent.current !== sentRequest) {
+      following.current = true;
+      jumping.current = true;
+      animate.current = true;
+      setRange(null);
+    }
+    sent.current = sentRequest;
     received.current = ready ? items : null;
     measure.current = () => {
       const element = viewport.current;
       const list = content.current;
-      if (!element || !list || !ready) return;
+      if (
+        !element ||
+        !list ||
+        !ready ||
+        !element.checkVisibility() ||
+        scrolling.current
+      )
+        return;
       const nodes = new Map(
         Array.from(list.children).flatMap((child) =>
           child instanceof HTMLElement && child.dataset.transcriptKey
@@ -152,6 +171,20 @@ export function useTranscript(items: TranscriptItem[], ready: boolean) {
         const node = nodes.get(reply.current);
         if (node) target += node.getBoundingClientRect().top - bounds.top - top;
       }
+      if (
+        animate.current &&
+        Math.abs(
+          element.scrollTop -
+            Math.min(target, element.scrollHeight - element.clientHeight),
+        ) > 1 &&
+        !matchMedia("(prefers-reduced-motion: reduce)").matches
+      ) {
+        animate.current = false;
+        scrolling.current = true;
+        element.scrollTo({ top: target, behavior: "smooth" });
+        return;
+      }
+      animate.current = false;
       if (target !== element.scrollTop) element.scrollTop = target;
       ownedTop.current = element.scrollTop;
       const bottomReached =
@@ -167,17 +200,38 @@ export function useTranscript(items: TranscriptItem[], ready: boolean) {
       };
     };
     schedule();
-  }, [items, ready, range, start, end, schedule]);
+  }, [items, ready, range, start, end, schedule, sentRequest]);
 
   useEffect(() => {
+    const element = viewport.current;
+    const complete = () => {
+      if (!scrolling.current) return;
+      scrolling.current = false;
+      ownedTop.current = element?.scrollTop ?? 0;
+      schedule();
+    };
+    const interrupt = () => {
+      if (!scrolling.current || !element) return;
+      scrolling.current = false;
+      element.scrollTo({ top: element.scrollTop, behavior: "instant" });
+      following.current = false;
+      scrolled.current = true;
+      schedule();
+    };
+    element?.addEventListener("scrollend", complete);
+    element?.addEventListener("wheel", interrupt, { passive: true });
+    element?.addEventListener("touchstart", interrupt, { passive: true });
     const observer = new ResizeObserver(() => measure.current());
     if (viewport.current) observer.observe(viewport.current);
     if (content.current) observer.observe(content.current);
     return () => {
       observer.disconnect();
+      element?.removeEventListener("scrollend", complete);
+      element?.removeEventListener("wheel", interrupt);
+      element?.removeEventListener("touchstart", interrupt);
       if (frame.current !== undefined) cancelAnimationFrame(frame.current);
     };
-  }, []);
+  }, [schedule]);
 
   return {
     viewport,
@@ -188,12 +242,14 @@ export function useTranscript(items: TranscriptItem[], ready: boolean) {
     atBottom,
     unread,
     onScroll() {
+      if (scrolling.current) return;
       scrolled.current = true;
       schedule();
     },
     jumpToLatest() {
       following.current = true;
       jumping.current = true;
+      animate.current = true;
       setRange(null);
       schedule();
     },

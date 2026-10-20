@@ -237,6 +237,7 @@ test("native controls, interaction, compaction and Usage work in both themes", a
   );
   const settings = await openSettings(page);
   await settings.getByRole("tab", { name: "Usage", exact: true }).click();
+  await settings.getByRole("tab", { name: "明细", exact: true }).click();
   const table = settings.getByRole("table", { name: "用量明细", exact: true });
   await expect(table).toContainText("test-provider");
   await expect(table).toContainText("test-model");
@@ -249,6 +250,7 @@ test("native controls, interaction, compaction and Usage work in both themes", a
       animations: "disabled",
     });
   }
+  await settings.getByRole("button", { name: "筛选用量", exact: true }).click();
   await settings
     .getByRole("combobox", { name: "Harness", exact: true })
     .click();
@@ -1196,7 +1198,7 @@ test("stopping preserves the conversation and resending uses the message menu", 
   );
 });
 
-test("long replies start at the top and new messages preserve a reader's place", async ({
+test("long replies start at the top and background messages preserve a reader's place", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1360, height: 600 });
@@ -1223,7 +1225,9 @@ test("long replies start at the top and new messages preserve a reader's place",
   await input.fill("长报告");
   await send.click();
   const last = page.getByLabel("Domos 的回复", { exact: true }).last();
-  await expect(last).toHaveText(answer, { timeout: 20_000 });
+  await expect(last.locator(".message-body")).toHaveText(answer, {
+    timeout: 20_000,
+  });
   await expect
     .poll(() =>
       last.evaluate((node) => {
@@ -1240,7 +1244,7 @@ test("long replies start at the top and new messages preserve a reader's place",
   const count = await page.evaluate(
     () => (window as unknown as { arrivals: string[] }).arrivals.length,
   );
-  expect(count).toBe(1);
+  expect(count).toBe(2);
   await page.screenshot({ path: "test-results/chat-long-reply.png" });
   await page.locator(".transcript").evaluate((node) => {
     node.scrollTop = 50;
@@ -1249,8 +1253,12 @@ test("long replies start at the top and new messages preserve a reader's place",
     page.getByRole("button", { name: "返回最新", exact: true }),
   ).toBeVisible();
   await control({ content: "已完成。" });
-  await input.fill("下一项任务");
-  await send.click();
+  const sender = await page.context().newPage();
+  await sender.goto(url);
+  await sender.getByLabel("消息", { exact: true }).fill("下一项任务");
+  await sender.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(sender.getByLabel("Domos 的回复").last()).toHaveText("已完成。");
+  await sender.close();
   await expect
     .poll(() => page.locator(".transcript").evaluate((node) => node.scrollTop))
     .toBe(50);
@@ -1277,7 +1285,12 @@ test("background replies and reduced motion show complete messages without entry
     Object.assign(window, { deliveryMotion: state });
     Object.defineProperty(document, "hidden", { get: () => state.hidden });
     document.addEventListener("animationstart", (event) => {
-      if (event.animationName === "message-in") state.arrivals++;
+      if (
+        event.animationName === "message-in" &&
+        event.target instanceof HTMLElement &&
+        event.target.closest(".message.assistant")
+      )
+        state.arrivals++;
     });
   });
   await page.goto(url);
@@ -1518,9 +1531,13 @@ test("two windows can submit while a reply is active", async ({
     await route.continue();
   });
   await page.getByLabel("消息", { exact: true }).fill("追加的消息");
+  const submitted = page.waitForResponse((response) =>
+    response.url().endsWith("/rpc/send"),
+  );
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.getByLabel("消息", { exact: true })).toHaveValue("");
   await expect(page.getByRole("alert")).toHaveCount(0);
+  await submitted;
   await page.unroute("**/rpc/send");
   await control("release");
   await page.bringToFront();
@@ -1578,6 +1595,10 @@ test("text contrast, keyboard focus and message scrolling meet the UI contract",
   await input.fill("长消息\n".repeat(80));
   await input.press("Enter");
   await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
+  await page
+    .getByLabel("你的消息")
+    .getByRole("button", { name: "展开", exact: true })
+    .click();
   await expect
     .poll(() =>
       page
@@ -2216,6 +2237,10 @@ test("composer fades scrolling messages and covers content below its edge", asyn
   await expect(page.getByLabel("Domos 的回复").getByRole("link")).toHaveCount(
     30,
   );
+  await page
+    .getByLabel("Domos 的回复")
+    .getByRole("button", { name: "展开", exact: true })
+    .click();
   for (const width of [1360, 390]) {
     await page.setViewportSize({ width, height: 700 });
     for (const label of ["浅色", "深色"]) {
@@ -2631,7 +2656,7 @@ test("chat keeps sending available while the Bot is working", async ({
         element.getBoundingClientRect().top -
         (element.previousElementSibling?.getBoundingClientRect().bottom ?? 0),
     ),
-  ).toBe(4);
+  ).toBe(12);
   const reply = page.locator(".message.user + .message.assistant").first();
   expect(
     await reply.evaluate(

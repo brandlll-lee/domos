@@ -133,7 +133,11 @@ export function chatView(
     }
     const input =
       entry.kind === FileInput || entry.kind === RoutineInput
-        ? (entry.data as { text: string; attachments?: Attachment[] })
+        ? (entry.data as {
+            text: string;
+            attachments?: Attachment[];
+            requestId?: string;
+          })
         : undefined;
     const diagnostics =
       entry.kind === "pi.tool-result"
@@ -165,7 +169,13 @@ export function chatView(
         diagnostics,
       );
       if (projected)
-        messages.push({ ...projected, ...(delivery ? { delivery } : {}) });
+        messages.push({
+          ...projected,
+          ...(projected.role === "user" && input?.requestId
+            ? { requestId: input.requestId }
+            : {}),
+          ...(delivery ? { delivery } : {}),
+        });
     });
   }
   const draft = live?.generation?.message

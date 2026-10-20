@@ -7,7 +7,11 @@ export function transcriptState() {
   return (view: ChatView) => {
     const next = new Map<string, { item: TranscriptItem; value: string }>();
     const history: TranscriptItem[] = [];
-    for (const item of chatTranscript(view)) {
+    for (const original of chatTranscript(view)) {
+      const item =
+        original.kind === "message" && original.message.requestId
+          ? { ...original, id: original.message.requestId }
+          : original;
       const key = `${item.kind}:${item.id}`;
       const value = JSON.stringify(item);
       const previous = retained.get(key);

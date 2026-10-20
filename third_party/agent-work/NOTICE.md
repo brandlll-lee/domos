@@ -6,6 +6,7 @@ Domos Bot work adapts the following Apache-2.0 reference implementations:
 - Bot detail focus entry and restoration adapt OpenMausBot `src/components/BotSettingsDialog.tsx`.
 - Engine artwork in `apps/web/src/features/bots/engine-mark.tsx` adapts OpenMausBot `src/components/ProviderIcons.tsx`.
 - Native extension request handling adapts OpenMausBot `server/drivers/pi.ts`. Structured approvals and Usage filters and detail rows adapt `src/components/PendingApproval.tsx` and `src/components/UsageHistory.tsx`. `apps/web/src/features/settings/usage-period.ts` reuses its UTC period calculation. These files are modified for Domos protocols, durable storage, controls, and themes.
+- Chat message spacing and the expandable gradient mask adapt OpenMausBot `src/components/ChatView.tsx`. Local outgoing previews follow its `src/state/store.tsx` send identity and authoritative reconciliation design. Domos uses request IDs and its own transcript projection, rendering, and theme tokens.
 
 These implementations are modified for Domos: Pi documents replace reference storage; Pi tasks own scheduling; the YAML library reads skill frontmatter; original SKILL.md bytes remain intact. See the accompanying Apache-2.0 license.
 

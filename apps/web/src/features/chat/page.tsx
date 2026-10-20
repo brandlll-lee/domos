@@ -208,6 +208,7 @@ function BotChat({
           botName={bot.name}
           createdAt={bot.createdAt}
           items={items}
+          sentRequest={chat.sentRequest}
           onResend={resend}
           welcome={
             !bot.welcomeComplete &&

@@ -149,14 +149,14 @@ export function createRouter(
                 ]
                   .filter(Boolean)
                   .join("\n\n"),
-                ...(attachments.length
-                  ? {
-                      entry: {
-                        kind: FileInput,
-                        data: { text: input.text, attachments },
-                      },
-                    }
-                  : {}),
+                entry: {
+                  kind: FileInput,
+                  data: {
+                    text: input.text,
+                    attachments,
+                    requestId: input.requestId,
+                  },
+                },
                 requestId: input.requestId,
                 whenBusy: "steer",
               },
