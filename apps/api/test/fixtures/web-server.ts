@@ -21,6 +21,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { getRequestListener } from "@hono/node-server";
 import { EngineMessage } from "../../../../packages/agent/src/harness/state.ts";
+import { featureProcess } from "../../../../packages/agent/test/fixtures/feature-process.ts";
 import { createApp } from "../../src/app.ts";
 import { hostingApp } from "../../src/hosting/routes.ts";
 
@@ -102,16 +103,6 @@ const answer: FauxResponseFactory = async (input, options, _state, model) => {
   );
 };
 faux.setResponses([answer]);
-const { harness, bots, work } = await openAgent(
-  database,
-  {
-    models,
-    registry,
-    env: ({ conversationId }) => files.workspace(conversationId),
-  },
-  { model: { provider: "faux", modelId: "faux-1" } },
-  BACKGROUND_CONTEXT,
-);
 const computer = new Computers(
   parseConfig(
     {
@@ -121,8 +112,30 @@ const computer = new Computers(
     database,
   ),
 );
+const native = process.argv[4] === "native";
+const computers = native
+  ? new Proxy(computer, {
+      get(target, key) {
+        if (key === "process") return async () => featureProcess();
+        const value = Reflect.get(target, key);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    })
+  : undefined;
+const { harness, bots, work, engines } = await openAgent(
+  database,
+  {
+    models,
+    registry,
+    computers,
+    legacy: true,
+    env: ({ conversationId }) => files.workspace(conversationId),
+  },
+  { model: { provider: "faux", modelId: "faux-1" } },
+  BACKGROUND_CONTEXT,
+);
 await computer.initialize(harness, bots, BACKGROUND_CONTEXT, true);
-const app = createApp(bots, models, files, work, computer);
+const app = createApp(bots, models, files, work, computer, undefined, engines);
 let hosted: ReturnType<typeof hostingApp> | undefined;
 const store =
   process.argv[4] === "hosting"

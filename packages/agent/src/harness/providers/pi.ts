@@ -1,10 +1,12 @@
 import type {
   AgentSessionEvent,
+  RpcExtensionUIRequest,
   RpcSessionState,
   SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 import { EngineRequestRejected, JsonLines } from "../json-lines.ts";
 import type { EngineOpen, EngineProvider } from "../types.ts";
+import { piUI } from "./pi-ui.ts";
 
 export const piProvider: EngineProvider = {
   id: "pi",
@@ -12,7 +14,7 @@ export const piProvider: EngineProvider = {
   command: "pi",
   package: "@earendil-works/pi-coding-agent@1.2.0",
   login: null,
-  capabilities: { approvals: false, models: true, recovery: true },
+  capabilities: { approvals: true, models: true, recovery: true },
   async open({
     process,
     config,
@@ -30,9 +32,15 @@ export const piProvider: EngineProvider = {
     let failure: string | null = null;
     let completion: ReturnType<typeof Promise.withResolvers<void>> | undefined;
     let events = Promise.resolve();
+    const ui = piUI(rpc, emit);
     rpc.on(
       "frame",
-      (frame: AgentSessionEvent | { type: "domos_ready"; error?: string }) => {
+      (
+        frame:
+          | AgentSessionEvent
+          | { type: "domos_ready"; error?: string }
+          | RpcExtensionUIRequest,
+      ) => {
         if (frame.type === "domos_ready") {
           if (frame.error) preparation.reject(new Error(frame.error));
           else preparation.resolve();
@@ -40,6 +48,10 @@ export const piProvider: EngineProvider = {
         }
         events = events
           .then(async () => {
+            if (frame.type === "extension_ui_request") {
+              await ui.handle(frame);
+              return;
+            }
             if (
               frame.type === "message_start" &&
               frame.message?.role === "assistant"
@@ -62,6 +74,21 @@ export const piProvider: EngineProvider = {
               frame.message?.role === "assistant"
             ) {
               const message = frame.message;
+              if (message.usage)
+                await emit({
+                  type: "usage",
+                  usage: {
+                    id: `pi:${message.timestamp}`,
+                    source: "pi.message_end",
+                    provider: message.provider,
+                    model: message.model,
+                    input: message.usage.input ?? null,
+                    output: message.usage.output ?? null,
+                    cacheRead: message.usage.cacheRead ?? null,
+                    cacheWrite: message.usage.cacheWrite ?? null,
+                    costUsd: message.usage.cost?.total ?? null,
+                  },
+                });
               if (message.stopReason === "error")
                 failure =
                   message.errorMessage ?? "Pi 未完成回复。请检查账号和网络。";
@@ -95,6 +122,18 @@ export const piProvider: EngineProvider = {
               if (failure) completion?.reject(new Error(failure));
               else completion?.resolve();
             }
+            if (frame.type === "compaction_start")
+              await emit({ type: "runtime", state: { compaction: "running" } });
+            if (frame.type === "compaction_end")
+              await emit({
+                type: "runtime",
+                state: {
+                  compaction:
+                    frame.aborted || frame.errorMessage
+                      ? "failed"
+                      : "completed",
+                },
+              });
           })
           .catch((error) => completion?.reject(error));
       },
@@ -134,8 +173,71 @@ export const piProvider: EngineProvider = {
     const state = await rpc.request<RpcSessionState>("get_state");
     if (!state.sessionFile) throw new Error("Pi 没有返回会话记录。");
     await emit({ type: "session", id: state.sessionFile });
+    if (config.options?.thinkingLevel)
+      await rpc.request("set_thinking_level", {
+        level: config.options.thinkingLevel,
+      });
+    if (config.options?.autoCompaction)
+      await rpc.request("set_auto_compaction", {
+        enabled: config.options.autoCompaction === "on",
+      });
+    if (config.options?.steeringMode)
+      await rpc.request("set_steering_mode", {
+        mode: config.options.steeringMode,
+      });
     return {
       id: state.sessionFile,
+      async controls() {
+        const levels = await rpc.request<{ levels?: string[] }>(
+          "get_available_thinking_levels",
+        );
+        const commands = await rpc.request<{
+          commands?: { name: string; description?: string }[];
+        }>("get_commands");
+        return {
+          compact: true,
+          commands: (commands.commands ?? []).map((item) => ({
+            name: item.name,
+            description: item.description ?? "",
+          })),
+          options: [
+            {
+              id: "thinkingLevel",
+              label: "推理强度",
+              value: state.thinkingLevel ?? "",
+              options: (levels.levels ?? []).map((id) => ({ id, label: id })),
+            },
+            {
+              id: "autoCompaction",
+              label: "自动压缩",
+              value: state.autoCompactionEnabled ? "on" : "off",
+              options: [
+                { id: "on", label: "开启" },
+                { id: "off", label: "关闭" },
+              ],
+            },
+            {
+              id: "steeringMode",
+              label: "追加消息",
+              value: state.steeringMode ?? "all",
+              options: [
+                { id: "all", label: "全部" },
+                { id: "one-at-a-time", label: "逐条" },
+              ],
+            },
+          ],
+        };
+      },
+      async compact() {
+        await emit({ type: "runtime", state: { compaction: "running" } });
+        try {
+          await rpc.request("compact", {}, 0);
+          await emit({ type: "runtime", state: { compaction: "completed" } });
+        } catch (error) {
+          await emit({ type: "runtime", state: { compaction: "failed" } });
+          throw error;
+        }
+      },
       models: async () => {
         const result = await rpc.request<{
           models: {
@@ -181,8 +283,20 @@ export const piProvider: EngineProvider = {
         if (result.disposition === "handled") completion.resolve();
         await completion.promise;
         await events;
+        const stats = await rpc.request<{
+          contextUsage?: { tokens: number | null; contextWindow: number };
+        }>("get_session_stats");
+        if (stats.contextUsage)
+          await emit({
+            type: "runtime",
+            state: {
+              contextTokens: stats.contextUsage.tokens,
+              contextWindow: stats.contextUsage.contextWindow,
+            },
+          });
       },
       async interrupt() {
+        await ui.interrupt();
         await rpc.request("clear_queue");
         await rpc.request("abort");
       },
@@ -262,9 +376,7 @@ export const piProvider: EngineProvider = {
         }
         return true;
       },
-      answer: async () => {
-        throw new Error("Pi 使用工作电脑的授权。");
-      },
+      answer: ui.answer,
     };
   },
 };

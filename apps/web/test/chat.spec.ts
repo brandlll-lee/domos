@@ -14,12 +14,12 @@ let database: string;
 let directory: string;
 let toolName: string;
 
-async function start(port = 0) {
+async function start(port = 0, native = false) {
   worker = fork(
     fileURLToPath(
       new URL("../../api/test/fixtures/web-server.ts", import.meta.url),
     ),
-    [database, String(port)],
+    [database, String(port), native ? "native" : ""],
     { silent: true, execArgv: [] },
   );
   worker.stderr?.resume();
@@ -195,6 +195,67 @@ test.beforeEach(async () => {
 test.afterEach(async () => {
   if (worker.exitCode === null) await stop();
   await rm(directory, { recursive: true, force: true });
+});
+
+test("native controls, interaction, compaction and Usage work in both themes", async ({
+  page,
+}, testInfo) => {
+  await stop();
+  await start(0, true);
+  await page.goto(url);
+  await page.getByLabel("消息", { exact: true }).fill("Work");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const approval = page.getByRole("region", {
+    name: "Choose target",
+    exact: true,
+  });
+  await expect(approval).toBeVisible();
+  await approval
+    .getByRole("combobox", { name: "Choose target", exact: true })
+    .click();
+  await page.getByRole("option", { name: "Preview", exact: true }).click();
+  await approval.getByRole("button", { name: "发送回答", exact: true }).click();
+  await expect(page.getByLabel("Domos 的回复")).toContainText(
+    "Complete Preview",
+  );
+  const details = await openDetails(page);
+  await chooseDetail(details, "连接与账号");
+  await details
+    .getByRole("button", { name: "读取原生配置", exact: true })
+    .click();
+  await details
+    .getByRole("combobox", { name: "推理强度", exact: true })
+    .click();
+  await page.getByRole("option", { name: "high", exact: true }).click();
+  await expect(
+    details.getByRole("combobox", { name: "推理强度", exact: true }),
+  ).toContainText("high");
+  await details.getByRole("button", { name: "关闭", exact: true }).click();
+  await page.getByRole("button", { name: "压缩上下文", exact: true }).click();
+  await expect(page.getByLabel("上下文状态", { exact: true })).toContainText(
+    "压缩完成",
+  );
+  const settings = await openSettings(page);
+  await settings.getByRole("tab", { name: "Usage", exact: true }).click();
+  const table = settings.getByRole("table", { name: "用量明细", exact: true });
+  await expect(table).toContainText("test-provider");
+  await expect(table).toContainText("test-model");
+  await expect(table).toContainText("未提供");
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await expect(table).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath(`usage-${colorScheme}.png`),
+      animations: "disabled",
+    });
+  }
+  await settings
+    .getByRole("combobox", { name: "Harness", exact: true })
+    .click();
+  await page.getByRole("option", { name: "Codex", exact: true }).click();
+  await expect(
+    settings.getByText("此范围还没有用量记录。", { exact: true }),
+  ).toBeVisible();
 });
 
 async function createBot(

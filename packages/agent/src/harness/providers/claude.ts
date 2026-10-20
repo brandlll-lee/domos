@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { JsonLines } from "../json-lines.ts";
 import {
+  type EngineControls,
   type EngineImage,
   type EngineOpen,
   type EngineProvider,
@@ -20,11 +21,36 @@ type ClaudePart = {
 };
 type ClaudeFrame = {
   type: string;
+  subtype?: string;
+  status?: string;
+  model?: string;
+  permissionMode?: string;
+  mcp_servers?: { name: string; status: string }[];
+  skills?: string[];
+  compact_result?: string;
+  compact_metadata?: { trigger?: string; pre_tokens?: number };
+  parent_tool_use_id?: string | null;
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
+  };
+  modelUsage?: Record<string, { contextWindow?: number }>;
+  total_cost_usd?: number;
   uuid?: string;
   isReplay?: boolean;
   queued_turn_count?: number;
   origin?: { kind: string };
-  response?: { request_id: string; subtype: string; error?: string };
+  response?: {
+    request_id: string;
+    subtype: string;
+    error?: string;
+    response?: {
+      models?: { value: string; supportedEffortLevels?: string[] }[];
+      commands?: { name: string; description: string }[];
+    };
+  };
   is_error?: boolean;
   message?: { id: string; content?: ClaudePart[] };
   event?: {
@@ -56,6 +82,19 @@ export const claudeProvider: EngineProvider = {
     let events = Promise.resolve();
     let messageId = "";
     let running = false;
+    let compacting = false;
+    let compactBoundary = false;
+    let nativeModel = config.model;
+    const controls = new Map<
+      string,
+      {
+        resolve: (
+          value: NonNullable<ClaudeFrame["response"]>["response"],
+        ) => void;
+        reject: (error: Error) => void;
+        timer: NodeJS.Timeout;
+      }
+    >();
     const inputs = new Map<
       string,
       {
@@ -97,6 +136,19 @@ export const claudeProvider: EngineProvider = {
       | { id: string; result: ReturnType<typeof Promise.withResolvers<void>> }
       | undefined;
     rpc.on("frame", (frame: ClaudeFrame) => {
+      if (frame.type === "control_response" && frame.response) {
+        const pending = controls.get(frame.response.request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          controls.delete(frame.response.request_id);
+          if (frame.response.subtype === "error")
+            pending.reject(
+              new Error(frame.response.error ?? "引擎拒绝了配置请求。"),
+            );
+          else pending.resolve(frame.response.response);
+          return;
+        }
+      }
       if (
         frame.type === "control_response" &&
         frame.response?.request_id === interruption?.id
@@ -110,6 +162,25 @@ export const claudeProvider: EngineProvider = {
       }
       events = events
         .then(async () => {
+          if (frame.type === "system" && frame.subtype === "init") {
+            nativeModel = frame.model ?? nativeModel;
+            await emit({
+              type: "runtime",
+              state: {
+                integrations: frame.mcp_servers ?? [],
+                skills: frame.skills ?? [],
+              },
+            });
+          }
+          if (frame.type === "system" && frame.status === "compacting")
+            await emit({ type: "runtime", state: { compaction: "running" } });
+          if (frame.type === "system" && frame.subtype === "compact_boundary") {
+            compactBoundary = true;
+            await emit({ type: "runtime", state: { compaction: "completed" } });
+          }
+          if (frame.compact_result === "failed")
+            await emit({ type: "runtime", state: { compaction: "failed" } });
+          if (frame.parent_tool_use_id) return;
           if (frame.type === "stream_event") {
             if (frame.event?.message) messageId = frame.event.message.id;
             const delta = frame.event?.delta;
@@ -166,6 +237,33 @@ export const claudeProvider: EngineProvider = {
           }
           if (frame.type === "result") {
             if (frame.origin?.kind === "task-notification") return;
+            if (frame.usage && frame.uuid) {
+              const models = Object.keys(frame.modelUsage ?? {});
+              const model =
+                models.length > 1 ? null : (models[0] ?? nativeModel);
+              await emit({
+                type: "usage",
+                usage: {
+                  id: `claude:${frame.uuid}`,
+                  source: "claude.result",
+                  provider: null,
+                  model: model ?? null,
+                  input: frame.usage.input_tokens ?? null,
+                  output: frame.usage.output_tokens ?? null,
+                  cacheRead: frame.usage.cache_read_input_tokens ?? null,
+                  cacheWrite: frame.usage.cache_creation_input_tokens ?? null,
+                  costUsd: frame.total_cost_usd ?? null,
+                  costScope: "session",
+                },
+              });
+              if (model && frame.modelUsage?.[model]?.contextWindow)
+                await emit({
+                  type: "runtime",
+                  state: {
+                    contextWindow: frame.modelUsage[model].contextWindow,
+                  },
+                });
+            }
             if (
               !frame.is_error &&
               (inputs.size || (frame.queued_turn_count ?? 0) > 0)
@@ -173,7 +271,7 @@ export const claudeProvider: EngineProvider = {
               return;
             running = false;
             releaseInputs();
-            if (frame.is_error)
+            if (frame.is_error || (compacting && !compactBoundary))
               completion?.reject(
                 new Error("Claude Code 未完成任务。请检查账号和网络。"),
               );
@@ -187,6 +285,11 @@ export const claudeProvider: EngineProvider = {
       releaseInputs();
       completion?.reject(error);
       interruption?.result.reject(error);
+      for (const pending of controls.values()) {
+        clearTimeout(pending.timer);
+        pending.reject(error);
+      }
+      controls.clear();
     });
     await process.launch({
       command: "claude",
@@ -203,23 +306,89 @@ export const claudeProvider: EngineProvider = {
         id,
         "--append-system-prompt-file",
         "__DOMOS_PROMPT__",
+        "--append-subagent-system-prompt-file",
+        "__DOMOS_PROMPT__",
         "--mcp-config",
         "__DOMOS_MCP__",
         "--strict-mcp-config",
         "--permission-prompt-tool",
         "mcp__domos__approve",
         ...(config.model ? ["--model", config.model] : []),
+        ...(config.options?.effort ? ["--effort", config.options.effort] : []),
+        ...(config.options?.permissionMode
+          ? ["--permission-mode", config.options.permissionMode]
+          : []),
       ],
       instructions,
       mcp: { url: ready.url },
       env: { ...env, CLAUDE_CONFIG_DIR: `${ready.home}/claude` },
     });
     await emit({ type: "session", id });
-    return {
+    const session = {
       id,
+      async controls(): Promise<EngineControls> {
+        const requestId = randomUUID();
+        const result =
+          Promise.withResolvers<
+            NonNullable<ClaudeFrame["response"]>["response"]
+          >();
+        const timer = setTimeout(() => {
+          controls.delete(requestId);
+          result.reject(new Error("引擎没有返回配置目录。"));
+        }, engineLimits.handshakeMs);
+        timer.unref();
+        controls.set(requestId, { ...result, timer });
+        await rpc.send({
+          type: "control_request",
+          request_id: requestId,
+          request: { subtype: "initialize" },
+        });
+        const catalog = await result.promise;
+        const model = catalog?.models?.find(
+          (item) => item.value === nativeModel,
+        );
+        return {
+          compact: true,
+          commands: catalog?.commands ?? [],
+          options: [
+            {
+              id: "effort",
+              label: "推理强度",
+              value: config.options?.effort ?? "",
+              options: (model?.supportedEffortLevels ?? []).map((id) => ({
+                id,
+                label: id,
+              })),
+            },
+            {
+              id: "permissionMode",
+              label: "工作模式",
+              value: config.options?.permissionMode ?? "default",
+              options: [
+                { id: "default", label: "默认确认" },
+                { id: "plan", label: "计划" },
+                { id: "acceptEdits", label: "允许文件编辑" },
+              ],
+            },
+          ],
+        };
+      },
+      async compact() {
+        compacting = true;
+        compactBoundary = false;
+        await emit({ type: "runtime", state: { compaction: "running" } });
+        try {
+          await session.prompt("/compact");
+        } catch (error) {
+          await emit({ type: "runtime", state: { compaction: "failed" } });
+          throw error;
+        } finally {
+          compacting = false;
+        }
+      },
       models: async () => [],
       vision: async () => null,
-      async prompt(text, images = []) {
+      async prompt(text: string, images: EngineImage[] = []) {
         completion = Promise.withResolvers<void>();
         void completion.promise.catch(() => {});
         const uuid = randomUUID();
@@ -230,7 +399,10 @@ export const claudeProvider: EngineProvider = {
         await completion.promise;
         await events;
       },
-      async steer(text, images = []) {
+      async steer(
+        text: string,
+        images: EngineImage[] = [],
+      ): Promise<"accepted" | "refused" | "uncertain"> {
         if (!running) return "refused";
         const uuid = randomUUID();
         const receipt = Promise.withResolvers<"accepted" | "uncertain">();
@@ -265,7 +437,7 @@ export const claudeProvider: EngineProvider = {
         });
         await interruption.result.promise;
       },
-      async recover(cursor, inputCount = 1) {
+      async recover(cursor: string | null, inputCount = 1) {
         if (!cursor?.startsWith("claude:") || !process.history) return false;
         const history = (await process.history(id)) as {
           type: string;
@@ -313,5 +485,6 @@ export const claudeProvider: EngineProvider = {
         throw new Error("请回复当前确认卡片。");
       },
     };
+    return session;
   },
 };

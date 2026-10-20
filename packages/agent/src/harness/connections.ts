@@ -86,6 +86,43 @@ export class EngineConnections {
     });
   }
 
+  controls(
+    botId: number,
+    config: EngineConfig,
+    sessionId: string | null,
+    context: Context,
+  ) {
+    return this.exclusive(botId, async () => {
+      const worker = await this.execution.computers.process(
+        botId,
+        [],
+        async () => {
+          throw new Error("工具不可用。");
+        },
+        context,
+      );
+      try {
+        const session = await engineProvider(config.provider).open({
+          process: worker,
+          config,
+          sessionId,
+          instructions: "Domos configuration check.",
+          emit: async () => {},
+          env: await this.execution.environment(config),
+        });
+        return (
+          (await session.controls?.()) ?? {
+            options: [],
+            commands: [],
+            compact: false,
+          }
+        );
+      } finally {
+        await worker.close();
+      }
+    });
+  }
+
   async accounts(botId: number, config: EngineConfig, context: Context) {
     if (config.provider !== "opencode")
       throw new Error("此引擎不提供服务商列表。");

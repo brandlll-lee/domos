@@ -16,6 +16,7 @@ import { EngineDoc, EngineInputDoc, EngineMessage } from "./state.ts";
 import { engineTask } from "./task.ts";
 import { userMessage } from "./task-types.ts";
 import type { EngineAnswer, EngineConfig, EngineInput } from "./types.ts";
+import { readUsage, type UsageFilter } from "./usage.ts";
 
 export class Engines {
   private readonly stopping = new Set<number>();
@@ -44,6 +45,7 @@ export class Engines {
           : null,
       },
       revision: doc?.revision ?? 0,
+      runtime: doc?.runtime ?? null,
       busy: Boolean(doc?.tasks.length),
       error: doc?.error ?? null,
       prepared: Boolean(
@@ -57,6 +59,10 @@ export class Engines {
         capabilities,
       })),
     };
+  }
+
+  usage(botIds: number[], filter: UsageFilter, context: Context) {
+    return readUsage(this.harness, botIds, filter, context);
   }
 
   async view(botId: number, context: Context) {
@@ -102,6 +108,26 @@ export class Engines {
     };
   }
 
+  async controls(botId: number, context: Context) {
+    const id = botId as ConversationId;
+    const profile = await this.profile(botId, context);
+    if (profile.busy) throw new WorkError("CONFLICT", "请先停止 Bot 的工作。");
+    const doc = await this.harness.snapshot(EngineDoc, id, context);
+    const controls = await this.connections.controls(
+      botId,
+      profile.config,
+      doc?.sessionId ?? null,
+      context,
+    );
+    await this.harness.commit(async (tx) => {
+      const current = await tx.doc(EngineDoc, id);
+      if (current.tasks.length || current.revision !== profile.revision)
+        throw new WorkError("CONFLICT", "配置已更新。请重新读取。");
+      current.runtime = { ...current.runtime, controls };
+    }, context);
+    return controls;
+  }
+
   async configure(
     botId: number,
     input: { config: EngineConfig; revision: number; requestId: string },
@@ -120,6 +146,19 @@ export class Engines {
         throw new WorkError("CONFLICT", "请先停止 Bot 的工作。");
       if (doc.revision !== input.revision)
         throw new WorkError("CONFLICT", "配置已更新。请刷新后重试。");
+      const reset =
+        doc.config.provider !== input.config.provider ||
+        doc.config.model !== input.config.model;
+      for (const [key, value] of Object.entries(input.config.options ?? {})) {
+        const control = doc.runtime?.controls?.options.find(
+          (item) => item.id === key,
+        );
+        if (reset || !control?.options.some((item) => item.id === value))
+          throw new WorkError(
+            "BAD_REQUEST",
+            "请先读取此模型的原生配置，再选择可用值。",
+          );
+      }
       doc.config = input.config;
       doc.revision++;
       doc.requestId = input.requestId;
@@ -134,6 +173,12 @@ export class Engines {
           },
         });
       }
+      if (!reset) {
+        for (const option of doc.runtime?.controls?.options ?? [])
+          option.value = input.config.options?.[option.id] ?? option.value;
+        return;
+      }
+      doc.runtime = {};
       doc.sessionId = null;
       doc.turnId = null;
       doc.dispatch = "ready";
@@ -182,8 +227,10 @@ export class Engines {
       });
       const turnId = `engine:${submission.id}`;
       const entry = await tx.appendEntry(id, {
-        kind: EngineMessage,
-        data: userMessage(turnId, input.text, input.attachments),
+        kind: input.operation ? "domos.engine-operation" : EngineMessage,
+        data: input.operation
+          ? { operation: input.operation }
+          : userMessage(turnId, input.text, input.attachments),
       });
       tx.placeSubmission(submission.id, entry.id);
       const taskId = await tx.createTask(
@@ -198,6 +245,7 @@ export class Engines {
           submissionId: submission.id,
           previous: doc.taskId,
           turnId,
+          ...(input.operation ? { operation: input.operation } : {}),
           ...(input.attachments?.length
             ? { attachments: input.attachments }
             : {}),

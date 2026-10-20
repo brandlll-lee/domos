@@ -20,11 +20,28 @@ export type CodexFrame = {
   id?: string | number;
   method: string;
   params?: {
+    threadId?: string;
+    turnId?: string;
+    requestId?: string | number;
+    tokenUsage?: {
+      total?: {
+        inputTokens?: number;
+        outputTokens?: number;
+        cachedInputTokens?: number;
+      };
+      last?: { inputTokens?: number };
+      modelContextWindow?: number;
+    };
     itemId?: string;
     delta?: string;
     item?: CodexItem;
     turn?: CodexTurn;
-    questions?: { id: string; question: string }[];
+    questions?: {
+      id: string;
+      question: string;
+      options?: { label: string; description?: string }[];
+      isOther?: boolean;
+    }[];
     permissions?: Record<string, unknown>;
     command?: string;
     cwd?: string;

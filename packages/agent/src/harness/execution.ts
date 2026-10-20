@@ -13,6 +13,10 @@ import {
   permissionTool,
   productCatalog,
 } from "./product-tools.ts";
+import {
+  claudeApproval,
+  claudePermission,
+} from "./providers/claude-approval.ts";
 import { engineProvider } from "./providers/index.ts";
 import { EngineDoc, EngineInputDoc } from "./state.ts";
 import type { EngineRuntime } from "./task-types.ts";
@@ -84,6 +88,7 @@ export class EngineExecution {
     context: Context,
     emit: (event: EngineEvent) => Promise<void>,
     attachments: readonly Attachment[] = [],
+    operation?: "compact",
   ) {
     const doc = await runtime.snapshot(
       EngineDoc,
@@ -160,29 +165,21 @@ export class EngineExecution {
           try {
             await emit({
               type: "approval",
-              approval: {
-                id,
-                title: "允许这次操作？",
-                detail: `${String(args.tool_name)}\n${JSON.stringify(args.input ?? {})}`,
-                kind: "permission",
-              },
+              approval: claudeApproval(id, args),
             });
             const response = await answer.promise;
             return {
               content: [
                 {
                   type: "text",
-                  text: JSON.stringify(
-                    response.allow
-                      ? { behavior: "allow", updatedInput: args.input ?? {} }
-                      : { behavior: "deny", message: "用户未授权这次操作。" },
-                  ),
+                  text: JSON.stringify(claudePermission(args, response)),
                 },
               ],
             };
           } finally {
             clearTimeout(timer);
             active.permissions.delete(id);
+            await emit({ type: "approval_closed", id });
           }
         },
         context,
@@ -241,12 +238,33 @@ export class EngineExecution {
         sessionId: doc.sessionId,
         instructions,
         emit: async (event) => {
-          await emit(event);
+          if (
+            !operation ||
+            event.type === "session" ||
+            event.type === "runtime" ||
+            event.type === "usage" ||
+            event.type === "approval" ||
+            event.type === "approval_closed" ||
+            event.type === "accepted"
+          )
+            await emit(event);
           if (event.type === "accepted" && event.ready !== false)
             active.inputs?.start();
         },
         env: await this.environment(doc.config),
       });
+      if (operation === "compact") {
+        if (doc.dispatch !== "ready")
+          throw new Error("压缩结果未确认。请先检查上下文状态。");
+        if (!active.session.compact)
+          throw new Error("此引擎没有提供压缩能力。");
+        await runtime.commit(async (tx) => {
+          (await tx.doc(EngineDoc, runtime.conversationId)).dispatch =
+            "sending";
+        }, context);
+        await active.session.compact();
+        return;
+      }
       if (doc.dispatch !== "ready") {
         let inputCount = 1;
         await runtime.commit(async (tx) => {

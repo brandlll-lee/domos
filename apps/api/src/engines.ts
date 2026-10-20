@@ -9,6 +9,9 @@ export const engineConfig = z
   .object({
     provider: z.enum(engineIds),
     model: z.string().trim().min(1).max(256).nullable(),
+    options: z
+      .record(z.string().min(1).max(128), z.string().max(1024))
+      .optional(),
   })
   .strict();
 export function engineRouter(bots: Bots, engines?: Engines) {
@@ -33,6 +36,54 @@ export function engineRouter(bots: Bots, engines?: Engines) {
     }
   }
   return {
+    controls: os
+      .input(botTarget)
+      .handler(({ input }) =>
+        operation(async () =>
+          (await target(input.botId, true)).engines.controls(
+            input.botId,
+            context,
+          ),
+        ),
+      ),
+    compact: os
+      .input(botTarget.extend({ requestId: z.uuid() }))
+      .handler(({ input }) =>
+        operation(async () => {
+          const { engines } = await target(input.botId, true);
+          const submission = await engines.submit(
+            input.botId,
+            {
+              text: "",
+              requestId: input.requestId,
+              whenBusy: "reject",
+              operation: "compact",
+            },
+            context,
+          );
+          return { id: submission.id };
+        }),
+      ),
+    usage: os
+      .input(
+        z.object({
+          botId: z.number().int().nonnegative().optional(),
+          harness: z.enum(engineIds).optional(),
+          provider: providerId.optional(),
+          model: providerId.optional(),
+          from: z.number().nonnegative().optional(),
+          to: z.number().nonnegative().optional(),
+        }),
+      )
+      .handler(async ({ input }) =>
+        engines
+          ? engines.usage(
+              (await bots.list(context)).map((bot) => bot.id),
+              input,
+              context,
+            )
+          : [],
+      ),
     catalog: os.handler(() =>
       engineCatalog().filter((provider) => engines || provider.id === "pi"),
     ),
@@ -51,6 +102,7 @@ export function engineRouter(bots: Bots, engines?: Engines) {
           prepared: Boolean(profile.model),
           busy: false,
           error: null,
+          runtime: null,
           providers: engineCatalog().filter((provider) => provider.id === "pi"),
         };
       }),
@@ -167,6 +219,13 @@ export function engineRouter(bots: Bots, engines?: Engines) {
           id: z.string().min(1).max(256),
           allow: z.boolean(),
           text: z.string().max(16000).optional(),
+          answers: z
+            .record(
+              z.string().min(1).max(256),
+              z.array(z.string().max(16000)).max(100),
+            )
+            .optional(),
+          optionId: z.string().min(1).max(256).optional(),
         }),
       )
       .handler(({ input }) =>

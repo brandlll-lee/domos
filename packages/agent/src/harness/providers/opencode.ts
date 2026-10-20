@@ -4,11 +4,14 @@ import {
   ndJsonStream,
   PROTOCOL_VERSION,
   type RequestPermissionRequest,
+  type SessionConfigOption,
 } from "@agentclientprotocol/sdk";
 import {
   type EngineAnswer,
+  type EngineControls,
   type EngineOpen,
   type EngineProvider,
+  type EngineSession,
   engineLimits,
 } from "../types.ts";
 
@@ -20,6 +23,14 @@ type NativeMessage = {
     finish?: string;
     error?: unknown;
     time?: { completed?: number };
+    modelID?: string;
+    providerID?: string;
+    cost?: number;
+    tokens?: {
+      input?: number;
+      output?: number;
+      cache?: { read?: number; write?: number };
+    };
   };
   parts: { type: string; text?: string }[];
 };
@@ -43,6 +54,54 @@ export const opencodeProvider: EngineProvider = {
     let sequence = 0;
     let active = false;
     let messageId = "";
+    let configOptions: SessionConfigOption[] = [];
+    let commands: EngineControls["commands"] = [];
+    let modes:
+      | {
+          currentModeId: string;
+          availableModes: { id: string; name: string }[];
+        }
+      | undefined;
+    const controls = (): EngineControls => ({
+      compact: commands.some((item) => item.name === "compact"),
+      commands,
+      options: [
+        ...configOptions
+          .filter((item) => item.category !== "model")
+          .map((item) => ({
+            id: item.id,
+            label: item.name,
+            value: String(item.currentValue),
+            options:
+              item.type === "boolean"
+                ? [
+                    { id: "true", label: "开启" },
+                    { id: "false", label: "关闭" },
+                  ]
+                : item.options.flatMap((option) =>
+                    "value" in option
+                      ? [{ id: option.value, label: option.name }]
+                      : option.options.map((value) => ({
+                          id: value.value,
+                          label: value.name,
+                        })),
+                  ),
+          })),
+        ...(modes
+          ? [
+              {
+                id: "mode",
+                label: "工作模式",
+                value: modes.currentModeId,
+                options: modes.availableModes.map((item) => ({
+                  id: item.id,
+                  label: item.name,
+                })),
+              },
+            ]
+          : []),
+      ],
+    });
     const pending = new Map<
       string,
       {
@@ -71,12 +130,17 @@ export const opencodeProvider: EngineProvider = {
                   request.toolCall.title ??
                   JSON.stringify(request.toolCall.rawInput ?? {}),
                 kind: "permission",
+                options: request.options.map((option) => ({
+                  id: option.optionId,
+                  label: option.name,
+                })),
               },
             });
             const answer = await result.promise;
-            const option = request.options.find(
-              (item) =>
-                item.kind === (answer.allow ? "allow_once" : "reject_once"),
+            const option = request.options.find((item) =>
+              answer.optionId
+                ? item.optionId === answer.optionId
+                : item.kind === (answer.allow ? "allow_once" : "reject_once"),
             );
             return {
               outcome: option
@@ -86,9 +150,37 @@ export const opencodeProvider: EngineProvider = {
           } finally {
             clearTimeout(timer);
             pending.delete(id);
+            await emit({ type: "approval_closed", id });
           }
         },
         async sessionUpdate({ update }) {
+          if (update.sessionUpdate === "usage_update")
+            await emit({
+              type: "runtime",
+              state: { contextTokens: update.used, contextWindow: update.size },
+            });
+          if (update.sessionUpdate === "notice")
+            await emit({
+              type: "runtime",
+              state: {
+                notices: { [update.title]: update.description ?? update.title },
+              },
+            });
+          if (update.sessionUpdate === "available_commands_update") {
+            commands = update.availableCommands.map((item) => ({
+              name: item.name,
+              description: item.description,
+            }));
+            await emit({ type: "runtime", state: { controls: controls() } });
+          }
+          if (update.sessionUpdate === "config_option_update") {
+            configOptions = update.configOptions;
+            await emit({ type: "runtime", state: { controls: controls() } });
+          }
+          if (update.sessionUpdate === "current_mode_update" && modes) {
+            modes.currentModeId = update.currentModeId;
+            await emit({ type: "runtime", state: { controls: controls() } });
+          }
           if (!active) return;
           if (
             (update.sessionUpdate === "agent_message_chunk" ||
@@ -150,7 +242,9 @@ export const opencodeProvider: EngineProvider = {
     });
     const hello = await rpc.initialize({
       protocolVersion: PROTOCOL_VERSION,
-      clientCapabilities: {},
+      clientCapabilities: {
+        session: { configOptions: { boolean: {} }, notices: {} },
+      },
       clientInfo: { name: "domos", version: "1.0.0" },
     });
     const params = {
@@ -165,6 +259,8 @@ export const opencodeProvider: EngineProvider = {
       ? await rpc.loadSession({ ...params, sessionId })
       : await rpc.newSession(params);
     const id = sessionId ?? (result as { sessionId: string }).sessionId;
+    configOptions = result.configOptions ?? [];
+    modes = result.modes ?? undefined;
     const modelOption = result.configOptions?.find(
       (item) => item.category === "model",
     );
@@ -174,13 +270,67 @@ export const opencodeProvider: EngineProvider = {
         configId: modelOption.id,
         value: config.model,
       });
+    for (const [key, value] of Object.entries(config.options ?? {})) {
+      if (key === "mode" && modes) {
+        if (!modes.availableModes.some((item) => item.id === value))
+          throw new Error("此引擎没有提供这个工作模式。");
+        await rpc.setSessionMode({ sessionId: id, modeId: value });
+        modes.currentModeId = value;
+      } else {
+        const option = configOptions.find((item) => item.id === key);
+        if (
+          !option ||
+          !controls()
+            .options.find((item) => item.id === key)
+            ?.options.some((item) => item.id === value)
+        )
+          throw new Error("此引擎没有提供这个配置值。");
+        const changed = await rpc.setSessionConfigOption({
+          sessionId: id,
+          configId: key,
+          ...(option.type === "boolean"
+            ? { type: "boolean", value: value === "true" }
+            : { value }),
+        });
+        if (changed.configOptions.length) configOptions = changed.configOptions;
+      }
+    }
     await emit({ type: "session", id });
     const messages = () =>
       process.request<NativeMessage[]>(
         `/session/${encodeURIComponent(id)}/message`,
       );
-    return {
+    const record = async (message: NativeMessage) => {
+      if (message.info.tokens || message.info.cost !== undefined)
+        await emit({
+          type: "usage",
+          usage: {
+            id: message.info.id,
+            source: "opencode.message",
+            provider: message.info.providerID ?? null,
+            model: message.info.modelID ?? null,
+            input: message.info.tokens?.input ?? null,
+            output: message.info.tokens?.output ?? null,
+            cacheRead: message.info.tokens?.cache?.read ?? null,
+            cacheWrite: message.info.tokens?.cache?.write ?? null,
+            costUsd: message.info.cost ?? null,
+          },
+        });
+    };
+    const session: EngineSession = {
       id,
+      controls: async () => controls(),
+      async compact() {
+        if (!controls().compact) throw new Error("此引擎尚未提供压缩命令。");
+        await emit({ type: "runtime", state: { compaction: "running" } });
+        try {
+          await session.prompt("/compact");
+          await emit({ type: "runtime", state: { compaction: "completed" } });
+        } catch (error) {
+          await emit({ type: "runtime", state: { compaction: "failed" } });
+          throw error;
+        }
+      },
       vision: async () =>
         hello.agentCapabilities?.promptCapabilities?.image ? null : false,
       models: async () =>
@@ -215,7 +365,8 @@ export const opencodeProvider: EngineProvider = {
           if (outcome.stopReason === "cancelled")
             throw new Error("工作已停止。");
           for (const message of (await messages()).slice(history.length))
-            if (message.info.role === "assistant")
+            if (message.info.role === "assistant") {
+              await record(message);
               await emit({
                 type: "message",
                 id: message.info.id,
@@ -224,6 +375,7 @@ export const opencodeProvider: EngineProvider = {
                   .map((part) => part.text ?? "")
                   .join("\n"),
               });
+            }
         } finally {
           active = false;
         }
@@ -254,7 +406,8 @@ export const opencodeProvider: EngineProvider = {
         )
           return false;
         for (const message of turn)
-          if (message.info.role === "assistant")
+          if (message.info.role === "assistant") {
+            await record(message);
             await emit({
               type: "message",
               id: message.info.id,
@@ -263,6 +416,7 @@ export const opencodeProvider: EngineProvider = {
                 .map((part) => part.text ?? "")
                 .join("\n"),
             });
+          }
         return true;
       },
       async answer(requestId, answer) {
@@ -271,5 +425,6 @@ export const opencodeProvider: EngineProvider = {
         item.answer(answer);
       },
     };
+    return session;
   },
 };

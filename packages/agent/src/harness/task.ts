@@ -9,6 +9,7 @@ import {
   type EngineTaskInput,
   stored,
 } from "./task-types.ts";
+import { finishUsage } from "./usage.ts";
 
 export function engineTask(execution: EngineExecution) {
   return defineTask<EngineTaskInput, EngineCheckpoint, null, object>({
@@ -47,6 +48,10 @@ export function engineTask(execution: EngineExecution) {
             doc.turnId = null;
             doc.drafts = [];
             doc.error = null;
+            if (doc.runtime) {
+              doc.runtime.notices = {};
+              delete doc.runtime.editorText;
+            }
           }
           doc.approvals = [];
         }, context);
@@ -69,6 +74,7 @@ export function engineTask(execution: EngineExecution) {
             context,
             (event) => projection.emit(event),
             task.input.attachments,
+            task.input.operation,
           );
           await projection.flush();
         } catch (cause) {
@@ -96,6 +102,7 @@ async function finish(
 ) {
   await runtime.commit(async (tx, current) => {
     const doc = await tx.doc(EngineDoc, runtime.conversationId);
+    await finishUsage(tx, runtime, doc.config.provider, doc.sessionId);
     const additional = [];
     for (const id of doc.tasks) {
       if (id === runtime.taskId) continue;
@@ -132,7 +139,7 @@ async function finish(
         doc.preparedComputerId = doc.computerId;
       }
     }
-    if (error)
+    if (error && !current.input.operation)
       await tx.appendEntry(runtime.conversationId, {
         kind: EngineMessage,
         data: stored({
@@ -146,6 +153,18 @@ async function finish(
           ...(reason === "aborted" ? {} : { error }),
         }),
       });
+    if (current.input.operation) {
+      if (error) doc.runtime = { ...doc.runtime, compaction: "failed" };
+      answer = (
+        await tx.appendEntry(runtime.conversationId, {
+          kind: "domos.engine-operation",
+          data: {
+            operation: current.input.operation,
+            status: error ? "failed" : "completed",
+          },
+        })
+      ).id;
+    }
     if (!answer && !error)
       answer = (
         await tx.appendEntry(runtime.conversationId, {

@@ -19,6 +19,94 @@ function protocol() {
   };
 }
 
+test("Pi returns extension selections and cancellations to the native request", async () => {
+  const { process, events, emit } = protocol();
+  process.receive = (request) => {
+    if (request.type === "extension_ui_response") return;
+    process.frame({
+      type: "response",
+      id: request.id,
+      success: true,
+      data:
+        request.type === "get_state"
+          ? { sessionFile: "/work/session.jsonl" }
+          : {},
+    });
+  };
+  const session = await piProvider.open({
+    process,
+    config: { provider: "pi", model: null },
+    sessionId: null,
+    instructions: "Role",
+    emit,
+  });
+  process.frame({
+    type: "extension_ui_request",
+    id: "choose",
+    method: "select",
+    title: "Choose target",
+    options: ["Production", "Preview"],
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(events).toContainEqual({
+    type: "approval",
+    approval: {
+      id: "choose",
+      kind: "question",
+      title: "Choose target",
+      detail: "",
+      questions: [
+        {
+          id: "choose",
+          title: "Choose target",
+          options: [
+            { id: "Production", label: "Production" },
+            { id: "Preview", label: "Preview" },
+          ],
+        },
+      ],
+    },
+  });
+  await session.answer("choose", {
+    allow: true,
+    answers: { choose: ["Preview"] },
+  });
+  expect(process.requests).toContainEqual({
+    type: "extension_ui_response",
+    id: "choose",
+    value: "Preview",
+  });
+  process.frame({
+    type: "extension_ui_request",
+    id: "input",
+    method: "input",
+    title: "Name",
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  await session.answer("input", { allow: false });
+  expect(process.requests).toContainEqual({
+    type: "extension_ui_response",
+    id: "input",
+    cancelled: true,
+  });
+  process.frame({
+    type: "extension_ui_request",
+    id: "expired",
+    method: "confirm",
+    title: "Confirm",
+    message: "Continue?",
+    timeout: 1,
+  });
+  await expect
+    .poll(() => process.requests)
+    .toContainEqual({
+      type: "extension_ui_response",
+      id: "expired",
+      cancelled: true,
+    });
+  expect(events).toContainEqual({ type: "approval_closed", id: "expired" });
+});
+
 test.each([piProvider, claudeProvider])(
   "$id accepts a live input and waits for the continued reply",
   async (provider) => {

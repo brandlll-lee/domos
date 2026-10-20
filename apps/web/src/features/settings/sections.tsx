@@ -1,3 +1,4 @@
+import { ChartBarIcon } from "@phosphor-icons/react/dist/csr/ChartBar";
 import { CpuIcon } from "@phosphor-icons/react/dist/csr/Cpu";
 import { DesktopIcon } from "@phosphor-icons/react/dist/csr/Desktop";
 import { GearIcon } from "@phosphor-icons/react/dist/csr/Gear";
@@ -5,6 +6,7 @@ import type { ReactNode } from "react";
 import { ComputerSettings } from "../computer/settings.tsx";
 import { HostingModels } from "../hosting/models.tsx";
 import { GeneralSettings } from "./general.tsx";
+import { UsageSettings } from "./usage.tsx";
 
 export type SettingsAccess = {
   admin: boolean;
@@ -37,6 +39,13 @@ export const sections = {
           请让管理员连接模型。已连接的模型可在 Bot 详情中选择。
         </p>
       ),
+  },
+  usage: {
+    primary: true,
+    label: "Usage",
+    description: "按 Provider、Harness、Bot、模型和任务查看原生用量与成本。",
+    icon: ChartBarIcon,
+    render: () => <UsageSettings />,
   },
   computers: {
     primary: false,

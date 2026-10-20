@@ -13,6 +13,7 @@ export type EngineTaskInput = {
   previous: TaskId | null;
   turnId: string;
   attachments?: Attachment[];
+  operation?: "compact";
 };
 export type EngineCheckpoint = { phase: "run" };
 export type EngineRuntime = TaskRuntime<

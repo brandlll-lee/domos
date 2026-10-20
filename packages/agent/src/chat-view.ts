@@ -11,7 +11,11 @@ import type { Attachment } from "./attachments.ts";
 import type { MessageDelivery } from "./delivery.ts";
 import { FileInput } from "./files.ts";
 import { EngineMessage, type EngineState } from "./harness/state.ts";
-import type { EngineApproval, EngineConfig } from "./harness/types.ts";
+import type {
+  EngineApproval,
+  EngineConfig,
+  EngineRuntimeState,
+} from "./harness/types.ts";
 import type { ChatContent, ChatMessage } from "./messages.ts";
 import { RoutineInput } from "./work/routine-state.ts";
 
@@ -26,6 +30,7 @@ export type ChatView = {
   failed: boolean;
   engine?: EngineConfig;
   approvals?: EngineApproval[];
+  runtime?: EngineRuntimeState;
   error?: string | null;
   tools: {
     callId: string;
@@ -185,6 +190,7 @@ export function chatView(
       ? {
           engine: engine.config,
           approvals: [...engine.approvals],
+          runtime: engine.runtime,
           error: engine.error,
         }
       : {}),

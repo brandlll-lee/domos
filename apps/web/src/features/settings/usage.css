@@ -1,0 +1,43 @@
+.usage-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.usage-table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-control);
+}
+.usage-table {
+  width: 100%;
+  min-width: 48rem;
+  border-collapse: collapse;
+  font-size: var(--text-caption);
+  text-align: start;
+  font-variant-numeric: tabular-nums;
+}
+.usage-table th,
+.usage-table td {
+  padding: var(--space-3);
+  border-block-end: 1px solid var(--color-divider);
+  vertical-align: top;
+  text-align: start;
+}
+.usage-table thead th,
+.usage-table summary {
+  white-space: nowrap;
+}
+.usage-table thead,
+.usage-table tbody th {
+  font-weight: var(--weight-medium);
+}
+.usage-table small,
+.usage-table details span,
+.usage-table time {
+  display: block;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+.usage-table tbody tr:last-child > * {
+  border-block-end: 0;
+}

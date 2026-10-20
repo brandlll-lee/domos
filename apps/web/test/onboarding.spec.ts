@@ -599,7 +599,11 @@ test("first use prepares the default Bot with a computer and engine before share
       .click();
     await page.getByRole("button", { name: "设置", exact: true }).click();
     const settings = page.getByRole("main", { name: "设置", exact: true });
-    await expect(settings.getByRole("tab")).toHaveText(["通用", "模型"]);
+    await expect(settings.getByRole("tab")).toHaveText([
+      "通用",
+      "模型",
+      "Usage",
+    ]);
     await settings
       .getByRole("button", { name: "连接设备", exact: true })
       .click();

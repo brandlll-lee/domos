@@ -16,6 +16,7 @@ import { Composer } from "./composer.tsx";
 import { chatCopy } from "./copy.ts";
 import { ChatHeader } from "./header.tsx";
 import { Messages } from "./messages.tsx";
+import { RuntimeStatus } from "./runtime.tsx";
 import { Sidebar } from "./sidebar.tsx";
 import { useChat } from "./use-chat.ts";
 import { useComposerDock } from "./use-composer-dock.ts";
@@ -252,9 +253,17 @@ function BotChat({
               setDetailsOpen(true);
             }}
             status={
-              !!chat.view.approvals?.length && (
-                <Approvals botId={bot.id} approvals={chat.view.approvals} />
-              )
+              <>
+                <RuntimeStatus
+                  botId={bot.id}
+                  state={chat.view.runtime}
+                  busy={chat.view.busy}
+                  onDraft={(text) => draft.update({ text })}
+                />
+                {!!chat.view.approvals?.length && (
+                  <Approvals botId={bot.id} approvals={chat.view.approvals} />
+                )}
+              </>
             }
           />
         ) : (

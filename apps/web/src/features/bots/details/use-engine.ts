@@ -12,7 +12,8 @@ type EngineAction =
   | "install"
   | "login"
   | "cancel"
-  | "answer";
+  | "answer"
+  | "controls";
 type LoginInput = Omit<Parameters<typeof client.engines.login>[0], "botId">;
 
 export function useEngine(botId: number, active: boolean, running?: boolean) {
@@ -103,6 +104,11 @@ export function useEngine(botId: number, active: boolean, running?: boolean) {
     refresh,
     reload: () => run("read", ["engine", botId], refresh),
     inspect: () => run("inspect", ["inspect", botId], inspect),
+    controls: () =>
+      run("controls", ["controls", botId], async () => {
+        await client.engines.controls({ botId });
+        await refresh();
+      }),
     save: (config: EngineConfig) =>
       run("configure", ["engine", botId, config], async (requestId) => {
         if (!profile) throw new Error("请等待引擎配置加载。");

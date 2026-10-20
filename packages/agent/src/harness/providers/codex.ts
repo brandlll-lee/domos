@@ -30,12 +30,54 @@ export const codexProvider: EngineProvider = {
     const rpc = new JsonLines(process);
     let completion: ReturnType<typeof Promise.withResolvers<void>> | undefined;
     let turnId: string | null = null;
+    let nativeId: string | undefined = sessionId ?? undefined;
     let events = Promise.resolve();
+    let provider: string | null = null;
+    let model = config.model;
+    let compacting = false;
+    let metering = false;
+    let starting: Promise<void> | undefined;
+    let baseline: NonNullable<
+      NonNullable<CodexFrame["params"]>["tokenUsage"]
+    >["total"];
+    let modeCatalog:
+      | {
+          name: string;
+          mode: string;
+          model: string;
+          reasoning_effort?: string | null;
+        }[]
+      | undefined;
+    async function modes() {
+      if (!modeCatalog) {
+        try {
+          modeCatalog =
+            (
+              await rpc.request<{ data: NonNullable<typeof modeCatalog> }>(
+                "collaborationMode/list",
+              )
+            ).data ?? [];
+        } catch (error) {
+          if (!(error instanceof EngineRequestRejected)) throw error;
+          modeCatalog = [];
+        }
+      }
+      return modeCatalog;
+    }
     const requests = new Map<string, CodexFrame>();
     rpc.on("frame", (frame: CodexFrame) => {
       events = events
         .then(async () => {
           const params = frame.params ?? {};
+          if (params.threadId && params.threadId !== nativeId) return;
+          if (
+            frame.method === "serverRequest/resolved" &&
+            params.requestId !== undefined
+          ) {
+            const id = String(params.requestId);
+            requests.delete(id);
+            await emit({ type: "approval_closed", id });
+          }
           if (frame.id !== undefined) {
             if (!codexApprovals.has(frame.method)) {
               await rpc.send({
@@ -68,6 +110,26 @@ export const codexProvider: EngineProvider = {
                   frame.method === "item/tool/requestUserInput"
                     ? "question"
                     : "permission",
+                ...(params.questions
+                  ? {
+                      questions: params.questions.map((question) => ({
+                        id: question.id,
+                        title: question.question,
+                        ...(question.isOther ? { allowOther: true } : {}),
+                        ...(question.options
+                          ? {
+                              options: question.options.map((option) => ({
+                                id: option.label,
+                                label: option.label,
+                                ...(option.description
+                                  ? { description: option.description }
+                                  : {}),
+                              })),
+                            }
+                          : {}),
+                      })),
+                    }
+                  : {}),
               },
             });
             return;
@@ -90,6 +152,59 @@ export const codexProvider: EngineProvider = {
               text: params.delta,
             });
           const item = params.item;
+          if (frame.method === "turn/started") turnId = params.turn?.id ?? null;
+          if (
+            frame.method === "thread/tokenUsage/updated" &&
+            params.tokenUsage
+          ) {
+            const usage = params.tokenUsage;
+            await starting;
+            if (!metering || (params.turnId && params.turnId !== turnId)) {
+              baseline = usage.total;
+              return;
+            }
+            if (usage.total)
+              await emit({
+                type: "usage",
+                usage: {
+                  id: "codex:usage",
+                  source: "codex.thread/tokenUsage/updated",
+                  provider,
+                  model,
+                  input:
+                    usage.total.inputTokens === undefined
+                      ? null
+                      : usage.total.inputTokens - (baseline?.inputTokens ?? 0),
+                  output:
+                    usage.total.outputTokens === undefined
+                      ? null
+                      : usage.total.outputTokens -
+                        (baseline?.outputTokens ?? 0),
+                  cacheRead:
+                    usage.total.cachedInputTokens === undefined
+                      ? null
+                      : usage.total.cachedInputTokens -
+                        (baseline?.cachedInputTokens ?? 0),
+                  cacheWrite: null,
+                  costUsd: null,
+                },
+              });
+            await emit({
+              type: "runtime",
+              state: {
+                contextTokens: usage.last?.inputTokens ?? null,
+                contextWindow: usage.modelContextWindow ?? null,
+              },
+            });
+          }
+          if (item?.type === "contextCompaction")
+            await emit({
+              type: "runtime",
+              state: {
+                compaction:
+                  frame.method === "item/started" ? "running" : "completed",
+              },
+            });
           if (
             frame.method === "item/started" &&
             item &&
@@ -129,6 +244,16 @@ export const codexProvider: EngineProvider = {
               });
           }
           if (frame.method === "turn/completed") {
+            if (compacting)
+              await emit({
+                type: "runtime",
+                state: {
+                  compaction:
+                    params.turn?.status === "completed"
+                      ? "completed"
+                      : "failed",
+                },
+              });
             if (params.turn?.status === "completed") completion?.resolve();
             else
               completion?.reject(
@@ -152,6 +277,7 @@ export const codexProvider: EngineProvider = {
     });
     await rpc.request("initialize", {
       clientInfo: { name: "domos", version: "1.0.0" },
+      capabilities: { experimentalApi: true },
     });
     await rpc.send({ method: "initialized", params: {} });
     if (env?.OPENAI_API_KEY)
@@ -159,18 +285,22 @@ export const codexProvider: EngineProvider = {
         type: "apiKey",
         apiKey: env.OPENAI_API_KEY,
       });
-    const response = await rpc.request<{ thread: { id: string } }>(
-      sessionId ? "thread/resume" : "thread/start",
-      {
-        ...(sessionId ? { threadId: sessionId } : {}),
-        cwd: ready.cwd,
-        ...(config.model ? { model: config.model } : {}),
-        developerInstructions: instructions,
-        approvalPolicy: "on-request",
-        sandbox: "workspace-write",
-      },
-    );
+    const response = await rpc.request<{
+      thread: { id: string };
+      modelProvider?: string;
+      model?: string;
+    }>(sessionId ? "thread/resume" : "thread/start", {
+      ...(sessionId ? { threadId: sessionId } : {}),
+      cwd: ready.cwd,
+      ...(config.model ? { model: config.model } : {}),
+      developerInstructions: instructions,
+      approvalPolicy: "on-request",
+      sandbox: "workspace-write",
+    });
     const id = response.thread?.id;
+    nativeId = id;
+    provider = response.modelProvider ?? null;
+    model = response.model ?? config.model;
     if (typeof id !== "string") throw new Error("Codex 没有返回会话记录。");
     await emit({ type: "session", id });
     async function catalog() {
@@ -180,6 +310,10 @@ export const codexProvider: EngineProvider = {
         displayName?: string;
         inputModalities?: string[];
         isDefault?: boolean;
+        supportedReasoningEfforts?: {
+          reasoningEffort: string;
+          description: string;
+        }[];
       };
       const models: Model[] = [];
       let cursor: string | null = null;
@@ -206,6 +340,65 @@ export const codexProvider: EngineProvider = {
     }
     const session: EngineSession = {
       id,
+      async controls() {
+        const selected = (await catalog()).find((item) =>
+          config.model
+            ? item.id === config.model || item.model === config.model
+            : item.isDefault,
+        );
+        return {
+          compact: true,
+          commands: [],
+          options: [
+            {
+              id: "effort",
+              label: "推理强度",
+              value: config.options?.effort ?? "",
+              options: (selected?.supportedReasoningEfforts ?? []).map(
+                (item) => ({
+                  id: item.reasoningEffort,
+                  label: item.description,
+                }),
+              ),
+            },
+            {
+              id: "approvalPolicy",
+              label: "工作模式",
+              value: config.options?.approvalPolicy ?? "on-request",
+              options: [
+                { id: "on-request", label: "按需确认" },
+                { id: "untrusted", label: "受限操作确认" },
+              ],
+            },
+            {
+              id: "mode",
+              label: "协作模式",
+              value: config.options?.mode ?? "",
+              options: (await modes()).map((item) => ({
+                id: item.mode,
+                label: item.name,
+              })),
+            },
+          ],
+        };
+      },
+      async compact() {
+        compacting = true;
+        metering = true;
+        completion = Promise.withResolvers<void>();
+        void completion.promise.catch(() => {});
+        await emit({ type: "runtime", state: { compaction: "running" } });
+        try {
+          await rpc.request("thread/compact/start", { threadId: id });
+          await completion.promise;
+          await events;
+        } catch (error) {
+          await emit({ type: "runtime", state: { compaction: "failed" } });
+          throw error;
+        } finally {
+          compacting = false;
+        }
+      },
       models: async () =>
         (await catalog()).map((model) => ({
           id: model.id,
@@ -228,18 +421,50 @@ export const codexProvider: EngineProvider = {
         if (images.length && (await vision()) === false)
           throw new Error("当前模型不支持图片。请选择支持图片的模型。");
         completion = Promise.withResolvers<void>();
+        metering = true;
         void completion.promise.catch(() => {});
-        const result = await rpc.request<{ turn: CodexTurn }>("turn/start", {
-          threadId: id,
-          input: [
-            { type: "text", text },
-            ...images.map((image) => ({
-              type: "image",
-              url: `data:${image.mimeType};base64,${image.data}`,
-            })),
-          ],
-        });
-        turnId = result.turn?.id ?? null;
+        const mode = config.options?.mode
+          ? (await modes()).find((item) => item.mode === config.options?.mode)
+          : undefined;
+        if (config.options?.mode && !mode)
+          throw new Error("此引擎没有提供这个协作模式。");
+        const started = Promise.withResolvers<void>();
+        starting = started.promise;
+        try {
+          const result = await rpc.request<{ turn: CodexTurn }>("turn/start", {
+            threadId: id,
+            ...(config.options?.effort
+              ? { effort: config.options.effort }
+              : {}),
+            ...(config.options?.approvalPolicy
+              ? { approvalPolicy: config.options.approvalPolicy }
+              : {}),
+            ...(mode
+              ? {
+                  collaborationMode: {
+                    mode: mode.mode,
+                    settings: {
+                      model: config.model ?? mode.model,
+                      reasoning_effort:
+                        config.options?.effort ?? mode.reasoning_effort ?? null,
+                      developer_instructions: null,
+                    },
+                  },
+                }
+              : {}),
+            input: [
+              { type: "text", text },
+              ...images.map((image) => ({
+                type: "image",
+                url: `data:${image.mimeType};base64,${image.data}`,
+              })),
+            ],
+          });
+          turnId = result.turn?.id ?? null;
+        } finally {
+          started.resolve();
+          starting = undefined;
+        }
         await emit({ type: "accepted", ...(turnId ? { id: turnId } : {}) });
         await completion.promise;
         await events;
@@ -282,7 +507,11 @@ export const codexProvider: EngineProvider = {
             answers: Object.fromEntries(
               (request.params?.questions ?? []).map((question) => [
                 question.id,
-                { answers: [answer.text ?? ""] },
+                {
+                  answers: answer.allow
+                    ? (answer.answers?.[question.id] ?? [answer.text ?? ""])
+                    : [],
+                },
               ]),
             ),
           };

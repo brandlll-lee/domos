@@ -6,6 +6,7 @@ import { ModelSetting } from "../../models/model-setting.tsx";
 import { EngineSelect } from "../engine-select.tsx";
 import { EngineConnection } from "./engine-connection.tsx";
 import { EngineDialog, type EngineDialogKind } from "./engine-dialog.tsx";
+import { NativeControls } from "./native-controls.tsx";
 import type { EngineSetup } from "./use-engine.ts";
 
 export function EngineSettings({
@@ -86,6 +87,7 @@ export function EngineSettings({
           />
         )}
       </div>
+      <NativeControls setup={setup} />
       {setup.error && (
         <p className="alert" role="alert">
           {setup.error}

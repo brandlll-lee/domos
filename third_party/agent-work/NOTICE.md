@@ -5,6 +5,7 @@ Domos Bot work adapts the following Apache-2.0 reference implementations:
 - OpenMausBot, Copyright 2026 Milind Soni and OpenMausBot contributors. Future calendar calculation in `packages/agent/src/work/schedule.ts` adapts `shared/routine-schedule.ts`. Skill format validation follows `shared/skill-md.ts`.
 - Bot detail focus entry and restoration adapt OpenMausBot `src/components/BotSettingsDialog.tsx`.
 - Engine artwork in `apps/web/src/features/bots/engine-mark.tsx` adapts OpenMausBot `src/components/ProviderIcons.tsx`.
+- Native extension request handling adapts OpenMausBot `server/drivers/pi.ts`. Structured approvals and Usage filters and detail rows adapt `src/components/PendingApproval.tsx` and `src/components/UsageHistory.tsx`. `apps/web/src/features/settings/usage-period.ts` reuses its UTC period calculation. These files are modified for Domos protocols, durable storage, controls, and themes.
 
 These implementations are modified for Domos: Pi documents replace reference storage; Pi tasks own scheduling; the YAML library reads skill frontmatter; original SKILL.md bytes remain intact. See the accompanying Apache-2.0 license.
 

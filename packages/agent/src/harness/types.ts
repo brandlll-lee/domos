@@ -3,7 +3,43 @@ import type { Attachment } from "../attachments.ts";
 
 export const engineIds = ["pi", "codex", "claude", "opencode"] as const;
 export type EngineId = (typeof engineIds)[number];
-export type EngineConfig = { provider: EngineId; model: string | null };
+export type EngineConfig = {
+  provider: EngineId;
+  model: string | null;
+  options?: Record<string, string>;
+};
+export type EngineControls = {
+  options: {
+    id: string;
+    label: string;
+    value: string;
+    options: { id: string; label: string }[];
+  }[];
+  commands: { name: string; description: string }[];
+  compact: boolean;
+};
+export type EngineUsage = {
+  id: string;
+  source: string;
+  provider: string | null;
+  model: string | null;
+  input: number | null;
+  output: number | null;
+  cacheRead: number | null;
+  cacheWrite: number | null;
+  costUsd: number | null;
+  costScope?: "session";
+};
+export type EngineRuntimeState = {
+  compaction?: "running" | "completed" | "failed";
+  contextTokens?: number | null;
+  contextWindow?: number | null;
+  controls?: EngineControls;
+  notices?: Record<string, string>;
+  integrations?: { name: string; status: string }[];
+  skills?: string[];
+  editorText?: string;
+};
 export type EngineModel = { id: string; name: string; images?: boolean };
 export type EngineImage = { type: "image"; data: string; mimeType: string };
 export type EngineApproval = {
@@ -11,9 +47,27 @@ export type EngineApproval = {
   title: string;
   detail: string;
   kind: "permission" | "question";
+  questions?: {
+    id: string;
+    title: string;
+    options?: { id: string; label: string; description?: string }[];
+    multiple?: boolean;
+    allowOther?: boolean;
+    value?: string;
+    multiline?: boolean;
+  }[];
+  options?: { id: string; label: string }[];
 };
-export type EngineAnswer = { allow: boolean; text?: string };
+export type EngineAnswer = {
+  allow: boolean;
+  text?: string;
+  answers?: Record<string, string[]>;
+  optionId?: string;
+};
 export type EngineEvent =
+  | { type: "approval_closed"; id: string }
+  | { type: "usage"; usage: EngineUsage }
+  | { type: "runtime"; state: EngineRuntimeState }
   | { type: "session"; id: string }
   | { type: "accepted"; id?: string; ready?: boolean }
   | { type: "text" | "thinking"; id: string; text: string; replace?: boolean }
@@ -69,6 +123,8 @@ export interface EngineProcess {
 export interface EngineSession {
   readonly id: string;
   models(): Promise<EngineModel[]>;
+  controls?(): Promise<EngineControls>;
+  compact?(): Promise<void>;
   authenticated?(): Promise<boolean>;
   vision?(): Promise<boolean | null>;
   prompt(text: string, images?: EngineImage[]): Promise<void>;
@@ -108,6 +164,7 @@ export type EngineInput = {
   requestId: string;
   attachments?: Attachment[];
   whenBusy?: "reject" | "followUp";
+  operation?: "compact";
 };
 
 export const engineLimits = {

@@ -1,7 +1,11 @@
 import type { JsonRepresentation } from "@earendil-works/chord";
 import { defineDoc, type TaskId } from "@earendil-works/pi-durable";
 import type { ChatMessage } from "../messages.ts";
-import type { EngineApproval, EngineConfig } from "./types.ts";
+import type {
+  EngineApproval,
+  EngineConfig,
+  EngineRuntimeState,
+} from "./types.ts";
 
 export const EngineMessage = "domos.engine-message";
 
@@ -36,6 +40,7 @@ export type EngineState = {
   drafts: JsonRepresentation<ChatMessage>[];
   approvals: EngineApproval[];
   error: string | null;
+  runtime?: EngineRuntimeState;
   prepared: boolean;
   preparedComputerId?: string | null;
   prompt: {

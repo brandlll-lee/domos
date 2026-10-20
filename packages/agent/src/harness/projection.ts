@@ -6,6 +6,7 @@ import {
   stored,
 } from "./task-types.ts";
 import { type EngineEvent, engineLimits } from "./types.ts";
+import { UsageTaskDoc } from "./usage.ts";
 
 export class EngineProjection {
   private readonly runtime: EngineRuntime;
@@ -27,6 +28,33 @@ export class EngineProjection {
   }
 
   async emit(event: EngineEvent) {
+    if (
+      event.type === "usage" ||
+      event.type === "runtime" ||
+      event.type === "approval_closed"
+    ) {
+      await this.runtime.commit(async (tx) => {
+        if (event.type === "usage")
+          (await tx.doc(UsageTaskDoc, this.runtime.taskId)).items[
+            event.usage.id
+          ] = event.usage;
+        else if (event.type === "approval_closed") {
+          const doc = await tx.doc(EngineDoc, this.runtime.conversationId);
+          doc.approvals = doc.approvals.filter((item) => item.id !== event.id);
+        } else {
+          const doc = await tx.doc(EngineDoc, this.runtime.conversationId);
+          const notices = { ...doc.runtime?.notices, ...event.state.notices };
+          doc.runtime = {
+            ...doc.runtime,
+            ...event.state,
+            ...(event.state.notices ? { notices } : {}),
+          };
+          if (event.state.compaction === "running")
+            doc.runtime.contextTokens = null;
+        }
+      }, this.context);
+      return;
+    }
     if (
       event.type === "session" ||
       event.type === "accepted" ||
