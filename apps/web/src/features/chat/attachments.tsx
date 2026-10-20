@@ -5,6 +5,7 @@ import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimpl
 import { useState } from "react";
 import { client } from "../../client.ts";
 import { chatCopy } from "./copy.ts";
+import { ImageGallery } from "./image-gallery.tsx";
 
 export function Attachments({
   botId,
@@ -15,6 +16,10 @@ export function Attachments({
 }) {
   const [error, setError] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const images = files.filter((file) => file.mimeType?.startsWith("image/"));
+  const documents = files.filter(
+    (file) => !file.mimeType?.startsWith("image/"),
+  );
   async function download(file: Attachment) {
     setDownloading(file.id);
     setError(false);
@@ -34,34 +39,20 @@ export function Attachments({
   }
   return (
     <div className="attachments">
-      {files.map((file) => (
+      {images.length > 0 && (
+        <ImageGallery
+          botId={botId}
+          files={images}
+          onDownload={(file) => void download(file)}
+          downloading={downloading !== null}
+          error={error ? chatCopy.errors.download : undefined}
+        />
+      )}
+      {documents.map((file) => (
         <FileAttachment
           key={file.id}
           name={file.name}
           size={file.size}
-          caption={
-            file.source && (
-              <p className="detail-note">
-                <time dateTime={file.source.capturedAt}>
-                  {new Date(file.source.capturedAt).toLocaleString()}
-                </time>
-                {file.source.url && (
-                  <>
-                    {" "}
-                    ·{" "}
-                    <a href={file.source.url} target="_blank" rel="noreferrer">
-                      网页来源
-                    </a>
-                  </>
-                )}
-              </p>
-            )
-          }
-          preview={
-            !file.mimeType || file.mimeType.startsWith("image/")
-              ? `/files/${botId}/${file.id}`
-              : undefined
-          }
           action={
             <Button
               type="button"
@@ -77,7 +68,7 @@ export function Attachments({
           }
         />
       ))}
-      {error && (
+      {error && images.length === 0 && (
         <p role="alert" className="alert">
           {chatCopy.errors.download}
         </p>

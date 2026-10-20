@@ -47,6 +47,7 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
       ...(error ? { error } : {}),
     });
   }
+  let attachmentTurn: string | undefined;
   view.messages.forEach((message, index) => {
     const id = message.turnId ?? message.id;
     const held = id === view.activeTurnId || notices.has(id);
@@ -71,12 +72,18 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
             stopped: false,
           },
         });
-      if (!held && message.attachments?.length)
-        items.push({
-          kind: "attachments",
-          id: message.id,
-          files: message.attachments,
-        });
+      if (!held && message.attachments?.length) {
+        const previous = items.at(-1);
+        if (previous?.kind === "attachments" && attachmentTurn === id)
+          previous.files.push(...message.attachments);
+        else
+          items.push({
+            kind: "attachments",
+            id: message.id,
+            files: [...message.attachments],
+          });
+        attachmentTurn = id;
+      }
     } else if (
       !message.pending &&
       !message.stopped &&

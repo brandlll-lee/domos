@@ -5,13 +5,11 @@ export function FileAttachment({
   size,
   action,
   preview,
-  caption,
 }: {
   name: string;
   size: number;
   action: ReactNode;
   preview?: string;
-  caption?: ReactNode;
 }) {
   const [failed, setFailed] = useState(false);
   const units =
@@ -48,7 +46,6 @@ export function FileAttachment({
         </div>
         {action}
       </div>
-      {caption}
     </div>
   );
 }

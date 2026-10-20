@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { characterIdentity } from "@domos/ui/characters";
 import { expect, test } from "@playwright/test";
+import { png } from "../../../packages/agent/test/fixtures/png.ts";
 
 let worker: ChildProcess;
 let url: string;
@@ -2295,6 +2296,110 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
   );
 });
 
+test("delivered images form a gallery with viewer downloads and keyboard navigation", async ({
+  page,
+}) => {
+  await page.goto(url);
+  const images = [
+    { name: "wide.png", mimeType: "image/png", buffer: png(1024, 640) },
+    { name: "portrait.png", mimeType: "image/png", buffer: png(360, 720) },
+  ];
+  await page.locator('input[type="file"]').setInputFiles([
+    ...images,
+    {
+      name: "report.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("Report"),
+    },
+  ]);
+  await expect(page.locator(".composer-attachments .attachment")).toHaveCount(
+    3,
+  );
+  const files = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((key) =>
+      key.startsWith("domos:composer:v1:"),
+    );
+    return JSON.parse(localStorage.getItem(key ?? "") ?? "{}").attachments as {
+      path: string;
+    }[];
+  });
+  await control({
+    responses: [
+      {
+        content: files.map((file) => ({
+          type: "toolCall",
+          id: crypto.randomUUID(),
+          name: "attach_file",
+          arguments: { path: file.path },
+        })),
+        stopReason: "toolUse",
+      },
+      { content: "图片与报告已交付。" },
+    ],
+  });
+  await page.getByLabel("消息", { exact: true }).fill("交付图片和报告");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const delivered = page.locator(".delivered-files");
+  await expect(delivered).toHaveCount(1);
+  const gallery = delivered.getByRole("group", { name: "图片图库" });
+  await expect(gallery.getByRole("img")).toHaveCount(2);
+  await expect(delivered.locator(".file-attachment")).toHaveCount(1);
+  await expect(gallery.getByRole("button", { name: /^下载/ })).toHaveCount(0);
+  await expect(gallery.locator("time")).toHaveCount(0);
+  await expect(
+    delivered.getByRole("button", { name: "下载 report.txt" }),
+  ).toBeVisible();
+  for (const label of ["深色", "浅色"]) {
+    await chooseAppearance(page, label);
+    await gallery.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `test-results/gallery-${label}.png` });
+  }
+  const thumbnail = gallery.getByRole("button", {
+    name: "查看图片 wide.png",
+    exact: true,
+  });
+  await thumbnail.click();
+  const viewer = page.getByRole("dialog", { name: /^(wide|portrait)\.png$/ });
+  await expect(
+    viewer.getByRole("img", { name: "wide.png", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("ArrowRight");
+  await expect(
+    viewer.getByRole("img", { name: "portrait.png", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("ArrowLeft");
+  await expect(
+    viewer.getByRole("img", { name: "wide.png", exact: true }),
+  ).toBeVisible();
+  const downloaded = page.waitForEvent("download");
+  await viewer
+    .getByRole("button", { name: "下载 wide.png", exact: true })
+    .click();
+  const download = await downloaded;
+  expect(download.suggestedFilename()).toBe("wide.png");
+  expect(await readFile(await download.path())).toEqual(images[0]?.buffer);
+  await page.screenshot({ path: "test-results/gallery-viewer-desktop.png" });
+  await page.keyboard.press("Escape");
+  await expect(viewer).toHaveCount(0);
+  await expect(thumbnail).toBeFocused();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await thumbnail.click();
+  await expect(viewer).toBeVisible();
+  const bounds = await viewer.boundingBox();
+  expect(
+    bounds &&
+      bounds.x >= 0 &&
+      bounds.y >= 0 &&
+      bounds.x + bounds.width <= 390 &&
+      bounds.y + bounds.height <= 844,
+  ).toBe(true);
+  await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
+  await page.screenshot({ path: "test-results/gallery-viewer-mobile.png" });
+  await viewer.getByRole("button", { name: "关闭弹窗", exact: true }).click();
+  await page.reload();
+  await expect(gallery.getByRole("img")).toHaveCount(2);
+});
+
 test("typing follows the Bot and failed tasks retain a retry notice", async ({
   page,
 }) => {
@@ -2390,6 +2495,11 @@ test("typing dots share the avatar color and follow complete messages", async ({
   await expect(typing).toHaveText("");
   await expect(typing.locator("svg")).toHaveCount(1);
   await expect(typing.locator("svg circle")).toHaveCount(3);
+  await expect(typing).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  const indicator = await typing.boundingBox();
+  expect(indicator && indicator.width <= 48 && indicator.height <= 28).toBe(
+    true,
+  );
   await expect(page.getByRole("log").locator("details")).toHaveCount(0);
   await expect(page.locator(".composer-area .bot-avatar")).toHaveCount(0);
   await expect(

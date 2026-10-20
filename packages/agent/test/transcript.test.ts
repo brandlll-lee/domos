@@ -199,3 +199,28 @@ test("complete product messages and questions arrive immediately", () => {
   ]);
   expect(new Set(items.map((item) => item.id)).size).toBe(items.length);
 });
+
+test("adjacent delivered files form one gallery within their turn", () => {
+  const first = { id: "first", name: "first.png", path: "first.png", size: 12 };
+  const second = {
+    id: "second",
+    name: "second.png",
+    path: "second.png",
+    size: 12,
+  };
+  const messages = [
+    message("toolResult", "turn", [], { attachments: [first] }),
+    message("toolResult", "turn", [], { attachments: [second] }),
+    message("assistant", "turn", [{ type: "text", text: "Images ready" }]),
+    message("toolResult", "next", [], { attachments: [first] }),
+    message("toolResult", "another", [], { attachments: [second] }),
+  ];
+  const original = structuredClone(messages);
+  expect(chatTranscript(view(messages))).toMatchObject([
+    { kind: "attachments", id: messages[0]?.id, files: [first, second] },
+    { kind: "message" },
+    { kind: "attachments", files: [first] },
+    { kind: "attachments", files: [second] },
+  ]);
+  expect(messages).toEqual(original);
+});
