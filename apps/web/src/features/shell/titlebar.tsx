@@ -1,8 +1,8 @@
-import { Brand } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { DotsThreeIcon } from "@phosphor-icons/react/dist/csr/DotsThree";
 import { ListIcon } from "@phosphor-icons/react/dist/csr/List";
 import { type ReactNode, useEffect } from "react";
+import { EnvironmentSwitcher } from "./environment-switcher.tsx";
 import "./style.css";
 
 export function Titlebar({
@@ -29,8 +29,8 @@ export function Titlebar({
   }, []);
   return (
     <header className="app-titlebar" data-platform={desktop?.platform}>
-      <div className="titlebar-brand">
-        {onContacts ? (
+      <div className="titlebar-actions">
+        {onContacts && (
           <Button
             id="contacts-trigger"
             variant="ghost"
@@ -40,9 +40,8 @@ export function Titlebar({
           >
             <ListIcon />
           </Button>
-        ) : (
-          <Brand />
         )}
+        <EnvironmentSwitcher />
         {actions}
       </div>
       {desktop && (

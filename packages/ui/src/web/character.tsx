@@ -76,6 +76,11 @@ export function Character({
       <defs>
         <filter id={`${id}-tint`} colorInterpolationFilters="sRGB">
           <feColorMatrix type="matrix" values={tint(color)} />
+          <feComponentTransfer>
+            <feFuncR type="gamma" exponent=".86" />
+            <feFuncG type="gamma" exponent=".86" />
+            <feFuncB type="gamma" exponent=".86" />
+          </feComponentTransfer>
         </filter>
         <filter
           id={`${id}-shadow`}

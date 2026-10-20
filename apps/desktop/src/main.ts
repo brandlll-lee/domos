@@ -262,8 +262,15 @@ async function main() {
   );
   handle(
     "desktop:menu",
-    async () => {
-      if (current) Menu.getApplicationMenu()?.popup({ window: current });
+    async (input) => {
+      const scope = z.literal("environment").optional().parse(input);
+      const application = Menu.getApplicationMenu();
+      const menu =
+        scope === "environment" ? application?.items[0]?.submenu : application;
+      if (current && menu)
+        await new Promise<void>((resolve) =>
+          menu.popup({ window: current, callback: resolve }),
+        );
     },
     false,
   );

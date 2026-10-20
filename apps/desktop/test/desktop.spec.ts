@@ -211,6 +211,34 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     await page.getByLabel("配对码", { exact: true }).fill(ready.pairing);
     await page.getByRole("button", { name: "连接", exact: true }).click();
     await expect(page.getByRole("button", { name: "Bot详情" })).toBeVisible();
+    const environment = page.getByRole("button", {
+      name: "切换 Domos 环境：我的 Domos",
+      exact: true,
+    });
+    await expect(environment).toBeVisible();
+    const menuShown = desktop.evaluate(
+      ({ Menu }) =>
+        new Promise<void>((resolve) => {
+          const menu = Menu.getApplicationMenu()?.items[0]?.submenu;
+          menu?.once("menu-will-show", () => resolve());
+        }),
+    );
+    await environment.click();
+    await menuShown;
+    await expect(environment).toHaveAttribute("aria-expanded", "true");
+    await desktop.evaluate(({ Menu }) =>
+      Menu.getApplicationMenu()?.items[0]?.submenu?.closePopup(),
+    );
+    await expect(environment).toHaveAttribute("aria-expanded", "false");
+    for (const theme of ["dark", "light"] as const) {
+      await page.emulateMedia({ colorScheme: theme });
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await captureWindow(
+        desktop,
+        page,
+        testInfo.outputPath(`environment-${theme}.png`),
+      );
+    }
     expect(
       await page.evaluate(() => ({
         require: typeof Reflect.get(window, "require"),

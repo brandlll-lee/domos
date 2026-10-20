@@ -4,6 +4,13 @@ type Result<T = { message?: string }> = {
   error?: string;
 };
 export type DesktopState = {
+  instances: {
+    id: string;
+    name: string;
+    mode: "local" | "existing";
+    url: string;
+  }[];
+  selected?: string;
   mode?: "local" | "existing";
   runtime?: "native" | "docker";
   running: boolean;
@@ -14,7 +21,7 @@ declare global {
     domosDesktop?: {
       platform: string;
       appearance(theme: "light" | "dark"): Promise<Result>;
-      menu(): Promise<Result>;
+      menu(scope?: "environment"): Promise<Result>;
       prepare(): Promise<Result<{ image: string; proxyImage?: string }>>;
       state(): Promise<Result<DesktopState>>;
       maintain(

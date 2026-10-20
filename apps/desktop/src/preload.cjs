@@ -2,7 +2,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("domosDesktop", {
   platform: process.platform,
   appearance: (theme) => ipcRenderer.invoke("desktop:appearance", theme),
-  menu: () => ipcRenderer.invoke("desktop:menu"),
+  menu: (scope) => ipcRenderer.invoke("desktop:menu", scope),
   prepare: () => ipcRenderer.invoke("desktop:prepare"),
   state: () => ipcRenderer.invoke("desktop:state"),
   maintain: (action, password) =>

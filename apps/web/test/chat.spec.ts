@@ -2870,7 +2870,6 @@ test("Bot identity stays consistent and image previews work in drafts and histor
     "data-seed",
     seed ?? "",
   );
-  await expect(page.locator(".app-titlebar .wordmark")).toHaveText("Domos");
   await expect(page.locator(".transcript .bot-avatar")).toHaveCount(0);
   await expect(page.locator(".conversation-time")).toBeVisible();
   await expect(selected.locator(".character-pupils")).toHaveCount(2);

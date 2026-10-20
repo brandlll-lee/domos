@@ -10,11 +10,11 @@
   align-items: center;
   gap: var(--space-2);
   margin: var(--space-3) 0;
-  padding: 0 var(--space-3);
+  padding: 0 10px;
   min-height: var(--control-small);
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-control);
-  background: var(--color-control);
+  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-surface) 40%, transparent);
   color: var(--color-muted);
 }
 .sidebar-search:focus-within {
@@ -31,7 +31,7 @@
   outline: none;
   background: transparent;
   color: var(--color-text);
-  font-size: var(--text-label);
+  font-size: 12.5px;
 }
 .sidebar-search input::placeholder {
   color: var(--color-muted);
@@ -162,12 +162,8 @@
   width: 2.125rem;
   min-height: 2.125rem;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent);
   border-radius: var(--radius-round);
-  background: color-mix(in srgb, var(--color-surface) 58%, transparent);
-  box-shadow: 0 1px 2px
-    color-mix(in srgb, var(--color-background) 45%, transparent);
-  color: var(--color-text);
+  color: var(--color-muted);
   transition:
     background var(--motion-feedback) ease,
     transform var(--motion-feedback) ease;
@@ -187,9 +183,6 @@
   }
   .chat-header::after {
     display: none;
-  }
-  .chat-header .chat-action[data-variant="ghost"] {
-    background: var(--color-surface);
   }
 }
 @media (forced-colors: active) {

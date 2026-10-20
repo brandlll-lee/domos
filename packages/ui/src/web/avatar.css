@@ -6,16 +6,6 @@
   height: var(--avatar-medium);
   flex-shrink: 0;
 }
-.wordmark {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--color-text);
-  font-size: var(--text-heading);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-control);
-  letter-spacing: -0.03em;
-}
 .avatar-status {
   position: absolute;
   right: 0;

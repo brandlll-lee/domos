@@ -26,18 +26,55 @@
 .app-titlebar button {
   -webkit-app-region: no-drag;
 }
-.app-titlebar .brand-mark {
-  width: var(--avatar-small);
-  height: var(--avatar-small);
-}
-.titlebar-brand {
+.titlebar-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
+  gap: var(--space-2);
   width: calc(var(--sidebar-size, var(--sidebar-width)) - var(--space-5));
   margin-inline-end: auto;
   padding-inline-end: var(--space-4);
   flex-shrink: 0;
+}
+.environment-switcher {
+  position: relative;
+  min-width: 0;
+}
+.environment-switcher .environment-trigger {
+  min-width: 0;
+  max-width: 100%;
+  gap: 6px;
+  min-height: 28px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  color: var(--color-text);
+  font-size: 12.5px;
+}
+.environment-trigger span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.environment-trigger svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--color-muted);
+}
+.environment-trigger svg:last-child {
+  width: 11px;
+  height: 11px;
+}
+.environment-error {
+  position: absolute;
+  top: 100%;
+  inset-inline-start: 0;
+  z-index: 5;
+  margin: var(--space-1) 0;
+  padding: var(--space-2);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-danger);
+  font-size: var(--text-caption);
 }
 .workspace {
   position: relative;
@@ -169,7 +206,9 @@
 .panel-resizer:focus-visible {
   outline: none;
 }
-.workspace[data-mobile] .titlebar-brand {
+.workspace[data-mobile] .titlebar-actions {
+  flex: 1;
+  min-width: 0;
   width: auto;
   padding-inline-end: 0;
 }

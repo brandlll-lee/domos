@@ -26,7 +26,7 @@ export function Sidebar({
   return (
     <aside className="sidebar">
       <label className="sidebar-search">
-        <MagnifyingGlass size={16} aria-hidden="true" />
+        <MagnifyingGlass size={14} aria-hidden="true" />
         <input
           type="search"
           aria-label={chatCopy.search}

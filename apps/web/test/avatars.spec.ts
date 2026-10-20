@@ -8,7 +8,7 @@ import { expect, test } from "@playwright/test";
 
 test("plush identities load, animate and survive profile changes", async ({
   page,
-}) => {
+}, testInfo) => {
   const directory = await mkdtemp(join(tmpdir(), "domos-avatars-"));
   const worker = fork(
     fileURLToPath(
@@ -27,8 +27,7 @@ test("plush identities load, animate and survive profile changes", async ({
     await expect(
       page.getByRole("button", { name: "Bot详情", exact: true }),
     ).toBeVisible();
-    const brand = page.locator(".brand-mark .character");
-    await expect(brand).toHaveAttribute("data-shape", "cat");
+    const avatar = page.locator(".chat-header .character");
     await page.locator(".bot-avatar").first().waitFor();
     await page.evaluate(async () => {
       await Promise.all(
@@ -43,23 +42,27 @@ test("plush identities load, animate and survive profile changes", async ({
       .locator(".character [id]")
       .evaluateAll((items) => items.map((item) => item.id));
     expect(new Set(filters).size).toBe(filters.length);
-    const brandTint = await brand
+    const avatarTint = await avatar
       .locator("feColorMatrix")
       .getAttribute("values");
     await page.emulateMedia({ colorScheme: "dark" });
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-    await expect(brand.locator("feColorMatrix")).toHaveAttribute(
+    await expect(avatar.locator("feColorMatrix")).toHaveAttribute(
       "values",
-      brandTint ?? "",
+      avatarTint ?? "",
     );
+    await page.screenshot({ path: testInfo.outputPath("identities-dark.png") });
     await page.emulateMedia({ colorScheme: "light" });
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-    await expect(brand.locator("feColorMatrix")).toHaveAttribute(
+    await expect(avatar.locator("feColorMatrix")).toHaveAttribute(
       "values",
-      brandTint ?? "",
+      avatarTint ?? "",
     );
+    await page.screenshot({
+      path: testInfo.outputPath("identities-light.png"),
+    });
     expect(
-      await brand
+      await avatar
         .locator(".character-body")
         .evaluate((item) => item.getAnimations().length),
     ).toBeGreaterThan(0);

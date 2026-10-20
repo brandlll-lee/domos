@@ -9,19 +9,19 @@ export const characterShapes = {
 } as const;
 
 export const characterColors = [
-  "#ec785f",
-  "#e4b347",
-  "#b48363",
-  "#569ae3",
-  "#32bba6",
-  "#9875dc",
-  "#d875a1",
-  "#798995",
+  "#ff8b70",
+  "#f5c85a",
+  "#dfaa7b",
+  "#68b6ff",
+  "#4bdec2",
+  "#b39aff",
+  "#f68fb8",
+  "#9dabb8",
 ] as const;
 
 export const characterBaseColor = "#b3df32";
 export const brandCharacter = {
-  color: characterBaseColor,
+  color: "#c6f33c",
   shape: "cat",
 } as const;
 
