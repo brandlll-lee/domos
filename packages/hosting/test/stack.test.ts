@@ -52,6 +52,10 @@ test("container hosting starts only on selection and resumes its owned installat
   expect(spec.services.app.depends_on.controller.condition).toBe(
     "service_healthy",
   );
+  expect(spec.services.controller.user).toBe("0:0");
+  expect(spec.services.controller.cap_drop).toEqual(["ALL"]);
+  expect(spec.services.controller.cap_add).toEqual(["DAC_READ_SEARCH"]);
+  expect(spec.services.app.cap_add).toBeUndefined();
   expect(
     spec.services.app.volumes.some((item: { source: string }) =>
       item.source.includes("docker.sock"),

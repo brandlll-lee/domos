@@ -186,6 +186,18 @@ test.runIf(process.env.DOMOS_CONTAINER_TESTS === "1")(
           volumes.set(config.id, `domos-${config.id}-work`);
       }
       await inspect(false);
+    } catch (error) {
+      const logs = await runCommand("docker", [
+        "compose",
+        "--file",
+        join(stack.directory, "compose.json"),
+        "logs",
+        "--no-color",
+        "--tail",
+        "30",
+      ]).catch(() => "");
+      console.error(logs);
+      throw error;
     } finally {
       await stack.stop();
       for (const path of installations)

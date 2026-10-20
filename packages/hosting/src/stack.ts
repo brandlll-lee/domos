@@ -243,6 +243,7 @@ export class LocalStack {
         controller: {
           ...common,
           user: "0:0",
+          cap_add: ["DAC_READ_SEARCH"],
           command: [
             "node",
             "apps/controller/src/main.ts",
