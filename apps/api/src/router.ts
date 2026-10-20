@@ -158,7 +158,7 @@ export function createRouter(
                     }
                   : {}),
                 requestId: input.requestId,
-                whenBusy: "reject",
+                whenBusy: "steer",
               },
               BACKGROUND_CONTEXT,
             );

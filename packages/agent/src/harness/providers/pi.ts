@@ -3,7 +3,7 @@ import type {
   RpcSessionState,
   SessionEntry,
 } from "@earendil-works/pi-coding-agent";
-import { JsonLines } from "../json-lines.ts";
+import { EngineRequestRejected, JsonLines } from "../json-lines.ts";
 import type { EngineOpen, EngineProvider } from "../types.ts";
 
 export const piProvider: EngineProvider = {
@@ -122,6 +122,7 @@ export const piProvider: EngineProvider = {
     if (sessionId)
       await rpc.request("switch_session", { sessionPath: sessionId });
     else await rpc.request("new_session");
+    await rpc.request("set_steering_mode", { mode: "all" });
     if (config.model) {
       const separator = config.model.indexOf("/");
       if (separator < 1) throw new Error("请选择 Pi 的模型。");
@@ -171,7 +172,7 @@ export const piProvider: EngineProvider = {
           "get_entries",
         );
         const cursor = `pi:${before.leafId ?? ""}`;
-        await emit({ type: "accepted", id: cursor });
+        await emit({ type: "accepted", id: cursor, ready: false });
         const result = await rpc.request("prompt", {
           message: text,
           ...(images.length ? { images } : {}),
@@ -185,7 +186,26 @@ export const piProvider: EngineProvider = {
         await rpc.request("clear_queue");
         await rpc.request("abort");
       },
-      async recover(cursor) {
+      async steer(text, images = []) {
+        if (
+          images.length &&
+          state.model?.input &&
+          !state.model.input.includes("image")
+        )
+          return "refused";
+        try {
+          await rpc.request("steer", {
+            message: text,
+            ...(images.length ? { images } : {}),
+          });
+          return "accepted";
+        } catch (error) {
+          return error instanceof EngineRequestRejected
+            ? "refused"
+            : "uncertain";
+        }
+      },
+      async recover(cursor, inputCount = 1) {
         if (!cursor?.startsWith("pi:")) return false;
         const since = cursor.slice(3);
         const history = await rpc.request<{
@@ -209,7 +229,8 @@ export const piProvider: EngineProvider = {
           .map((entry) => entry.message);
         const final = messages.at(-1);
         if (
-          messages.filter((message) => message.role === "user").length !== 1 ||
+          messages.filter((message) => message.role === "user").length !==
+            inputCount ||
           final?.role !== "assistant" ||
           final.stopReason !== "stop"
         )

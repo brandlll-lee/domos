@@ -73,6 +73,47 @@ async function setup() {
   return { faux, open, models };
 }
 
+test("chat accepts consecutive inputs while a reply is running", async () => {
+  const { open, faux } = await setup();
+  const runtime = await open();
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  faux.setResponses([
+    async () => {
+      started.resolve();
+      await release.promise;
+      return fauxAssistantMessage("First reply");
+    },
+    fauxAssistantMessage("Updated reply"),
+  ]);
+  try {
+    const botId = runtime.conversation.id;
+    await runtime.client.send({
+      botId,
+      text: "first",
+      requestId: crypto.randomUUID(),
+    });
+    await started.promise;
+    const input = { botId, text: "second", requestId: crypto.randomUUID() };
+    const receipt = await runtime.client.send(input);
+    expect(await runtime.client.send(input)).toEqual(receipt);
+    await runtime.client.send({
+      botId,
+      text: "third",
+      requestId: crypto.randomUUID(),
+    });
+    release.resolve();
+    await runtime.conversation.waitForIdle(context);
+    const messages = (await runtime.client.get({ botId })).messages;
+    expect(
+      messages.filter((message) => message.role === "user").map(messageText),
+    ).toEqual(["first", "second", "third"]);
+  } finally {
+    release.resolve();
+    await runtime.harness.close(context);
+  }
+});
+
 test("welcome dismissal is shared, idempotent and survives a service restart", async () => {
   const { open } = await setup();
   const first = await open();
@@ -975,7 +1016,7 @@ test("stop cancels the task and the stopped result survives reopening", async ()
         text: "Another",
         requestId: crypto.randomUUID(),
       }),
-    ).rejects.toMatchObject({ code: "CONFLICT" });
+    ).resolves.toMatchObject({ id: expect.any(Number) });
     expect(await first.client.stop({ botId: first.conversation.id })).toEqual({
       ok: true,
     });

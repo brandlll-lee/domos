@@ -15,7 +15,7 @@ export type EngineApproval = {
 export type EngineAnswer = { allow: boolean; text?: string };
 export type EngineEvent =
   | { type: "session"; id: string }
-  | { type: "accepted"; id?: string }
+  | { type: "accepted"; id?: string; ready?: boolean }
   | { type: "text" | "thinking"; id: string; text: string; replace?: boolean }
   | { type: "message"; id: string; text: string }
   | { type: "tool"; id: string; name: string; input: Record<string, unknown> }
@@ -72,9 +72,13 @@ export interface EngineSession {
   authenticated?(): Promise<boolean>;
   vision?(): Promise<boolean | null>;
   prompt(text: string, images?: EngineImage[]): Promise<void>;
+  steer?(
+    text: string,
+    images?: EngineImage[],
+  ): Promise<"accepted" | "refused" | "uncertain">;
   interrupt(): Promise<void>;
   answer(id: string, answer: EngineAnswer): Promise<void>;
-  recover?(turnId: string | null): Promise<boolean>;
+  recover?(turnId: string | null, inputCount?: number): Promise<boolean>;
 }
 
 export type EngineOpen = {

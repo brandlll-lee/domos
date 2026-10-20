@@ -19,7 +19,62 @@ function protocol() {
   };
 }
 
-test("Pi reconciles a completed native turn without sending the request again", async () => {
+test.each([piProvider, claudeProvider])(
+  "$id accepts a live input and waits for the continued reply",
+  async (provider) => {
+    const { process, emit } = protocol();
+    const started = Promise.withResolvers<void>();
+    process.receive = (request) => {
+      if (provider.id === "pi") {
+        process.frame({
+          type: "response",
+          id: request.id,
+          success: true,
+          data:
+            request.type === "get_state"
+              ? { sessionFile: "/work/session.jsonl" }
+              : {},
+        });
+        if (request.type === "prompt") started.resolve();
+      } else if (request.type === "user") started.resolve();
+    };
+    const session = await provider.open({
+      process,
+      config: { provider: provider.id, model: null },
+      sessionId: null,
+      instructions: "Role",
+      emit,
+    });
+    let settled = false;
+    const run = session.prompt("first").then(() => {
+      settled = true;
+    });
+    await started.promise;
+    const delivery = session.steer?.("second");
+    expect(delivery).toBeDefined();
+    if (provider.id === "claude") {
+      process.frame({ type: "result", queued_turn_count: 1 });
+      const request = process.requests.at(-1) as unknown as { uuid: string };
+      process.frame({ type: "user", uuid: request.uuid, isReplay: true });
+    }
+    expect(await delivery).toBe("accepted");
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(settled).toBe(false);
+    process.frame(
+      provider.id === "pi"
+        ? { type: "agent_settled" }
+        : { type: "result", queued_turn_count: 0 },
+    );
+    await run;
+    if (provider.id === "pi")
+      expect(process.requests).toContainEqual(
+        expect.objectContaining({ type: "set_steering_mode", mode: "all" }),
+      );
+    else expect(process.spec?.args).toContain("--replay-user-messages");
+  },
+);
+
+test("Pi reconciles the recorded number of inputs without sending them again", async () => {
   const { process, events, emit } = protocol();
   let complete = true;
   process.receive = (request) =>
@@ -42,8 +97,14 @@ test("Pi reconciles a completed native turn without sending the request again", 
                   },
                   {
                     type: "message",
-                    id: "answer",
+                    id: "additional",
                     parentId: "request",
+                    message: { role: "user", content: "Additional work" },
+                  },
+                  {
+                    type: "message",
+                    id: "answer",
+                    parentId: "additional",
                     message: {
                       role: "assistant",
                       stopReason: complete ? "stop" : "toolUse",
@@ -61,7 +122,8 @@ test("Pi reconciles a completed native turn without sending the request again", 
     instructions: "Role",
     emit,
   });
-  expect(await session.recover?.("pi:previous")).toBe(true);
+  expect(await session.recover?.("pi:previous")).toBe(false);
+  expect(await session.recover?.("pi:previous", 2)).toBe(true);
   expect(events).toContainEqual({
     type: "message",
     id: "pi:1",

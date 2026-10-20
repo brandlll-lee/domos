@@ -10,6 +10,170 @@ import type { Computers } from "../src/computer/catalog.ts";
 import { openAgent } from "../src/open-agent.ts";
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
 
+test.each(["accepted", "refused", "uncertain"] as const)(
+  "chat inputs handle %s delivery without duplicate work",
+  async (delivery) => {
+    const directory = await mkdtemp(join(tmpdir(), "domos-chat-inputs-"));
+    const models = createModels();
+    models.setProvider(fauxProvider().provider);
+    const workers: ProtocolProcess[] = [];
+    const started = Promise.withResolvers<void>();
+    const computers = {
+      initialize: async () => {},
+      preflight: async () => {},
+      computerId: async () => "shared",
+      process: async () => {
+        const worker = new ProtocolProcess();
+        workers.push(worker);
+        worker.receive = (request) => {
+          if (
+            request.method === "thread/start" ||
+            request.method === "thread/resume"
+          )
+            worker.response(request, { thread: { id: "chat" } });
+          else if (request.method === "turn/start") {
+            worker.response(request, { turn: { id: "current" } });
+            started.resolve();
+            if (workers.length > 1)
+              worker.frame({
+                method: "turn/completed",
+                params: { turn: { status: "completed" } },
+              });
+          } else if (request.method === "turn/steer") {
+            if (delivery === "refused") {
+              worker.frame({
+                id: request.id,
+                error: { code: -32600, message: "No active turn" },
+              });
+              worker.frame({
+                method: "turn/completed",
+                params: { turn: { status: "completed" } },
+              });
+              return;
+            }
+            if (delivery === "uncertain") {
+              void worker.close();
+              return;
+            }
+            worker.response(request, { turnId: "current" });
+            if (JSON.stringify(request.params).includes("third")) {
+              worker.frame({
+                method: "item/completed",
+                params: {
+                  item: {
+                    id: "answer",
+                    type: "agentMessage",
+                    text: "All three requests",
+                  },
+                },
+              });
+              worker.frame({
+                method: "turn/completed",
+                params: { turn: { status: "completed" } },
+              });
+            }
+          } else if (request.id !== undefined) worker.response(request, {});
+        };
+        return worker;
+      },
+      tools: { catalog: async () => [], finish: () => {} },
+    } as unknown as Computers;
+    const runtime = await openAgent(
+      join(directory, "agent.sqlite"),
+      { registry: createRegistry(), models, computers },
+      {},
+      context,
+    );
+    onTestFinished(async () => {
+      await runtime.engines?.stop(runtime.conversation.id, context);
+      await runtime.harness.close(context);
+      await Promise.all(workers.map((worker) => worker.close()));
+      await rm(directory, { recursive: true, force: true });
+    });
+    const engines = runtime.engines;
+    if (!engines) throw new Error("Native engines required");
+    const botId = runtime.conversation.id;
+    await engines.configure(
+      botId,
+      {
+        config: { provider: "codex", model: null },
+        revision: 0,
+        requestId: crypto.randomUUID(),
+      },
+      context,
+    );
+    const first = await engines.submit(
+      botId,
+      { text: "first", requestId: crypto.randomUUID() },
+      context,
+    );
+    await started.promise;
+    const requestId = crypto.randomUUID();
+    const second = await engines.submit(
+      botId,
+      { text: "second", requestId },
+      context,
+    );
+    expect(
+      (await engines.submit(botId, { text: "second", requestId }, context)).id,
+    ).toBe(second.id);
+    const third = await engines.submit(
+      botId,
+      { text: "third", requestId: crypto.randomUUID() },
+      context,
+    );
+    await expect
+      .poll(
+        () =>
+          workers[0]?.requests.filter(
+            (request) => request.method === "turn/steer",
+          ).length,
+      )
+      .toBe(delivery === "accepted" ? 2 : 1);
+    await expect
+      .poll(async () => (await engines.profile(botId, context)).busy)
+      .toBe(false);
+    const results = await Promise.all(
+      [first, second, third].map((submission) => submission.wait(context)),
+    );
+    expect(results).toMatchObject(
+      delivery === "uncertain"
+        ? [
+            { status: "unanswered" },
+            { status: "unanswered" },
+            { status: "done" },
+          ]
+        : [{ status: "done" }, { status: "done" }, { status: "done" }],
+    );
+    expect(workers).toHaveLength(
+      delivery === "accepted" ? 1 : delivery === "refused" ? 3 : 2,
+    );
+    expect(
+      workers[0]?.requests.filter((request) => request.method === "turn/start"),
+    ).toHaveLength(1);
+    expect(
+      workers[0]?.requests
+        .filter((request) => request.method === "turn/steer")
+        .map((request) => request.params),
+    ).toEqual([
+      {
+        threadId: "chat",
+        expectedTurnId: "current",
+        input: [{ type: "text", text: "second" }],
+      },
+      ...(delivery === "accepted"
+        ? [
+            {
+              threadId: "chat",
+              expectedTurnId: "current",
+              input: [{ type: "text", text: "third" }],
+            },
+          ]
+        : []),
+    ]);
+  },
+);
+
 test("engine connection readiness follows the selected work computer", async () => {
   const directory = await mkdtemp(join(tmpdir(), "domos-engine-computer-"));
   const models = createModels();
@@ -161,6 +325,16 @@ test("routines use the selected native engine and stopping settles queued work",
   await expect
     .poll(async () => (await engines.view(botId, context)).approvals?.length)
     .toBe(1);
+  const additional = await engines.submit(
+    botId,
+    { text: "Include one more item", requestId: crypto.randomUUID() },
+    context,
+  );
+  await expect
+    .poll(() =>
+      workers[1]?.requests.some((request) => request.method === "turn/steer"),
+    )
+    .toBe(true);
   const queued = await runtime.work.routines.test(
     botId,
     routine.id,
@@ -180,6 +354,10 @@ test("routines use the selected native engine and stopping settles queued work",
   ).toBe(true);
   await runtime.harness.waitForTask(queued, context);
   expect(await active.wait(context)).toMatchObject({
+    status: "unanswered",
+    reason: "aborted",
+  });
+  expect(await additional.wait(context)).toMatchObject({
     status: "unanswered",
     reason: "aborted",
   });

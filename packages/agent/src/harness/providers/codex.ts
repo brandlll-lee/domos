@@ -1,4 +1,4 @@
-import { JsonLines } from "../json-lines.ts";
+import { EngineRequestRejected, JsonLines } from "../json-lines.ts";
 import type {
   EngineAnswer,
   EngineOpen,
@@ -243,6 +243,28 @@ export const codexProvider: EngineProvider = {
         await emit({ type: "accepted", ...(turnId ? { id: turnId } : {}) });
         await completion.promise;
         await events;
+      },
+      async steer(text, images = []) {
+        if (!turnId) return "refused";
+        if (images.length && (await vision()) === false) return "refused";
+        try {
+          await rpc.request("turn/steer", {
+            threadId: id,
+            expectedTurnId: turnId,
+            input: [
+              { type: "text", text },
+              ...images.map((image) => ({
+                type: "image",
+                url: `data:${image.mimeType};base64,${image.data}`,
+              })),
+            ],
+          });
+          return "accepted";
+        } catch (error) {
+          return error instanceof EngineRequestRejected
+            ? "refused"
+            : "uncertain";
+        }
       },
       async interrupt() {
         for (const requestId of requests.keys())

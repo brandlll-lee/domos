@@ -5,6 +5,22 @@ import type { EngineApproval, EngineConfig } from "./types.ts";
 
 export const EngineMessage = "domos.engine-message";
 
+export const EngineInputDoc = defineDoc<{
+  status:
+    | "queued"
+    | "deferred"
+    | "sending"
+    | "accepted"
+    | "uncertain"
+    | "settled";
+  owner: TaskId | null;
+}>({
+  kind: "domos.engine-input",
+  version: 1,
+  scope: "task",
+  initial: () => ({ status: "queued", owner: null }),
+});
+
 export type EngineState = {
   config: EngineConfig;
   revision: number;

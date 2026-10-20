@@ -12,12 +12,13 @@ import { WorkError } from "../work/state.ts";
 import { EngineConnections } from "./connections.ts";
 import type { EngineExecution } from "./execution.ts";
 import { engineProvider, providers } from "./providers/index.ts";
-import { EngineDoc, EngineMessage } from "./state.ts";
+import { EngineDoc, EngineInputDoc, EngineMessage } from "./state.ts";
 import { engineTask } from "./task.ts";
 import { userMessage } from "./task-types.ts";
 import type { EngineAnswer, EngineConfig, EngineInput } from "./types.ts";
 
 export class Engines {
+  private readonly stopping = new Set<number>();
   private readonly harness: Harness;
   readonly execution: EngineExecution;
   readonly task;
@@ -157,10 +158,12 @@ export class Engines {
     const submissionId = await this.harness.commit(async (tx) => {
       const existing = await tx.submissionByRequest(id, input.requestId);
       if (existing) return existing.id;
+      if (this.stopping.has(botId))
+        throw new WorkError("CONFLICT", "正在停止。请稍后发送。");
       const doc = await tx.doc(EngineDoc, id);
       if (
         (await tx.doc(LiveDoc, id)).run ||
-        (doc.tasks.length && input.whenBusy !== "followUp")
+        (doc.tasks.length && input.whenBusy === "reject")
       )
         throw new WorkError("CONFLICT", "Bot 正在工作。请稍后发送。");
       if (!doc.config.model && doc.config.provider === "pi") {
@@ -207,26 +210,34 @@ export class Engines {
       );
       doc.taskId = taskId;
       doc.tasks.push(taskId);
+      if (input.whenBusy === "followUp")
+        (await tx.doc(EngineInputDoc, taskId)).status = "deferred";
       return submission.id;
     }, context);
+    this.execution.deliver(botId);
     const submission = await this.harness.submission(submissionId, context);
     if (!submission) throw new Error("任务记录不存在。");
     return submission;
   }
 
   async stop(botId: number, context: Context) {
-    const stopped = this.execution.stop(botId);
-    const doc = await this.harness.snapshot(
-      EngineDoc,
-      botId as ConversationId,
-      context,
-    );
-    await Promise.all(
-      [...(doc?.tasks ?? [])]
-        .reverse()
-        .map((id) => this.harness.abortTask(id, context)),
-    );
-    await stopped;
+    this.stopping.add(botId);
+    try {
+      const stopped = this.execution.stop(botId);
+      const doc = await this.harness.snapshot(
+        EngineDoc,
+        botId as ConversationId,
+        context,
+      );
+      await Promise.all(
+        [...(doc?.tasks ?? [])]
+          .reverse()
+          .map((id) => this.harness.abortTask(id, context)),
+      );
+      await stopped;
+    } finally {
+      this.stopping.delete(botId);
+    }
   }
 
   async prepare(botId: number, context: Context) {

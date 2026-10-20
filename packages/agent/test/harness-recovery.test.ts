@@ -23,6 +23,7 @@ test.each(["completed", "running", "sending"] as const)(
     const directory = await mkdtemp(join(tmpdir(), "domos-reconcile-"));
     const database = join(directory, "agent.sqlite");
     const requestId = crypto.randomUUID();
+    const extraRequestId = crypto.randomUUID();
     const workers: ProtocolProcess[] = [];
     const computers = {
       preflight: async () => {},
@@ -105,6 +106,21 @@ test.each(["completed", "running", "sending"] as const)(
           (await runtime.harness.snapshot(EngineDoc, id, context))?.dispatch,
       )
       .toBe(outcome === "sending" ? "sending" : "accepted");
+    if (outcome !== "sending") {
+      await runtime.engines.submit(
+        id,
+        { text: "Include this too", requestId: extraRequestId },
+        context,
+      );
+      await expect
+        .poll(
+          () =>
+            workers
+              .flatMap((worker) => worker.requests)
+              .filter((request) => request.method === "turn/steer").length,
+        )
+        .toBe(1);
+    }
     await runtime.harness.close(context);
     runtime = await open();
     const submission = await runtime.engines.submit(
@@ -115,6 +131,21 @@ test.each(["completed", "running", "sending"] as const)(
     expect(await submission.wait(context)).toMatchObject({
       status: outcome === "completed" ? "done" : "unanswered",
     });
+    if (outcome !== "sending") {
+      const extra = await runtime.engines.submit(
+        id,
+        { text: "Include this too", requestId: extraRequestId },
+        context,
+      );
+      expect(await extra.wait(context)).toMatchObject({
+        status: outcome === "completed" ? "done" : "unanswered",
+      });
+      expect(
+        workers
+          .flatMap((worker) => worker.requests)
+          .filter((request) => request.method === "turn/steer"),
+      ).toHaveLength(1);
+    }
     expect(
       workers
         .flatMap((worker) => worker.requests)

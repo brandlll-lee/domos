@@ -103,7 +103,7 @@ test("native turns share product tools, queue in order and keep separate session
   ).rejects.toMatchObject({ code: "CONFLICT" });
   const second = await engines.submit(
     botId,
-    { text: "second", requestId: crypto.randomUUID(), whenBusy: "followUp" },
+    { text: "second", requestId: crypto.randomUUID() },
     context,
   );
   release.resolve();

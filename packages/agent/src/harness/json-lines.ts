@@ -12,6 +12,8 @@ type Frame = {
   error?: unknown;
 };
 
+export class EngineRequestRejected extends Error {}
+
 export class JsonLines extends EventEmitter {
   private readonly process: EngineProcess;
   private readonly pi: boolean;
@@ -50,7 +52,9 @@ export class JsonLines extends EventEmitter {
           clearTimeout(pending.timer);
           if (frame.error || frame.success === false)
             pending.reject(
-              new Error("引擎拒绝了请求。请检查账号、模型和工作电脑。"),
+              new EngineRequestRejected(
+                "引擎拒绝了请求。请检查账号、模型和工作电脑。",
+              ),
             );
           else
             pending.resolve(

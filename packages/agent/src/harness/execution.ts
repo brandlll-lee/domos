@@ -7,13 +7,14 @@ import type { Computers } from "../computer/catalog.ts";
 import type { Files } from "../files.ts";
 import { computerEvidence } from "./evidence.ts";
 import { conversationHistory } from "./history.ts";
+import { EngineInputs } from "./inputs.ts";
 import {
   callProductTool,
   permissionTool,
   productCatalog,
 } from "./product-tools.ts";
 import { engineProvider } from "./providers/index.ts";
-import { EngineDoc } from "./state.ts";
+import { EngineDoc, EngineInputDoc } from "./state.ts";
 import type { EngineRuntime } from "./task-types.ts";
 import {
   type EngineAnswer,
@@ -30,6 +31,7 @@ type Active = {
   permissions: Map<string, (answer: EngineAnswer) => void>;
   controller: AbortController;
   stopping?: Promise<void>;
+  inputs?: EngineInputs;
 };
 export class EngineExecution {
   readonly active = new Map<number, Active>();
@@ -238,16 +240,34 @@ export class EngineExecution {
         config: doc.config,
         sessionId: doc.sessionId,
         instructions,
-        emit,
+        emit: async (event) => {
+          await emit(event);
+          if (event.type === "accepted" && event.ready !== false)
+            active.inputs?.start();
+        },
         env: await this.environment(doc.config),
       });
       if (doc.dispatch !== "ready") {
-        if (!(await active.session.recover?.(doc.turnId)))
+        let inputCount = 1;
+        await runtime.commit(async (tx) => {
+          for (const id of doc.tasks) {
+            const input = await tx.doc(EngineInputDoc, id);
+            if (input.owner === runtime.taskId && input.status === "accepted")
+              inputCount++;
+          }
+        }, context);
+        if (!(await active.session.recover?.(doc.turnId, inputCount)))
           throw new Error(
             "执行结果未确认。请先检查文件和任务结果，再决定是否重试。",
           );
         return;
       }
+      active.inputs = new EngineInputs(
+        runtime,
+        active.session,
+        this.files,
+        context,
+      );
       await runtime.commit(async (tx) => {
         (await tx.doc(EngineDoc, runtime.conversationId)).dispatch = "sending";
       }, context);
@@ -268,14 +288,22 @@ export class EngineExecution {
       );
     } finally {
       runtime.signal.removeEventListener("abort", interrupted);
-      for (const answer of active.permissions.values())
-        answer({ allow: false });
-      if (active.stopping) await active.stopping;
-      else await active.process.close();
-      if (this.active.get(runtime.conversationId) === active)
-        this.active.delete(runtime.conversationId);
-      this.computers.tools.finish(String(runtime.taskId));
+      try {
+        await active.inputs?.close();
+      } finally {
+        for (const answer of active.permissions.values())
+          answer({ allow: false });
+        if (active.stopping) await active.stopping;
+        else await active.process.close();
+        if (this.active.get(runtime.conversationId) === active)
+          this.active.delete(runtime.conversationId);
+        this.computers.tools.finish(String(runtime.taskId));
+      }
     }
+  }
+
+  deliver(botId: number) {
+    this.active.get(botId)?.inputs?.notify();
   }
 
   stop(botId: number) {

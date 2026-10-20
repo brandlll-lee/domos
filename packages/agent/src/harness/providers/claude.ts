@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { JsonLines } from "../json-lines.ts";
-import type { EngineOpen, EngineProvider } from "../types.ts";
+import {
+  type EngineImage,
+  type EngineOpen,
+  type EngineProvider,
+  engineLimits,
+} from "../types.ts";
 import { textContent } from "./pi.ts";
 
 type ClaudePart = {
@@ -15,6 +20,10 @@ type ClaudePart = {
 };
 type ClaudeFrame = {
   type: string;
+  uuid?: string;
+  isReplay?: boolean;
+  queued_turn_count?: number;
+  origin?: { kind: string };
   response?: { request_id: string; subtype: string; error?: string };
   is_error?: boolean;
   message?: { id: string; content?: ClaudePart[] };
@@ -46,6 +55,44 @@ export const claudeProvider: EngineProvider = {
     let completion: ReturnType<typeof Promise.withResolvers<void>> | undefined;
     let events = Promise.resolve();
     let messageId = "";
+    let running = false;
+    const inputs = new Map<
+      string,
+      {
+        resolve: (result: "accepted" | "uncertain") => void;
+        timer: NodeJS.Timeout;
+      }
+    >();
+    function releaseInputs() {
+      for (const input of inputs.values()) {
+        clearTimeout(input.timer);
+        input.resolve("uncertain");
+      }
+      inputs.clear();
+    }
+    function sendInput(text: string, images: EngineImage[], uuid: string) {
+      return rpc.send({
+        type: "user",
+        uuid,
+        origin: { kind: "human" },
+        message: {
+          role: "user",
+          content: images.length
+            ? [
+                { type: "text", text },
+                ...images.map((image) => ({
+                  type: "image",
+                  source: {
+                    type: "base64",
+                    media_type: image.mimeType,
+                    data: image.data,
+                  },
+                })),
+              ]
+            : text,
+        },
+      });
+    }
     let interruption:
       | { id: string; result: ReturnType<typeof Promise.withResolvers<void>> }
       | undefined;
@@ -98,6 +145,15 @@ export const claudeProvider: EngineProvider = {
             }
           }
           if (frame.type === "user") {
+            if (frame.isReplay && frame.uuid) {
+              const input = inputs.get(frame.uuid);
+              if (input) {
+                clearTimeout(input.timer);
+                inputs.delete(frame.uuid);
+                input.resolve("accepted");
+              }
+              return;
+            }
             for (const part of frame.message?.content ?? [])
               if (part.type === "tool_result" && part.tool_use_id)
                 await emit({
@@ -109,6 +165,14 @@ export const claudeProvider: EngineProvider = {
                 });
           }
           if (frame.type === "result") {
+            if (frame.origin?.kind === "task-notification") return;
+            if (
+              !frame.is_error &&
+              (inputs.size || (frame.queued_turn_count ?? 0) > 0)
+            )
+              return;
+            running = false;
+            releaseInputs();
             if (frame.is_error)
               completion?.reject(
                 new Error("Claude Code 未完成任务。请检查账号和网络。"),
@@ -119,6 +183,8 @@ export const claudeProvider: EngineProvider = {
         .catch((error) => completion?.reject(error));
     });
     rpc.on("closed", (error) => {
+      running = false;
+      releaseInputs();
       completion?.reject(error);
       interruption?.result.reject(error);
     });
@@ -128,6 +194,7 @@ export const claudeProvider: EngineProvider = {
         "--print",
         "--verbose",
         "--include-partial-messages",
+        "--replay-user-messages",
         "--input-format",
         "stream-json",
         "--output-format",
@@ -156,29 +223,34 @@ export const claudeProvider: EngineProvider = {
         completion = Promise.withResolvers<void>();
         void completion.promise.catch(() => {});
         const uuid = randomUUID();
+        running = true;
+        await emit({ type: "accepted", id: `claude:${uuid}`, ready: false });
+        await sendInput(text, images, uuid);
         await emit({ type: "accepted", id: `claude:${uuid}` });
-        await rpc.send({
-          type: "user",
-          uuid,
-          message: {
-            role: "user",
-            content: images.length
-              ? [
-                  { type: "text", text },
-                  ...images.map((image) => ({
-                    type: "image",
-                    source: {
-                      type: "base64",
-                      media_type: image.mimeType,
-                      data: image.data,
-                    },
-                  })),
-                ]
-              : text,
-          },
-        });
         await completion.promise;
         await events;
+      },
+      async steer(text, images = []) {
+        if (!running) return "refused";
+        const uuid = randomUUID();
+        const receipt = Promise.withResolvers<"accepted" | "uncertain">();
+        const timer = setTimeout(() => {
+          inputs.delete(uuid);
+          receipt.resolve("uncertain");
+          completion?.reject(
+            new Error("追加消息的接收结果未确认。请核对回复后再发送。"),
+          );
+        }, engineLimits.handshakeMs);
+        timer.unref();
+        inputs.set(uuid, { resolve: receipt.resolve, timer });
+        try {
+          await sendInput(text, images, uuid);
+          return await receipt.promise;
+        } catch {
+          clearTimeout(timer);
+          inputs.delete(uuid);
+          return "uncertain";
+        }
       },
       async interrupt() {
         interruption ??= {
@@ -193,7 +265,7 @@ export const claudeProvider: EngineProvider = {
         });
         await interruption.result.promise;
       },
-      async recover(cursor) {
+      async recover(cursor, inputCount = 1) {
         if (!cursor?.startsWith("claude:") || !process.history) return false;
         const history = (await process.history(id)) as {
           type: string;
@@ -217,16 +289,14 @@ export const claudeProvider: EngineProvider = {
         )
           return false;
         if (
-          turn
-            .slice(1)
-            .some(
-              (entry) =>
-                entry.type === "user" &&
-                (!Array.isArray(entry.message.content) ||
-                  entry.message.content.some(
-                    (part) => part.type !== "tool_result",
-                  )),
-            )
+          turn.filter(
+            (entry) =>
+              entry.type === "user" &&
+              (!Array.isArray(entry.message.content) ||
+                entry.message.content.some(
+                  (part) => part.type !== "tool_result",
+                )),
+          ).length !== inputCount
         )
           return false;
         for (const entry of turn) {
