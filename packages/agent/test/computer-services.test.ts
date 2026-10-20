@@ -37,9 +37,10 @@ test("browser profiles persist across a restart and stay separate for each Bot",
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(directory, { recursive: true, force: true, maxRetries: 10 });
   });
-  expect(
-    (await computer.services.prepare(1, "browser", context)).available,
-  ).toBe(true);
+  expect(await computer.services.prepare(1, "browser", context)).toEqual({
+    available: true,
+    error: null,
+  });
   await call(1, "agent_browser_open", { url });
   const screenshot = await call(1, "agent_browser_screenshot", {});
   expect(screenshot.structuredContent?.source).toMatchObject({

@@ -124,17 +124,7 @@ test.runIf(enabled)(
         let output = "";
         getOrThrow(
           await env.exec(
-            [
-              "curl",
-              "--silent",
-              "--output",
-              "/dev/null",
-              "--write-out",
-              "%{http_code}",
-              "--max-time",
-              "5",
-              url,
-            ],
+            ["curl", "--silent", "--include", "--max-time", "5", url],
             {
               onOutput: (text) => {
                 output += text;
@@ -143,7 +133,7 @@ test.runIf(enabled)(
             context,
           ),
         );
-        expect(output).toBe("403");
+        expect(output, url).toMatch(/^HTTP\/\S+ 403\b/);
       }
       const direct = getOrThrow(
         await env.exec(

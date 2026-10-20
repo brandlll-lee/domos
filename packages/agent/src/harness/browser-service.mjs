@@ -135,7 +135,10 @@ export async function openBrowserService(directory, home) {
         child.stdout.destroy();
         child.stderr.destroy();
         if (code === 0) resolve(stdout);
-        else reject(new Error(stderr.trim() || "浏览器命令未完成。"));
+        else
+          reject(
+            new Error(stderr.trim() || stdout.trim() || "浏览器命令未完成。"),
+          );
       });
     });
   const stop = async () => {
