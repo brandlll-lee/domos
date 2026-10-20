@@ -216,6 +216,22 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
       exact: true,
     });
     await expect(environment).toBeVisible();
+    const left = (await environment.boundingBox())?.x;
+    const resize = page.getByRole("separator", { name: "调整联系人宽度" });
+    await resize.focus();
+    await resize.press("End");
+    expect((await environment.boundingBox())?.x).toBe(left);
+    const plus = await page
+      .getByRole("button", { name: "新建 Bot", exact: true })
+      .boundingBox();
+    const environmentBox = await environment.boundingBox();
+    expect(
+      environmentBox &&
+        plus &&
+        plus.x > environmentBox.x + environmentBox.width,
+    ).toBe(true);
+    await resize.press("Home");
+    expect((await environment.boundingBox())?.x).toBe(left);
     const menuShown = desktop.evaluate(
       ({ Menu }) =>
         new Promise<void>((resolve) => {

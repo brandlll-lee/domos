@@ -1,5 +1,6 @@
 .chat-surface {
   container: chat / inline-size;
+  --color-user: color-mix(in srgb, var(--bot-color) 32%, white);
 }
 .message-bubble {
   width: fit-content;
@@ -39,6 +40,15 @@
 .composer-action {
   display: flex;
   flex-shrink: 0;
+}
+.composer-action {
+  --color-primary: var(--color-text);
+  --color-on-primary: var(--color-canvas);
+  --color-primary-hover: color-mix(
+    in srgb,
+    var(--color-text) 86%,
+    var(--color-canvas)
+  );
 }
 .composer-leading .button[data-size="icon"] {
   width: var(--composer-control-size);

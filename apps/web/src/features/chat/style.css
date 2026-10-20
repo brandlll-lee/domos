@@ -346,7 +346,7 @@
   color: var(--color-danger);
 }
 .typing-dots {
-  color: var(--typing-color);
+  color: var(--bot-color);
   display: flex;
   align-items: center;
   align-self: flex-start;

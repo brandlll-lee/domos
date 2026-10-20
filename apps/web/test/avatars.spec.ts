@@ -4,6 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { characterIdentity } from "@domos/ui/characters";
 import { expect, test } from "@playwright/test";
 
 test("plush identities load, animate and survive profile changes", async ({
@@ -28,6 +29,13 @@ test("plush identities load, animate and survive profile changes", async ({
       page.getByRole("button", { name: "Bot详情", exact: true }),
     ).toBeVisible();
     const avatar = page.locator(".chat-header .character");
+    await page.getByLabel("消息", { exact: true }).fill("保存这条消息的主题");
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    const bubble = page.getByLabel("你的消息").locator(".message-bubble");
+    await expect(bubble).toBeVisible();
+    const initialBubble = await bubble.evaluate(
+      (item) => getComputedStyle(item).backgroundColor,
+    );
     await page.locator(".bot-avatar").first().waitFor();
     await page.evaluate(async () => {
       await Promise.all(
@@ -91,12 +99,25 @@ test("plush identities load, animate and survive profile changes", async ({
       .getByRole("button", { name: "保存身份", exact: true })
       .click();
     await expect(header).toHaveAttribute("data-seed", next ?? "");
+    await expect(page.locator(".conversation")).toHaveCSS(
+      "--bot-color",
+      characterIdentity(next ?? "").color,
+    );
+    const themedBubble = await bubble.evaluate(
+      (item) => getComputedStyle(item).backgroundColor,
+    );
+    if (
+      characterIdentity(initial ?? "").color !==
+      characterIdentity(next ?? "").color
+    )
+      expect(themedBubble).not.toBe(initialBubble);
     const identity = await header
       .locator(".character")
       .getAttribute("data-shape");
     const tint = await header.locator("feColorMatrix").getAttribute("values");
     await page.reload();
     await expect(header).toHaveAttribute("data-seed", next ?? "");
+    await expect(bubble).toHaveCSS("background-color", themedBubble);
     await expect(header.locator(".character")).toHaveAttribute(
       "data-shape",
       identity ?? "",

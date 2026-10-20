@@ -144,10 +144,15 @@ async function expectModel(
 
 async function expectTextContrast(page: import("@playwright/test").Page) {
   const ratios = await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 1;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Canvas required for color measurement");
     const luminance = (color: string) => {
-      const channels = (color.match(/[\d.]+/g) ?? [])
+      context.fillStyle = color;
+      context.fillRect(0, 0, 1, 1);
+      const channels = [...context.getImageData(0, 0, 1, 1).data]
         .slice(0, 3)
-        .map(Number)
         .map((value) => {
           const s = value / 255;
           return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
@@ -943,6 +948,9 @@ test("chat gutters stay full width while bubbles follow the available panel", as
     "**",
   );
   const outgoing = page.getByLabel("你的消息").locator(".message-bubble");
+  const outgoingBackground = await outgoing.evaluate(
+    (element) => getComputedStyle(element).backgroundColor,
+  );
   for (const viewport of [
     { width: 1600, height: 900 },
     { width: 940, height: 900 },
@@ -982,10 +990,7 @@ test("chat gutters stay full width while bubbles follow the available panel", as
         "font-size",
         "12px",
       );
-      await expect(outgoing).toHaveCSS(
-        "background-color",
-        theme === "dark" ? "rgb(236, 236, 234)" : "rgb(36, 37, 39)",
-      );
+      await expect(outgoing).toHaveCSS("background-color", outgoingBackground);
       await expectTextContrast(page);
       const overflow = await page
         .locator(".transcript")
@@ -1616,6 +1621,25 @@ test("composer grows, shrinks, and keeps one focus surface in both themes", asyn
     ["dark", "深色"],
   ] as const) {
     await chooseAppearance(page, label);
+    const input = page.getByLabel("消息", { exact: true });
+    await input.fill("继续整理资料");
+    const send = page.getByRole("button", { name: "发送", exact: true });
+    const colors = await send.evaluate((item) => {
+      const sample = document.createElement("span");
+      item.append(sample);
+      sample.style.color = "var(--color-text)";
+      const text = getComputedStyle(sample).color;
+      sample.style.color = "var(--color-canvas)";
+      const canvas = getComputedStyle(sample).color;
+      sample.remove();
+      return {
+        text,
+        canvas,
+      };
+    });
+    await expect(send).toHaveCSS("background-color", colors.text);
+    await expect(send).toHaveCSS("color", colors.canvas);
+    await input.clear();
     await expectTextContrast(page);
     await input.focus();
     await expect(input).toHaveCSS("outline-style", "none");
@@ -1951,6 +1975,9 @@ test("IM bubbles, sidebar search, and popup surfaces share both themes", async (
   const incoming = page.getByLabel("Domos 的回复").locator(".message-bubble");
   const outgoing = page.getByLabel("你的消息").locator(".message-bubble");
   await expect(incoming.locator("strong")).toHaveText("已整理好。");
+  const bubbleColor = await outgoing.evaluate(
+    (item) => getComputedStyle(item).backgroundColor,
+  );
   const column = await page.getByRole("log").boundingBox();
   const received = await incoming.boundingBox();
   const sent = await outgoing.boundingBox();
@@ -1983,6 +2010,7 @@ test("IM bubbles, sidebar search, and popup surfaces share both themes", async (
   ] as const) {
     await chooseAppearance(page, label);
     await expectTextContrast(page);
+    await expect(outgoing).toHaveCSS("background-color", bubbleColor);
     await page.screenshot({ path: `test-results/im-${theme}.png` });
     const details = await openDetails(page);
     await chooseDetail(details, "连接与账号");

@@ -1,5 +1,6 @@
 import type { Bot, BotPresence } from "@domos/agent/bots";
 import { type ChatMessage, messageText } from "@domos/agent/messages";
+import { characterIdentity } from "@domos/ui/characters";
 import { type CSSProperties, useCallback, useRef, useState } from "react";
 import { CreateBot } from "../bots/create-bot.tsx";
 import { BotDetails, type BotPanelView } from "../bots/details/index.tsx";
@@ -169,7 +170,10 @@ function BotChat({
         id="conversation"
         tabIndex={-1}
         style={
-          { "--composer-dock-height": `${dock.height}px` } as CSSProperties
+          {
+            "--composer-dock-height": `${dock.height}px`,
+            "--bot-color": characterIdentity(bot.avatar).color,
+          } as CSSProperties
         }
       >
         <ChatHeader
@@ -201,7 +205,6 @@ function BotChat({
           ready={Boolean(chat.view)}
           busy={Boolean(chat.view?.busy)}
           botName={bot.name}
-          avatar={bot.avatar}
           createdAt={bot.createdAt}
           items={items}
           onResend={resend}

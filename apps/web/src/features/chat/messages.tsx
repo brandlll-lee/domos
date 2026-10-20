@@ -85,7 +85,6 @@ export const Messages = memo(function Messages({
   ready,
   busy,
   botName,
-  avatar,
   createdAt,
   items,
   welcome,
@@ -95,7 +94,6 @@ export const Messages = memo(function Messages({
   ready: boolean;
   busy: boolean;
   botName: string;
-  avatar: string;
   createdAt?: number;
   items: TranscriptItem[];
   welcome?: ReactNode;
@@ -181,7 +179,7 @@ export const Messages = memo(function Messages({
               );
             })}
           {ready && busy && transcript.atLatest && (
-            <TypingDots avatar={avatar} label={chatCopy.typing(botName)} />
+            <TypingDots label={chatCopy.typing(botName)} />
           )}
           <p className="sr-only" role="status">
             {!busy && items.length ? chatCopy.complete : ""}
