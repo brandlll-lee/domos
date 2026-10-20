@@ -5,6 +5,7 @@ import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { createRegistry, defineExtension } from "@earendil-works/pi-durable";
 import { expect, onTestFinished, test } from "vitest";
+import type { Attachment } from "../src/attachments.ts";
 import { chatView } from "../src/chat-view.ts";
 import type { Computers } from "../src/computer/catalog.ts";
 import { Files } from "../src/files.ts";
@@ -86,7 +87,7 @@ test("a durable chat submission reads the stored image and sends its bytes to th
   });
 });
 
-test("computer screenshots remain downloadable with their source after the turn completes", async () => {
+test.each([false, true])("screenshot delivery: %s", async (deliver) => {
   const directory = await mkdtemp(join(tmpdir(), "domos-evidence-"));
   const database = join(directory, "agent.sqlite");
   const files = new Files(database);
@@ -120,8 +121,19 @@ test("computer screenshots remain downloadable with their source after the turn 
               "browser_observe",
               {},
               new AbortController().signal,
-            ).then((result) => {
+            ).then(async (result) => {
               returned = result;
+              if (deliver) {
+                const file = (
+                  result as { structuredContent: { evidence: Attachment[] } }
+                ).structuredContent.evidence[0];
+                await invoke(
+                  "deliver",
+                  "attach_file",
+                  { id: file?.id },
+                  new AbortController().signal,
+                );
+              }
               worker.frame({
                 method: "turn/completed",
                 params: { turn: { status: "completed" } },
@@ -162,8 +174,12 @@ test("computer screenshots remain downloadable with their source after the turn 
     files,
   );
   const registry = createRegistry();
+  registry.install(files.extension());
   registry.install(
-    defineExtension({ name: "domos-engines", tasks: [engineTask(execution)] }),
+    defineExtension({
+      name: "domos-engines",
+      tasks: [engineTask(execution)],
+    }),
   );
   const runtime = await openAgent(
     database,
@@ -199,9 +215,13 @@ test("computer screenshots remain downloadable with their source after the turn 
   ).toMatchObject({ status: "done" });
   const state = await runtime.conversation.viewState(context);
   try {
-    const file = chatView(state.value).messages.flatMap(
-      (message) => message.attachments ?? [],
-    )[0];
+    const file = (returned as { structuredContent: { evidence: Attachment[] } })
+      .structuredContent.evidence[0];
+    expect(
+      chatView(state.value).messages.flatMap(
+        (message) => message.attachments ?? [],
+      ),
+    ).toEqual(deliver ? [file] : []);
     expect(file?.source).toMatchObject({
       url: "https://example.org/report",
       capturedAt: "2026-10-19T12:00:00.000Z",
@@ -213,7 +233,14 @@ test("computer screenshots remain downloadable with their source after the turn 
       Buffer.from(await (await files.download(botId, file.id)).arrayBuffer()),
     ).toEqual(bytes);
     expect(returned).toMatchObject({
-      content: [{ type: "image", mimeType: "image/png" }],
+      content: expect.arrayContaining([
+        {
+          type: "image",
+          mimeType: "image/png",
+          data: bytes.toString("base64"),
+        },
+        { type: "text", text: expect.stringContaining(file.id) },
+      ]),
       structuredContent: { evidence: [{ id: file.id }] },
     });
   } finally {

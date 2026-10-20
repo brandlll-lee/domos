@@ -268,15 +268,28 @@ export class Files {
         defineTool({
           name: "attach_file",
           description:
-            "Publish a workspace file as a downloadable chat attachment. Use after creating the final deliverable.",
-          parameters: Type.Object({ path: Type.String() }),
+            "Send a file to the user. Provide a workspace path or a saved screenshot id. Only attach images you intend to deliver, not routine observations.",
+          parameters: Type.Object({
+            path: Type.Optional(Type.String()),
+            id: Type.Optional(Type.String()),
+          }),
           executionMode: "sequential",
           async execute(args, api, context) {
-            const file = await files.publish(
-              api.conversationId,
-              args.path,
-              context,
-            );
+            let file: Attachment;
+            if (args.id !== undefined && args.path === undefined) {
+              file = await files.metadata(api.conversationId, args.id);
+              await files.verify(api.conversationId, [file], context);
+            } else if (args.path !== undefined && args.id === undefined) {
+              file = await files.publish(
+                api.conversationId,
+                args.path,
+                context,
+              );
+            } else {
+              throw new Error(
+                "Provide either a workspace path or a saved screenshot id.",
+              );
+            }
             return {
               output: [
                 {

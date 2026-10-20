@@ -33,16 +33,19 @@ export async function computerEvidence(
       ),
     );
   }
+  if (!attachments.length) return result;
   return {
-    attachments,
-    result: attachments.length
-      ? {
-          ...result,
-          structuredContent: {
-            ...result.structuredContent,
-            evidence: attachments,
-          },
-        }
-      : result,
+    ...result,
+    content: [
+      ...result.content,
+      {
+        type: "text" as const,
+        text: `Screenshots saved as task evidence. Use attach_file with an id only when you intend to send an image to the user.\n${JSON.stringify(attachments)}`,
+      },
+    ],
+    structuredContent: {
+      ...result.structuredContent,
+      evidence: attachments,
+    },
   };
 }

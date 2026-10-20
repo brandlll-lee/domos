@@ -118,7 +118,7 @@ export class EngineExecution {
               context,
             );
             if (this.files) {
-              const evidence = await computerEvidence(
+              result = await computerEvidence(
                 this.files,
                 runtime.conversationId,
                 String(runtime.taskId),
@@ -127,16 +127,6 @@ export class EngineExecution {
                 result,
                 context,
               );
-              result = evidence.result;
-              if (evidence.attachments.length)
-                await emit({
-                  type: "tool_result",
-                  id: `computer:${callId}`,
-                  name,
-                  text: "画面已保存。",
-                  failed: Boolean(result.isError),
-                  attachments: evidence.attachments,
-                });
             }
             if (
               result.content.some((part) => part.type === "image") &&
@@ -148,7 +138,7 @@ export class EngineExecution {
                   ...result.content.filter((part) => part.type !== "image"),
                   {
                     type: "text",
-                    text: "当前模型不能接收截图。画面已保存为附件。需要看图时，请更换支持图片的模型。",
+                    text: "当前模型不能接收截图。画面已保存为任务证据。需要看图时，请更换支持图片的模型。",
                   },
                 ],
               };
