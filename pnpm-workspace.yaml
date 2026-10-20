@@ -1,5 +1,7 @@
 packages:
   - apps/*
   - packages/*
+onlyBuiltDependencies:
+  - agent-browser
 ignoredOptionalDependencies:
   - "@anthropic-ai/claude-agent-sdk-*"

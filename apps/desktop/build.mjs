@@ -23,7 +23,7 @@ const pnpm = (...args) => {
 pnpm("build");
 await rm(runtime, { recursive: true, force: true });
 pnpm(
-  "--config.node-linker=isolated",
+  "--config.node-linker=hoisted",
   "--filter",
   "@domos/api",
   "deploy",

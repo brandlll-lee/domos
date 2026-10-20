@@ -50,6 +50,7 @@ export class WebNetwork {
       proxy.State.Health?.Status !== "healthy" ||
       proxy.Config.Image !== this.config.proxyImage ||
       proxy.Config.User !== "1000:1000" ||
+      !proxy.HostConfig.Init ||
       !proxy.HostConfig.ReadonlyRootfs ||
       proxy.HostConfig.Privileged ||
       !proxy.HostConfig.CapDrop?.includes("ALL") ||
@@ -99,6 +100,7 @@ export class WebNetwork {
         "docker",
         "container",
         "create",
+        "--init",
         "--pull=never",
         "--name",
         this.proxy,

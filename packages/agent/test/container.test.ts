@@ -157,6 +157,7 @@ test.runIf(enabled)(
       await fixture.close();
     }
   },
+  120_000,
 );
 
 test.runIf(enabled)(

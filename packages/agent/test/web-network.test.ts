@@ -25,6 +25,7 @@ test("HTTP egress refuses a changed isolation boundary and requires a healthy pr
     State: { Running: true, Health: { Status: "healthy" } },
     Config: { Image: config.proxyImage, User: "1000:1000" },
     HostConfig: {
+      Init: true,
       ReadonlyRootfs: true,
       Privileged: false,
       CapDrop: ["ALL"],
@@ -50,6 +51,9 @@ test("HTTP egress refuses a changed isolation boundary and requires a healthy pr
   proxy.State.Health.Status = "unhealthy";
   await expect(network.check()).rejects.toThrow("隔离配置");
   proxy.State.Health.Status = "healthy";
+  proxy.HostConfig.Init = false;
+  await expect(network.check()).rejects.toThrow("隔离配置");
+  proxy.HostConfig.Init = true;
   proxy.Mounts.push({ Type: "bind", Destination: "/control" });
   await expect(network.check()).rejects.toThrow("隔离配置");
   proxy.Mounts.pop();
