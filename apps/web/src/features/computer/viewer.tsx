@@ -1,6 +1,6 @@
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
-import { useEffect, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { useView } from "./use-view.ts";
 
 export function ComputerViewer({
@@ -16,6 +16,7 @@ export function ComputerViewer({
   );
   const [url, setUrl] = useState("");
   const [text, setText] = useState("");
+  const [ratio, setRatio] = useState(16 / 9);
   const image = useRef<HTMLImageElement>(null);
   const acknowledged = useRef<number>(undefined);
   const acknowledge = () => {
@@ -33,27 +34,17 @@ export function ComputerViewer({
     }
   }, [frame, send]);
   return (
-    <section className="computer-viewer" aria-label="工作电脑观看">
-      <div className="computer-view-toolbar">
-        <span role="status">
-          {connected
-            ? controlling
-              ? "你正在接管"
-              : "正在观看"
-            : error
-              ? "连接已断开"
-              : "正在连接…"}
-        </span>
-        <Button
-          variant="secondary"
-          size="small"
-          disabled={!connected}
-          onClick={() => send({ type: controlling ? "back" : "take" })}
-        >
-          {controlling ? "交还控制权" : "接管"}
-        </Button>
-      </div>
-      {service === "browser" && (
+    <section
+      className="computer-viewer"
+      aria-label="工作电脑观看"
+      data-controlling={controlling || undefined}
+      style={
+        {
+          "--screen-ratio": ratio,
+        } as CSSProperties
+      }
+    >
+      {service === "browser" && controlling && (
         <form
           className="computer-view-address"
           onSubmit={(event) => {
@@ -83,7 +74,11 @@ export function ComputerViewer({
             alt="工作电脑画面"
             draggable={false}
             tabIndex={controlling ? 0 : -1}
-            onLoad={acknowledge}
+            onLoad={(event) => {
+              const image = event.currentTarget;
+              setRatio(image.naturalWidth / image.naturalHeight);
+              acknowledge();
+            }}
             onContextMenu={(event) => {
               if (controlling) event.preventDefault();
             }}
@@ -197,6 +192,27 @@ export function ComputerViewer({
           </p>
         )}
       </div>
+      <div className="computer-view-toolbar">
+        <span role="status">
+          {connected
+            ? controlling
+              ? "你正在接管"
+              : service === "browser"
+                ? "浏览器画面"
+                : "电脑屏幕"
+            : error
+              ? "连接已断开"
+              : "正在连接…"}
+        </span>
+        <Button
+          variant="ghost"
+          size="small"
+          disabled={!connected}
+          onClick={() => send({ type: controlling ? "back" : "take" })}
+        >
+          {controlling ? "交还控制权" : "接管"}
+        </Button>
+      </div>
       {controlling && (
         <form
           className="computer-view-address"
@@ -220,9 +236,6 @@ export function ComputerViewer({
           </Button>
         </form>
       )}
-      <p className="detail-note">
-        密码、验证码和支付确认由你完成。交还后，Bot 会重新检查当前画面。
-      </p>
       {error && (
         <div role="alert" className="alert">
           {error}

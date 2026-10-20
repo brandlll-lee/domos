@@ -109,12 +109,14 @@
   overflow-wrap: anywhere;
 }
 .computer-viewer {
+  --view-height: max(6rem, calc(100dvh - 14rem));
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   min-width: 0;
-  min-height: 100%;
-  height: 100%;
+}
+.computer-viewer[data-controlling] {
+  --view-height: max(6rem, calc(100dvh - 22rem));
 }
 .computer-view-toolbar,
 .computer-view-address {
@@ -139,36 +141,31 @@
 }
 .computer-view-screen {
   position: relative;
-  flex: 1;
-  min-height: 10rem;
+  flex-shrink: 0;
+  align-self: center;
+  width: min(100%, calc(var(--view-height) * var(--screen-ratio)));
+  aspect-ratio: var(--screen-ratio);
   overflow: hidden;
   border: 1px solid var(--color-divider);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-panel);
   background: var(--color-control);
 }
 .computer-view-screen img {
-  position: absolute;
-  inset: 50% auto auto 50%;
   display: block;
-  width: auto;
-  height: auto;
-  max-width: 100%;
-  max-height: 100%;
-  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
   touch-action: none;
 }
 .computer-view-screen > p {
   display: grid;
   place-items: center;
-  min-height: 10rem;
+  height: 100%;
   margin: 0;
 }
 .computer-view-screen img:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: -2px;
-}
-.computer-viewer > .detail-note {
-  flex-shrink: 0;
 }
 @media (prefers-reduced-motion: reduce) {
   .workspace-tab {

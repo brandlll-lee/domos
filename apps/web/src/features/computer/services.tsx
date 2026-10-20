@@ -14,7 +14,6 @@ export function ComputerServices({
     <section className="detail-stack" aria-label="浏览器和桌面">
       <div className="detail-form-head">
         <h3 className="panel-group-title">允许的操作</h3>
-        <p className="detail-note">在聊天顶部打开电脑，即可观看或接管。</p>
       </div>
       <div className="panel-card computer-services">
         {(["browser", "desktop"] as const).map((service) => (

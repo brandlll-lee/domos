@@ -112,13 +112,10 @@ export function ComputerWorkspace({
                         ? `${label}尚未就绪`
                         : `${label}尚未启用`}
               </h3>
-              <p>
-                {status?.authorized
-                  ? (item?.error ?? `启用后，可以在这里观看${label}画面。`)
-                  : status
-                    ? computerLabels.state[status.state]
-                    : "选择后，Bot 和你可以在同一工作环境中操作。"}
-              </p>
+              {item?.error && <p>{item.error}</p>}
+              {status && !status.authorized && (
+                <p>{computerLabels.state[status.state]}</p>
+              )}
               {!status?.authorized ? (
                 <Button size="small" variant="secondary" onClick={onSettings}>
                   配置工作电脑
