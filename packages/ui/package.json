@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./panel": "./src/web/panel.tsx",
     "./tabs": "./src/web/tabs.tsx",
     "./setting-row": "./src/web/setting-row.tsx",
     "./avatar": "./src/web/avatar.tsx",

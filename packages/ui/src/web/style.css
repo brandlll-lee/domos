@@ -4,6 +4,7 @@
 @import "./setup.css";
 @import "./avatar.css";
 @import "./scroll-area.css";
+@import "./panel.css";
 
 :root {
   font-family: var(--font-body);

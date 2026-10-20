@@ -128,6 +128,7 @@ export const metrics = {
   "sidebar-width": "17rem",
   "details-width": "24rem",
   "panel-header-height": "3.5rem",
+  "panel-row-height": "2.5rem",
   "chat-header-height": "4rem",
   "control-small": "2rem",
   "control-height": "2.5rem",
