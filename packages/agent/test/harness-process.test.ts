@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
@@ -121,6 +122,17 @@ app.whenReady().then(() => {
     const electron = createRequire(
       new URL("../../../apps/desktop/package.json", import.meta.url),
     )("electron") as string;
+    const elevated =
+      execFileSync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)",
+        ],
+        { encoding: "utf8", windowsHide: true },
+      ).trim() === "True";
     const launched = await process.computer<ProductResult>({
       operation: "call",
       service: "desktop",
@@ -128,7 +140,7 @@ app.whenReady().then(() => {
       arguments: {
         path: electron,
         additional_arguments: [entry],
-        start_minimized: false,
+        start_minimized: elevated,
       },
     });
     expect(launched.isError, JSON.stringify(launched.content)).not.toBe(true);
