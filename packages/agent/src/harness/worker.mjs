@@ -1,5 +1,5 @@
 import { once } from "node:events";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { delimiter, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -71,10 +71,10 @@ async function configure(frame) {
     throw new Error("Workspace required");
   await mkdir(frame.cwd, { recursive: true, mode: 0o700 });
   await mkdir(frame.home, { recursive: true, mode: 0o700 });
-  home = frame.home;
+  home = await realpath(frame.home);
   process.env.CLAUDE_CONFIG_DIR = join(home, "claude");
-  process.chdir(frame.cwd);
-  computer = openComputerService(frame.cwd, frame.home);
+  process.chdir(await realpath(frame.cwd));
+  computer = openComputerService(process.cwd(), home);
   gateway = await openGateway(
     frame.tools,
     (callId, name, args, signal) =>
@@ -95,8 +95,8 @@ async function configure(frame) {
   emit({
     type: "ready",
     url: gateway.url,
-    cwd: frame.cwd,
-    home: frame.home,
+    cwd: process.cwd(),
+    home,
   });
 }
 

@@ -1,6 +1,14 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -47,6 +55,7 @@ export async function openBrowserService(directory, home) {
       launcher = join(bin, "agent-browser-win32-x64.exe");
     }
   }
+  const socket = await mkdtemp(join(tmpdir(), "domos-browser-"));
   const env = Object.fromEntries(
     [
       "PATH",
@@ -83,8 +92,7 @@ export async function openBrowserService(directory, home) {
     ELECTRON_RUN_AS_NODE: "1",
     AGENT_BROWSER_CONFIG: config,
     AGENT_BROWSER_SESSION: session,
-    AGENT_BROWSER_NAMESPACE: session,
-    AGENT_BROWSER_SOCKET_DIR: join(state, "run"),
+    AGENT_BROWSER_SOCKET_DIR: socket,
   });
   const client = new Client({ name: "domos", version: "1" });
   try {
@@ -99,21 +107,14 @@ export async function openBrowserService(directory, home) {
     );
   } catch (error) {
     await client.close();
+    await rm(socket, { recursive: true, force: true });
     throw error;
   }
   const run = (args, signal) =>
     new Promise((resolve, reject) => {
       const child = spawn(
         launcher,
-        [
-          "--config",
-          config,
-          "--session",
-          session,
-          "--namespace",
-          session,
-          ...args,
-        ],
+        ["--config", config, "--session", session, ...args],
         {
           env,
           cwd: directory,
@@ -142,14 +143,7 @@ export async function openBrowserService(directory, home) {
       });
     });
   const stop = async () => {
-    const path = join(
-      state,
-      "run",
-      "namespaces",
-      session,
-      "run",
-      `${session}.pid`,
-    );
+    const path = join(socket, `${session}.pid`);
     let pid;
     try {
       pid = Number((await readFile(path, "utf8")).trim());
@@ -202,7 +196,6 @@ export async function openBrowserService(directory, home) {
           arguments: {
             ...args,
             session,
-            namespace: session,
             all: false,
             extraArgs: ["--profile", profile, "--download-path", downloads],
           },
@@ -247,6 +240,7 @@ export async function openBrowserService(directory, home) {
     async close() {
       await run(["close"], AbortSignal.timeout(3000)).catch(stop);
       await client.close();
+      await rm(socket, { recursive: true, force: true });
     },
   };
 }

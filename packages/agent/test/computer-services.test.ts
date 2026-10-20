@@ -8,7 +8,9 @@ import { Computer } from "../src/computer/index.ts";
 import { parseConfig } from "../src/runtime/config.ts";
 
 test("browser profiles persist across a restart and stay separate for each Bot", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "domos-profile-"));
+  const directory = await mkdtemp(
+    join(tmpdir(), `domos-profile-${"workspace-".repeat(4)}`),
+  );
   const config = parseConfig(
     { dataDir: directory },
     join(directory, "config.json"),
@@ -41,7 +43,9 @@ test("browser profiles persist across a restart and stay separate for each Bot",
     available: true,
     error: null,
   });
-  await call(1, "agent_browser_open", { url });
+  expect(await call(1, "agent_browser_open", { url })).not.toMatchObject({
+    isError: true,
+  });
   const screenshot = await call(1, "agent_browser_screenshot", {});
   expect(screenshot.structuredContent?.source).toMatchObject({
     url: `${url}/`,

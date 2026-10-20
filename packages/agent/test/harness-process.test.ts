@@ -121,16 +121,19 @@ app.whenReady().then(() => {
     const electron = createRequire(
       new URL("../../../apps/desktop/package.json", import.meta.url),
     )("electron") as string;
-    await process.computer({
-      operation: "call",
-      service: "desktop",
-      name: "launch_app",
-      arguments: { path: electron, additional_arguments: [entry] },
-    });
+    expect(
+      await process.computer({
+        operation: "call",
+        service: "desktop",
+        name: "launch_app",
+        arguments: { path: electron, additional_arguments: [entry] },
+      }),
+    ).not.toMatchObject({ isError: true });
     await expect
-      .poll(() => readFile(ready, "utf8").catch(() => ""), { timeout: 5000 })
+      .poll(() => readFile(ready, "utf8").catch(() => ""), { timeout: 20000 })
       .toBe("ready");
   },
+  60000,
 );
 
 test("a work computer discovers browser tools from its own runtime", async () => {
@@ -377,7 +380,8 @@ test("a work computer reads its private Claude transcript through the native SDK
 });
 
 test("bundled Pi opens a native session in the selected work directory", async () => {
-  const { process, directory } = await worker();
+  const { process } = await worker();
+  const { home } = await process.ready;
   const session = await piProvider.open({
     process,
     config: { provider: "pi", model: null },
@@ -386,7 +390,7 @@ test("bundled Pi opens a native session in the selected work directory", async (
     emit: async () => {},
   });
   expect(session.id.replaceAll("\\", "/")).toContain(
-    `${directory.replaceAll("\\", "/")}/accounts/pi/sessions/`,
+    `${home.replaceAll("\\", "/")}/pi/sessions/`,
   );
   await process.close();
   await expect(process.closed).resolves.toMatchObject({

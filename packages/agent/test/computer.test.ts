@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { arch, platform, release, tmpdir } from "node:os";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -79,7 +79,9 @@ test.runIf(platform() === "win32")(
         expect(result?.toolStatus).toBe("failed");
         expect(result && messageText(result)).toContain('"Name":');
         const workspace = await files.workspace(runtime.conversation.id);
-        expect(result && messageText(result)).toContain(workspace.cwd);
+        expect(result && messageText(result)).toContain(
+          await realpath(workspace.cwd),
+        );
         expect(await readFile(join(workspace.cwd, filename), "utf8")).toBe(
           marker,
         );
