@@ -10,6 +10,214 @@ let worker: ChildProcess;
 let directory: string;
 let url: string;
 
+test("sending paints the outgoing message before the network receipt", async ({
+  page,
+}) => {
+  await page.goto(url);
+  const seeded = once(worker, "message");
+  worker.send({ history: 160 });
+  await seeded;
+  await page.reload();
+  const input = page.getByRole("textbox", { name: "消息", exact: true });
+  await expect(input).toBeEnabled();
+  await page.locator(".transcript").evaluate((node) => {
+    node.scrollTop = 0;
+  });
+  const receipt = Promise.withResolvers<void>();
+  await page.route("**/rpc/send", async (route) => {
+    await receipt.promise;
+    await route.continue();
+  });
+  await input.fill("即时发送检查");
+  const session = await page.context().newCDPSession(page);
+  await session.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+  await page.evaluate(() => {
+    document.addEventListener("keydown", () => performance.mark("send-start"), {
+      once: true,
+    });
+    const observer = new MutationObserver(() => {
+      const messages = document.querySelectorAll('[aria-label="你的消息"]');
+      if (
+        messages[messages.length - 1]?.textContent?.includes("即时发送检查")
+      ) {
+        requestAnimationFrame(() => {
+          performance.mark("send-painted");
+          performance.measure("send-paint", "send-start", "send-painted");
+        });
+        observer.disconnect();
+      }
+    });
+    observer.observe(document.querySelector(".messages")!, {
+      subtree: true,
+      childList: true,
+    });
+  });
+  try {
+    await input.press("Enter");
+    await expect(page.getByLabel("你的消息").last()).toContainText(
+      "即时发送检查",
+    );
+    await expect
+      .poll(() =>
+        page.evaluate(() => performance.getEntriesByName("send-paint").length),
+      )
+      .toBe(1);
+    const duration = await page.evaluate(
+      () => performance.getEntriesByName("send-paint")[0]!.duration,
+    );
+    console.log(
+      `send paint with 320 history messages and 4x CPU: ${duration.toFixed(1)}ms`,
+    );
+    expect(duration).toBeLessThan(200);
+    await expect
+      .poll(() =>
+        page
+          .locator(".transcript")
+          .evaluate(
+            (node) => node.scrollHeight - node.clientHeight - node.scrollTop,
+          ),
+      )
+      .toBeLessThanOrEqual(1);
+  } finally {
+    receipt.resolve();
+    await session.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+  }
+});
+
+test("usage reports native task costs and preserves session snapshots across themes", async ({
+  page,
+}, info) => {
+  const records = Array.from({ length: 8 }, (_, index) => ({
+    id: `usage-${index}`,
+    taskId: `task-${index}`,
+    botId: 1,
+    sessionId: "session",
+    harness: index < 2 ? "claude" : "pi",
+    provider: `provider-${index}`,
+    model: `model-${index}`,
+    source: "native-test",
+    timestamp: Date.now(),
+    input: index === 7 ? null : 1000 * (index + 1),
+    output: 100,
+    cacheRead: null,
+    cacheWrite: null,
+    costUsd: index < 2 ? 100 + index : index === 7 ? null : 0.5,
+    ...(index < 2 ? { costScope: "session" } : {}),
+  }));
+  let mode = "loading";
+  const loaded = Promise.withResolvers<void>();
+  await page.route("**/rpc/engines/usage", async (route) => {
+    await loaded.promise;
+    if (mode === "error") await route.abort();
+    else
+      await route.fulfill({ json: { json: mode === "empty" ? [] : records } });
+  });
+  await page.goto(url);
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  const settings = page.getByRole("main", { name: "设置", exact: true });
+  await settings.getByRole("tab", { name: "Usage", exact: true }).click();
+  await expect(settings.getByLabel("正在读取用量")).toBeVisible();
+  mode = "data";
+  loaded.resolve();
+  await expect(settings.locator(".usage-kpi").first()).toContainText("$2.50");
+  await expect(settings.locator(".usage-footer")).toContainText("2 条会话累计");
+  await expect(settings.locator(".usage-footer")).toContainText(
+    "1 条成本未提供",
+  );
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await page.screenshot({
+      path: info.outputPath(`usage-overview-${colorScheme}.png`),
+    });
+    await settings.getByRole("tab", { name: "分析", exact: true }).click();
+    const summary = settings.getByRole("table", {
+      name: "分组用量",
+      exact: true,
+    });
+    await expect(summary).toContainText("model-2");
+    await expect(summary).toContainText("其他");
+    await settings
+      .getByRole("button", { name: "展开图表", exact: true })
+      .click();
+    await expect(
+      settings.getByRole("button", { name: "还原", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await settings.getByRole("button", { name: "还原", exact: true }).click();
+    await page.screenshot({
+      path: info.outputPath(`usage-explore-${colorScheme}.png`),
+    });
+    await settings.getByRole("tab", { name: "明细", exact: true }).click();
+    const details = settings.getByRole("table", {
+      name: "用量明细",
+      exact: true,
+    });
+    await expect(details).toContainText("$101.00");
+    await expect(details).toContainText("会话累计");
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: info.outputPath(`usage-mobile-${colorScheme}.png`),
+    });
+    await page.setViewportSize({ width: 1360, height: 900 });
+    await settings.getByRole("tab", { name: "总览", exact: true }).click();
+  }
+  mode = "empty";
+  await settings.getByRole("button", { name: "刷新用量", exact: true }).click();
+  await expect(
+    settings.getByText("此范围还没有用量记录。", { exact: true }),
+  ).toBeVisible();
+  mode = "error";
+  await settings.getByRole("button", { name: "刷新用量", exact: true }).click();
+  await expect(settings.getByRole("alert")).toBeVisible();
+  mode = "data";
+  await settings.getByRole("button", { name: "重试", exact: true }).click();
+  await expect(settings.locator(".usage-kpi").first()).toContainText("$2.50");
+});
+
+test("long bubbles fold with a fade and retain full text without outgoing timestamps", async ({
+  page,
+}) => {
+  const receipt = once(worker, "message");
+  worker.send({ content: "核对结果。\n\n".repeat(28) });
+  await receipt;
+  await page.goto(url);
+  await page
+    .getByRole("textbox", { name: "消息", exact: true })
+    .fill("用户长内容\n".repeat(60));
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const outgoing = page.getByLabel("你的消息").last();
+  await expect(
+    outgoing.getByRole("button", { name: "展开", exact: true }),
+  ).toBeVisible();
+  const body = outgoing.locator(".message-body");
+  expect((await body.boundingBox())?.height).toBeCloseTo(384, 1);
+  await expect(outgoing.locator("time")).toHaveCount(0);
+  await outgoing.getByRole("button", { name: "展开", exact: true }).click();
+  expect((await body.boundingBox())?.height).toBeGreaterThan(384);
+  await outgoing.getByRole("button", { name: "收起", exact: true }).click();
+  const incoming = page.getByLabel("Domos 的回复").last();
+  await expect(
+    incoming.getByRole("button", { name: "展开", exact: true }),
+  ).toBeVisible({ timeout: 20_000 });
+  const gap = await incoming.evaluate(
+    (node) =>
+      node.getBoundingClientRect().top -
+      (node.previousElementSibling?.getBoundingClientRect().bottom ?? 0),
+  );
+  expect(gap).toBeGreaterThanOrEqual(12);
+  await page.reload();
+  await expect(page.getByLabel("你的消息")).toHaveCount(1);
+  await expect(
+    page
+      .getByLabel("Domos 的回复")
+      .getByRole("button", { name: "展开", exact: true }),
+  ).toBeVisible();
+});
+
 test.beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), "domos-workspace-"));
   worker = fork(
@@ -246,7 +454,7 @@ test("chat stays at the latest message in every painted resize frame", async ({
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.getByLabel("Domos 的回复")).toBeVisible();
   receipt = once(worker, "message");
-  worker.send({ history: 6 });
+  worker.send({ history: 160 });
   await receipt;
   await page.reload();
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
@@ -277,6 +485,10 @@ test("chat stays at the latest message in every painted resize frame", async ({
     if (messages) observer.observe(messages);
   });
   const handle = page.getByRole("separator", { name: "调整详情宽度" });
+  const session = await page.context().newCDPSession(page);
+  await session.send("Performance.enable");
+  await session.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+  const baseline = await session.send("Performance.getMetrics");
   const box = await handle.boundingBox();
   if (!box) throw new Error("Resize handle missing");
   await page.mouse.move(box.x + box.width / 2, box.y + 100);
@@ -284,6 +496,19 @@ test("chat stays at the latest message in every painted resize frame", async ({
   await page.mouse.move(box.x - 240, box.y + 100, { steps: 50 });
   await page.mouse.move(box.x + 60, box.y + 100, { steps: 50 });
   await page.mouse.up();
+  const measured = await session.send("Performance.getMetrics");
+  for (const name of [
+    "LayoutDuration",
+    "ScriptDuration",
+    "RecalcStyleDuration",
+  ]) {
+    const duration =
+      1000 *
+      ((measured.metrics.find((m) => m.name === name)?.value ?? 0) -
+        (baseline.metrics.find((m) => m.name === name)?.value ?? 0));
+    console.log(`resize ${name}: ${duration.toFixed(1)}ms`);
+  }
+  await session.send("Emulation.setCPUThrottlingRate", { rate: 1 });
   expect(
     Number(await page.locator(".transcript").getAttribute("data-resize-gap")),
   ).toBeLessThanOrEqual(1);
@@ -479,14 +704,13 @@ test("settings stay readable in both themes and compact layouts", async ({
   const trigger = page.getByRole("button", { name: "设置", exact: true });
   await trigger.click();
   const settings = page.getByRole("main", { name: "设置", exact: true });
-  await expect(page.locator(".app-titlebar")).toHaveCount(1);
-  await expect(page.locator(".app-titlebar")).toBeVisible();
+  await expect(page.locator(".app-titlebar:visible")).toHaveCount(1);
   await expect(input).toBeHidden();
   await expect(
     page.getByRole("dialog", { name: "设置", exact: true }),
-  ).toHaveCount(1);
-  expect((await settings.boundingBox())?.y).toBeGreaterThan(100);
-  expect((await settings.boundingBox())?.height).toBeLessThan(700);
+  ).toHaveCount(0);
+  expect((await settings.boundingBox())?.y).toBe(48);
+  expect((await settings.boundingBox())?.height).toBe(852);
   expect((await settings.boundingBox())?.width).toBeGreaterThan(800);
   for (const [theme, label] of [
     ["dark", "深色"],

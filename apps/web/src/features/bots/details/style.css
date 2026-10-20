@@ -408,7 +408,7 @@
   margin: 0;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.71875rem;
   line-height: 1.55;
 }

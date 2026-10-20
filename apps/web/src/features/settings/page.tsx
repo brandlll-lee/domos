@@ -75,6 +75,7 @@ export function SettingsPage({
       render={<main aria-label="设置" />}
       ref={contentRef}
       data-compact={compact || undefined}
+      data-section={section}
       value={section}
       orientation={compact ? "horizontal" : "vertical"}
       onValueChange={(value) => select(value as SettingsSection)}
@@ -126,6 +127,7 @@ export function SettingsPage({
             }}
           />
         </label>
+        <span className="settings-nav-heading">工作区</span>
         <Tabs.List className="settings-nav" aria-label="设置分区">
           {matches.map((id) => {
             const item = sections[id];

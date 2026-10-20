@@ -1,27 +1,36 @@
 import { Button } from "@domos/ui/controls";
 import { ChoicePicker } from "@domos/ui/picker";
-import { useEffect, useState } from "react";
+import { Tabs } from "@domos/ui/tabs";
+import { ArrowsOutIcon } from "@phosphor-icons/react/dist/csr/ArrowsOut";
+import { FunnelIcon } from "@phosphor-icons/react/dist/csr/Funnel";
+import { useEffect, useMemo, useState } from "react";
 import { client } from "../../client.ts";
 import { userError } from "../user-error.ts";
+import { UsageBreakdown } from "./usage-charts.tsx";
+import {
+  type Dimension,
+  dailyUsage,
+  dimensions,
+  harnesses,
+  type Metric,
+  metrics,
+  type UsageRecord,
+  usageGroups,
+} from "./usage-data.ts";
+import { UsageDetails } from "./usage-details.tsx";
+import { UsageOverview } from "./usage-overview.tsx";
 import { type UsagePeriod, usagePeriodRange } from "./usage-period.ts";
 import "./usage.css";
 
-type UsageRecord = Awaited<ReturnType<typeof client.engines.usage>>[number];
-
-const harnesses = [
-  { value: "pi", label: "Pi" },
-  { value: "codex", label: "Codex" },
-  { value: "claude", label: "Claude Code" },
-  { value: "opencode", label: "OpenCode" },
+const choices = (values: (string | null)[]) => [
+  { value: "", label: "全部" },
+  ...[...new Set(values.filter((value): value is string => value !== null))]
+    .sort()
+    .map((value) => ({ value, label: value })),
 ];
-const count = (value: number | null) =>
-  value === null ? "未提供" : value.toLocaleString();
-const money = (value: number | null) =>
-  value === null ? "未提供" : `$${value.toFixed(4)}`;
 
 export function UsageSettings() {
   const [query, setQuery] = useState({ period: "month" as UsagePeriod });
-  const period = query.period;
   const [harness, setHarness] = useState("");
   const [provider, setProvider] = useState("");
   const [botId, setBotId] = useState("");
@@ -30,9 +39,17 @@ export function UsageSettings() {
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [elapsed, setElapsed] = useState(0);
+  const [tab, setTab] = useState("overview");
+  const [filters, setFilters] = useState(false);
+  const [metric, setMetric] = useState<Metric>("cost");
+  const [dimension, setDimension] = useState<Dimension>("model");
+  const [limit, setLimit] = useState("5");
+  const [expanded, setExpanded] = useState(false);
+  const range = useMemo(() => usagePeriodRange(query.period), [query]);
   useEffect(() => {
     let current = true;
-    const range = usagePeriodRange(query.period);
+    const started = performance.now();
     setLoading(true);
     setError("");
     void Promise.all([
@@ -46,6 +63,7 @@ export function UsageSettings() {
         if (current) {
           setRows(rows);
           setBots(bots);
+          setElapsed(Math.round(performance.now() - started));
         }
       })
       .catch((cause) => {
@@ -57,171 +75,213 @@ export function UsageSettings() {
     return () => {
       current = false;
     };
-  }, [query]);
-  const visible = rows.filter(
-    (row) =>
-      (!harness || row.harness === harness) &&
-      (!provider || row.provider === provider) &&
-      (!model || row.model === model) &&
-      (!botId || String(row.botId) === botId),
+  }, [range]);
+  const visible = useMemo(
+    () =>
+      rows.filter(
+        (row) =>
+          (!harness || row.harness === harness) &&
+          (!provider || row.provider === provider) &&
+          (!model || row.model === model) &&
+          (!botId || String(row.botId) === botId),
+      ),
+    [rows, harness, provider, model, botId],
   );
   const names = new Map(bots.map((bot) => [bot.id, bot.name]));
-  const choices = (values: (string | null)[]) => [
-    { value: "", label: "全部" },
-    ...[...new Set(values.filter((value): value is string => value !== null))]
-      .sort()
-      .map((value) => ({ value, label: value })),
-  ];
+  const days = dailyUsage(visible, range.from, range.to);
+  const groups = usageGroups(visible, dimension, metric, names, Number(limit));
+  const explore = (next: Dimension) => {
+    setDimension(next);
+    setTab("explore");
+  };
   return (
-    <div className="settings-sections" aria-busy={loading}>
-      <section className="settings-group">
-        <h3>用量与成本</h3>
-        <div className="usage-filters">
-          <ChoicePicker
-            label="日期范围"
-            size="small"
-            value={period}
-            onValueChange={(value) =>
-              setQuery({ period: value as UsagePeriod })
-            }
-            items={[
-              { value: "month", label: "本月" },
-              { value: "lastMonth", label: "上月" },
-              { value: "days30", label: "近 30 天" },
-            ]}
-          />
-          <ChoicePicker
-            label="Harness"
-            size="small"
-            value={harness}
-            onValueChange={setHarness}
-            items={[{ value: "", label: "全部 Harness" }, ...harnesses]}
-          />
-          <ChoicePicker
-            label="Provider"
-            size="small"
-            value={provider}
-            onValueChange={setProvider}
-            items={choices(rows.map((row) => row.provider))}
-          />
-          <ChoicePicker
-            label="Bot"
-            size="small"
-            value={botId}
-            onValueChange={setBotId}
-            items={[
-              { value: "", label: "全部 Bot" },
-              ...bots.map((bot) => ({
-                value: String(bot.id),
-                label: bot.name,
-              })),
-            ]}
-          />
-          <ChoicePicker
-            label="用量模型"
-            size="small"
-            value={model}
-            onValueChange={setModel}
-            items={choices(rows.map((row) => row.model))}
-          />
-          <Button
-            size="small"
-            variant="secondary"
-            disabled={loading}
-            onClick={() => setQuery({ period })}
-          >
-            刷新用量
-          </Button>
-        </div>
-        <p className="detail-note">
-          仅显示引擎返回的数据。日期按 UTC 计算。成本单位为
-          USD。输入和缓存保留原生口径。
+    <div
+      className="usage-dashboard"
+      aria-busy={loading}
+      data-expanded={expanded || undefined}
+    >
+      <div className="usage-toolbar">
+        <span className="usage-timezone">UTC</span>
+        <Button
+          size="small"
+          variant="secondary"
+          aria-label="筛选用量"
+          aria-expanded={filters}
+          aria-controls="usage-filters"
+          onClick={() => setFilters(!filters)}
+        >
+          <FunnelIcon />
+          筛选{[harness, provider, botId, model].filter(Boolean).length || ""}
+        </Button>
+        <ChoicePicker
+          label="日期范围"
+          size="small"
+          value={query.period}
+          onValueChange={(period) =>
+            setQuery({ period: period as UsagePeriod })
+          }
+          items={[
+            { value: "month", label: "本月" },
+            { value: "lastMonth", label: "上月" },
+            { value: "days30", label: "近 30 天" },
+          ]}
+        />
+        <Button
+          size="small"
+          variant="secondary"
+          disabled={loading}
+          onClick={() => setQuery({ ...query })}
+        >
+          刷新用量
+        </Button>
+      </div>
+      <div id="usage-filters" className="usage-filters" hidden={!filters}>
+        <ChoicePicker
+          label="Harness"
+          size="small"
+          value={harness}
+          onValueChange={setHarness}
+          items={[{ value: "", label: "全部 Harness" }, ...harnesses]}
+        />
+        <ChoicePicker
+          label="Provider"
+          size="small"
+          value={provider}
+          onValueChange={setProvider}
+          items={choices(rows.map((row) => row.provider))}
+        />
+        <ChoicePicker
+          label="Bot"
+          size="small"
+          value={botId}
+          onValueChange={setBotId}
+          items={[
+            { value: "", label: "全部 Bot" },
+            ...bots.map((bot) => ({ value: String(bot.id), label: bot.name })),
+          ]}
+        />
+        <ChoicePicker
+          label="用量模型"
+          size="small"
+          value={model}
+          onValueChange={setModel}
+          items={choices(rows.map((row) => row.model))}
+        />
+      </div>
+      <Tabs.Root value={tab} onValueChange={setTab} className="usage-tabs">
+        <Tabs.List aria-label="用量视图" className="usage-tablist">
+          {[
+            { value: "overview", label: "总览" },
+            { value: "explore", label: "分析" },
+            { value: "details", label: "明细" },
+          ].map((item) => (
+            <Tabs.Tab key={item.value} value={item.value}>
+              {item.label}
+            </Tabs.Tab>
+          ))}
+        </Tabs.List>
+        <p className="usage-note">
+          仅显示引擎返回的数据 · UTC ·
+          USD。任务成本不含会话累计快照；输入与缓存保留原生口径。
         </p>
         {error ? (
-          <p className="alert" role="alert">
-            {error}
-          </p>
+          <div className="usage-empty" role="alert">
+            <p>{error}</p>
+            <Button
+              variant="secondary"
+              size="small"
+              onClick={() => setQuery({ ...query })}
+            >
+              重试
+            </Button>
+          </div>
         ) : loading ? (
-          <p role="status">正在读取用量…</p>
+          <div className="usage-kpis" role="status" aria-label="正在读取用量">
+            {metrics.map((item) => (
+              <div className="usage-skeleton" key={item.value}>
+                <span />
+                <span />
+                <span />
+              </div>
+            ))}
+          </div>
         ) : !visible.length ? (
-          <p className="detail-note">此范围还没有用量记录。</p>
+          <div className="usage-empty" role="status">
+            <h3>此范围还没有用量记录。</h3>
+            <p>任务完成后，引擎提供的用量会显示在这里。</p>
+          </div>
         ) : (
           <>
-            <p className="detail-note">
-              {new Set(visible.map((row) => row.taskId)).size} 个任务 ·{" "}
-              {visible.length} 条用量记录 ·{" "}
-              {visible.filter((row) => row.costUsd === null).length}{" "}
-              条成本未提供
-            </p>
-            <div className="usage-table-scroll">
-              <table className="usage-table" aria-label="用量明细">
-                <thead>
-                  <tr>
-                    {[
-                      "Bot / 任务",
-                      "Harness / Provider",
-                      "模型",
-                      "输入",
-                      "输出",
-                      "缓存读 / 写",
-                      "报告成本",
-                      "来源",
-                    ].map((label) => (
-                      <th key={label} scope="col">
-                        {label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {visible.map((row) => (
-                    <tr key={`${row.taskId}:${row.id}`}>
-                      <th scope="row">
-                        <span>
-                          {names.get(row.botId) ?? `Bot ${row.botId}`}
-                        </span>
-                        <details>
-                          <summary>任务详情</summary>
-                          <span>{row.taskId}</span>
-                          <span>{row.sessionId ?? "会话未提供"}</span>
-                          <time
-                            dateTime={new Date(row.timestamp).toISOString()}
-                          >
-                            {new Date(row.timestamp).toLocaleString()}
-                          </time>
-                        </details>
-                      </th>
-                      <td>
-                        {
-                          harnesses.find((item) => item.value === row.harness)
-                            ?.label
-                        }
-                        <small>{row.provider ?? "未提供"}</small>
-                      </td>
-                      <td>{row.model ?? "未提供"}</td>
-                      <td>{count(row.input)}</td>
-                      <td>{count(row.output)}</td>
-                      <td>
-                        {count(row.cacheRead)} / {count(row.cacheWrite)}
-                      </td>
-                      <td>
-                        {money(row.costUsd)}
-                        {row.costScope === "session" && <small>会话累计</small>}
-                      </td>
-                      <td>{row.source}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {visible.some((row) => row.costScope === "session") && (
-              <p className="detail-note">
-                会话累计成本包含该会话此前的调用。各行保留对应时刻的原生快照。
-              </p>
-            )}
+            <Tabs.Panel value="overview">
+              <UsageOverview
+                visible={visible}
+                names={names}
+                days={days}
+                groups={groups}
+                metric={metric}
+                setMetric={setMetric}
+                explore={explore}
+              />
+            </Tabs.Panel>
+            <Tabs.Panel value="explore">
+              <div className="usage-query">
+                <ChoicePicker
+                  label="统计指标"
+                  size="small"
+                  value={metric}
+                  onValueChange={(value) => setMetric(value as Metric)}
+                  items={[...metrics]}
+                />
+                <span>按</span>
+                <ChoicePicker
+                  label="分组维度"
+                  size="small"
+                  value={dimension}
+                  onValueChange={(value) => setDimension(value as Dimension)}
+                  items={[...dimensions]}
+                />
+                <span>汇总 · 从高到低</span>
+                <ChoicePicker
+                  label="显示数量"
+                  size="small"
+                  value={limit}
+                  onValueChange={setLimit}
+                  items={[
+                    { value: "5", label: "Top 5" },
+                    { value: "10", label: "Top 10" },
+                    { value: "20", label: "Top 20" },
+                  ]}
+                />
+                <Button
+                  variant="ghost"
+                  size="small"
+                  aria-pressed={expanded}
+                  onClick={() => setExpanded(!expanded)}
+                >
+                  <ArrowsOutIcon />
+                  {expanded ? "还原" : "展开图表"}
+                </Button>
+              </div>
+              <UsageBreakdown groups={groups} metric={metric} />
+            </Tabs.Panel>
+            <Tabs.Panel value="details">
+              <UsageDetails rows={visible} names={names} />
+            </Tabs.Panel>
+            <footer className="usage-footer">
+              <span>
+                {new Set(visible.map((row) => row.taskId)).size} 个任务 ·{" "}
+                {visible.length} 条用量记录 · {elapsed}ms 读取
+              </span>
+              <span>
+                {visible.filter((row) => row.costUsd === null).length}{" "}
+                条成本未提供 ·{" "}
+                {visible.filter((row) => row.costScope === "session").length}{" "}
+                条会话累计
+              </span>
+            </footer>
           </>
         )}
-      </section>
+      </Tabs.Root>
     </div>
   );
 }

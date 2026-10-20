@@ -34,7 +34,8 @@ export function useWorkspaceLayout(details: boolean) {
   const [preferred, setPreferred] = useState(readWidths);
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => {
-      if (entry) setAvailable(entry.contentRect.width);
+      if (entry && entry.contentRect.width > 0)
+        setAvailable(entry.contentRect.width);
     });
     if (root) observer.observe(root);
     return () => observer.disconnect();

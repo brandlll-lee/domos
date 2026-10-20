@@ -267,7 +267,11 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     expect(restricted?.ok).toBe(false);
     await page.getByRole("button", { name: "设置", exact: true }).click();
     const settings = page.getByRole("main", { name: "设置", exact: true });
-    await expect(settings.getByRole("tab")).toHaveCount(2);
+    await expect(settings.getByRole("tab")).toHaveText([
+      "通用",
+      "模型",
+      "Usage",
+    ]);
     for (const label of ["深色", "浅色"]) {
       await settings
         .getByRole("combobox", { name: "外观", exact: true })
@@ -280,7 +284,7 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
         ?.match(/[a-f0-9]{2}/gi)
         ?.slice(0, 3)
         .map((part) => Number.parseInt(part, 16));
-      await expect(page.locator(".app-titlebar")).toHaveCSS(
+      await expect(page.locator(".app-titlebar:visible")).toHaveCSS(
         "background-color",
         `rgb(${rgb?.join(", ")})`,
       );
