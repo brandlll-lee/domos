@@ -128,7 +128,7 @@ app.whenReady().then(() => {
       arguments: {
         path: electron,
         additional_arguments: [entry],
-        start_minimized: true,
+        start_minimized: false,
       },
     });
     expect(launched.isError, JSON.stringify(launched.content)).not.toBe(true);
