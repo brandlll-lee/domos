@@ -8,9 +8,11 @@ import "./style.css";
 export function Titlebar({
   onContacts,
   actions,
+  sidebarWidth,
 }: {
   onContacts?: () => void;
   actions?: ReactNode;
+  sidebarWidth?: number;
 }) {
   const desktop = window.domosDesktop;
   useEffect(() => {
@@ -29,7 +31,14 @@ export function Titlebar({
   }, []);
   return (
     <header className="app-titlebar" data-platform={desktop?.platform}>
-      <div className="titlebar-actions">
+      <div
+        className="titlebar-actions"
+        style={
+          sidebarWidth === undefined
+            ? undefined
+            : { width: `calc(${sidebarWidth}px - var(--space-5))` }
+        }
+      >
         {onContacts && (
           <Button
             id="contacts-trigger"

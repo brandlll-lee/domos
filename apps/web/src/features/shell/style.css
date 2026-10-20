@@ -31,7 +31,7 @@
   align-items: center;
   justify-content: flex-start;
   gap: var(--space-2);
-  width: calc(var(--sidebar-size, var(--sidebar-width)) - var(--space-5));
+  width: calc(var(--sidebar-width) - var(--space-5));
   margin-inline-end: auto;
   padding-inline-end: var(--space-4);
   flex-shrink: 0;
@@ -79,9 +79,7 @@
 .workspace {
   position: relative;
   display: grid;
-  grid-template-columns: var(--sidebar-size) minmax(0, 1fr) var(
-      --inspector-size
-    );
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) 0;
   grid-template-rows: var(--titlebar-height) minmax(0, 1fr);
   height: 100dvh;
   overflow: clip;

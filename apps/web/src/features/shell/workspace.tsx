@@ -3,7 +3,7 @@ import { PanelDialog } from "@domos/ui/dialog";
 import { layout } from "@domos/ui/tokens";
 import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
-import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { useWorkspaceLayout } from "./layout.ts";
 import { ResizeHandle } from "./resize-handle.tsx";
 import { Titlebar } from "./titlebar.tsx";
@@ -62,14 +62,12 @@ export function Workspace({
       className="workspace"
       ref={sizing.setRoot}
       data-mobile={sizing.mobile || undefined}
-      style={
-        {
-          "--sidebar-size": `${sizing.mobile ? 0 : sizing.widths.sidebar}px`,
-          "--inspector-size": `${detailsOpen && !sizing.overlay && !expanded ? sizing.widths.inspector : 0}px`,
-        } as CSSProperties
-      }
+      style={{
+        gridTemplateColumns: `${sizing.mobile ? 0 : sizing.widths.sidebar}px minmax(0, 1fr) ${detailsOpen && !sizing.overlay && !expanded ? sizing.widths.inspector : 0}px`,
+      }}
     >
       <Titlebar
+        sidebarWidth={sizing.mobile ? undefined : sizing.widths.sidebar}
         onContacts={sizing.mobile ? () => setContactsOpen(true) : undefined}
         actions={actions}
       />
