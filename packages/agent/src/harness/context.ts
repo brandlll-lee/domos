@@ -64,6 +64,7 @@ export async function projectContext(
     ) {
       state.compactionDetails = {
         id: randomUUID(),
+        harness: doc.config.provider,
         taskId: String(runtime.taskId),
         sessionId: doc.sessionId,
         model: state.context?.model ?? doc.config.model,

@@ -31,6 +31,7 @@ export type EngineContextReading = {
 };
 export type EngineCompaction = {
   id: string;
+  harness: EngineId;
   nativeId?: string;
   taskId: string;
   sessionId: string | null;

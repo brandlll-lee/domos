@@ -269,6 +269,7 @@ test("manual compaction deduplicates while busy and keeps the reading unknown un
   );
   expect(records).toHaveLength(1);
   expect(records[0]?.data).toMatchObject({
+    harness: "pi",
     status: "completed",
     beforeTokens: 240,
     afterTokens: null,
