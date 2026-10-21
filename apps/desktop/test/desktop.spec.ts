@@ -271,7 +271,6 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
       "通用",
       "Providers",
       "Models",
-      "Usage",
     ]);
     for (const label of ["深色", "浅色"]) {
       await settings
@@ -320,6 +319,14 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
       reopened.getByRole("button", { name: "Bot详情" }),
     ).toBeVisible();
     expect(reopened.url()).toBe(`http://127.0.0.1:${ready.port}/`);
+    await reopened.getByRole("button", { name: "用量", exact: true }).click();
+    await expect(
+      reopened.getByRole("main", { name: "用量", exact: true }),
+    ).toContainText("此范围还没有用量记录。");
+    await reopened.getByRole("button", { name: "会话", exact: true }).click();
+    await expect(
+      reopened.getByRole("button", { name: "Bot详情" }),
+    ).toBeVisible();
     const choosing = desktop.waitForEvent("window");
     await desktop.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()
