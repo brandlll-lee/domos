@@ -146,6 +146,15 @@ export class Engines {
     engineProvider(input.config.provider);
     if (this.connections.busy(botId))
       throw new WorkError("CONFLICT", "请先完成账号连接。");
+    const connection = await this.connections.snapshot(
+      botId,
+      input.config,
+      context,
+    );
+    const computerId = await this.execution.computers.computerId(
+      botId,
+      context,
+    );
     await this.harness.commit(async (tx) => {
       const doc = await tx.doc(EngineDoc, botId as ConversationId);
       if (doc.requestId === input.requestId) return;
@@ -193,7 +202,11 @@ export class Engines {
       doc.turnId = null;
       doc.dispatch = "ready";
       doc.error = null;
-      doc.prepared = false;
+      doc.prepared = Boolean(
+        connection?.authenticated &&
+          connection.models.some((item) => item.id === input.config.model),
+      );
+      doc.preparedComputerId = computerId;
       doc.prompt = null;
     }, context);
     return this.profile(botId, context);

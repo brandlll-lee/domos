@@ -1,4 +1,5 @@
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
+import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { expect, test } from "vitest";
 import type { Computers } from "../src/computer/catalog.ts";
 import { EngineConnections } from "../src/harness/connections.ts";
@@ -41,10 +42,12 @@ function fixture(installed: boolean, exitCode = 0) {
   return {
     launches,
     requests,
-    move: () => {
-      computerId = "another-computer";
+    move: (id = "another-computer") => {
+      computerId = id;
     },
-    connections: new EngineConnections(new EngineExecution(computers)),
+    connections: new EngineConnections(
+      new EngineExecution(computers, new InMemoryCredentialStore()),
+    ),
   };
 }
 
@@ -90,6 +93,21 @@ test("account installation invalidates catalogs on the same work computer", asyn
   const count = launches.length;
   await connections.inspect(2, config, context);
   expect(launches.length).toBeGreaterThan(count);
+});
+
+test("service account changes invalidate catalogs on other work computers", async () => {
+  const { connections, launches, move } = fixture(true);
+  const config = { provider: "codex" as const, model: null };
+  await connections.inspect(1, config, context);
+  move();
+  await connections.inspect(2, config, context);
+  await connections.key(2, config, "fixture-account", context);
+  const count = launches.length;
+  move("work-computer");
+  await connections.catalog(1, context);
+  expect(launches).toHaveLength(count);
+  await connections.inspect(1, config, context);
+  expect(launches).toHaveLength(count + 2);
 });
 
 test("an installed engine checks its account and keeps its own configuration", async () => {

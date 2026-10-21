@@ -27,6 +27,15 @@ export class EngineConnections {
     return this.operations.has(botId) || this.logins.busy(botId);
   }
 
+  async snapshot(botId: number, config: EngineConfig, context: Context) {
+    const computerId = await this.execution.computers.computerId(
+      botId,
+      context,
+    );
+    const cached = this.catalogs.get(`${botId}:${config.provider}`);
+    return cached?.computerId === computerId ? await cached.result : null;
+  }
+
   async catalog(botId: number, context: Context) {
     const computerId = await this.execution.computers.computerId(
       botId,
@@ -262,6 +271,8 @@ export class EngineConnections {
       const id = `domos-engine:${config.provider}`;
       if (key) await store.modify(id, async () => ({ type: "api_key", key }));
       else await store.delete(id);
+      for (const [key, entry] of this.catalogs)
+        if (entry.provider === config.provider) this.catalogs.delete(key);
     });
   }
 
