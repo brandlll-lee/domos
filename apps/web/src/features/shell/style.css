@@ -6,7 +6,8 @@
   gap: var(--space-2);
   height: var(--titlebar-height);
   margin-inline-start: calc(-1 * var(--rail-width));
-  padding-inline: var(--space-3);
+  padding-inline: max(var(--space-3), var(--titlebar-inset-start, 0px))
+    var(--space-3);
   background: var(--color-frame);
   user-select: none;
   -webkit-app-region: drag;
@@ -15,14 +16,15 @@
 .app-titlebar[data-platform="linux"] {
   padding-inline-end: max(
     var(--space-3),
-    calc(
-      100% -
-      env(titlebar-area-width, calc(100% - var(--window-controls-width)))
-    )
+    var(--window-controls-width),
+    var(--titlebar-inset-end, 0px)
   );
 }
 .app-titlebar[data-platform="darwin"] {
-  padding-inline-start: var(--mac-controls-width);
+  padding-inline-start: max(
+    var(--mac-controls-width),
+    var(--titlebar-inset-start, 0px)
+  );
 }
 .app-titlebar button {
   -webkit-app-region: no-drag;
@@ -100,8 +102,8 @@
   inset-block: var(--titlebar-height) 0;
   inset-inline: var(--rail-width) 0;
   z-index: 2;
-  border-block-start: 1px solid var(--color-border);
-  border-inline-start: 1px solid var(--color-border);
+  border-block-start: 1px solid var(--color-edge);
+  border-inline-start: 1px solid var(--color-edge);
   border-start-start-radius: var(--radius-surface);
   pointer-events: none;
 }
@@ -129,8 +131,8 @@
 }
 .workspace-panel[data-side="sidebar"] {
   inset-inline-start: var(--rail-width);
-  background: var(--color-sidebar);
-  border-inline-end: 1px solid var(--color-divider);
+  background: var(--color-canvas);
+  border-inline-end: 1px solid var(--color-edge);
 }
 .workspace-panel[data-side="sidebar"]:not([data-modal]) {
   border-start-start-radius: var(--radius-surface);
@@ -138,7 +140,7 @@
 .workspace-panel[data-side="inspector"] {
   inset-inline-end: 0;
   background: var(--color-canvas);
-  border-inline-start: 1px solid var(--color-divider);
+  border-inline-start: 1px solid var(--color-edge);
   transition:
     opacity var(--motion-feedback),
     translate var(--motion-message-in) var(--ease-message-in);

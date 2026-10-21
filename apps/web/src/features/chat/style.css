@@ -59,10 +59,10 @@
   text-decoration: none;
 }
 .contact-row[aria-current="page"] {
-  background: var(--color-selection);
+  background: color-mix(in srgb, var(--color-text) 8%, var(--color-canvas));
 }
 .contact-row:not([aria-current="page"]):hover {
-  background: var(--color-hover);
+  background: color-mix(in srgb, var(--color-text) 4%, var(--color-canvas));
 }
 .chat-preview {
   display: grid;

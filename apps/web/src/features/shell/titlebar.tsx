@@ -1,9 +1,20 @@
 import { Button } from "@domos/ui/controls";
 import { DotsThreeIcon } from "@phosphor-icons/react/dist/csr/DotsThree";
 import { ListIcon } from "@phosphor-icons/react/dist/csr/List";
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { EnvironmentSwitcher } from "./environment-switcher.tsx";
 import "./style.css";
+
+type ControlsOverlay = {
+  visible: boolean;
+  getTitlebarAreaRect?: () => DOMRect;
+  addEventListener?: (type: string, listener: () => void) => void;
+  removeEventListener?: (type: string, listener: () => void) => void;
+};
+
+const windowControls = () =>
+  (navigator as Navigator & { windowControlsOverlay?: ControlsOverlay })
+    .windowControlsOverlay;
 
 export function Titlebar({
   onContacts,
@@ -15,6 +26,33 @@ export function Titlebar({
   sidebarWidth?: number;
 }) {
   const desktop = window.domosDesktop;
+  const bar = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const overlay = windowControls();
+    if (!overlay) return;
+    const sync = () => {
+      const rect = overlay.visible
+        ? overlay.getTitlebarAreaRect?.()
+        : undefined;
+      const style = bar.current?.style;
+      if (!rect || !style) return;
+      style.setProperty(
+        "--titlebar-inset-start",
+        `${Math.max(0, Math.round(rect.left))}px`,
+      );
+      style.setProperty(
+        "--titlebar-inset-end",
+        `${Math.max(0, Math.round(window.innerWidth - rect.right))}px`,
+      );
+    };
+    sync();
+    overlay.addEventListener?.("geometrychange", sync);
+    window.addEventListener("resize", sync);
+    return () => {
+      overlay.removeEventListener?.("geometrychange", sync);
+      window.removeEventListener("resize", sync);
+    };
+  }, []);
   useEffect(() => {
     if (!desktop?.appearance) return;
     const sync = () =>
@@ -30,7 +68,11 @@ export function Titlebar({
     return () => observer.disconnect();
   }, []);
   return (
-    <header className="app-titlebar" data-platform={desktop?.platform}>
+    <header
+      className="app-titlebar"
+      data-platform={desktop?.platform}
+      ref={bar}
+    >
       <div
         className="titlebar-actions"
         style={

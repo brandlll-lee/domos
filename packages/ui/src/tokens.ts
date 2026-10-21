@@ -1,7 +1,7 @@
 export const themes = {
   dark: {
     background: "#0c0c0d",
-    frame: "#151517",
+    frame: "#0c0c0d",
     canvas: "#0f0f10",
     sidebar: "#0c0c0d",
     surface: "#18181a",
@@ -12,6 +12,7 @@ export const themes = {
     text: "#efeff0",
     muted: "#a0a0a7",
     border: "#2e2e32",
+    edge: "#1e1e21",
     divider: "#222225",
     primary: "#303033",
     "primary-hover": "#3b3b3f",
@@ -34,7 +35,7 @@ export const themes = {
   },
   light: {
     background: "#ffffff",
-    frame: "#f0f0f3",
+    frame: "#ffffff",
     canvas: "#fdfdfd",
     sidebar: "#ffffff",
     surface: "#f5f5f7",
@@ -45,6 +46,7 @@ export const themes = {
     text: "#202123",
     muted: "#64646c",
     border: "#d4d4da",
+    edge: "#ececef",
     divider: "#e6e6eb",
     primary: "#242527",
     "primary-hover": "#404145",
