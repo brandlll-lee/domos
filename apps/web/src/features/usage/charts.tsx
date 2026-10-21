@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { type CSSProperties, useMemo, useState } from "react";
 import {
   dayLabel,
   formatAxis,
@@ -48,6 +48,11 @@ export function DailyChart({
   ]);
   const active = hovered === null ? null : bars[hovered];
   if (!max) return <p className="usage-muted">该指标未提供原生数据。</p>;
+  const pick = (element: HTMLElement, clientX: number) => {
+    const rect = element.getBoundingClientRect();
+    const ratio = (clientX - rect.left) / rect.width;
+    setHovered(Math.min(last, Math.max(0, Math.floor(ratio * bars.length))));
+  };
   return (
     <div className="usage-chart" data-hover={hovered !== null || undefined}>
       <div className="usage-chart-axis" aria-hidden="true">
@@ -67,34 +72,51 @@ export function DailyChart({
           className="usage-bars"
           role="img"
           aria-label={`每日${metric === "cost" ? "成本" : "用量"}趋势，${bars[0]?.day} 至 ${bars.at(-1)?.day}，峰值 ${formatValue(max, metric)} ${metricUnit(metric)}`}
+          onPointerMove={(event) => {
+            if (event.pointerType === "mouse")
+              pick(event.currentTarget, event.clientX);
+          }}
+          onPointerDown={(event) => pick(event.currentTarget, event.clientX)}
+          onPointerLeave={() => setHovered(null)}
         >
           {bars.map((bar, index) => (
             <div
               className="usage-bar"
               key={bar.day}
               data-active={hovered === index || undefined}
-              onPointerEnter={(event) => {
-                if (event.pointerType === "mouse") setHovered(index);
-              }}
-              onPointerLeave={() => setHovered(null)}
               title={`${bar.day} · ${formatValue(bar.total, metric)} ${metricUnit(metric)}`}
             >
-              <div className="usage-bar-stack">
-                {bar.values.map((value, slot) =>
-                  value ? (
-                    <span
-                      key={groups[slot]?.key}
-                      style={{
-                        height: `${(value / max) * 100}%`,
-                        background: groups[slot]?.color,
-                      }}
-                    />
-                  ) : null,
-                )}
-              </div>
+              {bar.total ? (
+                <span className="usage-bar-stack">
+                  {bar.values.map((value, slot) =>
+                    value ? (
+                      <span
+                        key={groups[slot]?.key}
+                        style={
+                          {
+                            height: `${(value / max) * 100}%`,
+                            "--segment": groups[slot]?.color,
+                          } as CSSProperties
+                        }
+                      />
+                    ) : null,
+                  )}
+                </span>
+              ) : (
+                <span className="usage-bar-tick" aria-hidden="true" />
+              )}
             </div>
           ))}
         </div>
+        {hovered !== null && (
+          <span
+            className="usage-cursor"
+            aria-hidden="true"
+            style={{
+              insetInlineStart: `${((hovered + 0.5) * 100) / bars.length}%`,
+            }}
+          />
+        )}
         {active && (
           <div
             className="usage-tip"
@@ -105,24 +127,24 @@ export function DailyChart({
               insetInlineStart: `${((hovered ?? 0) + 0.5) * (100 / bars.length)}%`,
             }}
           >
-            <strong>{dayLabel(active.day)}</strong>
-            <ul>
-              {groups.map((group, slot) =>
-                active.values[slot] ? (
-                  <li key={group.key}>
-                    <i style={{ background: group.color }} />
-                    <span>{group.label}</span>
-                    <b>{formatValue(active.values[slot], metric)}</b>
-                  </li>
-                ) : null,
-              )}
-            </ul>
-            <p>
-              合计
-              <b>
-                {formatValue(active.total, metric)} {metricUnit(metric)}
-              </b>
-            </p>
+            <span className="usage-tip-day">{dayLabel(active.day)}</span>
+            <strong className="usage-tip-total">
+              {formatValue(active.total, metric)}
+              <small>{metricUnit(metric)}</small>
+            </strong>
+            {groups.length > 1 && (
+              <ul>
+                {groups.map((group, slot) =>
+                  active.values[slot] ? (
+                    <li key={group.key}>
+                      <i style={{ background: group.color }} />
+                      <span>{group.label}</span>
+                      <b>{formatValue(active.values[slot], metric)}</b>
+                    </li>
+                  ) : null,
+                )}
+              </ul>
+            )}
           </div>
         )}
       </div>
@@ -144,25 +166,6 @@ export function DailyChart({
         )}
       </div>
     </div>
-  );
-}
-
-export function ShareMeter({
-  share,
-  color,
-}: {
-  share: number | null;
-  color: string;
-}) {
-  return (
-    <span className="usage-share">
-      <span className="usage-track">
-        <span style={{ width: `${share ?? 0}%`, background: color }} />
-      </span>
-      <span className="usage-share-value">
-        {share === null ? "—" : `${share.toFixed(1)}%`}
-      </span>
-    </span>
   );
 }
 

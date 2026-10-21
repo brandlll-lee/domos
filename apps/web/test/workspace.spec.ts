@@ -121,7 +121,7 @@ test("usage reports native task costs and preserves session snapshots across the
   await expect(usage.locator(".usage-hero-value")).toContainText("$2.50");
   await expect(usage.locator(".usage-footer")).toContainText("2 条会话累计");
   await expect(usage.locator(".usage-footer")).toContainText("1 条成本未提供");
-  const summary = usage.getByRole("table", { name: "分组用量", exact: true });
+  const summary = usage.getByRole("list", { name: "分组用量", exact: true });
   const details = usage.getByRole("table", { name: "用量明细", exact: true });
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
@@ -139,7 +139,6 @@ test("usage reports native task costs and preserves session snapshots across the
     await expect(usage.locator(".usage-hero-value")).toContainText("$2.50");
     await usage.getByRole("button", { name: "Provider", exact: true }).click();
     await expect(summary).toContainText("provider-2");
-    await expect(summary).toContainText("输入用量 · tok");
     await page.screenshot({
       path: info.outputPath(`usage-explore-${colorScheme}.png`),
     });

@@ -250,7 +250,6 @@ test("native controls, interaction, compaction and Usage work in both themes", a
       animations: "disabled",
     });
   }
-  await usage.getByRole("button", { name: "筛选用量", exact: true }).click();
   await usage.getByRole("combobox", { name: "Harness", exact: true }).click();
   await page.getByRole("option", { name: "Codex", exact: true }).click();
   await expect(

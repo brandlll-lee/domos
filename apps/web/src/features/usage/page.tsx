@@ -2,7 +2,6 @@ import { Button } from "@domos/ui/controls";
 import { ChoicePicker } from "@domos/ui/picker";
 import { ArrowClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
 import { ChartBarIcon } from "@phosphor-icons/react/dist/csr/ChartBar";
-import { FunnelIcon } from "@phosphor-icons/react/dist/csr/Funnel";
 import { useEffect, useMemo, useState } from "react";
 import { client } from "../../client.ts";
 import { userError } from "../user-error.ts";
@@ -11,16 +10,18 @@ import {
   compactNumber,
   type Dimension,
   dailyUsage,
+  dayLabel,
   dimensions,
   harnesses,
-  heroMoney,
   type Metric,
   metrics,
+  money,
   type UsagePeriod,
   type UsageRecord,
   usageGroups,
   usagePeriodRange,
   usageTotals,
+  usageValue,
 } from "./data.ts";
 import { Breakdown, Records } from "./tables.tsx";
 import "./style.css";
@@ -34,12 +35,6 @@ const limits = [
   { value: "5", label: "Top 5" },
   { value: "10", label: "Top 10" },
   { value: "20", label: "Top 20" },
-];
-const choices = (values: (string | null)[], all: string) => [
-  { value: "", label: all },
-  ...[...new Set(values.filter((value): value is string => value !== null))]
-    .sort()
-    .map((value) => ({ value, label: value })),
 ];
 
 function Segmented<T extends string>({
@@ -69,6 +64,30 @@ function Segmented<T extends string>({
   );
 }
 
+function Filter({
+  label,
+  value,
+  items,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  items: { value: string; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <span className="usage-chip" data-active={Boolean(value) || undefined}>
+      <ChoicePicker
+        label={label}
+        size="small"
+        value={value}
+        onValueChange={onChange}
+        items={items}
+      />
+    </span>
+  );
+}
+
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="usage-kpi">
@@ -90,7 +109,6 @@ export function UsageSurface() {
   const [error, setError] = useState("");
   const [elapsed, setElapsed] = useState(0);
   const [reload, setReload] = useState(0);
-  const [filters, setFilters] = useState(false);
   const [metric, setMetric] = useState<Metric>("cost");
   const [dimension, setDimension] = useState<Dimension>("model");
   const [limit, setLimit] = useState("5");
@@ -141,10 +159,31 @@ export function UsageSurface() {
   const days = dailyUsage(visible, range.from, range.to);
   const groups = usageGroups(visible, dimension, metric, names, Number(limit));
   const totals = usageTotals(visible);
+  const daily = days.map((day) => ({
+    day: day.day,
+    cost: usageValue(day.rows, "cost") ?? 0,
+  }));
+  const peak = daily.reduce(
+    (best, item) => (item.cost > best.cost ? item : best),
+    { day: "", cost: 0 },
+  );
+  const activeDays = daily.filter((item) => item.cost > 0).length;
   const activeFilters = [harness, provider, botId, model].filter(
     Boolean,
   ).length;
   const refresh = () => setReload((value) => value + 1);
+  const clearFilters = () => {
+    setHarness("");
+    setProvider("");
+    setBotId("");
+    setModel("");
+  };
+  const options = (values: (string | null)[], all: string) => [
+    { value: "", label: all },
+    ...[...new Set(values.filter((value): value is string => value !== null))]
+      .sort()
+      .map((value) => ({ value, label: value })),
+  ];
   return (
     <main className="usage-surface" aria-label="用量" aria-busy={loading}>
       <div className="usage-page">
@@ -155,17 +194,6 @@ export function UsageSurface() {
           </div>
           <div className="usage-head-actions">
             <span className="usage-timezone">UTC</span>
-            <Button
-              size="small"
-              variant="secondary"
-              aria-label="筛选用量"
-              aria-expanded={filters}
-              aria-controls="usage-filters"
-              onClick={() => setFilters(!filters)}
-            >
-              <FunnelIcon />
-              筛选{activeFilters || ""}
-            </Button>
             <ChoicePicker
               label="日期范围"
               size="small"
@@ -185,62 +213,49 @@ export function UsageSurface() {
             </Button>
           </div>
         </header>
-        <div id="usage-filters" className="usage-filters" hidden={!filters}>
-          <ChoicePicker
+        <fieldset className="usage-filters" aria-label="筛选用量">
+          <Filter
             label="Harness"
-            size="small"
             value={harness}
-            onValueChange={setHarness}
-            items={[{ value: "", label: "全部 Harness" }, ...harnesses]}
+            onChange={setHarness}
+            items={[{ value: "", label: "Harness" }, ...harnesses]}
           />
-          <ChoicePicker
+          <Filter
             label="Provider"
-            size="small"
             value={provider}
-            onValueChange={setProvider}
-            items={choices(
+            onChange={setProvider}
+            items={options(
               rows.map((row) => row.provider),
-              "全部 Provider",
+              "Provider",
             )}
           />
-          <ChoicePicker
+          <Filter
             label="Bot"
-            size="small"
             value={botId}
-            onValueChange={setBotId}
+            onChange={setBotId}
             items={[
-              { value: "", label: "全部 Bot" },
+              { value: "", label: "Bot" },
               ...bots.map((bot) => ({
                 value: String(bot.id),
                 label: bot.name,
               })),
             ]}
           />
-          <ChoicePicker
+          <Filter
             label="用量模型"
-            size="small"
             value={model}
-            onValueChange={setModel}
-            items={choices(
+            onChange={setModel}
+            items={options(
               rows.map((row) => row.model),
-              "全部模型",
+              "模型",
             )}
           />
           {activeFilters > 0 && (
-            <Button
-              size="small"
-              variant="ghost"
-              onClick={() => {
-                setHarness("");
-                setProvider("");
-                setBotId("");
-                setModel("");
-              }}
-            >
-              清除筛选
+            <Button size="small" variant="ghost" onClick={clearFilters}>
+              清除
             </Button>
           )}
-        </div>
+        </fieldset>
         {error ? (
           <div className="usage-error" role="alert">
             <p>{error}</p>
@@ -274,45 +289,64 @@ export function UsageSurface() {
               <div className="usage-hero-main">
                 <span className="usage-hero-kicker">已报告任务成本</span>
                 <strong className="usage-hero-value">
-                  {heroMoney(totals.cost)}
+                  {money(totals.cost)}
                 </strong>
                 <p className="usage-hero-meta">
                   USD · {periods.find((item) => item.value === period)?.label} ·{" "}
                   {totals.tasks} 个任务 · {totals.records} 条记录
                 </p>
               </div>
-              <dl className="usage-stats">
-                <Stat label="任务数" value={compactNumber(totals.tasks)} />
-                <Stat
-                  label="输入用量"
-                  value={
-                    totals.input === null ? "—" : compactNumber(totals.input)
-                  }
-                />
-                <Stat
-                  label="输出用量"
-                  value={
-                    totals.output === null ? "—" : compactNumber(totals.output)
-                  }
-                />
-                <Stat
-                  label="缓存读"
-                  value={
-                    totals.cacheRead === null
-                      ? "—"
-                      : compactNumber(totals.cacheRead)
-                  }
-                />
-                <Stat
-                  label="缓存写"
-                  value={
-                    totals.cacheWrite === null
-                      ? "—"
-                      : compactNumber(totals.cacheWrite)
-                  }
-                />
+              <dl className="usage-facts">
+                <div>
+                  <dt>峰值日</dt>
+                  <dd>
+                    {peak.day ? dayLabel(peak.day) : "—"}
+                    <small>{money(peak.cost || null)}</small>
+                  </dd>
+                </div>
+                <div>
+                  <dt>日均（有记录 {activeDays} 天）</dt>
+                  <dd>
+                    <small>
+                      {activeDays
+                        ? money((totals.cost ?? 0) / activeDays)
+                        : "—"}
+                    </small>
+                  </dd>
+                </div>
               </dl>
             </section>
+            <dl className="usage-stats">
+              <Stat label="任务数" value={compactNumber(totals.tasks)} />
+              <Stat
+                label="输入用量"
+                value={
+                  totals.input === null ? "—" : compactNumber(totals.input)
+                }
+              />
+              <Stat
+                label="输出用量"
+                value={
+                  totals.output === null ? "—" : compactNumber(totals.output)
+                }
+              />
+              <Stat
+                label="缓存读"
+                value={
+                  totals.cacheRead === null
+                    ? "—"
+                    : compactNumber(totals.cacheRead)
+                }
+              />
+              <Stat
+                label="缓存写"
+                value={
+                  totals.cacheWrite === null
+                    ? "—"
+                    : compactNumber(totals.cacheWrite)
+                }
+              />
+            </dl>
             <section className="usage-section" aria-label="每日趋势">
               <header className="usage-section-head">
                 <h2>
@@ -326,7 +360,7 @@ export function UsageSurface() {
                 />
               </header>
               <DailyChart days={days} groups={groups} metric={metric} />
-              <Legend groups={groups} />
+              {groups.length > 1 && <Legend groups={groups} />}
             </section>
             <section className="usage-section" aria-label="构成">
               <header className="usage-section-head">
@@ -347,7 +381,11 @@ export function UsageSurface() {
                   />
                 </div>
               </header>
-              <Breakdown groups={groups} metric={metric} />
+              <Breakdown
+                groups={groups}
+                metric={metric}
+                dimension={dimension}
+              />
             </section>
             <section className="usage-section" aria-label="用量明细">
               <header className="usage-section-head">

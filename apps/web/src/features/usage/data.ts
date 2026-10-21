@@ -45,15 +45,6 @@ export const money = (value: number | null) =>
         minimumFractionDigits: 2,
         maximumFractionDigits: 4,
       }).format(value);
-export const heroMoney = (value: number | null) =>
-  value === null
-    ? "—"
-    : new Intl.NumberFormat("en", {
-        style: "currency",
-        currency: "USD",
-        minimumFractionDigits: 2,
-        maximumFractionDigits: value >= 1 ? 2 : 4,
-      }).format(value);
 export const formatValue = (value: number | null, metric: Metric) =>
   value === null
     ? "—"
