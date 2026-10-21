@@ -24,7 +24,9 @@ export function OpenCodeAccount({
   const load = useCallback(async () => {
     setError("");
     try {
-      setCatalog(await client.engines.accounts({ botId }));
+      setCatalog(
+        await client.engines.accounts({ botId, provider: "opencode" }),
+      );
     } catch (cause) {
       setError((cause as Error).message);
     }

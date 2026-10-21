@@ -47,7 +47,11 @@ type ClaudeFrame = {
     subtype: string;
     error?: string;
     response?: {
-      models?: { value: string; supportedEffortLevels?: string[] }[];
+      models?: {
+        value: string;
+        displayName?: string;
+        supportedEffortLevels?: string[];
+      }[];
       commands?: { name: string; description: string }[];
     };
   };
@@ -66,7 +70,7 @@ export const claudeProvider: EngineProvider = {
   command: "claude",
   package: "@anthropic-ai/claude-code@2.1.284",
   login: ["auth", "login"],
-  capabilities: { approvals: true, models: false, recovery: true },
+  capabilities: { approvals: true, models: true, recovery: true },
   async open({
     process,
     config,
@@ -324,9 +328,11 @@ export const claudeProvider: EngineProvider = {
       env: { ...env, CLAUDE_CONFIG_DIR: `${ready.home}/claude` },
     });
     await emit({ type: "session", id });
-    const session = {
-      id,
-      async controls(): Promise<EngineControls> {
+    let initialization:
+      | Promise<NonNullable<ClaudeFrame["response"]>["response"]>
+      | undefined;
+    function initialize() {
+      initialization ??= (async () => {
         const requestId = randomUUID();
         const result =
           Promise.withResolvers<
@@ -343,7 +349,14 @@ export const claudeProvider: EngineProvider = {
           request_id: requestId,
           request: { subtype: "initialize" },
         });
-        const catalog = await result.promise;
+        return result.promise;
+      })();
+      return initialization;
+    }
+    const session = {
+      id,
+      async controls(): Promise<EngineControls> {
+        const catalog = await initialize();
         const model = catalog?.models?.find(
           (item) => item.value === nativeModel,
         );
@@ -353,6 +366,7 @@ export const claudeProvider: EngineProvider = {
           options: [
             {
               id: "effort",
+              kind: "effort",
               label: "推理强度",
               value: config.options?.effort ?? "",
               options: (model?.supportedEffortLevels ?? []).map((id) => ({
@@ -386,7 +400,11 @@ export const claudeProvider: EngineProvider = {
           compacting = false;
         }
       },
-      models: async () => [],
+      models: async () =>
+        ((await initialize())?.models ?? []).map((item) => ({
+          id: item.value,
+          name: item.displayName ?? item.value,
+        })),
       vision: async () => null,
       async prompt(text: string, images: EngineImage[] = []) {
         completion = Promise.withResolvers<void>();

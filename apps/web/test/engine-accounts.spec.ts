@@ -184,6 +184,21 @@ test("native account flows show login choices, retain providers, and select mode
       exact: true,
     });
     await expect(selector.getByRole("tab")).toHaveCount(4);
+    await expect(trigger).toContainText("Fixture OpenCode Model");
+    let configurations = 0;
+    page.on("request", (request) => {
+      if (request.url().endsWith("/rpc/engines/configure")) configurations++;
+    });
+    await selector.getByRole("tab", { name: "Pi", exact: true }).click();
+    await expect(trigger).toContainText("Fixture OpenCode Model");
+    await expect(
+      selector.getByRole("button", { name: "Faux Model", exact: true }),
+    ).toBeVisible();
+    expect(configurations).toBe(0);
+    await page.keyboard.press("Escape");
+    await page.reload();
+    await expect(trigger).toContainText("openai/one");
+    await trigger.click();
     await selector
       .getByRole("button", { name: "Other Model", exact: true })
       .click();
@@ -197,73 +212,101 @@ test("native account flows show login choices, retain providers, and select mode
       .click();
     await expect(selector).toBeHidden();
     await trigger.click();
-    await selector
-      .getByRole("button", { name: "管理连接与账号", exact: true })
-      .click();
-    const details = page.getByRole("complementary", { name: /的详情$/ });
     await expect(
-      details.getByRole("combobox", { name: "任务引擎" }),
-    ).toContainText("OpenCode");
-    await details.getByRole("button", { name: "返回", exact: true }).click();
-    await expect(
-      details.getByRole("button", { name: /^对话模型\s/ }),
+      selector.getByRole("button", { name: "管理连接与账号", exact: true }),
     ).toHaveCount(0);
-    await details.getByRole("button", { name: /^连接与账号\s/ }).click();
-    await details.getByRole("combobox", { name: "任务引擎" }).click();
-    await page
-      .getByRole("option", { name: "Claude Code", exact: true })
+    await selector
+      .getByRole("button", { name: "连接与账号设置", exact: true })
       .click();
-    await details
-      .getByRole("button", { name: "检查连接", exact: true })
-      .click();
-    await details
-      .getByRole("button", { name: "账号设置", exact: true })
-      .click();
-    await claude
-      .getByRole("button", { name: "登录 Claude", exact: true })
-      .click();
-    await claude
-      .getByLabel("粘贴登录页面显示的代码", { exact: true })
-      .fill("fixture-code");
-    await claude.getByRole("button", { name: "继续", exact: true }).click();
-    await expect(claude).toBeHidden();
-    await details
-      .getByRole("button", { name: "账号设置", exact: true })
+    const settings = page.getByRole("dialog", { name: "设置", exact: true });
+    const beforeAccounts = configurations;
+    await expect(settings).toBeVisible();
+    await expect(
+      settings.getByRole("tab", { name: "Providers", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+    await settings
+      .getByRole("button", { name: /Claude Code 工作电脑账号/ })
       .click();
     await expect(
-      claude.getByRole("button", { name: "登录 Claude", exact: true }),
+      settings.getByRole("region", { name: "Claude Code 连接", exact: true }),
+    ).toContainText("已连接");
+    await settings
+      .getByRole("button", { name: /OpenCode 工作电脑账号/ })
+      .click();
+    await settings
+      .getByRole("combobox", { name: "模型服务", exact: true })
+      .click();
+    await page
+      .getByRole("option", { name: "Other · 可用", exact: true })
+      .click();
+    await expect(
+      settings.getByLabel("Other API 密钥", { exact: true }),
     ).toBeVisible();
-    await claude.getByRole("button", { name: "关闭弹窗", exact: true }).click();
-    await details.getByRole("combobox", { name: "任务引擎" }).click();
-    await page.getByRole("option", { name: "OpenCode", exact: true }).click();
-    await page.route(
-      "**/rpc/engines/inspect",
-      (route) =>
-        route.fulfill({
-          json: { json: { ready: false, authenticated: false, models: [] } },
-        }),
-      { times: 1 },
-    );
-    await details
-      .getByRole("button", { name: "检查连接", exact: true })
-      .click();
-    await details
-      .getByRole("button", { name: "安装 OpenCode", exact: true })
-      .click();
-    const installation = page.getByRole("dialog", {
-      name: "安装 OpenCode",
+    await settings.getByRole("tab", { name: "Models", exact: true }).click();
+    const modelVisibility = settings.getByRole("switch", {
+      name: "OpenCode · Other Model",
       exact: true,
     });
-    await page.route("**/rpc/engines/install", (route) =>
-      route.fulfill({ json: { json: { ok: true } } }),
-    );
-    await installation
-      .getByRole("button", { name: "安装 OpenCode", exact: true })
+    await expect(modelVisibility).toBeChecked();
+    await modelVisibility.click();
+    await expect(modelVisibility).not.toBeChecked();
+    expect(configurations).toBe(beforeAccounts);
+    await settings
+      .getByRole("button", { name: "关闭设置", exact: true })
       .click();
-    await expect(installation).toBeHidden();
+    await expect(trigger).toContainText("Fixture OpenCode Model");
+    await trigger.click();
     await expect(
-      details.getByRole("button", { name: "账号设置", exact: true }),
-    ).toBeVisible();
+      selector.getByRole("button", { name: "Other Model", exact: true }),
+    ).toHaveCount(0);
+    await selector.getByRole("tab", { name: "Codex", exact: true }).click();
+    await expect(trigger).toContainText("Fixture OpenCode Model");
+    await selector
+      .getByRole("button", { name: "Test Model", exact: true })
+      .click();
+    await expect(selector).toBeHidden();
+    await trigger.click();
+    const effort = selector.getByRole("slider", {
+      name: "推理强度",
+      exact: true,
+    });
+    await expect(effort).toHaveAttribute("aria-valuetext", "Medium");
+    await expect(selector.getByText("推荐", { exact: true })).toBeVisible();
+    await effort.focus();
+    await effort.press("ArrowRight");
+    await expect(effort).toHaveAttribute("aria-valuetext", "High");
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.screenshot({
+        path: info.outputPath(`effort-${colorScheme}.png`),
+      });
+    }
+    await page.keyboard.press("Escape");
+    await page.reload();
+    await trigger.click();
+    await expect(effort).toHaveAttribute("aria-valuetext", "High");
+    await selector
+      .getByRole("button", { name: "连接与账号设置", exact: true })
+      .click();
+    await settings.getByRole("tab", { name: "Models", exact: true }).click();
+    await expect(modelVisibility).not.toBeChecked();
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.screenshot({
+        path: info.outputPath(`models-${colorScheme}.png`),
+      });
+    }
+    await settings
+      .getByRole("button", { name: "关闭设置", exact: true })
+      .click();
+    await trigger.click();
+    await selector.getByRole("tab", { name: "Pi", exact: true }).click();
+    await selector
+      .getByRole("button", { name: "Faux Model", exact: true })
+      .click();
+    await expect(trigger).toContainText("Faux Model");
+    await page.reload();
+    await expect(trigger).toContainText("Faux Model");
   } finally {
     const exited = once(worker, "exit");
     worker.disconnect();

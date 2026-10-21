@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { dirname } from "node:path";
+import { createInterface } from "node:readline";
 import { openChat } from "@domos/agent/chat";
 import { parseConfig } from "@domos/agent/config";
 import { Sessions } from "@domos/hosting/sessions";
@@ -34,6 +35,12 @@ runtime.computer.process = async () => {
   const worker = new ProtocolProcess(accountMode ? "cli" : "protocol");
   let authorizing = "";
   if (accountMode) {
+    createInterface({ input: worker.input }).on("line", (line) => {
+      if (worker.spec?.args.includes("login")) return;
+      const request = JSON.parse(line);
+      worker.requests.push(request);
+      worker.receive(request);
+    });
     worker.input.on("data", (data) => {
       if (
         worker.spec?.command !== "claude" ||
@@ -102,10 +109,11 @@ runtime.computer.process = async () => {
       } else if (spec.args.includes("status")) {
         worker.output.write(JSON.stringify({ loggedIn: claudeConnected }));
         worker.ended.resolve({ code: claudeConnected ? 0 : 1 });
-      } else
+      } else if (spec.args.includes("login"))
         worker.output.write(
           "https://claude.com/cai/oauth/authorize?state=fixture\nPaste code here: ",
         );
+      else await launch(spec);
       return;
     }
     if (accountMode && spec.command === "opencode") return launch(spec);
@@ -118,14 +126,58 @@ runtime.computer.process = async () => {
     await launch(spec);
   };
   worker.receive = (request) => {
-    if (request.type) {
+    if (worker.spec?.command === "opencode" && request.method) {
+      if (request.method === "initialize")
+        worker.response(request, {
+          protocolVersion: 1,
+          agentCapabilities: { loadSession: true },
+        });
+      else if (
+        request.method === "session/new" ||
+        request.method === "session/load"
+      )
+        worker.response(request, {
+          sessionId: "opencode-session",
+          configOptions: [
+            {
+              id: "native-thought",
+              category: "thought_level",
+              name: "推理强度",
+              type: "select",
+              currentValue: "brief",
+              options: [
+                { value: "brief", name: "Brief" },
+                { value: "deep", name: "Deep" },
+              ],
+            },
+          ],
+        });
+      else worker.response(request, { configOptions: [] });
+    } else if (request.type === "control_request") {
+      worker.frame({
+        type: "control_response",
+        response: {
+          request_id: (request as unknown as { request_id: string }).request_id,
+          subtype: "success",
+          response: {
+            models: [
+              {
+                value: "test-claude",
+                displayName: "Claude Fixture",
+                supportedEffortLevels: ["low", "high"],
+              },
+            ],
+          },
+        },
+      });
+    } else if (request.type) {
       worker.frame({
         type: "response",
         id: request.id,
         success: true,
         data:
           request.type === "get_state"
-            ? { sessionFile: "/work/pi-session" }
+            ? { sessionFile: "/work/pi-session", thinkingLevel: "medium" }
             : request.type === "get_available_models"
               ? {
                   models: [
@@ -133,7 +185,9 @@ runtime.computer.process = async () => {
                     { provider: "faux", id: "faux-2", name: "Faux Model 2" },
                   ],
                 }
-              : {},
+              : request.type === "get_available_thinking_levels"
+                ? { levels: ["low", "medium", "high"] }
+                : {},
       });
       if (request.type === "prompt") {
         worker.frame({ type: "message_start", message: { role: "assistant" } });
@@ -163,7 +217,19 @@ runtime.computer.process = async () => {
       worker.response(request, { account: { type: "apiKey" } });
     else if (request.method === "model/list")
       worker.response(request, {
-        data: [{ id: "test/model", displayName: "Test Model" }],
+        data: [
+          {
+            id: "test/model",
+            displayName: "Test Model",
+            isDefault: true,
+            defaultReasoningEffort: "medium",
+            supportedReasoningEfforts: [
+              { reasoningEffort: "low", description: "Low" },
+              { reasoningEffort: "medium", description: "Medium" },
+              { reasoningEffort: "high", description: "High" },
+            ],
+          },
+        ],
       });
     else if (request.method === "turn/start") {
       worker.response(request, { turn: { id: "turn" } });

@@ -4,8 +4,9 @@ import { DesktopIcon } from "@phosphor-icons/react/dist/csr/Desktop";
 import { GearIcon } from "@phosphor-icons/react/dist/csr/Gear";
 import type { ReactNode } from "react";
 import { ComputerSettings } from "../computer/settings.tsx";
-import { HostingModels } from "../hosting/models.tsx";
 import { GeneralSettings } from "./general.tsx";
+import { ModelSettings } from "./models.tsx";
+import { ProviderSettings } from "./providers.tsx";
 import { UsageSettings } from "./usage.tsx";
 
 export type SettingsAccess = {
@@ -15,7 +16,6 @@ export type SettingsAccess = {
 };
 type SectionProps = SettingsAccess & {
   botId?: number;
-  onConfigured: () => void;
 };
 
 export const sections = {
@@ -26,19 +26,26 @@ export const sections = {
     icon: GearIcon,
     render: (props: SectionProps) => <GeneralSettings {...props} />,
   },
+  providers: {
+    primary: true,
+    label: "Providers",
+    description: "管理 Harness 和模型提供方的连接。",
+    icon: CpuIcon,
+    render: ({ admin, standalone, botId }: SectionProps) =>
+      admin && !standalone ? (
+        <ProviderSettings botId={botId} />
+      ) : (
+        <p className="detail-note">请让管理员连接模型账号。</p>
+      ),
+  },
   models: {
     primary: true,
-    label: "模型",
-    description: "连接模型账号，管理提供方和 Bot 使用的模型。",
+    label: "Models",
+    description: "管理可用模型在聊天选择器中的可见性。",
     icon: CpuIcon,
-    render: ({ admin, standalone, botId, onConfigured }: SectionProps) =>
-      admin && !standalone ? (
-        <HostingModels botId={botId} onConfigured={onConfigured} />
-      ) : (
-        <p className="detail-note">
-          请让管理员连接模型。已连接的模型可在 Bot 详情中选择。
-        </p>
-      ),
+    render: ({ admin, botId }: SectionProps) => (
+      <ModelSettings botId={botId} admin={admin} />
+    ),
   },
   usage: {
     primary: true,

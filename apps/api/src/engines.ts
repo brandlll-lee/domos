@@ -16,6 +16,16 @@ export const engineConfig = z
   .strict();
 export function engineRouter(bots: Bots, engines?: Engines) {
   const providerId = z.string().trim().min(1).max(256);
+  const engineTarget = botTarget.extend({
+    provider: z.enum(engineIds).optional(),
+  });
+  const connectionConfig = (
+    profile: { config: z.infer<typeof engineConfig> },
+    provider?: z.infer<typeof engineConfig>["provider"],
+  ) =>
+    provider && provider !== profile.config.provider
+      ? { provider, model: null }
+      : profile.config;
   async function target(botId: number, idle = false) {
     await botConversation(bots, botId);
     if (!engines) throw new ORPCError("NOT_IMPLEMENTED");
@@ -36,16 +46,18 @@ export function engineRouter(bots: Bots, engines?: Engines) {
     }
   }
   return {
-    controls: os
-      .input(botTarget)
-      .handler(({ input }) =>
-        operation(async () =>
-          (await target(input.botId, true)).engines.controls(
-            input.botId,
-            context,
-          ),
-        ),
-      ),
+    controls: os.input(botTarget).handler(({ input }) =>
+      operation(async () => {
+        if (!engines) {
+          await botConversation(bots, input.botId);
+          return { options: [], commands: [], compact: false };
+        }
+        return (await target(input.botId, true)).engines.controls(
+          input.botId,
+          context,
+        );
+      }),
+    ),
     compact: os
       .input(botTarget.extend({ requestId: z.uuid() }))
       .handler(({ input }) =>
@@ -124,26 +136,32 @@ export function engineRouter(bots: Bots, engines?: Engines) {
           ),
         ),
       ),
-    inspect: os
-      .input(botTarget)
-      .handler(({ input }) =>
-        operation(async () =>
-          (await target(input.botId, true)).engines.prepare(
-            input.botId,
-            context,
-          ),
-        ),
-      ),
-    install: os.input(botTarget).handler(({ input }) =>
+    inspect: os.input(engineTarget).handler(({ input }) =>
       operation(async () => {
         const { engines, profile } = await target(input.botId, true);
-        await engines.connections.install(input.botId, profile.config, context);
+        return input.provider
+          ? engines.connections.inspect(
+              input.botId,
+              connectionConfig(profile, input.provider),
+              context,
+            )
+          : engines.prepare(input.botId, context);
+      }),
+    ),
+    install: os.input(engineTarget).handler(({ input }) =>
+      operation(async () => {
+        const { engines, profile } = await target(input.botId, true);
+        await engines.connections.install(
+          input.botId,
+          connectionConfig(profile, input.provider),
+          context,
+        );
         return { ok: true };
       }),
     ),
     key: os
       .input(
-        botTarget.extend({
+        engineTarget.extend({
           key: z.string().trim().min(1).max(16384).nullable(),
           providerId: providerId.optional(),
         }),
@@ -153,7 +171,7 @@ export function engineRouter(bots: Bots, engines?: Engines) {
           const { engines, profile } = await target(input.botId, true);
           await engines.connections.key(
             input.botId,
-            profile.config,
+            connectionConfig(profile, input.provider),
             input.key,
             context,
             input.providerId,
@@ -161,19 +179,19 @@ export function engineRouter(bots: Bots, engines?: Engines) {
           return { ok: true };
         }),
       ),
-    accounts: os.input(botTarget).handler(({ input }) =>
+    accounts: os.input(engineTarget).handler(({ input }) =>
       operation(async () => {
         const { engines, profile } = await target(input.botId, true);
         return engines.connections.accounts(
           input.botId,
-          profile.config,
+          connectionConfig(profile, input.provider),
           context,
         );
       }),
     ),
     login: os
       .input(
-        botTarget.extend({
+        engineTarget.extend({
           providerId: providerId.optional(),
           method: z.number().int().min(0).max(100).optional(),
           inputs: z
@@ -186,7 +204,7 @@ export function engineRouter(bots: Bots, engines?: Engines) {
           const { engines, profile } = await target(input.botId, true);
           return engines.connections.login(
             input.botId,
-            profile.config,
+            connectionConfig(profile, input.provider),
             context,
             input,
           );

@@ -881,6 +881,40 @@ test("SDK models can be selected, persist after reopening and leave active reque
   }
 });
 
+test("model visibility is shared, persists after reopening and leaves the selected model intact", async () => {
+  const { open } = await setup();
+  const first = await open();
+  const entry = {
+    harness: "pi" as const,
+    model: "faux/faux-1",
+    visible: false,
+  };
+  try {
+    expect(await first.client.models.visibility()).toEqual([]);
+    await first.client.models.setVisibility(entry);
+    await first.client.models.setVisibility(entry);
+    expect(await first.client.models.visibility()).toEqual([entry]);
+    expect(
+      (await first.client.get({ botId: first.conversation.id })).model,
+    ).toEqual({ provider: "faux", modelId: "faux-1" });
+  } finally {
+    await first.harness.close(context);
+  }
+  const second = await open();
+  try {
+    expect(await second.client.models.visibility()).toEqual([entry]);
+    expect(await second.client.models.list()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: "faux", modelId: "faux-1" }),
+      ]),
+    );
+    await second.client.models.setVisibility({ ...entry, visible: true });
+    expect(await second.client.models.visibility()).toEqual([]);
+  } finally {
+    await second.harness.close(context);
+  }
+});
+
 test("unconfigured models leave history accessible and reject execution", async () => {
   const { faux, open } = await setup();
   if (faux.provider.auth.apiKey)

@@ -143,17 +143,12 @@
 .model-selector-option:hover {
   background: var(--color-control-hover);
 }
-.model-selector-radio {
-  flex-shrink: 0;
-  width: 0.875rem;
-  height: 0.875rem;
-  border: 1px solid var(--color-muted);
-  border-radius: 50%;
+.model-selector-check {
+  margin-inline-start: auto;
+  color: var(--color-link);
 }
-.model-selector-option[aria-pressed="true"] .model-selector-radio {
-  border-color: var(--color-text);
-  background: var(--color-text);
-  box-shadow: inset 0 0 0 3px var(--color-surface);
+.model-selector-group {
+  padding: var(--space-3) var(--space-2) var(--space-1);
 }
 .model-selector-options p,
 .model-selector-note {
@@ -162,11 +157,76 @@
   font-size: var(--text-caption);
   line-height: var(--leading-caption);
 }
-.model-selector-manage {
-  align-self: flex-start;
-}
 @media (prefers-reduced-motion: reduce) {
   .model-selector-popup {
     transition: none;
   }
+}
+
+.model-effort {
+  display: grid;
+  gap: var(--space-2);
+  border-top: 1px solid var(--color-divider);
+  padding-top: var(--space-3);
+}
+.model-effort-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+}
+.model-effort-labels span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-effort-track {
+  position: relative;
+  height: var(--space-6);
+  border-radius: var(--radius-control);
+  background: var(--color-control-hover);
+}
+.model-effort-dots {
+  position: absolute;
+  inset: 0 var(--space-3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.model-effort-dots span {
+  width: var(--space-1);
+  height: var(--space-1);
+  border-radius: var(--radius-round);
+  background: var(--color-muted);
+}
+.model-effort input {
+  position: relative;
+  display: block;
+  appearance: none;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  cursor: pointer;
+}
+.model-effort input::-webkit-slider-thumb {
+  appearance: none;
+  width: var(--space-5);
+  height: var(--space-6);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--color-text);
+}
+.model-effort input:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: var(--space-1);
+  border-radius: var(--radius-control);
+}
+.model-effort input:disabled {
+  cursor: default;
+}
+.model-effort input:disabled::-webkit-slider-thumb {
+  background: var(--color-muted);
 }

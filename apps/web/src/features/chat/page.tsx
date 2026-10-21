@@ -57,7 +57,7 @@ function BotChat({
   directory: ReturnType<typeof useBots>;
 }) {
   const settings = useSettings();
-  const chat = useChat(bot.id, () => settings.open("models", bot.id));
+  const chat = useChat(bot.id, () => settings.open("providers", bot.id));
   const engine = useEngine(bot.id, chat.connected, Boolean(chat.view?.busy));
   const computer = useComputer(bot.id, directory);
   const dock = useComposerDock();
@@ -115,7 +115,7 @@ function BotChat({
       inspectorTrigger={
         panel === "computer" ? "computer-trigger" : "details-trigger"
       }
-      onSettings={() => settings.open()}
+      onSettings={() => settings.open("general", bot.id)}
       actions={<CreateBot onCreated={selectBot} />}
       sidebar={
         <Sidebar bots={bots} selected={bot} connected={directoryConnected} />
@@ -188,7 +188,7 @@ function BotChat({
               setup={engine}
               model={chat.view?.model ?? null}
               connected={chat.connected}
-              onConfigure={() => showPanel("engine")}
+              onConfigure={() => settings.open("providers", bot.id)}
             />
           }
           onDetails={() => showPanel("root")}

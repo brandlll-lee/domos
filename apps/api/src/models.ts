@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Bots } from "@domos/agent/bots";
-import type { Engines } from "@domos/agent/harness";
+import { type Engines, engineIds } from "@domos/agent/harness";
 import { modelCatalog } from "@domos/agent/models";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai/models";
@@ -24,6 +24,18 @@ export async function requireConfiguredModel(
 
 export function modelRouter(bots: Bots, models: Models, engines?: Engines) {
   return {
+    visibility: os.handler(() => bots.modelVisibility(BACKGROUND_CONTEXT)),
+    setVisibility: os
+      .input(
+        z.object({
+          harness: z.enum(engineIds),
+          model: z.string().min(1).max(256),
+          visible: z.boolean(),
+        }),
+      )
+      .handler(({ input }) =>
+        bots.setModelVisibility(input, BACKGROUND_CONTEXT),
+      ),
     list: os.handler(() => modelCatalog(models)),
     select: os
       .input(
@@ -41,10 +53,6 @@ export function modelRouter(bots: Bots, models: Models, engines?: Engines) {
             input.botId,
             BACKGROUND_CONTEXT,
           );
-          if (profile.config.provider !== "pi")
-            throw new ORPCError("CONFLICT", {
-              message: "请在 Bot 设置中选择此引擎的模型。",
-            });
           await engines.configure(
             input.botId,
             {
@@ -57,6 +65,8 @@ export function modelRouter(bots: Bots, models: Models, engines?: Engines) {
             },
             BACKGROUND_CONTEXT,
           );
+          if (profile.prepared)
+            await engines.prepare(input.botId, BACKGROUND_CONTEXT);
         } else await conversation.configure({ model }, BACKGROUND_CONTEXT);
         return model;
       }),

@@ -1,9 +1,22 @@
-.settings-workspace {
-  grid-template-columns: minmax(0, 1fr);
+.settings-window {
+  position: fixed;
+  z-index: 3;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  width: min(
+    calc(var(--settings-content-width) + var(--settings-nav-width)),
+    calc(100vw - var(--space-8))
+  );
+  height: min(var(--dialog-max-height), calc(100dvh - var(--space-8)));
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-canvas);
+  color: var(--color-text);
+  box-shadow: var(--color-popup-shadow);
+  outline: none;
 }
 .settings-page {
-  grid-column: 1 / -1;
-  grid-row: 2;
   display: grid;
   grid-template-columns: var(--settings-nav-width) minmax(0, 1fr);
   height: 100%;
@@ -205,4 +218,45 @@
 }
 .settings-page[data-compact] .settings-header {
   padding-block: var(--space-6);
+}
+
+.provider-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-width: 0;
+}
+.provider-row > svg {
+  flex-shrink: 0;
+  width: var(--space-5);
+  height: var(--space-5);
+}
+.provider-row > .detail-note:last-child {
+  margin-inline-start: auto;
+}
+.provider-list > .provider-row {
+  padding: var(--space-4);
+  border-radius: 0;
+}
+.provider-list > .provider-row + .provider-row {
+  border-top: 1px solid var(--color-divider);
+}
+.provider-list > .provider-row[aria-expanded="true"] {
+  background: var(--color-selection);
+}
+.model-catalog-empty {
+  padding: var(--space-4);
+}
+.model-provider-heading {
+  margin: 0;
+  padding-top: var(--space-4);
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+}
+.settings-page[data-section="models"] .setting-caption > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

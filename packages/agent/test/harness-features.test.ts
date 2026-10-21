@@ -67,6 +67,7 @@ test("Pi exposes native controls, compacts and reports response usage", async ()
   const controls = await session.controls?.();
   expect(controls?.options).toContainEqual({
     id: "thinkingLevel",
+    kind: "effort",
     label: "推理强度",
     value: "medium",
     options: [
@@ -284,8 +285,10 @@ test("Claude uses native advertised effort and keeps cost scope and compaction b
       events.push(event);
     },
   });
+  expect(await session.models()).toEqual([{ id: "model", name: "model" }]);
   expect((await session.controls?.())?.options).toContainEqual({
     id: "effort",
+    kind: "effort",
     label: "推理强度",
     value: "high",
     options: [{ id: "high", label: "high" }],
@@ -409,6 +412,7 @@ test("Codex exposes model effort, preserves each answer and replaces usage snaps
   });
   expect((await session.controls?.())?.options).toContainEqual({
     id: "effort",
+    kind: "effort",
     label: "推理强度",
     value: "high",
     options: [{ id: "high", label: "Deep" }],

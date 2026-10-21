@@ -601,7 +601,8 @@ test("first use prepares the default Bot with a computer and engine before share
     const settings = page.getByRole("main", { name: "设置", exact: true });
     await expect(settings.getByRole("tab")).toHaveText([
       "通用",
-      "模型",
+      "Providers",
+      "Models",
       "Usage",
     ]);
     await settings

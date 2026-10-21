@@ -116,6 +116,18 @@ test("hosting authenticates RPC, files, admin operations, origins and pairing", 
   expect(
     (await request("/hosting/devices", { headers: { Cookie: cookie } })).status,
   ).toBe(403);
+  expect(
+    (
+      await request("/rpc/models/setVisibility", {
+        method: "POST",
+        headers: { Cookie: cookie, Origin: "https://domos.test" },
+      })
+    ).status,
+  ).toBe(403);
+  expect(
+    (await request("/rpc/models/visibility", { headers: { Cookie: cookie } }))
+      .status,
+  ).toBe(200);
   for (const operation of [
     "manage",
     "add",

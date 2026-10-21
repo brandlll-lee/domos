@@ -257,6 +257,7 @@ test("header model selection saves choices and fits both themes", async ({
     name: "搜索模型",
     exact: true,
   });
+  await expect(selector.getByRole("alert")).toHaveCount(0);
   await search.fill("模型二");
   const choice = selector.getByRole("button", { name: /测试模型二/ });
   await expect(choice).toBeVisible();
@@ -708,9 +709,9 @@ test("settings stay readable in both themes and compact layouts", async ({
   await expect(input).toBeHidden();
   await expect(
     page.getByRole("dialog", { name: "设置", exact: true }),
-  ).toHaveCount(0);
-  expect((await settings.boundingBox())?.y).toBe(48);
-  expect((await settings.boundingBox())?.height).toBe(852);
+  ).toHaveCount(1);
+  expect((await settings.boundingBox())?.y).toBeGreaterThan(48);
+  expect((await settings.boundingBox())?.height).toBeLessThan(852);
   expect((await settings.boundingBox())?.width).toBeGreaterThan(800);
   for (const [theme, label] of [
     ["dark", "深色"],
@@ -778,7 +779,7 @@ test("settings stay readable in both themes and compact layouts", async ({
   for (const width of [320, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 800 });
     await expect(
-      settings.getByRole("tab", { name: "模型", exact: true }),
+      settings.getByRole("tab", { name: "Providers", exact: true }),
     ).toBeInViewport();
     expect(
       await page.evaluate(
@@ -1045,7 +1046,10 @@ test("control geometry and interaction states stay consistent", async ({
   const nav = settings.getByRole("tablist", { name: "设置分区" });
   await expect(nav).toHaveAttribute("aria-orientation", "vertical");
   const appearance = settings.getByRole("tab", { name: "通用", exact: true });
-  const computer = settings.getByRole("tab", { name: "模型", exact: true });
+  const computer = settings.getByRole("tab", {
+    name: "Providers",
+    exact: true,
+  });
   const active = await appearance.evaluate(
     (item) => getComputedStyle(item).backgroundColor,
   );
@@ -1058,7 +1062,7 @@ test("control geometry and interaction states stay consistent", async ({
   await appearance.focus();
   await appearance.press("ArrowRight");
   await expect(
-    settings.getByRole("tab", { name: "模型", exact: true }),
+    settings.getByRole("tab", { name: "Providers", exact: true }),
   ).toBeFocused();
 });
 

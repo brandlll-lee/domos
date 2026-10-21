@@ -1,4 +1,4 @@
-import type { EngineConfig } from "@domos/agent/harness/types";
+import type { EngineConfig, EngineId } from "@domos/agent/harness/types";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../../client.ts";
 import { userError } from "../../user-error.ts";
@@ -16,7 +16,12 @@ type EngineAction =
   | "controls";
 type LoginInput = Omit<Parameters<typeof client.engines.login>[0], "botId">;
 
-export function useEngine(botId: number, active: boolean, running?: boolean) {
+export function useEngine(
+  botId: number,
+  active: boolean,
+  running?: boolean,
+  provider?: EngineId,
+) {
   const [profile, setProfile] =
     useState<Awaited<ReturnType<typeof client.engines.get>>>();
   const [connection, setConnection] =
@@ -53,7 +58,7 @@ export function useEngine(botId: number, active: boolean, running?: boolean) {
     setProfile(await client.engines.get({ botId }));
   }, [botId]);
   const inspect = async () => {
-    const result = await client.engines.inspect({ botId });
+    const result = await client.engines.inspect({ botId, provider });
     setConnection(result);
     await refresh();
     return result;
@@ -73,7 +78,7 @@ export function useEngine(botId: number, active: boolean, running?: boolean) {
         const value = await client.engines.loginState({ botId });
         if (!current) return;
         if (value?.state === "done") {
-          const result = await client.engines.inspect({ botId });
+          const result = await client.engines.inspect({ botId, provider });
           const profile = await client.engines.get({ botId });
           if (!current) return;
           setConnection(result);
@@ -92,9 +97,18 @@ export function useEngine(botId: number, active: boolean, running?: boolean) {
       current = false;
       clearTimeout(timer);
     };
-  }, [login?.state, botId]);
+  }, [login?.state, botId, provider]);
   return {
-    profile,
+    profile:
+      profile && provider
+        ? {
+            ...profile,
+            config:
+              provider === profile.config.provider
+                ? profile.config
+                : { provider, model: null },
+          }
+        : profile,
     connection,
     login,
     pending,
@@ -125,7 +139,7 @@ export function useEngine(botId: number, active: boolean, running?: boolean) {
       }),
     key: (key: string | null, providerId?: string) =>
       run("key", ["key", botId, providerId], async () => {
-        await client.engines.key({ botId, key, providerId });
+        await client.engines.key({ botId, provider, key, providerId });
         setConnection(undefined);
         if (key && !(await inspect()).authenticated)
           throw new Error("账号还不可用。请检查连接方式和模型。");
@@ -133,7 +147,7 @@ export function useEngine(botId: number, active: boolean, running?: boolean) {
       }),
     install: () =>
       run("install", ["install", botId], async () => {
-        await client.engines.install({ botId });
+        await client.engines.install({ botId, provider });
         await inspect();
       }),
     signIn: (input: LoginInput = {}) =>
@@ -141,7 +155,7 @@ export function useEngine(botId: number, active: boolean, running?: boolean) {
         "login",
         ["login", botId, input.providerId, input.method],
         async () => {
-          setLogin(await client.engines.login({ botId, ...input }));
+          setLogin(await client.engines.login({ botId, provider, ...input }));
         },
       ),
     answerLogin: (code: string) =>

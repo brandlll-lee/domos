@@ -269,7 +269,8 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     const settings = page.getByRole("main", { name: "设置", exact: true });
     await expect(settings.getByRole("tab")).toHaveText([
       "通用",
-      "模型",
+      "Providers",
+      "Models",
       "Usage",
     ]);
     for (const label of ["深色", "浅色"]) {

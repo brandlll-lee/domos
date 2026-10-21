@@ -310,6 +310,7 @@ export const codexProvider: EngineProvider = {
         displayName?: string;
         inputModalities?: string[];
         isDefault?: boolean;
+        defaultReasoningEffort?: string;
         supportedReasoningEfforts?: {
           reasoningEffort: string;
           description: string;
@@ -352,8 +353,13 @@ export const codexProvider: EngineProvider = {
           options: [
             {
               id: "effort",
+              kind: "effort",
+              defaultValue: selected?.defaultReasoningEffort,
               label: "推理强度",
-              value: config.options?.effort ?? "",
+              value:
+                config.options?.effort ??
+                selected?.defaultReasoningEffort ??
+                "",
               options: (selected?.supportedReasoningEfforts ?? []).map(
                 (item) => ({
                   id: item.reasoningEffort,

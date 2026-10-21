@@ -75,6 +75,7 @@ export async function openOpenCodeAccount(
           .map((item) => ({
             id: `${provider.id}/${item.id}`,
             name: item.name,
+            group: provider.name,
             ...(typeof item.capabilities?.input?.image === "boolean"
               ? { images: item.capabilities.input.image }
               : {}),

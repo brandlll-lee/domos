@@ -1,7 +1,6 @@
 import { Button } from "@domos/ui/controls";
-import { Dialog } from "@domos/ui/dialog";
+import { Dialog, PanelDialog } from "@domos/ui/dialog";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { Titlebar } from "../shell/titlebar.tsx";
 import { SettingsContext } from "./context.ts";
 import { SettingsPage } from "./page.tsx";
 import {
@@ -69,24 +68,34 @@ export function SettingsRoot({
         open: show,
       }}
     >
-      <div hidden={open} inert={open}>
-        {children}
-      </div>
-      {open && (
-        <div className="workspace settings-workspace">
-          <Titlebar />
-          <SettingsPage
-            {...access}
-            initialSection={section}
-            onSectionChange={setSection}
-            botId={botId}
-            contentRef={content}
-            message={message}
-            onBack={close}
-            onConfigured={finish}
-          />
-        </div>
-      )}
+      {children}
+      <PanelDialog.Root
+        open={open}
+        onOpenChange={(next) => {
+          if (!next) close();
+        }}
+      >
+        <PanelDialog.Portal>
+          <PanelDialog.Backdrop className="dialog-backdrop" />
+          <PanelDialog.Popup
+            className="settings-window"
+            finalFocus={returnTarget}
+          >
+            <PanelDialog.Title className="sr-only">设置</PanelDialog.Title>
+            {open && (
+              <SettingsPage
+                {...access}
+                initialSection={section}
+                onSectionChange={setSection}
+                botId={botId}
+                contentRef={content}
+                message={message}
+                onBack={close}
+              />
+            )}
+          </PanelDialog.Popup>
+        </PanelDialog.Portal>
+      </PanelDialog.Root>
       <Dialog
         open={discard}
         onOpenChange={setDiscard}

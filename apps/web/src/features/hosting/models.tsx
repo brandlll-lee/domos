@@ -15,11 +15,13 @@ export function HostingModels({
   botId,
   model,
   onBusyChange,
+  accountsOnly = false,
 }: {
-  onConfigured: () => void | Promise<void>;
+  onConfigured?: () => void | Promise<void>;
   botId?: number;
   model?: string | null;
   onBusyChange?: (busy: boolean) => void;
+  accountsOnly?: boolean;
 }) {
   const separator = model?.indexOf("/") ?? -1;
   const initialProvider =
@@ -67,13 +69,17 @@ export function HostingModels({
         modelId: item.modelId,
       });
       window.dispatchEvent(new Event("domos:models"));
-      await onConfigured();
+      await onConfigured?.();
     });
     setSelectingModel("");
   }
 
   return (
-    <section className="hosting-models" aria-label="模型配置" aria-busy={busy}>
+    <section
+      className="hosting-models"
+      aria-label="模型配置"
+      aria-busy={busy || waiting}
+    >
       <aside className="hosting-model-rail">
         <span className="hosting-model-rail-label">已连接</span>
         <ScrollArea
@@ -137,7 +143,7 @@ export function HostingModels({
               adding={adding}
               onAddingChange={setAdding}
             />
-            {selected?.configured && (
+            {selected?.configured && !accountsOnly && (
               <div className="hosting-model-catalog">
                 <TextField
                   label="搜索模型"

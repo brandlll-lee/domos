@@ -13,6 +13,8 @@ export type EngineControls = {
     id: string;
     label: string;
     value: string;
+    kind?: "effort";
+    defaultValue?: string;
     options: { id: string; label: string }[];
   }[];
   commands: { name: string; description: string }[];
@@ -40,7 +42,12 @@ export type EngineRuntimeState = {
   skills?: string[];
   editorText?: string;
 };
-export type EngineModel = { id: string; name: string; images?: boolean };
+export type EngineModel = {
+  id: string;
+  name: string;
+  images?: boolean;
+  group?: string;
+};
 export type EngineImage = { type: "image"; data: string; mimeType: string };
 export type EngineApproval = {
   id: string;

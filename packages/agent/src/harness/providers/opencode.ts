@@ -70,6 +70,9 @@ export const opencodeProvider: EngineProvider = {
           .filter((item) => item.category !== "model")
           .map((item) => ({
             id: item.id,
+            ...(item.category === "thought_level"
+              ? { kind: "effort" as const }
+              : {}),
             label: item.name,
             value: String(item.currentValue),
             options:

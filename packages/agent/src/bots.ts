@@ -14,6 +14,7 @@ import {
 import { botPreview } from "./bot-preview.ts";
 import type { Computers } from "./computer/catalog.ts";
 import { EngineDoc } from "./harness/state.ts";
+import type { EngineId } from "./harness/types.ts";
 import { watchCommits } from "./watch.ts";
 import { BOT_NAME_LENGTH } from "./work/limits.ts";
 import { requiredText, requireRevision, WorkError } from "./work/state.ts";
@@ -48,6 +49,15 @@ const BotDirectory = defineDoc<{
   initial: () => ({ items: [] }),
 });
 
+const ModelVisibility = defineDoc<{
+  items: { harness: EngineId; model: string; visible: boolean }[];
+}>({
+  kind: "domos.model-visibility",
+  version: 1,
+  scope: "session",
+  initial: () => ({ items: [] }),
+});
+
 export class Bots {
   private readonly harness: Harness;
   private readonly computers?: Computers;
@@ -70,6 +80,24 @@ export class Bots {
         });
       for (const bot of directory.items) bot.avatar ??= randomUUID();
     }, context);
+  }
+
+  async modelVisibility(context: Context) {
+    return (await this.harness.snapshot(ModelVisibility, context))?.items ?? [];
+  }
+
+  async setModelVisibility(
+    input: { harness: EngineId; model: string; visible: boolean },
+    context: Context,
+  ) {
+    await this.harness.commit(async (tx) => {
+      const doc = await tx.doc(ModelVisibility);
+      doc.items = doc.items.filter(
+        (item) => item.harness !== input.harness || item.model !== input.model,
+      );
+      if (!input.visible) doc.items.push(input);
+    }, context);
+    return this.modelVisibility(context);
   }
 
   async list(context: Context): Promise<BotPresence[]> {

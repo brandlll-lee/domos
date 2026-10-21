@@ -19,7 +19,6 @@ export function SettingsPage({
   contentRef,
   message,
   onBack,
-  onConfigured,
   ...access
 }: SettingsAccess & {
   initialSection: SettingsSection;
@@ -28,7 +27,6 @@ export function SettingsPage({
   contentRef: RefObject<HTMLDivElement | null>;
   message: string;
   onBack: () => void;
-  onConfigured: () => void;
 }) {
   const [visited, setVisited] = useState([section]);
   const [query, setQuery] = useState("");
@@ -174,7 +172,7 @@ export function SettingsPage({
           <div className="settings-content">
             {visited.map((id) => (
               <Tabs.Panel key={id} value={id} keepMounted>
-                {sections[id].render({ ...access, botId, onConfigured })}
+                {sections[id].render({ ...access, botId })}
               </Tabs.Panel>
             ))}
             {message && (

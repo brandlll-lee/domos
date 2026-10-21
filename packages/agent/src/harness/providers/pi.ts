@@ -203,6 +203,7 @@ export const piProvider: EngineProvider = {
           options: [
             {
               id: "thinkingLevel",
+              kind: "effort",
               label: "推理强度",
               value: state.thinkingLevel ?? "",
               options: (levels.levels ?? []).map((id) => ({ id, label: id })),

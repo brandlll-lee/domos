@@ -29,7 +29,7 @@ export class EngineConnections {
           version: null,
           message: "这台工作电脑还未安装此引擎。",
         };
-      const worker = await this.execution.computers.process(
+      let worker = await this.execution.computers.process(
         botId,
         [],
         async () => {
@@ -39,15 +39,27 @@ export class EngineConnections {
       );
       try {
         const env = await this.execution.environment(config);
-        if (config.provider === "claude")
-          return {
-            ready: true,
-            version: installation.version,
-            authenticated: await readClaudeAccount(worker, env),
-            models: [] as EngineModel[],
-            vision: null,
-            message: "已检查账号。",
-          };
+        let authenticated: boolean | undefined;
+        if (config.provider === "claude") {
+          authenticated = await readClaudeAccount(worker, env);
+          if (!authenticated)
+            return {
+              ready: true,
+              version: installation.version,
+              authenticated,
+              models: [] as EngineModel[],
+              vision: null,
+              message: "请连接账号。",
+            };
+          worker = await this.execution.computers.process(
+            botId,
+            [],
+            async () => {
+              throw new Error("工具不可用。");
+            },
+            context,
+          );
+        }
         if (config.provider === "opencode") {
           const account = await openOpenCodeAccount(worker, env);
           const result = await account.catalog(config.model);
@@ -75,7 +87,8 @@ export class EngineConnections {
         return {
           ready: true,
           version: installation.version,
-          authenticated: (await session.authenticated?.()) ?? false,
+          authenticated:
+            authenticated ?? (await session.authenticated?.()) ?? false,
           models: await session.models(),
           vision: (await session.vision?.()) ?? null,
           message: "引擎已就绪。",

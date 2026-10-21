@@ -11,6 +11,8 @@ export function ModelSelector({
   providers,
   models,
   provider,
+  selectedProvider,
+  effort,
   value,
   label,
   loading,
@@ -23,8 +25,10 @@ export function ModelSelector({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   providers: { id: string; name: string; icon: ReactNode }[];
-  models: { id: string; name: string }[];
+  models: { id: string; name: string; group?: string }[];
   provider: string;
+  selectedProvider?: string;
+  effort?: ReactNode;
   value: string;
   label: string;
   loading: boolean;
@@ -59,7 +63,10 @@ export function ModelSelector({
           />
         }
       >
-        {selected?.icon}
+        {
+          providers.find((item) => item.id === (selectedProvider ?? provider))
+            ?.icon
+        }
         <span className="model-selector-label">{label}</span>
         <svg
           className="model-selector-chevron"
@@ -94,7 +101,7 @@ export function ModelSelector({
                     key={item.id}
                     value={item.id}
                     className="model-selector-provider"
-                    disabled={disabled || loading}
+                    disabled={disabled}
                     aria-label={item.name}
                     title={item.name}
                   >
@@ -138,21 +145,32 @@ export function ModelSelector({
                     {loading ? (
                       <p role="status">正在读取模型…</p>
                     ) : (
-                      matches.map((item) => (
-                        <button
-                          type="button"
-                          key={item.id}
-                          className="model-selector-option"
-                          aria-pressed={item.id === value}
-                          disabled={disabled}
-                          onClick={() => onSelect(item.id)}
-                        >
-                          <span
-                            className="model-selector-radio"
-                            aria-hidden="true"
-                          />
-                          <span>{item.name}</span>
-                        </button>
+                      matches.map((item, index) => (
+                        <div key={item.id}>
+                          {item.group &&
+                            item.group !== matches[index - 1]?.group && (
+                              <p className="model-selector-group">
+                                {item.group}
+                              </p>
+                            )}
+                          <button
+                            type="button"
+                            className="model-selector-option"
+                            aria-pressed={item.id === value}
+                            disabled={disabled}
+                            onClick={() => onSelect(item.id)}
+                          >
+                            <span>{item.name}</span>
+                            {item.id === value && (
+                              <span
+                                className="model-selector-check"
+                                aria-hidden="true"
+                              >
+                                ✓
+                              </span>
+                            )}
+                          </button>
+                        </div>
                       ))
                     )}
                     {!loading && !matches.length && (
@@ -170,14 +188,7 @@ export function ModelSelector({
                     {error}
                   </p>
                 )}
-                <Button
-                  variant="ghost"
-                  size="small"
-                  className="model-selector-manage"
-                  onClick={onConfigure}
-                >
-                  管理连接与账号
-                </Button>
+                {effort}
               </Tabs.Panel>
             </Tabs.Root>
           </Popover.Popup>

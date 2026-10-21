@@ -83,7 +83,7 @@ export function ModelSetting({
         <Button
           variant="secondary"
           size="small"
-          onClick={() => settings.open("models", botId)}
+          onClick={() => settings.open("providers", botId)}
         >
           连接模型
           <ArrowUpRightIcon size={14} />
