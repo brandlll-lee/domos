@@ -3,13 +3,22 @@ import { readClaudeAccount } from "./claude-account.ts";
 import type { EngineExecution } from "./execution.ts";
 import { type EngineLoginInput, EngineLogins } from "./logins.ts";
 import { openOpenCodeAccount } from "./opencode-account.ts";
-import { engineProvider } from "./providers/index.ts";
+import { engineProvider, providers } from "./providers/index.ts";
 import { type EngineConfig, type EngineModel, engineLimits } from "./types.ts";
 
 export class EngineConnections {
   private readonly execution: EngineExecution;
   private readonly operations = new Set<number>();
   private readonly logins: EngineLogins;
+  private readonly catalogs = new Map<
+    string,
+    {
+      computerId: string | null;
+      provider: EngineConfig["provider"];
+      model: string | null;
+      result: Promise<Awaited<ReturnType<EngineConnections["discover"]>>>;
+    }
+  >();
   constructor(execution: EngineExecution) {
     this.execution = execution;
     this.logins = new EngineLogins(execution);
@@ -18,7 +27,65 @@ export class EngineConnections {
     return this.operations.has(botId) || this.logins.busy(botId);
   }
 
-  async inspect(botId: number, config: EngineConfig, context: Context) {
+  async catalog(botId: number, context: Context) {
+    const computerId = await this.execution.computers.computerId(
+      botId,
+      context,
+    );
+    return Promise.all(
+      [...providers.values()]
+        .filter((item) => item.id !== "pi")
+        .map(async ({ id, name }) => {
+          const cached = this.catalogs.get(`${botId}:${id}`);
+          const connection =
+            cached?.computerId === computerId ? await cached.result : null;
+          return {
+            id,
+            name,
+            models: connection?.models ?? [],
+          };
+        }),
+    );
+  }
+
+  async inspect(
+    botId: number,
+    config: EngineConfig,
+    context: Context,
+    refresh = false,
+  ) {
+    const key = `${botId}:${config.provider}`;
+    const computerId = await this.execution.computers.computerId(
+      botId,
+      context,
+    );
+    const cached = this.catalogs.get(key);
+    if (
+      cached?.computerId === computerId &&
+      cached.model === config.model &&
+      !refresh
+    )
+      return cached.result;
+    const entry = {
+      computerId,
+      provider: config.provider,
+      model: config.model,
+      result: this.discover(botId, config, context),
+    };
+    this.catalogs.set(key, entry);
+    try {
+      return await entry.result;
+    } catch (error) {
+      if (this.catalogs.get(key) === entry) this.catalogs.delete(key);
+      throw error;
+    }
+  }
+
+  private async discover(
+    botId: number,
+    config: EngineConfig,
+    context: Context,
+  ) {
     return this.exclusive(botId, async () => {
       const installation = await this.installed(botId, config, context);
       if (!installation.available)
@@ -68,6 +135,7 @@ export class EngineConnections {
             version: installation.version,
             authenticated: result.authenticated,
             models: result.models,
+            accounts: result,
             vision:
               result.models.find((model) => model.id === config.model)
                 ?.images ?? null,
@@ -76,7 +144,15 @@ export class EngineConnections {
               : "请连接账号或选择可用模型。",
           };
         }
-        const session = await engineProvider(config.provider).open({
+        const provider = engineProvider(config.provider);
+        if (provider.inspect)
+          return {
+            ready: true,
+            version: installation.version,
+            message: "引擎已就绪。",
+            ...(await provider.inspect({ process: worker, config, env })),
+          };
+        const session = await provider.open({
           process: worker,
           config,
           sessionId: null,
@@ -90,6 +166,7 @@ export class EngineConnections {
           authenticated:
             authenticated ?? (await session.authenticated?.()) ?? false,
           models: await session.models(),
+          controls: await session.controls?.(),
           vision: (await session.vision?.()) ?? null,
           message: "引擎已就绪。",
         };
@@ -99,12 +176,16 @@ export class EngineConnections {
     });
   }
 
-  controls(
+  async controls(
     botId: number,
     config: EngineConfig,
     sessionId: string | null,
     context: Context,
   ) {
+    const connection = await this.inspect(botId, config, context);
+    if ("controls" in connection && connection.controls)
+      return connection.controls;
+    if (!connection.ready) throw new Error(connection.message);
     return this.exclusive(botId, async () => {
       const worker = await this.execution.computers.process(
         botId,
@@ -139,24 +220,10 @@ export class EngineConnections {
   async accounts(botId: number, config: EngineConfig, context: Context) {
     if (config.provider !== "opencode")
       throw new Error("此引擎不提供服务商列表。");
-    return this.exclusive(botId, async () => {
-      const worker = await this.execution.computers.process(
-        botId,
-        [],
-        async () => ({ content: [] }),
-        context,
-      );
-      try {
-        return await (
-          await openOpenCodeAccount(
-            worker,
-            await this.execution.environment(config),
-          )
-        ).catalog(config.model);
-      } finally {
-        await worker.close();
-      }
-    });
+    const connection = await this.inspect(botId, config, context);
+    if (!("accounts" in connection) || !connection.accounts)
+      throw new Error("请先安装 OpenCode。");
+    return connection.accounts;
   }
 
   async key(
@@ -166,6 +233,7 @@ export class EngineConnections {
     context: Context,
     providerId?: string,
   ) {
+    await this.invalidate(botId, config, context);
     return this.exclusive(botId, async () => {
       if (config.provider === "opencode") {
         if (!providerId) throw new Error("请选择服务商。");
@@ -198,6 +266,7 @@ export class EngineConnections {
   }
 
   async install(botId: number, config: EngineConfig, context: Context) {
+    await this.invalidate(botId, config, context);
     if (config.provider === "pi") return;
     return this.exclusive(botId, async () => {
       if ((await this.installed(botId, config, context)).available) return;
@@ -243,6 +312,7 @@ export class EngineConnections {
     context: Context,
     input: EngineLoginInput = {},
   ) {
+    await this.invalidate(botId, config, context);
     return this.exclusive(botId, () =>
       this.logins.start(botId, config, input, context),
     );
@@ -256,6 +326,19 @@ export class EngineConnections {
   }
   async answerLogin(botId: number, code: string) {
     await this.logins.answer(botId, code);
+  }
+  private async invalidate(
+    botId: number,
+    config: EngineConfig,
+    context: Context,
+  ) {
+    const computerId = await this.execution.computers.computerId(
+      botId,
+      context,
+    );
+    for (const [key, entry] of this.catalogs)
+      if (entry.computerId === computerId && entry.provider === config.provider)
+        this.catalogs.delete(key);
   }
   private async installed(
     botId: number,

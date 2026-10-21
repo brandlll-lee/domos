@@ -188,6 +188,7 @@ export const piProvider: EngineProvider = {
     return {
       id: state.sessionFile,
       async controls() {
+        const state = await rpc.request<RpcSessionState>("get_state");
         const levels = await rpc.request<{ levels?: string[] }>(
           "get_available_thinking_levels",
         );

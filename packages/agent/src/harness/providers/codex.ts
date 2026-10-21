@@ -1,10 +1,11 @@
-import { EngineRequestRejected, JsonLines } from "../json-lines.ts";
+import { EngineRequestRejected } from "../json-lines.ts";
 import type {
   EngineAnswer,
   EngineOpen,
   EngineProvider,
   EngineSession,
 } from "../types.ts";
+import { openCodexClient } from "./codex-client.ts";
 import {
   type CodexFrame,
   type CodexTurn,
@@ -18,6 +19,15 @@ export const codexProvider: EngineProvider = {
   package: "@openai/codex@0.159.2",
   login: ["login", "--device-auth"],
   capabilities: { approvals: true, models: true, recovery: true },
+  async inspect({ process, config, env }) {
+    const client = await openCodexClient(process, config, env);
+    return {
+      authenticated: await client.authenticated(),
+      models: await client.models(),
+      controls: await client.controls(),
+      vision: await client.vision(),
+    };
+  },
   async open({
     process,
     config,
@@ -27,7 +37,8 @@ export const codexProvider: EngineProvider = {
     env,
   }: EngineOpen) {
     const ready = await process.ready;
-    const rpc = new JsonLines(process);
+    const client = await openCodexClient(process, config, env);
+    const { rpc, modes, vision } = client;
     let completion: ReturnType<typeof Promise.withResolvers<void>> | undefined;
     let turnId: string | null = null;
     let nativeId: string | undefined = sessionId ?? undefined;
@@ -40,30 +51,6 @@ export const codexProvider: EngineProvider = {
     let baseline: NonNullable<
       NonNullable<CodexFrame["params"]>["tokenUsage"]
     >["total"];
-    let modeCatalog:
-      | {
-          name: string;
-          mode: string;
-          model: string;
-          reasoning_effort?: string | null;
-        }[]
-      | undefined;
-    async function modes() {
-      if (!modeCatalog) {
-        try {
-          modeCatalog =
-            (
-              await rpc.request<{ data: NonNullable<typeof modeCatalog> }>(
-                "collaborationMode/list",
-              )
-            ).data ?? [];
-        } catch (error) {
-          if (!(error instanceof EngineRequestRejected)) throw error;
-          modeCatalog = [];
-        }
-      }
-      return modeCatalog;
-    }
     const requests = new Map<string, CodexFrame>();
     rpc.on("frame", (frame: CodexFrame) => {
       events = events
@@ -264,27 +251,6 @@ export const codexProvider: EngineProvider = {
         .catch((error) => completion?.reject(error));
     });
     rpc.on("closed", (error) => completion?.reject(error));
-    await process.launch({
-      command: "codex",
-      args: [
-        "app-server",
-        "--listen",
-        "stdio://",
-        "-c",
-        `mcp_servers.domos.url=${JSON.stringify(ready.url)}`,
-      ],
-      env: { ...env, CODEX_HOME: `${ready.home}/codex` },
-    });
-    await rpc.request("initialize", {
-      clientInfo: { name: "domos", version: "1.0.0" },
-      capabilities: { experimentalApi: true },
-    });
-    await rpc.send({ method: "initialized", params: {} });
-    if (env?.OPENAI_API_KEY)
-      await rpc.request("account/login/start", {
-        type: "apiKey",
-        apiKey: env.OPENAI_API_KEY,
-      });
     const response = await rpc.request<{
       thread: { id: string };
       modelProvider?: string;
@@ -303,91 +269,9 @@ export const codexProvider: EngineProvider = {
     model = response.model ?? config.model;
     if (typeof id !== "string") throw new Error("Codex 没有返回会话记录。");
     await emit({ type: "session", id });
-    async function catalog() {
-      type Model = {
-        id: string;
-        model?: string;
-        displayName?: string;
-        inputModalities?: string[];
-        isDefault?: boolean;
-        defaultReasoningEffort?: string;
-        supportedReasoningEfforts?: {
-          reasoningEffort: string;
-          description: string;
-        }[];
-      };
-      const models: Model[] = [];
-      let cursor: string | null = null;
-      do {
-        const page: { data?: Model[]; nextCursor?: string | null } =
-          await rpc.request("model/list", {
-            limit: 100,
-            ...(cursor ? { cursor } : {}),
-          });
-        models.push(...(page.data ?? []));
-        cursor = page.nextCursor ?? null;
-      } while (cursor);
-      return models;
-    }
-    async function vision() {
-      const model = (await catalog()).find((item) =>
-        config.model
-          ? item.id === config.model || item.model === config.model
-          : item.isDefault,
-      );
-      return model?.inputModalities
-        ? model.inputModalities.includes("image")
-        : null;
-    }
     const session: EngineSession = {
       id,
-      async controls() {
-        const selected = (await catalog()).find((item) =>
-          config.model
-            ? item.id === config.model || item.model === config.model
-            : item.isDefault,
-        );
-        return {
-          compact: true,
-          commands: [],
-          options: [
-            {
-              id: "effort",
-              kind: "effort",
-              defaultValue: selected?.defaultReasoningEffort,
-              label: "推理强度",
-              value:
-                config.options?.effort ??
-                selected?.defaultReasoningEffort ??
-                "",
-              options: (selected?.supportedReasoningEfforts ?? []).map(
-                (item) => ({
-                  id: item.reasoningEffort,
-                  label: item.description,
-                }),
-              ),
-            },
-            {
-              id: "approvalPolicy",
-              label: "工作模式",
-              value: config.options?.approvalPolicy ?? "on-request",
-              options: [
-                { id: "on-request", label: "按需确认" },
-                { id: "untrusted", label: "受限操作确认" },
-              ],
-            },
-            {
-              id: "mode",
-              label: "协作模式",
-              value: config.options?.mode ?? "",
-              options: (await modes()).map((item) => ({
-                id: item.mode,
-                label: item.name,
-              })),
-            },
-          ],
-        };
-      },
+      controls: client.controls,
       async compact() {
         compacting = true;
         metering = true;
@@ -405,24 +289,9 @@ export const codexProvider: EngineProvider = {
           compacting = false;
         }
       },
-      models: async () =>
-        (await catalog()).map((model) => ({
-          id: model.id,
-          name: model.displayName ?? model.id,
-          ...(model.inputModalities
-            ? { images: model.inputModalities.includes("image") }
-            : {}),
-        })),
+      models: client.models,
       vision,
-      authenticated: async () => {
-        const account = await rpc.request<{
-          account?: unknown;
-          requiresOpenaiAuth?: boolean;
-        }>("account/read", {
-          refreshToken: false,
-        });
-        return Boolean(account.account) || account.requiresOpenaiAuth === false;
-      },
+      authenticated: client.authenticated,
       async prompt(text, images = []) {
         if (images.length && (await vision()) === false)
           throw new Error("当前模型不支持图片。请选择支持图片的模型。");

@@ -10,12 +10,17 @@ test("Pi exposes native controls, compacts and reports response usage", async ()
   const process = new ProtocolProcess();
   onTestFinished(() => process.close());
   const events: EngineEvent[] = [];
+  let thinkingLevel = "medium";
   process.receive = (request) => {
+    if (request.type === "set_thinking_level")
+      thinkingLevel = String(
+        (request as typeof request & { level: string }).level,
+      );
     const data =
       request.type === "get_state"
         ? {
             sessionFile: "/session",
-            thinkingLevel: "medium",
+            thinkingLevel,
             autoCompactionEnabled: true,
           }
         : request.type === "get_available_thinking_levels"
@@ -69,7 +74,7 @@ test("Pi exposes native controls, compacts and reports response usage", async ()
     id: "thinkingLevel",
     kind: "effort",
     label: "推理强度",
-    value: "medium",
+    value: "low",
     options: [
       { id: "low", label: "low" },
       { id: "medium", label: "medium" },

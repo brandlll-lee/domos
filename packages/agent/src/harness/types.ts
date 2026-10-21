@@ -164,6 +164,12 @@ export interface EngineProvider {
     recovery: boolean;
   };
   open(input: EngineOpen): Promise<EngineSession>;
+  inspect?(input: Pick<EngineOpen, "process" | "config" | "env">): Promise<{
+    authenticated: boolean;
+    models: EngineModel[];
+    controls: EngineControls;
+    vision: boolean | null;
+  }>;
 }
 
 export type EngineInput = {

@@ -28,6 +28,15 @@ test("Claude questions return distinct answers and use the Bot skill and memory 
     tools: { catalog: async () => [], finish: () => {} },
     process: async (...args: Parameters<Computers["process"]>) => {
       const process = new ProtocolProcess();
+      const launch = process.launch.bind(process);
+      process.launch = async (spec) => {
+        if (spec.args.includes("--version")) {
+          process.output.write("fixture-cli 1.0.0\n");
+          process.ended.resolve({ code: 0 });
+        } else await launch(spec);
+      };
+      process.request = async <T>(path: string) =>
+        (path === "/provider" ? { all: [], connected: [] } : {}) as T;
       process.receive = async (request) => {
         if (request.type !== "user") return;
         const memory = await args[2](
@@ -147,6 +156,13 @@ test("Claude questions return distinct answers and use the Bot skill and memory 
     .toBe("question");
   const approval = (await client.get({ botId })).approvals?.[0];
   if (!approval) throw new Error("Native question was not received");
+  await expect(
+    client.engines.accounts({ botId, provider: "opencode" }),
+  ).resolves.toMatchObject({ providers: [] });
+  await expect(
+    client.engines.key({ botId, provider: "claude", key: "fixture-key" }),
+  ).rejects.toThrow("请先停止此引擎的工作");
+  expect((await client.engines.get({ botId })).config.provider).toBe("claude");
   expect(approval?.questions).toMatchObject([
     { id: "Target?", multiple: false },
     { id: "Regions?", multiple: true },

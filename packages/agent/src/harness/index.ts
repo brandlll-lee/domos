@@ -113,6 +113,15 @@ export class Engines {
     const profile = await this.profile(botId, context);
     if (profile.busy) throw new WorkError("CONFLICT", "请先停止 Bot 的工作。");
     const doc = await this.harness.snapshot(EngineDoc, id, context);
+    const computerId = await this.execution.computers.computerId(
+      botId,
+      context,
+    );
+    if (
+      doc?.runtime?.controls &&
+      (doc.preparedComputerId ?? doc.computerId) === computerId
+    )
+      return doc.runtime.controls;
     const controls = await this.connections.controls(
       botId,
       profile.config,
@@ -124,6 +133,7 @@ export class Engines {
       if (current.tasks.length || current.revision !== profile.revision)
         throw new WorkError("CONFLICT", "配置已更新。请重新读取。");
       current.runtime = { ...current.runtime, controls };
+      current.preparedComputerId = computerId;
     }, context);
     return controls;
   }
@@ -288,7 +298,7 @@ export class Engines {
     }
   }
 
-  async prepare(botId: number, context: Context) {
+  async prepare(botId: number, context: Context, refresh = false) {
     const profile = await this.profile(botId, context);
     const computerId = await this.execution.computers.computerId(
       botId,
@@ -298,6 +308,7 @@ export class Engines {
       botId,
       profile.config,
       context,
+      refresh,
     );
     if (
       computerId !== (await this.execution.computers.computerId(botId, context))

@@ -19,6 +19,7 @@ export function engineRouter(bots: Bots, engines?: Engines) {
   const engineTarget = botTarget.extend({
     provider: z.enum(engineIds).optional(),
   });
+  const inspection = engineTarget.extend({ refresh: z.boolean().optional() });
   const connectionConfig = (
     profile: { config: z.infer<typeof engineConfig> },
     provider?: z.infer<typeof engineConfig>["provider"],
@@ -44,6 +45,17 @@ export function engineRouter(bots: Bots, engines?: Engines) {
           error instanceof Error ? error.message : "连接未完成。请重试。",
       });
     }
+  }
+  async function accountTarget(input: z.infer<typeof engineTarget>) {
+    const result = await target(input.botId);
+    if (
+      result.profile.busy &&
+      (!input.provider || input.provider === result.profile.config.provider)
+    )
+      throw new ORPCError("CONFLICT", {
+        message: "请先停止此引擎的工作，再修改账号。",
+      });
+    return result;
   }
   return {
     controls: os.input(botTarget).handler(({ input }) =>
@@ -99,6 +111,14 @@ export function engineRouter(bots: Bots, engines?: Engines) {
     catalog: os.handler(() =>
       engineCatalog().filter((provider) => engines || provider.id === "pi"),
     ),
+    models: os
+      .input(botTarget)
+      .handler(async ({ input }) =>
+        (await target(input.botId)).engines.connections.catalog(
+          input.botId,
+          context,
+        ),
+      ),
     get: os.input(botTarget).handler(({ input }) =>
       operation(async () => {
         if (engines) return (await target(input.botId)).profile;
@@ -136,21 +156,22 @@ export function engineRouter(bots: Bots, engines?: Engines) {
           ),
         ),
       ),
-    inspect: os.input(engineTarget).handler(({ input }) =>
+    inspect: os.input(inspection).handler(({ input }) =>
       operation(async () => {
-        const { engines, profile } = await target(input.botId, true);
+        const { engines, profile } = await target(input.botId, !input.provider);
         return input.provider
           ? engines.connections.inspect(
               input.botId,
               connectionConfig(profile, input.provider),
               context,
+              input.refresh,
             )
-          : engines.prepare(input.botId, context);
+          : engines.prepare(input.botId, context, input.refresh);
       }),
     ),
     install: os.input(engineTarget).handler(({ input }) =>
       operation(async () => {
-        const { engines, profile } = await target(input.botId, true);
+        const { engines, profile } = await accountTarget(input);
         await engines.connections.install(
           input.botId,
           connectionConfig(profile, input.provider),
@@ -168,7 +189,7 @@ export function engineRouter(bots: Bots, engines?: Engines) {
       )
       .handler(({ input }) =>
         operation(async () => {
-          const { engines, profile } = await target(input.botId, true);
+          const { engines, profile } = await accountTarget(input);
           await engines.connections.key(
             input.botId,
             connectionConfig(profile, input.provider),
@@ -181,7 +202,7 @@ export function engineRouter(bots: Bots, engines?: Engines) {
       ),
     accounts: os.input(engineTarget).handler(({ input }) =>
       operation(async () => {
-        const { engines, profile } = await target(input.botId, true);
+        const { engines, profile } = await target(input.botId);
         return engines.connections.accounts(
           input.botId,
           connectionConfig(profile, input.provider),
@@ -201,7 +222,7 @@ export function engineRouter(bots: Bots, engines?: Engines) {
       )
       .handler(({ input }) =>
         operation(async () => {
-          const { engines, profile } = await target(input.botId, true);
+          const { engines, profile } = await accountTarget(input);
           return engines.connections.login(
             input.botId,
             connectionConfig(profile, input.provider),
@@ -214,9 +235,10 @@ export function engineRouter(bots: Bots, engines?: Engines) {
       .input(botTarget.extend({ code: z.string().trim().min(1).max(4096) }))
       .handler(({ input }) =>
         operation(async () => {
-          await (
-            await target(input.botId, true)
-          ).engines.connections.answerLogin(input.botId, input.code);
+          await (await target(input.botId)).engines.connections.answerLogin(
+            input.botId,
+            input.code,
+          );
           return { ok: true };
         }),
       ),
