@@ -319,6 +319,9 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
       reopened.getByRole("button", { name: "Bot详情" }),
     ).toBeVisible();
     expect(reopened.url()).toBe(`http://127.0.0.1:${ready.port}/`);
+    await desktop.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(1),
+    );
     await reopened.getByRole("button", { name: "用量", exact: true }).click();
     await expect(
       reopened.getByRole("main", { name: "用量", exact: true }),
