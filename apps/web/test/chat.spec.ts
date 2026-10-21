@@ -231,7 +231,8 @@ test("native controls, interaction, compaction and Usage work in both themes", a
     details.getByRole("combobox", { name: "推理强度", exact: true }),
   ).toContainText("high");
   await details.getByRole("button", { name: "关闭", exact: true }).click();
-  await page.getByRole("button", { name: "压缩上下文", exact: true }).click();
+  await page.getByRole("button", { name: "上下文操作", exact: true }).click();
+  await page.getByRole("menuitem", { name: "压缩上下文", exact: true }).click();
   await expect(page.getByLabel("上下文状态", { exact: true })).toContainText(
     "压缩完成",
   );

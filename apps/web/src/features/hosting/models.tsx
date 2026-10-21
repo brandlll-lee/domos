@@ -15,13 +15,11 @@ export function HostingModels({
   botId,
   model,
   onBusyChange,
-  accountsOnly = false,
 }: {
   onConfigured?: () => void | Promise<void>;
   botId?: number;
   model?: string | null;
   onBusyChange?: (busy: boolean) => void;
-  accountsOnly?: boolean;
 }) {
   const separator = model?.indexOf("/") ?? -1;
   const initialProvider =
@@ -143,7 +141,7 @@ export function HostingModels({
               adding={adding}
               onAddingChange={setAdding}
             />
-            {selected?.configured && !accountsOnly && (
+            {selected?.configured && (
               <div className="hosting-model-catalog">
                 <TextField
                   label="搜索模型"

@@ -531,7 +531,7 @@ test("first use prepares the default Bot with a computer and engine before share
         .click();
       await capture(page, testInfo, "engine-account");
       await engine
-        .getByRole("button", { name: "重新检查", exact: true })
+        .getByRole("button", { name: "检查连接", exact: true })
         .click();
       await page.getByRole("button", { name: "关闭", exact: true }).click();
       await page

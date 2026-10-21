@@ -1,5 +1,6 @@
 import type { EngineRuntimeState } from "@domos/agent/harness/types";
 import { Button } from "@domos/ui/controls";
+import { ActionMenu } from "@domos/ui/menu";
 import { client } from "../../client.ts";
 import { useWorkAction } from "../bots/details/use-bot-work.ts";
 
@@ -40,18 +41,19 @@ export function RuntimeStatus({
           </span>
         )}
         {state.controls?.compact && (
-          <Button
-            size="small"
-            variant="secondary"
+          <ActionMenu
+            label="上下文操作"
             disabled={busy || action.busy}
-            onClick={() =>
-              void action.run(["compact", botId], (requestId) =>
-                client.engines.compact({ botId, requestId }),
-              )
-            }
-          >
-            压缩上下文
-          </Button>
+            items={[
+              {
+                label: "压缩上下文",
+                onSelect: () =>
+                  void action.run(["compact", botId], (requestId) =>
+                    client.engines.compact({ botId, requestId }),
+                  ),
+              },
+            ]}
+          />
         )}
       </div>
       {Object.entries(state.notices ?? {})

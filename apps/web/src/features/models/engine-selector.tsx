@@ -25,7 +25,14 @@ export function EngineSelector({
 }) {
   const [open, setOpen] = useState(false);
   const [browsing, setBrowsing] = useState<EngineId>("pi");
-  const [native, setNative] = useState<EngineModel[] | null>(null);
+  const [scope, setScope] = useState(botId);
+  const [native, setNative] = useState<
+    Partial<Record<EngineId, EngineModel[]>>
+  >({});
+  if (scope !== botId) {
+    setScope(botId);
+    setNative({});
+  }
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const catalog = useModels(connected);
@@ -40,28 +47,24 @@ export function EngineSelector({
     name: string;
   }>();
   const readControls = useEffectEvent(() => {
-    if (!setup.busy) void setup.controls();
+    if (!setup.busy && !profile?.runtime?.controls) void setup.controls();
   });
   useEffect(() => {
     if (!open) return;
-    if (browsing === "pi") {
-      if (provider === "pi") readControls();
-      return;
-    }
+    if (browsing === provider) readControls();
+    if (browsing === "pi" || native[browsing]) return;
     let current = true;
-    setNative(null);
     setError("");
     void client.engines.inspect({ botId, provider: browsing }).then(
       (result) => {
         if (!current) return;
-        setNative(result.models);
-        if (browsing === provider) readControls();
+        setNative((current) => ({ ...current, [browsing]: result.models }));
         const active = result.models.find((item) => item.id === selected);
         if (browsing === provider && active) setSelectionLabel(active);
       },
       (cause) => {
         if (current) {
-          setNative([]);
+          setNative((current) => ({ ...current, [browsing]: [] }));
           setError(userError(cause, "模型读取失败。请重试。"));
         }
       },
@@ -69,7 +72,12 @@ export function EngineSelector({
     return () => {
       current = false;
     };
-  }, [open, browsing, botId, provider, selected]);
+  }, [open, browsing, botId, provider, selected, native]);
+  useEffect(() => {
+    const refresh = () => setNative({});
+    window.addEventListener("domos:engines", refresh);
+    return () => window.removeEventListener("domos:engines", refresh);
+  }, []);
   const models =
     browsing === "pi"
       ? (catalog.choices ?? []).map((item) => ({
@@ -77,7 +85,7 @@ export function EngineSelector({
           name: item.name,
           group: item.providerName,
         }))
-      : (native ?? []);
+      : (native[browsing] ?? []);
   const piSelected = catalog.choices?.find(
     (item) => `${item.provider}/${item.modelId}` === selected,
   );
@@ -115,9 +123,10 @@ export function EngineSelector({
         (open &&
           (browsing === "pi"
             ? catalog.choices === null && !catalog.error
-            : native === null))
+            : !native[browsing]))
       }
       disabled={!connected || Boolean(setup.busy) || saving}
+      busy={Boolean(profile?.busy)}
       error={
         error ||
         setup.error ||
@@ -125,7 +134,6 @@ export function EngineSelector({
         (browsing === "pi" ? catalog.error : null)
       }
       onProviderChange={(id) => {
-        setNative(null);
         setBrowsing(id as EngineId);
       }}
       onSelect={(id) => {
@@ -147,7 +155,6 @@ export function EngineSelector({
             } else {
               if (!(await setup.save({ provider: browsing, model: id })))
                 return;
-              if (!(await setup.inspect())) return;
             }
             setSelectionLabel(models.find((item) => item.id === id));
             setOpen(false);
@@ -169,16 +176,13 @@ export function EngineSelector({
               void (async () => {
                 setSaving(true);
                 try {
-                  if (
-                    await setup.save({
-                      ...profile.config,
-                      options: {
-                        ...profile.config.options,
-                        [effort.id]: value,
-                      },
-                    })
-                  )
-                    await setup.controls();
+                  await setup.save({
+                    ...profile.config,
+                    options: {
+                      ...profile.config.options,
+                      [effort.id]: value,
+                    },
+                  });
                 } finally {
                   setSaving(false);
                 }

@@ -14,12 +14,16 @@ export function PiAccountFlow({
   account,
   adding,
   onAddingChange,
+  manage = false,
+  onBack,
 }: {
   account: ModelAccount;
   adding: boolean;
   onAddingChange: (adding: boolean) => void;
+  manage?: boolean;
+  onBack?: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(manage);
   const [method, setMethod] = useState("");
   const [value, setValue] = useState("");
   const [disconnecting, setDisconnecting] = useState(false);
@@ -31,8 +35,9 @@ export function PiAccountFlow({
     if (login?.done && !login.error) {
       setEditing(false);
       onAddingChange(false);
+      onBack?.();
     }
-  }, [login, onAddingChange]);
+  }, [login, onAddingChange, onBack]);
 
   function chooseProvider(provider: string) {
     account.setProvider(provider);
@@ -111,7 +116,10 @@ export function PiAccountFlow({
                 disabled={account.busy}
                 aria-label="返回模型选择"
                 title="返回模型选择"
-                onClick={() => setEditing(false)}
+                onClick={() => {
+                  setEditing(false);
+                  onBack?.();
+                }}
               >
                 <ArrowLeft size={15} aria-hidden="true" />
               </Button>

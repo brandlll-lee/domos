@@ -57,8 +57,12 @@ export function useEngine(
   const refresh = useCallback(async () => {
     setProfile(await client.engines.get({ botId }));
   }, [botId]);
-  const inspect = async () => {
-    const result = await client.engines.inspect({ botId, provider });
+  const inspect = async (force = false) => {
+    const result = await client.engines.inspect({
+      botId,
+      provider,
+      refresh: force,
+    });
     setConnection(result);
     await refresh();
     return result;
@@ -83,6 +87,7 @@ export function useEngine(
           if (!current) return;
           setConnection(result);
           setProfile(profile);
+          window.dispatchEvent(new Event("domos:engines"));
         }
         setError("");
         setLogin(value);
@@ -114,10 +119,18 @@ export function useEngine(
     pending,
     error: action.error || error,
     busy:
-      action.busy || (running ?? profile?.busy) || login?.state === "waiting",
+      action.busy ||
+      (provider
+        ? provider === profile?.config.provider && profile.busy
+        : (running ?? profile?.busy)) ||
+      login?.state === "waiting",
     refresh,
     reload: () => run("read", ["engine", botId], refresh),
-    inspect: () => run("inspect", ["inspect", botId], inspect),
+    inspect: (refresh = true) =>
+      run("inspect", ["inspect", botId, provider], async () => {
+        await inspect(refresh);
+        if (refresh) window.dispatchEvent(new Event("domos:engines"));
+      }),
     controls: () =>
       run("controls", ["controls", botId], async () => {
         await client.engines.controls({ botId });
@@ -140,15 +153,22 @@ export function useEngine(
     key: (key: string | null, providerId?: string) =>
       run("key", ["key", botId, providerId], async () => {
         await client.engines.key({ botId, provider, key, providerId });
-        setConnection(undefined);
-        if (key && !(await inspect()).authenticated)
+        const result = await inspect();
+        const authenticated =
+          providerId && "accounts" in result
+            ? result.accounts?.providers.some(
+                (item) => item.id === providerId && item.connected,
+              )
+            : result.authenticated;
+        if (key && !authenticated)
           throw new Error("账号还不可用。请检查连接方式和模型。");
-        if (!key) await inspect();
+        window.dispatchEvent(new Event("domos:engines"));
       }),
     install: () =>
       run("install", ["install", botId], async () => {
         await client.engines.install({ botId, provider });
         await inspect();
+        window.dispatchEvent(new Event("domos:engines"));
       }),
     signIn: (input: LoginInput = {}) =>
       run(

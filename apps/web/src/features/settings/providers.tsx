@@ -1,12 +1,13 @@
 import type { EngineId } from "@domos/agent/harness/types";
 import { Button } from "@domos/ui/controls";
+import { Tabs } from "@domos/ui/tabs";
 import { useEffect, useRef, useState } from "react";
 import { client } from "../../client.ts";
 import { EngineAccount } from "../bots/details/engine-account.tsx";
 import { useEngine } from "../bots/details/use-engine.ts";
 import { EngineMark } from "../bots/engine-mark.tsx";
-import { HostingModels } from "../hosting/models.tsx";
 import { userError } from "../user-error.ts";
+import { PiProviderSettings } from "./pi-providers.tsx";
 import { useConnectionContext } from "./use-connection-context.ts";
 import "../bots/details/engine.css";
 
@@ -26,48 +27,49 @@ export function ProviderSettings({ botId }: { botId?: number }) {
       );
   }, []);
   return (
-    <div className="settings-sections">
+    <Tabs.Root
+      className="settings-sections"
+      value={selected}
+      onValueChange={(id) => setSelected(id as EngineId)}
+    >
       {target && (
         <p className="detail-note">
           {target.name} · {target.computer}
         </p>
       )}
-      <div className="settings-card provider-list">
+      <Tabs.List className="provider-tabs" aria-label="连接引擎">
         {providers.map((item) => (
-          <Button
+          <Tabs.Tab
+            render={<Button variant="ghost" size="small" />}
             key={item.id}
-            variant="ghost"
-            className="provider-row"
-            aria-expanded={selected === item.id}
+            value={item.id}
             disabled={busy}
-            onClick={() => setSelected(item.id)}
           >
             <EngineMark provider={item.id} />
-            <span>{item.name}</span>
-            <span className="detail-note">
-              {item.id === "pi" ? "服务账号" : "工作电脑账号"}
-            </span>
-          </Button>
+            {item.name}
+          </Tabs.Tab>
         ))}
-      </div>
-      {selected === "pi" ? (
-        <HostingModels accountsOnly onBusyChange={setBusy} />
-      ) : (
-        target && (
-          <NativeProvider
-            key={`${target.id}:${selected}`}
-            botId={target.id}
-            provider={selected}
-            onBusyChange={setBusy}
-          />
-        )
-      )}
+      </Tabs.List>
+      <Tabs.Panel value={selected}>
+        {selected === "pi" ? (
+          <PiProviderSettings onBusyChange={setBusy} />
+        ) : (
+          target && (
+            <NativeProvider
+              key={`${target.id}:${selected}`}
+              botId={target.id}
+              provider={selected}
+              onBusyChange={setBusy}
+            />
+          )
+        )}
+      </Tabs.Panel>
       {(error || contextError) && (
         <p className="alert" role="alert">
           {error || contextError}
         </p>
       )}
-    </div>
+    </Tabs.Root>
   );
 }
 
@@ -89,7 +91,7 @@ function NativeProvider({
   useEffect(() => {
     if (checked.current || !setup.profile) return;
     checked.current = true;
-    void setup.inspect();
+    void setup.inspect(false);
   }, [setup]);
   const name =
     setup.profile?.providers.find((item) => item.id === provider)?.name ??

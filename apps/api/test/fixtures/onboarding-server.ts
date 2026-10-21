@@ -31,6 +31,10 @@ const runtime = await openChat(BACKGROUND_CONTEXT, config, { models });
 const accountMode = process.argv[3] === "accounts";
 let claudeConnected = false;
 const connectedProviders = new Set<string>();
+let launches = 0;
+process.on("message", (message) => {
+  if (message === "launches") process.send?.({ launches });
+});
 runtime.computer.process = async () => {
   const worker = new ProtocolProcess(accountMode ? "cli" : "protocol");
   let authorizing = "";
@@ -67,6 +71,11 @@ runtime.computer.process = async () => {
           name: "Other",
           models: { two: { id: "two", name: "Other Model" } },
         },
+        {
+          id: "third",
+          name: "Third Service",
+          models: { three: { id: "three", name: "Third Model" } },
+        },
       ];
       const id = path.split("/")[2] ?? "";
       if (path.endsWith("/authorize")) authorizing = id;
@@ -101,6 +110,7 @@ runtime.computer.process = async () => {
   }
   const launch = worker.launch.bind(worker);
   worker.launch = async (spec) => {
+    launches++;
     worker.spec = spec;
     if (accountMode && spec.command === "claude") {
       if (spec.args.includes("--version")) {

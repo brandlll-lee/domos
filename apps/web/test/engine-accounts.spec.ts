@@ -9,7 +9,7 @@ import { expect, test } from "@playwright/test";
 test("native account flows show login choices, retain providers, and select models directly", async ({
   page,
 }, info) => {
-  test.setTimeout(60_000);
+  test.setTimeout(90_000);
   const directory = await mkdtemp(join(tmpdir(), "domos-engine-accounts-"));
   const worker = fork(
     fileURLToPath(
@@ -20,6 +20,11 @@ test("native account flows show login choices, retain providers, and select mode
   );
   worker.stdout?.resume();
   worker.stderr?.resume();
+  const launches = async () => {
+    const response = once(worker, "message");
+    worker.send("launches");
+    return ((await response)[0] as { launches: number }).launches;
+  };
   try {
     const [ready] = (await once(worker, "message")) as [
       { port: number; code: string },
@@ -88,6 +93,9 @@ test("native account flows show login choices, retain providers, and select mode
       exact: true,
     });
     await opencode
+      .getByRole("button", { name: "添加提供方", exact: true })
+      .click();
+    await opencode
       .getByRole("combobox", { name: "模型服务", exact: true })
       .click();
     await page.getByRole("option", { name: "OpenAI", exact: true }).click();
@@ -130,6 +138,9 @@ test("native account flows show login choices, retain providers, and select mode
 
     await card.getByRole("button", { name: "账号设置", exact: true }).click();
     await opencode
+      .getByRole("button", { name: "添加提供方", exact: true })
+      .click();
+    await opencode
       .getByRole("combobox", { name: "模型服务", exact: true })
       .click();
     await page.getByRole("option", { name: "Other", exact: true }).click();
@@ -139,6 +150,9 @@ test("native account flows show login choices, retain providers, and select mode
     await opencode.getByRole("button", { name: "连接", exact: true }).click();
     await expect(opencode).toBeHidden();
     await card.getByRole("button", { name: "账号设置", exact: true }).click();
+    await opencode
+      .getByRole("button", { name: "添加提供方", exact: true })
+      .click();
     await opencode
       .getByRole("combobox", { name: "模型服务", exact: true })
       .click();
@@ -225,13 +239,14 @@ test("native account flows show login choices, retain providers, and select mode
       settings.getByRole("tab", { name: "Providers", exact: true }),
     ).toHaveAttribute("aria-current", "page");
     await settings
-      .getByRole("button", { name: /Claude Code 工作电脑账号/ })
+      .getByRole("tab", { name: "Claude Code", exact: true })
       .click();
     await expect(
       settings.getByRole("region", { name: "Claude Code 连接", exact: true }),
     ).toContainText("已连接");
+    await settings.getByRole("tab", { name: "OpenCode", exact: true }).click();
     await settings
-      .getByRole("button", { name: /OpenCode 工作电脑账号/ })
+      .getByRole("button", { name: "添加提供方", exact: true })
       .click();
     await settings
       .getByRole("combobox", { name: "模型服务", exact: true })
@@ -242,12 +257,14 @@ test("native account flows show login choices, retain providers, and select mode
     await expect(
       settings.getByLabel("Other API 密钥", { exact: true }),
     ).toBeVisible();
+    const beforeModels = await launches();
     await settings.getByRole("tab", { name: "Models", exact: true }).click();
     const modelVisibility = settings.getByRole("switch", {
       name: "OpenCode · Other Model",
       exact: true,
     });
     await expect(modelVisibility).toBeChecked();
+    expect(await launches()).toBe(beforeModels);
     await modelVisibility.click();
     await expect(modelVisibility).not.toBeChecked();
     expect(configurations).toBe(beforeAccounts);
@@ -272,9 +289,19 @@ test("native account flows show login choices, retain providers, and select mode
     });
     await expect(effort).toHaveAttribute("aria-valuetext", "Medium");
     await expect(selector.getByText("推荐", { exact: true })).toBeVisible();
+    const beforeEffort = await launches();
     await effort.focus();
     await effort.press("ArrowRight");
     await expect(effort).toHaveAttribute("aria-valuetext", "High");
+    await expect(effort).toBeEnabled();
+    expect(await launches()).toBe(beforeEffort);
+    const beforeReopen = await launches();
+    for (let index = 0; index < 3; index++) {
+      await page.keyboard.press("Escape");
+      await trigger.click();
+      await expect(effort).toHaveAttribute("aria-valuetext", "High");
+    }
+    expect(await launches()).toBe(beforeReopen);
     for (const colorScheme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme });
       await page.screenshot({
@@ -292,13 +319,88 @@ test("native account flows show login choices, retain providers, and select mode
     await expect(modelVisibility).not.toBeChecked();
     for (const colorScheme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme });
-      await page.screenshot({
-        path: info.outputPath(`models-${colorScheme}.png`),
-      });
+      for (const [width, height] of [
+        [1360, 768],
+        [390, 500],
+      ] as const) {
+        await page.setViewportSize({ width, height });
+        await expect(
+          settings.getByLabel("搜索模型", { exact: true }),
+        ).toBeInViewport();
+        await page.screenshot({
+          path: info.outputPath(`models-${colorScheme}-${width}.png`),
+        });
+      }
     }
     await settings
       .getByRole("button", { name: "关闭设置", exact: true })
       .click();
+    await page.setViewportSize({ width: 1360, height: 768 });
+    await page
+      .getByRole("textbox", { name: "消息", exact: true })
+      .fill("Hold this task");
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    await expect(
+      page.getByRole("region", { name: "允许这次操作？", exact: true }),
+    ).toBeVisible();
+    await trigger.click();
+    await selector.getByRole("tab", { name: "OpenCode", exact: true }).click();
+    await expect(
+      selector.getByRole("button", {
+        name: "Fixture OpenCode Model",
+        exact: true,
+      }),
+    ).toBeDisabled();
+    await selector
+      .getByRole("button", { name: "连接与账号设置", exact: true })
+      .click();
+    await settings.getByRole("tab", { name: "OpenCode", exact: true }).click();
+    await settings
+      .getByRole("button", { name: "添加提供方", exact: true })
+      .click();
+    await settings
+      .getByRole("combobox", { name: "模型服务", exact: true })
+      .click();
+    await page
+      .getByRole("option", { name: "Third Service", exact: true })
+      .click();
+    await settings
+      .getByLabel("Third Service API 密钥", { exact: true })
+      .fill("fixture-third-key");
+    await settings.getByRole("button", { name: "连接", exact: true }).click();
+    await expect(settings.getByRole("status")).toContainText(
+      "Third Service 已连接",
+    );
+    await expect(
+      settings.getByRole("combobox", { name: "模型服务", exact: true }),
+    ).toContainText("Third Service");
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      for (const [width, height] of [
+        [1360, 768],
+        [390, 500],
+      ] as const) {
+        await page.setViewportSize({ width, height });
+        await settings.getByRole("tab", { name: "Pi", exact: true }).click();
+        await expect(
+          settings.getByRole("button", { name: "添加提供方", exact: true }),
+        ).toBeInViewport();
+        await page.screenshot({
+          path: info.outputPath(`providers-${colorScheme}-${width}.png`),
+        });
+      }
+    }
+    await settings
+      .getByRole("button", { name: "关闭设置", exact: true })
+      .click();
+    await page.setViewportSize({ width: 1360, height: 900 });
+    await expect(trigger).toContainText("Test Model");
+    await page
+      .getByRole("button", { name: "允许这次操作", exact: true })
+      .click();
+    await expect(
+      page.getByRole("region", { name: "允许这次操作？", exact: true }),
+    ).toBeHidden();
     await trigger.click();
     await selector.getByRole("tab", { name: "Pi", exact: true }).click();
     await selector

@@ -17,6 +17,7 @@ export function ModelSelector({
   label,
   loading,
   disabled,
+  busy,
   error,
   onProviderChange,
   onSelect,
@@ -33,6 +34,7 @@ export function ModelSelector({
   label: string;
   loading: boolean;
   disabled: boolean;
+  busy?: boolean;
   error?: string | null;
   onProviderChange: (id: string) => void;
   onSelect: (id: string) => void;
@@ -101,7 +103,6 @@ export function ModelSelector({
                     key={item.id}
                     value={item.id}
                     className="model-selector-provider"
-                    disabled={disabled}
                     aria-label={item.name}
                     title={item.name}
                   >
@@ -180,7 +181,7 @@ export function ModelSelector({
                     )}
                   </div>
                 </ScrollArea>
-                {disabled && !loading && (
+                {busy && !loading && (
                   <p className="model-selector-note">工作结束后可切换</p>
                 )}
                 {error && (
