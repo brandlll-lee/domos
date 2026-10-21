@@ -20,6 +20,28 @@ export type EngineControls = {
   commands: { name: string; description: string }[];
   compact: boolean;
 };
+export type EngineContextReading = {
+  source: string;
+  basis: "window" | "last-input";
+  estimated: boolean;
+  observedAt: number;
+  harness: EngineId;
+  sessionId: string | null;
+  model: string | null;
+};
+export type EngineCompaction = {
+  id: string;
+  nativeId?: string;
+  taskId: string;
+  sessionId: string | null;
+  model: string | null;
+  trigger: "manual" | "auto" | "native";
+  startedAt: number | null;
+  endedAt: number | null;
+  beforeTokens: number | null;
+  afterTokens: number | null;
+  error: string | null;
+};
 export type EngineUsage = {
   id: string;
   source: string;
@@ -33,9 +55,16 @@ export type EngineUsage = {
   costScope?: "session";
 };
 export type EngineRuntimeState = {
-  compaction?: "running" | "completed" | "failed";
+  compaction?: "running" | "completed" | "failed" | "uncertain";
+  compactionDetails?: EngineCompaction;
   contextTokens?: number | null;
   contextWindow?: number | null;
+  context?: EngineContextReading;
+  contextPolicy?: {
+    manual: boolean;
+    automatic: "native" | "enabled" | "disabled";
+    refresh: boolean;
+  };
   controls?: EngineControls;
   notices?: Record<string, string>;
   integrations?: { name: string; status: string }[];
@@ -72,6 +101,23 @@ export type EngineAnswer = {
   optionId?: string;
 };
 export type EngineEvent =
+  | {
+      type: "context";
+      tokens: number | null;
+      window: number | null;
+      source: string;
+      basis: EngineContextReading["basis"];
+      estimated: boolean;
+      model?: string | null;
+    }
+  | {
+      type: "compaction";
+      status: NonNullable<EngineRuntimeState["compaction"]>;
+      trigger?: EngineCompaction["trigger"];
+      beforeTokens?: number;
+      error?: string;
+      nativeId?: string;
+    }
   | { type: "approval_closed"; id: string }
   | { type: "usage"; usage: EngineUsage }
   | { type: "runtime"; state: EngineRuntimeState }
@@ -142,6 +188,7 @@ export interface EngineSession {
   interrupt(): Promise<void>;
   answer(id: string, answer: EngineAnswer): Promise<void>;
   recover?(turnId: string | null, inputCount?: number): Promise<boolean>;
+  recoverCompaction?(cursor: string | null): Promise<boolean>;
 }
 
 export type EngineOpen = {
@@ -182,6 +229,7 @@ export type EngineInput = {
 
 export const engineLimits = {
   handshakeMs: 30_000,
+  compactionMs: 120_000,
   shutdownMs: 5_000,
   approvalMs: 10 * 60_000,
   frameBytes: 16 * 1024 * 1024,

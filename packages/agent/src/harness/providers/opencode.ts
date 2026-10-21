@@ -9,6 +9,7 @@ import {
 import {
   type EngineAnswer,
   type EngineControls,
+  type EngineEvent,
   type EngineOpen,
   type EngineProvider,
   type EngineSession,
@@ -21,6 +22,7 @@ type NativeMessage = {
     role: string;
     parentID?: string;
     finish?: string;
+    summary?: boolean;
     error?: unknown;
     time?: { completed?: number };
     modelID?: string;
@@ -34,6 +36,22 @@ type NativeMessage = {
   };
   parts: { type: string; text?: string }[];
 };
+
+function completedCompaction(messages: NativeMessage[]) {
+  return messages.findLast(
+    (message) =>
+      message.info.role === "assistant" &&
+      message.info.summary &&
+      message.info.finish &&
+      !message.info.error &&
+      messages.some(
+        (parent) =>
+          parent.info.id === message.info.parentID &&
+          parent.info.role === "user" &&
+          parent.parts.some((part) => part.type === "compaction"),
+      ),
+  );
+}
 
 export const opencodeProvider: EngineProvider = {
   id: "opencode",
@@ -53,6 +71,9 @@ export const opencodeProvider: EngineProvider = {
     const ready = await process.ready;
     let sequence = 0;
     let active = false;
+    let compactionConfirmed = false;
+    let nativeId = sessionId;
+    let contextReading: Extract<EngineEvent, { type: "context" }> | undefined;
     let messageId = "";
     let configOptions: SessionConfigOption[] = [];
     let commands: EngineControls["commands"] = [];
@@ -156,11 +177,47 @@ export const opencodeProvider: EngineProvider = {
             await emit({ type: "approval_closed", id });
           }
         },
-        async sessionUpdate({ update }) {
-          if (update.sessionUpdate === "usage_update")
+        async sessionUpdate({ sessionId, update }) {
+          if (nativeId && sessionId !== nativeId) return;
+          if (update.sessionUpdate === "usage_update") {
+            contextReading = {
+              type: "context",
+              tokens: update.used,
+              window: update.size,
+              source: "opencode.acp.usage_update",
+              basis: "window",
+              estimated: false,
+              model:
+                configOptions
+                  .find((option) => option.category === "model")
+                  ?.currentValue?.toString() ?? config.model,
+            };
+            if (nativeId) await emit(contextReading);
+          }
+          if (active && update.sessionUpdate === "compaction_update") {
+            const status =
+              update.status === "in_progress"
+                ? "running"
+                : update.status === "completed"
+                  ? "completed"
+                  : update.status === "failed" || update.status === "cancelled"
+                    ? "failed"
+                    : null;
+            if (status) {
+              compactionConfirmed = status === "completed";
+              await emit({
+                type: "compaction",
+                status,
+                nativeId: update.compactionId,
+                ...(update.error ? { error: update.error } : {}),
+              });
+            }
+          }
+          if (active && update.sessionUpdate === "compaction_summary_chunk")
             await emit({
-              type: "runtime",
-              state: { contextTokens: update.used, contextWindow: update.size },
+              type: "compaction",
+              status: "running",
+              nativeId: update.compactionId,
             });
           if (update.sessionUpdate === "notice")
             await emit({
@@ -174,7 +231,17 @@ export const opencodeProvider: EngineProvider = {
               name: item.name,
               description: item.description,
             }));
-            await emit({ type: "runtime", state: { controls: controls() } });
+            await emit({
+              type: "runtime",
+              state: {
+                controls: controls(),
+                contextPolicy: {
+                  manual: controls().compact,
+                  automatic: "native",
+                  refresh: false,
+                },
+              },
+            });
           }
           if (update.sessionUpdate === "config_option_update") {
             configOptions = update.configOptions;
@@ -246,7 +313,11 @@ export const opencodeProvider: EngineProvider = {
     const hello = await rpc.initialize({
       protocolVersion: PROTOCOL_VERSION,
       clientCapabilities: {
-        session: { configOptions: { boolean: {} }, notices: {} },
+        session: {
+          configOptions: { boolean: {} },
+          notices: {},
+          compaction: {},
+        },
       },
       clientInfo: { name: "domos", version: "1.0.0" },
     });
@@ -299,6 +370,18 @@ export const opencodeProvider: EngineProvider = {
       }
     }
     await emit({ type: "session", id });
+    await emit({
+      type: "runtime",
+      state: {
+        contextPolicy: {
+          manual: controls().compact,
+          automatic: "native",
+          refresh: false,
+        },
+      },
+    });
+    nativeId = id;
+    if (contextReading) await emit(contextReading);
     const messages = () =>
       process.request<NativeMessage[]>(
         `/session/${encodeURIComponent(id)}/message`,
@@ -325,14 +408,28 @@ export const opencodeProvider: EngineProvider = {
       controls: async () => controls(),
       async compact() {
         if (!controls().compact) throw new Error("此引擎尚未提供压缩命令。");
-        await emit({ type: "runtime", state: { compaction: "running" } });
-        try {
-          await session.prompt("/compact");
-          await emit({ type: "runtime", state: { compaction: "completed" } });
-        } catch (error) {
-          await emit({ type: "runtime", state: { compaction: "failed" } });
-          throw error;
-        }
+        compactionConfirmed = false;
+        await session.prompt("/compact");
+        if (!compactionConfirmed)
+          throw new Error("OpenCode 没有返回压缩完成记录。结果未确认。");
+      },
+      async recoverCompaction(cursor) {
+        if (!cursor?.startsWith("opencode:")) return false;
+        const history = await messages();
+        const baseline = cursor.slice(9);
+        const start = baseline
+          ? history.findIndex((message) => message.info.id === baseline)
+          : -1;
+        if (baseline && start < 0) return false;
+        const compacted = completedCompaction(history.slice(start + 1));
+        if (!compacted) return false;
+        await emit({
+          type: "compaction",
+          status: "completed",
+          nativeId: compacted.info.id,
+        });
+        if (contextReading) await emit(contextReading);
+        return true;
       },
       vision: async () =>
         hello.agentCapabilities?.promptCapabilities?.image ? null : false,
@@ -361,13 +458,25 @@ export const opencodeProvider: EngineProvider = {
           id: `opencode:${history.at(-1)?.info.id ?? ""}`,
         });
         try {
+          contextReading = undefined;
           const outcome = await rpc.prompt({
             sessionId: id,
             prompt: [{ type: "text", text }, ...images],
           });
           if (outcome.stopReason === "cancelled")
             throw new Error("工作已停止。");
-          for (const message of (await messages()).slice(history.length))
+          const updated = (await messages()).slice(history.length);
+          const compacted = completedCompaction(updated);
+          if (compacted && !compactionConfirmed) {
+            compactionConfirmed = true;
+            await emit({
+              type: "compaction",
+              status: "completed",
+              nativeId: compacted.info.id,
+            });
+            if (contextReading) await emit(contextReading);
+          }
+          for (const message of updated)
             if (message.info.role === "assistant") {
               await record(message);
               await emit({

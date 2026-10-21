@@ -3,6 +3,7 @@ import { ProtocolProcess } from "./engine-process.ts";
 export function featureProcess() {
   const process = new ProtocolProcess();
   let thinkingLevel = "medium";
+  let compacted = false;
   const finish = (text: string) => {
     const message = {
       role: "assistant",
@@ -18,6 +19,7 @@ export function featureProcess() {
     process.frame({ type: "agent_settled" });
   };
   process.receive = (request) => {
+    if (request.type === "compact") compacted = true;
     const value = request as unknown as {
       type: string;
       level?: string;
@@ -66,7 +68,12 @@ export function featureProcess() {
                   ],
                 }
               : request.type === "get_session_stats"
-                ? { contextUsage: { tokens: 120, contextWindow: 1000 } }
+                ? {
+                    contextUsage: {
+                      tokens: compacted ? null : 120,
+                      contextWindow: 1000,
+                    },
+                  }
                 : {};
     process.frame({ type: "response", id: request.id, success: true, data });
     if (request.type === "prompt")

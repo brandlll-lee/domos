@@ -11,7 +11,9 @@ test("Pi exposes native controls, compacts and reports response usage", async ()
   onTestFinished(() => process.close());
   const events: EngineEvent[] = [];
   let thinkingLevel = "medium";
+  let tokens: number | null = 80;
   process.receive = (request) => {
+    if (request.type === "compact") tokens = null;
     if (request.type === "set_thinking_level")
       thinkingLevel = String(
         (request as typeof request & { level: string }).level,
@@ -35,7 +37,9 @@ test("Pi exposes native controls, compacts and reports response usage", async ()
                   },
                 ],
               }
-            : {};
+            : request.type === "get_session_stats"
+              ? { contextUsage: { tokens, contextWindow: 1000 } }
+              : {};
     process.frame({ type: "response", id: request.id, success: true, data });
     if (request.type === "prompt") {
       process.frame({ type: "message_start", message: { role: "assistant" } });
@@ -100,6 +104,9 @@ test("Pi exposes native controls, compacts and reports response usage", async ()
     },
   });
   await session.compact?.();
+  expect(
+    events.filter((event) => event.type === "context").at(-1),
+  ).toMatchObject({ tokens: null, window: 1000, estimated: true });
   expect(process.requests).toContainEqual(
     expect.objectContaining({ type: "compact" }),
   );
@@ -107,8 +114,8 @@ test("Pi exposes native controls, compacts and reports response usage", async ()
     expect.objectContaining({ type: "set_thinking_level", level: "low" }),
   );
   expect(events).toContainEqual({
-    type: "runtime",
-    state: { compaction: "completed" },
+    type: "compaction",
+    status: "completed",
   });
 });
 
@@ -117,6 +124,8 @@ test("OpenCode uses advertised configuration and commands and records native mes
   onTestFinished(() => process.close());
   const events: EngineEvent[] = [];
   let finished = false;
+  let compacted = false;
+  let proof = true;
   process.request = async <T>() =>
     (finished
       ? [
@@ -131,6 +140,24 @@ test("OpenCode uses advertised configuration and commands and records native mes
             },
             parts: [],
           },
+          ...(compacted && proof
+            ? [
+                {
+                  info: { id: "compact-user", role: "user" },
+                  parts: [{ type: "compaction" }],
+                },
+                {
+                  info: {
+                    id: "compact-summary",
+                    role: "assistant",
+                    parentID: "compact-user",
+                    summary: true,
+                    finish: "stop",
+                  },
+                  parts: [],
+                },
+              ]
+            : []),
         ]
       : []) as T;
   process.receive = (request) => {
@@ -168,6 +195,7 @@ test("OpenCode uses advertised configuration and commands and records native mes
       process.response(request, { configOptions: [] });
     if (request.method === "session/prompt") {
       finished = true;
+      compacted ||= JSON.stringify(request.params?.prompt).includes("/compact");
       process.frame({
         jsonrpc: "2.0",
         method: "session/update",
@@ -204,8 +232,13 @@ test("OpenCode uses advertised configuration and commands and records native mes
   );
   await session.prompt("Work");
   expect(events).toContainEqual({
-    type: "runtime",
-    state: { contextTokens: 80, contextWindow: 1000 },
+    type: "context",
+    tokens: 80,
+    window: 1000,
+    source: "opencode.acp.usage_update",
+    basis: "window",
+    estimated: false,
+    model: null,
   });
   expect(events).toContainEqual({
     type: "usage",
@@ -222,6 +255,16 @@ test("OpenCode uses advertised configuration and commands and records native mes
     },
   });
   await session.compact?.();
+  expect(events).toContainEqual({
+    type: "compaction",
+    status: "completed",
+    nativeId: "compact-summary",
+  });
+  expect(await session.recoverCompaction?.("opencode:message")).toBe(true);
+  expect(await session.recoverCompaction?.("opencode:other")).toBe(false);
+  proof = false;
+  expect(await session.recoverCompaction?.("opencode:message")).toBe(false);
+  await expect(session.compact?.()).rejects.toThrow("结果未确认");
   expect(process.requests).toContainEqual(
     expect.objectContaining({
       method: "session/prompt",
@@ -264,6 +307,37 @@ test("Claude uses native advertised effort and keeps cost scope and compaction b
           subtype: "compact_boundary",
           compact_metadata: { trigger: "manual" },
         });
+      else {
+        process.frame({
+          type: "assistant",
+          message: {
+            id: "main",
+            model: "model",
+            content: [],
+            usage: {
+              input_tokens: 5,
+              cache_read_input_tokens: 11,
+              cache_creation_input_tokens: 7,
+            },
+          },
+        });
+        process.frame({
+          type: "assistant",
+          parent_tool_use_id: "helper",
+          message: {
+            id: "child",
+            model: "helper",
+            content: [],
+            usage: { input_tokens: 900 },
+          },
+        });
+        process.frame({
+          type: "system",
+          subtype: "compact_boundary",
+          parent_tool_use_id: "helper",
+          compact_metadata: { trigger: "auto", pre_tokens: 900 },
+        });
+      }
       process.frame({
         type: "result",
         uuid: "result",
@@ -308,6 +382,15 @@ test("Claude uses native advertised effort and keeps cost scope and compaction b
     ]),
   );
   await session.prompt("Work");
+  expect(
+    events.filter((event) => event.type === "context").at(-1),
+  ).toMatchObject({
+    tokens: 23,
+    window: 1000,
+    basis: "last-input",
+    model: "model",
+  });
+  expect(events.filter((event) => event.type === "compaction")).toHaveLength(0);
   expect(events).toContainEqual({
     type: "usage",
     usage: {
@@ -324,9 +407,14 @@ test("Claude uses native advertised effort and keeps cost scope and compaction b
     },
   });
   await session.compact?.();
+  expect(
+    events.filter((event) => event.type === "context").at(-1),
+  ).toMatchObject({ tokens: null, window: 1000 });
   expect(events).toContainEqual({
-    type: "runtime",
-    state: { compaction: "completed" },
+    type: "compaction",
+    status: "completed",
+    trigger: "manual",
+    beforeTokens: undefined,
   });
   modelUsage = {
     model: { contextWindow: 1000 },
@@ -494,7 +582,94 @@ test("Codex exposes model effort, preserves each answer and replaces usage snaps
     },
   });
   expect(events).toContainEqual({
-    type: "runtime",
-    state: { contextTokens: 10, contextWindow: 1000 },
+    type: "context",
+    tokens: 10,
+    window: 1000,
+    source: "codex.thread/tokenUsage/updated",
+    basis: "last-input",
+    estimated: false,
+    model: "model",
   });
+});
+
+test("Codex compaction waits for its native boundary and recovers only the matching completed turn", async () => {
+  const process = new ProtocolProcess();
+  onTestFinished(() => process.close());
+  const events: EngineEvent[] = [];
+  let boundary = true;
+  process.receive = (request) => {
+    if (request.method === "thread/resume")
+      process.response(request, { thread: { id: "thread" } });
+    else if (request.method === "thread/compact/start")
+      process.response(request, {});
+    else if (request.method === "thread/read")
+      process.response(request, {
+        thread: {
+          turns: [
+            {
+              id: "compact-turn",
+              status: "completed",
+              items: boundary
+                ? [{ type: "contextCompaction", id: "boundary" }]
+                : [],
+            },
+          ],
+        },
+      });
+    else if (request.id !== undefined) process.response(request, {});
+  };
+  const session = await codexProvider.open({
+    process,
+    config: { provider: "codex", model: null },
+    sessionId: "thread",
+    instructions: "Role",
+    emit: async (event) => {
+      events.push(event);
+    },
+  });
+  let finished = false;
+  const compact = session.compact?.().then(() => {
+    finished = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(finished).toBe(false);
+  process.frame({
+    method: "turn/started",
+    params: {
+      threadId: "thread",
+      turn: { id: "compact-turn", status: "inProgress" },
+    },
+  });
+  process.frame({
+    method: "item/started",
+    params: {
+      threadId: "thread",
+      item: { type: "contextCompaction", id: "boundary" },
+    },
+  });
+  process.frame({
+    method: "item/completed",
+    params: {
+      threadId: "thread",
+      item: { type: "contextCompaction", id: "boundary" },
+    },
+  });
+  process.frame({
+    method: "turn/completed",
+    params: {
+      threadId: "thread",
+      turn: { id: "compact-turn", status: "completed" },
+    },
+  });
+  await compact;
+  expect(finished).toBe(true);
+  expect(events).toContainEqual({
+    type: "accepted",
+    id: "compact-turn",
+    ready: false,
+  });
+  expect(await session.recoverCompaction?.("compact-turn")).toBe(true);
+  expect(await session.recoverCompaction?.("another-turn")).toBe(false);
+  boundary = false;
+  expect(await session.recoverCompaction?.("compact-turn")).toBe(false);
 });

@@ -46,6 +46,7 @@ export const codexProvider: EngineProvider = {
     let provider: string | null = null;
     let model = config.model;
     let compacting = false;
+    let compactBoundary = false;
     let metering = false;
     let starting: Promise<void> | undefined;
     let baseline: NonNullable<
@@ -139,7 +140,11 @@ export const codexProvider: EngineProvider = {
               text: params.delta,
             });
           const item = params.item;
-          if (frame.method === "turn/started") turnId = params.turn?.id ?? null;
+          if (frame.method === "turn/started") {
+            turnId = params.turn?.id ?? null;
+            if (compacting && turnId)
+              await emit({ type: "accepted", id: turnId, ready: false });
+          }
           if (
             frame.method === "thread/tokenUsage/updated" &&
             params.tokenUsage
@@ -177,21 +182,27 @@ export const codexProvider: EngineProvider = {
                 },
               });
             await emit({
-              type: "runtime",
-              state: {
-                contextTokens: usage.last?.inputTokens ?? null,
-                contextWindow: usage.modelContextWindow ?? null,
-              },
+              type: "context",
+              tokens: usage.last?.inputTokens ?? null,
+              window: usage.modelContextWindow ?? null,
+              source: "codex.thread/tokenUsage/updated",
+              basis: "last-input",
+              estimated: false,
+              model,
             });
           }
-          if (item?.type === "contextCompaction")
+          if (
+            item?.type === "contextCompaction" &&
+            (frame.method === "item/started" ||
+              frame.method === "item/completed")
+          ) {
+            if (frame.method === "item/completed") compactBoundary = true;
             await emit({
-              type: "runtime",
-              state: {
-                compaction:
-                  frame.method === "item/started" ? "running" : "completed",
-              },
+              type: "compaction",
+              status: frame.method === "item/started" ? "running" : "completed",
+              nativeId: item.id,
             });
+          }
           if (
             frame.method === "item/started" &&
             item &&
@@ -231,17 +242,17 @@ export const codexProvider: EngineProvider = {
               });
           }
           if (frame.method === "turn/completed") {
-            if (compacting)
+            if (compacting && params.turn?.status !== "completed")
               await emit({
-                type: "runtime",
-                state: {
-                  compaction:
-                    params.turn?.status === "completed"
-                      ? "completed"
-                      : "failed",
-                },
+                type: "compaction",
+                status: "failed",
+                error: "Codex 未完成压缩。",
               });
-            if (params.turn?.status === "completed") completion?.resolve();
+            if (
+              params.turn?.status === "completed" &&
+              (!compacting || compactBoundary)
+            )
+              completion?.resolve();
             else
               completion?.reject(
                 new Error("Codex 未完成任务。请检查账号和工作电脑。"),
@@ -269,25 +280,43 @@ export const codexProvider: EngineProvider = {
     model = response.model ?? config.model;
     if (typeof id !== "string") throw new Error("Codex 没有返回会话记录。");
     await emit({ type: "session", id });
+    await emit({
+      type: "runtime",
+      state: {
+        contextPolicy: { manual: true, automatic: "native", refresh: false },
+      },
+    });
     const session: EngineSession = {
       id,
       controls: client.controls,
       async compact() {
         compacting = true;
+        compactBoundary = false;
         metering = true;
         completion = Promise.withResolvers<void>();
         void completion.promise.catch(() => {});
-        await emit({ type: "runtime", state: { compaction: "running" } });
         try {
           await rpc.request("thread/compact/start", { threadId: id });
           await completion.promise;
           await events;
-        } catch (error) {
-          await emit({ type: "runtime", state: { compaction: "failed" } });
-          throw error;
         } finally {
           compacting = false;
         }
+      },
+      async recoverCompaction(cursor) {
+        if (!cursor) return false;
+        const result = await rpc.request<{ thread: { turns?: CodexTurn[] } }>(
+          "thread/read",
+          { threadId: id, includeTurns: true },
+        );
+        return (
+          result.thread?.turns?.some(
+            (turn) =>
+              turn.id === cursor &&
+              turn.status === "completed" &&
+              turn.items?.some((item) => item.type === "contextCompaction"),
+          ) ?? false
+        );
       },
       models: client.models,
       vision,

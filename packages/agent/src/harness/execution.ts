@@ -8,6 +8,7 @@ import type { Files } from "../files.ts";
 import { computerEvidence } from "./evidence.ts";
 import { conversationHistory } from "./history.ts";
 import { EngineInputs } from "./inputs.ts";
+import { EngineRequestRejected } from "./json-lines.ts";
 import {
   callProductTool,
   permissionTool,
@@ -192,6 +193,7 @@ export class EngineExecution {
       void this.stop(runtime.conversationId);
     };
     runtime.signal.addEventListener("abort", interrupted, { once: true });
+    let receiving = true;
     try {
       runtime.signal.throwIfAborted();
       const agent = await runtime.agent(context);
@@ -238,10 +240,13 @@ export class EngineExecution {
         sessionId: doc.sessionId,
         instructions,
         emit: async (event) => {
+          if (!receiving) return;
           if (
             !operation ||
             event.type === "session" ||
             event.type === "runtime" ||
+            event.type === "context" ||
+            event.type === "compaction" ||
             event.type === "usage" ||
             event.type === "approval" ||
             event.type === "approval_closed" ||
@@ -254,15 +259,62 @@ export class EngineExecution {
         env: await this.environment(doc.config),
       });
       if (operation === "compact") {
-        if (doc.dispatch !== "ready")
-          throw new Error("压缩结果未确认。请先检查上下文状态。");
-        if (!active.session.compact)
-          throw new Error("此引擎没有提供压缩能力。");
-        await runtime.commit(async (tx) => {
-          (await tx.doc(EngineDoc, runtime.conversationId)).dispatch =
-            "sending";
-        }, context);
-        await active.session.compact();
+        const compactSession = active.session.compact;
+        if (!compactSession) throw new Error("此引擎没有提供压缩能力。");
+        const timeout = Promise.withResolvers<never>();
+        const timer = setTimeout(
+          () =>
+            timeout.reject(
+              new Error("压缩等待超时。结果未确认，请核对原生会话。"),
+            ),
+          engineLimits.compactionMs,
+        );
+        timer.unref();
+        const compact = async () => {
+          if (doc.dispatch !== "ready") {
+            if (await active.session?.recoverCompaction?.(doc.turnId)) {
+              await emit({ type: "compaction", status: "completed" });
+              return;
+            }
+            throw new Error(
+              "压缩结果未确认。请先检查原生会话，再决定是否重试。",
+            );
+          }
+          await emit({
+            type: "compaction",
+            status: "running",
+            trigger: "manual",
+          });
+          await runtime.commit(async (tx) => {
+            (await tx.doc(EngineDoc, runtime.conversationId)).dispatch =
+              "sending";
+          }, context);
+          await compactSession();
+        };
+        try {
+          await Promise.race([compact(), timeout.promise]);
+        } catch (error) {
+          receiving = false;
+          const state = await runtime.snapshot(
+            EngineDoc,
+            runtime.conversationId,
+            context,
+          );
+          if (
+            state?.runtime?.compaction !== "completed" &&
+            state?.runtime?.compaction !== "failed"
+          )
+            await emit({
+              type: "compaction",
+              status:
+                error instanceof EngineRequestRejected ? "failed" : "uncertain",
+              error:
+                error instanceof Error ? error.message : "压缩结果未确认。",
+            });
+          throw error;
+        } finally {
+          clearTimeout(timer);
+        }
         return;
       }
       if (doc.dispatch !== "ready") {
@@ -305,6 +357,7 @@ export class EngineExecution {
         images,
       );
     } finally {
+      receiving = false;
       runtime.signal.removeEventListener("abort", interrupted);
       try {
         await active.inputs?.close();

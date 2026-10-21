@@ -39,6 +39,10 @@ export class Engines {
       this.harness.snapshot(EngineDoc, id, context),
       this.harness.snapshot(AgentDoc, id, context),
     ]);
+    const computerId = await this.execution.computers.computerId(
+      botId,
+      context,
+    );
     return {
       config: doc?.config ?? {
         provider: "pi" as const,
@@ -47,13 +51,15 @@ export class Engines {
           : null,
       },
       revision: doc?.revision ?? 0,
-      runtime: doc?.runtime ?? null,
+      runtime:
+        doc?.computerId && doc.computerId !== computerId
+          ? null
+          : (doc?.runtime ?? null),
       busy: Boolean(doc?.tasks.length),
       error: doc?.error ?? null,
       prepared: Boolean(
         doc?.prepared &&
-          (doc.preparedComputerId ?? doc.computerId) ===
-            (await this.execution.computers.computerId(botId, context)),
+          (doc.preparedComputerId ?? doc.computerId) === computerId,
       ),
       providers: [...providers.values()].map(({ id, name, capabilities }) => ({
         id,
@@ -243,6 +249,7 @@ export class Engines {
       if (doc.computerId !== computerId) {
         doc.computerId = computerId;
         doc.sessionId = null;
+        doc.runtime = {};
       }
       const submission = await tx.createSubmission({
         type: "input",

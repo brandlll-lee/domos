@@ -30,9 +30,28 @@ export const piProvider: EngineProvider = {
     let messageId = "";
     let sequence = 0;
     let failure: string | null = null;
+    let compactionError: string | null = null;
     let completion: ReturnType<typeof Promise.withResolvers<void>> | undefined;
     let events = Promise.resolve();
     const ui = piUI(rpc, emit);
+    const readContext = async () => {
+      const stats = await rpc
+        .request<{
+          contextUsage?: { tokens: number | null; contextWindow: number };
+        }>("get_session_stats")
+        .catch(() => null);
+      await emit({
+        type: "context",
+        tokens: stats?.contextUsage?.tokens ?? null,
+        window: stats?.contextUsage?.contextWindow ?? null,
+        source: "pi.get_session_stats",
+        basis: "window",
+        estimated: true,
+        model: state.model
+          ? `${state.model.provider}/${state.model.id}`
+          : config.model,
+      });
+    };
     rpc.on(
       "frame",
       (
@@ -123,17 +142,23 @@ export const piProvider: EngineProvider = {
               else completion?.resolve();
             }
             if (frame.type === "compaction_start")
-              await emit({ type: "runtime", state: { compaction: "running" } });
-            if (frame.type === "compaction_end")
               await emit({
-                type: "runtime",
-                state: {
-                  compaction:
-                    frame.aborted || frame.errorMessage
-                      ? "failed"
-                      : "completed",
-                },
+                type: "compaction",
+                status: "running",
+                trigger: frame.reason === "manual" ? "manual" : "auto",
               });
+            if (frame.type === "compaction_end") {
+              compactionError =
+                frame.aborted || frame.errorMessage
+                  ? (frame.errorMessage ?? "压缩已取消。")
+                  : null;
+              await emit({
+                type: "compaction",
+                status:
+                  frame.aborted || frame.errorMessage ? "failed" : "completed",
+                ...(frame.errorMessage ? { error: frame.errorMessage } : {}),
+              });
+            }
           })
           .catch((error) => completion?.reject(error));
       },
@@ -185,6 +210,24 @@ export const piProvider: EngineProvider = {
       await rpc.request("set_steering_mode", {
         mode: config.options.steeringMode,
       });
+    const autoCompaction = config.options?.autoCompaction
+      ? config.options.autoCompaction === "on"
+      : state.autoCompactionEnabled;
+    await emit({
+      type: "runtime",
+      state: {
+        contextPolicy: {
+          manual: true,
+          automatic:
+            autoCompaction === undefined
+              ? "native"
+              : autoCompaction
+                ? "enabled"
+                : "disabled",
+          refresh: true,
+        },
+      },
+    });
     return {
       id: state.sessionFile,
       async controls() {
@@ -231,14 +274,46 @@ export const piProvider: EngineProvider = {
         };
       },
       async compact() {
-        await emit({ type: "runtime", state: { compaction: "running" } });
-        try {
-          await rpc.request("compact", {}, 0);
-          await emit({ type: "runtime", state: { compaction: "completed" } });
-        } catch (error) {
-          await emit({ type: "runtime", state: { compaction: "failed" } });
-          throw error;
+        compactionError = null;
+        const before = await rpc.request<{ leafId?: string | null }>(
+          "get_entries",
+        );
+        await emit({
+          type: "accepted",
+          id: `pi:${before.leafId ?? ""}`,
+          ready: false,
+        });
+        await rpc.request("compact", {}, 0);
+        await events;
+        if (compactionError) throw new Error(compactionError);
+        await emit({ type: "compaction", status: "completed" });
+        await readContext();
+      },
+      async recoverCompaction(cursor) {
+        if (!cursor?.startsWith("pi:")) return false;
+        const since = cursor.slice(3);
+        const history = await rpc.request<{
+          entries: SessionEntry[];
+          leafId: string | null;
+        }>("get_entries", since ? { since } : {});
+        const entries = new Map(
+          history.entries.map((entry) => [entry.id, entry]),
+        );
+        let id = history.leafId;
+        const visited = new Set<string>();
+        let compacted = false;
+        while (id && id !== since) {
+          if (visited.has(id)) return false;
+          visited.add(id);
+          const entry = entries.get(id);
+          if (!entry) return false;
+          compacted ||= entry.type === "compaction";
+          id = entry.parentId;
         }
+        if ((id ?? "") !== since || !compacted) return false;
+        await emit({ type: "compaction", status: "completed" });
+        await readContext();
+        return true;
       },
       models: async () => {
         const result = await rpc.request<{
@@ -285,17 +360,7 @@ export const piProvider: EngineProvider = {
         if (result.disposition === "handled") completion.resolve();
         await completion.promise;
         await events;
-        const stats = await rpc.request<{
-          contextUsage?: { tokens: number | null; contextWindow: number };
-        }>("get_session_stats");
-        if (stats.contextUsage)
-          await emit({
-            type: "runtime",
-            state: {
-              contextTokens: stats.contextUsage.tokens,
-              contextWindow: stats.contextUsage.contextWindow,
-            },
-          });
+        await readContext();
       },
       async interrupt() {
         await ui.interrupt();

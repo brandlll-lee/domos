@@ -74,7 +74,7 @@ export function engineRouter(bots: Bots, engines?: Engines) {
       .input(botTarget.extend({ requestId: z.uuid() }))
       .handler(({ input }) =>
         operation(async () => {
-          const { engines } = await target(input.botId, true);
+          const { engines } = await target(input.botId);
           const submission = await engines.submit(
             input.botId,
             {

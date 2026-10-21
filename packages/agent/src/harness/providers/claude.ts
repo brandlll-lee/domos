@@ -56,7 +56,12 @@ type ClaudeFrame = {
     };
   };
   is_error?: boolean;
-  message?: { id: string; content?: ClaudePart[] };
+  message?: {
+    id: string;
+    model?: string;
+    content?: ClaudePart[];
+    usage?: ClaudeFrame["usage"];
+  };
   event?: {
     type: string;
     message?: { id: string };
@@ -87,6 +92,18 @@ export const claudeProvider: EngineProvider = {
     let messageId = "";
     let running = false;
     let compacting = false;
+    let contextTokens: number | null = null;
+    let contextWindow: number | null = null;
+    const readContext = () =>
+      emit({
+        type: "context",
+        tokens: contextTokens,
+        window: contextWindow,
+        source: "claude.assistant.usage",
+        basis: "last-input",
+        estimated: false,
+        model: nativeModel,
+      });
     let compactBoundary = false;
     let nativeModel = config.model;
     const controls = new Map<
@@ -166,6 +183,7 @@ export const claudeProvider: EngineProvider = {
       }
       events = events
         .then(async () => {
+          if (frame.parent_tool_use_id) return;
           if (frame.type === "system" && frame.subtype === "init") {
             nativeModel = frame.model ?? nativeModel;
             await emit({
@@ -177,14 +195,24 @@ export const claudeProvider: EngineProvider = {
             });
           }
           if (frame.type === "system" && frame.status === "compacting")
-            await emit({ type: "runtime", state: { compaction: "running" } });
+            await emit({ type: "compaction", status: "running" });
           if (frame.type === "system" && frame.subtype === "compact_boundary") {
             compactBoundary = true;
-            await emit({ type: "runtime", state: { compaction: "completed" } });
+            contextTokens = null;
+            await emit({
+              type: "compaction",
+              status: "completed",
+              ...(frame.uuid ? { nativeId: frame.uuid } : {}),
+              ...(frame.compact_metadata?.trigger === "auto" ||
+              frame.compact_metadata?.trigger === "manual"
+                ? { trigger: frame.compact_metadata.trigger }
+                : {}),
+              beforeTokens: frame.compact_metadata?.pre_tokens,
+            });
+            await readContext();
           }
           if (frame.compact_result === "failed")
-            await emit({ type: "runtime", state: { compaction: "failed" } });
-          if (frame.parent_tool_use_id) return;
+            await emit({ type: "compaction", status: "failed" });
           if (frame.type === "stream_event") {
             if (frame.event?.message) messageId = frame.event.message.id;
             const delta = frame.event?.delta;
@@ -197,6 +225,17 @@ export const claudeProvider: EngineProvider = {
           }
           if (frame.type === "assistant" && frame.message) {
             const message = frame.message;
+            if (message.model && message.model !== nativeModel) {
+              nativeModel = message.model;
+              contextWindow = null;
+            }
+            if (message.usage?.input_tokens !== undefined) {
+              contextTokens =
+                message.usage.input_tokens +
+                (message.usage.cache_read_input_tokens ?? 0) +
+                (message.usage.cache_creation_input_tokens ?? 0);
+              await readContext();
+            }
             await emit({
               type: "message",
               id: message.id,
@@ -260,13 +299,9 @@ export const claudeProvider: EngineProvider = {
                   costScope: "session",
                 },
               });
-              if (model && frame.modelUsage?.[model]?.contextWindow)
-                await emit({
-                  type: "runtime",
-                  state: {
-                    contextWindow: frame.modelUsage[model].contextWindow,
-                  },
-                });
+              contextWindow =
+                frame.modelUsage?.[nativeModel ?? ""]?.contextWindow ?? null;
+              await readContext();
             }
             if (
               !frame.is_error &&
@@ -328,6 +363,12 @@ export const claudeProvider: EngineProvider = {
       env: { ...env, CLAUDE_CONFIG_DIR: `${ready.home}/claude` },
     });
     await emit({ type: "session", id });
+    await emit({
+      type: "runtime",
+      state: {
+        contextPolicy: { manual: true, automatic: "native", refresh: false },
+      },
+    });
     let initialization:
       | Promise<NonNullable<ClaudeFrame["response"]>["response"]>
       | undefined;
@@ -390,12 +431,8 @@ export const claudeProvider: EngineProvider = {
       async compact() {
         compacting = true;
         compactBoundary = false;
-        await emit({ type: "runtime", state: { compaction: "running" } });
         try {
           await session.prompt("/compact");
-        } catch (error) {
-          await emit({ type: "runtime", state: { compaction: "failed" } });
-          throw error;
         } finally {
           compacting = false;
         }

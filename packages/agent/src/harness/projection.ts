@@ -1,4 +1,5 @@
 import type { Context } from "@earendil-works/chord/context";
+import { projectContext } from "./context.ts";
 import { EngineDoc } from "./state.ts";
 import {
   type EngineRuntime,
@@ -31,6 +32,8 @@ export class EngineProjection {
     if (
       event.type === "usage" ||
       event.type === "runtime" ||
+      event.type === "context" ||
+      event.type === "compaction" ||
       event.type === "approval_closed"
     ) {
       await this.runtime.commit(async (tx) => {
@@ -38,7 +41,14 @@ export class EngineProjection {
           (await tx.doc(UsageTaskDoc, this.runtime.taskId)).items[
             event.usage.id
           ] = event.usage;
-        else if (event.type === "approval_closed") {
+        else if (event.type === "context" || event.type === "compaction") {
+          await projectContext(
+            tx,
+            await tx.doc(EngineDoc, this.runtime.conversationId),
+            this.runtime,
+            event,
+          );
+        } else if (event.type === "approval_closed") {
           const doc = await tx.doc(EngineDoc, this.runtime.conversationId);
           doc.approvals = doc.approvals.filter((item) => item.id !== event.id);
         } else {
@@ -49,8 +59,6 @@ export class EngineProjection {
             ...event.state,
             ...(event.state.notices ? { notices } : {}),
           };
-          if (event.state.compaction === "running")
-            doc.runtime.contextTokens = null;
         }
       }, this.context);
       return;
@@ -63,7 +71,13 @@ export class EngineProjection {
       await this.flush();
       await this.runtime.commit(async (tx) => {
         const doc = await tx.doc(EngineDoc, this.runtime.conversationId);
-        if (event.type === "session") doc.sessionId = event.id;
+        if (event.type === "session") {
+          if (doc.sessionId !== event.id)
+            doc.runtime = doc.runtime?.controls
+              ? { controls: doc.runtime.controls }
+              : {};
+          doc.sessionId = event.id;
+        }
         if (event.type === "accepted") {
           doc.dispatch = "accepted";
           doc.turnId = event.id ?? null;

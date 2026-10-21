@@ -1,5 +1,6 @@
 import type { Context } from "@earendil-works/chord/context";
 import { defineTask, type EntryId } from "@earendil-works/pi-durable";
+import { finishCompactions, projectContext } from "./context.ts";
 import type { EngineExecution } from "./execution.ts";
 import { EngineProjection } from "./projection.ts";
 import { EngineDoc, EngineInputDoc, EngineMessage } from "./state.ts";
@@ -102,6 +103,23 @@ async function finish(
 ) {
   await runtime.commit(async (tx, current) => {
     const doc = await tx.doc(EngineDoc, runtime.conversationId);
+    if (
+      current.input.operation &&
+      doc.runtime?.compactionDetails?.taskId !== String(runtime.taskId)
+    )
+      await projectContext(tx, doc, runtime, {
+        type: "compaction",
+        status: "failed",
+        trigger: "manual",
+        error: error ?? "压缩未启动。",
+      });
+    if (doc.runtime?.compaction === "running")
+      await projectContext(tx, doc, runtime, {
+        type: "compaction",
+        status: "uncertain",
+        error: error ?? "引擎未确认压缩结果。",
+      });
+    await finishCompactions(tx, runtime);
     await finishUsage(tx, runtime, doc.config.provider, doc.sessionId);
     const additional = [];
     for (const id of doc.tasks) {
@@ -154,13 +172,13 @@ async function finish(
         }),
       });
     if (current.input.operation) {
-      if (error) doc.runtime = { ...doc.runtime, compaction: "failed" };
       answer = (
         await tx.appendEntry(runtime.conversationId, {
           kind: "domos.engine-operation",
           data: {
             operation: current.input.operation,
-            status: error ? "failed" : "completed",
+            status: doc.runtime?.compaction ?? (error ? "failed" : "completed"),
+            ...(doc.runtime?.compactionDetails ?? {}),
           },
         })
       ).id;
