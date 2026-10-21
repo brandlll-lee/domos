@@ -251,7 +251,7 @@ async function main() {
     "desktop:appearance",
     async (input) => {
       const theme = z.enum(["light", "dark"]).parse(input);
-      current?.setBackgroundColor(themes[theme].background);
+      current?.setBackgroundColor(themes[theme].frame);
       if (process.platform !== "darwin")
         current?.setTitleBarOverlay({
           ...windowOverlay,

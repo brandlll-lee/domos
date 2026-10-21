@@ -5,8 +5,9 @@
   align-items: center;
   gap: var(--space-2);
   height: var(--titlebar-height);
-  padding-inline: var(--space-5) var(--space-3);
-  background: var(--color-background);
+  margin-inline-start: calc(-1 * var(--shell-gutter));
+  padding-inline: calc(var(--shell-gutter) + var(--space-3)) var(--space-3);
+  background: var(--color-frame);
   user-select: none;
   -webkit-app-region: drag;
 }
@@ -21,7 +22,7 @@
   );
 }
 .app-titlebar[data-platform="darwin"] {
-  padding-inline-start: var(--mac-controls-width);
+  padding-inline-start: calc(var(--mac-controls-width) + var(--shell-gutter));
 }
 .app-titlebar button {
   -webkit-app-region: no-drag;
@@ -83,8 +84,26 @@
   grid-template-rows: var(--titlebar-height) minmax(0, 1fr);
   height: 100dvh;
   overflow: clip;
-  background: var(--color-background);
+  padding-inline-start: var(--shell-gutter);
+  background: var(--color-frame);
   isolation: isolate;
+}
+.workspace[data-mobile] {
+  --shell-gutter: 0px;
+}
+.workspace[data-mobile]::after {
+  display: none;
+}
+.workspace::after {
+  content: "";
+  position: absolute;
+  inset-block: var(--titlebar-height) 0;
+  inset-inline: var(--shell-gutter) 0;
+  z-index: 2;
+  border-block-start: 1px solid var(--color-border);
+  border-inline-start: 1px solid var(--color-border);
+  border-start-start-radius: var(--radius-surface);
+  pointer-events: none;
 }
 .workspace-content {
   grid-column: 2;
@@ -92,7 +111,6 @@
   min-width: 0;
   min-height: 0;
   background: var(--color-canvas);
-  border-start-start-radius: var(--radius-panel);
   overflow: hidden;
 }
 .workspace-content > .conversation {
@@ -107,8 +125,12 @@
   outline: none;
 }
 .workspace-panel[data-side="sidebar"] {
-  inset-inline-start: 0;
+  inset-inline-start: var(--shell-gutter);
   background: var(--color-sidebar);
+  border-inline-end: 1px solid var(--color-divider);
+}
+.workspace-panel[data-side="sidebar"]:not([data-modal]) {
+  border-start-start-radius: var(--radius-surface);
 }
 .workspace-panel[data-side="inspector"] {
   inset-inline-end: 0;
@@ -141,9 +163,11 @@
   height: 100%;
 }
 .workspace-panel[data-side="inspector"][data-expanded] {
-  inset-inline: 0;
-  width: 100%;
+  inset-inline-start: var(--shell-gutter);
+  inset-inline-end: 0;
+  width: auto;
   border: 0;
+  border-start-start-radius: var(--radius-surface);
 }
 .workspace-panel[data-side="sidebar"] .panel-body {
   display: flex;
@@ -212,7 +236,6 @@
 }
 .workspace[data-mobile] > .workspace-content {
   margin: 0;
-  border-radius: 0;
 }
 .workspace[data-mobile] .workspace-panel[data-side="inspector"] {
   width: 100%;

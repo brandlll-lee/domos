@@ -11,7 +11,7 @@
   font-family: var(--font-body);
   font-size: 100%;
   color: var(--color-text);
-  background: var(--color-background);
+  background: var(--color-frame);
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
 }

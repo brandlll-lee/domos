@@ -52,7 +52,7 @@ export function createWindow(preload: string, partition?: string) {
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "hidden",
     autoHideMenuBar: true,
     backgroundColor:
-      themes[nativeTheme.shouldUseDarkColors ? "dark" : "light"].background,
+      themes[nativeTheme.shouldUseDarkColors ? "dark" : "light"].frame,
     ...(process.platform !== "darwin"
       ? {
           titleBarOverlay: {

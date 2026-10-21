@@ -34,7 +34,7 @@ function apply(preference: ThemePreference) {
   document.documentElement.dataset.theme = theme;
   document
     .querySelector('meta[name="theme-color"]')
-    ?.setAttribute("content", themes[theme].background);
+    ?.setAttribute("content", themes[theme].frame);
 }
 
 export function initializeTheme(): ThemePreference {

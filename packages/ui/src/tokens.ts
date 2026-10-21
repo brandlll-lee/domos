@@ -1,6 +1,7 @@
 export const themes = {
   dark: {
     background: "#0c0c0d",
+    frame: "#151517",
     canvas: "#0f0f10",
     sidebar: "#0c0c0d",
     surface: "#18181a",
@@ -33,6 +34,7 @@ export const themes = {
   },
   light: {
     background: "#ffffff",
+    frame: "#f0f0f3",
     canvas: "#fdfdfd",
     sidebar: "#ffffff",
     surface: "#f5f5f7",
@@ -133,10 +135,12 @@ export const metrics = {
   "space-12": "3rem",
   "radius-control": "0.5rem",
   "radius-panel": "1rem",
+  "radius-surface": "1.25rem",
   "radius-message": "1.25rem",
   "radius-composer": "1.5rem",
   "radius-round": "999px",
   "chat-gutter": "clamp(1rem, 2vw, 1.5rem)",
+  "shell-gutter": "1rem",
   "sidebar-width": "17rem",
   "details-width": "24rem",
   "panel-header-height": "3rem",
