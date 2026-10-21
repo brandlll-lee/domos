@@ -103,6 +103,12 @@ function BotChat({
     setDetailsOpen(false);
     setExpanded(false);
   };
+  const showComputer = () => {
+    setPanel("computer");
+    setExpanded(false);
+    setDetailsOpen(!detailsOpen || panel !== "computer");
+  };
+  const computerOpen = detailsOpen && panel === "computer";
   return (
     <Workspace
       detailsOpen={detailsOpen}
@@ -115,6 +121,9 @@ function BotChat({
       inspectorTrigger={
         panel === "computer" ? "computer-trigger" : "details-trigger"
       }
+      computerOpen={computerOpen}
+      onConversation={closePanel}
+      onComputer={showComputer}
       onSettings={() => settings.open("general", bot.id)}
       actions={<CreateBot onCreated={selectBot} />}
       sidebar={
@@ -181,7 +190,7 @@ function BotChat({
           bot={bot}
           busy={Boolean(chat.view?.busy)}
           detailsOpen={detailsOpen && panel === "settings"}
-          computerOpen={detailsOpen && panel === "computer"}
+          computerOpen={computerOpen}
           modelSelector={
             <EngineSelector
               botId={bot.id}
@@ -192,11 +201,7 @@ function BotChat({
             />
           }
           onDetails={() => showPanel("root")}
-          onComputer={() => {
-            setPanel("computer");
-            setExpanded(false);
-            setDetailsOpen(!detailsOpen || panel !== "computer");
-          }}
+          onComputer={showComputer}
         />
         <span className="sr-only" role="status">
           {connection}

@@ -140,7 +140,7 @@ export const metrics = {
   "radius-composer": "1.5rem",
   "radius-round": "999px",
   "chat-gutter": "clamp(1rem, 2vw, 1.5rem)",
-  "shell-gutter": "1rem",
+  "rail-width": "3.5rem",
   "sidebar-width": "17rem",
   "details-width": "24rem",
   "panel-header-height": "3rem",

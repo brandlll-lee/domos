@@ -1,6 +1,8 @@
 import { Button } from "@domos/ui/controls";
 import { PanelDialog } from "@domos/ui/dialog";
 import { layout } from "@domos/ui/tokens";
+import { ChatTextIcon } from "@phosphor-icons/react/dist/csr/ChatText";
+import { DesktopIcon } from "@phosphor-icons/react/dist/csr/Desktop";
 import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { type ReactNode, useEffect, useState } from "react";
@@ -17,6 +19,9 @@ export function Workspace({
   children,
   actions,
   onSettings,
+  onConversation,
+  onComputer,
+  computerOpen = false,
   expanded = false,
   inspectorTitle = "Bot详情",
   inspectorTrigger = "details-trigger",
@@ -28,6 +33,9 @@ export function Workspace({
   children: ReactNode;
   actions: ReactNode;
   onSettings: () => void;
+  onConversation: () => void;
+  onComputer: () => void;
+  computerOpen?: boolean;
   expanded?: boolean;
   inspectorTitle?: string;
   inspectorTrigger?: string;
@@ -71,6 +79,55 @@ export function Workspace({
         onContacts={sizing.mobile ? () => setContactsOpen(true) : undefined}
         actions={actions}
       />
+      {!sizing.mobile && (
+        <nav className="app-rail" aria-label="主导航">
+          <div className="rail-group">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rail-button"
+              aria-label="会话"
+              title="会话"
+              aria-current={computerOpen ? undefined : "page"}
+              onClick={onConversation}
+            >
+              <ChatTextIcon
+                size={20}
+                weight={computerOpen ? "regular" : "fill"}
+                aria-hidden="true"
+              />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rail-button"
+              aria-label="工作电脑"
+              title="工作电脑"
+              aria-current={computerOpen ? "page" : undefined}
+              onClick={onComputer}
+            >
+              <DesktopIcon
+                size={20}
+                weight={computerOpen ? "fill" : "regular"}
+                aria-hidden="true"
+              />
+            </Button>
+          </div>
+          <div className="rail-group" data-bottom>
+            <Button
+              id="settings-trigger"
+              variant="ghost"
+              size="icon"
+              className="rail-button"
+              aria-label="设置"
+              title="设置"
+              onClick={onSettings}
+            >
+              <GearSixIcon size={20} aria-hidden="true" />
+            </Button>
+          </div>
+        </nav>
+      )}
       <div className="workspace-content">{children}</div>
       {panels.map(({ side, title, modal, open, change, content }) => (
         <PanelDialog.Root
@@ -117,7 +174,7 @@ export function Workspace({
               )}
               <div className="panel-body">
                 {content}
-                {side === "sidebar" && (
+                {side === "sidebar" && modal && (
                   <footer className="sidebar-footer">
                     <Button
                       id="settings-trigger"
@@ -131,14 +188,12 @@ export function Workspace({
                       <GearSixIcon aria-hidden="true" />
                       设置
                     </Button>
-                    {modal && (
-                      <PanelDialog.Close
-                        aria-label="关闭联系人"
-                        render={<Button variant="ghost" size="icon-small" />}
-                      >
-                        <XIcon />
-                      </PanelDialog.Close>
-                    )}
+                    <PanelDialog.Close
+                      aria-label="关闭联系人"
+                      render={<Button variant="ghost" size="icon-small" />}
+                    >
+                      <XIcon />
+                    </PanelDialog.Close>
                   </footer>
                 )}
               </div>

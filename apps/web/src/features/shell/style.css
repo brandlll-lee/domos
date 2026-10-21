@@ -5,8 +5,8 @@
   align-items: center;
   gap: var(--space-2);
   height: var(--titlebar-height);
-  margin-inline-start: calc(-1 * var(--shell-gutter));
-  padding-inline: calc(var(--shell-gutter) + var(--space-3)) var(--space-3);
+  margin-inline-start: calc(-1 * var(--rail-width));
+  padding-inline: var(--space-3);
   background: var(--color-frame);
   user-select: none;
   -webkit-app-region: drag;
@@ -22,7 +22,7 @@
   );
 }
 .app-titlebar[data-platform="darwin"] {
-  padding-inline-start: calc(var(--mac-controls-width) + var(--shell-gutter));
+  padding-inline-start: var(--mac-controls-width);
 }
 .app-titlebar button {
   -webkit-app-region: no-drag;
@@ -84,12 +84,12 @@
   grid-template-rows: var(--titlebar-height) minmax(0, 1fr);
   height: 100dvh;
   overflow: clip;
-  padding-inline-start: var(--shell-gutter);
+  padding-inline-start: var(--rail-width);
   background: var(--color-frame);
   isolation: isolate;
 }
 .workspace[data-mobile] {
-  --shell-gutter: 0px;
+  --rail-width: 0px;
 }
 .workspace[data-mobile]::after {
   display: none;
@@ -98,7 +98,7 @@
   content: "";
   position: absolute;
   inset-block: var(--titlebar-height) 0;
-  inset-inline: var(--shell-gutter) 0;
+  inset-inline: var(--rail-width) 0;
   z-index: 2;
   border-block-start: 1px solid var(--color-border);
   border-inline-start: 1px solid var(--color-border);
@@ -125,7 +125,7 @@
   outline: none;
 }
 .workspace-panel[data-side="sidebar"] {
-  inset-inline-start: var(--shell-gutter);
+  inset-inline-start: var(--rail-width);
   background: var(--color-sidebar);
   border-inline-end: 1px solid var(--color-divider);
 }
@@ -158,12 +158,14 @@
 .panel-body {
   height: 100%;
   min-width: 0;
+  border-start-start-radius: inherit;
+  overflow: hidden;
 }
 .inspector-page {
   height: 100%;
 }
 .workspace-panel[data-side="inspector"][data-expanded] {
-  inset-inline-start: var(--shell-gutter);
+  inset-inline-start: var(--rail-width);
   inset-inline-end: 0;
   width: auto;
   border: 0;
@@ -172,6 +174,37 @@
 .workspace-panel[data-side="sidebar"] .panel-body {
   display: flex;
   flex-direction: column;
+}
+.app-rail {
+  position: absolute;
+  inset-block: var(--titlebar-height) 0;
+  inset-inline-start: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: var(--rail-width);
+  padding-block: var(--space-4);
+}
+.rail-group {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+}
+.rail-group[data-bottom] {
+  margin-block-start: auto;
+}
+.workspace .app-rail .rail-button {
+  border-radius: var(--radius-round);
+  color: var(--color-muted);
+}
+.workspace .app-rail .rail-button:not(:disabled):hover {
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+  color: var(--color-text);
+}
+.workspace .app-rail .rail-button[aria-current="page"] {
+  background: color-mix(in srgb, var(--color-text) 10%, transparent);
+  color: var(--color-text);
 }
 .workspace-panel[data-side="sidebar"] .sidebar {
   flex: 1;

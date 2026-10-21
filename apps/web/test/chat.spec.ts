@@ -609,9 +609,7 @@ test("workspace separates the window bar, Bot actions, and global settings", asy
     await page.setViewportSize({ width, height: 900 });
     const header = await trigger.boundingBox();
     expect(header?.y).toBeGreaterThanOrEqual(48);
-    await expect(page.locator(".sidebar-footer #settings-trigger")).toHaveCount(
-      1,
-    );
+    await expect(page.locator("#settings-trigger")).toHaveCount(1);
     await trigger.click();
     const details = page.getByRole("complementary", { name: /的详情$/ });
     await chooseDetail(details, "连接与账号");

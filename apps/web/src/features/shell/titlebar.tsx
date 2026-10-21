@@ -36,7 +36,9 @@ export function Titlebar({
         style={
           sidebarWidth === undefined
             ? undefined
-            : { width: `calc(${sidebarWidth}px - var(--space-5))` }
+            : {
+                width: `calc(${sidebarWidth}px + var(--rail-width) - var(--space-3))`,
+              }
         }
       >
         {onContacts && (
