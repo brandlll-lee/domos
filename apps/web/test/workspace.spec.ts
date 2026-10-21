@@ -175,6 +175,65 @@ test("usage reports native task costs and preserves session snapshots across the
   await expect(usage.locator(".usage-hero-value")).toContainText("$2.50");
 });
 
+test("usage totals distinguish unknown costs and include recorded zero-cost days", async ({
+  page,
+}) => {
+  await page.clock.setFixedTime(new Date("2026-10-03T12:00:00Z"));
+  const record = {
+    id: "usage-1",
+    taskId: "task-1",
+    botId: 1,
+    sessionId: "session",
+    harness: "pi",
+    provider: "provider",
+    model: "model",
+    source: "native-test",
+    timestamp: Date.parse("2026-10-01T12:00:00Z"),
+    input: 10,
+    output: 1,
+    cacheRead: null,
+    cacheWrite: null,
+    costUsd: null as number | null,
+  };
+  let records: (typeof record & { costScope?: "session" })[] = [record];
+  await page.route("**/rpc/engines/usage", (route) =>
+    route.fulfill({ json: { json: records } }),
+  );
+  await page.goto(url);
+  await page.getByRole("button", { name: "用量", exact: true }).click();
+  const usage = page.getByRole("main", { name: "用量", exact: true });
+  const total = usage.locator(".usage-breakdown-total");
+  await expect(usage.locator(".usage-hero-value")).toHaveText("未提供");
+  await expect(total).toContainText("未提供");
+  records = [{ ...record, costUsd: 100, costScope: "session" }];
+  await usage.getByRole("button", { name: "刷新用量", exact: true }).click();
+  await expect(usage.locator(".usage-footer")).toContainText("1 条会话累计");
+  await expect(usage.locator(".usage-hero-value")).toHaveText("未提供");
+  await expect(total).toContainText("未提供");
+  records = [
+    { ...record, costUsd: 1 },
+    {
+      ...record,
+      id: "usage-2",
+      taskId: "task-2",
+      timestamp: Date.parse("2026-10-02T12:00:00Z"),
+      costUsd: 0,
+    },
+  ];
+  await usage.getByRole("button", { name: "刷新用量", exact: true }).click();
+  await expect(usage.locator(".usage-facts")).toContainText(
+    "日均（有记录 2 天）$0.50",
+  );
+  records = [{ ...record, costUsd: 0 }];
+  await usage.getByRole("button", { name: "刷新用量", exact: true }).click();
+  await expect(usage.locator(".usage-facts")).toContainText(
+    "峰值日10月1日$0.00",
+  );
+  await expect(usage.locator(".usage-facts")).toContainText(
+    "日均（有记录 1 天）$0.00",
+  );
+});
+
 test("long bubbles fold with a fade and retain full text without outgoing timestamps", async ({
   page,
 }) => {

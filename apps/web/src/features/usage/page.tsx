@@ -161,13 +161,16 @@ export function UsageSurface() {
   const totals = usageTotals(visible);
   const daily = days.map((day) => ({
     day: day.day,
-    cost: usageValue(day.rows, "cost") ?? 0,
+    cost: usageValue(day.rows, "cost"),
   }));
   const peak = daily.reduce(
-    (best, item) => (item.cost > best.cost ? item : best),
-    { day: "", cost: 0 },
+    (best, item) =>
+      item.cost !== null && (best.cost === null || item.cost > best.cost)
+        ? item
+        : best,
+    { day: "", cost: null as number | null },
   );
-  const activeDays = daily.filter((item) => item.cost > 0).length;
+  const activeDays = daily.filter((item) => item.cost !== null).length;
   const activeFilters = [harness, provider, botId, model].filter(
     Boolean,
   ).length;
@@ -301,7 +304,7 @@ export function UsageSurface() {
                   <dt>峰值日</dt>
                   <dd>
                     {peak.day ? dayLabel(peak.day) : "—"}
-                    <small>{money(peak.cost || null)}</small>
+                    <small>{money(peak.cost)}</small>
                   </dd>
                 </div>
                 <div>

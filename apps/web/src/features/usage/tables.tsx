@@ -11,6 +11,7 @@ import {
   recordTime,
   type UsageGroup,
   type UsageRecord,
+  usageValue,
 } from "./data.ts";
 
 const count = (value: number | null) =>
@@ -27,7 +28,10 @@ export function Breakdown({
   metric: Metric;
   dimension: Dimension;
 }) {
-  const total = groups.reduce((sum, group) => sum + (group.value ?? 0), 0);
+  const total = usageValue(
+    groups.flatMap((group) => group.rows),
+    metric,
+  );
   const max = Math.max(...groups.map((group) => group.value ?? 0), 0);
   return (
     <ul className="usage-breakdown" aria-label="分组用量">

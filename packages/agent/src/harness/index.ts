@@ -16,10 +16,11 @@ import { EngineDoc, EngineInputDoc, EngineMessage } from "./state.ts";
 import { engineTask } from "./task.ts";
 import { userMessage } from "./task-types.ts";
 import type { EngineAnswer, EngineConfig, EngineInput } from "./types.ts";
-import { readUsage, type UsageFilter } from "./usage.ts";
+import { type UsageFilter, UsageReader } from "./usage.ts";
 
 export class Engines {
   private readonly stopping = new Set<number>();
+  private readonly usageReader: UsageReader;
   private readonly harness: Harness;
   readonly execution: EngineExecution;
   readonly task;
@@ -29,6 +30,7 @@ export class Engines {
     this.execution = execution;
     this.task = engineTask(execution);
     this.connections = new EngineConnections(execution);
+    this.usageReader = new UsageReader(harness);
   }
 
   async profile(botId: number, context: Context) {
@@ -62,7 +64,7 @@ export class Engines {
   }
 
   usage(botIds: number[], filter: UsageFilter, context: Context) {
-    return readUsage(this.harness, botIds, filter, context);
+    return this.usageReader.read(botIds, filter, context);
   }
 
   async view(botId: number, context: Context) {

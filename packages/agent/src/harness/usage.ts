@@ -55,7 +55,54 @@ export async function finishUsage(
   doc.items = {};
 }
 
-export async function readUsage(
+export class UsageReader {
+  private readonly harness: Harness;
+  private cached?: { key: string; result: Promise<UsageRecord[]> };
+
+  constructor(harness: Harness) {
+    this.harness = harness;
+    const invalidate = () => {
+      this.cached = undefined;
+    };
+    const unsubscribe = harness.subscribeCommits(({ changes }) => {
+      if (
+        changes.some(
+          (change) =>
+            change.type === "conversation" ||
+            (change.type === "entry" && change.value.kind === EngineUsageEntry),
+        )
+      )
+        invalidate();
+    });
+    harness.subscribeClose(() => {
+      unsubscribe();
+      invalidate();
+    });
+  }
+
+  read(botIds: number[], filter: UsageFilter, context: Context) {
+    const key = JSON.stringify([
+      botIds,
+      filter.botId,
+      filter.harness,
+      filter.provider,
+      filter.model,
+      filter.from,
+      filter.to,
+    ]);
+    if (this.cached?.key === key) return this.cached.result;
+    const result = readUsage(this.harness, botIds, filter, context).catch(
+      (cause) => {
+        if (this.cached?.result === result) this.cached = undefined;
+        throw cause;
+      },
+    );
+    this.cached = { key, result };
+    return result;
+  }
+}
+
+async function readUsage(
   harness: Harness,
   botIds: number[],
   filter: UsageFilter,
