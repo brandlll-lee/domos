@@ -583,6 +583,7 @@ test("Bot panels keep their hierarchy in both themes and panel widths", async ({
   });
   const handle = page.getByRole("separator", { name: "调整详情宽度" });
   for (const width of [320, 384, 640]) {
+    await handle.hover();
     const current = Number(await handle.getAttribute("aria-valuenow"));
     const box = await handle.boundingBox();
     if (!box) throw new Error("Resize handle missing");
