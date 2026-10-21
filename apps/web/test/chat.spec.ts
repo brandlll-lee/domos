@@ -236,10 +236,9 @@ test("native controls, interaction, compaction and Usage work in both themes", a
   await expect(page.getByLabel("上下文状态", { exact: true })).toContainText(
     "压缩完成",
   );
-  const settings = await openSettings(page);
-  await settings.getByRole("tab", { name: "Usage", exact: true }).click();
-  await settings.getByRole("tab", { name: "明细", exact: true }).click();
-  const table = settings.getByRole("table", { name: "用量明细", exact: true });
+  await page.getByRole("button", { name: "用量", exact: true }).click();
+  const usage = page.getByRole("main", { name: "用量", exact: true });
+  const table = usage.getByRole("table", { name: "用量明细", exact: true });
   await expect(table).toContainText("test-provider");
   await expect(table).toContainText("test-model");
   await expect(table).toContainText("未提供");
@@ -251,13 +250,11 @@ test("native controls, interaction, compaction and Usage work in both themes", a
       animations: "disabled",
     });
   }
-  await settings.getByRole("button", { name: "筛选用量", exact: true }).click();
-  await settings
-    .getByRole("combobox", { name: "Harness", exact: true })
-    .click();
+  await usage.getByRole("button", { name: "筛选用量", exact: true }).click();
+  await usage.getByRole("combobox", { name: "Harness", exact: true }).click();
   await page.getByRole("option", { name: "Codex", exact: true }).click();
   await expect(
-    settings.getByText("此范围还没有用量记录。", { exact: true }),
+    usage.getByText("此范围还没有用量记录。", { exact: true }),
   ).toBeVisible();
 });
 

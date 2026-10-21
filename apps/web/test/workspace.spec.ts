@@ -113,46 +113,42 @@ test("usage reports native task costs and preserves session snapshots across the
       await route.fulfill({ json: { json: mode === "empty" ? [] : records } });
   });
   await page.goto(url);
-  await page.getByRole("button", { name: "设置", exact: true }).click();
-  const settings = page.getByRole("main", { name: "设置", exact: true });
-  await settings.getByRole("tab", { name: "Usage", exact: true }).click();
-  await expect(settings.getByLabel("正在读取用量")).toBeVisible();
+  await page.getByRole("button", { name: "用量", exact: true }).click();
+  const usage = page.getByRole("main", { name: "用量", exact: true });
+  await expect(usage.getByLabel("正在读取用量")).toBeVisible();
   mode = "data";
   loaded.resolve();
-  await expect(settings.locator(".usage-kpi").first()).toContainText("$2.50");
-  await expect(settings.locator(".usage-footer")).toContainText("2 条会话累计");
-  await expect(settings.locator(".usage-footer")).toContainText(
-    "1 条成本未提供",
-  );
+  await expect(usage.locator(".usage-hero-value")).toContainText("$2.50");
+  await expect(usage.locator(".usage-footer")).toContainText("2 条会话累计");
+  await expect(usage.locator(".usage-footer")).toContainText("1 条成本未提供");
+  const summary = usage.getByRole("table", { name: "分组用量", exact: true });
+  const details = usage.getByRole("table", { name: "用量明细", exact: true });
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
+    await expect(summary).toContainText("model-2");
+    await expect(summary).toContainText("其他");
+    await expect(details).toContainText("$101.00");
+    await expect(details).toContainText("会话累计");
     await page.screenshot({
       path: info.outputPath(`usage-overview-${colorScheme}.png`),
     });
-    await settings.getByRole("tab", { name: "分析", exact: true }).click();
-    const summary = settings.getByRole("table", {
-      name: "分组用量",
-      exact: true,
-    });
-    await expect(summary).toContainText("model-2");
-    await expect(summary).toContainText("其他");
-    await settings
-      .getByRole("button", { name: "展开图表", exact: true })
-      .click();
+    await usage.getByRole("button", { name: "输入用量", exact: true }).click();
     await expect(
-      settings.getByRole("button", { name: "还原", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
-    await settings.getByRole("button", { name: "还原", exact: true }).click();
+      usage.getByRole("heading", { name: "输入用量趋势", exact: true }),
+    ).toBeVisible();
+    await expect(usage.locator(".usage-hero-value")).toContainText("$2.50");
+    await usage.getByRole("button", { name: "Provider", exact: true }).click();
+    await expect(summary).toContainText("provider-2");
+    await expect(summary).toContainText("输入用量 · tok");
     await page.screenshot({
       path: info.outputPath(`usage-explore-${colorScheme}.png`),
     });
-    await settings.getByRole("tab", { name: "明细", exact: true }).click();
-    const details = settings.getByRole("table", {
-      name: "用量明细",
-      exact: true,
+    await usage.getByRole("button", { name: "任务成本", exact: true }).click();
+    await usage.getByRole("button", { name: "模型", exact: true }).click();
+    await usage.evaluate((node) => {
+      node.scrollTo({ top: node.scrollHeight });
     });
-    await expect(details).toContainText("$101.00");
-    await expect(details).toContainText("会话累计");
+    await expect(details).toBeInViewport();
     await page.setViewportSize({ width: 390, height: 844 });
     expect(
       await page.evaluate(
@@ -163,19 +159,21 @@ test("usage reports native task costs and preserves session snapshots across the
       path: info.outputPath(`usage-mobile-${colorScheme}.png`),
     });
     await page.setViewportSize({ width: 1360, height: 900 });
-    await settings.getByRole("tab", { name: "总览", exact: true }).click();
+    await usage.evaluate((node) => {
+      node.scrollTo({ top: 0 });
+    });
   }
   mode = "empty";
-  await settings.getByRole("button", { name: "刷新用量", exact: true }).click();
+  await usage.getByRole("button", { name: "刷新用量", exact: true }).click();
   await expect(
-    settings.getByText("此范围还没有用量记录。", { exact: true }),
+    usage.getByText("此范围还没有用量记录。", { exact: true }),
   ).toBeVisible();
   mode = "error";
-  await settings.getByRole("button", { name: "刷新用量", exact: true }).click();
-  await expect(settings.getByRole("alert")).toBeVisible();
+  await usage.getByRole("button", { name: "刷新用量", exact: true }).click();
+  await expect(usage.getByRole("alert")).toBeVisible();
   mode = "data";
-  await settings.getByRole("button", { name: "重试", exact: true }).click();
-  await expect(settings.locator(".usage-kpi").first()).toContainText("$2.50");
+  await usage.getByRole("button", { name: "重试", exact: true }).click();
+  await expect(usage.locator(".usage-hero-value")).toContainText("$2.50");
 });
 
 test("long bubbles fold with a fade and retain full text without outgoing timestamps", async ({

@@ -1,4 +1,3 @@
-import { ChartBarIcon } from "@phosphor-icons/react/dist/csr/ChartBar";
 import { CpuIcon } from "@phosphor-icons/react/dist/csr/Cpu";
 import { DesktopIcon } from "@phosphor-icons/react/dist/csr/Desktop";
 import { GearIcon } from "@phosphor-icons/react/dist/csr/Gear";
@@ -7,7 +6,6 @@ import { ComputerSettings } from "../computer/settings.tsx";
 import { GeneralSettings } from "./general.tsx";
 import { ModelSettings } from "./models.tsx";
 import { ProviderSettings } from "./providers.tsx";
-import { UsageSettings } from "./usage.tsx";
 
 export type SettingsAccess = {
   admin: boolean;
@@ -46,13 +44,6 @@ export const sections = {
     render: ({ admin, botId }: SectionProps) => (
       <ModelSettings botId={botId} admin={admin} />
     ),
-  },
-  usage: {
-    primary: true,
-    label: "Usage",
-    description: "按 Provider、Harness、Bot、模型和任务查看原生用量与成本。",
-    icon: ChartBarIcon,
-    render: () => <UsageSettings />,
   },
   computers: {
     primary: false,

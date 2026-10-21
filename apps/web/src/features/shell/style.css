@@ -113,6 +113,9 @@
   background: var(--color-canvas);
   overflow: hidden;
 }
+.workspace[data-surface="full"] > .workspace-content {
+  border-start-start-radius: var(--radius-surface);
+}
 .workspace-content > .conversation {
   height: 100%;
 }
@@ -269,6 +272,7 @@
 }
 .workspace[data-mobile] > .workspace-content {
   margin: 0;
+  border-start-start-radius: 0;
 }
 .workspace[data-mobile] .workspace-panel[data-side="inspector"] {
   width: 100%;

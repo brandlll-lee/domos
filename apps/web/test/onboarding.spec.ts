@@ -603,7 +603,6 @@ test("first use prepares the default Bot with a computer and engine before share
       "通用",
       "Providers",
       "Models",
-      "Usage",
     ]);
     await settings
       .getByRole("button", { name: "连接设备", exact: true })

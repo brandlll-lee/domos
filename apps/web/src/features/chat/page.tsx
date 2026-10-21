@@ -10,7 +10,8 @@ import { useComputer } from "../computer/use-computer.ts";
 import { ComputerWorkspace } from "../computer/workspace.tsx";
 import { EngineSelector } from "../models/engine-selector.tsx";
 import { useSettings } from "../settings/context.ts";
-import { Workspace } from "../shell/workspace.tsx";
+import { type RailView, Workspace } from "../shell/workspace.tsx";
+import { UsageSurface } from "../usage/page.tsx";
 import { Approvals } from "./approvals.tsx";
 import { Composer } from "./composer.tsx";
 import { chatCopy } from "./copy.ts";
@@ -74,6 +75,7 @@ function BotChat({
     },
     [draft.update],
   );
+  const [view, setView] = useState<"chat" | "usage">("chat");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [panel, setPanel] = useState<"settings" | "computer">("settings");
   const [expanded, setExpanded] = useState(false);
@@ -94,6 +96,7 @@ function BotChat({
       : null);
   const showPanel = (view: BotPanelView) => {
     const open = !detailsOpen || panel !== "settings" || detailPanel !== view;
+    setView("chat");
     setPanel("settings");
     setExpanded(false);
     setDetailPanel(view);
@@ -106,9 +109,20 @@ function BotChat({
   const showComputer = () => {
     setPanel("computer");
     setExpanded(false);
+    setView("chat");
     setDetailsOpen(!detailsOpen || panel !== "computer");
   };
   const computerOpen = detailsOpen && panel === "computer";
+  const railActive =
+    view === "usage" ? "usage" : computerOpen ? "computer" : "conversation";
+  const selectRail = (next: RailView) => {
+    if (next === "computer") {
+      showComputer();
+      return;
+    }
+    setView(next === "usage" ? "usage" : "chat");
+    closePanel();
+  };
   return (
     <Workspace
       detailsOpen={detailsOpen}
@@ -121,9 +135,8 @@ function BotChat({
       inspectorTrigger={
         panel === "computer" ? "computer-trigger" : "details-trigger"
       }
-      computerOpen={computerOpen}
-      onConversation={closePanel}
-      onComputer={showComputer}
+      rail={{ active: railActive, onSelect: selectRail }}
+      sidebarOpen={view === "chat"}
       onSettings={() => settings.open("general", bot.id)}
       actions={<CreateBot onCreated={selectBot} />}
       sidebar={
@@ -165,121 +178,131 @@ function BotChat({
         </>
       }
     >
-      <button
-        className="skip-link"
-        type="button"
-        onClick={() => {
-          document.getElementById("conversation")?.focus();
-        }}
-      >
-        {chatCopy.skip}
-      </button>
-
-      <main
-        className="conversation chat-surface"
-        id="conversation"
-        tabIndex={-1}
-        style={
-          {
-            "--composer-dock-height": `${dock.height}px`,
-            "--bot-color": characterIdentity(bot.avatar).color,
-          } as CSSProperties
-        }
-      >
-        <ChatHeader
-          bot={bot}
-          busy={Boolean(chat.view?.busy)}
-          detailsOpen={detailsOpen && panel === "settings"}
-          computerOpen={computerOpen}
-          modelSelector={
-            <EngineSelector
-              botId={bot.id}
-              setup={engine}
-              model={chat.view?.model ?? null}
-              connected={chat.connected}
-              onConfigure={() => settings.open("providers", bot.id)}
-            />
-          }
-          onDetails={() => showPanel("root")}
-          onComputer={showComputer}
-        />
-        <span className="sr-only" role="status">
-          {connection}
-        </span>
-        <Messages
-          botId={bot.id}
-          ready={Boolean(chat.view)}
-          busy={Boolean(chat.view?.busy)}
-          botName={bot.name}
-          createdAt={bot.createdAt}
-          items={items}
-          sentRequest={chat.sentRequest}
-          onResend={resend}
-          welcome={
-            !bot.welcomeComplete &&
-            !chat.view?.messages.length && (
-              <ChatWelcome
-                botId={bot.id}
-                disabled={!chat.connected || Boolean(draft.draft.pending)}
-                onChoose={(text) => {
-                  const current = draft.current.current.text;
-                  draft.update({
-                    text: current.trim() ? `${current}\n\n${text}` : text,
-                  });
-                  input.current?.focus();
-                }}
-                onDismissed={() => input.current?.focus()}
-              />
-            )
-          }
-        />
-        {chat.view ? (
-          <Composer
-            ref={dock.ref}
-            inputRef={input}
-            draft={draft}
-            key={chat.view.id}
-            botName={bot.name}
-            conversationId={chat.view.id}
-            connected={chat.connected}
-            busy={chat.view.busy}
-            sending={chat.sending}
-            stopping={chat.stopping}
-            error={error}
-            onSend={chat.send}
-            onStop={chat.stop}
-            computerReady={Boolean(
-              computer.status?.authorized &&
-                (computer.status.capabilities.files || computer.status.scope),
-            )}
-            onComputerRequired={() => {
-              setPanel("settings");
-              setExpanded(false);
-              setDetailPanel("computer");
-              setDetailsOpen(true);
+      {view === "usage" ? (
+        <UsageSurface />
+      ) : (
+        <>
+          <button
+            className="skip-link"
+            type="button"
+            onClick={() => {
+              document.getElementById("conversation")?.focus();
             }}
-            status={
-              <>
-                <RuntimeStatus
-                  botId={bot.id}
-                  state={chat.view.runtime}
-                  busy={chat.view.busy}
-                  onDraft={(text) => draft.update({ text })}
-                />
-                {!!chat.view.approvals?.length && (
-                  <Approvals botId={bot.id} approvals={chat.view.approvals} />
-                )}
-              </>
+          >
+            {chatCopy.skip}
+          </button>
+
+          <main
+            className="conversation chat-surface"
+            id="conversation"
+            tabIndex={-1}
+            style={
+              {
+                "--composer-dock-height": `${dock.height}px`,
+                "--bot-color": characterIdentity(bot.avatar).color,
+              } as CSSProperties
             }
-          />
-        ) : (
-          error && (
-            <p className="alert" role="alert">
-              {error}
-            </p>
-          )
-        )}
-      </main>
+          >
+            <ChatHeader
+              bot={bot}
+              busy={Boolean(chat.view?.busy)}
+              detailsOpen={detailsOpen && panel === "settings"}
+              computerOpen={computerOpen}
+              modelSelector={
+                <EngineSelector
+                  botId={bot.id}
+                  setup={engine}
+                  model={chat.view?.model ?? null}
+                  connected={chat.connected}
+                  onConfigure={() => settings.open("providers", bot.id)}
+                />
+              }
+              onDetails={() => showPanel("root")}
+              onComputer={showComputer}
+            />
+            <span className="sr-only" role="status">
+              {connection}
+            </span>
+            <Messages
+              botId={bot.id}
+              ready={Boolean(chat.view)}
+              busy={Boolean(chat.view?.busy)}
+              botName={bot.name}
+              createdAt={bot.createdAt}
+              items={items}
+              sentRequest={chat.sentRequest}
+              onResend={resend}
+              welcome={
+                !bot.welcomeComplete &&
+                !chat.view?.messages.length && (
+                  <ChatWelcome
+                    botId={bot.id}
+                    disabled={!chat.connected || Boolean(draft.draft.pending)}
+                    onChoose={(text) => {
+                      const current = draft.current.current.text;
+                      draft.update({
+                        text: current.trim() ? `${current}\n\n${text}` : text,
+                      });
+                      input.current?.focus();
+                    }}
+                    onDismissed={() => input.current?.focus()}
+                  />
+                )
+              }
+            />
+            {chat.view ? (
+              <Composer
+                ref={dock.ref}
+                inputRef={input}
+                draft={draft}
+                key={chat.view.id}
+                botName={bot.name}
+                conversationId={chat.view.id}
+                connected={chat.connected}
+                busy={chat.view.busy}
+                sending={chat.sending}
+                stopping={chat.stopping}
+                error={error}
+                onSend={chat.send}
+                onStop={chat.stop}
+                computerReady={Boolean(
+                  computer.status?.authorized &&
+                    (computer.status.capabilities.files ||
+                      computer.status.scope),
+                )}
+                onComputerRequired={() => {
+                  setPanel("settings");
+                  setExpanded(false);
+                  setDetailPanel("computer");
+                  setDetailsOpen(true);
+                }}
+                status={
+                  <>
+                    <RuntimeStatus
+                      botId={bot.id}
+                      state={chat.view.runtime}
+                      busy={chat.view.busy}
+                      onDraft={(text) => draft.update({ text })}
+                    />
+                    {!!chat.view.approvals?.length && (
+                      <Approvals
+                        botId={bot.id}
+                        approvals={chat.view.approvals}
+                      />
+                    )}
+                  </>
+                }
+              />
+            ) : (
+              error && (
+                <p className="alert" role="alert">
+                  {error}
+                </p>
+              )
+            )}
+          </main>
+        </>
+      )}
     </Workspace>
   );
 }

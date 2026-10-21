@@ -1,6 +1,7 @@
 import { Button } from "@domos/ui/controls";
 import { PanelDialog } from "@domos/ui/dialog";
 import { layout } from "@domos/ui/tokens";
+import { ChartBarIcon } from "@phosphor-icons/react/dist/csr/ChartBar";
 import { ChatTextIcon } from "@phosphor-icons/react/dist/csr/ChatText";
 import { DesktopIcon } from "@phosphor-icons/react/dist/csr/Desktop";
 import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
@@ -11,6 +12,8 @@ import { ResizeHandle } from "./resize-handle.tsx";
 import { Titlebar } from "./titlebar.tsx";
 import "./style.css";
 
+export type RailView = "conversation" | "computer" | "usage";
+
 export function Workspace({
   sidebar,
   inspector,
@@ -19,9 +22,8 @@ export function Workspace({
   children,
   actions,
   onSettings,
-  onConversation,
-  onComputer,
-  computerOpen = false,
+  rail,
+  sidebarOpen = true,
   expanded = false,
   inspectorTitle = "Bot详情",
   inspectorTrigger = "details-trigger",
@@ -33,9 +35,8 @@ export function Workspace({
   children: ReactNode;
   actions: ReactNode;
   onSettings: () => void;
-  onConversation: () => void;
-  onComputer: () => void;
-  computerOpen?: boolean;
+  rail: { active: RailView; onSelect: (view: RailView) => void };
+  sidebarOpen?: boolean;
   expanded?: boolean;
   inspectorTitle?: string;
   inspectorTrigger?: string;
@@ -52,7 +53,7 @@ export function Workspace({
       side: "sidebar" as const,
       title: "联系人",
       modal: sizing.mobile,
-      open: !sizing.mobile || contactsOpen,
+      open: sidebarOpen && (!sizing.mobile || contactsOpen),
       change: setContactsOpen,
       content: sidebar,
     },
@@ -70,13 +71,18 @@ export function Workspace({
       className="workspace"
       ref={sizing.setRoot}
       data-mobile={sizing.mobile || undefined}
+      data-surface={sidebarOpen ? undefined : "full"}
       style={{
-        gridTemplateColumns: `${sizing.mobile ? 0 : sizing.widths.sidebar}px minmax(0, 1fr) ${detailsOpen && !sizing.overlay && !expanded ? sizing.widths.inspector : 0}px`,
+        gridTemplateColumns: `${sizing.mobile || !sidebarOpen ? 0 : sizing.widths.sidebar}px minmax(0, 1fr) ${detailsOpen && !sizing.overlay && !expanded ? sizing.widths.inspector : 0}px`,
       }}
     >
       <Titlebar
-        sidebarWidth={sizing.mobile ? undefined : sizing.widths.sidebar}
-        onContacts={sizing.mobile ? () => setContactsOpen(true) : undefined}
+        sidebarWidth={
+          sizing.mobile || !sidebarOpen ? undefined : sizing.widths.sidebar
+        }
+        onContacts={
+          sizing.mobile && sidebarOpen ? () => setContactsOpen(true) : undefined
+        }
         actions={actions}
       />
       {!sizing.mobile && (
@@ -88,12 +94,12 @@ export function Workspace({
               className="rail-button"
               aria-label="会话"
               title="会话"
-              aria-current={computerOpen ? undefined : "page"}
-              onClick={onConversation}
+              aria-current={rail.active === "conversation" ? "page" : undefined}
+              onClick={() => rail.onSelect("conversation")}
             >
               <ChatTextIcon
                 size={20}
-                weight={computerOpen ? "regular" : "fill"}
+                weight={rail.active === "conversation" ? "fill" : "regular"}
                 aria-hidden="true"
               />
             </Button>
@@ -103,12 +109,27 @@ export function Workspace({
               className="rail-button"
               aria-label="工作电脑"
               title="工作电脑"
-              aria-current={computerOpen ? "page" : undefined}
-              onClick={onComputer}
+              aria-current={rail.active === "computer" ? "page" : undefined}
+              onClick={() => rail.onSelect("computer")}
             >
               <DesktopIcon
                 size={20}
-                weight={computerOpen ? "fill" : "regular"}
+                weight={rail.active === "computer" ? "fill" : "regular"}
+                aria-hidden="true"
+              />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rail-button"
+              aria-label="用量"
+              title="用量"
+              aria-current={rail.active === "usage" ? "page" : undefined}
+              onClick={() => rail.onSelect("usage")}
+            >
+              <ChartBarIcon
+                size={20}
+                weight={rail.active === "usage" ? "fill" : "regular"}
                 aria-hidden="true"
               />
             </Button>
@@ -187,6 +208,17 @@ export function Workspace({
                     >
                       <GearSixIcon aria-hidden="true" />
                       设置
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="small"
+                      onClick={() => {
+                        setContactsOpen(false);
+                        rail.onSelect("usage");
+                      }}
+                    >
+                      <ChartBarIcon aria-hidden="true" />
+                      用量
                     </Button>
                     <PanelDialog.Close
                       aria-label="关闭联系人"
