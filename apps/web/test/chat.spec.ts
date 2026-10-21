@@ -218,6 +218,13 @@ test("native controls, interaction, compaction and Usage work in both themes", a
   await expect(page.getByLabel("Domos 的回复")).toContainText(
     "Complete Preview",
   );
+  await page.getByRole("button", { name: "上下文窗口", exact: true }).click();
+  await expect(
+    page
+      .getByRole("dialog", { name: "上下文窗口", exact: true })
+      .getByRole("button", { name: "压缩上下文", exact: true }),
+  ).toBeEnabled();
+  await page.keyboard.press("Escape");
   const details = await openDetails(page);
   await chooseDetail(details, "连接与账号");
   await details
@@ -231,11 +238,28 @@ test("native controls, interaction, compaction and Usage work in both themes", a
     details.getByRole("combobox", { name: "推理强度", exact: true }),
   ).toContainText("high");
   await details.getByRole("button", { name: "关闭", exact: true }).click();
-  await page.getByRole("button", { name: "上下文操作", exact: true }).click();
-  await page.getByRole("menuitem", { name: "压缩上下文", exact: true }).click();
+  await page.getByRole("button", { name: "上下文窗口", exact: true }).click();
+  const contextWindow = page.getByRole("dialog", {
+    name: "上下文窗口",
+    exact: true,
+  });
+  await expect(contextWindow).toContainText("120");
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await expect(contextWindow).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath(`context-${colorScheme}.png`),
+      animations: "disabled",
+    });
+  }
+  await contextWindow
+    .getByRole("button", { name: "压缩上下文", exact: true })
+    .click();
   await expect(page.getByLabel("上下文状态", { exact: true })).toContainText(
     "压缩完成",
   );
+  await expect(contextWindow).toContainText("未提供 / 1K");
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "用量", exact: true }).click();
   const usage = page.getByRole("main", { name: "用量", exact: true });
   const table = usage.getByRole("table", { name: "用量明细", exact: true });
