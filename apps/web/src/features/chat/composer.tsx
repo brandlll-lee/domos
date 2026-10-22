@@ -4,6 +4,9 @@ import { FileAttachment } from "@domos/ui/attachment";
 import { MessageComposer } from "@domos/ui/composer";
 import { Button } from "@domos/ui/controls";
 import { ArrowUpIcon } from "@phosphor-icons/react/dist/csr/ArrowUp";
+import { FileMdIcon } from "@phosphor-icons/react/dist/csr/FileMd";
+import { FilePdfIcon } from "@phosphor-icons/react/dist/csr/FilePdf";
+import { FileTextIcon } from "@phosphor-icons/react/dist/csr/FileText";
 import { StopIcon } from "@phosphor-icons/react/dist/csr/Stop";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { type ReactNode, type Ref, useRef } from "react";
@@ -123,6 +126,19 @@ export function Composer({
         value={composer.value}
         onValueChange={composer.change}
         onSubmit={() => void composer.submit()}
+        onPaste={(event) => {
+          const files = Array.from(event.clipboardData.files).filter((file) =>
+            file.type.startsWith("image/"),
+          );
+          if (!files.length) return;
+          event.preventDefault();
+          if (!connected || composer.pending) return;
+          if (!computerReady) {
+            onComputerRequired?.();
+            return;
+          }
+          uploads.add(files);
+        }}
         label={chatCopy.message}
         placeholder={chatCopy.placeholder(botName)}
         leading={
@@ -191,34 +207,49 @@ export function Composer({
                   </Button>
                 </div>
               ))}
-              {composer.attachments.map((file) => (
-                <FileAttachment
-                  key={file.id}
-                  name={file.name}
-                  size={file.size}
-                  preview={
-                    !file.mimeType || file.mimeType.startsWith("image/")
-                      ? `/files/${conversationId}/${file.id}`
-                      : undefined
-                  }
-                  action={
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`${chatCopy.removeFile} ${file.name}`}
-                      disabled={composer.pending}
-                      onClick={() =>
-                        void uploads.remove(file.id, () =>
-                          composer.remove(file.id),
-                        )
-                      }
-                    >
-                      <XIcon />
-                    </Button>
-                  }
-                />
-              ))}
+              {composer.attachments.map((file) => {
+                const type =
+                  file.mimeType === "application/pdf"
+                    ? "PDF"
+                    : file.name.split(".").slice(1).pop()?.toUpperCase() ||
+                      "文件";
+                const Icon =
+                  type === "PDF"
+                    ? FilePdfIcon
+                    : type === "MD"
+                      ? FileMdIcon
+                      : FileTextIcon;
+                return (
+                  <FileAttachment
+                    key={file.id}
+                    name={file.name}
+                    size={file.size}
+                    type={type}
+                    icon={<Icon weight="duotone" />}
+                    preview={
+                      !file.mimeType || file.mimeType.startsWith("image/")
+                        ? `/files/${conversationId}/${file.id}`
+                        : undefined
+                    }
+                    action={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-small"
+                        aria-label={`${chatCopy.removeFile} ${file.name}`}
+                        disabled={composer.pending}
+                        onClick={() =>
+                          void uploads.remove(file.id, () =>
+                            composer.remove(file.id),
+                          )
+                        }
+                      >
+                        <XIcon />
+                      </Button>
+                    }
+                  />
+                );
+              })}
             </>
           ) : null
         }

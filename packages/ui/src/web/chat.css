@@ -100,7 +100,29 @@
   min-width: 0;
 }
 .composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
   padding: var(--space-2);
+}
+.composer-attachments > .attachment {
+  flex: 0 1 var(--attachment-card-width);
+  min-width: 0;
+  max-width: 100%;
+}
+.composer-attachments > .attachment-image {
+  flex: 0 0 var(--attachment-preview-size);
+}
+.file-type-icon {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--color-muted);
+}
+.file-type-icon svg {
+  width: var(--space-8);
+  height: var(--space-8);
+}
+.file-type-icon[data-type="PDF"] {
+  color: var(--color-danger);
 }
 .attachments:not(:first-child) {
   margin-top: var(--space-3);

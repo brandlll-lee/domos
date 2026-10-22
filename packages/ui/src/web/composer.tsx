@@ -1,4 +1,5 @@
 import {
+  type ClipboardEventHandler,
   type ReactNode,
   type Ref,
   useId,
@@ -12,6 +13,7 @@ export function MessageComposer({
   value,
   onValueChange,
   onSubmit,
+  onPaste,
   label,
   placeholder,
   action,
@@ -22,6 +24,7 @@ export function MessageComposer({
   value: string;
   onValueChange: (value: string) => void;
   onSubmit: () => void;
+  onPaste?: ClipboardEventHandler<HTMLTextAreaElement>;
   label: string;
   placeholder: string;
   action: ReactNode;
@@ -78,6 +81,7 @@ export function MessageComposer({
           placeholder={placeholder}
           value={value}
           onChange={(event) => onValueChange(event.target.value)}
+          onPaste={onPaste}
           onKeyDown={(event) => {
             if (
               event.key === "Enter" &&

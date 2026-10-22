@@ -184,7 +184,8 @@ export const metrics = {
   "motion-character-breathe": "4s",
   "motion-character-look": "12s",
   "motion-character-blink": "6s",
-  "attachment-preview-height": "16rem",
+  "attachment-preview-size": "7.5rem",
+  "attachment-card-width": "18rem",
 } as const;
 
 export const compactChat = {

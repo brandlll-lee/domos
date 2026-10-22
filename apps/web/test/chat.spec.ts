@@ -3273,6 +3273,107 @@ test("composer menu adds task materials, keeps drafts, and fits both themes", as
   expect(checks).toBe(0);
 });
 
+test("composer previews pasted images and compact documents in both themes", async ({
+  page,
+}) => {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto(url);
+  await expect(
+    page.getByRole("button", { name: "添加内容", exact: true }),
+  ).toBeEnabled();
+  const input = page.getByLabel("消息", { exact: true });
+  await page.evaluate(async () => navigator.clipboard.writeText("普通文字"));
+  await input.focus();
+  await page.keyboard.press("Control+V");
+  await expect(input).toHaveValue("普通文字");
+  await page.evaluate(
+    async (bytes) => {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "image/png": new Blob([new Uint8Array(bytes)], { type: "image/png" }),
+        }),
+      ]);
+    },
+    Array.from(png(360, 640)),
+  );
+  await page.keyboard.press("Control+V");
+  const drafts = page.locator(".composer-attachments");
+  const images = drafts.locator(".attachment-image");
+  await expect(images).toHaveCount(1);
+  await page.getByLabel("添加文件", { exact: true }).setInputFiles([
+    { name: "wide.png", mimeType: "image/png", buffer: png(640, 360) },
+    {
+      name: "report.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.7\n%%EOF\n"),
+    },
+    {
+      name: "产品需求与验收清单.md",
+      mimeType: "text/markdown",
+      buffer: Buffer.from("# Notes\n"),
+    },
+  ]);
+  await expect(drafts.locator(".attachment")).toHaveCount(4);
+  await expect(images).toHaveCount(2);
+  await expect(input).toHaveValue("普通文字");
+  await expect(drafts).toContainText("PDF ·");
+  await expect(drafts).toContainText("MD ·");
+  await page.reload();
+  await expect(images).toHaveCount(2);
+  const remove = images.first().getByRole("button");
+  await page.mouse.move(0, 0);
+  await expect(remove).toHaveCSS("opacity", "0");
+  await images.first().hover();
+  await expect(remove).toHaveCSS("opacity", "1");
+  await page.mouse.move(0, 0);
+  await images.first().getByRole("link").focus();
+  await page.keyboard.press("Tab");
+  await expect(remove).toBeFocused();
+  await expect(remove).toHaveCSS("opacity", "1");
+  for (const [theme, label] of [
+    ["light", "浅色"],
+    ["dark", "深色"],
+  ] as const) {
+    await page.setViewportSize({ width: 1360, height: 900 });
+    await chooseAppearance(page, label);
+    for (const width of [1440, 768, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await input.focus();
+      const bounds = await drafts.boundingBox();
+      expect(
+        bounds && bounds.x >= 0 && bounds.x + bounds.width <= width,
+      ).toBeTruthy();
+      for (const image of await images.all()) {
+        const box = await image.boundingBox();
+        expect(
+          box && box.width === box.height && box.width <= 150,
+        ).toBeTruthy();
+        await expect(image).toHaveText("");
+      }
+      const first = await images.first().boundingBox();
+      const second = await images.last().boundingBox();
+      expect(
+        first && second && first.y === second.y && second.x > first.x,
+      ).toBeTruthy();
+      const document = await drafts
+        .locator(".file-attachment")
+        .first()
+        .boundingBox();
+      expect(document && document.width <= 300).toBeTruthy();
+      await images.first().hover();
+      await page.screenshot({
+        path: `test-results/composer-attachments-${theme}-${width}.png`,
+      });
+    }
+  }
+  await remove.focus();
+  await page.keyboard.press("Enter");
+  await expect(images).toHaveCount(1);
+  await page.reload();
+  await expect(images).toHaveCount(1);
+  await expect(drafts.locator(".file-attachment")).toHaveCount(2);
+});
+
 test("file upload retry keeps its identity and cancellation releases the draft", async ({
   page,
 }) => {
