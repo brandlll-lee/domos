@@ -13,6 +13,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { botPreview } from "./bot-preview.ts";
 import type { Computers } from "./computer/catalog.ts";
+import { readEngine } from "./harness/reconcile.ts";
 import { EngineDoc } from "./harness/state.ts";
 import type { EngineId } from "./harness/types.ts";
 import { watchCommits } from "./watch.ts";
@@ -113,7 +114,7 @@ export class Bots {
             this.harness.snapshot(LiveDoc, id, context),
             this.harness.snapshot(AgentDoc, id, context),
             this.harness.conversation(id, context),
-            this.harness.snapshot(EngineDoc, id, context),
+            readEngine(this.harness, id, context),
           ]);
           return {
             id,
@@ -234,6 +235,7 @@ export class Bots {
       this.harness,
       (change) =>
         change.type === "entry" ||
+        (change.type === "task" && change.value.state.status === "terminal") ||
         ((change.type === "document" || change.type === "document.copy") &&
           [BotDirectory, AgentDoc, LiveDoc, EngineDoc].some(
             (doc) => doc.definition.kind === change.record.kind,

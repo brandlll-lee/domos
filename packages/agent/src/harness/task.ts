@@ -3,6 +3,7 @@ import { defineTask, type EntryId } from "@earendil-works/pi-durable";
 import { finishCompactions, projectContext } from "./context.ts";
 import type { EngineExecution } from "./execution.ts";
 import { EngineProjection } from "./projection.ts";
+import { reconcileEngine } from "./reconcile.ts";
 import { EngineDoc, EngineInputDoc, EngineMessage } from "./state.ts";
 import {
   type EngineCheckpoint,
@@ -23,9 +24,9 @@ export function engineTask(execution: EngineExecution) {
           await runtime.waitForTask(task.input.previous, context);
         let delivered = false;
         await runtime.commit(async (tx) => {
+          const doc = await reconcileEngine(tx, runtime.conversationId);
           const input = await tx.doc(EngineInputDoc, task.id);
           if (input.status !== "settled") return;
-          const doc = await tx.doc(EngineDoc, runtime.conversationId);
           doc.tasks = doc.tasks.filter((id) => id !== task.id);
           doc.taskId = doc.tasks.at(-1) ?? null;
           delivered = true;
@@ -103,6 +104,16 @@ async function finish(
 ) {
   await runtime.commit(async (tx, current) => {
     const doc = await tx.doc(EngineDoc, runtime.conversationId);
+    const additional = [];
+    for (const id of doc.tasks) {
+      if (id === runtime.taskId) continue;
+      const task = await tx.task(id);
+      if (!task || task.state.status === "terminal") continue;
+      const delivery = await tx.doc(EngineInputDoc, id);
+      if (delivery.owner !== runtime.taskId || delivery.status === "settled")
+        continue;
+      additional.push({ id, delivery, input: task.input as EngineTaskInput });
+    }
     if (
       current.input.operation &&
       doc.runtime?.compactionDetails?.taskId !== String(runtime.taskId)
@@ -121,16 +132,6 @@ async function finish(
       });
     await finishCompactions(tx, runtime);
     await finishUsage(tx, runtime, doc.config.provider, doc.sessionId);
-    const additional = [];
-    for (const id of doc.tasks) {
-      if (id === runtime.taskId) continue;
-      const delivery = await tx.doc(EngineInputDoc, id);
-      if (delivery.owner !== runtime.taskId || delivery.status === "settled")
-        continue;
-      const task = await tx.task(id);
-      if (task)
-        additional.push({ id, delivery, input: task.input as EngineTaskInput });
-    }
     let answer: EntryId | undefined;
     if (doc.activeId === runtime.taskId) {
       for (const draft of doc.drafts) {

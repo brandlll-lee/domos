@@ -140,6 +140,8 @@ Choose the account source in the Bot's connection settings. The default, **Domos
 
 The account must be available where the engine runs. A local service with a local work computer can reuse local settings. Remote computers, containers, and system services use their own running user's settings. Client logins do not move to a remote computer. Terminal-only environment variables must reach the process that starts Domos. Bots on one computer share the selected account files and system access.
 
+Work computer configuration keeps custom environment variable names used by native providers and credential helpers. `DOMOS_*`, `SERVICE_*`, and `DATABASE_URL` are reserved for service configuration and are not passed to native engines. Managed accounts keep their separate environment.
+
 ---
 
 ## 🧠 How It Works

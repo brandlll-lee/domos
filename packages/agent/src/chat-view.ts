@@ -191,6 +191,7 @@ export function chatView(
       pending: message.pending ?? true,
     })) as ChatMessage[]),
   );
+  if (engine) messages.sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
   return {
     id: view.conversation.id,
     model: agent?.model ?? null,

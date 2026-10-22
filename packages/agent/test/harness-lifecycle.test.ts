@@ -58,6 +58,16 @@ test.each(["accepted", "refused", "uncertain"] as const)(
             worker.response(request, { turnId: "current" });
             if (JSON.stringify(request.params).includes("third")) {
               worker.frame({
+                method: "thread/tokenUsage/updated",
+                params: {
+                  turnId: "current",
+                  tokenUsage: {
+                    total: { inputTokens: 100, outputTokens: 20 },
+                    last: { inputTokens: 100, outputTokens: 20 },
+                  },
+                },
+              });
+              worker.frame({
                 method: "item/completed",
                 params: {
                   item: {

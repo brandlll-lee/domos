@@ -50,10 +50,10 @@ export class EngineInputs {
         if (doc.activeId !== this.runtime.taskId) return;
         for (const id of doc.tasks) {
           if (id === this.runtime.taskId) continue;
-          const input = await tx.doc(EngineInputDoc, id);
-          if (input.status !== "queued") continue;
           const task = await tx.task(id);
           if (!task || task.state.status === "terminal") continue;
+          const input = await tx.doc(EngineInputDoc, id);
+          if (input.status !== "queued") continue;
           input.owner = this.runtime.taskId;
           input.status = "sending";
           next = { id, input: task.input as EngineTaskInput };

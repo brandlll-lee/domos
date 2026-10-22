@@ -178,6 +178,8 @@ export const piProvider: EngineProvider = {
         ...(config.accountSource === "native"
           ? [
               "--no-extensions",
+              "--extension",
+              "builtin:mcp",
               "--no-skills",
               "--no-prompt-templates",
               "--no-context-files",

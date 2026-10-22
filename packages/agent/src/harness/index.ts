@@ -13,6 +13,7 @@ import { WorkError } from "../work/state.ts";
 import { EngineConnections } from "./connections.ts";
 import type { EngineExecution } from "./execution.ts";
 import { engineProvider, providers } from "./providers/index.ts";
+import { readEngine, reconcileEngine } from "./reconcile.ts";
 import { EngineDoc, EngineInputDoc, EngineMessage } from "./state.ts";
 import { engineTask } from "./task.ts";
 import { userMessage } from "./task-types.ts";
@@ -37,7 +38,7 @@ export class Engines {
   async profile(botId: number, context: Context) {
     const id = botId as ConversationId;
     const [doc, agent] = await Promise.all([
-      this.harness.snapshot(EngineDoc, id, context),
+      readEngine(this.harness, id, context),
       this.harness.snapshot(AgentDoc, id, context),
     ]);
     const computerId = await this.execution.computers.computerId(
@@ -80,13 +81,13 @@ export class Engines {
       context,
     );
     if (!conversation) throw new WorkError("NOT_FOUND", "Bot 不存在。");
+    const engine = await readEngine(
+      this.harness,
+      botId as ConversationId,
+      context,
+    );
     const state = await conversation.viewState(context);
     try {
-      const engine = await this.harness.snapshot(
-        EngineDoc,
-        botId as ConversationId,
-        context,
-      );
       return chatView(state.value, engine);
     } finally {
       state.dispose();
@@ -98,6 +99,9 @@ export class Engines {
       this.harness,
       (change) =>
         (change.type === "entry" && change.value.conversationId === botId) ||
+        (change.type === "task" &&
+          change.value.conversationId === botId &&
+          change.value.state.status === "terminal") ||
         ((change.type === "document" || change.type === "document.copy") &&
           change.conversationId === botId),
       () => this.view(botId, context),
@@ -153,6 +157,7 @@ export class Engines {
     context: Context,
   ) {
     engineProvider(input.config.provider);
+    await readEngine(this.harness, botId as ConversationId, context);
     if (this.connections.busy(botId))
       throw new WorkError("CONFLICT", "请先完成账号连接。");
     const connection = await this.connections.snapshot(
@@ -243,7 +248,7 @@ export class Engines {
       if (existing) return existing.id;
       if (this.stopping.has(botId))
         throw new WorkError("CONFLICT", "正在停止。请稍后发送。");
-      const doc = await tx.doc(EngineDoc, id);
+      const doc = await reconcileEngine(tx, id);
       if (
         (await tx.doc(LiveDoc, id)).run ||
         (doc.tasks.length && input.whenBusy === "reject")
@@ -332,6 +337,7 @@ export class Engines {
           .map((id) => this.harness.abortTask(id, context)),
       );
       await stopped;
+      await readEngine(this.harness, botId as ConversationId, context);
     } finally {
       this.stopping.delete(botId);
     }

@@ -54,33 +54,43 @@ async function worker(environment?: Record<string, string>) {
   return { process, directory, calls };
 }
 
-test("native processes use the execution computer home and exclude service credentials", async () => {
-  const native = await mkdtemp(join(tmpdir(), "domos-native-account-"));
-  onTestFinished(() => rm(native, { recursive: true, force: true }));
-  const { process } = await worker({
-    HOME: native,
-    USERPROFILE: native,
-    CODEX_HOME: join(native, "codex"),
-    DOMOS_ACCOUNT_TEST_SECRET: "service-fixture",
-  });
-  let output = "";
-  process.output.on("data", (chunk) => {
-    output += chunk.toString();
-  });
-  await process.launch({
-    command: globalThis.process.execPath,
-    args: [
-      "-e",
-      "console.log(JSON.stringify({home:process.env.HOME,codex:process.env.CODEX_HOME,service:process.env.DOMOS_ACCOUNT_TEST_SECRET}))",
-    ],
-    accountSource: "native",
-  });
-  await process.closed;
-  expect(JSON.parse(output)).toEqual({
-    home: native,
-    codex: join(native, "codex"),
-  });
-});
+test.each(["native", "managed"] as const)(
+  "%s processes use the selected account environment",
+  async (accountSource) => {
+    const native = await mkdtemp(join(tmpdir(), "domos-native-account-"));
+    onTestFinished(() => rm(native, { recursive: true, force: true }));
+    const { process } = await worker({
+      HOME: native,
+      USERPROFILE: native,
+      CODEX_HOME: join(native, "codex"),
+      DOMOS_ACCOUNT_TEST_SECRET: "service-fixture",
+      CORP_LLM_TOKEN: "fixture-native-key",
+    });
+    const { home } = await process.ready;
+    let output = "";
+    process.output.on("data", (chunk) => {
+      output += chunk.toString();
+    });
+    await process.launch({
+      command: globalThis.process.execPath,
+      args: [
+        "-e",
+        "console.log(JSON.stringify({home:process.env.HOME,codex:process.env.CODEX_HOME,service:process.env.DOMOS_ACCOUNT_TEST_SECRET,custom:process.env.CORP_LLM_TOKEN}))",
+      ],
+      accountSource,
+    });
+    await process.closed;
+    expect(JSON.parse(output)).toEqual(
+      accountSource === "native"
+        ? {
+            home: native,
+            codex: join(native, "codex"),
+            custom: "fixture-native-key",
+          }
+        : { home },
+    );
+  },
+);
 
 test.each([
   { accountSource: "native" as const, installed: true, expected: "system" },
@@ -172,8 +182,13 @@ test.each(["claude", "opencode"])(
         ANTHROPIC_BASE_URL: "https://fixture.invalid",
         ANTHROPIC_AUTH_TOKEN: "fixture-native-token",
         SERVICE_SECRET: "fixture-service",
+        AWS_PROFILE: "fixture-profile",
+        AWS_REGION: "us-west-2",
+        CORP_LLM_TOKEN: "fixture-config-key",
       },
       apiKeyHelper: "fixture-helper",
+      awsAuthRefresh: "fixture-refresh",
+      awsCredentialExport: "fixture-export",
       hooks: { SessionStart: [] },
       model: "fixture-model",
     });
@@ -230,8 +245,13 @@ test.each(["claude", "opencode"])(
         env: {
           ANTHROPIC_BASE_URL: "https://fixture.invalid",
           ANTHROPIC_AUTH_TOKEN: "fixture-native-token",
+          AWS_PROFILE: "fixture-profile",
+          AWS_REGION: "us-west-2",
+          CORP_LLM_TOKEN: "fixture-config-key",
         },
         apiKeyHelper: "fixture-helper",
+        awsAuthRefresh: "fixture-refresh",
+        awsCredentialExport: "fixture-export",
         model: "fixture-model",
       });
       expect(
@@ -612,6 +632,9 @@ test("bundled Pi reads native custom models and keeps Bot sessions separate", as
       id: "fixture-native/local-model",
       name: "Native Local",
     }),
+  );
+  expect((await session.controls?.())?.commands).toContainEqual(
+    expect.objectContaining({ name: "mcp" }),
   );
   expect(session.id.replaceAll("\\", "/")).toContain(
     `${home.replaceAll("\\", "/")}/pi/sessions/`,

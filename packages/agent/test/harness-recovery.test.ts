@@ -7,12 +7,18 @@ import {
   fauxAssistantMessage,
   fauxProvider,
 } from "@earendil-works/pi-ai/providers/faux";
-import { createRegistry, defineExtension } from "@earendil-works/pi-durable";
+import {
+  createRegistry,
+  defineExtension,
+  defineTask,
+  type TaskId,
+} from "@earendil-works/pi-durable";
 import { expect, onTestFinished, test } from "vitest";
 import { chatView } from "../src/chat-view.ts";
 import type { Computers } from "../src/computer/catalog.ts";
 import { EngineExecution, Engines, engineTask } from "../src/harness/index.ts";
-import { EngineDoc } from "../src/harness/state.ts";
+import { EngineDoc, EngineInputDoc } from "../src/harness/state.ts";
+import type { EngineTaskInput } from "../src/harness/task-types.ts";
 import { messageText } from "../src/messages.ts";
 import { openAgent } from "../src/open-agent.ts";
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
@@ -243,3 +249,148 @@ test("switching from embedded Pi imports recent conversation into the first nati
   );
   state.dispose();
 });
+
+test.each(["view", "stop", "reopen", "queued"])(
+  "%s reconciles a terminal task and preserves its replies",
+  async (action) => {
+    const directory = await mkdtemp(join(tmpdir(), "domos-terminal-"));
+    const database = join(directory, "agent.sqlite");
+    const models = createModels();
+    models.setProvider(fauxProvider().provider);
+    const gate = Promise.withResolvers<void>();
+    let executions = 0;
+    const failed = defineTask<EngineTaskInput, { phase: "run" }, null, object>({
+      name: "fixture.failure",
+      version: 1,
+      initial: () => ({ phase: "run" }),
+      phases: {
+        async run() {
+          await gate.promise;
+          throw new Error("Fixture failure");
+        },
+      },
+      async abort() {
+        throw new Error("Fixture failure");
+      },
+    });
+    const computers = {
+      initialize: async () => {},
+      preflight: async () => {},
+      process: async () => {
+        executions++;
+        throw new Error("Unexpected execution");
+      },
+      computerId: async () => "local",
+      tools: { catalog: async () => [], finish: () => {} },
+    } as unknown as Computers;
+    const open = async () => {
+      const registry = createRegistry();
+      registry.install(defineExtension({ name: "fixture", tasks: [failed] }));
+      const runtime = await openAgent(
+        database,
+        { registry, models, computers },
+        {},
+        context,
+      );
+      if (!runtime.engines) throw new Error("Engines are required");
+      return { ...runtime, engines: runtime.engines };
+    };
+    let runtime = await open();
+    onTestFinished(async () => {
+      await runtime.harness.close(context);
+      await rm(directory, { recursive: true, force: true });
+    });
+    const botId = runtime.conversation.id;
+    const { taskId, submissionId } = await runtime.harness.commit(
+      async (tx) => {
+        const submission = await tx.createSubmission({
+          type: "input",
+          conversationId: botId,
+          requestId: crypto.randomUUID(),
+          status: "queued",
+        });
+        const taskId = await tx.createTask(
+          failed,
+          {
+            text: "first",
+            turnId: "first",
+            submissionId: submission.id,
+            previous: null,
+          },
+          {
+            ownership: { kind: "conversation" },
+            conversationId: botId,
+            background: true,
+          },
+        );
+        (await tx.doc(EngineInputDoc, taskId)).status = "accepted";
+
+        const doc = await tx.doc(EngineDoc, botId);
+        doc.tasks = [taskId];
+        doc.taskId = taskId;
+        doc.activeId = taskId;
+        doc.activeTurn = "first";
+        doc.drafts = [
+          {
+            id: "answer",
+            turnId: "first",
+            role: "assistant",
+            content: [{ type: "text", text: "Preserved reply", key: "answer" }],
+            pending: false,
+            stopped: false,
+            timestamp: 1,
+          },
+        ];
+        return { taskId, submissionId: submission.id };
+      },
+      context,
+    );
+    let additional: Awaited<ReturnType<Engines["submit"]>> | undefined;
+    let additionalTask: TaskId | null = null;
+    if (action === "queued") {
+      additional = await runtime.engines.submit(
+        botId,
+        { text: "Already received", requestId: crypto.randomUUID() },
+        context,
+      );
+      await runtime.harness.commit(async (tx) => {
+        const doc = await tx.doc(EngineDoc, botId);
+        if (!doc.taskId) throw new Error("Task is required");
+        additionalTask = doc.taskId;
+        const input = await tx.doc(EngineInputDoc, doc.taskId);
+        input.owner = taskId;
+        input.status = "accepted";
+      }, context);
+    }
+    gate.resolve();
+    await runtime.harness.waitForTask(taskId, context);
+    if (additional)
+      expect(await additional.wait(context)).toMatchObject({
+        status: "unanswered",
+      });
+    if (additionalTask)
+      await runtime.harness.waitForTask(additionalTask, context);
+    expect(executions).toBe(0);
+    if (action === "stop") await runtime.engines.stop(botId, context);
+    if (action === "reopen") {
+      await runtime.harness.close(context);
+      runtime = await open();
+    }
+    const view = await runtime.engines.view(botId, context);
+    expect(view.busy).toBe(false);
+    expect(view.messages.map(messageText)).toContain("Preserved reply");
+    expect(view.error).toContain("Fixture failure");
+    const submission = await runtime.harness.submission(submissionId, context);
+    expect(await submission?.wait(context)).toMatchObject({
+      status: "unanswered",
+    });
+    expect(
+      (await runtime.bots.list(context)).find((bot) => bot.id === botId)?.busy,
+    ).toBe(false);
+    expect(
+      (await runtime.engines.view(botId, context)).messages.filter(
+        (message) => message.id === "answer",
+      ),
+    ).toHaveLength(1);
+  },
+);

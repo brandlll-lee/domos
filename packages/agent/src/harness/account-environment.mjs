@@ -28,24 +28,7 @@ const inherited = [
   "NO_PROXY",
   "no_proxy",
 ];
-const nativeKeys = [
-  "HOME",
-  "USERPROFILE",
-  "APPDATA",
-  "LOCALAPPDATA",
-  "USER",
-  "USERNAME",
-  "LOGNAME",
-  "SHELL",
-  "XDG_CONFIG_HOME",
-  "XDG_DATA_HOME",
-  "XDG_CACHE_HOME",
-  "NODE_EXTRA_CA_CERTS",
-  "SSL_CERT_FILE",
-  "SSL_CERT_DIR",
-];
-const providerKey =
-  /^(OPENAI_|ANTHROPIC_|CLAUDE_|CODEX_|OPENCODE_|PI_|GEMINI_|GOOGLE_|GCLOUD_|AWS_|AZURE_|OPENROUTER_|DEEPSEEK_|GROQ_|MISTRAL_|XAI_|CEREBRAS_|ZAI_|MINIMAX_|MOONSHOT_|KIMI_|QWEN_|FIREWORKS_|TOGETHER_|HF_|VERCEL_|AI_GATEWAY_)/;
+const serviceKey = /^(DOMOS_|SERVICE_)|^DATABASE_URL$/i;
 
 export async function accountEnvironment(spec, home, source) {
   let settingsPath;
@@ -54,9 +37,7 @@ export async function accountEnvironment(spec, home, source) {
     throw new Error("Invalid account source");
   const env = Object.fromEntries(
     Object.entries(source).filter(
-      ([key]) =>
-        inherited.includes(key) ||
-        (native && (nativeKeys.includes(key) || providerKey.test(key))),
+      ([key]) => inherited.includes(key) || (native && !serviceKey.test(key)),
     ),
   );
   if (!native) Object.assign(env, { HOME: home, USERPROFILE: home });
@@ -96,16 +77,14 @@ export async function accountEnvironment(spec, home, source) {
           env: Object.fromEntries(
             Object.entries(settings.env ?? {}).filter(
               ([key, value]) =>
-                /^(ANTHROPIC_|CLAUDE_CODE_(USE_|OAUTH_))/.test(key) &&
-                typeof value === "string",
+                !serviceKey.test(key) && typeof value === "string",
             ),
           ),
-          ...(typeof settings.apiKeyHelper === "string"
-            ? { apiKeyHelper: settings.apiKeyHelper }
-            : {}),
-          ...(typeof settings.model === "string"
-            ? { model: settings.model }
-            : {}),
+          ...Object.fromEntries(
+            ["apiKeyHelper", "awsAuthRefresh", "awsCredentialExport", "model"]
+              .filter((key) => typeof settings[key] === "string")
+              .map((key) => [key, settings[key]]),
+          ),
         };
         settingsPath = join(home, `claude-settings-${randomUUID()}.json`);
         await writeFile(settingsPath, JSON.stringify(selected), {

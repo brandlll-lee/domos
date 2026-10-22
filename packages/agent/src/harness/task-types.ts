@@ -41,7 +41,7 @@ export function userMessage(
     role: "user",
     content: [{ type: "text", text, key: id }],
     stopped: false,
-    timestamp: Date.now(),
+    timestamp: performance.timeOrigin + performance.now(),
     ...(attachments?.length ? { attachments } : {}),
     ...(materials ? { materials } : {}),
   } satisfies ChatMessage);
