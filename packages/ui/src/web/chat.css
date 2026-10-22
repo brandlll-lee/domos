@@ -25,7 +25,7 @@
   padding: var(--space-1);
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-composer);
-  background: var(--color-control);
+  background: var(--color-composer);
 }
 .composer-field {
   display: flex;
@@ -54,7 +54,8 @@
   width: var(--composer-control-size);
   min-height: var(--composer-control-size);
   border: 0;
-  background: transparent;
+  background: var(--color-control);
+  color: var(--color-muted);
   border-radius: var(--radius-round);
 }
 .composer-action .button[data-size="icon"] {
