@@ -11,6 +11,7 @@ export function ChatHeader({
   detailsOpen,
   computerOpen,
   modelSelector,
+  context,
   onDetails,
   onComputer,
 }: {
@@ -19,6 +20,7 @@ export function ChatHeader({
   detailsOpen: boolean;
   computerOpen: boolean;
   modelSelector: ReactNode;
+  context?: ReactNode;
   onDetails: () => void;
   onComputer: () => void;
 }) {
@@ -43,6 +45,7 @@ export function ChatHeader({
         <span className="chat-identity-name">{bot.name}</span>
       </Button>
       <div className="chat-actions">
+        {context}
         {modelSelector}
         <Button
           id="computer-trigger"

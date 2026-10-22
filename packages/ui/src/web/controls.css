@@ -191,13 +191,21 @@ textarea.field-control {
   max-width: var(--available-width);
   max-height: var(--available-height);
   overflow: hidden;
-  padding: var(--space-1);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  background: var(--color-control);
+  padding: 4px;
+  border-radius: 0.875rem;
+  background: var(--color-popup);
   color: var(--color-text);
   box-shadow: var(--color-popup-shadow);
   outline: none;
+  transform-origin: var(--transform-origin);
+  animation: popup-surface-in var(--motion-feedback)
+    cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes popup-surface-in {
+  from {
+    opacity: 0;
+    scale: 0.97;
+  }
 }
 .picker-search-popup {
   display: flex;
@@ -207,15 +215,16 @@ textarea.field-control {
 }
 .picker-search {
   flex-shrink: 0;
-  width: 100%;
+  width: calc(100% - 4px);
   min-height: var(--control-height);
+  margin: 2px;
   padding: var(--space-2) var(--space-3);
   border: 0;
-  border-bottom: 1px solid var(--color-border);
-  border-radius: var(--space-1);
-  background: transparent;
+  border-radius: calc(0.875rem - 6px);
+  background: color-mix(in srgb, var(--color-text) 5%, transparent);
   color: var(--color-text);
   font-size: var(--text-label);
+  outline: none;
 }
 .picker-search::placeholder {
   color: var(--color-muted);
@@ -227,19 +236,19 @@ textarea.field-control {
   max-height: min(20rem, calc(var(--available-height) - var(--control-height)));
 }
 .picker-scroll .scroll-viewport {
-  padding-inline-end: var(--space-3);
+  padding-inline-end: 2px;
 }
 .picker-list {
-  padding: var(--space-1) 0;
+  padding: 2px;
 }
 .picker-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  min-height: var(--control-small);
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--space-1);
+  min-height: 2.125rem;
+  padding: var(--space-1) var(--space-3);
+  border-radius: 0.5rem;
   font-size: var(--text-label);
   overflow-wrap: anywhere;
   cursor: default;
@@ -247,11 +256,15 @@ textarea.field-control {
   scroll-margin-block: var(--space-1);
 }
 .picker-item[data-highlighted] {
-  background: var(--color-control-hover);
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+.picker-item[data-selected] {
+  color: var(--color-text);
 }
 .picker-check {
   flex-shrink: 0;
   margin-left: auto;
+  color: var(--color-chart-1);
 }
 .picker-empty {
   padding: var(--space-5) var(--space-3);

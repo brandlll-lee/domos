@@ -14,6 +14,7 @@ import { type RailView, Workspace } from "../shell/workspace.tsx";
 import { UsageSurface } from "../usage/page.tsx";
 import { Approvals } from "./approvals.tsx";
 import { Composer } from "./composer.tsx";
+import { ContextRing } from "./context.tsx";
 import { chatCopy } from "./copy.ts";
 import { ChatHeader } from "./header.tsx";
 import { Messages } from "./messages.tsx";
@@ -208,6 +209,14 @@ function BotChat({
               busy={Boolean(chat.view?.busy)}
               detailsOpen={detailsOpen && panel === "settings"}
               computerOpen={computerOpen}
+              context={
+                <ContextRing
+                  botId={bot.id}
+                  state={chat.view?.runtime}
+                  provider={engine.profile?.config.provider ?? "pi"}
+                  busy={Boolean(chat.view?.busy)}
+                />
+              }
               modelSelector={
                 <EngineSelector
                   botId={bot.id}
@@ -279,9 +288,7 @@ function BotChat({
                 status={
                   <>
                     <RuntimeStatus
-                      botId={bot.id}
                       state={chat.view.runtime}
-                      busy={chat.view.busy}
                       onDraft={(text) => draft.update({ text })}
                     />
                     {!!chat.view.approvals?.length && (

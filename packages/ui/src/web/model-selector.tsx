@@ -11,7 +11,6 @@ export function ModelSelector({
   providers,
   models,
   provider,
-  selectedProvider,
   effort,
   value,
   label,
@@ -28,7 +27,6 @@ export function ModelSelector({
   providers: { id: string; name: string; icon: ReactNode }[];
   models: { id: string; name: string; group?: string }[];
   provider: string;
-  selectedProvider?: string;
   effort?: ReactNode;
   value: string;
   label: string;
@@ -65,10 +63,6 @@ export function ModelSelector({
           />
         }
       >
-        {
-          providers.find((item) => item.id === (selectedProvider ?? provider))
-            ?.icon
-        }
         <span className="model-selector-label">{label}</span>
         <svg
           className="model-selector-chevron"
@@ -123,8 +117,16 @@ export function ModelSelector({
                 </Button>
               </Tabs.List>
               <Tabs.Panel value={provider} className="model-selector-panel">
-                <header className="model-selector-heading">
-                  <strong>{selected?.name ?? "任务引擎"}</strong>
+                <div className="model-selector-search">
+                  <TextField
+                    label="搜索模型"
+                    type="search"
+                    placeholder={
+                      selected?.name ? `搜索 ${selected.name}` : "搜索模型"
+                    }
+                    value={query}
+                    onValueChange={setQuery}
+                  />
                   <Popover.Close
                     aria-label="关闭模型选择"
                     render={<Button variant="ghost" size="icon-small" />}
@@ -133,14 +135,7 @@ export function ModelSelector({
                       <path d="m4 4 8 8m0-8-8 8" />
                     </svg>
                   </Popover.Close>
-                </header>
-                <TextField
-                  label="搜索模型"
-                  type="search"
-                  placeholder="搜索模型…"
-                  value={query}
-                  onValueChange={setQuery}
-                />
+                </div>
                 <ScrollArea className="model-selector-scroll">
                   <div className="model-selector-options">
                     {loading ? (

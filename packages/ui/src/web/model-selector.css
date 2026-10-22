@@ -1,16 +1,26 @@
 .model-selector-trigger {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 6px;
   min-width: 0;
-  padding-inline: var(--space-2);
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
+  padding-inline: var(--space-3) var(--space-2);
+  border-radius: var(--radius-round);
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 12.5px;
+}
+.model-selector-trigger:hover {
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+  color: var(--color-text);
+}
+.model-selector-trigger[data-popup-open] {
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+  color: var(--color-text);
 }
 .model-selector-trigger > svg {
   flex-shrink: 0;
-  width: 1rem;
-  height: 1rem;
+  width: 0.75rem;
+  height: 0.75rem;
 }
 .model-selector-label {
   max-width: 12rem;
@@ -31,9 +41,8 @@
   width: min(23rem, calc(100vw - var(--space-6)));
   max-height: var(--available-height);
   overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-panel);
-  background: var(--color-surface);
+  border-radius: 0.875rem;
+  background: var(--color-popup);
   color: var(--color-text);
   box-shadow: var(--color-popup-shadow);
   transform-origin: var(--transform-origin);
@@ -57,8 +66,8 @@
   align-items: center;
   gap: var(--space-1);
   padding: var(--space-2);
-  border-inline-end: 1px solid var(--color-divider);
-  background: var(--color-canvas);
+  border-inline-end: 1px solid var(--color-edge);
+  background: color-mix(in srgb, var(--color-text) 3%, transparent);
 }
 .model-selector-provider {
   display: grid;
@@ -72,12 +81,11 @@
   cursor: pointer;
 }
 .model-selector-provider[data-selected] {
-  border-color: var(--color-border);
-  background: var(--color-control);
+  background: color-mix(in srgb, var(--color-text) 9%, transparent);
   color: var(--color-text);
 }
 .model-selector-provider:hover {
-  background: var(--color-control-hover);
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
 }
 .model-selector-provider svg {
   width: 1.25rem;
@@ -88,7 +96,7 @@
   margin-top: var(--space-2);
 }
 .model-selector-config svg,
-.model-selector-heading svg {
+.model-selector-search svg {
   width: 1rem;
   height: 1rem;
   fill: none;
@@ -105,15 +113,31 @@
   gap: var(--space-3);
   padding: var(--space-3);
 }
-.model-selector-heading {
+.model-selector-search {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-2);
-  font-size: var(--text-label);
 }
-.model-selector-heading strong {
-  font-weight: var(--weight-medium);
+.model-selector-search .field {
+  flex: 1;
+  min-width: 0;
+}
+.model-selector-search .field-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.model-selector-search .field-control {
+  border-radius: var(--radius-round);
+  background: color-mix(in srgb, var(--color-text) 5%, transparent);
+}
+.model-selector-search .field-control:focus {
+  border-color: transparent;
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
 }
 .model-selector-scroll {
   min-height: 0;
@@ -129,9 +153,9 @@
   align-items: center;
   gap: var(--space-2);
   width: 100%;
-  padding: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: 0.5rem;
   background: transparent;
   color: var(--color-text);
   font-size: var(--text-label);
@@ -141,14 +165,16 @@
   cursor: pointer;
 }
 .model-selector-option:hover {
-  background: var(--color-control-hover);
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
 }
 .model-selector-check {
   margin-inline-start: auto;
-  color: var(--color-link);
+  color: var(--color-chart-1);
 }
 .model-selector-group {
-  padding: var(--space-3) var(--space-2) var(--space-1);
+  padding: var(--space-3) var(--space-3) var(--space-1);
+  color: var(--color-muted);
+  font-size: var(--text-caption);
 }
 .model-selector-options p,
 .model-selector-note {

@@ -113,7 +113,6 @@ export function EngineSelector({
         icon: <EngineMark provider={item.id} />,
       }))}
       provider={browsing}
-      selectedProvider={provider}
       models={models.filter((item) => visibility.visible(browsing, item.id))}
       value={browsing === provider ? (selected ?? "") : ""}
       label={label}
