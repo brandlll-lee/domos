@@ -3,14 +3,18 @@ import { chatCopy } from "./copy.ts";
 
 export function rejectionMessage(error: unknown) {
   if (!(error instanceof ORPCError)) return;
+  const detail =
+    error.message !== new ORPCError(error.code).message
+      ? error.message
+      : undefined;
   switch (error.code) {
     case "CONFLICT":
-      return chatCopy.errors.busy;
+      return detail ?? chatCopy.errors.busy;
     case "PRECONDITION_FAILED":
       return chatCopy.errors.model;
     case "BAD_REQUEST":
-      return chatCopy.errors.input;
+      return detail ?? chatCopy.errors.input;
     case "NOT_FOUND":
-      return chatCopy.errors.file;
+      return detail ?? chatCopy.errors.file;
   }
 }

@@ -1,4 +1,5 @@
 import type { Attachment } from "@domos/agent/attachments";
+import type { InputMaterials, MaterialSelection } from "@domos/agent/materials";
 import type { TranscriptItem } from "@domos/agent/transcript";
 import type { ChatView } from "@domos/agent/view";
 import { ORPCError } from "@orpc/client";
@@ -8,7 +9,7 @@ import { chatCopy } from "./copy.ts";
 import { rejectionMessage } from "./request-error.ts";
 import { transcriptState } from "./transcript-state.ts";
 
-export type SendInput = {
+export type SendInput = MaterialSelection & {
   text: string;
   requestId: string;
   attachments?: string[];
@@ -92,7 +93,11 @@ export function useChat(botId: number, onModelRequired?: () => void) {
     };
   }, [botId]);
 
-  async function send(input: SendInput, attachments?: Attachment[]) {
+  async function send(
+    input: SendInput,
+    attachments?: Attachment[],
+    materials?: InputMaterials,
+  ) {
     setSentRequest(input.requestId);
     setSending(true);
     setError(null);
@@ -116,6 +121,7 @@ export function useChat(botId: number, onModelRequired?: () => void) {
           stopped: false,
           timestamp: Date.now(),
           attachments,
+          materials,
         },
       },
     ]);

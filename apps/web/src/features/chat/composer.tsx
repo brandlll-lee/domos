@@ -1,21 +1,24 @@
-import { MAX_ATTACHMENTS, MAX_FILE_BYTES } from "@domos/agent/attachments";
+import { MAX_ATTACHMENTS } from "@domos/agent/attachments";
+import type { ChatMessage } from "@domos/agent/messages";
 import { FileAttachment } from "@domos/ui/attachment";
 import { MessageComposer } from "@domos/ui/composer";
 import { Button } from "@domos/ui/controls";
 import { ArrowUpIcon } from "@phosphor-icons/react/dist/csr/ArrowUp";
-import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { StopIcon } from "@phosphor-icons/react/dist/csr/Stop";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
-import { type ReactNode, type Ref, useRef, useState } from "react";
-import { client } from "../../client.ts";
+import { type ReactNode, type Ref, useRef } from "react";
+import { ComposerMenu } from "./composer-menu.tsx";
 import { chatCopy } from "./copy.ts";
+import { MaterialChips } from "./material-chips.tsx";
 import { type SendMessage, useComposer } from "./use-composer.ts";
 import type { useDraft } from "./use-draft.ts";
+import { useUploads } from "./use-uploads.ts";
 
 export function Composer({
   ref,
   inputRef,
   draft,
+  messages,
   botName,
   conversationId,
   connected,
@@ -32,6 +35,7 @@ export function Composer({
   ref: Ref<HTMLElement>;
   inputRef: Ref<HTMLTextAreaElement>;
   draft: ReturnType<typeof useDraft>;
+  messages: ChatMessage[];
   botName: string;
   conversationId: number;
   connected: boolean;
@@ -46,41 +50,34 @@ export function Composer({
   onComputerRequired?: () => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  const uploads = useUploads(
+    conversationId,
+    draft.draft.attachments.length,
+    (file) =>
+      draft.update({
+        attachments: [
+          ...draft.current.current.attachments.filter(
+            (item) => item.id !== file.id,
+          ),
+          file,
+        ],
+      }),
+  );
   const composer = useComposer(
     draft,
-    connected && !stopping && !sending && !uploading,
+    connected && !stopping && !sending && !uploads.items.length,
     onSend,
   );
-  const issue = uploadError ?? error ?? composer.error;
-  async function upload(files: FileList | null) {
-    if (!files?.length) return;
-    setUploading(true);
-    setUploadError(null);
-    try {
-      if (composer.attachments.length + files.length > MAX_ATTACHMENTS)
-        throw new Error("File limit");
-      for (const file of files) {
-        if (file.size > MAX_FILE_BYTES) throw new Error("File size");
-        const attachment = await client.files.upload({
-          botId: conversationId,
-          file,
-        });
-        composer.attach(attachment);
-      }
-    } catch {
-      setUploadError(chatCopy.errors.upload);
-    } finally {
-      setUploading(false);
-      if (input.current) input.current.value = "";
-    }
-  }
+  const issue = uploads.error ?? error ?? composer.error;
+  const hasMaterials = Boolean(
+    composer.materials.skills.length || composer.materials.context.length,
+  );
   const stopAction =
     busy &&
     !composer.value.trim() &&
     !composer.attachments.length &&
-    !composer.pending;
+    !composer.pending &&
+    !hasMaterials;
   const action = stopAction
     ? {
         label: stopping ? chatCopy.stopping : chatCopy.stop,
@@ -95,11 +92,12 @@ export function Composer({
         disabled:
           (!composer.value.trim() &&
             !composer.pending &&
-            !composer.attachments.length) ||
+            !composer.attachments.length &&
+            !hasMaterials) ||
           !connected ||
           sending ||
           stopping ||
-          uploading,
+          uploads.items.length > 0,
       };
   return (
     <footer ref={ref} className="composer-area">
@@ -110,13 +108,11 @@ export function Composer({
         type="file"
         multiple
         aria-label={chatCopy.upload}
-        onChange={(event) => void upload(event.target.files)}
+        onChange={(event) => {
+          if (event.target.files) uploads.add(event.target.files);
+          event.target.value = "";
+        }}
       />
-      {uploading && (
-        <p className="working" role="status">
-          {chatCopy.uploading}
-        </p>
-      )}
       {issue && (
         <p className="alert" role="alert">
           {issue}
@@ -130,28 +126,72 @@ export function Composer({
         label={chatCopy.message}
         placeholder={chatCopy.placeholder(botName)}
         leading={
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon"
-            title={chatCopy.upload}
-            aria-label={chatCopy.upload}
-            disabled={
-              !connected ||
-              uploading ||
-              composer.pending ||
-              composer.attachments.length >= MAX_ATTACHMENTS
+          <ComposerMenu
+            botId={conversationId}
+            disabled={!connected || composer.pending}
+            filesDisabled={
+              uploads.busy || composer.attachments.length >= MAX_ATTACHMENTS
             }
-            onClick={() =>
-              computerReady ? input.current?.click() : onComputerRequired?.()
-            }
-          >
-            <PlusIcon />
-          </Button>
+            messages={messages}
+            materials={composer.materials}
+            onMaterials={composer.setMaterials}
+            onFiles={(images) => {
+              if (!computerReady) {
+                onComputerRequired?.();
+                return;
+              }
+              if (input.current) {
+                input.current.accept = images
+                  ? "image/png,image/jpeg,image/webp,image/gif"
+                  : "";
+                input.current.click();
+              }
+            }}
+          />
         }
         attachments={
-          composer.attachments.length
-            ? composer.attachments.map((file) => (
+          composer.attachments.length ||
+          uploads.items.length ||
+          hasMaterials ? (
+            <>
+              <MaterialChips
+                materials={composer.materials}
+                disabled={composer.pending}
+                onChange={composer.setMaterials}
+              />
+              {uploads.items.map((item) => (
+                <div className="composer-upload" key={item.id}>
+                  <div className="composer-upload-caption">
+                    <strong title={item.file.name}>{item.file.name}</strong>
+                    <span role={item.status === "failed" ? "alert" : "status"}>
+                      {item.status === "failed"
+                        ? item.error
+                        : item.cancelled
+                          ? "正在取消…"
+                          : "正在上传…"}
+                    </span>
+                  </div>
+                  {item.status === "failed" && (
+                    <Button
+                      variant="ghost"
+                      size="small"
+                      onClick={() => uploads.retry(item.id)}
+                    >
+                      重试
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon-small"
+                    aria-label={`取消上传 ${item.file.name}`}
+                    disabled={item.cancelled}
+                    onClick={() => uploads.cancel(item.id)}
+                  >
+                    <XIcon />
+                  </Button>
+                </div>
+              ))}
+              {composer.attachments.map((file) => (
                 <FileAttachment
                   key={file.id}
                   name={file.name}
@@ -168,14 +208,19 @@ export function Composer({
                       size="icon"
                       aria-label={`${chatCopy.removeFile} ${file.name}`}
                       disabled={composer.pending}
-                      onClick={() => composer.remove(file.id)}
+                      onClick={() =>
+                        void uploads.remove(file.id, () =>
+                          composer.remove(file.id),
+                        )
+                      }
                     >
                       <XIcon />
                     </Button>
                   }
                 />
-              ))
-            : null
+              ))}
+            </>
+          ) : null
         }
         action={
           <Button

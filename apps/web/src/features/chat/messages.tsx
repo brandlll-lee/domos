@@ -9,6 +9,7 @@ import { Fragment, memo, type ReactNode } from "react";
 import { Attachments } from "./attachments.tsx";
 import { chatCopy } from "./copy.ts";
 import { timeBreak } from "./format.ts";
+import { MaterialChips } from "./material-chips.tsx";
 import { MessageBody } from "./message-body.tsx";
 import { MessageContent } from "./message-content.tsx";
 import { TaskNotice } from "./task-notice.tsx";
@@ -56,6 +57,7 @@ const MessageRow = memo(function MessageRow({
             content={message.content}
             user={message.role === "user"}
           />
+          <MaterialChips materials={message.materials} />
           {!!message.attachments?.length && (
             <Attachments botId={botId} files={message.attachments} />
           )}

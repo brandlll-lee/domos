@@ -1,4 +1,5 @@
 import type { Attachment } from "@domos/agent/attachments";
+import type { InputMaterials } from "@domos/agent/materials";
 import { useCallback, useRef, useState } from "react";
 import { chatCopy } from "./copy.ts";
 import type { SendInput } from "./use-chat.ts";
@@ -7,8 +8,14 @@ type Draft = {
   text: string;
   attachments: Attachment[];
   pending: SendInput | null;
+  materials: InputMaterials;
 };
-const empty: Draft = { text: "", attachments: [], pending: null };
+const empty: Draft = {
+  text: "",
+  attachments: [],
+  pending: null,
+  materials: { skills: [], context: [] },
+};
 const storageError = chatCopy.errors.draft;
 
 function load(key: string): { draft: Draft; error: string | null } {
@@ -35,7 +42,27 @@ function load(key: string): { draft: Draft; error: string | null } {
       )
     )
       throw new Error("Invalid attachments");
-    return { draft: { ...value, attachments }, error: null };
+    const materials = value.materials ?? { skills: [], context: [] };
+    if (
+      !Array.isArray(materials.skills) ||
+      !Array.isArray(materials.context) ||
+      materials.skills.some(
+        (item: InputMaterials["skills"][number]) =>
+          typeof item.id !== "string" ||
+          typeof item.revision !== "number" ||
+          typeof item.name !== "string" ||
+          typeof item.content !== "string",
+      ) ||
+      materials.context.some(
+        (item: InputMaterials["context"][number]) =>
+          typeof item.id !== "string" ||
+          typeof item.text !== "string" ||
+          !["text", "message"].includes(item.type) ||
+          (item.type === "message" && typeof item.messageId !== "string"),
+      )
+    )
+      throw new Error("Invalid materials");
+    return { draft: { ...value, attachments, materials }, error: null };
   } catch {
     return { draft: empty, error: storageError };
   }

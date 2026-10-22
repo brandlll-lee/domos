@@ -1,0 +1,192 @@
+.composer-menu-positioner {
+  z-index: 10;
+}
+.composer-menu-popup {
+  width: calc(var(--space-12) * 4);
+  max-width: var(--available-width);
+  max-height: var(--available-height);
+  overflow: auto;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-popup);
+  color: var(--color-text);
+  box-shadow: var(--color-popup-shadow);
+  transform-origin: var(--transform-origin);
+  transition:
+    opacity var(--motion-feedback),
+    scale var(--motion-feedback);
+}
+.composer-menu-popup[data-panel="skills"],
+.composer-menu-popup[data-panel="text"],
+.composer-menu-popup[data-panel="messages"] {
+  width: calc(var(--sidebar-width) + var(--space-12));
+}
+.composer-menu-popup[data-starting-style],
+.composer-menu-popup[data-ending-style] {
+  opacity: 0;
+  scale: 0.97;
+}
+.composer-menu-item,
+.composer-picker-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--control-height);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  font: inherit;
+  font-size: var(--text-body);
+  cursor: pointer;
+}
+.composer-menu-item svg,
+.material-chip > svg {
+  width: var(--space-4);
+  height: var(--space-4);
+  flex-shrink: 0;
+  color: var(--color-muted);
+}
+.composer-menu-item:hover,
+.composer-picker-row:hover {
+  background: var(--color-control-hover);
+}
+.composer-menu-item:focus-visible,
+.composer-picker-row:focus-visible,
+.composer-picker-search:focus-visible,
+.composer-text-picker textarea:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+.composer-menu-item:active,
+.composer-picker-row:active {
+  background: var(--color-selection);
+}
+.composer-menu-item:disabled {
+  color: var(--color-muted);
+  cursor: default;
+  opacity: 0.5;
+}
+.composer-picker-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1);
+  font-size: var(--text-body);
+  font-weight: var(--weight-medium);
+}
+.composer-picker-head h2 {
+  font: inherit;
+  margin: 0;
+}
+.composer-picker-search,
+.composer-text-picker textarea {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-control);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-body);
+}
+.composer-picker-search {
+  height: var(--control-small);
+}
+.composer-picker-list {
+  max-height: var(--message-collapse-height);
+  overflow: auto;
+  margin-top: var(--space-1);
+}
+.composer-picker-state {
+  margin: 0;
+  padding: var(--space-3);
+  color: var(--color-muted);
+  font-size: var(--text-label);
+}
+.composer-message-choice {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.composer-text-picker {
+  display: grid;
+  justify-items: end;
+  gap: var(--space-2);
+  padding: var(--space-1);
+}
+.composer-text-picker textarea {
+  min-height: var(--composer-max-height);
+  resize: vertical;
+  max-height: var(--message-collapse-height);
+}
+.material-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.material-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  color: var(--color-muted);
+  font-size: var(--text-label);
+  line-height: var(--leading-control);
+}
+.material-chip > span {
+  max-width: var(--sidebar-width);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.composer-attachments > .material-chips {
+  width: 100%;
+}
+.message .material-chips {
+  margin-top: var(--space-2);
+}
+.composer-upload {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  font-size: var(--text-label);
+}
+.composer-upload-caption {
+  min-width: 0;
+  display: grid;
+}
+.composer-upload-caption strong {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: var(--weight-medium);
+}
+.composer-upload-caption span {
+  color: var(--color-muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .composer-menu-popup {
+    transition: none;
+  }
+}
+
+.message.user .material-chip,
+.message.user .material-chip > svg {
+  color: var(--color-on-user);
+}

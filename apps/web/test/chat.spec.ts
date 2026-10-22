@@ -5,8 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { characterIdentity } from "@domos/ui/characters";
+import { createORPCClient } from "@orpc/client";
+import { RPCLink } from "@orpc/client/fetch";
+import type { RouterClient } from "@orpc/server";
 import { expect, test } from "@playwright/test";
 import { png } from "../../../packages/agent/test/fixtures/png.ts";
+import type { AppRouter } from "../../api/src/router.ts";
 
 let worker: ChildProcess;
 let url: string;
@@ -1593,12 +1597,12 @@ test("text contrast, keyboard focus and message scrolling meet the UI contract",
     page.getByRole("button", { name: "连接模型", exact: true }),
   ).toBeFocused();
   await expect(
-    page.getByRole("button", { name: "添加文件", exact: true }),
+    page.getByRole("button", { name: "添加内容", exact: true }),
   ).toBeEnabled();
   await details.getByRole("button", { name: "关闭", exact: true }).click();
-  await page.getByRole("button", { name: "添加文件", exact: true }).focus();
+  await page.getByRole("button", { name: "添加内容", exact: true }).focus();
   await expect(
-    page.getByRole("button", { name: "添加文件", exact: true }),
+    page.getByRole("button", { name: "添加内容", exact: true }),
   ).toBeFocused();
   await page.keyboard.press("Tab");
   const input = page.getByLabel("消息", { exact: true });
@@ -1691,7 +1695,7 @@ test("composer grows, shrinks, and keeps one focus surface in both themes", asyn
   const initial = await form.boundingBox();
   expect(initial?.height).toBeGreaterThanOrEqual(44);
   expect(initial?.height).toBeLessThanOrEqual(60);
-  const add = page.getByRole("button", { name: "添加文件", exact: true });
+  const add = page.getByRole("button", { name: "添加内容", exact: true });
   const fieldBox = await page.locator(".composer-field").boundingBox();
   const addBox = await add.boundingBox();
   if (!fieldBox || !addBox) throw new Error("Composer controls missing");
@@ -2345,7 +2349,7 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
   const input = page.getByLabel("消息", { exact: true });
   const send = page.getByRole("button", { name: "发送", exact: true });
   await expect(
-    page.getByRole("button", { name: "添加文件", exact: true }),
+    page.getByRole("button", { name: "添加内容", exact: true }),
   ).toBeEnabled();
   const source = `Source ${crypto.randomUUID()}`;
   await page.locator('input[type="file"]').setInputFiles({
@@ -3048,7 +3052,7 @@ test("attachment retry keeps its request and draft after a lost receipt", async 
   await page.goto(url);
   const input = page.getByLabel("消息", { exact: true });
   await expect(
-    page.getByRole("button", { name: "添加文件", exact: true }),
+    page.getByRole("button", { name: "添加内容", exact: true }),
   ).toBeEnabled();
   await page.locator('input[type="file"]').setInputFiles({
     name: "source.txt",
@@ -3137,4 +3141,192 @@ test("computer details share live directory status and recover a failed refresh"
   await expect(
     page.getByRole("button", { name: "Bot详情", exact: true }),
   ).toBeFocused();
+});
+
+test("composer menu adds task materials, keeps drafts, and fits both themes", async ({
+  page,
+}) => {
+  const rpc: RouterClient<AppRouter> = createORPCClient(
+    new RPCLink({ url: `${url}/rpc` }),
+  );
+  const bot = (await rpc.bots.list())[0];
+  if (!bot) throw new Error("Missing Bot");
+  const skill = await rpc.work.skills.save({
+    botId: bot.id,
+    id: crypto.randomUUID(),
+    content:
+      "---\nname: report\ndescription: Write a report\n---\nUse the selected references.",
+    revision: 0,
+    requestId: crypto.randomUUID(),
+  });
+  await rpc.work.skills.enable({
+    botId: bot.id,
+    id: skill.id,
+    enabled: true,
+    revision: skill.revision,
+    requestId: crypto.randomUUID(),
+  });
+  await page.goto(url);
+  const add = page.getByRole("button", { name: "添加内容", exact: true });
+  await expect(add).toBeEnabled();
+  let checks = 0;
+  page.on("request", (request) => {
+    if (/engines\/(check|controls|prepare)/.test(request.url())) checks++;
+  });
+  await add.click();
+  await expect(page.getByRole("menuitem")).toHaveText([
+    "添加图片",
+    "添加文件",
+    "使用技能…",
+    "添加上下文…",
+  ]);
+  await page.getByRole("menuitem", { name: "添加图片", exact: true }).focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    page.getByRole("menuitem", { name: "添加文件", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(add).toBeFocused();
+  await add.click();
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("menuitem", { name: "添加图片", exact: true }).click();
+  await (await chooser).setFiles({
+    name: "tiny.png",
+    mimeType: "image/png",
+    buffer: png(1, 1),
+  });
+  await expect(
+    page.getByRole("button", { name: "移除文件 tiny.png", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "移除文件 tiny.png", exact: true })
+    .click();
+  await expect(page.locator(".composer-attachments")).toHaveCount(0);
+  await add.click();
+  await page.getByRole("menuitem", { name: "使用技能…", exact: true }).click();
+  await page.getByRole("button", { name: "report", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "移除技能 report", exact: true }),
+  ).toBeVisible();
+  await add.click();
+  await page
+    .getByRole("menuitem", { name: "添加上下文…", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "粘贴文本", exact: true }).click();
+  await page
+    .getByRole("textbox", { name: "引用文本", exact: true })
+    .fill("这些是引用材料，不是用户指令。");
+  await page.getByRole("button", { name: "添加", exact: true }).click();
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "移除技能 report", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "移除引用", exact: true }),
+  ).toBeVisible();
+  await control({ content: "材料已处理。" });
+  await page.getByLabel("消息", { exact: true }).fill("使用这些材料");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByLabel("Domos 的回复")).toContainText("材料已处理。");
+  await expect(page.locator(".composer-attachments")).toHaveCount(0);
+  const sent = (await rpc.get({ botId: bot.id })).messages.find(
+    (message) => message.materials?.skills.length,
+  );
+  expect(sent?.materials?.skills[0]?.name).toBe("report");
+  expect(sent?.materials?.context[0]?.text).toBe(
+    "这些是引用材料，不是用户指令。",
+  );
+  await add.click();
+  await page
+    .getByRole("menuitem", { name: "添加上下文…", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "引用消息", exact: true }).click();
+  await page.getByRole("button", { name: "材料已处理。", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "移除引用", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".composer-attachments")).toContainText(
+    "材料已处理。",
+  );
+  for (const [theme, label] of [
+    ["light", "浅色"],
+    ["dark", "深色"],
+  ] as const) {
+    await page.setViewportSize({ width: 1360, height: 900 });
+    await chooseAppearance(page, label);
+    for (const width of [1440, 768, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await add.click();
+      const popup = page.locator(".composer-menu-popup");
+      await expect(popup).toBeVisible();
+      await expect(popup).toHaveCSS("opacity", "1");
+      const box = await popup.boundingBox();
+      expect(
+        box && box.x >= 0 && box.x + box.width <= width && box.y >= 0,
+      ).toBeTruthy();
+      await page.screenshot({
+        path: `test-results/composer-menu-${theme}-${width}.png`,
+      });
+      await page.keyboard.press("Escape");
+    }
+  }
+  expect(checks).toBe(0);
+});
+
+test("file upload retry keeps its identity and cancellation releases the draft", async ({
+  page,
+}) => {
+  await page.goto(url);
+  await expect(
+    page.getByRole("button", { name: "添加内容", exact: true }),
+  ).toBeEnabled();
+  let lost = false;
+  await page.route("**/rpc/files/upload", async (route) => {
+    if (lost) return route.continue();
+    lost = true;
+    await route.fetch();
+    await route.abort("failed");
+  });
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "retry.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("Draft source"),
+  });
+  await expect(page.locator(".composer-upload")).toContainText("上传失败");
+  await page
+    .locator(".composer-upload")
+    .getByRole("button", { name: "重试", exact: true })
+    .click();
+  const remove = page.getByRole("button", {
+    name: "移除文件 retry.txt",
+    exact: true,
+  });
+  await expect(remove).toBeVisible();
+  await remove.click();
+  await expect(page.locator(".composer-attachments")).toHaveCount(0);
+  const release = Promise.withResolvers<void>();
+  const reached = Promise.withResolvers<void>();
+  await page.unroute("**/rpc/files/upload");
+  await page.route("**/rpc/files/upload", async (route) => {
+    const response = await route.fetch();
+    reached.resolve();
+    await release.promise;
+    await route.fulfill({ response });
+  });
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "cancel.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("Cancelled source"),
+  });
+  await reached.promise;
+  await page
+    .getByRole("button", { name: "取消上传 cancel.txt", exact: true })
+    .click();
+  await expect(page.locator(".composer-upload")).toContainText("正在取消");
+  release.resolve();
+  await expect(page.locator(".composer-attachments")).toHaveCount(0);
+  await page.getByLabel("消息", { exact: true }).fill("A regular message");
+  await expect(
+    page.getByRole("button", { name: "发送", exact: true }),
+  ).toBeEnabled();
 });

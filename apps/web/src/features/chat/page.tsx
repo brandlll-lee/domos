@@ -70,6 +70,7 @@ function BotChat({
       draft.update({
         text: messageText(original),
         attachments: original.attachments ?? [],
+        materials: original.materials ?? { skills: [], context: [] },
         pending: null,
       });
       input.current?.focus();
@@ -264,6 +265,7 @@ function BotChat({
                 ref={dock.ref}
                 inputRef={input}
                 draft={draft}
+                messages={chat.view.messages}
                 key={chat.view.id}
                 botName={bot.name}
                 conversationId={chat.view.id}
