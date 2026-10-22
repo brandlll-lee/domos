@@ -182,3 +182,97 @@ test("directory previews use displayed input and delivered text", async () => {
     await runtime.harness.close(context);
   }
 });
+
+test("contact times follow visible committed messages and survive reopening", async () => {
+  const fixture = await setup();
+  const runtime = await fixture.open();
+  const id = runtime.conversation.id;
+  const contact = async () =>
+    (await runtime.bots.list(context)).find((bot) => bot.id === id);
+  try {
+    expect((await contact())?.lastMessageAt).toBeUndefined();
+    await runtime.harness.commit(async (tx) => {
+      await tx.appendEntry(id, {
+        kind: FileInput,
+        data: { text: "", attachments: [] },
+        model: [
+          {
+            role: "user",
+            content: [{ type: "image", data: "", mimeType: "image/png" }],
+            timestamp: 1000,
+          },
+        ],
+      });
+    }, context);
+    expect((await contact())?.lastMessageAt).toBe(1000);
+    await runtime.harness.commit(async (tx) => {
+      await tx.appendEntry(id, {
+        kind: EngineMessage,
+        data: {
+          role: "assistant",
+          content: [{ type: "text", text: "Ready" }],
+          timestamp: 2000,
+        },
+      });
+      await tx.appendEntry(id, {
+        kind: EngineMessage,
+        data: {
+          role: "assistant",
+          content: [{ type: "text", text: "Draft" }],
+          pending: true,
+          timestamp: 3000,
+        },
+      });
+      await tx.appendEntry(id, {
+        kind: EngineMessage,
+        data: {
+          role: "assistant",
+          content: [{ type: "text", text: "Failed" }],
+          stopReason: "error",
+          timestamp: 4000,
+        },
+      });
+      await tx.appendEntry(id, {
+        kind: "bookkeeping",
+        data: { timestamp: 5000 },
+      });
+    }, context);
+    expect(await contact()).toMatchObject({
+      preview: "Ready",
+      lastMessageAt: 2000,
+    });
+    await runtime.harness.commit(async (tx) => {
+      await tx.appendEntry(id, {
+        kind: EngineMessage,
+        data: {
+          role: "assistant",
+          content: [{ type: "text", text: "Ready" }],
+          timestamp: 6000,
+        },
+      });
+      await tx.appendEntry(id, {
+        kind: EngineMessage,
+        data: {
+          role: "toolResult",
+          content: [],
+          attachments: [{ id: "file" }],
+          timestamp: 7000,
+        },
+      });
+    }, context);
+    expect(await contact()).toMatchObject({
+      preview: "Ready",
+      lastMessageAt: 7000,
+    });
+  } finally {
+    await runtime.harness.close(context);
+  }
+  const reopened = await fixture.open();
+  try {
+    expect(
+      (await reopened.bots.list(context)).find((bot) => bot.id === id),
+    ).toMatchObject({ preview: "Ready", lastMessageAt: 7000 });
+  } finally {
+    await reopened.harness.close(context);
+  }
+});

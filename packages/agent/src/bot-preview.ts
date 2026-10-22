@@ -17,20 +17,34 @@ const previewLength = 160;
 const excerpt = (text: string) =>
   Array.from(text.trim()).slice(0, previewLength).join("");
 
-function entryText(entry: EntryRecord) {
+function entryPreview(entry: EntryRecord) {
   if (entry.kind === EngineMessage) {
     const message = entry.data as unknown as ChatMessage;
-    return (
-      (message.delivery && previewText(message.delivery.text)) ??
-      (!message.pending &&
-      !message.stopped &&
-      message.stopReason !== "error" &&
-      (message.role === "user" || message.role === "assistant")
-        ? message.role === "assistant"
-          ? previewText(messageText(message))
-          : messageText(message)
-        : "")
-    );
+    if (message.pending || message.stopped || message.stopReason === "error")
+      return;
+    if (
+      (message.delivery ||
+        (message.role === "toolResult" && message.attachments?.length)) &&
+      !message.isError
+    )
+      return {
+        text: previewText(message.delivery?.text ?? ""),
+        timestamp: message.timestamp,
+      };
+    if (message.role === "user" || message.role === "assistant") {
+      const text = messageText(message);
+      if (
+        message.role === "user" ||
+        text.trim() ||
+        message.attachments?.length ||
+        message.content.some((part) => part.type === "image")
+      )
+        return {
+          text: message.role === "assistant" ? previewText(text) : text,
+          timestamp: message.timestamp,
+        };
+    }
+    return;
   }
   for (const message of [...(entry.model ?? [])].reverse()) {
     if (message.role === "user") {
@@ -38,7 +52,10 @@ function entryText(entry: EntryRecord) {
         entry.kind === FileInput || entry.kind === RoutineInput
           ? (entry.data as { text: string })
           : undefined;
-      return input?.text ?? messageText(message);
+      return {
+        text: input?.text ?? messageText(message),
+        timestamp: message.timestamp,
+      };
     }
     if (
       message.role === "assistant" &&
@@ -46,18 +63,26 @@ function entryText(entry: EntryRecord) {
       message.stopReason !== "aborted"
     ) {
       const text = messageText(message);
-      if (text.trim()) return previewText(text);
+      if (text.trim())
+        return { text: previewText(text), timestamp: message.timestamp };
     }
     if (message.role === "toolResult" && !message.isError) {
-      const delivery = (message.details as { delivery?: MessageDelivery })
-        ?.delivery;
+      const details = message.details as {
+        delivery?: MessageDelivery;
+        attachment?: unknown;
+      };
       const diagnostics = (entry.data as { diagnostics?: { code: string }[] })
         ?.diagnostics;
-      if (delivery && !diagnostics?.some((item) => item.code === "aborted"))
-        return previewText(delivery.text);
+      if (
+        (details?.delivery || details?.attachment) &&
+        !diagnostics?.some((item) => item.code === "aborted")
+      )
+        return {
+          text: previewText(details.delivery?.text ?? ""),
+          timestamp: message.timestamp,
+        };
     }
   }
-  return "";
 }
 
 export async function botPreview(
@@ -66,13 +91,19 @@ export async function botPreview(
   context: Context,
 ) {
   let cursor: Cursor | undefined;
+  let latest: { lastMessageAt?: number } | undefined;
   do {
     const page = await conversation.entries({}, pageSize, cursor, context);
     for (const entry of page.items) {
-      const text = entryText(entry).trim();
-      if (text) return excerpt(text);
+      const message = entryPreview(entry);
+      if (!message) continue;
+      latest ??= Number.isFinite(message.timestamp)
+        ? { lastMessageAt: message.timestamp }
+        : {};
+      const text = message.text.trim();
+      if (text) return { preview: excerpt(text), ...latest };
     }
     cursor = page.next;
   } while (cursor);
-  return excerpt(instructions);
+  return { preview: excerpt(instructions), ...latest };
 }

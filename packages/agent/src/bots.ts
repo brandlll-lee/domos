@@ -26,7 +26,11 @@ export type Bot = {
   createdAt?: number;
   welcomeComplete?: boolean;
 };
-export type BotPresence = Bot & { busy: boolean; preview: string };
+export type BotPresence = Bot & {
+  busy: boolean;
+  preview: string;
+  lastMessageAt?: number;
+};
 export type CreateBot = {
   name: string;
   instructions?: string;
@@ -118,13 +122,13 @@ export class Bots {
             createdAt,
             welcomeComplete: Boolean(welcomeComplete),
             busy: Boolean(live?.run || engine?.tasks.length),
-            preview: conversation
+            ...(conversation
               ? await botPreview(
                   conversation,
                   agent?.instructions ?? "",
                   context,
                 )
-              : "",
+              : { preview: "" }),
           };
         },
       ),

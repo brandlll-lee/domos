@@ -195,6 +195,7 @@ test("adopts the existing root conversation with its history and configuration",
         createdAt: expect.any(Number),
         busy: false,
         preview: "Existing answer",
+        lastMessageAt: expect.any(Number),
         welcomeComplete: false,
       },
     ]);
