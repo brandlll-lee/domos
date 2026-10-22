@@ -53,14 +53,14 @@ const MessageRow = memo(function MessageRow({
     >
       <MessageBubble side={message.role === "user" ? "outgoing" : "incoming"}>
         <MessageBody>
+          {!!message.attachments?.length && (
+            <Attachments botId={botId} files={message.attachments} />
+          )}
+          <MaterialChips materials={message.materials} />
           <MessageContent
             content={message.content}
             user={message.role === "user"}
           />
-          <MaterialChips materials={message.materials} />
-          {!!message.attachments?.length && (
-            <Attachments botId={botId} files={message.attachments} />
-          )}
         </MessageBody>
       </MessageBubble>
       {message.role === "user" && (

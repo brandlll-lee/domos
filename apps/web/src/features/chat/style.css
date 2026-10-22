@@ -322,6 +322,11 @@
 .message-body[data-expanded] {
   max-height: none;
 }
+.message-body .attachments:not(:last-child),
+.message-body .message-image:not(:last-child),
+.message-body .material-chips:not(:last-child) {
+  margin-bottom: var(--space-2);
+}
 .message-body[data-folded] {
   mask-image: linear-gradient(
     to bottom,

@@ -154,9 +154,6 @@
 .composer-attachments > .material-chips {
   width: 100%;
 }
-.message .material-chips {
-  margin-top: var(--space-2);
-}
 .composer-upload {
   display: flex;
   align-items: center;
@@ -188,5 +185,5 @@
 
 .message.user .material-chip,
 .message.user .material-chip > svg {
-  color: var(--color-on-user);
+  color: var(--color-text);
 }

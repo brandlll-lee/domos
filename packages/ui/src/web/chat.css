@@ -1,22 +1,47 @@
 .chat-surface {
   container: chat / inline-size;
-  --color-user: color-mix(in srgb, var(--bot-color) 32%, white);
+  --color-user: color-mix(in srgb, var(--bot-color) 32%, var(--color-canvas));
 }
 .message-bubble {
+  position: relative;
   width: fit-content;
   min-width: 0;
   max-width: var(--message-max-width);
   padding: var(--message-padding-block) var(--message-padding-inline);
   border-radius: var(--radius-message);
+  border-bottom-left-radius: 0;
   background: var(--color-assistant);
   color: var(--color-text);
   font-size: var(--text-message);
   line-height: var(--leading-control);
   font-weight: var(--weight-regular);
 }
+.message-bubble::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: calc(var(--space-2) * -1);
+  width: var(--space-2);
+  height: var(--space-3);
+  background: inherit;
+  clip-path: shape(
+    from 100% 0,
+    curve to 0 100% with 100% 70% /
+    50% 100%,
+    hline to 100%,
+    close
+  );
+  pointer-events: none;
+}
 .message-bubble[data-side="outgoing"] {
   background: var(--color-user);
-  color: var(--color-on-user);
+  border-bottom-left-radius: var(--radius-message);
+  border-bottom-right-radius: 0;
+}
+.message-bubble[data-side="outgoing"]::after {
+  left: auto;
+  right: calc(var(--space-2) * -1);
+  transform: scaleX(-1);
 }
 
 .message-composer {
@@ -123,9 +148,6 @@
 }
 .file-type-icon[data-type="PDF"] {
   color: var(--color-danger);
-}
-.attachments:not(:first-child) {
-  margin-top: var(--space-3);
 }
 .file-attachment {
   display: flex;

@@ -1034,9 +1034,6 @@ test("chat gutters stay full width while bubbles follow the available panel", as
     "**",
   );
   const outgoing = page.getByLabel("你的消息").locator(".message-bubble");
-  const outgoingBackground = await outgoing.evaluate(
-    (element) => getComputedStyle(element).backgroundColor,
-  );
   for (const viewport of [
     { width: 1600, height: 900 },
     { width: 940, height: 900 },
@@ -1076,7 +1073,10 @@ test("chat gutters stay full width while bubbles follow the available panel", as
         "font-size",
         "12px",
       );
-      await expect(outgoing).toHaveCSS("background-color", outgoingBackground);
+      await expect(outgoing).toHaveCSS(
+        "color",
+        await reply.evaluate((element) => getComputedStyle(element).color),
+      );
       await expectTextContrast(page);
       const overflow = await page
         .locator(".transcript")
@@ -2080,9 +2080,6 @@ test("IM bubbles, sidebar search, and popup surfaces share both themes", async (
   const incoming = page.getByLabel("Domos 的回复").locator(".message-bubble");
   const outgoing = page.getByLabel("你的消息").locator(".message-bubble");
   await expect(incoming.locator("strong")).toHaveText("已整理好。");
-  const bubbleColor = await outgoing.evaluate(
-    (item) => getComputedStyle(item).backgroundColor,
-  );
   const column = await page.getByRole("log").boundingBox();
   const received = await incoming.boundingBox();
   const sent = await outgoing.boundingBox();
@@ -2115,7 +2112,10 @@ test("IM bubbles, sidebar search, and popup surfaces share both themes", async (
   ] as const) {
     await chooseAppearance(page, label);
     await expectTextContrast(page);
-    await expect(outgoing).toHaveCSS("background-color", bubbleColor);
+    await expect(outgoing).toHaveCSS(
+      "color",
+      await incoming.evaluate((element) => getComputedStyle(element).color),
+    );
     await page.screenshot({ path: `test-results/im-${theme}.png` });
     const details = await openDetails(page);
     await chooseDetail(details, "连接与账号");
@@ -2451,6 +2451,80 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
   expect(await readFile(await download.path(), "utf8")).toBe(
     `# Report\n${source}`,
   );
+});
+
+test("message media leads captions and bubble tails follow both themes", async ({
+  page,
+}) => {
+  await control({ content: "图片和文档已收到。" });
+  await page.goto(url);
+  await expect(
+    page.getByRole("button", { name: "添加内容", exact: true }),
+  ).toBeEnabled();
+  await page.getByLabel("添加文件", { exact: true }).setInputFiles([
+    { name: "photo.png", mimeType: "image/png", buffer: png(320, 180) },
+    {
+      name: "report.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.7\n%%EOF\n"),
+    },
+  ]);
+  await expect(page.locator(".composer-attachments .attachment")).toHaveCount(
+    2,
+  );
+  await page.getByLabel("消息", { exact: true }).fill("请一起核对图片和文档。");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const incoming = page.getByLabel("Domos 的回复").locator(".message-bubble");
+  const outgoing = page.getByLabel("你的消息").locator(".message-bubble");
+  await expect(incoming).toContainText("图片和文档已收到。");
+  let lightBackground = "";
+  for (const [theme, label] of [
+    ["light", "浅色"],
+    ["dark", "深色"],
+  ] as const) {
+    await page.setViewportSize({ width: 1360, height: 900 });
+    await chooseAppearance(page, label);
+    const background = await outgoing.evaluate(
+      (element) => getComputedStyle(element).backgroundColor,
+    );
+    if (theme === "light") lightBackground = background;
+    else expect(background).not.toBe(lightBackground);
+    await expect(outgoing).toHaveCSS(
+      "color",
+      await incoming.evaluate((element) => getComputedStyle(element).color),
+    );
+    await expectTextContrast(page);
+    for (const width of [1440, 768, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const attachments = await outgoing.locator(".attachments").boundingBox();
+      const caption = await outgoing.locator(".user-text").boundingBox();
+      expect(
+        attachments &&
+          caption &&
+          attachments.y + attachments.height <= caption.y,
+      ).toBeTruthy();
+      for (const bubble of [incoming, outgoing]) {
+        const tail = await bubble.evaluate((element) => {
+          const style = getComputedStyle(element, "::after");
+          return {
+            shape: style.clipPath,
+            color: style.backgroundColor,
+            surface: getComputedStyle(element).backgroundColor,
+          };
+        });
+        expect(tail.shape).not.toBe("none");
+        expect(tail.color).toBe(tail.surface);
+      }
+      expect(
+        await page
+          .locator(".transcript")
+          .evaluate((element) => element.scrollWidth <= element.clientWidth),
+      ).toBe(true);
+      await page.screenshot({
+        path: `test-results/message-bubbles-${theme}-${width}.png`,
+      });
+    }
+  }
 });
 
 test("delivered images form a gallery with viewer downloads and keyboard navigation", async ({
