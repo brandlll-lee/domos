@@ -163,7 +163,11 @@ export function createRouter(
                       .config
                   : undefined;
                 let supported: boolean | undefined;
-                if (!config || config.provider === "pi") {
+                if (
+                  !config ||
+                  (config.provider === "pi" &&
+                    config.accountSource !== "native")
+                ) {
                   const model = (await conversation.agent(BACKGROUND_CONTEXT))
                     .model;
                   if (model)

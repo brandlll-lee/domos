@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { EngineSelect } from "../engine-select.tsx";
 import { EngineConnection } from "./engine-connection.tsx";
 import { EngineDialog, type EngineDialogKind } from "./engine-dialog.tsx";
+import { EngineSource } from "./engine-source.tsx";
 import { useEngine } from "./use-engine.ts";
 import "./engine.css";
 
@@ -51,7 +52,12 @@ export function EnginePanel({
   useEffect(() => {
     if (!active || !onReady || !profile || profile.prepared || blocked || error)
       return;
-    if (provider === "pi" && !profile.config.model) return;
+    if (
+      provider === "pi" &&
+      !profile.config.model &&
+      profile.config.accountSource !== "native"
+    )
+      return;
     const key = `${botId}:${profile.revision}`;
     if (checked.current === key) return;
     checked.current = key;
@@ -89,7 +95,10 @@ export function EnginePanel({
           ) : (
             <p role="status">正在读取引擎…</p>
           )}
-          {provider === "pi" && piModel ? (
+          <EngineSource setup={setup} disabled={blocked} />
+          {provider === "pi" &&
+          profile?.config.accountSource !== "native" &&
+          piModel ? (
             <>
               {piModel(setup.refresh, setModelBusy)}
               <Button

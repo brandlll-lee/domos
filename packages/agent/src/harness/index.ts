@@ -176,7 +176,9 @@ export class Engines {
         throw new WorkError("CONFLICT", "配置已更新。请刷新后重试。");
       const reset =
         doc.config.provider !== input.config.provider ||
-        doc.config.model !== input.config.model;
+        doc.config.model !== input.config.model ||
+        (doc.config.accountSource ?? "managed") !==
+          (input.config.accountSource ?? "managed");
       for (const [key, value] of Object.entries(input.config.options ?? {})) {
         const control = doc.runtime?.controls?.options.find(
           (item) => item.id === key,
@@ -190,7 +192,11 @@ export class Engines {
       doc.config = input.config;
       doc.revision++;
       doc.requestId = input.requestId;
-      if (input.config.provider === "pi" && input.config.model) {
+      if (
+        input.config.provider === "pi" &&
+        input.config.model &&
+        input.config.accountSource !== "native"
+      ) {
         const separator = input.config.model.indexOf("/");
         if (separator < 1)
           throw new WorkError("BAD_REQUEST", "请选择 Pi 的模型。");
@@ -243,7 +249,11 @@ export class Engines {
         (doc.tasks.length && input.whenBusy === "reject")
       )
         throw new WorkError("CONFLICT", "Bot 正在工作。请稍后发送。");
-      if (!doc.config.model && doc.config.provider === "pi") {
+      if (
+        !doc.config.model &&
+        doc.config.provider === "pi" &&
+        doc.config.accountSource !== "native"
+      ) {
         const model = (await tx.doc(AgentDoc, id)).model;
         if (model) doc.config.model = `${model.provider}/${model.modelId}`;
       }

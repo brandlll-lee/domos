@@ -1,4 +1,9 @@
-import { type EngineModel, type EngineProcess, engineLimits } from "./types.ts";
+import {
+  type EngineConfig,
+  type EngineModel,
+  type EngineProcess,
+  engineLimits,
+} from "./types.ts";
 
 export type AccountPrompt = {
   type: "text" | "select";
@@ -41,17 +46,23 @@ type Authorization = {
 export async function openOpenCodeAccount(
   worker: EngineProcess,
   env: Record<string, string> = {},
+  accountSource?: EngineConfig["accountSource"],
 ) {
   const { home } = await worker.ready;
   worker.output.resume();
   worker.error.resume();
   await worker.launch({
     command: "opencode",
+    accountSource,
     args: ["serve", "--hostname", "127.0.0.1", "--port", "0"],
     env: {
       ...env,
-      XDG_DATA_HOME: `${home}/opencode/data`,
-      XDG_CONFIG_HOME: `${home}/opencode/config`,
+      ...(accountSource === "native"
+        ? {}
+        : {
+            XDG_DATA_HOME: `${home}/opencode/data`,
+            XDG_CONFIG_HOME: `${home}/opencode/config`,
+          }),
     },
     http: {
       timeoutMs: engineLimits.approvalMs,

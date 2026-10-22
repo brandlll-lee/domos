@@ -20,6 +20,12 @@ export function EngineAccount({
 }) {
   const [key, setKey] = useState("");
   const [method, setMethod] = useState("login");
+  if (setup.profile?.config.accountSource === "native")
+    return (
+      <p className="detail-note">
+        请在工作电脑的原 CLI 中管理账号，然后重新检查连接。
+      </p>
+    );
   if (!canManage) return <p className="detail-note">请让管理员连接账号。</p>;
   if (setup.login?.state === "waiting") return <EngineSignIn setup={setup} />;
   return (

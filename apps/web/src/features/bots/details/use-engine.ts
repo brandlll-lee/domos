@@ -142,13 +142,21 @@ export function useEngine(
         setProfile(
           await client.engines.configure({
             botId,
-            config,
+            config: {
+              ...config,
+              accountSource:
+                config.accountSource ??
+                (config.provider === profile.config.provider
+                  ? profile.config.accountSource
+                  : undefined),
+            },
             revision: profile.revision,
             requestId,
           }),
         );
         setConnection(undefined);
         setLogin(null);
+        window.dispatchEvent(new Event("domos:engines"));
       }),
     key: (key: string | null, providerId?: string) =>
       run("key", ["key", botId, providerId], async () => {

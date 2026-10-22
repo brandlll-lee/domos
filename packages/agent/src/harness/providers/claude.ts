@@ -332,6 +332,7 @@ export const claudeProvider: EngineProvider = {
     });
     await process.launch({
       command: "claude",
+      accountSource: config.accountSource,
       args: [
         "--print",
         "--verbose",
@@ -350,6 +351,9 @@ export const claudeProvider: EngineProvider = {
         "--mcp-config",
         "__DOMOS_MCP__",
         "--strict-mcp-config",
+        ...(config.accountSource === "native"
+          ? ["--setting-sources", "project"]
+          : []),
         "--permission-prompt-tool",
         "mcp__domos__approve",
         ...(config.model ? ["--model", config.model] : []),
@@ -360,7 +364,12 @@ export const claudeProvider: EngineProvider = {
       ],
       instructions,
       mcp: { url: ready.url },
-      env: { ...env, CLAUDE_CONFIG_DIR: `${ready.home}/claude` },
+      env: {
+        ...env,
+        ...(config.accountSource === "native"
+          ? {}
+          : { CLAUDE_CONFIG_DIR: `${ready.home}/claude` }),
+      },
     });
     await emit({ type: "session", id });
     await emit({

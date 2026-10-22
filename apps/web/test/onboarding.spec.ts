@@ -190,7 +190,9 @@ test("first use prepares the default Bot with a computer and engine before share
     await expect(engines.getByRole("radio")).toHaveCount(4);
     await expect(engines.locator("svg.engine-mark")).toHaveCount(4);
     await expect(setup.locator("details, summary")).toHaveCount(0);
-    await expect(setup.getByRole("combobox")).toHaveCount(0);
+    await expect(
+      setup.getByRole("combobox", { name: "账号来源", exact: true }),
+    ).toContainText("Domos 管理");
     const installs: string[] = [];
     page.on("request", (request) => {
       if (request.url().endsWith("/engines/install"))

@@ -88,7 +88,17 @@ async function fixture() {
                           ]
                         : [],
                     }
-                  : {},
+                  : request.type === "get_available_models"
+                    ? {
+                        models: [
+                          {
+                            provider: "native",
+                            id: "model",
+                            input: ["text"],
+                          },
+                        ],
+                      }
+                    : {},
         });
         if (request.type === "prompt") {
           for (let index = 0; index < state.auto; index++) {
@@ -163,6 +173,95 @@ async function fixture() {
   };
 }
 
+test("native account selection persists, resets the session and keeps default models on the work computer", async () => {
+  const f = await fixture();
+  const botId = f.runtime.conversation.id;
+  await f.send();
+  expect(
+    (await f.runtime.client.engines.get({ botId })).runtime?.context,
+  ).toBeTruthy();
+  const input = {
+    botId,
+    config: {
+      provider: "pi" as const,
+      model: null,
+      accountSource: "native" as const,
+    },
+    revision: 0,
+    requestId: crypto.randomUUID(),
+  };
+  const selected = await f.runtime.client.engines.configure(input);
+  expect(selected).toMatchObject({
+    config: input.config,
+    revision: 1,
+    runtime: {},
+    prepared: false,
+  });
+  expect(await f.runtime.client.engines.configure(input)).toEqual(selected);
+  await f.reopen();
+  expect(await f.runtime.client.engines.get({ botId })).toMatchObject({
+    config: input.config,
+    revision: 1,
+  });
+  await expect(
+    f.runtime.client.engines.key({ botId, key: "fixture" }),
+  ).rejects.toThrow("原生账号");
+  await f.send();
+  expect((await f.runtime.client.engines.get({ botId })).config).toEqual(
+    input.config,
+  );
+  expect(f.state.workers.at(-1)?.spec).toMatchObject({
+    accountSource: "native",
+  });
+  expect(f.state.workers.at(-1)?.spec?.env).not.toHaveProperty("DOMOS_PI_AUTH");
+  const next = await f.runtime.client.engines.configure({
+    ...input,
+    config: { ...input.config, model: "custom/model" },
+    revision: 1,
+    requestId: crypto.randomUUID(),
+  });
+  expect(next.config.model).toBe("custom/model");
+  await expect(
+    f.runtime.client.engines.configure({
+      ...input,
+      requestId: crypto.randomUUID(),
+    }),
+  ).rejects.toThrow("配置已更新");
+});
+
+test("image validation uses native Pi models from the execution computer", async () => {
+  const f = await fixture();
+  const botId = f.runtime.conversation.id;
+  await f.runtime.client.engines.configure({
+    botId,
+    config: {
+      provider: "pi",
+      model: "native/model",
+      accountSource: "native",
+    },
+    revision: 0,
+    requestId: crypto.randomUUID(),
+  });
+  await f.runtime.client.engines.inspect({ botId });
+  const { png } = await import("../../../packages/agent/test/fixtures/png.ts");
+  const image = await f.runtime.client.files.upload({
+    botId,
+    file: new File([png(1, 1)], "native.png"),
+  });
+  await expect(
+    f.runtime.client.send({
+      botId,
+      text: "Read this",
+      attachments: [image.id],
+      requestId: crypto.randomUUID(),
+    }),
+  ).rejects.toMatchObject({
+    code: "BAD_REQUEST",
+    message: expect.stringContaining("native.png"),
+  });
+  expect((await f.runtime.client.get({ botId })).messages).toEqual([]);
+});
+
 test("context snapshots retain their source, survive reopening and invalidate on computer and model changes", async () => {
   const f = await fixture();
   const botId = f.runtime.conversation.id;
@@ -223,6 +322,17 @@ test("manual compaction deduplicates while busy and keeps the reading unknown un
   const compact = await f.runtime.client.engines.compact(input);
   const pending = await f.state.pending.promise;
   expect((await f.runtime.client.engines.compact(input)).id).toBe(compact.id);
+  await expect(
+    f.runtime.client.engines.configure({
+      botId,
+      config: { provider: "pi", model: null, accountSource: "native" },
+      revision: 0,
+      requestId: crypto.randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: "CONFLICT" });
+  expect(
+    (await f.runtime.client.engines.get({ botId })).config.accountSource,
+  ).not.toBe("native");
   await expect(
     f.runtime.client.engines.compact({ botId, requestId: crypto.randomUUID() }),
   ).rejects.toThrow("正在工作");

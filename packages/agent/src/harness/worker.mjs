@@ -1,15 +1,17 @@
 import { once } from "node:events";
-import { mkdir, realpath, writeFile } from "node:fs/promises";
+import { mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { delimiter, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import spawn from "cross-spawn";
+import { accountEnvironment } from "./account-environment.mjs";
 import { openComputerService } from "./computer-service.mjs";
 import { openGateway } from "./gateway.mjs";
 import { openHttpService } from "./http-service.mjs";
 import { seedPiAccount } from "./pi-account.mjs";
 
 delete process.env.ELECTRON_RUN_AS_NODE;
+const accountEnv = { ...process.env };
 
 let child;
 let gateway;
@@ -18,6 +20,7 @@ let configured = false;
 let sequence = 0;
 let home;
 let http;
+let accountSettings;
 const pending = new Map();
 const operations = new Map();
 let computer;
@@ -32,6 +35,7 @@ async function close() {
     pending.clear();
     for (const operation of operations.values()) operation.abort();
     await computer?.close();
+    if (accountSettings) await rm(accountSettings, { force: true });
     if (!child?.pid || child.exitCode !== null || child.signalCode !== null)
       return;
     const exited = once(child, "close").catch(() => {});
@@ -108,37 +112,11 @@ async function launch(frame) {
     !Array.isArray(frame.args)
   )
     throw new Error("Invalid launch");
-  const inherited = [
-    "PATH",
-    "Path",
-    "SystemRoot",
-    "SYSTEMROOT",
-    "WINDIR",
-    "COMSPEC",
-    "PATHEXT",
-    "TEMP",
-    "TMP",
-    "TMPDIR",
-    "LANG",
-    "LC_ALL",
-    "DISPLAY",
-    "XAUTHORITY",
-    "XDG_RUNTIME_DIR",
-    "DBUS_SESSION_BUS_ADDRESS",
-    "AT_SPI_BUS_ADDRESS",
-    "HTTP_PROXY",
-    "HTTPS_PROXY",
-    "http_proxy",
-    "https_proxy",
-    "NO_PROXY",
-    "no_proxy",
-  ];
-  const env = Object.fromEntries(
-    inherited
-      .filter((key) => process.env[key] !== undefined)
-      .map((key) => [key, process.env[key]]),
-  );
-  Object.assign(env, { HOME: home, USERPROFILE: home }, frame.env);
+  const account = await accountEnvironment(frame, home, accountEnv);
+  const env = account.env;
+  accountSettings = account.settingsPath;
+  process.env.CLAUDE_CONFIG_DIR =
+    env.CLAUDE_CONFIG_DIR || join(env.HOME, ".claude");
   if (frame.http) {
     http = await openHttpService(emit, frame.http);
     env.OPENCODE_SERVER_PASSWORD = http.password;
@@ -160,8 +138,11 @@ async function launch(frame) {
     .join(",");
   const pathKey =
     Object.keys(env).find((key) => key.toUpperCase() === "PATH") ?? "PATH";
+  const runtimePath = join(home, "runtime", "node_modules", ".bin");
   env[pathKey] =
-    `${join(home, "runtime", "node_modules", ".bin")}${delimiter}${env[pathKey] ?? ""}`;
+    frame.accountSource === "native"
+      ? `${env[pathKey] ?? ""}${delimiter}${runtimePath}`
+      : `${runtimePath}${delimiter}${env[pathKey] ?? ""}`;
   if (frame.instructions) {
     const path = join(process.cwd(), ".domos-instructions.md");
     await writeFile(path, frame.instructions, { mode: 0o600 });

@@ -24,24 +24,30 @@ export function EngineSelector({
   onConfigure: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const profile = setup.profile;
+  const nativePi =
+    profile?.config.provider === "pi" &&
+    profile.config.accountSource === "native";
   const [browsing, setBrowsing] = useState<EngineId>("pi");
-  const [scope, setScope] = useState(botId);
+  const source = `${botId}:${profile?.revision ?? 0}`;
+  const [scope, setScope] = useState(source);
   const [native, setNative] = useState<
     Partial<Record<EngineId, EngineModel[]>>
   >({});
-  if (scope !== botId) {
-    setScope(botId);
+  if (scope !== source) {
+    setScope(source);
     setNative({});
   }
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const catalog = useModels(connected);
   const visibility = useVisibility(connected);
-  const profile = setup.profile;
   const provider = profile?.config.provider ?? "pi";
   const selected =
     profile?.config.model ??
-    (provider === "pi" && model ? `${model.provider}/${model.modelId}` : null);
+    (provider === "pi" && !nativePi && model
+      ? `${model.provider}/${model.modelId}`
+      : null);
   const [selectionLabel, setSelectionLabel] = useState<{
     id: string;
     name: string;
@@ -52,7 +58,7 @@ export function EngineSelector({
   useEffect(() => {
     if (!open) return;
     if (browsing === provider) readControls();
-    if (browsing === "pi" || native[browsing]) return;
+    if ((browsing === "pi" && !nativePi) || native[browsing]) return;
     let current = true;
     setError("");
     void client.engines.inspect({ botId, provider: browsing }).then(
@@ -72,14 +78,14 @@ export function EngineSelector({
     return () => {
       current = false;
     };
-  }, [open, browsing, botId, provider, selected, native]);
+  }, [open, browsing, botId, provider, selected, native, nativePi]);
   useEffect(() => {
     const refresh = () => setNative({});
     window.addEventListener("domos:engines", refresh);
     return () => window.removeEventListener("domos:engines", refresh);
   }, []);
   const models =
-    browsing === "pi"
+    browsing === "pi" && !nativePi
       ? (catalog.choices ?? []).map((item) => ({
           id: `${item.provider}/${item.modelId}`,
           name: item.name,
@@ -90,7 +96,7 @@ export function EngineSelector({
     (item) => `${item.provider}/${item.modelId}` === selected,
   );
   const label =
-    provider === "pi" && piSelected
+    provider === "pi" && !nativePi && piSelected
       ? `${piSelected.providerName} · ${piSelected.name}`
       : selectionLabel?.id === selected
         ? selectionLabel.name
@@ -120,7 +126,7 @@ export function EngineSelector({
         saving ||
         !profile ||
         (open &&
-          (browsing === "pi"
+          (browsing === "pi" && !nativePi
             ? catalog.choices === null && !catalog.error
             : !native[browsing]))
       }
@@ -130,7 +136,7 @@ export function EngineSelector({
         error ||
         setup.error ||
         visibility.error ||
-        (browsing === "pi" ? catalog.error : null)
+        (browsing === "pi" && !nativePi ? catalog.error : null)
       }
       onProviderChange={(id) => {
         setBrowsing(id as EngineId);
@@ -140,7 +146,7 @@ export function EngineSelector({
           setSaving(true);
           setError("");
           try {
-            if (browsing === "pi") {
+            if (browsing === "pi" && !nativePi) {
               const choice = catalog.choices?.find(
                 (item) => `${item.provider}/${item.modelId}` === id,
               );

@@ -9,6 +9,7 @@ export const engineConfig = z
   .object({
     provider: z.enum(engineIds),
     model: z.string().trim().min(1).max(256).nullable(),
+    accountSource: z.enum(["managed", "native"]).optional(),
     options: z
       .record(z.string().min(1).max(128), z.string().max(1024))
       .optional(),
@@ -111,14 +112,10 @@ export function engineRouter(bots: Bots, engines?: Engines) {
     catalog: os.handler(() =>
       engineCatalog().filter((provider) => engines || provider.id === "pi"),
     ),
-    models: os
-      .input(botTarget)
-      .handler(async ({ input }) =>
-        (await target(input.botId)).engines.connections.catalog(
-          input.botId,
-          context,
-        ),
-      ),
+    models: os.input(botTarget).handler(async ({ input }) => {
+      const { engines, profile } = await target(input.botId);
+      return engines.connections.catalog(input.botId, context, profile.config);
+    }),
     get: os.input(botTarget).handler(({ input }) =>
       operation(async () => {
         if (engines) return (await target(input.botId)).profile;

@@ -17,12 +17,18 @@ import { WorkProcess } from "../src/harness/process.ts";
 import { piProvider } from "../src/harness/providers/pi.ts";
 import type { ProductResult } from "../src/harness/types.ts";
 
-async function worker() {
+async function worker(environment?: Record<string, string>) {
   const directory = await mkdtemp(join(tmpdir(), "domos-engine-"));
   const calls: string[] = [];
   const process = new WorkProcess(
     [
       globalThis.process.execPath,
+      ...(environment
+        ? [
+            "--import",
+            `data:text/javascript,${encodeURIComponent(`Object.assign(process.env, ${JSON.stringify(environment)})`)}`,
+          ]
+        : []),
       fileURLToPath(new URL("../src/harness/worker.mjs", import.meta.url)),
     ],
     { cwd: join(directory, "bot"), home: join(directory, "accounts") },
@@ -47,6 +53,87 @@ async function worker() {
   });
   return { process, directory, calls };
 }
+
+test("native processes use the execution computer home and exclude service credentials", async () => {
+  const native = await mkdtemp(join(tmpdir(), "domos-native-account-"));
+  onTestFinished(() => rm(native, { recursive: true, force: true }));
+  const { process } = await worker({
+    HOME: native,
+    USERPROFILE: native,
+    CODEX_HOME: join(native, "codex"),
+    DOMOS_ACCOUNT_TEST_SECRET: "service-fixture",
+  });
+  let output = "";
+  process.output.on("data", (chunk) => {
+    output += chunk.toString();
+  });
+  await process.launch({
+    command: globalThis.process.execPath,
+    args: [
+      "-e",
+      "console.log(JSON.stringify({home:process.env.HOME,codex:process.env.CODEX_HOME,service:process.env.DOMOS_ACCOUNT_TEST_SECRET}))",
+    ],
+    accountSource: "native",
+  });
+  await process.closed;
+  expect(JSON.parse(output)).toEqual({
+    home: native,
+    codex: join(native, "codex"),
+  });
+});
+
+test.each([
+  { accountSource: "native" as const, installed: true, expected: "system" },
+  {
+    accountSource: "native" as const,
+    installed: false,
+    expected: "downloaded",
+  },
+  {
+    accountSource: "managed" as const,
+    installed: true,
+    expected: "downloaded",
+  },
+])(
+  "$accountSource resolves $expected CLI (system installed: $installed)",
+  async ({ accountSource, installed, expected }) => {
+    const native = await mkdtemp(join(tmpdir(), "domos-cli-path-"));
+    onTestFinished(() => rm(native, { recursive: true, force: true }));
+    const { process } = await worker({
+      HOME: native,
+      USERPROFILE: native,
+      APPDATA: native,
+      PATH: native,
+      Path: native,
+    });
+    const { home } = await process.ready;
+    const downloaded = join(home, "runtime", "node_modules", ".bin");
+    await mkdir(downloaded, { recursive: true });
+    for (const [path, label] of [
+      [native, "system"],
+      [downloaded, "downloaded"],
+    ]) {
+      if (!path || (label === "system" && !installed)) continue;
+      const win = globalThis.process.platform === "win32";
+      await writeFile(
+        join(path, `codex${win ? ".cmd" : ""}`),
+        win ? `@echo ${label}\r\n` : `#!/bin/sh\nprintf '${label}\\n'\n`,
+        { mode: 0o755 },
+      );
+    }
+    let output = "";
+    process.output.on("data", (chunk) => {
+      output += chunk.toString();
+    });
+    await process.launch({
+      command: "codex",
+      args: ["--version"],
+      accountSource,
+    });
+    await process.closed;
+    expect(output.trim()).toBe(expected);
+  },
+);
 
 test("workspace MCP routes tools through the authenticated process channel", async () => {
   const { process, calls } = await worker();
@@ -73,6 +160,90 @@ test("workspace MCP routes tools through the authenticated process channel", asy
     await client.close();
   }
 });
+
+test.each(["claude", "opencode"])(
+  "native %s uses host settings and keeps product settings separate",
+  async (command) => {
+    const native = await mkdtemp(join(tmpdir(), "domos-native-cli-"));
+    onTestFinished(() => rm(native, { recursive: true, force: true }));
+    await mkdir(join(native, ".claude"));
+    const settings = JSON.stringify({
+      env: {
+        ANTHROPIC_BASE_URL: "https://fixture.invalid",
+        ANTHROPIC_AUTH_TOKEN: "fixture-native-token",
+        SERVICE_SECRET: "fixture-service",
+      },
+      apiKeyHelper: "fixture-helper",
+      hooks: { SessionStart: [] },
+      model: "fixture-model",
+    });
+    await writeFile(join(native, ".claude", "settings.json"), settings);
+    const script = join(native, "cli.cjs");
+    await writeFile(
+      script,
+      `const fs = require('node:fs'); const path = process.argv[process.argv.indexOf('--settings') + 1]; console.log(JSON.stringify({settings: process.argv.includes('--settings') ? JSON.parse(fs.readFileSync(path, 'utf8')) : null, config: process.env.OPENCODE_CONFIG_CONTENT ? JSON.parse(process.env.OPENCODE_CONFIG_CONTENT) : null, service: process.env.DATABASE_URL, other: process.env.SERVICE_API_KEY}));`,
+    );
+    const win = globalThis.process.platform === "win32";
+    await writeFile(
+      join(native, command + (win ? ".cmd" : "")),
+      win
+        ? `@"${globalThis.process.execPath}" "${script}" %*\r\n`
+        : `#!/bin/sh\nexec '${globalThis.process.execPath}' '${script}' "$@"\n`,
+      { mode: 0o755 },
+    );
+    const { process } = await worker({
+      HOME: native,
+      USERPROFILE: native,
+      PATH: native,
+      Path: native,
+      CLAUDE_CONFIG_DIR: join(native, ".claude"),
+      DATABASE_URL: "fixture-database",
+      SERVICE_API_KEY: "fixture-service",
+      OPENCODE_CONFIG_CONTENT: JSON.stringify({
+        provider: { fixture: { name: "Native" } },
+        instructions: ["native.md"],
+      }),
+    });
+    let output = "";
+    process.output.on("data", (chunk) => {
+      output += chunk.toString();
+    });
+    await process.launch({
+      command,
+      args: [],
+      accountSource: "native",
+      env:
+        command === "opencode"
+          ? {
+              OPENCODE_CONFIG_CONTENT: JSON.stringify({
+                instructions: ["domos.md"],
+              }),
+            }
+          : {},
+    });
+    await process.closed;
+    const result = JSON.parse(output);
+    expect(result.service).toBeUndefined();
+    expect(result.other).toBeUndefined();
+    if (command === "claude") {
+      expect(result.settings).toEqual({
+        env: {
+          ANTHROPIC_BASE_URL: "https://fixture.invalid",
+          ANTHROPIC_AUTH_TOKEN: "fixture-native-token",
+        },
+        apiKeyHelper: "fixture-helper",
+        model: "fixture-model",
+      });
+      expect(
+        await readFile(join(native, ".claude", "settings.json"), "utf8"),
+      ).toBe(settings);
+    } else
+      expect(result.config).toEqual({
+        provider: { fixture: { name: "Native" } },
+        instructions: ["native.md", "domos.md"],
+      });
+  },
+);
 
 test("a missing work computer command reports a missing program", async () => {
   const { process } = await worker();
@@ -391,6 +562,63 @@ test("a work computer reads its private Claude transcript through the native SDK
         }),
       }),
     ]),
+  );
+});
+
+test("bundled Pi reads native custom models and keeps Bot sessions separate", async () => {
+  const native = await mkdtemp(join(tmpdir(), "domos-pi-native-"));
+  onTestFinished(() =>
+    rm(native, { recursive: true, force: true, maxRetries: 10 }),
+  );
+  await writeFile(
+    join(native, "auth.json"),
+    JSON.stringify({
+      "fixture-native": { type: "api_key", key: "fixture-native-key" },
+    }),
+  );
+  await writeFile(
+    join(native, "models.json"),
+    JSON.stringify({
+      providers: {
+        "fixture-native": {
+          baseUrl: "http://127.0.0.1:1/v1",
+          api: "openai-completions",
+          models: [
+            {
+              id: "local-model",
+              name: "Native Local",
+              input: ["text"],
+              reasoning: false,
+              contextWindow: 8192,
+              maxTokens: 512,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            },
+          ],
+        },
+      },
+    }),
+  );
+  const { process } = await worker({ PI_CODING_AGENT_DIR: native });
+  const { home } = await process.ready;
+  const session = await piProvider.open({
+    process,
+    config: { provider: "pi", model: null, accountSource: "native" },
+    sessionId: null,
+    instructions: "Use short replies.",
+    emit: async () => {},
+  });
+  expect(await session.models()).toContainEqual(
+    expect.objectContaining({
+      id: "fixture-native/local-model",
+      name: "Native Local",
+    }),
+  );
+  expect(session.id.replaceAll("\\", "/")).toContain(
+    `${home.replaceAll("\\", "/")}/pi/sessions/`,
+  );
+  await process.close();
+  expect(JSON.parse(await readFile(join(native, "auth.json"), "utf8"))).toEqual(
+    { "fixture-native": { type: "api_key", key: "fixture-native-key" } },
   );
 });
 

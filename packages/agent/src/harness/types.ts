@@ -7,6 +7,7 @@ export type EngineId = (typeof engineIds)[number];
 export type EngineConfig = {
   provider: EngineId;
   model: string | null;
+  accountSource?: "managed" | "native";
   options?: Record<string, string>;
 };
 export type EngineControls = {
@@ -149,6 +150,7 @@ export type ProductResult =
 export type ProcessSpec = {
   command: string;
   args: string[];
+  accountSource?: EngineConfig["accountSource"];
   env?: Record<string, string>;
   instructions?: string;
   mcp?: { url: string };

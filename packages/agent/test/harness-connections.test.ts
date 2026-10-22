@@ -32,7 +32,9 @@ function fixture(installed: boolean, exitCode = 0) {
           request,
           request.method === "account/read"
             ? { account: { type: "apiKey" } }
-            : { thread: { id: "domos-check" }, data: [] },
+            : request.method === "model/list"
+              ? { data: [{ id: "fixture-model", displayName: "Fixture" }] }
+              : { thread: { id: "domos-check" }, data: [] },
         );
       };
       return worker;
@@ -130,6 +132,29 @@ test("installation reuses a program already present on the work computer", async
   await connections.install(1, { provider: "codex", model: null }, context);
   expect(launches.map((spec) => spec.command)).toEqual(["codex"]);
   expect(launches[0]?.args).toEqual(["--version"]);
+});
+
+test("native discovery uses the work computer account and keeps managed accounts separate", async () => {
+  const { connections, launches } = fixture(true);
+  const managed = { provider: "codex" as const, model: null };
+  const native = { ...managed, accountSource: "native" as const };
+  await connections.inspect(1, managed, context);
+  expect(
+    (await connections.catalog(1, context, native)).find(
+      (item) => item.id === "codex",
+    )?.models,
+  ).toEqual([]);
+  await connections.inspect(1, native, context);
+  expect(launches).toHaveLength(4);
+  expect(launches[2]).toMatchObject({ accountSource: "native" });
+  expect(launches[3]).toMatchObject({ accountSource: "native" });
+  expect(launches[3]?.env).not.toHaveProperty("CODEX_HOME");
+  await expect(
+    connections.key(1, native, "fixture-key", context),
+  ).rejects.toThrow("原生账号");
+  await expect(connections.login(1, native, context)).rejects.toThrow(
+    "原生账号",
+  );
 });
 
 test("a failed program check does not offer or attempt installation", async () => {

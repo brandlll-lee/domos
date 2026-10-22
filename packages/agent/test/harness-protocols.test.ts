@@ -423,71 +423,83 @@ test("Codex handles approval, streams tools and recovers a completed native turn
   ).toMatchObject({ cwd: "/work/bots/1", approvalPolicy: "on-request" });
 });
 
-test("Claude uses the native stream protocol and keeps its own session", async () => {
-  const { process, events, emit } = protocol();
-  process.receive = (request) => {
-    if (request.type !== "user") return;
-    process.frame({
-      type: "stream_event",
-      event: { type: "message_start", message: { id: "message" } },
+test.each(["managed", "native"] as const)(
+  "Claude uses %s accounts and keeps its own session",
+  async (accountSource) => {
+    const { process, events, emit } = protocol();
+    process.receive = (request) => {
+      if (request.type !== "user") return;
+      process.frame({
+        type: "stream_event",
+        event: { type: "message_start", message: { id: "message" } },
+      });
+      process.frame({
+        type: "stream_event",
+        event: {
+          type: "content_block_delta",
+          delta: { type: "text_delta", text: "Saved" },
+        },
+      });
+      process.frame({
+        type: "assistant",
+        message: {
+          id: "message",
+          content: [
+            { type: "text", text: "Saved" },
+            {
+              type: "tool_use",
+              id: "write",
+              name: "Write",
+              input: { file_path: "report.md" },
+            },
+          ],
+        },
+      });
+      process.frame({
+        type: "user",
+        message: {
+          content: [
+            { type: "tool_result", tool_use_id: "write", content: "Done" },
+          ],
+        },
+      });
+      process.frame({ type: "result", is_error: false });
+    };
+    const session = await claudeProvider.open({
+      process,
+      config: { provider: "claude", model: null, accountSource },
+      sessionId: "native-session",
+      instructions: "Role",
+      emit,
     });
-    process.frame({
-      type: "stream_event",
-      event: {
-        type: "content_block_delta",
-        delta: { type: "text_delta", text: "Saved" },
-      },
+    await session.prompt("Save report");
+    expect(session.id).toBe("native-session");
+    expect(process.spec?.accountSource).toBe(accountSource);
+    if (accountSource === "native") {
+      expect(process.spec?.env).not.toHaveProperty("CLAUDE_CONFIG_DIR");
+      expect(process.spec?.args).toContain("--setting-sources");
+    }
+    expect(process.spec?.args).toContain("--resume");
+    expect(process.spec?.args).toContain("mcp__domos__approve");
+    expect(events).toContainEqual({
+      type: "tool_result",
+      id: "write",
+      name: "Claude Code",
+      text: "Done",
+      failed: false,
     });
-    process.frame({
-      type: "assistant",
-      message: {
-        id: "message",
-        content: [
-          { type: "text", text: "Saved" },
-          {
-            type: "tool_use",
-            id: "write",
-            name: "Write",
-            input: { file_path: "report.md" },
-          },
-        ],
-      },
+    expect(events).toContainEqual({
+      type: "text",
+      id: "message",
+      text: "Saved",
     });
-    process.frame({
-      type: "user",
-      message: {
-        content: [
-          { type: "tool_result", tool_use_id: "write", content: "Done" },
-        ],
-      },
+    expect(events).toContainEqual({
+      type: "message",
+      id: "message",
+      text: "Saved",
     });
-    process.frame({ type: "result", is_error: false });
-  };
-  const session = await claudeProvider.open({
-    process,
-    config: { provider: "claude", model: null },
-    sessionId: "native-session",
-    instructions: "Role",
-    emit,
-  });
-  await session.prompt("Save report");
-  expect(session.id).toBe("native-session");
-  expect(process.spec?.args).toContain("--resume");
-  expect(process.spec?.args).toContain("mcp__domos__approve");
-  expect(events).toContainEqual({
-    type: "tool_result",
-    id: "write",
-    name: "Claude Code",
-    text: "Done",
-    failed: false,
-  });
-  expect(events).toContainEqual({ type: "text", id: "message", text: "Saved" });
-  expect(events).toContainEqual({
-    type: "message",
-    id: "message",
-    text: "Saved",
-  });
-});
+  },
+);
 
 test("OpenCode uses ACP model discovery, permissions and native session load", async () => {
   const { process, events, emit } = protocol();

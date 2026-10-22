@@ -136,7 +136,9 @@ Pi comes with Domos. For other engines, use **Check connection** first. If neede
 
 Choose an engine in the Bot's settings. Switch while the Bot is idle. Chats stay in Domos; the new engine starts a new native session with recent conversation context. Native sessions cannot be converted between engines.
 
-The account must be available where the engine runs. Domos reuses installed programs and keeps its own account and session directories. It does not import your existing CLI login. A login on your client computer does not sign in a remote work computer. Bots on one work computer share its Domos account files and system access. OpenCode saves provider credentials in its private directory there. Removing a service API key does not sign out a native CLI account.
+Choose the account source in the Bot's connection settings. The default, **Domos managed**, keeps a separate account directory. **Work computer configuration** lets Codex, Claude Code, OpenCode, and Pi read the running user's native accounts and model settings. Manage these accounts in the original CLI. Pi uses the bundled runtime and keeps Bot sessions separate. Other engines use an installed program first. You can download a missing program.
+
+The account must be available where the engine runs. A local service with a local work computer can reuse local settings. Remote computers, containers, and system services use their own running user's settings. Client logins do not move to a remote computer. Terminal-only environment variables must reach the process that starts Domos. Bots on one computer share the selected account files and system access.
 
 ---
 

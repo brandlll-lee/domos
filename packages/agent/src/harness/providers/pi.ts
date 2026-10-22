@@ -169,16 +169,27 @@ export const piProvider: EngineProvider = {
     });
     await process.launch({
       command: "pi",
+      accountSource: config.accountSource,
       args: [
         "--session-dir",
         `${ready.home}/pi/sessions`,
         "--append-system-prompt",
         "__DOMOS_PROMPT__",
+        ...(config.accountSource === "native"
+          ? [
+              "--no-extensions",
+              "--no-skills",
+              "--no-prompt-templates",
+              "--no-context-files",
+            ]
+          : []),
       ],
       instructions,
       env: {
         ...env,
-        PI_CODING_AGENT_DIR: `${ready.home}/pi`,
+        ...(config.accountSource === "native"
+          ? {}
+          : { PI_CODING_AGENT_DIR: `${ready.home}/pi` }),
         DOMOS_PI_MCP_URL: ready.url,
       },
     });

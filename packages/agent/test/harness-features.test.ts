@@ -119,162 +119,173 @@ test("Pi exposes native controls, compacts and reports response usage", async ()
   });
 });
 
-test("OpenCode uses advertised configuration and commands and records native message usage", async () => {
-  const process = new ProtocolProcess();
-  onTestFinished(() => process.close());
-  const events: EngineEvent[] = [];
-  let finished = false;
-  let compacted = false;
-  let proof = true;
-  process.request = async <T>() =>
-    (finished
-      ? [
-          {
-            info: {
-              id: "message",
-              role: "assistant",
-              modelID: "model",
-              providerID: "provider",
-              cost: 0.01,
-              tokens: { input: 8, output: 3, cache: { read: 2, write: 1 } },
+test.each(["managed", "native"] as const)(
+  "OpenCode %s uses advertised configuration and commands and records native message usage",
+  async (accountSource) => {
+    const process = new ProtocolProcess();
+    onTestFinished(() => process.close());
+    const events: EngineEvent[] = [];
+    let finished = false;
+    let compacted = false;
+    let proof = true;
+    process.request = async <T>() =>
+      (finished
+        ? [
+            {
+              info: {
+                id: "message",
+                role: "assistant",
+                modelID: "model",
+                providerID: "provider",
+                cost: 0.01,
+                tokens: { input: 8, output: 3, cache: { read: 2, write: 1 } },
+              },
+              parts: [],
             },
-            parts: [],
-          },
-          ...(compacted && proof
-            ? [
-                {
-                  info: { id: "compact-user", role: "user" },
-                  parts: [{ type: "compaction" }],
-                },
-                {
-                  info: {
-                    id: "compact-summary",
-                    role: "assistant",
-                    parentID: "compact-user",
-                    summary: true,
-                    finish: "stop",
+            ...(compacted && proof
+              ? [
+                  {
+                    info: { id: "compact-user", role: "user" },
+                    parts: [{ type: "compaction" }],
                   },
-                  parts: [],
-                },
-              ]
-            : []),
-        ]
-      : []) as T;
-  process.receive = (request) => {
-    if (request.method === "initialize")
-      process.response(request, { protocolVersion: 1 });
-    if (request.method === "session/new") {
-      process.response(request, {
-        sessionId: "session",
-        configOptions: [
-          {
-            id: "reasoning",
-            name: "Reasoning",
-            category: "thought_level",
-            type: "select",
-            currentValue: "low",
-            options: [{ value: "high", name: "High" }],
-          },
-        ],
-      });
-      process.frame({
-        jsonrpc: "2.0",
-        method: "session/update",
-        params: {
+                  {
+                    info: {
+                      id: "compact-summary",
+                      role: "assistant",
+                      parentID: "compact-user",
+                      summary: true,
+                      finish: "stop",
+                    },
+                    parts: [],
+                  },
+                ]
+              : []),
+          ]
+        : []) as T;
+    process.receive = (request) => {
+      if (request.method === "initialize")
+        process.response(request, { protocolVersion: 1 });
+      if (request.method === "session/new") {
+        process.response(request, {
           sessionId: "session",
-          update: {
-            sessionUpdate: "available_commands_update",
-            availableCommands: [
-              { name: "compact", description: "Compact context" },
-            ],
+          configOptions: [
+            {
+              id: "reasoning",
+              name: "Reasoning",
+              category: "thought_level",
+              type: "select",
+              currentValue: "low",
+              options: [{ value: "high", name: "High" }],
+            },
+          ],
+        });
+        process.frame({
+          jsonrpc: "2.0",
+          method: "session/update",
+          params: {
+            sessionId: "session",
+            update: {
+              sessionUpdate: "available_commands_update",
+              availableCommands: [
+                { name: "compact", description: "Compact context" },
+              ],
+            },
           },
-        },
-      });
-    }
-    if (request.method === "session/set_config_option")
-      process.response(request, { configOptions: [] });
-    if (request.method === "session/prompt") {
-      finished = true;
-      compacted ||= JSON.stringify(request.params?.prompt).includes("/compact");
-      process.frame({
-        jsonrpc: "2.0",
-        method: "session/update",
-        params: {
-          sessionId: "session",
-          update: { sessionUpdate: "usage_update", used: 80, size: 1000 },
-        },
-      });
-      process.response(request, { stopReason: "end_turn" });
-    }
-  };
-  const session = await opencodeProvider.open({
-    process,
-    config: {
-      provider: "opencode",
-      model: null,
-      options: { reasoning: "high" },
-    },
-    sessionId: null,
-    instructions: "Role",
-    emit: async (event) => {
-      events.push(event);
-    },
-  });
-  expect((await session.controls?.())?.commands).toContainEqual({
-    name: "compact",
-    description: "Compact context",
-  });
-  expect(process.requests).toContainEqual(
-    expect.objectContaining({
-      method: "session/set_config_option",
-      params: { sessionId: "session", configId: "reasoning", value: "high" },
-    }),
-  );
-  await session.prompt("Work");
-  expect(events).toContainEqual({
-    type: "context",
-    tokens: 80,
-    window: 1000,
-    source: "opencode.acp.usage_update",
-    basis: "window",
-    estimated: false,
-    model: null,
-  });
-  expect(events).toContainEqual({
-    type: "usage",
-    usage: {
-      id: "message",
-      source: "opencode.message",
-      provider: "provider",
-      model: "model",
-      input: 8,
-      output: 3,
-      cacheRead: 2,
-      cacheWrite: 1,
-      costUsd: 0.01,
-    },
-  });
-  await session.compact?.();
-  expect(events).toContainEqual({
-    type: "compaction",
-    status: "completed",
-    nativeId: "compact-summary",
-  });
-  expect(await session.recoverCompaction?.("opencode:message")).toBe(true);
-  expect(await session.recoverCompaction?.("opencode:other")).toBe(false);
-  proof = false;
-  expect(await session.recoverCompaction?.("opencode:message")).toBe(false);
-  await expect(session.compact?.()).rejects.toThrow("结果未确认");
-  expect(process.requests).toContainEqual(
-    expect.objectContaining({
-      method: "session/prompt",
-      params: {
-        sessionId: "session",
-        prompt: [{ type: "text", text: "/compact" }],
+        });
+      }
+      if (request.method === "session/set_config_option")
+        process.response(request, { configOptions: [] });
+      if (request.method === "session/prompt") {
+        finished = true;
+        compacted ||= JSON.stringify(request.params?.prompt).includes(
+          "/compact",
+        );
+        process.frame({
+          jsonrpc: "2.0",
+          method: "session/update",
+          params: {
+            sessionId: "session",
+            update: { sessionUpdate: "usage_update", used: 80, size: 1000 },
+          },
+        });
+        process.response(request, { stopReason: "end_turn" });
+      }
+    };
+    const session = await opencodeProvider.open({
+      process,
+      config: {
+        provider: "opencode",
+        model: null,
+        accountSource,
+        options: { reasoning: "high" },
       },
-    }),
-  );
-});
+      sessionId: null,
+      instructions: "Role",
+      emit: async (event) => {
+        events.push(event);
+      },
+    });
+    expect(process.spec?.accountSource).toBe(accountSource);
+    if (accountSource === "native") {
+      expect(process.spec?.env).not.toHaveProperty("XDG_CONFIG_HOME");
+      expect(process.spec?.env).not.toHaveProperty("XDG_DATA_HOME");
+    }
+    expect((await session.controls?.())?.commands).toContainEqual({
+      name: "compact",
+      description: "Compact context",
+    });
+    expect(process.requests).toContainEqual(
+      expect.objectContaining({
+        method: "session/set_config_option",
+        params: { sessionId: "session", configId: "reasoning", value: "high" },
+      }),
+    );
+    await session.prompt("Work");
+    expect(events).toContainEqual({
+      type: "context",
+      tokens: 80,
+      window: 1000,
+      source: "opencode.acp.usage_update",
+      basis: "window",
+      estimated: false,
+      model: null,
+    });
+    expect(events).toContainEqual({
+      type: "usage",
+      usage: {
+        id: "message",
+        source: "opencode.message",
+        provider: "provider",
+        model: "model",
+        input: 8,
+        output: 3,
+        cacheRead: 2,
+        cacheWrite: 1,
+        costUsd: 0.01,
+      },
+    });
+    await session.compact?.();
+    expect(events).toContainEqual({
+      type: "compaction",
+      status: "completed",
+      nativeId: "compact-summary",
+    });
+    expect(await session.recoverCompaction?.("opencode:message")).toBe(true);
+    expect(await session.recoverCompaction?.("opencode:other")).toBe(false);
+    proof = false;
+    expect(await session.recoverCompaction?.("opencode:message")).toBe(false);
+    await expect(session.compact?.()).rejects.toThrow("结果未确认");
+    expect(process.requests).toContainEqual(
+      expect.objectContaining({
+        method: "session/prompt",
+        params: {
+          sessionId: "session",
+          prompt: [{ type: "text", text: "/compact" }],
+        },
+      }),
+    );
+  },
+);
 
 test("Claude uses native advertised effort and keeps cost scope and compaction boundaries", async () => {
   const process = new ProtocolProcess();

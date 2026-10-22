@@ -57,6 +57,7 @@ export class EngineExecution {
   }
 
   async environment(config: EngineConfig) {
+    if (config.accountSource === "native") return {};
     if (config.provider === "pi") {
       const provider = config.model?.split("/")[0];
       let credential = provider

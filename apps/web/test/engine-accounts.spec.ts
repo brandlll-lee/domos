@@ -409,6 +409,42 @@ test("native account flows show login choices, retain providers, and select mode
     await expect(trigger).toContainText("Faux Model");
     await page.reload();
     await expect(trigger).toContainText("Faux Model");
+    await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+    const details = page.getByRole("complementary", { name: /的详情$/ });
+    await details.getByRole("button", { name: /^连接与账号(?:\s|$)/ }).click();
+    const source = details.getByRole("combobox", {
+      name: "账号来源",
+      exact: true,
+    });
+    await source.click();
+    await page
+      .getByRole("option", { name: "工作电脑已有配置", exact: true })
+      .click();
+    await expect(source).toContainText("工作电脑已有配置");
+    await details
+      .getByRole("button", { name: "选择模型", exact: true })
+      .click();
+    const nativeModel = page.getByRole("dialog", {
+      name: "连接模型",
+      exact: true,
+    });
+    await expect(nativeModel.getByLabel("API 密钥")).toHaveCount(0);
+    await nativeModel
+      .getByRole("button", { name: "Faux Model 2", exact: true })
+      .click();
+    await expect(nativeModel).toBeHidden();
+    await page.reload();
+    await expect(trigger).toContainText("faux/faux-2");
+    await trigger.click();
+    await selector
+      .getByRole("button", { name: "Faux Model", exact: true })
+      .click();
+    await expect(selector).toBeHidden();
+    await page.reload();
+    await expect(trigger).toContainText("faux/faux-1");
+    await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+    await details.getByRole("button", { name: /^连接与账号(?:\s|$)/ }).click();
+    await expect(source).toContainText("工作电脑已有配置");
   } finally {
     const exited = once(worker, "exit");
     worker.disconnect();

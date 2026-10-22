@@ -102,6 +102,7 @@ await mkdir(join(runtime, "work/packages/agent/src/harness"), {
 });
 for (const name of [
   "worker.mjs",
+  "account-environment.mjs",
   "gateway.mjs",
   "pi-entry.mjs",
   "pi-account.mjs",

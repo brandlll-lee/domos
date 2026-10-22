@@ -89,6 +89,17 @@ test("keeps authorization and code completion on the same native process", async
   ]);
 });
 
+test("native OpenCode discovery uses the work computer configuration", async () => {
+  const { worker } = fixture();
+  const account = await openOpenCodeAccount(worker, {}, "native");
+  expect((await account.catalog()).models).toMatchObject([
+    { id: "second/two", name: "Two" },
+  ]);
+  expect(worker.spec).toMatchObject({ accountSource: "native" });
+  expect(worker.spec?.env).not.toHaveProperty("XDG_DATA_HOME");
+  expect(worker.spec?.env).not.toHaveProperty("XDG_CONFIG_HOME");
+});
+
 test("rejects unknown providers and methods before sending an authorization request", async () => {
   const { worker, calls } = fixture();
   const account = await openOpenCodeAccount(worker);

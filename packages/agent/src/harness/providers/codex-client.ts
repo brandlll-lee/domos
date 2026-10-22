@@ -10,6 +10,7 @@ export async function openCodexClient(
   const rpc = new JsonLines(process);
   await process.launch({
     command: "codex",
+    accountSource: config.accountSource,
     args: [
       "app-server",
       "--listen",
@@ -17,7 +18,12 @@ export async function openCodexClient(
       "-c",
       `mcp_servers.domos.url=${JSON.stringify(ready.url)}`,
     ],
-    env: { ...env, CODEX_HOME: `${ready.home}/codex` },
+    env: {
+      ...env,
+      ...(config.accountSource === "native"
+        ? {}
+        : { CODEX_HOME: `${ready.home}/codex` }),
+    },
   });
   await rpc.request("initialize", {
     clientInfo: { name: "domos", version: "1.0.0" },

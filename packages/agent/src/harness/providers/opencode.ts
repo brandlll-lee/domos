@@ -294,6 +294,7 @@ export const opencodeProvider: EngineProvider = {
     );
     await process.launch({
       command: "opencode",
+      accountSource: config.accountSource,
       args: ["acp", "--hostname", "127.0.0.1", "--port", "__DOMOS_PORT__"],
       http: {
         timeoutMs: engineLimits.handshakeMs,
@@ -303,8 +304,12 @@ export const opencodeProvider: EngineProvider = {
       instructions,
       env: {
         ...env,
-        XDG_DATA_HOME: `${ready.home}/opencode/data`,
-        XDG_CONFIG_HOME: `${ready.home}/opencode/config`,
+        ...(config.accountSource === "native"
+          ? {}
+          : {
+              XDG_DATA_HOME: `${ready.home}/opencode/data`,
+              XDG_CONFIG_HOME: `${ready.home}/opencode/config`,
+            }),
         OPENCODE_CONFIG_CONTENT: JSON.stringify({
           instructions: [`${ready.cwd}/.domos-instructions.md`],
         }),

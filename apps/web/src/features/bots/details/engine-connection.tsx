@@ -20,7 +20,8 @@ export function EngineConnection({
   const checking = pending === "inspect";
   const missing = connection?.ready === false;
   const pi = profile?.config.provider === "pi";
-  const needsCheck = Boolean(error || (!pi && !connection));
+  const native = profile?.config.accountSource === "native";
+  const needsCheck = Boolean(error || ((!pi || native) && !connection));
   let label = "连接账号";
   let description = "使用已安装的程序，连接你的账号。";
   if (pi) {
@@ -34,6 +35,16 @@ export function EngineConnection({
   if (profile?.prepared) {
     label = pi ? "更改模型" : "账号设置";
     description = "已连接，可以开始工作。";
+  }
+  if (native) {
+    label = connection?.authenticated ? "选择模型" : "检查连接";
+    description = connection?.authenticated
+      ? "已读取工作电脑的账号和模型。"
+      : "请在工作电脑的原 CLI 中配置账号，然后重新检查。";
+    if (missing) {
+      label = `安装 ${name}`;
+      description = "这台工作电脑还未安装此引擎。";
+    }
   }
   if (needsCheck) label = error ? "重新检查" : "检查连接";
   if (checking) {
@@ -59,15 +70,22 @@ export function EngineConnection({
         pending={checking}
         onClick={() => {
           if (!profile) void setup.reload();
-          else if (needsCheck) void setup.inspect();
-          else onConfigure(missing ? "install" : pi ? "model" : "account");
+          else if (
+            needsCheck ||
+            (native && !missing && !connection?.authenticated)
+          )
+            void setup.inspect();
+          else
+            onConfigure(
+              missing ? "install" : native || pi ? "model" : "account",
+            );
         }}
       >
         {profile ? label : error ? "重新读取" : "正在读取…"}
       </Button>
       {connection?.ready && !needsCheck && (
         <div className="engine-connection-actions">
-          {!pi && connection.authenticated && (
+          {!pi && !native && connection.authenticated && (
             <Button
               variant="ghost"
               size="small"

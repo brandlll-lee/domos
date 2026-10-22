@@ -6,6 +6,7 @@ import { ModelSetting } from "../../models/model-setting.tsx";
 import { EngineSelect } from "../engine-select.tsx";
 import { EngineConnection } from "./engine-connection.tsx";
 import { EngineDialog, type EngineDialogKind } from "./engine-dialog.tsx";
+import { EngineSource } from "./engine-source.tsx";
 import { NativeControls } from "./native-controls.tsx";
 import type { EngineSetup } from "./use-engine.ts";
 
@@ -54,7 +55,8 @@ export function EngineSettings({
           status={status}
           onChange={(next) => void setup.save({ provider: next, model: null })}
         />
-        {pi ? (
+        <EngineSource setup={setup} disabled={blocked} />
+        {pi && setup.profile?.config.accountSource !== "native" ? (
           <>
             <ModelSetting
               botId={botId}

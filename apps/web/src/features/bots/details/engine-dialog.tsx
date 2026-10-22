@@ -43,12 +43,19 @@ export function EngineDialog({
       onClose();
     }
     if (dialog === "install" && setup.connection?.ready)
-      onDialogChange(setup.profile?.prepared ? null : "account");
+      onDialogChange(
+        setup.profile?.prepared
+          ? null
+          : setup.profile?.config.accountSource === "native"
+            ? "model"
+            : "account",
+      );
   }, [
     dialog,
     setup.busy,
     setup.login,
     setup.profile?.prepared,
+    setup.profile?.config.accountSource,
     setup.connection?.ready,
     onClose,
     onDialogChange,
@@ -111,7 +118,8 @@ export function EngineDialog({
           />
         )}
         {dialog === "model" &&
-          (provider === "pi" ? (
+          (provider === "pi" &&
+          setup.profile?.config.accountSource !== "native" ? (
             <PiEngineModel
               botId={botId}
               setup={setup}

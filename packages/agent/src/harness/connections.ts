@@ -16,6 +16,7 @@ export class EngineConnections {
       computerId: string | null;
       provider: EngineConfig["provider"];
       model: string | null;
+      accountSource: EngineConfig["accountSource"];
       result: Promise<Awaited<ReturnType<EngineConnections["discover"]>>>;
     }
   >();
@@ -33,10 +34,14 @@ export class EngineConnections {
       context,
     );
     const cached = this.catalogs.get(`${botId}:${config.provider}`);
-    return cached?.computerId === computerId ? await cached.result : null;
+    return cached?.computerId === computerId &&
+      (cached.accountSource ?? "managed") ===
+        (config.accountSource ?? "managed")
+      ? await cached.result
+      : null;
   }
 
-  async catalog(botId: number, context: Context) {
+  async catalog(botId: number, context: Context, config?: EngineConfig) {
     const computerId = await this.execution.computers.computerId(
       botId,
       context,
@@ -47,7 +52,13 @@ export class EngineConnections {
         .map(async ({ id, name }) => {
           const cached = this.catalogs.get(`${botId}:${id}`);
           const connection =
-            cached?.computerId === computerId ? await cached.result : null;
+            cached?.computerId === computerId &&
+            (cached.accountSource ?? "managed") ===
+              (config?.provider === id
+                ? (config.accountSource ?? "managed")
+                : "managed")
+              ? await cached.result
+              : null;
           return {
             id,
             name,
@@ -72,6 +83,8 @@ export class EngineConnections {
     if (
       cached?.computerId === computerId &&
       cached.model === config.model &&
+      (cached.accountSource ?? "managed") ===
+        (config.accountSource ?? "managed") &&
       !refresh
     )
       return cached.result;
@@ -79,6 +92,7 @@ export class EngineConnections {
       computerId,
       provider: config.provider,
       model: config.model,
+      accountSource: config.accountSource,
       result: this.discover(botId, config, context),
     };
     this.catalogs.set(key, entry);
@@ -117,7 +131,11 @@ export class EngineConnections {
         const env = await this.execution.environment(config);
         let authenticated: boolean | undefined;
         if (config.provider === "claude") {
-          authenticated = await readClaudeAccount(worker, env);
+          authenticated = await readClaudeAccount(
+            worker,
+            env,
+            config.accountSource,
+          );
           if (!authenticated)
             return {
               ready: true,
@@ -137,7 +155,11 @@ export class EngineConnections {
           );
         }
         if (config.provider === "opencode") {
-          const account = await openOpenCodeAccount(worker, env);
+          const account = await openOpenCodeAccount(
+            worker,
+            env,
+            config.accountSource,
+          );
           const result = await account.catalog(config.model);
           return {
             ready: true,
@@ -242,6 +264,8 @@ export class EngineConnections {
     context: Context,
     providerId?: string,
   ) {
+    if (config.accountSource === "native")
+      throw new Error("请在工作电脑的 CLI 中管理原生账号。");
     await this.invalidate(botId, config, context);
     return this.exclusive(botId, async () => {
       if (config.provider === "opencode") {
@@ -323,6 +347,8 @@ export class EngineConnections {
     context: Context,
     input: EngineLoginInput = {},
   ) {
+    if (config.accountSource === "native")
+      throw new Error("请在工作电脑的 CLI 中管理原生账号。");
     await this.invalidate(botId, config, context);
     return this.exclusive(botId, () =>
       this.logins.start(botId, config, input, context),
@@ -381,6 +407,7 @@ export class EngineConnections {
       await worker.launch({
         command: engineProvider(config.provider).command,
         args: ["--version"],
+        accountSource: config.accountSource,
       });
       const result = await worker.closed;
       if (result.error === "ENOENT") return { available: false, version: null };

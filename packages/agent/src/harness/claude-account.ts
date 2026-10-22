@@ -1,4 +1,4 @@
-import type { EngineProcess } from "./types.ts";
+import type { EngineConfig, EngineProcess } from "./types.ts";
 import { engineLimits } from "./types.ts";
 
 const connectionCheckError = "Claude Code 连接检查未完成。请检查工作电脑。";
@@ -6,6 +6,7 @@ const connectionCheckError = "Claude Code 连接检查未完成。请检查工�
 export async function readClaudeAccount(
   worker: EngineProcess,
   env: Record<string, string> = {},
+  accountSource?: EngineConfig["accountSource"],
 ): Promise<boolean> {
   let output = "";
   let timer: NodeJS.Timeout | undefined;
@@ -19,8 +20,14 @@ export async function readClaudeAccount(
       (async () => {
         await worker.launch({
           command: "claude",
+          accountSource,
           args: ["auth", "status"],
-          env: { ...env, CLAUDE_CONFIG_DIR: `${ready.home}/claude` },
+          env: {
+            ...env,
+            ...(accountSource === "native"
+              ? {}
+              : { CLAUDE_CONFIG_DIR: `${ready.home}/claude` }),
+          },
         });
         return worker.closed;
       })(),
