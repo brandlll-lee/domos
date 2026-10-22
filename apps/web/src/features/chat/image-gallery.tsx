@@ -1,6 +1,7 @@
 import type { Attachment } from "@domos/agent/attachments";
 import { Button } from "@domos/ui/controls";
 import { PanelDialog } from "@domos/ui/dialog";
+import { ScrollArea } from "@domos/ui/scroll-area";
 import { ArrowClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
 import { CaretLeftIcon } from "@phosphor-icons/react/dist/csr/CaretLeft";
 import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
@@ -217,27 +218,36 @@ export function ImageGallery({
                   )}
                   {alert}
                   {files.length > 1 && (
-                    <nav
-                      className="image-viewer-thumbnails"
-                      aria-label="图片缩略图"
+                    <ScrollArea
+                      className="image-viewer-strip"
+                      orientation="horizontal"
                     >
-                      {files.map((item, index) => (
-                        <button
-                          type="button"
-                          key={item.id}
-                          ref={index === selected ? activeThumbnail : undefined}
-                          aria-label={`${chatCopy.viewImage} ${item.name}`}
-                          aria-current={index === selected ? "true" : undefined}
-                          onClick={() => select(index)}
-                        >
-                          <img
-                            src={`/files/${botId}/${item.id}`}
-                            alt=""
-                            loading="lazy"
-                          />
-                        </button>
-                      ))}
-                    </nav>
+                      <nav
+                        className="image-viewer-thumbnails"
+                        aria-label="图片缩略图"
+                      >
+                        {files.map((item, index) => (
+                          <button
+                            type="button"
+                            key={item.id}
+                            ref={
+                              index === selected ? activeThumbnail : undefined
+                            }
+                            aria-label={`${chatCopy.viewImage} ${item.name}`}
+                            aria-current={
+                              index === selected ? "true" : undefined
+                            }
+                            onClick={() => select(index)}
+                          >
+                            <img
+                              src={`/files/${botId}/${item.id}`}
+                              alt=""
+                              loading="lazy"
+                            />
+                          </button>
+                        ))}
+                      </nav>
+                    </ScrollArea>
                   )}
                 </footer>
               </>

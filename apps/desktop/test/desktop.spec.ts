@@ -330,6 +330,36 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     await expect(
       reopened.getByRole("button", { name: "Bot详情" }),
     ).toBeVisible();
+    await reopened.locator('input[type="file"]').setInputFiles({
+      name: "photo.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1kAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    });
+    await expect(
+      reopened.locator(".composer-attachments .attachment"),
+    ).toHaveCount(1);
+    await reopened.getByLabel("消息", { exact: true }).fill("图片查看");
+    await reopened.getByRole("button", { name: "发送", exact: true }).click();
+    await reopened
+      .getByLabel("你的消息", { exact: true })
+      .getByRole("button", { name: "查看图片 photo.png", exact: true })
+      .click();
+    const viewer = reopened.getByRole("dialog", { name: "photo.png" });
+    await expect(viewer).toBeVisible();
+    const titlebar = await reopened.locator(".app-titlebar").boundingBox();
+    const frame = await viewer.boundingBox();
+    expect(frame && titlebar && frame.y === titlebar.y + titlebar.height).toBe(
+      true,
+    );
+    await captureWindow(
+      desktop,
+      reopened,
+      testInfo.outputPath("image-viewer-titlebar.png"),
+    );
+    await reopened.keyboard.press("Escape");
     const choosing = desktop.waitForEvent("window");
     await desktop.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()

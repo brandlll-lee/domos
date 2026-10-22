@@ -39,6 +39,19 @@
   border-radius: var(--radius-round);
   background: color-mix(in srgb, var(--color-muted) 45%, transparent);
 }
+.scroll-bar[data-orientation="horizontal"] {
+  justify-content: flex-start;
+  width: auto;
+  height: var(--space-3);
+  margin-block: 0;
+  margin-inline: var(--space-1);
+}
+.scroll-bar[data-orientation="horizontal"] .scroll-thumb {
+  width: auto;
+  height: 100%;
+  min-width: var(--space-6);
+  min-height: 0;
+}
 .scroll-bar:hover .scroll-thumb {
   background: var(--color-muted);
 }

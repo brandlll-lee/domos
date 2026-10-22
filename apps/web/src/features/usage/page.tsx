@@ -1,5 +1,6 @@
 import { Button } from "@domos/ui/controls";
 import { ChoicePicker } from "@domos/ui/picker";
+import { ScrollArea } from "@domos/ui/scroll-area";
 import { ArrowClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
 import { ChartBarIcon } from "@phosphor-icons/react/dist/csr/ChartBar";
 import { useEffect, useMemo, useState } from "react";
@@ -188,8 +189,8 @@ export function UsageSurface() {
       .map((value) => ({ value, label: value })),
   ];
   return (
-    <main className="usage-surface" aria-label="用量" aria-busy={loading}>
-      <div className="usage-page">
+    <ScrollArea className="usage-surface">
+      <main className="usage-page" aria-label="用量" aria-busy={loading}>
         <header className="usage-head">
           <div className="usage-head-text">
             <h1>用量</h1>
@@ -415,7 +416,7 @@ export function UsageSurface() {
             </p>
           </>
         )}
-      </div>
-    </main>
+      </main>
+    </ScrollArea>
   );
 }

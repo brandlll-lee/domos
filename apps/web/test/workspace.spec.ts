@@ -123,6 +123,9 @@ test("usage reports native task costs and preserves session snapshots across the
   await expect(usage.locator(".usage-footer")).toContainText("1 条成本未提供");
   const summary = usage.getByRole("list", { name: "分组用量", exact: true });
   const details = usage.getByRole("table", { name: "用量明细", exact: true });
+  const scroll = page.locator(".usage-surface > .scroll-viewport");
+  await expect(scroll).toHaveCSS("scrollbar-width", "none");
+  await expect(page.locator(".usage-surface > .scroll-bar")).toHaveCount(1);
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
     await expect(summary).toContainText("model-2");
@@ -144,7 +147,7 @@ test("usage reports native task costs and preserves session snapshots across the
     });
     await usage.getByRole("button", { name: "任务成本", exact: true }).click();
     await usage.getByRole("button", { name: "模型", exact: true }).click();
-    await usage.evaluate((node) => {
+    await scroll.evaluate((node) => {
       node.scrollTo({ top: node.scrollHeight });
     });
     await expect(details).toBeInViewport();
@@ -158,7 +161,7 @@ test("usage reports native task costs and preserves session snapshots across the
       path: info.outputPath(`usage-mobile-${colorScheme}.png`),
     });
     await page.setViewportSize({ width: 1360, height: 900 });
-    await usage.evaluate((node) => {
+    await scroll.evaluate((node) => {
       node.scrollTo({ top: 0 });
     });
   }

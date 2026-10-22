@@ -2640,9 +2640,20 @@ test("delivered images form a gallery with viewer downloads and keyboard navigat
   ).toBeVisible();
   const viewport = page.viewportSize();
   const frame = await viewer.boundingBox();
-  expect(frame).toMatchObject({ x: 0, y: 0, ...viewport });
+  const titlebar = await page.locator(".app-titlebar").boundingBox();
+  expect(frame).toMatchObject({
+    x: 0,
+    y: titlebar?.height,
+    width: viewport?.width,
+    height: (viewport?.height ?? 0) - (titlebar?.height ?? 0),
+  });
   const thumbnails = viewer.getByRole("navigation", { name: "图片缩略图" });
   await expect(thumbnails.getByRole("button")).toHaveCount(2);
+  const strip = viewer.locator(".image-viewer-strip .scroll-viewport");
+  await expect(strip).toHaveCSS("scrollbar-width", "none");
+  expect(
+    await strip.evaluate((node) => node.scrollHeight <= node.clientHeight),
+  ).toBe(true);
   await thumbnails
     .getByRole("button", { name: "查看图片 portrait.png", exact: true })
     .click();
@@ -2718,6 +2729,14 @@ test("delivered images form a gallery with viewer downloads and keyboard navigat
         "交付图片和报告",
       );
       await expect(viewer).toBeVisible();
+      const top = await page.locator(".app-titlebar").boundingBox();
+      const close = await viewer
+        .getByRole("button", { name: "关闭弹窗", exact: true })
+        .boundingBox();
+      expect(close && top && close.y >= top.y + top.height).toBe(true);
+      expect(
+        await strip.evaluate((node) => node.scrollHeight <= node.clientHeight),
+      ).toBe(true);
       await page.screenshot({
         path: `test-results/image-viewer-${width}-${label}.png`,
       });
@@ -2741,6 +2760,60 @@ test("delivered images form a gallery with viewer downloads and keyboard navigat
   await viewer.getByRole("button", { name: "关闭弹窗", exact: true }).click();
   await page.reload();
   await expect(gallery.getByRole("img")).toHaveCount(2);
+});
+
+test("image thumbnails scroll horizontally and keep the selected image in view", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(url);
+  await page.locator('input[type="file"]').setInputFiles(
+    Array.from({ length: 10 }, (_, index) => ({
+      name: `photo-${index}.png`,
+      mimeType: "image/png",
+      buffer: png(100 + index, 80),
+    })),
+  );
+  await expect(page.locator(".composer-attachments .attachment")).toHaveCount(
+    10,
+  );
+  await page.getByLabel("消息", { exact: true }).fill("图片组");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await page
+    .getByLabel("你的消息", { exact: true })
+    .getByRole("button", { name: "查看图片 photo-0.png", exact: true })
+    .click();
+  const viewer = page.getByRole("dialog", { name: /^photo-\d+\.png$/ });
+  const strip = viewer.locator(".image-viewer-strip .scroll-viewport");
+  await expect(strip).toHaveCSS("scrollbar-width", "none");
+  expect(
+    await strip.evaluate(
+      (node) =>
+        node.scrollWidth > node.clientWidth &&
+        node.scrollHeight <= node.clientHeight,
+    ),
+  ).toBe(true);
+  await page.keyboard.press("ArrowLeft");
+  const last = viewer.getByRole("button", {
+    name: "查看图片 photo-9.png",
+    exact: true,
+  });
+  await expect(last).toHaveAttribute("aria-current", "true");
+  await expect(last).toBeInViewport();
+  await expect
+    .poll(() => strip.evaluate((node) => node.scrollLeft))
+    .toBeGreaterThan(0);
+  const track = viewer.locator('.scroll-bar[data-orientation="horizontal"]');
+  await expect(track).toHaveCount(1);
+  const trackBox = await track.boundingBox();
+  const thumbBox = await track.locator(".scroll-thumb").boundingBox();
+  expect(
+    trackBox &&
+      thumbBox &&
+      thumbBox.x >= trackBox.x &&
+      thumbBox.x + thumbBox.width <= trackBox.x + trackBox.width,
+  ).toBe(true);
+  await page.screenshot({ path: "test-results/image-viewer-strip-mobile.png" });
 });
 
 test("typing follows the Bot and failures retain their error message", async ({

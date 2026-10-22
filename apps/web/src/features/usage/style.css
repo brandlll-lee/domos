@@ -1,7 +1,5 @@
 .usage-surface {
   height: 100%;
-  overflow-y: auto;
-  overscroll-behavior: contain;
   background: var(--color-canvas);
   color: var(--color-text);
   font-variant-numeric: tabular-nums;
