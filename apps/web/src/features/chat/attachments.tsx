@@ -10,9 +10,11 @@ import { ImageGallery } from "./image-gallery.tsx";
 export function Attachments({
   botId,
   files,
+  caption,
 }: {
   botId: number;
   files: Attachment[];
+  caption?: string;
 }) {
   const [error, setError] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
@@ -43,6 +45,7 @@ export function Attachments({
         <ImageGallery
           botId={botId}
           files={images}
+          caption={caption}
           onDownload={(file) => void download(file)}
           downloading={downloading !== null}
           error={error ? chatCopy.errors.download : undefined}

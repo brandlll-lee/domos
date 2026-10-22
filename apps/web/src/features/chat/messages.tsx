@@ -1,10 +1,10 @@
-import type { ChatMessage } from "@domos/agent/messages";
+import { type ChatMessage, messageText } from "@domos/agent/messages";
 import type { TranscriptItem } from "@domos/agent/transcript";
 import { Button } from "@domos/ui/controls";
 import { ActionMenu } from "@domos/ui/menu";
 import { MessageBubble } from "@domos/ui/message";
 import { ScrollArea } from "@domos/ui/scroll-area";
-import { ArrowDownIcon } from "@phosphor-icons/react/dist/csr/ArrowDown";
+import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { Fragment, memo, type ReactNode } from "react";
 import { Attachments } from "./attachments.tsx";
 import { chatCopy } from "./copy.ts";
@@ -54,7 +54,11 @@ const MessageRow = memo(function MessageRow({
       <MessageBubble side={message.role === "user" ? "outgoing" : "incoming"}>
         <MessageBody>
           {!!message.attachments?.length && (
-            <Attachments botId={botId} files={message.attachments} />
+            <Attachments
+              botId={botId}
+              files={message.attachments}
+              caption={messageText(message)}
+            />
           )}
           <MaterialChips materials={message.materials} />
           <MessageContent
@@ -187,14 +191,13 @@ export const Messages = memo(function Messages({
         <Button
           type="button"
           variant="secondary"
-          size={transcript.unread ? "small" : "icon"}
+          size="icon"
           className="return-latest"
           aria-label={transcript.unread ? chatCopy.newMessage : chatCopy.latest}
           title={chatCopy.latest}
           onClick={transcript.jumpToLatest}
         >
-          <ArrowDownIcon />
-          {transcript.unread && chatCopy.newMessage}
+          <CaretDownIcon />
         </Button>
       )}
     </div>

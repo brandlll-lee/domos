@@ -933,6 +933,18 @@ test("send, reload, disconnect, reconnect and restart preserve the conversation"
   await expect(
     page.getByRole("button", { name: "发送", exact: true }),
   ).toBeVisible();
+  const contactTime = page.locator('.contact-row[aria-current="page"] time');
+  await expect(contactTime).toHaveText(/^\d{2}:\d{2}$/);
+  const lastMessage = (
+    await createORPCClient<RouterClient<AppRouter>>(
+      new RPCLink({ url: `${url}/rpc` }),
+    ).get({ botId: 1 })
+  ).messages.at(-1);
+  await expect(contactTime).toHaveAttribute(
+    "datetime",
+    new Date(lastMessage?.timestamp ?? 0).toISOString(),
+  );
+  const savedTime = await contactTime.getAttribute("datetime");
   await page.screenshot({ path: "test-results/chat-conversation.png" });
   const port = Number(new URL(url).port);
   await stop();
@@ -940,6 +952,7 @@ test("send, reload, disconnect, reconnect and restart preserve the conversation"
   await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   await expect(page.getByLabel("Domos 的回复")).toContainText("记住这句话");
   await expect(page.getByLabel("你的消息")).toHaveCount(1);
+  await expect(contactTime).toHaveAttribute("datetime", savedTime ?? "");
 });
 
 test("a killed server resumes unfinished work and the page reconnects", async ({
@@ -2221,6 +2234,15 @@ test("latest bubbles stay above the composer after typing, resizing, and reloadi
   });
   const latest = page.getByRole("button", { name: "返回最新" });
   await expect(latest).toBeVisible();
+  const latestBounds = await latest.boundingBox();
+  const composerBounds = await page.locator(".composer-area").boundingBox();
+  expect(
+    latestBounds &&
+      composerBounds &&
+      latestBounds.y + latestBounds.height < composerBounds.y + 1,
+  ).toBe(true);
+  expect(latestBounds && latestBounds.x > 300).toBe(true);
+  await expect(latest).toHaveCSS("border-radius", "999px");
   const heightBefore = await page
     .locator(".transcript")
     .evaluate((element) => element.scrollHeight);
@@ -2616,6 +2638,51 @@ test("delivered images form a gallery with viewer downloads and keyboard navigat
   await expect(
     viewer.getByRole("img", { name: "wide.png", exact: true }),
   ).toBeVisible();
+  const viewport = page.viewportSize();
+  const frame = await viewer.boundingBox();
+  expect(frame).toMatchObject({ x: 0, y: 0, ...viewport });
+  const thumbnails = viewer.getByRole("navigation", { name: "图片缩略图" });
+  await expect(thumbnails.getByRole("button")).toHaveCount(2);
+  await thumbnails
+    .getByRole("button", { name: "查看图片 portrait.png", exact: true })
+    .click();
+  await expect(
+    viewer.getByRole("img", { name: "portrait.png", exact: true }),
+  ).toBeVisible();
+  await viewer.getByRole("button", { name: "旋转图片", exact: true }).click();
+  await expect(viewer.locator(".image-viewer-canvas img")).toHaveCSS(
+    "rotate",
+    "90deg",
+  );
+  const rotated = await viewer
+    .locator(".image-viewer-canvas img")
+    .boundingBox();
+  const stage = await viewer.locator(".image-viewer-stage").boundingBox();
+  expect(
+    rotated &&
+      stage &&
+      Math.abs(rotated.x + rotated.width / 2 - stage.x - stage.width / 2) < 1,
+  ).toBe(true);
+  expect(
+    rotated &&
+      stage &&
+      Math.abs(rotated.y + rotated.height / 2 - stage.y - stage.height / 2) < 1,
+  ).toBe(true);
+  await viewer.getByRole("button", { name: "放大图片", exact: true }).click();
+  await expect(
+    viewer.getByRole("button", { name: "放大图片", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("ArrowRight");
+  await expect(
+    viewer.getByRole("img", { name: "wide.png", exact: true }),
+  ).toBeVisible();
+  await expect(viewer.locator(".image-viewer-canvas img")).toHaveCSS(
+    "rotate",
+    "0deg",
+  );
+  await expect(
+    viewer.getByRole("button", { name: "放大图片", exact: true }),
+  ).toHaveAttribute("aria-pressed", "false");
   await page.keyboard.press("ArrowRight");
   await expect(
     viewer.getByRole("img", { name: "portrait.png", exact: true }),
@@ -2635,6 +2702,29 @@ test("delivered images form a gallery with viewer downloads and keyboard navigat
   await page.keyboard.press("Escape");
   await expect(viewer).toHaveCount(0);
   await expect(thumbnail).toBeFocused();
+  const sentThumbnail = page
+    .getByLabel("你的消息", { exact: true })
+    .getByRole("button", { name: "查看图片 wide.png", exact: true });
+  for (const [width, height] of [
+    [1440, 900],
+    [768, 900],
+    [390, 844],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    for (const label of ["深色", "浅色"]) {
+      await chooseAppearance(page, label);
+      await sentThumbnail.click();
+      await expect(viewer.locator(".image-viewer-caption")).toHaveText(
+        "交付图片和报告",
+      );
+      await expect(viewer).toBeVisible();
+      await page.screenshot({
+        path: `test-results/image-viewer-${width}-${label}.png`,
+      });
+      await page.keyboard.press("Escape");
+      await expect(sentThumbnail).toBeFocused();
+    }
+  }
   await page.setViewportSize({ width: 390, height: 844 });
   await thumbnail.click();
   await expect(viewer).toBeVisible();

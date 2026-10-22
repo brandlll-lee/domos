@@ -1,47 +1,51 @@
 import type { Attachment } from "@domos/agent/attachments";
 import { Button } from "@domos/ui/controls";
-import { Dialog } from "@domos/ui/dialog";
+import { PanelDialog } from "@domos/ui/dialog";
+import { ArrowClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
 import { CaretLeftIcon } from "@phosphor-icons/react/dist/csr/CaretLeft";
 import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
 import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
-import { useEffect, useRef, useState } from "react";
+import { MagnifyingGlassPlusIcon } from "@phosphor-icons/react/dist/csr/MagnifyingGlassPlus";
+import { XIcon } from "@phosphor-icons/react/dist/csr/X";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { chatCopy } from "./copy.ts";
-
 export function ImageGallery({
   botId,
   files,
   onDownload,
   downloading,
   error,
+  caption,
 }: {
   botId: number;
   files: Attachment[];
   onDownload: (file: Attachment) => void;
   downloading: boolean;
   error?: string;
+  caption?: string;
 }) {
   const [selected, setSelected] = useState<number | null>(null);
   const [failed, setFailed] = useState<Set<string>>(() => new Set());
   const trigger = useRef<HTMLButtonElement>(null);
   const file = selected === null ? undefined : files[selected];
+  const [rotation, setRotation] = useState(0);
+  const [zoomed, setZoomed] = useState(false);
+  const activeThumbnail = useRef<HTMLButtonElement>(null);
+  function select(index: number) {
+    setSelected(index);
+    setRotation(0);
+    setZoomed(false);
+  }
   function move(offset: number) {
-    setSelected((index) =>
-      index === null ? null : (index + offset + files.length) % files.length,
-    );
+    select(((selected ?? 0) + offset + files.length) % files.length);
   }
   useEffect(() => {
-    if (selected === null || files.length < 2) return;
-    const keydown = (event: KeyboardEvent) => {
-      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-      event.preventDefault();
-      const offset = event.key === "ArrowRight" ? 1 : -1;
-      setSelected((index) =>
-        index === null ? null : (index + offset + files.length) % files.length,
-      );
-    };
-    window.addEventListener("keydown", keydown, true);
-    return () => window.removeEventListener("keydown", keydown, true);
-  }, [selected, files.length]);
+    if (selected === null) return;
+    activeThumbnail.current?.scrollIntoView({
+      block: "nearest",
+      inline: "center",
+    });
+  }, [selected]);
   const alert = error && (
     <p role="alert" className="alert">
       {error}
@@ -74,7 +78,7 @@ export function ImageGallery({
             aria-label={`${chatCopy.viewImage} ${item.name}`}
             onClick={(event) => {
               trigger.current = event.currentTarget;
-              setSelected(index);
+              select(index);
             }}
           >
             {image(item, true)}
@@ -82,36 +86,106 @@ export function ImageGallery({
         ))}
       </fieldset>
       {!file && alert}
-      <Dialog
+      <PanelDialog.Root
         open={Boolean(file)}
         onOpenChange={(open) => {
           if (!open) setSelected(null);
         }}
-        finalFocus={() => trigger.current}
-        title={file?.name}
-        className="image-viewer"
-        footer={
-          file && (
-            <>
-              <div className="image-viewer-toolbar">
-                <div className="image-viewer-navigation">
+      >
+        <PanelDialog.Portal>
+          <PanelDialog.Backdrop className="image-viewer-backdrop" />
+          <PanelDialog.Popup
+            className="image-viewer"
+            finalFocus={() => trigger.current}
+            onKeyDown={(event) => {
+              if (files.length < 2) return;
+              if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                event.preventDefault();
+                move(event.key === "ArrowRight" ? 1 : -1);
+              }
+            }}
+          >
+            {file && (
+              <>
+                <header className="image-viewer-header">
+                  <div className="image-viewer-info">
+                    <PanelDialog.Title>{file.name}</PanelDialog.Title>
+                    <span aria-live="polite">
+                      {(selected ?? 0) + 1} / {files.length}
+                    </span>
+                  </div>
+                  <div className="image-viewer-toolbar">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`${chatCopy.download} ${file.name}`}
+                      title={chatCopy.download}
+                      disabled={downloading}
+                      onClick={() => onDownload(file)}
+                    >
+                      <DownloadSimpleIcon />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="旋转图片"
+                      title="旋转图片"
+                      disabled={failed.has(file.id)}
+                      onClick={() => setRotation((angle) => (angle + 90) % 360)}
+                    >
+                      <ArrowClockwiseIcon />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="放大图片"
+                      aria-pressed={zoomed}
+                      title={zoomed ? "适应窗口" : "放大图片"}
+                      disabled={failed.has(file.id)}
+                      onClick={() => setZoomed((value) => !value)}
+                    >
+                      <MagnifyingGlassPlusIcon />
+                    </Button>
+                    <PanelDialog.Close
+                      aria-label="关闭弹窗"
+                      title="关闭"
+                      render={<Button variant="ghost" size="icon" />}
+                    >
+                      <XIcon />
+                    </PanelDialog.Close>
+                  </div>
+                </header>
+                <div className="image-viewer-main">
                   {files.length > 1 && (
                     <Button
                       variant="ghost"
-                      size="icon-small"
+                      size="icon"
+                      className="image-viewer-previous"
                       aria-label={chatCopy.previousImage}
                       onClick={() => move(-1)}
                     >
                       <CaretLeftIcon />
                     </Button>
                   )}
-                  <span aria-live="polite">
-                    {(selected ?? 0) + 1} / {files.length}
-                  </span>
+                  <div className="image-viewer-stage" key={file.id}>
+                    <div
+                      className="image-viewer-canvas"
+                      data-zoomed={zoomed}
+                      data-turned={rotation % 180 !== 0}
+                      style={
+                        {
+                          "--image-rotation": `${rotation}deg`,
+                        } as CSSProperties
+                      }
+                    >
+                      {image(file, false)}
+                    </div>
+                  </div>
                   {files.length > 1 && (
                     <Button
                       variant="ghost"
-                      size="icon-small"
+                      size="icon"
+                      className="image-viewer-next"
                       aria-label={chatCopy.nextImage}
                       onClick={() => move(1)}
                     >
@@ -119,46 +193,58 @@ export function ImageGallery({
                     </Button>
                   )}
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon-small"
-                  aria-label={`${chatCopy.download} ${file.name}`}
-                  title={chatCopy.download}
-                  disabled={downloading}
-                  onClick={() => onDownload(file)}
-                >
-                  <DownloadSimpleIcon />
-                </Button>
-              </div>
-              {file.source && (
-                <p className="image-details">
-                  <time dateTime={file.source.capturedAt}>
-                    {new Date(file.source.capturedAt).toLocaleString()}
-                  </time>
-                  {file.source.url && (
-                    <>
-                      {" "}
-                      ·{" "}
-                      <a
-                        href={file.source.url}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {chatCopy.imageSource}
-                      </a>
-                    </>
+                <footer className="image-viewer-footer">
+                  {caption && <p className="image-viewer-caption">{caption}</p>}
+                  {file.source && (
+                    <p className="image-details">
+                      <time dateTime={file.source.capturedAt}>
+                        {new Date(file.source.capturedAt).toLocaleString()}
+                      </time>
+                      {file.source.url && (
+                        <>
+                          {" "}
+                          ·{" "}
+                          <a
+                            href={file.source.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {chatCopy.imageSource}
+                          </a>
+                        </>
+                      )}
+                    </p>
                   )}
-                </p>
-              )}
-              {alert}
-            </>
-          )
-        }
-      >
-        {file && (
-          <div className="image-viewer-content">{image(file, false)}</div>
-        )}
-      </Dialog>
+                  {alert}
+                  {files.length > 1 && (
+                    <nav
+                      className="image-viewer-thumbnails"
+                      aria-label="图片缩略图"
+                    >
+                      {files.map((item, index) => (
+                        <button
+                          type="button"
+                          key={item.id}
+                          ref={index === selected ? activeThumbnail : undefined}
+                          aria-label={`${chatCopy.viewImage} ${item.name}`}
+                          aria-current={index === selected ? "true" : undefined}
+                          onClick={() => select(index)}
+                        >
+                          <img
+                            src={`/files/${botId}/${item.id}`}
+                            alt=""
+                            loading="lazy"
+                          />
+                        </button>
+                      ))}
+                    </nav>
+                  )}
+                </footer>
+              </>
+            )}
+          </PanelDialog.Popup>
+        </PanelDialog.Portal>
+      </PanelDialog.Root>
     </>
   );
 }

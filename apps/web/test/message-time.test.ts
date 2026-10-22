@@ -1,5 +1,9 @@
 import { expect, test } from "vitest";
-import { clockTime, timeBreak } from "../src/features/chat/format.ts";
+import {
+  clockTime,
+  contactTime,
+  timeBreak,
+} from "../src/features/chat/format.ts";
 
 const at = (
   year: number,
@@ -56,4 +60,12 @@ test("dates from another year include the year", () => {
 test("unknown timestamps produce no time group", () => {
   expect(timeBreak(undefined, undefined, now)).toBeNull();
   expect(timeBreak(undefined, Number.NaN, now)).toBeNull();
+});
+
+test("contact timestamps use the local day, recent weekday, and full older date", () => {
+  expect(contactTime(at(2026, 1, 10, 11, 58), now)).toBe("11:58");
+  expect(contactTime(at(2026, 1, 9, 23, 59), now)).toBe("昨天");
+  expect(contactTime(at(2026, 1, 4, 9, 0), now)).toBe("周日");
+  expect(contactTime(at(2026, 1, 3, 9, 0), now)).toBe("2026年1月3日");
+  expect(contactTime(at(2025, 12, 31, 23, 0), now)).toBe("2025年12月31日");
 });

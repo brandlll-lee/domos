@@ -53,3 +53,11 @@ export function timeBreak(
       : longDate.format(date);
   return `${dateLabel} ${weekday.format(date)} ${time}`;
 }
+
+export function contactTime(at: number, now = Date.now()) {
+  const age = dayDifference(at, now);
+  if (age <= 0) return clockTime(at);
+  if (age === 1) return "昨天";
+  if (age < 7) return weekday.format(at);
+  return longDate.format(at);
+}

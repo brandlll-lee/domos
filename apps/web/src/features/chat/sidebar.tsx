@@ -2,8 +2,9 @@ import type { Bot, BotPresence } from "@domos/agent/bots";
 import { BotAvatar } from "@domos/ui/avatar";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { MagnifyingGlassIcon as MagnifyingGlass } from "@phosphor-icons/react/dist/csr/MagnifyingGlass";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { chatCopy } from "./copy.ts";
+import { contactTime } from "./format.ts";
 
 const contactPreview = (bot: BotPresence) =>
   bot.busy ? chatCopy.working : bot.preview || "开始对话";
@@ -18,6 +19,11 @@ export function Sidebar({
   connected: boolean;
 }) {
   const [query, setQuery] = useState("");
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const matches = bots.filter((bot) =>
     `${bot.name}\n${contactPreview(bot)}`
       .toLocaleLowerCase()
@@ -53,6 +59,14 @@ export function Sidebar({
                 />
                 <div className="chat-preview">
                   <strong>{bot.name}</strong>
+                  {bot.lastMessageAt !== undefined && (
+                    <time
+                      dateTime={new Date(bot.lastMessageAt).toISOString()}
+                      title={new Date(bot.lastMessageAt).toLocaleString()}
+                    >
+                      {contactTime(bot.lastMessageAt, now)}
+                    </time>
+                  )}
                   <span>{contactPreview(bot)}</span>
                 </div>
               </a>
