@@ -8,6 +8,7 @@ import type {
 import type { ToolDiagnostic } from "@earendil-works/pi-durable";
 import type { Attachment } from "./attachments.ts";
 import type { MessageDelivery } from "./delivery.ts";
+import type { InputMaterials } from "./materials.ts";
 
 export type ChatContent =
   | Pick<TextContent, "type" | "text">
@@ -30,6 +31,7 @@ export type ChatMessage = {
   toolName?: string;
   isError?: boolean;
   attachments?: Attachment[];
+  materials?: InputMaterials;
   delivery?: MessageDelivery;
   toolStatus?: "pending" | "running" | "done" | "failed" | "stopped";
   diagnostics?: readonly ToolDiagnostic[];

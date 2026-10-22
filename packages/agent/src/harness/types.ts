@@ -1,5 +1,6 @@
 import type { Readable, Writable } from "node:stream";
 import type { Attachment } from "../attachments.ts";
+import type { InputMaterials } from "../materials.ts";
 
 export const engineIds = ["pi", "codex", "claude", "opencode"] as const;
 export type EngineId = (typeof engineIds)[number];
@@ -222,6 +223,7 @@ export interface EngineProvider {
 
 export type EngineInput = {
   text: string;
+  materials?: InputMaterials;
   requestId: string;
   attachments?: Attachment[];
   whenBusy?: "reject" | "followUp";

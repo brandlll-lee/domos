@@ -24,7 +24,8 @@
     "./transcript": "./src/transcript.ts",
     "./view": "./src/chat-view.ts",
     "./work": "./src/work/index.ts",
-    "./work/limits": "./src/work/limits.ts"
+    "./work/limits": "./src/work/limits.ts",
+    "./materials": "./src/materials.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.9.0",

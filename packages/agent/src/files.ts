@@ -22,12 +22,14 @@ import {
   type EvidenceSource,
   MAX_FILE_BYTES,
 } from "./attachments.ts";
+import { WorkError } from "./work/state.ts";
 import { type WorkEnvironment, Workspace } from "./workspace.ts";
 
 export const FileInput = "domos.file-input";
 
 export class Files {
   readonly root: string;
+  private readonly operations = new Map<number, Promise<unknown>>();
   private readonly target?: (
     botId: number,
     context: Context,
@@ -58,6 +60,17 @@ export class Files {
     return new Workspace({ cwd });
   }
 
+  async exclusive<T>(botId: number, action: () => Promise<T>): Promise<T> {
+    const previous = this.operations.get(botId) ?? Promise.resolve();
+    const pending = previous.catch(() => {}).then(action);
+    this.operations.set(botId, pending);
+    try {
+      return await pending;
+    } finally {
+      if (this.operations.get(botId) === pending) this.operations.delete(botId);
+    }
+  }
+
   private directory(botId: number, id: string) {
     if (!/^[a-f0-9]{64}$/.test(id)) throw new Error("Invalid file ID");
     return join(this.root, String(botId), "artifacts", id);
@@ -69,6 +82,7 @@ export class Files {
     bytes: Uint8Array,
     computerId?: string,
     source?: EvidenceSource,
+    uploadId?: string,
   ): Promise<Attachment> {
     if (bytes.byteLength > MAX_FILE_BYTES)
       throw new Error("File exceeds 10 MiB");
@@ -89,6 +103,7 @@ export class Files {
       mimeType,
       ...(computerId ? { computerId } : {}),
       ...(source ? { source } : {}),
+      ...(uploadId ? { uploadId } : {}),
     };
     const directory = this.directory(botId, id);
     await mkdir(directory, { recursive: true });
@@ -109,6 +124,7 @@ export class Files {
     name: string,
     bytes: Uint8Array,
     context = BACKGROUND_CONTEXT,
+    uploadId: string = randomUUID(),
   ) {
     const filename = basename(win32.basename(name)).trim();
     if (
@@ -119,11 +135,24 @@ export class Files {
         (character) => character.charCodeAt(0) < 32 || character === ":",
       )
     )
-      throw new Error("Invalid file name");
-    const digest = createHash("sha256").update(bytes).digest("hex");
+      throw new WorkError("BAD_REQUEST", `${name}：文件名无效。`);
     if (bytes.byteLength > MAX_FILE_BYTES)
-      throw new Error("File exceeds 10 MiB");
-    const filePath = `uploads/${digest}/${filename}`;
+      throw new WorkError("BAD_REQUEST", `${filename}：文件大小超过 10 MiB。`);
+    if (!/^[a-f0-9-]{36}$/i.test(uploadId))
+      throw new WorkError("BAD_REQUEST", "上传 ID 无效。");
+    const type = await fileTypeFromBuffer(bytes).catch(() => undefined);
+    if (
+      type?.mime.startsWith("image/") &&
+      !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
+        type.mime,
+      )
+    )
+      throw new WorkError(
+        "BAD_REQUEST",
+        `${filename}：不支持 ${type.mime}。请使用 PNG、JPEG、WebP 或 GIF。`,
+      );
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    const filePath = `uploads/${uploadId}/${digest}/${filename}`;
     const workspace = await this.workspace(botId, context);
     const path = await workspace.path(filePath);
     const parent = getOrThrow(await workspace.joinPath([path, ".."], context));
@@ -134,11 +163,41 @@ export class Files {
     try {
       getOrThrow(await workspace.writeFile(temporary, bytes, context));
       getOrThrow(await workspace.renameFile(temporary, path, context));
+      const computerId = await this.target?.(botId, context);
+      return await this.store(
+        botId,
+        filePath,
+        bytes,
+        computerId ?? undefined,
+        undefined,
+        uploadId,
+      );
+    } catch (error) {
+      await workspace.remove(path, { force: true }, BACKGROUND_CONTEXT);
+      throw error;
     } finally {
       await workspace.remove(temporary, { force: true }, context);
     }
-    const computerId = await this.target?.(botId, context);
-    return this.store(botId, filePath, bytes, computerId ?? undefined);
+  }
+
+  async discard(botId: number, id: string) {
+    const file = (await this.metadata(botId, id).catch((error) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    })) as (Attachment & { uploadId?: string }) | null;
+    if (!file?.uploadId) return;
+    const computerId = await this.target?.(botId, BACKGROUND_CONTEXT);
+    if (!this.target || computerId === file.computerId) {
+      const workspace = await this.workspace(botId);
+      getOrThrow(
+        await workspace.remove(
+          await workspace.path(file.path),
+          { force: true },
+          BACKGROUND_CONTEXT,
+        ),
+      );
+    }
+    await rm(this.directory(botId, id), { recursive: true, force: true });
   }
 
   async metadata(botId: number, id: string): Promise<Attachment> {
@@ -180,7 +239,7 @@ export class Files {
         )
       )
         throw new Error(
-          `图片格式 ${file.type} 暂不支持。请转换为 PNG、JPEG、WebP 或 GIF。`,
+          `${attachment.name}：图片格式 ${file.type} 暂不支持。请转换为 PNG、JPEG、WebP 或 GIF。`,
         );
       images.push({
         type: "image" as const,

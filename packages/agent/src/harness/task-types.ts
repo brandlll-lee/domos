@@ -5,6 +5,7 @@ import type {
   TaskRuntime,
 } from "@earendil-works/pi-durable";
 import type { Attachment } from "../attachments.ts";
+import type { InputMaterials } from "../materials.ts";
 import type { ChatMessage } from "../messages.ts";
 
 export type EngineTaskInput = {
@@ -31,6 +32,7 @@ export function userMessage(
   text: string,
   attachments?: Attachment[],
   requestId?: string,
+  materials?: InputMaterials,
 ): StoredMessage {
   return stored({
     id,
@@ -41,5 +43,6 @@ export function userMessage(
     stopped: false,
     timestamp: Date.now(),
     ...(attachments?.length ? { attachments } : {}),
+    ...(materials ? { materials } : {}),
   } satisfies ChatMessage);
 }

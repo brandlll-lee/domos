@@ -570,12 +570,15 @@ test("uploaded text becomes a real edited deliverable with durable downloads and
   let delivered = "";
   const text = `Source ${crypto.randomUUID()}`;
   try {
+    const uploadRequestId = crypto.randomUUID();
     const upload = await first.client.files.upload({
+      requestId: uploadRequestId,
       botId,
       file: new File([text], "资料.txt"),
     });
     expect(
       await first.client.files.upload({
+        requestId: uploadRequestId,
         botId,
         file: new File([text], "资料.txt"),
       }),
@@ -1211,6 +1214,219 @@ test("computer routes expose actual execution boundaries and validate Bot owners
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   } finally {
     controller.abort();
+    await runtime.harness.close(context);
+  }
+});
+
+test("draft cleanup preserves sent snapshots and separates independent uploads", async () => {
+  const { open, faux } = await setup();
+  const runtime = await open();
+  const botId = runtime.conversation.id;
+  try {
+    const input = {
+      botId,
+      file: new File(["draft"], "draft.txt"),
+      requestId: crypto.randomUUID(),
+    };
+    const first = await runtime.client.files.upload(input);
+    expect(await runtime.client.files.upload(input)).toEqual(first);
+    const second = await runtime.client.files.upload({
+      ...input,
+      requestId: crypto.randomUUID(),
+    });
+    expect(second.id).not.toBe(first.id);
+    await runtime.client.files.discard({ botId, id: first.id });
+    await expect(
+      runtime.client.files.download({ botId, id: first.id }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(
+      await runtime.client.files.download({ botId, id: second.id }),
+    ).toBeInstanceOf(File);
+    faux.setResponses([fauxAssistantMessage("Received")]);
+    await runtime.client.send({
+      botId,
+      text: "Read this",
+      attachments: [second.id],
+      requestId: crypto.randomUUID(),
+    });
+    await runtime.conversation.waitForIdle(context);
+    await runtime.client.files.discard({ botId, id: second.id });
+    expect(
+      await (
+        await runtime.client.files.download({ botId, id: second.id })
+      ).text(),
+    ).toBe("draft");
+    await runtime.client.files.discard({ botId, id: first.id });
+  } finally {
+    await runtime.harness.close(context);
+  }
+});
+
+test("request skills and message references store authoritative snapshots across restart", async () => {
+  const { open, faux } = await setup();
+  const runtime = await open();
+  const botId = runtime.conversation.id;
+  let requestId = "";
+  try {
+    faux.setResponses([
+      fauxAssistantMessage("Original source"),
+      fauxAssistantMessage("Used references"),
+    ]);
+    await runtime.client.send({
+      botId,
+      text: "Source request",
+      requestId: crypto.randomUUID(),
+    });
+    await runtime.conversation.waitForIdle(context);
+    const source = (await runtime.client.get({ botId })).messages.find(
+      (message) => message.role === "assistant",
+    );
+    const skill = await runtime.work.skills.save(
+      {
+        id: crypto.randomUUID(),
+        content:
+          "---\nname: report\ndescription: Write a report\n---\nUse the saved method.",
+        revision: 0,
+        requestId: crypto.randomUUID(),
+      },
+      context,
+    );
+    await runtime.work.skills.enable(
+      botId,
+      skill.id,
+      true,
+      skill.revision,
+      crypto.randomUUID(),
+      context,
+    );
+    const enabled = (await runtime.work.skills.list(context))[0];
+    if (!enabled) throw new Error("Missing skill");
+    const selection = { id: skill.id, revision: enabled.revision };
+    await expect(
+      runtime.client.send({
+        botId,
+        text: "Use this",
+        skills: [{ ...selection, revision: 0 }],
+        requestId: crypto.randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(
+      runtime.client.send({
+        botId,
+        text: "Quote",
+        context: [
+          {
+            id: crypto.randomUUID(),
+            type: "message",
+            messageId: "other-bot-message",
+          },
+        ],
+        requestId: crypto.randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    requestId = crypto.randomUUID();
+    const input = {
+      botId,
+      text: "Use these",
+      skills: [selection],
+      context: [
+        {
+          id: crypto.randomUUID(),
+          type: "message" as const,
+          messageId: source?.id ?? "",
+        },
+        { id: crypto.randomUUID(), type: "text" as const, text: "Quoted text" },
+      ],
+      requestId,
+    };
+    const receipt = await runtime.client.send(input);
+    await runtime.conversation.waitForIdle(context);
+    await runtime.work.skills.enable(
+      botId,
+      skill.id,
+      false,
+      enabled.revision,
+      crypto.randomUUID(),
+      context,
+    );
+    expect(await runtime.client.send(input)).toEqual(receipt);
+    const sent = (await runtime.client.get({ botId })).messages.find(
+      (message) => message.requestId === requestId,
+    );
+    expect(sent?.materials?.context[0]).toMatchObject({
+      messageId: source?.id,
+      text: "Original source",
+      botId,
+    });
+    expect(sent?.materials?.skills[0]).toMatchObject({
+      name: "report",
+      revision: enabled.revision,
+      content: skill.content,
+    });
+    expect((await runtime.work.skills.list(context))[0]?.enabledBots).toEqual(
+      [],
+    );
+  } finally {
+    await runtime.harness.close(context);
+  }
+  const reopened = await open();
+  try {
+    const sent = (await reopened.client.get({ botId })).messages.find(
+      (message) => message.requestId === requestId,
+    );
+    expect(sent?.materials?.context).toHaveLength(2);
+    expect(sent?.materials?.skills[0]?.name).toBe("report");
+  } finally {
+    await reopened.harness.close(context);
+  }
+});
+
+test("attachment validation uses detected MIME and the selected model capability", async () => {
+  const { open, models } = await setup();
+  models.setProvider(
+    fauxProvider({ models: [{ id: "text-only", input: ["text"] }] }).provider,
+  );
+  const runtime = await open();
+  const botId = runtime.conversation.id;
+  try {
+    await expect(
+      runtime.client.files.upload({
+        botId,
+        file: new File(
+          [new Uint8Array([0x42, 0x4d, ...new Uint8Array(62)])],
+          "photo.bmp",
+        ),
+      }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: expect.stringContaining("photo.bmp"),
+    });
+    const { png } = await import(
+      "../../../packages/agent/test/fixtures/png.ts"
+    );
+    const image = await runtime.client.files.upload({
+      botId,
+      file: new File([png(1, 1)], "source.bin"),
+    });
+    expect(image.mimeType).toBe("image/png");
+    await runtime.client.models.select({
+      botId,
+      provider: "faux",
+      modelId: "text-only",
+    });
+    await expect(
+      runtime.client.send({
+        botId,
+        text: "Read this",
+        attachments: [image.id],
+        requestId: crypto.randomUUID(),
+      }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: expect.stringContaining("source.bin"),
+    });
+    expect((await runtime.client.get({ botId })).messages).toEqual([]);
+  } finally {
     await runtime.harness.close(context);
   }
 });

@@ -7,6 +7,7 @@ import {
   LiveDoc,
 } from "@earendil-works/pi-durable";
 import { chatView } from "../chat-view.ts";
+import { materialText } from "../materials.ts";
 import { watchCommits } from "../watch.ts";
 import { WorkError } from "../work/state.ts";
 import { EngineConnections } from "./connections.ts";
@@ -262,14 +263,20 @@ export class Engines {
         kind: input.operation ? "domos.engine-operation" : EngineMessage,
         data: input.operation
           ? { operation: input.operation }
-          : userMessage(turnId, input.text, input.attachments, input.requestId),
+          : userMessage(
+              turnId,
+              input.text,
+              input.attachments,
+              input.requestId,
+              input.materials,
+            ),
       });
       tx.placeSubmission(submission.id, entry.id);
       const taskId = await tx.createTask(
         this.task,
         {
           text: [
-            input.text,
+            materialText(input.text, input.materials),
             ...(input.attachments ?? []).map(
               (file) => `Uploaded file: ${file.path}`,
             ),

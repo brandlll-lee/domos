@@ -49,16 +49,21 @@ async function setup() {
 test("the official daemon handles upload, command output, artifact snapshots and reconnects in one file namespace", async () => {
   const { connection, env, files } = await setup();
   expect(nodePlatform(await connection.info()).platform).toBe(process.platform);
+  const requestId = crypto.randomUUID();
   const uploaded = await files.upload(
     1,
     "销量.csv",
     new TextEncoder().encode("value\n3\n5\n"),
+    context,
+    requestId,
   );
   expect(
     await files.upload(
       1,
       "销量.csv",
       new TextEncoder().encode("value\n3\n5\n"),
+      context,
+      requestId,
     ),
   ).toEqual(uploaded);
   getOrThrow(

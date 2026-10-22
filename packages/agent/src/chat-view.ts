@@ -136,6 +136,7 @@ export function chatView(
         ? (entry.data as {
             text: string;
             attachments?: Attachment[];
+            materials?: ChatMessage["materials"];
             requestId?: string;
           })
         : undefined;
@@ -173,6 +174,9 @@ export function chatView(
           ...projected,
           ...(projected.role === "user" && input?.requestId
             ? { requestId: input.requestId }
+            : {}),
+          ...(projected.role === "user" && input?.materials
+            ? { materials: input.materials }
             : {}),
           ...(delivery ? { delivery } : {}),
         });

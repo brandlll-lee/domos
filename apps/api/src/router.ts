@@ -3,6 +3,7 @@ import type { Bots } from "@domos/agent/bots";
 import type { Computers } from "@domos/agent/computer/catalog";
 import { FileInput, type Files } from "@domos/agent/files";
 import type { Engines } from "@domos/agent/harness";
+import { materialText } from "@domos/agent/materials";
 import { stopChat } from "@domos/agent/stop";
 import { chatView } from "@domos/agent/view";
 import { type BotWork, WorkError } from "@domos/agent/work";
@@ -19,6 +20,7 @@ import { botConversation, botTarget } from "./conversation.ts";
 import { watchDirectory } from "./directory.ts";
 import { engineConfig, engineRouter } from "./engines.ts";
 import { fileRouter } from "./files.ts";
+import { materialsSchema, prepareMaterials } from "./materials.ts";
 import { modelRouter, requireConfiguredModel } from "./models.ts";
 import { watchValues } from "./subscribe.ts";
 import { workRouter } from "./work.ts";
@@ -104,11 +106,17 @@ export function createRouter(
             .max(MAX_ATTACHMENTS)
             .default([]),
           requestId: z.uuid(),
+          ...materialsSchema,
         }),
       )
       .handler(async ({ input }) => {
         const conversation = await botConversation(bots, input.botId);
-        if (!input.text && !input.attachments.length)
+        if (
+          !input.text &&
+          !input.attachments.length &&
+          !input.skills.length &&
+          !input.context.length
+        )
           throw new ORPCError("BAD_REQUEST");
         const attachments = await Promise.all(
           input.attachments.map(async (id) => {
@@ -125,44 +133,106 @@ export function createRouter(
               models,
               (await conversation.agent(BACKGROUND_CONTEXT)).model,
             );
-          const submit = async () => {
-            try {
-              await files.verify(input.botId, attachments, BACKGROUND_CONTEXT);
-            } catch (error) {
-              throw new ORPCError("BAD_REQUEST", {
-                message:
-                  error instanceof Error ? error.message : "附件目标无效。",
-              });
-            }
-            if (engines)
-              return engines.submit(
-                input.botId,
-                { text: input.text, attachments, requestId: input.requestId },
-                BACKGROUND_CONTEXT,
+          const submit = () =>
+            files.exclusive(input.botId, async () => {
+              const view =
+                input.skills.length || input.context.length
+                  ? await (engines
+                      ? engines.view(input.botId, BACKGROUND_CONTEXT)
+                      : (async () => {
+                          const state =
+                            await conversation.viewState(BACKGROUND_CONTEXT);
+                          try {
+                            return chatView(state.value);
+                          } finally {
+                            state.dispose();
+                          }
+                        })())
+                  : null;
+              const materials = view
+                ? await prepareMaterials(input, view, work)
+                : undefined;
+              for (const file of attachments)
+                await files.metadata(input.botId, file.id);
+              const image = attachments.find((file) =>
+                file.mimeType?.startsWith("image/"),
               );
-            return conversation.submit(
-              {
-                type: "input",
-                content: [
-                  input.text,
-                  ...attachments.map((file) => `Uploaded file: ${file.path}`),
-                ]
-                  .filter(Boolean)
-                  .join("\n\n"),
-                entry: {
-                  kind: FileInput,
-                  data: {
+              if (image) {
+                const config = engines
+                  ? (await engines.profile(input.botId, BACKGROUND_CONTEXT))
+                      .config
+                  : undefined;
+                let supported: boolean | undefined;
+                if (!config || config.provider === "pi") {
+                  const model = (await conversation.agent(BACKGROUND_CONTEXT))
+                    .model;
+                  if (model)
+                    supported = (await models.getAvailable(model.provider))
+                      .find((item) => item.id === model.modelId)
+                      ?.input.includes("image");
+                } else {
+                  const connection = await engines?.connections.snapshot(
+                    input.botId,
+                    config,
+                    BACKGROUND_CONTEXT,
+                  );
+                  if (connection?.ready && "models" in connection)
+                    supported = connection.models.find(
+                      (item) => item.id === config.model,
+                    )?.images;
+                }
+                if (supported === false)
+                  throw new ORPCError("BAD_REQUEST", {
+                    message: `${image.name}：当前模型不支持图片。请选择支持图片的模型。`,
+                  });
+              }
+              try {
+                await files.verify(
+                  input.botId,
+                  attachments,
+                  BACKGROUND_CONTEXT,
+                );
+              } catch (error) {
+                throw new ORPCError("BAD_REQUEST", {
+                  message:
+                    error instanceof Error ? error.message : "附件目标无效。",
+                });
+              }
+              if (engines)
+                return engines.submit(
+                  input.botId,
+                  {
                     text: input.text,
                     attachments,
+                    materials,
                     requestId: input.requestId,
                   },
+                  BACKGROUND_CONTEXT,
+                );
+              return conversation.submit(
+                {
+                  type: "input",
+                  content: [
+                    materialText(input.text, materials),
+                    ...attachments.map((file) => `Uploaded file: ${file.path}`),
+                  ]
+                    .filter(Boolean)
+                    .join("\n\n"),
+                  entry: {
+                    kind: FileInput,
+                    data: {
+                      text: input.text,
+                      ...(materials ? { materials } : {}),
+                      attachments,
+                      requestId: input.requestId,
+                    },
+                  },
+                  requestId: input.requestId,
+                  whenBusy: "steer",
                 },
-                requestId: input.requestId,
-                whenBusy: "steer",
-              },
-              BACKGROUND_CONTEXT,
-            );
-          };
+                BACKGROUND_CONTEXT,
+              );
+            });
           const submission = await (computer
             ? computer.transfer(input.botId, submit, BACKGROUND_CONTEXT)
             : submit());

@@ -79,7 +79,7 @@ test("file limits apply to uploaded, generated, and published files", async () =
     "10 MiB",
   );
   await expect(files.upload(1, "bad:stream", new Uint8Array())).rejects.toThrow(
-    "Invalid file name",
+    "文件名无效",
   );
 });
 
