@@ -2498,6 +2498,28 @@ test("message media leads captions and bubble tails follow both themes", async (
       await page.setViewportSize({ width, height: 900 });
       const attachments = await outgoing.locator(".attachments").boundingBox();
       const caption = await outgoing.locator(".user-text").boundingBox();
+      const frame = await outgoing.boundingBox();
+      const image = await outgoing
+        .locator(".image-thumbnail img")
+        .boundingBox();
+      const document = await outgoing.locator(".file-attachment").boundingBox();
+      if (!frame || !image || !document || !caption)
+        throw new Error("Message media missing");
+      for (const media of [image, document]) {
+        expect(media.x - frame.x).toBeGreaterThan(0);
+        expect(media.x - frame.x).toBeLessThanOrEqual(4);
+        expect(
+          frame.x + frame.width - media.x - media.width,
+        ).toBeLessThanOrEqual(4);
+      }
+      expect(image.y - frame.y).toBeLessThanOrEqual(4);
+      expect(
+        await outgoing.locator(".user-text").evaluate((element) => {
+          const range = window.document.createRange();
+          range.selectNodeContents(element);
+          return range.getBoundingClientRect().x;
+        }),
+      ).toBeGreaterThan(image.x);
       expect(
         attachments &&
           caption &&

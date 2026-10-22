@@ -1,8 +1,12 @@
 .chat-surface {
   container: chat / inline-size;
-  --color-user: color-mix(in srgb, var(--bot-color) 32%, var(--color-canvas));
+  --color-user: oklch(
+    from var(--bot-color) var(--color-user-lightness)
+      min(c, var(--color-user-chroma)) h
+  );
 }
 .message-bubble {
+  --color-text: var(--color-message-text);
   position: relative;
   width: fit-content;
   min-width: 0;

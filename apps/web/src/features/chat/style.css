@@ -322,6 +322,22 @@
 .message-body[data-expanded] {
   max-height: none;
 }
+.message-bubble:has(.attachments, .message-image) {
+  width: var(--message-media-width);
+  padding: var(--space-1);
+}
+.message-bubble:has(.attachments, .message-image) .message-body {
+  border-start-start-radius: calc(var(--radius-message) - var(--space-1));
+  border-start-end-radius: calc(var(--radius-message) - var(--space-1));
+}
+.message-bubble:has(.attachments, .message-image) :is(.user-text, .markdown) {
+  padding: 0 var(--space-2) var(--space-1);
+}
+.message-bubble .file-attachment {
+  --color-muted: var(--color-text);
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  border-color: transparent;
+}
 .message-body .attachments:not(:last-child),
 .message-body .message-image:not(:last-child),
 .message-body .material-chips:not(:last-child) {
@@ -466,6 +482,7 @@
 }
 .message-image {
   display: block;
+  width: 100%;
   max-width: 100%;
   height: auto;
   border-radius: var(--radius-control);
@@ -484,6 +501,10 @@
   grid-template-columns: minmax(0, 1fr);
   width: fit-content;
   max-width: min(100%, 18rem);
+}
+.message-bubble .image-gallery {
+  width: 100%;
+  max-width: none;
 }
 .image-thumbnail {
   display: grid;
@@ -542,6 +563,10 @@
   max-width: 100%;
   max-height: 16rem;
   aspect-ratio: auto;
+}
+.message-bubble .image-gallery[data-count="1"] img {
+  width: 100%;
+  max-height: none;
 }
 .image-viewer .dialog-footer {
   padding-top: var(--space-2);
