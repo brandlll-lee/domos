@@ -5,6 +5,30 @@ import { opencodeProvider } from "../src/harness/providers/opencode.ts";
 import { piProvider } from "../src/harness/providers/pi.ts";
 import type { EngineEvent, EngineSession } from "../src/harness/types.ts";
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
+import { featureProcess } from "./fixtures/feature-process.ts";
+
+test("native Pi loads the tools that expose its MCP servers", async () => {
+  const process = featureProcess();
+  onTestFinished(() => process.close());
+  const session = await piProvider.open({
+    process,
+    config: { provider: "pi", model: null, accountSource: "native" },
+    sessionId: null,
+    instructions: "Role",
+    emit: async () => {},
+  });
+  expect(process.spec?.args).toEqual(
+    expect.arrayContaining([
+      "builtin:mcp",
+      "builtin:codemode",
+      "builtin:tool-search",
+    ]),
+  );
+  expect((await session.controls?.())?.commands).toContainEqual({
+    name: "review",
+    description: "Review work",
+  });
+});
 
 function protocol() {
   const process = new ProtocolProcess();

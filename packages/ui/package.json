@@ -5,6 +5,7 @@
   "exports": {
     "./panel": "./src/web/panel.tsx",
     "./tabs": "./src/web/tabs.tsx",
+    "./toast": "./src/web/toast.ts",
     "./setting-row": "./src/web/setting-row.tsx",
     "./avatar": "./src/web/avatar.tsx",
     "./characters": "./src/characters.ts",

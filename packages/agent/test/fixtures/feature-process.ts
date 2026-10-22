@@ -76,7 +76,15 @@ export function featureProcess() {
                   }
                 : {};
     process.frame({ type: "response", id: request.id, success: true, data });
-    if (request.type === "prompt")
+    if (request.type === "prompt") {
+      for (const id of ["mcp-first", "mcp-second"])
+        process.frame({
+          type: "extension_ui_request",
+          id,
+          method: "notify",
+          message: "Fixture MCP connection needs attention",
+          notifyType: "warning",
+        });
       process.frame({
         type: "extension_ui_request",
         id: "target",
@@ -84,6 +92,7 @@ export function featureProcess() {
         title: "Choose target",
         options: ["Preview", "Production"],
       });
+    }
     if (request.type === "compact") {
       process.frame({ type: "compaction_start", reason: "manual" });
       process.frame({

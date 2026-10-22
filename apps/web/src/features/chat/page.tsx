@@ -18,7 +18,7 @@ import { ContextRing } from "./context.tsx";
 import { chatCopy } from "./copy.ts";
 import { ChatHeader } from "./header.tsx";
 import { Messages } from "./messages.tsx";
-import { RuntimeStatus } from "./runtime.tsx";
+import { RuntimeNotifications, RuntimeStatus } from "./runtime.tsx";
 import { Sidebar } from "./sidebar.tsx";
 import { useChat } from "./use-chat.ts";
 import { useComposerDock } from "./use-composer-dock.ts";
@@ -180,6 +180,19 @@ function BotChat({
         </>
       }
     >
+      <RuntimeNotifications
+        state={chat.view?.runtime}
+        provider={engine.profile?.config.provider ?? "pi"}
+        name={
+          engine.profile?.providers.find(
+            (item) => item.id === engine.profile?.config.provider,
+          )?.name ?? "Pi"
+        }
+        onOpen={() => {
+          if (!detailsOpen || panel !== "settings" || detailPanel !== "engine")
+            showPanel("engine");
+        }}
+      />
       {view === "usage" ? (
         <UsageSurface />
       ) : (

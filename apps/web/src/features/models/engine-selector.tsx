@@ -29,7 +29,7 @@ export function EngineSelector({
     profile?.config.provider === "pi" &&
     profile.config.accountSource === "native";
   const [browsing, setBrowsing] = useState<EngineId>("pi");
-  const source = `${botId}:${profile?.revision ?? 0}`;
+  const source = `${botId}:${profile?.config.provider}:${profile?.config.accountSource ?? "managed"}`;
   const [scope, setScope] = useState(source);
   const [native, setNative] = useState<
     Partial<Record<EngineId, EngineModel[]>>

@@ -90,7 +90,7 @@ export async function accountEnvironment(spec, home, source) {
         await writeFile(settingsPath, JSON.stringify(selected), {
           mode: 0o600,
         });
-        spec.args.push("--settings", settingsPath);
+        spec.args.unshift("--settings", settingsPath);
       }
     }
     if (

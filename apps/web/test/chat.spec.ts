@@ -201,6 +201,122 @@ test.afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
+test("engine notices use dismissible notifications above the workspace", async ({
+  page,
+}, testInfo) => {
+  await stop();
+  await start(0, true);
+  await page.goto(url);
+  await page.getByLabel("消息", { exact: true }).fill("Work");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const notifications = page.getByRole("region", {
+    name: "引擎通知",
+    exact: true,
+  });
+  await expect(notifications).toBeVisible();
+  await expect(
+    notifications.getByText("Fixture MCP connection needs attention", {
+      exact: true,
+    }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByLabel("上下文状态", { exact: true }),
+  ).not.toContainText("Fixture MCP");
+  const bounds = await notifications.boundingBox();
+  expect(bounds?.x).toBeGreaterThan(800);
+  expect(bounds?.y).toBeLessThan(100);
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await page.screenshot({
+      path: testInfo.outputPath(`notifications-${colorScheme}.png`),
+      animations: "disabled",
+    });
+  }
+  await notifications
+    .getByRole("button", { name: "查看", exact: true })
+    .click();
+  const details = page.locator("#bot-details");
+  await expect(
+    details.getByRole("heading", { name: "任务引擎", exact: true }),
+  ).toBeVisible();
+  await notifications
+    .getByRole("button", { name: "查看", exact: true })
+    .click();
+  await expect(
+    details.getByRole("heading", { name: "任务引擎", exact: true }),
+  ).toBeVisible();
+  await notifications
+    .getByRole("button", { name: "关闭通知", exact: true })
+    .click();
+  await expect(notifications).not.toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Choose target", exact: true }),
+  ).toBeVisible();
+});
+
+test("changing native effort keeps the model catalog and connection", async ({
+  page,
+}) => {
+  await stop();
+  await start(0, true);
+  const api = createORPCClient<RouterClient<AppRouter>>(
+    new RPCLink({ url: `${url}/rpc` }),
+  );
+  const profile = await api.engines.get({ botId: 1 });
+  await api.engines.configure({
+    botId: 1,
+    revision: profile.revision,
+    requestId: crypto.randomUUID(),
+    config: {
+      provider: "pi",
+      accountSource: "native",
+      model: "test-provider/test-model",
+    },
+  });
+  await api.engines.inspect({ botId: 1 });
+  let inspections = 0;
+  await page.route("**/rpc/engines/inspect", async (route) => {
+    inspections++;
+    await route.continue();
+  });
+  await page.goto(url);
+  const picker = page.locator(".model-selector-trigger");
+  await expect(picker).toBeEnabled();
+  await picker.click();
+  await expect(
+    page.getByRole("button", { name: "Test model", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  const details = await openDetails(page);
+  await chooseDetail(details, "连接与账号");
+  await details.getByRole("button", { name: "检查连接", exact: true }).click();
+  await expect(
+    details.getByText("已读取工作电脑的账号和模型。", { exact: true }),
+  ).toBeVisible();
+  await picker.click();
+  await expect(
+    page.getByRole("button", { name: "Test model", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await details
+    .getByRole("combobox", { name: "推理强度", exact: true })
+    .click();
+  await page.getByRole("option", { name: "high", exact: true }).click();
+  await expect(
+    details.getByRole("combobox", { name: "推理强度", exact: true }),
+  ).toContainText("high");
+  const loaded = inspections;
+  await picker.click();
+  await expect(
+    page.getByRole("button", { name: "Test model", exact: true }),
+  ).toBeVisible();
+  expect(inspections).toBe(loaded);
+  await page.keyboard.press("Escape");
+  await expect(
+    details.getByText("已读取工作电脑的账号和模型。", { exact: true }),
+  ).toBeVisible();
+});
+
 test("native controls, interaction, compaction and Usage work in both themes", async ({
   page,
 }, testInfo) => {

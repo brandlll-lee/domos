@@ -1,0 +1,48 @@
+.runtime-notifications {
+  position: fixed;
+  inset-block-start: calc(var(--titlebar-height) + var(--space-4));
+  inset-inline-end: var(--space-4);
+  z-index: 5;
+  display: grid;
+  gap: var(--space-2);
+  width: min(28rem, calc(100vw - 2 * var(--space-4)));
+}
+.runtime-notification {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-popup);
+  color: var(--color-text);
+  box-shadow: var(--color-popup-shadow);
+  font-size: 13px;
+}
+.runtime-notification > svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+.runtime-notification[data-limited] {
+  display: none;
+}
+.runtime-notification-content {
+  min-width: 0;
+}
+.runtime-notification-scroll {
+  max-height: 8rem;
+  margin-block-start: var(--space-1);
+}
+.runtime-notification p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--color-muted);
+  line-height: 1.5;
+}
+.runtime-notification-actions {
+  display: grid;
+  justify-items: end;
+  gap: var(--space-2);
+}

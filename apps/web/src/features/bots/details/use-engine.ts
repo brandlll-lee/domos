@@ -139,24 +139,27 @@ export function useEngine(
     save: (config: EngineConfig) =>
       run("configure", ["engine", botId, config], async (requestId) => {
         if (!profile) throw new Error("请等待引擎配置加载。");
-        setProfile(
-          await client.engines.configure({
-            botId,
-            config: {
-              ...config,
-              accountSource:
-                config.accountSource ??
-                (config.provider === profile.config.provider
-                  ? profile.config.accountSource
-                  : undefined),
-            },
-            revision: profile.revision,
-            requestId,
-          }),
-        );
-        setConnection(undefined);
+        const next = await client.engines.configure({
+          botId,
+          config: {
+            ...config,
+            accountSource:
+              config.accountSource ??
+              (config.provider === profile.config.provider
+                ? profile.config.accountSource
+                : undefined),
+          },
+          revision: profile.revision,
+          requestId,
+        });
+        setProfile(next);
+        if (
+          next.config.provider !== profile.config.provider ||
+          (next.config.accountSource ?? "managed") !==
+            (profile.config.accountSource ?? "managed")
+        )
+          setConnection(undefined);
         setLogin(null);
-        window.dispatchEvent(new Event("domos:engines"));
       }),
     key: (key: string | null, providerId?: string) =>
       run("key", ["key", botId, providerId], async () => {

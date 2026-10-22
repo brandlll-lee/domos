@@ -196,7 +196,7 @@ test.each(["claude", "opencode"])(
     const script = join(native, "cli.cjs");
     await writeFile(
       script,
-      `const fs = require('node:fs'); const path = process.argv[process.argv.indexOf('--settings') + 1]; console.log(JSON.stringify({settings: process.argv.includes('--settings') ? JSON.parse(fs.readFileSync(path, 'utf8')) : null, config: process.env.OPENCODE_CONFIG_CONTENT ? JSON.parse(process.env.OPENCODE_CONFIG_CONTENT) : null, service: process.env.DATABASE_URL, other: process.env.SERVICE_API_KEY}));`,
+      `const fs = require('node:fs'); if (process.argv.includes('auth') && process.argv.indexOf('--settings') > process.argv.indexOf('auth')) process.exit(1); const path = process.argv[process.argv.indexOf('--settings') + 1]; console.log(JSON.stringify({settings: process.argv.includes('--settings') ? JSON.parse(fs.readFileSync(path, 'utf8')) : null, config: process.env.OPENCODE_CONFIG_CONTENT ? JSON.parse(process.env.OPENCODE_CONFIG_CONTENT) : null, service: process.env.DATABASE_URL, other: process.env.SERVICE_API_KEY}));`,
     );
     const win = globalThis.process.platform === "win32";
     await writeFile(
@@ -225,7 +225,7 @@ test.each(["claude", "opencode"])(
     });
     await process.launch({
       command,
-      args: [],
+      args: command === "claude" ? ["auth", "status"] : [],
       accountSource: "native",
       env:
         command === "opencode"
@@ -236,7 +236,7 @@ test.each(["claude", "opencode"])(
             }
           : {},
     });
-    await process.closed;
+    expect((await process.closed).code).toBe(0);
     const result = JSON.parse(output);
     expect(result.service).toBeUndefined();
     expect(result.other).toBeUndefined();
