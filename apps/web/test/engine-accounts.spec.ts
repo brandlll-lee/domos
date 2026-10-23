@@ -417,9 +417,9 @@ test("native account flows show login choices, retain providers, and select mode
       .click();
     await page.setViewportSize({ width: 1360, height: 900 });
     await expect(trigger).toContainText("Test Model");
-    await page
-      .getByRole("button", { name: "允许这次操作", exact: true })
-      .click();
+    await page.getByRole("combobox", { name: "操作权限", exact: true }).click();
+    await page.getByRole("option", { name: "允许一次", exact: true }).click();
+    await page.getByRole("button", { name: "发送回答", exact: true }).click();
     await expect(
       page.getByRole("region", { name: "允许这次操作？", exact: true }),
     ).toBeHidden();

@@ -1,3 +1,5 @@
+import type { z } from "zod";
+
 export type CodexItem = {
   id: string;
   type: string;
@@ -46,9 +48,15 @@ export type CodexFrame = {
     command?: string;
     cwd?: string;
     reason?: string;
+    serverName?: string;
+    mode?: string;
+    message?: string;
+    url?: string;
+    requestedSchema?: z.core.JSONSchema.JSONSchema;
   };
 };
 export const codexApprovals = new Set([
+  "mcpServer/elicitation/request",
   "item/tool/requestUserInput",
   "item/permissions/requestApproval",
   "item/commandExecution/requestApproval",

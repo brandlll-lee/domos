@@ -36,7 +36,10 @@ function Approval({
     Object.fromEntries(
       (approval.questions ?? [])
         .filter((item) => item.value !== undefined)
-        .map((item) => [item.id, [item.value ?? ""]]),
+        .map((item) => [
+          item.id,
+          Array.isArray(item.value) ? item.value : [item.value ?? ""],
+        ]),
     ),
   );
   const action = useWorkAction();
@@ -58,6 +61,11 @@ function Approval({
     >
       <strong>{approval.title}</strong>
       <p className="approval-detail">{approval.detail}</p>
+      {approval.url && (
+        <a href={approval.url} target="_blank" rel="noopener noreferrer">
+          打开确认页面
+        </a>
+      )}
       {approval.questions?.map((question) => (
         <div className="detail-stack" key={question.id}>
           {question.multiple ? (
@@ -175,6 +183,7 @@ function Approval({
               Boolean(
                 approval.questions?.some(
                   (question) =>
+                    question.required !== false &&
                     !answers[question.id]?.some((value) => value.trim()),
                 ),
               )

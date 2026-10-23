@@ -561,7 +561,13 @@ test("first use prepares the default Bot with a computer and engine before share
       });
       await expect(enginePicker).toBeDisabled();
       await second
-        .getByRole("button", { name: "允许这次操作", exact: true })
+        .getByRole("combobox", { name: "操作权限", exact: true })
+        .click();
+      await second
+        .getByRole("option", { name: "允许一次", exact: true })
+        .click();
+      await second
+        .getByRole("button", { name: "发送回答", exact: true })
         .click();
       await expect(
         page

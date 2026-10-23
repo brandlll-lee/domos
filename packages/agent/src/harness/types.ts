@@ -87,14 +87,16 @@ export type EngineApproval = {
   title: string;
   detail: string;
   kind: "permission" | "question";
+  url?: string;
   questions?: {
     id: string;
     title: string;
     options?: { id: string; label: string; description?: string }[];
     multiple?: boolean;
     allowOther?: boolean;
-    value?: string;
+    value?: string | string[];
     multiline?: boolean;
+    required?: boolean;
   }[];
   options?: { id: string; label: string }[];
 };

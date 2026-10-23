@@ -208,6 +208,7 @@ runtime.computer.process = async () => {
         worker.frame({ type: "agent_settled" });
       }
     } else if (request.id === "approval") {
+      if ((request.result as { action?: string })?.action !== "accept") return;
       worker.frame({
         method: "item/completed",
         params: {
@@ -245,8 +246,26 @@ runtime.computer.process = async () => {
       worker.response(request, { turn: { id: "turn" } });
       worker.frame({
         id: "approval",
-        method: "item/commandExecution/requestApproval",
-        params: { command: "write report.md", cwd: "/work/bots/1" },
+        method: "mcpServer/elicitation/request",
+        params: {
+          threadId: "codex-session",
+          serverName: "domos",
+          mode: "form",
+          message: "Allow desktop_hotkey?",
+          requestedSchema: {
+            type: "object",
+            properties: {
+              decision: {
+                type: "string",
+                title: "操作权限",
+                enum: ["accept", "decline"],
+                enumNames: ["允许一次", "拒绝"],
+              },
+              note: { type: "string", title: "备注" },
+            },
+            required: ["decision"],
+          },
+        },
       });
     } else if (request.id !== undefined) worker.response(request, {});
   };

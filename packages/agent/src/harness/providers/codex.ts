@@ -1,10 +1,12 @@
 import { EngineRequestRejected } from "../json-lines.ts";
 import type {
   EngineAnswer,
+  EngineApproval,
   EngineOpen,
   EngineProvider,
   EngineSession,
 } from "../types.ts";
+import { codexAnswer, codexApproval } from "./codex-approval.ts";
 import { openCodexClient } from "./codex-client.ts";
 import {
   type CodexFrame,
@@ -74,52 +76,30 @@ export const codexProvider: EngineProvider = {
               });
               return;
             }
+            let approval: EngineApproval;
+            try {
+              approval = codexApproval(frame);
+            } catch (error) {
+              if (frame.method !== "mcpServer/elicitation/request") throw error;
+              await rpc.send({
+                id: frame.id,
+                result: { action: "cancel", content: null, _meta: null },
+              });
+              await emit({
+                type: "runtime",
+                state: {
+                  notices: {
+                    [`codex:${frame.id}`]:
+                      error instanceof Error
+                        ? error.message
+                        : "Codex 确认请求无效。",
+                  },
+                },
+              });
+              return;
+            }
             requests.set(String(frame.id), frame);
-            await emit({
-              type: "approval",
-              approval: {
-                id: String(frame.id),
-                title:
-                  frame.method === "item/tool/requestUserInput"
-                    ? "需要你的回答"
-                    : "允许这次操作？",
-                detail: [
-                  params.command,
-                  params.cwd,
-                  params.reason,
-                  ...(params.questions?.map((question) => question.question) ??
-                    []),
-                  params.permissions ? JSON.stringify(params.permissions) : "",
-                ]
-                  .filter(Boolean)
-                  .join("\n")
-                  .slice(0, 8000),
-                kind:
-                  frame.method === "item/tool/requestUserInput"
-                    ? "question"
-                    : "permission",
-                ...(params.questions
-                  ? {
-                      questions: params.questions.map((question) => ({
-                        id: question.id,
-                        title: question.question,
-                        ...(question.isOther ? { allowOther: true } : {}),
-                        ...(question.options
-                          ? {
-                              options: question.options.map((option) => ({
-                                id: option.label,
-                                label: option.label,
-                                ...(option.description
-                                  ? { description: option.description }
-                                  : {}),
-                              })),
-                            }
-                          : {}),
-                      })),
-                    }
-                  : {}),
-              },
-            });
+            await emit({ type: "approval", approval });
             return;
           }
           if (
@@ -236,9 +216,18 @@ export const codexProvider: EngineProvider = {
                 id: item.id,
                 name: item.tool ?? item.type,
                 text:
-                  item.aggregatedOutput ??
-                  JSON.stringify(item.result ?? item.changes ?? ""),
-                failed: item.status === "failed" || Boolean(item.error),
+                  [
+                    item.aggregatedOutput ??
+                      (item.result ? JSON.stringify(item.result) : undefined),
+                    item.error ? JSON.stringify(item.error) : undefined,
+                  ]
+                    .filter(Boolean)
+                    .join("\n") || JSON.stringify(item.changes ?? ""),
+                failed:
+                  item.status === "failed" ||
+                  Boolean(item.error) ||
+                  (item.result as { isError?: boolean } | null)?.isError ===
+                    true,
               });
           }
           if (frame.method === "turn/completed") {
@@ -396,36 +385,23 @@ export const codexProvider: EngineProvider = {
         }
       },
       async interrupt() {
-        for (const requestId of requests.keys())
-          await session.answer(requestId, { allow: false });
+        for (const [requestId, request] of requests) {
+          if (request.method === "mcpServer/elicitation/request") {
+            requests.delete(requestId);
+            await rpc.send({
+              id: request.id,
+              result: { action: "cancel", content: null, _meta: null },
+            });
+          } else await session.answer(requestId, { allow: false });
+        }
         if (turnId)
           await rpc.request("turn/interrupt", { threadId: id, turnId });
       },
       async answer(requestId: string, answer: EngineAnswer) {
         const request = requests.get(requestId);
         if (!request) throw new Error("这次确认已经失效。");
+        const result = codexAnswer(request, answer);
         requests.delete(requestId);
-        let result: object = { decision: answer.allow ? "accept" : "decline" };
-        if (request.method === "item/tool/requestUserInput")
-          result = {
-            answers: Object.fromEntries(
-              (request.params?.questions ?? []).map((question) => [
-                question.id,
-                {
-                  answers: answer.allow
-                    ? (answer.answers?.[question.id] ?? [answer.text ?? ""])
-                    : [],
-                },
-              ]),
-            ),
-          };
-        else if (request.method === "item/permissions/requestApproval")
-          result = {
-            permissions: answer.allow
-              ? (request.params?.permissions ?? {})
-              : {},
-            scope: "turn",
-          };
         await rpc.send({ id: request.id, result });
       },
       async recover(nativeTurn) {
