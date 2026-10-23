@@ -180,6 +180,9 @@ importers:
       '@anthropic-ai/claude-agent-sdk':
         specifier: 0.3.303
         version: 0.3.303(@anthropic-ai/sdk@0.129.0(zod@4.6.7))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(zod@4.6.7)
+      '@domos/ui':
+        specifier: workspace:*
+        version: link:../ui
       '@earendil-works/chord':
         specifier: 1.2.0
         version: 1.2.0
@@ -235,6 +238,10 @@ importers:
       '@types/mdast':
         specifier: 4.0.4
         version: 4.0.4
+    optionalDependencies:
+      electron:
+        specifier: 44.8.0
+        version: 44.8.0
 
   packages/hosting:
     dependencies:

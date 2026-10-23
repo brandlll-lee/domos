@@ -1,20 +1,28 @@
 import { openBrowserService } from "./browser-service.mjs";
+import { openDesktopActivity } from "./desktop-activity.mjs";
 import { openDesktopView } from "./desktop-view.mjs";
 
-export function openComputerService(directory, home) {
+export function openComputerService(directory, home, emit = () => {}) {
   let desktop;
+  let activity;
+  const cursorSessions = new Set();
   let browser;
   const views = new Map();
   async function driver() {
     if (!desktop) {
       const { CuaDriver } = await import("@trycua/cua-driver");
       desktop = CuaDriver.create();
+      activity = openDesktopActivity(desktop, emit);
     }
     return desktop;
   }
   return {
     async request(input, signal) {
       signal.throwIfAborted();
+      if (input.operation === "activity") {
+        activity?.clear(input.owner);
+        return {};
+      }
       if (input.service === "browser") {
         browser ??= openBrowserService(directory, home);
         const instance = await browser;
@@ -40,7 +48,7 @@ export function openComputerService(directory, home) {
       const instance = await driver();
       if (input.operation === "view") {
         if (input.action === "open") {
-          views.set(input.id, openDesktopView(instance, input.id));
+          views.set(input.id, openDesktopView(instance, input.id, activity));
           return {};
         }
         const view = views.get(input.id);
@@ -55,10 +63,12 @@ export function openComputerService(directory, home) {
         return JSON.parse(await instance.listToolsJson({ signal })).tools;
       if (input.operation === "prepare") {
         try {
-          const result = await instance.callTool(
-            "get_desktop_state",
-            JSON.stringify({ max_image_dimension: 320 }),
-            { signal },
+          const result = await activity.capture(() =>
+            instance.callTool(
+              "get_desktop_state",
+              JSON.stringify({ max_image_dimension: 320 }),
+              { signal },
+            ),
           );
           return {
             available: !result.isError && result.images.length > 0,
@@ -72,11 +82,32 @@ export function openComputerService(directory, home) {
           return { available: false, error: error.message };
         }
       }
-      const result = await instance.callTool(
+      const args = {
+        ...input.arguments,
+        session:
+          input.arguments?.session ??
+          `domos-${input.actor?.botId ?? "desktop"}`,
+      };
+      if (!cursorSessions.has(args.session)) {
+        await instance
+          .callTool(
+            "set_agent_cursor_enabled",
+            JSON.stringify({ session: args.session, enabled: false }),
+            { signal },
+          )
+          .catch(() => {});
+        cursorSessions.add(args.session);
+      }
+      activity.observe(input.name, args, null, input.actor);
+      const call = () =>
+        instance.callTool(input.name, JSON.stringify(args), { signal });
+      const result = ["get_desktop_state", "get_window_state", "zoom"].includes(
         input.name,
-        JSON.stringify(input.arguments ?? {}),
-        { signal },
-      );
+      )
+        ? await activity.capture(call)
+        : await call();
+      if (signal.aborted) activity.clear(input.actor?.owner);
+      else activity.observe(input.name, args, result, input.actor);
       return {
         content: [
           ...(result.text ? [{ type: "text", text: result.text }] : []),
@@ -98,6 +129,7 @@ export function openComputerService(directory, home) {
       if (browser)
         await browser.then((instance) => instance.close()).catch(() => {});
       if (!desktop) return;
+      await activity.close();
       await desktop.shutdown();
       desktop.uniffiDestroy();
     },

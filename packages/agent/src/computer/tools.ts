@@ -110,6 +110,11 @@ export class ComputerTools {
               owner,
               signal,
               context,
+              {
+                botId,
+                color: await this.computers.color(botId, context),
+                owner,
+              },
             );
         }
         throw new Error("工作电脑工具未启用。请检查电脑设置。");
@@ -125,6 +130,15 @@ export class ComputerTools {
     );
     if (!enabled[service]) throw new Error("请先启用这项电脑服务。");
     return target.services.takeover(botId, service);
+  }
+
+  async *activity(botId: number, signal: AbortSignal, context: Context) {
+    const { target, enabled } = await this.computers.serviceTarget(
+      botId,
+      context,
+    );
+    if (!enabled.desktop) return;
+    yield* target.services.activity(botId, signal, context);
   }
 
   async release(

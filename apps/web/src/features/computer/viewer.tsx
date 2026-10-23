@@ -1,6 +1,7 @@
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { ComputerEffect } from "./effect.tsx";
 import { useView } from "./use-view.ts";
 
 export function ComputerViewer({
@@ -10,10 +11,8 @@ export function ComputerViewer({
   botId: number;
   service: "browser" | "desktop";
 }) {
-  const { frame, connected, controlling, error, send, reconnect } = useView(
-    botId,
-    service,
-  );
+  const { frame, activity, connected, controlling, error, send, reconnect } =
+    useView(botId, service);
   const [url, setUrl] = useState("");
   const [text, setText] = useState("");
   const [ratio, setRatio] = useState(16 / 9);
@@ -190,6 +189,9 @@ export function ComputerViewer({
           <p className="detail-note">
             {error ? "画面暂不可用。" : "正在读取工作电脑画面…"}
           </p>
+        )}
+        {frame && (
+          <ComputerEffect state={connected && !controlling ? activity : null} />
         )}
       </div>
       <div className="computer-view-toolbar">

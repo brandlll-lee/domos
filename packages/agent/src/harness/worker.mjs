@@ -78,7 +78,9 @@ async function configure(frame) {
   home = await realpath(frame.home);
   process.env.CLAUDE_CONFIG_DIR = join(home, "claude");
   process.chdir(await realpath(frame.cwd));
-  computer = openComputerService(process.cwd(), home);
+  computer = openComputerService(process.cwd(), home, (value) =>
+    emit({ type: "activity", value }),
+  );
   gateway = await openGateway(
     frame.tools,
     (callId, name, args, signal) =>

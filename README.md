@@ -50,7 +50,9 @@ Grok Bot and Meta Muse offer persistent AI companions. Domos lets you host the s
 | 📱 **Access from other devices** | Pair a device with a one-time code, connect through a browser, and revoke access when needed. |
 | 🔑 **Your accounts** | Connect model services for Pi. Use an engine's supported sign-in or API key option. Keys stored by the service are encrypted. |
 
-Computer tools currently support commands and files. They do not control a graphical desktop. Phones and tablets use the browser interface.
+Enable desktop tools in the Computer tab. The target window and Agent cursor use the Bot's color. Local and remote viewers share these effects. Phones and tablets use the browser interface.
+
+Native effects need a logged-in graphical session on the work computer. Desktop builds and work images include the helper. For a source installation, run `pnpm --filter @domos/agent exec install-electron` on that computer. Linux native effects need X11. Viewer effects do not need a native overlay. Desktop tools still need a graphical session that can provide captures.
 
 Users must review and enable scheduled tasks. Tasks run only while the Domos service runs. After a restart, missed repeats are combined into one run. A local service cannot keep working while its computer is asleep or shut down.
 

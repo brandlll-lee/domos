@@ -29,6 +29,7 @@ COPY apps/api/src ./apps/api/src
 COPY apps/cli/src ./apps/cli/src
 COPY apps/controller/src ./apps/controller/src
 COPY packages/agent/src ./packages/agent/src
+COPY packages/ui/src ./packages/ui/src
 COPY packages/hosting/src ./packages/hosting/src
 COPY deploy/release.json ./deploy/release.json
 COPY deploy/NOTICE /usr/share/doc/domos/NOTICE

@@ -33,6 +33,15 @@ export function computerRouter(bots: Bots, computers?: Computers) {
   const context = BACKGROUND_CONTEXT;
   const service = z.enum(["browser", "desktop"]);
   return {
+    activity: os.input(botTarget).handler(async function* ({ input, signal }) {
+      await botConversation(bots, input.botId);
+      const target = await access(async (target) => target);
+      yield* target.tools.activity(
+        input.botId,
+        signal ?? new AbortController().signal,
+        context,
+      );
+    }),
     watch: os.input(botTarget.extend({ service })).handler(async function* ({
       input,
       signal,

@@ -6,6 +6,7 @@ export type ServiceState = {
   error: string | null;
 };
 export type ComputerRequest =
+  | { operation: "activity"; owner?: string }
   | { operation: "catalog"; service: ComputerService }
   | { operation: "prepare"; service: ComputerService }
   | { operation: "install"; service: "browser" }
@@ -21,5 +22,6 @@ export type ComputerRequest =
       service: ComputerService;
       name: string;
       arguments: Record<string, unknown>;
+      actor?: { botId: number; color: string; owner: string };
     };
 export type ComputerResponse = ProductTool[] | ProductResult | ServiceState;

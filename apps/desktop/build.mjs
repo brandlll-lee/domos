@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { metrics, themes } from "@domos/ui/tokens";
@@ -30,6 +31,9 @@ pnpm(
   "--legacy",
   "--prod",
   runtime,
+);
+createRequire(join(runtime, "node_modules/@domos/agent/package.json"))(
+  "electron",
 );
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
@@ -100,6 +104,12 @@ await mkdir(join(runtime, "work/deploy"), { recursive: true });
 await mkdir(join(runtime, "work/packages/agent/src/harness"), {
   recursive: true,
 });
+await mkdir(join(runtime, "work/packages/ui/src"), { recursive: true });
+for (const name of ["package.json", "src/computer-effect.mjs"])
+  await cp(
+    join(root, "packages/ui", name),
+    join(runtime, "work/packages/ui", name),
+  );
 for (const name of [
   "worker.mjs",
   "account-environment.mjs",
@@ -111,6 +121,9 @@ for (const name of [
   "browser-view.mjs",
   "desktop-view.mjs",
   "computer-service.mjs",
+  "desktop-activity.mjs",
+  "desktop-overlay.mjs",
+  "desktop-overlay-preload.cjs",
 ])
   await cp(
     join(root, "packages/agent/src/harness", name),

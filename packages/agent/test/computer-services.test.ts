@@ -4,6 +4,7 @@ import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { expect, onTestFinished, test } from "vitest";
+import type { ComputerActivity } from "../src/computer/activity.ts";
 import { Computer } from "../src/computer/index.ts";
 import { parseConfig } from "../src/runtime/config.ts";
 
@@ -149,6 +150,20 @@ test.runIf(platform() === "win32")(
     });
     const tools = await computer.services.catalog(1, "desktop", context);
     expect(tools.some((tool) => tool.name === "get_desktop_state")).toBe(true);
+    const controller = new AbortController();
+    let latest: ComputerActivity = null;
+    const watching = (async () => {
+      for await (const state of computer.services.activity(
+        1,
+        controller.signal,
+        context,
+      ))
+        latest = state;
+    })().catch(() => {});
+    onTestFinished(async () => {
+      controller.abort();
+      await watching;
+    });
     const call = (botId: number, owner: string) =>
       computer.services.call(
         botId,
@@ -158,10 +173,15 @@ test.runIf(platform() === "win32")(
         owner,
         new AbortController().signal,
         context,
+        { botId, color: "#c4789b", owner },
       );
     expect((await call(1, "first")).isError).toBe(false);
+    await expect
+      .poll(() => latest)
+      .toMatchObject({ botId: 1, color: "#c4789b" });
     await expect(call(2, "second")).rejects.toThrow("其他任务");
     const lease = await computer.services.takeover(1, "desktop");
+    await expect.poll(() => latest).toBeNull();
     await expect(call(1, "first")).rejects.toThrow("用户正在接管");
     await expect(
       computer.services.release(1, "desktop", "other"),

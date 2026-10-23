@@ -1,3 +1,4 @@
+import type { ComputerActivity } from "@domos/agent/computer/activity";
 import type {
   ViewerAction,
   ViewFrame,
@@ -12,6 +13,7 @@ export function useView(botId: number, service: "browser" | "desktop") {
     [botId, service, attempt],
   );
   const [frame, setFrame] = useState<ViewFrame>();
+  const [activity, setActivity] = useState<ComputerActivity>(null);
   const [connected, setConnected] = useState(false);
   const [controlling, setControlling] = useState(false);
   const [error, setError] = useState<string>();
@@ -21,9 +23,26 @@ export function useView(botId: number, service: "browser" | "desktop") {
     const { botId, service } = connection;
     const controller = new AbortController();
     setFrame(undefined);
+    setActivity(null);
     setConnected(false);
     setControlling(false);
     setError(undefined);
+    const visual = new AbortController();
+    if (service === "desktop")
+      void (async () => {
+        const stream = await client.computer.activity(
+          { botId },
+          { signal: AbortSignal.any([controller.signal, visual.signal]) },
+        );
+        for await (const value of stream) {
+          if (controller.signal.aborted || visual.signal.aborted) break;
+          setActivity(value);
+        }
+      })()
+        .catch(() => {})
+        .finally(() => {
+          if (!controller.signal.aborted) setActivity(null);
+        });
     void (async () => {
       const stream = await client.computer.watch(
         { botId, service },
@@ -42,6 +61,7 @@ export function useView(botId: number, service: "browser" | "desktop") {
           setError(cause.message ?? "画面连接已断开。");
       })
       .finally(() => {
+        visual.abort();
         if (session.current?.signal === controller.signal)
           session.current = undefined;
         if (!controller.signal.aborted) {
@@ -76,6 +96,7 @@ export function useView(botId: number, service: "browser" | "desktop") {
   );
   return {
     frame,
+    activity,
     connected,
     controlling,
     error,

@@ -1,8 +1,12 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import { once } from "node:events";
+import { EventEmitter, once } from "node:events";
 import { createInterface } from "node:readline";
 import { PassThrough, Writable } from "node:stream";
 import spawn from "cross-spawn";
+import {
+  type ComputerActivity,
+  computerActivity,
+} from "../computer/activity.ts";
 import type { ComputerRequest } from "../computer/service-types.ts";
 import {
   type EngineProcess,
@@ -14,6 +18,8 @@ import {
 } from "./types.ts";
 
 export class WorkProcess implements EngineProcess {
+  readonly events = new EventEmitter();
+  activity: ComputerActivity = null;
   readonly output = new PassThrough();
   readonly error = new PassThrough();
   readonly input: Writable;
@@ -80,7 +86,13 @@ export class WorkProcess implements EngineProcess {
         else if (frame.type === "spawn") this.started.resolve();
         else if (frame.type === "stdout") this.output.write(frame.data);
         else if (frame.type === "stderr") this.error.write(frame.data);
-        else if (frame.type === "http") {
+        else if (frame.type === "activity") {
+          const state = computerActivity.safeParse(frame.value);
+          if (state.success) {
+            this.activity = state.data;
+            this.events.emit("activity", state.data);
+          }
+        } else if (frame.type === "http") {
           const request = this.requests.get(frame.id);
           if (!request) return;
           this.requests.delete(frame.id);
@@ -167,6 +179,9 @@ export class WorkProcess implements EngineProcess {
   }
 
   private finish(code: number | null, errorCode?: string) {
+    this.activity = null;
+    this.events.emit("activity", null);
+    this.events.emit("closed");
     const error = new Error("引擎连接已关闭。");
     this.preparation.reject(error);
     this.started.reject(error);
