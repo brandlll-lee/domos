@@ -75,8 +75,10 @@ export const piProvider: EngineProvider = {
             if (
               frame.type === "message_start" &&
               frame.message?.role === "assistant"
-            )
+            ) {
               messageId = `pi:${++sequence}`;
+              await emit({ type: "runtime", state: { processing: true } });
+            }
             if (frame.type === "message_update") {
               const part = frame.assistantMessageEvent;
               if (

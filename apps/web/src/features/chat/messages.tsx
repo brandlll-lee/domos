@@ -87,6 +87,7 @@ export const Messages = memo(function Messages({
   botId,
   ready,
   busy,
+  processing,
   botName,
   createdAt,
   items,
@@ -97,6 +98,7 @@ export const Messages = memo(function Messages({
   botId: number;
   ready: boolean;
   busy: boolean;
+  processing: boolean;
   botName: string;
   createdAt?: number;
   items: TranscriptItem[];
@@ -183,9 +185,11 @@ export const Messages = memo(function Messages({
                 </Fragment>
               );
             })}
-          {ready && busy && transcript.atLatest && (
-            <TypingDots label={chatCopy.typing(botName)} />
-          )}
+          <TypingDots
+            active={ready && processing && transcript.atLatest}
+            label={chatCopy.typing(botName)}
+            onLayout={transcript.settle}
+          />
           <p className="sr-only" role="status">
             {!busy && items.length ? chatCopy.complete : ""}
           </p>

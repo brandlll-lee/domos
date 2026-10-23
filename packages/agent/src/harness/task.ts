@@ -51,6 +51,7 @@ export function engineTask(execution: EngineExecution) {
             doc.drafts = [];
             doc.error = null;
             if (doc.runtime) {
+              doc.runtime.processing = false;
               doc.runtime.notices = {};
               delete doc.runtime.editorText;
             }
@@ -150,6 +151,7 @@ async function finish(
       }
       doc.drafts = [];
       doc.approvals = [];
+      if (doc.runtime) doc.runtime.processing = false;
       doc.activeId = null;
       doc.activeTurn = null;
       doc.error = reason === "aborted" ? null : error;

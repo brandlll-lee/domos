@@ -37,6 +37,13 @@ test("native turns share product tools, queue in order and keep separate session
       await emit({ type: "session", id: `session-${runtime.conversationId}` });
       await emit({ type: "accepted", id: `turn-${count}` });
       if (text === "first") {
+        const state = await runtime.snapshot(
+          EngineDoc,
+          runtime.conversationId,
+          context,
+        );
+        expect(state?.runtime?.processing).not.toBe(true);
+        await emit({ type: "runtime", state: { processing: true } });
         started.resolve();
         await release.promise;
       }
@@ -87,6 +94,22 @@ test("native turns share product tools, queue in order and keep separate session
     context,
   );
   await started.promise;
+  const active = await runtime.conversation.viewState(context);
+  try {
+    const engine = await runtime.harness.snapshot(EngineDoc, botId, context);
+    if (!engine) throw new Error("Engine state required");
+    expect(chatView(active.value, engine).processing).toBe(true);
+    expect(
+      chatView(active.value, {
+        ...engine,
+        approvals: [
+          { id: "permission", title: "Allow", detail: "", kind: "permission" },
+        ],
+      }).processing,
+    ).toBe(false);
+  } finally {
+    active.dispose();
+  }
   expect(
     (await engines.submit(botId, { text: "first", requestId }, context)).id,
   ).toBe(first.id);
@@ -116,6 +139,12 @@ test("native turns share product tools, queue in order and keep separate session
   ).toEqual([]);
   const state = await runtime.conversation.viewState(context);
   try {
+    expect(
+      chatView(
+        state.value,
+        await runtime.harness.snapshot(EngineDoc, botId, context),
+      ).processing,
+    ).toBe(false);
     expect(
       chatView(state.value)
         .messages.filter((message) => message.role === "assistant")

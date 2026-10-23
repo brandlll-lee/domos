@@ -90,7 +90,8 @@ export function useTranscript(
     if (received.current && sentRequest && sent.current !== sentRequest) {
       following.current = true;
       jumping.current = true;
-      animate.current = true;
+      animate.current = false;
+      scrolling.current = false;
       setRange(null);
     }
     sent.current = sentRequest;
@@ -221,7 +222,7 @@ export function useTranscript(
     element?.addEventListener("scrollend", complete);
     element?.addEventListener("wheel", interrupt, { passive: true });
     element?.addEventListener("touchstart", interrupt, { passive: true });
-    const observer = new ResizeObserver(() => measure.current());
+    const observer = new ResizeObserver(schedule);
     if (viewport.current) observer.observe(viewport.current);
     if (content.current) observer.observe(content.current);
     return () => {
@@ -233,7 +234,12 @@ export function useTranscript(
     };
   }, [schedule]);
 
+  const settle = useCallback(() => {
+    scrolling.current = false;
+    measure.current();
+  }, []);
   return {
+    settle,
     viewport,
     content,
     visible,

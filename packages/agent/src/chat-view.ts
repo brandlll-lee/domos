@@ -27,6 +27,7 @@ export type ChatView = {
   draft: ChatMessage | null;
   activeTurnId: string | null;
   busy: boolean;
+  processing?: boolean;
   failed: boolean;
   engine?: EngineConfig;
   approvals?: EngineApproval[];
@@ -200,6 +201,17 @@ export function chatView(
     draft,
     activeTurnId: engine?.activeTurn ?? (live?.run ? (turnId ?? null) : null),
     busy: Boolean(live?.run || engine?.tasks.length),
+    processing: engine
+      ? Boolean(
+          engine.activeId &&
+            engine.runtime?.processing &&
+            !engine.approvals.length,
+        )
+      : Boolean(
+          live?.run &&
+            (live.generation ||
+              live.tools?.some((tool) => tool.status !== "done")),
+        ),
     failed: Boolean(engine?.error) || (failed && !live?.run),
     ...(engine
       ? {

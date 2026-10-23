@@ -214,6 +214,8 @@ export const claudeProvider: EngineProvider = {
           if (frame.compact_result === "failed")
             await emit({ type: "compaction", status: "failed" });
           if (frame.type === "stream_event") {
+            if (frame.event?.type === "message_start")
+              await emit({ type: "runtime", state: { processing: true } });
             if (frame.event?.message) messageId = frame.event.message.id;
             const delta = frame.event?.delta;
             if (messageId && (delta?.text || delta?.thinking))

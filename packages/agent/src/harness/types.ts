@@ -58,6 +58,7 @@ export type EngineUsage = {
   costScope?: "session";
 };
 export type EngineRuntimeState = {
+  processing?: boolean;
   compaction?: "running" | "completed" | "failed" | "uncertain";
   compactionDetails?: EngineCompaction;
   contextTokens?: number | null;

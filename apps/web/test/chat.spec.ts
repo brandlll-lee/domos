@@ -3392,6 +3392,7 @@ test("typing dots share the avatar color and follow complete messages", async ({
   await expect(replies).toHaveText(["先核对资料，再整理结果。"]);
   await expect(typing).toBeVisible();
   await expect(typing).toHaveText("");
+  await expect(typing.locator("..")).toHaveClass("message-bubble");
   await expect(typing.locator("svg")).toHaveCount(1);
   await expect(typing.locator("svg circle")).toHaveCount(3);
   await expect(typing).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
@@ -3541,6 +3542,19 @@ test("typing dots share the avatar color and follow complete messages", async ({
   await control("release");
   await expect(replies).toHaveCount(2);
   await expect(replies.last().locator("strong")).toHaveText("整理完成。");
+  const positions = await replies.last().evaluate(async (node) => {
+    const viewport = node.closest(".transcript");
+    if (!viewport) throw new Error("Transcript required");
+    const samples: number[] = [];
+    for (let index = 0; index < 20; index++) {
+      await new Promise(requestAnimationFrame);
+      samples.push((node as HTMLElement).offsetTop - viewport.scrollTop);
+    }
+    return samples;
+  });
+  expect(Math.max(...positions) - Math.min(...positions)).toBeLessThanOrEqual(
+    1,
+  );
   await expect(typing).toHaveCount(0);
   await page.reload();
   await expect(replies).toHaveCount(2);

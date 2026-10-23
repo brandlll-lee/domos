@@ -297,6 +297,7 @@
     calc(var(--composer-dock-height, 0px) + var(--composer-fade));
 }
 .messages {
+  position: relative;
   width: 100%;
   margin-inline: auto;
 }
@@ -449,6 +450,35 @@
 }
 .history-page {
   align-self: center;
+}
+.typing-row {
+  display: flex;
+  align-self: flex-start;
+  animation: typing-in var(--motion-feedback) ease-out both;
+}
+.typing-row[data-active="false"] {
+  position: absolute;
+  bottom: 0;
+  pointer-events: none;
+  animation: typing-out var(--motion-feedback) ease-out both;
+}
+@keyframes typing-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}
+@keyframes typing-out {
+  to {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .typing-row,
+  .typing-row[data-active="false"] {
+    animation-duration: 1ms;
+  }
 }
 .typing-dots {
   color: var(--bot-color);

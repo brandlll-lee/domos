@@ -69,6 +69,7 @@ test("sending paints the outgoing message before the network receipt", async ({
       `send paint with 320 history messages and 4x CPU: ${duration.toFixed(1)}ms`,
     );
     expect(duration).toBeLessThan(200);
+    await expect(page.locator(".typing-dots")).toHaveCount(0);
     await expect
       .poll(() =>
         page

@@ -121,6 +121,7 @@ export const codexProvider: EngineProvider = {
             });
           const item = params.item;
           if (frame.method === "turn/started") {
+            await emit({ type: "runtime", state: { processing: true } });
             turnId = params.turn?.id ?? null;
             if (compacting && turnId)
               await emit({ type: "accepted", id: turnId, ready: false });

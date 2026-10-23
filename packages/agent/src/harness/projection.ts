@@ -15,6 +15,7 @@ export class EngineProjection {
   private readonly context: Context;
   private readonly messages: StoredMessage[];
   private changed = false;
+  private processing = false;
   private flushed = 0;
   constructor(
     runtime: EngineRuntime,
@@ -29,6 +30,8 @@ export class EngineProjection {
   }
 
   async emit(event: EngineEvent) {
+    if (event.type === "runtime" && event.state.processing)
+      this.processing = true;
     if (
       event.type === "usage" ||
       event.type === "runtime" ||
@@ -86,6 +89,8 @@ export class EngineProjection {
       }, this.context);
       return;
     }
+    if (!this.processing)
+      await this.emit({ type: "runtime", state: { processing: true } });
     const id = `${this.turnId}:${event.id}:${event.type === "thinking" ? "thinking" : event.type === "tool_result" ? "result" : "message"}`;
     let message = this.messages.find((item) => item.id === id);
     if (!message) {
