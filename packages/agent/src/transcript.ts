@@ -90,7 +90,7 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
       const content = message.content.filter(
         (part) =>
           part.type === "image" ||
-          (part.type === "text" && part.text.length > 0),
+          (part.type === "text" && part.text.trim().length > 0),
       );
       const attachments = held ? undefined : message.attachments;
       if (content.length || attachments?.length)

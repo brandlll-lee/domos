@@ -95,6 +95,22 @@ export const claudeProvider: EngineProvider = {
     let completion: ReturnType<typeof Promise.withResolvers<void>> | undefined;
     let events = Promise.resolve();
     let messageId = "";
+    const replies = new Map<string, Map<string, string>>();
+    const reply = async (id: string, content: unknown, blockId = id) => {
+      const text = textContent(content);
+      if (!text.trim()) return;
+      let blocks = replies.get(id);
+      if (!blocks) {
+        blocks = new Map();
+        replies.set(id, blocks);
+      }
+      blocks.set(blockId, text);
+      await emit({
+        type: "message",
+        id,
+        text: [...blocks.values()].join("\n\n"),
+      });
+    };
     let running = false;
     let compacting = false;
     let contextTokens: number | null = null;
@@ -258,11 +274,7 @@ export const claudeProvider: EngineProvider = {
                 (message.usage.cache_creation_input_tokens ?? 0);
               await readContext();
             }
-            await emit({
-              type: "message",
-              id: message.id,
-              text: textContent(message.content),
-            });
+            await reply(message.id, message.content, frame.uuid);
             for (const part of message.content ?? []) {
               if (part.type === "thinking" && part.thinking)
                 await emit({
@@ -492,6 +504,7 @@ export const claudeProvider: EngineProvider = {
         })),
       vision: async () => null,
       async prompt(text: string, images: EngineImage[] = []) {
+        replies.clear();
         completion = Promise.withResolvers<void>();
         void completion.promise.catch(() => {});
         const uuid = randomUUID();
@@ -576,11 +589,7 @@ export const claudeProvider: EngineProvider = {
           return false;
         for (const entry of turn) {
           if (entry.type === "assistant" && entry.message.id)
-            await emit({
-              type: "message",
-              id: entry.message.id,
-              text: textContent(entry.message.content),
-            });
+            await reply(entry.message.id, entry.message.content, entry.uuid);
         }
         return true;
       },

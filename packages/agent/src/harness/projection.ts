@@ -130,9 +130,12 @@ export class EngineProjection {
         ...(event.attachments ? { attachments: event.attachments } : {}),
       });
     else if (event.type === "message") {
+      if (message.pending !== false)
+        message.timestamp = performance.timeOrigin + performance.now();
       message.content = [{ type: "text", text: event.text, key: id }];
       message.pending = false;
     } else {
+      if (message.pending === false) return;
       const previous = message.content[0];
       const text =
         `${event.replace ? "" : (previous && (previous.type === "text" ? previous.text : previous.type === "thinking" ? previous.thinking : "")) || ""}${event.text}`.slice(

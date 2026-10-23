@@ -83,7 +83,7 @@ test.each(
                 stopReason: "stop",
               },
             });
-          } else
+          } else {
             worker.frame({
               jsonrpc: "2.0",
               method: "session/update",
@@ -96,6 +96,20 @@ test.each(
                 },
               },
             });
+            worker.frame({
+              jsonrpc: "2.0",
+              method: "session/update",
+              params: {
+                sessionId: "chat",
+                update: {
+                  sessionUpdate: "tool_call",
+                  toolCallId: "read",
+                  title: "Read",
+                  status: "in_progress",
+                },
+              },
+            });
+          }
         };
         const finish = () => {
           finished = true;
@@ -230,6 +244,7 @@ test.each(
     await started.promise;
     const texts = async () =>
       (await engines.view(botId, context)).messages
+        .filter((message) => !message.pending)
         .map(messageText)
         .filter(Boolean);
     await expect.poll(texts).toContain("intermediate");

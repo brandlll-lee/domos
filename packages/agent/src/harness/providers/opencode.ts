@@ -75,6 +75,14 @@ export const opencodeProvider: EngineProvider = {
     let nativeId = sessionId;
     let contextReading: Extract<EngineEvent, { type: "context" }> | undefined;
     let messageId = "";
+    let replyText = "";
+    let completed = "";
+    let events = Promise.resolve();
+    const reply = async () => {
+      if (!replyText.trim() || replyText === completed) return;
+      await emit({ type: "message", id: messageId, text: replyText });
+      completed = replyText;
+    };
     let configOptions: SessionConfigOption[] = [];
     let commands: EngineControls["commands"] = [];
     let modes:
@@ -178,114 +186,131 @@ export const opencodeProvider: EngineProvider = {
             await emit({ type: "approval_closed", id });
           }
         },
-        async sessionUpdate({ sessionId, update }) {
-          if (nativeId && sessionId !== nativeId) return;
-          if (update.sessionUpdate === "usage_update") {
-            contextReading = {
-              type: "context",
-              tokens: update.used,
-              window: update.size,
-              source: "opencode.acp.usage_update",
-              basis: "window",
-              estimated: false,
-              model:
-                configOptions
-                  .find((option) => option.category === "model")
-                  ?.currentValue?.toString() ?? config.model,
-            };
-            if (nativeId) await emit(contextReading);
-          }
-          if (active && update.sessionUpdate === "compaction_update") {
-            const status =
-              update.status === "in_progress"
-                ? "running"
-                : update.status === "completed"
-                  ? "completed"
-                  : update.status === "failed" || update.status === "cancelled"
-                    ? "failed"
-                    : null;
-            if (status) {
-              compactionConfirmed = status === "completed";
+        async sessionUpdate(notification) {
+          events = events.then(async () => {
+            const { sessionId, update } = notification;
+            if (nativeId && sessionId !== nativeId) return;
+            if (update.sessionUpdate === "usage_update") {
+              contextReading = {
+                type: "context",
+                tokens: update.used,
+                window: update.size,
+                source: "opencode.acp.usage_update",
+                basis: "window",
+                estimated: false,
+                model:
+                  configOptions
+                    .find((option) => option.category === "model")
+                    ?.currentValue?.toString() ?? config.model,
+              };
+              if (nativeId) await emit(contextReading);
+            }
+            if (active && update.sessionUpdate === "compaction_update") {
+              const status =
+                update.status === "in_progress"
+                  ? "running"
+                  : update.status === "completed"
+                    ? "completed"
+                    : update.status === "failed" ||
+                        update.status === "cancelled"
+                      ? "failed"
+                      : null;
+              if (status) {
+                compactionConfirmed = status === "completed";
+                await emit({
+                  type: "compaction",
+                  status,
+                  nativeId: update.compactionId,
+                  ...(update.error ? { error: update.error } : {}),
+                });
+              }
+            }
+            if (active && update.sessionUpdate === "compaction_summary_chunk")
               await emit({
                 type: "compaction",
-                status,
+                status: "running",
                 nativeId: update.compactionId,
-                ...(update.error ? { error: update.error } : {}),
+              });
+            if (update.sessionUpdate === "notice")
+              await emit({
+                type: "runtime",
+                state: {
+                  notices: {
+                    [update.title]: update.description ?? update.title,
+                  },
+                },
+              });
+            if (update.sessionUpdate === "available_commands_update") {
+              commands = update.availableCommands.map((item) => ({
+                name: item.name,
+                description: item.description,
+              }));
+              await emit({
+                type: "runtime",
+                state: {
+                  controls: controls(),
+                  contextPolicy: {
+                    manual: controls().compact,
+                    automatic: "native",
+                    refresh: false,
+                  },
+                },
               });
             }
-          }
-          if (active && update.sessionUpdate === "compaction_summary_chunk")
-            await emit({
-              type: "compaction",
-              status: "running",
-              nativeId: update.compactionId,
-            });
-          if (update.sessionUpdate === "notice")
-            await emit({
-              type: "runtime",
-              state: {
-                notices: { [update.title]: update.description ?? update.title },
-              },
-            });
-          if (update.sessionUpdate === "available_commands_update") {
-            commands = update.availableCommands.map((item) => ({
-              name: item.name,
-              description: item.description,
-            }));
-            await emit({
-              type: "runtime",
-              state: {
-                controls: controls(),
-                contextPolicy: {
-                  manual: controls().compact,
-                  automatic: "native",
-                  refresh: false,
-                },
-              },
-            });
-          }
-          if (update.sessionUpdate === "config_option_update") {
-            configOptions = update.configOptions;
-            await emit({ type: "runtime", state: { controls: controls() } });
-          }
-          if (update.sessionUpdate === "current_mode_update" && modes) {
-            modes.currentModeId = update.currentModeId;
-            await emit({ type: "runtime", state: { controls: controls() } });
-          }
-          if (!active) return;
-          if (
-            (update.sessionUpdate === "agent_message_chunk" ||
-              update.sessionUpdate === "agent_thought_chunk") &&
-            update.content.type === "text"
-          ) {
-            if (update.messageId) messageId = update.messageId;
-            await emit({
-              type:
-                update.sessionUpdate === "agent_message_chunk"
-                  ? "text"
-                  : "thinking",
-              id: messageId,
-              text: update.content.text,
-            });
-          }
-          if (update.sessionUpdate === "tool_call")
-            await emit({
-              type: "tool",
-              id: update.toolCallId,
-              name: update.title,
-              input: (update.rawInput ?? {}) as Record<string, unknown>,
-            });
-          if (
-            update.sessionUpdate === "tool_call_update" &&
-            ["completed", "failed"].includes(update.status ?? "")
-          )
-            await emit({
-              type: "tool_result",
-              id: update.toolCallId,
-              name: update.title ?? "OpenCode",
-              text: JSON.stringify(update.rawOutput ?? update.content ?? ""),
-              failed: update.status === "failed",
-            });
+            if (update.sessionUpdate === "config_option_update") {
+              configOptions = update.configOptions;
+              await emit({ type: "runtime", state: { controls: controls() } });
+            }
+            if (update.sessionUpdate === "current_mode_update" && modes) {
+              modes.currentModeId = update.currentModeId;
+              await emit({ type: "runtime", state: { controls: controls() } });
+            }
+            if (!active) return;
+            if (
+              (update.sessionUpdate === "agent_message_chunk" ||
+                update.sessionUpdate === "agent_thought_chunk") &&
+              update.content.type === "text"
+            ) {
+              if (update.sessionUpdate === "agent_message_chunk") {
+                if (update.messageId && update.messageId !== messageId) {
+                  await reply();
+                  messageId = update.messageId;
+                  replyText = "";
+                  completed = "";
+                }
+                replyText += update.content.text;
+              }
+              await emit({
+                type:
+                  update.sessionUpdate === "agent_message_chunk"
+                    ? "text"
+                    : "thinking",
+                id: update.messageId ?? messageId,
+                text: update.content.text,
+              });
+            }
+            if (update.sessionUpdate === "tool_call") {
+              await reply();
+              await emit({
+                type: "tool",
+                id: update.toolCallId,
+                name: update.title,
+                input: (update.rawInput ?? {}) as Record<string, unknown>,
+              });
+            }
+            if (
+              update.sessionUpdate === "tool_call_update" &&
+              ["completed", "failed"].includes(update.status ?? "")
+            )
+              await emit({
+                type: "tool_result",
+                id: update.toolCallId,
+                name: update.title ?? "OpenCode",
+                text: JSON.stringify(update.rawOutput ?? update.content ?? ""),
+                failed: update.status === "failed",
+              });
+          });
+          await events;
         },
       }),
       ndJsonStream(
@@ -458,6 +483,8 @@ export const opencodeProvider: EngineProvider = {
           throw new Error("当前引擎协议不支持图片。请更换引擎或使用文本资料。");
         active = true;
         messageId = `opencode:${++sequence}`;
+        replyText = "";
+        completed = "";
         const history = await messages();
         await emit({
           type: "accepted",
@@ -469,8 +496,10 @@ export const opencodeProvider: EngineProvider = {
             sessionId: id,
             prompt: [{ type: "text", text }, ...images],
           });
+          await events;
           if (outcome.stopReason === "cancelled")
             throw new Error("工作已停止。");
+          await reply();
           const updated = (await messages()).slice(history.length);
           const compacted = completedCompaction(updated);
           if (compacted && !compactionConfirmed) {

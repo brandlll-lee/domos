@@ -17,28 +17,20 @@ export type SendInput = MaterialSelection & {
 
 export function useChat(botId: number, onModelRequired?: () => void) {
   const [view, setView] = useState<ChatView | null>(null);
-  const [items, setItems] = useState<TranscriptItem[]>([]);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [sentRequest, setSentRequest] = useState<string>();
   const [outgoing, setOutgoing] = useState<TranscriptItem[]>([]);
-  const transcript = useMemo(() => {
-    const confirmed = new Set(
-      items.flatMap((item) =>
-        item.kind === "message" && item.message.requestId
-          ? [item.message.requestId]
-          : [],
-      ),
-    );
-    const pending = outgoing.filter((item) => !confirmed.has(item.id));
-    return pending.length ? [...items, ...pending] : items;
-  }, [items, outgoing]);
+  const [project] = useState(transcriptState);
+  const { items } = useMemo(
+    () => (view ? project(view, outgoing) : { items: outgoing }),
+    [view, outgoing, project],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
-    const project = transcriptState();
     let pending: ChatView | undefined;
     let frame: number | undefined;
     const flush = () => {
@@ -47,9 +39,7 @@ export function useChat(botId: number, onModelRequired?: () => void) {
       if (!pending || controller.signal.aborted) return;
       const next = pending;
       pending = undefined;
-      const transcript = project(next);
       setView(next);
-      setItems(transcript.items);
       setConnected(true);
     };
     const visible = () => {
@@ -105,10 +95,7 @@ export function useChat(botId: number, onModelRequired?: () => void) {
       ...current.filter(
         (item) =>
           item.id !== input.requestId &&
-          !items.some(
-            (row) =>
-              row.kind === "message" && row.message.requestId === item.id,
-          ),
+          !view?.messages.some((message) => message.requestId === item.id),
       ),
       {
         kind: "message",
@@ -157,7 +144,7 @@ export function useChat(botId: number, onModelRequired?: () => void) {
 
   return {
     view,
-    items: transcript,
+    items,
     sentRequest,
     connected,
     error,

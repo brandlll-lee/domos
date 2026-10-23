@@ -3287,6 +3287,7 @@ test("chat keeps sending available while the Bot is working", async ({
       {
         stopReason: "toolUse",
         content: [
+          { type: "text", text: "Checking sources" },
           {
             type: "toolCall",
             id: crypto.randomUUID(),
@@ -3304,6 +3305,7 @@ test("chat keeps sending available while the Bot is working", async ({
   await input.fill("first");
   await send.click();
   await expect(page.locator(".typing-dots")).toBeVisible();
+  await expect(page.getByLabel("Domos 的回复")).toHaveText("Checking sources");
   await input.fill("second");
   await expect(send).toBeEnabled();
   await send.click();
@@ -3311,6 +3313,17 @@ test("chat keeps sending available while the Bot is working", async ({
   await input.fill("third");
   await send.click();
   await expect(input).toHaveValue("");
+  await expect(
+    page.locator(".message").filter({ hasNot: page.locator(".typing-dots") }),
+  ).toHaveText([/first/, "Checking sources", /second/, /third/]);
+  await expect(page.locator(".typing-dots")).toHaveCount(1);
+  const typingPosition = await page.locator(".typing-dots").boundingBox();
+  const latestPosition = await page.getByLabel("你的消息").last().boundingBox();
+  expect(
+    typingPosition &&
+      latestPosition &&
+      typingPosition.y >= latestPosition.y + latestPosition.height,
+  ).toBe(true);
   await page
     .getByRole("button", { name: "选择引擎与模型", exact: true })
     .click();
