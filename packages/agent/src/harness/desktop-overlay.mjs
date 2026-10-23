@@ -1,10 +1,9 @@
 import { resolve } from "node:path";
-import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { mountComputerEffect } from "@domos/ui/computer-effect";
 import { app, BrowserWindow, screen } from "electron";
 
-export async function openDesktopOverlay(input) {
+export async function openDesktopOverlay(channel) {
   const windows = new Map();
   const loaded = new WeakSet();
   let state;
@@ -83,9 +82,10 @@ export async function openDesktopOverlay(input) {
     }
   }
   function changed() {
-    process.stdout.write(
-      `${JSON.stringify({ type: "screen", bounds: physical(screen.getPrimaryDisplay().bounds) })}\n`,
-    );
+    channel.send({
+      type: "screen",
+      bounds: physical(screen.getPrimaryDisplay().bounds),
+    });
     render();
   }
   for (const event of [
@@ -95,21 +95,14 @@ export async function openDesktopOverlay(input) {
   ])
     screen.on(event, changed);
   changed();
-  const lines = createInterface({ input });
-  lines.on("line", (line) => {
+  channel.on("message", (value) => {
     try {
-      if (line.length > 131072) throw new Error("Invalid frame");
-      const value = JSON.parse(line);
+      if (JSON.stringify(value).length > 131072)
+        throw new Error("Invalid frame");
       if (value?.type === "capture") {
         suspended = value.hidden;
         render();
-        setTimeout(
-          () =>
-            process.stdout.write(
-              `${JSON.stringify({ type: "capture", id: value.id })}\n`,
-            ),
-          32,
-        );
+        setTimeout(() => channel.send({ type: "capture", id: value.id }), 32);
         return;
       }
       state = value;
@@ -123,11 +116,11 @@ export async function openDesktopOverlay(input) {
       app.quit();
     }
   });
-  lines.once("close", () => app.quit());
+  channel.once("disconnect", () => app.quit());
   app.on("before-quit", () => clearTimeout(heartbeat));
 }
 if (
   process.argv[1] &&
   resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 )
-  openDesktopOverlay(process.stdin).catch(() => app.quit());
+  openDesktopOverlay(process).catch(() => app.quit());

@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
 export function openDesktopActivity(driver, emit) {
@@ -13,6 +12,7 @@ export function openDesktopActivity(driver, emit) {
   let child;
   let failed = false;
   let ready = false;
+  let sending = false;
   let closed = false;
   let screen;
   let timer;
@@ -35,8 +35,12 @@ export function openDesktopActivity(driver, emit) {
   };
   function send(value) {
     emit(value);
-    if (ready && child?.stdin.writable && child.stdin.writableLength < 65536)
-      child.stdin.write(`${JSON.stringify(value)}\n`);
+    if (ready && child?.connected && !sending) {
+      sending = true;
+      child.send(value, () => {
+        sending = false;
+      });
+    }
   }
   function start() {
     if (child || failed || closed) return;
@@ -62,23 +66,16 @@ export function openDesktopActivity(driver, emit) {
       child = spawn(executable, args, {
         env,
         windowsHide: true,
-        stdio: ["pipe", "pipe", "ignore"],
+        stdio: ["ignore", "ignore", "ignore", "ipc"],
       });
-      child.stdin.on("error", () => {});
-      const lines = createInterface({ input: child.stdout });
-      lines.on("line", (line) => {
-        try {
-          const value = JSON.parse(line);
-          if (value.type === "screen" && value.bounds) {
-            screen = value.bounds;
-            ready = true;
-            if (capturesInProgress)
-              child.stdin.write(
-                `${JSON.stringify({ type: "capture", hidden: true })}\n`,
-              );
-          }
-          if (value.type === "capture") acknowledgements.get(value.id)?.();
-        } catch {}
+      child.on("message", (value) => {
+        if (value.type === "screen" && value.bounds) {
+          screen = value.bounds;
+          ready = true;
+          if (capturesInProgress)
+            child.send({ type: "capture", hidden: true }, () => {});
+        }
+        if (value.type === "capture") acknowledgements.get(value.id)?.();
       });
       child.on("error", () => {
         failed = true;
@@ -86,7 +83,6 @@ export function openDesktopActivity(driver, emit) {
       child.on("exit", () => {
         failed = true;
         ready = false;
-        lines.close();
       });
     } catch {
       failed = true;
@@ -253,7 +249,7 @@ export function openDesktopActivity(driver, emit) {
     async capture(run) {
       const overlay = child;
       const hidden = ++capturesInProgress;
-      if (ready && overlay?.stdin.writable && hidden === 1) {
+      if (ready && overlay?.connected && hidden === 1) {
         const id = ++sequence;
         captureReady = new Promise((resolve) => {
           const timer = setTimeout(() => {
@@ -264,19 +260,15 @@ export function openDesktopActivity(driver, emit) {
             clearTimeout(timer);
             resolve();
           });
-          overlay.stdin.write(
-            `${JSON.stringify({ type: "capture", id, hidden: true })}\n`,
-          );
+          overlay.send({ type: "capture", id, hidden: true }, () => {});
         }).finally(() => acknowledgements.delete(id));
       }
       try {
         await captureReady;
         return await run();
       } finally {
-        if (--capturesInProgress === 0 && overlay?.stdin.writable)
-          overlay.stdin.write(
-            `${JSON.stringify({ type: "capture", hidden: false })}\n`,
-          );
+        if (--capturesInProgress === 0 && overlay?.connected)
+          overlay.send({ type: "capture", hidden: false }, () => {});
       }
     },
     clear(expected) {
@@ -286,7 +278,7 @@ export function openDesktopActivity(driver, emit) {
       closed = true;
       clear();
       await pending?.catch(() => {});
-      child?.stdin.end();
+      if (child?.connected) child.disconnect();
       if (child && child.exitCode === null) {
         const stop = setTimeout(() => child.kill(), 2000);
         stop.unref();

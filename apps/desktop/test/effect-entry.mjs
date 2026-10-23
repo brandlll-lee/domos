@@ -1,10 +1,8 @@
-import { PassThrough } from "node:stream";
+import { EventEmitter } from "node:events";
 import { app } from "electron";
 import { openDesktopOverlay } from "../../../packages/agent/src/harness/desktop-overlay.mjs";
 
 app.setName("Domos effects test");
-const input = new PassThrough();
-process.on("computer-effect-input", (value) =>
-  input.write(`${JSON.stringify(value)}\n`),
-);
-openDesktopOverlay(input).catch(() => app.exit(1));
+const channel = Object.assign(new EventEmitter(), { send() {} });
+process.on("computer-effect-input", (value) => channel.emit("message", value));
+openDesktopOverlay(channel).catch(() => app.exit(1));

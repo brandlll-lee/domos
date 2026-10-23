@@ -1,5 +1,4 @@
 import { EventEmitter } from "node:events";
-import { PassThrough, Writable } from "node:stream";
 import { afterEach, expect, test, vi } from "vitest";
 import { computerActivity } from "../src/computer/activity.ts";
 
@@ -20,17 +19,16 @@ test("tracks exact windows, scaled captures, movement and Bot identity; capture 
   const child = Object.assign(new EventEmitter(), {
     pid: 42,
     exitCode: null,
-    stdout: new PassThrough(),
+    connected: true,
     kill: vi.fn(),
-    stdin: new Writable({
-      write(data, _encoding, done) {
-        const value = JSON.parse(String(data));
-        commands.push(value);
-        if (value?.type === "capture")
-          child.stdout.write(`${JSON.stringify(value)}\n`);
-        done();
-      },
+    disconnect: vi.fn(() => {
+      child.connected = false;
     }),
+    send(value: { type?: string }, done: () => void) {
+      commands.push(value);
+      if (value?.type === "capture") child.emit("message", value);
+      done();
+    },
   });
   spawn.mockReturnValue(child);
   let bounds = { x: -800, y: 100, width: 800, height: 600 };
@@ -66,9 +64,10 @@ test("tracks exact windows, scaled captures, movement and Bot identity; capture 
     },
     actor,
   );
-  child.stdout.write(
-    `${JSON.stringify({ type: "screen", bounds: { x: -1000, y: 0, width: 2920, height: 1080 } })}\n`,
-  );
+  child.emit("message", {
+    type: "screen",
+    bounds: { x: -1000, y: 0, width: 2920, height: 1080 },
+  });
   activity.observe(
     "click",
     { ...target, x: 200, y: 150, capture_id: "capture-1" },

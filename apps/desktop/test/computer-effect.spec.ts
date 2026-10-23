@@ -1,5 +1,49 @@
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { expect, test } from "@playwright/test";
+
+test("the production overlay receives frames over IPC and closes with its parent", async () => {
+  const executable = createRequire(new URL("../package.json", import.meta.url))(
+    "electron",
+  );
+  const env = { ...process.env };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const child = spawn(
+    executable,
+    [resolve("packages/agent/src/harness/desktop-overlay.mjs")],
+    {
+      env,
+      windowsHide: true,
+      stdio: ["ignore", "ignore", "ignore", "ipc"],
+    },
+  );
+  const signal = AbortSignal.timeout(10000);
+  try {
+    const [screen] = await once(child, "message", { signal });
+    expect(screen.type).toBe("screen");
+    child.send({
+      botId: 1,
+      color: "#68b6ff",
+      screen: screen.bounds,
+      window: { x: 80, y: 80, width: 640, height: 480 },
+      covered: [],
+      pointer: null,
+      expiresAt: Date.now() + 10000,
+    });
+    const captured = once(child, "message", { signal });
+    child.send({ type: "capture", id: 1, hidden: true });
+    expect(await captured).toEqual([{ type: "capture", id: 1 }]);
+    child.send({ type: "capture", hidden: false });
+    const ended = once(child, "exit", { signal });
+    child.disconnect();
+    expect(await ended).toEqual([0, null]);
+  } finally {
+    if (child.connected) child.disconnect();
+    if (child.exitCode === null) child.kill();
+  }
+});
 
 test("desktop effects follow displays, pass input through, hide for captures and expire after disconnect", async ({
   playwright,
