@@ -12,6 +12,7 @@ import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { type ReactNode, type Ref, useRef } from "react";
 import { ComposerMenu } from "./composer-menu.tsx";
 import { chatCopy } from "./copy.ts";
+import { ErrorMessage } from "./error-message.tsx";
 import { MaterialChips } from "./material-chips.tsx";
 import { type SendMessage, useComposer } from "./use-composer.ts";
 import type { useDraft } from "./use-draft.ts";
@@ -116,11 +117,7 @@ export function Composer({
           event.target.value = "";
         }}
       />
-      {issue && (
-        <p className="alert" role="alert">
-          {issue}
-        </p>
-      )}
+      {issue && <ErrorMessage>{issue}</ErrorMessage>}
       <MessageComposer
         ref={inputRef}
         value={composer.value}

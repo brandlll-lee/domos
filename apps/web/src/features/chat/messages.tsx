@@ -8,11 +8,11 @@ import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { Fragment, memo, type ReactNode } from "react";
 import { Attachments } from "./attachments.tsx";
 import { chatCopy } from "./copy.ts";
+import { ErrorMessage } from "./error-message.tsx";
 import { timeBreak } from "./format.ts";
 import { MaterialChips } from "./material-chips.tsx";
 import { MessageBody } from "./message-body.tsx";
 import { MessageContent } from "./message-content.tsx";
-import { TaskNotice } from "./task-notice.tsx";
 import { TypingDots } from "./typing-dots.tsx";
 import { useTranscript } from "./use-transcript.ts";
 
@@ -30,8 +30,12 @@ const MessageRow = memo(function MessageRow({
   const key = `${item.kind}:${item.id}`;
   if (item.kind === "notice")
     return (
-      <div data-transcript-key={key}>
-        <TaskNotice notice={item} />
+      <div
+        className="task-notice"
+        data-state={item.status}
+        data-transcript-key={key}
+      >
+        <ErrorMessage>{item.error ?? chatCopy.taskFailed}</ErrorMessage>
       </div>
     );
   if (item.kind === "attachments")

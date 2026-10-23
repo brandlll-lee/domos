@@ -475,6 +475,8 @@ test("native account HTTP stays inside the selected work computer and closes pen
       const server = createServer((request, response) => {
         const auth = 'Basic ' + Buffer.from('opencode:' + process.env.OPENCODE_SERVER_PASSWORD).toString('base64');
         if (request.headers.authorization !== auth) { response.writeHead(401).end(); return; }
+        const status = /^\\/provider\\/status\\/(401|404|503)$/.exec(request.url)?.[1];
+        if (status) { response.writeHead(Number(status)).end('private response detail'); return; }
         if (request.url === '/provider/auth') return;
         let body = '';
         request.on('data', chunk => body += chunk);
@@ -500,8 +502,14 @@ test("native account HTTP stays inside the selected work computer and closes pen
     body: { type: "api", key: "fixture-key" },
   });
   await expect(process.request("https://example.com/private")).rejects.toThrow(
-    "连接未完成",
+    "不受支持",
   );
+  for (const status of [401, 404, 503])
+    await expect(
+      process.request(`/provider/status/${status}`),
+    ).rejects.toMatchObject({
+      message: `OpenCode 本地接口请求失败（HTTP ${status}）。`,
+    });
   const pending = expect(process.request("/provider/auth")).rejects.toThrow();
   await process.close();
   await pending;
@@ -518,6 +526,7 @@ test("a work computer allocates its native history endpoint without reading chil
       "-e",
       `
       import { createServer } from 'node:http';
+      console.log('unrelated http://127.0.0.1:1/');
       createServer((request, response) => response.end(JSON.stringify(request.url === '/global/health' ? { healthy: true } : [{ info: { id: 'saved' } }]))).listen(Number(process.argv[1]), '127.0.0.1');
     `,
       "__DOMOS_PORT__",

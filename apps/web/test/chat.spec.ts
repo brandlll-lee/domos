@@ -3204,7 +3204,7 @@ test("image thumbnails scroll horizontally and keep the selected image in view",
 
 test("typing follows the Bot and failures retain their error message", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.goto(url);
   const primary = page.url();
   const input = page.getByLabel("消息", { exact: true });
@@ -3239,6 +3239,11 @@ test("typing follows the Bot and failures retain their error message", async ({
   await expect(page.locator('.task-notice[data-state="failed"]')).toHaveCount(
     1,
   );
+  await page.screenshot({ path: testInfo.outputPath("failure.png") });
+  const failure = page.locator(".task-notice .message-bubble");
+  await expect(failure.getByRole("alert")).toBeVisible();
+  await expect(failure.locator('svg[aria-hidden="true"]')).toHaveCount(1);
+  const errorText = await failure.innerText();
   const port = Number(new URL(url).port);
   await stop();
   await start(port);
@@ -3247,6 +3252,19 @@ test("typing follows the Bot and failures retain their error message", async ({
   await expect(page.locator('.task-notice[data-state="failed"]')).toHaveCount(
     1,
   );
+  await expect(failure).toHaveText(errorText);
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    for (const width of [1440, 768, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(failure).toBeVisible();
+      await expectTextContrast(page);
+      await page.screenshot({
+        path: testInfo.outputPath(`failure-${colorScheme}-${width}.png`),
+        animations: "disabled",
+      });
+    }
+  }
   await expect(page.getByRole("button", { name: /^下载/ })).toHaveCount(0);
   await expect(page.locator('.task-notice[data-state="stopped"]')).toHaveCount(
     0,

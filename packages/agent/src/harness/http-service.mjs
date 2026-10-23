@@ -50,6 +50,7 @@ export async function openHttpService(emit, limits) {
     password,
     port,
     capture(data) {
+      if (limits.listen) return;
       output = (output + stripVTControlCharacters(data)).slice(-outputLimit);
       const address = output.match(/http:\/\/127\.0\.0\.1:\d+(?=[\s/])/)?.[0];
       if (address) {
@@ -58,6 +59,7 @@ export async function openHttpService(emit, limits) {
       }
     },
     async request(frame) {
+      let message = "OpenCode 本地接口路径或方法不受支持。";
       try {
         if (
           typeof frame.path !== "string" ||
@@ -70,7 +72,9 @@ export async function openHttpService(emit, limits) {
           !["GET", "POST", "PUT", "DELETE"].includes(frame.method)
         )
           throw new Error("Invalid request");
+        message = "OpenCode 本地服务启动等待失败。请重试连接。";
         const address = await endpoint.promise;
+        message = "OpenCode 本地接口连接中断。请重试连接。";
         const response = await fetch(new URL(frame.path, address), {
           method: frame.method,
           headers: {
@@ -85,13 +89,18 @@ export async function openHttpService(emit, limits) {
           ]),
           redirect: "error",
         });
+        message = `OpenCode 本地接口请求失败（HTTP ${response.status}）。`;
         if (!response.ok) throw new Error("Request rejected");
+        message = "OpenCode 本地接口返回了无效响应。";
         emit({ type: "http", id: frame.id, result: await response.json() });
-      } catch {
+      } catch (error) {
         emit({
           type: "http",
           id: frame.id,
-          error: "连接未完成。请检查账号后重试。",
+          error:
+            error?.name === "TimeoutError"
+              ? "OpenCode 本地接口请求超时。请重试连接。"
+              : message,
         });
       }
     },

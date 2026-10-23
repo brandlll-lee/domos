@@ -15,6 +15,7 @@ import { Approvals } from "./approvals.tsx";
 import { Composer } from "./composer.tsx";
 import { ContextRing } from "./context.tsx";
 import { chatCopy } from "./copy.ts";
+import { ErrorMessage } from "./error-message.tsx";
 import { ChatHeader } from "./header.tsx";
 import { Messages } from "./messages.tsx";
 import { RuntimeNotifications, RuntimeStatus } from "./runtime.tsx";
@@ -302,11 +303,7 @@ function BotChat({
                 }
               />
             ) : (
-              error && (
-                <p className="alert" role="alert">
-                  {error}
-                </p>
-              )
+              error && <ErrorMessage>{error}</ErrorMessage>
             )}
           </main>
         </>
