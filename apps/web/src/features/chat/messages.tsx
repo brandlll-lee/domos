@@ -88,6 +88,7 @@ export const Messages = memo(function Messages({
   ready,
   busy,
   processing,
+  retry,
   botName,
   createdAt,
   items,
@@ -99,6 +100,7 @@ export const Messages = memo(function Messages({
   ready: boolean;
   busy: boolean;
   processing: boolean;
+  retry?: string | null;
   botName: string;
   createdAt?: number;
   items: TranscriptItem[];
@@ -186,8 +188,11 @@ export const Messages = memo(function Messages({
               );
             })}
           <TypingDots
-            active={ready && processing && transcript.atLatest}
+            active={
+              ready && (processing || Boolean(retry)) && transcript.atLatest
+            }
             label={chatCopy.typing(botName)}
+            status={retry}
             onLayout={transcript.settle}
           />
           <p className="sr-only" role="status">

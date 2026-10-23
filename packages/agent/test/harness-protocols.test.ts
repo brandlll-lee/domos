@@ -532,6 +532,67 @@ test.each(["managed", "native"] as const)(
   },
 );
 
+test.each(["managed", "native"] as const)(
+  "Claude reports retries, resumes output and preserves %s connection errors",
+  async (accountSource) => {
+    const { process, events, emit } = protocol();
+    const session = await claudeProvider.open({
+      process,
+      config: { provider: "claude", model: null, accountSource },
+      sessionId: null,
+      instructions: "Role",
+      emit,
+    });
+    const pending = session.prompt("Hello").catch((error: unknown) => error);
+    await expect
+      .poll(() =>
+        events.some(
+          (event) => event.type === "accepted" && event.ready !== false,
+        ),
+      )
+      .toBe(true);
+    process.frame({
+      type: "system",
+      subtype: "api_retry",
+      attempt: 3,
+      max_retries: 10,
+      retry_delay_ms: 2408,
+      error_status: null,
+    });
+    await expect
+      .poll(() => events)
+      .toContainEqual({
+        type: "runtime",
+        state: {
+          processing: false,
+          retry: "模型连接失败，正在重试（3/10，间隔 3 秒）。",
+        },
+      });
+    process.frame({
+      type: "stream_event",
+      event: { type: "message_start", message: { id: "message" } },
+    });
+    await expect
+      .poll(() => events)
+      .toContainEqual({
+        type: "runtime",
+        state: { processing: true, retry: null },
+      });
+    process.frame({
+      type: "result",
+      is_error: true,
+      errors: ["Connection refused (ECONNREFUSED)"],
+    });
+    expect(await pending).toMatchObject({
+      message: "Connection refused (ECONNREFUSED)",
+    });
+    expect(events.at(-1)).toEqual({
+      type: "runtime",
+      state: { processing: false, retry: null },
+    });
+  },
+);
+
 test("OpenCode uses ACP model discovery, permissions and native session load", async () => {
   const { process, events, emit } = protocol();
   let promptId: string | number | undefined;

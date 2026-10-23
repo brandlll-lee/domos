@@ -23,6 +23,11 @@ type ClaudeFrame = {
   type: string;
   subtype?: string;
   status?: string;
+  attempt?: number;
+  max_retries?: number;
+  retry_delay_ms?: number;
+  error_status?: number | null;
+  errors?: string[];
   model?: string;
   permissionMode?: string;
   mcp_servers?: { name: string; status: string }[];
@@ -184,6 +189,18 @@ export const claudeProvider: EngineProvider = {
       events = events
         .then(async () => {
           if (frame.parent_tool_use_id) return;
+          if (frame.type === "system" && frame.subtype === "api_retry") {
+            const reason = frame.error_status
+              ? `模型服务返回 HTTP ${frame.error_status}`
+              : "模型连接失败";
+            await emit({
+              type: "runtime",
+              state: {
+                processing: false,
+                retry: `${reason}，正在重试（${frame.attempt}/${frame.max_retries}，间隔 ${Math.ceil((frame.retry_delay_ms ?? 0) / 1000)} 秒）。`,
+              },
+            });
+          }
           if (frame.type === "system" && frame.subtype === "init") {
             nativeModel = frame.model ?? nativeModel;
             await emit({
@@ -215,7 +232,10 @@ export const claudeProvider: EngineProvider = {
             await emit({ type: "compaction", status: "failed" });
           if (frame.type === "stream_event") {
             if (frame.event?.type === "message_start")
-              await emit({ type: "runtime", state: { processing: true } });
+              await emit({
+                type: "runtime",
+                state: { processing: true, retry: null },
+              });
             if (frame.event?.message) messageId = frame.event.message.id;
             const delta = frame.event?.delta;
             if (messageId && (delta?.text || delta?.thinking))
@@ -312,9 +332,16 @@ export const claudeProvider: EngineProvider = {
               return;
             running = false;
             releaseInputs();
+            await emit({
+              type: "runtime",
+              state: { processing: false, retry: null },
+            });
             if (frame.is_error || (compacting && !compactBoundary))
               completion?.reject(
-                new Error("Claude Code 未完成任务。请检查账号和网络。"),
+                new Error(
+                  frame.errors?.join("\n").trim() ||
+                    "Claude Code 未完成任务。请检查账号和网络。",
+                ),
               );
             else completion?.resolve();
           }

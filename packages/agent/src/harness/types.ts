@@ -59,6 +59,7 @@ export type EngineUsage = {
 };
 export type EngineRuntimeState = {
   processing?: boolean;
+  retry?: string | null;
   compaction?: "running" | "completed" | "failed" | "uncertain";
   compactionDetails?: EngineCompaction;
   contextTokens?: number | null;

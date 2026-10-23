@@ -30,8 +30,8 @@ export class EngineProjection {
   }
 
   async emit(event: EngineEvent) {
-    if (event.type === "runtime" && event.state.processing)
-      this.processing = true;
+    if (event.type === "runtime" && event.state.processing !== undefined)
+      this.processing = event.state.processing;
     if (
       event.type === "usage" ||
       event.type === "runtime" ||

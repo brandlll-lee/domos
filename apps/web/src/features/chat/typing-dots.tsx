@@ -4,10 +4,12 @@ import { useLayoutEffect, useState } from "react";
 export function TypingDots({
   active,
   label,
+  status,
   onLayout,
 }: {
   active: boolean;
   label: string;
+  status?: string | null;
   onLayout: () => void;
 }) {
   const [visible, setVisible] = useState(active);
@@ -15,8 +17,8 @@ export function TypingDots({
     if (active) setVisible(true);
   }, [active]);
   useLayoutEffect(() => {
-    if (!active || !visible) onLayout();
-  }, [active, visible, onLayout]);
+    if (status || !active || !visible) onLayout();
+  }, [active, visible, onLayout, status]);
   if (!visible) return null;
   return (
     <div
@@ -27,15 +29,21 @@ export function TypingDots({
       }}
     >
       <MessageBubble side="incoming">
-        <div className="typing-dots" role="status" aria-label={label}>
-          <svg viewBox="0 0 68 40" aria-hidden="true">
-            {[22, 34, 46].map((x) => (
-              <g key={x}>
-                <circle cx={x} cy="20" r="3.5" />
-              </g>
-            ))}
-          </svg>
-        </div>
+        {status ? (
+          <p className="working" role="status">
+            {status}
+          </p>
+        ) : (
+          <div className="typing-dots" role="status" aria-label={label}>
+            <svg viewBox="0 0 68 40" aria-hidden="true">
+              {[22, 34, 46].map((x) => (
+                <g key={x}>
+                  <circle cx={x} cy="20" r="3.5" />
+                </g>
+              ))}
+            </svg>
+          </div>
+        )}
       </MessageBubble>
     </div>
   );

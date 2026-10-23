@@ -334,6 +334,9 @@
 .message-body[data-expanded] {
   max-height: none;
 }
+.typing-row > .message-bubble {
+  max-width: 100%;
+}
 .message-bubble:has(.attachments, .message-image) {
   width: var(--message-media-width);
   padding: var(--space-1);
@@ -454,6 +457,7 @@
 .typing-row {
   display: flex;
   align-self: flex-start;
+  max-width: var(--message-max-width);
   animation: typing-in var(--motion-feedback) ease-out both;
 }
 .typing-row[data-active="false"] {

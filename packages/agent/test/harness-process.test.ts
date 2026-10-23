@@ -515,7 +515,7 @@ test("native account HTTP stays inside the selected work computer and closes pen
   await pending;
 });
 
-test("a work computer allocates its native history endpoint without reading child logs", async () => {
+test("a work computer recovers a stalled readiness probe without reading child logs", async () => {
   const { process } = await worker();
   process.output.resume();
   process.error.resume();
@@ -527,7 +527,11 @@ test("a work computer allocates its native history endpoint without reading chil
       `
       import { createServer } from 'node:http';
       console.log('unrelated http://127.0.0.1:1/');
-      createServer((request, response) => response.end(JSON.stringify(request.url === '/global/health' ? { healthy: true } : [{ info: { id: 'saved' } }]))).listen(Number(process.argv[1]), '127.0.0.1');
+      let checks = 0;
+      createServer((request, response) => {
+        if (request.url === '/global/health' && ++checks === 1) return;
+        response.end(JSON.stringify(request.url === '/global/health' ? { healthy: true } : [{ info: { id: 'saved' } }]));
+      }).listen(Number(process.argv[1]), '127.0.0.1');
     `,
       "__DOMOS_PORT__",
     ],

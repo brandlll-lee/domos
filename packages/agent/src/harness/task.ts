@@ -53,6 +53,7 @@ export function engineTask(execution: EngineExecution) {
             if (doc.runtime) {
               doc.runtime.processing = false;
               doc.runtime.notices = {};
+              delete doc.runtime.retry;
               delete doc.runtime.editorText;
             }
           }
@@ -151,7 +152,10 @@ async function finish(
       }
       doc.drafts = [];
       doc.approvals = [];
-      if (doc.runtime) doc.runtime.processing = false;
+      if (doc.runtime) {
+        doc.runtime.processing = false;
+        delete doc.runtime.retry;
+      }
       doc.activeId = null;
       doc.activeTurn = null;
       doc.error = reason === "aborted" ? null : error;

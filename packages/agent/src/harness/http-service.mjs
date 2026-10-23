@@ -33,8 +33,12 @@ export async function openHttpService(emit, limits) {
             headers: {
               Authorization: `Basic ${Buffer.from(`opencode:${password}`).toString("base64")}`,
             },
-            signal: abort.signal,
+            signal: AbortSignal.any([
+              abort.signal,
+              AbortSignal.timeout(Math.min(limits.timeoutMs, 1000)),
+            ]),
           });
+          await health.body?.cancel();
           if (health.ok) {
             clearTimeout(timer);
             endpoint.resolve(address);
