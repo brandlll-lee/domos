@@ -1,6 +1,11 @@
-import { ChoicePicker } from "@domos/ui/picker";
+import { SegmentedControl } from "@domos/ui/choice";
 import { SettingRow } from "@domos/ui/setting-row";
 import type { EngineSetup } from "./use-engine.ts";
+
+export const accountSources = [
+  { value: "native", label: "电脑", title: "使用所选工作电脑的 CLI 配置" },
+  { value: "managed", label: "Domos", title: "使用 Domos 管理的账号和配置" },
+] as const;
 
 export function EngineSource({
   setup,
@@ -11,24 +16,14 @@ export function EngineSource({
 }) {
   const config = setup.profile?.config;
   return (
-    <SettingRow
-      title="账号来源"
-      description={
-        config?.accountSource === "native"
-          ? "读取所选工作电脑当前运行用户的账号和模型。账号由原 CLI 管理。"
-          : undefined
-      }
-    >
-      <ChoicePicker
+    <SettingRow title="账号来源">
+      <SegmentedControl
         label="账号来源"
         value={config?.accountSource ?? "managed"}
         disabled={disabled || !config}
-        items={[
-          { value: "managed", label: "Domos 管理" },
-          { value: "native", label: "工作电脑已有配置" },
-        ]}
+        options={accountSources}
         onValueChange={(value) => {
-          if (!config || (value !== "native" && value !== "managed")) return;
+          if (!config) return;
           void (async () => {
             if (
               await setup.save({

@@ -18,12 +18,14 @@ export function RootPanel({
   data,
   engine,
   chat,
+  computerName,
   onNavigate,
 }: {
   bot: Bot;
   data: WorkData | null;
   engine: EngineSetup;
   chat: { model: ChatView["model"]; connected: boolean };
+  computerName?: string;
   onNavigate: (view: BotPanelView) => void;
 }) {
   const memory = data?.memory.length ?? 0;
@@ -47,6 +49,7 @@ export function RootPanel({
               setup={engine}
               model={chat.model}
               connected={chat.connected}
+              computerName={computerName}
               onConfigure={() => onNavigate("engine")}
             />
           </SettingRow>

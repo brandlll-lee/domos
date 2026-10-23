@@ -1,7 +1,9 @@
-import type { EngineId } from "@domos/agent/harness/types";
+import type { EngineConfig, EngineId } from "@domos/agent/harness/types";
 import type { ChatView } from "@domos/agent/view";
+import { SegmentedControl } from "@domos/ui/choice";
 import { ModelSelector } from "@domos/ui/model-selector";
 import { useEffect, useState } from "react";
+import { accountSources } from "../bots/details/engine-source.tsx";
 import type { EngineSetup } from "../bots/details/use-engine.ts";
 import { EngineMark } from "../bots/engine-mark.tsx";
 import { Effort } from "./effort.tsx";
@@ -10,15 +12,19 @@ export function EngineSelector({
   setup,
   model,
   connected,
+  computerName,
   onConfigure,
 }: {
   setup: EngineSetup;
   model: ChatView["model"];
   connected: boolean;
+  computerName?: string;
   onConfigure: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [browsing, setBrowsing] = useState<EngineId>("pi");
+  const [source, setSource] =
+    useState<NonNullable<EngineConfig["accountSource"]>>("managed");
   const { profile, catalog } = setup;
   const provider = profile?.config.provider ?? "pi";
   const selected =
@@ -28,10 +34,13 @@ export function EngineSelector({
       : null);
   const visibility = catalog.visibility;
   useEffect(() => {
-    if (open) void catalog.load(browsing);
-  }, [open, browsing, catalog.load]);
-  const models = catalog.models(browsing);
-  const error = catalog.error(browsing);
+    if (open) void catalog.load(browsing, source);
+  }, [open, browsing, source, catalog.load]);
+  const models = catalog.models(browsing, source);
+  const error = catalog.error(browsing, source);
+  const current =
+    browsing === provider &&
+    source === (profile?.config.accountSource ?? "managed");
   const active =
     catalog.models(provider)?.find((item) => item.id === selected) ??
     (profile?.model?.id === selected ? profile.model : null);
@@ -45,17 +54,33 @@ export function EngineSelector({
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (next) setBrowsing(provider);
+        if (next) {
+          setBrowsing(provider);
+          setSource(profile?.config.accountSource ?? "managed");
+        }
       }}
       providers={(profile?.providers ?? []).map((item) => ({
         ...item,
         icon: <EngineMark provider={item.id} />,
       }))}
       provider={browsing}
+      environment={[catalog.version(browsing, source), computerName]
+        .filter(Boolean)
+        .join(" · ")}
+      source={
+        (profile?.providers.length ?? 0) > 1 ? (
+          <SegmentedControl
+            label="账号来源"
+            value={source}
+            onValueChange={setSource}
+            options={accountSources}
+          />
+        ) : null
+      }
       models={(models ?? []).filter((item) =>
         visibility.visible(browsing, item.id),
       )}
-      value={browsing === provider ? (selected ?? "") : ""}
+      value={current ? (selected ?? "") : ""}
       label={
         selected
           ? `${profile?.providers.find((item) => item.id === provider)?.name ?? "Pi"} · ${active?.name ?? selected}`
@@ -65,33 +90,55 @@ export function EngineSelector({
       disabled={!connected || Boolean(setup.busy)}
       busy={Boolean(profile?.busy)}
       error={setup.error || visibility.error || error}
-      onProviderChange={(id) => setBrowsing(id as EngineId)}
+      onProviderChange={(id) => {
+        setBrowsing(id as EngineId);
+        setSource(
+          id === provider
+            ? (profile?.config.accountSource ?? "managed")
+            : "managed",
+        );
+      }}
       onSelect={(id) => {
         setOpen(false);
-        void setup.save({ provider: browsing, model: id });
+        void setup.save({
+          provider: browsing,
+          accountSource: source,
+          model: id,
+        });
       }}
       effort={
-        browsing === provider &&
-        effort &&
-        (profile?.providers.length ?? 0) > 1 ? (
+        current && effort && (profile?.providers.length ?? 0) > 1 ? (
           <Effort
-            key={`${provider}:${selected}:${profile?.config.options?.[effort.id] ?? effort.value}`}
             control={{
               ...effort,
-              value: profile?.config.options?.[effort.id] ?? effort.value,
+              value: profile?.config.options?.[effort.id] ?? "",
             }}
             disabled={Boolean(setup.busy) || setup.saving}
             onChange={(value) => {
-              if (profile)
+              if (profile) {
+                const options = { ...profile.config.options };
+                if (value) options[effort.id] = value;
+                else delete options[effort.id];
                 void setup.save({
                   ...profile.config,
-                  options: { ...profile.config.options, [effort.id]: value },
+                  options,
                 });
+              }
             }}
           />
         ) : null
       }
-      onConfigure={() => {
+      onConfigure={async () => {
+        if (setup.busy || profile?.busy) return;
+        if (
+          !current &&
+          !(await setup.save({
+            provider: browsing,
+            accountSource: source,
+            model: null,
+          }))
+        )
+          return;
         setOpen(false);
         onConfigure();
       }}

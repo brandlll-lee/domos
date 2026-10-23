@@ -12,6 +12,8 @@ export function ModelSelector({
   models,
   provider,
   effort,
+  environment,
+  source,
   value,
   label,
   loading,
@@ -28,6 +30,8 @@ export function ModelSelector({
   models: { id: string; name: string; group?: string }[];
   provider: string;
   effort?: ReactNode;
+  environment?: string;
+  source?: ReactNode;
   value: string;
   label: string;
   loading: boolean;
@@ -86,7 +90,9 @@ export function ModelSelector({
             className="model-selector-popup"
             initialFocus={(interaction) =>
               interaction === "keyboard"
-                ? popup.current?.querySelector<HTMLInputElement>("input")
+                ? popup.current?.querySelector<HTMLInputElement>(
+                    'input[type="search"]',
+                  )
                 : true
             }
           >
@@ -118,6 +124,7 @@ export function ModelSelector({
                   className="model-selector-config"
                   aria-label="连接与账号设置"
                   title="连接与账号设置"
+                  disabled={busy || disabled}
                   onClick={onConfigure}
                 >
                   <svg viewBox="0 0 20 20" aria-hidden="true">
@@ -126,6 +133,15 @@ export function ModelSelector({
                 </Button>
               </Tabs.List>
               <Tabs.Panel value={provider} className="model-selector-panel">
+                <div className="model-selector-header">
+                  <div className="model-selector-identity">
+                    <strong>{selected?.name}</strong>
+                    {environment && (
+                      <span title={environment}>{environment}</span>
+                    )}
+                  </div>
+                  {source}
+                </div>
                 <div className="model-selector-search">
                   <TextField
                     label="搜索模型"
@@ -167,12 +183,13 @@ export function ModelSelector({
                           >
                             <span>{item.name}</span>
                             {item.id === value && (
-                              <span
+                              <svg
                                 className="model-selector-check"
+                                viewBox="0 0 16 16"
                                 aria-hidden="true"
                               >
-                                ✓
-                              </span>
+                                <path d="m3 8 3 3 7-7" />
+                              </svg>
                             )}
                           </button>
                         </div>

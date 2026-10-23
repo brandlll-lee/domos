@@ -186,7 +186,7 @@ test("native account flows show login choices, retain providers, and select mode
     await page.getByRole("button", { name: "开始使用", exact: true }).click();
     await expect(
       page.getByRole("button", { name: "选择引擎与模型", exact: true }),
-    ).toContainText("openai/one");
+    ).toContainText("Fixture OpenCode Model");
     await page.setViewportSize({ width: 1360, height: 900 });
     const trigger = page.getByRole("button", {
       name: "选择引擎与模型",
@@ -211,7 +211,7 @@ test("native account flows show login choices, retain providers, and select mode
     expect(configurations).toBe(0);
     await page.keyboard.press("Escape");
     await page.reload();
-    await expect(trigger).toContainText("openai/one");
+    await expect(trigger).toContainText("Fixture OpenCode Model");
     await trigger.click();
     await selector
       .getByRole("button", { name: "Other Model", exact: true })
@@ -219,7 +219,7 @@ test("native account flows show login choices, retain providers, and select mode
     await expect(selector).toBeHidden();
     await expect(trigger).toContainText("Other Model");
     await page.reload();
-    await expect(trigger).toContainText("other/two");
+    await expect(trigger).toContainText("Other Model");
     await trigger.click();
     await selector
       .getByRole("button", { name: "Fixture OpenCode Model", exact: true })
@@ -232,12 +232,18 @@ test("native account flows show login choices, retain providers, and select mode
     await selector
       .getByRole("button", { name: "连接与账号设置", exact: true })
       .click();
-    const settings = page.getByRole("dialog", { name: "设置", exact: true });
+    await expect(
+      page.getByRole("region", { name: "任务引擎", exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole("complementary", { name: /的详情$/ })
+      .getByRole("button", { name: "关闭", exact: true })
+      .click();
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    const settings = page.getByRole("main", { name: "设置", exact: true });
     const beforeAccounts = configurations;
     await expect(settings).toBeVisible();
-    await expect(
-      settings.getByRole("tab", { name: "Providers", exact: true }),
-    ).toHaveAttribute("aria-current", "page");
+    await settings.getByRole("tab", { name: "Providers", exact: true }).click();
     await settings
       .getByRole("tab", { name: "Claude Code", exact: true })
       .click();
@@ -269,7 +275,7 @@ test("native account flows show login choices, retain providers, and select mode
     await expect(modelVisibility).not.toBeChecked();
     expect(configurations).toBe(beforeAccounts);
     await settings
-      .getByRole("button", { name: "关闭设置", exact: true })
+      .getByRole("button", { name: "返回对话", exact: true })
       .click();
     await expect(trigger).toContainText("Fixture OpenCode Model");
     await trigger.click();
@@ -283,23 +289,29 @@ test("native account flows show login choices, retain providers, and select mode
       .click();
     await expect(selector).toBeHidden();
     await trigger.click();
-    const effort = selector.getByRole("slider", {
+    const effort = selector.getByRole("radiogroup", {
       name: "推理强度",
       exact: true,
     });
-    await expect(effort).toHaveAttribute("aria-valuetext", "Medium");
-    await expect(selector.getByText("推荐", { exact: true })).toBeVisible();
+    await expect(
+      effort.getByRole("radio", { name: "默认", exact: true }),
+    ).toBeChecked();
     const beforeEffort = await launches();
-    await effort.focus();
-    await effort.press("ArrowRight");
-    await expect(effort).toHaveAttribute("aria-valuetext", "High");
-    await expect(effort).toBeEnabled();
+    await effort.getByRole("radio", { name: "高", exact: true }).click();
+    await expect(
+      effort.getByRole("radio", { name: "高", exact: true }),
+    ).toBeChecked();
+    await expect(
+      effort.getByRole("radio", { name: "高", exact: true }),
+    ).toBeEnabled();
     expect(await launches()).toBe(beforeEffort);
     const beforeReopen = await launches();
     for (let index = 0; index < 3; index++) {
       await page.keyboard.press("Escape");
       await trigger.click();
-      await expect(effort).toHaveAttribute("aria-valuetext", "High");
+      await expect(
+        effort.getByRole("radio", { name: "高", exact: true }),
+      ).toBeChecked();
     }
     expect(await launches()).toBe(beforeReopen);
     for (const colorScheme of ["light", "dark"] as const) {
@@ -311,10 +323,17 @@ test("native account flows show login choices, retain providers, and select mode
     await page.keyboard.press("Escape");
     await page.reload();
     await trigger.click();
-    await expect(effort).toHaveAttribute("aria-valuetext", "High");
+    await expect(
+      effort.getByRole("radio", { name: "高", exact: true }),
+    ).toBeChecked();
     await selector
       .getByRole("button", { name: "连接与账号设置", exact: true })
       .click();
+    await page
+      .getByRole("complementary", { name: /的详情$/ })
+      .getByRole("button", { name: "关闭", exact: true })
+      .click();
+    await page.getByRole("button", { name: "设置", exact: true }).click();
     await settings.getByRole("tab", { name: "Models", exact: true }).click();
     await expect(modelVisibility).not.toBeChecked();
     for (const colorScheme of ["light", "dark"] as const) {
@@ -333,7 +352,7 @@ test("native account flows show login choices, retain providers, and select mode
       }
     }
     await settings
-      .getByRole("button", { name: "关闭设置", exact: true })
+      .getByRole("button", { name: "返回对话", exact: true })
       .click();
     await page.setViewportSize({ width: 1360, height: 768 });
     await page
@@ -351,9 +370,12 @@ test("native account flows show login choices, retain providers, and select mode
         exact: true,
       }),
     ).toBeDisabled();
-    await selector
-      .getByRole("button", { name: "连接与账号设置", exact: true })
-      .click();
+    await expect(
+      selector.getByRole("button", { name: "连接与账号设置", exact: true }),
+    ).toBeDisabled();
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    await settings.getByRole("tab", { name: "Providers", exact: true }).click();
     await settings.getByRole("tab", { name: "OpenCode", exact: true }).click();
     await settings
       .getByRole("button", { name: "添加提供方", exact: true })
@@ -391,7 +413,7 @@ test("native account flows show login choices, retain providers, and select mode
       }
     }
     await settings
-      .getByRole("button", { name: "关闭设置", exact: true })
+      .getByRole("button", { name: "返回对话", exact: true })
       .click();
     await page.setViewportSize({ width: 1360, height: 900 });
     await expect(trigger).toContainText("Test Model");
@@ -412,15 +434,14 @@ test("native account flows show login choices, retain providers, and select mode
     await page.getByRole("button", { name: "Bot详情", exact: true }).click();
     const details = page.getByRole("complementary", { name: /的详情$/ });
     await details.getByRole("button", { name: /^连接与账号(?:\s|$)/ }).click();
-    const source = details.getByRole("combobox", {
+    const source = details.getByRole("radiogroup", {
       name: "账号来源",
       exact: true,
     });
-    await source.click();
-    await page
-      .getByRole("option", { name: "工作电脑已有配置", exact: true })
-      .click();
-    await expect(source).toContainText("工作电脑已有配置");
+    await source.getByRole("radio", { name: "电脑", exact: true }).click();
+    await expect(
+      source.getByRole("radio", { name: "电脑", exact: true }),
+    ).toBeChecked();
     await details
       .getByRole("button", { name: "选择模型", exact: true })
       .click();
@@ -434,17 +455,19 @@ test("native account flows show login choices, retain providers, and select mode
       .click();
     await expect(nativeModel).toBeHidden();
     await page.reload();
-    await expect(trigger).toContainText("faux/faux-2");
+    await expect(trigger).toContainText("Faux Model 2");
     await trigger.click();
     await selector
       .getByRole("button", { name: "Faux Model", exact: true })
       .click();
     await expect(selector).toBeHidden();
     await page.reload();
-    await expect(trigger).toContainText("faux/faux-1");
+    await expect(trigger).toContainText("Faux Model");
     await page.getByRole("button", { name: "Bot详情", exact: true }).click();
     await details.getByRole("button", { name: /^连接与账号(?:\s|$)/ }).click();
-    await expect(source).toContainText("工作电脑已有配置");
+    await expect(
+      source.getByRole("radio", { name: "电脑", exact: true }),
+    ).toBeChecked();
   } finally {
     const exited = once(worker, "exit");
     worker.disconnect();

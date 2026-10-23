@@ -79,6 +79,7 @@ export function BotDetails({
         data={work.data}
         engine={engine}
         chat={chat}
+        computerName={computer.status?.name}
         onNavigate={navigate}
       />
     );

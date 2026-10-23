@@ -37,7 +37,9 @@ export class EngineConnections {
       botId,
       context,
     );
-    const cached = this.catalogs.get(`${botId}:${config.provider}`);
+    const cached = this.catalogs.get(
+      `${botId}:${config.provider}:${config.accountSource ?? "managed"}`,
+    );
     return cached?.computerId === computerId &&
       (cached.accountSource ?? "managed") ===
         (config.accountSource ?? "managed")
@@ -54,26 +56,22 @@ export class EngineConnections {
     return [...providers.values()].map(({ id, name }) => {
       const selected =
         config?.provider === id ? config : { provider: id, model: null };
-      const cached = this.catalogs.get(`${botId}:${id}`);
+      const accountSource = selected.accountSource ?? "managed";
+      const cached = this.catalogs.get(`${botId}:${id}:${accountSource}`);
       const connection =
         cached?.computerId === computerId &&
-        (cached.accountSource ?? "managed") ===
-          (config?.provider === id
-            ? (config.accountSource ?? "managed")
-            : "managed")
+        (cached.accountSource ?? "managed") === accountSource
           ? cached.value
           : null;
+      const saved = stored?.find(
+        (item) => item.provider === id && item.accountSource === accountSource,
+      );
       return {
         id,
         name,
-        models:
-          connection?.models ??
-          stored?.find(
-            (item) =>
-              item.provider === id &&
-              item.accountSource === (selected.accountSource ?? "managed"),
-          )?.models ??
-          [],
+        accountSource,
+        version: connection?.version ?? saved?.version ?? null,
+        models: connection?.models ?? saved?.models ?? [],
       };
     });
   }
@@ -84,7 +82,7 @@ export class EngineConnections {
     context: Context,
     refresh = false,
   ) {
-    const key = `${botId}:${config.provider}`;
+    const key = `${botId}:${config.provider}:${config.accountSource ?? "managed"}`;
     const computerId = await this.execution.computers.computerId(
       botId,
       context,
@@ -115,7 +113,7 @@ export class EngineConnections {
           botId,
           computerId,
           config,
-          result.models,
+          { models: result.models, version: result.version },
           context,
         );
       return result;

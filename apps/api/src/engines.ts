@@ -20,13 +20,23 @@ export function engineRouter(bots: Bots, engines?: Engines) {
   const engineTarget = botTarget.extend({
     provider: z.enum(engineIds).optional(),
   });
-  const inspection = engineTarget.extend({ refresh: z.boolean().optional() });
+  const catalogTarget = engineTarget.extend({
+    accountSource: engineConfig.shape.accountSource,
+  });
+  const inspection = catalogTarget.extend({ refresh: z.boolean().optional() });
   const connectionConfig = (
     profile: { config: z.infer<typeof engineConfig> },
     provider?: z.infer<typeof engineConfig>["provider"],
+    accountSource?: z.infer<typeof engineConfig>["accountSource"],
   ) =>
-    provider && provider !== profile.config.provider
-      ? { provider, model: null }
+    (provider && provider !== profile.config.provider) ||
+    (accountSource &&
+      accountSource !== (profile.config.accountSource ?? "managed"))
+      ? {
+          provider: provider ?? profile.config.provider,
+          model: null,
+          accountSource,
+        }
       : profile.config;
   async function target(botId: number, idle = false) {
     await botConversation(bots, botId);
@@ -112,9 +122,13 @@ export function engineRouter(bots: Bots, engines?: Engines) {
     catalog: os.handler(() =>
       engineCatalog().filter((provider) => engines || provider.id === "pi"),
     ),
-    models: os.input(botTarget).handler(async ({ input }) => {
+    models: os.input(catalogTarget).handler(async ({ input }) => {
       const { engines, profile } = await target(input.botId);
-      return engines.connections.catalog(input.botId, context, profile.config);
+      return engines.connections.catalog(
+        input.botId,
+        context,
+        connectionConfig(profile, input.provider, input.accountSource),
+      );
     }),
     get: os.input(botTarget).handler(({ input }) =>
       operation(async () => {
@@ -156,11 +170,12 @@ export function engineRouter(bots: Bots, engines?: Engines) {
       ),
     inspect: os.input(inspection).handler(({ input }) =>
       operation(async () => {
-        const { engines, profile } = await target(input.botId, !input.provider);
-        return input.provider
+        const preview = Boolean(input.provider || input.accountSource);
+        const { engines, profile } = await target(input.botId, !preview);
+        return preview
           ? engines.connections.inspect(
               input.botId,
-              connectionConfig(profile, input.provider),
+              connectionConfig(profile, input.provider, input.accountSource),
               context,
               input.refresh,
             )

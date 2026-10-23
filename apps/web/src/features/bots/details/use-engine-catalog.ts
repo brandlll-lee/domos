@@ -24,7 +24,15 @@ export function useEngineCatalog(
 ) {
   const managed = useModels(active);
   const visibility = useVisibility(active);
-  const [native, setNative] = useState<Record<string, EngineModel[]>>({});
+  const [catalogs, setCatalogs] = useState<
+    Record<
+      string,
+      {
+        models: EngineModel[];
+        version?: string | null;
+      }
+    >
+  >({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const pending = useRef(new Map<string, Promise<void>>());
   const warmed = useRef(new Set<string>());
@@ -34,7 +42,7 @@ export function useEngineCatalog(
     generation.current++;
     pending.current.clear();
     warmed.current.clear();
-    setNative({});
+    setCatalogs({});
     setErrors({});
   }, []);
   useEffect(() => {
@@ -46,8 +54,12 @@ export function useEngineCatalog(
       invalidate();
     }
   }, [botId, computerId, invalidate]);
-  const key = (provider: EngineId) =>
-    `${provider}:${provider === config?.provider ? (config.accountSource ?? "managed") : "managed"}`;
+  const source = (provider: EngineId) =>
+    provider === config?.provider
+      ? (config.accountSource ?? "managed")
+      : "managed";
+  const key = (provider: EngineId, accountSource = source(provider)) =>
+    `${provider}:${accountSource}`;
   const managedModels = useMemo(
     () =>
       managed.choices?.map((item) => ({
@@ -58,27 +70,52 @@ export function useEngineCatalog(
       })),
     [managed.choices],
   );
-  const models = (provider: EngineId) =>
-    key(provider) === "pi:managed" ? managedModels : native[key(provider)];
-  const load = (provider: EngineId, refresh = false) => {
-    const id = key(provider);
-    if (id === "pi:managed" || (!refresh && native[id]))
+  const models = (provider: EngineId, accountSource = source(provider)) =>
+    key(provider, accountSource) === "pi:managed"
+      ? managedModels
+      : catalogs[key(provider, accountSource)]?.models;
+  const load = (
+    provider: EngineId,
+    accountSource = source(provider),
+    refresh = false,
+  ) => {
+    const id = key(provider, accountSource);
+    if (id === "pi:managed" || (!refresh && catalogs[id]))
       return Promise.resolve();
     const existing = pending.current.get(id);
     if (existing) return existing;
     const version = generation.current;
-    const request = client.engines
-      .inspect({ botId, provider })
+    const request = (async () => {
+      if (!refresh && !catalogs[id]) {
+        const saved = (
+          await client.engines.models({ botId, provider, accountSource })
+        ).find((item) => item.id === provider);
+        if (
+          saved &&
+          (saved.models.length || saved.version) &&
+          version === generation.current
+        )
+          setCatalogs((current) => ({ ...current, [id]: saved }));
+      }
+      return client.engines.inspect({
+        botId,
+        provider,
+        accountSource,
+      });
+    })()
       .then(
         (result) => {
           if (version === generation.current) {
-            setNative((current) => ({ ...current, [id]: result.models }));
+            setCatalogs((current) => ({ ...current, [id]: result }));
             setErrors((current) => ({ ...current, [id]: "" }));
           }
         },
         (cause) => {
           if (version === generation.current) {
-            setNative((current) => ({ ...current, [id]: current[id] ?? [] }));
+            setCatalogs((current) => ({
+              ...current,
+              [id]: current[id] ?? { models: [] },
+            }));
             setErrors((current) => ({
               ...current,
               [id]: userError(cause, "模型读取失败。请重试。"),
@@ -97,18 +134,18 @@ export function useEngineCatalog(
     try {
       const catalogs = await client.engines.models({ botId });
       if (version !== generation.current) return;
-      setNative((current) => ({
+      setCatalogs((current) => ({
         ...current,
         ...Object.fromEntries(
           catalogs
-            .filter((item) => item.models.length)
-            .map((item) => [key(item.id), item.models]),
+            .filter((item) => item.models.length || item.version)
+            .map((item) => [key(item.id, item.accountSource), item]),
         ),
       }));
       for (const item of catalogs) {
         const id = key(item.id);
         if (warmed.current.has(id)) continue;
-        void load(item.id, true).then(() => {
+        void load(item.id, item.accountSource, true).then(() => {
           if (version === generation.current) warmed.current.add(id);
         });
       }
@@ -120,16 +157,9 @@ export function useEngineCatalog(
         }));
     }
   });
-  const source =
-    config &&
-    JSON.stringify([
-      botId,
-      computerId,
-      config.provider,
-      config.accountSource ?? "managed",
-    ]);
+  const scopeKey = active && config ? `${botId}:${computerId ?? ""}` : null;
   useEffect(() => {
-    if (!active || !source) return;
+    if (!scopeKey) return;
     void hydrate();
     const refresh = () => {
       generation.current++;
@@ -143,12 +173,16 @@ export function useEngineCatalog(
       pending.current.clear();
       window.removeEventListener("domos:engines", refresh);
     };
-  }, [active, source]);
+  }, [scopeKey]);
   return {
     models,
     visibility,
-    error: (provider: EngineId) =>
-      key(provider) === "pi:managed" ? managed.error : errors[key(provider)],
+    version: (provider: EngineId, accountSource = source(provider)) =>
+      catalogs[key(provider, accountSource)]?.version,
+    error: (provider: EngineId, accountSource = source(provider)) =>
+      key(provider, accountSource) === "pi:managed"
+        ? managed.error
+        : errors[key(provider, accountSource)],
     load,
   };
 }

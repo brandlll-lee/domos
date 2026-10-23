@@ -146,6 +146,17 @@ test("native discovery uses the work computer account and keeps managed accounts
   ).toEqual([]);
   await connections.inspect(1, native, context);
   expect(launches).toHaveLength(4);
+  await connections.inspect(1, managed, context);
+  expect(launches).toHaveLength(4);
+  expect(
+    (await connections.catalog(1, context, managed)).find(
+      (item) => item.id === "codex",
+    ),
+  ).toMatchObject({
+    accountSource: "managed",
+    version: "0.159.2",
+    models: [{ id: "fixture-model" }],
+  });
   expect(launches[2]).toMatchObject({ accountSource: "native" });
   expect(launches[3]).toMatchObject({ accountSource: "native" });
   expect(launches[3]?.env).not.toHaveProperty("CODEX_HOME");

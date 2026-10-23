@@ -191,8 +191,8 @@ test("first use prepares the default Bot with a computer and engine before share
     await expect(engines.locator("svg.engine-mark")).toHaveCount(4);
     await expect(setup.locator("details, summary")).toHaveCount(0);
     await expect(
-      setup.getByRole("combobox", { name: "账号来源", exact: true }),
-    ).toContainText("Domos 管理");
+      setup.getByRole("radio", { name: "Domos", exact: true }),
+    ).toBeChecked();
     const installs: string[] = [];
     page.on("request", (request) => {
       if (request.url().endsWith("/engines/install"))
@@ -489,18 +489,21 @@ test("first use prepares the default Bot with a computer and engine before share
         .getByRole("complementary", { name: /的详情$/ })
         .getByRole("button", { name: /^连接与账号(?:\s|$)/ })
         .click();
-      const detailsModel = page.getByRole("combobox", {
-        name: "模型",
+      const details = page.getByRole("complementary", { name: /的详情$/ });
+      await details.getByRole("button", { name: "返回", exact: true }).click();
+      const detailsModel = details.getByRole("button", {
+        name: "选择引擎与模型",
         exact: true,
       });
       await detailsModel.click();
       await Promise.all([
-        page.waitForResponse("**/rpc/engines/get"),
-        page
-          .getByRole("option", { name: "faux · Faux Model 2", exact: true })
-          .click(),
+        page.waitForResponse("**/rpc/engines/configure"),
+        page.getByRole("button", { name: "Faux Model 2", exact: true }).click(),
       ]);
       await expect(detailsModel).toContainText("Faux Model 2");
+      await details
+        .getByRole("button", { name: /^连接与账号(?:\s|$)/ })
+        .click();
       const engine = page.getByRole("region", {
         name: "任务引擎",
         exact: true,
@@ -552,8 +555,8 @@ test("first use prepares the default Bot with a computer and engine before share
         .getByRole("complementary", { name: /的详情$/ })
         .getByRole("button", { name: /^连接与账号\s/ })
         .click();
-      const enginePicker = engine.getByRole("combobox", {
-        name: "任务引擎",
+      const enginePicker = engine.getByRole("radio", {
+        name: "Domos",
         exact: true,
       });
       await expect(enginePicker).toBeDisabled();

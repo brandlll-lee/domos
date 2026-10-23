@@ -222,6 +222,7 @@ function BotChat({
                   setup={engine}
                   model={chat.view?.model ?? null}
                   connected={chat.connected}
+                  computerName={computer.status?.name}
                   onConfigure={() => showPanel("engine")}
                 />
               }

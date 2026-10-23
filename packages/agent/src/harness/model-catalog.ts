@@ -9,6 +9,7 @@ const Catalog = defineDoc<{
     provider: EngineConfig["provider"];
     accountSource: NonNullable<EngineConfig["accountSource"]>;
     models: EngineModel[];
+    version?: string | null;
   }[];
 }>({
   kind: "domos.engine-catalog",
@@ -35,7 +36,7 @@ export class EngineModelCatalog {
     botId: number,
     computerId: string | null,
     config: EngineConfig,
-    models: EngineModel[],
+    catalog: { models: EngineModel[]; version: string | null },
     context: Context,
   ) {
     await this.harness.commit(async (tx) => {
@@ -55,7 +56,7 @@ export class EngineModelCatalog {
         computerId,
         provider: config.provider,
         accountSource: config.accountSource ?? "managed",
-        models,
+        ...catalog,
       });
     }, context);
   }

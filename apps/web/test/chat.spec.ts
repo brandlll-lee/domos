@@ -321,7 +321,7 @@ test("model selection is shared, ordered and restored after a failed save", asyn
 
 test("model menus use catalog effort without reading runtime controls", async ({
   page,
-}) => {
+}, info) => {
   await stop();
   await start(0, true);
   let requests = 0;
@@ -345,6 +345,78 @@ test("model menus use catalog effort without reading runtime controls", async ({
     ).toBeEnabled();
   }
   expect(requests).toBe(0);
+  const api = createORPCClient<RouterClient<AppRouter>>(
+    new RPCLink({ url: `${url}/rpc` }),
+  );
+  const before = (await api.engines.get({ botId: 1 })).config;
+  const source = menu.getByRole("radiogroup", {
+    name: "账号来源",
+    exact: true,
+  });
+  await source.getByRole("radio", { name: "电脑", exact: true }).click();
+  await expect(
+    menu.getByRole("button", { name: "Test model", exact: true }),
+  ).toBeVisible();
+  expect((await api.engines.get({ botId: 1 })).config).toEqual(before);
+  let fail = true;
+  await page.route("**/rpc/engines/configure", (route) =>
+    fail ? route.abort() : route.continue(),
+  );
+  await menu.getByRole("button", { name: "Test model", exact: true }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  expect((await api.engines.get({ botId: 1 })).config).toEqual(before);
+  fail = false;
+  await page.locator(".chat-header .model-selector-trigger").click();
+  await source.getByRole("radio", { name: "电脑", exact: true }).click();
+  await menu.getByRole("button", { name: "Test model", exact: true }).click();
+  await expect
+    .poll(
+      async () => (await api.engines.get({ botId: 1 })).config.accountSource,
+    )
+    .toBe("native");
+  await page.locator(".chat-header .model-selector-trigger").click();
+  await expect(
+    source.getByRole("radio", { name: "电脑", exact: true }),
+  ).toBeChecked();
+  const effort = menu.getByRole("radiogroup", {
+    name: "推理强度",
+    exact: true,
+  });
+  await effort.getByRole("radio", { name: "低", exact: true }).click();
+  await expect(
+    effort.getByRole("radio", { name: "低", exact: true }),
+  ).toBeEnabled();
+  await effort.getByRole("radio", { name: "低", exact: true }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(
+    effort.getByRole("radio", { name: "中", exact: true }),
+  ).toBeChecked();
+  await expect
+    .poll(
+      async () =>
+        (await api.engines.get({ botId: 1 })).config.options?.thinkingLevel,
+    )
+    .toBe("medium");
+  await effort.getByRole("radio", { name: "默认", exact: true }).click();
+  await expect
+    .poll(
+      async () =>
+        (await api.engines.get({ botId: 1 })).config.options?.thinkingLevel,
+    )
+    .toBeUndefined();
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    for (const width of [1440, 768, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(menu).toBeVisible();
+      expect(
+        await menu.evaluate((node) => node.scrollWidth <= node.clientWidth),
+      ).toBe(true);
+      await page.screenshot({
+        path: info.outputPath(`model-${colorScheme}-${width}.png`),
+      });
+    }
+  }
 });
 
 test("saved catalogs and effort stay usable during background discovery", async ({
@@ -1181,7 +1253,7 @@ test("engine controls wait for model selection to finish", async ({ page }) => {
     await requested.promise;
     await chooseDetail(details, "连接与账号");
     await expect(
-      details.getByRole("combobox", { name: "账号来源", exact: true }),
+      details.getByRole("radio", { name: "Domos", exact: true }),
     ).toBeDisabled();
     await expect(
       details.getByRole("button", { name: "检查连接", exact: true }),
@@ -1191,7 +1263,7 @@ test("engine controls wait for model selection to finish", async ({ page }) => {
       page.locator(".chat-header .model-selector-trigger"),
     ).toContainText("测试模型二");
     await expect(
-      details.getByRole("combobox", { name: "账号来源", exact: true }),
+      details.getByRole("radio", { name: "Domos", exact: true }),
     ).toBeEnabled();
   } finally {
     saving.resolve();

@@ -190,7 +190,10 @@ test("model catalogs survive restart and stay on their work computer", async () 
     requestId: crypto.randomUUID(),
     config: { provider: "pi", accountSource: "native", model: "native/model" },
   });
-  await f.runtime.client.engines.inspect({ botId, provider: "pi" });
+  const inspected = await f.runtime.client.engines.inspect({
+    botId,
+    provider: "pi",
+  });
   const count = f.state.workers.length;
   await f.reopen();
   expect(
@@ -206,6 +209,11 @@ test("model catalogs survive restart and stay on their work computer", async () 
     },
   ]);
   expect(f.state.workers).toHaveLength(count);
+  expect(
+    (await f.runtime.client.engines.models({ botId })).find(
+      (item) => item.id === "pi",
+    )?.version,
+  ).toBe(inspected.version);
   const gate = Promise.withResolvers<void>();
   f.state.catalogGate = gate.promise;
   const refresh = f.runtime.client.engines.inspect({
@@ -261,6 +269,24 @@ test("model catalogs survive restart and stay on their work computer", async () 
       (item) => item.id === "pi",
     )?.models,
   ).toHaveLength(0);
+  const preview = {
+    botId,
+    provider: "pi" as const,
+    accountSource: "native" as const,
+  };
+  expect(
+    (await f.runtime.client.engines.models(preview)).find(
+      (item) => item.id === "pi",
+    ),
+  ).toMatchObject({
+    version: inspected.version,
+    models: [{ id: "native/model" }],
+  });
+  await f.runtime.client.engines.inspect(preview);
+  expect((await f.runtime.client.engines.get({ botId })).config).toMatchObject({
+    accountSource: "managed",
+    model: null,
+  });
 });
 
 test("managed Pi configuration rejects unavailable models and keeps its revision", async () => {
