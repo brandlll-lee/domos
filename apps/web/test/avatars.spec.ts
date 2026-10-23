@@ -90,8 +90,68 @@ test("plush identities load, animate and survive profile changes", async ({
     const details = page.getByRole("complementary", { name: "Domos的详情" });
     await details.getByRole("button", { name: "编辑", exact: true }).click();
     await details
-      .getByRole("button", { name: "换个形象", exact: true })
+      .getByRole("button", { name: "选择头像", exact: true })
       .click();
+    const picker = page.getByRole("dialog", { name: "头像外观", exact: true });
+    await expect(picker.getByRole("button", { name: /^外形：/ })).toHaveCount(
+      9,
+    );
+    await expect(picker.getByRole("button", { name: /^颜色：/ })).toHaveCount(
+      18,
+    );
+    await picker.getByRole("button", { name: "换个形象", exact: true }).click();
+    await picker
+      .getByRole("button", { name: "外形：胶囊", exact: true })
+      .click();
+    await picker
+      .getByRole("button", { name: "颜色：樱粉", exact: true })
+      .click();
+    await expect(details.locator(".character")).toHaveAttribute(
+      "data-shape",
+      "capsule",
+    );
+    await picker
+      .getByRole("button", { name: "外形：云团", exact: true })
+      .click();
+    await expect(
+      picker.getByRole("button", { name: "颜色：樱粉", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await picker
+      .getByRole("button", { name: "颜色：天蓝", exact: true })
+      .click();
+    await expect(details.locator(".character")).toHaveAttribute(
+      "data-shape",
+      "cloud",
+    );
+    await page.evaluate(async () => {
+      await Promise.all(
+        [...document.querySelectorAll(".character image")].map((element) => {
+          const image = new Image();
+          image.src = element.getAttribute("href") ?? "";
+          return image.decode();
+        }),
+      );
+    });
+    await page.screenshot({
+      path: testInfo.outputPath("avatar-picker-light.png"),
+      animations: "disabled",
+    });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.screenshot({
+      path: testInfo.outputPath("avatar-picker-dark.png"),
+      animations: "disabled",
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    const bounds = await picker.boundingBox();
+    expect(bounds?.x).toBeGreaterThanOrEqual(0);
+    expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(390);
+    await page.screenshot({
+      path: testInfo.outputPath("avatar-picker-mobile.png"),
+      animations: "disabled",
+    });
+    await page.keyboard.press("Escape");
+    await page.setViewportSize({ width: 1360, height: 900 });
+    await page.emulateMedia({ colorScheme: "light" });
     const next = await details.locator(".bot-avatar").getAttribute("data-seed");
     expect(next).not.toBe(initial);
     await expect(header).toHaveAttribute("data-seed", initial ?? "");

@@ -26,9 +26,40 @@
   width: var(--avatar-large);
   height: var(--avatar-large);
 }
-.avatar-editor .button {
+.avatar-editor > .button {
   position: absolute;
   right: calc(-1 * var(--space-1));
   bottom: 0;
   box-shadow: var(--color-popup-shadow);
+}
+.avatar-picker {
+  display: grid;
+  gap: var(--space-3);
+  width: min(16rem, var(--available-width));
+  padding: var(--space-3);
+}
+.avatar-shapes,
+.avatar-colors {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.avatar-colors {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+.avatar-picker .button {
+  min-height: var(--control-small);
+  padding: var(--space-1);
+}
+.avatar-picker .button[aria-pressed="true"] {
+  border-color: var(--color-text);
+  background: var(--color-control-hover);
+}
+.avatar-colors span {
+  width: var(--space-5);
+  height: var(--space-5);
+  border-radius: var(--radius-round);
 }

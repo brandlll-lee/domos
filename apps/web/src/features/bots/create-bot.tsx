@@ -1,5 +1,6 @@
 import type { Bot } from "@domos/agent/bots";
 import { BOT_NAME_LENGTH } from "@domos/agent/work/limits";
+import { characterSeed } from "@domos/ui/characters";
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
 import { TextField } from "@domos/ui/field";
@@ -63,7 +64,7 @@ function BotForm({
   const settings = useSettings();
   const [computerReady, setComputerReady] = useState(false);
   const [name, setName] = useState("");
-  const [avatar, setAvatar] = useState<string>(() => crypto.randomUUID());
+  const [avatar, setAvatar] = useState(characterSeed);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<{
     bot: Bot;
