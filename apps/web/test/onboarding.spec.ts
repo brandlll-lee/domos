@@ -491,6 +491,29 @@ test("first use prepares the default Bot with a computer and engine before share
         .click();
       const details = page.getByRole("complementary", { name: /的详情$/ });
       await details.getByRole("button", { name: "返回", exact: true }).click();
+      const approvals = details.getByRole("radiogroup", { name: "操作审批" });
+      await expect(
+        approvals.getByRole("radio", { name: "询问", exact: true }),
+      ).toBeChecked();
+      await approvals.getByRole("radio", { name: "自动", exact: true }).click();
+      await expect(
+        approvals.getByRole("radio", { name: "自动", exact: true }),
+      ).toBeChecked();
+      await capture(page, testInfo, "operation-approval");
+      await second
+        .getByRole("button", { name: "Bot详情", exact: true })
+        .click();
+      const remoteApprovals = second.getByRole("radiogroup", {
+        name: "操作审批",
+      });
+      await expect(
+        remoteApprovals.getByRole("radio", { name: "自动", exact: true }),
+      ).toBeChecked();
+      await expect(
+        remoteApprovals.getByRole("radio", { name: "询问", exact: true }),
+      ).toBeDisabled();
+      await approvals.getByRole("radio", { name: "询问", exact: true }).click();
+      await second.getByRole("button", { name: "关闭", exact: true }).click();
       const detailsModel = details.getByRole("button", {
         name: "选择引擎与模型",
         exact: true,

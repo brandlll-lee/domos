@@ -160,6 +160,7 @@ export function hostingApp(options: {
   protectedApp.use("/computer/default", administrator);
   protectedApp.use("/computer/configure", administrator);
   protectedApp.use("/computer/service", administrator);
+  protectedApp.use("/computer/approval", administrator);
   for (const path of [
     "accounts",
     "key",

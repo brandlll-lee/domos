@@ -129,6 +129,11 @@ test("Pi returns extension selections and cancellations to the native request", 
       cancelled: true,
     });
   expect(events).toContainEqual({ type: "approval_closed", id: "expired" });
+  expect(
+    events.some(
+      (event) => event.type === "approval" && event.approval.automatic,
+    ),
+  ).toBe(false);
 });
 
 test.each([piProvider, claudeProvider])(
@@ -429,8 +434,10 @@ test("Codex handles approval, streams tools and recovers a completed native turn
     instructions: "Role",
     emit: async (event) => {
       await emit(event);
-      if (event.type === "approval")
+      if (event.type === "approval") {
+        expect(event.approval.automatic).toBe(true);
         await session.answer(event.approval.id, { allow: true });
+      }
     },
   });
   await session.prompt("Save report");
@@ -605,6 +612,10 @@ test("OpenCode uses ACP model discovery, permissions and native session load", a
   expect(
     process.requests.find((request) => request.id === "permission")?.result,
   ).toEqual({ outcome: { outcome: "selected", optionId: "allow" } });
+  expect(events).toContainEqual({
+    type: "approval",
+    approval: expect.objectContaining({ automatic: true }),
+  });
 });
 
 test("OpenCode reconciles native history after its saved checkpoint", async () => {

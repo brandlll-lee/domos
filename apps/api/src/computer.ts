@@ -123,6 +123,18 @@ export function computerRouter(bots: Bots, computers?: Computers) {
         return access((target) => target.preparation.configure(input, context));
       }),
     list: os.handler(() => access((target) => target.list(context))),
+    approval: os
+      .input(
+        botTarget.extend({
+          computerId: id,
+          revision: z.number().int().nonnegative(),
+          mode: z.enum(["ask", "auto"]),
+        }),
+      )
+      .handler(async ({ input }) => {
+        await botConversation(bots, input.botId);
+        return access((target) => target.approval(input.botId, input, context));
+      }),
     add: os
       .input(
         z.object({

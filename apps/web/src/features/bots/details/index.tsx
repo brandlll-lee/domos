@@ -80,6 +80,8 @@ export function BotDetails({
         engine={engine}
         chat={chat}
         computerName={computer.status?.name}
+        computer={computer}
+        canManage={canManage}
         onNavigate={navigate}
       />
     );

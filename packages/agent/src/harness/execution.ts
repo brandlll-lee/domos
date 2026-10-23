@@ -4,6 +4,7 @@ import type { CredentialStore } from "@earendil-works/pi-ai";
 import type { Models } from "@earendil-works/pi-ai/models";
 import type { Attachment } from "../attachments.ts";
 import type { Computers } from "../computer/catalog.ts";
+import { ComputersDoc } from "../computer/state.ts";
 import type { Files } from "../files.ts";
 import { computerEvidence } from "./evidence.ts";
 import { conversationHistory } from "./history.ts";
@@ -23,6 +24,7 @@ import { EngineDoc, EngineInputDoc } from "./state.ts";
 import type { EngineRuntime } from "./task-types.ts";
 import {
   type EngineAnswer,
+  type EngineApproval,
   type EngineConfig,
   type EngineEvent,
   type EngineProcess,
@@ -98,6 +100,19 @@ export class EngineExecution {
       context,
     );
     if (!doc) throw new Error("Bot 的任务配置不存在。");
+    const automatic = async (approval: EngineApproval) => {
+      if (!approval.automatic || approval.kind !== "permission") return false;
+      const state = await runtime.snapshot(ComputersDoc, context);
+      const binding = state?.bindings[String(runtime.conversationId)];
+      runtime.signal.throwIfAborted();
+      active.controller.signal.throwIfAborted();
+      return (
+        binding?.approvalMode === "auto" &&
+        state?.items.some(
+          (item) => item.id === binding.computerId && item.authorized,
+        ) === true
+      );
+    };
     const provider = engineProvider(doc.config.provider);
     const tools = await productCatalog(runtime, context);
     const computerTools = await this.computers.tools.catalog(
@@ -157,6 +172,16 @@ export class EngineExecution {
             return callProductTool(runtime, callId, name, args, context);
           if (provider.id !== "claude") throw new Error("确认方式不可用。");
           const id = randomUUID();
+          const approval = claudeApproval(id, args);
+          if (await automatic(approval))
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(claudePermission(args, { allow: true })),
+                },
+              ],
+            };
           const answer = Promise.withResolvers<EngineAnswer>();
           active.permissions.set(id, answer.resolve);
           const timer = setTimeout(
@@ -167,7 +192,7 @@ export class EngineExecution {
           try {
             await emit({
               type: "approval",
-              approval: claudeApproval(id, args),
+              approval,
             });
             const response = await answer.promise;
             return {
@@ -242,6 +267,14 @@ export class EngineExecution {
         instructions,
         emit: async (event) => {
           if (!receiving) return;
+          if (
+            event.type === "approval" &&
+            active.session &&
+            (await automatic(event.approval))
+          ) {
+            await active.session.answer(event.approval.id, { allow: true });
+            return;
+          }
           if (
             !operation ||
             event.type === "session" ||

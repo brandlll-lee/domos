@@ -22,6 +22,12 @@ export function claudeApproval(
       ? ""
       : `${String(args.tool_name)}\n${JSON.stringify(args.input ?? {})}`,
     kind: items ? "question" : "permission",
+    automatic:
+      typeof args.tool_name === "string" &&
+      args.tool_name.length > 0 &&
+      !["AskUserQuestion", "ExitPlanMode", "EnterPlanMode"].includes(
+        args.tool_name,
+      ),
     ...(items
       ? {
           questions: items.map((item) => ({

@@ -53,6 +53,7 @@ export type CodexFrame = {
     message?: string;
     url?: string;
     requestedSchema?: z.core.JSONSchema.JSONSchema;
+    _meta?: { codex_approval_kind?: string; persist?: string[] };
   };
 };
 export const codexApprovals = new Set([

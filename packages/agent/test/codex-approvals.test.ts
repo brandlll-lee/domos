@@ -1,5 +1,7 @@
 import { expect, onTestFinished, test } from "vitest";
 import { codexProvider } from "../src/harness/providers/codex.ts";
+import { codexApproval } from "../src/harness/providers/codex-approval.ts";
+import type { CodexFrame } from "../src/harness/providers/codex-wire.ts";
 import type { EngineEvent } from "../src/harness/types.ts";
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
 
@@ -52,7 +54,43 @@ const form = {
     },
     required: ["decision"],
   },
-};
+} satisfies NonNullable<CodexFrame["params"]>;
+
+test("Codex distinguishes tool consent from forms and sign-in", () => {
+  const frame = {
+    id: 1,
+    method: "mcpServer/elicitation/request",
+    params: {
+      mode: "form",
+      requestedSchema: { type: "object", properties: {} },
+      _meta: { codex_approval_kind: "mcp_tool_call", persist: ["always"] },
+    },
+  } satisfies CodexFrame;
+  expect(codexApproval(frame).automatic).toBe(true);
+  expect(
+    codexApproval({
+      ...frame,
+      params: { ...frame.params, requestedSchema: { type: "object" } },
+    }).automatic,
+  ).not.toBe(true);
+  expect(
+    codexApproval({ ...frame, params: { ...frame.params, _meta: {} } })
+      .automatic,
+  ).not.toBe(true);
+  expect(
+    codexApproval({ ...frame, params: { ...frame.params, ...form } }).automatic,
+  ).not.toBe(true);
+  expect(
+    codexApproval({
+      ...frame,
+      params: {
+        ...frame.params,
+        mode: "url",
+        url: "https://example.com/login",
+      },
+    }).automatic,
+  ).not.toBe(true);
+});
 
 test.each(["native", "managed"] as const)(
   "Codex %s asks the user before desktop execution",

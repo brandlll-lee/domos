@@ -87,6 +87,7 @@ export type EngineApproval = {
   title: string;
   detail: string;
   kind: "permission" | "question";
+  automatic?: boolean;
   url?: string;
   questions?: {
     id: string;

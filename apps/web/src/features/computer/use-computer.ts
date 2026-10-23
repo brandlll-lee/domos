@@ -49,6 +49,16 @@ export function useComputer(
   });
   return {
     status,
+    approvalMode: binding?.approvalMode ?? "ask",
+    setApprovalMode: (mode: "ask" | "auto") =>
+      run(() =>
+        client.computer.approval({
+          botId,
+          computerId: binding?.computerId ?? "",
+          revision: binding?.revision ?? 0,
+          mode,
+        }),
+      ),
     busy,
     error,
     setup,

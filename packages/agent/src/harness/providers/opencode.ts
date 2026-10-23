@@ -154,6 +154,7 @@ export const opencodeProvider: EngineProvider = {
                   request.toolCall.title ??
                   JSON.stringify(request.toolCall.rawInput ?? {}),
                 kind: "permission",
+                automatic: true,
                 options: request.options.map((option) => ({
                   id: option.optionId,
                   label: option.name,

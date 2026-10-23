@@ -382,6 +382,24 @@ export class Computers {
     return this.binding(botId, context);
   }
 
+  async approval(
+    botId: number,
+    input: { computerId: string; revision: number; mode: "ask" | "auto" },
+    context: Context,
+  ) {
+    await this.harness.commit(async (tx) => {
+      const doc = await tx.doc(ComputersDoc);
+      const binding = doc.bindings[String(botId)];
+      requireRevision(binding?.revision ?? 0, input.revision);
+      if (!binding || binding.computerId !== input.computerId)
+        throw new WorkError("CONFLICT", "工作电脑已改变。请刷新后重试。");
+      if (!requireComputer(doc.items, input.computerId).authorized)
+        throw new WorkError("BAD_REQUEST", "请先授权这台电脑。");
+      binding.approvalMode = input.mode;
+    }, context);
+    return this.list(context);
+  }
+
   async add(input: { name: string; config: ComputerConfig }, context: Context) {
     const config = computerSchema.parse(input.config);
     if (config.kind === "process")
@@ -415,6 +433,11 @@ export class Computers {
       );
       for (const [botId] of bindings) await this.idle(tx, Number(botId));
       item.authorized = authorized;
+      if (!authorized)
+        for (const [, binding] of bindings) {
+          delete binding.approvalMode;
+          binding.revision++;
+        }
       if (!authorized && doc.defaultId === id) doc.defaultId = null;
       for (const [botId] of bindings)
         await this.configure(tx, Number(botId), item);

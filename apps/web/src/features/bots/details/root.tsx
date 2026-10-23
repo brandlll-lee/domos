@@ -1,5 +1,6 @@
 import type { Bot } from "@domos/agent/bots";
 import type { ChatView } from "@domos/agent/view";
+import { SegmentedControl } from "@domos/ui/choice";
 import { PanelGroup, PanelRow } from "@domos/ui/panel";
 import { SettingRow } from "@domos/ui/setting-row";
 import { BrainIcon } from "@phosphor-icons/react/dist/csr/Brain";
@@ -7,6 +8,7 @@ import { ClockIcon } from "@phosphor-icons/react/dist/csr/Clock";
 import { CpuIcon } from "@phosphor-icons/react/dist/csr/Cpu";
 import { LightningIcon } from "@phosphor-icons/react/dist/csr/Lightning";
 import { TerminalWindowIcon } from "@phosphor-icons/react/dist/csr/TerminalWindow";
+import type { useComputer } from "../../computer/use-computer.ts";
 import { EngineSelector } from "../../models/engine-selector.tsx";
 import { EngineReasoning } from "./native-controls.tsx";
 import type { BotPanelView } from "./types.ts";
@@ -19,6 +21,8 @@ export function RootPanel({
   engine,
   chat,
   computerName,
+  computer,
+  canManage,
   onNavigate,
 }: {
   bot: Bot;
@@ -26,6 +30,8 @@ export function RootPanel({
   engine: EngineSetup;
   chat: { model: ChatView["model"]; connected: boolean };
   computerName?: string;
+  computer: ReturnType<typeof useComputer>;
+  canManage: boolean;
   onNavigate: (view: BotPanelView) => void;
 }) {
   const memory = data?.memory.length ?? 0;
@@ -36,9 +42,9 @@ export function RootPanel({
     data?.routines.items.filter((item) => item.enabled).length ?? 0;
   return (
     <div className="panel-page">
-      {engine.error && (
+      {(engine.error || computer.error) && (
         <p className="alert" role="alert">
-          {engine.error}
+          {engine.error || computer.error}
         </p>
       )}
 
@@ -54,6 +60,24 @@ export function RootPanel({
             />
           </SettingRow>
           <EngineReasoning setup={engine} />
+          <SettingRow title="操作审批">
+            <SegmentedControl
+              label="操作审批"
+              value={computer.approvalMode}
+              onValueChange={computer.setApprovalMode}
+              disabled={
+                !canManage || computer.busy || !computer.status?.authorized
+              }
+              options={[
+                { value: "ask", label: "询问" },
+                {
+                  value: "auto",
+                  label: "自动",
+                  title: "自动批准当前工作电脑上的操作。提问和登录仍需确认。",
+                },
+              ]}
+            />
+          </SettingRow>
         </div>
         <PanelRow
           icon={<CpuIcon />}

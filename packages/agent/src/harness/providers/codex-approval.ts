@@ -21,6 +21,11 @@ export function codexApproval(frame: CodexFrame): EngineApproval {
       throw new Error("Codex 返回了不支持的确认表单。");
     return {
       ...approval,
+      automatic:
+        params.requestedSchema.properties !== undefined &&
+        Object.keys(params.requestedSchema.properties ?? {}).length === 0 &&
+        params._meta?.codex_approval_kind === "mcp_tool_call" &&
+        params._meta.persist?.includes("always") === true,
       kind: Object.keys(params.requestedSchema.properties ?? {}).length
         ? "question"
         : "permission",
@@ -94,6 +99,11 @@ export function codexApproval(frame: CodexFrame): EngineApproval {
       .join("\n")
       .slice(0, 8000),
     kind: params.questions ? "question" : "permission",
+    automatic: [
+      "item/commandExecution/requestApproval",
+      "item/fileChange/requestApproval",
+      "item/permissions/requestApproval",
+    ].includes(frame.method),
     ...(params.questions
       ? {
           questions: params.questions.map((question) => ({

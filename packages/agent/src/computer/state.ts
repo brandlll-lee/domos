@@ -27,6 +27,7 @@ export const ComputersDoc = defineDoc<{
       computerId: string | null;
       revision: number;
       requestId: string;
+      approvalMode?: "ask" | "auto";
       services?: { browser?: boolean; desktop?: boolean };
     }
   >;

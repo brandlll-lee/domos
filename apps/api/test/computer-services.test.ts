@@ -46,10 +46,25 @@ test.runIf(platform() === "win32")(
     await expect(
       client().computer.service({ botId, service: "desktop", enabled: true }),
     ).rejects.toThrow();
-    await runtime.computer.preparation.configure(
+    const binding = await runtime.computer.preparation.configure(
       { botId, mode: "process", revision: 0, requestId: crypto.randomUUID() },
       context,
     );
+    expect(binding.approvalMode ?? "ask").toBe("ask");
+    const approval = {
+      botId,
+      computerId: binding.computerId as string,
+      revision: binding.revision,
+      mode: "auto" as const,
+    };
+    await expect(
+      client().computer.approval({ ...approval, computerId: "other" }),
+    ).rejects.toThrow("工作电脑已改变");
+    await expect(
+      client().computer.approval({ ...approval, mode: "invalid" as "auto" }),
+    ).rejects.toThrow();
+    await client().computer.approval(approval);
+    await client().computer.approval(approval);
     expect(
       await client().computer.service({
         botId,
@@ -115,6 +130,7 @@ test.runIf(platform() === "win32")(
       .toBe(true);
     await runtime.close();
     runtime = await openChat(context, config, { models: createModels() });
+    expect((await client().computer.get({ botId })).approvalMode).toBe("auto");
     expect((await client().computer.services({ botId })).desktop.enabled).toBe(
       true,
     );
@@ -124,5 +140,36 @@ test.runIf(platform() === "win32")(
       enabled: false,
     });
     expect(await runtime.computer.tools.catalog(botId, context)).toEqual([]);
+    let revision = approval.revision;
+    for (const computerId of [null, approval.computerId]) {
+      await client().computer.assign({
+        botId,
+        computerId,
+        revision: revision++,
+        requestId: crypto.randomUUID(),
+      });
+      await expect(client().computer.approval(approval)).rejects.toThrow();
+    }
+    expect((await client().computer.get({ botId })).approvalMode ?? "ask").toBe(
+      "ask",
+    );
+    await client().computer.approval({ ...approval, revision });
+    await client().computer.authorize({
+      id: approval.computerId,
+      authorized: false,
+    });
+    await expect(
+      client().computer.approval({ ...approval, revision: revision + 1 }),
+    ).rejects.toThrow("请先授权");
+    await client().computer.authorize({
+      id: approval.computerId,
+      authorized: true,
+    });
+    await expect(
+      client().computer.approval({ ...approval, revision }),
+    ).rejects.toThrow();
+    expect((await client().computer.get({ botId })).approvalMode ?? "ask").toBe(
+      "ask",
+    );
   },
 );

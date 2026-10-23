@@ -11,6 +11,7 @@ import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterClient } from "@orpc/server";
 import { expect, onTestFinished, test } from "vitest";
+import { ComputersDoc } from "../../../packages/agent/src/computer/state.ts";
 import { ProtocolProcess } from "../../../packages/agent/test/fixtures/engine-process.ts";
 import { createApp } from "../src/app.ts";
 import type { AppRouter } from "../src/router.ts";
@@ -21,6 +22,7 @@ test("Claude questions return distinct answers and use the Bot skill and memory 
   models.setProvider(fauxProvider().provider);
   const skillId = crypto.randomUUID();
   let updatedInput: unknown;
+  let operation: unknown;
   const computers = {
     initialize: async () => {},
     preflight: async () => {},
@@ -39,6 +41,13 @@ test("Claude questions return distinct answers and use the Bot skill and memory 
         (path === "/provider" ? { all: [], connected: [] } : {}) as T;
       process.receive = async (request) => {
         if (request.type !== "user") return;
+        const allowed = await args[2](
+          "operation",
+          "approve",
+          { tool_name: "Bash", input: { command: "pwd" } },
+          new AbortController().signal,
+        );
+        operation = JSON.parse((allowed.content[0] as { text: string }).text);
         const memory = await args[2](
           "memory",
           "memory_list",
@@ -74,6 +83,12 @@ test("Claude questions return distinct answers and use the Bot skill and memory 
           new AbortController().signal,
         );
         updatedInput = JSON.parse((result.content[0] as { text: string }).text);
+        await args[2](
+          "next-operation",
+          "approve",
+          { tool_name: "Bash", input: { command: "pwd" } },
+          new AbortController().signal,
+        );
         process.frame({
           type: "assistant",
           message: {
@@ -117,6 +132,23 @@ test("Claude questions return distinct answers and use the Bot skill and memory 
     }),
   );
   const botId = runtime.conversation.id;
+  await runtime.harness.commit(async (tx) => {
+    const doc = await tx.doc(ComputersDoc);
+    doc.items = [
+      {
+        id: "local",
+        name: "Local",
+        config: { kind: "process" },
+        authorized: true,
+      },
+    ];
+    doc.bindings[String(botId)] = {
+      computerId: "local",
+      revision: 0,
+      requestId: "",
+      approvalMode: "auto",
+    };
+  }, context);
   await client.engines.configure({
     botId,
     config: { provider: "claude", model: null },
@@ -155,6 +187,10 @@ test("Claude questions return distinct answers and use the Bot skill and memory 
     .poll(async () => (await client.get({ botId })).approvals?.[0]?.kind)
     .toBe("question");
   const approval = (await client.get({ botId })).approvals?.[0];
+  expect(operation).toMatchObject({
+    behavior: "allow",
+    updatedInput: { command: "pwd" },
+  });
   if (!approval) throw new Error("Native question was not received");
   await expect(
     client.engines.accounts({ botId, provider: "opencode" }),
@@ -167,12 +203,22 @@ test("Claude questions return distinct answers and use the Bot skill and memory 
     { id: "Target?", multiple: false },
     { id: "Regions?", multiple: true },
   ]);
+  await runtime.harness.commit(async (tx) => {
+    const binding = (await tx.doc(ComputersDoc)).bindings[String(botId)];
+    if (binding) binding.approvalMode = "ask";
+  }, context);
   await client.engines.answer({
     botId,
     id: approval.id,
     allow: true,
     answers: { "Target?": ["Preview"], "Regions?": ["EU", "US"] },
   });
+  await expect
+    .poll(async () => (await client.get({ botId })).approvals?.[0]?.kind)
+    .toBe("permission");
+  const next = (await client.get({ botId })).approvals?.[0];
+  if (!next) throw new Error("Operation confirmation required");
+  await client.engines.answer({ botId, id: next.id, allow: false });
   await runtime.harness
     .submission(submission.id, context)
     .then((item) => item?.wait(context));
