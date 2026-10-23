@@ -3522,6 +3522,12 @@ test("typing dots share the avatar color and follow complete messages", async ({
   ] as const) {
     await chooseAppearance(page, label);
     await expect(typing).toBeVisible();
+    const textHeight = await replies
+      .locator(".message-bubble")
+      .evaluate((node) => node.getBoundingClientRect().height);
+    await expect(typing.locator("..")).toHaveCSS("height", `${textHeight}px`);
+    await expect(typing.locator("svg")).toHaveCSS("height", "28px");
+    await expect(typing.locator("svg")).toHaveCSS("width", "48px");
     await page.screenshot({ path: `test-results/typing-${theme}.png` });
   }
   await page.emulateMedia({ reducedMotion: "reduce" });
