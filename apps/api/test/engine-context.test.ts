@@ -29,6 +29,8 @@ async function fixture() {
     reject: false,
     auto: 0,
     workers: [] as ProtocolProcess[],
+    catalogGate: null as Promise<void> | null,
+    catalogRead: Promise.withResolvers<void>(),
     pending: Promise.withResolvers<{
       process: ProtocolProcess;
       request: Request;
@@ -42,7 +44,11 @@ async function fixture() {
     process: async () => {
       const process = new ProtocolProcess();
       state.workers.push(process);
-      process.receive = (request) => {
+      process.receive = async (request) => {
+        if (request.type === "get_available_models" && state.catalogGate) {
+          state.catalogRead.resolve();
+          await state.catalogGate;
+        }
         if (request.type === "compact" && state.hold) {
           state.pending.resolve({ process, request });
           return;
@@ -94,6 +100,7 @@ async function fixture() {
                           {
                             provider: "native",
                             id: "model",
+                            reasoning: true,
                             input: ["text"],
                           },
                         ],
@@ -173,19 +180,113 @@ async function fixture() {
   };
 }
 
+test("model catalogs survive restart and stay on their work computer", async () => {
+  const f = await fixture();
+  const botId = f.runtime.conversation.id;
+  const profile = await f.runtime.client.engines.get({ botId });
+  await f.runtime.client.engines.configure({
+    botId,
+    revision: profile.revision,
+    requestId: crypto.randomUUID(),
+    config: { provider: "pi", accountSource: "native", model: "native/model" },
+  });
+  await f.runtime.client.engines.inspect({ botId, provider: "pi" });
+  const count = f.state.workers.length;
+  await f.reopen();
+  expect(
+    (await f.runtime.client.engines.models({ botId })).find(
+      (item) => item.id === "pi",
+    )?.models,
+  ).toMatchObject([
+    {
+      id: "native/model",
+      effort: {
+        options: expect.arrayContaining([{ id: "high", label: "high" }]),
+      },
+    },
+  ]);
+  expect(f.state.workers).toHaveLength(count);
+  const gate = Promise.withResolvers<void>();
+  f.state.catalogGate = gate.promise;
+  const refresh = f.runtime.client.engines.inspect({
+    botId,
+    provider: "pi",
+    refresh: true,
+  });
+  try {
+    await f.state.catalogRead.promise;
+    expect(
+      (await f.runtime.client.engines.models({ botId })).find(
+        (item) => item.id === "pi",
+      )?.models,
+    ).toHaveLength(1);
+    const current = await f.runtime.client.engines.get({ botId });
+    expect(current.model?.id).toBe("native/model");
+    const updated = await f.runtime.client.engines.configure({
+      botId,
+      revision: current.revision,
+      requestId: crypto.randomUUID(),
+      config: { ...current.config, options: { thinkingLevel: "high" } },
+    });
+    expect(updated.config.options).toEqual({ thinkingLevel: "high" });
+    await expect(
+      f.runtime.client.engines.configure({
+        botId,
+        revision: updated.revision,
+        requestId: crypto.randomUUID(),
+        config: { ...updated.config, options: { thinkingLevel: "invented" } },
+      }),
+    ).rejects.toThrow();
+  } finally {
+    gate.resolve();
+    await refresh;
+    f.state.catalogGate = null;
+  }
+  f.state.computerId = "another";
+  expect(
+    (await f.runtime.client.engines.models({ botId })).every(
+      (item) => !item.models.length,
+    ),
+  ).toBe(true);
+  f.state.computerId = "local";
+  const current = await f.runtime.client.engines.get({ botId });
+  await f.runtime.client.engines.configure({
+    botId,
+    revision: current.revision,
+    requestId: crypto.randomUUID(),
+    config: { provider: "pi", accountSource: "managed", model: null },
+  });
+  expect(
+    (await f.runtime.client.engines.models({ botId })).find(
+      (item) => item.id === "pi",
+    )?.models,
+  ).toHaveLength(0);
+});
+
 test("managed Pi configuration rejects unavailable models and keeps its revision", async () => {
   const f = await fixture();
   const botId = f.runtime.conversation.id;
   const profile = await f.runtime.client.engines.get({ botId });
+  const selected = await f.runtime.client.engines.configure({
+    botId,
+    config: { provider: "pi", model: "faux/faux-1" },
+    revision: profile.revision,
+    requestId: crypto.randomUUID(),
+  });
+  expect(selected.model).toMatchObject({
+    id: "faux/faux-1",
+    name: expect.any(String),
+    effort: { id: "thinkingLevel" },
+  });
   await expect(
     f.runtime.client.engines.configure({
       botId,
       config: { provider: "pi", model: "missing/model" },
-      revision: profile.revision,
+      revision: selected.revision,
       requestId: crypto.randomUUID(),
     }),
   ).rejects.toThrow("请选择可用的 Pi 模型。");
-  expect(await f.runtime.client.engines.get({ botId })).toEqual(profile);
+  expect(await f.runtime.client.engines.get({ botId })).toEqual(selected);
 });
 
 test("native account selection persists, resets the session and keeps default models on the work computer", async () => {

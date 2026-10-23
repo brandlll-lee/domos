@@ -327,13 +327,14 @@ test("header model selection saves choices and fits both themes", async ({
     times: 1,
   });
   await choice.click();
+  await expect(selector).toBeHidden();
+  await trigger.click();
   await expect(selector.getByRole("alert")).toBeVisible();
-  await expect(selector).toBeVisible();
   await choice.click();
   await expect(selector).toBeHidden();
   await expect(trigger).toContainText("测试模型二");
   await page.reload();
-  await expect(trigger).toContainText("faux-2");
+  await expect(trigger).toContainText("测试模型二");
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
     for (const width of [1360, 390]) {
@@ -363,7 +364,19 @@ test("computer viewing requires takeover and releases control when closed", asyn
 }, testInfo) => {
   await page.goto(url);
   await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
-  const view = page.getByRole("complementary", {
+  const details = page.locator("#bot-details");
+  await expect(
+    page
+      .getByRole("navigation", { name: "主导航", exact: true })
+      .getByRole("button", { name: "工作电脑", exact: true }),
+  ).toHaveCount(0);
+  await expect(details.locator(".bot-hero")).toHaveCount(1);
+  await details.getByRole("button", { name: "电脑设置", exact: true }).click();
+  await details.getByRole("button", { name: "返回", exact: true }).click();
+  await expect(
+    details.getByRole("tab", { name: "Computer", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  const view = page.getByRole("region", {
     name: "Domos的电脑",
     exact: true,
   });
@@ -425,9 +438,15 @@ test("computer viewing requires takeover and releases control when closed", asyn
           }),
       )
       .toBe(true);
-    await page.screenshot({
-      path: testInfo.outputPath(`computer-${theme}.png`),
-    });
+    for (const width of [1440, 768, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.screenshot({
+        path: testInfo.outputPath(`computer-${theme}-${width}.png`),
+      });
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBe(width);
+    }
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(
@@ -447,7 +466,15 @@ test("computer viewing requires takeover and releases control when closed", asyn
   await view.getByRole("tab", { name: "浏览器", exact: true }).click();
   await expect(screen).toBeVisible();
   await expect(address).toHaveCount(0);
-  await view.getByRole("button", { name: "关闭", exact: true }).click();
+  await details.getByRole("tab", { name: "Computer", exact: true }).focus();
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("Enter");
+  await expect(details.locator(".model-selector-trigger")).toBeVisible();
+  await details.getByRole("tab", { name: "Computer", exact: true }).click();
+  await page
+    .locator("#bot-details")
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
   await expect(
     page.getByRole("button", { name: "Bot电脑", exact: true }),
   ).toBeFocused();
@@ -471,7 +498,10 @@ test("computer viewing requires takeover and releases control when closed", asyn
   await address.fill(`${url}/`);
   await view.getByRole("button", { name: "打开", exact: true }).click();
   await expect(screen).not.toHaveAttribute("src", restored ?? "");
-  await view.getByRole("button", { name: "关闭", exact: true }).click();
+  await page
+    .locator("#bot-details")
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
 });
 
 test("computer connection failures keep a direct retry", async ({ page }) => {
@@ -480,7 +510,7 @@ test("computer connection failures keep a direct retry", async ({ page }) => {
   );
   await page.goto(url);
   await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
-  const view = page.getByRole("complementary", {
+  const view = page.getByRole("region", {
     name: "Domos的电脑",
     exact: true,
   });
@@ -1081,9 +1111,11 @@ test("control geometry and interaction states stay consistent", async ({
   await expect(save).toHaveCSS("background-color", color);
   await details.getByRole("button", { name: "还原", exact: true }).click();
   await details.getByRole("button", { name: "返回", exact: true }).click();
-  await details.getByRole("button", { name: /^连接与账号(?:\s|$)/ }).click();
-  const model = details.getByRole("combobox", { name: "模型", exact: true });
-  expect((await model.boundingBox())?.height).toBeCloseTo(32, 2);
+  const model = details.getByRole("button", {
+    name: "选择引擎与模型",
+    exact: true,
+  });
+  expect((await model.boundingBox())?.height).toBeGreaterThanOrEqual(32);
   await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
   await page.getByRole("button", { name: "电脑设置", exact: true }).click();
   const select = details.getByRole("combobox", {
@@ -1093,6 +1125,7 @@ test("control geometry and interaction states stay consistent", async ({
   expect((await select.boundingBox())?.height).toBe(inputHeight);
   await expect(select).toHaveCSS("font-size", "13px");
   await details.getByRole("button", { name: "返回", exact: true }).click();
+  await details.getByRole("tab", { name: "Bot", exact: true }).click();
   await details.getByRole("button", { name: /^记忆(?:\s|$)/ }).click();
   await details.getByRole("button", { name: "新增记忆", exact: true }).click();
   const checkbox = details.getByRole("checkbox", { name: "共享给所有 Bot" });

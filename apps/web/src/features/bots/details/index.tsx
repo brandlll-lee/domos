@@ -2,11 +2,13 @@ import type { Bot } from "@domos/agent/bots";
 import type { ChatView } from "@domos/agent/view";
 import { PanelHeader } from "@domos/ui/panel";
 import { ScrollArea } from "@domos/ui/scroll-area";
+import { Tabs } from "@domos/ui/tabs";
 import { type ReactNode, useState } from "react";
 import type { useComputer } from "../../computer/use-computer.ts";
+import { ComputerWorkspace } from "../../computer/workspace.tsx";
 import { ComputerSettings } from "./computer.tsx";
 import { EngineSettings } from "./engine-settings.tsx";
-import { IdentityEditor } from "./identity.tsx";
+import { BotIdentity, IdentityEditor } from "./identity.tsx";
 import { MemoryPanel } from "./memory.tsx";
 import { NativeControls } from "./native-controls.tsx";
 import { PromptPanel } from "./prompt.tsx";
@@ -41,6 +43,10 @@ export function BotDetails({
   chat,
   canManage,
   engine,
+  tab,
+  onTabChange,
+  expanded,
+  onExpand,
 }: {
   bot: Bot;
   active: boolean;
@@ -51,6 +57,10 @@ export function BotDetails({
   chat: { model: ChatView["model"]; connected: boolean };
   canManage: boolean;
   engine: EngineSetup;
+  tab: "bot" | "computer";
+  onTabChange: (tab: "bot" | "computer") => void;
+  expanded: boolean;
+  onExpand: () => void;
 }) {
   const work = useBotWork(bot.id, active);
   const action = useWorkAction();
@@ -66,10 +76,8 @@ export function BotDetails({
     content = (
       <RootPanel
         bot={bot}
-        profile={work.profile}
         data={work.data}
         engine={engine}
-        computer={computer}
         chat={chat}
         onNavigate={navigate}
       />
@@ -170,7 +178,46 @@ export function BotDetails({
             className="detail-view"
             key={`${view}:${editor ? "editor" : "list"}`}
           >
-            {content}
+            {view === "root" ? (
+              <>
+                <BotIdentity
+                  bot={bot}
+                  profile={work.profile}
+                  onEdit={() => navigate("identity")}
+                />
+                <Tabs.Root
+                  className="bot-tabs"
+                  value={tab}
+                  onValueChange={(value) =>
+                    onTabChange(value as "bot" | "computer")
+                  }
+                >
+                  <Tabs.List className="workspace-tabs" aria-label="Bot详情">
+                    <Tabs.Tab className="workspace-tab" value="bot">
+                      Bot
+                    </Tabs.Tab>
+                    <Tabs.Tab className="workspace-tab" value="computer">
+                      Computer
+                    </Tabs.Tab>
+                  </Tabs.List>
+                  <Tabs.Panel value="bot">{content}</Tabs.Panel>
+                  <Tabs.Panel value="computer">
+                    {active && tab === "computer" && (
+                      <ComputerWorkspace
+                        bot={bot}
+                        computer={computer}
+                        admin={canManage}
+                        expanded={expanded}
+                        onExpand={onExpand}
+                        onSettings={() => navigate("computer")}
+                      />
+                    )}
+                  </Tabs.Panel>
+                </Tabs.Root>
+              </>
+            ) : (
+              content
+            )}
           </div>
         )}
       </ScrollArea>

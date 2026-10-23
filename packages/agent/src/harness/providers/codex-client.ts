@@ -150,6 +150,17 @@ export async function openCodexClient(
       (await catalog()).map((model) => ({
         id: model.id,
         name: model.displayName ?? model.id,
+        effort: {
+          id: "effort",
+          kind: "effort" as const,
+          defaultValue: model.defaultReasoningEffort,
+          label: "推理强度",
+          value: model.defaultReasoningEffort ?? "",
+          options: (model.supportedReasoningEfforts ?? []).map((item) => ({
+            id: item.reasoningEffort,
+            label: item.description,
+          })),
+        },
         ...(model.inputModalities
           ? { images: model.inputModalities.includes("image") }
           : {}),

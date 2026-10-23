@@ -79,6 +79,7 @@ export type EngineModel = {
   name: string;
   images?: boolean;
   group?: string;
+  effort?: EngineControls["options"][number];
 };
 export type EngineImage = { type: "image"; data: string; mimeType: string };
 export type EngineApproval = {

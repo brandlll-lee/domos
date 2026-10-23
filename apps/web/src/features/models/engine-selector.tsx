@@ -1,7 +1,7 @@
 import type { EngineId } from "@domos/agent/harness/types";
 import type { ChatView } from "@domos/agent/view";
 import { ModelSelector } from "@domos/ui/model-selector";
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useState } from "react";
 import type { EngineSetup } from "../bots/details/use-engine.ts";
 import { EngineMark } from "../bots/engine-mark.tsx";
 import { Effort } from "./effort.tsx";
@@ -32,33 +32,14 @@ export function EngineSelector({
   }, [open, browsing, catalog.load]);
   const models = catalog.models(browsing);
   const error = catalog.error(browsing);
-  const active = catalog.models(provider)?.find((item) => item.id === selected);
-  const effort = profile?.runtime?.controls?.options.find(
-    (item) => item.kind === "effort" && item.options.length > 1,
-  );
-  const controls = profile?.runtime?.controls;
-  const readControls = useEffectEvent(() => void setup.controls());
-  useEffect(() => {
-    if (
-      open &&
-      (profile?.providers.length ?? 0) > 1 &&
-      models &&
-      browsing === provider &&
-      !controls &&
-      !setup.saving &&
-      !setup.busy
-    )
-      readControls();
-  }, [
-    open,
-    models,
-    browsing,
-    provider,
-    controls,
-    setup.saving,
-    setup.busy,
-    profile?.providers.length,
-  ]);
+  const active =
+    catalog.models(provider)?.find((item) => item.id === selected) ??
+    (profile?.model?.id === selected ? profile.model : null);
+  const effort =
+    active?.effort ??
+    profile?.runtime?.controls?.options.find(
+      (item) => item.kind === "effort" && item.options.length > 1,
+    );
   return (
     <ModelSelector
       open={open}
@@ -76,9 +57,9 @@ export function EngineSelector({
       )}
       value={browsing === provider ? (selected ?? "") : ""}
       label={
-        active
-          ? `${profile?.providers.find((item) => item.id === provider)?.name} · ${active.name}`
-          : (selected ?? "选择模型")
+        selected
+          ? `${profile?.providers.find((item) => item.id === provider)?.name ?? "Pi"} · ${active?.name ?? selected}`
+          : "选择模型"
       }
       loading={!profile || (open && !models && !error)}
       disabled={!connected || Boolean(setup.busy)}
@@ -90,7 +71,9 @@ export function EngineSelector({
         void setup.save({ provider: browsing, model: id });
       }}
       effort={
-        browsing === provider && effort ? (
+        browsing === provider &&
+        effort &&
+        (profile?.providers.length ?? 0) > 1 ? (
           <Effort
             key={`${provider}:${selected}:${profile?.config.options?.[effort.id] ?? effort.value}`}
             control={{

@@ -3,7 +3,6 @@ import { PanelDialog } from "@domos/ui/dialog";
 import { layout } from "@domos/ui/tokens";
 import { ChartBarIcon } from "@phosphor-icons/react/dist/csr/ChartBar";
 import { ChatTextIcon } from "@phosphor-icons/react/dist/csr/ChatText";
-import { DesktopIcon } from "@phosphor-icons/react/dist/csr/Desktop";
 import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { type ReactNode, useEffect, useState } from "react";
@@ -12,7 +11,7 @@ import { ResizeHandle } from "./resize-handle.tsx";
 import { Titlebar } from "./titlebar.tsx";
 import "./style.css";
 
-export type RailView = "conversation" | "computer" | "usage";
+export type RailView = "conversation" | "usage";
 
 export function Workspace({
   sidebar,
@@ -100,21 +99,6 @@ export function Workspace({
               <ChatTextIcon
                 size={20}
                 weight={rail.active === "conversation" ? "fill" : "regular"}
-                aria-hidden="true"
-              />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="rail-button"
-              aria-label="工作电脑"
-              title="工作电脑"
-              aria-current={rail.active === "computer" ? "page" : undefined}
-              onClick={() => rail.onSelect("computer")}
-            >
-              <DesktopIcon
-                size={20}
-                weight={rail.active === "computer" ? "fill" : "regular"}
                 aria-hidden="true"
               />
             </Button>

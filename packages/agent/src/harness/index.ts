@@ -8,10 +8,12 @@ import {
 } from "@earendil-works/pi-durable";
 import { chatView } from "../chat-view.ts";
 import { materialText } from "../materials.ts";
+import { thinkingControl } from "../models.ts";
 import { watchCommits } from "../watch.ts";
 import { WorkError } from "../work/state.ts";
 import { EngineConnections } from "./connections.ts";
 import type { EngineExecution } from "./execution.ts";
+import { EngineModelCatalog } from "./model-catalog.ts";
 import { engineProvider, providers } from "./providers/index.ts";
 import { readEngine, reconcileEngine } from "./reconcile.ts";
 import { EngineDoc, EngineInputDoc, EngineMessage } from "./state.ts";
@@ -31,7 +33,10 @@ export class Engines {
     this.harness = harness;
     this.execution = execution;
     this.task = engineTask(execution);
-    this.connections = new EngineConnections(execution);
+    this.connections = new EngineConnections(
+      execution,
+      new EngineModelCatalog(harness),
+    );
     this.usageReader = new UsageReader(harness);
   }
 
@@ -45,13 +50,30 @@ export class Engines {
       botId,
       context,
     );
+    const config = doc?.config ?? {
+      provider: "pi" as const,
+      model: agent?.model
+        ? `${agent.model.provider}/${agent.model.modelId}`
+        : null,
+    };
+    const models = await this.connections.catalog(botId, context, config);
+    const managed =
+      config.provider === "pi" && config.accountSource !== "native"
+        ? (await this.execution.models?.getAvailable())?.find(
+            (item) => `${item.provider}/${item.id}` === config.model,
+          )
+        : undefined;
     return {
-      config: doc?.config ?? {
-        provider: "pi" as const,
-        model: agent?.model
-          ? `${agent.model.provider}/${agent.model.modelId}`
-          : null,
-      },
+      config,
+      model: managed
+        ? {
+            id: `${managed.provider}/${managed.id}`,
+            name: managed.name,
+            effort: thinkingControl(managed),
+          }
+        : (models
+            .find((item) => item.id === config.provider)
+            ?.models.find((item) => item.id === config.model) ?? null),
       revision: doc?.revision ?? 0,
       runtime:
         doc?.computerId && doc.computerId !== computerId
@@ -164,24 +186,18 @@ export class Engines {
     );
     if (previous?.requestId === input.requestId)
       return this.profile(botId, context);
-    if (
+    const managed =
       input.config.provider === "pi" &&
       input.config.accountSource !== "native" &&
       input.config.model &&
-      this.execution.models
-    ) {
-      const separator = input.config.model.indexOf("/");
-      const models = await this.execution.models.getAvailable(
-        input.config.model.slice(0, separator),
-      );
-      if (
-        separator < 1 ||
-        !models.some(
-          (model) => model.id === input.config.model?.slice(separator + 1),
+      this.execution.models;
+    const managedModel = managed
+      ? (await managed.getAvailable()).find(
+          (item) => `${item.provider}/${item.id}` === input.config.model,
         )
-      )
-        throw new WorkError("BAD_REQUEST", "请选择可用的 Pi 模型。");
-    }
+      : undefined;
+    if (managed && !managedModel)
+      throw new WorkError("BAD_REQUEST", "请选择可用的 Pi 模型。");
     if (this.connections.busy(botId))
       throw new WorkError("CONFLICT", "请先完成账号连接。");
     const connection = await this.connections.snapshot(
@@ -193,6 +209,12 @@ export class Engines {
       botId,
       context,
     );
+    const models = await this.connections.catalog(botId, context, input.config);
+    const effort = managedModel
+      ? thinkingControl(managedModel)
+      : models
+          .find((item) => item.id === input.config.provider)
+          ?.models.find((item) => item.id === input.config.model)?.effort;
     await this.harness.commit(async (tx) => {
       const doc = await tx.doc(EngineDoc, botId as ConversationId);
       if (doc.requestId === input.requestId) return;
@@ -209,10 +231,12 @@ export class Engines {
         (doc.config.accountSource ?? "managed") !==
           (input.config.accountSource ?? "managed");
       for (const [key, value] of Object.entries(input.config.options ?? {})) {
-        const control = doc.runtime?.controls?.options.find(
-          (item) => item.id === key,
-        );
-        if (reset || !control?.options.some((item) => item.id === value))
+        const control =
+          (reset
+            ? undefined
+            : doc.runtime?.controls?.options.find((item) => item.id === key)) ??
+          (effort?.id === key ? effort : undefined);
+        if (!control?.options.some((item) => item.id === value))
           throw new WorkError(
             "BAD_REQUEST",
             "请先读取此模型的原生配置，再选择可用值。",

@@ -2,12 +2,14 @@ import type { Context } from "@earendil-works/chord/context";
 import { readClaudeAccount } from "./claude-account.ts";
 import type { EngineExecution } from "./execution.ts";
 import { type EngineLoginInput, EngineLogins } from "./logins.ts";
+import type { EngineModelCatalog } from "./model-catalog.ts";
 import { openOpenCodeAccount } from "./opencode-account.ts";
 import { engineProvider, providers } from "./providers/index.ts";
 import { type EngineConfig, type EngineModel, engineLimits } from "./types.ts";
 
 export class EngineConnections {
   private readonly execution: EngineExecution;
+  private readonly modelCatalog?: EngineModelCatalog;
   private readonly operations = new Set<number>();
   private readonly logins: EngineLogins;
   private readonly catalogs = new Map<
@@ -17,11 +19,13 @@ export class EngineConnections {
       provider: EngineConfig["provider"];
       model: string | null;
       accountSource: EngineConfig["accountSource"];
+      value?: Awaited<ReturnType<EngineConnections["discover"]>>;
       result: Promise<Awaited<ReturnType<EngineConnections["discover"]>>>;
     }
   >();
-  constructor(execution: EngineExecution) {
+  constructor(execution: EngineExecution, modelCatalog?: EngineModelCatalog) {
     this.execution = execution;
+    this.modelCatalog = modelCatalog;
     this.logins = new EngineLogins(execution);
   }
   busy(botId: number) {
@@ -37,7 +41,7 @@ export class EngineConnections {
     return cached?.computerId === computerId &&
       (cached.accountSource ?? "managed") ===
         (config.accountSource ?? "managed")
-      ? await cached.result
+      ? (cached.value ?? null)
       : null;
   }
 
@@ -46,26 +50,32 @@ export class EngineConnections {
       botId,
       context,
     );
-    return Promise.all(
-      [...providers.values()]
-        .filter((item) => item.id !== "pi")
-        .map(async ({ id, name }) => {
-          const cached = this.catalogs.get(`${botId}:${id}`);
-          const connection =
-            cached?.computerId === computerId &&
-            (cached.accountSource ?? "managed") ===
-              (config?.provider === id
-                ? (config.accountSource ?? "managed")
-                : "managed")
-              ? await cached.result
-              : null;
-          return {
-            id,
-            name,
-            models: connection?.models ?? [],
-          };
-        }),
-    );
+    const stored = await this.modelCatalog?.read(botId, computerId, context);
+    return [...providers.values()].map(({ id, name }) => {
+      const selected =
+        config?.provider === id ? config : { provider: id, model: null };
+      const cached = this.catalogs.get(`${botId}:${id}`);
+      const connection =
+        cached?.computerId === computerId &&
+        (cached.accountSource ?? "managed") ===
+          (config?.provider === id
+            ? (config.accountSource ?? "managed")
+            : "managed")
+          ? cached.value
+          : null;
+      return {
+        id,
+        name,
+        models:
+          connection?.models ??
+          stored?.find(
+            (item) =>
+              item.provider === id &&
+              item.accountSource === (selected.accountSource ?? "managed"),
+          )?.models ??
+          [],
+      };
+    });
   }
 
   async inspect(
@@ -88,16 +98,27 @@ export class EngineConnections {
       !refresh
     )
       return cached.result;
-    const entry = {
-      computerId,
-      provider: config.provider,
-      model: config.model,
-      accountSource: config.accountSource,
-      result: this.discover(botId, config, context),
-    };
+    const entry: NonNullable<ReturnType<EngineConnections["catalogs"]["get"]>> =
+      {
+        computerId,
+        provider: config.provider,
+        model: config.model,
+        accountSource: config.accountSource,
+        result: this.discover(botId, config, context),
+      };
     this.catalogs.set(key, entry);
     try {
-      return await entry.result;
+      const result = await entry.result;
+      entry.value = result;
+      if (this.catalogs.get(key) === entry && result.ready)
+        await this.modelCatalog?.save(
+          botId,
+          computerId,
+          config,
+          result.models,
+          context,
+        );
+      return result;
     } catch (error) {
       if (this.catalogs.get(key) === entry) this.catalogs.delete(key);
       throw error;
@@ -109,102 +130,100 @@ export class EngineConnections {
     config: EngineConfig,
     context: Context,
   ) {
-    return this.exclusive(botId, async () => {
-      const installation = await this.installed(botId, config, context);
-      if (!installation.available)
-        return {
-          ready: false,
-          authenticated: false,
-          models: [] as EngineModel[],
-          version: null,
-          message: "这台工作电脑还未安装此引擎。",
-        };
-      let worker = await this.execution.computers.process(
-        botId,
-        [],
-        async () => {
-          throw new Error("工具不可用。");
-        },
-        context,
-      );
-      try {
-        const env = await this.execution.environment(config);
-        let authenticated: boolean | undefined;
-        if (config.provider === "claude") {
-          authenticated = await readClaudeAccount(
-            worker,
-            env,
-            config.accountSource,
-          );
-          if (!authenticated)
-            return {
-              ready: true,
-              version: installation.version,
-              authenticated,
-              models: [] as EngineModel[],
-              vision: null,
-              message: "请连接账号。",
-            };
-          worker = await this.execution.computers.process(
-            botId,
-            [],
-            async () => {
-              throw new Error("工具不可用。");
-            },
-            context,
-          );
-        }
-        if (config.provider === "opencode") {
-          const account = await openOpenCodeAccount(
-            worker,
-            env,
-            config.accountSource,
-          );
-          const result = await account.catalog(config.model);
-          return {
-            ready: true,
-            version: installation.version,
-            authenticated: result.authenticated,
-            models: result.models,
-            accounts: result,
-            vision:
-              result.models.find((model) => model.id === config.model)
-                ?.images ?? null,
-            message: result.authenticated
-              ? "引擎已就绪。"
-              : "请连接账号或选择可用模型。",
-          };
-        }
-        const provider = engineProvider(config.provider);
-        if (provider.inspect)
-          return {
-            ready: true,
-            version: installation.version,
-            message: "引擎已就绪。",
-            ...(await provider.inspect({ process: worker, config, env })),
-          };
-        const session = await provider.open({
-          process: worker,
-          config,
-          sessionId: null,
-          instructions: "Domos connection check.",
-          emit: async () => {},
+    const installation = await this.installed(botId, config, context);
+    if (!installation.available)
+      return {
+        ready: false,
+        authenticated: false,
+        models: [] as EngineModel[],
+        version: null,
+        message: "这台工作电脑还未安装此引擎。",
+      };
+    let worker = await this.execution.computers.process(
+      botId,
+      [],
+      async () => {
+        throw new Error("工具不可用。");
+      },
+      context,
+    );
+    try {
+      const env = await this.execution.environment(config);
+      let authenticated: boolean | undefined;
+      if (config.provider === "claude") {
+        authenticated = await readClaudeAccount(
+          worker,
           env,
-        });
+          config.accountSource,
+        );
+        if (!authenticated)
+          return {
+            ready: true,
+            version: installation.version,
+            authenticated,
+            models: [] as EngineModel[],
+            vision: null,
+            message: "请连接账号。",
+          };
+        worker = await this.execution.computers.process(
+          botId,
+          [],
+          async () => {
+            throw new Error("工具不可用。");
+          },
+          context,
+        );
+      }
+      if (config.provider === "opencode") {
+        const account = await openOpenCodeAccount(
+          worker,
+          env,
+          config.accountSource,
+        );
+        const result = await account.catalog(config.model);
         return {
           ready: true,
           version: installation.version,
-          authenticated:
-            authenticated ?? (await session.authenticated?.()) ?? false,
-          models: await session.models(),
-          controls: await session.controls?.(),
-          vision: (await session.vision?.()) ?? null,
-          message: "引擎已就绪。",
+          authenticated: result.authenticated,
+          models: result.models,
+          accounts: result,
+          vision:
+            result.models.find((model) => model.id === config.model)?.images ??
+            null,
+          message: result.authenticated
+            ? "引擎已就绪。"
+            : "请连接账号或选择可用模型。",
         };
-      } finally {
-        await worker.close();
       }
-    });
+      const provider = engineProvider(config.provider);
+      if (provider.inspect)
+        return {
+          ready: true,
+          version: installation.version,
+          message: "引擎已就绪。",
+          ...(await provider.inspect({ process: worker, config, env })),
+        };
+      const session = await provider.open({
+        process: worker,
+        config,
+        sessionId: null,
+        instructions: "Domos connection check.",
+        emit: async () => {},
+        env,
+      });
+      return {
+        ready: true,
+        version: installation.version,
+        authenticated:
+          authenticated ?? (await session.authenticated?.()) ?? false,
+        models: await session.models(),
+        controls: await session.controls?.(),
+        vision: (await session.vision?.()) ?? null,
+        message: "引擎已就绪。",
+      };
+    } finally {
+      await worker.close();
+    }
   }
 
   async controls(
@@ -373,6 +392,7 @@ export class EngineConnections {
       botId,
       context,
     );
+    await this.modelCatalog?.invalidate(computerId, config, context);
     for (const [key, entry] of this.catalogs)
       if (entry.computerId === computerId && entry.provider === config.provider)
         this.catalogs.delete(key);

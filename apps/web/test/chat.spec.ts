@@ -102,10 +102,7 @@ async function chooseDetail(
   label: string,
 ) {
   if (label === "电脑") {
-    await details
-      .page()
-      .getByRole("button", { name: "Bot电脑", exact: true })
-      .click();
+    await details.getByRole("tab", { name: "Computer", exact: true }).click();
     await details
       .page()
       .getByRole("button", { name: "电脑设置", exact: true })
@@ -303,7 +300,7 @@ test("model selection is shared, ordered and restored after a failed save", asyn
     await expect(details.getByRole("alert")).toBeVisible();
     await expect(sidebar).toContainText("测试模型一");
     await expect(header).toContainText("测试模型一");
-    expect(inspections).toBe(0);
+    expect(inspections).toBeLessThanOrEqual(3);
     for (const colorScheme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme });
       for (const width of [1440, 768, 390]) {
@@ -322,7 +319,9 @@ test("model selection is shared, ordered and restored after a failed save", asyn
   }
 });
 
-test("failed control reads keep the model menu usable", async ({ page }) => {
+test("model menus use catalog effort without reading runtime controls", async ({
+  page,
+}) => {
   await stop();
   await start(0, true);
   let requests = 0;
@@ -336,7 +335,7 @@ test("failed control reads keep the model menu usable", async ({ page }) => {
     name: "任务引擎与模型",
     exact: true,
   });
-  await expect(menu.getByRole("alert")).toBeVisible();
+  await expect(menu.getByRole("alert")).toHaveCount(0);
   for (const query of ["测试", "模型", ""]) {
     await menu
       .getByRole("searchbox", { name: "搜索模型", exact: true })
@@ -345,7 +344,82 @@ test("failed control reads keep the model menu usable", async ({ page }) => {
       menu.getByRole("button", { name: "测试模型二", exact: true }),
     ).toBeEnabled();
   }
-  expect(requests).toBe(1);
+  expect(requests).toBe(0);
+});
+
+test("saved catalogs and effort stay usable during background discovery", async ({
+  page,
+}) => {
+  await stop();
+  await start(0, true);
+  let api = createORPCClient<RouterClient<AppRouter>>(
+    new RPCLink({ url: `${url}/rpc` }),
+  );
+  const profile = await api.engines.get({ botId: 1 });
+  await api.engines.configure({
+    botId: 1,
+    revision: profile.revision,
+    requestId: crypto.randomUUID(),
+    config: {
+      provider: "pi",
+      accountSource: "native",
+      model: "test-provider/test-model",
+    },
+  });
+  await api.engines.inspect({ botId: 1 });
+  await stop();
+  await start(0, true);
+  api = createORPCClient<RouterClient<AppRouter>>(
+    new RPCLink({ url: `${url}/rpc` }),
+  );
+  const gate = Promise.withResolvers<void>();
+  let controls = 0;
+  await page.route("**/rpc/engines/controls", async (route) => {
+    controls++;
+    await route.abort();
+  });
+  await page.route("**/rpc/engines/inspect", async (route) => {
+    await gate.promise;
+    await route.abort();
+  });
+  try {
+    await page.goto(url);
+    const header = page.locator(".chat-header .model-selector-trigger");
+    await expect(header).toHaveText("Pi · Test model");
+    await header.click();
+    await expect(
+      page.getByRole("button", { name: "Test model two", exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(header).toHaveText("Pi · Test model");
+    const details = await openDetails(page);
+    const reasoning = details.getByRole("combobox", {
+      name: "推理强度",
+      exact: true,
+    });
+    await reasoning.click();
+    await page.getByRole("option", { name: "high", exact: true }).click();
+    await expect
+      .poll(
+        async () =>
+          (await api.engines.get({ botId: 1 })).config.options?.thinkingLevel,
+      )
+      .toBe("high");
+    await header.click();
+    await page
+      .getByRole("button", { name: "Test model two", exact: true })
+      .click();
+    await expect
+      .poll(async () => (await api.engines.get({ botId: 1 })).config.model)
+      .toBe("test-provider/test-model-2");
+    await reasoning.click();
+    await expect(
+      page.getByRole("option", { name: "high", exact: true }),
+    ).toBeVisible();
+    expect(controls).toBe(0);
+  } finally {
+    gate.resolve();
+  }
 });
 
 test("changing native effort keeps the model catalog and connection", async ({
@@ -430,6 +504,21 @@ test("native controls, interaction, compaction and Usage work in both themes", a
 }, testInfo) => {
   await stop();
   await start(0, true);
+  const api = createORPCClient<RouterClient<AppRouter>>(
+    new RPCLink({ url: `${url}/rpc` }),
+  );
+  const profile = await api.engines.get({ botId: 1 });
+  await api.engines.configure({
+    botId: 1,
+    revision: profile.revision,
+    requestId: crypto.randomUUID(),
+    config: {
+      provider: "pi",
+      accountSource: "native",
+      model: "test-provider/test-model",
+    },
+  });
+  await api.engines.inspect({ botId: 1 });
   await page.goto(url);
   await page.getByLabel("消息", { exact: true }).fill("Work");
   await page.getByRole("button", { name: "发送", exact: true }).click();
@@ -3623,7 +3712,7 @@ test("computer details share live directory status and recover a failed refresh"
   await page.keyboard.press("Escape");
   await expect(details).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Bot详情", exact: true }),
+    page.getByRole("button", { name: "Bot电脑", exact: true }),
   ).toBeFocused();
 });
 

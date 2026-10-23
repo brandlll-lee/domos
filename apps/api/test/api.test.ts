@@ -828,6 +828,13 @@ test("SDK models can be selected, persist after reopening and leave active reque
       ...selection,
       name: "New catalog model",
       providerName: next.provider.name,
+      effort: {
+        id: "thinkingLevel",
+        kind: "effort",
+        label: "推理强度",
+        value: "",
+        options: [{ id: "off", label: "off" }],
+      },
     });
     await first.client.send({
       botId: first.conversation.id,

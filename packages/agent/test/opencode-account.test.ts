@@ -19,7 +19,13 @@ function fixture() {
               {
                 id: "second",
                 name: "Second",
-                models: { two: { id: "two", name: "Two" } },
+                models: {
+                  two: {
+                    id: "two",
+                    name: "Two",
+                    variants: { low: {}, high: {} },
+                  },
+                },
               },
             ],
             connected: ["second"],
@@ -55,7 +61,21 @@ test("uses the native connected providers and models in the private account dire
   });
   expect(await account.catalog()).toMatchObject({
     authenticated: true,
-    models: [{ id: "second/two", name: "Two" }],
+    models: [
+      {
+        id: "second/two",
+        name: "Two",
+        effort: {
+          id: "effort",
+          value: "default",
+          options: [
+            { id: "default", label: "默认" },
+            { id: "low", label: "low" },
+            { id: "high", label: "high" },
+          ],
+        },
+      },
+    ],
     providers: [
       {
         id: "first",

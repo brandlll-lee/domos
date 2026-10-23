@@ -33,6 +33,7 @@ type NativeProvider = {
       id: string;
       name: string;
       status?: string;
+      variants?: Record<string, unknown>;
       capabilities?: { input?: { image?: boolean } };
     }
   >;
@@ -87,6 +88,19 @@ export async function openOpenCodeAccount(
             id: `${provider.id}/${item.id}`,
             name: item.name,
             group: provider.name,
+            effort: {
+              id: "effort",
+              kind: "effort" as const,
+              label: "推理强度",
+              value: "default",
+              options: [
+                { id: "default", label: "默认" },
+                ...Object.keys(item.variants ?? {}).map((id) => ({
+                  id,
+                  label: id,
+                })),
+              ],
+            },
             ...(typeof item.capabilities?.input?.image === "boolean"
               ? { images: item.capabilities.input.image }
               : {}),

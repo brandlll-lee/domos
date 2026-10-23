@@ -1,6 +1,9 @@
+import type { Bot } from "@domos/agent/bots";
 import { BOT_NAME_LENGTH, WORK_TEXT_LENGTH } from "@domos/agent/work/limits";
+import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
+import { PencilSimpleIcon } from "@phosphor-icons/react/dist/csr/PencilSimple";
 import { useState } from "react";
 import { client } from "../../../client.ts";
 import { AvatarEditor } from "../avatar-editor.tsx";
@@ -89,5 +92,40 @@ export function IdentityEditor({
         )}
       </fieldset>
     </form>
+  );
+}
+
+export function BotIdentity({
+  bot,
+  profile,
+  onEdit,
+}: {
+  bot: Bot;
+  profile: Profile | null;
+  onEdit: () => void;
+}) {
+  return (
+    <section className="bot-hero" aria-label="Bot资料">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="bot-hero-avatar"
+        aria-label="编辑"
+        onClick={onEdit}
+      >
+        <BotAvatar
+          seed={profile?.avatar ?? bot.avatar}
+          size="panel"
+          statusLabel="正在工作"
+        />
+        <span className="bot-hero-pencil" aria-hidden="true">
+          <PencilSimpleIcon size={12} />
+        </span>
+      </Button>
+      <div className="bot-hero-copy">
+        <h2>{profile?.name ?? bot.name}</h2>
+        {profile?.instructions.trim() && <p>{profile.instructions}</p>}
+      </div>
+    </section>
   );
 }

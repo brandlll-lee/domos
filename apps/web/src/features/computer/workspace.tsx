@@ -1,6 +1,5 @@
 import type { Bot } from "@domos/agent/bots";
 import { Button } from "@domos/ui/controls";
-import { PanelHeader } from "@domos/ui/panel";
 import { Tabs } from "@domos/ui/tabs";
 import { ArrowsInIcon } from "@phosphor-icons/react/dist/csr/ArrowsIn";
 import { ArrowsOutIcon } from "@phosphor-icons/react/dist/csr/ArrowsOut";
@@ -25,7 +24,6 @@ export function ComputerWorkspace({
   expanded,
   onExpand,
   onSettings,
-  onClose,
 }: {
   bot: Bot;
   computer: ReturnType<typeof useComputer>;
@@ -33,7 +31,6 @@ export function ComputerWorkspace({
   expanded: boolean;
   onExpand: () => void;
   onSettings: () => void;
-  onClose: () => void;
 }) {
   const [service, setService] = useState<ComputerService>("browser");
   const status = computer.status;
@@ -44,11 +41,10 @@ export function ComputerWorkspace({
   const item = state?.[service];
   const label = serviceLabels[service];
   return (
-    <aside className="computer-workspace" aria-label={`${bot.name}的电脑`}>
-      <PanelHeader
-        title="工作电脑"
-        onClose={onClose}
-        actions={
+    <section className="computer-workspace" aria-label={`${bot.name}的电脑`}>
+      <div className="computer-workspace-context">
+        <span title={status?.name}>{status?.name ?? "尚未选择电脑"}</span>
+        <div className="detail-inline">
           <Button
             variant="ghost"
             size="icon-small"
@@ -57,18 +53,15 @@ export function ComputerWorkspace({
           >
             {expanded ? <ArrowsInIcon /> : <ArrowsOutIcon />}
           </Button>
-        }
-      />
-      <div className="computer-workspace-context">
-        <span title={status?.name}>{status?.name ?? "尚未选择电脑"}</span>
-        <Button
-          variant="ghost"
-          size="icon-small"
-          aria-label="电脑设置"
-          onClick={onSettings}
-        >
-          <GearSixIcon />
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon-small"
+            aria-label="电脑设置"
+            onClick={onSettings}
+          >
+            <GearSixIcon />
+          </Button>
+        </div>
       </div>
       <Tabs.Root
         className="computer-workspace-tabs"
@@ -161,6 +154,6 @@ export function ComputerWorkspace({
           )}
         </Tabs.Panel>
       </Tabs.Root>
-    </aside>
+    </section>
   );
 }

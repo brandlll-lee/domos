@@ -128,6 +128,7 @@ export function engineRouter(bots: Bots, engines?: Engines) {
               : null,
           },
           revision: 0,
+          model: null,
           prepared: Boolean(profile.model),
           busy: false,
           error: null,

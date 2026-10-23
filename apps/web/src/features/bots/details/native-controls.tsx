@@ -2,7 +2,6 @@ import type { EngineControls } from "@domos/agent/harness/types";
 import { Button } from "@domos/ui/controls";
 import { ChoicePicker } from "@domos/ui/picker";
 import { SettingRow } from "@domos/ui/setting-row";
-import { useEffect, useEffectEvent } from "react";
 import type { EngineSetup } from "./use-engine.ts";
 
 function EngineOption({
@@ -29,11 +28,10 @@ function EngineOption({
           })),
         ]}
         onValueChange={(value) => {
-          if (value)
-            void setup.save({
-              ...profile.config,
-              options: { ...profile.config.options, [item.id]: value },
-            });
+          const options = { ...profile.config.options };
+          if (value) options[item.id] = value;
+          else delete options[item.id];
+          void setup.save({ ...profile.config, options });
         }}
       />
     </SettingRow>
@@ -41,33 +39,23 @@ function EngineOption({
 }
 
 export function EngineReasoning({ setup }: { setup: EngineSetup }) {
-  const controls = setup.profile?.runtime?.controls;
   const config = setup.profile?.config;
-  const nativeControls = (setup.profile?.providers.length ?? 0) > 1;
-  const read = useEffectEvent(() => void setup.controls());
-  useEffect(() => {
-    if (config && nativeControls && !controls && !setup.saving && !setup.busy)
-      read();
-  }, [config, nativeControls, controls, setup.saving, setup.busy]);
-  const effort = controls?.options.find(
-    (item) => item.kind === "effort" && item.options.length,
-  );
-  if (effort) return <EngineOption setup={setup} item={effort} />;
+  const effort =
+    (config &&
+      setup.catalog
+        .models(config.provider)
+        ?.find((item) => item.id === config.model)?.effort) ??
+    (setup.profile?.model?.id === config?.model
+      ? setup.profile?.model?.effort
+      : undefined) ??
+    setup.profile?.runtime?.controls?.options.find(
+      (item) => item.kind === "effort" && item.options.length,
+    );
+  if (effort?.options.length && (setup.profile?.providers.length ?? 0) > 1)
+    return <EngineOption setup={setup} item={effort} />;
   return (
     <SettingRow title="思考程度">
-      {controls || !nativeControls ? (
-        <span className="detail-note">引擎默认</span>
-      ) : (
-        <Button
-          variant="ghost"
-          size="small"
-          disabled={Boolean(setup.busy) || setup.saving || !setup.profile}
-          pending={setup.pending === "controls"}
-          onClick={() => void setup.controls()}
-        >
-          {setup.pending === "controls" ? "读取中…" : "读取可用选项"}
-        </Button>
-      )}
+      <span className="detail-note">引擎默认</span>
     </SettingRow>
   );
 }

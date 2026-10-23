@@ -450,6 +450,16 @@ export const claudeProvider: EngineProvider = {
         ((await initialize())?.models ?? []).map((item) => ({
           id: item.value,
           name: item.displayName ?? item.value,
+          effort: {
+            id: "effort",
+            kind: "effort" as const,
+            label: "推理强度",
+            value: "",
+            options: (item.supportedEffortLevels ?? []).map((id) => ({
+              id,
+              label: id,
+            })),
+          },
         })),
       vision: async () => null,
       async prompt(text: string, images: EngineImage[] = []) {

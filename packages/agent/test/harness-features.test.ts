@@ -375,7 +375,19 @@ test("Claude uses native advertised effort and keeps cost scope and compaction b
       events.push(event);
     },
   });
-  expect(await session.models()).toEqual([{ id: "model", name: "model" }]);
+  expect(await session.models()).toEqual([
+    {
+      id: "model",
+      name: "model",
+      effort: {
+        id: "effort",
+        kind: "effort",
+        label: "推理强度",
+        value: "",
+        options: [{ id: "high", label: "high" }],
+      },
+    },
+  ]);
   expect((await session.controls?.())?.options).toContainEqual({
     id: "effort",
     kind: "effort",
@@ -514,6 +526,12 @@ test("Codex exposes model effort, preserves each answer and replaces usage snaps
       events.push(event);
     },
   });
+  expect(await session.models()).toMatchObject([
+    {
+      id: "model",
+      effort: { id: "effort", options: [{ id: "high", label: "Deep" }] },
+    },
+  ]);
   expect((await session.controls?.())?.options).toContainEqual({
     id: "effort",
     kind: "effort",

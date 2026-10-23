@@ -4,6 +4,7 @@ import type {
   RpcSessionState,
   SessionEntry,
 } from "@earendil-works/pi-coding-agent";
+import { thinkingControl } from "../../models.ts";
 import { EngineRequestRejected, JsonLines } from "../json-lines.ts";
 import type { EngineOpen, EngineProvider } from "../types.ts";
 import { piUI } from "./pi-ui.ts";
@@ -334,16 +335,12 @@ export const piProvider: EngineProvider = {
       },
       models: async () => {
         const result = await rpc.request<{
-          models: {
-            provider: string;
-            id: string;
-            name?: string;
-            input?: string[];
-          }[];
+          models: Parameters<typeof thinkingControl>[0][];
         }>("get_available_models");
         return (result.models ?? []).map((model) => ({
           id: `${model.provider}/${model.id}`,
           name: model.name ?? model.id,
+          effort: thinkingControl(model),
           ...(model.input ? { images: model.input.includes("image") } : {}),
         }));
       },

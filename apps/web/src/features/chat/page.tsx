@@ -7,7 +7,6 @@ import { BotDetails, type BotPanelView } from "../bots/details/index.tsx";
 import { useEngine } from "../bots/details/use-engine.ts";
 import { selectBot, useBots } from "../bots/use-bots.ts";
 import { useComputer } from "../computer/use-computer.ts";
-import { ComputerWorkspace } from "../computer/workspace.tsx";
 import { EngineSelector } from "../models/engine-selector.tsx";
 import { useSettings } from "../settings/context.ts";
 import { type RailView, Workspace } from "../shell/workspace.tsx";
@@ -116,18 +115,14 @@ function BotChat({
   };
   const showComputer = () => {
     setPanel("computer");
+    setDetailPanel("root");
     setExpanded(false);
     setView("chat");
     setDetailsOpen(!detailsOpen || panel !== "computer");
   };
   const computerOpen = detailsOpen && panel === "computer";
-  const railActive =
-    view === "usage" ? "usage" : computerOpen ? "computer" : "conversation";
+  const railActive = view === "usage" ? "usage" : "conversation";
   const selectRail = (next: RailView) => {
-    if (next === "computer") {
-      showComputer();
-      return;
-    }
     setView(next === "usage" ? "usage" : "chat");
     closePanel();
   };
@@ -139,7 +134,7 @@ function BotChat({
         else closePanel();
       }}
       expanded={panel === "computer" && expanded}
-      inspectorTitle={panel === "computer" ? "工作电脑" : "Bot详情"}
+      inspectorTitle="Bot详情"
       inspectorTrigger={
         panel === "computer" ? "computer-trigger" : "details-trigger"
       }
@@ -151,39 +146,24 @@ function BotChat({
         <Sidebar bots={bots} selected={bot} connected={directoryConnected} />
       }
       inspector={
-        <>
-          <div className="inspector-page" hidden={panel !== "settings"}>
-            <BotDetails
-              active={detailsOpen && panel === "settings"}
-              bot={bot}
-              view={detailPanel}
-              onViewChange={setDetailPanel}
-              onClose={closePanel}
-              computer={computer}
-              chat={{
-                model: chat.view?.model ?? null,
-                connected: chat.connected,
-              }}
-              canManage={settings.admin}
-              engine={engine}
-            />
-          </div>
-          {detailsOpen && panel === "computer" && (
-            <ComputerWorkspace
-              bot={bot}
-              computer={computer}
-              admin={settings.admin}
-              expanded={expanded}
-              onExpand={() => setExpanded((value) => !value)}
-              onSettings={() => {
-                setPanel("settings");
-                setExpanded(false);
-                setDetailPanel("computer");
-              }}
-              onClose={closePanel}
-            />
-          )}
-        </>
+        <BotDetails
+          active={detailsOpen}
+          bot={bot}
+          view={detailPanel}
+          onViewChange={setDetailPanel}
+          onClose={closePanel}
+          computer={computer}
+          chat={{ model: chat.view?.model ?? null, connected: chat.connected }}
+          canManage={settings.admin}
+          engine={engine}
+          tab={panel === "computer" ? "computer" : "bot"}
+          onTabChange={(tab) => {
+            setPanel(tab === "computer" ? "computer" : "settings");
+            setExpanded(false);
+          }}
+          expanded={expanded}
+          onExpand={() => setExpanded((value) => !value)}
+        />
       }
     >
       <RuntimeNotifications
@@ -300,7 +280,7 @@ function BotChat({
                       computer.status.scope),
                 )}
                 onComputerRequired={() => {
-                  setPanel("settings");
+                  setPanel("computer");
                   setExpanded(false);
                   setDetailPanel("computer");
                   setDetailsOpen(true);

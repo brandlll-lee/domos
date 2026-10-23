@@ -207,9 +207,12 @@ export function useEngine(
       selection.current = {
         ...previous,
         config,
+        model: null,
         runtime:
           previous.config.provider === config.provider &&
-          previous.config.model === config.model
+          previous.config.model === config.model &&
+          (previous.config.accountSource ?? "managed") ===
+            (config.accountSource ?? "managed")
             ? previous.runtime
             : null,
       };
