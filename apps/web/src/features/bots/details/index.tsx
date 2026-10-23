@@ -8,6 +8,7 @@ import { ComputerSettings } from "./computer.tsx";
 import { EngineSettings } from "./engine-settings.tsx";
 import { IdentityEditor } from "./identity.tsx";
 import { MemoryPanel } from "./memory.tsx";
+import { NativeControls } from "./native-controls.tsx";
 import { PromptPanel } from "./prompt.tsx";
 import { RootPanel } from "./root.tsx";
 import { RoutinesPanel } from "./routines.tsx";
@@ -22,6 +23,7 @@ export type { BotPanelView } from "./types.ts";
 const titles: Record<Exclude<BotPanelView, "root">, string> = {
   identity: "编辑资料",
   engine: "任务引擎",
+  advanced: "高级设置",
   computer: "工作电脑",
   memory: "记忆",
   skills: "技能",
@@ -60,7 +62,7 @@ export function BotDetails({
   };
   const title = view === "root" ? bot.name : titles[view];
   let content: ReactNode = null;
-  if (view === "root")
+  if (view === "root" && active)
     content = (
       <RootPanel
         bot={bot}
@@ -68,21 +70,22 @@ export function BotDetails({
         data={work.data}
         engine={engine}
         computer={computer}
+        chat={chat}
         onNavigate={navigate}
       />
     );
   else if (view === "engine")
     content = (
-      <EngineSettings
+      <EngineSettings botId={bot.id} setup={engine} canManage={canManage} />
+    );
+  else if (view === "advanced") content = <NativeControls setup={engine} />;
+  else if (view === "computer")
+    content = (
+      <ComputerSettings
+        computer={{ ...computer, busy: computer.busy || engine.saving }}
         botId={bot.id}
-        setup={engine}
-        canManage={canManage}
-        model={chat.model}
-        connected={chat.connected}
       />
     );
-  else if (view === "computer")
-    content = <ComputerSettings computer={computer} botId={bot.id} />;
   else if (view === "memory")
     content = work.data ? (
       <MemoryPanel

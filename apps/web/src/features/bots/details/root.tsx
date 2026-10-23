@@ -1,7 +1,9 @@
 import type { Bot } from "@domos/agent/bots";
+import type { ChatView } from "@domos/agent/view";
 import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { PanelGroup, PanelRow } from "@domos/ui/panel";
+import { SettingRow } from "@domos/ui/setting-row";
 import { BrainIcon } from "@phosphor-icons/react/dist/csr/Brain";
 import { ClockIcon } from "@phosphor-icons/react/dist/csr/Clock";
 import { CpuIcon } from "@phosphor-icons/react/dist/csr/Cpu";
@@ -11,6 +13,8 @@ import { PencilSimpleIcon } from "@phosphor-icons/react/dist/csr/PencilSimple";
 import { TerminalWindowIcon } from "@phosphor-icons/react/dist/csr/TerminalWindow";
 import { computerLabels } from "../../computer/copy.ts";
 import type { useComputer } from "../../computer/use-computer.ts";
+import { EngineSelector } from "../../models/engine-selector.tsx";
+import { EngineReasoning } from "./native-controls.tsx";
 import type { BotPanelView } from "./types.ts";
 import type { Profile, WorkData } from "./use-bot-work.ts";
 import type { EngineSetup } from "./use-engine.ts";
@@ -21,6 +25,7 @@ export function RootPanel({
   data,
   engine,
   computer,
+  chat,
   onNavigate,
 }: {
   bot: Bot;
@@ -28,13 +33,9 @@ export function RootPanel({
   data: WorkData | null;
   engine: EngineSetup;
   computer: ReturnType<typeof useComputer>;
+  chat: { model: ChatView["model"]; connected: boolean };
   onNavigate: (view: BotPanelView) => void;
 }) {
-  const provider = engine.profile?.config.provider;
-  const engineName =
-    engine.profile?.providers.find((item) => item.id === provider)?.name ??
-    provider ??
-    "任务引擎";
   const status = computer.status;
   const computerValue = status
     ? status.authorized
@@ -72,18 +73,38 @@ export function RootPanel({
         </div>
       </section>
 
-      {engine.error && !engine.profile && (
+      {engine.error && (
         <p className="alert" role="alert">
           {engine.error}
         </p>
       )}
 
       <PanelGroup title="运行">
+        <div className="engine-choices">
+          <SettingRow title="模型">
+            <EngineSelector
+              setup={engine}
+              model={chat.model}
+              connected={chat.connected}
+              onConfigure={() => onNavigate("engine")}
+            />
+          </SettingRow>
+          <EngineReasoning setup={engine} />
+        </div>
         <PanelRow
           icon={<CpuIcon />}
           title="连接与账号"
-          value={engineName}
+          value={
+            engine.profile?.config.accountSource === "native"
+              ? "工作电脑已有配置"
+              : "Domos 管理"
+          }
           onClick={() => onNavigate("engine")}
+        />
+        <PanelRow
+          icon={<CpuIcon />}
+          title="高级设置"
+          onClick={() => onNavigate("advanced")}
         />
         <PanelRow
           icon={<DesktopIcon />}

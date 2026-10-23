@@ -157,7 +157,31 @@ export class Engines {
     context: Context,
   ) {
     engineProvider(input.config.provider);
-    await readEngine(this.harness, botId as ConversationId, context);
+    const previous = await readEngine(
+      this.harness,
+      botId as ConversationId,
+      context,
+    );
+    if (previous?.requestId === input.requestId)
+      return this.profile(botId, context);
+    if (
+      input.config.provider === "pi" &&
+      input.config.accountSource !== "native" &&
+      input.config.model &&
+      this.execution.models
+    ) {
+      const separator = input.config.model.indexOf("/");
+      const models = await this.execution.models.getAvailable(
+        input.config.model.slice(0, separator),
+      );
+      if (
+        separator < 1 ||
+        !models.some(
+          (model) => model.id === input.config.model?.slice(separator + 1),
+        )
+      )
+        throw new WorkError("BAD_REQUEST", "请选择可用的 Pi 模型。");
+    }
     if (this.connections.busy(botId))
       throw new WorkError("CONFLICT", "请先完成账号连接。");
     const connection = await this.connections.snapshot(

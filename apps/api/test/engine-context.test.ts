@@ -173,6 +173,21 @@ async function fixture() {
   };
 }
 
+test("managed Pi configuration rejects unavailable models and keeps its revision", async () => {
+  const f = await fixture();
+  const botId = f.runtime.conversation.id;
+  const profile = await f.runtime.client.engines.get({ botId });
+  await expect(
+    f.runtime.client.engines.configure({
+      botId,
+      config: { provider: "pi", model: "missing/model" },
+      revision: profile.revision,
+      requestId: crypto.randomUUID(),
+    }),
+  ).rejects.toThrow("请选择可用的 Pi 模型。");
+  expect(await f.runtime.client.engines.get({ botId })).toEqual(profile);
+});
+
 test("native account selection persists, resets the session and keeps default models on the work computer", async () => {
   const f = await fixture();
   const botId = f.runtime.conversation.id;
@@ -304,7 +319,7 @@ test("context snapshots retain their source, survive reopening and invalidate on
   ).toBe(0);
   await f.runtime.client.engines.configure({
     botId,
-    config: { provider: "pi", model: "native/other" },
+    config: { provider: "pi", model: "native/other", accountSource: "native" },
     revision: 0,
     requestId: crypto.randomUUID(),
   });

@@ -47,6 +47,25 @@
   gap: var(--space-6);
   min-width: 0;
 }
+.engine-choices > .setting-row {
+  flex-wrap: nowrap;
+  gap: var(--space-2);
+  min-height: var(--panel-row-height);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-divider);
+}
+.engine-choices .setting-caption {
+  flex: 0 0 auto;
+}
+.engine-choices .setting-control {
+  max-width: 75%;
+}
+.engine-choices .model-selector-trigger {
+  font-size: var(--text-caption);
+}
+.engine-choices .picker-trigger {
+  width: auto;
+}
 .bot-hero {
   display: grid;
   justify-items: center;

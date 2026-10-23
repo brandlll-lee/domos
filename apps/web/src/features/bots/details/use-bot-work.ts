@@ -34,7 +34,7 @@ export function useWorkAction() {
       setBusy(false);
     }
   }
-  return { busy, error, run };
+  return { busy, error, run, clear: () => setError(null) };
 }
 
 export function useBotWork(botId: number, active: boolean) {

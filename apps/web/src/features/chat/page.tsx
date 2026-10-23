@@ -60,7 +60,13 @@ function BotChat({
 }) {
   const settings = useSettings();
   const chat = useChat(bot.id, () => settings.open("providers", bot.id));
-  const engine = useEngine(bot.id, chat.connected, Boolean(chat.view?.busy));
+  const engine = useEngine(
+    bot.id,
+    chat.connected,
+    Boolean(chat.view?.busy),
+    undefined,
+    directory.computers.bindings[String(bot.id)]?.computerId ?? undefined,
+  );
   const computer = useComputer(bot.id, directory);
   const dock = useComposerDock();
   const draft = useDraft(bot.id);
@@ -233,11 +239,10 @@ function BotChat({
               }
               modelSelector={
                 <EngineSelector
-                  botId={bot.id}
                   setup={engine}
                   model={chat.view?.model ?? null}
                   connected={chat.connected}
-                  onConfigure={() => settings.open("providers", bot.id)}
+                  onConfigure={() => showPanel("engine")}
                 />
               }
               onDetails={() => showPanel("root")}
@@ -284,7 +289,7 @@ function BotChat({
                 conversationId={chat.view.id}
                 connected={chat.connected}
                 busy={chat.view.busy}
-                sending={chat.sending}
+                sending={chat.sending || engine.saving}
                 stopping={chat.stopping}
                 error={error}
                 onSend={chat.send}

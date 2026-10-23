@@ -1,6 +1,6 @@
 import { Popover } from "@base-ui/react/popover";
 import { Tabs } from "@base-ui/react/tabs";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { Button } from "./controls.tsx";
 import { TextField } from "./field.tsx";
 import { ScrollArea } from "./scroll-area.tsx";
@@ -39,6 +39,7 @@ export function ModelSelector({
   onConfigure: () => void;
 }) {
   const [query, setQuery] = useState("");
+  const popup = useRef<HTMLDivElement>(null);
   const selected = providers.find((item) => item.id === provider);
   const matches = models.filter((item) =>
     `${item.name} ${item.id}`
@@ -80,7 +81,15 @@ export function ModelSelector({
           collisionPadding={12}
           className="model-selector-positioner"
         >
-          <Popover.Popup className="model-selector-popup">
+          <Popover.Popup
+            ref={popup}
+            className="model-selector-popup"
+            initialFocus={(interaction) =>
+              interaction === "keyboard"
+                ? popup.current?.querySelector<HTMLInputElement>("input")
+                : true
+            }
+          >
             <Popover.Title className="sr-only">任务引擎与模型</Popover.Title>
             <Tabs.Root
               value={provider}

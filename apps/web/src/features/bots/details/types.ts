@@ -2,6 +2,7 @@ export type BotPanelView =
   | "root"
   | "identity"
   | "engine"
+  | "advanced"
   | "computer"
   | "memory"
   | "skills"

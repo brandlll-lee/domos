@@ -1,197 +1,109 @@
-import type { EngineId, EngineModel } from "@domos/agent/harness/types";
+import type { EngineId } from "@domos/agent/harness/types";
 import type { ChatView } from "@domos/agent/view";
 import { ModelSelector } from "@domos/ui/model-selector";
 import { useEffect, useEffectEvent, useState } from "react";
-import { client } from "../../client.ts";
 import type { EngineSetup } from "../bots/details/use-engine.ts";
 import { EngineMark } from "../bots/engine-mark.tsx";
-import { userError } from "../user-error.ts";
 import { Effort } from "./effort.tsx";
-import { useModels } from "./use-models.ts";
-import { useVisibility } from "./use-visibility.ts";
 
 export function EngineSelector({
-  botId,
   setup,
   model,
   connected,
   onConfigure,
 }: {
-  botId: number;
   setup: EngineSetup;
   model: ChatView["model"];
   connected: boolean;
   onConfigure: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const profile = setup.profile;
-  const nativePi =
-    profile?.config.provider === "pi" &&
-    profile.config.accountSource === "native";
   const [browsing, setBrowsing] = useState<EngineId>("pi");
-  const source = `${botId}:${profile?.config.provider}:${profile?.config.accountSource ?? "managed"}`;
-  const [scope, setScope] = useState(source);
-  const [native, setNative] = useState<
-    Partial<Record<EngineId, EngineModel[]>>
-  >({});
-  if (scope !== source) {
-    setScope(source);
-    setNative({});
-  }
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const catalog = useModels(connected);
-  const visibility = useVisibility(connected);
+  const { profile, catalog } = setup;
   const provider = profile?.config.provider ?? "pi";
   const selected =
     profile?.config.model ??
-    (provider === "pi" && !nativePi && model
+    (provider === "pi" && profile?.config.accountSource !== "native" && model
       ? `${model.provider}/${model.modelId}`
       : null);
-  const [selectionLabel, setSelectionLabel] = useState<{
-    id: string;
-    name: string;
-  }>();
-  const readControls = useEffectEvent(() => {
-    if (!setup.busy && !profile?.runtime?.controls) void setup.controls();
-  });
+  const visibility = catalog.visibility;
   useEffect(() => {
-    if (!open) return;
-    if (browsing === provider) readControls();
-    if ((browsing === "pi" && !nativePi) || native[browsing]) return;
-    let current = true;
-    setError("");
-    void client.engines.inspect({ botId, provider: browsing }).then(
-      (result) => {
-        if (!current) return;
-        setNative((current) => ({ ...current, [browsing]: result.models }));
-        const active = result.models.find((item) => item.id === selected);
-        if (browsing === provider && active) setSelectionLabel(active);
-      },
-      (cause) => {
-        if (current) {
-          setNative((current) => ({ ...current, [browsing]: [] }));
-          setError(userError(cause, "模型读取失败。请重试。"));
-        }
-      },
-    );
-    return () => {
-      current = false;
-    };
-  }, [open, browsing, botId, provider, selected, native, nativePi]);
-  useEffect(() => {
-    const refresh = () => setNative({});
-    window.addEventListener("domos:engines", refresh);
-    return () => window.removeEventListener("domos:engines", refresh);
-  }, []);
-  const models =
-    browsing === "pi" && !nativePi
-      ? (catalog.choices ?? []).map((item) => ({
-          id: `${item.provider}/${item.modelId}`,
-          name: item.name,
-          group: item.providerName,
-        }))
-      : (native[browsing] ?? []);
-  const piSelected = catalog.choices?.find(
-    (item) => `${item.provider}/${item.modelId}` === selected,
-  );
-  const label =
-    provider === "pi" && !nativePi && piSelected
-      ? `${piSelected.providerName} · ${piSelected.name}`
-      : selectionLabel?.id === selected
-        ? selectionLabel.name
-        : (selected ?? "选择模型");
+    if (open) void catalog.load(browsing);
+  }, [open, browsing, catalog.load]);
+  const models = catalog.models(browsing);
+  const error = catalog.error(browsing);
+  const active = catalog.models(provider)?.find((item) => item.id === selected);
   const effort = profile?.runtime?.controls?.options.find(
     (item) => item.kind === "effort" && item.options.length > 1,
   );
+  const controls = profile?.runtime?.controls;
+  const readControls = useEffectEvent(() => void setup.controls());
+  useEffect(() => {
+    if (
+      open &&
+      (profile?.providers.length ?? 0) > 1 &&
+      models &&
+      browsing === provider &&
+      !controls &&
+      !setup.saving &&
+      !setup.busy
+    )
+      readControls();
+  }, [
+    open,
+    models,
+    browsing,
+    provider,
+    controls,
+    setup.saving,
+    setup.busy,
+    profile?.providers.length,
+  ]);
   return (
     <ModelSelector
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        setError("");
-        if (next) {
-          setBrowsing(provider);
-        }
+        if (next) setBrowsing(provider);
       }}
       providers={(profile?.providers ?? []).map((item) => ({
         ...item,
         icon: <EngineMark provider={item.id} />,
       }))}
       provider={browsing}
-      models={models.filter((item) => visibility.visible(browsing, item.id))}
+      models={(models ?? []).filter((item) =>
+        visibility.visible(browsing, item.id),
+      )}
       value={browsing === provider ? (selected ?? "") : ""}
-      label={label}
-      loading={
-        saving ||
-        !profile ||
-        (open &&
-          (browsing === "pi" && !nativePi
-            ? catalog.choices === null && !catalog.error
-            : !native[browsing]))
+      label={
+        active
+          ? `${profile?.providers.find((item) => item.id === provider)?.name} · ${active.name}`
+          : (selected ?? "选择模型")
       }
-      disabled={!connected || Boolean(setup.busy) || saving}
+      loading={!profile || (open && !models && !error)}
+      disabled={!connected || Boolean(setup.busy)}
       busy={Boolean(profile?.busy)}
-      error={
-        error ||
-        setup.error ||
-        visibility.error ||
-        (browsing === "pi" && !nativePi ? catalog.error : null)
-      }
-      onProviderChange={(id) => {
-        setBrowsing(id as EngineId);
-      }}
+      error={setup.error || visibility.error || error}
+      onProviderChange={(id) => setBrowsing(id as EngineId)}
       onSelect={(id) => {
-        void (async () => {
-          setSaving(true);
-          setError("");
-          try {
-            if (browsing === "pi" && !nativePi) {
-              const choice = catalog.choices?.find(
-                (item) => `${item.provider}/${item.modelId}` === id,
-              );
-              if (!choice) return;
-              await client.models.select({
-                botId,
-                provider: choice.provider,
-                modelId: choice.modelId,
-              });
-              await setup.refresh();
-            } else {
-              if (!(await setup.save({ provider: browsing, model: id })))
-                return;
-            }
-            setSelectionLabel(models.find((item) => item.id === id));
-            setOpen(false);
-          } catch (cause) {
-            setError(userError(cause, "模型切换失败。请重试。"));
-          } finally {
-            setSaving(false);
-          }
-        })();
+        setOpen(false);
+        void setup.save({ provider: browsing, model: id });
       }}
       effort={
         browsing === provider && effort ? (
           <Effort
-            key={`${provider}:${selected}:${effort.value}`}
-            control={effort}
-            disabled={Boolean(setup.busy) || saving}
+            key={`${provider}:${selected}:${profile?.config.options?.[effort.id] ?? effort.value}`}
+            control={{
+              ...effort,
+              value: profile?.config.options?.[effort.id] ?? effort.value,
+            }}
+            disabled={Boolean(setup.busy) || setup.saving}
             onChange={(value) => {
-              if (!profile) return;
-              void (async () => {
-                setSaving(true);
-                try {
-                  await setup.save({
-                    ...profile.config,
-                    options: {
-                      ...profile.config.options,
-                      [effort.id]: value,
-                    },
-                  });
-                } finally {
-                  setSaving(false);
-                }
-              })();
+              if (profile)
+                void setup.save({
+                  ...profile.config,
+                  options: { ...profile.config.options, [effort.id]: value },
+                });
             }}
           />
         ) : null

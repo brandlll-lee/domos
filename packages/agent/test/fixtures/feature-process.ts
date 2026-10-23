@@ -55,6 +55,12 @@ export function featureProcess() {
                     name: "Test model",
                     input: ["text"],
                   },
+                  {
+                    provider: "test-provider",
+                    id: "test-model-2",
+                    name: "Test model two",
+                    input: ["text"],
+                  },
                 ],
               }
             : request.type === "get_commands"

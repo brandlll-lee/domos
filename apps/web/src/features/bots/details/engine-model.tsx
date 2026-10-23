@@ -83,7 +83,7 @@ export function EngineModel({
     if (
       await setup.save({ provider: profile.config.provider, model: id || null })
     ) {
-      if (await setup.inspect()) onSelected();
+      onSelected();
     }
   };
   return (
