@@ -2,6 +2,7 @@ import { EventEmitter, on } from "node:events";
 import { platform } from "node:os";
 import { characterIdentity } from "@domos/ui/characters";
 import type { Context } from "@earendil-works/chord/context";
+import type { CredentialStore } from "@earendil-works/pi-ai";
 import {
   type ConversationId,
   configure,
@@ -22,6 +23,7 @@ import {
   type RuntimeConfig,
 } from "../runtime/config.ts";
 import { requiredText, requireRevision, WorkError } from "../work/state.ts";
+import { ComputerAssistance } from "./assistance.ts";
 import { Computer, type ComputerStatus } from "./index.ts";
 import { ComputerPreparation } from "./preparation.ts";
 import type { ComputerService } from "./service-types.ts";
@@ -57,6 +59,7 @@ export class Computers {
 
   readonly config: RuntimeConfig;
   preparation!: ComputerPreparation;
+  assistance!: ComputerAssistance;
   constructor(config: RuntimeConfig) {
     this.config = config;
   }
@@ -74,10 +77,12 @@ export class Computers {
     bots: Bots,
     context: Context,
     legacy = false,
+    credentials?: CredentialStore,
   ) {
     this.harness = harness;
     this.bots = bots;
     this.preparation = new ComputerPreparation(harness, this);
+    this.assistance = new ComputerAssistance(harness, credentials);
     if (await harness.snapshot(ComputersDoc, context)) return;
     if (legacy) await new Computer(this.config).bind();
     const contacts = await bots.list(context);
@@ -444,6 +449,7 @@ export class Computers {
       if (!authorized)
         for (const [, binding] of bindings) {
           delete binding.approvalMode;
+          delete binding.assistance;
           binding.revision++;
         }
       if (!authorized && doc.defaultId === id) doc.defaultId = null;

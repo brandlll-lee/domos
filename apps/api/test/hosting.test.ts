@@ -135,6 +135,9 @@ test("hosting authenticates RPC, files, admin operations, origins and pairing", 
     "default",
     "configure",
     "approval",
+    "assistantKey",
+    "assistantConfigure",
+    "assistantTest",
   ]) {
     expect(
       (

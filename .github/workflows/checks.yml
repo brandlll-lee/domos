@@ -44,7 +44,7 @@ jobs:
           node-version-file: .node-version
       - uses: pnpm/action-setup@v6.1.0
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec vitest run packages/agent/test/harness-history.test.ts packages/agent/test/harness-protocols.test.ts packages/agent/test/harness-features.test.ts packages/agent/test/harness-recovery.test.ts packages/agent/test/harness-process.test.ts
+      - run: pnpm exec vitest run packages/agent/test/harness-history.test.ts packages/agent/test/harness-protocols.test.ts packages/agent/test/harness-features.test.ts packages/agent/test/harness-recovery.test.ts packages/agent/test/harness-process.test.ts packages/agent/test/computer-assistant.test.ts
   desktop:
     runs-on: windows-latest
     steps:

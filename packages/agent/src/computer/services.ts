@@ -114,6 +114,23 @@ export class ComputerServices {
     context: Context,
     actor?: { botId: number; color: string; owner: string },
   ) {
+    return this.run(botId, service, owner, signal, async (combined) => {
+      const worker = await this.worker(botId, context);
+      combined.throwIfAborted();
+      return worker.computer<ProductResult>(
+        { operation: "call", service, name, arguments: args, actor },
+        combined,
+      );
+    });
+  }
+
+  async run<T>(
+    botId: number,
+    service: ComputerService,
+    owner: string,
+    signal: AbortSignal,
+    action: (signal: AbortSignal) => Promise<T>,
+  ) {
     signal.throwIfAborted();
     const control = this.control(botId, service);
     if (control.lease) throw new Error("用户正在接管。交还后请重新观察画面。");
@@ -124,14 +141,7 @@ export class ComputerServices {
     const revision = control.revision;
     const controller = new AbortController();
     const combined = AbortSignal.any([signal, controller.signal]);
-    const done = (async () => {
-      const worker = await this.worker(botId, context);
-      combined.throwIfAborted();
-      return worker.computer<ProductResult>(
-        { operation: "call", service, name, arguments: args, actor },
-        combined,
-      );
-    })();
+    const done = action(combined);
     const pending = { botId, controller, done };
     control.calls.add(pending);
     try {

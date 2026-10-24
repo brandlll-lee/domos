@@ -1,5 +1,6 @@
 import type { Bots } from "@domos/agent/bots";
 import type { Computers } from "@domos/agent/computer/catalog";
+import { decisionProvider } from "@domos/agent/computer/jev";
 import { viewerAction } from "@domos/agent/computer/viewer-types";
 import { computerSchema } from "@domos/agent/config";
 import { WorkError } from "@domos/agent/work";
@@ -33,6 +34,54 @@ export function computerRouter(bots: Bots, computers?: Computers) {
   const context = BACKGROUND_CONTEXT;
   const service = z.enum(["browser", "desktop"]);
   return {
+    assistant: os.input(botTarget).handler(async ({ input }) => {
+      await botConversation(bots, input.botId);
+      return access((target) => target.assistance.state(input.botId, context));
+    }),
+    assistantConfigure: os
+      .input(
+        botTarget.extend({
+          computerId: id,
+          revision: z.number().int().nonnegative(),
+          enabled: z.boolean(),
+          provider: decisionProvider,
+        }),
+      )
+      .handler(async ({ input }) => {
+        await botConversation(bots, input.botId);
+        return access((target) =>
+          target.assistance.configure(input.botId, input, context),
+        );
+      }),
+    assistantKey: os
+      .input(
+        botTarget.extend({
+          provider: decisionProvider,
+          key: z
+            .string()
+            .trim()
+            .max(512)
+            .refine((key) => !key || /^[\x21-\x7E]+$/.test(key)),
+        }),
+      )
+      .handler(async ({ input }) => {
+        await botConversation(bots, input.botId);
+        return access(async (target) => {
+          await target.assistance.saveKey(input.provider, input.key);
+          return target.assistance.state(input.botId, context);
+        });
+      }),
+    assistantTest: os
+      .input(botTarget.extend({ provider: decisionProvider }))
+      .handler(async ({ input, signal }) => {
+        await botConversation(bots, input.botId);
+        return access((target) =>
+          target.assistance.test(
+            input.provider,
+            signal ?? new AbortController().signal,
+          ),
+        );
+      }),
     activity: os.input(botTarget).handler(async function* ({ input, signal }) {
       await botConversation(bots, input.botId);
       const target = await access(async (target) => target);

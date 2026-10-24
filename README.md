@@ -52,6 +52,8 @@ Grok Bot and Meta Muse offer persistent AI companions. Domos lets you host the s
 
 Enable desktop tools in the Computer tab. The target window and Agent cursor use the Bot's color. Local and remote viewers share these effects. Phones and tablets use the browser interface.
 
+Optional **Jev assistance** is available in the Computer tab. Save a TypeSafe or OpenRouter key, test the connection, then enable it for this Bot and work computer. Keys use the service's encrypted credential store. Selected interface text or screenshots go to that provider. Pi, Codex, Claude Code, and OpenCode share the same bounded `computer_assist` tool. It observes after each action and hands uncertain results back to the main model. The action limit is 12; the time limit is 45 seconds. Existing approval and takeover controls still apply. Switching providers disables assistance until you enable it again. Latency and cost depend on the task and provider.
+
 Native effects need a logged-in graphical session on the work computer. Desktop builds and work images include the helper. For a source installation, run `pnpm --filter @domos/agent exec install-electron` on that computer. Linux native effects need X11. Viewer effects do not need a native overlay. Desktop tools still need a graphical session that can provide captures.
 
 Users must review and enable scheduled tasks. Tasks run only while the Domos service runs. After a restart, missed repeats are combined into one run. A local service cannot keep working while its computer is asleep or shut down.

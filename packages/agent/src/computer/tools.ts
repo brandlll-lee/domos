@@ -1,5 +1,7 @@
 import type { Context } from "@earendil-works/chord/context";
 import type { ProductTool } from "../harness/types.ts";
+import { runAssistant } from "./assistant.ts";
+import { assistInput, assistTool } from "./assistant-action.ts";
 import type { Computers } from "./catalog.ts";
 import type { Computer } from "./index.ts";
 import type { ComputerService, ServiceState } from "./service-types.ts";
@@ -77,6 +79,11 @@ export class ComputerTools {
       for (const tool of await target.services.catalog(botId, service, context))
         tools.push({ ...tool, name: `${service}_${tool.name}` });
     }
+    if (
+      tools.length &&
+      (await this.computers.assistance.connect(botId, context))
+    )
+      tools.push(assistTool);
     return tools;
   }
 
@@ -87,6 +94,10 @@ export class ComputerTools {
     owner: string,
     signal: AbortSignal,
     context: Context,
+    approve?: (
+      action: { name: string; args: Record<string, unknown> },
+      signal: AbortSignal,
+    ) => Promise<boolean>,
   ) {
     return this.computers.transfer(
       botId,
@@ -96,6 +107,61 @@ export class ComputerTools {
           context,
         );
         this.targets.add(target);
+        if (name === assistTool.name) {
+          const input = assistInput.parse(args);
+          const connection = await this.computers.assistance.connect(
+            botId,
+            context,
+          );
+          if (!connection || !enabled[input.service] || !approve)
+            throw new Error("辅助决策未启用或审批通道不可用。");
+          const actor = {
+            botId,
+            color: await this.computers.color(botId, context),
+            owner,
+          };
+          const catalog = new Set(
+            (await target.services.catalog(botId, input.service, context)).map(
+              (tool) => tool.name,
+            ),
+          );
+          return target.services.run(
+            botId,
+            input.service,
+            owner,
+            signal,
+            (controlled) =>
+              runAssistant(
+                input,
+                connection,
+                async (tool, arguments_, aborted) => {
+                  if (!catalog.has(tool))
+                    throw new Error("辅助决策动作不可用。");
+                  const current = await this.computers.assistance.connect(
+                    botId,
+                    context,
+                  );
+                  if (
+                    current?.key !== connection.key ||
+                    current.provider !== connection.provider
+                  )
+                    throw new Error("辅助决策设置已改变。请重新观察后继续。");
+                  return target.services.call(
+                    botId,
+                    input.service,
+                    tool,
+                    arguments_,
+                    owner,
+                    aborted,
+                    context,
+                    actor,
+                  );
+                },
+                approve,
+                controlled,
+              ),
+          );
+        }
         for (const service of ["browser", "desktop"] as const) {
           if (!enabled[service]) continue;
           const tool = (

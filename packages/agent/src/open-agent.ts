@@ -64,7 +64,13 @@ export async function openAgent(
     const conversation = await harness.root(context, { agent });
     const bots = new Bots(harness, options.computers);
     await bots.initialize(conversation.id, context);
-    await options.computers?.initialize(harness, bots, context, options.legacy);
+    await options.computers?.initialize(
+      harness,
+      bots,
+      context,
+      options.legacy,
+      options.credentials,
+    );
     if (execution) engines = new Engines(harness, execution);
     harness.resume();
     return {

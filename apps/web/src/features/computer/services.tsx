@@ -1,5 +1,6 @@
 import { Button, Switch } from "@domos/ui/controls";
 import { SettingRow } from "@domos/ui/setting-row";
+import { ComputerDecision } from "./decision.tsx";
 import { serviceLabels, useComputerServices } from "./use-services.ts";
 
 export function ComputerServices({
@@ -31,6 +32,7 @@ export function ComputerServices({
           </SettingRow>
         ))}
       </div>
+      <ComputerDecision botId={botId} admin={admin} />
       {error && (
         <p role="alert" className="alert">
           {error}

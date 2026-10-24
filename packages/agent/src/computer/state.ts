@@ -29,6 +29,10 @@ export const ComputersDoc = defineDoc<{
       requestId: string;
       approvalMode?: "ask" | "auto";
       services?: { browser?: boolean; desktop?: boolean };
+      assistance?: {
+        enabled: boolean;
+        provider: import("./jev.ts").DecisionProvider;
+      };
     }
   >;
 }>({

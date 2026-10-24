@@ -12,6 +12,7 @@
     "./computer/driver": "./src/computer/driver.ts",
     "./computer/viewer-types": "./src/computer/viewer-types.ts",
     "./computer/activity": "./src/computer/activity.ts",
+    "./computer/jev": "./src/computer/jev.ts",
     "./config": "./src/runtime/config.ts",
     "./lease": "./src/runtime/lease.ts",
     "./bots": "./src/bots.ts",
