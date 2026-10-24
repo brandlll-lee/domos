@@ -24,7 +24,7 @@ export function computersExtension(target: Computers) {
           );
           if (!status)
             return "This Bot has no assigned computer. Chat normally. Ask the user to assign a computer before processing workspace files or running commands. Computer tools are disabled.";
-          return `Tools execute on ${status.name} (${status.id}). OS: ${status.os ?? "not connected"} ${status.arch ?? ""}. Working directory: ${env?.cwd ?? "unavailable"}. Enabled tools: ${agent.tools.map((tool) => tool.name).join(", ")}. State: ${status.state}. Authorized: ${status.authorized}. Permission boundary: ${status.boundary}. Network: ${status.network}. Use only the browser and desktop tools listed for this session. Bots on the same computer share OS permissions and files. Never fall back to another target or repeat a command with an unknown outcome.`;
+          return `Tools execute on ${status.name} (${status.id}). OS: ${status.os ?? "not connected"} ${status.arch ?? ""}. Working directory: ${env?.cwd ?? "unavailable"}. Enabled tools: ${agent.tools.map((tool) => tool.name).join(", ")}. State: ${status.state}. Authorized: ${status.authorized}. Permission boundary: ${status.boundary}. Network: ${status.network}. Use only the browser and desktop tools listed for this session. Prefer browser DOM/CDP tools for web pages. For desktop apps, observe the accessibility tree and use element targets first; use screenshot coordinates when no reliable element is available. Verify the resulting app state after an action; successful delivery alone does not prove success. Bots on the same computer share OS permissions and files. Never fall back to another target or repeat a command with an unknown outcome.`;
         },
       ),
     ],

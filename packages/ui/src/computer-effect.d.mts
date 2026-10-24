@@ -9,6 +9,7 @@ export type ComputerEffectState = {
     y: number;
     id: number;
     action: string;
+    motion?: { t: number; x: number; y: number }[];
     expiresAt: number;
   } | null;
   expiresAt: number;

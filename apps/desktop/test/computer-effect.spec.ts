@@ -3,6 +3,76 @@ import { once } from "node:events";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { expect, test } from "@playwright/test";
+import { mountComputerEffect } from "../../../packages/ui/src/computer-effect.mjs";
+
+test("heartbeats keep one click and cursor motion continues from its visible position", async ({
+  browser,
+}) => {
+  const page = await browser.newPage();
+  await page.setContent(
+    '<div id="effect" style="position:relative;width:1000px;height:700px"></div>',
+  );
+  await page.addScriptTag({
+    content: `window.mountComputerEffect = ${mountComputerEffect.toString()}`,
+  });
+  const result = await page.evaluate(async () => {
+    const host = document.querySelector("#effect") as HTMLElement;
+    const mount = (
+      window as unknown as { mountComputerEffect: typeof mountComputerEffect }
+    ).mountComputerEffect;
+    const effect = mount(host);
+    const cursor = host.shadowRoot?.querySelector(".cursor") as HTMLElement;
+    let clicks = 0;
+    cursor.addEventListener("animationstart", () => clicks++);
+    const frame = (id: number, x: number) => ({
+      color: "#68b6ff",
+      screen: { x: 0, y: 0, width: 1000, height: 700 },
+      window: { x: 20, y: 20, width: 950, height: 650 },
+      covered: [],
+      pointer: {
+        id,
+        x,
+        y: 200,
+        action: "click" as const,
+        expiresAt: Date.now() + 10000,
+        motion: [
+          { t: 0, x: 100, y: 200 },
+          { t: 0.2, x: 500, y: 160 },
+          { t: 0.4, x, y: 200 },
+        ],
+      },
+      expiresAt: Date.now() + 10000,
+    });
+    const wait = (ms: number) =>
+      new Promise((resolve) => setTimeout(resolve, ms));
+    effect.update(frame(1, 100));
+    await wait(450);
+    const before = clicks;
+    for (let i = 0; i < 4; i++) {
+      effect.update(frame(1, 100));
+      await wait(100);
+    }
+    const repeated = clicks - before;
+    effect.update(frame(2, 900));
+    await wait(100);
+    const middle = new DOMMatrix(getComputedStyle(cursor).transform);
+    effect.update(frame(3, 300));
+    const resumed = new DOMMatrix(getComputedStyle(cursor).transform);
+    effect.close();
+    return {
+      repeated,
+      x: middle.m41,
+      y: middle.m42,
+      jump: Math.abs(resumed.m41 - middle.m41),
+    };
+  });
+  expect(result.repeated).toBe(0);
+  expect(result.x).toBeGreaterThan(95);
+  expect(result.x).toBeLessThan(895);
+  expect(result.y).toBeLessThan(197);
+  expect(result.jump).toBeLessThan(20);
+  await page.close();
+});
 
 test("the production overlay receives frames over IPC and closes with its parent", async () => {
   const executable = createRequire(new URL("../package.json", import.meta.url))(
@@ -131,6 +201,31 @@ test("desktop effects follow displays, pass input through, hide for captures and
     expect(
       options.every((item) => !item.focusable && !item.focused && item.top),
     ).toBe(true);
+    await send({
+      ...state,
+      covered: [
+        {
+          ...geometry.physical,
+          width: 100,
+          height: geometry.physical.height / 2,
+        },
+      ],
+    });
+    await expect(rim).toHaveCSS("mask-image", /data:image\/svg/);
+    const image = await page.screenshot({ omitBackground: true });
+    const alpha = await application.evaluate(
+      ({ nativeImage }, image) => {
+        const captured = nativeImage.createFromBuffer(Buffer.from(image));
+        const { width, height } = captured.getSize();
+        const bitmap = captured.toBitmap();
+        return [Math.floor(height / 4), Math.floor((height * 3) / 4)].map(
+          (y) => bitmap[(y * width + 1) * 4 + 3],
+        );
+      },
+      [...image],
+    );
+    expect(alpha[0]).toBe(0);
+    expect(alpha[1]).toBeGreaterThan(100);
     await send({ ...state, color: "#80b780" });
     await expect
       .poll(() =>

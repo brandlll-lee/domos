@@ -122,6 +122,9 @@ for (const name of [
   "desktop-view.mjs",
   "computer-service.mjs",
   "desktop-activity.mjs",
+  "desktop-actions.mjs",
+  "desktop-motion.mjs",
+  "desktop-target.mjs",
   "desktop-overlay.mjs",
   "desktop-overlay-preload.cjs",
 ])

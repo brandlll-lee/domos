@@ -4,11 +4,14 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { openDesktopActions } from "./desktop-actions.mjs";
+import { openDesktopMotion } from "./desktop-motion.mjs";
+import { desktopTarget } from "./desktop-target.mjs";
 
 export function openDesktopActivity(driver, emit) {
   let actor;
   let owner;
   const actions = openDesktopActions();
+  const motion = openDesktopMotion();
   let child;
   let failed = false;
   let ready = false;
@@ -21,6 +24,7 @@ export function openDesktopActivity(driver, emit) {
   let expiresAt = 0;
   let sequence = 0;
   let located;
+  let selected;
   let generation = 0;
   let pending;
   let capturesInProgress = 0;
@@ -93,6 +97,8 @@ export function openDesktopActivity(driver, emit) {
   function clear() {
     actor = undefined;
     actions.clear();
+    motion.clear();
+    selected = undefined;
     generation++;
     clearTimeout(timer);
     timer = undefined;
@@ -113,13 +119,7 @@ export function openDesktopActivity(driver, emit) {
           !item.minimized,
       );
       if (current !== generation || closed || !actor) return;
-      let window =
-        actions.target &&
-        windows.find(
-          (item) =>
-            String(item.window_id) === String(actions.target.window_id) &&
-            item.pid === actions.target.pid,
-        );
+      let { window } = desktopTarget(windows, actions.target, selected);
       nativeScreen ??= await read("get_screen_size");
       screen ??= {
         x: 0,
@@ -129,8 +129,7 @@ export function openDesktopActivity(driver, emit) {
       };
       if (current !== generation || closed || !actor) return;
       const pointer = actions.pointer(window?.bounds, screen, (point) => {
-        if (process.platform !== "win32" || nativeScreen.width === screen.width)
-          return point;
+        if (process.platform !== "win32") return point;
         const display = displays.find(
           ({ dip }) =>
             point.x >= dip.x &&
@@ -153,41 +152,25 @@ export function openDesktopActivity(driver, emit) {
       });
       if (pointer?.desktop && located !== pointer.id) {
         located = pointer.id;
-        window = windows
-          .filter((item) => {
-            const b = item.bounds;
-            return (
-              b &&
-              pointer.x >= b.x &&
-              pointer.y >= b.y &&
-              pointer.x < b.x + b.width &&
-              pointer.y < b.y + b.height
-            );
-          })
-          .sort((a, b) => a.z_index - b.z_index)
-          .at(-1);
+        window = desktopTarget(
+          windows,
+          actions.target,
+          selected,
+          pointer,
+        ).window;
         actions.target = window && {
           pid: window.pid,
           window_id: window.window_id,
         };
       }
-      const covered = window
-        ? windows
-            .filter(
-              (item) =>
-                item.window_id !== window.window_id &&
-                item.z_index > window.z_index,
-            )
-            .map((item) => item.bounds)
-            .filter((b) => b && b.width > 0 && b.height > 0)
-            .slice(0, 256)
-        : [];
+      selected = window;
+      const { covered } = desktopTarget(windows, window, undefined);
       send({
         ...actor,
         screen,
         window: window?.bounds ?? null,
         covered,
-        pointer,
+        pointer: pointer ? motion.move(pointer) : null,
         expiresAt: Math.min(expiresAt, Date.now() + 2500),
       });
     } catch {

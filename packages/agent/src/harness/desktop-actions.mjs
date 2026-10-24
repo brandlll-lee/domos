@@ -7,16 +7,14 @@ export function openDesktopActions() {
   function observe(name, args, value) {
     const session = args.session ?? "";
     const key = (id) => `${session}:${id}`;
+    const chosen = args.target?.kind === "window" ? args.target : args;
+    if (chosen.pid !== undefined || chosen.window_id !== undefined)
+      target = { pid: chosen.pid, window_id: chosen.window_id };
     if (name === "run_steps") {
-      const steps = value
-        ? (value.steps ?? [])
-            .filter((step) => step.ok)
-            .map((step) => ({
-              ...args.steps[step.index],
-              target: step.target?.window,
-            }))
-        : args.steps.slice(0, 1);
-      for (const step of steps) {
+      if (!value) return;
+      const completed = (value.steps ?? []).filter((step) => step.ok).at(-1);
+      if (completed) {
+        const step = args.steps[completed.index];
         const tool =
           step.tool ??
           Object.keys(step).find((key) =>
@@ -37,7 +35,7 @@ export function openDesktopActions() {
         if (input)
           observe(
             tool,
-            { ...args, ...input, ...(step.target ?? {}) },
+            { ...args, ...input, ...(completed.target?.window ?? {}) },
             undefined,
           );
       }
@@ -45,13 +43,10 @@ export function openDesktopActions() {
         observe("get_window_state", args, value.observation.state);
       return;
     }
-    const chosen = args.target?.kind === "window" ? args.target : args;
-    if (chosen.pid !== undefined && chosen.window_id !== undefined)
-      target = { pid: chosen.pid, window_id: chosen.window_id };
     const snapshot = snapshots.get(key(args.element_token?.split(":")[0]));
     if (snapshot) target = snapshot.target;
     if (value) {
-      if (value.pid !== undefined && value.window_id !== undefined)
+      if (value.pid !== undefined || value.window_id !== undefined)
         target = { pid: value.pid, window_id: value.window_id };
       if (value.snapshot_id && target) {
         snapshots.set(key(value.snapshot_id), {

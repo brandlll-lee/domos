@@ -20,6 +20,17 @@ export const computerActivity = z
         y: position,
         id: z.number().int().nonnegative(),
         action: z.string().max(48),
+        motion: z
+          .array(
+            z.object({
+              t: z.number().finite().min(0).max(10),
+              x: position,
+              y: position,
+            }),
+          )
+          .min(2)
+          .max(256)
+          .optional(),
         expiresAt: z.number().finite(),
       })
       .nullable(),

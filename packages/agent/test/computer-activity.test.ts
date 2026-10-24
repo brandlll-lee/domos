@@ -4,10 +4,81 @@ import { computerActivity } from "../src/computer/activity.ts";
 
 const entry = "../src/harness/desktop-activity.mjs";
 const { openDesktopActivity } = await import(entry);
+const targetEntry = "../src/harness/desktop-target.mjs";
+const actionsEntry = "../src/harness/desktop-actions.mjs";
+const motionEntry = "../src/harness/desktop-motion.mjs";
+const { desktopTarget } = await import(targetEntry);
+const { openDesktopActions } = await import(actionsEntry);
+const { openDesktopMotion } = await import(motionEntry);
+
+test("window targets use exact identity, app fallback and held windows; occlusion stays inside the target", () => {
+  const bounds = { x: -800, y: 100, width: 800, height: 600 };
+  const window = { pid: 7, window_id: 90, bounds, z_index: 1 };
+  const dialog = {
+    ...window,
+    window_id: 91,
+    z_index: 2,
+    bounds: { ...bounds, width: 200 },
+  };
+  const other = {
+    ...window,
+    pid: 8,
+    window_id: 92,
+    z_index: 3,
+    bounds: { x: -50, y: 0, width: 500, height: 1000 },
+  };
+  const windows = [window, dialog, other];
+  expect(desktopTarget(windows, window).window).toBe(window);
+  expect(desktopTarget(windows, { pid: 7 }).window).toBe(dialog);
+  expect(desktopTarget(windows, { pid: 7, window_id: 99 }).window).toBe(dialog);
+  expect(desktopTarget(windows, undefined, window).window).toBe(window);
+  expect(desktopTarget([other], { pid: 7 }, window).window).toBeUndefined();
+  expect(desktopTarget(windows, window).covered).toEqual([
+    dialog.bounds,
+    { x: -50, y: 100, width: 50, height: 600 },
+  ]);
+  expect(
+    desktopTarget(windows, undefined, undefined, { x: -25, y: 200 }).window,
+  ).toBe(other);
+});
+
+test("batch completion reports its last successful step once and native trajectories resume in flight", () => {
+  const actions = openDesktopActions();
+  const target = { pid: 7, window_id: 90 };
+  const bounds = { x: 0, y: 0, width: 1000, height: 700 };
+  actions.observe("get_window_state", target, {
+    screenshot_width: 1000,
+    screenshot_height: 700,
+  });
+  const batch = {
+    ...target,
+    steps: [{ click: { x: 100, y: 200 } }, { click: { x: 900, y: 200 } }],
+  };
+  actions.observe("run_steps", batch);
+  expect(actions.pointer(bounds, bounds)).toBeNull();
+  actions.observe("run_steps", batch, {
+    steps: [
+      { index: 0, ok: true },
+      { index: 1, ok: false },
+    ],
+  });
+  const first = actions.pointer(bounds, bounds);
+  expect(first).toMatchObject({ id: 1, x: 100, y: 200 });
+  const motion = openDesktopMotion();
+  vi.spyOn(Date, "now").mockReturnValue(1000);
+  motion.move(first);
+  const next = motion.move({ ...first, id: 2, x: 900 });
+  expect(next.motion.length).toBeGreaterThan(2);
+  expect(next.motion.at(-1)).toMatchObject({ x: 900, y: 200 });
+  vi.spyOn(Date, "now").mockReturnValue(1100);
+  const resumed = motion.move({ ...first, id: 3, x: 300 });
+  expect(resumed.motion[0].x).toBeGreaterThan(100);
+  expect(resumed.motion[0].x).toBeLessThan(900);
+  motion.clear();
+});
 
 const spawn = vi.hoisted(() => vi.fn());
 vi.mock("node:child_process", () => ({ spawn }));
-vi.mock("node:fs", () => ({ readFileSync: () => "electron" }));
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -134,7 +205,7 @@ test("tracks exact windows, scaled captures, movement and Bot identity; capture 
   await vi.advanceTimersByTimeAsync(100);
   expect(updates.at(-1)).toMatchObject({
     window: bounds,
-    pointer: { x: -400, y: 200 },
+    pointer: { x: -450, y: 220 },
   });
   activity.observe(
     "run_steps",

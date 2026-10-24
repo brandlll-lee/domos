@@ -1,5 +1,4 @@
 import { openBrowserService } from "./browser-service.mjs";
-import { openDesktopActivity } from "./desktop-activity.mjs";
 import { openDesktopView } from "./desktop-view.mjs";
 
 export function openComputerService(directory, home, emit = () => {}) {
@@ -11,6 +10,7 @@ export function openComputerService(directory, home, emit = () => {}) {
   async function driver() {
     if (!desktop) {
       const { CuaDriver } = await import("@trycua/cua-driver");
+      const { openDesktopActivity } = await import("./desktop-activity.mjs");
       desktop = CuaDriver.create();
       activity = openDesktopActivity(desktop, emit);
     }
