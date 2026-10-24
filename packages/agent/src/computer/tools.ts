@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { Context } from "@earendil-works/chord/context";
-import type { ProductTool } from "../harness/types.ts";
+import type { ProductResult, ProductTool } from "../harness/types.ts";
 import { runAssistant } from "./assistant.ts";
 import {
   assistantDiscovery,
   assistInput,
   assistTool,
 } from "./assistant-action.ts";
+import { continuation } from "./assistant-task.ts";
 import type { Computers } from "./catalog.ts";
 import type { Computer } from "./index.ts";
 import type { ComputerService, ServiceState } from "./service-types.ts";
@@ -23,6 +24,7 @@ export class ComputerTools {
       computerId: string;
       revision: number;
       service: ComputerService;
+      window?: { pid: number; window_id: number };
     }
   >();
   constructor(computers: Computers) {
@@ -174,6 +176,10 @@ export class ComputerTools {
             signal,
             async (controlled) => {
               if (input.handoff) {
+                const failure = (text: string): ProductResult => ({
+                  content: [{ type: "text" as const, text }],
+                  isError: true,
+                });
                 const grant = this.handoffs.get(owner);
                 if (
                   !grant ||
@@ -181,18 +187,26 @@ export class ComputerTools {
                   grant.botId !== botId ||
                   grant.computerId !== id ||
                   grant.revision !== binding.revision ||
-                  grant.service !== input.service
+                  grant.service !== input.service ||
+                  grant.window?.pid !== input.window?.pid ||
+                  grant.window?.window_id !== input.window?.window_id
                 )
-                  throw new Error("这次交接已失效。请重新提交电脑子任务。");
-                this.handoffs.delete(owner);
-                const action = {
-                  name: input.handoff.name,
-                  args: input.handoff.args,
-                };
+                  return failure(
+                    "这次交接已失效。请重新提交电脑子任务，不要复用旧 ID。",
+                  );
+                let action: ReturnType<typeof continuation>;
+                try {
+                  action = continuation(input);
+                } catch (error) {
+                  return failure(
+                    error instanceof Error ? error.message : "交接参数无效。",
+                  );
+                }
                 if (!catalog.has(action.name))
-                  throw new Error("交接动作不可用。");
+                  return failure("交接动作不可用。");
                 if (!(await approve(action, controlled)))
-                  throw new Error("操作未获批准。");
+                  return failure("操作未获批准。");
+                this.handoffs.delete(owner);
                 const result = await call(action.name, action.args, controlled);
                 return {
                   ...result,
@@ -235,6 +249,7 @@ export class ComputerTools {
                   computerId: id,
                   revision: binding.revision,
                   service: input.service,
+                  window: input.window,
                 });
                 result.structuredContent = {
                   ...result.structuredContent,
@@ -249,6 +264,7 @@ export class ComputerTools {
                         [
                           "click",
                           "type_text",
+                          "set_value",
                           "press_key",
                           "scroll",
                           "run_steps",

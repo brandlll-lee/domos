@@ -157,6 +157,8 @@ export function openComputerService(directory, home, emit = () => {}) {
       const structured = result.structuredJson
         ? JSON.parse(result.structuredJson)
         : undefined;
+      if (structured && input.name === "get_window_state")
+        structured.platform = process.platform;
       let images = result.images;
       let captureError;
       const observed = structured?.observation?.state;

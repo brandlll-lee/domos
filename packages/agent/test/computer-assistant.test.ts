@@ -3,6 +3,7 @@ import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import { ComputerAssistance } from "../src/computer/assistance.ts";
 import { runAssistant } from "../src/computer/assistant.ts";
+import { assistInput } from "../src/computer/assistant-action.ts";
 import type { Computers } from "../src/computer/catalog.ts";
 import { ComputerServices } from "../src/computer/services.ts";
 import { ComputersDoc } from "../src/computer/state.ts";
@@ -19,7 +20,7 @@ import {
   signal,
 } from "./fixtures/computer-assistant.ts";
 
-test.each(["Edit", "AXTextField", "entry", "browser"])(
+test.each(["Edit", "AXTextField", "entry", "text", "browser"])(
   "%s compiles one complete action, approves and reobserves",
   async (mode) => {
     let turn = 0;
@@ -31,6 +32,8 @@ test.each(["Edit", "AXTextField", "entry", "browser"])(
         : "review",
     );
     const service = mode === "browser" ? "browser" : "desktop";
+    const native = observed(mode);
+    if (mode === "text") native.structuredContent.platform = "linux";
     const view =
       service === "browser"
         ? {
@@ -43,7 +46,7 @@ test.each(["Edit", "AXTextField", "entry", "browser"])(
               },
             ],
           }
-        : observed(mode);
+        : native;
     const call = vi.fn(async () => view);
     const approve = vi.fn(async (_action: unknown) => true);
     const result = await runAssistant(
@@ -69,7 +72,7 @@ test.each(["Edit", "AXTextField", "entry", "browser"])(
               pid: 1,
               window_id: 2,
               element_token: "s1:1",
-              text: "Rain",
+              value: "Rain",
               delivery_mode: "background",
             },
     });
@@ -95,7 +98,7 @@ test.each(["denied", "uncertain", "cancelled", "verified"])(
         : "review";
     });
     const call = vi.fn(async (name: string) => {
-      if (name === "type_text" && mode === "uncertain") throw new Error("lost");
+      if (name === "set_value" && mode === "uncertain") throw new Error("lost");
       if (name === "verify_state")
         return {
           content: [],
@@ -179,11 +182,14 @@ test("mode gates catalog and invocation; handoffs are explicit, single-use and o
   const handoff = {
     id: result.structuredContent?.handoffId,
     name: "click",
-    args: { pid: 1, window_id: 2, element_token: "s1:1" },
+    args: { element_token: "s1:1" },
   };
   await expect(
     invoke("computer_assist", { ...input(), handoff }, "other"),
-  ).rejects.toThrow("交接已失效");
+  ).resolves.toMatchObject({
+    isError: true,
+    content: [{ text: expect.stringContaining("交接已失效") }],
+  });
   expect(
     (await invoke("computer_assist", { ...input(), handoff })).content,
   ).toEqual(
@@ -194,9 +200,22 @@ test("mode gates catalog and invocation; handoffs are explicit, single-use and o
       }),
     ]),
   );
+  expect(services.call).toHaveBeenLastCalledWith(
+    1,
+    "desktop",
+    "click",
+    expect.objectContaining({ pid: 1, window_id: 2 }),
+    "owner",
+    expect.any(AbortSignal),
+    context,
+    expect.any(Object),
+  );
   await expect(
     invoke("computer_assist", { ...input(), handoff }),
-  ).rejects.toThrow("交接已失效");
+  ).resolves.toMatchObject({
+    isError: true,
+    content: [{ text: expect.stringContaining("交接已失效") }],
+  });
   const next = await invoke("computer_assist", input());
   tools.finish("owner");
   await expect(
@@ -204,13 +223,137 @@ test("mode gates catalog and invocation; handoffs are explicit, single-use and o
       ...input(),
       handoff: { ...handoff, id: next.structuredContent?.handoffId },
     }),
-  ).rejects.toThrow("交接已失效");
+  ).resolves.toMatchObject({
+    isError: true,
+    content: [{ text: expect.stringContaining("交接已失效") }],
+  });
   enabled = false;
   expect((await tools.catalog(1, context)).map((tool) => tool.name)).toContain(
     "desktop_click",
   );
   await invoke("desktop_click");
 });
+
+test.each(["stale", "background", "partial", "empty"])(
+  "%s refreshes evidence without replaying uncertain work",
+  async (mode) => {
+    let choice = 0;
+    const fetcher = mockChoice((criteria) =>
+      ++choice <= (mode === "partial" ? 1 : 2)
+        ? (Object.keys(criteria).find((id) =>
+            criteria[id]?.startsWith("Click"),
+          ) ?? "abstain")
+        : "review",
+    );
+    let reads = 0;
+    let actions = 0;
+    const call = vi.fn(async (name: string) => {
+      if (name !== "get_window_state") {
+        if (++actions === 1 && ["stale", "background"].includes(mode))
+          return {
+            content: [],
+            isError: mode === "stale",
+            structuredContent:
+              mode === "stale"
+                ? { code: "stale_element_token" }
+                : {
+                    status: "refused",
+                    refusal: { code: "background_unavailable" },
+                  },
+          };
+        return { content: [] };
+      }
+      const view = observed("Button");
+      const state = view.structuredContent;
+      state.elements =
+        mode === "empty"
+          ? []
+          : (state.elements as Record<string, unknown>[]).map((item) => ({
+              ...item,
+              element_token: `s${++reads}:1`,
+            }));
+      if (mode === "partial" && reads === 1) state.truncated = true;
+      return view;
+    });
+    const approve = vi.fn(async () => true);
+    const result = await runAssistant(
+      assistInput.parse({ ...input(), allow_foreground: true }),
+      connection,
+      call,
+      approve,
+      signal(),
+    );
+    expect(result.structuredContent?.status).toBe(
+      mode === "empty" ? "handoff" : "review",
+    );
+    if (mode === "empty") expect(fetcher).not.toHaveBeenCalled();
+    else {
+      expect(approve.mock.calls).toHaveLength(mode === "partial" ? 1 : 2);
+      if (mode === "partial")
+        expect(call.mock.calls[1]?.[0]).toBe("get_window_state");
+      if (mode === "background")
+        expect(JSON.stringify(result.structuredContent?.decisions)).toContain(
+          ":foreground",
+        );
+      if (mode === "stale")
+        expect(call).toHaveBeenCalledWith(
+          "click",
+          expect.objectContaining({ element_token: "s2:1" }),
+          expect.any(AbortSignal),
+        );
+    }
+  },
+);
+
+test.each([3, 12])(
+  "%i declared steps count only delivered actions and verify without another decision",
+  async (times) => {
+    const fetcher = mockChoice(
+      (criteria) =>
+        Object.keys(criteria).find((id) => criteria[id]?.startsWith("Click")) ??
+        "abstain",
+      0.6,
+    );
+    const call = vi.fn(async (name: string) =>
+      name === "verify_state"
+        ? {
+            content: [],
+            structuredContent: { status: "satisfied", stable: true },
+          }
+        : observed("Button"),
+    );
+    const task = assistInput.parse({
+      ...input(),
+      steps: [{ role: "Button", label: "Search", action: "click", times }],
+      evidence: {
+        role: "Text",
+        label: "Counter",
+        value: String(times),
+        timeout_ms: 3000,
+      },
+    });
+    const result = await runAssistant(
+      task,
+      connection,
+      call,
+      async () => true,
+      signal(),
+    );
+    expect(result.structuredContent).toMatchObject({
+      status: "completed",
+      progress: [{ performed: times }],
+    });
+    expect(fetcher).toHaveBeenCalledTimes(times);
+    expect(call.mock.calls.filter(([name]) => name === "click")).toHaveLength(
+      times,
+    );
+    expect(call).toHaveBeenCalledWith(
+      "verify_state",
+      expect.objectContaining({ timeout_ms: 3000 }),
+      expect.any(AbortSignal),
+    );
+  },
+);
 
 test("computer ownership spans decision waits", async () => {
   const services = new ComputerServices(async () => {

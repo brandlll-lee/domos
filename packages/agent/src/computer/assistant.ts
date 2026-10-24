@@ -6,6 +6,13 @@ import {
   controls,
   observationText,
 } from "./assistant-candidates.ts";
+import { observe, verify, visualFallback } from "./assistant-observation.ts";
+import {
+  actionOutcome,
+  compose,
+  deliveryCandidates,
+  progress,
+} from "./assistant-task.ts";
 import { visualCandidates } from "./assistant-visual.ts";
 import { askJev, type DecisionProvider } from "./jev.ts";
 
@@ -24,6 +31,15 @@ export async function runAssistant(
 ) {
   const desktop = input.service === "desktop";
   const history: (Action & { status: string; description: string })[] = [];
+  const counts = input.steps.map(() => 0);
+  const foreground = new Set<string>();
+  const decisions: {
+    selected_id: string;
+    confidence: number;
+    probabilities: Record<string, number>;
+    candidate_count: number;
+    outcome?: string;
+  }[] = [];
   const usage = {
     inputTokens: 0,
     outputTokens: 0,
@@ -62,6 +78,8 @@ export async function runAssistant(
       status,
       reason,
       actions: history,
+      progress: progress(input, counts),
+      decisions,
       provider: connection.provider,
       model,
       usage,
@@ -82,31 +100,27 @@ export async function runAssistant(
     for (let step = 0; step <= 12; step++) {
       bounded.throwIfAborted();
       last = await timed("observation", () =>
-        call(
-          desktop ? "get_window_state" : "agent_browser_snapshot",
-          desktop
-            ? {
-                ...input.window,
-                tree_format: "both",
-                since: null,
-                include_screenshot: true,
-                max_image_dimension: 1200,
-              }
-            : { interactive: false, compact: true },
-          bounded,
-        ),
+        observe(input, call, bounded, counts),
       );
-      const text = observationText(last);
-      if (step === 12)
-        return finish("handoff", "已达到本次动作上限，请核对当前画面。");
-      const built = candidates(input, last);
+      const text = desktop ? undefined : observationText(last);
+      if (last.isError)
+        return finish("handoff", "界面读取失败，请检查返回的驱动错误。");
+      const built = candidates(input, last, counts);
       let table = built.table;
       dropped += built.dropped;
       const captureId = last.structuredContent?.capture_id;
       if (
         desktop &&
         visualAvailable &&
-        Object.keys(table).length === 3 &&
+        (input.visual_targets.length > 0 ||
+          input.steps.some((step) => step.action === "click")) &&
+        visualFallback(
+          input,
+          last,
+          Object.values(table)
+            .filter((item) => item.action)
+            .map((item) => item.label.toLowerCase()),
+        ) &&
         typeof captureId === "string" &&
         !last.structuredContent?.truncated &&
         !last.structuredContent?.truncation_reason
@@ -119,10 +133,46 @@ export async function runAssistant(
           ),
         );
         if (!regions.isError)
-          table = controls(
-            visualCandidates(input, captureId, regions.structuredContent),
-          );
+          table = controls({
+            ...table,
+            ...visualCandidates(
+              input,
+              captureId,
+              regions.structuredContent,
+              counts,
+            ),
+          });
       }
+      const capped = compose(input, table, counts);
+      dropped += capped.dropped;
+      table = deliveryCandidates(controls(capped.table), foreground);
+      const executable = Object.values(table).filter((item) => item.action);
+      const stepsDone =
+        input.steps.length > 0 &&
+        input.steps.every((step, i) => (counts[i] ?? 0) >= step.times);
+      const verified = async () => {
+        const proof = await timed("verification", () =>
+          verify(input, call, bounded),
+        );
+        if (!proof) return false;
+        last = proof;
+        return true;
+      };
+      if (stepsDone) {
+        if (await verified())
+          return finish("completed", "驱动已核对指定控件的完成条件。");
+        return finish(
+          "review",
+          "指定步骤已送达；请用当前观察独立核对任务结果。",
+        );
+      }
+      if (step === 12)
+        return finish("handoff", "已达到本次动作上限，请核对当前画面。");
+      if (!executable.length && !stepsDone)
+        return finish(
+          "handoff",
+          "当前观察没有任务可用的动作。请补充目标、输入或读取范围。",
+        );
       const result = await timed("decision", () =>
         askJev(
           connection.provider,
@@ -130,10 +180,42 @@ export async function runAssistant(
           {
             goal: input.goal,
             completion: input.completion,
-            interface: text,
-            history: history.slice(-6).map((action) => ({
-              description: action.description,
-              status: action.status,
+            ...(desktop
+              ? {
+                  schema: "cua.jev_choice_request_v2",
+                  snapshot_id: last?.structuredContent?.snapshot_id ?? null,
+                  regions: executable.flatMap((item) =>
+                    item.region ? [item.region] : [],
+                  ),
+                  elements: executable
+                    .filter(
+                      (item) =>
+                        !item.region &&
+                        item.role !== "key" &&
+                        item.role !== "tab",
+                    )
+                    .map((item) => ({
+                      role_class: item.role,
+                      label: item.label,
+                      state: item.state ?? "enabled",
+                    })),
+                  candidates: Object.entries(table).map(([id, item]) => ({
+                    id,
+                    description: item.description,
+                    ...(item.action
+                      ? { source: item.region ? "visual" : "ax" }
+                      : {}),
+                  })),
+                  progress: progress(input, counts).map((item) => ({
+                    step: `${item.action} ${item.label}`.slice(0, 120),
+                    done: item.performed,
+                    required: item.required,
+                  })),
+                }
+              : { interface: text }),
+            history: decisions.slice(-6).map((item) => ({
+              selected_id: item.selected_id,
+              outcome: item.outcome ?? "observed",
             })),
             capture_id: captureId,
           },
@@ -162,52 +244,20 @@ export async function runAssistant(
       if (usage.inputTokens > 128000)
         return finish("handoff", "已达到本次决策用量上限。");
       const chosen = result.answers.next;
-      if (
-        !chosen ||
-        chosen.confidence < 0.85 ||
-        !Object.hasOwn(table, chosen.choice)
-      )
-        return finish("handoff", "辅助决策不确定或候选无效，请主模型处理。");
+      if (chosen)
+        decisions.push({
+          selected_id: chosen.choice,
+          confidence: chosen.confidence,
+          probabilities: chosen.probabilities,
+          candidate_count: Object.keys(table).length,
+        });
+      if (!chosen || !Object.hasOwn(table, chosen.choice))
+        return finish("handoff", "辅助决策候选无效，请主模型处理。");
       if (chosen.choice === "abstain")
         return finish("handoff", "辅助决策已交还判断。");
       if (chosen.choice === "review") {
-        if (desktop && input.evidence) {
-          const proof = input.evidence;
-          last = await timed("verification", () =>
-            call(
-              "verify_state",
-              {
-                ...input.window,
-                expect: [
-                  {
-                    element: {
-                      selector: {
-                        role: proof.role,
-                        label_contains: proof.label,
-                      },
-                      exists: true,
-                      ...(proof.value === undefined
-                        ? {}
-                        : { value_equals: proof.value }),
-                      ...(proof.selected === undefined
-                        ? {}
-                        : { selected: proof.selected }),
-                    },
-                  },
-                ],
-                timeout_ms: 2000,
-                stable_samples: 2,
-              },
-              bounded,
-            ),
-          );
-          if (
-            !last.isError &&
-            last.structuredContent?.status === "satisfied" &&
-            last.structuredContent?.stable === true
-          )
-            return finish("completed", "驱动已核对指定控件的完成条件。");
-        }
+        if (await verified())
+          return finish("completed", "驱动已核对指定控件的完成条件。");
         return finish("review", "已返回当前观察；完成条件仍需主模型独立核对。");
       }
       if (chosen.choice === "reobserve") {
@@ -219,8 +269,11 @@ export async function runAssistant(
       reobservations = 0;
       const next = table[chosen.choice]?.action;
       if (!next) return finish("handoff", "候选动作无效。");
+      Object.freeze(next.args);
+      Object.freeze(next);
       const signature = table[chosen.choice]?.description ?? chosen.choice;
       if (
+        table[chosen.choice]?.step === undefined &&
         signatures.slice(-2).filter((item) => item === signature).length === 2
       )
         return finish("handoff", "检测到重复动作，请重新判断。");
@@ -235,9 +288,25 @@ export async function runAssistant(
         call(next.name, next.args, bounded),
       );
       pending = false;
-      entry.status = performed.isError ? "failed" : "delivered";
-      if (performed.isError) {
+      const outcome = actionOutcome(performed);
+      entry.status = outcome;
+      const decision = decisions.at(-1);
+      if (decision) decision.outcome = outcome;
+      if (outcome === "delivered" && table[chosen.choice]?.step !== undefined) {
+        const index = table[chosen.choice]?.step as number;
+        counts[index] = (counts[index] ?? 0) + 1;
+      }
+      if (outcome !== "delivered") {
         last = performed;
+        if (outcome === "stale") continue;
+        if (
+          outcome === "background_refused" &&
+          next.args.delivery_mode !== "foreground" &&
+          input.allow_foreground
+        ) {
+          foreground.add(chosen.choice);
+          continue;
+        }
         return finish("handoff", "操作未完成，请重新观察，不要重放整个任务。");
       }
     }

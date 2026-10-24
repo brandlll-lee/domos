@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { AssistInput } from "./assistant-action.ts";
 import type { Candidate } from "./assistant-candidates.ts";
+import { compose, roleClass } from "./assistant-task.ts";
 
 const integer = z.number().int().nonnegative();
 const positive = z.number().int().positive();
@@ -61,6 +63,7 @@ export function visualCandidates(
   input: AssistInput,
   captureId: string,
   payload: unknown,
+  counts: number[] = [],
 ): Record<string, Candidate> {
   const { capture, regions } = visual.parse(payload);
   if (
@@ -84,31 +87,55 @@ export function visualCandidates(
     const name = region.text || region.label || "";
     labels.set(name, (labels.get(name) ?? 0) + 1);
   }
-  return Object.fromEntries(
-    regions
-      .filter(
-        (region) =>
-          region.interactive &&
-          region.confidence >= 0.85 &&
-          labels.get(region.text || region.label || "") === 1,
-      )
-      .slice(0, 24)
-      .map((region) => [
-        `visual_${region.id}`,
-        {
-          description: `Click ${region.text || region.label}`,
-          action: {
-            name: "click",
-            args: {
-              ...input.window,
-              delivery_mode: input.delivery,
-              capture_id: captureId,
-              // Driver maps this screenshot point to the target once, including mixed-DPI displays.
-              x: Math.floor(region.bounds.x + region.bounds.width / 2),
-              y: Math.floor(region.bounds.y + region.bounds.height / 2),
+  const targets = new Set(
+    [
+      ...input.visual_targets,
+      ...input.steps
+        .filter((step) => step.action === "click")
+        .map((step) => step.label),
+    ].map((label) => label.toLowerCase()),
+  );
+  return compose(
+    input,
+    Object.fromEntries(
+      regions
+        .filter(
+          (region) =>
+            region.interactive &&
+            region.confidence >= 0.8 &&
+            targets.has((region.text || region.label || "").toLowerCase()) &&
+            labels.get(region.text || region.label || "") === 1,
+        )
+        .map((region) => [
+          `visual_${createHash("sha256")
+            .update(region.text || region.label || "")
+            .digest("hex")
+            .slice(0, 16)}`,
+          {
+            description: `Click ${region.text || region.label}`,
+            region,
+            label: region.text || region.label || "",
+            role: roleClass(
+              input.steps.find(
+                (step) =>
+                  step.label.toLowerCase() ===
+                  (region.text || region.label || "").toLowerCase(),
+              )?.role ?? "button",
+            ),
+            action: {
+              name: "click",
+              args: {
+                ...input.window,
+                delivery_mode: input.delivery,
+                capture_id: captureId,
+                // Driver maps this screenshot point to the target once, including mixed-DPI displays.
+                x: Math.floor(region.bounds.x + region.bounds.width / 2),
+                y: Math.floor(region.bounds.y + region.bounds.height / 2),
+              },
             },
           },
-        },
-      ]),
-  );
+        ]),
+    ),
+    counts,
+  ).table;
 }

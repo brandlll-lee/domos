@@ -5,7 +5,10 @@ import { createRequire } from "node:module";
 import { release, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
+import { runAssistant } from "../../../packages/agent/src/computer/assistant.ts";
+import { assistInput } from "../../../packages/agent/src/computer/assistant-action.ts";
 import { WorkProcess } from "../../../packages/agent/src/harness/process.ts";
+import type { ProductResult } from "../../../packages/agent/src/harness/types.ts";
 import { mountComputerEffectWithArt } from "../../../packages/ui/src/computer-effect.mjs";
 import { effectArt } from "../../../packages/ui/src/computer-effect-art.mjs";
 
@@ -77,6 +80,63 @@ test("foreground input keeps a restored window active and publishes its real out
     expect(target).toBeTruthy();
     if (!target) throw new Error("Target window required");
     const identity = { pid, window_id: target.window_id };
+    const fetcher = globalThis.fetch;
+    try {
+      globalThis.fetch = async (_url, init) => {
+        const request = JSON.parse(String(init?.body));
+        const criteria = request.questions.next.criteria as Record<
+          string,
+          string
+        >;
+        const choice =
+          Object.keys(criteria).find((id) =>
+            criteria[id]?.startsWith("Enter supplied"),
+          ) ??
+          Object.keys(criteria).find((id) =>
+            criteria[id]?.startsWith("Click button Play"),
+          ) ??
+          "review";
+        return Response.json({
+          model: "fixture",
+          answers: {
+            next: {
+              type: "choice",
+              choice,
+              confidence: 1,
+              probabilities: { [choice]: 1 },
+            },
+          },
+          usage: { input_tokens: 1, output_tokens: 1 },
+        });
+      };
+      const result = await runAssistant(
+        assistInput.parse({
+          service: "desktop",
+          window: identity,
+          goal: "Enter the song and play it",
+          completion: "The output contains the song",
+          inputs: [{ purpose: "song", text: "Jev native" }],
+          steps: [
+            { role: "Edit", label: "Song", action: "set_value", input: "song" },
+            { role: "Button", label: "Play", action: "click" },
+          ],
+        }),
+        { provider: "typesafe", key: "fixture" },
+        async (name, args) => (await call(name, args)) as ProductResult,
+        async () => true,
+        AbortSignal.timeout(15000),
+      );
+      expect(
+        result.structuredContent?.status,
+        JSON.stringify(result.content),
+      ).toBe("review");
+      expect(result.structuredContent?.progress).toEqual(
+        expect.arrayContaining([expect.objectContaining({ performed: 1 })]),
+      );
+      await expect(page.locator("output")).toHaveText("Jev native");
+    } finally {
+      globalThis.fetch = fetcher;
+    }
     const observed = await call("get_window_state", {
       ...identity,
       max_elements: 250,

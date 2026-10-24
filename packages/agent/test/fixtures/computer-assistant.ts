@@ -11,7 +11,9 @@ export const input = (service = "desktop") =>
     window: { pid: 1, window_id: 2 },
     inputs: [{ purpose: "search", text: "Rain" }],
   });
-export const observed = (role = "Edit"): ProductResult => ({
+export const observed = (
+  role = "Edit",
+): ProductResult & { structuredContent: Record<string, unknown> } => ({
   content: [{ type: "text", text: "Search" }],
   structuredContent: {
     pid: 1,
@@ -31,6 +33,7 @@ export const observed = (role = "Edit"): ProductResult => ({
 export const connection = { provider: "typesafe" as const, key: "test-key" };
 export function mockChoice(
   select: (criteria: Record<string, string>) => string,
+  confidence = 0.99,
 ) {
   const fetcher = vi.fn(async (_url: string, init: RequestInit) => {
     const body = JSON.parse(String(init.body));
@@ -45,7 +48,7 @@ export function mockChoice(
             {
               type: "choice",
               choice,
-              confidence: 0.99,
+              confidence,
               probabilities: Object.fromEntries(
                 Object.keys(criteria).map((key) => [
                   key,
