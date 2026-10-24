@@ -46,23 +46,23 @@ test.each(["completed", "running", "sending"] as const)(
           else if (request.method === "turn/start") {
             if (outcome !== "sending")
               worker.response(request, { turn: { id: "native-turn" } });
-          } else if (request.method === "thread/read")
+          } else if (request.method === "thread/turns/list")
             worker.response(request, {
-              thread: {
-                turns: [
-                  {
-                    id: "native-turn",
-                    status: outcome,
-                    items: [
-                      {
-                        id: "answer",
-                        type: "agentMessage",
-                        text: "Recovered result",
-                      },
-                    ],
+              data: [{ id: "native-turn", status: outcome }],
+              nextCursor: null,
+            });
+          else if (request.method === "thread/items/list")
+            worker.response(request, {
+              data: [
+                {
+                  item: {
+                    id: "answer",
+                    type: "agentMessage",
+                    text: "Recovered result",
                   },
-                ],
-              },
+                },
+              ],
+              nextCursor: null,
             });
           else if (request.id !== undefined) worker.response(request, {});
         };
@@ -179,24 +179,55 @@ test("switching from embedded Pi imports recent conversation into the first nati
   faux.setResponses([fauxAssistantMessage("Remember the blue folder")]);
   const models = createModels();
   models.setProvider(faux.provider);
-  const worker = new ProtocolProcess();
+  const workers: ProtocolProcess[] = [];
   let prompt = "";
-  worker.receive = (request) => {
-    if (request.method === "thread/start")
-      worker.response(request, { thread: { id: "native" } });
-    else if (request.method === "turn/start") {
-      prompt = JSON.stringify(request.params?.input);
-      worker.response(request, { turn: { id: "turn" } });
-      worker.frame({
-        method: "turn/completed",
-        params: { turn: { status: "completed" } },
-      });
-    } else if (request.id !== undefined) worker.response(request, {});
-  };
+  let computerId = "shared";
   const execution = new EngineExecution({
     preflight: async () => {},
-    computerId: async () => "shared",
-    process: async () => worker,
+    computerId: async () => computerId,
+    process: async () => {
+      const worker = new ProtocolProcess();
+      workers.push(worker);
+      worker.receive = (request) => {
+        if (request.type) {
+          worker.frame({
+            type: "response",
+            id: request.id,
+            success: true,
+            data:
+              request.type === "get_state"
+                ? { sessionFile: "/pi/session" }
+                : {},
+          });
+          if (request.type === "prompt") {
+            worker.frame({
+              type: "message_end",
+              message: {
+                role: "assistant",
+                stopReason: "stop",
+                content: [
+                  { type: "text", text: "Pi completed the blue folder task" },
+                ],
+              },
+            });
+            worker.frame({ type: "agent_settled" });
+          }
+        } else if (
+          request.method === "thread/start" ||
+          request.method === "thread/resume"
+        )
+          worker.response(request, { thread: { id: "native" } });
+        else if (request.method === "turn/start") {
+          prompt = JSON.stringify(request.params?.input);
+          worker.response(request, { turn: { id: "turn" } });
+          worker.frame({
+            method: "turn/completed",
+            params: { turn: { status: "completed" } },
+          });
+        } else if (request.id !== undefined) worker.response(request, {});
+      };
+      return worker;
+    },
     tools: { catalog: async () => [], finish: () => {} },
   } as unknown as Computers);
   const registry = createRegistry();
@@ -211,7 +242,7 @@ test("switching from embedded Pi imports recent conversation into the first nati
   );
   onTestFinished(async () => {
     await runtime.harness.close(context);
-    await worker.close();
+    await Promise.all(workers.map((worker) => worker.close()));
     await rm(directory, { recursive: true, force: true });
   });
   await (
@@ -243,6 +274,51 @@ test("switching from embedded Pi imports recent conversation into the first nati
   ).wait(context);
   expect(prompt).toContain("Remember the blue folder");
   expect(prompt).toContain("Current request");
+  const change = async (
+    provider: "pi" | "codex",
+    model: string | null = null,
+  ) => {
+    const profile = await engines.profile(runtime.conversation.id, context);
+    await engines.configure(
+      runtime.conversation.id,
+      {
+        config: { provider, model, accountSource: "native" },
+        revision: profile.revision,
+        requestId: crypto.randomUUID(),
+      },
+      context,
+    );
+    await (
+      await engines.submit(
+        runtime.conversation.id,
+        { text: "Continue", requestId: crypto.randomUUID() },
+        context,
+      )
+    ).wait(context);
+  };
+  await change("codex");
+  await change("codex", "second-model");
+  expect(
+    workers
+      .at(-1)
+      ?.requests.find((request) => request.method === "thread/resume")?.params,
+  ).toMatchObject({ threadId: "native", excludeTurns: true });
+  await change("pi");
+  await change("codex", "second-model");
+  expect(
+    workers
+      .at(-1)
+      ?.requests.some((request) => request.method === "thread/resume"),
+  ).toBe(true);
+  expect(prompt).toContain("Pi completed the blue folder task");
+  expect(prompt).not.toContain("Remember the blue folder");
+  computerId = "remote";
+  await change("codex", "second-model");
+  expect(
+    workers
+      .at(-1)
+      ?.requests.some((request) => request.method === "thread/start"),
+  ).toBe(true);
   const state = await runtime.conversation.viewState(context);
   expect(chatView(state.value).messages.map(messageText)).toContain(
     "Remember the blue folder",

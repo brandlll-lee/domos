@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import { stripVTControlCharacters } from "node:util";
+import { historyProjection } from "./native-history.mjs";
 
 const outputLimit = 8000;
 
@@ -70,7 +71,9 @@ export async function openHttpService(emit, limits) {
           !(
             /^\/(?:provider(?:\/|$)|auth\/)/.test(frame.path) ||
             (frame.method === "GET" &&
-              /^\/session\/[A-Za-z0-9_-]+\/message$/.test(frame.path))
+              /^\/session\/[A-Za-z0-9_-]+\/message(?:\?limit=(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-6]))?$/.test(
+                frame.path,
+              ))
           ) ||
           frame.path.includes("..") ||
           !["GET", "POST", "PUT", "DELETE"].includes(frame.method)
@@ -96,7 +99,24 @@ export async function openHttpService(emit, limits) {
         message = `OpenCode 本地接口请求失败（HTTP ${response.status}）。`;
         if (!response.ok) throw new Error("Request rejected");
         message = "OpenCode 本地接口返回了无效响应。";
-        emit({ type: "http", id: frame.id, result: await response.json() });
+        const chunks = [];
+        let bytes = 0;
+        for await (const chunk of response.body) {
+          bytes += chunk.length;
+          if (bytes > 16 * 1024 * 1024) {
+            message = "OpenCode 历史接口单次响应过大。原生会话已保留。";
+            throw new Error("Response too large");
+          }
+          chunks.push(chunk);
+        }
+        const result = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        emit({
+          type: "http",
+          id: frame.id,
+          result: frame.path.startsWith("/session/")
+            ? historyProjection(result)
+            : result,
+        });
       } catch (error) {
         emit({
           type: "http",

@@ -1,5 +1,9 @@
 import type { JsonRepresentation } from "@earendil-works/chord";
-import { defineDoc, type TaskId } from "@earendil-works/pi-durable";
+import {
+  defineDoc,
+  type EntryId,
+  type TaskId,
+} from "@earendil-works/pi-durable";
 import type { ChatMessage } from "../messages.ts";
 import type {
   EngineApproval,
@@ -30,6 +34,8 @@ export type EngineState = {
   revision: number;
   requestId: string;
   sessionId: string | null;
+  sessions?: Record<string, { id: string; through: EntryId | null }>;
+  sessionKey?: string;
   computerId: string | null;
   taskId: TaskId | null;
   tasks: TaskId[];

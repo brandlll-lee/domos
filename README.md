@@ -136,7 +136,7 @@ An engine runs your Bot's tasks. Its own tools read files, run commands, and man
 
 Pi comes with Domos. For other engines, use **Check connection** first. If needed, choose **Install on work computer**. Domos downloads an engine only after this action. Direct installations need Node.js 24+ and npm on the work computer. The supplied work image includes them.
 
-Choose an engine in the Bot's settings. Switch while the Bot is idle. Chats stay in Domos; the new engine starts a new native session with recent conversation context. Native sessions cannot be converted between engines.
+Choose an engine in the Bot's settings. Switch while the Bot is idle. Chats stay in Domos. Each work computer, engine, and account context has its own native session. Model and mode changes keep compatible sessions. Switching back adds recent messages after that session's saved position. Handoffs have a size limit and use attachment references. Native sessions cannot be converted between engines.
 
 Choose the account source in the Bot's connection settings. The default, **Domos managed**, keeps a separate account directory. **Work computer configuration** lets Codex, Claude Code, OpenCode, and Pi read the running user's native accounts and model settings. Manage these accounts in the original CLI. Pi uses the bundled runtime and keeps Bot sessions separate. Other engines use an installed program first. You can download a missing program.
 

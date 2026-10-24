@@ -125,6 +125,7 @@ test.each(["managed", "native"] as const)(
     const process = new ProtocolProcess();
     onTestFinished(() => process.close());
     const events: EngineEvent[] = [];
+    process.checkpoint = async () => "100";
     let finished = false;
     let compacted = false;
     let proof = true;
@@ -134,6 +135,7 @@ test.each(["managed", "native"] as const)(
             {
               info: {
                 id: "message",
+                time: { created: 101 },
                 role: "assistant",
                 modelID: "model",
                 providerID: "provider",
@@ -145,11 +147,16 @@ test.each(["managed", "native"] as const)(
             ...(compacted && proof
               ? [
                   {
-                    info: { id: "compact-user", role: "user" },
+                    info: {
+                      id: "compact-user",
+                      role: "user",
+                      time: { created: 102 },
+                    },
                     parts: [{ type: "compaction" }],
                   },
                   {
                     info: {
+                      time: { created: 103 },
                       id: "compact-summary",
                       role: "assistant",
                       parentID: "compact-user",
@@ -631,19 +638,17 @@ test("Codex compaction waits for its native boundary and recovers only the match
       process.response(request, { thread: { id: "thread" } });
     else if (request.method === "thread/compact/start")
       process.response(request, {});
-    else if (request.method === "thread/read")
+    else if (request.method === "thread/turns/list")
       process.response(request, {
-        thread: {
-          turns: [
-            {
-              id: "compact-turn",
-              status: "completed",
-              items: boundary
-                ? [{ type: "contextCompaction", id: "boundary" }]
-                : [],
-            },
-          ],
-        },
+        data: [{ id: "compact-turn", status: "completed" }],
+        nextCursor: null,
+      });
+    else if (request.method === "thread/items/list")
+      process.response(request, {
+        data: boundary
+          ? [{ item: { type: "contextCompaction", id: "boundary" } }]
+          : [],
+        nextCursor: null,
       });
     else if (request.id !== undefined) process.response(request, {});
   };

@@ -38,6 +38,7 @@ test.each(
         const worker = new ProtocolProcess();
         workers.push(worker);
         let prompt: Request;
+        worker.checkpoint = async () => "100";
         let finished = false;
         const usage = {
           input: 100,
@@ -152,7 +153,12 @@ test.each(
           (finished
             ? [
                 {
-                  info: { id: "answer", role: "assistant", tokens: usage },
+                  info: {
+                    id: "answer",
+                    role: "assistant",
+                    tokens: usage,
+                    time: { created: 101 },
+                  },
                   parts: [
                     {
                       type: "text",

@@ -4,10 +4,14 @@ import { delimiter, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import spawn from "cross-spawn";
-import { accountEnvironment } from "./account-environment.mjs";
+import {
+  accountEnvironment,
+  accountFingerprint,
+} from "./account-environment.mjs";
 import { openComputerService } from "./computer-service.mjs";
 import { openGateway } from "./gateway.mjs";
 import { openHttpService } from "./http-service.mjs";
+import { nativeCheckpoint, nativeHistory } from "./native-history.mjs";
 import { seedPiAccount } from "./pi-account.mjs";
 
 delete process.env.ELECTRON_RUN_AS_NODE;
@@ -251,17 +255,32 @@ lines.on("line", (line) => {
       else if (frame.type === "http") {
         if (!http) throw new Error("Service unavailable");
         void http.request(frame);
-      } else if (frame.type === "history") {
-        void import("@anthropic-ai/claude-agent-sdk")
-          .then(({ getSessionMessages }) =>
-            getSessionMessages(frame.sessionId, { dir: process.cwd() }),
-          )
+      } else if (["history", "checkpoint", "account"].includes(frame.type)) {
+        void (
+          frame.type === "history"
+            ? nativeHistory(frame, home)
+            : frame.type === "account"
+              ? accountFingerprint(
+                  frame.provider,
+                  frame.accountSource === "native"
+                    ? accountEnv
+                    : {
+                        HOME: home,
+                        PI_CODING_AGENT_DIR: join(home, "pi"),
+                        CODEX_HOME: join(home, "codex"),
+                        CLAUDE_CONFIG_DIR: join(home, "claude"),
+                        XDG_DATA_HOME: join(home, "opencode", "data"),
+                        XDG_CONFIG_HOME: join(home, "opencode", "config"),
+                      },
+                )
+              : nativeCheckpoint(frame, home)
+        )
           .then((result) => emit({ type: "http", id: frame.id, result }))
-          .catch(() =>
+          .catch((error) =>
             emit({
               type: "http",
               id: frame.id,
-              error: "原生会话记录无法读取。请检查工作电脑和会话文件。",
+              error: error.message,
             }),
           );
       } else if (frame.type === "computer") {

@@ -555,7 +555,11 @@ export const claudeProvider: EngineProvider = {
       },
       async recover(cursor: string | null, inputCount = 1) {
         if (!cursor?.startsWith("claude:") || !process.history) return false;
-        const history = (await process.history(id)) as {
+        const history = (await process.history(
+          id,
+          "claude",
+          cursor.slice(7),
+        )) as {
           type: string;
           uuid: string;
           parent_tool_use_id?: string | null;

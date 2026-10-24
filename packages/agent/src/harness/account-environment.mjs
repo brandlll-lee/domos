@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -117,4 +117,53 @@ export async function accountEnvironment(spec, home, source) {
     }
   }
   return { env: Object.assign(env, spec.env), settingsPath };
+}
+
+export async function accountFingerprint(provider, env) {
+  const user = env.HOME || env.USERPROFILE || homedir();
+  const root = {
+    pi: env.PI_CODING_AGENT_DIR || join(user, ".pi", "agent"),
+    codex: env.CODEX_HOME || join(user, ".codex"),
+    claude: env.CLAUDE_CONFIG_DIR || join(user, ".claude"),
+    opencode: join(env.XDG_CONFIG_HOME || join(user, ".config"), "opencode"),
+  }[provider];
+  const files = {
+    pi: ["auth.json", "models.json"],
+    codex: ["auth.json", "config.toml"],
+    claude: [".credentials.json", "settings.json"],
+    opencode: ["opencode.json", "opencode.jsonc"],
+  }[provider];
+  if (!files) throw new Error("不支持此引擎的账号标识。");
+  const paths = files.map((file) => join(root, file));
+  if (provider === "opencode") {
+    paths.push(
+      join(
+        env.XDG_DATA_HOME || join(user, ".local", "share"),
+        "opencode",
+        "auth.json",
+      ),
+    );
+    if (env.OPENCODE_CONFIG) paths.push(env.OPENCODE_CONFIG);
+  }
+  const hash = createHash("sha256");
+  for (const [key, value] of Object.entries(env).sort(([a], [b]) =>
+    a.localeCompare(b),
+  ))
+    if (
+      !serviceKey.test(key) &&
+      (/^(?:PI_|OPENAI_|ANTHROPIC_|CLAUDE_|CODEX_|OPENCODE_|AWS_|GOOGLE_|AZURE_)/.test(
+        key,
+      ) ||
+        /(?:KEY|TOKEN|SECRET|PASSWORD)$/.test(key))
+    )
+      hash.update(JSON.stringify([key, value]));
+  for (const path of paths) {
+    try {
+      hash.update(await readFile(path));
+    } catch (error) {
+      if (error.code !== "ENOENT")
+        throw new Error("工作电脑的账号配置无法读取。");
+    }
+  }
+  return hash.digest("hex");
 }

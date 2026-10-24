@@ -204,6 +204,10 @@ async function finish(
           }),
         })
       ).id;
+    if (!error && doc.sessionKey && doc.sessionId && answer) {
+      doc.sessions ??= {};
+      doc.sessions[doc.sessionKey] = { id: doc.sessionId, through: answer };
+    }
     tx.settleSubmission(
       current.input.submissionId,
       error || !answer

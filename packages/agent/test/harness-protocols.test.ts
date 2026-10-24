@@ -202,36 +202,32 @@ test("Pi reconciles the recorded number of inputs without sending them again", a
       data:
         request.type === "get_state"
           ? { sessionFile: "/work/session.jsonl" }
-          : request.type === "get_entries"
-            ? {
-                leafId: "answer",
-                entries: [
-                  {
-                    type: "message",
-                    id: "request",
-                    parentId: "previous",
-                    message: { role: "user", content: "Work" },
-                  },
-                  {
-                    type: "message",
-                    id: "additional",
-                    parentId: "request",
-                    message: { role: "user", content: "Additional work" },
-                  },
-                  {
-                    type: "message",
-                    id: "answer",
-                    parentId: "additional",
-                    message: {
-                      role: "assistant",
-                      stopReason: complete ? "stop" : "toolUse",
-                      content: [{ type: "text", text: "Saved result" }],
-                    },
-                  },
-                ],
-              }
-            : {},
+          : {},
     });
+  process.history = async () => [
+    {
+      type: "message",
+      id: "request",
+      parentId: "previous",
+      message: { role: "user", content: "Work" },
+    },
+    {
+      type: "message",
+      id: "additional",
+      parentId: "request",
+      message: { role: "user", content: "Additional work" },
+    },
+    {
+      type: "message",
+      id: "answer",
+      parentId: "additional",
+      message: {
+        role: "assistant",
+        stopReason: complete ? "stop" : "toolUse",
+        content: [{ type: "text", text: "Saved result" }],
+      },
+    },
+  ];
   const session = await piProvider.open({
     process,
     config: { provider: "pi", model: null },
@@ -412,17 +408,17 @@ test("Codex handles approval, streams tools and recovers a completed native turn
         method: "item/commandExecution/requestApproval",
         params: { command: "write report.md" },
       });
-    } else if (request.method === "thread/read")
+    } else if (request.method === "thread/turns/list")
       process.response(request, {
-        thread: {
-          turns: [
-            {
-              id: "turn-1",
-              status: "completed",
-              items: [{ id: "message", type: "agentMessage", text: "Saved" }],
-            },
-          ],
-        },
+        data: [{ id: "turn-1", status: "completed" }],
+        nextCursor: null,
+      });
+    else if (request.method === "thread/items/list")
+      process.response(request, {
+        data: [
+          { item: { id: "message", type: "agentMessage", text: "Saved" } },
+        ],
+        nextCursor: null,
       });
     else if (request.id !== undefined) process.response(request, {});
   };

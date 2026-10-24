@@ -24,7 +24,7 @@ type NativeMessage = {
     finish?: string;
     summary?: boolean;
     error?: unknown;
-    time?: { completed?: number };
+    time?: { created?: number; completed?: number };
     modelID?: string;
     providerID?: string;
     cost?: number;
@@ -415,8 +415,30 @@ export const opencodeProvider: EngineProvider = {
     if (contextReading) await emit(contextReading);
     const messages = () =>
       process.request<NativeMessage[]>(
-        `/session/${encodeURIComponent(id)}/message`,
+        `/session/${encodeURIComponent(id)}/message?limit=256`,
       );
+    const since = (history: NativeMessage[], baseline: string) => {
+      if (baseline.startsWith("time:")) {
+        const time = Number(baseline.slice(5));
+        if (
+          !Number.isFinite(time) ||
+          history.some((message) => !message.info.time?.created)
+        )
+          return null;
+        if (
+          history.length === 256 &&
+          (history[0]?.info.time?.created ?? 0) >= time
+        )
+          return null;
+        return history.filter(
+          (message) => (message.info.time?.created ?? 0) >= time,
+        );
+      }
+      const start = history.findIndex(
+        (message) => message.info.id === baseline,
+      );
+      return baseline && start < 0 ? null : history.slice(start + 1);
+    };
     const record = async (message: NativeMessage) => {
       if (message.info.tokens || message.info.cost !== undefined)
         await emit({
@@ -448,11 +470,9 @@ export const opencodeProvider: EngineProvider = {
         if (!cursor?.startsWith("opencode:")) return false;
         const history = await messages();
         const baseline = cursor.slice(9);
-        const start = baseline
-          ? history.findIndex((message) => message.info.id === baseline)
-          : -1;
-        if (baseline && start < 0) return false;
-        const compacted = completedCompaction(history.slice(start + 1));
+        const turn = since(history, baseline);
+        if (!turn) return false;
+        const compacted = completedCompaction(turn);
         if (!compacted) return false;
         await emit({
           type: "compaction",
@@ -485,10 +505,12 @@ export const opencodeProvider: EngineProvider = {
         messageId = `opencode:${++sequence}`;
         replyText = "";
         completed = "";
-        const history = await messages();
+        if (!process.checkpoint)
+          throw new Error("工作电脑尚未提供 OpenCode 发送书签。");
+        const baseline = `time:${await process.checkpoint("opencode", id)}`;
         await emit({
           type: "accepted",
-          id: `opencode:${history.at(-1)?.info.id ?? ""}`,
+          id: `opencode:${baseline}`,
         });
         try {
           contextReading = undefined;
@@ -500,7 +522,21 @@ export const opencodeProvider: EngineProvider = {
           if (outcome.stopReason === "cancelled")
             throw new Error("工作已停止。");
           await reply();
-          const updated = (await messages()).slice(history.length);
+          const updated =
+            since(
+              await messages().catch(async () => {
+                await emit({
+                  type: "runtime",
+                  state: {
+                    notices: {
+                      history: "回复已完成，用量记录暂不可读。原生会话已保留。",
+                    },
+                  },
+                });
+                return [];
+              }),
+              baseline,
+            ) ?? [];
           const compacted = completedCompaction(updated);
           if (compacted && !compactionConfirmed) {
             compactionConfirmed = true;
@@ -535,11 +571,8 @@ export const opencodeProvider: EngineProvider = {
         if (!cursor?.startsWith("opencode:")) return false;
         const history = await messages();
         const baseline = cursor.slice(9);
-        const start = baseline
-          ? history.findIndex((message) => message.info.id === baseline)
-          : -1;
-        if (baseline && start < 0) return false;
-        const turn = history.slice(start + 1);
+        const turn = since(history, baseline);
+        if (!turn) return false;
         const users = turn.filter((message) => message.info.role === "user");
         const final = turn.at(-1)?.info;
         if (

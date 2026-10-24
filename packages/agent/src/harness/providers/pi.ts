@@ -217,7 +217,22 @@ export const piProvider: EngineProvider = {
     }
     const state = await rpc.request<RpcSessionState>("get_state");
     if (!state.sessionFile) throw new Error("Pi 没有返回会话记录。");
-    await emit({ type: "session", id: state.sessionFile });
+    const sessionFile = state.sessionFile;
+    await emit({ type: "session", id: sessionFile });
+    const checkpoint = async () => {
+      if (!process.checkpoint)
+        throw new Error("工作电脑尚未提供 Pi 会话书签。");
+      return process.checkpoint("pi", sessionFile);
+    };
+    const historySince = async (since: string) => {
+      if (!process.history) throw new Error("工作电脑尚未提供 Pi 历史读取。");
+      const entries = (await process.history(
+        sessionFile,
+        "pi",
+        since,
+      )) as SessionEntry[];
+      return { entries, leafId: entries.at(-1)?.id ?? (since || null) };
+    };
     if (config.options?.thinkingLevel)
       await rpc.request("set_thinking_level", {
         level: config.options.thinkingLevel,
@@ -295,12 +310,10 @@ export const piProvider: EngineProvider = {
       },
       async compact() {
         compactionError = null;
-        const before = await rpc.request<{ leafId?: string | null }>(
-          "get_entries",
-        );
+        const before = await checkpoint();
         await emit({
           type: "accepted",
-          id: `pi:${before.leafId ?? ""}`,
+          id: `pi:${before ?? ""}`,
           ready: false,
         });
         await rpc.request("compact", {}, 0);
@@ -312,10 +325,7 @@ export const piProvider: EngineProvider = {
       async recoverCompaction(cursor) {
         if (!cursor?.startsWith("pi:")) return false;
         const since = cursor.slice(3);
-        const history = await rpc.request<{
-          entries: SessionEntry[];
-          leafId: string | null;
-        }>("get_entries", since ? { since } : {});
+        const history = await historySince(since);
         const entries = new Map(
           history.entries.map((entry) => [entry.id, entry]),
         );
@@ -363,10 +373,7 @@ export const piProvider: EngineProvider = {
         completion = Promise.withResolvers<void>();
         failure = null;
         void completion.promise.catch(() => {});
-        const before = await rpc.request<{ leafId?: string | null }>(
-          "get_entries",
-        );
-        const cursor = `pi:${before.leafId ?? ""}`;
+        const cursor = `pi:${(await checkpoint()) ?? ""}`;
         await emit({ type: "accepted", id: cursor, ready: false });
         const result = await rpc.request("prompt", {
           message: text,
@@ -405,10 +412,7 @@ export const piProvider: EngineProvider = {
       async recover(cursor, inputCount = 1) {
         if (!cursor?.startsWith("pi:")) return false;
         const since = cursor.slice(3);
-        const history = await rpc.request<{
-          entries: SessionEntry[];
-          leafId: string | null;
-        }>("get_entries", since ? { since } : {});
+        const history = await historySince(since);
         const entries = new Map(
           history.entries.map((entry) => [entry.id, entry]),
         );

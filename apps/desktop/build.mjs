@@ -117,6 +117,7 @@ for (const name of [
   "pi-entry.mjs",
   "pi-account.mjs",
   "http-service.mjs",
+  "native-history.mjs",
   "browser-service.mjs",
   "browser-view.mjs",
   "desktop-view.mjs",

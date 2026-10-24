@@ -25,6 +25,7 @@ export class JsonLines extends EventEmitter {
       resolve: (value: unknown) => void;
       reject: (error: Error) => void;
       timer?: NodeJS.Timeout;
+      method: string;
     }
   >();
 
@@ -39,7 +40,9 @@ export class JsonLines extends EventEmitter {
     lines.on("line", (line) => {
       try {
         if (Buffer.byteLength(line) > engineLimits.frameBytes)
-          throw new Error("引擎输出过大。");
+          throw new Error(
+            `引擎协议响应过大（${[...this.pending.values()].map((request) => request.method).join("、") || "实时事件"}）。原生会话已保留，请核对执行结果。`,
+          );
         const frame: Frame = JSON.parse(line);
         this.connected = true;
         const pending =
@@ -53,7 +56,9 @@ export class JsonLines extends EventEmitter {
           if (frame.error || frame.success === false)
             pending.reject(
               new EngineRequestRejected(
-                "引擎拒绝了请求。请检查账号、模型和工作电脑。",
+                (frame.error as { code?: number } | undefined)?.code === -32601
+                  ? `当前引擎版本不支持 ${pending.method}。请更新工作电脑的 CLI。`
+                  : `引擎拒绝了 ${pending.method} 请求。请检查模型和工作电脑。`,
               ),
             );
           else
@@ -102,6 +107,7 @@ export class JsonLines extends EventEmitter {
         : undefined;
       timer?.unref();
       this.pending.set(id, {
+        method,
         resolve: (value) => resolve(value as T),
         reject,
         timer,

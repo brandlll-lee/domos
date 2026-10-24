@@ -16,6 +16,7 @@ import type { EngineExecution } from "./execution.ts";
 import { EngineModelCatalog } from "./model-catalog.ts";
 import { engineProvider, providers } from "./providers/index.ts";
 import { readEngine, reconcileEngine } from "./reconcile.ts";
+import { switchSession } from "./sessions.ts";
 import { EngineDoc, EngineInputDoc, EngineMessage } from "./state.ts";
 import { engineTask } from "./task.ts";
 import { userMessage } from "./task-types.ts";
@@ -242,6 +243,7 @@ export class Engines {
             "请先读取此模型的原生配置，再选择可用值。",
           );
       }
+      switchSession(doc, input.config, computerId);
       doc.config = input.config;
       doc.revision++;
       doc.requestId = input.requestId;
@@ -266,7 +268,6 @@ export class Engines {
         return;
       }
       doc.runtime = {};
-      doc.sessionId = null;
       doc.turnId = null;
       doc.dispatch = "ready";
       doc.error = null;
@@ -311,8 +312,7 @@ export class Engines {
         if (model) doc.config.model = `${model.provider}/${model.modelId}`;
       }
       if (doc.computerId !== computerId) {
-        doc.computerId = computerId;
-        doc.sessionId = null;
+        switchSession(doc, doc.config, computerId);
         doc.runtime = {};
       }
       const submission = await tx.createSubmission({
@@ -347,6 +347,7 @@ export class Engines {
           submissionId: submission.id,
           previous: doc.taskId,
           turnId,
+          entryId: entry.id,
           ...(input.operation ? { operation: input.operation } : {}),
           ...(input.attachments?.length
             ? { attachments: input.attachments }

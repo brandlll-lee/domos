@@ -9,6 +9,7 @@ import {
 } from "../computer/activity.ts";
 import type { ComputerRequest } from "../computer/service-types.ts";
 import {
+  type EngineId,
   type EngineProcess,
   engineLimits,
   type ProcessReady,
@@ -80,7 +81,9 @@ export class WorkProcess implements EngineProcess {
     lines.on("line", (line) => {
       try {
         if (Buffer.byteLength(line) > engineLimits.frameBytes)
-          throw new Error("Frame too large");
+          throw new Error(
+            "工作电脑通信响应过大。原生会话已保留，请核对执行结果。",
+          );
         const frame = JSON.parse(line);
         if (frame.type === "ready") this.preparation.resolve(frame);
         else if (frame.type === "spawn") this.started.resolve();
@@ -121,8 +124,12 @@ export class WorkProcess implements EngineProcess {
           this.fail(
             Object.assign(new Error(frame.message), { code: frame.code }),
           );
-      } catch {
-        this.fail(new Error("工作电脑返回了无效数据。"));
+      } catch (error) {
+        this.fail(
+          error instanceof SyntaxError
+            ? new Error("工作电脑返回了无效数据。")
+            : (error as Error),
+        );
       }
     });
     this.child.once("error", () =>
@@ -201,8 +208,25 @@ export class WorkProcess implements EngineProcess {
     return this.exchange<T>({ type: "http", path, method, body });
   }
 
-  history(sessionId: string) {
-    return this.exchange<unknown[]>({ type: "history", sessionId });
+  checkpoint(provider: EngineId, sessionId: string) {
+    return this.exchange<string | null>({
+      type: "checkpoint",
+      provider,
+      sessionId,
+    });
+  }
+
+  account(provider: EngineId, accountSource: "native" | "managed") {
+    return this.exchange<string>({ type: "account", provider, accountSource });
+  }
+
+  history(sessionId: string, provider: EngineId = "claude", since?: string) {
+    return this.exchange<unknown[]>({
+      type: "history",
+      provider,
+      sessionId,
+      since,
+    });
   }
 
   computer(

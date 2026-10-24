@@ -67,6 +67,13 @@ test.each(["native", "managed"] as const)(
       CORP_LLM_TOKEN: "fixture-native-key",
     });
     const { home } = await process.ready;
+    const account = await process.account("codex", accountSource);
+    expect(account).toMatch(/^[a-f0-9]{64}$/);
+    await mkdir(join(native, "codex"), { recursive: true });
+    await writeFile(join(native, "codex", "auth.json"), '{"token":"fixture"}');
+    expect((await process.account("codex", accountSource)) === account).toBe(
+      accountSource === "managed",
+    );
     let output = "";
     process.output.on("data", (chunk) => {
       output += chunk.toString();
@@ -652,6 +659,7 @@ test("bundled Pi reads native custom models and keeps Bot sessions separate", as
   expect(session.id.replaceAll("\\", "/")).toContain(
     `${home.replaceAll("\\", "/")}/pi/sessions/`,
   );
+  await expect(process.checkpoint("pi", session.id)).resolves.toBeNull();
   await process.close();
   expect(JSON.parse(await readFile(join(native, "auth.json"), "utf8"))).toEqual(
     { "fixture-native": { type: "api_key", key: "fixture-native-key" } },
@@ -692,7 +700,7 @@ test.each([false, true])(
     const session = await piProvider.open({
       process,
       config: { provider: "pi", model: "command-test/command-model" },
-      sessionId: restored ? commandSession(ready.cwd, directory) : null,
+      sessionId: restored ? commandSession(ready.cwd, ready.home) : null,
       instructions: "Use the native command tool.",
       emit: async (event) => {
         if (event.type === "tool_result")
@@ -723,7 +731,7 @@ type CommandRequest = {
 };
 
 function commandSession(cwd: string, directory: string) {
-  const native = SessionManager.create(cwd, join(directory, "sessions"));
+  const native = SessionManager.create(cwd, join(directory, "pi", "sessions"));
   const bash = createBashTool(cwd);
   native.appendMessage({
     role: "system",

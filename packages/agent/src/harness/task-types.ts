@@ -1,5 +1,6 @@
 import type { JsonRepresentation } from "@earendil-works/chord";
 import type {
+  EntryId,
   SubmissionId,
   TaskId,
   TaskRuntime,
@@ -13,6 +14,7 @@ export type EngineTaskInput = {
   submissionId: SubmissionId;
   previous: TaskId | null;
   turnId: string;
+  entryId?: EntryId;
   attachments?: Attachment[];
   operation?: "compact";
 };

@@ -44,6 +44,12 @@ async function fixture() {
     process: async () => {
       const process = new ProtocolProcess();
       state.workers.push(process);
+      process.checkpoint = async () => "before";
+      process.history = async () =>
+        state.compacted
+          ? [{ id: "compacted", parentId: "before", type: "compaction" }]
+          : [];
+
       process.receive = async (request) => {
         if (request.type === "get_available_models" && state.catalogGate) {
           state.catalogRead.resolve();
@@ -81,31 +87,18 @@ async function fixture() {
                 ? {
                     contextUsage: { tokens: state.tokens, contextWindow: 1000 },
                   }
-                : request.type === "get_entries"
+                : request.type === "get_available_models"
                   ? {
-                      leafId: state.compacted ? "compacted" : "before",
-                      entries: state.compacted
-                        ? [
-                            {
-                              id: "compacted",
-                              parentId: "before",
-                              type: "compaction",
-                            },
-                          ]
-                        : [],
+                      models: [
+                        {
+                          provider: "native",
+                          id: "model",
+                          reasoning: true,
+                          input: ["text"],
+                        },
+                      ],
                     }
-                  : request.type === "get_available_models"
-                    ? {
-                        models: [
-                          {
-                            provider: "native",
-                            id: "model",
-                            reasoning: true,
-                            input: ["text"],
-                          },
-                        ],
-                      }
-                    : {},
+                  : {},
         });
         if (request.type === "prompt") {
           for (let index = 0; index < state.auto; index++) {

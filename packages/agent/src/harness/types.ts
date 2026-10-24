@@ -179,7 +179,16 @@ export interface EngineProcess {
     method?: string,
     body?: unknown,
   ): Promise<T>;
-  history?(sessionId: string): Promise<unknown[]>;
+  checkpoint?(provider: EngineId, sessionId: string): Promise<string | null>;
+  account?(
+    provider: EngineId,
+    accountSource: "native" | "managed",
+  ): Promise<string>;
+  history?(
+    sessionId: string,
+    provider?: EngineId,
+    since?: string,
+  ): Promise<unknown[]>;
   close(): Promise<void>;
 }
 

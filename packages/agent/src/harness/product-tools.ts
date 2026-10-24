@@ -2,12 +2,14 @@ import { createHash } from "node:crypto";
 import type { Context } from "@earendil-works/chord/context";
 import {
   defineDoc,
+  type EntryId,
   type JsonObject,
   NestedCallDoc,
   type TaskId,
   ToolTask,
 } from "@earendil-works/pi-durable";
 import type { MessageDelivery } from "../delivery.ts";
+import { conversationHistory } from "./history.ts";
 import { EngineDoc, EngineMessage } from "./state.ts";
 import { type EngineRuntime, stored } from "./task-types.ts";
 import type { ProductResult, ProductTool } from "./types.ts";
@@ -44,18 +46,31 @@ export async function productCatalog(
 ): Promise<ProductTool[]> {
   const agent = await runtime.agent(context);
   const names = new Set(agent.callable.map((tool) => tool.name));
-  return runtime.registry
-    .tools()
-    .filter(
-      ({ extension, tool }) =>
-        names.has(tool.name) &&
-        (productExtensions.has(extension.name) || tool.name === "attach_file"),
-    )
-    .map(({ tool }) => ({
-      name: tool.name,
-      description: tool.description,
-      inputSchema: stored(tool.parameters) as Record<string, unknown>,
-    }));
+  return [
+    ...runtime.registry
+      .tools()
+      .filter(
+        ({ extension, tool }) =>
+          names.has(tool.name) &&
+          (productExtensions.has(extension.name) ||
+            tool.name === "attach_file"),
+      )
+      .map(({ tool }) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: stored(tool.parameters) as Record<string, unknown>,
+      })),
+    {
+      name: "conversation_read",
+      description:
+        "Read earlier Bot conversation in bounded pages. Pass the returned from entry ID as before to read an older page. Attachments remain file references.",
+      inputSchema: {
+        type: "object",
+        properties: { before: { type: "integer", minimum: 1 } },
+        additionalProperties: false,
+      },
+    },
+  ];
 }
 
 export async function callProductTool(
@@ -65,6 +80,30 @@ export async function callProductTool(
   args: Record<string, unknown>,
   context: Context,
 ): Promise<ProductResult> {
+  if (name === "conversation_read") {
+    if (
+      args.before !== undefined &&
+      (!Number.isSafeInteger(args.before) || (args.before as number) < 1)
+    )
+      throw new Error("聊天记录游标无效。");
+    return {
+      content: [
+        {
+          type: "text",
+          text:
+            (await conversationHistory(
+              runtime,
+              null,
+              context,
+              null,
+              args.before === undefined
+                ? undefined
+                : (((args.before as number) - 1) as EntryId),
+            )) || "{}",
+        },
+      ],
+    };
+  }
   const catalog = await productCatalog(runtime, context);
   if (!catalog.some((tool) => tool.name === name))
     throw new Error("产品工具不可用。");

@@ -8,6 +8,7 @@ import type {
 } from "../types.ts";
 import { codexAnswer, codexApproval } from "./codex-approval.ts";
 import { openCodexClient } from "./codex-client.ts";
+import { readCodexTurn } from "./codex-history.ts";
 import {
   type CodexFrame,
   type CodexTurn,
@@ -257,7 +258,7 @@ export const codexProvider: EngineProvider = {
       modelProvider?: string;
       model?: string;
     }>(sessionId ? "thread/resume" : "thread/start", {
-      ...(sessionId ? { threadId: sessionId } : {}),
+      ...(sessionId ? { threadId: sessionId, excludeTurns: true } : {}),
       cwd: ready.cwd,
       ...(config.model ? { model: config.model } : {}),
       developerInstructions: instructions,
@@ -295,17 +296,10 @@ export const codexProvider: EngineProvider = {
       },
       async recoverCompaction(cursor) {
         if (!cursor) return false;
-        const result = await rpc.request<{ thread: { turns?: CodexTurn[] } }>(
-          "thread/read",
-          { threadId: id, includeTurns: true },
-        );
+        const turn = await readCodexTurn(rpc, id, cursor);
         return (
-          result.thread?.turns?.some(
-            (turn) =>
-              turn.id === cursor &&
-              turn.status === "completed" &&
-              turn.items?.some((item) => item.type === "contextCompaction"),
-          ) ?? false
+          turn?.items?.some((item) => item.type === "contextCompaction") ??
+          false
         );
       },
       models: client.models,
@@ -406,16 +400,8 @@ export const codexProvider: EngineProvider = {
         await rpc.send({ id: request.id, result });
       },
       async recover(nativeTurn) {
-        const result = await rpc.request<{ thread: { turns?: CodexTurn[] } }>(
-          "thread/read",
-          {
-            threadId: id,
-            includeTurns: true,
-          },
-        );
-        const turn = result.thread?.turns?.find(
-          (item) => item.id === nativeTurn,
-        );
+        if (!nativeTurn) return false;
+        const turn = await readCodexTurn(rpc, id, nativeTurn);
         if (turn?.status !== "completed") return false;
         for (const item of turn.items ?? [])
           if (item.type === "agentMessage")
