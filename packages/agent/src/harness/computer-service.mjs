@@ -117,14 +117,13 @@ export function openComputerService(directory, home, emit = () => {}) {
             : undefined;
       const target = foreground && activity.target(foreground);
       const activation =
-        target?.pid !== undefined
+        target?.pid !== undefined && !activity.active(target)
           ? await instance.callTool(
               "bring_to_front",
               JSON.stringify({ ...target, session: args.session }),
               { signal },
             )
           : undefined;
-      if (foreground && !activation?.isError) await activity.refresh();
       signal.throwIfAborted();
       const reading =
         input.name === "get_window_state"
@@ -134,7 +133,9 @@ export function openComputerService(directory, home, emit = () => {}) {
             : undefined;
       const format = reading?.tree_format ?? "markdown";
       const batchCapture =
-        input.name === "run_steps" && reading?.include_screenshot;
+        input.name === "run_steps" &&
+        reading?.include_screenshot &&
+        !activity.captureExcluded;
       if (batchCapture) reading.include_screenshot = false;
       if (reading && !reading.since && !reading.full_output) {
         if (format === "markdown") reading.tree_format = "both";
@@ -155,7 +156,6 @@ export function openComputerService(directory, home, emit = () => {}) {
       if (signal.aborted) activity.clear(input.actor?.owner);
       else {
         activity.observe(input.name, args, result, input.actor);
-        await activity.refresh();
       }
       const structured = result.structuredJson
         ? JSON.parse(result.structuredJson)

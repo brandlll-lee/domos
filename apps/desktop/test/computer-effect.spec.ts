@@ -120,7 +120,28 @@ test("foreground input keeps a restored window active and publishes its real out
         include_accessibility_tree: false,
       });
       expect(captured.isError, JSON.stringify(captured.content)).toBe(false);
-      if (name === "click") expect(captured.frame?.pointer).toBeTruthy();
+      if (name === "click") {
+        const physical = await application.evaluate(
+          ({ screen, BrowserWindow }, point) => {
+            const window = BrowserWindow.getAllWindows().find(
+              (item) => item.getTitle() === "Domos input target",
+            );
+            if (!window) throw new Error("Target window required");
+            const origin = window.getContentBounds();
+            return screen.dipToScreenPoint({
+              x: origin.x + point.x,
+              y: origin.y + point.y,
+            });
+          },
+          { x: field.x + field.width / 2, y: field.y + field.height / 2 },
+        );
+        expect(
+          Math.abs((captured.frame?.pointer?.x ?? 0) - physical.x),
+        ).toBeLessThan(3);
+        expect(
+          Math.abs((captured.frame?.pointer?.y ?? 0) - physical.y),
+        ).toBeLessThan(3);
+      }
       await expect
         .poll(async () => (await call("list_windows", {})).frame)
         .toMatchObject({
@@ -129,6 +150,17 @@ test("foreground input keeps a restored window active and publishes its real out
         });
     }
     await expect(page.locator("output")).toHaveText("我这样爱你");
+    const positions = new Set<number>();
+    const moved = () => {
+      if (worker.activity?.pointer) positions.add(worker.activity.pointer.x);
+    };
+    worker.events.on("activity", moved);
+    await call("run_steps", {
+      steps: [100, 350, 600].map((x) => ({ move_cursor: { x, y: 300 } })),
+      delay_ms: 400,
+    });
+    worker.events.off("activity", moved);
+    expect(positions.size).toBeGreaterThanOrEqual(2);
     await worker.computer({ operation: "activity", owner: "test" });
     expect(worker.activity).toBeNull();
   } finally {

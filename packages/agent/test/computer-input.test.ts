@@ -4,7 +4,8 @@ const { driver, activity } = vi.hoisted(() => ({
   driver: { callTool: vi.fn(), shutdown: vi.fn(), uniffiDestroy: vi.fn() },
   activity: {
     observe: vi.fn(),
-    refresh: vi.fn(),
+    active: vi.fn(),
+    captureExcluded: true,
     clear: vi.fn(),
     close: vi.fn(),
     capture: vi.fn(async (run: () => Promise<unknown>) => run()),
@@ -19,13 +20,13 @@ const entry = "../src/harness/computer-service.mjs";
 const { openComputerService } = await import(entry);
 afterEach(() => vi.clearAllMocks());
 
-test("foreground input activates its exact window before publishing and acting; background stays background", async () => {
+test("foreground input reuses its active window and visual reads do not delay execution", async () => {
   let front = 2;
   const restored: number[] = [];
   const events: string[] = [];
-  activity.refresh.mockImplementation(async () => {
-    events.push("frame");
-  });
+  activity.active.mockImplementation(
+    (target: { window_id: number }) => front === target.window_id,
+  );
   driver.callTool.mockImplementation(async (name: string, json: string) => {
     const args = JSON.parse(json);
     events.push(name);
@@ -50,12 +51,7 @@ test("foreground input activates its exact window before publishing and acting; 
   await call({ target, x: 10, y: 20, delivery_mode: "foreground" });
   await call({ target, x: 20, y: 30, delivery_mode: "foreground" });
   expect(restored).toEqual([90, 90]);
-  expect(events.slice(1, 5)).toEqual([
-    "bring_to_front",
-    "frame",
-    "click",
-    "frame",
-  ]);
+  expect(events.filter((event) => event === "bring_to_front")).toHaveLength(1);
   events.length = 0;
   await call({ target, x: 20, y: 30 });
   expect(events).not.toContain("bring_to_front");
@@ -66,12 +62,17 @@ test("foreground input activates its exact window before publishing and acting; 
     },
   ];
   await call({ pid: 7, window_id: 90, steps }, "run_steps");
-  expect(events.at(-3)).toBe("frame");
+  expect(events.filter((event) => event === "bring_to_front")).toHaveLength(0);
   expect(driver.callTool).toHaveBeenCalledWith(
     "run_steps",
     expect.stringContaining('"expect":[{"text":"Done"}]'),
     { signal },
   );
+  await call({ steps, observe: { include_screenshot: true } }, "run_steps");
+  expect(
+    JSON.parse(driver.callTool.mock.calls.at(-1)?.[1]).observe
+      .include_screenshot,
+  ).toBe(true);
   for (const args of [
     { include_screenshot: false },
     { include_screenshot: true },
@@ -84,6 +85,7 @@ test("foreground input activates its exact window before publishing and acting; 
       args.include_screenshot === false && !args.screenshot_out_file ? 0 : 1,
     );
   }
+  activity.active.mockReturnValue(false);
   const controller = new AbortController();
   driver.callTool.mockImplementation(async (name: string) => {
     if (name === "bring_to_front") controller.abort();

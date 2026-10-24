@@ -64,6 +64,9 @@ test("batch completion reports its last successful step once and native trajecto
   });
   const first = actions.pointer(bounds, bounds);
   expect(first).toMatchObject({ id: 1, x: 100, y: 200 });
+  actions.track({ position: null });
+  vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60000);
+  expect(actions.pointer(bounds, bounds)).toMatchObject({ x: 100, y: 200 });
   const motion = openDesktopMotion();
   vi.spyOn(Date, "now").mockReturnValue(1000);
   motion.move(first);
@@ -103,8 +106,21 @@ test("tracks window geometry and Bot identity; capture protection and short read
   });
   spawn.mockReturnValue(child);
   let bounds = { x: -800, y: 100, width: 800, height: 600 };
+  let shown = true;
+  let minimized = false;
   const windows = () => [
-    { pid: 7, window_id: 90, bounds, z_index: 1, is_on_screen: true },
+    ...(shown
+      ? [
+          {
+            pid: 7,
+            window_id: 90,
+            bounds,
+            z_index: 1,
+            is_on_screen: true,
+            minimized,
+          },
+        ]
+      : []),
     { pid: 8, window_id: 91, bounds: { ...bounds, width: 80 }, z_index: 2 },
     { pid: 9, window_id: 92, app_name: "cua-driver", bounds, z_index: 3 },
     { pid: 10, window_id: 93, bounds, z_index: 4, on_current_space: false },
@@ -167,32 +183,70 @@ test("tracks window geometry and Bot identity; capture protection and short read
   });
   expect(computerActivity.safeParse(updates.at(-1)).success).toBe(true);
   child.emit("message", { type: "windows", ids: ["90"] });
-  await activity.refresh();
+  await vi.advanceTimersByTimeAsync(250);
   expect(updates.at(-1)).toMatchObject({ window: bounds, covered: [] });
+  expect(activity.active(target)).toBe(true);
   bounds = { ...bounds, x: -600 };
-  await activity.refresh();
+  await vi.advanceTimersByTimeAsync(250);
   expect(updates.at(-1)).toMatchObject({
     window: bounds,
     pointer: { x: -200 },
   });
-  const stable = updates.at(-1);
-  driver.callTool.mockRejectedValueOnce(new Error("Window query unavailable"));
-  await activity.refresh();
-  expect(updates.at(-1)).toBe(stable);
+  child.emit("message", { type: "windows", ids: [] });
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(updates.at(-1)).toMatchObject({ window: bounds });
+  child.emit("message", { type: "windows", ids: ["90"] });
+  shown = false;
+  await vi.advanceTimersByTimeAsync(250);
+  expect(updates.at(-1)).toMatchObject({ window: bounds });
+  await vi.advanceTimersByTimeAsync(500);
+  expect(updates.at(-1)).toMatchObject({ window: null });
+  shown = true;
+  await vi.advanceTimersByTimeAsync(250);
+  minimized = true;
+  await vi.advanceTimersByTimeAsync(250);
+  expect(updates.at(-1)).toMatchObject({ window: null });
+  minimized = false;
+  await vi.advanceTimersByTimeAsync(250);
   const commandCount = commands.length;
   await activity.capture(async () => "screenshot");
   expect(commands).toHaveLength(commandCount);
   const read = driver.callTool.getMockImplementation();
   driver.callTool.mockRejectedValue(new Error("Window query unavailable"));
-  await vi.advanceTimersByTimeAsync(2600);
-  expect(updates.at(-1)).toBeNull();
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(updates.at(-1)).toMatchObject({
+    window: bounds,
+    pointer: { x: -200 },
+  });
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(updates.at(-1)).toMatchObject({ window: null, pointer: { x: -200 } });
   if (read) driver.callTool.mockImplementation(read);
-  await activity.refresh();
+  await vi.advanceTimersByTimeAsync(250);
   expect(updates.at(-1)).toMatchObject({ window: bounds });
-  child.emit("message", { type: "windows", ids: [] });
-  await activity.refresh();
-  expect(updates.at(-1)).toMatchObject({ window: null });
-  child.emit("message", { type: "windows", ids: ["90"] });
+  await vi.advanceTimersByTimeAsync(60000);
+  expect(updates.at(-1)).toMatchObject({
+    window: bounds,
+    pointer: { x: -200 },
+  });
+  expect(computerActivity.safeParse(updates.at(-1)).success).toBe(true);
+  activity.observe(
+    "run_steps",
+    { ...target, session: "task", steps: [] },
+    null,
+    actor,
+  );
+  driver.callTool.mockImplementation(async (name: string) => ({
+    structuredJson: JSON.stringify(
+      name === "get_agent_cursor_state"
+        ? { position: { x: -300, y: 220 } }
+        : { windows: windows() },
+    ),
+  }));
+  await vi.advanceTimersByTimeAsync(250);
+  const point = (updates.at(-1) as { pointer: { id: number } }).pointer;
+  expect(point).toMatchObject({ x: -300, y: 220, action: "move_cursor" });
+  await vi.advanceTimersByTimeAsync(500);
+  expect(updates.at(-1)).toMatchObject({ pointer: { id: point.id } });
   activity.clear("task-1");
   expect(updates.at(-1)).toBeNull();
   activity.observe("get_window_state", target, null, {
@@ -201,72 +255,16 @@ test("tracks window geometry and Bot identity; capture protection and short read
     owner: "task-2",
   });
   activity.clear("task-1");
-  await vi.advanceTimersByTimeAsync(100);
-  expect(updates.at(-1)).toMatchObject({
-    botId: 2,
-    color: "#80b780",
-    pointer: null,
+  await vi.advanceTimersByTimeAsync(250);
+  expect(updates.at(-1)).toMatchObject({ botId: 2, color: "#80b780" });
+  let acknowledge = () => {};
+  vi.spyOn(child, "send").mockImplementationOnce((_value, done) => {
+    acknowledge = done;
   });
-  activity.observe("click", { element_token: "s00000001:2" }, null, {
-    botId: 2,
-    color: "#80b780",
-    owner: "task-2",
-  });
-  await vi.advanceTimersByTimeAsync(100);
-  expect(updates.at(-1)).toMatchObject({
-    window: bounds,
-    pointer: { x: -450, y: 220 },
-  });
-  activity.observe(
-    "run_steps",
-    { ...target, steps: [{ click: { x: 100, y: 50 } }] },
-    null,
-    actor,
-  );
-  await vi.advanceTimersByTimeAsync(100);
-  expect(updates.at(-1)).toMatchObject({
-    window: bounds,
-    pointer: { x: -450, y: 220 },
-  });
-  activity.observe(
-    "run_steps",
-    {
-      ...target,
-      steps: [{ click: { x: 100, y: 50 } }, { click: { x: 300, y: 250 } }],
-    },
-    {
-      structuredJson: JSON.stringify({
-        steps: [
-          { index: 0, ok: true, target: { window: target } },
-          { index: 1, ok: false },
-        ],
-        ok: false,
-      }),
-    },
-    actor,
-  );
-  await vi.advanceTimersByTimeAsync(2000);
-  expect(updates.at(-1)).toMatchObject({ pointer: { x: -400, y: 200 } });
-  activity.observe("get_window_state", { pid: 8, window_id: 91 }, null, actor);
-  await vi.advanceTimersByTimeAsync(100);
-  expect(updates.at(-1)).toMatchObject({ pointer: null });
-  activity.observe(
-    "get_desktop_state",
-    {},
-    {
-      structuredJson: JSON.stringify({
-        screenshot_width: 1460,
-        screenshot_height: 540,
-      }),
-    },
-    actor,
-  );
-  activity.observe("click", { scope: "desktop", x: 300, y: 100 }, null, actor);
-  await vi.advanceTimersByTimeAsync(100);
-  expect(updates.at(-1)).toMatchObject({
-    window: bounds,
-    pointer: { x: -400, y: 200 },
-  });
+  activity.observe("list_windows", {}, null, { ...actor, owner: "task-2" });
+  activity.clear("task-2");
+  acknowledge();
+  expect(commands.at(-1)).toBeNull();
   await activity.close();
   await vi.advanceTimersByTimeAsync(3000);
   expect(updates.at(-1)).toBeNull();

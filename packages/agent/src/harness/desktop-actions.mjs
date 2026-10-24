@@ -23,6 +23,8 @@ export function openDesktopActions() {
   let target;
   let point;
   let sequence = 0;
+  let batch = false;
+  let session;
   function resolve(args) {
     const snapshot = snapshots.get(
       `${args.session ?? ""}:${args.element_token?.split(":")[0]}`,
@@ -40,6 +42,7 @@ export function openDesktopActions() {
     const key = (id) => `${session}:${id}`;
     target = resolve(args) ?? target;
     if (name === "run_steps") {
+      batch = !value;
       if (!value) return;
       const completed = (value.steps ?? []).filter((step) => step.ok).at(-1);
       if (completed) {
@@ -126,7 +129,6 @@ export function openDesktopActions() {
         target,
         action: name,
         id: ++sequence,
-        expiresAt: Date.now() + 15000,
       });
   }
   return {
@@ -136,10 +138,33 @@ export function openDesktopActions() {
     set target(value) {
       target = value;
     },
-    observe,
+    observe(name, args, value) {
+      session = args.session ?? "";
+      observe(name, args, value);
+    },
+    get session() {
+      return batch || !point ? session : undefined;
+    },
+    track(state) {
+      const position = state.position;
+      if (
+        (!batch && point) ||
+        !Number.isFinite(position?.x) ||
+        !Number.isFinite(position?.y) ||
+        (point?.x === position.x && point?.y === position.y && point.absolute)
+      )
+        return;
+      point = {
+        ...position,
+        absolute: true,
+        desktop: true,
+        action: "move_cursor",
+        id: ++sequence,
+      };
+    },
     resolve,
     pointer(bounds, screen, physical = (point) => point) {
-      if (!point || point.expiresAt <= Date.now()) return null;
+      if (!point) return null;
       if (
         !point.desktop &&
         !point.absolute &&
@@ -173,6 +198,8 @@ export function openDesktopActions() {
     },
     clear() {
       target = point = undefined;
+      batch = false;
+      session = undefined;
     },
   };
 }
