@@ -48,6 +48,11 @@ test("foreground input keeps a restored window active and publishes its real out
           bounds: { width: number; height: number };
         }>;
         screenshot_width: number;
+        elements: Array<{
+          label: string;
+          element_token: string;
+          frame: { x: number; y: number; w: number; h: number };
+        }>;
       };
     }>(
       {
@@ -73,13 +78,31 @@ test("foreground input keeps a restored window active and publishes its real out
     const identity = { pid, window_id: target.window_id };
     const observed = await call("get_window_state", {
       ...identity,
-      max_elements: 20,
+      max_elements: 250,
       tree_format: "elements",
+      full_output: true,
     });
     expect(observed.isError, JSON.stringify(observed.content)).toBe(false);
     const field = await page.locator("input").boundingBox();
     expect(field).toBeTruthy();
     if (!field) throw new Error("Input bounds required");
+    const button = observed.structuredContent.elements.find(
+      (item) => item.label === "Play",
+    );
+    expect(button).toBeTruthy();
+    if (!button) throw new Error("Button required");
+    await page.locator("input").fill("Control input");
+    await call("click", { ...identity, element_token: button.element_token });
+    await expect(page.locator("output")).toHaveText("Control input");
+    await expect
+      .poll(async () => {
+        const { frame } = await call("list_windows", {});
+        return Math.hypot(
+          (frame?.pointer?.x ?? 0) - (button.frame.x + button.frame.w / 2),
+          (frame?.pointer?.y ?? 0) - (button.frame.y + button.frame.h / 2),
+        );
+      })
+      .toBeLessThan(1);
     const scale =
       observed.structuredContent.screenshot_width /
       (await page.evaluate(() => innerWidth));
@@ -89,6 +112,9 @@ test("foreground input keeps a restored window active and publishes its real out
       await other.loadURL("data:text/html,<title>Domos other window</title>");
       other.focus();
     });
+    await expect
+      .poll(() => worker.activity?.window?.width !== target.bounds.width)
+      .toBe(true);
     for (const [name, args] of [
       [
         "click",
@@ -135,12 +161,15 @@ test("foreground input keeps a restored window active and publishes its real out
           },
           { x: field.x + field.width / 2, y: field.y + field.height / 2 },
         );
-        expect(
-          Math.abs((captured.frame?.pointer?.x ?? 0) - physical.x),
-        ).toBeLessThan(3);
-        expect(
-          Math.abs((captured.frame?.pointer?.y ?? 0) - physical.y),
-        ).toBeLessThan(3);
+        await expect
+          .poll(async () => {
+            const { frame } = await call("list_windows", {});
+            return Math.hypot(
+              (frame?.pointer?.x ?? 0) - physical.x,
+              (frame?.pointer?.y ?? 0) - physical.y,
+            );
+          })
+          .toBeLessThan(3);
       }
       await expect
         .poll(async () => (await call("list_windows", {})).frame)

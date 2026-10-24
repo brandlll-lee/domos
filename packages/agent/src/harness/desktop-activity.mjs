@@ -136,7 +136,7 @@ export function openDesktopActivity(driver, emit) {
     if (!actor || closed || !screen) return;
     if (Date.now() - observedAt > 2500) selected = undefined;
     const pointer =
-      actions.pointer(selected?.bounds, screen, (point) => {
+      actions.pointer(selected, screen, (point) => {
         if (process.platform !== "win32") return point;
         const display = displays.find(
           ({ dip }) =>

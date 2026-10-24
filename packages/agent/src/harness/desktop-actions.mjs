@@ -24,6 +24,7 @@ export function openDesktopActions() {
   let point;
   let sequence = 0;
   let batch = false;
+  let batchSequence = 0;
   let session;
   function resolve(args) {
     const snapshot = snapshots.get(
@@ -43,9 +44,12 @@ export function openDesktopActions() {
     target = resolve(args) ?? target;
     if (name === "run_steps") {
       batch = !value;
-      if (!value) return;
+      if (!value) {
+        batchSequence = sequence;
+        return;
+      }
       const completed = (value.steps ?? []).filter((step) => step.ok).at(-1);
-      if (completed) {
+      if (completed && sequence === batchSequence) {
         const { tool, args: input } = desktopStep(args.steps[completed.index]);
         if (input)
           observe(
@@ -53,6 +57,7 @@ export function openDesktopActions() {
             { ...args, ...input, ...(completed.target?.window ?? {}) },
             undefined,
           );
+        if (point) point.action = "move_cursor";
       }
       if (value?.observation?.ok)
         observe("get_window_state", args, value.observation.state);
@@ -89,12 +94,12 @@ export function openDesktopActions() {
     const frame = snapshot?.elements.get(args.element_token);
     const x = args.to_x ?? args.x;
     const y = args.to_y ?? args.y;
-    if (frame?.w > 0 && frame?.h > 0 && snapshot.bounds) {
+    if (frame?.w > 0 && frame?.h > 0) {
       point = {
         x: frame.x + frame.w / 2,
         y: frame.y + frame.h / 2,
         bounds: snapshot.bounds,
-        element: true,
+        space: "screen",
       };
     } else if (
       [
@@ -120,7 +125,7 @@ export function openDesktopActions() {
                     (desktop ? "desktop" : String(target?.window_id)),
                 ),
               ),
-              absolute: name === "move_cursor" && !desktop,
+              space: name === "move_cursor" && !desktop ? "logical" : "capture",
             }
           : undefined;
     } else return;
@@ -151,40 +156,44 @@ export function openDesktopActions() {
         (!batch && point) ||
         !Number.isFinite(position?.x) ||
         !Number.isFinite(position?.y) ||
-        (point?.x === position.x && point?.y === position.y && point.absolute)
+        (point?.x === position.x &&
+          point?.y === position.y &&
+          point.space === "logical")
       )
         return;
       point = {
         ...position,
-        absolute: true,
+        space: "logical",
         desktop: true,
         action: "move_cursor",
         id: ++sequence,
       };
     },
     resolve,
-    pointer(bounds, screen, physical = (point) => point) {
+    pointer(window, screen, physical = (point) => point) {
       if (!point) return null;
+      const bounds = window?.bounds;
       if (
         !point.desktop &&
-        !point.absolute &&
-        (point.target?.pid !== target?.pid ||
-          point.target?.window_id !== target?.window_id)
+        point.space !== "logical" &&
+        (!window ||
+          (point.target?.pid !== undefined &&
+            point.target.pid !== window.pid) ||
+          (point.target?.window_id !== undefined &&
+            String(point.target.window_id) !== String(window.window_id)))
       )
         return null;
-      if (point.absolute) return { ...point, ...physical(point) };
-      if (point.element) {
-        if (!bounds) return null;
-        const position = physical(point);
+      if (point.space === "logical") return { ...point, ...physical(point) };
+      if (point.space === "screen") {
+        if (!bounds || !point.bounds) return point;
         return {
           ...point,
           x:
             bounds.x +
-            ((position.x - point.bounds.x) * bounds.width) / point.bounds.width,
+            ((point.x - point.bounds.x) * bounds.width) / point.bounds.width,
           y:
             bounds.y +
-            ((position.y - point.bounds.y) * bounds.height) /
-              point.bounds.height,
+            ((point.y - point.bounds.y) * bounds.height) / point.bounds.height,
         };
       }
       const area = point.desktop ? screen : bounds;

@@ -42,7 +42,7 @@ test("window targets use exact identity, app fallback and held windows; occlusio
   ).toBe(other);
 });
 
-test("batch completion reports its last successful step once and native trajectories resume in flight", () => {
+test("batch completion updates position without replaying clicks and native trajectories resume in flight", () => {
   const actions = openDesktopActions();
   const target = { pid: 7, window_id: 90 };
   const bounds = { x: 0, y: 0, width: 1000, height: 700 };
@@ -55,18 +55,26 @@ test("batch completion reports its last successful step once and native trajecto
     steps: [{ click: { x: 100, y: 200 } }, { click: { x: 900, y: 200 } }],
   };
   actions.observe("run_steps", batch);
-  expect(actions.pointer(bounds, bounds)).toBeNull();
+  expect(actions.pointer({ ...target, bounds }, bounds)).toBeNull();
   actions.observe("run_steps", batch, {
     steps: [
       { index: 0, ok: true },
       { index: 1, ok: false },
     ],
   });
-  const first = actions.pointer(bounds, bounds);
-  expect(first).toMatchObject({ id: 1, x: 100, y: 200 });
+  const first = actions.pointer({ ...target, bounds }, bounds);
+  expect(first).toMatchObject({ id: 1, x: 100, y: 200, action: "move_cursor" });
+  actions.observe("run_steps", batch);
+  actions.track({ position: { x: 350, y: 200 } });
+  const tracked = actions.pointer({ ...target, bounds }, bounds);
+  actions.observe("run_steps", batch, { steps: [{ index: 1, ok: true }] });
+  expect(actions.pointer({ ...target, bounds }, bounds)).toEqual(tracked);
   actions.track({ position: null });
   vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60000);
-  expect(actions.pointer(bounds, bounds)).toMatchObject({ x: 100, y: 200 });
+  expect(actions.pointer({ ...target, bounds }, bounds)).toMatchObject({
+    x: 350,
+    y: 200,
+  });
   const motion = openDesktopMotion();
   vi.spyOn(Date, "now").mockReturnValue(1000);
   motion.move(first);
@@ -79,6 +87,46 @@ test("batch completion reports its last successful step once and native trajecto
   expect(resumed.motion[0].x).toBeLessThan(900);
   motion.clear();
 });
+
+test.each([1, 1.25, 2])(
+  "control and screenshot coordinates agree at scale %s",
+  (scale) => {
+    const actions = openDesktopActions();
+    const target = { pid: 7, window_id: 90 };
+    const bounds = { x: -800, y: 100, width: 800, height: 600 };
+    const screen = { x: -1600, y: 0, width: 3520, height: 1080 };
+    actions.observe("get_window_state", target, {
+      snapshot_id: "s1",
+      window_bounds: bounds,
+      screenshot_width: 400,
+      screenshot_height: 300,
+      elements: [
+        { element_token: "s1:2", frame: { x: -650, y: 200, w: 100, h: 100 } },
+      ],
+    });
+    const physical = (point: { x: number; y: number }) => ({
+      x: point.x * scale,
+      y: point.y * scale,
+    });
+    actions.observe("click", { ...target, element_token: "s1:2" });
+    expect(
+      actions.pointer({ ...target, bounds }, screen, physical),
+    ).toMatchObject({
+      x: -600,
+      y: 250,
+    });
+    actions.observe("click", { ...target, x: 100, y: 75 });
+    expect(
+      actions.pointer({ ...target, window_id: 91, bounds }, screen, physical),
+    ).toBeNull();
+    expect(
+      actions.pointer({ ...target, bounds }, screen, physical),
+    ).toMatchObject({
+      x: -600,
+      y: 250,
+    });
+  },
+);
 
 const spawn = vi.hoisted(() => vi.fn());
 vi.mock("node:child_process", () => ({ spawn }));
