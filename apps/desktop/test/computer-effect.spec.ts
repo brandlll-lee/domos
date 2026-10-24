@@ -69,7 +69,16 @@ test("desktop effects follow displays, pass input through, hide for captures and
         physical:
           process.platform === "win32"
             ? screen.dipToScreenRect(null, display.bounds)
-            : display.bounds,
+            : process.platform === "linux"
+              ? {
+                  ...screen.dipToScreenPoint({
+                    x: display.bounds.x,
+                    y: display.bounds.y,
+                  }),
+                  width: display.bounds.width * display.scaleFactor,
+                  height: display.bounds.height * display.scaleFactor,
+                }
+              : display.bounds,
         dip: display.bounds,
         count: screen.getAllDisplays().length,
       };
@@ -94,7 +103,19 @@ test("desktop effects follow displays, pass input through, hide for captures and
     const rim = page.locator(".rim");
     await expect(rim).toBeVisible();
     const actual = await rim.boundingBox();
+    expect(actual?.x).toBeCloseTo(0, 0);
+    expect(actual?.y).toBeCloseTo(0, 0);
     expect(actual?.width).toBeCloseTo(geometry.dip.width / 2, 0);
+    expect(actual?.height).toBeCloseTo(geometry.dip.height, 0);
+    const cursor = await page.locator(".cursor").boundingBox();
+    expect(cursor?.x).toBeCloseTo(
+      (80 * geometry.dip.width) / geometry.physical.width - 5,
+      0,
+    );
+    expect(cursor?.y).toBeCloseTo(
+      (80 * geometry.dip.height) / geometry.physical.height - 3,
+      0,
+    );
     await page.screenshot({
       path: testInfo.outputPath("computer-effect.png"),
       omitBackground: true,

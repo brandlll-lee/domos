@@ -84,6 +84,9 @@ export function openComputerService(directory, home, emit = () => {}) {
       }
       const args = {
         ...input.arguments,
+        ...(input.arguments?.observe
+          ? { observe: { ...input.arguments.observe } }
+          : {}),
         session:
           input.arguments?.session ??
           `domos-${input.actor?.botId ?? "desktop"}`,
@@ -99,6 +102,23 @@ export function openComputerService(directory, home, emit = () => {}) {
         cursorSessions.add(args.session);
       }
       activity.observe(input.name, args, null, input.actor);
+      const reading =
+        input.name === "get_window_state"
+          ? args
+          : input.name === "run_steps"
+            ? args.observe
+            : undefined;
+      const format = reading?.tree_format ?? "markdown";
+      const batchCapture =
+        input.name === "run_steps" && reading?.include_screenshot;
+      if (batchCapture) reading.include_screenshot = false;
+      if (reading && !reading.since && !reading.full_output) {
+        if (format === "markdown") reading.tree_format = "both";
+        if (input.name === "run_steps") {
+          reading.full_output = true;
+          reading.max_elements ??= 250;
+        }
+      }
       const call = () =>
         instance.callTool(input.name, JSON.stringify(args), { signal });
       const result = ["get_desktop_state", "get_window_state", "zoom"].includes(
@@ -108,18 +128,61 @@ export function openComputerService(directory, home, emit = () => {}) {
         : await call();
       if (signal.aborted) activity.clear(input.actor?.owner);
       else activity.observe(input.name, args, result, input.actor);
+      const structured = result.structuredJson
+        ? JSON.parse(result.structuredJson)
+        : undefined;
+      let images = result.images;
+      let captureError;
+      const observed = structured?.observation?.state;
+      if (batchCapture && observed && !signal.aborted) {
+        const captured = await activity.capture(() =>
+          instance.callTool(
+            "get_window_state",
+            JSON.stringify({
+              ...reading,
+              pid: observed.pid,
+              window_id: observed.window_id,
+              session: args.session,
+              include_accessibility_tree: false,
+              include_screenshot: true,
+            }),
+            { signal },
+          ),
+        );
+        images = captured.images;
+        captureError = captured.isError ? captured.text : undefined;
+        const capture = JSON.parse(captured.structuredJson ?? "{}");
+        Object.assign(observed, capture);
+        if (signal.aborted) activity.clear(input.actor?.owner);
+        else activity.observe("get_window_state", args, captured, input.actor);
+      }
+      if (
+        reading &&
+        format === "markdown" &&
+        !input.arguments?.full_output &&
+        !input.arguments?.observe?.full_output &&
+        structured
+      ) {
+        const state =
+          input.name === "run_steps"
+            ? structured.observation?.state
+            : structured;
+        if (state) {
+          delete state.elements;
+          state.tree_format = "markdown";
+        }
+      }
       return {
         content: [
           ...(result.text ? [{ type: "text", text: result.text }] : []),
-          ...result.images.map((image) => ({
+          ...(captureError ? [{ type: "text", text: captureError }] : []),
+          ...images.map((image) => ({
             type: "image",
             mimeType: image.mimeType,
             data: image.dataBase64,
           })),
         ],
-        ...(result.structuredJson
-          ? { structuredContent: JSON.parse(result.structuredJson) }
-          : {}),
+        ...(structured ? { structuredContent: structured } : {}),
         isError: result.isError,
       };
     },

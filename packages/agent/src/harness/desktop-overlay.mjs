@@ -10,10 +10,21 @@ export async function openDesktopOverlay(channel) {
   let suspended = false;
   let heartbeat;
   app.commandLine.appendSwitch("disable-renderer-backgrounding");
+  if (process.platform === "linux")
+    app.commandLine.appendSwitch("ozone-platform", "x11");
   await app.whenReady();
   app.dock?.hide();
-  const physical = (rect) =>
-    process.platform === "win32" ? screen.dipToScreenRect(null, rect) : rect;
+  const physical = (rect) => {
+    if (process.platform === "win32") return screen.dipToScreenRect(null, rect);
+    if (process.platform !== "linux") return rect;
+    const origin = screen.dipToScreenPoint({ x: rect.x, y: rect.y });
+    const { scaleFactor } = screen.getDisplayMatching(rect);
+    return {
+      ...origin,
+      width: Math.round(rect.width * scaleFactor),
+      height: Math.round(rect.height * scaleFactor),
+    };
+  };
   function render() {
     const displays = screen.getAllDisplays();
     for (const [id, window] of windows) {
@@ -85,6 +96,10 @@ export async function openDesktopOverlay(channel) {
     channel.send({
       type: "screen",
       bounds: physical(screen.getPrimaryDisplay().bounds),
+      displays: screen.getAllDisplays().map((display) => ({
+        dip: display.bounds,
+        physical: physical(display.bounds),
+      })),
     });
     render();
   }

@@ -35,6 +35,8 @@ test("tracks exact windows, scaled captures, movement and Bot identity; capture 
   const windows = () => [
     { pid: 7, window_id: 90, bounds, z_index: 1, is_on_screen: true },
     { pid: 8, window_id: 91, bounds: { ...bounds, width: 80 }, z_index: 2 },
+    { pid: 9, window_id: 92, app_name: "cua-driver", bounds, z_index: 3 },
+    { pid: 10, window_id: 93, bounds, z_index: 4, on_current_space: false },
   ];
   const driver = {
     callTool: vi.fn(async (name: string) => ({
@@ -60,6 +62,13 @@ test("tracks exact windows, scaled captures, movement and Bot identity; capture 
         screenshot_height: 300,
         capture_id: "capture-1",
         snapshot_id: "s00000001",
+        window_bounds: bounds,
+        elements: [
+          {
+            element_token: "s00000001:2",
+            frame: { x: -700, y: 200, w: 100, h: 40 },
+          },
+        ],
       }),
     },
     actor,
@@ -112,7 +121,43 @@ test("tracks exact windows, scaled captures, movement and Bot identity; capture 
     owner: "task-2",
   });
   await vi.advanceTimersByTimeAsync(100);
-  expect(updates.at(-1)).toMatchObject({ window: bounds, pointer: null });
+  expect(updates.at(-1)).toMatchObject({
+    window: bounds,
+    pointer: { x: -450, y: 220 },
+  });
+  activity.observe(
+    "run_steps",
+    { ...target, steps: [{ click: { x: 100, y: 50 } }] },
+    null,
+    actor,
+  );
+  await vi.advanceTimersByTimeAsync(100);
+  expect(updates.at(-1)).toMatchObject({
+    window: bounds,
+    pointer: { x: -400, y: 200 },
+  });
+  activity.observe(
+    "run_steps",
+    {
+      ...target,
+      steps: [{ click: { x: 100, y: 50 } }, { click: { x: 300, y: 250 } }],
+    },
+    {
+      structuredJson: JSON.stringify({
+        steps: [
+          { index: 0, ok: true, target: { window: target } },
+          { index: 1, ok: false },
+        ],
+        ok: false,
+      }),
+    },
+    actor,
+  );
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(updates.at(-1)).toMatchObject({ pointer: { x: -400, y: 200 } });
+  activity.observe("get_window_state", { pid: 8, window_id: 91 }, null, actor);
+  await vi.advanceTimersByTimeAsync(100);
+  expect(updates.at(-1)).toMatchObject({ pointer: null });
   activity.observe(
     "get_desktop_state",
     {},

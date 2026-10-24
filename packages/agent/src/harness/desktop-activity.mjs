@@ -3,18 +3,20 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { openDesktopActions } from "./desktop-actions.mjs";
 
 export function openDesktopActivity(driver, emit) {
   let actor;
   let owner;
-  let target;
-  let point;
+  const actions = openDesktopActions();
   let child;
   let failed = false;
   let ready = false;
   let sending = false;
   let closed = false;
   let screen;
+  let nativeScreen;
+  let displays = [];
   let timer;
   let expiresAt = 0;
   let sequence = 0;
@@ -24,8 +26,6 @@ export function openDesktopActivity(driver, emit) {
   let capturesInProgress = 0;
   let captureReady = Promise.resolve();
   const acknowledgements = new Map();
-  const captures = new Map();
-  const snapshots = new Map();
   const read = async (name, args = {}) => {
     const result = await driver.callTool(name, JSON.stringify(args), {
       signal: AbortSignal.timeout(1500),
@@ -60,7 +60,7 @@ export function openDesktopActivity(driver, emit) {
         process.platform === "linux" &&
         process.env.AGENT_BROWSER_ARGS?.includes("--no-sandbox")
       )
-        args.unshift("--no-sandbox");
+        args.push("--no-sandbox");
       const env = { ...process.env };
       delete env.ELECTRON_RUN_AS_NODE;
       child = spawn(executable, args, {
@@ -71,6 +71,8 @@ export function openDesktopActivity(driver, emit) {
       child.on("message", (value) => {
         if (value.type === "screen" && value.bounds) {
           screen = value.bounds;
+          displays = value.displays ?? [];
+          nativeScreen = undefined;
           ready = true;
           if (capturesInProgress)
             child.send({ type: "capture", hidden: true }, () => {});
@@ -89,7 +91,8 @@ export function openDesktopActivity(driver, emit) {
     }
   }
   function clear() {
-    actor = target = point = undefined;
+    actor = undefined;
+    actions.clear();
     generation++;
     clearTimeout(timer);
     timer = undefined;
@@ -99,43 +102,62 @@ export function openDesktopActivity(driver, emit) {
     if (!actor || closed || expiresAt <= Date.now()) return clear();
     const current = generation;
     try {
-      const { windows = [] } = await read("list_windows");
+      const listed = await read("list_windows");
+      const windows = (listed.windows ?? []).filter(
+        (item) =>
+          item.pid !== child?.pid &&
+          item.app_name !== "cua-driver" &&
+          item.app_name !== "cua-driver.exe" &&
+          item.on_current_space !== false &&
+          item.is_on_screen !== false &&
+          !item.minimized,
+      );
       if (current !== generation || closed || !actor) return;
       let window =
-        target &&
+        actions.target &&
         windows.find(
           (item) =>
-            String(item.window_id) === String(target.window_id) &&
-            item.pid === target.pid &&
-            item.is_on_screen !== false &&
-            !item.minimized,
+            String(item.window_id) === String(actions.target.window_id) &&
+            item.pid === actions.target.pid,
         );
-      if (!screen) {
-        const size = await read("get_screen_size");
-        screen = { x: 0, y: 0, width: size.width, height: size.height };
-      }
+      nativeScreen ??= await read("get_screen_size");
+      screen ??= {
+        x: 0,
+        y: 0,
+        width: nativeScreen.width,
+        height: nativeScreen.height,
+      };
       if (current !== generation || closed || !actor) return;
-      let pointer = null;
-      if (point?.expiresAt > Date.now()) {
-        const capture = captures.get(point.capture);
-        const bounds = point.desktop ? screen : window?.bounds;
-        if (bounds && capture)
-          pointer = {
-            ...point,
-            x: bounds.x + (point.x * bounds.width) / capture.width,
-            y: bounds.y + (point.y * bounds.height) / capture.height,
-          };
-      }
-      if (pointer && point.desktop && located !== point.id) {
-        located = point.id;
+      const pointer = actions.pointer(window?.bounds, screen, (point) => {
+        if (process.platform !== "win32" || nativeScreen.width === screen.width)
+          return point;
+        const display = displays.find(
+          ({ dip }) =>
+            point.x >= dip.x &&
+            point.y >= dip.y &&
+            point.x < dip.x + dip.width &&
+            point.y < dip.y + dip.height,
+        );
+        return display
+          ? {
+              x:
+                display.physical.x +
+                ((point.x - display.dip.x) * display.physical.width) /
+                  display.dip.width,
+              y:
+                display.physical.y +
+                ((point.y - display.dip.y) * display.physical.height) /
+                  display.dip.height,
+            }
+          : point;
+      });
+      if (pointer?.desktop && located !== pointer.id) {
+        located = pointer.id;
         window = windows
           .filter((item) => {
             const b = item.bounds;
             return (
               b &&
-              item.is_on_screen !== false &&
-              !item.minimized &&
-              item.pid !== child?.pid &&
               pointer.x >= b.x &&
               pointer.y >= b.y &&
               pointer.x < b.x + b.width &&
@@ -144,17 +166,17 @@ export function openDesktopActivity(driver, emit) {
           })
           .sort((a, b) => a.z_index - b.z_index)
           .at(-1);
-        target = window && { pid: window.pid, window_id: window.window_id };
+        actions.target = window && {
+          pid: window.pid,
+          window_id: window.window_id,
+        };
       }
       const covered = window
         ? windows
             .filter(
               (item) =>
                 item.window_id !== window.window_id &&
-                item.z_index > window.z_index &&
-                item.is_on_screen !== false &&
-                !item.minimized &&
-                item.pid !== child?.pid,
+                item.z_index > window.z_index,
             )
             .map((item) => item.bounds)
             .filter((b) => b && b.width > 0 && b.height > 0)
@@ -189,60 +211,13 @@ export function openDesktopActivity(driver, emit) {
       actor = { botId: identity.botId, color: identity.color };
       owner = identity.owner;
       expiresAt = Date.now() + 60000;
-      const chosen = args.target?.kind === "window" ? args.target : args;
-      if (chosen.pid !== undefined && chosen.window_id !== undefined)
-        target = { pid: chosen.pid, window_id: chosen.window_id };
-      if (args.element_token)
-        target = snapshots.get(args.element_token.split(":")[0]) ?? target;
-      if (result?.structuredJson) {
-        try {
-          const value = JSON.parse(result.structuredJson);
-          if (value.snapshot_id && target)
-            snapshots.set(value.snapshot_id, target);
-          const width = value.screenshot_width;
-          const height = value.screenshot_height;
-          if (width > 0 && height > 0) {
-            const key =
-              value.capture_id ??
-              (name === "get_desktop_state"
-                ? "desktop"
-                : String(target?.window_id));
-            captures.set(key, { width, height });
-            if (name === "get_desktop_state")
-              captures.set("desktop", { width, height });
-            else if (target)
-              captures.set(String(target.window_id), { width, height });
-          }
-          if (snapshots.size > 32)
-            snapshots.delete(snapshots.keys().next().value);
-          if (captures.size > 64) captures.delete(captures.keys().next().value);
-        } catch {}
-      }
-      if (
-        !result &&
-        ["click", "double_click", "move_cursor", "scroll", "drag"].includes(
+      try {
+        actions.observe(
           name,
-        )
-      ) {
-        const desktop =
-          args.target?.kind === "desktop" || args.scope === "desktop";
-        const x = args.to_x ?? args.x;
-        const y = args.to_y ?? args.y;
-        point =
-          !args.from_zoom && Number.isFinite(x) && Number.isFinite(y)
-            ? {
-                x,
-                y,
-                desktop,
-                capture:
-                  args.capture_id ??
-                  (desktop ? "desktop" : String(target?.window_id)),
-                action: name,
-                id: ++sequence,
-                expiresAt: Date.now() + 1500,
-              }
-            : null;
-      }
+          args,
+          result ? JSON.parse(result.structuredJson ?? "{}") : null,
+        );
+      } catch {}
       start();
       if (!timer && !pending) schedule();
     },
