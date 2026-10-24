@@ -1,7 +1,12 @@
+import { randomUUID } from "node:crypto";
 import type { Context } from "@earendil-works/chord/context";
 import type { ProductTool } from "../harness/types.ts";
 import { runAssistant } from "./assistant.ts";
-import { assistInput, assistTool } from "./assistant-action.ts";
+import {
+  assistantDiscovery,
+  assistInput,
+  assistTool,
+} from "./assistant-action.ts";
 import type { Computers } from "./catalog.ts";
 import type { Computer } from "./index.ts";
 import type { ComputerService, ServiceState } from "./service-types.ts";
@@ -10,6 +15,16 @@ export class ComputerTools {
   private readonly targets = new Set<Computer>();
   private readonly states = new Map<string, ServiceState>();
   private readonly computers: Computers;
+  private readonly handoffs = new Map<
+    string,
+    {
+      id: string;
+      botId: number;
+      computerId: string;
+      revision: number;
+      service: ComputerService;
+    }
+  >();
   constructor(computers: Computers) {
     this.computers = computers;
   }
@@ -70,6 +85,7 @@ export class ComputerTools {
       context,
     );
     this.targets.add(target);
+    const mode = await this.computers.assistance.state(botId, context);
     const tools: ProductTool[] = [];
     for (const service of ["browser", "desktop"] as const) {
       if (!enabled[service]) continue;
@@ -77,12 +93,10 @@ export class ComputerTools {
       this.states.set(`${id}:${botId}:${service}`, state);
       if (!state.available) continue;
       for (const tool of await target.services.catalog(botId, service, context))
-        tools.push({ ...tool, name: `${service}_${tool.name}` });
+        if (!mode.enabled || assistantDiscovery(`${service}_${tool.name}`))
+          tools.push({ ...tool, name: `${service}_${tool.name}` });
     }
-    if (
-      tools.length &&
-      (await this.computers.assistance.connect(botId, context))
-    )
+    if (mode.enabled && (enabled.browser || enabled.desktop))
       tools.push(assistTool);
     return tools;
   }
@@ -102,7 +116,7 @@ export class ComputerTools {
     return this.computers.transfer(
       botId,
       async () => {
-        const { target, enabled } = await this.computers.serviceTarget(
+        const { target, enabled, id } = await this.computers.serviceTarget(
           botId,
           context,
         );
@@ -120,48 +134,147 @@ export class ComputerTools {
             color: await this.computers.color(botId, context),
             owner,
           };
-          const catalog = new Set(
-            (await target.services.catalog(botId, input.service, context)).map(
-              (tool) => tool.name,
-            ),
+          const tools = await target.services.catalog(
+            botId,
+            input.service,
+            context,
           );
+          const catalog = new Set(tools.map((tool) => tool.name));
+          const binding = await this.computers.binding(botId, context);
+          const call = async (
+            tool: string,
+            arguments_: Record<string, unknown>,
+            aborted: AbortSignal,
+          ) => {
+            if (!catalog.has(tool)) throw new Error("辅助决策动作不可用。");
+            const current = await this.computers.assistance.connect(
+              botId,
+              context,
+            );
+            if (
+              current?.key !== connection.key ||
+              current.provider !== connection.provider
+            )
+              throw new Error("辅助决策设置已改变。请重新观察后继续。");
+            return target.services.call(
+              botId,
+              input.service,
+              tool,
+              arguments_,
+              owner,
+              aborted,
+              context,
+              actor,
+            );
+          };
           return target.services.run(
             botId,
             input.service,
             owner,
             signal,
-            (controlled) =>
-              runAssistant(
+            async (controlled) => {
+              if (input.handoff) {
+                const grant = this.handoffs.get(owner);
+                if (
+                  !grant ||
+                  grant.id !== input.handoff.id ||
+                  grant.botId !== botId ||
+                  grant.computerId !== id ||
+                  grant.revision !== binding.revision ||
+                  grant.service !== input.service
+                )
+                  throw new Error("这次交接已失效。请重新提交电脑子任务。");
+                this.handoffs.delete(owner);
+                const action = {
+                  name: input.handoff.name,
+                  args: input.handoff.args,
+                };
+                if (!catalog.has(action.name))
+                  throw new Error("交接动作不可用。");
+                if (!(await approve(action, controlled)))
+                  throw new Error("操作未获批准。");
+                const result = await call(action.name, action.args, controlled);
+                return {
+                  ...result,
+                  content: [
+                    {
+                      type: "text" as const,
+                      text: JSON.stringify({
+                        route: "main-agent-handoff",
+                        action,
+                        status: result.isError ? "failed" : "delivered",
+                      }),
+                    },
+                    ...result.content,
+                  ],
+                };
+              }
+              this.handoffs.delete(owner);
+              const click = tools.find((tool) => tool.name === "click");
+              const properties = click?.inputSchema.properties as
+                | Record<string, unknown>
+                | undefined;
+              const result = await runAssistant(
                 input,
                 connection,
-                async (tool, arguments_, aborted) => {
-                  if (!catalog.has(tool))
-                    throw new Error("辅助决策动作不可用。");
-                  const current = await this.computers.assistance.connect(
-                    botId,
-                    context,
-                  );
-                  if (
-                    current?.key !== connection.key ||
-                    current.provider !== connection.provider
-                  )
-                    throw new Error("辅助决策设置已改变。请重新观察后继续。");
-                  return target.services.call(
-                    botId,
-                    input.service,
-                    tool,
-                    arguments_,
-                    owner,
-                    aborted,
-                    context,
-                    actor,
-                  );
-                },
+                call,
                 approve,
                 controlled,
-              ),
+                catalog.has("parse_visual_regions") &&
+                  Boolean(properties?.capture_id),
+              );
+              if (
+                ["handoff", "uncertain"].includes(
+                  String(result.structuredContent?.status),
+                )
+              ) {
+                const handoffId = randomUUID();
+                this.handoffs.set(owner, {
+                  id: handoffId,
+                  botId,
+                  computerId: id,
+                  revision: binding.revision,
+                  service: input.service,
+                });
+                result.structuredContent = {
+                  ...result.structuredContent,
+                  handoffId,
+                };
+                result.content.push({
+                  type: "text",
+                  text: JSON.stringify({
+                    handoffId,
+                    tools: tools
+                      .filter((tool) =>
+                        [
+                          "click",
+                          "type_text",
+                          "press_key",
+                          "scroll",
+                          "run_steps",
+                          "agent_browser_click",
+                          "agent_browser_fill",
+                          "agent_browser_press",
+                        ].includes(tool.name),
+                      )
+                      .map(({ name, inputSchema }) => ({ name, inputSchema })),
+                    instruction:
+                      "Inspect fresh state. This ID permits one explicit native action through computer_assist.handoff; it never permits replay of uncertain actions.",
+                  }),
+                });
+              }
+              return result;
+            },
           );
         }
+        if (
+          (await this.computers.assistance.state(botId, context)).enabled &&
+          !assistantDiscovery(name)
+        )
+          throw new Error(
+            "Jev 协作模式已开启。请通过 computer_assist 提交电脑子任务。",
+          );
+
         for (const service of ["browser", "desktop"] as const) {
           if (!enabled[service]) continue;
           const tool = (
@@ -218,6 +331,7 @@ export class ComputerTools {
   }
 
   finish(owner: string) {
+    this.handoffs.delete(owner);
     for (const target of this.targets) target.services.finish(owner);
   }
 }

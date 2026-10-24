@@ -61,7 +61,7 @@ export function ComputerDecision({
   return (
     <section className="detail-stack" aria-label="辅助决策" aria-busy={busy}>
       <div className="panel-card computer-services">
-        <SettingRow title="Jev 辅助决策">
+        <SettingRow title="Jev 协作模式">
           <Switch
             label="启用辅助决策"
             checked={state?.enabled ?? false}

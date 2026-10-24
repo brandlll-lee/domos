@@ -3,238 +3,216 @@ import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import { ComputerAssistance } from "../src/computer/assistance.ts";
 import { runAssistant } from "../src/computer/assistant.ts";
-import { assistInput } from "../src/computer/assistant-action.ts";
-import { askJev } from "../src/computer/jev.ts";
+import type { Computers } from "../src/computer/catalog.ts";
 import { ComputerServices } from "../src/computer/services.ts";
 import { ComputersDoc } from "../src/computer/state.ts";
-import type { ProductResult } from "../src/harness/types.ts";
+import { ComputerTools } from "../src/computer/tools.ts";
 import { setup } from "./fixtures/work.ts";
 
 afterEach(() => vi.unstubAllGlobals());
-const signal = () => new AbortController().signal;
-const choice = (value: string) => ({
-  type: "choice",
-  choice: value,
-  confidence: 0.99,
-});
-function answer(action: string, target: unknown = choice("button")) {
-  return {
-    model: "jev-1.14.0",
-    answers: {
-      safe: { type: "noul", noul: 0.99 },
-      action: choice(action),
-      target,
-      present: { type: "noul", noul: 0.99 },
-    },
-    usage: { input_tokens: 100, output_tokens: 10 },
-  };
-}
-const observed = (service: string, pixels = false): ProductResult => ({
-  content:
-    service === "browser"
-      ? [
-          {
-            type: "text",
-            text: JSON.stringify({
-              data: { snapshot: '- button "Play" [ref=e1]' },
-            }),
-          },
-        ]
-      : [
-          { type: "text", text: "Player" },
-          ...(pixels
-            ? [
-                {
-                  type: "image" as const,
-                  data: "aW1hZ2U=",
-                  mimeType: "image/png",
-                },
-              ]
-            : []),
-        ],
-  structuredContent: {
-    elements: pixels
-      ? []
-      : [{ element_token: "button", label: "Play", role: "button" }],
-    screenshot_width: 1000,
-    screenshot_height: 500,
-  },
-});
 
-test.each(["typesafe", "openrouter"] as const)(
-  "%s uses the fixed System One endpoint and bounds responses",
-  async (provider) => {
-    const fetcher = vi.fn().mockResolvedValue(Response.json(answer("done")));
-    vi.stubGlobal("fetch", fetcher);
-    await askJev(provider, "test-key", {}, {}, signal());
-    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(
-      provider === "typesafe"
-        ? "https://api.typesafe.ai/v1/systemone"
-        : "https://openrouter.ai/api/v1/systemone",
-    );
-    expect(JSON.parse(String(init.body)).model).toBe(
-      provider === "typesafe" ? "jev-1.14.0" : "typesafe/jev-1.14",
-    );
-    expect(init.redirect).toBe("error");
-    fetcher.mockResolvedValueOnce(new Response("x".repeat(65537)));
-    await expect(
-      askJev(provider, "test-key", {}, {}, signal()),
-    ).rejects.toThrow("响应过大");
-    fetcher.mockResolvedValueOnce(
-      new Response("private upstream body", { status: 401 }),
-    );
-    await expect(
-      askJev(provider, "test-key", {}, {}, signal()),
-    ).rejects.toThrow(`辅助决策请求失败（${provider}，HTTP 401）`);
-  },
-);
+import {
+  connection,
+  input,
+  mockChoice,
+  observed,
+  signal,
+} from "./fixtures/computer-assistant.ts";
 
-test.each(["controls", "pixels", "fallback", "browser"])(
-  "%s observes, approves, executes and checks fresh evidence",
+test.each(["Edit", "AXTextField", "entry", "browser"])(
+  "%s compiles one complete action, approves and reobserves",
   async (mode) => {
-    const service = mode === "browser" ? "browser" : "desktop";
-    const pixelTarget = mode === "pixels" || mode === "fallback";
-    const target = pixelTarget
-      ? {
-          type: "box",
-          box: { left: 0.2, right: 0.4, top: 0.4, bottom: 0.6 },
-          confidence: 0.99,
-        }
-      : choice(service === "browser" ? "@e1" : "button");
-    const fetcher = vi.fn();
-    if (mode === "fallback")
-      fetcher.mockResolvedValueOnce(
-        Response.json(answer("type_0", choice("none"))),
-      );
-    fetcher
-      .mockResolvedValueOnce(Response.json(answer("type_0", target)))
-      .mockResolvedValueOnce(Response.json(answer("done", target)));
-    vi.stubGlobal("fetch", fetcher);
-    const call = vi.fn(
-      async (
-        _name: string,
-        _args: Record<string, unknown>,
-        _signal: AbortSignal,
-      ) => {
-        const result = observed(service, pixelTarget);
-        if (mode === "fallback")
-          result.structuredContent = {
-            ...result.structuredContent,
-            elements: [
-              { element_token: "other", role: "button", label: "Other" },
-            ],
-          };
-        return result;
-      },
+    let turn = 0;
+    const fetcher = mockChoice((criteria) =>
+      ++turn === 1
+        ? (Object.keys(criteria).find((id) =>
+            criteria[id]?.startsWith("Enter supplied"),
+          ) ?? "abstain")
+        : "review",
     );
-    const approve = vi.fn(async () => true);
+    const service = mode === "browser" ? "browser" : "desktop";
+    const view =
+      service === "browser"
+        ? {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  data: { snapshot: '- textbox "Search" [ref=e1]' },
+                }),
+              },
+            ],
+          }
+        : observed(mode);
+    const call = vi.fn(async () => view);
+    const approve = vi.fn(async (_action: unknown) => true);
     const result = await runAssistant(
-      assistInput.parse({
-        service,
-        goal: "Search Rain",
-        completion: "Rain is listed",
-        window: { pid: 1, window_id: 2 },
-        inputs: [{ purpose: "search", text: "Rain" }],
-      }),
-      { provider: "typesafe", key: "test-key" },
+      input(service),
+      connection,
       call,
       approve,
       signal(),
     );
     expect(result.structuredContent).toMatchObject({
-      status: "completed",
-      usage: { inputTokens: mode === "fallback" ? 300 : 200 },
+      status: "review",
       actions: [{ status: "delivered" }],
+      usage: { inputTokens: 200 },
+      timings: { decision: expect.any(Number) },
     });
-    expect(call).toHaveBeenCalledTimes(mode === "fallback" ? 4 : 3);
+    expect(call).toHaveBeenCalledTimes(3);
     expect(approve).toHaveBeenCalledTimes(1);
-    const args = call.mock.calls[mode === "fallback" ? 2 : 1]?.[1];
-    if (service === "browser")
-      expect(args).toEqual({ selector: "@e1", text: "Rain" });
-    else
-      expect(args).toMatchObject({
-        pid: 1,
-        window_id: 2,
-        delivery_mode: "background",
-        text: "Rain",
-        ...(pixelTarget ? { x: 300, y: 250 } : { element_token: "button" }),
-      });
-    const request = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body));
-    expect(Boolean(request.assets)).toBe(mode === "pixels");
+    expect(approve.mock.calls[0]?.[0]).toMatchObject({
+      args:
+        service === "browser"
+          ? { selector: "@e1", text: "Rain" }
+          : {
+              pid: 1,
+              window_id: 2,
+              element_token: "s1:1",
+              text: "Rain",
+              delivery_mode: "background",
+            },
+    });
+    const request = JSON.parse(String(fetcher.mock.calls[0]?.[1].body));
+    expect(Object.keys(request.questions)).toEqual(["next"]);
+    expect(JSON.stringify(request)).not.toContain("element_token");
+    expect(request.assets).toBeUndefined();
     expect(JSON.stringify(result)).not.toContain("test-key");
   },
 );
 
-test.each(["denied", "uncertain", "low confidence", "malformed box"])(
-  "%s stops without replay",
+test.each(["denied", "uncertain", "cancelled", "verified"])(
+  "%s retains approval, cancellation and evidence boundaries",
   async (mode) => {
-    const data = answer(
-      "click",
-      mode === "malformed box"
-        ? {
-            type: "box",
-            box: { left: 0.9, right: 0.1, top: 0, bottom: 1 },
-            confidence: 1,
-          }
-        : choice("button"),
-    );
-    if (mode === "low confidence") data.answers.safe.noul = 0.4;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => Response.json(data)),
-    );
-    const call = vi.fn(async (name: string) => {
-      if (name === "click") throw new Error("connection lost");
-      return observed("desktop");
+    const controller = new AbortController();
+    let turn = 0;
+    mockChoice((criteria) => {
+      if (mode === "cancelled") controller.abort();
+      return ++turn === 1
+        ? (Object.keys(criteria).find((id) =>
+            criteria[id]?.startsWith("Enter supplied"),
+          ) ?? "abstain")
+        : "review";
     });
-    const result = await runAssistant(
-      assistInput.parse({
-        service: "desktop",
-        goal: "Play",
-        completion: "Playing",
-        window: { pid: 1, window_id: 2 },
-      }),
-      { provider: "typesafe", key: "test-key" },
+    const call = vi.fn(async (name: string) => {
+      if (name === "type_text" && mode === "uncertain") throw new Error("lost");
+      if (name === "verify_state")
+        return {
+          content: [],
+          structuredContent: { status: "satisfied", stable: true },
+        };
+      return observed();
+    });
+    const task = {
+      ...input(),
+      ...(mode === "verified"
+        ? { evidence: { role: "Edit", label: "Search", value: "Rain" } }
+        : {}),
+    };
+    const result = runAssistant(
+      task,
+      connection,
       call,
       async () => mode !== "denied",
-      signal(),
+      controller.signal,
     );
-    expect(result.structuredContent?.status).toBe(
-      mode === "uncertain" ? "uncertain" : "handoff",
-    );
-    expect(call).toHaveBeenCalledTimes(mode === "uncertain" ? 2 : 1);
+    if (mode === "cancelled") {
+      await expect(result).rejects.toThrow();
+      expect(call).toHaveBeenCalledTimes(1);
+    } else
+      expect((await result).structuredContent?.status).toBe(
+        mode === "verified"
+          ? "completed"
+          : mode === "uncertain"
+            ? "uncertain"
+            : "handoff",
+      );
   },
 );
 
-test("takeover cancels an in-flight decision before it can execute", async () => {
-  const controller = new AbortController();
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => {
-      controller.abort();
-      return Response.json(answer("click"));
-    }),
-  );
-  const call = vi.fn(async () => observed("desktop"));
-  await expect(
-    runAssistant(
-      assistInput.parse({
-        service: "desktop",
-        goal: "Play",
-        completion: "Playing",
-        window: { pid: 1, window_id: 2 },
-      }),
-      { provider: "typesafe", key: "test-key" },
-      call,
-      async () => true,
-      controller.signal,
+test("mode gates catalog and invocation; handoffs are explicit, single-use and owner-bound", async () => {
+  let enabled = true;
+  const services = {
+    prepare: vi.fn(async () => ({ available: true })),
+    catalog: vi.fn(async () =>
+      ["get_window_state", "click"].map((name) => ({
+        name,
+        inputSchema: {},
+        description: name,
+      })),
     ),
-  ).rejects.toThrow();
-  expect(call).toHaveBeenCalledTimes(1);
+    call: vi.fn(async () => observed("Button")),
+    run: async (
+      _bot: number,
+      _service: string,
+      _owner: string,
+      s: AbortSignal,
+      work: (s: AbortSignal) => unknown,
+    ) => work(s),
+    finish: vi.fn(),
+  };
+  const computers = {
+    binding: async () => ({ computerId: "pc", revision: 1 }),
+    serviceTarget: async () => ({
+      id: "pc",
+      target: { services },
+      enabled: { desktop: true },
+    }),
+    assistance: {
+      state: async () => ({ enabled }),
+      connect: async () => (enabled ? connection : undefined),
+    },
+    color: async () => "blue",
+    transfer: async (_bot: number, work: () => unknown) => work(),
+  } as unknown as Computers;
+  const tools = new ComputerTools(computers);
+  expect((await tools.catalog(1, context)).map((tool) => tool.name)).toEqual([
+    "desktop_get_window_state",
+    "computer_assist",
+  ]);
+  const invoke = (name: string, args = {}, owner = "owner") =>
+    tools.invoke(1, name, args, owner, signal(), context, async () => true);
+  await expect(invoke("desktop_click")).rejects.toThrow("Jev");
+  await invoke("desktop_get_window_state");
+  mockChoice(() => "abstain");
+  const result = await invoke("computer_assist", input());
+  const handoff = {
+    id: result.structuredContent?.handoffId,
+    name: "click",
+    args: { pid: 1, window_id: 2, element_token: "s1:1" },
+  };
+  await expect(
+    invoke("computer_assist", { ...input(), handoff }, "other"),
+  ).rejects.toThrow("交接已失效");
+  expect(
+    (await invoke("computer_assist", { ...input(), handoff })).content,
+  ).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        type: "text",
+        text: expect.stringContaining("main-agent-handoff"),
+      }),
+    ]),
+  );
+  await expect(
+    invoke("computer_assist", { ...input(), handoff }),
+  ).rejects.toThrow("交接已失效");
+  const next = await invoke("computer_assist", input());
+  tools.finish("owner");
+  await expect(
+    invoke("computer_assist", {
+      ...input(),
+      handoff: { ...handoff, id: next.structuredContent?.handoffId },
+    }),
+  ).rejects.toThrow("交接已失效");
+  enabled = false;
+  expect((await tools.catalog(1, context)).map((tool) => tool.name)).toContain(
+    "desktop_click",
+  );
+  await invoke("desktop_click");
 });
 
-test("computer control covers decision waits and rejects a competing owner", async () => {
+test("computer ownership spans decision waits", async () => {
   const services = new ComputerServices(async () => {
     throw new Error("Worker not needed");
   });
