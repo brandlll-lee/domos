@@ -15,7 +15,7 @@ COPY deploy/licenses/pi.txt /usr/share/doc/pi/LICENSE
 COPY packages/agent/src/harness/browser-view.mjs packages/agent/src/harness/desktop-view.mjs /opt/domos/
 COPY packages/agent/src/harness/desktop-activity.mjs packages/agent/src/harness/desktop-actions.mjs packages/agent/src/harness/desktop-motion.mjs packages/agent/src/harness/desktop-target.mjs packages/agent/src/harness/desktop-overlay.mjs packages/agent/src/harness/desktop-windows.mjs packages/agent/src/harness/desktop-overlay-preload.cjs /opt/domos/
 COPY packages/ui/package.json /opt/domos/node_modules/@domos/ui/package.json
-COPY packages/ui/src/computer-effect.mjs /opt/domos/node_modules/@domos/ui/src/computer-effect.mjs
+COPY packages/ui/src/computer-effect.mjs packages/ui/src/computer-effect-art.mjs /opt/domos/node_modules/@domos/ui/src/
 COPY deploy/workspace.mjs /opt/domos/workspace.mjs
 COPY deploy/licenses/mcp-sdk.txt deploy/licenses/cross-spawn.txt deploy/licenses/proper-lockfile.txt /usr/share/doc/domos/licenses/
 COPY deploy/licenses/agent-browser.txt deploy/licenses/cua-driver.txt deploy/licenses/claude-agent-sdk.txt /usr/share/doc/domos/licenses/

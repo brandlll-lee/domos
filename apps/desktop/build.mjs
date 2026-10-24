@@ -105,7 +105,11 @@ await mkdir(join(runtime, "work/packages/agent/src/harness"), {
   recursive: true,
 });
 await mkdir(join(runtime, "work/packages/ui/src"), { recursive: true });
-for (const name of ["package.json", "src/computer-effect.mjs"])
+for (const name of [
+  "package.json",
+  "src/computer-effect.mjs",
+  "src/computer-effect-art.mjs",
+])
   await cp(
     join(root, "packages/ui", name),
     join(runtime, "work/packages/ui", name),

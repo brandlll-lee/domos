@@ -2,7 +2,8 @@ import { spawn } from "node:child_process";
 import { release } from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mountComputerEffect } from "@domos/ui/computer-effect";
+import { mountComputerEffectWithArt } from "@domos/ui/computer-effect";
+import { effectArt } from "@domos/ui/computer-effect-art";
 import { app, BrowserWindow, screen } from "electron";
 
 export async function openDesktopOverlay(channel) {
@@ -86,7 +87,8 @@ export async function openDesktopOverlay(channel) {
           loaded.add(window);
           render();
         });
-        const html = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}</style><domos-computer-effect></domos-computer-effect><script>const effect=(${mountComputerEffect.toString()})(document.querySelector('domos-computer-effect'));window.computerEffect.subscribe(value=>effect.update(value));</script>`;
+        const script = `const effect=(${mountComputerEffectWithArt.toString()})(document.querySelector('domos-computer-effect'),${JSON.stringify(effectArt)});window.computerEffect.subscribe(value=>effect.update(value));`;
+        const html = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}</style><domos-computer-effect></domos-computer-effect><script>${script}</script>`;
         void window.loadURL(
           `data:text/html;charset=utf-8,${encodeURIComponent(html)}`,
         );

@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     "./computer-effect": "./src/computer-effect.mjs",
+    "./computer-effect-art": "./src/computer-effect-art.mjs",
     "./panel": "./src/web/panel.tsx",
     "./tabs": "./src/web/tabs.tsx",
     "./toast": "./src/web/toast.ts",

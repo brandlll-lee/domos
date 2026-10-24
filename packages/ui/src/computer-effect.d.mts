@@ -18,3 +18,7 @@ export function mountComputerEffect(container: HTMLElement): {
   update(value: ComputerEffectState | null): void;
   close(): void;
 };
+export function mountComputerEffectWithArt(
+  container: HTMLElement,
+  art: { styles: string; markup: string },
+): ReturnType<typeof mountComputerEffect>;

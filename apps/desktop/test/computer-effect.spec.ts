@@ -6,7 +6,8 @@ import { release, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { WorkProcess } from "../../../packages/agent/src/harness/process.ts";
-import { mountComputerEffect } from "../../../packages/ui/src/computer-effect.mjs";
+import { mountComputerEffectWithArt } from "../../../packages/ui/src/computer-effect.mjs";
+import { effectArt } from "../../../packages/ui/src/computer-effect-art.mjs";
 
 const electronEnv = Object.fromEntries(
   Object.entries(process.env).filter(
@@ -145,12 +146,16 @@ test("heartbeats keep one click and cursor motion continues from its visible pos
     '<div id="effect" style="position:relative;width:1000px;height:700px"></div>',
   );
   await page.addScriptTag({
-    content: `window.mountComputerEffect = ${mountComputerEffect.toString()}`,
+    content: `window.mountComputerEffect = (container) => (${mountComputerEffectWithArt.toString()})(container, ${JSON.stringify(effectArt)})`,
   });
   const result = await page.evaluate(async () => {
     const host = document.querySelector("#effect") as HTMLElement;
     const mount = (
-      window as unknown as { mountComputerEffect: typeof mountComputerEffect }
+      window as unknown as {
+        mountComputerEffect: (
+          container: HTMLElement,
+        ) => ReturnType<typeof mountComputerEffectWithArt>;
+      }
     ).mountComputerEffect;
     const effect = mount(host);
     const cursor = host.shadowRoot?.querySelector(".cursor") as HTMLElement;
@@ -329,7 +334,7 @@ test("desktop effects follow displays, protect captures, reuse native windows an
       0,
     );
     expect(cursor?.y).toBeCloseTo(
-      (80 * geometry.dip.height) / geometry.physical.height - 3,
+      (80 * geometry.dip.height) / geometry.physical.height - 5,
       0,
     );
     await page.screenshot({
@@ -357,7 +362,10 @@ test("desktop effects follow displays, protect captures, reuse native windows an
         },
       ],
     });
-    await expect(rim).toHaveCSS("mask-image", /data:image\/svg/);
+    await expect(page.locator(".rim .cut")).toHaveCSS(
+      "mask-image",
+      /data:image\/svg/,
+    );
     const image = await page.screenshot({ omitBackground: true });
     const alpha = await application.evaluate(
       ({ nativeImage }, image) => {
