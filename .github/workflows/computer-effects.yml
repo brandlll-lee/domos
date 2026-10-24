@@ -20,7 +20,8 @@ jobs:
           node-version-file: .node-version
       - uses: pnpm/action-setup@v6.1.0
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec vitest run packages/agent/test/computer-activity.test.ts
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm exec vitest run packages/agent/test/computer-activity.test.ts packages/agent/test/computer-input.test.ts
       - if: runner.os == 'Linux'
         run: xvfb-run -a pnpm exec playwright test --config apps/desktop/playwright.config.ts computer-effect.spec.ts
       - if: runner.os != 'Linux'

@@ -1,4 +1,5 @@
 import { openBrowserService } from "./browser-service.mjs";
+import { desktopInputs, desktopStep } from "./desktop-actions.mjs";
 import { openDesktopView } from "./desktop-view.mjs";
 
 export function openComputerService(directory, home, emit = () => {}) {
@@ -102,6 +103,29 @@ export function openComputerService(directory, home, emit = () => {}) {
         cursorSessions.add(args.session);
       }
       activity.observe(input.name, args, null, input.actor);
+      const foreground =
+        input.name === "run_steps"
+          ? args.steps
+              ?.map((step) => ({
+                ...args,
+                ...desktopStep(step).args,
+              }))
+              .find((step) => step.delivery_mode === "foreground")
+          : args.delivery_mode === "foreground" &&
+              desktopInputs.includes(input.name)
+            ? args
+            : undefined;
+      const target = foreground && activity.target(foreground);
+      const activation =
+        target?.pid !== undefined
+          ? await instance.callTool(
+              "bring_to_front",
+              JSON.stringify({ ...target, session: args.session }),
+              { signal },
+            )
+          : undefined;
+      if (foreground && !activation?.isError) await activity.refresh();
+      signal.throwIfAborted();
       const reading =
         input.name === "get_window_state"
           ? args
@@ -121,13 +145,16 @@ export function openComputerService(directory, home, emit = () => {}) {
       }
       const call = () =>
         instance.callTool(input.name, JSON.stringify(args), { signal });
-      const result = ["get_desktop_state", "get_window_state", "zoom"].includes(
-        input.name,
-      )
-        ? await activity.capture(call)
-        : await call();
+      const result = activation?.isError
+        ? activation
+        : ["get_desktop_state", "get_window_state", "zoom"].includes(input.name)
+          ? await activity.capture(call)
+          : await call();
       if (signal.aborted) activity.clear(input.actor?.owner);
-      else activity.observe(input.name, args, result, input.actor);
+      else {
+        activity.observe(input.name, args, result, input.actor);
+        await activity.refresh();
+      }
       const structured = result.structuredJson
         ? JSON.parse(result.structuredJson)
         : undefined;

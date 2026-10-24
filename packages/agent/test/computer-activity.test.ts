@@ -144,6 +144,9 @@ test("tracks exact windows, scaled captures, movement and Bot identity; capture 
     },
     actor,
   );
+  expect(
+    activity.target({ session: "", element_token: "s00000001:2" }),
+  ).toEqual(target);
   child.emit("message", {
     type: "screen",
     bounds: { x: -1000, y: 0, width: 2920, height: 1080 },
@@ -162,8 +165,11 @@ test("tracks exact windows, scaled captures, movement and Bot identity; capture 
     covered: [{ width: 80 }],
   });
   expect(computerActivity.safeParse(updates.at(-1)).success).toBe(true);
+  child.emit("message", { type: "windows", ids: ["90"] });
+  await activity.refresh();
+  expect(updates.at(-1)).toMatchObject({ window: bounds, covered: [] });
   bounds = { ...bounds, x: -600 };
-  await vi.advanceTimersByTimeAsync(100);
+  await activity.refresh();
   expect(updates.at(-1)).toMatchObject({
     window: bounds,
     pointer: { x: -200 },

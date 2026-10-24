@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mountComputerEffect } from "@domos/ui/computer-effect";
-import { app, BrowserWindow, screen } from "electron";
+import { app, BrowserWindow, desktopCapturer, screen } from "electron";
 
 export async function openDesktopOverlay(channel) {
   const windows = new Map();
@@ -9,6 +9,7 @@ export async function openDesktopOverlay(channel) {
   let state;
   let suspended = false;
   let heartbeat;
+  let listing;
   app.commandLine.appendSwitch("disable-renderer-backgrounding");
   if (process.platform === "linux")
     app.commandLine.appendSwitch("ozone-platform", "x11");
@@ -121,6 +122,22 @@ export async function openDesktopOverlay(channel) {
         return;
       }
       state = value;
+      if (state && process.platform === "win32" && !listing)
+        listing = desktopCapturer
+          .getSources({
+            types: ["window"],
+            thumbnailSize: { width: 0, height: 0 },
+          })
+          .then((sources) =>
+            channel.send({
+              type: "windows",
+              ids: sources.map((source) => source.id.split(":")[1]),
+            }),
+          )
+          .catch(() => {})
+          .finally(() => {
+            listing = undefined;
+          });
       clearTimeout(heartbeat);
       heartbeat = setTimeout(() => {
         state = null;

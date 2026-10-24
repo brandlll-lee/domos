@@ -20,6 +20,7 @@ export function openDesktopActivity(driver, emit) {
   let screen;
   let nativeScreen;
   let displays = [];
+  let visibleWindows;
   let timer;
   let expiresAt = 0;
   let sequence = 0;
@@ -73,6 +74,7 @@ export function openDesktopActivity(driver, emit) {
         stdio: ["ignore", "ignore", "ignore", "ipc"],
       });
       child.on("message", (value) => {
+        if (value.type === "windows") visibleWindows = new Set(value.ids);
         if (value.type === "screen" && value.bounds) {
           screen = value.bounds;
           displays = value.displays ?? [];
@@ -114,6 +116,7 @@ export function openDesktopActivity(driver, emit) {
           item.pid !== child?.pid &&
           item.app_name !== "cua-driver" &&
           item.app_name !== "cua-driver.exe" &&
+          (!visibleWindows || visibleWindows.has(String(item.window_id))) &&
           item.on_current_space !== false &&
           item.is_on_screen !== false &&
           !item.minimized,
@@ -178,6 +181,7 @@ export function openDesktopActivity(driver, emit) {
     }
   }
   function schedule() {
+    if (pending) return pending;
     pending = tick().finally(() => {
       pending = undefined;
       if (actor && !closed)
@@ -186,8 +190,18 @@ export function openDesktopActivity(driver, emit) {
           schedule();
         }, 100);
     });
+    return pending;
   }
   return {
+    target: actions.resolve,
+    async refresh() {
+      clearTimeout(timer);
+      timer = undefined;
+      await pending;
+      clearTimeout(timer);
+      timer = undefined;
+      if (!closed && actor) await schedule();
+    },
     observe(name, args, result, identity) {
       if (closed || !identity || !/^#[0-9a-f]{6}$/i.test(identity.color))
         return;

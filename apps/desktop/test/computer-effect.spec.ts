@@ -1,9 +1,134 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { mkdtemp, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
+import { WorkProcess } from "../../../packages/agent/src/harness/process.ts";
 import { mountComputerEffect } from "../../../packages/ui/src/computer-effect.mjs";
+
+test("foreground input keeps a restored window active and publishes its real outline", async ({
+  playwright,
+}) => {
+  test.skip(
+    process.platform !== "win32",
+    "Native input needs an interactive desktop and OS permissions",
+  );
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(
+      (entry): entry is [string, string] => entry[1] !== undefined,
+    ),
+  );
+  delete env.ELECTRON_RUN_AS_NODE;
+  const application = await playwright._electron.launch({
+    args: [resolve("apps/desktop/test/input-entry.mjs")],
+    env,
+  });
+  const directory = await mkdtemp(join(tmpdir(), "domos-input-"));
+  const executable = createRequire(new URL("../package.json", import.meta.url))(
+    "electron",
+  );
+  const worker = new WorkProcess(
+    [executable, resolve("packages/agent/src/harness/worker.mjs")],
+    { cwd: directory, home: directory },
+    [],
+    async () => ({ content: [] }),
+  );
+  const call = async (name: string, args: Record<string, unknown>) => ({
+    ...(await worker.computer<{
+      isError: boolean;
+      content: unknown[];
+      structuredContent: {
+        windows: Array<{
+          title: string;
+          window_id: number;
+          bounds: { width: number; height: number };
+        }>;
+        screenshot_width: number;
+      };
+    }>(
+      {
+        operation: "call",
+        service: "desktop",
+        name,
+        arguments: args,
+        actor: { botId: 1, color: "#68b6ff", owner: "test" },
+      },
+      AbortSignal.timeout(30000),
+    )),
+    frame: worker.activity,
+  });
+  try {
+    const page = await application.firstWindow();
+    const pid = await application.evaluate(() => process.pid);
+    const listed = await call("list_windows", { pid });
+    const target = listed.structuredContent.windows.find(
+      (item: { title: string }) => item.title === "Domos input target",
+    );
+    expect(target).toBeTruthy();
+    if (!target) throw new Error("Target window required");
+    const identity = { pid, window_id: target.window_id };
+    const observed = await call("get_window_state", {
+      ...identity,
+      max_elements: 20,
+      tree_format: "elements",
+    });
+    expect(observed.isError, JSON.stringify(observed.content)).toBe(false);
+    const field = await page.locator("input").boundingBox();
+    expect(field).toBeTruthy();
+    if (!field) throw new Error("Input bounds required");
+    const scale =
+      observed.structuredContent.screenshot_width /
+      (await page.evaluate(() => innerWidth));
+    await application.evaluate(async ({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.minimize();
+      const other = new BrowserWindow({ width: 900, height: 700 });
+      await other.loadURL("data:text/html,<title>Domos other window</title>");
+      other.focus();
+    });
+    for (const [name, args] of [
+      [
+        "click",
+        {
+          x: (field.x + field.width / 2) * scale,
+          y: (field.y + field.height / 2) * scale,
+        },
+      ],
+      ["hotkey", { keys: ["ctrl", "a"] }],
+      ["type_text", { text: "我这样爱你" }],
+      ["press_key", { key: "tab" }],
+      ["press_key", { key: "return" }],
+    ] as const) {
+      const result = await call(name, {
+        ...identity,
+        ...args,
+        delivery_mode: "foreground",
+      });
+      expect(result.isError, JSON.stringify(result.content)).toBe(false);
+      if (name === "type_text")
+        await expect(page.locator("input")).toHaveValue("我这样爱你");
+      expect(
+        await application.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getFocusedWindow()?.getTitle(),
+        ),
+      ).toBe("Domos input target");
+      await expect
+        .poll(async () => (await call("list_windows", {})).frame)
+        .toMatchObject({
+          window: { width: target.bounds.width, height: target.bounds.height },
+          covered: [],
+        });
+    }
+    await expect(page.locator("output")).toHaveText("我这样爱你");
+    await worker.computer({ operation: "activity", owner: "test" });
+    expect(worker.activity).toBeNull();
+  } finally {
+    await worker.close();
+    await application.close();
+    await rm(directory, { recursive: true, force: true, maxRetries: 5 });
+  }
+});
 
 test("heartbeats keep one click and cursor motion continues from its visible position", async ({
   browser,

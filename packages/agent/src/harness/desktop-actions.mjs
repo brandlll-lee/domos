@@ -1,37 +1,49 @@
+export const desktopInputs = [
+  "click",
+  "double_click",
+  "right_click",
+  "set_value",
+  "type_text",
+  "press_key",
+  "hotkey",
+  "scroll",
+  "drag",
+  "move_cursor",
+];
+
+export function desktopStep(step) {
+  const tool =
+    step.tool ?? Object.keys(step).find((key) => desktopInputs.includes(key));
+  return { tool, args: step.args ?? step[tool] };
+}
+
 export function openDesktopActions() {
   const captures = new Map();
   const snapshots = new Map();
   let target;
   let point;
   let sequence = 0;
+  function resolve(args) {
+    const snapshot = snapshots.get(
+      `${args.session ?? ""}:${args.element_token?.split(":")[0]}`,
+    );
+    const chosen = args.target?.kind === "window" ? args.target : args;
+    return (
+      snapshot?.target ??
+      (chosen.pid !== undefined || chosen.window_id !== undefined
+        ? { pid: chosen.pid, window_id: chosen.window_id }
+        : undefined)
+    );
+  }
   function observe(name, args, value) {
     const session = args.session ?? "";
     const key = (id) => `${session}:${id}`;
-    const chosen = args.target?.kind === "window" ? args.target : args;
-    if (chosen.pid !== undefined || chosen.window_id !== undefined)
-      target = { pid: chosen.pid, window_id: chosen.window_id };
+    target = resolve(args) ?? target;
     if (name === "run_steps") {
       if (!value) return;
       const completed = (value.steps ?? []).filter((step) => step.ok).at(-1);
       if (completed) {
-        const step = args.steps[completed.index];
-        const tool =
-          step.tool ??
-          Object.keys(step).find((key) =>
-            [
-              "click",
-              "double_click",
-              "right_click",
-              "set_value",
-              "type_text",
-              "press_key",
-              "hotkey",
-              "scroll",
-              "drag",
-              "move_cursor",
-            ].includes(key),
-          );
-        const input = step.args ?? step[tool];
+        const { tool, args: input } = desktopStep(args.steps[completed.index]);
         if (input)
           observe(
             tool,
@@ -44,7 +56,6 @@ export function openDesktopActions() {
       return;
     }
     const snapshot = snapshots.get(key(args.element_token?.split(":")[0]));
-    if (snapshot) target = snapshot.target;
     if (value) {
       if (value.pid !== undefined || value.window_id !== undefined)
         target = { pid: value.pid, window_id: value.window_id };
@@ -126,6 +137,7 @@ export function openDesktopActions() {
       target = value;
     },
     observe,
+    resolve,
     pointer(bounds, screen, physical = (point) => point) {
       if (!point || point.expiresAt <= Date.now()) return null;
       if (
