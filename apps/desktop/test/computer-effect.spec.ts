@@ -68,6 +68,7 @@ test("foreground input keeps a restored window active and publishes its real out
   });
   try {
     const page = await application.firstWindow();
+    await expect(page.getByRole("button", { name: "Play" })).toBeVisible();
     const pid = await application.evaluate(() => process.pid);
     const listed = await call("list_windows", { pid });
     const target = listed.structuredContent.windows.find(
@@ -103,6 +104,25 @@ test("foreground input keeps a restored window active and publishes its real out
         );
       })
       .toBeLessThan(1);
+    const control = await call("run_steps", {
+      ...identity,
+      steps: [
+        {
+          set_value: {
+            role: "textfield",
+            name: "Song",
+            value: "Control input",
+          },
+        },
+        { click: { role: "button", name: "Play" } },
+      ],
+      observe: { include_screenshot: true },
+    });
+    expect(control.isError, JSON.stringify(control.content)).toBe(false);
+    expect(control.structuredContent).toHaveProperty(
+      "observation.state.snapshot_id",
+    );
+    await expect(page.locator("output")).toHaveText("Control input");
     const scale =
       observed.structuredContent.screenshot_width /
       (await page.evaluate(() => innerWidth));
@@ -179,6 +199,28 @@ test("foreground input keeps a restored window active and publishes its real out
         });
     }
     await expect(page.locator("output")).toHaveText("我这样爱你");
+    const batch = await call("run_steps", {
+      ...identity,
+      delivery_mode: "foreground",
+      steps: [
+        {
+          click: {
+            x: (field.x + field.width / 2) * scale,
+            y: (field.y + field.height / 2) * scale,
+          },
+        },
+        { hotkey: { keys: ["ctrl", "a"] } },
+        { type_text: { text: "Batch input" } },
+        { press_key: { key: "tab" } },
+        { press_key: { key: "return" } },
+      ],
+      observe: { include_screenshot: true },
+    });
+    expect(batch.isError, JSON.stringify(batch.content)).toBe(false);
+    expect(batch.structuredContent).toHaveProperty(
+      "observation.state.snapshot_id",
+    );
+    await expect(page.locator("output")).toHaveText("Batch input");
     const positions = new Set<number>();
     const moved = () => {
       if (worker.activity?.pointer) positions.add(worker.activity.pointer.x);

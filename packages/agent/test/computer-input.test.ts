@@ -69,10 +69,38 @@ test("foreground input reuses its active window and visual reads do not delay ex
     { signal },
   );
   await call({ steps, observe: { include_screenshot: true } }, "run_steps");
-  expect(
-    JSON.parse(driver.callTool.mock.calls.at(-1)?.[1]).observe
-      .include_screenshot,
-  ).toBe(true);
+  expect(JSON.parse(driver.callTool.mock.calls.at(-1)?.[1]).observe).toEqual({
+    include_screenshot: true,
+    tree_format: "both",
+    since: null,
+  });
+  activity.captureExcluded = false;
+  driver.callTool.mockImplementation(async (name: string) => ({
+    images: [],
+    isError: name === "run_steps",
+    structuredJson: JSON.stringify(
+      name === "run_steps"
+        ? { observation: { ok: true, state: { pid: 8, window_id: 91 } } }
+        : { pid: 8, window_id: 91 },
+    ),
+  }));
+  driver.callTool.mockClear();
+  const interrupted = await call(
+    { steps, observe: { include_screenshot: true } },
+    "run_steps",
+  );
+  activity.captureExcluded = true;
+  expect(interrupted.isError).toBe(true);
+  expect(driver.callTool.mock.calls.map(([name]) => name)).toEqual([
+    "run_steps",
+    "get_window_state",
+  ]);
+  expect(JSON.parse(driver.callTool.mock.calls[1]?.[1])).toMatchObject({
+    pid: 8,
+    window_id: 91,
+    include_screenshot: true,
+    include_accessibility_tree: false,
+  });
   for (const args of [
     { include_screenshot: false },
     { include_screenshot: true },

@@ -139,10 +139,7 @@ export function openComputerService(directory, home, emit = () => {}) {
       if (batchCapture) reading.include_screenshot = false;
       if (reading && !reading.since && !reading.full_output) {
         if (format === "markdown") reading.tree_format = "both";
-        if (input.name === "run_steps") {
-          reading.full_output = true;
-          reading.max_elements ??= 250;
-        }
+        if (input.name === "run_steps") reading.since = null;
       }
       const call = () =>
         instance.callTool(input.name, JSON.stringify(args), { signal });

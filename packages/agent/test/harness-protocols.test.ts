@@ -365,13 +365,23 @@ test("Pi waits for settlement after tool and agent-end events", async () => {
     type: "message_end",
     message: {
       role: "assistant",
+      content: [],
+      stopReason: "error",
+      errorMessage: "Connection error.",
+    },
+  });
+  process.frame({ type: "message_start", message: { role: "assistant" } });
+  process.frame({
+    type: "message_end",
+    message: {
+      role: "assistant",
       content: [{ type: "text", text: "Done" }],
       stopReason: "stop",
     },
   });
   process.frame({ type: "agent_settled" });
   await task;
-  expect(events).toContainEqual({ type: "message", id: "pi:2", text: "Done" });
+  expect(events).toContainEqual({ type: "message", id: "pi:3", text: "Done" });
   expect(events).toContainEqual({
     type: "tool_result",
     id: "file",
@@ -379,6 +389,28 @@ test("Pi waits for settlement after tool and agent-end events", async () => {
     text: "Saved",
     failed: false,
   });
+  process.receive = (request) => {
+    process.frame({
+      type: "response",
+      id: request.id,
+      success: true,
+      data: {},
+    });
+    if (request.type !== "prompt") return;
+    process.frame({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: [],
+        stopReason: "error",
+        errorMessage: "Connection error.",
+      },
+    });
+    process.frame({ type: "agent_settled" });
+  };
+  await expect(session.prompt("Next task")).rejects.toThrow(
+    "Connection error.",
+  );
 });
 
 test("Codex handles approval, streams tools and recovers a completed native turn", async () => {
