@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -13,7 +14,8 @@ export function openDesktopActivity(driver, emit) {
   const actions = openDesktopActions();
   const motion = openDesktopMotion();
   let child;
-  let failed = false;
+  let retryAt = 0;
+  let frame;
   let ready = false;
   let sending = false;
   let closed = false;
@@ -39,16 +41,23 @@ export function openDesktopActivity(driver, emit) {
     return JSON.parse(result.structuredJson ?? "{}");
   };
   function send(value) {
+    frame = value;
     emit(value);
+    if (value && !capturesInProgress) start();
     if (ready && child?.connected && !sending) {
+      const overlay = child;
       sending = true;
-      child.send(value, () => {
+      overlay.send(value, (error) => {
+        if (child !== overlay) return;
         sending = false;
+        if (error) overlay.kill();
       });
     }
   }
   function start() {
-    if (child || failed || closed) return;
+    if (child || closed || !actor || capturesInProgress || Date.now() < retryAt)
+      return;
+    retryAt = Date.now() + 1000;
     try {
       const distribution = dirname(
         createRequire(import.meta.url).resolve("electron/package.json"),
@@ -68,33 +77,38 @@ export function openDesktopActivity(driver, emit) {
         args.push("--no-sandbox");
       const env = { ...process.env };
       delete env.ELECTRON_RUN_AS_NODE;
-      child = spawn(executable, args, {
+      const overlay = spawn(executable, args, {
         env,
         windowsHide: true,
         stdio: ["ignore", "ignore", "ignore", "ipc"],
       });
-      child.on("message", (value) => {
+      child = overlay;
+      overlay.on("message", (value) => {
+        if (child !== overlay) return;
         if (value.type === "windows") visibleWindows = new Set(value.ids);
         if (value.type === "screen" && value.bounds) {
           screen = value.bounds;
           displays = value.displays ?? [];
           nativeScreen = undefined;
           ready = true;
-          if (capturesInProgress)
-            child.send({ type: "capture", hidden: true }, () => {});
+          for (const id of acknowledgements.keys())
+            overlay.send({ type: "capture", id, hidden: true }, () => {});
+          send(frame ?? null);
         }
         if (value.type === "capture") acknowledgements.get(value.id)?.();
       });
-      child.on("error", () => {
-        failed = true;
-      });
-      child.on("exit", () => {
-        failed = true;
+      const ended = () => {
+        if (child !== overlay) return;
+        child = undefined;
         ready = false;
-      });
-    } catch {
-      failed = true;
-    }
+        sending = false;
+        visibleWindows = undefined;
+        retryAt = Date.now() + 1000;
+        for (const acknowledge of acknowledgements.values()) acknowledge();
+      };
+      overlay.on("error", ended);
+      overlay.on("exit", ended);
+    } catch {}
   }
   function clear() {
     actor = undefined;
@@ -221,18 +235,28 @@ export function openDesktopActivity(driver, emit) {
     async capture(run) {
       const overlay = child;
       const hidden = ++capturesInProgress;
-      if (ready && overlay?.connected && hidden === 1) {
+      if (hidden === 1) captureReady = Promise.resolve();
+      if (overlay?.connected && hidden === 1) {
         const id = ++sequence;
-        captureReady = new Promise((resolve) => {
-          const timer = setTimeout(() => {
-            overlay.kill();
-            resolve();
-          }, 200);
+        captureReady = new Promise((resolve, reject) => {
+          const timer = setTimeout(async () => {
+            try {
+              const exited = once(overlay, "exit", {
+                signal: AbortSignal.timeout(1000),
+              });
+              overlay.kill();
+              await exited;
+              resolve();
+            } catch {
+              reject(new Error("电脑操作效果未能隐藏，请重试截图。"));
+            }
+          }, 2000);
           acknowledgements.set(id, () => {
             clearTimeout(timer);
             resolve();
           });
-          overlay.send({ type: "capture", id, hidden: true }, () => {});
+          if (ready)
+            overlay.send({ type: "capture", id, hidden: true }, () => {});
         }).finally(() => acknowledgements.delete(id));
       }
       try {

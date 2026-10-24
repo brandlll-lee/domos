@@ -126,6 +126,7 @@ for (const name of [
   "desktop-motion.mjs",
   "desktop-target.mjs",
   "desktop-overlay.mjs",
+  "desktop-windows.mjs",
   "desktop-overlay-preload.cjs",
 ])
   await cp(

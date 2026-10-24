@@ -113,6 +113,12 @@ test("foreground input keeps a restored window active and publishes its real out
           BrowserWindow.getFocusedWindow()?.getTitle(),
         ),
       ).toBe("Domos input target");
+      const captured = await call("get_window_state", {
+        ...identity,
+        include_accessibility_tree: false,
+      });
+      expect(captured.isError, JSON.stringify(captured.content)).toBe(false);
+      if (name === "click") expect(captured.frame?.pointer).toBeTruthy();
       await expect
         .poll(async () => (await call("list_windows", {})).frame)
         .toMatchObject({
@@ -227,10 +233,29 @@ test("the production overlay receives frames over IPC and closes with its parent
       pointer: null,
       expiresAt: Date.now() + 10000,
     });
-    const captured = once(child, "message", { signal });
-    child.send({ type: "capture", id: 1, hidden: true });
-    expect(await captured).toEqual([{ type: "capture", id: 1 }]);
-    child.send({ type: "capture", hidden: false });
+    if (process.platform === "win32") {
+      for (;;) {
+        const [value] = await once(child, "message", { signal });
+        if (value.type === "windows") {
+          expect(Array.isArray(value.ids)).toBe(true);
+          break;
+        }
+      }
+    }
+    for (let id = 1; id <= 12; id++) {
+      const captured = (async () => {
+        for (;;) {
+          const [value] = await once(child, "message", { signal });
+          if (value.type === "capture" && value.id === id) return value;
+        }
+      })();
+      const started = Date.now();
+      child.send({ type: "capture", id, hidden: true });
+      expect(await captured).toEqual({ type: "capture", id });
+      expect(Date.now() - started).toBeLessThan(1500);
+      child.send({ type: "capture", hidden: false });
+      expect(child.exitCode).toBeNull();
+    }
     const ended = once(child, "exit", { signal });
     child.disconnect();
     expect(await ended).toEqual([0, null]);
@@ -361,6 +386,12 @@ test("desktop effects follow displays, pass input through, hide for captures and
           ),
       )
       .toBe("#80b780");
+    for (let id = 1; id <= 12; id++) {
+      await send({ type: "capture", id, hidden: true });
+      await send({ type: "capture", hidden: false });
+      await expect(rim).toBeVisible();
+      await expect(page.locator(".cursor")).toBeVisible();
+    }
     await send({ type: "capture", id: 1, hidden: true });
     await expect
       .poll(() =>

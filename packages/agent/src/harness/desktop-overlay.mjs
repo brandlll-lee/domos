@@ -1,7 +1,8 @@
+import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mountComputerEffect } from "@domos/ui/computer-effect";
-import { app, BrowserWindow, desktopCapturer, screen } from "electron";
+import { app, BrowserWindow, screen } from "electron";
 
 export async function openDesktopOverlay(channel) {
   const windows = new Map();
@@ -10,6 +11,8 @@ export async function openDesktopOverlay(channel) {
   let suspended = false;
   let heartbeat;
   let listing;
+  let listingActive;
+  let retryAt = 0;
   app.commandLine.appendSwitch("disable-renderer-backgrounding");
   if (process.platform === "linux")
     app.commandLine.appendSwitch("ozone-platform", "x11");
@@ -111,6 +114,37 @@ export async function openDesktopOverlay(channel) {
   ])
     screen.on(event, changed);
   changed();
+  function listWindows(active) {
+    if (process.platform !== "win32") return;
+    if (!listing && active && Date.now() >= retryAt) {
+      retryAt = Date.now() + 1000;
+      const child = spawn(
+        process.execPath,
+        [fileURLToPath(new URL("desktop-windows.mjs", import.meta.url))],
+        { windowsHide: true, stdio: ["ignore", "ignore", "ignore", "ipc"] },
+      );
+      listing = child;
+      listingActive = active;
+      child.on("message", (value) => {
+        if (value.type === "windows-ready") {
+          listingActive = Boolean(state);
+          child.send(listingActive, () => {});
+        }
+        if (value.type === "windows" && channel.connected !== false)
+          channel.send(value, () => {});
+      });
+      const ended = () => {
+        if (listing !== child) return;
+        listing = undefined;
+        retryAt = Date.now() + 1000;
+      };
+      child.on("error", ended);
+      child.on("exit", ended);
+    } else if (listing?.connected && active !== listingActive) {
+      listingActive = active;
+      listing.send(active, () => {});
+    }
+  }
   channel.on("message", (value) => {
     try {
       if (JSON.stringify(value).length > 131072)
@@ -118,29 +152,18 @@ export async function openDesktopOverlay(channel) {
       if (value?.type === "capture") {
         suspended = value.hidden;
         render();
-        setTimeout(() => channel.send({ type: "capture", id: value.id }), 32);
+        setTimeout(
+          () => channel.send({ type: "capture", id: value.id }, () => {}),
+          32,
+        );
         return;
       }
       state = value;
-      if (state && process.platform === "win32" && !listing)
-        listing = desktopCapturer
-          .getSources({
-            types: ["window"],
-            thumbnailSize: { width: 0, height: 0 },
-          })
-          .then((sources) =>
-            channel.send({
-              type: "windows",
-              ids: sources.map((source) => source.id.split(":")[1]),
-            }),
-          )
-          .catch(() => {})
-          .finally(() => {
-            listing = undefined;
-          });
+      listWindows(Boolean(state));
       clearTimeout(heartbeat);
       heartbeat = setTimeout(() => {
         state = null;
+        listWindows(false);
         render();
       }, 2500);
       render();
@@ -149,7 +172,10 @@ export async function openDesktopOverlay(channel) {
     }
   });
   channel.once("disconnect", () => app.quit());
-  app.on("before-quit", () => clearTimeout(heartbeat));
+  app.on("before-quit", () => {
+    clearTimeout(heartbeat);
+    listing?.kill();
+  });
 }
 if (
   process.argv[1] &&

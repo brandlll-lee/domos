@@ -287,3 +287,86 @@ test("a late observation cannot restore stopped effects and a failed helper does
   );
   await activity.close();
 });
+
+test("delayed capture acknowledgements preserve effects and an exited overlay recovers", async () => {
+  vi.useFakeTimers();
+  let delay: number | undefined = 500;
+  const create = () => {
+    const child = Object.assign(new EventEmitter(), {
+      pid: 42,
+      exitCode: null as number | null,
+      connected: true,
+      kill: vi.fn(),
+      disconnect: vi.fn(),
+      send(
+        value: { type?: string; id?: number; hidden?: boolean },
+        done: () => void,
+      ) {
+        if (value?.type === "capture" && value.id && delay !== undefined)
+          setTimeout(() => child.emit("message", value), delay);
+        done();
+      },
+    });
+    return child;
+  };
+  const children: ReturnType<typeof create>[] = [];
+  spawn.mockImplementation(() => {
+    const child = create();
+    children.push(child);
+    return child;
+  });
+  const driver = {
+    callTool: async () => ({
+      structuredJson: '{"windows":[],"width":1920,"height":1080}',
+    }),
+  };
+  const activity = openDesktopActivity(driver, () => {});
+  const actor = { botId: 1, color: "#68b6ff", owner: "task" };
+  activity.observe("list_windows", {}, null, actor);
+  const ready = {
+    type: "screen",
+    bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+  };
+  const capture = vi.fn(async () => "screenshot");
+  const first = activity.capture(capture);
+  const concurrent = activity.capture(capture);
+  await vi.advanceTimersByTimeAsync(300);
+  expect(children[0]?.kill).not.toHaveBeenCalled();
+  expect(capture).not.toHaveBeenCalled();
+  children[0]?.emit("message", ready);
+  children[0]?.emit("message", { type: "capture", id: 999 });
+  expect(capture).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(500);
+  await expect(first).resolves.toBe("screenshot");
+  await expect(concurrent).resolves.toBe("screenshot");
+  expect(capture).toHaveBeenCalledTimes(2);
+  if (children[0]) {
+    children[0].connected = false;
+    children[0].exitCode = 1;
+    children[0].emit("exit", 1);
+  }
+  await vi.advanceTimersByTimeAsync(1200);
+  expect(children).toHaveLength(2);
+  const current = children[1];
+  current?.emit("message", ready);
+  delay = undefined;
+  current?.kill.mockImplementation(() => {
+    setTimeout(() => {
+      current.exitCode = 1;
+      current.connected = false;
+      current.emit("exit", 1);
+    }, 250);
+  });
+  const timedOut = activity.capture(capture);
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(current?.kill).toHaveBeenCalledOnce();
+  expect(capture).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(250);
+  await expect(timedOut).resolves.toBe("screenshot");
+  await vi.advanceTimersByTimeAsync(1200);
+  expect(children).toHaveLength(3);
+  activity.clear("task");
+  await activity.close();
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(children).toHaveLength(3);
+});
