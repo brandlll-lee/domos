@@ -147,7 +147,9 @@ export function openComputerService(directory, home, emit = () => {}) {
         instance.callTool(input.name, JSON.stringify(args), { signal });
       const result = activation?.isError
         ? activation
-        : ["get_desktop_state", "get_window_state", "zoom"].includes(input.name)
+        : ["get_desktop_state", "zoom"].includes(input.name) ||
+            (input.name === "get_window_state" &&
+              (args.include_screenshot !== false || args.screenshot_out_file))
           ? await activity.capture(call)
           : await call();
       if (signal.aborted) activity.clear(input.actor?.owner);

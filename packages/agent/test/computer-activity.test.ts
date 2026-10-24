@@ -84,7 +84,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test("tracks exact windows, scaled captures, movement and Bot identity; capture and teardown clear the overlay", async () => {
+test("tracks window geometry and Bot identity; capture protection and short read failures preserve effects", async () => {
   vi.useFakeTimers();
   const commands: unknown[] = [];
   const child = Object.assign(new EventEmitter(), {
@@ -150,6 +150,7 @@ test("tracks exact windows, scaled captures, movement and Bot identity; capture 
   child.emit("message", {
     type: "screen",
     bounds: { x: -1000, y: 0, width: 2920, height: 1080 },
+    captureExcluded: true,
   });
   activity.observe(
     "click",
@@ -174,10 +175,24 @@ test("tracks exact windows, scaled captures, movement and Bot identity; capture 
     window: bounds,
     pointer: { x: -200 },
   });
-  await activity.capture(async () => {
-    expect(commands.at(-1)).toMatchObject({ type: "capture", hidden: true });
-  });
-  expect(commands.at(-1)).toMatchObject({ type: "capture", hidden: false });
+  const stable = updates.at(-1);
+  driver.callTool.mockRejectedValueOnce(new Error("Window query unavailable"));
+  await activity.refresh();
+  expect(updates.at(-1)).toBe(stable);
+  const commandCount = commands.length;
+  await activity.capture(async () => "screenshot");
+  expect(commands).toHaveLength(commandCount);
+  const read = driver.callTool.getMockImplementation();
+  driver.callTool.mockRejectedValue(new Error("Window query unavailable"));
+  await vi.advanceTimersByTimeAsync(2600);
+  expect(updates.at(-1)).toBeNull();
+  if (read) driver.callTool.mockImplementation(read);
+  await activity.refresh();
+  expect(updates.at(-1)).toMatchObject({ window: bounds });
+  child.emit("message", { type: "windows", ids: [] });
+  await activity.refresh();
+  expect(updates.at(-1)).toMatchObject({ window: null });
+  child.emit("message", { type: "windows", ids: ["90"] });
   activity.clear("task-1");
   expect(updates.at(-1)).toBeNull();
   activity.observe("get_window_state", target, null, {

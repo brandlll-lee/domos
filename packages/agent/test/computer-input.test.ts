@@ -7,6 +7,7 @@ const { driver, activity } = vi.hoisted(() => ({
     refresh: vi.fn(),
     clear: vi.fn(),
     close: vi.fn(),
+    capture: vi.fn(async (run: () => Promise<unknown>) => run()),
     target: (args: Record<string, unknown>) => args.target ?? args,
   },
 }));
@@ -71,6 +72,18 @@ test("foreground input activates its exact window before publishing and acting; 
     expect.stringContaining('"expect":[{"text":"Done"}]'),
     { signal },
   );
+  for (const args of [
+    { include_screenshot: false },
+    { include_screenshot: true },
+    {},
+    { include_screenshot: false, screenshot_out_file: "capture.png" },
+  ]) {
+    activity.capture.mockClear();
+    await call({ ...target, ...args }, "get_window_state");
+    expect(activity.capture).toHaveBeenCalledTimes(
+      args.include_screenshot === false && !args.screenshot_out_file ? 0 : 1,
+    );
+  }
   const controller = new AbortController();
   driver.callTool.mockImplementation(async (name: string) => {
     if (name === "bring_to_front") controller.abort();

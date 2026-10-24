@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { release } from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mountComputerEffect } from "@domos/ui/computer-effect";
@@ -7,6 +8,8 @@ import { app, BrowserWindow, screen } from "electron";
 export async function openDesktopOverlay(channel) {
   const windows = new Map();
   const loaded = new WeakSet();
+  const captureExcluded =
+    process.platform === "win32" && Number(release().split(".")[2]) >= 19041;
   let state;
   let suspended = false;
   let heartbeat;
@@ -40,7 +43,7 @@ export async function openDesktopOverlay(channel) {
     for (const display of displays) {
       let window = windows.get(display.id);
       if (!state || suspended || state.expiresAt <= Date.now()) {
-        window?.hide();
+        if (window?.isVisible()) window.hide();
         continue;
       }
       if (!window) {
@@ -74,6 +77,7 @@ export async function openDesktopOverlay(channel) {
         });
         window.setIgnoreMouseEvents(true);
         window.setContentProtection(true);
+        window.setBounds(display.bounds, false);
         window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
         window.webContents.on("will-navigate", (event) =>
           event.preventDefault(),
@@ -87,18 +91,20 @@ export async function openDesktopOverlay(channel) {
           `data:text/html;charset=utf-8,${encodeURIComponent(html)}`,
         );
       }
-      window.setBounds(display.bounds, false);
       if (!loaded.has(window)) continue;
       window.webContents.send("computer-effect", {
         ...state,
         screen: physical(display.bounds),
       });
-      window.showInactive();
+      if (!window.isVisible()) window.showInactive();
     }
   }
   function changed() {
+    for (const display of screen.getAllDisplays())
+      windows.get(display.id)?.setBounds(display.bounds, false);
     channel.send({
       type: "screen",
+      captureExcluded,
       bounds: physical(screen.getPrimaryDisplay().bounds),
       displays: screen.getAllDisplays().map((display) => ({
         dip: display.bounds,
@@ -150,7 +156,7 @@ export async function openDesktopOverlay(channel) {
       if (JSON.stringify(value).length > 131072)
         throw new Error("Invalid frame");
       if (value?.type === "capture") {
-        suspended = value.hidden;
+        suspended = value.hidden && !captureExcluded;
         render();
         setTimeout(
           () => channel.send({ type: "capture", id: value.id }, () => {}),

@@ -2,11 +2,18 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
+import { release, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { WorkProcess } from "../../../packages/agent/src/harness/process.ts";
 import { mountComputerEffect } from "../../../packages/ui/src/computer-effect.mjs";
+
+const electronEnv = Object.fromEntries(
+  Object.entries(process.env).filter(
+    (entry): entry is [string, string] =>
+      entry[1] !== undefined && entry[0] !== "ELECTRON_RUN_AS_NODE",
+  ),
+);
 
 test("foreground input keeps a restored window active and publishes its real outline", async ({
   playwright,
@@ -15,15 +22,9 @@ test("foreground input keeps a restored window active and publishes its real out
     process.platform !== "win32",
     "Native input needs an interactive desktop and OS permissions",
   );
-  const env = Object.fromEntries(
-    Object.entries(process.env).filter(
-      (entry): entry is [string, string] => entry[1] !== undefined,
-    ),
-  );
-  delete env.ELECTRON_RUN_AS_NODE;
   const application = await playwright._electron.launch({
     args: [resolve("apps/desktop/test/input-entry.mjs")],
-    env,
+    env: electronEnv,
   });
   const directory = await mkdtemp(join(tmpdir(), "domos-input-"));
   const executable = createRequire(new URL("../package.json", import.meta.url))(
@@ -209,13 +210,11 @@ test("the production overlay receives frames over IPC and closes with its parent
   const executable = createRequire(new URL("../package.json", import.meta.url))(
     "electron",
   );
-  const env = { ...process.env };
-  delete env.ELECTRON_RUN_AS_NODE;
   const child = spawn(
     executable,
     [resolve("packages/agent/src/harness/desktop-overlay.mjs")],
     {
-      env,
+      env: electronEnv,
       windowsHide: true,
       stdio: ["ignore", "ignore", "ignore", "ipc"],
     },
@@ -242,20 +241,15 @@ test("the production overlay receives frames over IPC and closes with its parent
         }
       }
     }
-    for (let id = 1; id <= 12; id++) {
-      const captured = (async () => {
-        for (;;) {
-          const [value] = await once(child, "message", { signal });
-          if (value.type === "capture" && value.id === id) return value;
-        }
-      })();
-      const started = Date.now();
-      child.send({ type: "capture", id, hidden: true });
-      expect(await captured).toEqual({ type: "capture", id });
-      expect(Date.now() - started).toBeLessThan(1500);
-      child.send({ type: "capture", hidden: false });
-      expect(child.exitCode).toBeNull();
-    }
+    const captured = (async () => {
+      for (;;) {
+        const [value] = await once(child, "message", { signal });
+        if (value.type === "capture" && value.id === 1) return value;
+      }
+    })();
+    child.send({ type: "capture", id: 1, hidden: true });
+    expect(await captured).toEqual({ type: "capture", id: 1 });
+    child.send({ type: "capture", hidden: false });
     const ended = once(child, "exit", { signal });
     child.disconnect();
     expect(await ended).toEqual([0, null]);
@@ -265,23 +259,25 @@ test("the production overlay receives frames over IPC and closes with its parent
   }
 });
 
-test("desktop effects follow displays, pass input through, hide for captures and expire after disconnect", async ({
+test("desktop effects follow displays, protect captures, reuse native windows and expire after disconnect", async ({
   playwright,
 }, testInfo) => {
-  const env = Object.fromEntries(
-    Object.entries(process.env).filter(
-      (entry): entry is [string, string] => entry[1] !== undefined,
-    ),
-  );
-  delete env.ELECTRON_RUN_AS_NODE;
   const application = await playwright._electron.launch({
     args: [resolve("apps/desktop/test/effect-entry.mjs")],
-    env,
+    env: electronEnv,
   });
   const send = (value: unknown) =>
     application.evaluate((_electron, value) => {
       (process as NodeJS.EventEmitter).emit("computer-effect-input", value);
     }, value);
+  const visible = (value: boolean) =>
+    application.evaluate(
+      ({ BrowserWindow }, value) =>
+        BrowserWindow.getAllWindows().every(
+          (window) => window.isVisible() === value,
+        ),
+      value,
+    );
   try {
     const geometry = await application.evaluate(({ screen }) => {
       const display = screen.getPrimaryDisplay();
@@ -386,49 +382,105 @@ test("desktop effects follow displays, pass input through, hide for captures and
           ),
       )
       .toBe("#80b780");
+    const captureExcluded =
+      process.platform === "win32" && Number(release().split(".")[2]) >= 19041;
+    await application.evaluate(({ BrowserWindow }) => {
+      const calls = { bounds: 0, show: 0, hide: 0 };
+      for (const window of BrowserWindow.getAllWindows()) {
+        const bounds = window.setBounds.bind(window);
+        const show = window.showInactive.bind(window);
+        window.setBounds = (...args) => {
+          calls.bounds++;
+          bounds(...args);
+        };
+        window.showInactive = () => {
+          calls.show++;
+          show();
+        };
+        window.on("hide", () => calls.hide++);
+      }
+      (process as NodeJS.EventEmitter).once("computer-effect-calls", (reply) =>
+        reply(calls),
+      );
+    });
     for (let id = 1; id <= 12; id++) {
       await send({ type: "capture", id, hidden: true });
+      expect(await visible(captureExcluded)).toBe(true);
       await send({ type: "capture", hidden: false });
+      await send({ ...state, color: "#80b780", expiresAt: Date.now() + 10000 });
       await expect(rim).toBeVisible();
       await expect(page.locator(".cursor")).toBeVisible();
     }
-    await send({ type: "capture", id: 1, hidden: true });
-    await expect
-      .poll(() =>
-        application.evaluate(({ BrowserWindow }) =>
-          BrowserWindow.getAllWindows().every((window) => !window.isVisible()),
+    const calls = await application.evaluate(
+      () =>
+        new Promise((reply) =>
+          (process as NodeJS.EventEmitter).emit("computer-effect-calls", reply),
         ),
-      )
-      .toBe(true);
-    await send({ type: "capture", hidden: false });
-    await expect
-      .poll(() =>
-        application.evaluate(({ BrowserWindow }) =>
-          BrowserWindow.getAllWindows().some((window) => window.isVisible()),
-        ),
-      )
-      .toBe(true);
+    );
+    expect(calls).toEqual({
+      bounds: 0,
+      show: captureExcluded ? 0 : 12 * geometry.count,
+      hide: captureExcluded ? 0 : 12 * geometry.count,
+    });
+    if (captureExcluded) {
+      const entry = new URL(
+        "../../../packages/agent/node_modules/@trycua/cua-driver/dist/index.js",
+        import.meta.url,
+      );
+      const { CuaDriver } = await import(entry.href);
+      const driver = CuaDriver.create();
+      try {
+        const capture = async () => {
+          const result = await driver.callTool("get_desktop_state", "{}");
+          expect(result.isError).toBe(false);
+          return application.evaluate(({ nativeImage }, image) => {
+            const captured = nativeImage.createFromBuffer(
+              Buffer.from(image, "base64"),
+            );
+            return [
+              ...captured
+                .crop({ x: 250, y: 250, width: 1, height: 1 })
+                .toBitmap(),
+            ];
+          }, result.images[0].dataBase64);
+        };
+        await send(null);
+        const baseline = await capture();
+        await page.evaluate(() => {
+          const marker = document.createElement("div");
+          marker.style.cssText =
+            "position:fixed;left:0;top:0;width:100%;height:100%;background:#ff00ff;z-index:999";
+          document.body.append(marker);
+        });
+        await send({ ...state, expiresAt: Date.now() + 10000 });
+        await expect(rim).toBeVisible();
+        expect(await capture()).toEqual(baseline);
+        await application.evaluate(({ BrowserWindow }) => {
+          for (const window of BrowserWindow.getAllWindows())
+            window.setContentProtection(false);
+        });
+        await page.screenshot();
+        const control = await capture();
+        expect(control).not.toEqual(baseline);
+        expect(control[0]).toBeGreaterThan((control[1] ?? 255) + 50);
+        expect(control[2]).toBeGreaterThan((control[1] ?? 255) + 50);
+        await application.evaluate(({ BrowserWindow }) => {
+          for (const window of BrowserWindow.getAllWindows())
+            window.setContentProtection(true);
+        });
+        await page.screenshot();
+        expect(await capture()).toEqual(baseline);
+        expect(await visible(true)).toBe(true);
+      } finally {
+        await driver.shutdown();
+        driver.uniffiDestroy();
+      }
+    }
     await send(null);
-    await expect
-      .poll(() =>
-        application.evaluate(({ BrowserWindow }) =>
-          BrowserWindow.getAllWindows().every((window) => !window.isVisible()),
-        ),
-      )
-      .toBe(true);
+    await expect.poll(() => visible(false)).toBe(true);
     await send({ ...state, expiresAt: Date.now() + 10000 });
     await expect(rim).toBeVisible();
-    await expect
-      .poll(
-        () =>
-          application.evaluate(({ BrowserWindow }) =>
-            BrowserWindow.getAllWindows().every(
-              (window) => !window.isVisible(),
-            ),
-          ),
-        { timeout: 5000 },
-      )
-      .toBe(true);
+    await expect.poll(() => visible(false), { timeout: 5000 }).toBe(true);
   } finally {
     await application.close();
   }

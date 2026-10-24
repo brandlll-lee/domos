@@ -17,6 +17,7 @@ export function openDesktopActivity(driver, emit) {
   let retryAt = 0;
   let frame;
   let ready = false;
+  let captureExcluded = false;
   let sending = false;
   let closed = false;
   let screen;
@@ -91,6 +92,7 @@ export function openDesktopActivity(driver, emit) {
           displays = value.displays ?? [];
           nativeScreen = undefined;
           ready = true;
+          captureExcluded = value.captureExcluded === true;
           for (const id of acknowledgements.keys())
             overlay.send({ type: "capture", id, hidden: true }, () => {});
           send(frame ?? null);
@@ -101,6 +103,7 @@ export function openDesktopActivity(driver, emit) {
         if (child !== overlay) return;
         child = undefined;
         ready = false;
+        captureExcluded = false;
         sending = false;
         visibleWindows = undefined;
         retryAt = Date.now() + 1000;
@@ -191,7 +194,7 @@ export function openDesktopActivity(driver, emit) {
         expiresAt: Math.min(expiresAt, Date.now() + 2500),
       });
     } catch {
-      if (current === generation) send(null);
+      if (current === generation && frame?.expiresAt <= Date.now()) send(null);
     }
   }
   function schedule() {
@@ -233,6 +236,7 @@ export function openDesktopActivity(driver, emit) {
       if (!timer && !pending) schedule();
     },
     async capture(run) {
+      if (captureExcluded) return run();
       const overlay = child;
       const hidden = ++capturesInProgress;
       if (hidden === 1) captureReady = Promise.resolve();
