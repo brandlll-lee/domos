@@ -142,9 +142,11 @@ test("plush identities load, animate and survive profile changes", async ({
       animations: "disabled",
     });
     await page.setViewportSize({ width: 390, height: 844 });
-    const bounds = await picker.boundingBox();
-    expect(bounds?.x).toBeGreaterThanOrEqual(0);
-    expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(390);
+    await expect(async () => {
+      const bounds = await picker.boundingBox();
+      expect(bounds?.x).toBeGreaterThanOrEqual(0);
+      expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(390);
+    }).toPass();
     await page.screenshot({
       path: testInfo.outputPath("avatar-picker-mobile.png"),
       animations: "disabled",

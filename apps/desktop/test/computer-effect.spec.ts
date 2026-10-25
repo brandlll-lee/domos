@@ -432,7 +432,7 @@ test("the production overlay receives frames over IPC and closes with its parent
     {
       env: electronEnv,
       windowsHide: true,
-      stdio: ["ignore", "ignore", "ignore", "ipc"],
+      stdio: ["ignore", "ignore", "inherit", "ipc"],
     },
   );
   const signal = AbortSignal.timeout(10000);
@@ -535,6 +535,22 @@ test("desktop effects follow displays, protect captures, reuse native windows an
     const rim = page.locator(".rim");
     await expect(rim).toBeVisible();
     const actual = await rim.boundingBox();
+    await testInfo.attach("overlay-geometry", {
+      body: JSON.stringify({
+        geometry,
+        windows: await application.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows().map((window) => ({
+            bounds: window.getBounds(),
+            content: window.getContentBounds(),
+          })),
+        ),
+        viewport: await page.evaluate(() => ({
+          width: innerWidth,
+          height: innerHeight,
+        })),
+      }),
+      contentType: "application/json",
+    });
     expect(actual?.x).toBeCloseTo(0, 0);
     expect(actual?.y).toBeCloseTo(0, 0);
     expect(actual?.width).toBeCloseTo(geometry.dip.width / 2, 0);

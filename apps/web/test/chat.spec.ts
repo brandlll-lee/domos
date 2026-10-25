@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { characterIdentity } from "@domos/ui/characters";
+import { layout } from "@domos/ui/tokens";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterClient } from "@orpc/server";
@@ -70,12 +71,13 @@ async function openSettings(page: import("@playwright/test").Page) {
     await expect(
       page.getByRole("button", { name: "Bot详情", exact: true }),
     ).toBeVisible();
+    const contacts = page.getByRole("button", { name: "联系人", exact: true });
     if (
-      await page
-        .getByRole("button", { name: "联系人", exact: true })
-        .isVisible()
-    )
-      await page.getByRole("button", { name: "联系人", exact: true }).click();
+      (page.viewportSize()?.width ?? 0) <
+      layout.sidebar.min + layout.chatMin
+    ) {
+      await contacts.click();
+    } else await expect(contacts).toHaveCount(0);
     await page.getByRole("button", { name: "设置", exact: true }).click();
   }
   await settings.getByRole("tab", { name: "通用", exact: true }).click();
@@ -956,13 +958,15 @@ test("Bot details share the desktop with chat and cover narrow screens", async (
     page.getByRole("dialog", { name: "Bot详情", exact: true }),
   ).not.toHaveAttribute("aria-modal", "true");
   const chat = page.locator(".conversation");
-  const chatBox = await chat.boundingBox();
-  const panelBox = await page
-    .locator('.workspace-panel[data-side="inspector"]')
-    .boundingBox();
-  if (!chatBox || !panelBox) throw new Error("Chat details layout missing");
-  expect(panelBox.x - chatBox.x - chatBox.width).toBe(0);
-  expect(panelBox.x + panelBox.width).toBeCloseTo(1360, 0);
+  await expect(async () => {
+    const chatBox = await chat.boundingBox();
+    const panelBox = await page
+      .locator('.workspace-panel[data-side="inspector"]')
+      .boundingBox();
+    if (!chatBox || !panelBox) throw new Error("Chat details layout missing");
+    expect(panelBox.x - chatBox.x - chatBox.width).toBe(0);
+    expect(panelBox.x + panelBox.width).toBeCloseTo(1360, 0);
+  }).toPass();
   const input = page.getByLabel("消息", { exact: true });
   await input.fill("面板打开时继续聊天");
   await page.getByRole("button", { name: "发送", exact: true }).click();
@@ -2035,9 +2039,8 @@ test("text contrast, keyboard focus and message scrolling meet the UI contract",
         .evaluate((element) => element.scrollHeight > element.clientHeight),
     )
     .toBe(true);
-  await page.locator(".transcript").evaluate((element) => {
-    element.scrollTop = 0;
-  });
+  await page.locator(".transcript").hover();
+  await page.mouse.wheel(0, -10000);
   await expect(page.getByRole("button", { name: "返回最新" })).toBeVisible();
   await page.getByRole("button", { name: "停止生成" }).click();
   await page.getByRole("button", { name: "返回最新" }).click();
@@ -3988,7 +3991,7 @@ test("composer previews pasted images and compact documents in both themes", asy
   const input = page.getByLabel("消息", { exact: true });
   await page.evaluate(async () => navigator.clipboard.writeText("普通文字"));
   await input.focus();
-  await page.keyboard.press("Control+V");
+  await page.keyboard.press("ControlOrMeta+V");
   await expect(input).toHaveValue("普通文字");
   await page.evaluate(
     async (bytes) => {
@@ -4000,7 +4003,7 @@ test("composer previews pasted images and compact documents in both themes", asy
     },
     Array.from(png(360, 640)),
   );
-  await page.keyboard.press("Control+V");
+  await page.keyboard.press("ControlOrMeta+V");
   const drafts = page.locator(".composer-attachments");
   const images = drafts.locator(".attachment-image");
   await expect(images).toHaveCount(1);
