@@ -61,6 +61,7 @@ Keep these choices independent. Support Pi, Codex, Claude Code, and OpenCode thr
 - For cross-platform claims, inspect Windows, Linux, and macOS results for the same commit in `.github/workflows/checks.yml` and `.github/workflows/computer-effects.yml`.
 - Report skipped and untested capabilities explicitly. Green CI does not prove every OS permission, desktop session, or third-party application works.
 - Documentation-only edits need link, path, and diff checks. Do not add tests that assert document wording.
+- Push and PR workflows skip changes limited to root `AGENTS.md`, root `README*.md`, and Markdown under `docs/`. Other changes run the full workflows. Before making these workflows required checks, review path filtering so a skipped workflow cannot leave a required check pending.
 
 ## Environment secrets
 
