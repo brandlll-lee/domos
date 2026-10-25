@@ -15,6 +15,7 @@
     "build": "pnpm --filter @domos/web build",
     "test:e2e": "pnpm build && playwright test",
     "test": "vitest run",
+    "eval:computer": "node apps/cli/src/eval-computer.ts",
     "typecheck": "tsc --noEmit",
     "lint": "biome check apps packages package.json domos.config.json tsconfig.json biome.json vitest.config.ts playwright.config.ts"
   },

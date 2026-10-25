@@ -1,0 +1,64 @@
+{
+  "source": "domos-task:7094:excerpt",
+  "harness": "opencode",
+  "model": "deepseek-flash",
+  "coverage": "excerpt",
+  "startedAt": 0,
+  "endedAt": 103954,
+  "modelResponses": null,
+  "completion": "pass",
+  "calls": [
+    {
+      "name": "domos_desktop_get_window_state",
+      "input": { "pid": 7, "window_id": 90, "session": "domos-1" },
+      "output": "elements=1 snapshot_id=s00000001",
+      "startedAt": 36915,
+      "endedAt": 37326
+    },
+    {
+      "name": "domos_desktop_run_steps",
+      "input": {
+        "pid": 7,
+        "window_id": 90,
+        "session": "domos-1",
+        "steps": [
+          { "click": { "x": 435, "y": 35 } },
+          { "hotkey": { "keys": ["ctrl", "a"] } },
+          { "type_text": { "text": "song" } },
+          { "press_key": { "key": "return" } }
+        ],
+        "observe": { "include_screenshot": true }
+      },
+      "output": "run_steps: 4/4 steps ok. Sent text via PostMessage (not verified). Sent return via PostMessage (not verified).",
+      "startedAt": 44280,
+      "endedAt": 46559
+    },
+    {
+      "name": "domos_desktop_get_window_state",
+      "input": {
+        "pid": 7,
+        "window_id": 90,
+        "session": "domos-1",
+        "since": "latest",
+        "max_elements": 120
+      },
+      "output": "since=latest: no earlier read of this window with the same query, max_elements and max_depth; full read follows.",
+      "startedAt": 54308,
+      "endedAt": 55008
+    },
+    {
+      "name": "invalid",
+      "input": { "tool": "domos_desktop_wait_for_load" },
+      "output": "Model tried to call unavailable tool 'domos_desktop_wait_for_load'.",
+      "startedAt": 83529,
+      "endedAt": 83531
+    },
+    {
+      "name": "bash",
+      "input": { "command": "Start-Sleep -Seconds 6" },
+      "output": "(no output)",
+      "startedAt": 87046,
+      "endedAt": 93417
+    }
+  ]
+}

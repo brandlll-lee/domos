@@ -237,6 +237,8 @@ pnpm --filter @domos/desktop dist
 
 测试使用临时数据和测试模型，常规测试无需模型密钥。真实容器测试需要 Docker，单独执行。详见[部署验收](deploy/README.md#验收)。
 
+电脑操作的历史失败回放使用 `pnpm eval:computer`。真实任务评测、评分规则与使用边界见 [Computer Use evals](docs/computer-evals.md)。
+
 ---
 
 ## 🤝 贡献与社区

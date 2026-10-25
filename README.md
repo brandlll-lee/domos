@@ -241,6 +241,8 @@ Output goes to `apps/desktop/release`. Local builds are unsigned.
 
 Tests use temporary data and test models. The standard suite needs no model keys. Real container tests require Docker and run separately. See the [deployment checks](deploy/README.md#验收).
 
+Run `pnpm eval:computer` to review the saved Computer Use failure trace. See [Computer Use evals](docs/computer-evals.md) for task imports, grading rules, and limits.
+
 ---
 
 ## 🤝 Contributing
