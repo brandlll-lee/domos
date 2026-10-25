@@ -69,7 +69,7 @@ export function openComputerService(directory, home, emit = () => {}) {
             ...tool,
             description:
               tool.name === "run_steps"
-                ? `${tool.description}\nWait for a known UI state with a check-only batch: {pid,window_id,steps:[{wait_for:{text:"Ready",timeout_ms:5000}}],observe:{}}. wait_for is a step field, not a tool. Use expect after important input or submission. Never use shell sleeps to wait for UI state.`
+                ? `${tool.description}\nUse both pid and window_id for numeric targets. Observe the same window with observe:{}. Rebind a new dialog by its own identity or app/window name. Put expect immediately after a state transition before dependent actions: enter edit mode, confirm the editor, then type; submit editing before saving, then verify the saved result. Keep known continuous input in one batch. Wait with a check-only step: {wait_for:{text:"Ready",timeout_ms:5000}}. wait_for is a step field, not a tool. Never use shell sleeps to wait for UI state.`
                 : tool.name === "type_text"
                   ? `${tool.description}\nPrefer set_value for accessible text fields. Delivery alone does not verify input; check the value or resulting UI before continuing.`
                   : tool.description,
@@ -107,6 +107,27 @@ export function openComputerService(directory, home, emit = () => {}) {
       };
       const send = (name, args) =>
         sessions.call(name, args, input.actor?.owner, signal);
+      if (
+        input.name === "run_steps" &&
+        [
+          args,
+          ...(args.steps ?? []).map((step) => desktopStep(step).args ?? {}),
+        ].some(
+          (target) =>
+            !target.app &&
+            !target.window &&
+            (target.pid !== undefined) !== (target.window_id !== undefined),
+        )
+      )
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: "Batch target requires both pid and window_id, or app/window names. Discover and confirm the target window before input. Rebind when a dialog opens. No batch action was sent.",
+            },
+          ],
+        };
       activity.observe(input.name, args, null, input.actor);
       const foreground =
         input.name === "run_steps"
@@ -241,7 +262,6 @@ export function openComputerService(directory, home, emit = () => {}) {
             next: "Check the intended postcondition with expect, verify_state or fresh observation. Observation alone does not confirm success. Never replay delivered actions to recover an observation failure.",
           }
         : undefined;
-      if (outcome && structured) structured.domos = outcome;
       return {
         content: [
           ...(result.text ? [{ type: "text", text: result.text }] : []),

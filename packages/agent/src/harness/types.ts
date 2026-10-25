@@ -149,6 +149,7 @@ export type ProductTool = {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
   annotations?: import("@modelcontextprotocol/sdk/types.js").ToolAnnotations;
 };
 export type ProductResult =

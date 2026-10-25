@@ -1,4 +1,7 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
+import { openGateway } from "../src/harness/gateway.mjs";
 
 const { driver, activity } = vi.hoisted(() => ({
   driver: { callTool: vi.fn(), shutdown: vi.fn(), uniffiDestroy: vi.fn() },
@@ -25,6 +28,91 @@ afterEach(() => {
   activity.active.mockReturnValue(false);
   activity.captureExcluded = true;
 });
+
+test("MCP validates native action output and retains Domos text", async () => {
+  driver.callTool.mockResolvedValue({
+    structuredJson: '{"effect":"confirmed","route":"background"}',
+    images: [],
+    isError: false,
+  });
+  const service = openComputerService(".", ".");
+  const gateway = await openGateway(
+    [
+      {
+        name: "click",
+        description: "Click",
+        inputSchema: { type: "object" },
+        outputSchema: {
+          type: "object",
+          additionalProperties: false,
+          properties: { effect: { type: "string" }, route: { type: "string" } },
+          required: ["effect", "route"],
+        },
+      },
+    ],
+    async (_id, name, args, signal) =>
+      service.request(
+        {
+          operation: "call",
+          service: "desktop",
+          name,
+          arguments: args,
+        },
+        signal,
+      ),
+  );
+  const client = new Client({ name: "test", version: "1" });
+  onTestFinished(async () => {
+    await client.close();
+    await gateway.close();
+    await service.close();
+  });
+  await client.connect(new StreamableHTTPClientTransport(new URL(gateway.url)));
+  await client.listTools();
+  const result = await client.callTool({
+    name: "click",
+    arguments: { pid: 7, window_id: 90 },
+  });
+  expect(result.structuredContent).toEqual({
+    effect: "confirmed",
+    route: "background",
+  });
+  expect(result.content).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        type: "text",
+        text: expect.stringContaining('"domos"'),
+      }),
+    ]),
+  );
+});
+
+test.each([
+  { pid: 7, steps: [{ type_text: { text: "Sales" } }] },
+  { pid: 7, window_id: 90, steps: [{ type_text: { pid: 8, text: "Sales" } }] },
+])(
+  "batch rejects an incomplete numeric window identity before input: %j",
+  async (target) => {
+    const service = openComputerService(".", ".");
+    const result = await service.request(
+      {
+        operation: "call",
+        service: "desktop",
+        name: "run_steps",
+        arguments: {
+          ...target,
+          delivery_mode: "foreground",
+          observe: {},
+        },
+      },
+      new AbortController().signal,
+    );
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain("window_id");
+    expect(driver.callTool).not.toHaveBeenCalled();
+    await service.close();
+  },
+);
 
 test("foreground input reuses its active window and visual reads do not delay execution", async () => {
   let front = 2;
@@ -341,12 +429,13 @@ test("capture failure preserves execution and reports failed observation", async
     isError: true,
     structuredContent: {
       observation: { ok: false, error: "Capture unavailable" },
-      domos: {
-        execution: "delivered",
-        verification: "required",
-        observation: "failed",
-      },
     },
+  });
+  expect(result.content).toContainEqual({
+    type: "text",
+    text: expect.stringContaining(
+      '"execution":"delivered","verification":"required","observation":"failed"',
+    ),
   });
   expect(
     driver.callTool.mock.calls.filter(([name]) => name === "run_steps"),

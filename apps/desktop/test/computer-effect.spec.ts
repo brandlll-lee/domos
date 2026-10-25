@@ -194,9 +194,41 @@ test("foreground input keeps a restored window active and publishes its real out
       "observation.state.snapshot_id",
     );
     expect(control.structuredContent).toMatchObject({
-      domos: { verification: "checked" },
+      observation: { state: identity },
+    });
+    expect(control.content).toContainEqual({
+      type: "text",
+      text: expect.stringContaining('"verification":"checked"'),
     });
     await expect(page.locator("output")).toHaveText("Control input");
+    const incomplete = await call("run_steps", {
+      pid,
+      steps: [
+        {
+          set_value: { role: "textfield", name: "Song", value: "Wrong target" },
+        },
+      ],
+      observe: {},
+    });
+    expect(incomplete.isError).toBe(true);
+    await expect(page.locator("input")).toHaveValue("Control input");
+    const checkpoint = await call("run_steps", {
+      ...identity,
+      steps: [
+        {
+          set_value: { role: "textfield", name: "Song", value: "Checkpoint" },
+          expect: [{ text: "Editor ready", timeout_ms: 100 }],
+        },
+        { set_value: { role: "textfield", name: "Song", value: "Unreached" } },
+      ],
+      observe: { include_screenshot: true },
+    });
+    expect(checkpoint.isError).toBe(true);
+    expect(checkpoint.structuredContent).toMatchObject({
+      steps: [{ ok: false, phase: "expect" }],
+      observation: { ok: true, state: identity },
+    });
+    await expect(page.locator("input")).toHaveValue("Checkpoint");
     const scale =
       observed.structuredContent.screenshot_width /
       (await page.evaluate(() => innerWidth));

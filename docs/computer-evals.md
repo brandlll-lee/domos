@@ -56,7 +56,7 @@ pnpm exec vitest run packages/agent/test/computer-evals.test.ts
 
 这些测试验证评分器，不代表重新运行了 Agent。当前未提供自动截图判分、自动真实任务重跑或跨平台桌面成功率。
 
-共享执行入口的回归使用 `packages/agent/test/computer-input.test.ts`。它检查未确认输入后的观察要求、增量基线兼容性、动画画面下的重复批次限制，以及截图失败后保留已执行步骤。`computer-assistant.test.ts` 同时检查不可用工具的恢复提示。
+共享执行入口的回归使用 `packages/agent/test/computer-input.test.ts`。它检查严格 MCP 输出校验、批次窗口身份、未确认输入后的观察要求、增量基线兼容性、重复批次限制，以及截图失败后保留已执行步骤。`computer-assistant.test.ts` 同时检查不可用工具的恢复提示。
 
 Windows 图形会话可运行原生模拟：
 
@@ -64,4 +64,4 @@ Windows 图形会话可运行原生模拟：
 pnpm exec playwright test --config apps/desktop/playwright.config.ts apps/desktop/test/computer-effect.spec.ts --grep "foreground input keeps"
 ```
 
-模拟窗口验证控件与前台两条路径，并读回输入值、按钮结果和光标位置。它不调用在线模型。`domos.verification` 的 `confirmed` 表示驱动确认动作效果，`checked` 表示请求的后置条件通过，`required` 表示仍需核对。`domos.observation: failed` 时只恢复观察，不能重放已投递动作。上述结果都不等于完整用户任务验收。
+模拟窗口验证控件与前台两条路径，并读回输入值、按钮结果和光标位置。它还检查批次观察的窗口身份，以及失败的 `expect` 是否阻止后续输入。它不调用在线模型。Domos 补充状态放在文本内容中，原生结构化结果遵守工具输出协议。`domos.verification` 的 `confirmed` 表示驱动确认动作效果，`checked` 表示请求的后置条件通过，`required` 表示仍需核对。`domos.observation: failed` 时只恢复观察，不能重放已投递动作。上述结果都不等于完整用户任务验收。
