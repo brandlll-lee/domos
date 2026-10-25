@@ -1138,7 +1138,7 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
   const dialog = page.getByRole("dialog", { name: "新建 Bot", exact: true });
   const name = dialog.getByLabel("名字", { exact: true });
   await expect(
-    dialog.getByRole("button", { name: "换个形象", exact: true }),
+    dialog.getByRole("button", { name: "选择头像", exact: true }),
   ).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
@@ -1992,6 +1992,12 @@ test("text contrast, keyboard focus and message scrolling meet the UI contract",
     .locator(".message-composer")
     .evaluate((element) => getComputedStyle(element).borderColor);
   await picker.focus();
+  await page.keyboard.press("Tab");
+  await expect(
+    details
+      .getByRole("radiogroup", { name: "操作审批", exact: true })
+      .getByRole("radio", { name: "询问", exact: true }),
+  ).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(
     details.getByRole("button", { name: /^连接与账号/ }),
@@ -3674,8 +3680,10 @@ test("Bot identity stays consistent and image previews work in drafts and histor
   const dialog = page.getByRole("dialog", { name: "新建 Bot", exact: true });
   const avatar = dialog.locator(".bot-avatar");
   const initial = await avatar.getAttribute("data-seed");
-  await dialog.getByRole("button", { name: "换个形象", exact: true }).click();
+  await dialog.getByRole("button", { name: "选择头像", exact: true }).click();
+  await page.getByRole("button", { name: "换个形象", exact: true }).click();
   await expect(avatar).not.toHaveAttribute("data-seed", initial ?? "");
+  await page.keyboard.press("Escape");
   const seed = await avatar.getAttribute("data-seed");
   expect(seed).toBeTruthy();
   await dialog.getByLabel("名字", { exact: true }).fill("视觉助手");

@@ -43,4 +43,13 @@ test("confirmed sends and completed replies retain their visible position and id
   ).toEqual(["first", "progress", "send", "final"]);
   const complete = project(view([first, second, progress, final])).items;
   expect(project(view([first, second, progress, final])).items).toBe(complete);
+
+  const concurrent = transcriptState();
+  const other = message("other", "user", "Other window");
+  concurrent(view([first]), [outgoing]);
+  concurrent(view([first, other, progress]), [outgoing]);
+  const accepted = view([first, other, progress, second]);
+  expect(concurrent(accepted, [outgoing]).items.map((item) => item.id)).toEqual(
+    ["first", "other", "progress", "send"],
+  );
 });

@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7.0.1
@@ -35,16 +35,6 @@ jobs:
           name: web-${{ matrix.os }}
           path: test-results/
           if-no-files-found: ignore
-  harness-macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-node@v7.1.0
-        with:
-          node-version-file: .node-version
-      - uses: pnpm/action-setup@v6.1.0
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm exec vitest run packages/agent/test/harness-history.test.ts packages/agent/test/harness-protocols.test.ts packages/agent/test/harness-features.test.ts packages/agent/test/harness-recovery.test.ts packages/agent/test/harness-process.test.ts packages/agent/test/computer-assistant.test.ts packages/agent/test/computer-decision.test.ts packages/agent/test/computer-input.test.ts packages/agent/test/computer-evals.test.ts
   desktop:
     runs-on: windows-latest
     steps:
@@ -55,6 +45,7 @@ jobs:
       - uses: pnpm/action-setup@v6.1.0
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @domos/desktop build
+      - run: pnpm exec playwright install chromium --only-shell
       - run: pnpm exec playwright test --config apps/desktop/playwright.config.ts
       - run: pnpm --filter @domos/desktop exec electron-builder --win nsis --config.win.signAndEditExecutable=false
       - run: node --test apps/desktop/test/package.test.mjs

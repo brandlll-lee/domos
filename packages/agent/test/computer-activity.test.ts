@@ -130,6 +130,10 @@ test.each([1, 1.25, 2])(
 
 const spawn = vi.hoisted(() => vi.fn());
 vi.mock("node:child_process", () => ({ spawn }));
+vi.mock("node:module", () => ({
+  createRequire: () => ({ resolve: () => "/electron/package.json" }),
+}));
+vi.mock("node:fs", () => ({ readFileSync: () => "electron" }));
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();

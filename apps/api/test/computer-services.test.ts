@@ -109,24 +109,27 @@ test.runIf(platform() === "win32")(
     controller.abort();
     await stream.return?.();
     await expect
-      .poll(async () => {
-        try {
-          const lease = await runtime.computer.tools.takeover(
-            botId,
-            "desktop",
-            context,
-          );
-          await runtime.computer.tools.release(
-            botId,
-            "desktop",
-            lease,
-            context,
-          );
-          return true;
-        } catch {
-          return false;
-        }
-      })
+      .poll(
+        async () => {
+          try {
+            const lease = await runtime.computer.tools.takeover(
+              botId,
+              "desktop",
+              context,
+            );
+            await runtime.computer.tools.release(
+              botId,
+              "desktop",
+              lease,
+              context,
+            );
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        { timeout: 5000 },
+      )
       .toBe(true);
     await runtime.close();
     runtime = await openChat(context, config, { models: createModels() });

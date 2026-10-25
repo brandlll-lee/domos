@@ -25,13 +25,26 @@ export function transcriptState() {
       next.set(key, { item, value: JSON.stringify(item) });
       history.push(item);
     }
-    const ordered = items.flatMap((item) => {
+    let ordered = items.flatMap((item) => {
       const row = next.get(`${item.kind}:${item.id}`);
       return row ? [row.item] : [];
     });
     ordered.push(
       ...history.filter((item) => !retained.has(`${item.kind}:${item.id}`)),
     );
+    const users = history.filter(
+      (item) => item.kind === "message" && item.message.role === "user",
+    );
+    let userIndex = 0;
+    if (
+      ordered.some(
+        (item) =>
+          item.kind === "message" &&
+          item.message.role === "user" &&
+          item !== users[userIndex++],
+      )
+    )
+      ordered = history;
     retained = next;
     if (
       ordered.length !== items.length ||
