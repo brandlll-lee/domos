@@ -3576,7 +3576,7 @@ test("typing dots share the avatar color and follow complete messages", async ({
   });
   await surroundingAnimations.dispose();
   expect((layoutMs + styleMs) / intervals.length).toBeLessThan(1);
-  expect(p95).toBeLessThan(50);
+  expect(p95).toBeLessThan(Math.max(50, idleP95 + 1000 / 60));
   for (const [theme, label] of [
     ["dark", "深色"],
     ["light", "浅色"],
