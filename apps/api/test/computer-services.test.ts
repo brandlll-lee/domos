@@ -111,22 +111,18 @@ test.runIf(platform() === "win32")(
     await expect
       .poll(
         async () => {
-          try {
-            const lease = await runtime.computer.tools.takeover(
-              botId,
-              "desktop",
-              context,
-            );
-            await runtime.computer.tools.release(
-              botId,
-              "desktop",
-              lease,
-              context,
-            );
-            return true;
-          } catch {
-            return false;
-          }
+          const lease = await runtime.computer.tools.takeover(
+            botId,
+            "desktop",
+            context,
+          );
+          await runtime.computer.tools.release(
+            botId,
+            "desktop",
+            lease,
+            context,
+          );
+          return true;
         },
         { timeout: 5000 },
       )

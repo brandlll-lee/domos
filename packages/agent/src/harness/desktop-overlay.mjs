@@ -78,8 +78,6 @@ export async function openDesktopOverlay(channel) {
         });
         window.setIgnoreMouseEvents(true);
         window.setContentProtection(true);
-        // X11 shrinks display-sized requests unless minimum bounds constrain them.
-        window.setMinimumSize(display.bounds.width, display.bounds.height);
         window.setBounds(display.bounds, false);
         window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
         window.webContents.on("will-navigate", (event) =>
@@ -98,17 +96,14 @@ export async function openDesktopOverlay(channel) {
       if (!loaded.has(window)) continue;
       window.webContents.send("computer-effect", {
         ...state,
-        screen: physical(display.bounds),
+        screen: physical(window.getContentBounds()),
       });
       if (!window.isVisible()) window.showInactive();
     }
   }
   function changed() {
-    for (const display of screen.getAllDisplays()) {
-      const window = windows.get(display.id);
-      window?.setMinimumSize(display.bounds.width, display.bounds.height);
-      window?.setBounds(display.bounds, false);
-    }
+    for (const display of screen.getAllDisplays())
+      windows.get(display.id)?.setBounds(display.bounds, false);
     channel.send({
       type: "screen",
       captureExcluded,

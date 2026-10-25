@@ -3099,6 +3099,11 @@ test("delivered images form a gallery with viewer downloads and keyboard navigat
   await expect(
     viewer.getByRole("img", { name: "portrait.png", exact: true }),
   ).toBeVisible();
+  await expect
+    .poll(() =>
+      viewer.evaluate((element) => element.contains(document.activeElement)),
+    )
+    .toBe(true);
   await page.keyboard.press("ArrowLeft");
   await expect(
     viewer.getByRole("img", { name: "wide.png", exact: true }),
@@ -3194,6 +3199,11 @@ test("image thumbnails scroll horizontally and keep the selected image in view",
         node.scrollHeight <= node.clientHeight,
     ),
   ).toBe(true);
+  await expect
+    .poll(() =>
+      viewer.evaluate((element) => element.contains(document.activeElement)),
+    )
+    .toBe(true);
   await page.keyboard.press("ArrowLeft");
   const last = viewer.getByRole("button", {
     name: "查看图片 photo-9.png",
@@ -3544,6 +3554,10 @@ test("typing dots share the avatar color and follow complete messages", async ({
   const p95 = [...intervals].sort((a, b) => a - b)[
     Math.floor(intervals.length * 0.95)
   ];
+  const idleP95 = [...idleIntervals].sort((a, b) => a - b)[
+    Math.floor(idleIntervals.length * 0.95)
+  ];
+  console.log("typing frames", { p95, idleP95, layoutMs, styleMs });
   await performance.detach();
   await test.info().attach("typing-performance", {
     body: JSON.stringify({
@@ -3551,6 +3565,7 @@ test("typing dots share the avatar color and follow complete messages", async ({
       layoutMs,
       styleMs,
       p95,
+      idleP95,
       intervals,
       idleIntervals,
     }),

@@ -43,13 +43,21 @@ export class ComputerViews {
       signal,
       context,
     );
+    const controller = new AbortController();
     this.sessions.set(id, {
       botId,
       service,
       computerId,
       target,
-      controller: new AbortController(),
+      controller,
     });
+    signal.addEventListener(
+      "abort",
+      () => {
+        void this.close(id, context).catch(() => {});
+      },
+      { once: true, signal: controller.signal },
+    );
     if (signal.aborted) {
       await this.close(id, context);
       signal.throwIfAborted();
