@@ -4086,27 +4086,29 @@ test("composer previews pasted images and compact documents in both themes", asy
     for (const width of [1440, 768, 390]) {
       await page.setViewportSize({ width, height: 900 });
       await input.focus();
-      const bounds = await drafts.boundingBox();
-      expect(
-        bounds && bounds.x >= 0 && bounds.x + bounds.width <= width,
-      ).toBeTruthy();
-      for (const image of await images.all()) {
-        const box = await image.boundingBox();
+      await expect(async () => {
+        const bounds = await drafts.boundingBox();
         expect(
-          box && box.width === box.height && box.width <= 150,
+          bounds && bounds.x >= 0 && bounds.x + bounds.width <= width,
         ).toBeTruthy();
-        await expect(image).toHaveText("");
-      }
-      const first = await images.first().boundingBox();
-      const second = await images.last().boundingBox();
-      expect(
-        first && second && first.y === second.y && second.x > first.x,
-      ).toBeTruthy();
-      const document = await drafts
-        .locator(".file-attachment")
-        .first()
-        .boundingBox();
-      expect(document && document.width <= 300).toBeTruthy();
+        for (const image of await images.all()) {
+          const box = await image.boundingBox();
+          expect(
+            box && box.width === box.height && box.width <= 150,
+          ).toBeTruthy();
+          await expect(image).toHaveText("");
+        }
+        const first = await images.first().boundingBox();
+        const second = await images.last().boundingBox();
+        expect(
+          first && second && first.y === second.y && second.x > first.x,
+        ).toBeTruthy();
+        const document = await drafts
+          .locator(".file-attachment")
+          .first()
+          .boundingBox();
+        expect(document && document.width <= 300).toBeTruthy();
+      }).toPass({ timeout: 5000 });
       await images.first().hover();
       await page.screenshot({
         path: `test-results/composer-attachments-${theme}-${width}.png`,
