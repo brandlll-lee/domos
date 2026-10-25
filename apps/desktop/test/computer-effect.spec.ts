@@ -80,6 +80,13 @@ test("foreground input keeps a restored window active and publishes its real out
     expect(target).toBeTruthy();
     if (!target) throw new Error("Target window required");
     const identity = { pid, window_id: target.window_id };
+    expect((await call("end_session", {})).isError).toBe(false);
+    const restored = await call("get_window_state", {
+      ...identity,
+      include_screenshot: false,
+    });
+    expect(restored.isError, JSON.stringify(restored.content)).toBe(false);
+    expect(restored.structuredContent).toHaveProperty("snapshot_id");
     const fetcher = globalThis.fetch;
     try {
       globalThis.fetch = async (_url, init) => {

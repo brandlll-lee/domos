@@ -13,7 +13,7 @@ COPY --from=daemon /opt/domos /opt/domos
 COPY packages/agent/src/harness/worker.mjs packages/agent/src/harness/account-environment.mjs packages/agent/src/harness/gateway.mjs packages/agent/src/harness/pi-entry.mjs packages/agent/src/harness/pi-account.mjs packages/agent/src/harness/http-service.mjs packages/agent/src/harness/browser-service.mjs packages/agent/src/harness/computer-service.mjs /opt/domos/
 COPY deploy/licenses/pi.txt /usr/share/doc/pi/LICENSE
 COPY packages/agent/src/harness/browser-view.mjs packages/agent/src/harness/desktop-view.mjs /opt/domos/
-COPY packages/agent/src/harness/desktop-activity.mjs packages/agent/src/harness/desktop-actions.mjs packages/agent/src/harness/desktop-motion.mjs packages/agent/src/harness/desktop-target.mjs packages/agent/src/harness/desktop-overlay.mjs packages/agent/src/harness/desktop-windows.mjs packages/agent/src/harness/desktop-overlay-preload.cjs /opt/domos/
+COPY packages/agent/src/harness/desktop-session.mjs packages/agent/src/harness/desktop-activity.mjs packages/agent/src/harness/desktop-actions.mjs packages/agent/src/harness/desktop-motion.mjs packages/agent/src/harness/desktop-target.mjs packages/agent/src/harness/desktop-overlay.mjs packages/agent/src/harness/desktop-windows.mjs packages/agent/src/harness/desktop-overlay-preload.cjs /opt/domos/
 COPY packages/ui/package.json /opt/domos/node_modules/@domos/ui/package.json
 COPY packages/ui/src/computer-effect.mjs packages/ui/src/computer-effect-art.mjs /opt/domos/node_modules/@domos/ui/src/
 COPY deploy/workspace.mjs /opt/domos/workspace.mjs

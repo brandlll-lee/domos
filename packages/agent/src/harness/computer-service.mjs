@@ -1,11 +1,12 @@
 import { openBrowserService } from "./browser-service.mjs";
 import { desktopInputs, desktopStep } from "./desktop-actions.mjs";
+import { openDesktopSession } from "./desktop-session.mjs";
 import { openDesktopView } from "./desktop-view.mjs";
 
 export function openComputerService(directory, home, emit = () => {}) {
   let desktop;
   let activity;
-  const cursorSessions = new Set();
+  let sessions;
   let browser;
   const views = new Map();
   async function driver() {
@@ -13,6 +14,7 @@ export function openComputerService(directory, home, emit = () => {}) {
       const { CuaDriver } = await import("@trycua/cua-driver");
       const { openDesktopActivity } = await import("./desktop-activity.mjs");
       desktop = CuaDriver.create();
+      sessions = openDesktopSession(desktop);
       activity = openDesktopActivity(desktop, emit);
     }
     return desktop;
@@ -22,6 +24,7 @@ export function openComputerService(directory, home, emit = () => {}) {
       signal.throwIfAborted();
       if (input.operation === "activity") {
         activity?.clear(input.owner);
+        sessions?.clear(input.owner);
         return {};
       }
       if (input.service === "browser") {
@@ -92,16 +95,8 @@ export function openComputerService(directory, home, emit = () => {}) {
           input.arguments?.session ??
           `domos-${input.actor?.botId ?? "desktop"}`,
       };
-      if (!cursorSessions.has(args.session)) {
-        await instance
-          .callTool(
-            "set_agent_cursor_enabled",
-            JSON.stringify({ session: args.session, enabled: false }),
-            { signal },
-          )
-          .catch(() => {});
-        cursorSessions.add(args.session);
-      }
+      const send = (name, args) =>
+        sessions.call(name, args, input.actor?.owner, signal);
       activity.observe(input.name, args, null, input.actor);
       const foreground =
         input.name === "run_steps"
@@ -118,11 +113,7 @@ export function openComputerService(directory, home, emit = () => {}) {
       const target = foreground && activity.target(foreground);
       const activation =
         target?.pid !== undefined && !activity.active(target)
-          ? await instance.callTool(
-              "bring_to_front",
-              JSON.stringify({ ...target, session: args.session }),
-              { signal },
-            )
+          ? await send("bring_to_front", { ...target, session: args.session })
           : undefined;
       signal.throwIfAborted();
       const reading =
@@ -137,12 +128,13 @@ export function openComputerService(directory, home, emit = () => {}) {
         reading?.include_screenshot &&
         !activity.captureExcluded;
       if (batchCapture) reading.include_screenshot = false;
-      if (reading && !reading.since && !reading.full_output) {
-        if (format === "markdown") reading.tree_format = "both";
-        if (input.name === "run_steps") reading.since = null;
+      if (reading && !reading.full_output) {
+        if (input.name === "run_steps" && reading.since === undefined)
+          reading.since = "latest";
+        if (!reading.since && format === "markdown")
+          reading.tree_format = "both";
       }
-      const call = () =>
-        instance.callTool(input.name, JSON.stringify(args), { signal });
+      const call = () => send(input.name, args);
       const result = activation?.isError
         ? activation
         : ["get_desktop_state", "zoom"].includes(input.name) ||
@@ -164,18 +156,14 @@ export function openComputerService(directory, home, emit = () => {}) {
       const observed = structured?.observation?.state;
       if (batchCapture && observed && !signal.aborted) {
         const captured = await activity.capture(() =>
-          instance.callTool(
-            "get_window_state",
-            JSON.stringify({
-              ...reading,
-              pid: observed.pid,
-              window_id: observed.window_id,
-              session: args.session,
-              include_accessibility_tree: false,
-              include_screenshot: true,
-            }),
-            { signal },
-          ),
+          send("get_window_state", {
+            ...reading,
+            pid: observed.pid,
+            window_id: observed.window_id,
+            session: args.session,
+            include_accessibility_tree: false,
+            include_screenshot: true,
+          }),
         );
         images = captured.images;
         captureError = captured.isError ? captured.text : undefined;
@@ -200,11 +188,26 @@ export function openComputerService(directory, home, emit = () => {}) {
           state.tree_format = "markdown";
         }
       }
+      const delivered = sessions.images(
+        args.session,
+        input.actor?.owner,
+        observed ? "get_window_state" : input.name,
+        observed ?? structured,
+        images,
+      );
       return {
         content: [
           ...(result.text ? [{ type: "text", text: result.text }] : []),
           ...(captureError ? [{ type: "text", text: captureError }] : []),
-          ...images.map((image) => ({
+          ...(images.length && !delivered.length
+            ? [
+                {
+                  type: "text",
+                  text: "Screenshot unchanged. Use the previous image with the current capture and snapshot metadata.",
+                },
+              ]
+            : []),
+          ...delivered.map((image) => ({
             type: "image",
             mimeType: image.mimeType,
             data: image.dataBase64,
