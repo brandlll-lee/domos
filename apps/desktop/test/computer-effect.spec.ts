@@ -608,6 +608,7 @@ test("desktop effects follow displays, protect captures, reuse native windows an
       for (const window of BrowserWindow.getAllWindows()) {
         const bounds = window.setBounds.bind(window);
         const show = window.showInactive.bind(window);
+        const hide = window.hide.bind(window);
         window.setBounds = (...args) => {
           calls.bounds++;
           bounds(...args);
@@ -616,7 +617,10 @@ test("desktop effects follow displays, protect captures, reuse native windows an
           calls.show++;
           show();
         };
-        window.on("hide", () => calls.hide++);
+        window.hide = () => {
+          calls.hide++;
+          hide();
+        };
       }
       (process as NodeJS.EventEmitter).once("computer-effect-calls", (reply) =>
         reply(calls),
