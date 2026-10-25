@@ -3557,6 +3557,7 @@ test("typing dots share the avatar color and follow complete messages", async ({
   const idleP95 = [...idleIntervals].sort((a, b) => a - b)[
     Math.floor(idleIntervals.length * 0.95)
   ];
+  if (idleP95 === undefined) throw new Error("No idle frames were recorded");
   console.log("typing frames", { p95, idleP95, layoutMs, styleMs });
   await performance.detach();
   await test.info().attach("typing-performance", {

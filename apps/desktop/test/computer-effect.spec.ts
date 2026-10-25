@@ -719,6 +719,9 @@ test("desktop effects follow displays, protect captures, reuse native windows an
     await expect.poll(() => visible(false)).toBe(true);
     await send({ ...state, expiresAt: Date.now() + 10000 });
     await expect(rim).toBeVisible();
+    await application.evaluate(() => {
+      (process as NodeJS.EventEmitter).emit("computer-effect-disconnect");
+    });
     await expect.poll(() => visible(false), { timeout: 5000 }).toBe(true);
   } finally {
     await application.close();
