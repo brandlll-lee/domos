@@ -2,7 +2,15 @@ name: Checks
 
 on:
   push:
+    paths-ignore:
+      - AGENTS.md
+      - README*.md
+      - docs/**/*.md
   pull_request:
+    paths-ignore:
+      - AGENTS.md
+      - README*.md
+      - docs/**/*.md
 
 permissions:
   contents: read
