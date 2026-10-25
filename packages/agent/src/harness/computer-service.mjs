@@ -64,7 +64,17 @@ export function openComputerService(directory, home, emit = () => {}) {
         return {};
       }
       if (input.operation === "catalog")
-        return JSON.parse(await instance.listToolsJson({ signal })).tools;
+        return JSON.parse(await instance.listToolsJson({ signal })).tools.map(
+          (tool) => ({
+            ...tool,
+            description:
+              tool.name === "run_steps"
+                ? `${tool.description}\nWait for a known UI state with a check-only batch: {pid,window_id,steps:[{wait_for:{text:"Ready",timeout_ms:5000}}],observe:{}}. wait_for is a step field, not a tool. Use expect after important input or submission. Never use shell sleeps to wait for UI state.`
+                : tool.name === "type_text"
+                  ? `${tool.description}\nPrefer set_value for accessible text fields. Delivery alone does not verify input; check the value or resulting UI before continuing.`
+                  : tool.description,
+          }),
+        );
       if (input.operation === "prepare") {
         try {
           const result = await activity.capture(() =>
@@ -168,7 +178,13 @@ export function openComputerService(directory, home, emit = () => {}) {
         images = captured.images;
         captureError = captured.isError ? captured.text : undefined;
         const capture = JSON.parse(captured.structuredJson ?? "{}");
-        Object.assign(observed, capture);
+        if (!captured.isError) Object.assign(observed, capture);
+        else
+          structured.observation = {
+            ...structured.observation,
+            ok: false,
+            error: captured.text,
+          };
         if (signal.aborted) activity.clear(input.actor?.owner);
         else activity.observe("get_window_state", args, captured, input.actor);
       }
@@ -195,10 +211,44 @@ export function openComputerService(directory, home, emit = () => {}) {
         observed ?? structured,
         images,
       );
+      const action =
+        desktopInputs.includes(input.name) ||
+        (input.name === "run_steps" &&
+          args.steps?.some((step) =>
+            desktopInputs.includes(desktopStep(step).tool),
+          ));
+      const outcome = action
+        ? {
+            execution: result.isError ? "incomplete" : "delivered",
+            verification: result.postcondition
+              ? "checked"
+              : !result.isError &&
+                  (structured?.verified === true ||
+                    structured?.effect === "confirmed")
+                ? "confirmed"
+                : "required",
+            observation:
+              structured?.observation?.ok === false ||
+              captureError !== undefined
+                ? "failed"
+                : observed
+                  ? "available"
+                  : "not-requested",
+            ...(structured?.effect ? { effect: structured.effect } : {}),
+            ...(structured?.escalation
+              ? { escalation: structured.escalation }
+              : {}),
+            next: "Check the intended postcondition with expect, verify_state or fresh observation. Observation alone does not confirm success. Never replay delivered actions to recover an observation failure.",
+          }
+        : undefined;
+      if (outcome && structured) structured.domos = outcome;
       return {
         content: [
           ...(result.text ? [{ type: "text", text: result.text }] : []),
           ...(captureError ? [{ type: "text", text: captureError }] : []),
+          ...(outcome
+            ? [{ type: "text", text: JSON.stringify({ domos: outcome }) }]
+            : []),
           ...(images.length && !delivered.length
             ? [
                 {
@@ -214,7 +264,11 @@ export function openComputerService(directory, home, emit = () => {}) {
           })),
         ],
         ...(structured ? { structuredContent: structured } : {}),
-        isError: result.isError,
+        isError: Boolean(
+          result.isError ||
+            captureError !== undefined ||
+            structured?.observation?.ok === false,
+        ),
       };
     },
     async close() {

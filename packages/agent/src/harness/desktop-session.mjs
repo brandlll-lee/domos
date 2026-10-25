@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { desktopInputs, desktopStep } from "./desktop-actions.mjs";
 
 const observations = new Set([
   "get_window_state",
@@ -16,7 +17,7 @@ export function openDesktopSession(driver) {
     async call(name, args, owner, signal, recover = true) {
       let state = sessions.get(args.session);
       if (!state || state.owner !== owner) {
-        state = { owner };
+        state = { owner, scopes: new Map() };
         sessions.delete(args.session);
         const started = await driver.callTool(
           "start_session",
@@ -38,55 +39,132 @@ export function openDesktopSession(driver) {
         }
         sessions.set(args.session, state);
       }
-      const key = JSON.stringify([name, args]);
-      const visual = [
-        "click",
-        "double_click",
-        "right_click",
-        "scroll",
-      ].includes(name);
-      const action = visual
-        ? JSON.stringify([name, args], (key, value) =>
-            key === "capture_id"
-              ? undefined
-              : key === "element_token"
-                ? value.split(":").at(-1)
-                : value,
+      const reading = name === "get_window_state" ? args : args.observe;
+      const scope =
+        reading &&
+        JSON.stringify([
+          reading.query ?? "",
+          reading.max_elements ?? 250,
+          reading.max_depth ?? 25,
+          reading.full_output === true,
+        ]);
+      const readsTree = reading && reading.include_accessibility_tree !== false;
+      const baseline = (value) =>
+        JSON.stringify([value.pid, value.window_id, scope]);
+      if (readsTree) {
+        const previous = state.scopes.get(baseline({ ...args, ...reading }));
+        if (reading.full_output) delete reading.since;
+        else if (
+          reading.since ||
+          (name === "run_steps" && reading.since === undefined)
+        ) {
+          if (
+            previous &&
+            (!reading.since ||
+              reading.since === "latest" ||
+              reading.since === previous)
           )
-        : undefined;
-      if (action && state.repeat?.key === action && state.repeat.count >= 3)
+            reading.since ??= "latest";
+          else if (name === "run_steps") reading.since = null;
+          else delete reading.since;
+        }
+      }
+      const steps =
+        name === "run_steps"
+          ? (args.steps ?? []).map(desktopStep)
+          : [{ tool: name, args }];
+      const mutating = steps.some((step) => desktopInputs.includes(step.tool));
+      if (mutating && state.review)
         return {
           images: [],
           isError: true,
-          text: "The same action left the screen unchanged three times. Observe the target and use a different action.",
+          text: "The previous action was delivered but its effect is unconfirmed. Observe that window or use verify_state before another action. Do not replay the previous action.",
         };
-      if (state.failure?.key === key && state.failure.count >= 3)
+      const key = JSON.stringify([name, args], (key, value) =>
+        ["capture_id", "snapshot_id", "since", "observe"].includes(key)
+          ? undefined
+          : key === "element_token"
+            ? value?.split(":").at(-1)
+            : value,
+      );
+      const action = steps.some((step) =>
+        ["click", "double_click", "right_click"].includes(step.tool),
+      )
+        ? key
+        : undefined;
+      if (state.attempt?.key === key && state.attempt.count >= 3)
         return {
-          ...state.failure.result,
-          text: `${state.failure.result.text}\nThe same action failed three times. Observe the target and use a different action.`,
+          ...state.attempt.result,
+          isError: true,
+          text: `${state.attempt.result.text ?? ""}\nThe same action was attempted three times without a successful postcondition check. Use verify_state or run_steps with expect. Do not replay uncertain actions.`,
         };
       const result = await driver.callTool(name, JSON.stringify(args), {
         signal,
       });
-      if (visual && !result.isError) state.pending = action;
-      else if (!observations.has(name)) state.pending = undefined;
       if (result.errorCode === "session_ended") {
         sessions.delete(args.session);
         if (recover && observations.has(name))
           return this.call(name, args, owner, signal, false);
       }
-      if (!observations.has(name)) {
-        state.failure = result.isError
-          ? {
-              key,
-              result,
-              count: state.failure?.key === key ? state.failure.count + 1 : 1,
-            }
-          : undefined;
+      const value = result.structuredJson
+        ? JSON.parse(result.structuredJson)
+        : undefined;
+      const observed =
+        name === "get_window_state"
+          ? value
+          : value?.observation?.ok
+            ? value.observation.state
+            : undefined;
+      if (
+        !result.isError &&
+        (observed ||
+          name === "get_desktop_state" ||
+          (name === "verify_state" &&
+            ["satisfied", "unsatisfied"].includes(value?.status)))
+      )
+        state.review = false;
+      if (
+        mutating &&
+        !result.isError &&
+        !observed &&
+        (value?.verified === false ||
+          ["unverifiable", "suspected_noop", "partial"].includes(
+            value?.effect,
+          ) ||
+          /not verified/i.test(result.text ?? ""))
+      )
+        state.review = true;
+      if (name === "get_window_state" && result.isError) state.review = true;
+      if (readsTree && !result.isError && observed?.snapshot_id) {
+        state.scopes.set(baseline(observed), observed.snapshot_id);
+        if (state.scopes.size > 32)
+          state.scopes.delete(state.scopes.keys().next().value);
       }
+      const checked =
+        !result.isError &&
+        ((name === "verify_state" &&
+          value?.status === "satisfied" &&
+          value.stable === true) ||
+          (name === "run_steps" &&
+            value?.steps?.length === args.steps?.length &&
+            value.steps.every((step) => step.ok) &&
+            (args.steps.at(-1)?.expect?.length ||
+              (args.steps.at(-1)?.wait_for && !steps.at(-1)?.tool))));
+      if (checked) {
+        state.attempt = undefined;
+        state.review = false;
+      } else if (mutating)
+        state.attempt =
+          result.isError || action
+            ? {
+                key,
+                result,
+                count: state.attempt?.key === key ? state.attempt.count + 1 : 1,
+              }
+            : undefined;
       if (name === "end_session" && !result.isError)
         sessions.delete(args.session);
-      return result;
+      return checked ? { ...result, postcondition: true } : result;
     },
     images(session, owner, name, target, images) {
       const state = sessions.get(session);
@@ -103,17 +181,6 @@ export function openDesktopSession(driver) {
         hash.update(image.mimeType).update(image.dataBase64);
       const frame = hash.digest("hex");
       const same = frame === state.frame;
-      if (!same) {
-        state.failure = undefined;
-        state.repeat = undefined;
-      } else if (state.pending) {
-        state.repeat = {
-          key: state.pending,
-          count:
-            state.repeat?.key === state.pending ? state.repeat.count + 1 : 1,
-        };
-      }
-      state.pending = undefined;
       state.frame = frame;
       return same ? [] : images;
     },

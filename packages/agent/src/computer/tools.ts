@@ -291,11 +291,18 @@ export class ComputerTools {
             "Jev 协作模式已开启。请通过 computer_assist 提交电脑子任务。",
           );
 
+        const available: string[] = [];
         for (const service of ["browser", "desktop"] as const) {
           if (!enabled[service]) continue;
-          const tool = (
-            await target.services.catalog(botId, service, context)
-          ).find((item) => `${service}_${item.name}` === name);
+          const catalog = await target.services.catalog(
+            botId,
+            service,
+            context,
+          );
+          available.push(...catalog.map((item) => `${service}_${item.name}`));
+          const tool = catalog.find(
+            (item) => `${service}_${item.name}` === name,
+          );
           if (tool)
             return target.services.call(
               botId,
@@ -312,7 +319,9 @@ export class ComputerTools {
               },
             );
         }
-        throw new Error("工作电脑工具未启用。请检查电脑设置。");
+        throw new Error(
+          `工具 ${name} 不可用。可用电脑工具：${available.join(", ") || "无"}。等待界面变化请使用 run_steps 的 wait_for/expect 步骤字段，或已列出的 verify_state。`,
+        );
       },
       context,
     );

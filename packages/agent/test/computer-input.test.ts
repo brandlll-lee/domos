@@ -20,7 +20,11 @@ const entry = "../src/harness/computer-service.mjs";
 const { openComputerService } = await import(entry);
 const sessionEntry = "../src/harness/desktop-session.mjs";
 const { openDesktopSession } = await import(sessionEntry);
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  vi.clearAllMocks();
+  activity.active.mockReturnValue(false);
+  activity.captureExcluded = true;
+});
 
 test("foreground input reuses its active window and visual reads do not delay execution", async () => {
   let front = 2;
@@ -73,7 +77,7 @@ test("foreground input reuses its active window and visual reads do not delay ex
   await call({ steps, observe: { include_screenshot: true } }, "run_steps");
   expect(JSON.parse(driver.callTool.mock.calls.at(-1)?.[1]).observe).toEqual({
     include_screenshot: true,
-    since: "latest",
+    since: null,
   });
   activity.captureExcluded = false;
   driver.callTool.mockImplementation(async (name: string) => ({
@@ -162,7 +166,9 @@ test("activation failure returns its cause and does not send the input", async (
   );
   expect(result).toMatchObject({
     isError: true,
-    content: [{ type: "text", text: "Activation denied" }],
+    content: expect.arrayContaining([
+      { type: "text", text: "Activation denied" },
+    ]),
   });
   expect(driver.callTool.mock.calls.some(([name]) => name === "click")).toBe(
     false,
@@ -170,115 +176,180 @@ test("activation failure returns its cause and does not send the input", async (
   await service.close();
 });
 
-test("sessions recover observations once, preserve actions and bound failed retries", async () => {
+test("sessions recover reads once, preserve uncertain actions and bound failures", async () => {
+  const ok = { isError: false, images: [] };
   const ended = {
+    ...ok,
     isError: true,
     errorCode: "session_ended",
     text: "Session ended",
-    images: [],
   };
-  const ok = { isError: false, images: [] };
-  let expired = true;
-  driver.callTool.mockImplementation(async (name: string) => {
-    if (name === "get_window_state" && expired) {
-      expired = false;
-      return ended;
-    }
-    return ok;
-  });
-  const session = openDesktopSession(driver);
-  const args = { session: "bot", pid: 7, window_id: 90 };
-  const signal = new AbortController().signal;
-  await expect(
-    session.call("get_window_state", args, "task", signal),
-  ).resolves.toEqual(ok);
-  expect(driver.callTool.mock.calls.map(([name]) => name)).toEqual([
-    "start_session",
-    "set_agent_cursor_enabled",
-    "get_window_state",
-    "start_session",
-    "set_agent_cursor_enabled",
-    "get_window_state",
-  ]);
-  driver.callTool.mockClear();
-  driver.callTool.mockImplementation(async (name: string) =>
+  const callTool = vi.fn(async (name: string) =>
     name === "start_session" || name === "set_agent_cursor_enabled"
       ? ok
       : ended,
   );
-  await expect(session.call("click", args, "task", signal)).resolves.toEqual(
-    ended,
-  );
-  expect(driver.callTool).toHaveBeenCalledTimes(1);
-  driver.callTool.mockClear();
-  await expect(
-    session.call("get_window_state", args, "task", signal),
-  ).resolves.toEqual(ended);
+  const session = openDesktopSession({ callTool });
+  const args = { session: "bot", pid: 7, window_id: 90 };
+  await session.call("get_window_state", args, "task");
   expect(
-    driver.callTool.mock.calls.filter(([name]) => name === "get_window_state"),
+    callTool.mock.calls.filter(([name]) => name === "get_window_state"),
   ).toHaveLength(2);
-
-  driver.callTool.mockImplementation(async (name: string) =>
-    name === "click"
-      ? { ...ok, isError: true, text: "Target unavailable" }
-      : ok,
+  callTool.mockClear();
+  await session.call("click", args, "task");
+  expect(callTool.mock.calls.filter(([name]) => name === "click")).toHaveLength(
+    1,
   );
-  driver.callTool.mockClear();
-  for (let index = 0; index < 4; index++)
-    await session.call("click", args, "task", signal);
-  expect(
-    driver.callTool.mock.calls.filter(([name]) => name === "click"),
-  ).toHaveLength(3);
-  await session.call("click", { ...args, x: 20 }, "task", signal);
-  expect(
-    driver.callTool.mock.calls.filter(([name]) => name === "click"),
-  ).toHaveLength(4);
-  await session.call("click", args, "next-task", signal);
-  expect(
-    driver.callTool.mock.calls.filter(([name]) => name === "start_session"),
-  ).toHaveLength(2);
-
-  const images = [{ mimeType: "image/png", dataBase64: "pixels" }];
-  expect(
-    session.images("bot", "next-task", "get_window_state", args, images),
-  ).toEqual(images);
-  expect(
-    session.images(
-      "bot",
-      "next-task",
-      "get_window_state",
-      { ...args, snapshot_id: "new" },
-      images,
-    ),
-  ).toEqual([]);
-  expect(
-    session.images(
-      "bot",
-      "next-task",
-      "get_window_state",
-      { ...args, window_id: 91 },
-      images,
-    ),
-  ).toEqual(images);
-  session.clear("next-task");
-  await session.call("list_windows", args, "next-task", signal);
-  expect(
-    session.images("bot", "next-task", "get_window_state", args, images),
-  ).toEqual(images);
-  driver.callTool.mockImplementation(async () => ok);
-  driver.callTool.mockClear();
-  for (let index = 0; index < 3; index++) {
-    await session.call("click", args, "next-task", signal);
-    session.images("bot", "next-task", "get_window_state", args, images);
+  callTool.mockImplementation(async (name: string) =>
+    name === "click" ? { ...ended, errorCode: "target_unavailable" } : ok,
+  );
+  callTool.mockClear();
+  for (let index = 0; index < 4; index++) {
+    await session.call("bring_to_front", args, "task");
+    await session.call("click", args, "task");
   }
-  expect((await session.call("click", args, "next-task", signal)).isError).toBe(
+  expect(callTool.mock.calls.filter(([name]) => name === "click")).toHaveLength(
+    3,
+  );
+  await session.call("click", { ...args, x: 20 }, "task");
+  expect(callTool.mock.calls.filter(([name]) => name === "click")).toHaveLength(
+    4,
+  );
+  await session.call("click", args, "next-task");
+  expect(
+    callTool.mock.calls.filter(([name]) => name === "start_session"),
+  ).toHaveLength(2);
+});
+
+test("image dedup retains target identity and resets with task ownership", async () => {
+  const session = openDesktopSession({
+    callTool: async () => ({ isError: false, images: [] }),
+  });
+  const args = { session: "bot", pid: 7, window_id: 90 };
+  const images = [{ mimeType: "image/png", dataBase64: "pixels" }];
+  await session.call("list_windows", args, "task");
+  const frame = (target: object) =>
+    session.images("bot", "task", "get_window_state", target, images);
+  expect(frame(args)).toEqual(images);
+  expect(frame({ ...args, snapshot_id: "new" })).toEqual([]);
+  expect(frame({ ...args, window_id: 91 })).toEqual(images);
+  session.clear("task");
+  await session.call("list_windows", args, "task");
+  expect(frame(args)).toEqual(images);
+});
+
+test("unconfirmed input requires observation and tree deltas use a matching baseline", async () => {
+  const calls: Record<string, unknown>[] = [];
+  const session = openDesktopSession({
+    callTool: async (name: string, json: string) => {
+      const args = JSON.parse(json);
+      calls.push({ name, ...args });
+      return {
+        isError: false,
+        images: [],
+        structuredJson: JSON.stringify(
+          name === "type_text"
+            ? { verified: false, effect: "unverifiable" }
+            : name === "get_window_state"
+              ? { pid: args.pid, window_id: args.window_id, snapshot_id: "s1" }
+              : {},
+        ),
+      };
+    },
+  });
+  const args = { session: "bot", pid: 7, window_id: 90 };
+  const signal = new AbortController().signal;
+  await session.call("type_text", args, "task", signal);
+  expect((await session.call("press_key", args, "task", signal)).isError).toBe(
     true,
   );
-  expect(driver.callTool).toHaveBeenCalledTimes(3);
-  session.images("bot", "next-task", "get_window_state", args, [
-    { ...images[0], dataBase64: "changed" },
-  ]);
-  expect((await session.call("click", args, "next-task", signal)).isError).toBe(
+  for (const size of [250, 250, 120, 120, 250])
+    await session.call(
+      "get_window_state",
+      { ...args, since: "latest", max_elements: size },
+      "task",
+      signal,
+    );
+  expect(
+    calls
+      .filter((call) => call.name === "get_window_state")
+      .map((call) => call.since),
+  ).toEqual([undefined, "latest", undefined, "latest", "latest"]);
+  expect((await session.call("press_key", args, "task", signal)).isError).toBe(
     false,
   );
+});
+
+test.each(["click", "run_steps"])(
+  "repeated %s stays bounded while screenshots animate",
+  async (name) => {
+    const callTool = vi.fn(async () => ({ isError: false, images: [] }));
+    const session = openDesktopSession({ callTool });
+    const args = {
+      session: "bot",
+      pid: 7,
+      window_id: 90,
+      steps: [{ click: { x: 10, y: 20 } }],
+    };
+    for (let index = 0; index < 4; index++) {
+      const result = await session.call(name, args, "task");
+      session.images("bot", "task", "get_window_state", args, [
+        { mimeType: "image/png", dataBase64: String(index) },
+      ]);
+      expect(result.isError).toBe(index === 3);
+    }
+    expect(callTool.mock.calls).toHaveLength(5);
+    callTool.mockImplementation(async () => ({
+      isError: false,
+      images: [],
+      structuredJson: '{"status":"satisfied","stable":true}',
+    }));
+    await session.call("verify_state", args, "task");
+    expect((await session.call(name, args, "task")).isError).toBe(false);
+  },
+);
+
+test("capture failure preserves execution and reports failed observation", async () => {
+  activity.captureExcluded = false;
+  driver.callTool.mockImplementation(async (name: string) => ({
+    isError: name === "get_window_state",
+    images: [],
+    text: name === "get_window_state" ? "Capture unavailable" : "1/1 steps ok",
+    structuredJson: JSON.stringify(
+      name === "run_steps"
+        ? {
+            steps: [{ index: 0, ok: true }],
+            observation: { ok: true, state: { pid: 7, window_id: 90 } },
+          }
+        : { code: "capture_unavailable" },
+    ),
+  }));
+  const service = openComputerService(".", ".");
+  const result = await service.request(
+    {
+      operation: "call",
+      service: "desktop",
+      name: "run_steps",
+      arguments: {
+        steps: [{ click: { x: 10, y: 20 } }],
+        observe: { include_screenshot: true },
+      },
+    },
+    new AbortController().signal,
+  );
+  expect(result).toMatchObject({
+    isError: true,
+    structuredContent: {
+      observation: { ok: false, error: "Capture unavailable" },
+      domos: {
+        execution: "delivered",
+        verification: "required",
+        observation: "failed",
+      },
+    },
+  });
+  expect(
+    driver.callTool.mock.calls.filter(([name]) => name === "run_steps"),
+  ).toHaveLength(1);
+  await service.close();
 });

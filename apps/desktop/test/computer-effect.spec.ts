@@ -162,6 +162,7 @@ test("foreground input keeps a restored window active and publishes its real out
     await page.locator("input").fill("Control input");
     await call("click", { ...identity, element_token: button.element_token });
     await expect(page.locator("output")).toHaveText("Control input");
+    await call("get_window_state", { ...identity, include_screenshot: false });
     await expect
       .poll(async () => {
         const { frame } = await call("list_windows", {});
@@ -181,7 +182,10 @@ test("foreground input keeps a restored window active and publishes its real out
             value: "Control input",
           },
         },
-        { click: { role: "button", name: "Play" } },
+        {
+          click: { role: "button", name: "Play" },
+          expect: [{ text: "Control input" }],
+        },
       ],
       observe: { include_screenshot: true },
     });
@@ -189,6 +193,9 @@ test("foreground input keeps a restored window active and publishes its real out
     expect(control.structuredContent).toHaveProperty(
       "observation.state.snapshot_id",
     );
+    expect(control.structuredContent).toMatchObject({
+      domos: { verification: "checked" },
+    });
     await expect(page.locator("output")).toHaveText("Control input");
     const scale =
       observed.structuredContent.screenshot_width /

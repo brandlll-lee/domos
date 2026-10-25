@@ -232,6 +232,9 @@ test("mode gates catalog and invocation; handoffs are explicit, single-use and o
     "desktop_click",
   );
   await invoke("desktop_click");
+  await expect(invoke("desktop_wait_for_load")).rejects.toThrow(
+    "wait_for/expect",
+  );
 });
 
 test.each(["stale", "background", "partial", "empty"])(
