@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Context } from "@earendil-works/chord/context";
+import { desktopInputs } from "../harness/desktop-actions.mjs";
 import type { ProductResult, ProductTool } from "../harness/types.ts";
 import { runAssistant } from "./assistant.ts";
 import {
@@ -95,7 +96,11 @@ export class ComputerTools {
       this.states.set(`${id}:${botId}:${service}`, state);
       if (!state.available) continue;
       for (const tool of await target.services.catalog(botId, service, context))
-        if (!mode.enabled || assistantDiscovery(`${service}_${tool.name}`))
+        if (
+          mode.enabled
+            ? assistantDiscovery(`${service}_${tool.name}`)
+            : service !== "desktop" || !desktopInputs.includes(tool.name)
+        )
           tools.push({ ...tool, name: `${service}_${tool.name}` });
     }
     if (mode.enabled && (enabled.browser || enabled.desktop))

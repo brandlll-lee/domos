@@ -134,7 +134,11 @@ export function openDesktopSession(driver) {
           /not verified/i.test(result.text ?? ""))
       )
         state.review = true;
-      if (name === "get_window_state" && result.isError) state.review = true;
+      if (
+        (name === "get_window_state" && result.isError) ||
+        (mutating && value?.observation?.ok === false)
+      )
+        state.review = true;
       if (readsTree && !result.isError && observed?.snapshot_id) {
         state.scopes.set(baseline(observed), observed.snapshot_id);
         if (state.scopes.size > 32)
@@ -142,6 +146,7 @@ export function openDesktopSession(driver) {
       }
       const checked =
         !result.isError &&
+        value?.observation?.ok !== false &&
         ((name === "verify_state" &&
           value?.status === "satisfied" &&
           value.stable === true) ||

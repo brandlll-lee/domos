@@ -138,7 +138,7 @@ test("mode gates catalog and invocation; handoffs are explicit, single-use and o
   const services = {
     prepare: vi.fn(async () => ({ available: true })),
     catalog: vi.fn(async () =>
-      ["get_window_state", "click"].map((name) => ({
+      ["get_window_state", "click", "run_steps", "launch_app"].map((name) => ({
         name,
         inputSchema: {},
         description: name,
@@ -171,6 +171,7 @@ test("mode gates catalog and invocation; handoffs are explicit, single-use and o
   const tools = new ComputerTools(computers);
   expect((await tools.catalog(1, context)).map((tool) => tool.name)).toEqual([
     "desktop_get_window_state",
+    "desktop_launch_app",
     "computer_assist",
   ]);
   const invoke = (name: string, args = {}, owner = "owner") =>
@@ -228,9 +229,11 @@ test("mode gates catalog and invocation; handoffs are explicit, single-use and o
     content: [{ text: expect.stringContaining("交接已失效") }],
   });
   enabled = false;
-  expect((await tools.catalog(1, context)).map((tool) => tool.name)).toContain(
-    "desktop_click",
-  );
+  expect((await tools.catalog(1, context)).map((tool) => tool.name)).toEqual([
+    "desktop_get_window_state",
+    "desktop_run_steps",
+    "desktop_launch_app",
+  ]);
   await invoke("desktop_click");
   await expect(invoke("desktop_wait_for_load")).rejects.toThrow(
     "wait_for/expect",

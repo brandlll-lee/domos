@@ -56,7 +56,7 @@ pnpm exec vitest run packages/agent/test/computer-evals.test.ts
 
 这些测试验证评分器，不代表重新运行了 Agent。当前未提供自动截图判分、自动真实任务重跑或跨平台桌面成功率。
 
-共享执行入口的回归使用 `packages/agent/test/computer-input.test.ts`。它检查严格 MCP 输出校验、批次窗口身份、未确认输入后的观察要求、增量基线兼容性、重复批次限制，以及截图失败后保留已执行步骤。`computer-assistant.test.ts` 同时检查不可用工具的恢复提示。
+共享执行入口的回归使用 `packages/agent/test/computer-input.test.ts`。它检查严格 MCP 输出校验、批次窗口身份、默认收尾观察、增量基线兼容性、重复批次限制，以及观察失败后保留已执行步骤并阻止重放。`computer-assistant.test.ts` 检查主 Agent 的批次工具目录、Jev 交接与不可用工具提示。
 
 Windows 图形会话可运行原生模拟：
 

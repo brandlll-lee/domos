@@ -88,6 +88,69 @@ test("MCP validates native action output and retains Domos text", async () => {
 });
 
 test.each([
+  {
+    steps: [{ scroll: { x: 100, y: 200, direction: "down", amount: 3 } }],
+    screenshot: true,
+  },
+  {
+    steps: [{ drag: { from_x: 10, from_y: 20, to_x: 100, to_y: 200 } }],
+    screenshot: true,
+  },
+  {
+    steps: [{ set_value: { role: "textfield", name: "Song", value: "Rain" } }],
+    screenshot: false,
+  },
+  {
+    steps: [{ press_key: { key: "return" } }],
+    delivery_mode: "foreground",
+    screenshot: true,
+  },
+  {
+    steps: [{ click: { x: 100, y: 200 } }],
+    observe: { include_screenshot: false, query: "Editor" },
+    screenshot: false,
+  },
+])(
+  "batch returns observation in one request: %j",
+  async ({ screenshot, ...input }) => {
+    const state = { pid: 7, window_id: 90, snapshot_id: "s1" };
+    driver.callTool.mockResolvedValue({
+      isError: false,
+      images: [],
+      structuredJson: JSON.stringify({
+        steps: [{ ok: true }],
+        observation: { ok: true, state },
+      }),
+    });
+    const service = openComputerService(".", ".");
+    const result = await service.request(
+      {
+        operation: "call",
+        service: "desktop",
+        name: "run_steps",
+        arguments: { pid: 7, window_id: 90, ...input },
+      },
+      new AbortController().signal,
+    );
+    const calls = driver.callTool.mock.calls.filter(
+      ([name]) => name === "run_steps",
+    );
+    expect(calls).toHaveLength(1);
+    expect(JSON.parse(calls[0]?.[1]).observe).toMatchObject({
+      include_screenshot: screenshot,
+      ...(input.observe ?? {}),
+    });
+    expect(
+      driver.callTool.mock.calls.some(([name]) => name === "get_window_state"),
+    ).toBe(false);
+    expect(result.structuredContent).toMatchObject({
+      observation: { ok: true, state },
+    });
+    await service.close();
+  },
+);
+
+test.each([
   { pid: 7, steps: [{ type_text: { text: "Sales" } }] },
   { pid: 7, window_id: 90, steps: [{ type_text: { pid: 8, text: "Sales" } }] },
 ])(
@@ -397,48 +460,80 @@ test.each(["click", "run_steps"])(
   },
 );
 
-test("capture failure preserves execution and reports failed observation", async () => {
-  activity.captureExcluded = false;
-  driver.callTool.mockImplementation(async (name: string) => ({
-    isError: name === "get_window_state",
-    images: [],
-    text: name === "get_window_state" ? "Capture unavailable" : "1/1 steps ok",
-    structuredJson: JSON.stringify(
-      name === "run_steps"
-        ? {
-            steps: [{ index: 0, ok: true }],
-            observation: { ok: true, state: { pid: 7, window_id: 90 } },
-          }
-        : { code: "capture_unavailable" },
-    ),
-  }));
-  const service = openComputerService(".", ".");
-  const result = await service.request(
-    {
-      operation: "call",
-      service: "desktop",
-      name: "run_steps",
-      arguments: {
-        steps: [{ click: { x: 10, y: 20 } }],
-        observe: { include_screenshot: true },
+test.each(["capture", "batch", "checked"])(
+  "%s observation failure preserves execution and blocks replay",
+  async (failure) => {
+    activity.captureExcluded = failure !== "capture";
+    driver.callTool.mockImplementation(async (name: string) => ({
+      isError:
+        name === "get_window_state" ||
+        (name === "run_steps" && failure === "batch"),
+      images: [],
+      text:
+        name === "get_window_state" ? "Capture unavailable" : "1/1 steps ok",
+      structuredJson: JSON.stringify(
+        name === "run_steps"
+          ? {
+              steps: [{ index: 0, ok: true }],
+              observation:
+                failure !== "capture"
+                  ? { ok: false, error: "Capture unavailable" }
+                  : { ok: true, state: { pid: 7, window_id: 90 } },
+            }
+          : { code: "capture_unavailable" },
+      ),
+    }));
+    const service = openComputerService(".", ".");
+    const result = await service.request(
+      {
+        operation: "call",
+        service: "desktop",
+        name: "run_steps",
+        arguments: {
+          steps: [
+            {
+              click: { x: 10, y: 20 },
+              ...(failure === "checked" ? { expect: [{ text: "Done" }] } : {}),
+            },
+          ],
+          observe: { include_screenshot: true },
+        },
       },
-    },
-    new AbortController().signal,
-  );
-  expect(result).toMatchObject({
-    isError: true,
-    structuredContent: {
-      observation: { ok: false, error: "Capture unavailable" },
-    },
-  });
-  expect(result.content).toContainEqual({
-    type: "text",
-    text: expect.stringContaining(
-      '"execution":"delivered","verification":"required","observation":"failed"',
-    ),
-  });
-  expect(
-    driver.callTool.mock.calls.filter(([name]) => name === "run_steps"),
-  ).toHaveLength(1);
-  await service.close();
-});
+      new AbortController().signal,
+    );
+    expect(result).toMatchObject({
+      isError: true,
+      structuredContent: {
+        observation: { ok: false, error: "Capture unavailable" },
+      },
+    });
+    expect(result.content).toContainEqual({
+      type: "text",
+      text: expect.stringContaining(
+        '"execution":"delivered","verification":"required","observation":"failed"',
+      ),
+    });
+    expect(
+      driver.callTool.mock.calls.filter(([name]) => name === "run_steps"),
+    ).toHaveLength(1);
+    const blocked = await service.request(
+      {
+        operation: "call",
+        service: "desktop",
+        name: "run_steps",
+        arguments: {
+          pid: 7,
+          window_id: 90,
+          steps: [{ click: { x: 10, y: 20 } }],
+        },
+      },
+      new AbortController().signal,
+    );
+    expect(blocked.isError).toBe(true);
+    expect(JSON.stringify(blocked.content)).toContain("Observe that window");
+    expect(
+      driver.callTool.mock.calls.filter(([name]) => name === "run_steps"),
+    ).toHaveLength(1);
+    await service.close();
+  },
+);

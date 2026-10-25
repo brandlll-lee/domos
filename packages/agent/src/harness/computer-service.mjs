@@ -69,7 +69,7 @@ export function openComputerService(directory, home, emit = () => {}) {
             ...tool,
             description:
               tool.name === "run_steps"
-                ? `${tool.description}\nUse both pid and window_id for numeric targets. Observe the same window with observe:{}. Rebind a new dialog by its own identity or app/window name. Put expect immediately after a state transition before dependent actions: enter edit mode, confirm the editor, then type; submit editing before saving, then verify the saved result. Keep known continuous input in one batch. Wait with a check-only step: {wait_for:{text:"Ready",timeout_ms:5000}}. wait_for is a step field, not a tool. Never use shell sleeps to wait for UI state.`
+                ? `${tool.description}\nDomos adds end observation. Pixel and foreground steps default to screenshots; explicit observe options take precedence. Use both pid and window_id for numeric targets. Rebind a new dialog by its own identity or app/window name. Put expect immediately after a state transition before dependent actions: enter edit mode, confirm the editor, then type; submit editing before saving, then verify the saved result. Keep known continuous input in one batch. Wait with a check-only step: {wait_for:{text:"Ready",timeout_ms:5000}}. wait_for is a step field, not a tool. Never use shell sleeps to wait for UI state.`
                 : tool.name === "type_text"
                   ? `${tool.description}\nPrefer set_value for accessible text fields. Delivery alone does not verify input; check the value or resulting UI before continuing.`
                   : tool.description,
@@ -107,6 +107,18 @@ export function openComputerService(directory, home, emit = () => {}) {
       };
       const send = (name, args) =>
         sessions.call(name, args, input.actor?.owner, signal);
+      if (input.name === "run_steps") {
+        args.observe ??= {};
+        args.observe.include_screenshot ??= (args.steps ?? []).some((step) => {
+          const action = desktopStep(step).args ?? {};
+          return (
+            action.x !== undefined ||
+            action.y !== undefined ||
+            action.from_x !== undefined ||
+            (action.delivery_mode ?? args.delivery_mode) === "foreground"
+          );
+        });
+      }
       if (
         input.name === "run_steps" &&
         [
@@ -240,7 +252,13 @@ export function openComputerService(directory, home, emit = () => {}) {
           ));
       const outcome = action
         ? {
-            execution: result.isError ? "incomplete" : "delivered",
+            execution:
+              !result.isError ||
+              (input.name === "run_steps" &&
+                structured?.steps?.length === args.steps?.length &&
+                structured.steps.every((step) => step.ok))
+                ? "delivered"
+                : "incomplete",
             verification: result.postcondition
               ? "checked"
               : !result.isError &&

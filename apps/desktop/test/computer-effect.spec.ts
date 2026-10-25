@@ -187,7 +187,6 @@ test("foreground input keeps a restored window active and publishes its real out
           expect: [{ text: "Control input" }],
         },
       ],
-      observe: { include_screenshot: true },
     });
     expect(control.isError, JSON.stringify(control.content)).toBe(false);
     expect(control.structuredContent).toHaveProperty(
@@ -320,12 +319,14 @@ test("foreground input keeps a restored window active and publishes its real out
         { press_key: { key: "tab" } },
         { press_key: { key: "return" } },
       ],
-      observe: { include_screenshot: true },
     });
     expect(batch.isError, JSON.stringify(batch.content)).toBe(false);
     expect(batch.structuredContent).toHaveProperty(
       "observation.state.snapshot_id",
     );
+    expect(
+      batch.content.some((item) => (item as { type: string }).type === "image"),
+    ).toBe(true);
     await expect(page.locator("output")).toHaveText("Batch input");
     const positions = new Set<number>();
     const moved = () => {
@@ -333,6 +334,7 @@ test("foreground input keeps a restored window active and publishes its real out
     };
     worker.events.on("activity", moved);
     await call("run_steps", {
+      ...identity,
       steps: [100, 350, 600].map((x) => ({ move_cursor: { x, y: 300 } })),
       delay_ms: 400,
     });
