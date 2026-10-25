@@ -2913,35 +2913,41 @@ test("message media leads captions and bubble tails follow both themes", async (
     await expectTextContrast(page);
     for (const width of [1440, 768, 390]) {
       await page.setViewportSize({ width, height: 900 });
-      const attachments = await outgoing.locator(".attachments").boundingBox();
-      const caption = await outgoing.locator(".user-text").boundingBox();
-      const frame = await outgoing.boundingBox();
-      const image = await outgoing
-        .locator(".image-thumbnail img")
-        .boundingBox();
-      const document = await outgoing.locator(".file-attachment").boundingBox();
-      if (!frame || !image || !document || !caption)
-        throw new Error("Message media missing");
-      for (const media of [image, document]) {
-        expect(media.x - frame.x).toBeGreaterThan(0);
-        expect(media.x - frame.x).toBeLessThanOrEqual(4);
+      await expect(async () => {
+        const attachments = await outgoing
+          .locator(".attachments")
+          .boundingBox();
+        const caption = await outgoing.locator(".user-text").boundingBox();
+        const frame = await outgoing.boundingBox();
+        const image = await outgoing
+          .locator(".image-thumbnail img")
+          .boundingBox();
+        const document = await outgoing
+          .locator(".file-attachment")
+          .boundingBox();
+        if (!frame || !image || !document || !caption)
+          throw new Error("Message media missing");
+        for (const media of [image, document]) {
+          expect(media.x - frame.x).toBeGreaterThan(0);
+          expect(media.x - frame.x).toBeLessThanOrEqual(4);
+          expect(
+            frame.x + frame.width - media.x - media.width,
+          ).toBeLessThanOrEqual(4);
+        }
+        expect(image.y - frame.y).toBeLessThanOrEqual(4);
         expect(
-          frame.x + frame.width - media.x - media.width,
-        ).toBeLessThanOrEqual(4);
-      }
-      expect(image.y - frame.y).toBeLessThanOrEqual(4);
-      expect(
-        await outgoing.locator(".user-text").evaluate((element) => {
-          const range = window.document.createRange();
-          range.selectNodeContents(element);
-          return range.getBoundingClientRect().x;
-        }),
-      ).toBeGreaterThan(image.x);
-      expect(
-        attachments &&
-          caption &&
-          attachments.y + attachments.height <= caption.y,
-      ).toBeTruthy();
+          await outgoing.locator(".user-text").evaluate((element) => {
+            const range = window.document.createRange();
+            range.selectNodeContents(element);
+            return range.getBoundingClientRect().x;
+          }),
+        ).toBeGreaterThan(image.x);
+        expect(
+          attachments &&
+            caption &&
+            attachments.y + attachments.height <= caption.y,
+        ).toBeTruthy();
+      }).toPass({ timeout: 5000 });
       for (const bubble of [incoming, outgoing]) {
         const tail = await bubble.evaluate((element) => {
           const style = getComputedStyle(element, "::after");
@@ -3498,23 +3504,34 @@ test("typing dots share the avatar color and follow complete messages", async ({
   const performance = await page.context().newCDPSession(page);
   await performance.send("Performance.enable");
   const before = await performance.send("Performance.getMetrics");
-  const intervals = await page.evaluate(
-    () =>
-      new Promise<number[]>((resolve) => {
-        const samples: number[] = [];
-        let start = 0;
-        let previous = 0;
-        const sample = (time: number) => {
-          if (!start) start = time;
-          if (previous) samples.push(time - previous);
-          previous = time;
-          if (time - start < 1000) requestAnimationFrame(sample);
-          else resolve(samples);
-        };
-        requestAnimationFrame(sample);
-      }),
-  );
+  const sampleFrames = () =>
+    page.evaluate(
+      () =>
+        new Promise<number[]>((resolve) => {
+          const samples: number[] = [];
+          let start = 0;
+          let previous = 0;
+          const sample = (time: number) => {
+            if (!start) start = time;
+            if (previous) samples.push(time - previous);
+            previous = time;
+            if (time - start < 1000) requestAnimationFrame(sample);
+            else resolve(samples);
+          };
+          requestAnimationFrame(sample);
+        }),
+    );
+  const intervals = await sampleFrames();
   const after = await performance.send("Performance.getMetrics");
+  await typing.evaluate((element) => {
+    for (const animation of element.getAnimations({ subtree: true }))
+      animation.pause();
+  });
+  const idleIntervals = await sampleFrames();
+  await typing.evaluate((element) => {
+    for (const animation of element.getAnimations({ subtree: true }))
+      animation.play();
+  });
   const metric = (metrics: typeof before, name: string) =>
     metrics.metrics.find((item) => item.name === name)?.value ?? 0;
   const layouts = metric(after, "LayoutCount") - metric(before, "LayoutCount");
@@ -3529,7 +3546,14 @@ test("typing dots share the avatar color and follow complete messages", async ({
   ];
   await performance.detach();
   await test.info().attach("typing-performance", {
-    body: JSON.stringify({ layouts, layoutMs, styleMs, p95, intervals }),
+    body: JSON.stringify({
+      layouts,
+      layoutMs,
+      styleMs,
+      p95,
+      intervals,
+      idleIntervals,
+    }),
     contentType: "application/json",
   });
   await surroundingAnimations.evaluate((animations) => {
