@@ -79,7 +79,7 @@ export function featureProcess() {
                 ? {
                     contextUsage: {
                       tokens: compacted ? null : 120,
-                      contextWindow: 1000,
+                      contextWindow: 32000,
                     },
                   }
                 : {};

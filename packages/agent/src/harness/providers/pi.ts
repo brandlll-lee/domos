@@ -44,7 +44,10 @@ export const piProvider: EngineProvider = {
       await emit({
         type: "context",
         tokens: stats?.contextUsage?.tokens ?? null,
-        window: stats?.contextUsage?.contextWindow ?? null,
+        window:
+          stats?.contextUsage?.contextWindow ??
+          state.model?.contextWindow ??
+          null,
         source: "pi.get_session_stats",
         basis: "window",
         estimated: true,
@@ -205,9 +208,12 @@ export const piProvider: EngineProvider = {
       },
     });
     await preparation.promise;
-    if (sessionId)
-      await rpc.request("switch_session", { sessionPath: sessionId });
-    else await rpc.request("new_session");
+    const selected = sessionId
+      ? await rpc.request<{ cancelled?: boolean }>("switch_session", {
+          sessionPath: sessionId,
+        })
+      : await rpc.request<{ cancelled?: boolean }>("new_session");
+    if (selected.cancelled) throw new Error("Pi 会话切换已取消。");
     await rpc.request("set_steering_mode", { mode: "all" });
     if (config.model) {
       const separator = config.model.indexOf("/");
@@ -221,6 +227,7 @@ export const piProvider: EngineProvider = {
     if (!state.sessionFile) throw new Error("Pi 没有返回会话记录。");
     const sessionFile = state.sessionFile;
     await emit({ type: "session", id: sessionFile });
+    await readContext();
     const checkpoint = async () => {
       if (!process.checkpoint)
         throw new Error("工作电脑尚未提供 Pi 会话书签。");

@@ -10,13 +10,20 @@ import {
   type EntryId,
   type Tx,
 } from "@earendil-works/pi-durable";
-import { expect, onTestFinished, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import type { Computers } from "../src/computer/catalog.ts";
+import { handoffBudget } from "../src/harness/budget.ts";
 import { conversationHistory } from "../src/harness/history.ts";
 import { EngineExecution, Engines, engineTask } from "../src/harness/index.ts";
 import { callProductTool } from "../src/harness/product-tools.ts";
-import { EngineDoc, EngineMessage } from "../src/harness/state.ts";
+import { engineProvider } from "../src/harness/providers/index.ts";
+import {
+  EngineDoc,
+  EngineMessage,
+  type EngineState,
+} from "../src/harness/state.ts";
 import type { EngineRuntime } from "../src/harness/task-types.ts";
+import { engineIds } from "../src/harness/types.ts";
 import { openAgent } from "../src/open-agent.ts";
 import { ProtocolProcess, type Request } from "./fixtures/engine-process.ts";
 import cases from "./fixtures/harness-context.json" with { type: "json" };
@@ -26,10 +33,12 @@ async function openContext(
 ) {
   const directory = await mkdtemp(join(tmpdir(), "domos-context-"));
   const workers: ProtocolProcess[] = [];
+  const catalogs: (readonly unknown[])[] = [];
   const execution = new EngineExecution({
     preflight: async () => {},
     computerId: async () => "shared",
-    process: async () => {
+    process: async (_id: number, tools: readonly unknown[]) => {
+      catalogs.push(tools);
       const worker = new ProtocolProcess();
       workers.push(worker);
       worker.receive = (request) => receive(worker, request);
@@ -43,7 +52,7 @@ async function openContext(
   );
   const models = createModels();
   models.setProvider(fauxProvider().provider);
-  const runtime = await openAgent(
+  let runtime = await openAgent(
     join(directory, "agent.sqlite"),
     { registry, models },
     {},
@@ -76,7 +85,24 @@ async function openContext(
     commit: (fn: (tx: Tx, current: { input: object }) => Promise<unknown>) =>
       runtime.harness.commit((tx) => fn(tx, { input: {} }), context),
   } as unknown as EngineRuntime;
-  return { ...runtime, botId, engines, workers, reader };
+  return {
+    ...runtime,
+    botId,
+    engines,
+    workers,
+    reader,
+    catalogs,
+    reopen: async () => {
+      await runtime.harness.close(context);
+      runtime = await openAgent(
+        join(directory, "agent.sqlite"),
+        { registry, models },
+        {},
+        context,
+      );
+      return { ...runtime, engines: new Engines(runtime.harness, execution) };
+    },
+  };
 }
 
 test.each(["rejected", "accepted"])(
@@ -120,6 +146,7 @@ test.each(["rejected", "accepted"])(
     expect(state?.sessions?.[state.sessionKey ?? ""]?.through === null).toBe(
       delivery === "rejected",
     );
+    Object.assign(runtime, await runtime.reopen());
     expect(await submit("Next request")).toMatchObject({ status: "done" });
     expect(prompts[0]).toContain(cases.fact);
     expect(prompts[1]?.includes(cases.fact)).toBe(delivery === "rejected");
@@ -128,6 +155,110 @@ test.each(["rejected", "accepted"])(
     ).toBe(true);
   },
 );
+
+test("stopping before dispatch keeps the first handoff pending for the next request", async () => {
+  const prompts: string[] = [];
+  const runtime = await openContext((worker, request) => {
+    if (["thread/start", "thread/resume"].includes(request.method ?? ""))
+      worker.response(request, { thread: { id: "native" } });
+    else if (request.method === "turn/start") {
+      prompts.push(JSON.stringify(request.params?.input));
+      worker.response(request, { turn: { id: "turn" } });
+      worker.frame({
+        method: "turn/completed",
+        params: { turn: { status: "completed" } },
+      });
+    } else if (request.id !== undefined) worker.response(request, {});
+  });
+  const opened = Promise.withResolvers<void>();
+  const mock = vi
+    .spyOn(engineProvider("codex"), "open")
+    .mockImplementationOnce(async (options) => {
+      await options.emit({ type: "session", id: "native" });
+      opened.resolve();
+      await options.process.closed;
+      throw new Error("Stopped before dispatch");
+    });
+  onTestFinished(() => mock.mockRestore());
+  const first = await runtime.engines.submit(
+    runtime.botId,
+    { text: "First", requestId: crypto.randomUUID() },
+    context,
+  );
+  await opened.promise;
+  await runtime.engines.stop(runtime.botId, context);
+  expect(await first.wait(context)).toMatchObject({ status: "unanswered" });
+  const state = await runtime.harness.snapshot(
+    EngineDoc,
+    runtime.botId,
+    context,
+  );
+  expect(state?.sessions?.[state.sessionKey ?? ""]?.through).toBe(null);
+  Object.assign(runtime, await runtime.reopen());
+  const next = await runtime.engines.submit(
+    runtime.botId,
+    { text: "Next", requestId: crypto.randomUUID() },
+    context,
+  );
+  expect(await next.wait(context)).toMatchObject({ status: "done" });
+  expect(prompts).toHaveLength(1);
+  expect(prompts[0]).toContain(cases.fact);
+});
+
+test("Pi checkpoints keep a rejected handoff pending across restart", async () => {
+  const prompts: string[] = [];
+  const runtime = await openContext((worker, request) => {
+    if (request.type === "prompt") {
+      prompts.push(JSON.stringify(request.message));
+      worker.frame({
+        type: "response",
+        id: request.id,
+        success: prompts.length > 1,
+        ...(prompts.length > 1
+          ? { data: { disposition: "started" } }
+          : { error: "Rejected" }),
+      });
+      if (prompts.length > 1) worker.frame({ type: "agent_settled" });
+      return;
+    }
+    worker.frame({
+      type: "response",
+      id: request.id,
+      success: true,
+      data:
+        request.type === "get_state"
+          ? { sessionFile: "/native/session" }
+          : request.type === "get_session_stats"
+            ? { contextUsage: { tokens: 0, contextWindow: 32000 } }
+            : {},
+    });
+  });
+  await runtime.harness.commit(async (tx) => {
+    (await tx.doc(EngineDoc, runtime.botId)).config = {
+      provider: "pi",
+      model: null,
+    };
+  }, context);
+  const submit = async () =>
+    (
+      await runtime.engines.submit(
+        runtime.botId,
+        { text: "Current", requestId: crypto.randomUUID() },
+        context,
+      )
+    ).wait(context);
+  expect(await submit()).toMatchObject({ status: "unanswered" });
+  const state = await runtime.harness.snapshot(
+    EngineDoc,
+    runtime.botId,
+    context,
+  );
+  expect(state?.sessions?.[state.sessionKey ?? ""]?.through).toBe(null);
+  Object.assign(runtime, await runtime.reopen());
+  expect(await submit()).toMatchObject({ status: "done" });
+  expect(prompts).toHaveLength(2);
+  expect(prompts[1]).toContain(cases.fact);
+});
 
 test("history reads recover Unicode text, selected sources and linked tool calls within one Bot", async () => {
   const runtime = await openContext(() => {});
@@ -140,7 +271,11 @@ test("history reads recover Unicode text, selected sources and linked tool calls
         id: "long",
         role: "user",
         stopped: false,
-        content: [{ type: "text", text }],
+        content: [
+          { type: "text", text },
+          { type: "thinking", thinking: "PRIVATE_REASONING" },
+          { type: "image", mimeType: "image/png", data: "PRIVATE_IMAGE_DATA" },
+        ],
         materials: {
           skills: [],
           context: [
@@ -181,7 +316,26 @@ test("history reads recover Unicode text, selected sources and linked tool calls
         content: [{ type: "text", text: "Saved" }],
       },
     });
-    return { long: long.id, tool: tool.id, result: result.id };
+    const embedded = await tx.appendEntry(runtime.botId, {
+      kind: "test.model",
+      model: [
+        { role: "user", content: "Embedded fact", timestamp: 1 },
+        {
+          role: "toolResult",
+          toolCallId: "embedded-call",
+          toolName: "read",
+          content: [{ type: "text", text: "Embedded result" }],
+          isError: false,
+          timestamp: 2,
+        },
+      ],
+    });
+    return {
+      long: long.id,
+      tool: tool.id,
+      result: result.id,
+      embedded: embedded.id,
+    };
   }, context);
   const read = async (
     args: Record<string, unknown>,
@@ -209,10 +363,22 @@ test("history reads recover Unicode text, selected sources and linked tool calls
   }
   expect(JSON.parse(complete)[0].text).toContain(text);
   expect(complete).toContain(cases.referenceFact);
+  expect(complete).not.toContain("PRIVATE_");
+  const insideCharacter = Buffer.from(complete).indexOf(Buffer.from("资")) + 1;
+  await expect(
+    read({ entryId: records.long, offset: insideCharacter }),
+  ).rejects.toThrow("偏移");
   expect((await read({ entryId: records.tool })).text).toContain(
     "blue/report.txt",
   );
   expect((await read({ entryId: records.result })).text).toContain("call-1");
+  const embedded = JSON.parse((await read({ entryId: records.embedded })).text);
+  expect(embedded).toHaveLength(2);
+  expect(embedded[1]).toMatchObject({
+    toolCallId: "embedded-call",
+    tool: "read",
+    text: "Embedded result",
+  });
   const page = await read({});
   expect(JSON.stringify(page)).toContain("blue/report.txt");
   expect(JSON.stringify(page)).not.toContain(cases.longMessage.tail);
@@ -237,7 +403,192 @@ test("history reads recover Unicode text, selected sources and linked tool calls
       runtime.reader,
       null,
       context,
-      records.result as EntryId,
+      records.embedded as EntryId,
     ),
   ).toBe("");
+  await runtime.harness.commit(async (tx) => {
+    for (let i = 0; i < 64; i++)
+      await tx.appendEntry(runtime.botId, { kind: "test.internal", data: {} });
+  }, context);
+  const gap = await read({});
+  expect(gap.messages).toEqual([]);
+  expect(gap.from).toBeGreaterThan(records.result);
+  expect(JSON.stringify(await read({ before: gap.from }))).toContain(
+    "blue/report.txt",
+  );
+});
+
+test.each(engineIds)(
+  "%s uses the opened target's budget across model and Harness changes",
+  async (harness) => {
+    const runtime = await openContext(() => {});
+    const prompts: { text: string; budget: number }[] = [];
+    let window = 50_000;
+    const native = new Map<string, string | null>();
+    const other = harness === "codex" ? "pi" : "codex";
+    for (const id of [harness, other] as const) {
+      const mock = vi
+        .spyOn(engineProvider(id), "open")
+        .mockImplementation(async (options) => {
+          native.set(id, options.sessionId);
+          const sessionId = `native-${id}`;
+          await options.emit({ type: "session", id: sessionId });
+          await options.emit({
+            type: "context",
+            tokens: 0,
+            window,
+            source: "fixture",
+            basis: "window",
+            estimated: false,
+            model: options.config.model,
+          });
+          return {
+            id: sessionId,
+            prompt: async (text) => {
+              const doc = await runtime.harness.snapshot(
+                EngineDoc,
+                runtime.botId,
+                context,
+              );
+              if (!doc) throw new Error("Bot state required");
+              prompts.push({
+                text,
+                budget: handoffBudget(
+                  doc,
+                  doc.prompt?.text ?? "",
+                  "Current",
+                  runtime.catalogs.at(-1) ?? [],
+                  [],
+                ),
+              });
+              await options.emit({ type: "accepted", id: crypto.randomUUID() });
+              await options.emit({
+                type: "message",
+                id: "answer",
+                text: "Done",
+              });
+            },
+            interrupt: async () => {},
+            answer: async () => {},
+            models: async () => [],
+          };
+        });
+      onTestFinished(() => mock.mockRestore());
+    }
+    const submit = async (provider: typeof harness, model: string) => {
+      await runtime.harness.commit(async (tx) => {
+        const doc = await tx.doc(EngineDoc, runtime.botId);
+        doc.config = { provider, model };
+        doc.runtime = { contextWindow: 1_000_000 };
+        for (let i = 0; i < 6; i++)
+          await tx.appendEntry(runtime.botId, {
+            kind: EngineMessage,
+            data: {
+              id: crypto.randomUUID(),
+              role: "user",
+              content: [{ type: "text", text: '"资料🙂\n'.repeat(1200) }],
+              stopped: false,
+            },
+          });
+      }, context);
+      const task = await runtime.engines.submit(
+        runtime.botId,
+        { text: "Current", requestId: crypto.randomUUID() },
+        context,
+      );
+      return task.wait(context);
+    };
+    expect(await submit(harness, "large")).toMatchObject({ status: "done" });
+    window = 12_000;
+    expect(await submit(harness, "small")).toMatchObject({ status: "done" });
+    expect(native.get(harness)).toBe(`native-${harness}`);
+    expect(prompts[1]?.text.length).toBeLessThan(prompts[0]?.text.length ?? 0);
+    for (const prompt of prompts) {
+      const json = prompt.text.slice(
+        prompt.text.indexOf("\n") + 1,
+        prompt.text.lastIndexOf("\n\nCurrent request:"),
+      );
+      expect(Buffer.byteLength(json)).toBeLessThanOrEqual(prompt.budget);
+      expect(Buffer.byteLength(json)).toBeLessThanOrEqual(16_000);
+      const packet = JSON.parse(json);
+      expect(packet.excerpt).toBe(true);
+      expect(
+        packet.messages.some(
+          (message: { excerpt?: boolean }) => message.excerpt,
+        ),
+      ).toBe(true);
+      expect(json).not.toContain("�");
+    }
+    window = 50_000;
+    expect(await submit(other, "other")).toMatchObject({
+      status: "done",
+    });
+    expect(await submit(harness, "small")).toMatchObject({ status: "done" });
+    expect(native.get(harness)).toBe(`native-${harness}`);
+    const sent = prompts.length;
+    window = 2000;
+    expect(await submit(harness, "tiny")).toMatchObject({
+      status: "unanswered",
+    });
+    expect(prompts).toHaveLength(sent);
+    const doc = await runtime.harness.snapshot(
+      EngineDoc,
+      runtime.botId,
+      context,
+    );
+    expect(doc?.dispatch).toBe("ready");
+    expect(doc?.error).toContain("预算");
+  },
+);
+
+test("budget reserves tools, images, retained context and output for the matching target", async () => {
+  const runtime = await openContext(() => {});
+  const doc: EngineState | undefined = structuredClone(
+    await runtime.harness.snapshot(EngineDoc, runtime.botId, context),
+  );
+  if (!doc) throw new Error("Bot state required");
+  doc.config.model = "small";
+  doc.sessionId = "native";
+  doc.runtime = {
+    contextWindow: 20_000,
+    contextTokens: 1000,
+    context: {
+      harness: "codex",
+      sessionId: "native",
+      model: "small",
+      observedAt: Date.now(),
+      source: "fixture",
+      basis: "window",
+      estimated: false,
+    },
+  };
+  const budget = handoffBudget(doc, "System", "User", [], []);
+  expect(
+    handoffBudget(doc, "System", "User", [{ schema: "x".repeat(2000) }], []),
+  ).toBeLessThan(budget - 2000);
+  const withImage = handoffBudget(
+    doc,
+    "System",
+    "User",
+    [],
+    [{ type: "image", mimeType: "image/png", data: "x".repeat(3000) }],
+  );
+  expect(withImage).toBeLessThan(budget);
+  expect(
+    handoffBudget(
+      doc,
+      "System",
+      "User",
+      [],
+      [{ type: "image", mimeType: "image/png", data: "x".repeat(300_000) }],
+    ),
+  ).toBe(withImage);
+  doc.runtime.contextTokens = 2000;
+  expect(handoffBudget(doc, "System", "User", [], [])).toBe(budget - 1000);
+  if (!doc.runtime.context) throw new Error("Context reading required");
+  doc.runtime.context.model = "canonical-small";
+  doc.runtime.context.configuredModel = "small";
+  expect(handoffBudget(doc, "System", "User", [], [])).toBe(budget - 1000);
+  doc.config.model = "other";
+  expect(handoffBudget(doc, "System", "User", [], [])).toBe(16_000);
 });

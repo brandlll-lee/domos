@@ -85,7 +85,10 @@ async function fixture() {
                 }
               : request.type === "get_session_stats"
                 ? {
-                    contextUsage: { tokens: state.tokens, contextWindow: 1000 },
+                    contextUsage: {
+                      tokens: state.tokens,
+                      contextWindow: 32000,
+                    },
                   }
                 : request.type === "get_available_models"
                   ? {
@@ -404,7 +407,7 @@ test("context snapshots retain their source, survive reopening and invalidate on
   const before = (await f.runtime.client.engines.get({ botId })).runtime;
   expect(before).toMatchObject({
     contextTokens: 240,
-    contextWindow: 1000,
+    contextWindow: 32000,
     contextPolicy: { manual: true, automatic: "enabled", refresh: true },
     context: {
       harness: "pi",
@@ -493,7 +496,7 @@ test("manual compaction deduplicates while busy and keeps the reading unknown un
   const after = (await f.runtime.client.engines.get({ botId })).runtime;
   expect(after).toMatchObject({
     contextTokens: null,
-    contextWindow: 1000,
+    contextWindow: 32000,
     compaction: "completed",
     compactionDetails: {
       sessionId: "/session/local",
@@ -637,7 +640,7 @@ test("native automatic compactions retain distinct operation records", async () 
       expect.objectContaining({
         trigger: "auto",
         status: "completed",
-        beforeTokens: 240,
+        beforeTokens: 40,
       }),
       expect.objectContaining({
         trigger: "auto",
