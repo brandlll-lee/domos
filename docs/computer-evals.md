@@ -75,3 +75,19 @@ pnpm exec playwright test --config apps/desktop/playwright.config.ts apps/deskto
 ```
 
 模拟窗口验证控件与前台两条路径，并读回输入值、按钮结果和光标位置。它还检查批次观察的窗口身份，以及失败的 `expect` 是否阻止后续输入。它不调用在线模型。Domos 补充状态放在文本内容中，原生结构化结果遵守工具输出协议。`domos.verification` 的 `confirmed` 表示驱动确认动作效果，`checked` 表示请求的后置条件通过，`required` 表示仍需核对。`domos.observation: failed` 时只恢复观察，不能重放已投递动作。上述结果都不等于完整用户任务验收。
+
+## 浏览器接管验收
+
+`browser-failures.json` 的 `takeoverViewport` 保存画面 1262×568、报告尺寸 1280×720 的脱敏基线。它也记录输入框与按钮高度不一致，以及键盘事件缺失。
+
+```sh
+pnpm test apps/web/test/viewer-input.test.ts
+pnpm build
+pnpm exec playwright test apps/web/test/browser-takeover.spec.ts
+```
+
+接管验收使用独立临时数据目录和真实 agent-browser。专用网页把实际值、焦点、选择范围、按键和滚动位置回传给测试服务。测试从 Domos 画面点击字段，不预先用脚本聚焦。覆盖中文追加、全选替换、删除、剪贴板粘贴、Tab、Esc、回车、悬停、拖动选字、滚动和交还。Chromium 的 CDP 输入法接口覆盖组词与提交；它不证明所有系统输入法候选窗口均可用。测试接口见 [Playwright CDPSession](https://playwright.dev/docs/api/class-cdpsession) 和 [Chrome Input](https://chromedevtools.github.io/devtools-protocol/tot/Input/)。
+
+失败用例中只有故障注入拦截一次输入请求。它检查暂停、草稿保留、重新连接和人工重试。正常动作仍使用真实浏览器。队列测试检查动作顺序、未知结果后的停止、移动合并和容量上限。
+
+Playwright 保存 1440、768、390 宽度的截图，并检查地址栏与按钮对齐。Checks 在三个系统运行同一套测试，保存 `test-results/web.xml`、失败轨迹和截图。Computer effects 同时运行坐标与输入队列测试。未 push 的提交没有远端 CI 结果。此验收不调用模型，不报告模型成功率或轮数改善。

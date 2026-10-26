@@ -20,6 +20,20 @@ Before a mutation, the browser service writes `.domos/browser-interrupted`. A co
 
 While an outcome is unknown, Domos permits bounded observations. It blocks more browser mutations, user input, takeover, and desktop actions on the same display. The error identifies `agent_browser_restart` as the recovery action. This approved management tool also remains available in Jev mode. Restart closes this Bot's tabs and loses unsaved input. It waits for the old daemon to exit before reconnecting the native MCP client. Saved profile data remains. Inspect the external task result before retrying a submission. Restart does not prove that an external operation failed.
 
+## Human takeover
+
+Open the Bot work computer and select Browser. Select Take over. The workspace expands after control is confirmed. Click a page field, then type. Use the normal selection, arrow, delete, Tab, Escape, and Enter keys. Paste sends plain text to the selected page field. Shift+Escape returns focus to the toolbar. Return control when finished. The Bot must observe the page again.
+
+The address bar shows the active page URL. It stays visible while watching and becomes editable during control. The optional text form opens from Input text. It inserts at the remote selection. It does not choose a field or replace its contents by itself. A confirmed command clears this form. A failed command keeps its draft. The viewer does not claim that a command response proves the page value.
+
+The viewer maps the displayed image to page CSS pixels. Chrome can report window height while the image contains only the page. Use the depicted page ratio to correct that mismatch. Exclude image letterboxing. Reject input while the matching image is still loading. Desktop coordinates retain their reported screen dimensions.
+
+Text input uses a focused textarea over the viewport. Composition stays local until it ends. Normal input and paste send text once. Special keys use atomic native presses, so the viewer does not leave modifier keys held. Pointer movements support hover. A drag keeps a bounded path and submits it on release. Cancellation, focus loss, and hand-back discard an unfinished gesture. This avoids holding a remote mouse button across a lost client connection.
+
+Each connection has one bounded input queue. Consecutive pointer moves coalesce. A failed command or a full queue stops further input. Frame acknowledgements use a separate path so observation can continue. Hand-back remains available. Reconnect releases the old lease before opening a new view. It preserves the local draft and does not replay it. If the native service reports an unknown outcome, its restart requirement still applies.
+
+The work view uses a compact toolbar and the existing UI tokens. The page is the main surface. Profile editing stays in the Bot tab. Controls in one row share a height. Accessible names remain on controls; decorative labels and duplicate descriptions do not belong in the toolbar.
+
 ## Results and tool boundary
 
 An action response, an observation, saved evidence, and completion of the user's task are separate results. If screenshot metadata or evidence storage fails, Domos keeps the native action response and adds a text notice. Recover the observation or storage. Do not replay the action.
@@ -49,3 +63,5 @@ See [Computer Use evals](computer-evals.md). `browser-failures.json` contains th
 The Checks workflow runs these tests on Windows, Linux, and macOS and saves JUnit output. Computer effects also runs the shared control tests. These checks do not measure online model success rates.
 
 The installed adapter targets `agent-browser` 0.39.1. Configuration and command behavior were checked against the [official configuration reference](https://agent-browser.dev/configuration) and [command reference](https://agent-browser.dev/commands). Memoh informs the compact tool boundary. OpenMausBot informs uncertain-state recovery. openbot informs draining and input readback. rakazo informs shared screen ownership.
+
+Viewer protocol details were checked against the current [agent-browser streaming reference](https://agent-browser.dev/streaming) and [command reference](https://agent-browser.dev/commands). The stream supplies frame IDs and URL messages. Its input delivery does not acknowledge browser execution, so Domos keeps the native command result path. Text handling follows the documented [compositionend event](https://developer.mozilla.org/en-US/docs/Web/API/Element/compositionend_event), [input event](https://developer.mozilla.org/en-US/docs/Web/API/Element/input_event), and [wheel units](https://developer.mozilla.org/en-US/docs/Web/API/WheelEvent/deltaMode). OpenMausBot informs coordinate calibration and queue handling. openbot informs direct page interaction. rakazo informs screen priority and confirmed control state.
