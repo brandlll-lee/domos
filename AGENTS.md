@@ -57,6 +57,7 @@ Keep these choices independent. Support Pi, Codex, Claude Code, and OpenCode thr
 - Keep tests proportional to behavior. Extend the existing relevant test where possible. Replace stale cases rather than stacking duplicate cases.
 - Use comments for non-obvious domain or OS constraints. Keep change history in Git.
 - Reuse `packages/ui` controls and tokens. Build visual hierarchy with spacing and typography. Add labels and descriptions only when they provide needed information.
+- Keep workspace navigation in the contact column. The centered Bot capsule opens details. Put model and context controls in the Bot tab. Reserve native window controls and keep interactive controls outside drag regions. See [Workspace UI](docs/decisions/0005-workspace-ui.md).
 - Coordinate panel layout with React View Transitions and existing motion tokens. Keep transcript position and drafts stable. Honor reduced motion. Closing a viewer still releases its control lease.
 - Use short sentences and active voice. Report confirmed results separately from assumptions and unverified behavior.
 - Check installed versions and current official documentation before changing external API or protocol behavior. Reference projects inform design; their rules do not govern this repository.
