@@ -38,7 +38,7 @@ jobs:
           printf 'abi <abi/4.0>,\ninclude <tunables/global>\nprofile domos-electron "%s" flags=(unconfined) { userns, }\n' "$electron_path" | sudo tee /etc/apparmor.d/domos-electron >/dev/null
           sudo apparmor_parser -r /etc/apparmor.d/domos-electron
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm exec vitest run packages/agent/test/computer-activity.test.ts packages/agent/test/computer-input.test.ts
+      - run: pnpm exec vitest run packages/agent/test/computer-activity.test.ts packages/agent/test/computer-input.test.ts packages/agent/test/browser-runtime.test.ts packages/agent/test/computer-control.test.ts
       - if: runner.os == 'Linux'
         run: xvfb-run -a pnpm exec playwright test --config apps/desktop/playwright.config.ts computer-effect.spec.ts
       - if: runner.os != 'Linux'

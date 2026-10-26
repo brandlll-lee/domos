@@ -34,7 +34,8 @@ jobs:
       - name: Select sandboxed system Chrome
         if: runner.os == 'Linux'
         run: echo "AGENT_BROWSER_EXECUTABLE_PATH=/opt/google/chrome/chrome" >> "$GITHUB_ENV"
-      - run: pnpm test
+      - name: Verify browser control and application regressions
+        run: pnpm test --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml
       - run: pnpm exec playwright install chromium --only-shell --with-deps
       - run: pnpm test:e2e
       - uses: actions/upload-artifact@v6

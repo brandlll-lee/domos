@@ -46,6 +46,16 @@ pnpm eval:computer --trace trace.json
 
 ## 回归流程
 
+浏览器执行契约见 [Browser Use](browser-use.md)。脱敏基线保存在 `packages/agent/test/fixtures/browser-failures.json`。它记录取消后页面丢失、超时后动作继续、审批回调缺失和跨服务接管问题。它是驱动基线，不是在线 Agent 任务成功率。
+
+浏览器与共享控制回归：
+
+```sh
+pnpm exec vitest run packages/agent/test/browser-runtime.test.ts packages/agent/test/computer-control.test.ts packages/agent/test/computer-services.test.ts packages/agent/test/computer-assistant.test.ts
+```
+
+原生超时用例会等待底层约 30 秒的响应超时，再读回第 35 秒发生的页面变化。测试同时检查未知状态阻断和显式重启。取消用例使用页面发出的事件确认动作开始，再接管并读回输入值。运行耗时不是模型性能数据。Checks 在三个操作系统运行这些用例，并保存 JUnit 报告。
+
 修改 Harness 前，先保存同任务、同主模型的基线。修改后，重新执行真实任务，再评测新任务记录。保留通过数、任务完成情况、耗时和模型轮数；历史摘录不会随代码更新自动变绿。
 
 新失败先加入小型脱敏样本，再补相应规则的正反例。运行评分器回归：
