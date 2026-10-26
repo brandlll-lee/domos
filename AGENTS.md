@@ -84,8 +84,10 @@ Keep these choices independent. Support Pi, Codex, Claude Code, and OpenCode thr
 
 ## Git workflow
 
-- Work and commit directly on `main`.
-- Keep `main` as the only local branch.
+- Keep the primary checkout on `main` and keep its working tree clean. Use it for synchronization, merges, and integration checks.
+- Create feature branches from the latest `main`. Develop and commit in a separate Git worktree for each parallel task.
+- Review and test each feature before merging it into `main`. Verify the merged result.
+- After a successful merge, remove the feature worktree with `git worktree remove` and delete the merged feature branch. Preserve needed local artifacts before removal.
 
 ## Keep this guide current
 
