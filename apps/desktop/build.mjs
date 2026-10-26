@@ -160,10 +160,11 @@ for (const name of [
   "package.json",
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
+  "patches",
   "domos.config.json",
   ".dockerignore",
 ])
-  await cp(join(root, name), join(service, name));
+  await cp(join(root, name), join(service, name), { recursive: true });
 for (const name of [
   "apps/api",
   "apps/cli",

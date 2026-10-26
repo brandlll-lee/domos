@@ -1,0 +1,34 @@
+diff --git a/dist/storage/sqlite/storage.js b/dist/storage/sqlite/storage.js
+index 86b5fe43c36049c4b93c1e40dc5c6457a4fbbbca..cd21de3b7bf63b71834dec3ba0a4a63d50492d7b 100644
+--- a/dist/storage/sqlite/storage.js
++++ b/dist/storage/sqlite/storage.js
+@@ -435,15 +435,22 @@ export class SqliteStorage {
+         if (base === undefined)
+             throw new Error(`Document ${id} is missing a required base`);
+         let value = parseJson(base.content);
+-        const tail = await executor.all(`SELECT seq, kind, version, content FROM document_revisions
+-				WHERE document_id = ? AND seq > ? AND seq <= ? ORDER BY seq`, id, base.seq, upper);
+-        for (const revision of tail) {
+-            if (revision.kind !== "delta" || revision.version !== base.version) {
+-                throw new Error(`Document ${id} crosses a stored version boundary without a base`);
++        let after = base.seq;
++        let deltasSinceBase = 0;
++        while (true) {
++            const tail = await executor.all(`SELECT seq, kind, version, content FROM document_revisions
++				WHERE document_id = ? AND seq > ? AND seq <= ? ORDER BY seq LIMIT 32`, id, after, upper);
++            if (tail.length === 0) break;
++            for (const revision of tail) {
++                if (revision.kind !== "delta" || revision.version !== base.version) {
++                    throw new Error(`Document ${id} crosses a stored version boundary without a base`);
++                }
++                value = apply(value, parseJson(revision.content));
++                after = revision.seq;
++                deltasSinceBase++;
+             }
+-            value = apply(value, parseJson(revision.content));
+         }
+-        return { record, version: base.version, value, deltasSinceBase: tail.length };
++        return { record, version: base.version, value, deltasSinceBase };
+     }
+     candidateNextId(writes) {
+         let nextId = this.nextId;

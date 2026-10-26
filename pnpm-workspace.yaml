@@ -5,3 +5,5 @@ onlyBuiltDependencies:
   - agent-browser
 ignoredOptionalDependencies:
   - "@anthropic-ai/claude-agent-sdk-*"
+patchedDependencies:
+  '@earendil-works/pi-durable@1.2.0': patches/@earendil-works__pi-durable@1.2.0.patch

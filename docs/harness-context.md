@@ -14,6 +14,8 @@ Restart recovery checks the existing native operation. It does not send an uncer
 
 ## Stored history and reads
 
+SQLite document replay reads at most 32 revisions per query. The pinned storage patch preserves revision order, historical bounds, version checks, and the read transaction. It changes neither the database schema nor retained history. Keep the replay regression when updating the durable runtime. The package patch follows the [pnpm patch workflow](https://pnpm.io/cli/patch).
+
 History includes user and assistant text, selected material snapshots, tool arguments, linked tool results, errors, stop status, and file references. It also includes messages stored by the embedded Harness. File references retain their work computer identity. Historical images and private reasoning are not replayed as prompt content.
 
 Automatic handoff scans up to 64 stored entries. It selects recent messages within the byte budget. Each message excerpt has a 4000-byte text limit. The complete serialized packet has a 16000-byte limit. JSON escaping and packet metadata count toward that limit. UTF-8 characters stay intact. `excerpt` marks clipped content. An empty page of internal entries retains a cursor for older reads.
