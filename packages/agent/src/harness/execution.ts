@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Context } from "@earendil-works/chord/context";
 import type { CredentialStore } from "@earendil-works/pi-ai";
 import type { Models } from "@earendil-works/pi-ai/models";
+import { z } from "zod";
 import type { Attachment } from "../attachments.ts";
 import type { Computers } from "../computer/catalog.ts";
 import { ComputersDoc } from "../computer/state.ts";
@@ -208,6 +209,29 @@ export class EngineExecution {
                 };
                 active.takeovers.set(id, { approval, completing: false });
                 try {
+                  if (service === "browser") {
+                    const page = await target.target.services
+                      .call(
+                        runtime.conversationId,
+                        service,
+                        "agent_browser_get_url",
+                        {},
+                        String(runtime.taskId),
+                        combined,
+                        context,
+                      )
+                      .catch(() => undefined);
+                    const url = z
+                      .object({
+                        response: z.object({
+                          data: z.object({ url: z.string() }),
+                        }),
+                      })
+                      .safeParse(page?.structuredContent).data?.response
+                      .data.url;
+                    if (approval.takeover && url && /^https?:\/\//.test(url))
+                      approval.takeover.url = url;
+                  }
                   approval.preview = await this.computers.views
                     .capture(runtime.conversationId, service, context)
                     .catch(() => undefined);

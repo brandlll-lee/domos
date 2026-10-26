@@ -142,6 +142,7 @@ for (const refresh of [false, true]) {
       .fill("打开搜索页，然后让我接管修改搜索词");
     await page.getByRole("button", { name: "发送", exact: true }).click();
     const card = page.getByRole("region", { name: "接管请求", exact: true });
+    await expect(card.locator(".takeover-url")).toContainText("127.0.0.1");
     await expect(card.getByText("需要你操作", { exact: true })).toBeVisible();
     await expect(card.getByRole("img", { name: "接管画面预览" })).toBeVisible();
     const cardMs = performance.now() - started;
@@ -241,6 +242,49 @@ for (const refresh of [false, true]) {
     await page.screenshot({ path: info.outputPath("takeover-card-done.png") });
     await page.reload();
     await expect(card.getByText("已完成", { exact: true })).toBeVisible();
+    if (!refresh) {
+      await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
+      await page.getByRole("tab", { name: "Browser", exact: true }).click();
+      await view.getByRole("button", { name: "电脑设置", exact: true }).click();
+      await page
+        .getByRole("button", { name: /尝试有界面模式|切换为无界面/ })
+        .click();
+      const dialog = page.getByRole("dialog", {
+        name: "重启并切换浏览器？",
+        exact: true,
+      });
+      await expect(dialog).toContainText("未提交的内容会关闭");
+      await page.screenshot({
+        path: info.outputPath("browser-mode-dialog.png"),
+      });
+      await dialog
+        .getByRole("button", { name: "确认重启", exact: true })
+        .click();
+      await expect(dialog).toBeHidden({ timeout: 30000 });
+      await page.getByRole("button", { name: "返回", exact: true }).click();
+      await page.getByRole("tab", { name: "Browser", exact: true }).click();
+      const opened = once(worker, "message");
+      worker.send("open-takeover-page");
+      await opened;
+      await view.getByRole("button", { name: "接管", exact: true }).click();
+      await expect(view.getByRole("status")).toHaveText("你正在操作");
+      const image = view.getByRole("img", { name: "工作电脑画面" });
+      const state = await (await request.get(`${url}/takeover-state`)).json();
+      const at = await point(image, state, "draft");
+      await page.mouse.click(at.x, at.y);
+      const keyboard = view.getByRole("textbox", { name: "网页键盘输入" });
+      await keyboard.press(
+        `${process.platform === "darwin" ? "Meta" : "Control"}+A`,
+      );
+      await keyboard.pressSequentially("mode-switch");
+      await expect
+        .poll(
+          async () =>
+            (await (await request.get(`${url}/takeover-state`)).json()).value,
+        )
+        .toBe("mode-switch");
+      await view.getByRole("button", { name: "交还", exact: true }).click();
+    }
   });
 }
 

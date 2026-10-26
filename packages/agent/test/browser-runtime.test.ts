@@ -38,7 +38,7 @@ vi.mock("../src/harness/browser-command.mjs", () => ({
 const entry = "../src/harness/browser-service.mjs";
 const { openBrowserService } = await import(entry);
 const policyEntry = "../src/harness/browser-tools.mjs";
-const { browserTool, browserResult } = await import(policyEntry);
+const { browserTool, browserResult, browserAccess } = await import(policyEntry);
 const baseline = JSON.parse(
   await readFile(
     new URL("./fixtures/browser-failures.json", import.meta.url),
@@ -390,6 +390,134 @@ test("restart waits for the closing daemon before reconnecting", async () => {
     kill.mockRestore();
     await rm(pidFile, { force: true });
   }
+});
+
+test("mode changes retain the profile and persist across worker starts", async () => {
+  const service = await setup();
+  const initial = JSON.parse(
+    await readFile(join(service.directory, ".domos/browser.json"), "utf8"),
+  );
+  await service.mode("headed", new AbortController().signal);
+  expect(await service.prepare(new AbortController().signal)).toMatchObject({
+    mode: "headed",
+    sharedDesktop: true,
+  });
+  const settings = JSON.parse(
+    await readFile(join(service.directory, ".domos/browser.json"), "utf8"),
+  );
+  expect(settings).toMatchObject({ profile: initial.profile, headed: true });
+  await service.close();
+  const restored = await openBrowserService(
+    service.directory,
+    service.directory,
+  );
+  try {
+    expect(await restored.prepare(new AbortController().signal)).toMatchObject({
+      mode: "headed",
+      sharedDesktop: true,
+    });
+    await restored.mode("headless", new AbortController().signal);
+    expect(await restored.prepare(new AbortController().signal)).toMatchObject({
+      mode: "headless",
+      sharedDesktop: false,
+    });
+  } finally {
+    await restored.close();
+  }
+});
+
+test("a failed headed launch reports its saved mode and permits a confirmed recovery", async () => {
+  const service = await setup();
+  mocks.cliError = true;
+  expect(
+    await service.mode("headed", new AbortController().signal),
+  ).toMatchObject({ available: false, mode: "headed" });
+  await expect(service.settle()).rejects.toThrow("结果未知");
+  mocks.cliError = false;
+  expect(
+    await service.mode("headless", new AbortController().signal),
+  ).toMatchObject({ available: true, mode: "headless" });
+  await service.settle();
+});
+
+test("a saved browser mode remains available when preparation fails after restart", async () => {
+  const service = await setup();
+  await service.mode("headed", new AbortController().signal);
+  await service.close();
+  const restored = await openBrowserService(
+    service.directory,
+    service.directory,
+  );
+  try {
+    mocks.cliError = true;
+    expect(await restored.prepare(new AbortController().signal)).toMatchObject({
+      available: false,
+      mode: "headed",
+      sharedDesktop: true,
+    });
+    mocks.cliError = false;
+    expect(
+      await restored.mode("headless", new AbortController().signal),
+    ).toMatchObject({
+      available: true,
+      mode: "headless",
+    });
+  } finally {
+    await restored.close();
+  }
+});
+
+test.each([
+  [{ httpStatus: 403 }, "HTTP ERROR 403", "access_denied"],
+  [{ httpStatus: 401 }, "HTTP ERROR 401", "authentication_required"],
+  [{ challengePresent: true }, "", "verification_required"],
+  [{ passwordFieldPresent: true }, "", "sign_in_form_present"],
+  [null, "net::ERR_NAME_NOT_RESOLVED", "network_error"],
+  [null, "Navigation failed", "unconfirmed_failure"],
+])(
+  "access evidence distinguishes observed failures: %s",
+  (page, error, assessment) => {
+    const evidence = browserAccess(
+      page,
+      { isError: Boolean(error), content: [{ type: "text", text: error }] },
+      "https://fixture.test/",
+      "headless",
+    );
+    expect(evidence).toContain(`"assessment":"${assessment}"`);
+    expect(evidence).toContain('"requestedUrl":"https://fixture.test/"');
+    expect(evidence).toContain("does not identify its cause");
+  },
+);
+
+test("failed navigation preserves native failure and observes the actual target once", async () => {
+  const service = await setup();
+  const failure = {
+    isError: true,
+    content: [{ type: "text", text: "HTTP ERROR 403" }],
+    structuredContent: {
+      response: { success: false, error: "HTTP ERROR 403" },
+    },
+  };
+  mocks.call.mockImplementation(async ({ name }) =>
+    name === "agent_browser_open"
+      ? failure
+      : name === "agent_browser_eval"
+        ? pageFacts()
+        : success(),
+  );
+  const result = await service.call(
+    "agent_browser_open",
+    { url: "https://denied.test/" },
+    new AbortController().signal,
+  );
+  expect(result.isError).toBe(true);
+  expect(result.structuredContent).toEqual(failure.structuredContent);
+  expect(JSON.stringify(result.content)).toContain("access_denied");
+  expect(
+    mocks.call.mock.calls.filter(
+      ([call]) => call.name === "agent_browser_open",
+    ),
+  ).toHaveLength(1);
 });
 
 test.each(["native", "transport", "cdp", "page_wedged"])(

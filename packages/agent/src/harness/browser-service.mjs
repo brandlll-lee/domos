@@ -19,6 +19,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { browserCommand } from "./browser-command.mjs";
 import {
+  browserAccess,
   browserArguments,
   browserObservations,
   browserObserve,
@@ -43,18 +44,32 @@ export async function openBrowserService(directory, home) {
   const downloads = join(directory, "downloads");
   await mkdir(downloads, { recursive: true });
   const config = join(state, "browser.json");
-  await writeFile(
-    config,
-    JSON.stringify({
-      profile,
-      headed: false,
-      downloadPath: downloads,
-      contentBoundaries: true,
-      maxOutput: 32000,
-      useSystemCa: true,
-    }),
-    { mode: 0o600 },
-  );
+  const modeFile = join(state, "browser-mode.json");
+  let mode;
+  try {
+    mode = JSON.parse(await readFile(modeFile, "utf8"));
+    if (!["headless", "headed"].includes(mode))
+      throw new Error("浏览器模式配置无效。");
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    mode = ["1", "true"].includes(process.env.AGENT_BROWSER_HEADED)
+      ? "headed"
+      : "headless";
+  }
+  const writeConfig = () =>
+    writeFile(
+      config,
+      JSON.stringify({
+        profile,
+        headed: mode === "headed",
+        downloadPath: downloads,
+        contentBoundaries: true,
+        maxOutput: 32000,
+        useSystemCa: true,
+      }),
+      { mode: 0o600 },
+    );
+  await writeConfig();
   const bin = join(
     dirname(fileURLToPath(import.meta.resolve("agent-browser/package.json"))),
     "bin",
@@ -123,6 +138,7 @@ export async function openBrowserService(directory, home) {
     AGENT_BROWSER_CONFIG: config,
     AGENT_BROWSER_SESSION: session,
     AGENT_BROWSER_SOCKET_DIR: socket,
+    AGENT_BROWSER_HEADED: mode === "headed" ? "1" : "0",
   });
   const connect = async () => {
     const connection = new Client({ name: "domos", version: "1" });
@@ -333,6 +349,23 @@ export async function openBrowserService(directory, home) {
       }
     }
   };
+  const restart = async (next = mode) => {
+    uncertain = true;
+    await writeFile(interruption, "pending", { mode: 0o600 });
+    await closeBrowser();
+    await client.close();
+    if (next !== mode) {
+      await writeFile(modeFile, JSON.stringify(next), { mode: 0o600 });
+      mode = next;
+      env.AGENT_BROWSER_HEADED = next === "headed" ? "1" : "0";
+      await writeConfig();
+    }
+    client = await connect();
+    await prepare(AbortSignal.timeout(15000));
+    await rm(interruption, { force: true });
+    uncertain = false;
+    lastAction = undefined;
+  };
   const enqueue = (operation) => {
     const action = pending.then(operation);
     pending = action.then(
@@ -373,14 +406,7 @@ export async function openBrowserService(directory, home) {
     if (!tool) throw new Error("浏览器工具不可用。未发送动作。");
     browserArguments(tool, args);
     if (name === browserRestart.name) {
-      uncertain = true;
-      await writeFile(interruption, "pending", { mode: 0o600 });
-      await closeBrowser();
-      await client.close();
-      client = await connect();
-      await prepare(AbortSignal.timeout(15000));
-      await rm(interruption, { force: true });
-      uncertain = false;
+      await restart();
       return {
         content: [
           {
@@ -591,11 +617,27 @@ export async function openBrowserService(directory, home) {
         if (browserObservations.has(name) || name === browserRestart.name)
           lastAction = undefined;
       }
-      if (changesPage && !result.isError && !uncertain && !signal.aborted) {
+      if (changesPage && !uncertain && !signal.aborted) {
         const observation = await observe(signal, timing);
         result = {
           ...result,
-          content: [...result.content, ...observation.parts],
+          content: [
+            ...result.content,
+            ...observation.parts,
+            ...(name === "agent_browser_open" || result.isError
+              ? [
+                  {
+                    type: "text",
+                    text: browserAccess(
+                      observation.page,
+                      result,
+                      typeof args.url === "string" ? args.url : undefined,
+                      mode,
+                    ),
+                  },
+                ]
+              : []),
+          ],
         };
         if (observation.page) {
           const signature = JSON.stringify(observation.page);
@@ -628,13 +670,42 @@ export async function openBrowserService(directory, home) {
     },
     async prepare(signal) {
       await pending;
-      if (!uncertain) await prepare(signal);
+      let error = null;
+      try {
+        if (!uncertain) await prepare(signal);
+      } catch (cause) {
+        error = cause.message;
+      }
       return {
-        available: true,
-        error: null,
-        sharedDesktop: ["1", "true"].includes(env.AGENT_BROWSER_HEADED),
+        available: error === null,
+        error,
+        sharedDesktop: mode === "headed",
+        mode,
       };
     },
+    mode: (next, signal) =>
+      enqueue(async () => {
+        signal.throwIfAborted();
+        if (!["headless", "headed"].includes(next))
+          throw new Error("浏览器模式无效。");
+        try {
+          if (next !== mode || uncertain) await restart(next);
+          else await prepare(signal);
+        } catch (error) {
+          return {
+            available: false,
+            error: error.message,
+            mode,
+            sharedDesktop: mode === "headed",
+          };
+        }
+        return {
+          available: true,
+          error: null,
+          mode,
+          sharedDesktop: mode === "headed",
+        };
+      }),
     catalog: tools,
     call,
     async settle() {

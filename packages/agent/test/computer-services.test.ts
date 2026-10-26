@@ -67,6 +67,21 @@ test("cold browser commands return facts and batches preserve real page results"
     expect(page).toMatchObject({ title, text, readyState: "complete" });
     expect(JSON.stringify(result.content)).toContain("alone does not explain");
   }
+  for (const [html, assessment] of [
+    ['<input type="password" value="fixture-secret">', "sign_in_form_present"],
+    [
+      '<div id="challenge-running">Checking browser</div>',
+      "verification_required",
+    ],
+  ] as const) {
+    const result = await call("agent_browser_open", {
+      url: `data:text/html,${encodeURIComponent(html)}`,
+    });
+    expect(JSON.stringify(result.content)).toContain(assessment);
+    expect(JSON.stringify(result.content)).not.toContain(
+      '"value":"fixture-secret"',
+    );
+  }
   await mkdir("test-results", { recursive: true });
   await writeFile(
     `test-results/browser-latency-${platform()}.json`,
@@ -90,7 +105,9 @@ test("browser profiles persist across a restart and stay separate for each Bot",
   const started = Promise.withResolvers<void>();
   const server = createServer((request, response) => {
     if (request.url === "/started") started.resolve();
-    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    response.writeHead(request.url === "/denied" ? 403 : 200, {
+      "Content-Type": "text/html; charset=utf-8",
+    });
     response.end(
       '<title>Workspace</title><input aria-label="Draft" id="draft" value="saved draft"><button id="confirm" onclick="this.textContent=String.fromCharCode(79,75)">Confirm</button>',
     );
@@ -118,12 +135,15 @@ test("browser profiles persist across a restart and stay separate for each Bot",
     });
     await rm(directory, { recursive: true, force: true, maxRetries: 10 });
   });
-  expect(await computer.services.prepare(1, "browser", context)).toEqual({
+  expect(await computer.services.prepare(1, "browser", context)).toMatchObject({
     available: true,
     error: null,
   });
   const opened = await call(1, "agent_browser_open", { url });
   expect(opened.isError, JSON.stringify(opened.content)).not.toBe(true);
+  const denied = await call(1, "agent_browser_open", { url: `${url}/denied` });
+  expect(JSON.stringify(denied.content)).toContain("access_denied");
+  await call(1, "agent_browser_open", { url });
   const screenshot = await call(1, "agent_browser_screenshot", {});
   expect(screenshot.structuredContent?.source).toMatchObject({
     url: `${url}/`,
@@ -211,6 +231,18 @@ test("browser profiles persist across a restart and stay separate for each Bot",
   expect(JSON.stringify(second.content)).not.toContain("saved");
   const lease = await computer.services.takeover(2, "browser");
   await computer.services.release(2, "browser", lease);
+  computer.services.finish("profile");
+  const current = await computer.services.prepare(1, "browser", context);
+  const mode = current.mode === "headed" ? "headless" : "headed";
+  expect(await computer.services.mode(1, mode, context)).toMatchObject({
+    available: true,
+    mode,
+  });
+  await call(1, "agent_browser_open", { url });
+  const retained = await call(1, "agent_browser_eval", {
+    script: "localStorage.getItem('marker')",
+  });
+  expect(JSON.stringify(retained.content)).toContain("saved");
 }, 60000);
 
 test("a native lost response keeps late effects paused until browser restart", async () => {

@@ -153,6 +153,19 @@ export function computerRouter(bots: Bots, computers?: Computers) {
           ),
         );
       }),
+    browserMode: os
+      .input(
+        botTarget.extend({
+          mode: z.enum(["headless", "headed"]),
+          confirmRestart: z.literal(true),
+        }),
+      )
+      .handler(async ({ input }) => {
+        await botConversation(bots, input.botId);
+        return access((target) =>
+          target.tools.browserMode(input.botId, input.mode, context),
+        );
+      }),
     setup: os.handler(() =>
       access((target) => target.preparation.state(context)),
     ),

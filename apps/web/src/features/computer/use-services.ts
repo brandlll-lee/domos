@@ -52,6 +52,29 @@ export function useComputerServices(botId: number, active = true) {
     busy,
     error,
     configure,
+    async changeMode(mode: "headless" | "headed") {
+      if (busy) return false;
+      setBusy("browser");
+      setError(undefined);
+      try {
+        const next = await client.computer.browserMode({
+          botId,
+          mode,
+          confirmRestart: true,
+        });
+        setState(next);
+        if (!next.browser.available) {
+          setError(next.browser.error ?? "浏览器未能启动。可以切换回原模式。");
+          return false;
+        }
+        return true;
+      } catch (cause) {
+        setError(userError(cause, "浏览器模式切换失败。请检查工作电脑。"));
+        return false;
+      } finally {
+        setBusy(undefined);
+      }
+    },
     reload: () => load(),
   };
 }

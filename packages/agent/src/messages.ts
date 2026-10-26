@@ -23,6 +23,7 @@ export type ChatMessage = {
     computerId: string;
     revision: number;
     state: "waiting" | "done" | "expired";
+    url?: string;
   };
   id: string;
   turnId?: string;

@@ -53,6 +53,9 @@ export function openComputerService(directory, home, emit = () => {}) {
         if (input.operation === "catalog") return instance.catalog();
         if (input.operation === "install") return instance.install(signal);
         if (input.operation === "prepare") return instance.prepare(signal);
+        if (input.operation === "mode") {
+          return instance.mode(input.mode, signal);
+        }
         return instance.call(input.name, input.arguments ?? {}, signal);
       }
       if (input.service !== "desktop") throw new Error("服务不可用。");

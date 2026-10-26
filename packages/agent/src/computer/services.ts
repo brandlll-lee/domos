@@ -80,13 +80,15 @@ export class ComputerServices {
         operation: "prepare",
         service,
       });
-      if (
-        service === "browser" &&
-        state.available &&
-        state.sharedDesktop === false
-      )
-        this.isolatedBrowsers.add(botId);
-      return { available: state.available, error: state.error };
+      if (service === "browser" && state.available) {
+        if (state.sharedDesktop === false) this.isolatedBrowsers.add(botId);
+        else this.isolatedBrowsers.delete(botId);
+      }
+      return {
+        available: state.available,
+        error: state.error,
+        ...(state.mode ? { mode: state.mode } : {}),
+      };
     } catch (error) {
       return {
         available: false,
@@ -100,6 +102,36 @@ export class ComputerServices {
       operation: "catalog",
       service,
     });
+  }
+
+  async mode(botId: number, mode: "headless" | "headed", context: Context) {
+    const controls = new Set([
+      this.control(botId, "browser"),
+      this.control(botId, "desktop"),
+    ]);
+    for (const control of controls)
+      if (control.owner || control.lease || control.calls.size)
+        throw new Error("请先结束电脑任务并交还控制权，再切换浏览器模式。");
+    const lease = randomUUID();
+    for (const control of controls) control.lease = lease;
+    try {
+      const worker = await this.worker(botId, context);
+      const state = await worker.computer<ServiceState>({
+        operation: "mode",
+        service: "browser",
+        mode,
+      });
+      if (!state.available) {
+        this.isolatedBrowsers.delete(botId);
+        return state;
+      }
+      return await this.prepare(botId, "browser", context);
+    } finally {
+      for (const control of controls) {
+        control.lease = undefined;
+        control.revision++;
+      }
+    }
   }
 
   async viewer<T>(

@@ -11,6 +11,76 @@ import type { WorkProcess } from "../src/harness/process.ts";
 const signal = () => new AbortController().signal;
 
 test.each(["browser", "desktop"] as const)(
+  "mode switching preserves a viewer that owns %s control",
+  async (service) => {
+    const services = new ComputerServices(async () => {
+      throw new Error("Worker must stay idle");
+    });
+    const lease = await services.takeover(1, service);
+    const closeBot = vi.fn();
+    const tools = new ComputerTools({
+      transfer: async (_id: number, work: () => unknown) => work(),
+      serviceTarget: async () => ({
+        id: "pc",
+        target: { services },
+        enabled: { browser: true },
+      }),
+      views: { closeBot },
+    } as unknown as Computers);
+    await expect(tools.browserMode(1, "headed", context)).rejects.toThrow(
+      "另一窗口",
+    );
+    expect(closeBot).not.toHaveBeenCalled();
+    services.viewAccess(1, service, lease);
+    await services.release(1, service, lease);
+  },
+);
+
+test("mode switching holds browser and desktop control and releases both after failure", async () => {
+  const started = Promise.withResolvers<void>();
+  const finish = Promise.withResolvers<void>();
+  let headed = false;
+  const worker = {
+    closed: new Promise(() => {}),
+    computer: vi.fn(async (request: { operation: string; mode?: string }) => {
+      if (request.operation === "mode") {
+        started.resolve();
+        await finish.promise;
+        headed = request.mode === "headed";
+      }
+      return {
+        available: true,
+        error: null,
+        sharedDesktop: headed,
+        mode: headed ? "headed" : "headless",
+      };
+    }),
+  };
+  const services = new ComputerServices(
+    async () => worker as unknown as WorkProcess,
+  );
+  await services.prepare(1, "browser", context);
+  const lease = await services.takeover(1, "browser");
+  await expect(services.mode(1, "headed", context)).rejects.toThrow("交还");
+  await services.release(1, "browser", lease);
+  const switching = services.mode(1, "headed", context);
+  await started.promise;
+  for (const service of ["browser", "desktop"] as const)
+    expect(() => services.viewAccess(1, service)).toThrow("另一窗口");
+  finish.resolve();
+  expect(await switching).toMatchObject({ mode: "headed" });
+  const shared = await services.takeover(1, "desktop");
+  expect(() => services.viewAccess(1, "browser")).toThrow("另一窗口");
+  await services.release(1, "desktop", shared);
+  worker.computer.mockRejectedValueOnce(new Error("Display unavailable"));
+  await expect(services.mode(1, "headless", context)).rejects.toThrow(
+    "Display unavailable",
+  );
+  services.viewAccess(1, "desktop");
+  services.viewAccess(1, "browser");
+});
+
+test.each(["browser", "desktop"] as const)(
   "%s keeps its own frames during first takeover and drains before input",
   async (service) => {
     const settling = Promise.withResolvers<void>();

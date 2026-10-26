@@ -54,9 +54,50 @@ export const browserObserve = {
 
 export const browserPageScript = `(() => ({
   url: location.href, title: document.title, readyState: document.readyState,
+  httpStatus: performance.getEntriesByType('navigation')[0]?.responseStatus || null,
+  passwordFieldPresent: !!document.querySelector('input[type=password]'),
+  challengePresent: !!document.querySelector('iframe[src*="challenges.cloudflare.com"],iframe[src*="recaptcha"],iframe[src*="hcaptcha"],#challenge-running'),
   text: (document.body?.innerText || '').slice(0, 12000),
   controls: Array.from(document.querySelectorAll('input:not([type=password]),textarea,select')).slice(0, 80).map(el => ({value: el.value.slice(0, 2000), checked: el.checked}))
 }))()`;
+
+export function browserAccess(page, result, requestedUrl, mode) {
+  const error = result.isError
+    ? result.content
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("\n")
+    : "";
+  const httpStatus =
+    Number(
+      error.match(
+        /\b(?:HTTP(?: ERROR)?\s*|status(?: code)?[: ]+)([45]\d\d)\b/i,
+      )?.[1],
+    ) ||
+    page?.httpStatus ||
+    null;
+  const networkError = error.match(/net::ERR_[A-Z_]+/)?.[0] ?? null;
+  const assessment = networkError
+    ? "network_error"
+    : page?.challengePresent
+      ? "verification_required"
+      : httpStatus === 403
+        ? "access_denied"
+        : httpStatus === 401
+          ? "authentication_required"
+          : result.isError
+            ? "unconfirmed_failure"
+            : page?.passwordFieldPresent
+              ? "sign_in_form_present"
+              : "unconfirmed";
+  const evidence = `Browser access evidence: ${JSON.stringify({ requestedUrl, observedUrl: page?.url ?? null, mode, httpStatus, networkError, assessment })}.`;
+  return result.isError ||
+    [401, 403].includes(httpStatus) ||
+    page?.challengePresent ||
+    page?.passwordFieldPresent
+    ? `${evidence} A sign-in form does not prove that login is required. A 403 does not identify its cause. Do not silently switch sites or use a personal browser. For a possible browser mode issue, ask the user to change mode in computer settings; this restarts the Bot browser and closes unsaved pages.`
+    : evidence;
+}
 
 export function browserPageState(result) {
   const value = result.structuredContent?.response?.data?.result;

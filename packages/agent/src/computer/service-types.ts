@@ -4,6 +4,7 @@ export type ComputerService = "browser" | "desktop";
 export type ServiceState = {
   available: boolean;
   error: string | null;
+  mode?: "headless" | "headed";
 };
 export type ComputerRequest =
   | { operation: "activity"; owner?: string }
@@ -11,6 +12,7 @@ export type ComputerRequest =
   | { operation: "catalog"; service: ComputerService }
   | { operation: "prepare"; service: ComputerService }
   | { operation: "install"; service: "browser" }
+  | { operation: "mode"; service: "browser"; mode: "headless" | "headed" }
   | {
       operation: "view";
       service: ComputerService;

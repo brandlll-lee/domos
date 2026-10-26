@@ -45,6 +45,15 @@ test.each([
       binding: async () => ({ computerId: "pc", revision }),
       serviceTarget: async () => ({
         enabled: { browser: true, desktop: true },
+        target: {
+          services: {
+            call: async () => ({
+              structuredContent: {
+                response: { data: { url: "https://fixture.test/requested" } },
+              },
+            }),
+          },
+        },
       }),
       tools: { catalog: async () => [takeoverTool], finish: () => {} },
       views: {
@@ -131,6 +140,10 @@ test.each([
       (await state())?.drafts.find((message) => message.takeover)?.takeover
         ?.state,
     ).toBe("waiting");
+    expect(
+      (await state())?.drafts.find((message) => message.takeover)?.takeover
+        ?.url,
+    ).toBe("https://fixture.test/requested");
     await expect(
       invoke(
         "duplicate",

@@ -21,6 +21,13 @@
   height: auto;
   border-radius: 12px;
 }
+.takeover-card .takeover-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-muted);
+  font-size: 12px;
+}
 .takeover-badge {
   border-radius: 999px;
   padding: 2px 8px;

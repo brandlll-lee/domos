@@ -30,6 +30,11 @@ export function TakeoverCard({
         </span>
       </header>
       <p>{messageText(message)}</p>
+      {request.url && (
+        <p className="takeover-url" title={request.url}>
+          请求页面：{request.url}
+        </p>
+      )}
       {preview?.type === "image" && (
         <img
           src={`data:${preview.mimeType};base64,${preview.data}`}

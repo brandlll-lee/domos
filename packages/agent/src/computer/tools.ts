@@ -111,6 +111,32 @@ export class ComputerTools {
     return tools;
   }
 
+  async browserMode(
+    botId: number,
+    mode: "headless" | "headed",
+    context: Context,
+  ) {
+    return this.computers.transfer(
+      botId,
+      async () => {
+        const { target, id, enabled } = await this.computers.serviceTarget(
+          botId,
+          context,
+        );
+        if (!enabled.browser) throw new Error("请先启用浏览器。");
+        target.services.viewAccess(botId, "browser");
+        target.services.viewAccess(botId, "desktop");
+        await this.computers.views.closeBot(botId, "browser", context);
+        this.states.set(
+          `${id}:${botId}:browser`,
+          await target.services.mode(botId, mode, context),
+        );
+        return this.state(botId, context);
+      },
+      context,
+    );
+  }
+
   async invoke(
     botId: number,
     name: string,
