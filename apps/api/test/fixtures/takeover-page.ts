@@ -27,14 +27,15 @@ export function takeoverFixture() {
 <div id="hover">Hover here</div><input id="draft" aria-label="Draft" value="saved draft"><input id="next" aria-label="Next"><button id="confirm">Confirm</button>
 <script>
 const draft=document.querySelector('#draft'), next=document.querySelector('#next');
-let confirmed='',hovered=false,keys=[],clicks=0;
+let confirmed='',hovered=false,keys=[],clicks=0,scrollDone=0;
 function box(node){const r=node.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};}
-function report(){fetch('/takeover-state',{method:'POST',body:JSON.stringify({value:draft.value,next:next.value,focused:document.activeElement.id,confirmed,hovered,keys,clicks,scrollY,selection:[draft.selectionStart,draft.selectionEnd],width:innerWidth,height:innerHeight,draft:box(draft),nextBox:box(next),hover:box(document.querySelector('#hover')),confirm:box(document.querySelector('#confirm'))})});}
+function report(){fetch('/takeover-state',{method:'POST',body:JSON.stringify({value:draft.value,next:next.value,focused:document.activeElement.id,confirmed,hovered,keys,clicks,scrollY,scrollDone,selection:[draft.selectionStart,draft.selectionEnd],width:innerWidth,height:innerHeight,outerWidth,outerHeight,draft:box(draft),nextBox:box(next),hover:box(document.querySelector('#hover')),confirm:box(document.querySelector('#confirm'))})});}
 document.querySelector('#hover').onmouseenter=()=>{hovered=true;report();};
 document.querySelector('#confirm').onclick=()=>{clicks++;confirmed=draft.value;report();};
 document.addEventListener('input',report);document.addEventListener('keyup',report);document.addEventListener('mouseup',report);
 document.addEventListener('keydown',e=>{keys.push(e.key);report();});
 window.addEventListener('scroll',report);window.addEventListener('load',report);
+window.addEventListener('scrollend',()=>{scrollDone++;report();});
 </script></html>`);
     return true;
   };

@@ -7,17 +7,13 @@ import { viewportPoint } from "./viewer-input.ts";
 
 export function ComputerViewport({
   frame,
-  browser,
   driving,
   send,
-  onDraft,
   onLoad,
 }: {
   frame: ViewFrame;
-  browser: boolean;
   driving: boolean;
   send: (action: ViewerAction) => Promise<boolean>;
-  onDraft: (text: string) => void;
   onLoad: (image: HTMLImageElement) => void;
 }) {
   const image = useRef<HTMLImageElement>(null);
@@ -46,7 +42,6 @@ export function ComputerViewport({
       cancel();
       const input = receiver.current;
       if (input?.value) {
-        onDraft(input.value);
         input.value = "";
       }
       composing.current = false;
@@ -56,7 +51,7 @@ export function ComputerViewport({
       window.removeEventListener("blur", blur);
       cancel();
     };
-  }, [cancel, onDraft]);
+  }, [cancel]);
   useEffect(() => {
     if (!driving) cancel();
   }, [driving, cancel]);
@@ -70,11 +65,10 @@ export function ComputerViewport({
         frame,
         x,
         y,
-        browser,
         captured,
       );
     },
-    [driving, src, frame, browser],
+    [driving, src, frame],
   );
   useEffect(() => {
     const node = image.current;
@@ -104,9 +98,7 @@ export function ComputerViewport({
   }, [frame, point, send]);
   const type = (text: string) => {
     if (!text || !driving) return;
-    void send({ type: "text", text }).then((ok) => {
-      if (!ok) onDraft(text);
-    });
+    void send({ type: "text", text });
   };
   return (
     <>

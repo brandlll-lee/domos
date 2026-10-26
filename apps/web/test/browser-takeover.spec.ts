@@ -6,6 +6,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 
+test.skip(
+  process.platform === "darwin" && Boolean(process.env.CI),
+  "Native capture needs screen recording permission on an interactive Mac.",
+);
+
 let worker: ChildProcess;
 let directory: string;
 let url: string;
@@ -19,7 +24,7 @@ test.beforeEach(async () => {
     { silent: true, execArgv: [] },
   );
   worker.stdout?.resume();
-  worker.stderr?.resume();
+  worker.stderr?.on("data", (chunk) => process.stderr.write(chunk));
   const [ready] = await once(worker, "message");
   url = `http://127.0.0.1:${ready.port}`;
 });
@@ -32,64 +37,96 @@ test.afterEach(async () => {
   await rm(directory, { recursive: true, force: true, maxRetries: 5 });
 });
 
-test("takeover controls the depicted browser through real page input", async ({
-  page,
-  request,
-}, info) => {
-  test.setTimeout(120_000);
-  const state = async () => (await request.get(`${url}/takeover-state`)).json();
+async function openBrowser(page: import("@playwright/test").Page) {
   await page.goto(url);
   await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
+  await page.getByRole("tab", { name: "Browser", exact: true }).click();
   const view = page.getByRole("region", { name: "Domos的电脑", exact: true });
   await view.getByRole("button", { name: "启用浏览器", exact: true }).click();
   const image = view.getByRole("img", { name: "工作电脑画面" });
   await expect(image).toBeVisible();
-  const address = view.getByRole("textbox", { name: "网址", exact: true });
-  await expect(address).toBeDisabled();
   await view.getByRole("button", { name: "接管", exact: true }).click();
-  await expect(address).toBeEnabled();
-  await address.fill(`${url}/takeover-fixture`);
-  await view.getByRole("button", { name: "打开", exact: true }).click();
+  await expect(view.getByRole("status")).toHaveText("你正在操作");
+  await image.click();
+  const modifier = process.platform === "darwin" ? "Meta" : "Control";
+  await page.keyboard.press(`${modifier}+l`);
+  await page.keyboard.insertText(`${url}/takeover-fixture`);
+  await page.keyboard.press("Enter");
+  return { view, image, modifier };
+}
+
+async function point(
+  image: import("@playwright/test").Locator,
+  state: {
+    width: number;
+    height: number;
+    outerWidth: number;
+    outerHeight: number;
+    draft: { x: number; y: number; width: number; height: number };
+    hover: { x: number; y: number; width: number; height: number };
+    confirm: { x: number; y: number; width: number; height: number };
+  },
+  name: "draft" | "hover" | "confirm",
+  fraction = 0.5,
+) {
+  const rect = await image.boundingBox();
+  if (!rect) throw new Error("Page image missing");
+  await expect
+    .poll(() =>
+      image.evaluate(
+        (node: HTMLImageElement) => node.complete && node.naturalWidth > 0,
+      ),
+    )
+    .toBe(true);
+  const size = await image.evaluate((node: HTMLImageElement) => ({
+    width: node.naturalWidth,
+    height: node.naturalHeight,
+  }));
+  const scale = Math.min(rect.width / size.width, rect.height / size.height);
+  const width = size.width * scale,
+    height = size.height * scale;
+  const border = (state.outerWidth - state.width) / 2;
+  const target = state[name];
+  return {
+    x:
+      rect.x +
+      (rect.width - width) / 2 +
+      ((target.x + target.width * fraction + border) * width) /
+        state.outerWidth,
+    y:
+      rect.y +
+      (rect.height - height) / 2 +
+      ((target.y +
+        target.height / 2 +
+        state.outerHeight -
+        state.height -
+        border) *
+        height) /
+        state.outerHeight,
+  };
+}
+
+test("takeover controls the native browser and preserves its layout through fullscreen", async ({
+  page,
+  request,
+}, info) => {
+  test.setTimeout(120_000);
+  const { view, image, modifier } = await openBrowser(page);
+  const state = async () => (await request.get(`${url}/takeover-state`)).json();
   await expect.poll(async () => (await state()).value).toBe("saved draft");
-  await expect(address).toHaveValue(`${url}/takeover-fixture`);
-  await expect(view.getByLabel("输入到网页中已选中的位置")).toHaveCount(0);
-  const point = async (name: string, fraction = 0.5) => {
-    const current = await state();
-    await expect
-      .poll(() =>
-        image.evaluate(
-          (node: HTMLImageElement) => node.complete && node.naturalWidth > 0,
-        ),
-      )
-      .toBe(true);
-    const rect = await image.boundingBox();
-    if (!rect) throw new Error("Page image missing");
-    const target = current[name];
-    return {
-      x:
-        rect.x +
-        ((target.x + target.width * fraction) * rect.width) / current.width,
-      y:
-        rect.y +
-        ((target.y + target.height / 2) * rect.height) / current.height,
-    };
-  };
-  const click = async (name: string) => {
-    const at = await point(name);
-    await page.mouse.click(at.x, at.y);
-  };
-  await click("draft");
-  const input = view.getByRole("textbox", {
-    name: "网页键盘输入",
-    exact: true,
-  });
-  await expect(input).toBeFocused();
+  await expect(
+    view.getByRole("textbox", { name: "网址", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    view.getByRole("button", { name: "输入文字", exact: true }),
+  ).toHaveCount(0);
+  const at = await point(image, await state(), "draft");
+  await page.mouse.click(at.x, at.y);
   await page.keyboard.press("End");
   await page.keyboard.insertText("追加中文");
   await expect
     .poll(async () => (await state()).value)
     .toBe("saved draft追加中文");
-  const modifier = process.platform === "darwin" ? "Meta" : "Control";
   await page.keyboard.press(`${modifier}+a`);
   await page.keyboard.insertText("上海天气");
   await expect.poll(async () => (await state()).value).toBe("上海天气");
@@ -111,7 +148,6 @@ test("takeover controls the depicted browser through real page input", async ({
   await ime.send("Input.insertText", { text: "中文" });
   await ime.detach();
   await expect.poll(async () => (await state()).value).toBe("上海气 粘贴中文");
-  await page.keyboard.press("Escape");
   await page.keyboard.press("Tab");
   await page.keyboard.insertText("next field");
   await expect.poll(async () => (await state()).next).toBe("next field");
@@ -119,124 +155,96 @@ test("takeover controls the depicted browser through real page input", async ({
   await expect
     .poll(async () => (await state()).keys.includes("Enter"))
     .toBe(true);
-  await click("confirm");
+  const confirm = await point(image, await state(), "confirm");
+  await page.mouse.click(confirm.x, confirm.y);
   await expect
     .poll(async () => (await state()).confirmed)
     .toBe("上海气 粘贴中文");
-  const dragStart = await point("draft", 0.025);
-  const dragEnd = await point("draft", 0.3);
-  await page.mouse.move(dragStart.x, dragStart.y);
+  const start = await point(image, await state(), "draft", 0.025),
+    end = await point(image, await state(), "draft", 0.3);
+  await page.mouse.move(start.x, start.y);
   await page.mouse.down();
-  await page.mouse.move(dragEnd.x, dragEnd.y, { steps: 5 });
+  await page.mouse.move(end.x, end.y, { steps: 5 });
   await page.mouse.up();
   await expect
     .poll(async () => {
-      const selected = (await state()).selection;
-      return selected[1] - selected[0];
+      const s = (await state()).selection;
+      return s[1] - s[0];
     })
     .toBeGreaterThan(0);
-  const cancelled = await point("confirm");
-  await page.mouse.move(cancelled.x, cancelled.y);
+  await page.mouse.move(confirm.x, confirm.y);
   await page.mouse.down();
   await page.keyboard.press("Shift+Escape");
   await page.mouse.up();
-  const hover = await point("hover");
+  const hover = await point(image, await state(), "hover");
   await page.mouse.move(hover.x, hover.y);
   await expect.poll(async () => (await state()).hovered).toBe(true);
   expect((await state()).clicks).toBe(1);
-  const scroll = await point("draft");
-  await page.mouse.move(scroll.x, scroll.y);
   await page.mouse.wheel(0, 300);
+  await expect.poll(async () => (await state()).scrollDone).toBeGreaterThan(0);
   await expect.poll(async () => (await state()).scrollY).toBeGreaterThan(0);
-  const scrolledFrame = await image.getAttribute("src");
   await page.mouse.wheel(0, -300);
+  await expect.poll(async () => (await state()).scrollDone).toBeGreaterThan(1);
   await expect.poll(async () => (await state()).scrollY).toBe(0);
-  await expect(image).not.toHaveAttribute("src", scrolledFrame ?? "");
+  const header = page.locator(".detail-identity");
+  const before = await header.boundingBox();
   for (const width of [1440, 768, 390]) {
     await page.setViewportSize({ width, height: 900 });
-    await expect(
-      view.getByRole("button", { name: "交还控制权" }),
-    ).toBeInViewport();
     await expect(image).toBeInViewport({ ratio: 1 });
-    const field = await address.boundingBox();
-    const button = await view
-      .getByRole("button", { name: "打开", exact: true })
-      .boundingBox();
-    expect(field?.height).toBe(button?.height);
-    expect(field?.y).toBe(button?.y);
-    await page.screenshot({ path: info.outputPath(`takeover-${width}.png`) });
+    await expect(
+      view.getByRole("button", { name: "全屏", exact: true }),
+    ).toBeInViewport();
+    await page.screenshot({ path: info.outputPath(`viewer-${width}.png`) });
   }
-  await view.getByRole("button", { name: "交还控制权", exact: true }).click();
-  await expect(address).toBeDisabled();
-  await expect(input).toBeDisabled();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await view.getByRole("button", { name: "全屏", exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => document.fullscreenElement?.className))
+    .toBe("computer-viewer");
+  await expect(
+    view.getByRole("button", { name: "退出全屏", exact: true }),
+  ).toBeInViewport();
+  await expect(view.getByRole("status")).toHaveText("你正在操作");
+  await page.screenshot({ path: info.outputPath("viewer-fullscreen.png") });
+  await page.keyboard.press("Escape");
+  await expect
+    .poll(() => page.evaluate(() => document.fullscreenElement === null))
+    .toBe(true);
+  await expect(view.getByRole("status")).toHaveText("你正在操作");
+  await expect(header).toBeVisible();
+  expect((await header.boundingBox())?.height).toBe(before?.height);
+  await view.getByRole("button", { name: "交还", exact: true }).click();
+  await expect(
+    view.getByRole("button", { name: "接管", exact: true }),
+  ).toBeVisible();
   expect((await state()).value).toBe("上海气 粘贴中文");
 });
 
-test("takeover preserves a failed input and recovers through a fresh connection", async ({
+test("a failed native input pauses the viewer and reconnect never replays it", async ({
   page,
   request,
 }) => {
   test.setTimeout(120_000);
-  await page.goto(url);
-  await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
-  const view = page.getByRole("region", { name: "Domos的电脑", exact: true });
-  await view.getByRole("button", { name: "启用浏览器", exact: true }).click();
-  await view.getByRole("button", { name: "接管", exact: true }).click();
-  const address = view.getByRole("textbox", { name: "网址", exact: true });
-  await address.fill(`${url}/takeover-fixture`);
-  await view.getByRole("button", { name: "打开", exact: true }).click();
+  const { view, image } = await openBrowser(page);
   const state = async () => (await request.get(`${url}/takeover-state`)).json();
   await expect.poll(async () => (await state()).value).toBe("saved draft");
-  const image = view.getByRole("img", { name: "工作电脑画面" });
-  await expect
-    .poll(() => image.evaluate((node: HTMLImageElement) => node.complete))
-    .toBe(true);
-  const rect = await image.boundingBox();
-  if (!rect) throw new Error("Browser image missing");
-  const target = await state();
-  await page.mouse.click(
-    rect.x +
-      ((target.draft.x + target.draft.width / 2) * rect.width) / target.width,
-    rect.y +
-      ((target.draft.y + target.draft.height / 2) * rect.height) /
-        target.height,
-  );
-  await view.getByRole("button", { name: "输入文字", exact: true }).click();
-  const draft = view.getByRole("textbox", {
-    name: "输入到网页中已选中的位置",
-    exact: true,
-  });
-  await draft.fill("保留草稿");
-  const draftBox = await draft.boundingBox();
-  const submitBox = await view
-    .getByRole("button", { name: "输入", exact: true })
-    .boundingBox();
-  expect(draftBox?.height).toBe(submitBox?.height);
-  expect(draftBox?.y).toBe(submitBox?.y);
-  let textCalls = 0;
+  const at = await point(image, await state(), "draft");
+  await page.mouse.click(at.x, at.y);
+  let calls = 0;
   await page.route("**/rpc/computer/input", async (route) => {
     if (route.request().postDataJSON()?.json?.action?.type === "text") {
-      textCalls++;
+      calls++;
       await route.abort();
     } else await route.continue();
   });
-  await view.getByRole("button", { name: "输入", exact: true }).click();
-  await expect(view.getByRole("alert")).toBeVisible();
+  await page.keyboard.insertText("测试文字");
   await expect(view.getByRole("status")).toHaveText("操作已暂停");
-  await expect(draft).toHaveValue("保留草稿");
-  await expect(
-    view.getByRole("button", { name: "输入", exact: true }),
-  ).toBeDisabled();
-  expect(textCalls).toBe(1);
+  expect(calls).toBe(1);
   expect((await state()).value).toBe("saved draft");
   await page.unroute("**/rpc/computer/input");
   await view.getByRole("button", { name: "重新连接", exact: true }).click();
   await expect(
     view.getByRole("button", { name: "接管", exact: true }),
   ).toBeEnabled();
-  await view.getByRole("button", { name: "接管", exact: true }).click();
-  await expect(draft).toHaveValue("保留草稿");
-  await view.getByRole("button", { name: "输入", exact: true }).click();
-  await expect.poll(async () => (await state()).value).toContain("保留草稿");
-  await expect(draft).toHaveValue("");
+  expect((await state()).value).toBe("saved draft");
 });

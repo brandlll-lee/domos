@@ -30,6 +30,45 @@ export async function openInstance(
     } catch {}
     return { action: "deny" };
   });
+  const fullscreenAllowed = (
+    contents: Electron.WebContents | null,
+    permission: string,
+    requestingUrl: string | undefined,
+    mainFrame: boolean,
+  ) => {
+    if (
+      contents !== window.webContents ||
+      permission !== "fullscreen" ||
+      !mainFrame ||
+      !requestingUrl
+    )
+      return false;
+    try {
+      return new URL(requestingUrl).origin === origin;
+    } catch {
+      return false;
+    }
+  };
+  window.webContents.session.setPermissionRequestHandler(
+    (contents, permission, callback, details) =>
+      callback(
+        fullscreenAllowed(
+          contents,
+          permission,
+          details.requestingUrl,
+          details.isMainFrame,
+        ),
+      ),
+  );
+  window.webContents.session.setPermissionCheckHandler(
+    (contents, permission, _requestingOrigin, details) =>
+      fullscreenAllowed(
+        contents,
+        permission,
+        details.requestingUrl,
+        details.isMainFrame,
+      ),
+  );
   if (desktopSession)
     await window.webContents.session.cookies.set({
       url: origin,

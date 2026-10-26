@@ -4,27 +4,23 @@ import {
   viewportPoint,
 } from "../src/features/computer/viewer-input.ts";
 
-test("browser coordinates match the depicted page and exclude letterboxing", () => {
-  const image = { naturalWidth: 1262, naturalHeight: 568 };
+test("window coordinates follow the decoded image and exclude letterboxing", () => {
+  const image = { naturalWidth: 1280, naturalHeight: 720 };
   const frame = { width: 1280, height: 720 };
-  const rect = { left: 20, top: 30, width: 631, height: 284 };
-  expect(viewportPoint(image, rect, frame, 335.5, 172, true)).toEqual({
-    x: 640,
-    y: 288,
-  });
-  expect(viewportPoint(image, rect, frame, 335.5, 172, false)).toEqual({
+  const rect = { left: 20, top: 30, width: 640, height: 360 };
+  expect(viewportPoint(image, rect, frame, 340, 210)).toEqual({
     x: 640,
     y: 360,
   });
   expect(
-    viewportPoint(image, { ...rect, height: 500 }, frame, 30, 35, true),
+    viewportPoint(image, { ...rect, height: 600 }, frame, 30, 35),
   ).toBeUndefined();
-  expect(viewportPoint(image, rect, frame, 9999, 9999, true, true)).toEqual({
+  expect(viewportPoint(image, rect, frame, 9999, 9999, true)).toEqual({
     x: 1279,
-    y: 575,
+    y: 719,
   });
   expect(
-    viewportPoint(image, { ...rect, width: 0 }, frame, 20, 30, true),
+    viewportPoint(image, { ...rect, width: 0 }, frame, 20, 30),
   ).toBeUndefined();
 });
 

@@ -1,12 +1,11 @@
 import { Button } from "@domos/ui/controls";
-import { TextField } from "@domos/ui/field";
-import {
-  type CSSProperties,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { ArrowsInIcon } from "@phosphor-icons/react/dist/csr/ArrowsIn";
+import { ArrowsOutIcon } from "@phosphor-icons/react/dist/csr/ArrowsOut";
+import { CornersInIcon } from "@phosphor-icons/react/dist/csr/CornersIn";
+import { CornersOutIcon } from "@phosphor-icons/react/dist/csr/CornersOut";
+import { CursorIcon } from "@phosphor-icons/react/dist/csr/Cursor";
+import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
+import { useEffect, useRef, useState } from "react";
 import { ComputerEffect } from "./effect.tsx";
 import { useView } from "./use-view.ts";
 import { ComputerViewport } from "./viewport.tsx";
@@ -14,11 +13,15 @@ import { ComputerViewport } from "./viewport.tsx";
 export function ComputerViewer({
   botId,
   service,
-  onTake,
+  expanded,
+  onExpand,
+  onSettings,
 }: {
   botId: number;
   service: "browser" | "desktop";
-  onTake: () => void;
+  expanded: boolean;
+  onExpand: () => void;
+  onSettings: () => void;
 }) {
   const {
     frame,
@@ -31,44 +34,29 @@ export function ComputerViewer({
     send,
     reconnect,
   } = useView(botId, service);
-  const [url, setUrl] = useState("");
-  const editing = useRef(false);
-  const [text, setText] = useState("");
-  const [typing, setTyping] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [ratio, setRatio] = useState(16 / 9);
+  const viewer = useRef<HTMLElement>(null);
   const image = useRef<HTMLImageElement | null>(null);
-  const screen = useRef<HTMLDivElement>(null);
-  const acknowledged = useRef<string>("");
+  const acknowledged = useRef("");
+  const [fullscreen, setFullscreen] = useState(false);
+  const [failure, setFailure] = useState<string>();
   const driving = connected && controlling && !busy && !blocked;
-  const draft = useCallback((value: string) => {
-    setText((text) => text + value);
-    setTyping(true);
+  useEffect(() => {
+    const changed = () =>
+      setFullscreen(document.fullscreenElement === viewer.current);
+    document.addEventListener("fullscreenchange", changed);
+    return () => document.removeEventListener("fullscreenchange", changed);
   }, []);
   useEffect(() => {
-    if (!editing.current && frame?.url) setUrl(frame.url);
-  }, [frame?.url]);
-  useEffect(() => {
-    const node = screen.current;
-    const viewer = node?.parentElement;
-    if (!node || !viewer) return;
-    const fit = () => {
-      const rect = node.getBoundingClientRect();
-      const footer = viewer.getBoundingClientRect().bottom - rect.bottom;
-      viewer.style.setProperty(
-        "--view-height",
-        `${Math.max(96, window.innerHeight - rect.top - footer - 24)}px`,
-      );
+    const exit = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || !fullscreen) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (document.fullscreenElement === viewer.current)
+        void document.exitFullscreen();
     };
-    const observer = new ResizeObserver(fit);
-    observer.observe(viewer);
-    window.addEventListener("resize", fit);
-    fit();
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", fit);
-    };
-  }, []);
+    window.addEventListener("keydown", exit, true);
+    return () => window.removeEventListener("keydown", exit, true);
+  }, [fullscreen]);
   const acknowledge = () => {
     if (!frame) {
       acknowledged.current = "";
@@ -86,149 +74,127 @@ export function ComputerViewer({
     void send({ type: "ack", seq: frame.seq });
   };
   useEffect(acknowledge, [frame, send, service]);
+  const control = () => void send({ type: controlling ? "back" : "take" });
+  const toggleFullscreen = async () => {
+    setFailure(undefined);
+    try {
+      if (document.fullscreenElement === viewer.current)
+        await document.exitFullscreen();
+      else await viewer.current?.requestFullscreen({ navigationUI: "hide" });
+    } catch {
+      setFailure("无法进入全屏。请重试。");
+    }
+  };
   return (
-    <section
-      className="computer-viewer"
-      aria-label="工作电脑观看"
-      style={{ "--screen-ratio": ratio } as CSSProperties}
-    >
+    <section ref={viewer} className="computer-viewer" aria-label="工作电脑观看">
+      <div className="computer-view-screen">
+        {frame ? (
+          <ComputerViewport
+            frame={frame}
+            driving={driving}
+            send={send}
+            onLoad={(node) => {
+              image.current = node;
+              acknowledge();
+            }}
+          />
+        ) : (
+          <p className="detail-note">{error ? "画面暂不可用" : "正在连接…"}</p>
+        )}
+        {frame && (
+          <ComputerEffect state={connected && !controlling ? activity : null} />
+        )}
+        {frame && connected && !controlling && !blocked && (
+          <button
+            className="computer-takeover"
+            type="button"
+            disabled={busy}
+            onClick={control}
+            aria-label="接管"
+          >
+            <span className="computer-takeover-icon">
+              <CursorIcon weight="fill" />
+            </span>
+            <span className="computer-takeover-label">
+              {busy ? "正在接管…" : "点击接管"}
+            </span>
+          </button>
+        )}
+      </div>
+      {(error || failure) && (
+        <div role="alert" className="computer-view-error">
+          {error ?? failure}
+          {error && (
+            <Button variant="ghost" size="small" onClick={reconnect}>
+              重新连接
+            </Button>
+          )}
+        </div>
+      )}
       <div className="computer-view-toolbar">
-        <span role="status">
+        <span
+          role="status"
+          className="computer-view-status"
+          data-connected={connected || undefined}
+        >
+          <span className="computer-live-dot" />
           {busy
             ? "正在交接…"
             : blocked
               ? "操作已暂停"
               : connected
                 ? controlling
-                  ? "你正在接管"
-                  : service === "browser"
-                    ? "浏览器画面"
-                    : "电脑屏幕"
+                  ? "你正在操作"
+                  : "实时"
                 : error
-                  ? "连接已断开"
-                  : "正在连接…"}
+                  ? "已断开"
+                  : "连接中"}
         </span>
         <div className="detail-inline">
           {controlling && (
             <Button
               variant="ghost"
               size="small"
-              disabled={busy}
-              aria-expanded={typing}
-              onClick={() => setTyping(!typing)}
+              pending={busy}
+              disabled={!connected}
+              onClick={control}
             >
-              输入文字
+              交还
+            </Button>
+          )}
+          {!fullscreen && (
+            <Button
+              variant="ghost"
+              size="icon-small"
+              title={expanded ? "收起工作区" : "展开工作区"}
+              aria-label={expanded ? "收起工作区" : "展开工作区"}
+              onClick={onExpand}
+            >
+              {expanded ? <ArrowsInIcon /> : <ArrowsOutIcon />}
+            </Button>
+          )}
+          {!fullscreen && (
+            <Button
+              variant="ghost"
+              size="icon-small"
+              title="电脑设置"
+              aria-label="电脑设置"
+              onClick={onSettings}
+            >
+              <GearSixIcon />
             </Button>
           )}
           <Button
-            variant="secondary"
-            size="small"
-            pending={busy}
-            disabled={!connected || (!controlling && blocked)}
-            onClick={async () => {
-              if (await send({ type: controlling ? "back" : "take" })) {
-                if (!controlling) onTake();
-              }
-            }}
+            variant="ghost"
+            size="icon-small"
+            title={fullscreen ? "退出全屏" : "全屏"}
+            aria-label={fullscreen ? "退出全屏" : "全屏"}
+            onClick={toggleFullscreen}
           >
-            {controlling ? "交还控制权" : "接管"}
+            {fullscreen ? <CornersInIcon /> : <CornersOutIcon />}
           </Button>
         </div>
       </div>
-      {service === "browser" && (
-        <form
-          className="computer-view-address"
-          onSubmit={(event) => {
-            event.preventDefault();
-            editing.current = false;
-            void send({ type: "navigate", url });
-          }}
-        >
-          <input
-            className="field-control"
-            type="url"
-            aria-label="网址"
-            placeholder="输入网址"
-            value={url}
-            disabled={!driving}
-            required
-            onFocus={() => {
-              editing.current = true;
-            }}
-            onBlur={() => {
-              editing.current = false;
-            }}
-            onChange={(event) => setUrl(event.target.value)}
-          />
-          <Button variant="secondary" size="small" disabled={!driving}>
-            打开
-          </Button>
-        </form>
-      )}
-      <div ref={screen} className="computer-view-screen">
-        {frame ? (
-          <ComputerViewport
-            frame={frame}
-            browser={service === "browser"}
-            driving={driving}
-            send={send}
-            onDraft={draft}
-            onLoad={(node) => {
-              image.current = node;
-              setRatio(node.naturalWidth / node.naturalHeight);
-              acknowledge();
-            }}
-          />
-        ) : (
-          <p className="detail-note">
-            {error ? "画面暂不可用。" : "正在读取工作电脑画面…"}
-          </p>
-        )}
-        {frame && (
-          <ComputerEffect state={connected && !controlling ? activity : null} />
-        )}
-      </div>
-      {typing && (
-        <form
-          className="computer-view-address"
-          onSubmit={async (event) => {
-            event.preventDefault();
-            if (!text || !driving || pending) return;
-            const value = text;
-            setPending(true);
-            try {
-              if (await send({ type: "text", text: value }))
-                setText((current) => (current === value ? "" : current));
-            } finally {
-              setPending(false);
-            }
-          }}
-        >
-          <TextField
-            label="输入到网页中已选中的位置"
-            value={text}
-            onValueChange={setText}
-            autoComplete="off"
-            disabled={pending}
-          />
-          <Button
-            variant="secondary"
-            size="small"
-            pending={pending}
-            disabled={!driving || !text}
-          >
-            输入
-          </Button>
-        </form>
-      )}
-      {error && (
-        <div role="alert" className="alert">
-          {error}
-          <Button variant="ghost" size="small" onClick={reconnect}>
-            重新连接
-          </Button>
-        </div>
-      )}
     </section>
   );
 }

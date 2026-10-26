@@ -1,6 +1,11 @@
 import { setTimeout } from "node:timers/promises";
 
-export function openDesktopView(driver, id, activity) {
+export function openDesktopView(
+  driver,
+  id,
+  activity,
+  target = { kind: "desktop", display_id: "primary" },
+) {
   let seq = 0;
   let waiting;
   let pointer;
@@ -11,7 +16,7 @@ export function openDesktopView(driver, id, activity) {
       JSON.stringify({
         ...args,
         session: id,
-        target: { kind: "desktop", display_id: "primary" },
+        target,
       }),
       { signal },
     );
@@ -35,8 +40,18 @@ export function openDesktopView(driver, id, activity) {
       signal.throwIfAborted();
       const result = await activity.capture(() =>
         driver.callTool(
-          "get_desktop_state",
-          JSON.stringify({ session: id, max_image_dimension: 1920 }),
+          target.kind === "window" ? "get_window_state" : "get_desktop_state",
+          JSON.stringify({
+            session: id,
+            max_image_dimension: 1920,
+            ...(target.kind === "window"
+              ? {
+                  pid: target.pid,
+                  window_id: target.window_id,
+                  include_accessibility_tree: false,
+                }
+              : {}),
+          }),
           { signal },
         ),
       );
@@ -64,8 +79,6 @@ export function openDesktopView(driver, id, activity) {
         pointer = undefined;
         return;
       }
-      if (message.type === "navigate")
-        throw new Error("桌面视图不支持网页导航。");
       if (message.type === "ack") {
         if (message.seq !== seq) throw new Error("画面确认已失效。");
         waiting?.resolve();
@@ -98,6 +111,9 @@ export function openDesktopView(driver, id, activity) {
                 to_x: message.x,
                 to_y: message.y,
                 button: message.button,
+                ...(target.kind === "window"
+                  ? { delivery_mode: "foreground" }
+                  : {}),
               },
               signal,
             );
@@ -108,6 +124,8 @@ export function openDesktopView(driver, id, activity) {
               signal,
             );
         }
+        if (message.event === "move" && !pointer)
+          await call("move_cursor", { x: message.x, y: message.y }, signal);
         if (message.event === "scroll")
           await call(
             "scroll",

@@ -18,14 +18,11 @@
 .detail-scroll {
   flex: 1;
 }
+.detail-scroll[hidden] {
+  display: none;
+}
 .bot-tabs {
   margin-top: var(--space-5);
-}
-.bot-details[data-computer] .bot-tabs {
-  margin-top: 0;
-}
-.bot-tabs > [data-hidden] {
-  display: none;
 }
 .bot-tabs .workspace-tabs {
   width: fit-content;
@@ -41,12 +38,17 @@
   border-color: transparent;
   background: var(--color-control-hover);
 }
-.bot-tabs .computer-workspace {
-  min-height: 22rem;
+.detail-identity {
+  flex-shrink: 0;
+  padding: var(--space-4) var(--space-4) 0;
 }
-.bot-tabs .computer-workspace-context,
-.bot-tabs .computer-workspace-stage {
-  padding-inline: 0;
+.detail-identity .workspace-tabs {
+  margin-bottom: var(--space-4);
+}
+.bot-details > .computer-workspace {
+  flex: 1;
+  height: auto;
+  min-height: 0;
 }
 .bot-details p,
 .bot-details h2,

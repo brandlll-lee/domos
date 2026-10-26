@@ -24,7 +24,7 @@ import {
   browserResult,
   browserTool,
 } from "./browser-tools.mjs";
-import { openBrowserView } from "./browser-view.mjs";
+import { browserPagePoint, browserProcess } from "./browser-window.mjs";
 
 export async function openBrowserService(directory, home) {
   const session = createHash("sha256")
@@ -36,11 +36,16 @@ export async function openBrowserService(directory, home) {
   const profile = join(state, "browser");
   const downloads = join(directory, "downloads");
   await mkdir(downloads, { recursive: true });
+  const headed =
+    process.env.AGENT_BROWSER_HEADED === undefined
+      ? process.platform !== "linux" || Boolean(process.env.DISPLAY)
+      : ["1", "true"].includes(process.env.AGENT_BROWSER_HEADED);
   const config = join(state, "browser.json");
   await writeFile(
     config,
     JSON.stringify({
       profile,
+      headed,
       downloadPath: downloads,
       contentBoundaries: true,
       maxOutput: 32000,
@@ -334,7 +339,7 @@ export async function openBrowserService(directory, home) {
     );
     return action;
   };
-  const input = (commands, signal) =>
+  const human = (execute, signal) =>
     enqueue(async () => {
       signal.throwIfAborted();
       ready();
@@ -344,18 +349,13 @@ export async function openBrowserService(directory, home) {
         signal.throwIfAborted();
       }
       try {
-        for (const command of commands) {
-          const result = JSON.parse(
-            await run([...command, "--json"], AbortSignal.timeout(30000)),
-          );
-          if (!result.success)
-            throw new Error("Browser input was not confirmed.");
-        }
+        const result = await execute();
+        await rm(interruption, { force: true });
+        return result;
       } catch {
         uncertain = true;
         ready();
       }
-      await rm(interruption, { force: true });
     });
   const call = (name, args, signal) =>
     enqueue(async () => {
@@ -453,7 +453,7 @@ export async function openBrowserService(directory, home) {
       return {
         available: true,
         error: null,
-        sharedDesktop: ["1", "true"].includes(env.AGENT_BROWSER_HEADED),
+        sharedDesktop: headed,
       };
     },
     catalog: tools,
@@ -462,17 +462,43 @@ export async function openBrowserService(directory, home) {
       await pending;
       ready();
     },
-    view: (signal) =>
-      openBrowserView(
-        run,
-        call,
-        signal,
-        async () => {
-          await pending;
-          ready();
-        },
-        input,
-      ),
+    human,
+    hover(x, y, width, height, signal) {
+      return human(async () => {
+        const result = JSON.parse(
+          await run(
+            [
+              "eval",
+              "JSON.stringify({width:outerWidth,height:outerHeight,innerWidth,innerHeight})",
+              "--json",
+            ],
+            AbortSignal.timeout(5000),
+          ),
+        );
+        const at = browserPagePoint(
+          JSON.parse(result.data.result),
+          { width, height },
+          x,
+          y,
+        );
+        if (!at) return;
+        const moved = JSON.parse(
+          await run(
+            ["mouse", "move", String(at.x), String(at.y), "--json"],
+            AbortSignal.timeout(5000),
+          ),
+        );
+        if (!moved.success) throw new Error("浏览器悬停未确认。");
+      }, signal);
+    },
+    async window(signal) {
+      await pending;
+      if (!headed)
+        throw new Error(
+          "完整浏览器画面需要图形桌面。请在工作电脑上启用图形会话。",
+        );
+      return browserProcess(profile, signal);
+    },
     async close() {
       await pending;
       await closeBrowser();

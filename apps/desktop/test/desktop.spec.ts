@@ -211,6 +211,47 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     await page.getByLabel("配对码", { exact: true }).fill(ready.pairing);
     await page.getByRole("button", { name: "连接", exact: true }).click();
     await expect(page.getByRole("button", { name: "Bot详情" })).toBeVisible();
+    const original = await desktop.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.getBounds(),
+    );
+    await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
+    await page.getByRole("tab", { name: "Browser", exact: true }).click();
+    await page.getByRole("button", { name: "启用浏览器", exact: true }).click();
+    await expect(page.getByRole("img", { name: "工作电脑画面" })).toBeVisible();
+    await page.getByRole("button", { name: "全屏", exact: true }).click();
+    await expect
+      .poll(() =>
+        desktop.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()[0]?.isFullScreen(),
+        ),
+      )
+      .toBe(true);
+    await expect
+      .poll(() => page.evaluate(() => document.fullscreenElement?.className))
+      .toBe("computer-viewer");
+    await captureWindow(
+      desktop,
+      page,
+      testInfo.outputPath("browser-native-fullscreen.png"),
+    );
+    await page.keyboard.press("Escape");
+    await expect
+      .poll(() => page.evaluate(() => document.fullscreenElement === null))
+      .toBe(true);
+    await expect
+      .poll(() =>
+        desktop.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()[0]?.getBounds(),
+        ),
+      )
+      .toEqual(original);
+    await expect(
+      page.getByRole("tab", { name: "Browser", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await page
+      .locator("#bot-details")
+      .getByRole("button", { name: "关闭", exact: true })
+      .click();
     const environment = page.getByRole("button", {
       name: "切换 Domos 环境：我的 Domos",
       exact: true,

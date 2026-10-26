@@ -57,8 +57,8 @@ export function BotDetails({
   chat: { model: ChatView["model"]; connected: boolean };
   canManage: boolean;
   engine: EngineSetup;
-  tab: "bot" | "computer";
-  onTabChange: (tab: "bot" | "computer") => void;
+  tab: "bot" | "computer" | "browser";
+  onTabChange: (tab: "bot" | "computer" | "browser") => void;
   expanded: boolean;
   onExpand: () => void;
 }) {
@@ -141,7 +141,7 @@ export function BotDetails({
       tabIndex={-1}
       id="bot-details"
       className="bot-details"
-      data-computer={(view === "root" && tab === "computer") || undefined}
+      data-computer={(view === "root" && tab !== "bot") || undefined}
       aria-label={`${bot.name}的详情`}
     >
       <PanelHeader
@@ -153,7 +153,51 @@ export function BotDetails({
         }
         onClose={onClose}
       />
-      <ScrollArea className="detail-scroll" viewportClassName="detail-content">
+      {view === "root" && (
+        <div className="detail-identity">
+          <BotIdentity
+            bot={bot}
+            profile={work.profile}
+            onEdit={() => navigate("identity")}
+          />
+          <Tabs.Root
+            className="bot-tabs"
+            value={tab}
+            onValueChange={(value) =>
+              onTabChange(value as "bot" | "computer" | "browser")
+            }
+          >
+            <Tabs.List className="workspace-tabs" aria-label="Bot详情">
+              <Tabs.Tab className="workspace-tab" value="bot">
+                Bot
+              </Tabs.Tab>
+              <Tabs.Tab className="workspace-tab" value="computer">
+                Computer
+              </Tabs.Tab>
+              <Tabs.Tab className="workspace-tab" value="browser">
+                Browser
+              </Tabs.Tab>
+            </Tabs.List>
+          </Tabs.Root>
+        </div>
+      )}
+      {view === "root" && tab !== "bot" && active && (
+        <ComputerWorkspace
+          key={tab}
+          bot={bot}
+          computer={computer}
+          admin={canManage}
+          service={tab === "browser" ? "browser" : "desktop"}
+          expanded={expanded}
+          onExpand={onExpand}
+          onSettings={() => navigate("computer")}
+        />
+      )}
+      <ScrollArea
+        hidden={view === "root" && tab !== "bot"}
+        className="detail-scroll"
+        viewportClassName="detail-content"
+      >
         {!work.connected && view !== "root" && (
           <p className="detail-note" role="status">
             正在连接详情…
@@ -177,53 +221,12 @@ export function BotDetails({
             />
           </div>
         )}
-        {view !== "identity" && (
+        {view !== "identity" && (view !== "root" || tab === "bot") && (
           <div
             className="detail-view"
             key={`${view}:${editor ? "editor" : "list"}`}
           >
-            {view === "root" ? (
-              <>
-                {tab === "bot" && (
-                  <BotIdentity
-                    bot={bot}
-                    profile={work.profile}
-                    onEdit={() => navigate("identity")}
-                  />
-                )}
-                <Tabs.Root
-                  className="bot-tabs"
-                  value={tab}
-                  onValueChange={(value) =>
-                    onTabChange(value as "bot" | "computer")
-                  }
-                >
-                  <Tabs.List className="workspace-tabs" aria-label="Bot详情">
-                    <Tabs.Tab className="workspace-tab" value="bot">
-                      Bot
-                    </Tabs.Tab>
-                    <Tabs.Tab className="workspace-tab" value="computer">
-                      Computer
-                    </Tabs.Tab>
-                  </Tabs.List>
-                  <Tabs.Panel value="bot">{content}</Tabs.Panel>
-                  <Tabs.Panel value="computer">
-                    {active && tab === "computer" && (
-                      <ComputerWorkspace
-                        bot={bot}
-                        computer={computer}
-                        admin={canManage}
-                        expanded={expanded}
-                        onExpand={onExpand}
-                        onSettings={() => navigate("computer")}
-                      />
-                    )}
-                  </Tabs.Panel>
-                </Tabs.Root>
-              </>
-            ) : (
-              content
-            )}
+            {content}
           </div>
         )}
       </ScrollArea>

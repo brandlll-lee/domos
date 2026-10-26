@@ -85,7 +85,9 @@ function BotChat({
   );
   const [view, setView] = useState<"chat" | "usage">("chat");
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [panel, setPanel] = useState<"settings" | "computer">("settings");
+  const [panel, setPanel] = useState<"settings" | "computer" | "browser">(
+    "settings",
+  );
   const [expanded, setExpanded] = useState(false);
   const [detailPanel, setDetailPanel] = useState<BotPanelView>("root");
   const { items } = chat;
@@ -121,7 +123,7 @@ function BotChat({
     setView("chat");
     setDetailsOpen(!detailsOpen || panel !== "computer");
   };
-  const computerOpen = detailsOpen && panel === "computer";
+  const computerOpen = detailsOpen && panel !== "settings";
   const railActive = view === "usage" ? "usage" : "conversation";
   const selectRail = (next: RailView) => {
     setView(next === "usage" ? "usage" : "chat");
@@ -134,10 +136,10 @@ function BotChat({
         if (open) setDetailsOpen(true);
         else closePanel();
       }}
-      expanded={panel === "computer" && expanded}
+      expanded={panel !== "settings" && expanded}
       inspectorTitle="Bot详情"
       inspectorTrigger={
-        panel === "computer" ? "computer-trigger" : "details-trigger"
+        panel !== "settings" ? "computer-trigger" : "details-trigger"
       }
       rail={{ active: railActive, onSelect: selectRail }}
       sidebarOpen={view === "chat"}
@@ -157,9 +159,9 @@ function BotChat({
           chat={{ model: chat.view?.model ?? null, connected: chat.connected }}
           canManage={settings.admin}
           engine={engine}
-          tab={panel === "computer" ? "computer" : "bot"}
+          tab={panel === "settings" ? "bot" : panel}
           onTabChange={(tab) => {
-            setPanel(tab === "computer" ? "computer" : "settings");
+            setPanel(tab === "bot" ? "settings" : tab);
             setExpanded(false);
           }}
           expanded={expanded}

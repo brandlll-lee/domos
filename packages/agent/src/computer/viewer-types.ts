@@ -4,13 +4,6 @@ const coordinate = z.number().finite().min(0).max(32768);
 export const viewerAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ack"), seq: z.number().int().nonnegative() }),
   z.object({ type: z.enum(["take", "back"]) }),
-  z.object({
-    type: z.literal("navigate"),
-    url: z
-      .url()
-      .max(8192)
-      .refine((value) => ["http:", "https:"].includes(new URL(value).protocol)),
-  }),
   z.object({ type: z.literal("text"), text: z.string().max(10000) }),
   z.object({
     type: z.literal("key"),
@@ -36,5 +29,4 @@ export type ViewFrame = {
   width: number;
   height: number;
   timestamp: number;
-  url?: string;
 };

@@ -61,41 +61,6 @@ test("browser profiles persist across a restart and stay separate for each Bot",
     url: `${url}/`,
     capturedAt: expect.any(String),
   });
-  const viewId = crypto.randomUUID();
-  const signal = AbortSignal.timeout(10000);
-  await computer.services.viewer(
-    1,
-    { operation: "view", service: "browser", id: viewId, action: "open" },
-    signal,
-    context,
-  );
-  const frame = await computer.services.viewer<{
-    seq: number;
-    data: string;
-    width: number;
-    height: number;
-  }>(
-    1,
-    { operation: "view", service: "browser", id: viewId, action: "next" },
-    signal,
-    context,
-  );
-  expect(frame.width).toBeGreaterThan(0);
-  expect(frame.height).toBeGreaterThan(0);
-  expect(Buffer.from(frame.data, "base64").length).toBeGreaterThan(100);
-  await computer.services.viewer(
-    1,
-    {
-      operation: "view",
-      service: "browser",
-      id: viewId,
-      action: "send",
-      message: { type: "ack", seq: frame.seq },
-    },
-    signal,
-    context,
-  );
-
   await computer.services.prepare(1, "browser", context);
   expect(
     JSON.stringify((await call(1, "agent_browser_get_url", {})).content),
@@ -107,16 +72,6 @@ test("browser profiles persist across a restart and stay separate for each Bot",
       })
     ).isError,
   ).toBe(false);
-  const target = await call(1, "agent_browser_eval", {
-    script:
-      "(() => { const r = document.querySelector('#confirm').getBoundingClientRect(); return { x: r.x + r.width/2, y: r.y + r.height/2 }; })()",
-  });
-  const point = (
-    target.structuredContent?.response as
-      | { data?: { result?: { x: number; y: number } } }
-      | undefined
-  )?.data?.result;
-  if (!point) throw new Error("Button coordinates required");
   const controller = new AbortController();
   const running = computer.services
     .call(
@@ -135,52 +90,6 @@ test("browser profiles persist across a restart and stay separate for each Bot",
   await started.promise;
   const lease1 = await computer.services.takeover(1, "browser");
   expect(await running).toContain("待核对");
-  await computer.services.viewer(
-    1,
-    {
-      operation: "view",
-      service: "browser",
-      id: viewId,
-      action: "send",
-      message: { type: "text", text: " checked" },
-    },
-    AbortSignal.timeout(10000),
-    context,
-  );
-  for (const event of ["down", "up"] as const) {
-    await computer.services.viewer(
-      1,
-      {
-        operation: "view",
-        service: "browser",
-        id: viewId,
-        action: "send",
-        message: {
-          type: "pointer",
-          event,
-          ...point,
-          button: "left",
-          deltaX: 0,
-          deltaY: 0,
-        },
-      },
-      AbortSignal.timeout(10000),
-      context,
-    );
-  }
-
-  await computer.services.viewer(
-    1,
-    {
-      operation: "view",
-      service: "browser",
-      id: viewId,
-      action: "send",
-      message: { type: "key", key: "Tab", modifiers: 0 },
-    },
-    AbortSignal.timeout(10000),
-    context,
-  );
   await computer.services.release(1, "browser", lease1);
   expect(
     JSON.stringify(
@@ -190,18 +99,12 @@ test("browser profiles persist across a restart and stay separate for each Bot",
         })
       ).content,
     ),
-  ).toContain("in progress checked");
-  expect(
-    JSON.stringify(
-      (await call(1, "agent_browser_get_text", { selector: "#confirm" }))
-        .content,
-    ),
-  ).toContain("OK");
+  ).toContain("in progress");
   const proof = assistInput.parse({
     service: "browser",
     goal: "Fill draft",
     completion: "Draft contains in progress",
-    evidence: { role: "textbox", label: "Draft", value: "in progress checked" },
+    evidence: { role: "textbox", label: "Draft", value: "in progress" },
   });
   expect(
     await verify(

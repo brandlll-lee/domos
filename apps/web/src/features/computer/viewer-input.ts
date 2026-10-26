@@ -6,7 +6,6 @@ export function viewportPoint(
   frame: { width: number; height: number },
   x: number,
   y: number,
-  browser: boolean,
   captured = false,
 ) {
   if (
@@ -20,14 +19,7 @@ export function viewportPoint(
     ].every((n) => Number.isFinite(n) && n > 0)
   )
     return;
-  // Chrome can report window height while the image contains only the page.
-  const depicted = (image.naturalHeight * frame.width) / image.naturalWidth;
-  const height =
-    browser &&
-    Math.abs(depicted - frame.height) >
-      Math.max(1, frame.width / image.naturalWidth)
-      ? Math.round(depicted)
-      : frame.height;
+  const height = frame.height;
   const scale = Math.min(
     rect.width / image.naturalWidth,
     rect.height / image.naturalHeight,
