@@ -2,7 +2,7 @@ import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { releaseSchema } from "@domos/hosting/install";
 import { expect, test } from "@playwright/test";
 import { WorkProcess } from "../../../packages/agent/src/harness/process.ts";
@@ -13,6 +13,16 @@ test("desktop runtime starts its worker and discovers computer tools", async () 
   const release = releaseSchema.parse(
     JSON.parse(await readFile(join(runtime, "release.json"), "utf8")),
   );
+  if (!release.workBuild) throw new Error("Work build context required");
+  const work = join(runtime, release.workBuild.context);
+  const workBrowser = join(work, "packages/agent/src/harness");
+  const { browserObserve, browserRunSteps } = await import(
+    pathToFileURL(join(workBrowser, "browser-tools.mjs")).href
+  );
+  expect(browserObserve.name).toBe("agent_browser_observe");
+  expect(browserRunSteps.name).toBe("agent_browser_run_steps");
+  for (const name of ["browser-command.mjs", "native-history.mjs"])
+    expect(await readFile(join(workBrowser, name), "utf8")).not.toBe("");
   const directory = await mkdtemp(join(tmpdir(), "domos-runtime-"));
   const executable = createRequire(new URL("../package.json", import.meta.url))(
     "electron",
@@ -36,6 +46,8 @@ test("desktop runtime starts its worker and discovers computer tools", async () 
     expect(browser).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "agent_browser_screenshot" }),
+        expect.objectContaining({ name: "agent_browser_observe" }),
+        expect.objectContaining({ name: "agent_browser_run_steps" }),
       ]),
     );
     const desktop = await worker.computer({

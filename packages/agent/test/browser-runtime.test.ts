@@ -58,7 +58,17 @@ const success = () => ({
 
 async function setup() {
   mocks.list.mockResolvedValue({
-    tools: ["click", "get_url", "screenshot", "eval"].map((name) => ({
+    tools: [
+      "open",
+      "click",
+      "fill",
+      "type",
+      "press",
+      "snapshot",
+      "get_url",
+      "screenshot",
+      "eval",
+    ].map((name) => ({
       name: `agent_browser_${name}`,
       description: name,
       inputSchema: {
@@ -68,6 +78,10 @@ async function setup() {
           extraArgs: { type: "array" },
           selector: { type: "string" },
           script: { type: "string" },
+          url: { type: "string" },
+          text: { type: "string" },
+          key: { type: "string" },
+          compact: { type: "boolean" },
         },
       },
     })),
@@ -129,6 +143,215 @@ test("cancellation drains dispatched work and prevents queued work", async () =>
   await service.settle();
 });
 
+function pageFacts(text = "Ready") {
+  return {
+    content: [{ type: "text", text: "page facts" }],
+    structuredContent: {
+      response: {
+        success: true,
+        data: {
+          result: {
+            url: "http://fixture/",
+            title: "Fixture",
+            readyState: "complete",
+            text,
+            controls: [],
+          },
+        },
+      },
+    },
+  };
+}
+
+test("navigation returns fresh refs and facts while preserving native output and timing", async () => {
+  const service = await setup();
+  const native = {
+    content: [{ type: "text", text: "Navigation accepted" }],
+    structuredContent: {
+      response: { success: true, data: { url: "http://fixture/" } },
+    },
+  };
+  mocks.call.mockImplementation(async ({ name }) =>
+    name === "agent_browser_open"
+      ? native
+      : name === "agent_browser_eval"
+        ? pageFacts()
+        : { content: [{ type: "text", text: "@e1 button Ready" }] },
+  );
+  const result = await service.call(
+    "agent_browser_open",
+    { url: "http://fixture/" },
+    new AbortController().signal,
+  );
+  expect(result.structuredContent).toEqual(native.structuredContent);
+  expect(JSON.stringify(result.content)).toContain("@e1 button Ready");
+  expect(JSON.stringify(result.content)).toContain("Fresh page facts");
+  const timing = result.content.find((part: { text?: string }) =>
+    part.text?.startsWith("Domos browser timing"),
+  );
+  expect(timing.text).toMatch(
+    /queueMs.*commandMs.*observationMs.*metadataMs.*totalMs/,
+  );
+  const calls = mocks.call.mock.calls.map(([request]) => request);
+  expect(calls.map((call) => call.name)).toEqual([
+    "agent_browser_open",
+    "agent_browser_eval",
+    "agent_browser_snapshot",
+  ]);
+  expect(calls[0].arguments).not.toHaveProperty("extraArgs");
+  expect(calls[0].arguments).not.toHaveProperty("all");
+  expect(calls[1].arguments.timeoutMs).toBeLessThanOrEqual(5000);
+});
+
+test("large page facts leave room for fresh element refs", async () => {
+  const service = await setup();
+  mocks.call.mockImplementation(async ({ name }) =>
+    name === "agent_browser_open"
+      ? success()
+      : name === "agent_browser_eval"
+        ? pageFacts("x".repeat(40000))
+        : { content: [{ type: "text", text: "@e1 button Confirm" }] },
+  );
+  const result = await service.call(
+    "agent_browser_open",
+    { url: "http://fixture/" },
+    new AbortController().signal,
+  );
+  expect(JSON.stringify(result.content)).toContain("@e1 button Confirm");
+  expect(JSON.stringify(result.content)).toContain("Page facts truncated");
+});
+
+test("failed observation preserves successful navigation and never repeats it", async () => {
+  const service = await setup();
+  mocks.call.mockImplementation(async ({ name }) =>
+    name === "agent_browser_open"
+      ? success()
+      : { isError: true, content: [{ type: "text", text: "read failed" }] },
+  );
+  const result = await service.call(
+    "agent_browser_open",
+    { url: "http://fixture/" },
+    new AbortController().signal,
+  );
+  expect(result.isError).toBe(false);
+  expect(JSON.stringify(result.content)).toContain("observation is incomplete");
+  expect(
+    mocks.call.mock.calls.filter(
+      ([call]) => call.name === "agent_browser_open",
+    ),
+  ).toHaveLength(1);
+});
+
+test.each(["", "Loading…", "Service unavailable"])(
+  "observation reports actual text %j without inventing a cause",
+  async (text) => {
+    const service = await setup();
+    mocks.call.mockImplementation(async ({ name }) =>
+      name === "agent_browser_eval" ? pageFacts(text) : success(),
+    );
+    const result = await service.call(
+      "agent_browser_observe",
+      {},
+      new AbortController().signal,
+    );
+    expect(JSON.stringify(result.content)).toContain(
+      JSON.stringify({
+        url: "http://fixture/",
+        title: "Fixture",
+        readyState: "complete",
+        text,
+        controls: [],
+      }).replaceAll('"', '\\"'),
+    );
+    expect(JSON.stringify(result.content)).toContain("alone does not explain");
+  },
+);
+
+test("batches validate all steps before dispatch and observe once at the end", async () => {
+  const service = await setup();
+  await expect(
+    service.call(
+      "agent_browser_run_steps",
+      {
+        steps: [
+          { action: "click", selector: "#first" },
+          { action: "fill", selector: "#draft" },
+        ],
+      },
+      new AbortController().signal,
+    ),
+  ).rejects.toThrow();
+  expect(mocks.call).not.toHaveBeenCalled();
+  mocks.call.mockImplementation(async ({ name }) =>
+    name === "agent_browser_eval" ? pageFacts() : success(),
+  );
+  const result = await service.call(
+    "agent_browser_run_steps",
+    {
+      steps: [
+        { action: "fill", selector: "#draft", text: "Hello" },
+        { action: "press", key: "Enter" },
+      ],
+    },
+    new AbortController().signal,
+  );
+  expect(result.structuredContent.completed).toBe(2);
+  expect(mocks.call.mock.calls.map(([request]) => request.name)).toEqual([
+    "agent_browser_fill",
+    "agent_browser_press",
+    "agent_browser_eval",
+    "agent_browser_snapshot",
+  ]);
+});
+
+test.each(["native", "transport"])(
+  "a %s batch failure preserves completed steps and stops later work",
+  async (mode) => {
+    const service = await setup();
+    mocks.call.mockResolvedValueOnce(success());
+    if (mode === "transport")
+      mocks.call.mockRejectedValueOnce(new Error("response lost"));
+    else mocks.call.mockResolvedValueOnce(baseline.lostResponse);
+    const result = await service.call(
+      "agent_browser_run_steps",
+      {
+        steps: [1, 2, 3].map((index) => ({
+          action: "click",
+          selector: `#b${index}`,
+        })),
+      },
+      new AbortController().signal,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      completed: 1,
+      uncertain: true,
+    });
+    expect(result.structuredContent.results[0]).toEqual(success());
+    expect(mocks.call).toHaveBeenCalledTimes(2);
+    await expect(service.settle()).rejects.toThrow("结果未知");
+  },
+);
+
+test("repeated unchanged actions stop until an explicit fresh observation", async () => {
+  const service = await setup();
+  mocks.call.mockImplementation(async ({ name }) =>
+    name === "agent_browser_eval" ? pageFacts() : success(),
+  );
+  const click = () =>
+    service.call(
+      "agent_browser_click",
+      { selector: "#button" },
+      new AbortController().signal,
+    );
+  for (let attempt = 0; attempt < 3; attempt++) await click();
+  const count = mocks.call.mock.calls.length;
+  expect((await click()).isError).toBe(true);
+  expect(mocks.call).toHaveBeenCalledTimes(count);
+  await service.call("agent_browser_observe", {}, new AbortController().signal);
+  expect((await click()).isError).toBe(false);
+});
+
 test("catalog cleanup does not launch a browser to close it", async () => {
   const service = await setup();
   await service.catalog();
@@ -169,12 +392,18 @@ test("restart waits for the closing daemon before reconnecting", async () => {
   }
 });
 
-test.each(["native", "transport", "cdp"])(
+test.each(["native", "transport", "cdp", "page_wedged"])(
   "%s unknown outcome holds mutations and takeover until explicit restart",
   async (mode) => {
     const service = await setup();
     if (mode === "native")
       mocks.call.mockResolvedValueOnce(baseline.lostResponse);
+    else if (mode === "page_wedged")
+      mocks.call.mockResolvedValueOnce({
+        content: [{ type: "text", text: "Page stopped responding" }],
+        isError: true,
+        structuredContent: { response: { code: "page_wedged" } },
+      });
     else if (mode === "cdp")
       mocks.call.mockResolvedValueOnce({
         content: [

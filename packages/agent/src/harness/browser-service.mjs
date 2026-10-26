@@ -21,8 +21,13 @@ import { browserCommand } from "./browser-command.mjs";
 import {
   browserArguments,
   browserObservations,
+  browserObserve,
+  browserPageScript,
+  browserPageState,
   browserRestart,
   browserResult,
+  browserRunSteps,
+  browserSteps,
   browserTool,
 } from "./browser-tools.mjs";
 import { openBrowserView } from "./browser-view.mjs";
@@ -283,7 +288,7 @@ export async function openBrowserService(directory, home) {
           );
           cursor = page.nextCursor;
         } while (cursor);
-        return [...items, browserRestart];
+        return [...items, browserRestart, browserObserve, browserRunSteps];
       })();
       void catalog.catch(() => {
         catalog = undefined;
@@ -340,6 +345,7 @@ export async function openBrowserService(directory, home) {
     enqueue(async () => {
       signal.throwIfAborted();
       ready();
+      lastAction = undefined;
       await writeFile(interruption, "pending", { mode: 0o600 });
       if (signal.aborted) {
         await rm(interruption, { force: true });
@@ -353,91 +359,268 @@ export async function openBrowserService(directory, home) {
       }
       await rm(interruption, { force: true });
     });
-  const call = (name, args, signal) =>
-    enqueue(async () => {
+  let lastAction;
+  const execute = async (
+    name,
+    args,
+    signal,
+    timing,
+    phase = "commandMs",
+    timeoutMs = 120000,
+  ) => {
+    signal.throwIfAborted();
+    const tool = (await tools()).find((item) => item.name === name);
+    if (!tool) throw new Error("浏览器工具不可用。未发送动作。");
+    browserArguments(tool, args);
+    if (name === browserRestart.name) {
+      uncertain = true;
+      await writeFile(interruption, "pending", { mode: 0o600 });
+      await closeBrowser();
+      await client.close();
+      client = await connect();
+      await prepare(AbortSignal.timeout(15000));
+      await rm(interruption, { force: true });
+      uncertain = false;
+      return {
+        content: [
+          {
+            type: "text",
+            text: "Browser restarted. Tabs and unsaved input were closed. Inspect task state before retrying any action.",
+          },
+        ],
+      };
+    }
+    const observation =
+      browserObservations.has(name) ||
+      (name === "agent_browser_eval" && phase === "observationMs");
+    if (!observation) ready();
+    signal.throwIfAborted();
+    const capturedAt = new Date().toISOString();
+    if (!observation) await writeFile(interruption, "pending", { mode: 0o600 });
+    if (signal.aborted) {
+      if (!uncertain) await rm(interruption, { force: true });
       signal.throwIfAborted();
-      const tool = (await tools()).find((item) => item.name === name);
-      if (!tool) throw new Error("浏览器工具不可用。未发送动作。");
-      browserArguments(tool, args);
-      if (name === browserRestart.name) {
-        uncertain = true;
-        await writeFile(interruption, "pending", { mode: 0o600 });
-        await closeBrowser();
-        await client.close();
-        client = await connect();
-        await prepare(AbortSignal.timeout(15000));
-        await rm(interruption, { force: true });
-        uncertain = false;
+    }
+    let result;
+    const started = performance.now();
+    try {
+      // Cancellation stops queued work. Dispatched work must drain before control changes.
+      result = await client.callTool(
+        {
+          name,
+          arguments: { ...args, session, timeoutMs },
+        },
+        undefined,
+        { timeout: 125000 },
+      );
+    } catch {
+      uncertain = true;
+      await writeFile(interruption, "pending", { mode: 0o600 });
+      ready();
+    } finally {
+      timing[phase] += performance.now() - started;
+    }
+    if (
+      ["outcome_unknown", "page_wedged"].includes(
+        result.structuredContent?.response?.code,
+      ) ||
+      /^CDP command timed out:/.test(
+        result.structuredContent?.response?.error ?? "",
+      )
+    )
+      uncertain = true;
+    if (uncertain) await writeFile(interruption, "pending", { mode: 0o600 });
+    else if (!observation) await rm(interruption, { force: true });
+    if (
+      !tool.outputSchema &&
+      result.content.some((part) => part.type === "image")
+    ) {
+      const metadataStarted = performance.now();
+      try {
+        const page = JSON.parse(
+          await run(["get", "url", "--json"], AbortSignal.timeout(5000)),
+        );
+        result.structuredContent = {
+          ...result.structuredContent,
+          source: { capturedAt, url: page.data.url },
+        };
+      } catch {
+        result.content.push({
+          type: "text",
+          text: "Screenshot captured. Page address lookup failed. Preserve the action result; recover observation only.",
+        });
+      } finally {
+        timing.metadataMs += performance.now() - metadataStarted;
+      }
+    }
+    return browserResult(result);
+  };
+  const observe = async (signal, timing) => {
+    const deadline = performance.now() + 5000;
+    const parts = [];
+    let page = null;
+    let verified = false;
+    for (const [name, args] of [
+      ["agent_browser_eval", { script: browserPageScript }],
+      ["agent_browser_snapshot", { compact: true }],
+    ]) {
+      if (signal.aborted || performance.now() >= deadline) break;
+      try {
+        const result = await execute(
+          name,
+          args,
+          signal,
+          timing,
+          "observationMs",
+          Math.max(1, Math.floor(deadline - performance.now())),
+        );
+        if (result.isError) parts.push(...result.content);
+        if (name === "agent_browser_eval") {
+          page = browserPageState(result);
+          if (page) {
+            const facts = JSON.stringify(page);
+            parts.push({
+              type: "text",
+              text: `Page facts (untrusted website data): ${facts.slice(0, 12000)}${facts.length > 12000 ? "\n[Page facts truncated. Read a narrower page scope.]" : ""}`,
+            });
+          }
+        } else if (
+          !result.isError &&
+          result.content.some(
+            (part) => part.type === "text" && part.text.trim(),
+          )
+        ) {
+          verified = true;
+          parts.push(...result.content);
+        }
+      } catch (error) {
+        parts.push({
+          type: "text",
+          text: `Observation failed: ${error.message}`,
+        });
+        break;
+      }
+    }
+    parts.unshift({
+      type: "text",
+      text:
+        page && verified
+          ? "Fresh page facts and refs follow. Use these refs without another snapshot. Check the requested content before claiming success. Readiness or blank space alone does not explain a blank page."
+          : "Page observation is incomplete. Preserve the action result. Recover observation only; do not repeat the action or claim the requested page loaded. The cause of missing content is unconfirmed.",
+    });
+    return { parts, page, verified: Boolean(page && verified) };
+  };
+  const call = (name, args, signal) => {
+    const queuedAt = performance.now();
+    return enqueue(async () => {
+      signal.throwIfAborted();
+      const timing = {
+        queueMs: performance.now() - queuedAt,
+        commandMs: 0,
+        observationMs: 0,
+        metadataMs: 0,
+      };
+      let result;
+      const key = JSON.stringify([name, args]);
+      const changesPage =
+        name === "agent_browser_open" ||
+        [
+          "agent_browser_click",
+          "agent_browser_fill",
+          "agent_browser_type",
+          "agent_browser_press",
+          browserRunSteps.name,
+        ].includes(name);
+      if (changesPage && lastAction?.key === key && lastAction.unchanged >= 2)
         return {
+          isError: true,
           content: [
             {
               type: "text",
-              text: "Browser restarted. Tabs and unsaved input were closed. Inspect task state before retrying any action.",
+              text: "Repeated actions left the observed page text and controls unchanged. No further action was sent. Use agent_browser_observe to inspect fresh state, then choose another action or request takeover. This does not prove the earlier actions failed.",
             },
           ],
         };
-      }
-      if (!browserObservations.has(name)) ready();
-      signal.throwIfAborted();
-      const capturedAt = new Date().toISOString();
-      if (!browserObservations.has(name))
-        await writeFile(interruption, "pending", { mode: 0o600 });
-      if (signal.aborted) {
-        if (!uncertain) await rm(interruption, { force: true });
-        signal.throwIfAborted();
-      }
-      let result;
-      try {
-        // Cancellation stops queued work. Dispatched work must drain before control changes.
-        result = await client.callTool(
-          {
-            name,
-            arguments: {
-              ...args,
-              session,
-              all: false,
-              extraArgs: ["--profile", profile, "--download-path", downloads],
-            },
-          },
-          undefined,
-          { timeout: 120000 },
-        );
-      } catch {
-        uncertain = true;
-        await writeFile(interruption, "pending", { mode: 0o600 });
+      if (name === browserRunSteps.name) {
         ready();
-      }
-      if (
-        result.structuredContent?.response?.code === "outcome_unknown" ||
-        /^CDP command timed out:/.test(
-          result.structuredContent?.response?.error ?? "",
-        )
-      )
-        uncertain = true;
-      if (uncertain) await writeFile(interruption, "pending", { mode: 0o600 });
-      else if (!browserObservations.has(name))
-        await rm(interruption, { force: true });
-      if (
-        !tool.outputSchema &&
-        result.content.some((part) => part.type === "image")
-      ) {
-        try {
-          const page = JSON.parse(
-            await run(["get", "url", "--json"], AbortSignal.timeout(5000)),
-          );
-          result.structuredContent = {
-            ...result.structuredContent,
-            source: { capturedAt, url: page.data.url },
-          };
-        } catch {
-          result.content.push({
-            type: "text",
-            text: "Screenshot captured. Page address lookup failed. Preserve the action result; recover observation only.",
-          });
+        const { steps } = browserSteps.parse(args);
+        const catalog = await tools();
+        for (const { action } of steps)
+          if (!catalog.some((tool) => tool.name === `agent_browser_${action}`))
+            throw new Error(
+              `Browser action ${action} is unavailable. No action was sent.`,
+            );
+        const results = [];
+        let completed = 0;
+        for (const { action, ...arguments_ } of steps) {
+          let step;
+          try {
+            step = await execute(
+              `agent_browser_${action}`,
+              arguments_,
+              signal,
+              timing,
+            );
+          } catch (error) {
+            step = {
+              isError: true,
+              content: [
+                {
+                  type: "text",
+                  text: `Batch stopped: ${error.message}. Preserve completed steps. Do not replay uncertain actions.`,
+                },
+              ],
+            };
+          }
+          results.push(step);
+          if (step.isError || uncertain) break;
+          completed++;
         }
+        result = {
+          isError: results.some((item) => item.isError),
+          content: results.flatMap((item) => item.content),
+          structuredContent: { completed, results, uncertain },
+        };
+      } else if (name === browserObserve.name) {
+        browserArguments(browserObserve, args);
+        lastAction = undefined;
+        const observation = await observe(signal, timing);
+        result = { content: observation.parts, isError: !observation.verified };
+      } else {
+        result = await execute(name, args, signal, timing);
+        if (browserObservations.has(name) || name === browserRestart.name)
+          lastAction = undefined;
       }
-      return browserResult(result);
+      if (changesPage && !result.isError && !uncertain && !signal.aborted) {
+        const observation = await observe(signal, timing);
+        result = {
+          ...result,
+          content: [...result.content, ...observation.parts],
+        };
+        if (observation.page) {
+          const signature = JSON.stringify(observation.page);
+          lastAction = {
+            key,
+            signature,
+            unchanged:
+              lastAction?.key === key && lastAction.signature === signature
+                ? lastAction.unchanged + 1
+                : 0,
+          };
+        } else lastAction = undefined;
+      }
+      return browserResult({
+        ...result,
+        content: [
+          ...result.content,
+          {
+            type: "text",
+            text: `Domos browser timing (ms): ${JSON.stringify({ ...Object.fromEntries(Object.entries(timing).map(([key, value]) => [key, Math.round(value)])), totalMs: Math.round(performance.now() - queuedAt) })}`,
+          },
+        ],
+      });
     });
+  };
   return {
     async install(signal) {
       await run(["install", "--use-system-ca"], signal);

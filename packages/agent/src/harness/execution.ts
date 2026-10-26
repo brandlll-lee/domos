@@ -365,6 +365,11 @@ export class EngineExecution {
         computerTools.some((tool) => tool.name === "computer_assist")
           ? "Jev collaboration mode is enabled. Discover and observe the target, then submit every GUI change through computer_assist. Supply exact input text and completion evidence. Do not bypass this mode through shell, scripts or other GUI tools. On explicit handoff, inspect fresh state and use the returned handoff ID for one native continuation through computer_assist. Never replay an uncertain action. Review means completion still needs independent verification."
           : "",
+        computerTools.some(
+          (tool) => tool.name === "browser_agent_browser_observe",
+        )
+          ? "Browser navigation and page-action results include bounded fresh observation when available. Use returned refs instead of taking the same snapshot again. Use browser_agent_browser_run_steps for known continuous actions; split at transitions that need a new observation. After takeover or an unclear screenshot, use browser_agent_browser_observe. Compare URL, title, text and controls before explaining a blank page. Document readiness alone does not prove content loaded or task success. If observation failed, recover observation and preserve delivered actions."
+          : "",
       ]
         .filter(Boolean)
         .join("\n\n");

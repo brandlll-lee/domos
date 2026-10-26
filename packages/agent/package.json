@@ -40,7 +40,7 @@
     "@earendil-works/pi-env": "1.2.0",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@trycua/cua-driver": "0.37.0",
-    "agent-browser": "0.39.1",
+    "agent-browser": "0.39.4",
     "croner": "10.0.1",
     "cross-spawn": "7.0.6",
     "file-type": "^22.2.0",

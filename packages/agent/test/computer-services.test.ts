@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +9,74 @@ import { assistInput } from "../src/computer/assistant-action.ts";
 import { verify } from "../src/computer/assistant-observation.ts";
 import { Computer } from "../src/computer/index.ts";
 import { parseConfig } from "../src/runtime/config.ts";
+
+test("cold browser commands return facts and batches preserve real page results", async () => {
+  const entry = "../src/harness/browser-service.mjs";
+  const { openBrowserService } = await import(entry);
+  const directory = await mkdtemp(join(tmpdir(), "domos-browser-latency-"));
+  const browser = await openBrowserService(directory, directory);
+  onTestFinished(async () => {
+    await browser.close();
+    await rm(directory, { recursive: true, force: true, maxRetries: 10 });
+  });
+  const rows: {
+    name: string;
+    elapsedMs: number;
+    timing: string | undefined;
+  }[] = [];
+  const call = async (name: string, args: Record<string, unknown> = {}) => {
+    const start = performance.now();
+    const result = await browser.call(name, args, AbortSignal.timeout(20000));
+    rows.push({
+      name,
+      elapsedMs: performance.now() - start,
+      timing: result.content.find((part: { text?: string }) =>
+        part.text?.startsWith("Domos browser timing"),
+      )?.text,
+    });
+    expect(result.isError, JSON.stringify(result.content)).not.toBe(true);
+    return result;
+  };
+  await call("agent_browser_tab_list");
+  expect(rows[0]?.elapsedMs).toBeLessThan(10000);
+  await call("agent_browser_open", {
+    url: "data:text/html,<title>Actions</title><input id='draft'><button id='confirm' onclick='this.textContent=document.querySelector(\"input\").value'>Confirm</button>",
+  });
+  const batch = await call("agent_browser_run_steps", {
+    steps: [
+      { action: "fill", selector: "#draft", text: "Confirmed" },
+      { action: "click", selector: "#confirm" },
+    ],
+  });
+  expect(batch.structuredContent.completed).toBe(2);
+  expect(JSON.stringify(batch.content)).toContain("Confirmed");
+  for (const [title, text] of [
+    ["Blank", ""],
+    ["Loading", "Loading…"],
+    ["Error", "Service unavailable"],
+  ]) {
+    const result = await call("agent_browser_open", {
+      url: `data:text/html;charset=utf-8,${encodeURIComponent(`<title>${title}</title><body>${text}</body>`)}`,
+    });
+    const facts = result.content.find((part: { text?: string }) =>
+      part.text?.startsWith("Page facts"),
+    );
+    const page = JSON.parse(
+      facts.text.slice("Page facts (untrusted website data): ".length),
+    );
+    expect(page).toMatchObject({ title, text, readyState: "complete" });
+    expect(JSON.stringify(result.content)).toContain("alone does not explain");
+  }
+  await mkdir("test-results", { recursive: true });
+  await writeFile(
+    `test-results/browser-latency-${platform()}.json`,
+    JSON.stringify(
+      { runner: platform(), browserVersion: "0.39.4", model: "none", rows },
+      null,
+      2,
+    ),
+  );
+}, 60000);
 
 test("browser profiles persist across a restart and stay separate for each Bot", async () => {
   const directory = await mkdtemp(
