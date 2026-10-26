@@ -19,7 +19,7 @@ export const viewerAction = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("pointer"),
-    event: z.enum(["down", "up", "move", "scroll"]),
+    event: z.enum(["down", "up", "move", "scroll", "cancel"]),
     x: coordinate,
     y: coordinate,
     button: z.enum(["left", "right", "middle"]).default("left"),
@@ -36,4 +36,5 @@ export type ViewFrame = {
   width: number;
   height: number;
   timestamp: number;
+  url?: string;
 };

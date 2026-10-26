@@ -10,6 +10,12 @@ export async function openBrowserView(run, call, signal, ready, input) {
     status.port > 65535
   )
     throw new Error("浏览器画面服务未开启。");
+  let url;
+  try {
+    url = JSON.parse(await run(["get", "url", "--json"], signal)).data?.url;
+  } catch {
+    // Address metadata must not block observation of an uncertain action.
+  }
   const socket = new WebSocket(
     `ws://127.0.0.1:${status.port}/?pacing=ack&maxFps=12`,
   );
@@ -18,6 +24,7 @@ export async function openBrowserView(run, call, signal, ready, input) {
   let failure;
   let delivered = 0;
   let pointer;
+  let path = [];
   const fail = () => {
     failure = new Error("画面连接已断开。请重新连接。");
     pending?.reject(failure);
@@ -28,6 +35,8 @@ export async function openBrowserView(run, call, signal, ready, input) {
     try {
       if (typeof data !== "string" || data.length > 4 * 1024 * 1024) return;
       const frame = JSON.parse(data);
+      if (frame.type === "url" && typeof frame.url === "string")
+        url = frame.url;
       if (
         frame.type !== "frame" ||
         typeof frame.data !== "string" ||
@@ -101,12 +110,13 @@ export async function openBrowserView(run, call, signal, ready, input) {
       const frame = latest;
       latest = undefined;
       delivered = frame.seq;
-      return frame;
+      return { ...frame, url };
     },
     async send(message, signal) {
       if (failure) throw failure;
       if (message.type === "back") {
         pointer = undefined;
+        path = [];
         return;
       }
       if (message.type !== "ack") await ready();
@@ -138,8 +148,14 @@ export async function openBrowserView(run, call, signal, ready, input) {
         );
         if (result.isError) throw new Error("按键未确认。请检查页面。");
       } else if (message.type === "pointer") {
+        if (message.event === "cancel") {
+          pointer = undefined;
+          path = [];
+          return;
+        }
         if (message.event === "down") {
           pointer = message;
+          path = [];
           return;
         }
         // Native mouse commands use integer CSS pixels.
@@ -162,11 +178,13 @@ export async function openBrowserView(run, call, signal, ready, input) {
                 String(Math.round(start.y)),
               ],
               ["mouse", "down", start.button],
+              ...path,
               move,
               ["mouse", "up", start.button],
             ],
             signal,
           );
+          path = [];
         } else if (message.event === "scroll") {
           await input(
             [
@@ -180,7 +198,10 @@ export async function openBrowserView(run, call, signal, ready, input) {
             ],
             signal,
           );
-        } else if (!pointer) await input([move], signal);
+        } else if (pointer) {
+          if (path.length < 64) path.push(move);
+          else path[path.length - 1] = move;
+        } else await input([move], signal);
       }
     },
     close() {

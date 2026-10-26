@@ -57,6 +57,13 @@ export function openDesktopView(driver, id, activity) {
     },
     async send(message, signal) {
       if (closed) throw new Error("画面连接已断开。");
+      if (
+        message.type === "back" ||
+        (message.type === "pointer" && message.event === "cancel")
+      ) {
+        pointer = undefined;
+        return;
+      }
       if (message.type === "navigate")
         throw new Error("桌面视图不支持网页导航。");
       if (message.type === "ack") {
@@ -81,7 +88,8 @@ export function openDesktopView(driver, id, activity) {
         if (message.event === "up") {
           const start = pointer;
           pointer = undefined;
-          if (start && Math.hypot(start.x - message.x, start.y - message.y) > 3)
+          if (!start) return;
+          if (Math.hypot(start.x - message.x, start.y - message.y) > 3)
             await call(
               "drag",
               {

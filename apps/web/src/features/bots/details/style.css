@@ -21,6 +21,9 @@
 .bot-tabs {
   margin-top: var(--space-5);
 }
+.bot-details[data-computer] .bot-tabs {
+  margin-top: 0;
+}
 .bot-tabs > [data-hidden] {
   display: none;
 }
@@ -44,12 +47,6 @@
 .bot-tabs .computer-workspace-context,
 .bot-tabs .computer-workspace-stage {
   padding-inline: 0;
-}
-.bot-tabs .computer-viewer {
-  --view-height: max(8rem, calc(100dvh - 32rem));
-}
-.bot-tabs .computer-viewer[data-controlling] {
-  --view-height: max(8rem, calc(100dvh - 40rem));
 }
 .bot-details p,
 .bot-details h2,

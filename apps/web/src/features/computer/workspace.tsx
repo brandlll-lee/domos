@@ -90,7 +90,13 @@ export function ComputerWorkspace({
           key={service}
         >
           {status?.authorized && item?.enabled && item.available ? (
-            <ComputerViewer botId={bot.id} service={service} />
+            <ComputerViewer
+              botId={bot.id}
+              service={service}
+              onTake={() => {
+                if (!expanded) onExpand();
+              }}
+            />
           ) : (
             <div className="computer-workspace-empty">
               {service === "browser" ? (

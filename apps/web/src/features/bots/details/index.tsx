@@ -141,6 +141,7 @@ export function BotDetails({
       tabIndex={-1}
       id="bot-details"
       className="bot-details"
+      data-computer={(view === "root" && tab === "computer") || undefined}
       aria-label={`${bot.name}的详情`}
     >
       <PanelHeader
@@ -183,11 +184,13 @@ export function BotDetails({
           >
             {view === "root" ? (
               <>
-                <BotIdentity
-                  bot={bot}
-                  profile={work.profile}
-                  onEdit={() => navigate("identity")}
-                />
+                {tab === "bot" && (
+                  <BotIdentity
+                    bot={bot}
+                    profile={work.profile}
+                    onEdit={() => navigate("identity")}
+                  />
+                )}
                 <Tabs.Root
                   className="bot-tabs"
                   value={tab}
