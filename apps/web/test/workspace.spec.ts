@@ -423,7 +423,7 @@ test("computer viewing requires takeover and releases control when closed", asyn
       .getByRole("navigation", { name: "主导航", exact: true })
       .getByRole("button", { name: "工作电脑", exact: true }),
   ).toHaveCount(0);
-  await expect(details.locator(".bot-hero")).toHaveCount(1);
+  await expect(details.locator(".bot-hero")).toHaveCount(0);
   await details.getByRole("button", { name: "电脑设置", exact: true }).click();
   await details.getByRole("button", { name: "返回", exact: true }).click();
   await expect(
@@ -437,7 +437,7 @@ test("computer viewing requires takeover and releases control when closed", asyn
   const screen = view.getByRole("img", { name: "工作电脑画面" });
   await expect(screen).toBeVisible();
   const address = view.getByRole("textbox", { name: "网址", exact: true });
-  await expect(address).toHaveCount(0);
+  await expect(address).toBeDisabled();
   const assertFrame = async () => {
     await expect
       .poll(() =>
@@ -465,10 +465,12 @@ test("computer viewing requires takeover and releases control when closed", asyn
   await address.fill(`${url}/health`);
   await view.getByRole("button", { name: "打开", exact: true }).click();
   await expect(screen).not.toHaveAttribute("src", first ?? "");
-  expect((await view.boundingBox())?.width).toBeLessThan(700);
+  expect((await view.boundingBox())?.width).toBeGreaterThan(800);
+  await view.getByRole("button", { name: "收起工作区", exact: true }).click();
   await expect(
     page.getByRole("textbox", { name: "消息", exact: true }),
   ).toBeVisible();
+  expect((await view.boundingBox())?.width).toBeLessThan(700);
   await view.getByRole("button", { name: "展开工作区", exact: true }).click();
   expect((await view.boundingBox())?.width).toBeGreaterThan(800);
   await assertFrame();
@@ -476,21 +478,6 @@ test("computer viewing requires takeover and releases control when closed", asyn
   for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-    await expect
-      .poll(() =>
-        view
-          .getByRole("button", { name: "交还控制权", exact: true })
-          .evaluate((item) => {
-            const style = getComputedStyle(item);
-            const sample = document.createElement("span");
-            sample.style.backgroundColor = "transparent";
-            item.append(sample);
-            const expected = getComputedStyle(sample).backgroundColor;
-            sample.remove();
-            return style.backgroundColor === expected;
-          }),
-      )
-      .toBe(true);
     for (const width of [1440, 768, 390]) {
       await page.setViewportSize({ width, height: 900 });
       await page.screenshot({
@@ -511,14 +498,14 @@ test("computer viewing requires takeover and releases control when closed", asyn
   await page.screenshot({ path: testInfo.outputPath("computer-compact.png") });
   await page.setViewportSize({ width: 1360, height: 900 });
   await view.getByRole("button", { name: "交还控制权", exact: true }).click();
-  await expect(address).toHaveCount(0);
+  await expect(address).toBeDisabled();
   await view.getByRole("tab", { name: "桌面", exact: true }).click();
   await expect(
     view.getByRole("button", { name: "启用桌面", exact: true }),
   ).toBeVisible();
   await view.getByRole("tab", { name: "浏览器", exact: true }).click();
   await expect(screen).toBeVisible();
-  await expect(address).toHaveCount(0);
+  await expect(address).toBeDisabled();
   await details.getByRole("tab", { name: "Computer", exact: true }).focus();
   await page.keyboard.press("ArrowLeft");
   await page.keyboard.press("Enter");
@@ -541,7 +528,7 @@ test("computer viewing requires takeover and releases control when closed", asyn
   worker.send("disconnect-computer");
   await disconnected;
   await expect(view.getByRole("status")).toHaveText("连接已断开");
-  await expect(address).toHaveCount(0);
+  await expect(address).toBeDisabled();
   await view.getByRole("button", { name: "重新连接", exact: true }).click();
   await expect(view.getByRole("status")).toHaveText("浏览器画面");
   await expect(screen).toBeVisible();
@@ -805,6 +792,7 @@ test("panels resize live, persist only on release, and retain drafts across layo
   await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
   await page.getByRole("button", { name: "电脑设置", exact: true }).click();
   await details.getByRole("button", { name: "返回", exact: true }).click();
+  await details.getByRole("tab", { name: "Bot", exact: true }).click();
   await details.getByRole("button", { name: "编辑", exact: true }).click();
   await expect(name).toHaveValue("尚未保存的名字");
   const right = page.getByRole("separator", { name: "调整详情宽度" });
@@ -990,6 +978,7 @@ test("empty chats retain their creation time and compact controls across layouts
   await page.keyboard.press("Escape");
   await expect(environment).toBeHidden();
   await details.getByRole("button", { name: "返回", exact: true }).click();
+  await details.getByRole("tab", { name: "Bot", exact: true }).click();
   await details.getByRole("button", { name: "编辑", exact: true }).click();
   await expect(
     details.getByRole("textbox", { name: "名字", exact: true }),

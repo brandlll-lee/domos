@@ -24,6 +24,7 @@ import { EngineMessage } from "../../../../packages/agent/src/harness/state.ts";
 import { featureProcess } from "../../../../packages/agent/test/fixtures/feature-process.ts";
 import { createApp } from "../../src/app.ts";
 import { hostingApp } from "../../src/hosting/routes.ts";
+import { takeoverFixture } from "./takeover-page.ts";
 
 const database = process.argv[2];
 if (!database) throw new Error("Database required");
@@ -142,9 +143,11 @@ const store =
     ? await HostingStore.open(dirname(database))
     : undefined;
 const sessions = store ? new Sessions(store) : undefined;
-const server = createServer((request, response) =>
-  getRequestListener(hosted?.app.fetch ?? app.fetch)(request, response),
-);
+const fixture = takeoverFixture();
+const server = createServer((request, response) => {
+  if (!fixture(request, response))
+    getRequestListener(hosted?.app.fetch ?? app.fetch)(request, response);
+});
 server.listen(Number(process.argv[3] ?? 0), "127.0.0.1", () => {
   const address = server.address();
   if (address && typeof address === "object") {

@@ -4,6 +4,7 @@ export default defineConfig({
   testDir: "./apps/web/test",
   testMatch: "**/*.spec.ts",
   workers: 1,
+  reporter: [["list"], ["junit", { outputFile: "test-results/web.xml" }]],
   timeout: 30_000,
   use: {
     browserName: "chromium",
