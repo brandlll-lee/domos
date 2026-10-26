@@ -89,7 +89,9 @@ export class EngineProjection {
         if (event.type === "accepted") {
           doc.dispatch = "accepted";
           doc.turnId = event.id ?? null;
-          const session = doc.sessionKey ? doc.sessions?.[doc.sessionKey] : undefined;
+          const session = doc.sessionKey
+            ? doc.sessions?.[doc.sessionKey]
+            : undefined;
           if (
             event.ready !== false &&
             !current.input.operation &&
