@@ -28,7 +28,7 @@ Windows, Node 24.22.1, agent-browser 0.39.1, 2026-10-26:
 - Native browser tests read back text and button changes after takeover. They retain profile data across service restart. A 35-second page mutation reproduces a native response timeout and confirms that later changes stay blocked until explicit restart.
 - One focused run hit the existing API stream-disconnect timing failure. The isolated test and the following full suite passed. Cross-platform CI runs the same regression.
 
-The review found and corrected native mouse coordinate rejection, restart reconnection failure, stale-view worker recreation, strict-schema evidence augmentation, and stale release ownership. The regression checks cover these paths. No additional dependency or alternate browser engine was added.
+The review found and corrected native mouse coordinate rejection, restart reconnection failure, stale-view worker recreation, strict-schema evidence augmentation, and stale release ownership. The first CI run also found that the macOS per-user temp path exceeded the native Unix socket limit. macOS now uses a private session directory under `/tmp`. Native CI tests cover long workspace paths. No additional dependency or alternate browser engine was added.
 
 Looks good. Ship.
 

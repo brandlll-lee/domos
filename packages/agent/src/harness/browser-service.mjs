@@ -66,7 +66,11 @@ export async function openBrowserService(directory, home) {
       launcher = join(bin, "agent-browser-win32-x64.exe");
     }
   }
-  const socket = join(tmpdir(), `domos-browser-${session}`);
+  // macOS per-user temp paths can exceed the Unix socket path limit.
+  const socket = join(
+    process.platform === "darwin" ? "/tmp" : tmpdir(),
+    `domos-browser-${session}`,
+  );
   await mkdir(socket, { recursive: true, mode: 0o700 });
   const socketState = await lstat(socket);
   if (
