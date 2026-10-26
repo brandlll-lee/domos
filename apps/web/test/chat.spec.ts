@@ -650,7 +650,7 @@ test("native controls, interaction, compaction and Usage work in both themes", a
   await expect(page.getByLabel("上下文状态", { exact: true })).toContainText(
     "压缩完成",
   );
-  await expect(contextWindow).toContainText("未提供 / 1K");
+  await expect(contextWindow).toContainText("未提供 / 32K");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "用量", exact: true }).click();
   const usage = page.getByRole("main", { name: "用量", exact: true });

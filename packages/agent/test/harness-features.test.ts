@@ -73,6 +73,9 @@ test("Pi exposes native controls, compacts and reports response usage", async ()
       events.push(event);
     },
   });
+  expect(events).toContainEqual(
+    expect.objectContaining({ type: "context", tokens: 80, window: 1000 }),
+  );
   const controls = await session.controls?.();
   expect(controls?.options).toContainEqual({
     id: "thinkingLevel",

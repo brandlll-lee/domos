@@ -46,6 +46,7 @@ export async function projectContext(
       harness: doc.config.provider,
       sessionId: doc.sessionId,
       model: event.model ?? doc.config.model,
+      configuredModel: doc.config.model,
     };
     if (
       event.basis === "window" &&

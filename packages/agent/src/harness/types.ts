@@ -30,6 +30,7 @@ export type EngineContextReading = {
   harness: EngineId;
   sessionId: string | null;
   model: string | null;
+  configuredModel?: string | null;
 };
 export type EngineCompaction = {
   id: string;

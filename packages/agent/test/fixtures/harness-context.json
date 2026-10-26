@@ -1,0 +1,11 @@
+{
+  "fact": "The delivery folder is blue.",
+  "longMessage": { "prefixBytes": 4500, "tail": "TAIL_FACT" },
+  "referenceFact": "The selected source requires metric units.",
+  "baseline": {
+    "rejectedFirstHandoff": "The next prompt omitted the prior fact.",
+    "longMessage": "The history tool could not return text after byte 4000.",
+    "selectedMaterial": "History projection omitted the selected source.",
+    "freshWindow": "A 2000-token window did not change the 12493-byte prompt."
+  }
+}

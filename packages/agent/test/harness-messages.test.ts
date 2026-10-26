@@ -26,8 +26,9 @@ test.each([...providers.values()])(
     const runtime = {
       taskId: 1,
       conversationId: 1,
-      commit: async (action: (tx: object) => Promise<unknown>) =>
-        action({ doc: async () => state }),
+      commit: async (
+        action: (tx: object, current: { input: object }) => Promise<unknown>,
+      ) => action({ doc: async () => state }, { input: {} }),
     } as unknown as EngineRuntime;
     const projection = new EngineProjection(runtime, "first", context, []);
     const entries = [

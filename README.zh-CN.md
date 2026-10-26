@@ -225,6 +225,8 @@ pnpm test:e2e
 
 Linux 上首次安装测试浏览器时，可添加 `--with-deps`，同时安装系统依赖。
 
+从最新的 `main` 创建功能分支，在原仓库目录内串行开发。切换分支、审查与合并规则见 [Git 工作流程](AGENTS.md#git-workflow)。
+
 开发网页时，在两个终端分别运行 `pnpm start` 和 `pnpm web`，再打开 Vite 输出的地址。终端聊天使用 `pnpm chat`。
 
 构建桌面安装包：

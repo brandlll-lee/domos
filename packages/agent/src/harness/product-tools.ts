@@ -9,7 +9,7 @@ import {
   ToolTask,
 } from "@earendil-works/pi-durable";
 import type { MessageDelivery } from "../delivery.ts";
-import { conversationHistory } from "./history.ts";
+import { conversationEntry, conversationHistory } from "./history.ts";
 import { EngineDoc, EngineMessage } from "./state.ts";
 import { type EngineRuntime, stored } from "./task-types.ts";
 import type { ProductResult, ProductTool } from "./types.ts";
@@ -63,10 +63,14 @@ export async function productCatalog(
     {
       name: "conversation_read",
       description:
-        "Read earlier Bot conversation in bounded pages. Pass the returned from entry ID as before to read an older page. Attachments remain file references.",
+        "Read quoted Bot history. Pass from as before for older pages. Read an entryId with a UTF-8 byte offset to recover omitted text, selected material, and tool details. Continue with nextOffset. Files remain references on their recorded computer.",
       inputSchema: {
         type: "object",
-        properties: { before: { type: "integer", minimum: 1 } },
+        properties: {
+          before: { type: "integer", minimum: 1 },
+          entryId: { type: "integer", minimum: 1 },
+          offset: { type: "integer", minimum: 0 },
+        },
         additionalProperties: false,
       },
     },
@@ -82,8 +86,17 @@ export async function callProductTool(
 ): Promise<ProductResult> {
   if (name === "conversation_read") {
     if (
-      args.before !== undefined &&
-      (!Number.isSafeInteger(args.before) || (args.before as number) < 1)
+      Object.keys(args).some(
+        (key) => !["before", "entryId", "offset"].includes(key),
+      ) ||
+      ["before", "entryId", "offset"].some(
+        (key) =>
+          args[key] !== undefined &&
+          (!Number.isSafeInteger(args[key]) ||
+            (args[key] as number) < (key === "offset" ? 0 : 1)),
+      ) ||
+      (args.entryId !== undefined && args.before !== undefined) ||
+      (args.offset !== undefined && args.entryId === undefined)
     )
       throw new Error("聊天记录游标无效。");
     return {
@@ -91,15 +104,22 @@ export async function callProductTool(
         {
           type: "text",
           text:
-            (await conversationHistory(
-              runtime,
-              null,
-              context,
-              null,
-              args.before === undefined
-                ? undefined
-                : (((args.before as number) - 1) as EntryId),
-            )) || "{}",
+            args.entryId !== undefined
+              ? await conversationEntry(
+                  runtime,
+                  args.entryId as EntryId,
+                  (args.offset as number | undefined) ?? 0,
+                  context,
+                )
+              : (await conversationHistory(
+                  runtime,
+                  null,
+                  context,
+                  null,
+                  args.before === undefined
+                    ? undefined
+                    : (((args.before as number) - 1) as EntryId),
+                )) || "{}",
         },
       ],
     };

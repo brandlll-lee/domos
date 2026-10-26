@@ -72,7 +72,7 @@ export class EngineProjection {
       event.type === "approval"
     ) {
       await this.flush();
-      await this.runtime.commit(async (tx) => {
+      await this.runtime.commit(async (tx, current) => {
         const doc = await tx.doc(EngineDoc, this.runtime.conversationId);
         if (event.type === "session") {
           if (doc.sessionId !== event.id)
@@ -80,10 +80,25 @@ export class EngineProjection {
               ? { controls: doc.runtime.controls }
               : {};
           doc.sessionId = event.id;
+          if (doc.sessionKey) {
+            doc.sessions ??= {};
+            if (doc.sessions[doc.sessionKey]?.id !== event.id)
+              doc.sessions[doc.sessionKey] = { id: event.id, through: null };
+          }
         }
         if (event.type === "accepted") {
           doc.dispatch = "accepted";
           doc.turnId = event.id ?? null;
+          const session = doc.sessionKey
+            ? doc.sessions?.[doc.sessionKey]
+            : undefined;
+          if (
+            event.ready !== false &&
+            !current.input.operation &&
+            current.input.entryId &&
+            session
+          )
+            session.through = current.input.entryId;
         }
         if (event.type === "approval") doc.approvals.push(event.approval);
       }, this.context);

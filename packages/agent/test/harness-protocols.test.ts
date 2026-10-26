@@ -43,6 +43,34 @@ function protocol() {
   };
 }
 
+test.each([null, "/work/session.jsonl"])(
+  "Pi stops a cancelled session selection (%s) before publishing a session",
+  async (sessionId) => {
+    const { process, events, emit } = protocol();
+    process.receive = (request) =>
+      process.frame({
+        type: "response",
+        id: request.id,
+        success: true,
+        data: { cancelled: true },
+      });
+    await expect(
+      piProvider.open({
+        process,
+        config: { provider: "pi", model: null },
+        sessionId,
+        instructions: "Role",
+        emit,
+      }),
+    ).rejects.toThrow("切换已取消");
+    expect(
+      events.some(
+        (event) => event.type === "session" || event.type === "accepted",
+      ),
+    ).toBe(false);
+  },
+);
+
 test("Pi returns extension selections and cancellations to the native request", async () => {
   const { process, events, emit } = protocol();
   process.receive = (request) => {
