@@ -32,4 +32,6 @@ The review found and corrected native mouse coordinate rejection, restart reconn
 
 Looks good. Ship.
 
+Follow-up CI review found a macOS restart race after the close command returned. Restart now waits for the previous daemon to exit before it reconnects. If graceful exit stalls, the existing stop path checks executable identity and process ownership first. A regression holds the old daemon alive and checks that reconnection waits. The native late-effect regression also passes on Windows after this change.
+
 Not checked: online model task success, third-party site reachability, and production host permissions. Cross-platform and container results must come from CI for the final commit. An explicit browser restart closes tabs and loses unsaved input.

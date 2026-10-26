@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
@@ -8,11 +8,12 @@ const mocks = vi.hoisted(() => ({
   call: vi.fn(),
   spawn: vi.fn(),
   list: vi.fn(),
+  connect: vi.fn(),
   cliError: false,
 }));
 vi.mock("@modelcontextprotocol/sdk/client/index.js", () => ({
   Client: class {
-    connect = async () => {};
+    connect = mocks.connect;
     close = async () => {};
     callTool = mocks.call;
     listTools = mocks.list;
@@ -126,6 +127,39 @@ test("catalog cleanup does not launch a browser to close it", async () => {
   await service.catalog();
   await service.close();
   expect(mocks.spawn).not.toHaveBeenCalled();
+});
+
+test("restart waits for the closing daemon before reconnecting", async () => {
+  const service = await setup();
+  await service.prepare(new AbortController().signal);
+  const env = mocks.spawn.mock.calls[0]?.[2].env;
+  const pidFile = join(
+    env.AGENT_BROWSER_SOCKET_DIR,
+    `${env.AGENT_BROWSER_SESSION}.pid`,
+  );
+  await writeFile(pidFile, "987654");
+  let alive = true;
+  const checked = Promise.withResolvers<void>();
+  const kill = vi.spyOn(process, "kill").mockImplementation(() => {
+    checked.resolve();
+    if (!alive) throw Object.assign(new Error("Exited"), { code: "ESRCH" });
+    return true;
+  });
+  try {
+    const restarting = service.call(
+      "agent_browser_restart",
+      {},
+      new AbortController().signal,
+    );
+    await checked.promise;
+    expect(mocks.connect).toHaveBeenCalledTimes(1);
+    alive = false;
+    await restarting;
+    expect(mocks.connect).toHaveBeenCalledTimes(2);
+  } finally {
+    kill.mockRestore();
+    await rm(pidFile, { force: true });
+  }
 });
 
 test.each(["native", "transport", "cdp"])(

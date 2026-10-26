@@ -174,15 +174,18 @@ export async function openBrowserService(directory, home) {
           );
       });
     });
-  const stop = async () => {
-    const path = join(socket, `${session}.pid`);
-    let pid;
-    try {
-      pid = Number((await readFile(path, "utf8")).trim());
-    } catch (error) {
-      if (error.code === "ENOENT") return;
-      throw error;
+  const waitForExit = async (pid, signal) => {
+    while (true) {
+      try {
+        process.kill(pid, 0);
+      } catch (error) {
+        if (error.code === "ESRCH") return;
+        throw error;
+      }
+      await setTimeout(50, undefined, { signal });
     }
+  };
+  const stop = async (pid) => {
     if (!Number.isSafeInteger(pid) || pid < 1 || pid === process.pid)
       throw new Error("浏览器进程身份未确认。");
     const execute = promisify(execFile);
@@ -216,7 +219,11 @@ export async function openBrowserService(directory, home) {
         "ps",
         ["-p", String(pid), "-o", "uid=", "-o", "comm="],
         { timeout: 5000 },
-      );
+      ).catch((error) => {
+        if (error.code === 1 && !error.stdout.trim()) return { stdout: "" };
+        throw error;
+      });
+      if (!stdout.trim()) return;
       const identity = stdout.trim().match(/^(\d+)\s+(.+)$/);
       executable = identity?.[2];
       owned = Number(identity?.[1]) === process.getuid();
@@ -248,16 +255,7 @@ export async function openBrowserService(directory, home) {
         if (error.code !== "ESRCH") throw error;
       }
     }
-    const timeout = AbortSignal.timeout(5000);
-    while (true) {
-      try {
-        process.kill(pid, 0);
-      } catch (error) {
-        if (error.code === "ESRCH") return;
-        throw error;
-      }
-      await setTimeout(50, undefined, { signal: timeout });
-    }
+    await waitForExit(pid, AbortSignal.timeout(5000));
   };
   let pending = Promise.resolve();
   const interruption = join(state, "browser-interrupted");
@@ -298,13 +296,24 @@ export async function openBrowserService(directory, home) {
       );
   };
   const closeBrowser = async () => {
+    let pid;
     try {
-      await access(join(socket, `${session}.pid`));
+      pid = Number(
+        (await readFile(join(socket, `${session}.pid`), "utf8")).trim(),
+      );
     } catch (error) {
       if (error.code === "ENOENT") return;
       throw error;
     }
-    await run(["close"], AbortSignal.timeout(3000)).catch(stop);
+    if (!Number.isSafeInteger(pid) || pid < 1 || pid === process.pid)
+      throw new Error("浏览器进程身份未确认。");
+    await run(["close"], AbortSignal.timeout(3000)).catch(() => {});
+    try {
+      await waitForExit(pid, AbortSignal.timeout(1000));
+    } catch (error) {
+      if (error.name !== "AbortError") throw error;
+      await stop(pid);
+    }
   };
   const prepare = async (signal) => {
     for (let attempt = 0; ; attempt++) {
