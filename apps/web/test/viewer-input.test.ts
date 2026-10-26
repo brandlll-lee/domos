@@ -4,7 +4,7 @@ import {
   viewportPoint,
 } from "../src/features/computer/viewer-input.ts";
 
-test("window coordinates follow the decoded image and exclude letterboxing", () => {
+test("viewport coordinates follow the decoded image and exclude letterboxing", () => {
   const image = { naturalWidth: 1280, naturalHeight: 720 };
   const frame = { width: 1280, height: 720 };
   const rect = { left: 20, top: 30, width: 640, height: 360 };
@@ -22,6 +22,18 @@ test("window coordinates follow the decoded image and exclude letterboxing", () 
   expect(
     viewportPoint(image, { ...rect, width: 0 }, frame, 20, 30),
   ).toBeUndefined();
+});
+
+test("page coordinates use the decoded frame ratio when metadata includes browser chrome", () => {
+  expect(
+    viewportPoint(
+      { naturalWidth: 1262, naturalHeight: 568 },
+      { left: 0, top: 0, width: 631, height: 284 },
+      { width: 1280, height: 720 },
+      315.5,
+      142,
+    ),
+  ).toEqual({ x: 640, y: 288 });
 });
 
 test("an uncertain input stops queued typing and still permits hand-back", async () => {

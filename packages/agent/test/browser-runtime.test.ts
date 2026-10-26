@@ -23,6 +23,15 @@ vi.mock("node:child_process", () => ({
   spawn: mocks.spawn,
   execFile: vi.fn(),
 }));
+vi.mock("../src/harness/browser-view.mjs", () => ({
+  openBrowserView: async (
+    _run: unknown,
+    _call: unknown,
+    _signal: unknown,
+    _ready: unknown,
+    input: unknown,
+  ) => ({ input }),
+}));
 const entry = "../src/harness/browser-service.mjs";
 const { openBrowserService } = await import(entry);
 const policyEntry = "../src/harness/browser-tools.mjs";
@@ -215,20 +224,22 @@ test("a new worker retains an interrupted browser until explicit restart", async
   await restored.settle();
 });
 
-test("viewer input waits for native replies and retains unknown delivery", async () => {
+test("viewer input waits for browser replies and retains unknown delivery", async () => {
   const service = await setup();
-  const execute = vi.fn(async () => ({ isError: false }));
-  await service.human(execute, new AbortController().signal);
-  expect(execute).toHaveBeenCalledTimes(1);
+  const view = await service.view(new AbortController().signal);
+  await view.input(
+    [["keyboard", "type", "Draft"]],
+    new AbortController().signal,
+  );
+  await service.settle();
+  mocks.cliError = true;
   await expect(
-    service.human(async () => {
-      throw new Error("transport closed");
-    }, new AbortController().signal),
+    view.input([["mouse", "move", "10", "20"]], new AbortController().signal),
   ).rejects.toThrow("结果未知");
-  await expect(
-    service.human(execute, new AbortController().signal),
-  ).rejects.toThrow("结果未知");
-  expect(execute).toHaveBeenCalledTimes(1);
+  await expect(service.settle()).rejects.toThrow("结果未知");
+  mocks.cliError = false;
+  await service.call("agent_browser_restart", {}, new AbortController().signal);
+  await service.settle();
 });
 
 test("runtime parameters are hidden and rejected at execution", async () => {

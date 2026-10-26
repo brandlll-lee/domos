@@ -19,7 +19,7 @@ export function viewportPoint(
     ].every((n) => Number.isFinite(n) && n > 0)
   )
     return;
-  const height = frame.height;
+  const height = (frame.width * image.naturalHeight) / image.naturalWidth;
   const scale = Math.min(
     rect.width / image.naturalWidth,
     rect.height / image.naturalHeight,

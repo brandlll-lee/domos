@@ -123,7 +123,7 @@ for (const name of [
   "http-service.mjs",
   "native-history.mjs",
   "browser-service.mjs",
-  "browser-window.mjs",
+  "browser-view.mjs",
   "desktop-view.mjs",
   "computer-service.mjs",
   "desktop-session.mjs",

@@ -6,11 +6,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 
-test.skip(
-  process.platform === "darwin" && Boolean(process.env.CI),
-  "Native capture needs screen recording permission on an interactive Mac.",
-);
-
 let worker: ChildProcess;
 let directory: string;
 let url: string;
@@ -45,13 +40,13 @@ async function openBrowser(page: import("@playwright/test").Page) {
   await view.getByRole("button", { name: "启用浏览器", exact: true }).click();
   const image = view.getByRole("img", { name: "工作电脑画面" });
   await expect(image).toBeVisible();
+  const opened = once(worker, "message");
+  worker.send("open-takeover-page");
+  const [result] = await opened;
+  expect(result.type).toBe("takeover-page-opened");
   await view.getByRole("button", { name: "接管", exact: true }).click();
   await expect(view.getByRole("status")).toHaveText("你正在操作");
-  await image.click();
   const modifier = process.platform === "darwin" ? "Meta" : "Control";
-  await page.keyboard.press(`${modifier}+l`);
-  await page.keyboard.insertText(`${url}/takeover-fixture`);
-  await page.keyboard.press("Enter");
   return { view, image, modifier };
 }
 
@@ -60,8 +55,6 @@ async function point(
   state: {
     width: number;
     height: number;
-    outerWidth: number;
-    outerHeight: number;
     draft: { x: number; y: number; width: number; height: number };
     hover: { x: number; y: number; width: number; height: number };
     confirm: { x: number; y: number; width: number; height: number };
@@ -85,28 +78,20 @@ async function point(
   const scale = Math.min(rect.width / size.width, rect.height / size.height);
   const width = size.width * scale,
     height = size.height * scale;
-  const border = (state.outerWidth - state.width) / 2;
   const target = state[name];
   return {
     x:
       rect.x +
       (rect.width - width) / 2 +
-      ((target.x + target.width * fraction + border) * width) /
-        state.outerWidth,
+      ((target.x + target.width * fraction) * width) / state.width,
     y:
       rect.y +
       (rect.height - height) / 2 +
-      ((target.y +
-        target.height / 2 +
-        state.outerHeight -
-        state.height -
-        border) *
-        height) /
-        state.outerHeight,
+      ((target.y + target.height / 2) * height) / state.height,
   };
 }
 
-test("takeover controls the native browser and preserves its layout through fullscreen", async ({
+test("takeover controls the Agent browser and preserves its layout through fullscreen", async ({
   page,
   request,
 }, info) => {
@@ -220,7 +205,7 @@ test("takeover controls the native browser and preserves its layout through full
   expect((await state()).value).toBe("上海气 粘贴中文");
 });
 
-test("a failed native input pauses the viewer and reconnect never replays it", async ({
+test("a failed browser input pauses the viewer and reconnect never replays it", async ({
   page,
   request,
 }) => {

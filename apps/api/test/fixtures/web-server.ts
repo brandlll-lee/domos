@@ -253,6 +253,24 @@ process.on("message", async (message) => {
   } else if (message === "release") {
     release?.();
     process.send?.({ type: "released" });
+  } else if (message === "open-takeover-page") {
+    const bot = (await bots.list(BACKGROUND_CONTEXT))[0];
+    if (!bot) throw new Error("Bot required");
+    const { target } = await computer.serviceTarget(bot.id, BACKGROUND_CONTEXT);
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Address required");
+    const result = await target.services.call(
+      bot.id,
+      "browser",
+      "agent_browser_open",
+      { url: `http://127.0.0.1:${address.port}/takeover-fixture` },
+      "fixture",
+      new AbortController().signal,
+      BACKGROUND_CONTEXT,
+    );
+    if (result.isError) throw new Error(JSON.stringify(result.content));
+    process.send?.({ type: "takeover-page-opened" });
   } else if (message === "disconnect-computer") {
     await computer.close(BACKGROUND_CONTEXT);
     process.send?.({ type: "computer-disconnected" });

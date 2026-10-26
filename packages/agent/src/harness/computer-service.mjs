@@ -38,74 +38,7 @@ export function openComputerService(directory, home, emit = () => {}) {
         const instance = await browser;
         if (input.operation === "view") {
           if (input.action === "open") {
-            const pid = await instance.window(signal);
-            const native = await driver();
-            const listed = await native.callTool(
-              "list_windows",
-              JSON.stringify({ pid }),
-              { signal },
-            );
-            const windows =
-              JSON.parse(listed.structuredJson ?? "{}").windows ?? [];
-            const candidates = windows.filter(
-              (w) =>
-                w.pid === pid &&
-                !w.minimized &&
-                w.bounds?.width > 0 &&
-                w.bounds?.height > 0,
-            );
-            if (listed.isError || candidates.length !== 1)
-              throw new Error("请保留一个可见的 Bot 浏览器窗口，再重新连接。");
-            const target = {
-              kind: "window",
-              pid,
-              window_id: candidates[0].window_id,
-            };
-            let dimensions;
-            const bound = {
-              async callTool(name, args, options) {
-                if (name === "get_window_state") {
-                  const result = await native.callTool(name, args, options);
-                  dimensions = JSON.parse(result.structuredJson ?? "{}");
-                  return result;
-                }
-                if (name === "move_cursor") {
-                  const { x, y } = JSON.parse(args);
-                  await instance.hover(
-                    x,
-                    y,
-                    dimensions.screenshot_width,
-                    dimensions.screenshot_height,
-                    options.signal,
-                  );
-                  return { isError: false };
-                }
-                return instance.human(async () => {
-                  let result = await native.callTool(name, args, options);
-                  const outcome = JSON.parse(result.structuredJson ?? "{}");
-                  if (
-                    result.isError &&
-                    (outcome.code ?? outcome.refusal?.code) ===
-                      "background_unavailable"
-                  )
-                    result = await native.callTool(
-                      name,
-                      JSON.stringify({
-                        ...JSON.parse(args),
-                        delivery_mode: "foreground",
-                      }),
-                      options,
-                    );
-                  if (result.isError)
-                    throw new Error(result.text || "浏览器输入未确认。");
-                  return result;
-                }, options.signal);
-              },
-            };
-            views.set(
-              input.id,
-              openDesktopView(bound, input.id, activity, target),
-            );
+            views.set(input.id, await instance.view(signal));
             return {};
           }
           const view = views.get(input.id);

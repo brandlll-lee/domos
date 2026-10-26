@@ -1,11 +1,6 @@
 import { setTimeout } from "node:timers/promises";
 
-export function openDesktopView(
-  driver,
-  id,
-  activity,
-  target = { kind: "desktop", display_id: "primary" },
-) {
+export function openDesktopView(driver, id, activity) {
   let seq = 0;
   let waiting;
   let pointer;
@@ -16,7 +11,7 @@ export function openDesktopView(
       JSON.stringify({
         ...args,
         session: id,
-        target,
+        target: { kind: "desktop", display_id: "primary" },
       }),
       { signal },
     );
@@ -40,18 +35,8 @@ export function openDesktopView(
       signal.throwIfAborted();
       const result = await activity.capture(() =>
         driver.callTool(
-          target.kind === "window" ? "get_window_state" : "get_desktop_state",
-          JSON.stringify({
-            session: id,
-            max_image_dimension: 1920,
-            ...(target.kind === "window"
-              ? {
-                  pid: target.pid,
-                  window_id: target.window_id,
-                  include_accessibility_tree: false,
-                }
-              : {}),
-          }),
+          "get_desktop_state",
+          JSON.stringify({ session: id, max_image_dimension: 1920 }),
           { signal },
         ),
       );
@@ -111,9 +96,6 @@ export function openDesktopView(
                 to_x: message.x,
                 to_y: message.y,
                 button: message.button,
-                ...(target.kind === "window"
-                  ? { delivery_mode: "foreground" }
-                  : {}),
               },
               signal,
             );
