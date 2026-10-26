@@ -39,12 +39,8 @@ jobs:
       - name: Verify browser control and application regressions
         run: pnpm test --exclude=packages/agent/test/harness-context.test.ts --exclude=packages/agent/test/harness-recovery.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml
       - run: pnpm exec playwright install chromium --only-shell --with-deps
-      - name: Verify native browser takeover and web workflows
-        if: runner.os != 'Linux'
+      - name: Verify browser takeover and web workflows
         run: pnpm test:e2e --output=test-results/e2e
-      - name: Verify native browser takeover in a graphical session
-        if: runner.os == 'Linux'
-        run: xvfb-run -a pnpm test:e2e --output=test-results/e2e
       - uses: actions/upload-artifact@v6
         if: always()
         with:

@@ -86,8 +86,8 @@ pnpm build
 pnpm exec playwright test apps/web/test/browser-takeover.spec.ts
 ```
 
-接管验收使用独立临时数据目录、真实 agent-browser 和 Cua 窗口捕获。工作浏览器运行在图形会话中。Linux 使用 Xvfb。测试先通过原生地址栏打开专用网页。专用网页把实际值、焦点、选择范围、按键和滚动位置回传给测试服务。测试从 Domos 画面点击字段，不预先用脚本聚焦。覆盖中文追加、全选替换、删除、剪贴板粘贴、Tab、Esc、回车、悬停、拖动选字、滚动和交还。Chromium 的 CDP 输入法接口覆盖组词与提交；它不证明所有系统输入法候选窗口均可用。测试接口见 [Playwright CDPSession](https://playwright.dev/docs/api/class-cdpsession) 和 [Chrome Input](https://chromedevtools.github.io/devtools-protocol/tot/Input/)。
+接管验收使用独立临时数据目录和真实 agent-browser 网页画面流。工作浏览器默认无界面运行。测试通过 Agent 使用的浏览器工具打开专用网页，再从 Domos 接管。专用网页把实际值、焦点、选择范围、按键和滚动位置回传给测试服务。测试从 Domos 画面点击字段，不预先用脚本聚焦。覆盖中文追加、全选替换、删除、剪贴板粘贴、Tab、Esc、回车、悬停、拖动选字、滚动和交还。Chromium 的 CDP 输入法接口覆盖组词与提交；它不证明所有系统输入法候选窗口均可用。测试接口见 [Playwright CDPSession](https://playwright.dev/docs/api/class-cdpsession) 和 [Chrome Input](https://chromedevtools.github.io/devtools-protocol/tot/Input/)。
 
 失败用例中只有故障注入拦截一次输入请求。它检查暂停、重新连接和输入不被自动重放。正常动作仍使用真实浏览器。队列测试检查动作顺序、未知结果后的停止、移动合并和容量上限。
 
-Playwright 保存 1440、768、390 宽度的截图，并检查固定身份区、三个 Tab、等比画面、底栏和全屏恢复。桌面端验收另行检查原生窗口全屏与恢复。Checks 在三个系统运行通用回归，保存 `test-results/web.xml`、失败轨迹和截图。原生浏览器画面用例在 Windows 和 Linux 运行。macOS CI 跳过三项原生画面用例；本地 Mac 需要先按 [Cua 官方流程](https://cua.ai/docs/cua-driver/quickstart) 授予屏幕录制和辅助功能权限，再执行验收。Computer effects 同时运行坐标与输入队列测试。未 push 的提交没有远端 CI 结果。此验收不调用模型，不报告模型成功率或轮数改善。
+Playwright 保存 1440、768、390 宽度的截图，并检查固定身份区、三个 Tab、等比画面、底栏和全屏恢复。空状态回归检查连接中、未启用、未就绪和失败状态的水平居中及内容边界。桌面端验收另行检查原生窗口全屏与恢复。Checks 在三个系统运行网页画面和通用回归，保存 `test-results/web.xml`、失败轨迹和截图。Browser 验收不依赖 Cua 窗口捕获或屏幕录制授权。Computer 的原生桌面仍受系统图形会话和权限限制。Computer effects 同时运行坐标与输入队列测试。未 push 的提交没有远端 CI 结果。此验收不调用模型，不报告模型成功率或轮数改善。

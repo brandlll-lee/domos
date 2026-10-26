@@ -22,19 +22,17 @@ While an outcome is unknown, Domos permits bounded observations. It blocks more 
 
 ## Human takeover
 
-The details panel keeps one fixed identity header and three tabs: Bot, Computer, and Browser. Computer shows the desktop. Browser shows the Bot's native Chrome window, including its address bar and tabs. Both use the same headed browser and shared display control.
+The details panel keeps one fixed identity header and three tabs: Bot, Computer, and Browser. Computer shows the desktop. Browser shows the Bot's webpage through agent-browser streaming. It uses the same session and persistent profile as the Bot's browser tools. The default browser runs headless. An explicitly headed browser shares display control with Computer.
 
 Click the screen to take control. The first click only requests control. It does not reach the remote screen. Click a field, then type, paste, select, or scroll. Shift+Escape returns focus to the toolbar. Return control when finished. Takeover keeps the panel size. The Bot must observe the page again.
 
-The browser service reads its own profile's DevTools endpoint. CDP identifies the browser PID. Cua binds one visible window from that PID. An ambiguous or unavailable window stops the connection. Browser viewing requires a headed browser and a graphical session. Headless browser tools still work without this viewer.
+The browser service connects to the session's loopback stream endpoint. Frame acknowledgements pace delivery. Browser viewing and input do not use desktop capture, screen recording permission, or native window discovery. The browser's address bar and tabs are not part of the viewport.
 
-Cua captures the selected window and executes input against that window in the same session. The viewer maps the displayed image to the reported screenshot coordinates. It excludes letterboxing and rejects input while the matching image loads. Human window drags use foreground delivery. Other native inputs first use background delivery. A driver result of `background_unavailable` means delivery did not occur. Only this explicit refusal permits a foreground retry. Other failed or uncertain results stop input.
+The viewer fits the decoded image and excludes letterboxing from input. Browser coordinates use CSS pixels. The decoded aspect ratio sets the visible height when screencast metadata includes browser chrome. Pointer gestures retain their path until release. Browser commands acknowledge input before Domos returns control.
 
-Page hover uses the owned browser's CDP input route. It reads live window and page dimensions. The mapping assumes standard Chrome borders. Side-panel layouts need native viewport bounds before they can use the same calibration.
+Text input uses a focused textarea over the viewport. Composition stays local until it ends. Normal input and paste send text once. Special keys use browser key presses. Pointer movements support hover. A drag submits its buffered path on release. Cancellation, focus loss, and hand-back discard an unfinished gesture.
 
-Text input uses a focused textarea over the viewport. Composition stays local until it ends. Normal input and paste send text once. Special keys use atomic native presses. Pointer movements support hover. A drag submits its start and end on release. Cancellation, focus loss, and hand-back discard an unfinished gesture.
-
-Each connection has one bounded input queue. Consecutive pointer moves coalesce. A failed command or a full queue stops input. Frame acknowledgements use a separate path. Hand-back remains available. Reconnect releases the old lease and does not replay input. Native unknown outcomes retain the browser restart requirement.
+Each connection has one bounded input queue. Consecutive pointer moves coalesce. A failed command or a full queue stops input. Frame acknowledgements use a separate path. Hand-back remains available. Reconnect releases the old lease and does not replay input. Unknown browser outcomes retain the browser restart requirement.
 
 The screen fits the available area and keeps its aspect ratio. The bottom toolbar stays visible. It contains connection state, return control, panel expansion, settings, and fullscreen. Fullscreen uses the platform Fullscreen API. It hides the app shell and desktop title bar. Escape exits locally. It does not reach the remote browser. Exiting restores the panel and control state. Electron grants fullscreen only to the trusted Domos main frame.
 
@@ -48,7 +46,7 @@ Domos owns session, launch, profile, restore, certificate, and screenshot storag
 
 ## Local and remote setup
 
-The same execution rules apply to native work computers, spare computers, and VPS work computers. The selected work image must contain a browser. A headed Linux browser also needs a graphical session. The application service image and the work image have separate jobs.
+The same execution rules apply to native work computers, spare computers, and VPS work computers. The selected work image must contain a browser. The default headless browser viewer also works without a graphical session. Desktop viewing needs an available graphical session. The application service image and the work image have separate jobs.
 
 The Add Docker Computer form exposes three network policies:
 
@@ -68,4 +66,4 @@ The Checks workflow runs these tests on Windows, Linux, and macOS and saves JUni
 
 The installed adapter targets `agent-browser` 0.39.1. Configuration and command behavior were checked against the [official configuration reference](https://agent-browser.dev/configuration) and [command reference](https://agent-browser.dev/commands). Memoh informs the compact tool boundary. OpenMausBot informs uncertain-state recovery. openbot informs draining and input readback. rakazo informs shared screen ownership.
 
-Native capture and delivery follow the [Cua MCP tools reference](https://cua.ai/docs/cua-driver/reference/mcp-tools). Browser identity uses [CDP SystemInfo](https://chromedevtools.github.io/devtools-protocol/tot/SystemInfo/). Fullscreen follows the [Fullscreen API](https://developer.mozilla.org/en-US/docs/Web/API/Element/requestFullscreen) and [Electron session permissions](https://www.electronjs.org/docs/latest/api/session). Text handling follows the [compositionend event](https://developer.mozilla.org/en-US/docs/Web/API/Element/compositionend_event), [input event](https://developer.mozilla.org/en-US/docs/Web/API/Element/input_event), and [wheel units](https://developer.mozilla.org/en-US/docs/Web/API/WheelEvent/deltaMode).
+Browser frames and pacing follow the [agent-browser streaming reference](https://agent-browser.dev/streaming). Browser input commands follow the installed 0.39.1 command implementation. Desktop capture and delivery follow the [Cua MCP tools reference](https://cua.ai/docs/cua-driver/reference/mcp-tools). Fullscreen follows the [Fullscreen API](https://developer.mozilla.org/en-US/docs/Web/API/Element/requestFullscreen) and [Electron session permissions](https://www.electronjs.org/docs/latest/api/session). Text handling follows the [compositionend event](https://developer.mozilla.org/en-US/docs/Web/API/Element/compositionend_event), [input event](https://developer.mozilla.org/en-US/docs/Web/API/Element/input_event), and [wheel units](https://developer.mozilla.org/en-US/docs/Web/API/WheelEvent/deltaMode).
