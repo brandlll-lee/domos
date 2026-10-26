@@ -11,15 +11,13 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
   const [name, setName] = useState("工作电脑");
   const [id, setId] = useState(() => `work-${crypto.randomUUID().slice(0, 8)}`);
   const [image, setImage] = useState("domos-workspace:3");
-  const [prepared, setPrepared] = useState<{
-    image: string;
-    proxyImage?: string;
-  }>();
   const [host, setHost] = useState("");
   const [user, setUser] = useState("");
   const [knownHostsFile, setKnownHostsFile] = useState("");
   const [identityFile, setIdentityFile] = useState("");
   const [remote, setRemote] = useState(false);
+  const [network, setNetwork] = useState<"none" | "web" | "restricted">("none");
+  const [proxyImage, setProxyImage] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const desktop = window.domosDesktop;
@@ -53,13 +51,8 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
                 id,
                 image,
                 volume: `domos-${id}-work`,
-                network:
-                  !remote && prepared?.image === image && prepared.proxyImage
-                    ? "web"
-                    : "none",
-                ...(!remote && prepared?.image === image && prepared.proxyImage
-                  ? { proxyImage: prepared.proxyImage }
-                  : {}),
+                network,
+                ...(network === "web" ? { proxyImage } : {}),
                 cpus: 2,
                 memoryMiB: 1024,
                 pids: 256,
@@ -91,7 +84,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
       >
         <p className="detail-note">
           使用已准备 Pi 工作镜像的 Docker 主机。远程电脑通过 SSH
-          接入。容器默认关闭网络。
+          接入。选择网络策略后，Bot 按该策略访问网站。
         </p>
         {!remote && desktop && (
           <Button
@@ -104,8 +97,11 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
               try {
                 const result = await desktop.prepare();
                 if (!result.ok || !result.value) throw new Error(result.error);
-                setPrepared(result.value);
                 setImage(result.value.image);
+                if (result.value.proxyImage) {
+                  setProxyImage(result.value.proxyImage);
+                  setNetwork("web");
+                }
               } catch (cause) {
                 setError(
                   cause instanceof Error
@@ -141,6 +137,32 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
             required
             onValueChange={setImage}
           />
+          <div className="field">
+            <span className="field-label">网络策略</span>
+            <ChoicePicker
+              label="网络策略"
+              value={network}
+              onValueChange={(value) => setNetwork(value as typeof network)}
+              items={[
+                { value: "none", label: "关闭外部网络" },
+                { value: "web", label: "允许 HTTP(S) 网站" },
+                { value: "restricted", label: "受限公网出网" },
+              ]}
+            />
+          </div>
+          {network === "web" && (
+            <TextField
+              label="代理镜像"
+              value={proxyImage}
+              required
+              onValueChange={setProxyImage}
+            />
+          )}
+          {network === "restricted" && (
+            <p className="detail-note">
+              Docker 主机需要安装 Domos 出网防火墙规则。
+            </p>
+          )}
           <div className="field">
             <span className="field-label">Docker 位置</span>
             <ChoicePicker

@@ -300,6 +300,58 @@ test.afterEach(async () => {
   await rm(directory, { recursive: true, force: true, maxRetries: 5 });
 });
 
+test("remote Docker setup submits the selected browser network policy", async ({
+  page,
+}, testInfo) => {
+  await page.goto(url);
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  const settings = page.getByRole("main", { name: "设置", exact: true });
+  await settings
+    .getByRole("group", { name: "电脑高级管理", exact: true })
+    .getByRole("button", { name: "打开", exact: true })
+    .click();
+  await settings
+    .getByRole("button", { name: "添加 Docker 电脑", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "添加 Docker 电脑",
+    exact: true,
+  });
+  await dialog.getByRole("combobox", { name: "Docker 位置" }).click();
+  await page.getByRole("option", { name: "远程 Docker", exact: true }).click();
+  await dialog
+    .getByLabel("SSH 主机", { exact: true })
+    .fill("work.example.test");
+  await dialog
+    .getByLabel("主机密钥文件路径", { exact: true })
+    .fill("/home/user/.ssh/known_hosts");
+  await expect(
+    dialog.getByRole("combobox", { name: "网络策略" }),
+  ).toContainText("关闭外部网络");
+  await dialog.getByRole("combobox", { name: "网络策略" }).click();
+  await page
+    .getByRole("option", { name: "允许 HTTP(S) 网站", exact: true })
+    .click();
+  await dialog.getByLabel("代理镜像", { exact: true }).fill("domos-egress:1");
+  await page.screenshot({
+    path: testInfo.outputPath("remote-browser-network.png"),
+  });
+  const submitted = Promise.withResolvers<unknown>();
+  await page.route("**/rpc/computer/add", async (route) => {
+    submitted.resolve(route.request().postDataJSON());
+    await route.abort();
+  });
+  await dialog.getByRole("button", { name: "添加电脑", exact: true }).click();
+  expect(JSON.stringify(await submitted.promise)).toContain('"network":"web"');
+  expect(JSON.stringify(await submitted.promise)).toContain(
+    '"proxyImage":"domos-egress:1"',
+  );
+  expect(JSON.stringify(await submitted.promise)).toContain(
+    '"host":"work.example.test"',
+  );
+  await expect(dialog.getByRole("alert")).toBeVisible();
+});
+
 test("header model selection saves choices and fits both themes", async ({
   page,
 }, info) => {

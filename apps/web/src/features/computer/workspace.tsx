@@ -44,6 +44,12 @@ export function ComputerWorkspace({
     <section className="computer-workspace" aria-label={`${bot.name}的电脑`}>
       <div className="computer-workspace-context">
         <span title={status?.name}>{status?.name ?? "尚未选择电脑"}</span>
+        {service === "browser" && status && (
+          <span className="detail-note">
+            {item?.available ? "浏览器已就绪" : "浏览器待连接"} ·{" "}
+            {computerLabels.network[status.network]}
+          </span>
+        )}
         <div className="detail-inline">
           <Button
             variant="ghost"
