@@ -562,6 +562,9 @@ test("first use prepares the default Bot with a computer and engine before share
         .getByRole("button", { name: "检查连接", exact: true })
         .click();
       await page.getByRole("button", { name: "关闭", exact: true }).click();
+      await expect(
+        page.getByRole("complementary", { name: /的详情$/ }),
+      ).toBeHidden();
       await page
         .getByRole("textbox", { name: "消息", exact: true })
         .fill("生成报告");

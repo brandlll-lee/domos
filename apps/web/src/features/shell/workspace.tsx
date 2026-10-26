@@ -5,13 +5,23 @@ import { ChartBarIcon } from "@phosphor-icons/react/dist/csr/ChartBar";
 import { ChatTextIcon } from "@phosphor-icons/react/dist/csr/ChatText";
 import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
-import { type ReactNode, useEffect, useState } from "react";
+import {
+  type ReactNode,
+  startTransition,
+  useEffect,
+  useState,
+  ViewTransition,
+} from "react";
 import { useWorkspaceLayout } from "./layout.ts";
 import { ResizeHandle } from "./resize-handle.tsx";
 import { Titlebar } from "./titlebar.tsx";
 import "./style.css";
 
 export type RailView = "conversation" | "usage";
+
+function interruptMotion() {
+  document.activeViewTransition?.skipTransition();
+}
 
 export function Workspace({
   sidebar,
@@ -68,6 +78,8 @@ export function Workspace({
   return (
     <div
       className="workspace"
+      onPointerDownCapture={interruptMotion}
+      onKeyDownCapture={interruptMotion}
       ref={sizing.setRoot}
       data-mobile={sizing.mobile || undefined}
       data-surface={sidebarOpen ? undefined : "full"}
@@ -80,7 +92,9 @@ export function Workspace({
           sizing.mobile || !sidebarOpen ? undefined : sizing.widths.sidebar
         }
         onContacts={
-          sizing.mobile && sidebarOpen ? () => setContactsOpen(true) : undefined
+          sizing.mobile && sidebarOpen
+            ? () => startTransition(() => setContactsOpen(true))
+            : undefined
         }
         actions={actions}
       />
@@ -133,14 +147,16 @@ export function Workspace({
           </div>
         </nav>
       )}
-      <div className="workspace-content">{children}</div>
+      <ViewTransition update="panel-layout">
+        <div className="workspace-content">{children}</div>
+      </ViewTransition>
       {panels.map(({ side, title, modal, open, change, content }) => (
         <PanelDialog.Root
           key={side}
           open={open}
           modal={modal}
           disablePointerDismissal={!modal}
-          onOpenChange={change}
+          onOpenChange={(open) => startTransition(() => change(open))}
         >
           <PanelDialog.Portal container={sizing.root} keepMounted>
             {modal && <PanelDialog.Backdrop className="panel-backdrop" />}
@@ -158,6 +174,8 @@ export function Workspace({
               }}
               initialFocus={modal || side === "inspector"}
               finalFocus={() => {
+                if (document.activeElement?.closest(".workspace-content"))
+                  return false;
                 const trigger = document.getElementById(
                   side === "sidebar" ? "contacts-trigger" : inspectorTrigger,
                 );

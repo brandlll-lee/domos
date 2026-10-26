@@ -128,6 +128,9 @@
   max-width: 100%;
   z-index: 1;
   outline: none;
+  transition:
+    opacity var(--motion-feedback),
+    translate var(--motion-message-in) var(--ease-message-in);
 }
 .workspace-panel[data-side="sidebar"] {
   inset-inline-start: var(--rail-width);
@@ -141,14 +144,45 @@
   inset-inline-end: 0;
   background: var(--color-canvas);
   border-inline-start: 1px solid var(--color-edge);
-  transition:
-    opacity var(--motion-feedback),
-    translate var(--motion-message-in) var(--ease-message-in);
 }
 .workspace-panel[data-side="inspector"][data-starting-style],
 .workspace-panel[data-side="inspector"][data-ending-style] {
   opacity: 0;
-  translate: var(--space-3) 0;
+  translate: 100% 0;
+}
+.workspace-panel[data-side="sidebar"][data-starting-style],
+.workspace-panel[data-side="sidebar"][data-ending-style] {
+  opacity: 0;
+  translate: -100% 0;
+}
+:root {
+  view-transition-name: none;
+}
+::view-transition,
+::view-transition-group(*) {
+  pointer-events: none;
+}
+::view-transition-group(.panel-layout) {
+  animation-duration: var(--motion-message-in);
+  animation-timing-function: var(--ease-message-in);
+  overflow: clip;
+}
+::view-transition-old(.panel-layout) {
+  display: none;
+}
+::view-transition-new(.panel-layout) {
+  animation: none;
+  object-fit: none;
+  object-position: left top;
+}
+::view-transition-group(root) {
+  animation: none;
+}
+::view-transition-old(root) {
+  display: none;
+}
+::view-transition-new(root) {
+  animation: none;
 }
 .workspace-panel[data-modal] {
   z-index: 3;
@@ -280,7 +314,10 @@
   top: 0;
 }
 @media (prefers-reduced-motion: reduce) {
-  .workspace-panel[data-side="inspector"] {
+  .workspace-panel {
     transition: none;
+  }
+  ::view-transition-group(*) {
+    animation: none;
   }
 }

@@ -1,6 +1,6 @@
 import { type ChildProcess, fork } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,21 @@ import { expect, test } from "@playwright/test";
 let worker: ChildProcess;
 let directory: string;
 let url: string;
+
+test("chat input stays active while a panel closes", async ({ page }) => {
+  await page.goto(url);
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: /的详情$/ });
+  await expect(panel).toBeInViewport();
+  await panel.getByRole("button", { name: "关闭", exact: true }).click();
+  const input = page.getByLabel("消息", { exact: true });
+  await input.click();
+  await input.fill("侧栏关闭时输入");
+  await expect(input).toBeFocused();
+  await expect(
+    page.getByRole("button", { name: "发送", exact: true }),
+  ).toBeEnabled();
+});
 
 test("sending paints the outgoing message before the network receipt", async ({
   page,
@@ -420,6 +435,7 @@ test("computer viewing uses separate tabs and releases control when closed", asy
   await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
   const details = page.locator("#bot-details");
   const identity = details.locator(".detail-identity");
+  await expect(identity).toBeInViewport({ ratio: 1 });
   const first = await identity.boundingBox();
   await expect(details.locator(".bot-hero")).toHaveCount(1);
   await details.getByRole("button", { name: "电脑设置", exact: true }).click();
@@ -441,7 +457,9 @@ test("computer viewing uses separate tabs and releases control when closed", asy
   await expect(view.getByRole("status")).toHaveText("你正在操作");
   expect((await view.boundingBox())?.width).toBeLessThan(700);
   await view.getByRole("button", { name: "展开工作区", exact: true }).click();
-  expect((await view.boundingBox())?.width).toBeGreaterThan(800);
+  await expect
+    .poll(async () => (await view.boundingBox())?.width)
+    .toBeGreaterThan(800);
   await view.getByRole("button", { name: "收起工作区", exact: true }).click();
   for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme });
@@ -648,6 +666,7 @@ test("Bot panels keep their hierarchy in both themes and panel widths", async ({
     page.locator('.workspace-panel[data-side="inspector"]'),
   ).toHaveCSS("translate", "none");
   for (const width of [320, 384, 640]) {
+    await page.evaluate(() => document.activeViewTransition?.finished);
     await handle.hover();
     const current = Number(await handle.getAttribute("aria-valuenow"));
     const box = await handle.boundingBox();
@@ -1221,4 +1240,103 @@ test("resizing tolerates blocked preferences and pointer cancellation", async ({
   expect(Number(await handle.getAttribute("aria-valuenow"))).toBeGreaterThan(
     Number(min),
   );
+});
+
+test("panel transitions preserve the transcript and draft through rapid toggles and reduced motion", async ({
+  page,
+}, info) => {
+  test.setTimeout(60000);
+  const receipt = once(worker, "message");
+  worker.send({ history: 160 });
+  await receipt;
+  await page.setViewportSize({ width: 1620, height: 940 });
+  await page.goto(url);
+  const input = page.getByRole("textbox", { name: "消息", exact: true });
+  await input.fill("保留这份草稿");
+  await expect(page.locator(".message")).toHaveCount(120);
+  await page.evaluate(() => {
+    const frames: {
+      time: number;
+      visible: number;
+      gap: number;
+      transitions: number;
+    }[] = [];
+    document.documentElement.dataset.panelRecording = "true";
+    const sample = (time: number) => {
+      const viewport = document.querySelector<HTMLElement>(".transcript");
+      if (!viewport) throw new Error("Transcript missing");
+      const rect = viewport.getBoundingClientRect();
+      frames.push({
+        time,
+        visible: Array.from(document.querySelectorAll(".message")).filter(
+          (node) => {
+            const row = node.getBoundingClientRect();
+            return row.bottom > rect.top && row.top < rect.bottom;
+          },
+        ).length,
+        gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
+        transitions: document
+          .getAnimations()
+          .filter(
+            (animation) =>
+              animation.effect instanceof KeyframeEffect &&
+              animation.effect.pseudoElement?.includes(
+                "view-transition-group",
+              ) &&
+              animation.effect.getTiming().duration === 220,
+          ).length,
+      });
+      document.documentElement.dataset.panelFrames = JSON.stringify(frames);
+      if (document.documentElement.dataset.panelRecording === "true")
+        requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+  const trigger = page.getByRole("button", { name: "Bot电脑", exact: true });
+  for (let index = 0; index < 6; index++) await trigger.click();
+  await expect(
+    page.locator(".workspace-panel[data-side=inspector]"),
+  ).toBeHidden();
+  await page.waitForFunction(() =>
+    document
+      .getAnimations()
+      .every(
+        (animation) =>
+          !(animation.effect instanceof KeyframeEffect) ||
+          !animation.effect.pseudoElement?.includes("view-transition"),
+      ),
+  );
+  const frames = await page.evaluate(() => {
+    document.documentElement.dataset.panelRecording = "false";
+    return JSON.parse(document.documentElement.dataset.panelFrames ?? "[]") as {
+      time: number;
+      visible: number;
+      gap: number;
+      transitions: number;
+    }[];
+  });
+  expect(frames.some((frame) => frame.transitions > 0)).toBe(true);
+  expect(frames.every((frame) => frame.visible > 0 && frame.gap <= 2)).toBe(
+    true,
+  );
+  await expect(input).toHaveValue("保留这份草稿");
+  await expect(page.locator(".message")).toHaveCount(120);
+  await writeFile(
+    info.outputPath("panel-frames.json"),
+    JSON.stringify(frames, null, 2),
+  );
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  for (const width of [1360, 768, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await trigger.click();
+    const panel = page.locator(".workspace-panel[data-side=inspector]");
+    await expect(panel).toBeVisible();
+    expect(
+      await panel.evaluate((node) => getComputedStyle(node).transitionDuration),
+    ).toBe("0s");
+    await page.screenshot({ path: info.outputPath(`panel-${width}.png`) });
+    await panel.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(panel).toBeHidden();
+    await expect(input).toHaveValue("保留这份草稿");
+  }
 });

@@ -103,6 +103,7 @@ async function chooseDetail(
   details: import("@playwright/test").Locator,
   label: string,
 ) {
+  await expect(details).toBeVisible();
   if (label === "电脑") {
     await details.getByRole("tab", { name: "Computer", exact: true }).click();
     await details
@@ -1538,6 +1539,7 @@ test("chat gutters stay full width while bubbles follow the available panel", as
   });
   await details.getByRole("button", { name: "关闭", exact: true }).click();
   await control({ content: "好的。" });
+  await input.click();
   await input.fill("谢谢");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.getByLabel("Domos 的回复").last()).toHaveText("好的。");
@@ -2013,6 +2015,7 @@ test("text contrast, keyboard focus and message scrolling meet the UI contract",
     page.getByRole("button", { name: "添加内容", exact: true }),
   ).toBeEnabled();
   await details.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(details).toBeHidden();
   await page.getByRole("button", { name: "添加内容", exact: true }).focus();
   await expect(
     page.getByRole("button", { name: "添加内容", exact: true }),

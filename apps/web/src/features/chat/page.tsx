@@ -3,6 +3,7 @@ import { type ChatMessage, messageText } from "@domos/agent/messages";
 import { characterIdentity } from "@domos/ui/characters";
 import {
   type CSSProperties,
+  startTransition,
   useCallback,
   useEffect,
   useRef,
@@ -90,7 +91,11 @@ function BotChat({
     [draft.update],
   );
   const [view, setView] = useState<"chat" | "usage">("chat");
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsOpen, updateDetailsOpen] = useState(false);
+  const setDetailsOpen = useCallback(
+    (open: boolean) => startTransition(() => updateDetailsOpen(open)),
+    [],
+  );
   const [panel, setPanel] = useState<"settings" | "computer" | "browser">(
     "settings",
   );
@@ -119,7 +124,7 @@ function BotChat({
     };
     window.addEventListener("domos:takeover-open", open);
     return () => window.removeEventListener("domos:takeover-open", open);
-  }, [bot.id]);
+  }, [bot.id, setDetailsOpen]);
   const takeoverId =
     panel === (takeover?.service === "browser" ? "browser" : "computer") &&
     chat.view?.approvals?.some((approval) => approval.id === takeover?.id)
@@ -201,7 +206,7 @@ function BotChat({
             setExpanded(false);
           }}
           expanded={expanded}
-          onExpand={() => setExpanded((value) => !value)}
+          onExpand={() => startTransition(() => setExpanded((value) => !value))}
         />
       }
     >

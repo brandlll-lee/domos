@@ -222,7 +222,7 @@ export function useTranscript(
     element?.addEventListener("scrollend", complete);
     element?.addEventListener("wheel", interrupt, { passive: true });
     element?.addEventListener("touchstart", interrupt, { passive: true });
-    const observer = new ResizeObserver(schedule);
+    const observer = new ResizeObserver(() => measure.current());
     if (viewport.current) observer.observe(viewport.current);
     if (content.current) observer.observe(content.current);
     return () => {
