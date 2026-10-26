@@ -17,7 +17,10 @@ export function sessionKey(
 
 export function selectSession(doc: EngineState, key: string) {
   doc.sessions ??= {};
-  if (doc.sessionKey === key) return;
+  if (doc.sessionKey === key) {
+    doc.sessionId ??= doc.sessions[key]?.id ?? null;
+    return;
+  }
   const previous = doc.sessionKey;
   if (previous && doc.sessionId)
     doc.sessions[previous] ??= { id: doc.sessionId, through: null };

@@ -426,7 +426,7 @@ export class EngineExecution {
         runtime,
         doc.activeTurn,
         context,
-        doc.sessionId ? doc.sessions?.[key]?.through : null,
+        doc.sessionId ? (doc.sessions?.[key]?.through ?? null) : null,
         undefined,
         budget,
       );

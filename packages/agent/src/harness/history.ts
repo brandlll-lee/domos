@@ -9,11 +9,10 @@ export async function conversationHistory(
   runtime: EngineRuntime,
   turnId: string | null,
   context: Context,
-  through: EntryId | null | undefined,
+  through: EntryId | null,
   before?: EntryId,
   budget: number = engineLimits.historyCharacters,
 ) {
-  if (through === undefined) return "";
   let entries: readonly EntryRecord[] = [];
   let bounded = before !== undefined;
   await runtime.commit(async (tx, current) => {
