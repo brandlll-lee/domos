@@ -42,7 +42,7 @@ test.afterEach(async () => {
 
 async function openBrowser(page: import("@playwright/test").Page) {
   await page.goto(url);
-  await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   await page.getByRole("tab", { name: "Browser", exact: true }).click();
   const view = page.getByRole("region", { name: "Domos的电脑", exact: true });
   await view.getByRole("button", { name: "启用浏览器", exact: true }).click();
@@ -243,7 +243,7 @@ for (const refresh of [false, true]) {
     await page.reload();
     await expect(card.getByText("已完成", { exact: true })).toBeVisible();
     if (!refresh) {
-      await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
+      await page.getByRole("button", { name: "Bot详情", exact: true }).click();
       await page.getByRole("tab", { name: "Browser", exact: true }).click();
       await view.getByRole("button", { name: "电脑设置", exact: true }).click();
       await page

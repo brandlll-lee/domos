@@ -211,10 +211,18 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     await page.getByLabel("配对码", { exact: true }).fill(ready.pairing);
     await page.getByRole("button", { name: "连接", exact: true }).click();
     await expect(page.getByRole("button", { name: "Bot详情" })).toBeVisible();
+    await expect(page.locator(".app-titlebar, .app-rail")).toHaveCount(0);
+    await expect(page.locator("#bot-details")).toBeVisible();
+    await expect(page.locator(".chat-identity .engine-mark")).toBeVisible();
+    await captureWindow(
+      desktop,
+      page,
+      testInfo.outputPath("workspace-native.png"),
+    );
     const original = await desktop.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0]?.getBounds(),
     );
-    await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
+    await page.getByRole("button", { name: "Bot详情", exact: true }).click();
     await page.getByRole("tab", { name: "Browser", exact: true }).click();
     await page.getByRole("button", { name: "启用浏览器", exact: true }).click();
     await expect(page.getByRole("img", { name: "工作电脑画面" })).toBeVisible();
@@ -266,11 +274,7 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
       .getByRole("button", { name: "新建 Bot", exact: true })
       .boundingBox();
     const environmentBox = await environment.boundingBox();
-    expect(
-      environmentBox &&
-        plus &&
-        plus.x > environmentBox.x + environmentBox.width,
-    ).toBe(true);
+    expect(environmentBox && plus && plus.y < environmentBox.y).toBe(true);
     await resize.press("Home");
     expect((await environment.boundingBox())?.x).toBe(left);
     const menuShown = desktop.evaluate(
@@ -290,6 +294,10 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     for (const theme of ["dark", "light"] as const) {
       await page.emulateMedia({ colorScheme: theme });
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await expect(page.locator(".chat-identity")).toHaveCSS(
+        "background-color",
+        theme === "dark" ? "rgb(24, 24, 26)" : "rgb(245, 245, 247)",
+      );
       await captureWindow(
         desktop,
         page,
@@ -325,7 +333,7 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
         ?.match(/[a-f0-9]{2}/gi)
         ?.slice(0, 3)
         .map((part) => Number.parseInt(part, 16));
-      await expect(page.locator(".app-titlebar:visible")).toHaveCSS(
+      await expect(page.locator(".sidebar")).toHaveCSS(
         "background-color",
         `rgb(${rgb?.join(", ")})`,
       );
@@ -367,7 +375,7 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     await expect(
       reopened.getByRole("main", { name: "用量", exact: true }),
     ).toContainText("此范围还没有用量记录。");
-    await reopened.getByRole("button", { name: "会话", exact: true }).click();
+    await reopened.getByRole("button", { name: "用量", exact: true }).click();
     await expect(
       reopened.getByRole("button", { name: "Bot详情" }),
     ).toBeVisible();
@@ -390,11 +398,8 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
       .click();
     const viewer = reopened.getByRole("dialog", { name: "photo.png" });
     await expect(viewer).toBeVisible();
-    const titlebar = await reopened.locator(".app-titlebar").boundingBox();
     const frame = await viewer.boundingBox();
-    expect(frame && titlebar && frame.y === titlebar.y + titlebar.height).toBe(
-      true,
-    );
+    expect(frame?.y).toBe(48);
     await captureWindow(
       desktop,
       reopened,

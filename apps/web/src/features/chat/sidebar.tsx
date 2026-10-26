@@ -1,8 +1,9 @@
 import type { Bot, BotPresence } from "@domos/agent/bots";
 import { BotAvatar } from "@domos/ui/avatar";
+import { PanelDialog } from "@domos/ui/dialog";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { MagnifyingGlassIcon as MagnifyingGlass } from "@phosphor-icons/react/dist/csr/MagnifyingGlass";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { chatCopy } from "./copy.ts";
 import { contactTime } from "./format.ts";
 
@@ -13,10 +14,14 @@ export function Sidebar({
   bots,
   selected,
   connected,
+  actions,
+  onSelect,
 }: {
   bots: BotPresence[];
   selected: Bot;
   connected: boolean;
+  actions: ReactNode;
+  onSelect: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [now, setNow] = useState(Date.now);
@@ -31,24 +36,28 @@ export function Sidebar({
   );
   return (
     <aside className="sidebar">
-      <label className="sidebar-search">
-        <MagnifyingGlass size={14} aria-hidden="true" />
-        <input
-          type="search"
-          aria-label={chatCopy.search}
-          placeholder="搜索"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-      </label>
+      <div className="sidebar-toolbar">
+        <label className="sidebar-search">
+          <MagnifyingGlass size={14} aria-hidden="true" />
+          <input
+            type="search"
+            aria-label={chatCopy.search}
+            placeholder="搜索"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
+        {actions}
+      </div>
       <ScrollArea className="sidebar-scroll">
         <nav aria-label={chatCopy.conversations}>
           {matches.length ? (
             matches.map((bot) => (
-              <a
+              <PanelDialog.Close
                 className="contact-row"
                 key={bot.id}
-                href={`#bot/${bot.id}`}
+                render={<a href={`#bot/${bot.id}`} />}
+                onClick={onSelect}
                 aria-label={bot.name}
                 aria-current={bot.id === selected.id ? "page" : undefined}
               >
@@ -69,7 +78,7 @@ export function Sidebar({
                   )}
                   <span>{contactPreview(bot)}</span>
                 </div>
-              </a>
+              </PanelDialog.Close>
             ))
           ) : (
             <p className="sidebar-empty" role="status">

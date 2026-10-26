@@ -25,6 +25,10 @@ export function SettingsRoot({
   useEffect(() => () => cancelAnimationFrame(frame.current ?? 0), []);
 
   function returnTarget() {
+    const panel = document.querySelector<HTMLElement>(
+      ".workspace-panel[data-modal]:not([data-closed])",
+    );
+    if (panel) return panel;
     return (
       [
         opener.current,
@@ -66,6 +70,7 @@ export function SettingsRoot({
         admin: access.admin,
         standalone: access.standalone,
         open: show,
+        showing: open,
       }}
     >
       {children}

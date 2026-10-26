@@ -8,6 +8,7 @@ import { ClockIcon } from "@phosphor-icons/react/dist/csr/Clock";
 import { CpuIcon } from "@phosphor-icons/react/dist/csr/Cpu";
 import { LightningIcon } from "@phosphor-icons/react/dist/csr/Lightning";
 import { TerminalWindowIcon } from "@phosphor-icons/react/dist/csr/TerminalWindow";
+import type { ReactNode } from "react";
 import type { useComputer } from "../../computer/use-computer.ts";
 import { EngineSelector } from "../../models/engine-selector.tsx";
 import { EngineReasoning } from "./native-controls.tsx";
@@ -20,6 +21,7 @@ export function RootPanel({
   data,
   engine,
   chat,
+  context,
   computerName,
   computer,
   canManage,
@@ -29,6 +31,7 @@ export function RootPanel({
   data: WorkData | null;
   engine: EngineSetup;
   chat: { model: ChatView["model"]; connected: boolean };
+  context: ReactNode;
   computerName?: string;
   computer: ReturnType<typeof useComputer>;
   canManage: boolean;
@@ -60,6 +63,7 @@ export function RootPanel({
             />
           </SettingRow>
           <EngineReasoning setup={engine} />
+          <SettingRow title="上下文">{context}</SettingRow>
           <SettingRow title="操作审批">
             <SegmentedControl
               label="操作审批"

@@ -1,6 +1,7 @@
 import type { Bot, BotPresence } from "@domos/agent/bots";
 import { type ChatMessage, messageText } from "@domos/agent/messages";
 import { characterIdentity } from "@domos/ui/characters";
+import { layout } from "@domos/ui/tokens";
 import {
   type CSSProperties,
   startTransition,
@@ -14,9 +15,8 @@ import { BotDetails, type BotPanelView } from "../bots/details/index.tsx";
 import { useEngine } from "../bots/details/use-engine.ts";
 import { selectBot, useBots } from "../bots/use-bots.ts";
 import { useComputer } from "../computer/use-computer.ts";
-import { EngineSelector } from "../models/engine-selector.tsx";
 import { useSettings } from "../settings/context.ts";
-import { type RailView, Workspace } from "../shell/workspace.tsx";
+import { Workspace } from "../shell/workspace.tsx";
 import { UsageSurface } from "../usage/page.tsx";
 import { Approvals } from "./approvals.tsx";
 import { Composer } from "./composer.tsx";
@@ -91,7 +91,11 @@ function BotChat({
     [draft.update],
   );
   const [view, setView] = useState<"chat" | "usage">("chat");
-  const [detailsOpen, updateDetailsOpen] = useState(false);
+  const [detailsOpen, updateDetailsOpen] = useState(
+    () =>
+      window.innerWidth >=
+      layout.sidebar.min + layout.chatMin + layout.inspector.min,
+  );
   const setDetailsOpen = useCallback(
     (open: boolean) => startTransition(() => updateDetailsOpen(open)),
     [],
@@ -145,48 +149,40 @@ function BotChat({
       ? chatCopy.errors.reply
       : null);
   const showPanel = (view: BotPanelView) => {
-    const open = !detailsOpen || panel !== "settings" || detailPanel !== view;
     setView("chat");
     setPanel("settings");
     setExpanded(false);
     setDetailPanel(view);
-    setDetailsOpen(open);
+    setDetailsOpen(true);
   };
   const closePanel = () => {
     setDetailsOpen(false);
     setExpanded(false);
   };
-  const showComputer = () => {
-    setPanel("computer");
-    setDetailPanel("root");
-    setExpanded(false);
-    setView("chat");
-    setDetailsOpen(!detailsOpen || panel !== "computer");
-  };
-  const computerOpen = detailsOpen && panel !== "settings";
-  const railActive = view === "usage" ? "usage" : "conversation";
-  const selectRail = (next: RailView) => {
-    setView(next === "usage" ? "usage" : "chat");
-    closePanel();
-  };
   return (
     <Workspace
       detailsOpen={detailsOpen}
+      obscured={settings.showing}
       onDetailsChange={(open) => {
         if (open) setDetailsOpen(true);
         else closePanel();
       }}
       expanded={panel !== "settings" && expanded}
       inspectorTitle="Bot详情"
-      inspectorTrigger={
-        panel !== "settings" ? "computer-trigger" : "details-trigger"
-      }
-      rail={{ active: railActive, onSelect: selectRail }}
-      sidebarOpen={view === "chat"}
+      usageOpen={view === "usage"}
+      onUsage={() => {
+        setView(view === "usage" ? "chat" : "usage");
+        closePanel();
+      }}
       onSettings={() => settings.open("general", bot.id)}
-      actions={<CreateBot onCreated={selectBot} />}
       sidebar={
-        <Sidebar bots={bots} selected={bot} connected={directoryConnected} />
+        <Sidebar
+          bots={bots}
+          selected={bot}
+          connected={directoryConnected}
+          actions={<CreateBot onCreated={selectBot} />}
+          onSelect={() => setView("chat")}
+        />
       }
       inspector={
         <BotDetails
@@ -198,6 +194,14 @@ function BotChat({
           onClose={closePanel}
           computer={computer}
           chat={{ model: chat.view?.model ?? null, connected: chat.connected }}
+          context={
+            <ContextRing
+              botId={bot.id}
+              state={chat.view?.runtime}
+              provider={engine.profile?.config.provider ?? "pi"}
+              busy={Boolean(chat.view?.busy)}
+            />
+          }
           canManage={settings.admin}
           engine={engine}
           tab={panel === "settings" ? "bot" : panel}
@@ -251,27 +255,9 @@ function BotChat({
             <ChatHeader
               bot={bot}
               busy={Boolean(chat.view?.busy)}
-              detailsOpen={detailsOpen && panel === "settings"}
-              computerOpen={computerOpen}
-              context={
-                <ContextRing
-                  botId={bot.id}
-                  state={chat.view?.runtime}
-                  provider={engine.profile?.config.provider ?? "pi"}
-                  busy={Boolean(chat.view?.busy)}
-                />
-              }
-              modelSelector={
-                <EngineSelector
-                  setup={engine}
-                  model={chat.view?.model ?? null}
-                  connected={chat.connected}
-                  computerName={computer.status?.name}
-                  onConfigure={() => showPanel("engine")}
-                />
-              }
+              detailsOpen={detailsOpen}
+              provider={engine.profile?.config.provider ?? "pi"}
               onDetails={() => showPanel("root")}
-              onComputer={showComputer}
             />
             <span className="sr-only" role="status">
               {connection}

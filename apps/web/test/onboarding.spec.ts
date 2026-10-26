@@ -537,6 +537,7 @@ test("first use prepares the default Bot with a computer and engine before share
       ]);
       await expect(engine.getByRole("alert")).toHaveCount(0);
       await page.getByRole("button", { name: "关闭", exact: true }).click();
+      await page.getByRole("button", { name: "Bot详情", exact: true }).click();
       await page
         .getByRole("button", { name: "选择引擎与模型", exact: true })
         .click();
@@ -612,7 +613,8 @@ test("first use prepares the default Bot with a computer and engine before share
     await page.reload();
     await expect(setup).toBeHidden();
     await expect(page.getByRole("button", { name: "Bot详情" })).toBeVisible();
-    await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
+    await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+    await page.getByRole("tab", { name: "Computer", exact: true }).click();
     await page.getByRole("button", { name: "电脑设置", exact: true }).click();
     const computer = page.getByRole("region", {
       name: "工作电脑",

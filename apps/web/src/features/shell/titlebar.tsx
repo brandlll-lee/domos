@@ -1,7 +1,6 @@
 import { Button } from "@domos/ui/controls";
 import { DotsThreeIcon } from "@phosphor-icons/react/dist/csr/DotsThree";
-import { ListIcon } from "@phosphor-icons/react/dist/csr/List";
-import { type ReactNode, useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { EnvironmentSwitcher } from "./environment-switcher.tsx";
 import "./style.css";
 
@@ -16,17 +15,8 @@ const windowControls = () =>
   (navigator as Navigator & { windowControlsOverlay?: ControlsOverlay })
     .windowControlsOverlay;
 
-export function Titlebar({
-  onContacts,
-  actions,
-  sidebarWidth,
-}: {
-  onContacts?: () => void;
-  actions?: ReactNode;
-  sidebarWidth?: number;
-}) {
+export function Titlebar({ embedded = false }: { embedded?: boolean }) {
   const desktop = window.domosDesktop;
-  const bar = useRef<HTMLElement>(null);
   useEffect(() => {
     const overlay = windowControls();
     if (!overlay) return;
@@ -34,14 +24,14 @@ export function Titlebar({
       const rect = overlay.visible
         ? overlay.getTitlebarAreaRect?.()
         : undefined;
-      const style = bar.current?.style;
+      const style = document.documentElement.style;
       if (!rect || !style) return;
       style.setProperty(
-        "--titlebar-inset-start",
+        "--window-inset-start",
         `${Math.max(0, Math.round(rect.left))}px`,
       );
       style.setProperty(
-        "--titlebar-inset-end",
+        "--window-inset-end",
         `${Math.max(0, Math.round(window.innerWidth - rect.right))}px`,
       );
     };
@@ -67,35 +57,11 @@ export function Titlebar({
     });
     return () => observer.disconnect();
   }, []);
+  if (embedded) return null;
   return (
-    <header
-      className="app-titlebar"
-      data-platform={desktop?.platform}
-      ref={bar}
-    >
-      <div
-        className="titlebar-actions"
-        style={
-          sidebarWidth === undefined
-            ? undefined
-            : {
-                width: `calc(${sidebarWidth}px + var(--rail-width) - var(--space-3))`,
-              }
-        }
-      >
-        {onContacts && (
-          <Button
-            id="contacts-trigger"
-            variant="ghost"
-            size="icon-small"
-            aria-label="联系人"
-            onClick={onContacts}
-          >
-            <ListIcon />
-          </Button>
-        )}
+    <header className="app-titlebar" data-platform={desktop?.platform}>
+      <div className="titlebar-actions">
         <EnvironmentSwitcher />
-        {actions}
       </div>
       {desktop && (
         <Button

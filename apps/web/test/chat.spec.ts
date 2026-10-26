@@ -68,9 +68,11 @@ async function control(
 async function openSettings(page: import("@playwright/test").Page) {
   const settings = page.getByRole("main", { name: "设置", exact: true });
   if (!(await settings.isVisible())) {
-    await expect(
-      page.getByRole("button", { name: "Bot详情", exact: true }),
-    ).toBeVisible();
+    const overlay = page.locator(
+      '.workspace-panel[data-side="inspector"][data-modal]',
+    );
+    if (await overlay.isVisible())
+      await overlay.getByRole("button", { name: "关闭", exact: true }).click();
     const contacts = page.getByRole("button", { name: "联系人", exact: true });
     if (
       (page.viewportSize()?.width ?? 0) <
@@ -251,7 +253,7 @@ test("engine notices use dismissible notifications above the workspace", async (
   ).toBeVisible();
 });
 
-test("model selection is shared, ordered and restored after a failed save", async ({
+test("model selection is ordered and restored after a failed save", async ({
   page,
 }, testInfo) => {
   await stop();
@@ -276,16 +278,14 @@ test("model selection is shared, ordered and restored after a failed save", asyn
   try {
     await page.goto(url);
     const details = await openDetails(page);
-    const header = page.locator(".chat-header .model-selector-trigger");
     const sidebar = details.locator(".model-selector-trigger");
     await sidebar.click();
     await page.getByRole("button", { name: "测试模型二", exact: true }).click();
     await requested.promise;
-    await expect(header).toContainText("测试模型二");
     await expect(sidebar).toContainText("测试模型二");
     await expect(page.locator(".composer-action button")).toBeDisabled();
     await expect(page.locator(".model-selector-popup")).toHaveCount(0);
-    await header.click();
+    await sidebar.click();
     await page.getByRole("button", { name: "测试模型一", exact: true }).click();
     await expect(sidebar).toContainText("测试模型一");
     expect(requests).toBe(1);
@@ -302,7 +302,6 @@ test("model selection is shared, ordered and restored after a failed save", asyn
     await page.getByRole("button", { name: "测试模型二", exact: true }).click();
     await expect(details.getByRole("alert")).toBeVisible();
     await expect(sidebar).toContainText("测试模型一");
-    await expect(header).toContainText("测试模型一");
     expect(inspections).toBeLessThanOrEqual(3);
     for (const colorScheme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme });
@@ -333,7 +332,7 @@ test("model menus use catalog effort without reading runtime controls", async ({
     await route.abort();
   });
   await page.goto(url);
-  await page.locator(".chat-header .model-selector-trigger").click();
+  await page.locator("#bot-details .model-selector-trigger").click();
   const menu = page.getByRole("dialog", {
     name: "任务引擎与模型",
     exact: true,
@@ -366,10 +365,10 @@ test("model menus use catalog effort without reading runtime controls", async ({
     fail ? route.abort() : route.continue(),
   );
   await menu.getByRole("button", { name: "Test model", exact: true }).click();
-  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(menu.getByRole("alert")).toBeVisible();
   expect((await api.engines.get({ botId: 1 })).config).toEqual(before);
   fail = false;
-  await page.locator(".chat-header .model-selector-trigger").click();
+  await page.locator("#bot-details .model-selector-trigger").click();
   await source.getByRole("radio", { name: "电脑", exact: true }).click();
   await menu.getByRole("button", { name: "Test model", exact: true }).click();
   await expect
@@ -377,7 +376,7 @@ test("model menus use catalog effort without reading runtime controls", async ({
       async () => (await api.engines.get({ botId: 1 })).config.accountSource,
     )
     .toBe("native");
-  await page.locator(".chat-header .model-selector-trigger").click();
+  await page.locator("#bot-details .model-selector-trigger").click();
   await expect(
     source.getByRole("radio", { name: "电脑", exact: true }),
   ).toBeChecked();
@@ -459,7 +458,7 @@ test("saved catalogs and effort stay usable during background discovery", async 
   });
   try {
     await page.goto(url);
-    const header = page.locator(".chat-header .model-selector-trigger");
+    const header = page.locator("#bot-details .model-selector-trigger");
     await expect(header).toHaveText("Pi · Test model");
     await header.click();
     await expect(
@@ -523,7 +522,7 @@ test("changing native effort keeps the model catalog and connection", async ({
     await route.continue();
   });
   await page.goto(url);
-  const picker = page.locator(".chat-header .model-selector-trigger");
+  const picker = page.locator("#bot-details .model-selector-trigger");
   await expect(picker).toBeEnabled();
   await picker.click();
   await expect(
@@ -536,6 +535,7 @@ test("changing native effort keeps the model catalog and connection", async ({
   await expect(
     details.getByText("已读取工作电脑的账号和模型。", { exact: true }),
   ).toBeVisible();
+  await chooseDetail(details, "运行");
   await picker.click();
   await expect(
     page.getByRole("button", { name: "Test model", exact: true }),
@@ -630,7 +630,6 @@ test("native controls, interaction, compaction and Usage work in both themes", a
   await expect(
     details.getByRole("combobox", { name: "推理强度", exact: true }),
   ).toContainText("high");
-  await details.getByRole("button", { name: "关闭", exact: true }).click();
   await page.getByRole("button", { name: "上下文窗口", exact: true }).click();
   const contextWindow = page.getByRole("dialog", {
     name: "上下文窗口",
@@ -679,12 +678,13 @@ async function createBot(
   name: string,
   model?: string,
 ) {
+  await expect(page.locator(".sidebar-toolbar")).toBeAttached();
   if (
     !(await page
       .getByRole("button", { name: "新建 Bot", exact: true })
       .isVisible())
   )
-    await openDetails(page);
+    await page.getByRole("button", { name: "联系人", exact: true }).click();
   await page.getByRole("button", { name: "新建 Bot", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "新建 Bot", exact: true });
   await dialog.getByLabel("名字", { exact: true }).fill(name);
@@ -741,6 +741,10 @@ test("chat suggestions fill the draft and dismissal stays complete on other devi
   await expect(input).toHaveValue(
     "我已有的草稿\n\n帮我分析一份资料。先问我资料内容和我关心的问题。",
   );
+  await page
+    .locator("#bot-details")
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
     for (const width of [1360, 390]) {
@@ -981,6 +985,7 @@ test("Bot details share the desktop with chat and cover narrow screens", async (
     path: "test-results/bot-details-side-dark.png",
     animations: "disabled",
   });
+  await openDetails(page);
   await chooseDetail(panel, "提示词");
   await panel.getByRole("button", { name: "读取实际提示词" }).click();
   await page.setViewportSize({ width: 1360, height: 500 });
@@ -1013,7 +1018,7 @@ test("Bot details share the desktop with chat and cover narrow screens", async (
   await expect(chat).toBeVisible();
 });
 
-test("workspace separates the window bar, Bot actions, and global settings", async ({
+test("workspace separates Bot controls and global settings", async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -1023,7 +1028,7 @@ test("workspace separates the window bar, Bot actions, and global settings", asy
   for (const width of [360, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     const header = await trigger.boundingBox();
-    expect(header?.y).toBeGreaterThanOrEqual(48);
+    expect(header?.y).toBeGreaterThanOrEqual(0);
     await expect(page.locator("#settings-trigger")).toHaveCount(1);
     await trigger.click();
     const details = page.getByRole("complementary", { name: /的详情$/ });
@@ -1161,6 +1166,8 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
     await page.keyboard.press("Escape");
   }
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "联系人", exact: true }).click();
   let first = true;
   await page.route("**/rpc/bots/create", async (route) => {
     if (first) {
@@ -1230,11 +1237,15 @@ test("model choices load from the server and selection survives a restart", asyn
   await page.reload();
   await chooseDetail(await openDetails(page), "运行");
   await expect(picker).toContainText("测试模型二");
+  const connected = page.getByRole("button", { name: "添加内容", exact: true });
+  await expect(connected).toBeEnabled();
   const port = Number(new URL(url).port);
   await stop();
+  await expect(connected).toBeDisabled();
   await start(port);
-  await expect(picker).toBeEnabled();
+  await expect(connected).toBeEnabled();
   await details.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(details).toBeHidden();
   await page.getByLabel("消息", { exact: true }).fill("验证模型选择");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.getByLabel("Domos 的回复")).toContainText("faux-2");
@@ -1265,11 +1276,12 @@ test("engine controls wait for model selection to finish", async ({ page }) => {
     ).toBeDisabled();
     saving.resolve();
     await expect(
-      page.locator(".chat-header .model-selector-trigger"),
-    ).toContainText("测试模型二");
-    await expect(
       details.getByRole("radio", { name: "Domos", exact: true }),
     ).toBeEnabled();
+    await chooseDetail(details, "运行");
+    await expect(details.locator(".model-selector-trigger")).toContainText(
+      "测试模型二",
+    );
   } finally {
     saving.resolve();
   }
@@ -1285,11 +1297,12 @@ test("model controls wait for engine checks to finish", async ({ page }) => {
     await page.goto(url);
     const details = await openDetails(page);
     await chooseDetail(details, "连接与账号");
-    const picker = page.locator(".chat-header .model-selector-trigger");
-    await expect(picker).toBeEnabled();
     await details
       .getByRole("button", { name: "检查连接", exact: true })
       .click();
+    await chooseDetail(details, "运行");
+    const picker = details.locator(".model-selector-trigger");
+    await expect(picker).toBeEnabled();
     await picker.click();
     await expect(
       page.getByRole("button", { name: "测试模型二", exact: true }),
@@ -1400,14 +1413,20 @@ test("working contacts retain green status across switches, concurrent work, rel
   ] as const) {
     await chooseAppearance(page, label);
     const dot = first.locator(".avatar-status");
-    const avatar = first.locator(".bot-avatar");
-    const bounds = await dot.boundingBox();
-    const frame = await avatar.boundingBox();
-    if (!bounds || !frame) throw new Error("Working avatar missing");
-    expect(bounds.x + bounds.width).toBeCloseTo(frame.x + frame.width, 0);
-    expect(bounds.y + bounds.height).toBeCloseTo(frame.y + frame.height, 0);
+    const offset = await dot.evaluate((element) => {
+      const frame = element.closest(".bot-avatar")?.getBoundingClientRect();
+      if (!frame) throw new Error("Working avatar missing");
+      const bounds = element.getBoundingClientRect();
+      return {
+        right: bounds.right - frame.right,
+        bottom: bounds.bottom - frame.bottom,
+      };
+    });
+    expect(offset.right).toBeCloseTo(0, 0);
+    expect(offset.bottom).toBeCloseTo(0, 0);
     await page.screenshot({
       path: `test-results/contacts-${theme}-working.png`,
+      animations: "disabled",
     });
   }
   await control("release");
@@ -2003,6 +2022,10 @@ test("text contrast, keyboard focus and message scrolling meet the UI contract",
   await picker.focus();
   await page.keyboard.press("Tab");
   await expect(
+    details.getByRole("button", { name: "上下文窗口", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
     details
       .getByRole("radiogroup", { name: "操作审批", exact: true })
       .getByRole("radio", { name: "询问", exact: true }),
@@ -2165,6 +2188,10 @@ test("composer grows, shrinks, and keeps one focus surface in both themes", asyn
     await expect(input).toHaveCSS("outline-style", "none");
     await page.screenshot({ path: `test-results/workspace-${theme}.png` });
   }
+  await page
+    .locator("#bot-details")
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(input).toBeVisible();
   const action = await page
@@ -2609,6 +2636,10 @@ test("latest bubbles stay above the composer after typing, resizing, and reloadi
     ),
   );
   await expectLatest();
+  await page
+    .locator("#bot-details")
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
   await page.setViewportSize({ width: 390, height: 700 });
   await expectLatest();
   await input.fill("");
@@ -3047,12 +3078,11 @@ test("delivered images form a gallery with viewer downloads and keyboard navigat
   ).toBeVisible();
   const viewport = page.viewportSize();
   const frame = await viewer.boundingBox();
-  const titlebar = await page.locator(".app-titlebar").boundingBox();
   expect(frame).toMatchObject({
     x: 0,
-    y: titlebar?.height,
+    y: 0,
     width: viewport?.width,
-    height: (viewport?.height ?? 0) - (titlebar?.height ?? 0),
+    height: viewport?.height,
   });
   const thumbnails = viewer.getByRole("navigation", { name: "图片缩略图" });
   await expect(thumbnails.getByRole("button")).toHaveCount(2);
@@ -3141,11 +3171,10 @@ test("delivered images form a gallery with viewer downloads and keyboard navigat
         "交付图片和报告",
       );
       await expect(viewer).toBeVisible();
-      const top = await page.locator(".app-titlebar").boundingBox();
       const close = await viewer
         .getByRole("button", { name: "关闭弹窗", exact: true })
         .boundingBox();
-      expect(close && top && close.y >= top.y + top.height).toBe(true);
+      expect(close && close.y >= 0).toBe(true);
       expect(
         await strip.evaluate((node) => node.scrollHeight <= node.clientHeight),
       ).toBe(true);
@@ -3284,6 +3313,10 @@ test("typing follows the Bot and failures retain their error message", async ({
     1,
   );
   await expect(failure).toHaveText(errorText);
+  await page
+    .locator("#bot-details")
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
     for (const width of [1440, 768, 390]) {
@@ -3892,7 +3925,7 @@ test("computer details share live directory status and recover a failed refresh"
   await page.keyboard.press("Escape");
   await expect(details).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Bot电脑", exact: true }),
+    page.getByRole("button", { name: "Bot详情", exact: true }),
   ).toBeFocused();
 });
 
@@ -4001,6 +4034,10 @@ test("composer menu adds task materials, keeps drafts, and fits both themes", as
   await expect(page.locator(".composer-attachments")).toContainText(
     "材料已处理。",
   );
+  await page
+    .locator("#bot-details")
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
   for (const [theme, label] of [
     ["light", "浅色"],
     ["dark", "深色"],
@@ -4083,6 +4120,10 @@ test("composer previews pasted images and compact documents in both themes", asy
   await page.keyboard.press("Tab");
   await expect(remove).toBeFocused();
   await expect(remove).toHaveCSS("opacity", "1");
+  await page
+    .locator("#bot-details")
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
   for (const [theme, label] of [
     ["light", "浅色"],
     ["dark", "深色"],

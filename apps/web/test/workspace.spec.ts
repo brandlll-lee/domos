@@ -10,6 +10,85 @@ let worker: ChildProcess;
 let directory: string;
 let url: string;
 
+test("three columns keep the identity capsule and navigation clear at each width", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 1600, height: 960 });
+  let workStreams = 0;
+  await page.route("**/rpc/work/subscribe", async (route) => {
+    workStreams++;
+    await route.continue();
+  });
+  await page.goto(url);
+  const details = page.locator("#bot-details");
+  const capsule = page.getByRole("button", { name: "Bot详情", exact: true });
+  await expect(details).toBeVisible();
+  await expect(details.getByRole("button", { name: /^记忆/ })).toBeVisible();
+  expect(workStreams).toBe(0);
+  await expect(page.locator(".app-titlebar, .app-rail")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Bot电脑", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.locator(".chat-header .model-selector-trigger"),
+  ).toHaveCount(0);
+  const frame = await page.locator(".conversation").boundingBox();
+  const pill = await capsule.boundingBox();
+  if (!frame || !pill) throw new Error("Chat identity missing");
+  expect(
+    Math.abs(pill.x + pill.width / 2 - frame.x - frame.width / 2),
+  ).toBeLessThan(1);
+  const avatar = await capsule.locator(".bot-avatar").boundingBox();
+  const mark = capsule.locator(".engine-mark");
+  const logo = await mark.boundingBox();
+  if (!logo || !avatar) throw new Error("Identity icons missing");
+  expect(logo.x).toBeLessThan(avatar.x + avatar.width);
+  await expect(mark).toHaveAttribute("data-provider", "pi");
+  await expect(capsule.locator(".character")).toHaveCount(1);
+  const footer = page.locator(".sidebar-footer");
+  const composer = await page.locator(".message-composer").boundingBox();
+  if (!composer) throw new Error("Composer missing");
+  expect(composer.y + composer.height).toBeGreaterThan(930);
+  await expect(
+    footer.getByRole("button", { name: "用量", exact: true }),
+  ).toBeVisible();
+  await expect(
+    footer.getByRole("button", { name: "设置", exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("消息", { exact: true }).fill("保留这份草稿");
+  for (const theme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await expect(capsule).toHaveCSS(
+      "background-color",
+      theme === "dark" ? "rgb(24, 24, 26)" : "rgb(245, 245, 247)",
+    );
+    await page.screenshot({ path: info.outputPath(`workspace-${theme}.png`) });
+  }
+  await details.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(details).toBeHidden();
+  await capsule.click();
+  await expect(details).toBeVisible();
+  for (const width of [768, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(
+      page.getByRole("dialog", { name: "Bot详情", exact: true }),
+    ).toBeVisible();
+    await page.screenshot({ path: info.outputPath(`workspace-${width}.png`) });
+    await page.keyboard.press("Escape");
+    await expect(page.getByLabel("消息", { exact: true })).toHaveValue(
+      "保留这份草稿",
+    );
+    if (width === 768) await capsule.click();
+  }
+  await page.getByRole("button", { name: "联系人", exact: true }).click();
+  await expect(
+    footer.getByRole("button", { name: "设置", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Domos", exact: true }).click();
+  await expect(page.getByLabel("消息", { exact: true })).toBeVisible();
+});
+
 test("chat input stays active while a panel closes", async ({ page }) => {
   await page.goto(url);
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
@@ -367,7 +446,7 @@ test("remote Docker setup submits the selected browser network policy", async ({
   await expect(dialog.getByRole("alert")).toBeVisible();
 });
 
-test("header model selection saves choices and fits both themes", async ({
+test("Bot model selection saves choices and fits both themes", async ({
   page,
 }, info) => {
   await page.goto(url);
@@ -432,7 +511,8 @@ test("computer viewing uses separate tabs and releases control when closed", asy
 }, info) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(url);
-  await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  await page.getByRole("tab", { name: "Computer", exact: true }).click();
   const details = page.locator("#bot-details");
   const identity = details.locator(".detail-identity");
   await expect(identity).toBeInViewport({ ratio: 1 });
@@ -492,7 +572,7 @@ test("computer viewing uses separate tabs and releases control when closed", asy
   ).toBeVisible();
   await details.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Bot电脑", exact: true }),
+    page.getByRole("button", { name: "Bot详情", exact: true }),
   ).toBeFocused();
 });
 
@@ -510,7 +590,8 @@ test("workspace empty states stay centered at every panel width", async ({
       });
     });
     await page.goto(url);
-    await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
+    await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+    await page.getByRole("tab", { name: "Computer", exact: true }).click();
     if (state === "loading")
       await expect(
         page.getByRole("heading", { name: "正在连接工作电脑…" }),
@@ -556,7 +637,8 @@ test("computer connection failures keep a direct retry", async ({ page }) => {
     route.abort("failed"),
   );
   await page.goto(url);
-  await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  await page.getByRole("tab", { name: "Computer", exact: true }).click();
   const view = page.getByRole("region", {
     name: "Domos的电脑",
     exact: true,
@@ -797,7 +879,8 @@ test("panels resize live, persist only on release, and retain drafts across layo
   await details.getByRole("button", { name: "编辑", exact: true }).click();
   const name = page.getByRole("textbox", { name: "名字", exact: true });
   await name.fill("尚未保存的名字");
-  await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  await page.getByRole("tab", { name: "Computer", exact: true }).click();
   await page.getByRole("button", { name: "电脑设置", exact: true }).click();
   await details.getByRole("button", { name: "返回", exact: true }).click();
   await details.getByRole("tab", { name: "Bot", exact: true }).click();
@@ -847,7 +930,7 @@ test("settings stay readable in both themes and compact layouts", async ({
   const trigger = page.getByRole("button", { name: "设置", exact: true });
   await trigger.click();
   const settings = page.getByRole("main", { name: "设置", exact: true });
-  await expect(page.locator(".app-titlebar:visible")).toHaveCount(1);
+  await expect(page.locator(".app-titlebar")).toHaveCount(0);
   await expect(input).toBeHidden();
   await expect(
     page.getByRole("dialog", { name: "设置", exact: true }),
@@ -937,6 +1020,17 @@ test("settings stay readable in both themes and compact layouts", async ({
     page.getByRole("button", { name: "设置", exact: true }),
   ).toBeFocused();
   await expect(input).toHaveValue("返回后继续编辑");
+  await expect(page.locator("#bot-details")).toBeVisible();
+  await trigger.click();
+  await page.setViewportSize({ width: 768, height: 800 });
+  await expect(settings).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(settings).toBeHidden();
+  await expect(page.locator(".settings-window")).toBeHidden();
+  const details = page.getByRole("dialog", { name: "Bot详情", exact: true });
+  await expect(details).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(details.locator(":focus")).toHaveCount(1);
 });
 
 test("empty chats retain their creation time and compact controls across layouts", async ({
@@ -967,7 +1061,8 @@ test("empty chats retain their creation time and compact controls across layouts
   );
   await page.reload();
   await expect(time).toHaveAttribute("datetime", createdAt ?? "");
-  await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  await page.getByRole("tab", { name: "Computer", exact: true }).click();
   await page.getByRole("button", { name: "电脑设置", exact: true }).click();
   const details = page.getByRole("complementary", { name: "Domos的详情" });
   await expect(
@@ -1169,7 +1264,8 @@ test("control geometry and interaction states stay consistent", async ({
     exact: true,
   });
   expect((await model.boundingBox())?.height).toBeGreaterThanOrEqual(32);
-  await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  await page.getByRole("tab", { name: "Computer", exact: true }).click();
   await page.getByRole("button", { name: "电脑设置", exact: true }).click();
   const select = details.getByRole("combobox", {
     name: "此 Bot 使用的电脑",
@@ -1292,8 +1388,15 @@ test("panel transitions preserve the transcript and draft through rapid toggles 
     };
     requestAnimationFrame(sample);
   });
-  const trigger = page.getByRole("button", { name: "Bot电脑", exact: true });
-  for (let index = 0; index < 6; index++) await trigger.click();
+  const trigger = page.getByRole("button", { name: "Bot详情", exact: true });
+  const close = page
+    .locator("#bot-details")
+    .getByRole("button", { name: "关闭", exact: true });
+  await close.click();
+  for (let index = 0; index < 3; index++) {
+    await trigger.click();
+    await close.click();
+  }
   await expect(
     page.locator(".workspace-panel[data-side=inspector]"),
   ).toBeHidden();

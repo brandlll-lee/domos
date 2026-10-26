@@ -5,11 +5,23 @@
   padding: 0 var(--space-3) var(--space-3);
   background: var(--color-sidebar);
 }
+.sidebar-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--chat-header-height);
+  padding-block: var(--space-3);
+}
+.sidebar-toolbar > .button {
+  border-radius: var(--radius-round);
+  background: var(--color-surface);
+}
 .sidebar-search {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin: var(--space-4) 0 var(--space-3);
+  margin: 0;
+  flex: 1;
   padding: 0 var(--space-4);
   min-height: 2.25rem;
   border-radius: var(--radius-round);
@@ -103,65 +115,63 @@
   margin: var(--space-3);
 }
 .conversation {
+  position: relative;
   display: grid;
-  grid-template-rows: var(--chat-header-height) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
 }
 .chat-header {
-  grid-area: 1 / 1;
-  position: relative;
+  position: absolute;
+  inset: 0 0 auto;
   display: flex;
-  align-items: center;
+  justify-content: center;
+  align-items: flex-start;
   min-width: 0;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding-inline: var(--space-4);
-  background: color-mix(in srgb, var(--color-canvas) 80%, transparent);
-  backdrop-filter: blur(20px) saturate(1.3);
-  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  min-height: var(--chat-header-height);
+  padding: var(--space-3) var(--space-4);
+  pointer-events: none;
   z-index: 2;
 }
-.chat-header::after {
-  content: "";
-  position: absolute;
-  inset-inline: 0;
-  top: 100%;
-  height: var(--space-4);
-  pointer-events: none;
-  background: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--color-canvas) 50%, transparent),
-    transparent
-  );
-}
-.chat-identity {
-  display: flex;
+.chat-header .chat-identity {
+  display: inline-flex;
   align-items: center;
-  justify-content: flex-start;
   gap: var(--space-2);
-  max-width: calc(100% - 5.5rem);
   min-width: 0;
-  flex: 1;
-  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1);
+  max-width: 100%;
+  min-height: var(--control-height);
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2);
+  border: 1px solid var(--color-edge);
   border-radius: var(--radius-round);
-  background: transparent;
+  background: var(--color-surface);
   color: var(--color-text);
-  font-size: 0.9375rem;
+  font-size: var(--text-label);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-control);
+  pointer-events: auto;
 }
-.chat-header .chat-identity[data-variant="ghost"]:not(:disabled):hover {
-  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+.chat-identity-icons {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  isolation: isolate;
 }
-.chat-header .chat-identity[data-variant="ghost"]:not(:disabled):active {
-  background: color-mix(in srgb, var(--color-text) 9%, transparent);
+.chat-identity-icons .bot-avatar {
+  z-index: 1;
+}
+.chat-identity-icons .engine-mark {
+  width: var(--space-6);
+  height: var(--space-6);
+  margin-inline-start: calc(-1 * var(--space-2));
+  padding: var(--space-1);
+  border-radius: var(--radius-round);
+  background: var(--color-control-hover);
+  fill: currentColor;
 }
 .chat-identity-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  letter-spacing: -0.01em;
 }
 .context-ring {
   position: relative;
@@ -223,63 +233,8 @@
   padding-block-start: var(--space-3);
   border-block-start: 1px solid var(--color-edge);
 }
-.chat-actions {
-  display: flex;
-  flex-shrink: 0;
-  max-width: 75%;
-  gap: var(--space-2);
-}
-.chat-action {
-  width: 2.125rem;
-  min-height: 2.125rem;
-  padding: 0;
-  border-radius: var(--radius-round);
-  color: var(--color-muted);
-  transition:
-    background var(--motion-feedback) ease,
-    transform var(--motion-feedback) ease;
-}
-.chat-header .chat-action[data-variant="ghost"]:not(:disabled):hover {
-  background: color-mix(in srgb, var(--color-surface) 82%, transparent);
-  color: var(--color-text);
-}
-.chat-header .chat-action[data-variant="ghost"]:not(:disabled):active {
-  transform: scale(0.96);
-}
-@media (prefers-reduced-transparency: reduce) {
-  .chat-header {
-    background: var(--color-canvas);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-  .chat-header::after {
-    display: none;
-  }
-}
-@media (forced-colors: active) {
-  .chat-header {
-    background: Canvas;
-    border-bottom: 1px solid CanvasText;
-  }
-  .chat-header::after {
-    display: none;
-  }
-  .chat-header .chat-action[data-variant="ghost"] {
-    border-color: CanvasText;
-    background: Canvas;
-    color: CanvasText;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .chat-header .chat-action {
-    transition: none;
-  }
-  .chat-header .chat-action[data-variant="ghost"]:not(:disabled):active {
-    transform: none;
-  }
-}
 .transcript-pane {
-  grid-area: 1 / 1 / 3 / 2;
+  grid-area: 1 / 1;
   position: relative;
   min-width: 0;
   min-height: 0;
@@ -586,19 +541,22 @@
 }
 .image-viewer-backdrop {
   position: fixed;
-  inset: var(--titlebar-height) 0 0;
+  inset: 0;
   z-index: 2;
   background: color-mix(in srgb, var(--color-canvas) 90%, transparent);
 }
 .image-viewer {
   position: fixed;
-  inset: var(--titlebar-height) 0 0;
+  inset: 0;
   z-index: 3;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   padding: var(--space-4);
   color: var(--color-text);
   outline: none;
+}
+body:has(.workspace[data-platform]) :is(.image-viewer, .image-viewer-backdrop) {
+  top: var(--titlebar-height);
 }
 .image-viewer-header,
 .image-viewer-toolbar {
@@ -760,7 +718,7 @@
   color: var(--color-muted);
 }
 .composer-area {
-  grid-area: 2 / 1;
+  grid-area: 1 / 1;
   align-self: end;
   z-index: 1;
   width: 100%;
@@ -790,10 +748,7 @@
 }
 @media (max-width: 44rem) {
   .chat-header {
-    padding-inline: var(--space-3);
-  }
-  .chat-identity {
-    max-width: calc(100% - 5rem);
+    padding-inline: var(--space-12);
   }
   .composer-area {
     padding-bottom: max(var(--space-3), env(safe-area-inset-bottom));

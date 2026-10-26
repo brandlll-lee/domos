@@ -41,6 +41,7 @@ export function BotDetails({
   onClose,
   computer,
   chat,
+  context,
   canManage,
   engine,
   tab,
@@ -56,6 +57,7 @@ export function BotDetails({
   onClose: () => void;
   computer: ReturnType<typeof useComputer>;
   chat: { model: ChatView["model"]; connected: boolean };
+  context: ReactNode;
   canManage: boolean;
   engine: EngineSetup;
   tab: "bot" | "computer" | "browser";
@@ -64,7 +66,7 @@ export function BotDetails({
   onExpand: () => void;
   takeoverId?: string;
 }) {
-  const work = useBotWork(bot.id, active);
+  const work = useBotWork(bot.id, active && tab === "bot", view !== "root");
   const action = useWorkAction();
   const [selection, setSelection] = useState<PanelEditor | null>(null);
   const editor = selection?.view === view ? selection : null;
@@ -81,6 +83,7 @@ export function BotDetails({
         data={work.data}
         engine={engine}
         chat={chat}
+        context={context}
         computerName={computer.status?.name}
         computer={computer}
         canManage={canManage}

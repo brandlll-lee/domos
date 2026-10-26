@@ -1,12 +1,9 @@
 .app-titlebar {
-  grid-column: 1 / -1;
-  grid-row: 1;
   display: flex;
   align-items: center;
   gap: var(--space-2);
   height: var(--titlebar-height);
-  margin-inline-start: calc(-1 * var(--rail-width));
-  padding-inline: max(var(--space-3), var(--titlebar-inset-start, 0px))
+  padding-inline: max(var(--space-3), var(--window-inset-start, 0px))
     var(--space-3);
   background: var(--color-frame);
   user-select: none;
@@ -17,13 +14,13 @@
   padding-inline-end: max(
     var(--space-3),
     var(--window-controls-width),
-    var(--titlebar-inset-end, 0px)
+    var(--window-inset-end, 0px)
   );
 }
 .app-titlebar[data-platform="darwin"] {
   padding-inline-start: max(
     var(--mac-controls-width),
-    var(--titlebar-inset-start, 0px)
+    var(--window-inset-start, 0px)
   );
 }
 .app-titlebar button {
@@ -34,7 +31,7 @@
   align-items: center;
   justify-content: flex-start;
   gap: var(--space-2);
-  width: calc(var(--sidebar-width) - var(--space-5));
+  flex: 1;
   margin-inline-end: auto;
   padding-inline-end: var(--space-4);
   flex-shrink: 0;
@@ -83,47 +80,65 @@
   position: relative;
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr) 0;
-  grid-template-rows: var(--titlebar-height) minmax(0, 1fr);
   height: 100dvh;
   overflow: clip;
-  padding-inline-start: var(--rail-width);
-  background: var(--color-frame);
+  background: var(--color-canvas);
   isolation: isolate;
 }
-.workspace[data-mobile] {
-  --rail-width: 0px;
-}
-.workspace[data-mobile]::after {
-  display: none;
-}
-.workspace::after {
-  content: "";
-  position: absolute;
-  inset-block: var(--titlebar-height) 0;
-  inset-inline: var(--rail-width) 0;
-  z-index: 2;
-  border-block-start: 1px solid var(--color-edge);
-  border-inline-start: 1px solid var(--color-edge);
-  border-start-start-radius: var(--radius-surface);
-  pointer-events: none;
-}
 .workspace-content {
+  position: relative;
   grid-column: 2;
-  grid-row: 2;
   min-width: 0;
   min-height: 0;
   background: var(--color-canvas);
   overflow: hidden;
 }
-.workspace[data-surface="full"] > .workspace-content {
-  border-start-start-radius: var(--radius-surface);
-}
 .workspace-content > .conversation {
   height: 100%;
 }
+.workspace[data-platform] .usage-page {
+  padding-block-start: var(--titlebar-height);
+}
+.contacts-trigger {
+  position: absolute;
+  inset-block-start: var(--space-3);
+  inset-inline-start: var(--space-3);
+  z-index: 2;
+  -webkit-app-region: no-drag;
+}
+.workspace .chat-header,
+.workspace .sidebar-toolbar,
+.workspace .bot-details > .panel-header {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+.workspace :is(button, a, input, textarea) {
+  -webkit-app-region: no-drag;
+}
+.workspace[data-platform="darwin"] .sidebar-toolbar,
+.workspace[data-platform="darwin"][data-mobile] .chat-header {
+  padding-top: var(--titlebar-height);
+}
+.workspace[data-platform="darwin"] .contacts-trigger {
+  top: calc(var(--titlebar-height) + var(--space-3));
+}
+.workspace[data-platform="win32"] .bot-details > .panel-header,
+.workspace[data-platform="linux"] .bot-details > .panel-header {
+  padding-inline-end: max(
+    var(--window-controls-width),
+    var(--window-inset-end, 0px)
+  );
+}
+.workspace[data-platform="win32"]:not([data-details]) .chat-header,
+.workspace[data-platform="linux"]:not([data-details]) .chat-header {
+  padding-inline: max(
+    var(--window-controls-width),
+    var(--window-inset-end, 0px)
+  );
+}
 .workspace-panel {
   position: absolute;
-  top: var(--titlebar-height);
+  top: 0;
   bottom: 0;
   max-width: 100%;
   z-index: 1;
@@ -133,12 +148,9 @@
     translate var(--motion-message-in) var(--ease-message-in);
 }
 .workspace-panel[data-side="sidebar"] {
-  inset-inline-start: var(--rail-width);
+  inset-inline-start: 0;
   background: var(--color-canvas);
   border-inline-end: 1px solid var(--color-edge);
-}
-.workspace-panel[data-side="sidebar"]:not([data-modal]) {
-  border-start-start-radius: var(--radius-surface);
 }
 .workspace-panel[data-side="inspector"] {
   inset-inline-end: 0;
@@ -197,50 +209,17 @@
 .panel-body {
   height: 100%;
   min-width: 0;
-  border-start-start-radius: inherit;
   overflow: hidden;
 }
 .workspace-panel[data-side="inspector"][data-expanded] {
-  inset-inline-start: var(--rail-width);
+  inset-inline-start: 0;
   inset-inline-end: 0;
   width: auto;
   border: 0;
-  border-start-start-radius: var(--radius-surface);
 }
 .workspace-panel[data-side="sidebar"] .panel-body {
   display: flex;
   flex-direction: column;
-}
-.app-rail {
-  position: absolute;
-  inset-block: var(--titlebar-height) 0;
-  inset-inline-start: 0;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: var(--rail-width);
-  padding-block: var(--space-4);
-}
-.rail-group {
-  display: grid;
-  justify-items: center;
-  gap: var(--space-1);
-}
-.rail-group[data-bottom] {
-  margin-block-start: auto;
-}
-.workspace .app-rail .rail-button {
-  border-radius: var(--radius-round);
-  color: var(--color-muted);
-}
-.workspace .app-rail .rail-button:not(:disabled):hover {
-  background: color-mix(in srgb, var(--color-text) 6%, transparent);
-  color: var(--color-text);
-}
-.workspace .app-rail .rail-button[aria-current="page"] {
-  background: color-mix(in srgb, var(--color-text) 10%, transparent);
-  color: var(--color-text);
 }
 .workspace-panel[data-side="sidebar"] .sidebar {
   flex: 1;
@@ -249,14 +228,27 @@
 }
 .sidebar-footer {
   display: flex;
+  flex-wrap: wrap;
   flex-shrink: 0;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-3);
 }
-.sidebar-footer > .button[data-size="small"] {
+.sidebar-footer .environment-switcher {
   flex: 1;
-  justify-content: flex-start;
+}
+.sidebar-footer nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-inline-start: auto;
+}
+.sidebar-footer [aria-pressed="true"] {
+  background: var(--color-control-hover);
+}
+.sidebar-footer .environment-error {
+  top: auto;
+  bottom: 100%;
 }
 .panel-backdrop {
   position: absolute;
@@ -296,16 +288,6 @@
 }
 .panel-resizer:focus-visible {
   outline: none;
-}
-.workspace[data-mobile] .titlebar-actions {
-  flex: 1;
-  min-width: 0;
-  width: auto;
-  padding-inline-end: 0;
-}
-.workspace[data-mobile] > .workspace-content {
-  margin: 0;
-  border-start-start-radius: 0;
 }
 .workspace[data-mobile] .workspace-panel[data-side="inspector"] {
   width: 100%;

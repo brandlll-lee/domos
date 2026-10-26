@@ -184,6 +184,8 @@ test("native account flows show login choices, retain providers, and select mode
     await page.keyboard.press("Escape");
     await expect(opencode).toBeHidden();
     await page.getByRole("button", { name: "开始使用", exact: true }).click();
+    await page.setViewportSize({ width: 1360, height: 900 });
+    await page.getByRole("button", { name: "Bot详情", exact: true }).click();
     await expect(
       page.getByRole("button", { name: "选择引擎与模型", exact: true }),
     ).toContainText("Fixture OpenCode Model");
@@ -277,6 +279,7 @@ test("native account flows show login choices, retain providers, and select mode
     await settings
       .getByRole("button", { name: "返回对话", exact: true })
       .click();
+    await page.getByRole("button", { name: "Bot详情", exact: true }).click();
     await expect(trigger).toContainText("Fixture OpenCode Model");
     await trigger.click();
     await expect(
@@ -362,6 +365,7 @@ test("native account flows show login choices, retain providers, and select mode
     await expect(
       page.getByRole("region", { name: "允许这次操作？", exact: true }),
     ).toBeVisible();
+    await page.getByRole("button", { name: "Bot详情", exact: true }).click();
     await trigger.click();
     await selector.getByRole("tab", { name: "OpenCode", exact: true }).click();
     await expect(
@@ -416,6 +420,7 @@ test("native account flows show login choices, retain providers, and select mode
       .getByRole("button", { name: "返回对话", exact: true })
       .click();
     await page.setViewportSize({ width: 1360, height: 900 });
+    await page.getByRole("button", { name: "Bot详情", exact: true }).click();
     await expect(trigger).toContainText("Test Model");
     await page.getByRole("combobox", { name: "操作权限", exact: true }).click();
     await page.getByRole("option", { name: "允许一次", exact: true }).click();

@@ -37,7 +37,7 @@ export function useWorkAction() {
   return { busy, error, run, clear: () => setError(null) };
 }
 
-export function useBotWork(botId: number, active: boolean) {
+export function useBotWork(botId: number, active: boolean, live: boolean) {
   const [data, setData] = useState<WorkData | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +56,16 @@ export function useBotWork(botId: number, active: boolean) {
       });
     void (async () => {
       try {
+        if (!live) {
+          const value = await client.work.get(
+            { botId },
+            { signal: controller.signal },
+          );
+          if (!controller.signal.aborted) {
+            setData(value);
+          }
+          return;
+        }
         const events = await client.work.subscribe(
           { botId },
           {
@@ -81,6 +91,6 @@ export function useBotWork(botId: number, active: boolean) {
       }
     })();
     return () => controller.abort();
-  }, [botId, active]);
+  }, [botId, active, live]);
   return { data, profile, setProfile, error, connected: active && connected };
 }
