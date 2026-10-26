@@ -389,7 +389,7 @@ test("a browser preparation opens a real page and returns an MCP screenshot", as
   ).toEqual({ available: true, error: null });
   expect(
     await process.computer({ operation: "prepare", service: "browser" }),
-  ).toEqual({ available: true, error: null });
+  ).toMatchObject({ available: true, error: null });
   const result = await process.computer<ProductResult>({
     operation: "call",
     service: "browser",

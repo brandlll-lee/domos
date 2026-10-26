@@ -28,7 +28,13 @@ export function openComputerService(directory, home, emit = () => {}) {
         return {};
       }
       if (input.service === "browser") {
-        browser ??= openBrowserService(directory, home);
+        if (input.operation === "settle" && !browser) return {};
+        if (!browser) {
+          browser = openBrowserService(directory, home);
+          void browser.catch(() => {
+            browser = undefined;
+          });
+        }
         const instance = await browser;
         if (input.operation === "view") {
           if (input.action === "open") {
@@ -43,6 +49,7 @@ export function openComputerService(directory, home, emit = () => {}) {
           views.delete(input.id);
           return {};
         }
+        if (input.operation === "settle") return instance.settle();
         if (input.operation === "catalog") return instance.catalog();
         if (input.operation === "install") return instance.install(signal);
         if (input.operation === "prepare") return instance.prepare(signal);

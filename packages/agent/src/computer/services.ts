@@ -13,6 +13,7 @@ import type {
 type Control = {
   owner?: string;
   lease?: string;
+  releasing?: string;
   revision: number;
   calls: Set<{
     botId: number;
@@ -25,6 +26,7 @@ type Control = {
 export class ComputerServices {
   private readonly workers = new Map<number, Promise<WorkProcess>>();
   private readonly controls = new Map<string, Control>();
+  private readonly isolatedBrowsers = new Set<number>();
   private readonly open: (
     botId: number,
     context: Context,
@@ -50,7 +52,10 @@ export class ComputerServices {
   }
 
   private control(botId: number, service: ComputerService) {
-    const key = service === "desktop" ? service : `${service}:${botId}`;
+    const key =
+      service === "browser" && this.isolatedBrowsers.has(botId)
+        ? `browser:${botId}`
+        : "desktop";
     let control = this.controls.get(key);
     if (!control) {
       control = { revision: 0, calls: new Set() };
@@ -69,10 +74,19 @@ export class ComputerServices {
       const worker = await this.worker(botId, context);
       if (install && service === "browser")
         await worker.computer({ operation: "install", service });
-      return await worker.computer<ServiceState>({
+      const state = await worker.computer<
+        ServiceState & { sharedDesktop?: boolean }
+      >({
         operation: "prepare",
         service,
       });
+      if (
+        service === "browser" &&
+        state.available &&
+        state.sharedDesktop === false
+      )
+        this.isolatedBrowsers.add(botId);
+      return { available: state.available, error: state.error };
     } catch (error) {
       return {
         available: false,
@@ -94,7 +108,45 @@ export class ComputerServices {
     signal: AbortSignal,
     context: Context,
   ) {
-    return (await this.worker(botId, context)).computer<T>(input, signal);
+    const worker =
+      input.action === "open"
+        ? await this.worker(botId, context)
+        : await this.workers.get(botId);
+    if (!worker) {
+      if (input.action === "close") return {} as T;
+      throw new Error("画面连接已失效。请重新连接。");
+    }
+    if (input.action !== "send" || input.message?.type === "ack")
+      return worker.computer<T>(input, signal);
+    const control = this.control(botId, input.service);
+    if (control.releasing) throw new Error("正在交还控制权。请等待。");
+    if (input.message?.type !== "back") await this.settle(botId, input.service);
+    signal.throwIfAborted();
+    if (control.releasing || !control.lease)
+      throw new Error("请先接管，再操作电脑。");
+    const controller = new AbortController();
+    const done = worker.computer<T>(
+      input,
+      AbortSignal.any([signal, controller.signal]),
+    );
+    const call = { botId, controller, done };
+    control.calls.add(call);
+    try {
+      return await done;
+    } finally {
+      control.calls.delete(call);
+    }
+  }
+
+  private async settle(botId: number, service: ComputerService) {
+    const control = this.control(botId, service);
+    await Promise.all(
+      [...this.workers]
+        .filter(([id]) => this.control(id, "browser") === control)
+        .map(async ([, worker]) =>
+          (await worker).computer({ operation: "settle", service: "browser" }),
+        ),
+    );
   }
 
   viewAccess(botId: number, service: ComputerService, lease?: string) {
@@ -132,6 +184,8 @@ export class ComputerServices {
     action: (signal: AbortSignal) => Promise<T>,
   ) {
     signal.throwIfAborted();
+    if (service === "desktop") await this.settle(botId, service);
+    signal.throwIfAborted();
     const control = this.control(botId, service);
     if (control.lease) throw new Error("用户正在接管。交还后请重新观察画面。");
     if (control.owner && control.owner !== owner)
@@ -166,15 +220,28 @@ export class ComputerServices {
     control.revision++;
     for (const call of control.calls) call.controller.abort();
     await Promise.allSettled([...control.calls].map((call) => call.done));
-    if (service === "desktop") await this.clearActivity(control);
-    return lease;
+    try {
+      await this.settle(botId, service);
+      await this.clearActivity(control);
+      return lease;
+    } catch (error) {
+      control.lease = undefined;
+      throw error;
+    }
   }
 
   async release(botId: number, service: ComputerService, lease: string) {
     const control = this.control(botId, service);
     if (control.lease !== lease) throw new Error("这次接管已失效。");
-    control.lease = undefined;
-    control.revision++;
+    control.releasing = lease;
+    try {
+      await Promise.allSettled([...control.calls].map((call) => call.done));
+      if (control.lease !== lease) throw new Error("这次接管已失效。");
+      control.lease = undefined;
+      control.revision++;
+    } finally {
+      if (control.releasing === lease) control.releasing = undefined;
+    }
   }
 
   async disable(botId: number, service: ComputerService) {
@@ -237,5 +304,6 @@ export class ComputerServices {
     );
     this.workers.clear();
     this.controls.clear();
+    this.isolatedBrowsers.clear();
   }
 }

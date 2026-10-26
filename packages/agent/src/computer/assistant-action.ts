@@ -111,5 +111,6 @@ const discovery = new Set([
   "browser_agent_browser_screenshot",
   "browser_agent_browser_get_url",
   "browser_agent_browser_get_title",
+  "browser_agent_browser_restart",
 ]);
 export const assistantDiscovery = (name: string) => discovery.has(name);

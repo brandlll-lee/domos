@@ -1,0 +1,30 @@
+{
+  "lostResponse": {
+    "content": [
+      {
+        "type": "text",
+        "text": "The command reached the daemon but no response came back. It may or may not have run. It was not retried."
+      }
+    ],
+    "isError": true,
+    "structuredContent": {
+      "response": { "code": "outcome_unknown", "success": false, "data": null }
+    }
+  },
+  "baseline": {
+    "date": "2026-10-26",
+    "platform": "Windows",
+    "browserVersion": "0.39.1",
+    "cancel": { "viewer": "disconnected", "pageAfterPrepare": "about:blank" },
+    "lostResponse": {
+      "responseAfterMs": 30039,
+      "pageMutationAfterMs": 35000,
+      "mutationObserved": true
+    },
+    "approval": { "denied": true, "callbackCalls": 0, "dispatches": 1 },
+    "takeover": {
+      "browserHeldDesktopDispatched": true,
+      "desktopHeldBrowserDispatched": true
+    }
+  }
+}

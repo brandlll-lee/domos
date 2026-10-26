@@ -119,8 +119,21 @@ export class ComputerViews {
         view.lease = lease;
       }
     } else if (message.type === "back") {
-      if (view.lease)
+      if (view.lease) {
+        await view.target.services.viewer(
+          botId,
+          {
+            operation: "view",
+            service: view.service,
+            id,
+            action: "send",
+            message,
+          },
+          signal,
+          context,
+        );
         await view.target.services.release(botId, view.service, view.lease);
+      }
       view.lease = undefined;
     } else {
       view.target.services.viewAccess(botId, view.service, view.lease);
@@ -147,19 +160,16 @@ export class ComputerViews {
     if (!view) return;
     this.sessions.delete(id);
     view.controller.abort();
-    try {
-      await view.target.services.viewer(
-        view.botId,
-        { operation: "view", service: view.service, id, action: "close" },
-        AbortSignal.timeout(3000),
-        context,
-      );
-    } finally {
-      if (view.lease)
-        await view.target.services
-          .release(view.botId, view.service, view.lease)
-          .catch(() => {});
-    }
+    if (view.lease)
+      await view.target.services
+        .release(view.botId, view.service, view.lease)
+        .catch(() => {});
+    await view.target.services.viewer(
+      view.botId,
+      { operation: "view", service: view.service, id, action: "close" },
+      AbortSignal.timeout(3000),
+      context,
+    );
   }
 
   async closeBot(botId: number, service: ComputerService, context: Context) {

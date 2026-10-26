@@ -106,9 +106,15 @@ export class WorkProcess implements EngineProcess {
           const controller = new AbortController();
           this.calls.set(frame.id, controller);
           void invoke(frame.callId, frame.name, frame.args, controller.signal)
-            .catch(() => ({
+            .catch((error) => ({
               content: [
-                { type: "text" as const, text: "产品工具未完成。请核对结果。" },
+                {
+                  type: "text" as const,
+                  text:
+                    error instanceof Error
+                      ? error.message
+                      : "产品工具未完成。请核对结果。",
+                },
               ],
               isError: true,
             }))

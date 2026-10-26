@@ -1,3 +1,4 @@
+import { setTimeout } from "node:timers/promises";
 import type { ProductResult } from "../harness/types.ts";
 import type { AssistInput } from "./assistant-action.ts";
 import { roleClass } from "./assistant-task.ts";
@@ -102,8 +103,40 @@ export async function verify(
   call: Call,
   signal: AbortSignal,
 ) {
-  if (input.service !== "desktop" || !input.evidence) return undefined;
+  if (!input.evidence) return undefined;
   const proof = input.evidence;
+  if (input.service === "browser") {
+    const deadline = Date.now() + (proof.timeout_ms ?? 2000);
+    let previous: string | undefined;
+    do {
+      const result = await call(
+        "agent_browser_eval",
+        {
+          script: `(() => {
+          const proof = ${JSON.stringify(proof)};
+          const role = (el) => el.getAttribute('role') || ({BUTTON:'button',TEXTAREA:'textbox',SELECT:'combobox',A:'link'}[el.tagName]) || (el.tagName === 'INPUT' ? ({checkbox:'checkbox',radio:'radio',text:'textbox',email:'textbox',tel:'textbox',url:'textbox',search:'searchbox',number:'spinbutton',range:'slider',submit:'button',button:'button',reset:'button'}[el.type] || '') : '');
+          const label = (el) => el.getAttribute('aria-label') || (el.getAttribute('aria-labelledby') || '').split(' ').map(id => document.getElementById(id)?.textContent || '').join(' ').trim() || Array.from(el.labels || []).map(x => x.textContent).join(' ').trim() || el.textContent?.trim();
+          const items = Array.from(document.querySelectorAll('input,textarea,select,button,a,[role]')).filter(el => el.getClientRects().length && role(el) === proof.role && label(el) === proof.label);
+          const el = items[0];
+          return { url: location.href, satisfied: items.length === 1 && (proof.value === undefined || el.value === proof.value) && (proof.selected === undefined || ('checked' in el && ['checkbox','radio'].includes(el.type) ? el.checked : el.hasAttribute('aria-selected') ? el.getAttribute('aria-selected') === 'true' : undefined) === proof.selected) };
+        })()`,
+        },
+        signal,
+      );
+      const state = (
+        result.structuredContent?.response as
+          | { data?: { result?: { satisfied?: boolean; url?: string } } }
+          | undefined
+      )?.data?.result;
+      if (result.isError) return undefined;
+      if (state?.satisfied && state.url && previous === state.url)
+        return result;
+      previous = state?.satisfied ? state.url : undefined;
+      if (Date.now() >= deadline) return undefined;
+      await setTimeout(100, undefined, { signal });
+    } while (Date.now() < deadline);
+    return undefined;
+  }
   const result = await call(
     "verify_state",
     {

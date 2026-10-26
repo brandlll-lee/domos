@@ -153,7 +153,8 @@ export class EngineExecution {
             active.controller.signal,
           ]);
           combined.throwIfAborted();
-          if (computerTools.some((tool) => tool.name === name)) {
+          const computerTool = computerTools.find((tool) => tool.name === name);
+          if (computerTool) {
             let result = await this.computers.tools.invoke(
               runtime.conversationId,
               name,
@@ -184,6 +185,7 @@ export class EngineExecution {
                 name,
                 result,
                 context,
+                computerTool.outputSchema,
               );
             }
             if (

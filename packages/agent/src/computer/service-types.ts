@@ -7,6 +7,7 @@ export type ServiceState = {
 };
 export type ComputerRequest =
   | { operation: "activity"; owner?: string }
+  | { operation: "settle"; service: "browser" }
   | { operation: "catalog"; service: ComputerService }
   | { operation: "prepare"; service: ComputerService }
   | { operation: "install"; service: "browser" }

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Context } from "@earendil-works/chord/context";
+import { browserObservations } from "../harness/browser-tools.mjs";
 import { desktopInputs } from "../harness/desktop-actions.mjs";
 import type { ProductResult, ProductTool } from "../harness/types.ts";
 import { runAssistant } from "./assistant.ts";
@@ -308,7 +309,32 @@ export class ComputerTools {
           const tool = catalog.find(
             (item) => `${service}_${item.name}` === name,
           );
-          if (tool)
+          if (tool) {
+            const observation =
+              service === "browser"
+                ? browserObservations.has(tool.name)
+                : [
+                    "list_windows",
+                    "list_apps",
+                    "get_window_state",
+                    "get_desktop_state",
+                    "get_screen_size",
+                    "get_agent_cursor_state",
+                    "verify_state",
+                    "zoom",
+                    "parse_visual_regions",
+                  ].includes(tool.name);
+            if (
+              !observation &&
+              (!approve || !(await approve({ name, args }, signal)))
+            )
+              return {
+                isError: true,
+                content: [
+                  { type: "text" as const, text: "操作未获批准。未发送动作。" },
+                ],
+              };
+            signal.throwIfAborted();
             return target.services.call(
               botId,
               service,
@@ -323,6 +349,7 @@ export class ComputerTools {
                 owner,
               },
             );
+          }
         }
         throw new Error(
           `工具 ${name} 不可用。可用电脑工具：${available.join(", ") || "无"}。等待界面变化请使用 run_steps 的 wait_for/expect 步骤字段，或已列出的 verify_state。`,

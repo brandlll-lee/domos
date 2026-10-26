@@ -1,4 +1,4 @@
-export async function openBrowserView(run, call, signal) {
+export async function openBrowserView(run, call, signal, ready, input) {
   const response = JSON.parse(
     await run(["stream", "status", "--json"], signal),
   );
@@ -17,6 +17,7 @@ export async function openBrowserView(run, call, signal) {
   let pending;
   let failure;
   let delivered = 0;
+  let pointer;
   const fail = () => {
     failure = new Error("画面连接已断开。请重新连接。");
     pending?.reject(failure);
@@ -104,6 +105,11 @@ export async function openBrowserView(run, call, signal) {
     },
     async send(message, signal) {
       if (failure) throw failure;
+      if (message.type === "back") {
+        pointer = undefined;
+        return;
+      }
+      if (message.type !== "ack") await ready();
       if (message.type === "ack") {
         if (message.seq !== delivered) throw new Error("画面确认已失效。");
         socket.send(JSON.stringify(message));
@@ -115,13 +121,7 @@ export async function openBrowserView(run, call, signal) {
         );
         if (result.isError) throw new Error("网页未能打开。请检查地址。");
       } else if (message.type === "text")
-        socket.send(
-          JSON.stringify({
-            type: "input_keyboard",
-            eventType: "char",
-            text: message.text,
-          }),
-        );
+        await input([["keyboard", "type", message.text]], signal);
       else if (message.type === "key") {
         const modifiers = [
           [1, "Alt"],
@@ -138,23 +138,49 @@ export async function openBrowserView(run, call, signal) {
         );
         if (result.isError) throw new Error("按键未确认。请检查页面。");
       } else if (message.type === "pointer") {
-        socket.send(
-          JSON.stringify({
-            type: "input_mouse",
-            eventType: {
-              down: "mousePressed",
-              up: "mouseReleased",
-              move: "mouseMoved",
-              scroll: "mouseWheel",
-            }[message.event],
-            x: message.x,
-            y: message.y,
-            button: message.button,
-            clickCount: 1,
-            deltaX: message.deltaX,
-            deltaY: message.deltaY,
-          }),
-        );
+        if (message.event === "down") {
+          pointer = message;
+          return;
+        }
+        // Native mouse commands use integer CSS pixels.
+        const move = [
+          "mouse",
+          "move",
+          String(Math.round(message.x)),
+          String(Math.round(message.y)),
+        ];
+        if (message.event === "up") {
+          const start = pointer;
+          pointer = undefined;
+          if (!start) return;
+          await input(
+            [
+              [
+                "mouse",
+                "move",
+                String(Math.round(start.x)),
+                String(Math.round(start.y)),
+              ],
+              ["mouse", "down", start.button],
+              move,
+              ["mouse", "up", start.button],
+            ],
+            signal,
+          );
+        } else if (message.event === "scroll") {
+          await input(
+            [
+              move,
+              [
+                "mouse",
+                "wheel",
+                String(Math.round(message.deltaY)),
+                String(Math.round(message.deltaX)),
+              ],
+            ],
+            signal,
+          );
+        } else if (!pointer) await input([move], signal);
       }
     },
     close() {
