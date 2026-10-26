@@ -39,6 +39,7 @@ Keep these choices independent. Support Pi, Codex, Claude Code, and OpenCode thr
 - Route ordinary computer mutations through the shared approval callback. Browser observation tools use an explicit allowlist; arbitrary JavaScript requires approval.
 - Keep dispatched browser work alive until it settles. Cancel queued work. Preserve the page during takeover. Persist uncertain execution across worker restarts, and require explicit browser restart before more mutations.
 - Share control between a headed browser and its desktop. Isolate control only after the worker confirms a headless browser. Wait for human input to finish before returning control.
+- Route Agent handoff requests through the shared `computer_request_takeover` tool and stored chat cards. Complete only the live request whose viewer owns control. Closing a viewer does not complete a request.
 - For viewer input, layout, or reconnect changes, follow [docs/browser-use.md](docs/browser-use.md). Test clicks through the scaled image and read back the real page. Scripted focus and mocked RPC output do not verify takeover.
 - Preserve native action results when observation or evidence storage fails. Keep runtime browser arguments in Domos, and apply text limits at the browser boundary. See [docs/browser-use.md](docs/browser-use.md).
 - Keep cursor and border tracking separate from execution. Use the shared effect renderer and Bot theme color. Effect failures must not block actions or change their result.
