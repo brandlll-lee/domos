@@ -1,4 +1,6 @@
-export async function openBrowserView(run, call, signal, ready, input) {
+import { browserCommand } from "./browser-command.mjs";
+
+export async function openBrowserView(run, signal, ready, input, session) {
   const response = JSON.parse(
     await run(["stream", "status", "--json"], signal),
   );
@@ -10,15 +12,20 @@ export async function openBrowserView(run, call, signal, ready, input) {
     status.port > 65535
   )
     throw new Error("浏览器画面服务未开启。");
+  const identity = await browserCommand(
+    status.port,
+    { action: "session_info" },
+    signal,
+  );
+  if (identity.session !== session) throw new Error("浏览器会话已改变。");
   const socket = new WebSocket(
-    `ws://127.0.0.1:${status.port}/?pacing=ack&maxFps=12`,
+    `ws://127.0.0.1:${status.port}/?pacing=ack&maxFps=30`,
   );
   let latest;
   let pending;
   let failure;
   let delivered = 0;
   let pointer;
-  let path = [];
   const fail = () => {
     failure = new Error("画面连接已断开。请重新连接。");
     pending?.reject(failure);
@@ -106,18 +113,39 @@ export async function openBrowserView(run, call, signal, ready, input) {
     },
     async send(message, signal) {
       if (failure) throw failure;
-      if (message.type === "back") {
+      const send = (command) => input(command, signal, status.port);
+      const release = async (cancelled = false) => {
+        if (!pointer) return;
+        await send({
+          action: "input_mouse",
+          type: "mouseReleased",
+          x: cancelled ? -1 : pointer.x,
+          y: cancelled ? -1 : pointer.y,
+          button: pointer.button,
+          clickCount: 1,
+        });
         pointer = undefined;
-        path = [];
-        return;
-      }
+      };
       if (message.type !== "ack") await ready();
-      if (message.type === "ack") {
+      if (
+        message.type === "back" ||
+        (message.type === "pointer" && message.event === "cancel")
+      ) {
+        await release(true);
+      } else if (message.type === "ack") {
         if (message.seq !== delivered) throw new Error("画面确认已失效。");
-        socket.send(JSON.stringify(message));
-      } else if (message.type === "text")
-        await input([["keyboard", "type", message.text]], signal);
-      else if (message.type === "key") {
+        socket.send(JSON.stringify({ type: "ack", seq: message.seq }));
+        if (message.maxFps)
+          socket.send(
+            JSON.stringify({ type: "config", maxFps: message.maxFps }),
+          );
+      } else if (message.type === "text") {
+        await send({
+          action: "keyboard",
+          subaction: "insertText",
+          text: message.text,
+        });
+      } else if (message.type === "key") {
         const modifiers = [
           [1, "Alt"],
           [2, "Control"],
@@ -126,72 +154,62 @@ export async function openBrowserView(run, call, signal, ready, input) {
         ]
           .filter(([bit]) => message.modifiers & bit)
           .map(([, key]) => key);
-        const result = await call(
-          "agent_browser_press",
-          { key: [...modifiers, message.key].join("+") },
-          signal,
-        );
-        if (result.isError) throw new Error("按键未确认。请检查页面。");
+        await send({
+          action: "press",
+          key: [...modifiers, message.key].join("+"),
+        });
       } else if (message.type === "pointer") {
-        if (message.event === "cancel") {
-          pointer = undefined;
-          path = [];
-          return;
-        }
-        if (message.event === "down") {
-          pointer = message;
-          path = [];
-          return;
-        }
-        // Native mouse commands use integer CSS pixels.
-        const move = [
-          "mouse",
-          "move",
-          String(Math.round(message.x)),
-          String(Math.round(message.y)),
-        ];
+        const position = { x: Math.round(message.x), y: Math.round(message.y) };
         if (message.event === "up") {
-          const start = pointer;
-          pointer = undefined;
-          if (!start) return;
-          await input(
-            [
-              [
-                "mouse",
-                "move",
-                String(Math.round(start.x)),
-                String(Math.round(start.y)),
-              ],
-              ["mouse", "down", start.button],
-              ...path,
-              move,
-              ["mouse", "up", start.button],
-            ],
-            signal,
-          );
-          path = [];
-        } else if (message.event === "scroll") {
-          await input(
-            [
-              move,
-              [
-                "mouse",
-                "wheel",
-                String(Math.round(message.deltaY)),
-                String(Math.round(message.deltaX)),
-              ],
-            ],
-            signal,
-          );
-        } else if (pointer) {
-          if (path.length < 64) path.push(move);
-          else path[path.length - 1] = move;
-        } else await input([move], signal);
+          if (pointer) pointer = { ...pointer, ...position };
+          await release();
+        } else {
+          if (message.event === "down")
+            pointer = { ...position, button: message.button };
+          if (pointer) pointer = { ...pointer, ...position };
+          await send({
+            action: "input_mouse",
+            type:
+              message.event === "down"
+                ? "mousePressed"
+                : message.event === "scroll"
+                  ? "mouseWheel"
+                  : "mouseMoved",
+            ...position,
+            modifiers: message.modifiers ?? 0,
+            button: pointer?.button ?? "none",
+            clickCount: 1,
+            ...(message.event === "scroll"
+              ? {
+                  deltaX: Math.round(message.deltaX),
+                  deltaY: Math.round(message.deltaY),
+                }
+              : {}),
+          });
+        }
       }
     },
-    close() {
-      socket.close();
-      fail();
+    async close() {
+      try {
+        if (pointer) {
+          await input(
+            {
+              action: "input_mouse",
+              type: "mouseReleased",
+              x: -1,
+              y: -1,
+              button: pointer.button,
+              clickCount: 1,
+            },
+            AbortSignal.timeout(30000),
+            status.port,
+          );
+          pointer = undefined;
+        }
+      } finally {
+        socket.close();
+        fail();
+      }
     },
   };
 }

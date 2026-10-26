@@ -173,6 +173,7 @@ test("mode gates catalog and invocation; handoffs are explicit, single-use and o
     "desktop_get_window_state",
     "desktop_launch_app",
     "computer_assist",
+    "computer_request_takeover",
   ]);
   const invoke = (name: string, args = {}, owner = "owner") =>
     tools.invoke(1, name, args, owner, signal(), context, async () => true);
@@ -233,6 +234,7 @@ test("mode gates catalog and invocation; handoffs are explicit, single-use and o
     "desktop_get_window_state",
     "desktop_run_steps",
     "desktop_launch_app",
+    "computer_request_takeover",
   ]);
   await invoke("desktop_click");
   await expect(invoke("desktop_wait_for_load")).rejects.toThrow(

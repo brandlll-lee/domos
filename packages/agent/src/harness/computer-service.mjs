@@ -45,7 +45,7 @@ export function openComputerService(directory, home, emit = () => {}) {
           if (!view) throw new Error("画面连接已失效。");
           if (input.action === "next") return view.next(signal);
           if (input.action === "send") return view.send(input.message, signal);
-          view.close();
+          await view.close();
           views.delete(input.id);
           return {};
         }
@@ -66,7 +66,7 @@ export function openComputerService(directory, home, emit = () => {}) {
         if (!view) throw new Error("画面连接已失效。");
         if (input.action === "next") return view.next(signal);
         if (input.action === "send") return view.send(input.message, signal);
-        view.close();
+        await view.close();
         views.delete(input.id);
         return {};
       }
@@ -317,7 +317,7 @@ export function openComputerService(directory, home, emit = () => {}) {
       };
     },
     async close() {
-      for (const view of views.values()) view.close();
+      for (const view of views.values()) await view.close();
       views.clear();
       if (browser)
         await browser.then((instance) => instance.close()).catch(() => {});

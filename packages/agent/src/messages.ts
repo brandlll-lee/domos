@@ -17,6 +17,13 @@ export type ChatContent =
   | Pick<ToolCall, "type" | "id" | "name" | "arguments">;
 
 export type ChatMessage = {
+  takeover?: {
+    id: string;
+    service: "browser" | "desktop";
+    computerId: string;
+    revision: number;
+    state: "waiting" | "done" | "expired";
+  };
   id: string;
   turnId?: string;
   requestId?: string;

@@ -1,6 +1,6 @@
 import { ProtocolProcess } from "./engine-process.ts";
 
-export function featureProcess() {
+export function featureProcess(onPrompt?: () => Promise<string>) {
   const process = new ProtocolProcess();
   let thinkingLevel = "medium";
   let compacted = false;
@@ -85,6 +85,10 @@ export function featureProcess() {
                 : {};
     process.frame({ type: "response", id: request.id, success: true, data });
     if (request.type === "prompt") {
+      if (onPrompt) {
+        void onPrompt().then(finish, (error) => finish(String(error)));
+        return;
+      }
       for (const id of ["mcp-first", "mcp-second"])
         process.frame({
           type: "extension_ui_request",

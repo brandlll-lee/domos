@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   spawn: vi.fn(),
   list: vi.fn(),
   connect: vi.fn(),
+  command: vi.fn(),
   cliError: false,
 }));
 vi.mock("@modelcontextprotocol/sdk/client/index.js", () => ({
@@ -26,11 +27,13 @@ vi.mock("node:child_process", () => ({
 vi.mock("../src/harness/browser-view.mjs", () => ({
   openBrowserView: async (
     _run: unknown,
-    _call: unknown,
     _signal: unknown,
     _ready: unknown,
     input: unknown,
   ) => ({ input }),
+}));
+vi.mock("../src/harness/browser-command.mjs", () => ({
+  browserCommand: mocks.command,
 }));
 const entry = "../src/harness/browser-service.mjs";
 const { openBrowserService } = await import(entry);
@@ -70,6 +73,10 @@ async function setup() {
     })),
   });
   mocks.call.mockImplementation(async () => success());
+  mocks.command.mockImplementation(async () => {
+    if (mocks.cliError) throw new Error("native response lost");
+    return {};
+  });
   mocks.spawn.mockImplementation(() => {
     const child = Object.assign(new EventEmitter(), {
       stdout: Object.assign(new EventEmitter(), { destroy() {} }),
@@ -228,13 +235,18 @@ test("viewer input waits for browser replies and retains unknown delivery", asyn
   const service = await setup();
   const view = await service.view(new AbortController().signal);
   await view.input(
-    [["keyboard", "type", "Draft"]],
+    { action: "keyboard", subaction: "insertText", text: "Draft" },
     new AbortController().signal,
+    12345,
   );
   await service.settle();
   mocks.cliError = true;
   await expect(
-    view.input([["mouse", "move", "10", "20"]], new AbortController().signal),
+    view.input(
+      { action: "input_mouse", type: "mouseMoved", x: 10, y: 20 },
+      new AbortController().signal,
+      12345,
+    ),
   ).rejects.toThrow("结果未知");
   await expect(service.settle()).rejects.toThrow("结果未知");
   mocks.cliError = false;

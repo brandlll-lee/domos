@@ -58,6 +58,9 @@ export function engineTask(execution: EngineExecution) {
             }
           }
           doc.approvals = [];
+          for (const draft of doc.drafts)
+            if (draft.takeover?.state === "waiting")
+              draft.takeover.state = "expired";
         }, context);
         const state = await runtime.snapshot(
           EngineDoc,
@@ -137,6 +140,8 @@ async function finish(
     let answer: EntryId | undefined;
     if (doc.activeId === runtime.taskId) {
       for (const draft of doc.drafts) {
+        if (draft.takeover?.state === "waiting")
+          draft.takeover.state = "expired";
         if (error && draft.pending !== false) draft.stopped = true;
         if (!error) draft.pending = false;
         const entry = await tx.appendEntry(runtime.conversationId, {

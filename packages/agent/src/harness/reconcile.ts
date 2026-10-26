@@ -58,6 +58,7 @@ export async function reconcileEngine(tx: Tx, id: ConversationId) {
     tx.settleSubmission(submissionId, { status: "unanswered", reason: error });
   if (doc.activeId && terminal.has(doc.activeId)) {
     for (const draft of doc.drafts) {
+      if (draft.takeover?.state === "waiting") draft.takeover.state = "expired";
       if (draft.pending !== false) draft.stopped = true;
       await tx.appendEntry(id, { kind: EngineMessage, data: stored(draft) });
     }

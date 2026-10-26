@@ -30,6 +30,44 @@ export class EngineProjection {
   }
 
   async emit(event: EngineEvent) {
+    if (event.type === "approval" && event.approval.takeover) {
+      const approval = event.approval;
+      this.messages.push(
+        stored({
+          id: approval.id,
+          turnId: this.turnId,
+          role: "assistant",
+          takeover: approval.takeover,
+          content: [
+            { type: "text", text: approval.detail, key: approval.id },
+            ...(approval.preview
+              ? [{ ...approval.preview, key: `${approval.id}:preview` }]
+              : []),
+          ],
+          stopped: false,
+          pending: false,
+          timestamp: Date.now(),
+        }),
+      );
+      this.changed = true;
+    }
+    if (event.type === "takeover_result" || event.type === "approval_closed") {
+      const card = this.messages.find(
+        (message) => message.takeover?.id === event.id,
+      );
+      if (card?.takeover?.state === "waiting") {
+        card.takeover.state =
+          event.type === "takeover_result" ? "done" : "expired";
+        if (event.type === "takeover_result" && event.preview)
+          card.content = [
+            ...card.content.filter((part) => part.type !== "image"),
+            { ...event.preview, key: `${event.id}:preview` },
+          ];
+        this.changed = true;
+        await this.flush();
+      }
+      if (event.type === "takeover_result") return;
+    }
     if (event.type === "runtime" && event.state.processing !== undefined)
       this.processing = event.state.processing;
     if (

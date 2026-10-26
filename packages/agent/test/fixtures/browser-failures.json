@@ -38,6 +38,16 @@
       "desktopHeldBrowserDispatched": true
     }
   },
+  "continuousInput": {
+    "date": "2026-10-26",
+    "platform": "Windows",
+    "wheelEvents": 120,
+    "durationMs": 2000,
+    "reportedError": "操作已暂停：输入速度超过连接处理能力",
+    "queueLimit": 32,
+    "frameCap": 12,
+    "inputPath": "two CLI processes per wheel event"
+  },
   "takeoverViewport": {
     "imageWidth": 1262,
     "imageHeight": 568,

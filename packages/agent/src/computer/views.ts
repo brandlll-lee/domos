@@ -12,6 +12,7 @@ type View = {
   target: Computer;
   controller: AbortController;
   lease?: string;
+  requestId?: string;
 };
 
 export class ComputerViews {
@@ -160,16 +161,14 @@ export class ComputerViews {
     if (!view) return;
     this.sessions.delete(id);
     view.controller.abort();
-    if (view.lease)
-      await view.target.services
-        .release(view.botId, view.service, view.lease)
-        .catch(() => {});
     await view.target.services.viewer(
       view.botId,
       { operation: "view", service: view.service, id, action: "close" },
-      AbortSignal.timeout(3000),
+      AbortSignal.timeout(35000),
       context,
     );
+    if (view.lease)
+      await view.target.services.release(view.botId, view.service, view.lease);
   }
 
   async closeBot(botId: number, service: ComputerService, context: Context) {
@@ -178,5 +177,58 @@ export class ComputerViews {
         .filter(([, view]) => view.botId === botId && view.service === service)
         .map(([id]) => this.close(id, context)),
     );
+  }
+
+  async capture(botId: number, service: ComputerService, context: Context) {
+    const signal = AbortSignal.timeout(5000);
+    const id = await this.open(botId, service, signal, context);
+    try {
+      const frame = await this.next(botId, id, signal, context);
+      return {
+        type: "image" as const,
+        data: frame.data,
+        mimeType: frame.mimeType,
+      };
+    } finally {
+      await this.close(id, context);
+    }
+  }
+
+  async takeRequest(
+    botId: number,
+    id: string,
+    requestId: string,
+    service: ComputerService,
+    computerId: string,
+    context: Context,
+  ) {
+    const view = await this.session(botId, id, context);
+    if (view.service !== service || view.computerId !== computerId)
+      throw new Error("接管目标已改变。请打开请求对应的画面。");
+    const state = await this.action(
+      botId,
+      id,
+      { type: "take" },
+      AbortSignal.timeout(35000),
+      context,
+    );
+    view.requestId = requestId;
+    return state;
+  }
+
+  async finishRequest(botId: number, requestId: string, context: Context) {
+    const match = [...this.sessions].find(
+      ([, view]) =>
+        view.botId === botId && view.requestId === requestId && view.lease,
+    );
+    if (!match) throw new Error("请先从这张卡片接管，完成后再继续任务。");
+    await this.action(
+      botId,
+      match[0],
+      { type: "back" },
+      AbortSignal.timeout(35000),
+      context,
+    );
+    match[1].requestId = undefined;
   }
 }

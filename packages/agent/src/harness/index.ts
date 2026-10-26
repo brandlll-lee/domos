@@ -431,13 +431,17 @@ export class Engines {
     );
     if (!doc?.approvals.some((approval) => approval.id === id))
       throw new WorkError("CONFLICT", "这次确认已经失效。");
-    await this.execution.answer(botId, id, answer);
+    await this.execution.answer(botId, id, answer, context);
     await this.harness.commit(async (tx) => {
       const state = await tx.doc(EngineDoc, botId as ConversationId);
       state.approvals = state.approvals.filter(
         (approval) => approval.id !== id,
       );
     }, context);
+  }
+
+  takeRequest(botId: number, id: string, view: string, context: Context) {
+    return this.execution.takeRequest(botId, id, view, context);
   }
 }
 

@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { browserCommand } from "./browser-command.mjs";
 import {
   browserArguments,
   browserObservations,
@@ -335,7 +336,7 @@ export async function openBrowserService(directory, home) {
     );
     return action;
   };
-  const input = (commands, signal) =>
+  const input = (command, signal, port) =>
     enqueue(async () => {
       signal.throwIfAborted();
       ready();
@@ -345,13 +346,7 @@ export async function openBrowserService(directory, home) {
         signal.throwIfAborted();
       }
       try {
-        for (const command of commands) {
-          const result = JSON.parse(
-            await run([...command, "--json"], AbortSignal.timeout(30000)),
-          );
-          if (!result.success)
-            throw new Error("Browser input was not confirmed.");
-        }
+        await browserCommand(port, command, AbortSignal.timeout(30000));
       } catch {
         uncertain = true;
         ready();
@@ -466,13 +461,13 @@ export async function openBrowserService(directory, home) {
     view: (signal) =>
       openBrowserView(
         run,
-        call,
         signal,
         async () => {
           await pending;
           ready();
         },
         input,
+        session,
       ),
     async close() {
       await pending;

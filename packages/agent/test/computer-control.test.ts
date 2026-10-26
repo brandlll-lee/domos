@@ -3,11 +3,62 @@ import { expect, test, vi } from "vitest";
 import type { Computers } from "../src/computer/catalog.ts";
 import { ComputerServices } from "../src/computer/services.ts";
 import { ComputerTools } from "../src/computer/tools.ts";
+import { ComputerViews } from "../src/computer/views.ts";
 import type { Files } from "../src/files.ts";
 import { computerEvidence } from "../src/harness/evidence.ts";
 import type { WorkProcess } from "../src/harness/process.ts";
 
 const signal = () => new AbortController().signal;
+test("takeover completion requires the matching viewer and closes input before releasing control", async () => {
+  const order: string[] = [];
+  const closed = Promise.withResolvers<void>();
+  const services = {
+    viewAccess: () => {},
+    prepare: async () => ({ available: true }),
+    takeover: async () => "lease",
+    release: async () => {
+      order.push("released");
+    },
+    viewer: async (_botId: number, request: { action: string }) => {
+      if (request.action === "close") {
+        order.push("closing");
+        await closed.promise;
+        order.push("closed");
+      }
+      return {};
+    },
+  };
+  const target = { services };
+  const views = new ComputerViews({
+    serviceTarget: async () => ({
+      target,
+      id: "pc",
+      enabled: { browser: true, desktop: true },
+    }),
+  } as unknown as Computers);
+  const id = await views.open(1, "browser", signal(), context);
+  await expect(
+    views.takeRequest(2, id, "request", "browser", "pc", context),
+  ).rejects.toThrow("失效");
+  await expect(
+    views.takeRequest(1, id, "request", "desktop", "pc", context),
+  ).rejects.toThrow("目标");
+  await expect(views.finishRequest(1, "request", context)).rejects.toThrow(
+    "接管",
+  );
+  await views.takeRequest(1, id, "request", "browser", "pc", context);
+  await expect(views.finishRequest(1, "another", context)).rejects.toThrow(
+    "接管",
+  );
+  const closing = views.close(id, context);
+  await expect.poll(() => order).toEqual(["closing"]);
+  closed.resolve();
+  await closing;
+  expect(order).toEqual(["closing", "closed", "released"]);
+  await expect(views.finishRequest(1, "request", context)).rejects.toThrow(
+    "接管",
+  );
+});
 test.each([
   "browser_agent_browser_click",
   "browser_agent_browser_eval",

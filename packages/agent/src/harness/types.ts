@@ -1,6 +1,7 @@
 import type { Readable, Writable } from "node:stream";
 import type { Attachment } from "../attachments.ts";
 import type { InputMaterials } from "../materials.ts";
+import type { ChatMessage } from "../messages.ts";
 
 export const engineIds = ["pi", "codex", "claude", "opencode"] as const;
 export type EngineId = (typeof engineIds)[number];
@@ -86,6 +87,8 @@ export type EngineModel = {
 };
 export type EngineImage = { type: "image"; data: string; mimeType: string };
 export type EngineApproval = {
+  takeover?: NonNullable<ChatMessage["takeover"]>;
+  preview?: EngineImage;
   id: string;
   title: string;
   detail: string;
@@ -111,6 +114,7 @@ export type EngineAnswer = {
   optionId?: string;
 };
 export type EngineEvent =
+  | { type: "takeover_result"; id: string; preview?: EngineImage }
   | {
       type: "context";
       tokens: number | null;

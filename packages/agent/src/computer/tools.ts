@@ -13,6 +13,7 @@ import { continuation } from "./assistant-task.ts";
 import type { Computers } from "./catalog.ts";
 import type { Computer } from "./index.ts";
 import type { ComputerService, ServiceState } from "./service-types.ts";
+import { takeoverTool } from "./takeover.ts";
 
 export class ComputerTools {
   private readonly targets = new Set<Computer>();
@@ -106,6 +107,7 @@ export class ComputerTools {
     }
     if (mode.enabled && (enabled.browser || enabled.desktop))
       tools.push(assistTool);
+    if (tools.length) tools.push(takeoverTool);
     return tools;
   }
 
