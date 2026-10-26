@@ -121,6 +121,13 @@ test("cancellation drains dispatched work and prevents queued work", async () =>
   await service.settle();
 });
 
+test("catalog cleanup does not launch a browser to close it", async () => {
+  const service = await setup();
+  await service.catalog();
+  await service.close();
+  expect(mocks.spawn).not.toHaveBeenCalled();
+});
+
 test.each(["native", "transport", "cdp"])(
   "%s unknown outcome holds mutations and takeover until explicit restart",
   async (mode) => {

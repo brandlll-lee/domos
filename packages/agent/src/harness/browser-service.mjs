@@ -297,8 +297,15 @@ export async function openBrowserService(directory, home) {
         "浏览器操作结果未知。请观察页面；确认任务结果后，使用 agent_browser_restart 重启。不要重放未确认动作。",
       );
   };
-  const closeBrowser = () =>
-    run(["close"], AbortSignal.timeout(3000)).catch(stop);
+  const closeBrowser = async () => {
+    try {
+      await access(join(socket, `${session}.pid`));
+    } catch (error) {
+      if (error.code === "ENOENT") return;
+      throw error;
+    }
+    await run(["close"], AbortSignal.timeout(3000)).catch(stop);
+  };
   const prepare = async (signal) => {
     for (let attempt = 0; ; attempt++) {
       try {
