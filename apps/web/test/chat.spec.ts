@@ -1668,10 +1668,13 @@ test("long replies start at the top and background messages preserve a reader's 
       }),
     )
     .toBeLessThan(2);
-  const count = await page.evaluate(
-    () => (window as unknown as { arrivals: string[] }).arrivals.length,
-  );
-  expect(count).toBe(2);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (window as unknown as { arrivals: string[] }).arrivals.length,
+      ),
+    )
+    .toBe(2);
   await page.screenshot({ path: "test-results/chat-long-reply.png" });
   await page.locator(".transcript").evaluate((node) => {
     node.scrollTop = 50;
