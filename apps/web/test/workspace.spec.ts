@@ -415,10 +415,6 @@ test("header model selection saves choices and fits both themes", async ({
 test("computer viewing uses separate tabs and releases control when closed", async ({
   page,
 }, info) => {
-  test.skip(
-    process.platform === "darwin" && Boolean(process.env.CI),
-    "Native capture needs screen recording permission on an interactive Mac.",
-  );
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(url);
   await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
@@ -480,6 +476,59 @@ test("computer viewing uses separate tabs and releases control when closed", asy
   await expect(
     page.getByRole("button", { name: "Bot电脑", exact: true }),
   ).toBeFocused();
+});
+
+test("workspace empty states stay centered at every panel width", async ({
+  page,
+}, info) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  for (const state of ["loading", "disabled", "unavailable", "failed"]) {
+    await page.route("**/rpc/computer/services", async (route) => {
+      if (state === "loading") return;
+      if (state === "failed") return route.abort();
+      const value = { enabled: state === "unavailable", available: false };
+      await route.fulfill({
+        json: { json: { browser: value, desktop: value } },
+      });
+    });
+    await page.goto(url);
+    await page.getByRole("button", { name: "Bot电脑", exact: true }).click();
+    if (state === "loading")
+      await expect(
+        page.getByRole("heading", { name: "正在连接工作电脑…" }),
+      ).toBeVisible();
+    else if (state === "failed")
+      await expect(
+        page.getByRole("heading", { name: "电脑暂时无法连接" }),
+      ).toBeVisible();
+    else if (state === "unavailable")
+      await expect(
+        page.getByRole("heading", { name: "桌面尚未就绪" }),
+      ).toBeVisible();
+    else
+      await expect(
+        page.getByRole("button", { name: "启用桌面", exact: true }),
+      ).toBeVisible();
+    for (const width of [1440, 768, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const stage = await page
+        .locator(".computer-workspace-stage")
+        .boundingBox();
+      const empty = await page
+        .locator(".computer-workspace-empty")
+        .boundingBox();
+      if (!stage || !empty) throw new Error("Workspace missing");
+      expect(
+        Math.abs(stage.x + stage.width / 2 - empty.x - empty.width / 2),
+      ).toBeLessThan(2);
+      expect(empty.y).toBeGreaterThanOrEqual(stage.y);
+      expect(empty.y + empty.height).toBeLessThanOrEqual(
+        stage.y + stage.height,
+      );
+      await page.screenshot({ path: info.outputPath(`${state}-${width}.png`) });
+    }
+    await page.unroute("**/rpc/computer/services");
+  }
 });
 
 test("computer connection failures keep a direct retry", async ({ page }) => {

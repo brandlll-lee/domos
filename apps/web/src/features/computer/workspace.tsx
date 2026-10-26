@@ -73,6 +73,11 @@ export function ComputerWorkspace({
               </>
             )}
             {item?.error && <p>{item.error}</p>}
+            {error && (
+              <p role="alert" className="alert">
+                {error}
+              </p>
+            )}
             {status && !status.authorized && (
               <p>{computerLabels.state[status.state]}</p>
             )}
@@ -126,11 +131,6 @@ export function ComputerWorkspace({
               <GearSixIcon />
             </Button>
           </div>
-        )}
-        {error && (
-          <p role="alert" className="alert">
-            {error}
-          </p>
         )}
       </div>
     </section>
