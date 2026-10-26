@@ -34,10 +34,12 @@ jobs:
       - name: Select sandboxed system Chrome
         if: runner.os == 'Linux'
         run: echo "AGENT_BROWSER_EXECUTABLE_PATH=/opt/google/chrome/chrome" >> "$GITHUB_ENV"
+      - name: Verify Harness context and restart recovery
+        run: pnpm test packages/agent/test/harness-context.test.ts packages/agent/test/harness-recovery.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/harness-context.xml
       - name: Verify browser control and application regressions
-        run: pnpm test --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml
+        run: pnpm test --exclude=packages/agent/test/harness-context.test.ts --exclude=packages/agent/test/harness-recovery.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml
       - run: pnpm exec playwright install chromium --only-shell --with-deps
-      - run: pnpm test:e2e
+      - run: pnpm test:e2e --output=test-results/e2e
       - uses: actions/upload-artifact@v6
         if: always()
         with:

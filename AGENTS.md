@@ -10,6 +10,7 @@ Keep these choices independent. Support Pi, Codex, Claude Code, and OpenCode thr
 - Commands, files, native engine accounts, and desktop actions use the Bot's bound work computer. Do not assume that it is the client or service computer.
 - Domos owns Bot identity, chat history, memories, and task records. Each Harness owns its native execution session.
 - Native sessions are scoped by work computer, engine, and account context. Preserve chat history across engine changes. Reuse compatible sessions. Keep context handoffs within size budgets.
+- Advance a session's history cursor after confirmed prompt acceptance. Keep pre-dispatch checkpoints separate from acceptance. For Harness history, recovery, or budgeting changes, read [docs/harness-context.md](docs/harness-context.md).
 - Keep product rules in shared services. Harness adapters translate native protocols; they do not each implement their own computer workflow.
 
 | Location | Responsibility |
