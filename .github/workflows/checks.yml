@@ -36,10 +36,12 @@ jobs:
         run: echo "AGENT_BROWSER_EXECUTABLE_PATH=/opt/google/chrome/chrome" >> "$GITHUB_ENV"
       - name: Verify Harness context and restart recovery
         run: pnpm test packages/agent/test/harness-context.test.ts packages/agent/test/harness-recovery.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/harness-context.xml
-      - name: Verify browser control and application regressions
-        run: pnpm test --exclude=packages/agent/test/harness-context.test.ts --exclude=packages/agent/test/harness-recovery.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml
+      - name: Verify first takeover, browser command latency and page observations
+        run: pnpm test packages/agent/test/computer-control.test.ts packages/agent/test/computer-services.test.ts packages/agent/test/browser-runtime.test.ts packages/agent/test/browser-command.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/browser.xml
+      - name: Verify application regressions
+        run: pnpm test --exclude=packages/agent/test/harness-context.test.ts --exclude=packages/agent/test/harness-recovery.test.ts --exclude=packages/agent/test/computer-control.test.ts --exclude=packages/agent/test/computer-services.test.ts --exclude=packages/agent/test/browser-runtime.test.ts --exclude=packages/agent/test/browser-command.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml
       - run: pnpm exec playwright install chromium --only-shell --with-deps
-      - name: Verify takeover cards, continuous input and web workflows
+      - name: Verify first-click chat handoff, input-to-paint and web workflows
         run: pnpm test:e2e --output=test-results/e2e
       - uses: actions/upload-artifact@v6
         if: always()

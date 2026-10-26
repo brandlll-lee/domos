@@ -511,12 +511,14 @@ test("workspace empty states stay centered at every panel width", async ({
       ).toBeVisible();
     for (const width of [1440, 768, 390]) {
       await page.setViewportSize({ width, height: 900 });
-      const stage = await page
-        .locator(".computer-workspace-stage")
-        .boundingBox();
-      const empty = await page
-        .locator(".computer-workspace-empty")
-        .boundingBox();
+      const [stage, empty] = await page
+        .locator(".computer-workspace-stage, .computer-workspace-empty")
+        .evaluateAll((elements) =>
+          elements.map((element) => {
+            const { x, y, width, height } = element.getBoundingClientRect();
+            return { x, y, width, height };
+          }),
+        );
       if (!stage || !empty) throw new Error("Workspace missing");
       expect(
         Math.abs(stage.x + stage.width / 2 - empty.x - empty.width / 2),

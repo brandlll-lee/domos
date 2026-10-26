@@ -114,6 +114,7 @@ const computer = new Computers(
   ),
 );
 const native = process.argv[4] === "native" || process.argv[4] === "takeover";
+const takeoverMetrics: { name: string; elapsedMs: number }[] = [];
 const computers = native
   ? new Proxy(computer, {
       get(target, key) {
@@ -122,28 +123,38 @@ const computers = native
             featureProcess(
               process.argv[4] === "takeover"
                 ? async () => {
-                    const result = await args[2](
-                      crypto.randomUUID(),
-                      "computer_request_takeover",
-                      {
-                        service: "browser",
-                        reason: "请修改搜索词，完成后交还给我。",
-                      },
-                      new AbortController().signal,
-                    );
+                    const call = async (
+                      name: string,
+                      input: Record<string, unknown>,
+                    ) => {
+                      const started = performance.now();
+                      const result = await args[2](
+                        crypto.randomUUID(),
+                        name,
+                        input,
+                        new AbortController().signal,
+                      );
+                      takeoverMetrics.push({
+                        name,
+                        elapsedMs: performance.now() - started,
+                      });
+                      return result;
+                    };
+                    const address = server.address();
+                    if (!address || typeof address === "string")
+                      throw new Error("Address required");
+                    const opened = await call("browser_agent_browser_open", {
+                      url: `http://127.0.0.1:${address.port}/takeover-fixture`,
+                    });
+                    if (opened.isError) return "页面未打开";
+                    const result = await call("computer_request_takeover", {
+                      service: "browser",
+                      reason: "请修改搜索词，完成后交还给我。",
+                    });
                     if (result.isError) return "接管未完成";
-                    const { target } = await computer.serviceTarget(
-                      args[0],
-                      BACKGROUND_CONTEXT,
-                    );
-                    const observed = await target.services.call(
-                      args[0],
-                      "browser",
-                      "agent_browser_eval",
-                      { script: "document.querySelector('#draft').value" },
-                      "fixture",
-                      new AbortController().signal,
-                      BACKGROUND_CONTEXT,
+                    const observed = await call(
+                      "browser_agent_browser_observe",
+                      {},
                     );
                     return `接管已完成，重新观察：${JSON.stringify(observed.content)}`;
                   }
@@ -176,6 +187,11 @@ const store =
 const sessions = store ? new Sessions(store) : undefined;
 const fixture = takeoverFixture();
 const server = createServer((request, response) => {
+  if (request.url === "/takeover-metrics") {
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify(takeoverMetrics));
+    return;
+  }
   if (!fixture(request, response))
     getRequestListener(hosted?.app.fetch ?? app.fetch)(request, response);
 });
