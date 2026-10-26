@@ -22,17 +22,21 @@ While an outcome is unknown, Domos permits bounded observations. It blocks more 
 
 ## Human takeover
 
-Open the Bot work computer and select Browser. Select Take over. The workspace expands after control is confirmed. Click a page field, then type. Use the normal selection, arrow, delete, Tab, Escape, and Enter keys. Paste sends plain text to the selected page field. Shift+Escape returns focus to the toolbar. Return control when finished. The Bot must observe the page again.
+The details panel keeps one fixed identity header and three tabs: Bot, Computer, and Browser. Computer shows the desktop. Browser shows the Bot's native Chrome window, including its address bar and tabs. Both use the same headed browser and shared display control.
 
-The address bar shows the active page URL. It stays visible while watching and becomes editable during control. The optional text form opens from Input text. It inserts at the remote selection. It does not choose a field or replace its contents by itself. A confirmed command clears this form. A failed command keeps its draft. The viewer does not claim that a command response proves the page value.
+Click the screen to take control. The first click only requests control. It does not reach the remote screen. Click a field, then type, paste, select, or scroll. Shift+Escape returns focus to the toolbar. Return control when finished. Takeover keeps the panel size. The Bot must observe the page again.
 
-The viewer maps the displayed image to page CSS pixels. Chrome can report window height while the image contains only the page. Use the depicted page ratio to correct that mismatch. Exclude image letterboxing. Reject input while the matching image is still loading. Desktop coordinates retain their reported screen dimensions.
+The browser service reads its own profile's DevTools endpoint. CDP identifies the browser PID. Cua binds one visible window from that PID. An ambiguous or unavailable window stops the connection. Browser viewing requires a headed browser and a graphical session. Headless browser tools still work without this viewer.
 
-Text input uses a focused textarea over the viewport. Composition stays local until it ends. Normal input and paste send text once. Special keys use atomic native presses, so the viewer does not leave modifier keys held. Pointer movements support hover. A drag keeps a bounded path and submits it on release. Cancellation, focus loss, and hand-back discard an unfinished gesture. This avoids holding a remote mouse button across a lost client connection.
+Cua captures the selected window and executes input against that window in the same session. The viewer maps the displayed image to the reported screenshot coordinates. It excludes letterboxing and rejects input while the matching image loads. Human window drags use foreground delivery. Other native inputs first use background delivery. A driver result of `background_unavailable` means delivery did not occur. Only this explicit refusal permits a foreground retry. Other failed or uncertain results stop input.
 
-Each connection has one bounded input queue. Consecutive pointer moves coalesce. A failed command or a full queue stops further input. Frame acknowledgements use a separate path so observation can continue. Hand-back remains available. Reconnect releases the old lease before opening a new view. It preserves the local draft and does not replay it. If the native service reports an unknown outcome, its restart requirement still applies.
+Page hover uses the owned browser's CDP input route. It reads live window and page dimensions. The mapping assumes standard Chrome borders. Side-panel layouts need native viewport bounds before they can use the same calibration.
 
-The work view uses a compact toolbar and the existing UI tokens. The page is the main surface. Profile editing stays in the Bot tab. Controls in one row share a height. Accessible names remain on controls; decorative labels and duplicate descriptions do not belong in the toolbar.
+Text input uses a focused textarea over the viewport. Composition stays local until it ends. Normal input and paste send text once. Special keys use atomic native presses. Pointer movements support hover. A drag submits its start and end on release. Cancellation, focus loss, and hand-back discard an unfinished gesture.
+
+Each connection has one bounded input queue. Consecutive pointer moves coalesce. A failed command or a full queue stops input. Frame acknowledgements use a separate path. Hand-back remains available. Reconnect releases the old lease and does not replay input. Native unknown outcomes retain the browser restart requirement.
+
+The screen fits the available area and keeps its aspect ratio. The bottom toolbar stays visible. It contains connection state, return control, panel expansion, settings, and fullscreen. Fullscreen uses the platform Fullscreen API. It hides the app shell and desktop title bar. Escape exits locally. It does not reach the remote browser. Exiting restores the panel and control state. Electron grants fullscreen only to the trusted Domos main frame.
 
 ## Results and tool boundary
 
@@ -54,7 +58,7 @@ The Add Docker Computer form exposes three network policies:
 | `web` | A proxy image on the selected Docker host | HTTP(S) proxy access, with internal addresses blocked. |
 | `restricted` | Domos egress firewall rules on the selected Linux host | Restricted public egress. |
 
-The form sends the chosen policy for both local and SSH Docker hosts. Local image preparation can supply the proxy image. Remote hosts need that image too. Browser readiness and network policy appear separately in the work view. The policy does not prove that a particular site is reachable.
+The form sends the chosen policy for both local and SSH Docker hosts. Local image preparation can supply the proxy image. Remote hosts need that image too. Computer settings show browser readiness and network policy. The policy does not prove that a particular site is reachable.
 
 ## Verification
 
@@ -64,4 +68,4 @@ The Checks workflow runs these tests on Windows, Linux, and macOS and saves JUni
 
 The installed adapter targets `agent-browser` 0.39.1. Configuration and command behavior were checked against the [official configuration reference](https://agent-browser.dev/configuration) and [command reference](https://agent-browser.dev/commands). Memoh informs the compact tool boundary. OpenMausBot informs uncertain-state recovery. openbot informs draining and input readback. rakazo informs shared screen ownership.
 
-Viewer protocol details were checked against the current [agent-browser streaming reference](https://agent-browser.dev/streaming) and [command reference](https://agent-browser.dev/commands). The stream supplies frame IDs and URL messages. Its input delivery does not acknowledge browser execution, so Domos keeps the native command result path. Text handling follows the documented [compositionend event](https://developer.mozilla.org/en-US/docs/Web/API/Element/compositionend_event), [input event](https://developer.mozilla.org/en-US/docs/Web/API/Element/input_event), and [wheel units](https://developer.mozilla.org/en-US/docs/Web/API/WheelEvent/deltaMode). OpenMausBot informs coordinate calibration and queue handling. openbot informs direct page interaction. rakazo informs screen priority and confirmed control state.
+Native capture and delivery follow the [Cua MCP tools reference](https://cua.ai/docs/cua-driver/reference/mcp-tools). Browser identity uses [CDP SystemInfo](https://chromedevtools.github.io/devtools-protocol/tot/SystemInfo/). Fullscreen follows the [Fullscreen API](https://developer.mozilla.org/en-US/docs/Web/API/Element/requestFullscreen) and [Electron session permissions](https://www.electronjs.org/docs/latest/api/session). Text handling follows the [compositionend event](https://developer.mozilla.org/en-US/docs/Web/API/Element/compositionend_event), [input event](https://developer.mozilla.org/en-US/docs/Web/API/Element/input_event), and [wheel units](https://developer.mozilla.org/en-US/docs/Web/API/WheelEvent/deltaMode).
