@@ -219,6 +219,8 @@ Domos uses TypeScript. The interface uses React 19 and Vite.
 
 ### Development commands
 
+Create a feature branch from the latest `main` in the existing repository directory. Work on one branch at a time. See the [Git workflow](AGENTS.md#git-workflow) for branch switching, review, and integration.
+
 ```sh
 pnpm lint
 pnpm typecheck
