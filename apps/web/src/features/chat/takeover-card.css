@@ -1,0 +1,51 @@
+.takeover-card {
+  width: min(100%, 474px);
+  padding: 12px 14px;
+  border-radius: 20px;
+  background: var(--color-control);
+  color: var(--color-text);
+}
+.takeover-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.takeover-card p {
+  margin: 4px 0 12px;
+  line-height: 1.4;
+}
+.takeover-card img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+.takeover-badge {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  background: #c58a2526;
+  color: #e7ae48;
+  white-space: nowrap;
+}
+.takeover-badge[data-state="done"] {
+  background: #38b89426;
+  color: #57c9a8;
+}
+.takeover-badge[data-state="expired"] {
+  background: #ffffff10;
+  color: #aaa;
+}
+.takeover-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.takeover-card-actions > button {
+  border-radius: 999px;
+}
+.takeover-card-actions > button:first-child {
+  background: #eee;
+  color: #191919;
+}

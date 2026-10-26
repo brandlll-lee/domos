@@ -113,11 +113,42 @@ const computer = new Computers(
     database,
   ),
 );
-const native = process.argv[4] === "native";
+const native = process.argv[4] === "native" || process.argv[4] === "takeover";
 const computers = native
   ? new Proxy(computer, {
       get(target, key) {
-        if (key === "process") return async () => featureProcess();
+        if (key === "process")
+          return async (...args: Parameters<Computers["process"]>) =>
+            featureProcess(
+              process.argv[4] === "takeover"
+                ? async () => {
+                    const result = await args[2](
+                      crypto.randomUUID(),
+                      "computer_request_takeover",
+                      {
+                        service: "browser",
+                        reason: "请修改搜索词，完成后交还给我。",
+                      },
+                      new AbortController().signal,
+                    );
+                    if (result.isError) return "接管未完成";
+                    const { target } = await computer.serviceTarget(
+                      args[0],
+                      BACKGROUND_CONTEXT,
+                    );
+                    const observed = await target.services.call(
+                      args[0],
+                      "browser",
+                      "agent_browser_eval",
+                      { script: "document.querySelector('#draft').value" },
+                      "fixture",
+                      new AbortController().signal,
+                      BACKGROUND_CONTEXT,
+                    );
+                    return `接管已完成，重新观察：${JSON.stringify(observed.content)}`;
+                  }
+                : undefined,
+            );
         const value = Reflect.get(target, key);
         return typeof value === "function" ? value.bind(target) : value;
       },

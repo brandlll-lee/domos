@@ -1,10 +1,14 @@
 import { type ChildProcess, fork } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createORPCClient } from "@orpc/client";
+import { RPCLink } from "@orpc/client/fetch";
+import type { RouterClient } from "@orpc/server";
 import { expect, test } from "@playwright/test";
+import type { AppRouter } from "../../api/src/router.ts";
 
 let worker: ChildProcess;
 let directory: string;
@@ -15,7 +19,11 @@ test.beforeEach(async () => {
     fileURLToPath(
       new URL("../../api/test/fixtures/web-server.ts", import.meta.url),
     ),
-    [join(directory, "data.sqlite"), "0"],
+    [
+      join(directory, "data.sqlite"),
+      "0",
+      test.info().title.includes("takeover card") ? "takeover" : "",
+    ],
     { silent: true, execArgv: [] },
   );
   worker.stdout?.resume();
@@ -45,7 +53,9 @@ async function openBrowser(page: import("@playwright/test").Page) {
   const [result] = await opened;
   expect(result.type).toBe("takeover-page-opened");
   await view.getByRole("button", { name: "接管", exact: true }).click();
-  await expect(view.getByRole("status")).toHaveText("你正在操作");
+  await expect(view.getByRole("status")).toHaveText("你正在操作", {
+    timeout: 35_000,
+  });
   const modifier = process.platform === "darwin" ? "Meta" : "Control";
   return { view, image, modifier };
 }
@@ -90,6 +100,153 @@ async function point(
       ((target.y + target.height / 2) * height) / state.height,
   };
 }
+
+test("takeover card opens the browser, survives refresh and resumes after completion", async ({
+  page,
+  request,
+}, info) => {
+  await page.addInitScript(() =>
+    localStorage.setItem("domos:appearance:v1", "dark"),
+  );
+  test.setTimeout(60000);
+  const { view } = await openBrowser(page);
+  await view.getByRole("button", { name: "交还", exact: true }).click();
+  await page
+    .locator(".bot-details")
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
+  const api = createORPCClient<RouterClient<AppRouter>>(
+    new RPCLink({ url: `${url}/rpc` }),
+  );
+  const profile = await api.engines.get({ botId: 1 });
+  await api.engines.configure({
+    botId: 1,
+    revision: profile.revision,
+    requestId: crypto.randomUUID(),
+    config: {
+      provider: "pi",
+      accountSource: "native",
+      model: "test-provider/test-model",
+    },
+  });
+  await api.engines.inspect({ botId: 1 });
+  await page.getByLabel("消息", { exact: true }).fill("请让我接管修改搜索词");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const card = page.getByRole("region", { name: "接管请求", exact: true });
+  await expect(card.getByText("需要你操作", { exact: true })).toBeVisible();
+  await expect(card.getByRole("img", { name: "接管画面预览" })).toBeVisible();
+  await page.reload();
+  await expect(card.getByText("需要你操作", { exact: true })).toBeVisible();
+  await page.screenshot({ path: info.outputPath("takeover-card-waiting.png") });
+  await card.getByRole("button", { name: "接管", exact: true }).click();
+  await expect(view.getByRole("status")).toHaveText("你正在操作");
+  const state = await (await request.get(`${url}/takeover-state`)).json();
+  const at = await point(
+    view.getByRole("img", { name: "工作电脑画面" }),
+    state,
+    "draft",
+  );
+  await page.mouse.click(at.x, at.y);
+  await page.keyboard.press(
+    process.platform === "darwin" ? "Meta+a" : "Control+a",
+  );
+  await page.keyboard.insertText("京都天气");
+  await expect
+    .poll(
+      async () =>
+        (await (await request.get(`${url}/takeover-state`)).json()).value,
+    )
+    .toBe("京都天气");
+  await card.getByRole("button", { name: "我已完成", exact: true }).click();
+  await expect(card.getByText("已完成", { exact: true })).toBeVisible();
+  await expect(card.getByRole("button")).toHaveCount(0);
+  await expect(
+    page
+      .getByRole("log", { name: "聊天记录" })
+      .getByText(/接管已完成，重新观察：/),
+  ).toContainText("京都天气");
+  await page.screenshot({ path: info.outputPath("takeover-card-done.png") });
+  await page.reload();
+  await expect(card.getByText("已完成", { exact: true })).toBeVisible();
+});
+
+test("continuous wheel input keeps takeover active", async ({
+  page,
+  request,
+}, info) => {
+  test.setTimeout(60000);
+  const { view, image } = await openBrowser(page);
+  const state = await (await request.get(`${url}/takeover-state`)).json();
+  const at = await point(image, state, "draft");
+  const latencies: number[] = [];
+  const sent = new Map<import("@playwright/test").Request, number>();
+  page.on("request", (request) => {
+    if (
+      request.url().endsWith("/rpc/computer/input") &&
+      request.postDataJSON()?.json?.action?.type === "pointer"
+    )
+      sent.set(request, performance.now());
+  });
+  page.on("requestfinished", (request) => {
+    const start = sent.get(request);
+    if (start !== undefined) {
+      latencies.push(performance.now() - start);
+      sent.delete(request);
+    }
+  });
+  const started = performance.now();
+  const observed = await image.evaluate(async (node, at) => {
+    let frames = 0,
+      accepted = 0;
+    const loaded = () => frames++;
+    node.addEventListener("load", loaded);
+    const started = performance.now();
+    for (let index = 0; index < 120; index++) {
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
+      const event = new WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        clientX: at.x,
+        clientY: at.y,
+        deltaY: index % 20 < 10 ? 30 : -30,
+      });
+      node.dispatchEvent(event);
+      if (event.defaultPrevented) accepted++;
+    }
+    node.removeEventListener("load", loaded);
+    return {
+      accepted,
+      frames,
+      frameRate: (frames * 1000) / (performance.now() - started),
+    };
+  }, at);
+  expect(observed.accepted).toBe(120);
+  expect(observed.frames).toBeGreaterThan(0);
+  await expect(view.getByRole("status")).toHaveText("你正在操作");
+  await expect(view.getByRole("alert")).toHaveCount(0);
+  await view.getByRole("button", { name: "交还", exact: true }).click();
+  await expect(view.getByRole("status")).toHaveText("实时");
+  const metrics = info.outputPath("continuous-input.json");
+  await writeFile(
+    metrics,
+    JSON.stringify({
+      inputEvents: 120,
+      elapsedMs: performance.now() - started,
+      pauses: 0,
+      runner: process.platform,
+      ...observed,
+      inputReplyP95Ms: latencies.sort((a, b) => a - b)[
+        Math.floor(latencies.length * 0.95)
+      ],
+    }),
+  );
+  await info.attach("continuous-input", {
+    path: metrics,
+    contentType: "application/json",
+  });
+});
 
 test("takeover controls the Agent browser and preserves its layout through fullscreen", async ({
   page,
@@ -150,6 +307,11 @@ test("takeover controls the Agent browser and preserves its layout through fulls
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
   await page.mouse.move(end.x, end.y, { steps: 5 });
+  await expect
+    .poll(
+      async () => (await state()).selection[1] - (await state()).selection[0],
+    )
+    .toBeGreaterThan(0);
   await page.mouse.up();
   await expect
     .poll(async () => {

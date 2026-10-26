@@ -47,6 +47,7 @@ export function BotDetails({
   onTabChange,
   expanded,
   onExpand,
+  takeoverId,
 }: {
   bot: Bot;
   active: boolean;
@@ -61,6 +62,7 @@ export function BotDetails({
   onTabChange: (tab: "bot" | "computer" | "browser") => void;
   expanded: boolean;
   onExpand: () => void;
+  takeoverId?: string;
 }) {
   const work = useBotWork(bot.id, active);
   const action = useWorkAction();
@@ -183,6 +185,7 @@ export function BotDetails({
       )}
       {view === "root" && tab !== "bot" && active && (
         <ComputerWorkspace
+          takeoverId={takeoverId}
           key={tab}
           bot={bot}
           computer={computer}

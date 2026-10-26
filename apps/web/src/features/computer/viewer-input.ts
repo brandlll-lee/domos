@@ -1,4 +1,5 @@
 import type { ViewerAction } from "@domos/agent/computer/viewer-types";
+export type ViewerInput = ViewerAction | { type: "complete" };
 
 export function viewportPoint(
   image: { naturalWidth: number; naturalHeight: number },
@@ -46,17 +47,17 @@ export function viewportPoint(
   };
 }
 
-const movement = (action: ViewerAction) =>
+const movement = (action: ViewerInput) =>
   action.type === "pointer" && action.event === "move";
-const recovery = (action: ViewerAction) =>
+const recovery = (action: ViewerInput) =>
   action.type === "back" ||
   (action.type === "pointer" && action.event === "cancel");
 
 export function viewerQueue(
-  dispatch: (action: ViewerAction) => Promise<void>,
+  dispatch: (action: ViewerInput) => Promise<void>,
   failed: (error: unknown) => void,
 ) {
-  type Entry = { action: ViewerAction; done: (value: boolean) => void };
+  type Entry = { action: ViewerInput; done: (value: boolean) => void };
   const entries: Entry[] = [];
   let running = false;
   let stopped = false;
@@ -87,9 +88,33 @@ export function viewerQueue(
       running = false;
     }
   };
-  return (action: ViewerAction): Promise<boolean> => {
+  return (action: ViewerInput): Promise<boolean> => {
     if (stopped && !recovery(action)) return Promise.resolve(false);
     const last = entries.at(-1);
+    if (
+      last?.action.type === "pointer" &&
+      action.type === "pointer" &&
+      last.action.event === "scroll" &&
+      action.event === "scroll" &&
+      last.action.button === action.button &&
+      last.action.x === action.x &&
+      last.action.y === action.y &&
+      (last.action.modifiers ?? 0) === (action.modifiers ?? 0) &&
+      Math.sign(last.action.deltaX) === Math.sign(action.deltaX) &&
+      Math.sign(last.action.deltaY) === Math.sign(action.deltaY) &&
+      Math.abs(last.action.deltaX + action.deltaX) <= 10000 &&
+      Math.abs(last.action.deltaY + action.deltaY) <= 10000
+    ) {
+      last.action = {
+        ...action,
+        deltaX: last.action.deltaX + action.deltaX,
+        deltaY: last.action.deltaY + action.deltaY,
+      };
+      last.done(false);
+      return new Promise((done) => {
+        last.done = done;
+      });
+    }
     if (last && movement(action) && movement(last.action)) {
       last.done(false);
       entries.pop();

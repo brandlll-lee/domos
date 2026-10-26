@@ -16,12 +16,14 @@ export function ComputerViewer({
   expanded,
   onExpand,
   onSettings,
+  takeoverId,
 }: {
   botId: number;
   service: "browser" | "desktop";
   expanded: boolean;
   onExpand: () => void;
   onSettings: () => void;
+  takeoverId?: string;
 }) {
   const {
     frame,
@@ -33,7 +35,7 @@ export function ComputerViewer({
     blocked,
     send,
     reconnect,
-  } = useView(botId, service);
+  } = useView(botId, service, takeoverId);
   const viewer = useRef<HTMLElement>(null);
   const image = useRef<HTMLImageElement | null>(null);
   const acknowledged = useRef("");
@@ -74,7 +76,10 @@ export function ComputerViewer({
     void send({ type: "ack", seq: frame.seq });
   };
   useEffect(acknowledge, [frame, send, service]);
-  const control = () => void send({ type: controlling ? "back" : "take" });
+  const control = () =>
+    void send({
+      type: controlling ? (takeoverId ? "complete" : "back") : "take",
+    });
   const toggleFullscreen = async () => {
     setFailure(undefined);
     try {
@@ -159,7 +164,7 @@ export function ComputerViewer({
               disabled={!connected}
               onClick={control}
             >
-              交还
+              {takeoverId ? "完成并继续" : "交还"}
             </Button>
           )}
           {!fullscreen && (

@@ -20,6 +20,11 @@ export function ComputerViewport({
   const receiver = useRef<HTMLTextAreaElement>(null);
   const composing = useRef(false);
   const pointer = useRef<number | undefined>(undefined);
+  const displayed = useRef<{
+    frame: ViewFrame;
+    naturalWidth: number;
+    naturalHeight: number;
+  }>(undefined);
   const src = `data:${frame.mimeType};base64,${frame.data}`;
   const cancel = useCallback(() => {
     if (pointer.current === undefined) return;
@@ -58,17 +63,18 @@ export function ComputerViewport({
   const point = useCallback(
     (x: number, y: number, captured = false) => {
       const node = image.current;
-      if (!driving || !node?.complete || node.currentSrc !== src) return;
+      const current = displayed.current;
+      if (!driving || !node || !current) return;
       return viewportPoint(
-        node,
+        current,
         node.getBoundingClientRect(),
-        frame,
+        current.frame,
         x,
         y,
         captured,
       );
     },
-    [driving, src, frame],
+    [driving],
   );
   useEffect(() => {
     const node = image.current;
@@ -91,6 +97,11 @@ export function ComputerViewport({
         button: "left",
         deltaX: clamp(event.deltaX),
         deltaY: clamp(event.deltaY),
+        modifiers:
+          Number(event.altKey) +
+          2 * Number(event.ctrlKey) +
+          4 * Number(event.metaKey) +
+          8 * Number(event.shiftKey),
       });
     };
     node.addEventListener("wheel", wheel, { passive: false });
@@ -107,7 +118,15 @@ export function ComputerViewport({
         src={src}
         alt="工作电脑画面"
         draggable={false}
-        onLoad={(event) => onLoad(event.currentTarget)}
+        onLoad={(event) => {
+          const node = event.currentTarget;
+          displayed.current = {
+            frame,
+            naturalWidth: node.naturalWidth,
+            naturalHeight: node.naturalHeight,
+          };
+          onLoad(node);
+        }}
         onContextMenu={(event) => {
           if (driving) event.preventDefault();
         }}

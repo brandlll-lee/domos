@@ -13,6 +13,7 @@ import { timeBreak } from "./format.ts";
 import { MaterialChips } from "./material-chips.tsx";
 import { MessageBody } from "./message-body.tsx";
 import { MessageContent } from "./message-content.tsx";
+import { TakeoverCard } from "./takeover-card.tsx";
 import { TypingDots } from "./typing-dots.tsx";
 import { useTranscript } from "./use-transcript.ts";
 
@@ -55,22 +56,26 @@ const MessageRow = memo(function MessageRow({
           : chatCopy.assistantMessage(botName)
       }
     >
-      <MessageBubble side={message.role === "user" ? "outgoing" : "incoming"}>
-        <MessageBody>
-          {!!message.attachments?.length && (
-            <Attachments
-              botId={botId}
-              files={message.attachments}
-              caption={messageText(message)}
+      {message.takeover ? (
+        <TakeoverCard botId={botId} message={message} />
+      ) : (
+        <MessageBubble side={message.role === "user" ? "outgoing" : "incoming"}>
+          <MessageBody>
+            {!!message.attachments?.length && (
+              <Attachments
+                botId={botId}
+                files={message.attachments}
+                caption={messageText(message)}
+              />
+            )}
+            <MaterialChips materials={message.materials} />
+            <MessageContent
+              content={message.content}
+              user={message.role === "user"}
             />
-          )}
-          <MaterialChips materials={message.materials} />
-          <MessageContent
-            content={message.content}
-            user={message.role === "user"}
-          />
-        </MessageBody>
-      </MessageBubble>
+          </MessageBody>
+        </MessageBubble>
+      )}
       {message.role === "user" && (
         <ActionMenu
           label={chatCopy.messageActions}

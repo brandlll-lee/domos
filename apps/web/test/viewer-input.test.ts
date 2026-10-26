@@ -4,6 +4,44 @@ import {
   viewportPoint,
 } from "../src/features/computer/viewer-input.ts";
 
+test("scroll bursts merge within direction and action boundaries", async () => {
+  const gate = Promise.withResolvers<void>();
+  const dispatch = vi.fn(
+    async (
+      _action: import("../src/features/computer/viewer-input.ts").ViewerInput,
+    ) => gate.promise,
+  );
+  const failed = vi.fn();
+  const send = viewerQueue(dispatch, failed);
+  const first = send({ type: "take" });
+  const wheel = (deltaY: number) =>
+    send({
+      type: "pointer",
+      event: "scroll",
+      x: 10,
+      y: 20,
+      button: "left",
+      deltaX: 0,
+      deltaY,
+    });
+  const burst = Array.from({ length: 120 }, () => wheel(30));
+  const reverse = wheel(-30);
+  const key = send({ type: "key", key: "Enter", modifiers: 0 });
+  const afterKey = wheel(-30);
+  const complete = send({ type: "complete" });
+  gate.resolve();
+  await Promise.all([first, ...burst, reverse, key, afterKey, complete]);
+  expect(failed).not.toHaveBeenCalled();
+  expect(dispatch.mock.calls.map(([action]) => action)).toEqual([
+    { type: "take" },
+    expect.objectContaining({ deltaY: 3600 }),
+    expect.objectContaining({ deltaY: -30 }),
+    { type: "key", key: "Enter", modifiers: 0 },
+    expect.objectContaining({ deltaY: -30 }),
+    { type: "complete" },
+  ]);
+});
+
 test("viewport coordinates follow the decoded image and exclude letterboxing", () => {
   const image = { naturalWidth: 1280, naturalHeight: 720 };
   const frame = { width: 1280, height: 720 };

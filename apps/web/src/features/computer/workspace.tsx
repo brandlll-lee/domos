@@ -21,6 +21,7 @@ export function ComputerWorkspace({
   expanded,
   onExpand,
   onSettings,
+  takeoverId,
 }: {
   bot: Bot;
   computer: ReturnType<typeof useComputer>;
@@ -29,6 +30,7 @@ export function ComputerWorkspace({
   expanded: boolean;
   onExpand: () => void;
   onSettings: () => void;
+  takeoverId?: string;
 }) {
   const status = computer.status;
   const { state, busy, error, configure, reload } = useComputerServices(
@@ -42,6 +44,7 @@ export function ComputerWorkspace({
       <div className="computer-workspace-stage">
         {status?.authorized && item?.enabled && item.available ? (
           <ComputerViewer
+            takeoverId={takeoverId}
             botId={bot.id}
             service={service}
             expanded={expanded}

@@ -1,7 +1,13 @@
 import type { Bot, BotPresence } from "@domos/agent/bots";
 import { type ChatMessage, messageText } from "@domos/agent/messages";
 import { characterIdentity } from "@domos/ui/characters";
-import { type CSSProperties, useCallback, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { CreateBot } from "../bots/create-bot.tsx";
 import { BotDetails, type BotPanelView } from "../bots/details/index.tsx";
 import { useEngine } from "../bots/details/use-engine.ts";
@@ -90,6 +96,35 @@ function BotChat({
   );
   const [expanded, setExpanded] = useState(false);
   const [detailPanel, setDetailPanel] = useState<BotPanelView>("root");
+  const [takeover, setTakeover] = useState<{
+    id: string;
+    service: "browser" | "desktop";
+  }>();
+  useEffect(() => {
+    const open = (event: Event) => {
+      const request = (
+        event as CustomEvent<{
+          botId: number;
+          id: string;
+          service: "browser" | "desktop";
+        }>
+      ).detail;
+      if (request.botId !== bot.id) return;
+      setTakeover(request);
+      setView("chat");
+      setDetailPanel("root");
+      setExpanded(false);
+      setPanel(request.service === "browser" ? "browser" : "computer");
+      setDetailsOpen(true);
+    };
+    window.addEventListener("domos:takeover-open", open);
+    return () => window.removeEventListener("domos:takeover-open", open);
+  }, [bot.id]);
+  const takeoverId =
+    panel === (takeover?.service === "browser" ? "browser" : "computer") &&
+    chat.view?.approvals?.some((approval) => approval.id === takeover?.id)
+      ? takeover?.id
+      : undefined;
   const { items } = chat;
   const connection = chat.connected
     ? chatCopy.connected
@@ -150,6 +185,7 @@ function BotChat({
       }
       inspector={
         <BotDetails
+          takeoverId={takeoverId}
           active={detailsOpen}
           bot={bot}
           view={detailPanel}

@@ -13,6 +13,7 @@ export function Approvals({
   botId: number;
   approvals: EngineApproval[];
 }) {
+  approvals = approvals.filter((approval) => !approval.takeover);
   return (
     <div className="detail-stack" aria-live="polite">
       {approvals.length > 1 && (

@@ -266,6 +266,18 @@ export function engineRouter(bots: Bots, engines?: Engines) {
       );
       return { ok: true };
     }),
+    takeRequest: os
+      .input(botTarget.extend({ id: z.uuid(), view: z.uuid() }))
+      .handler(({ input }) =>
+        operation(async () =>
+          (await target(input.botId)).engines.takeRequest(
+            input.botId,
+            input.id,
+            input.view,
+            context,
+          ),
+        ),
+      ),
     answer: os
       .input(
         botTarget.extend({
