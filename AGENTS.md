@@ -42,6 +42,7 @@ Keep these choices independent. Support Pi, Codex, Claude Code, and OpenCode thr
 - Route Agent handoff requests through the shared `computer_request_takeover` tool and stored chat cards. Complete only the live request whose viewer owns control. Closing a viewer does not complete a request.
 - Reserve a viewer's lease before takeover waits. Keep its frames and acknowledgements live during the grant. Allow input only after the grant completes. Reuse concurrent requests from that viewer and release its reservation when it closes.
 - Browser navigation and known page actions return bounded observations. Batch known continuous browser actions with `agent_browser_run_steps`. Use `agent_browser_observe` after takeover or unclear screenshots. Preserve delivered actions when observation fails. Do not infer missing-content causes from blank space or document readiness.
+- Browser mode belongs to the shared work-browser service. Change it only through a confirmed restart. Reuse the Bot profile. Hold browser and desktop control during the change. Report observed access evidence; do not hardcode website fallbacks or open personal browsers.
 - For viewer input, layout, or reconnect changes, follow [docs/browser-use.md](docs/browser-use.md). Test clicks through the scaled image and read back the real page. Scripted focus and mocked RPC output do not verify takeover.
 - Preserve native action results when observation or evidence storage fails. Keep runtime browser arguments in Domos, and apply text limits at the browser boundary. See [docs/browser-use.md](docs/browser-use.md).
 - Keep cursor and border tracking separate from execution. Use the shared effect renderer and Bot theme color. Effect failures must not block actions or change their result.
@@ -56,6 +57,7 @@ Keep these choices independent. Support Pi, Codex, Claude Code, and OpenCode thr
 - Keep tests proportional to behavior. Extend the existing relevant test where possible. Replace stale cases rather than stacking duplicate cases.
 - Use comments for non-obvious domain or OS constraints. Keep change history in Git.
 - Reuse `packages/ui` controls and tokens. Build visual hierarchy with spacing and typography. Add labels and descriptions only when they provide needed information.
+- Coordinate panel layout with React View Transitions and existing motion tokens. Keep transcript position and drafts stable. Honor reduced motion. Closing a viewer still releases its control lease.
 - Use short sentences and active voice. Report confirmed results separately from assumptions and unverified behavior.
 - Check installed versions and current official documentation before changing external API or protocol behavior. Reference projects inform design; their rules do not govern this repository.
 

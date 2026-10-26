@@ -59,6 +59,27 @@
     "pasteHandled": false,
     "compositionHandled": false
   },
+  "browserCompatibility": {
+    "date": "2026-10-27",
+    "platform": "Windows",
+    "browserVersion": "0.39.4",
+    "target": "public X profile",
+    "freshProfilePerRun": true,
+    "headless": { "runs": 2, "http403": 2 },
+    "headed": { "runs": 2, "http200": 2 },
+    "controlWebsiteHttp200": true,
+    "exactRejectionCause": "unconfirmed"
+  },
+  "panelLayout": {
+    "date": "2026-10-27",
+    "viewport": { "width": 1620, "height": 940 },
+    "historyMessages": 320,
+    "renderedMessages": 120,
+    "toggles": 4,
+    "chatWidths": [1292, 908],
+    "layoutChangeFrames": 1,
+    "emptyMessageFrames": 0
+  },
   "firstTakeover": {
     "reportedError": "用户正在另一窗口接管。请等待交还控制权。",
     "phase": "grant pending while same viewer requests next frame",

@@ -18,7 +18,19 @@ Observation has one five-second native command budget. It reads the current URL,
 
 Tool text includes `Domos browser timing (ms)`. `queueMs` measures waiting before the serialized operation. `commandMs` measures native MCP action replies. `observationMs` measures follow-up native reads. `metadataMs` measures screenshot address lookup. `totalMs` includes local setup and validation. Client delivery and image decoding require separate viewer measurements. These values do not measure model response time or separate CDP work from MCP transport.
 
-## Control and recovery
+## Browser compatibility
+
+The dedicated Agent browser starts headless unless the work environment explicitly selects headed mode. Computer settings show the active mode. The user can confirm a mode change there. The shared browser service restarts the same Bot browser with the same profile and downloads directory. It saves the choice in `.domos/browser-mode.json`. All Harness use this service. There are no website-name rules.
+
+Switching closes tabs and unsaved page input. The confirmation states this cost. Saved cookies and local storage remain in the profile. Session-only page state is not guaranteed. End computer tasks and return control before switching. Domos closes browser viewers and reserves both browser and desktop control during restart. A headed browser then shares desktop control. A headless browser uses its own control. An explicit confirmed restart can also recover an interrupted browser; it does not prove that a previous submission failed.
+
+Navigation returns the requested URL, observed URL, browser mode, available HTTP status, and access assessment in text content. A native failure remains a failure. Navigation failures also receive a bounded read-only observation. Domos does not replay navigation or submissions. HTTP 403 means access was denied; it does not identify the rejection rule. HTTP 401 indicates authentication. Password fields and challenge elements are page signals. They do not prove that a task needs login or that a challenge can be solved. Missing status remains unknown.
+
+The user chooses whether to try another mode after inspecting this evidence. A mode change does not open a personal browser or silently choose another website. Browser takeover cards show the URL observed when the request was made, when available. The stored service, computer revision and viewer lease continue to bind the actual takeover target. The user may navigate during takeover; the Bot must observe fresh state after completion.
+
+The implementation follows [agent-browser configuration](https://agent-browser.dev/configuration) and [persistent sessions](https://agent-browser.dev/sessions). HTTP status observation follows [Resource Timing](https://developer.mozilla.org/en-US/docs/Web/API/PerformanceResourceTiming/responseStatus). An unavailable or zero status does not prove success. [Cloudflare challenge support](https://developers.cloudflare.com/cloudflare-challenges/reference/supported-browsers/) limits automated browser environments. Mode switching does not guarantee access.
+
+## Control ownership
 
 A headed browser shares control with the desktop on its work computer. The worker reports whether the browser is headless. Until that report arrives, Domos uses shared control. Each confirmed headless Bot browser has separate control. This is an application coordination rule, not operating system isolation.
 
@@ -45,6 +57,8 @@ Text input uses a focused textarea over the viewport. Composition stays local un
 Each connection has one bounded input queue. Consecutive pointer moves coalesce. Consecutive wheel events merge at the same position, in the same direction, with the same modifiers. Keys, clicks, direction changes, and hand-back retain their order. A failed command or a full queue stops input. Frame acknowledgements use a separate path. Hand-back remains available. Reconnect releases the old lease and does not replay input. Unknown browser outcomes retain the browser restart requirement.
 
 The screen fits the available area and keeps its aspect ratio. The bottom toolbar stays visible. It contains connection state, return control, panel expansion, settings, and fullscreen. Fullscreen uses the platform Fullscreen API. It hides the app shell and desktop title bar. Escape exits locally. It does not reach the remote browser. Exiting restores the panel and control state. Electron grants fullscreen only to the trusted Domos main frame.
+
+Panel open and close changes use [React View Transitions](https://react.dev/reference/react/ViewTransition). The chat layout changes once. A clipped snapshot animates the bounds with the existing 220 ms motion token. The old text snapshot does not cross-fade over the new text. New pointer or keyboard input [ends the active transition](https://developer.mozilla.org/en-US/docs/Web/API/Document/activeViewTransition). Controls remain live. [Base UI animation states](https://base-ui.com/react/handbook/animation) control panel entry and exit. Resize observation restores transcript position before paint. Reduced motion disables these animations. Panel resizing does not recreate the browser viewer. Closing the panel releases its viewer and lease; reopening creates a fresh connection.
 
 ## Chat takeover requests
 
