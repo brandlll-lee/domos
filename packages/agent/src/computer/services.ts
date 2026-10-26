@@ -212,10 +212,13 @@ export class ComputerServices {
     }
   }
 
-  async takeover(botId: number, service: ComputerService) {
+  async takeover(
+    botId: number,
+    service: ComputerService,
+    lease: string = randomUUID(),
+  ) {
     const control = this.control(botId, service);
     if (control.lease) throw new Error("用户正在接管这台电脑。");
-    const lease = randomUUID();
     control.lease = lease;
     control.revision++;
     for (const call of control.calls) call.controller.abort();

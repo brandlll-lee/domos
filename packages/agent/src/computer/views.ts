@@ -12,6 +12,7 @@ type View = {
   target: Computer;
   controller: AbortController;
   lease?: string;
+  taking?: Promise<void>;
   requestId?: string;
 };
 
@@ -111,15 +112,23 @@ export class ComputerViews {
   ) {
     const view = await this.session(botId, id, context);
     if (message.type === "take") {
-      if (!view.lease) {
-        const lease = await view.target.services.takeover(botId, view.service);
-        if (!this.sessions.has(id)) {
-          await view.target.services.release(botId, view.service, lease);
-          throw new Error("画面连接已断开。");
-        }
-        view.lease = lease;
+      if (!view.lease && !view.taking) {
+        view.lease = randomUUID();
+        view.taking = view.target.services
+          .takeover(botId, view.service, view.lease)
+          .then(() => {})
+          .catch((error: unknown) => {
+            view.lease = undefined;
+            throw error;
+          })
+          .finally(() => {
+            view.taking = undefined;
+          });
       }
+      await view.taking;
+      if (!this.sessions.has(id)) throw new Error("画面连接已断开。");
     } else if (message.type === "back") {
+      await view.taking;
       if (view.lease) {
         await view.target.services.viewer(
           botId,
@@ -138,6 +147,8 @@ export class ComputerViews {
       view.lease = undefined;
     } else {
       view.target.services.viewAccess(botId, view.service, view.lease);
+      if (message.type !== "ack" && view.taking)
+        throw new Error("正在交接控制权。请等待。");
       if (message.type !== "ack" && !view.lease)
         throw new Error("请先接管，再操作电脑。");
       await view.target.services.viewer(
@@ -161,14 +172,22 @@ export class ComputerViews {
     if (!view) return;
     this.sessions.delete(id);
     view.controller.abort();
-    await view.target.services.viewer(
-      view.botId,
-      { operation: "view", service: view.service, id, action: "close" },
-      AbortSignal.timeout(35000),
-      context,
-    );
-    if (view.lease)
-      await view.target.services.release(view.botId, view.service, view.lease);
+    try {
+      await view.target.services.viewer(
+        view.botId,
+        { operation: "view", service: view.service, id, action: "close" },
+        AbortSignal.timeout(35000),
+        context,
+      );
+    } finally {
+      await view.taking?.catch(() => {});
+      if (view.lease)
+        await view.target.services.release(
+          view.botId,
+          view.service,
+          view.lease,
+        );
+    }
   }
 
   async closeBot(botId: number, service: ComputerService, context: Context) {

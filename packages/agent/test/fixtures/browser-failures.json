@@ -58,5 +58,13 @@
     "tabForwarded": false,
     "pasteHandled": false,
     "compositionHandled": false
+  },
+  "firstTakeover": {
+    "reportedError": "用户正在另一窗口接管。请等待交还控制权。",
+    "phase": "grant pending while same viewer requests next frame",
+    "date": "2026-10-26",
+    "historicalFailures": 6,
+    "services": ["browser", "desktop"],
+    "historicalReproductions": 6
   }
 }

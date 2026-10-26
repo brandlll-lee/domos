@@ -9,6 +9,114 @@ import { computerEvidence } from "../src/harness/evidence.ts";
 import type { WorkProcess } from "../src/harness/process.ts";
 
 const signal = () => new AbortController().signal;
+
+test.each(["browser", "desktop"] as const)(
+  "%s keeps its own frames during first takeover and drains before input",
+  async (service) => {
+    const settling = Promise.withResolvers<void>();
+    const settled = Promise.withResolvers<void>();
+    const worker = {
+      closed: new Promise(() => {}),
+      computer: vi.fn(async (request: { operation: string }) => {
+        if (request.operation === "settle") {
+          settling.resolve();
+          await settled.promise;
+        }
+        return { available: true, sharedDesktop: true };
+      }),
+    };
+    const services = new ComputerServices(
+      async () => worker as unknown as WorkProcess,
+    );
+    const target = { services };
+    const views = new ComputerViews({
+      serviceTarget: async () => ({
+        target,
+        id: "pc",
+        enabled: { browser: true, desktop: true },
+      }),
+    } as unknown as Computers);
+    const id = await views.open(1, service, signal(), context);
+    const other = await views.open(1, service, signal(), context);
+    const taking = views.action(1, id, { type: "take" }, signal(), context);
+    await settling.promise;
+    try {
+      await views.next(1, id, signal(), context);
+      await views.action(1, id, { type: "ack", seq: 1 }, signal(), context);
+      await expect(
+        views.action(1, id, { type: "text", text: "early" }, signal(), context),
+      ).rejects.toThrow("交接");
+      await expect(views.next(1, other, signal(), context)).rejects.toThrow(
+        "另一窗口",
+      );
+      const repeated = views.action(1, id, { type: "take" }, signal(), context);
+      settled.resolve();
+      expect(await taking).toEqual({ controlling: true });
+      expect(await repeated).toEqual({ controlling: true });
+      await views.action(
+        1,
+        id,
+        { type: "text", text: "ready" },
+        signal(),
+        context,
+      );
+      await views.close(id, context);
+      await views.next(1, other, signal(), context);
+    } finally {
+      settled.resolve();
+      await taking.catch(() => {});
+      await views.close(id, context);
+      await views.close(other, context);
+    }
+  },
+);
+
+test.each([false, true])(
+  "closing during takeover releases its reservation after settle (failure=%s)",
+  async (fails) => {
+    const started = Promise.withResolvers<void>();
+    const done = Promise.withResolvers<void>();
+    let hold = true;
+    const services = new ComputerServices(
+      async () =>
+        ({
+          closed: new Promise(() => {}),
+          computer: async (request: { operation: string }) => {
+            if (request.operation === "settle" && hold) {
+              started.resolve();
+              await done.promise;
+              if (fails) throw new Error("settle failed");
+            }
+            return { available: true, sharedDesktop: true };
+          },
+        }) as unknown as WorkProcess,
+    );
+    const target = { services };
+    const views = new ComputerViews({
+      serviceTarget: async () => ({
+        target,
+        id: "pc",
+        enabled: { browser: true },
+      }),
+    } as unknown as Computers);
+    const id = await views.open(1, "browser", signal(), context);
+    const taking = views.action(1, id, { type: "take" }, signal(), context);
+    const rejected = expect(taking).rejects.toThrow(
+      fails ? "settle failed" : "断开",
+    );
+    await started.promise;
+    const closing = views.close(id, context);
+    expect(() => services.viewAccess(1, "browser")).toThrow("另一窗口");
+    done.resolve();
+    await rejected;
+    await closing;
+    services.viewAccess(1, "browser");
+    hold = false;
+    const next = await views.open(1, "browser", signal(), context);
+    await views.action(1, next, { type: "take" }, signal(), context);
+    await views.close(next, context);
+  },
+);
 test("takeover completion requires the matching viewer and closes input before releasing control", async () => {
   const order: string[] = [];
   const closed = Promise.withResolvers<void>();
