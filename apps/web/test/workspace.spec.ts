@@ -63,6 +63,8 @@ test("three columns keep the identity capsule and navigation clear at each width
       "background-color",
       theme === "dark" ? "rgb(24, 24, 26)" : "rgb(245, 245, 247)",
     );
+    await expect(capsule).toHaveCSS("border-width", "1px");
+    await expect(capsule).not.toHaveCSS("box-shadow", "none");
     await page.screenshot({ path: info.outputPath(`workspace-${theme}.png`) });
   }
   await details.getByRole("button", { name: "关闭", exact: true }).click();
@@ -223,6 +225,9 @@ test("usage reports native task costs and preserves session snapshots across the
   await expect(page.locator(".usage-surface > .scroll-bar")).toHaveCount(1);
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
+    const search = usage.getByRole("searchbox", { name: "搜索用量记录" });
+    await search.click();
+    await expect(search).toHaveCSS("outline-style", "none");
     await expect(summary).toContainText("model-2");
     await expect(summary).toContainText("其他");
     await expect(details).toContainText("$101.00");
@@ -809,12 +814,20 @@ test("Bot panels keep their hierarchy in both themes and panel widths", async ({
   }
   await details.getByRole("button", { name: /^记忆(?:\s|$)/ }).click();
   await details.getByRole("button", { name: "新增记忆", exact: true }).click();
-  await details
-    .getByRole("textbox", { name: "新增记忆", exact: true })
-    .fill("会议记录使用简洁中文。");
+  const memory = details.getByRole("textbox", {
+    name: "新增记忆",
+    exact: true,
+  });
+  await memory.fill("会议记录使用简洁中文。");
   for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await memory.click();
+    await expect(memory).toHaveCSS("outline-style", "none");
+    await memory.press("Tab");
+    await expect(
+      details.getByRole("checkbox", { name: "共享给所有 Bot" }),
+    ).toBeFocused();
     const save = details.getByRole("button", { name: "保存记忆", exact: true });
     await expect(save).toBeEnabled();
     if (theme === "dark") {

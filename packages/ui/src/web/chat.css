@@ -120,7 +120,8 @@
   scrollbar-width: thin;
 }
 .message-composer textarea::placeholder {
-  color: var(--color-muted);
+  color: color-mix(in srgb, var(--color-muted) 95%, var(--color-composer));
+  font-size: var(--text-label);
 }
 .composer-attachments,
 .attachments {

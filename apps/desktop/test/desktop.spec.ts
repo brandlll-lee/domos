@@ -276,7 +276,19 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     const environmentBox = await environment.boundingBox();
     expect(environmentBox && plus && plus.y < environmentBox.y).toBe(true);
     await resize.press("Home");
-    expect((await environment.boundingBox())?.x).toBe(left);
+    await expect(resize).toHaveAttribute("aria-valuenow", "96");
+    await expect
+      .poll(async () => {
+        const sidebar = await page
+          .locator('.workspace-panel[data-side="sidebar"]')
+          .boundingBox();
+        const trigger = await environment.boundingBox();
+        if (!sidebar || !trigger) throw new Error("Environment menu missing");
+        return Math.abs(
+          trigger.x + trigger.width / 2 - sidebar.x - sidebar.width / 2,
+        );
+      })
+      .toBeLessThan(1);
     const menuShown = desktop.evaluate(
       ({ Menu }) =>
         new Promise<void>((resolve) => {

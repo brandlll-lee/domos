@@ -167,7 +167,7 @@ async function expectTextContrast(page: import("@playwright/test").Page) {
     };
     return [
       ...document.querySelectorAll<HTMLElement>(
-        ".chat-preview span, .picker-trigger, .message-bubble, .picker-item",
+        ".chat-preview span, .picker-trigger, .message-bubble, .picker-item, .message-composer textarea",
       ),
     ].map((element) => {
       let background: Element | null = element;
@@ -176,7 +176,12 @@ async function expectTextContrast(page: import("@playwright/test").Page) {
         getComputedStyle(background).backgroundColor === "rgba(0, 0, 0, 0)"
       )
         background = background.parentElement;
-      const foreground = luminance(getComputedStyle(element).color);
+      const foreground = luminance(
+        getComputedStyle(
+          element,
+          element.matches("textarea") ? "::placeholder" : null,
+        ).color,
+      );
       if (!background) throw new Error("Missing opaque background");
       const surface = luminance(getComputedStyle(background).backgroundColor);
       return (
@@ -2215,10 +2220,19 @@ test("composer grows, shrinks, and keeps one focus surface in both themes", asyn
     await expect(send).toHaveCSS("color", colors.canvas);
     await input.clear();
     await expectTextContrast(page);
-    await input.focus();
+    await input.click();
     await expect(input).toHaveCSS("outline-style", "none");
+    await expect(input).toHaveCSS("font-size", "14px");
+    expect(
+      await input.evaluate(
+        (node) => getComputedStyle(node, "::placeholder").fontSize,
+      ),
+    ).toBe("13px");
     await page.screenshot({ path: `test-results/workspace-${theme}.png` });
   }
+  await page.emulateMedia({ forcedColors: "active" });
+  await expect(input).toHaveCSS("outline-style", "solid");
+  await page.emulateMedia({ forcedColors: "none" });
   await page
     .locator("#bot-details")
     .getByRole("button", { name: "关闭", exact: true })
@@ -2499,6 +2513,8 @@ test("model search and themed popups support keyboard, dismissal, and narrow scr
   await page.keyboard.press("Enter");
   const search = page.getByRole("searchbox", { name: "搜索模型", exact: true });
   await expect(search).toBeFocused();
+  await search.click();
+  await expect(search).toHaveCSS("outline-style", "none");
   await search.fill(crypto.randomUUID());
   await expect(page.getByText("没有找到模型", { exact: true })).toBeVisible();
   await expect(page.locator(".model-selector-option")).toHaveCount(0);
@@ -2584,6 +2600,13 @@ test("IM bubbles, sidebar search, and popup surfaces share both themes", async (
   ] as const) {
     await chooseAppearance(page, label);
     await expectTextContrast(page);
+    await expect(page.locator(".settings-window")).toHaveCount(0);
+    await search.click();
+    await expect(search).toHaveCSS("outline-style", "none");
+    await expect(page.locator(".sidebar-search")).toHaveCSS(
+      "box-shadow",
+      "none",
+    );
     await expect(outgoing).toHaveCSS(
       "color",
       await incoming.evaluate((element) => getComputedStyle(element).color),
@@ -4030,9 +4053,13 @@ test("composer menu adds task materials, keeps drafts, and fits both themes", as
     .getByRole("menuitem", { name: "添加上下文…", exact: true })
     .click();
   await page.getByRole("menuitem", { name: "粘贴文本", exact: true }).click();
-  await page
-    .getByRole("textbox", { name: "引用文本", exact: true })
-    .fill("这些是引用材料，不是用户指令。");
+  const reference = page.getByRole("textbox", {
+    name: "引用文本",
+    exact: true,
+  });
+  await reference.click();
+  await expect(reference).toHaveCSS("outline-style", "none");
+  await reference.fill("这些是引用材料，不是用户指令。");
   await page.getByRole("button", { name: "添加", exact: true }).click();
   await page.reload();
   await expect(

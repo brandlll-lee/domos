@@ -72,7 +72,6 @@
 }
 .button:focus-visible,
 .picker-trigger:focus-visible,
-.picker-search:focus-visible,
 a:focus-visible,
 summary:focus-visible {
   outline: 2px solid var(--color-focus);
@@ -164,6 +163,7 @@ summary:focus-visible {
   padding: var(--space-2) var(--space-3);
   border: 1px solid transparent;
   border-radius: var(--radius-control);
+  outline: none;
   background: var(--color-control);
   color: var(--color-text);
   font-size: var(--text-label);
@@ -182,9 +182,9 @@ textarea.field-control {
 .field-control::placeholder {
   color: var(--color-muted);
 }
-.field-control:focus {
-  border-color: var(--color-focus);
-  outline: 1px solid var(--color-focus);
+.field-control:focus,
+.picker-search:focus {
+  background: var(--color-control-hover);
 }
 .picker-popup {
   min-width: max(var(--anchor-width), 9rem);
@@ -228,9 +228,6 @@ textarea.field-control {
 }
 .picker-search::placeholder {
   color: var(--color-muted);
-}
-.picker-search:focus-visible {
-  outline-offset: -2px;
 }
 .picker-scroll {
   max-height: min(20rem, calc(var(--available-height) - var(--control-height)));

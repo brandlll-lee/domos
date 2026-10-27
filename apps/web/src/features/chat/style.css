@@ -36,7 +36,6 @@
 }
 .sidebar-search:focus-within {
   background: var(--color-control);
-  box-shadow: 0 0 0 1px var(--color-focus);
 }
 .sidebar-search svg {
   flex-shrink: 0;
@@ -183,9 +182,10 @@
   max-width: 100%;
   min-height: var(--control-height);
   padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2);
-  border: 1px solid var(--color-edge);
+  border: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent);
   border-radius: var(--radius-round);
   background: var(--color-surface);
+  box-shadow: 0 1px 3px #0000000f;
   color: var(--color-text);
   font-size: var(--text-label);
   font-weight: var(--weight-semibold);

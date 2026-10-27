@@ -159,9 +159,7 @@
   background: color-mix(in srgb, var(--color-text) 5%, transparent);
 }
 .model-selector-search .field-control:focus {
-  border-color: transparent;
-  outline: 2px solid var(--color-focus);
-  outline-offset: 1px;
+  background: var(--color-control-hover);
 }
 .model-selector-scroll {
   min-height: 0;

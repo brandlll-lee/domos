@@ -56,9 +56,7 @@
   background: var(--color-control-hover);
 }
 .composer-menu-item:focus-visible,
-.composer-picker-row:focus-visible,
-.composer-picker-search:focus-visible,
-.composer-text-picker textarea:focus-visible {
+.composer-picker-row:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: -2px;
 }
@@ -89,11 +87,16 @@
   width: 100%;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
+  outline: none;
   padding: var(--space-2) var(--space-3);
   background: var(--color-control);
   color: var(--color-text);
   font: inherit;
   font-size: var(--text-body);
+}
+.composer-picker-search:focus,
+.composer-text-picker textarea:focus {
+  background: var(--color-control-hover);
 }
 .composer-picker-search {
   height: var(--control-small);

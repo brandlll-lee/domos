@@ -482,6 +482,7 @@
   min-height: 1.875rem;
   padding-inline: var(--space-3);
   border: 0;
+  outline: none;
   border-radius: var(--radius-round);
   background: var(--color-surface);
   color: var(--color-text);
@@ -489,6 +490,9 @@
 }
 .usage-search input::placeholder {
   color: var(--color-muted);
+}
+.usage-search input:focus {
+  background: var(--color-control);
 }
 .usage-search input::-webkit-search-cancel-button {
   display: none;
@@ -731,7 +735,7 @@
 .usage-skeleton-chart {
   height: clamp(12rem, 26vh, 16rem);
 }
-.usage-surface :is(button, input, summary):focus-visible {
+.usage-surface :is(button, summary):focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
