@@ -1527,30 +1527,47 @@ test("chat gutters stay full width while bubbles follow the available panel", as
   }
   await page.setViewportSize({ width: 1920, height: 1080 });
   const details = await openDetails(page);
+  await page.evaluate(() => document.activeViewTransition?.finished);
   for (const zoom of [1, 1.25, 1.5]) {
     await page.evaluate((value) => {
       document.documentElement.style.zoom = String(value);
     }, zoom);
     const handle = page.getByRole("separator", { name: "调整详情宽度" });
+    await handle.hover();
     const box = await handle.boundingBox();
     if (!box) throw new Error("Details resize handle missing");
+    const messageWidth = (await page.locator(".messages").boundingBox())?.width;
     await page.mouse.move(box.x + box.width / 2, box.y + 100);
     await page.mouse.down();
+    await expect(page.locator(".workspace-content")).toHaveAttribute(
+      "data-resizing",
+      "true",
+    );
     for (const distance of [40, 80, 120, 60, 0]) {
       await page.mouse.move(box.x - distance, box.y + 100, { steps: 3 });
       const chat = await page.locator(".conversation").boundingBox();
-      const sent = await outgoing.boundingBox();
       const panel = await details.boundingBox();
-      if (!chat || !sent || !panel) throw new Error("Chat panel missing");
-      expect(sent.x + sent.width).toBeLessThanOrEqual(chat.x + chat.width + 1);
+      if (!chat || !panel || !messageWidth)
+        throw new Error("Chat panel missing");
+      expect(
+        (await page.locator(".messages").boundingBox())?.width,
+      ).toBeCloseTo(messageWidth, 0);
       expect(chat.x + chat.width).toBeLessThanOrEqual(panel.x + 1);
       expect(
         await page
           .locator(".transcript")
-          .evaluate((element) => element.scrollWidth - element.clientWidth),
+          .evaluate((node) => node.scrollWidth - node.clientWidth),
       ).toBeLessThanOrEqual(1);
     }
     await page.mouse.up();
+    await expect(page.locator(".workspace-content")).not.toHaveAttribute(
+      "data-resizing",
+    );
+    await page.evaluate(() => document.activeViewTransition?.finished);
+    const chat = await page.locator(".conversation").boundingBox();
+    const sent = await outgoing.boundingBox();
+    if (!chat || !sent) throw new Error("Chat panel missing");
+    expect(sent.x + sent.width).toBeLessThanOrEqual(chat.x + chat.width + 1);
     await page.screenshot({ path: `test-results/chat-side-panel-${zoom}.png` });
   }
   await page.evaluate(() => {

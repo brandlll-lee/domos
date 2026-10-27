@@ -81,9 +81,14 @@ export function useWorkspaceLayout(details: boolean) {
       ...(side !== "sidebar" || !collapsed ? { [side]: width } : {}),
       collapsed,
     };
-    if (collapsed !== preferred.collapsed)
-      startTransition(() => setPreferred(next));
-    else setPreferred(next);
+    if (
+      next.sidebar !== preferred.sidebar ||
+      next.inspector !== preferred.inspector ||
+      next.collapsed !== preferred.collapsed
+    ) {
+      if (persist) startTransition(() => setPreferred(next));
+      else setPreferred(next);
+    }
     if (persist) {
       try {
         localStorage.setItem(storageKey, JSON.stringify(next));

@@ -7,21 +7,20 @@ import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
 import { ListIcon } from "@phosphor-icons/react/dist/csr/List";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import {
+  type CSSProperties,
   type ReactNode,
   startTransition,
+  useCallback,
   useEffect,
   useState,
   ViewTransition,
 } from "react";
+import { flushSync } from "react-dom";
 import { EnvironmentSwitcher } from "./environment-switcher.tsx";
 import { useWorkspaceLayout } from "./layout.ts";
 import { ResizeHandle } from "./resize-handle.tsx";
 import { Titlebar } from "./titlebar.tsx";
 import "./style.css";
-
-function interruptMotion() {
-  document.activeViewTransition?.skipTransition();
-}
 
 export function Workspace({
   sidebar,
@@ -50,6 +49,39 @@ export function Workspace({
 }) {
   const sizing = useWorkspaceLayout(detailsOpen && !expanded);
   const [contactsOpen, setContactsOpen] = useState(false);
+  const [transcriptStyle, setTranscriptStyle] = useState<CSSProperties>();
+  useEffect(() => {
+    const interrupt = (event: Event) => {
+      const transition = document.activeViewTransition;
+      if (!transition || !sizing.root?.contains(event.target as Node)) return;
+      transition.skipTransition();
+      flushSync(() => setTranscriptStyle(undefined));
+    };
+    // React pauses synthetic events while the transition snapshot commits.
+    window.addEventListener("pointerdown", interrupt, true);
+    window.addEventListener("keydown", interrupt, true);
+    return () => {
+      window.removeEventListener("pointerdown", interrupt, true);
+      window.removeEventListener("keydown", interrupt, true);
+    };
+  }, [sizing.root]);
+  const dragChange = useCallback(
+    (dragging: boolean) => {
+      if (dragging) {
+        const messages = sizing.root?.querySelector(".messages");
+        if (messages) {
+          const style = getComputedStyle(messages);
+          setTranscriptStyle({
+            "--transcript-resize-width": style.width,
+            "--transcript-resize-max-width": style.getPropertyValue(
+              "--message-max-width",
+            ),
+          } as CSSProperties);
+        }
+      } else startTransition(() => setTranscriptStyle(undefined));
+    },
+    [sizing.root],
+  );
   useEffect(() => {
     const close = () => setContactsOpen(false);
     window.addEventListener("hashchange", close);
@@ -76,8 +108,6 @@ export function Workspace({
   return (
     <div
       className="workspace"
-      onPointerDownCapture={interruptMotion}
-      onKeyDownCapture={interruptMotion}
       ref={sizing.setRoot}
       data-mobile={sizing.mobile || undefined}
       data-sidebar-compact={sizing.compact || undefined}
@@ -101,7 +131,13 @@ export function Workspace({
         </Button>
       )}
       <ViewTransition update="panel-layout">
-        <div className="workspace-content">{children}</div>
+        <div
+          className="workspace-content"
+          data-resizing={Boolean(transcriptStyle) || undefined}
+          style={transcriptStyle}
+        >
+          {children}
+        </div>
       </ViewTransition>
       {panels.map(({ side, title, modal, open, change, content }) => (
         <PanelDialog.Root
@@ -162,6 +198,7 @@ export function Workspace({
                     onToggle={
                       side === "sidebar" ? sizing.toggleSidebar : undefined
                     }
+                    onDragChange={dragChange}
                   />
                 )}
                 <div className="panel-body">

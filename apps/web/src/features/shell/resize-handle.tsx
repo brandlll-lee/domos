@@ -9,6 +9,7 @@ export function ResizeHandle({
   onResize,
   onCommit,
   onToggle,
+  onDragChange,
 }: {
   side: "sidebar" | "inspector";
   width: number;
@@ -17,6 +18,7 @@ export function ResizeHandle({
   onResize: (width: number) => void;
   onCommit: (width: number) => void;
   onToggle?: () => void;
+  onDragChange: (dragging: boolean) => void;
 }) {
   const drag = useRef<{ x: number; width: number; next: number } | null>(null);
   const frame = useRef<number | undefined>(undefined);
@@ -24,7 +26,20 @@ export function ResizeHandle({
     if (frame.current !== undefined) cancelAnimationFrame(frame.current);
     frame.current = undefined;
   }, []);
-  useEffect(() => cancelFrame, [cancelFrame]);
+  useEffect(
+    () => () => {
+      cancelFrame();
+      if (drag.current) onDragChange(false);
+    },
+    [cancelFrame, onDragChange],
+  );
+  const cancelDrag = () => {
+    cancelFrame();
+    if (!drag.current) return;
+    onResize(drag.current.width);
+    drag.current = null;
+    onDragChange(false);
+  };
   const direction =
     (side === "sidebar" ? 1 : -1) *
     (document.documentElement.dir === "rtl" ? -1 : 1);
@@ -55,6 +70,7 @@ export function ResizeHandle({
         event.preventDefault();
         event.currentTarget.setPointerCapture(event.pointerId);
         drag.current = { x: event.clientX, width, next: width };
+        onDragChange(true);
       }}
       onPointerMove={(event) => {
         if (!drag.current) return;
@@ -69,21 +85,16 @@ export function ResizeHandle({
       }}
       onPointerUp={(event) => {
         cancelFrame();
-        if (drag.current) onCommit(drag.current.next);
+        if (drag.current) {
+          onCommit(drag.current.next);
+          onDragChange(false);
+        }
         drag.current = null;
         if (event.currentTarget.hasPointerCapture(event.pointerId))
           event.currentTarget.releasePointerCapture(event.pointerId);
       }}
-      onPointerCancel={() => {
-        cancelFrame();
-        if (drag.current) onResize(drag.current.width);
-        drag.current = null;
-      }}
-      onLostPointerCapture={() => {
-        cancelFrame();
-        if (drag.current) onResize(drag.current.width);
-        drag.current = null;
-      }}
+      onPointerCancel={cancelDrag}
+      onLostPointerCapture={cancelDrag}
       onKeyDown={(event) => {
         const step =
           event.key === "ArrowLeft"

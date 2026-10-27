@@ -658,24 +658,25 @@ test("computer connection failures keep a direct retry", async ({ page }) => {
 test("chat stays at the latest message in every painted resize frame", async ({
   page,
 }) => {
-  await page.goto(url);
+  test.setTimeout(60000);
   let receipt = once(worker, "message");
+  worker.send({ history: 160 });
+  await receipt;
+  await page.goto(url);
+  receipt = once(worker, "message");
   worker.send({
     content:
       "这是一段用来检查拖拽时阅读位置的长消息，需要在容器改变宽度时保持最新消息的底边稳定。".repeat(
         4,
-      ),
+      ) +
+      "\n\n| 职位 | 地点 | 薪酬 |\n| --- | --- | --- |\n| 工程师 | Remote | $100,000 |",
   });
   await receipt;
   await page
     .getByRole("textbox", { name: "消息", exact: true })
     .fill("检查布局");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  await expect(page.getByLabel("Domos 的回复")).toBeVisible();
-  receipt = once(worker, "message");
-  worker.send({ history: 160 });
-  await receipt;
-  await page.reload();
+  await expect(page.locator(".message table").last()).toBeVisible();
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   await expect
     .poll(() =>
@@ -703,29 +704,57 @@ test("chat stays at the latest message in every painted resize frame", async ({
     const messages = document.querySelector(".messages");
     if (messages) observer.observe(messages);
   });
-  const handle = page.getByRole("separator", { name: "调整详情宽度" });
   const session = await page.context().newCDPSession(page);
   await session.send("Performance.enable");
   await session.send("Emulation.setCPUThrottlingRate", { rate: 4 });
-  const baseline = await session.send("Performance.getMetrics");
-  const box = await handle.boundingBox();
-  if (!box) throw new Error("Resize handle missing");
-  await page.mouse.move(box.x + box.width / 2, box.y + 100);
-  await page.mouse.down();
-  await page.mouse.move(box.x - 240, box.y + 100, { steps: 50 });
-  await page.mouse.move(box.x + 60, box.y + 100, { steps: 50 });
-  await page.mouse.up();
-  const measured = await session.send("Performance.getMetrics");
-  for (const name of [
-    "LayoutDuration",
-    "ScriptDuration",
-    "RecalcStyleDuration",
-  ]) {
-    const duration =
-      1000 *
-      ((measured.metrics.find((m) => m.name === name)?.value ?? 0) -
-        (baseline.metrics.find((m) => m.name === name)?.value ?? 0));
-    console.log(`resize ${name}: ${duration.toFixed(1)}ms`);
+  for (const side of ["联系人", "详情"]) {
+    const handle = page.getByRole("separator", { name: `调整${side}宽度` });
+    const baseline = await session.send("Performance.getMetrics");
+    const box = await handle.boundingBox();
+    const messages = page.locator(".messages");
+    const input = page.getByRole("textbox", { name: "消息", exact: true });
+    const body = await messages.boundingBox();
+    const composer = await input.boundingBox();
+    if (!box || !body || !composer) throw new Error("Chat layout missing");
+    await page.mouse.move(box.x + box.width / 2, box.y + 100);
+    await page.mouse.down();
+    await expect(page.locator(".workspace-content")).toHaveAttribute(
+      "data-resizing",
+      "true",
+    );
+    await page.mouse.move(
+      box.x + (side === "联系人" ? 60 : -240),
+      box.y + 100,
+      { steps: 50 },
+    );
+    expect((await messages.boundingBox())?.width).toBeCloseTo(body.width, 1);
+    expect((await messages.boundingBox())?.height).toBeCloseTo(body.height, 1);
+    expect((await input.boundingBox())?.width).not.toBe(composer.width);
+    await page.mouse.move(box.x + (side === "联系人" ? -40 : 60), box.y + 100, {
+      steps: 50,
+    });
+    expect((await messages.boundingBox())?.width).toBeCloseTo(body.width, 1);
+    expect(
+      await page.evaluate(() => Boolean(document.activeViewTransition)),
+    ).toBe(false);
+    await page.mouse.up();
+    await expect(page.locator(".workspace-content")).not.toHaveAttribute(
+      "data-resizing",
+    );
+    await page.evaluate(() => document.activeViewTransition?.finished);
+    expect((await messages.boundingBox())?.width).not.toBe(body.width);
+    const measured = await session.send("Performance.getMetrics");
+    for (const name of [
+      "LayoutDuration",
+      "ScriptDuration",
+      "RecalcStyleDuration",
+    ]) {
+      const duration =
+        1000 *
+        ((measured.metrics.find((m) => m.name === name)?.value ?? 0) -
+          (baseline.metrics.find((m) => m.name === name)?.value ?? 0));
+      console.log(`${side} resize ${name}: ${duration.toFixed(1)}ms`);
+    }
   }
   await session.send("Emulation.setCPUThrottlingRate", { rate: 1 });
   expect(
@@ -1327,6 +1356,7 @@ test("contact rows keep their density and searchable previews across selections"
   await expect(root).toBeVisible();
   await search.clear();
   const active = contacts.getByRole("link", { name: "研究助手", exact: true });
+  await page.mouse.move(400, 800);
   const selectedColor = await active.evaluate(
     (item) => getComputedStyle(item).backgroundColor,
   );
@@ -1446,18 +1476,41 @@ test("resizing tolerates blocked preferences and pointer cancellation", async ({
   await handle.press("Home");
   const min = await handle.getAttribute("aria-valuemin");
   await expect(handle).toHaveAttribute("aria-valuenow", min ?? "");
+  await page.evaluate(() => document.activeViewTransition?.finished);
   const box = await handle.boundingBox();
   if (!box) throw new Error("Resize handle missing");
   await page.mouse.move(box.x + box.width / 2, box.y + 100);
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width / 2 + 60, box.y + 100);
+  await page.mouse.move(box.x + box.width / 2 + 180, box.y + 100);
+  await expect(handle).toHaveAttribute("aria-valuenow", "276");
+  await expect(page.locator(".workspace-content")).toHaveAttribute(
+    "data-resizing",
+    "true",
+  );
   await handle.dispatchEvent("pointercancel");
   await page.mouse.up();
   await expect(handle).toHaveAttribute("aria-valuenow", min ?? "");
+  await expect(page.locator(".workspace-content")).not.toHaveAttribute(
+    "data-resizing",
+  );
   await handle.press("ArrowRight");
   await expect
     .poll(async () => Number(await handle.getAttribute("aria-valuenow")))
     .toBeGreaterThan(Number(min));
+  await page.evaluate(() => document.activeViewTransition?.finished);
+  const expanded = await handle.boundingBox();
+  if (!expanded) throw new Error("Resize handle missing");
+  await page.mouse.move(expanded.x + expanded.width / 2, expanded.y + 100);
+  await page.mouse.down();
+  await expect(page.locator(".workspace-content")).toHaveAttribute(
+    "data-resizing",
+    "true",
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".workspace-content")).not.toHaveAttribute(
+    "data-resizing",
+  );
+  await page.mouse.up();
 });
 
 test("panel transitions preserve the transcript and draft through rapid toggles and reduced motion", async ({

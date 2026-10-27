@@ -80,7 +80,7 @@
 .contact-row[aria-current="page"] {
   background: var(--color-surface);
 }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .contact-row:hover {
     background: var(--color-hover);
   }
@@ -273,10 +273,19 @@
   scroll-padding-block: calc(var(--control-height) + var(--space-6))
     calc(var(--composer-dock-height, 0px) + var(--composer-fade));
 }
+.workspace-content[data-resizing] .transcript > div {
+  overflow-x: clip;
+}
 .messages {
   position: relative;
-  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--message-gap);
+  width: var(--transcript-resize-width, 100%);
   margin-inline: auto;
+}
+.workspace-content[data-resizing] .messages {
+  --message-max-width: var(--transcript-resize-max-width);
 }
 .conversation-time {
   display: block;
@@ -290,11 +299,6 @@
 }
 .conversation-time time {
   font-variant-numeric: tabular-nums;
-}
-.messages {
-  display: flex;
-  flex-direction: column;
-  gap: var(--message-gap);
 }
 .message {
   display: flex;
