@@ -848,6 +848,100 @@ test("Bot panels keep their hierarchy in both themes and panel widths", async ({
   await expect(details.getByText("运行记录", { exact: true })).toBeVisible();
 });
 
+test("contacts snap to an icon column and restore their width without losing chat state", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 1600, height: 960 });
+  await page.goto(url);
+  const workspace = page.locator(".workspace");
+  const sidebar = page.locator('.workspace-panel[data-side="sidebar"]');
+  const handle = page.getByRole("separator", { name: "调整联系人宽度" });
+  const input = page.getByRole("textbox", { name: "消息", exact: true });
+  await input.fill("收起侧栏仍保留的草稿");
+  const box = await handle.boundingBox();
+  const width = Number(await handle.getAttribute("aria-valuenow"));
+  if (!box) throw new Error("Contact resize handle missing");
+  const x = box.x + box.width / 2;
+  const y = box.y + 120;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 208 - width, y, { steps: 4 });
+  await expect(handle).toHaveAttribute("aria-valuenow", "208");
+  await page.mouse.move(x + 176 - width, y);
+  await expect(workspace).toHaveAttribute("data-sidebar-compact", "true");
+  await expect(handle).toHaveAttribute("aria-valuenow", "96");
+  expect(
+    await page.evaluate(() => localStorage.getItem("domos:layout:v1")),
+  ).toBeNull();
+  await page.mouse.move(x + 200 - width, y);
+  await expect(handle).toHaveAttribute("aria-valuenow", "96");
+  await page.mouse.up();
+  await page.evaluate(() => document.activeViewTransition?.finished);
+  const stored = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("domos:layout:v1") ?? "{}"),
+  );
+  expect(stored).toMatchObject({ sidebar: 208, collapsed: true });
+  await expect(sidebar.locator(".chat-preview").first()).toBeHidden();
+  await expect(
+    sidebar.getByRole("link", { name: "Domos", exact: true }),
+  ).toHaveAttribute("title", "Domos");
+  await expect(
+    sidebar.getByRole("button", { name: "新建 Bot", exact: true }),
+  ).toBeVisible();
+  await expect(
+    sidebar.getByRole("button", { name: "设置", exact: true }),
+  ).toBeVisible();
+  expect((await sidebar.boundingBox())?.width).toBe(96);
+  for (const theme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await page.screenshot({
+      path: info.outputPath(`contacts-compact-${theme}.png`),
+      animations: "disabled",
+    });
+  }
+  await page.reload();
+  await expect(workspace).toHaveAttribute("data-sidebar-compact", "true");
+  await expect(input).toHaveValue("收起侧栏仍保留的草稿");
+  await sidebar
+    .getByRole("button", { name: "搜索联系人", exact: true })
+    .click();
+  const search = sidebar.getByRole("searchbox");
+  await expect(search).toBeFocused();
+  await expect(handle).toHaveAttribute("aria-valuenow", "208");
+  await search.fill("不存在的联系人");
+  await handle.dblclick();
+  await expect(workspace).toHaveAttribute("data-sidebar-compact", "true");
+  await handle.dblclick();
+  await expect(search).toHaveValue("不存在的联系人");
+  await search.fill("");
+  await handle.press("Home");
+  await expect(handle).toHaveAttribute("aria-valuenow", "96");
+  await page.evaluate(() => document.activeViewTransition?.finished);
+  const rail = await handle.boundingBox();
+  if (!rail) throw new Error("Compact resize handle missing");
+  await page.mouse.move(rail.x + rail.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(rail.x + rail.width / 2 + 144, y, { steps: 5 });
+  await expect(handle).toHaveAttribute("aria-valuenow", "240");
+  await page.mouse.up();
+  await handle.press("Home");
+  await expect(handle).toHaveAttribute("aria-valuenow", "96");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await handle.press("ArrowRight");
+  await expect(handle).toHaveAttribute("aria-valuenow", "232");
+  await handle.press("Home");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "关闭", exact: true }).click();
+  await page.getByRole("button", { name: "联系人", exact: true }).click();
+  await expect(sidebar.getByRole("searchbox")).toBeVisible();
+  await expect(sidebar.locator(".chat-preview").first()).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 1600, height: 960 });
+  await expect(workspace).toHaveAttribute("data-sidebar-compact", "true");
+  await expect(input).toHaveValue("收起侧栏仍保留的草稿");
+});
+
 test("panels resize live, persist only on release, and retain drafts across layouts", async ({
   page,
 }) => {
@@ -1333,9 +1427,9 @@ test("resizing tolerates blocked preferences and pointer cancellation", async ({
   await page.mouse.up();
   await expect(handle).toHaveAttribute("aria-valuenow", min ?? "");
   await handle.press("ArrowRight");
-  expect(Number(await handle.getAttribute("aria-valuenow"))).toBeGreaterThan(
-    Number(min),
-  );
+  await expect
+    .poll(async () => Number(await handle.getAttribute("aria-valuenow")))
+    .toBeGreaterThan(Number(min));
 });
 
 test("panel transitions preserve the transcript and draft through rapid toggles and reduced motion", async ({

@@ -1,9 +1,10 @@
 import type { Bot, BotPresence } from "@domos/agent/bots";
 import { BotAvatar } from "@domos/ui/avatar";
+import { Button } from "@domos/ui/controls";
 import { PanelDialog } from "@domos/ui/dialog";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { MagnifyingGlassIcon as MagnifyingGlass } from "@phosphor-icons/react/dist/csr/MagnifyingGlass";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { chatCopy } from "./copy.ts";
 import { contactTime } from "./format.ts";
 
@@ -16,14 +17,26 @@ export function Sidebar({
   connected,
   actions,
   onSelect,
+  compact,
+  onExpand,
 }: {
   bots: BotPresence[];
   selected: Bot;
   connected: boolean;
   actions: ReactNode;
   onSelect: () => void;
+  compact: boolean;
+  onExpand: () => void;
 }) {
   const [query, setQuery] = useState("");
+  const search = useRef<HTMLInputElement>(null);
+  const focusSearch = useRef(false);
+  useEffect(() => {
+    if (!compact && focusSearch.current) {
+      search.current?.focus();
+      focusSearch.current = false;
+    }
+  }, [compact]);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
@@ -35,11 +48,26 @@ export function Sidebar({
       .includes(query.toLocaleLowerCase()),
   );
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" data-compact={compact || undefined}>
       <div className="sidebar-toolbar">
-        <label className="sidebar-search">
+        {compact && (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={chatCopy.search}
+            title={chatCopy.search}
+            onClick={() => {
+              focusSearch.current = true;
+              onExpand();
+            }}
+          >
+            <MagnifyingGlass />
+          </Button>
+        )}
+        <label className="sidebar-search" hidden={compact}>
           <MagnifyingGlass size={14} aria-hidden="true" />
           <input
+            ref={search}
             type="search"
             aria-label={chatCopy.search}
             placeholder="搜索"
@@ -59,6 +87,7 @@ export function Sidebar({
                 render={<a href={`#bot/${bot.id}`} />}
                 onClick={onSelect}
                 aria-label={bot.name}
+                title={compact ? bot.name : undefined}
                 aria-current={bot.id === selected.id ? "page" : undefined}
               >
                 <BotAvatar

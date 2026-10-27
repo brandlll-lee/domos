@@ -8,6 +8,7 @@ export function ResizeHandle({
   max,
   onResize,
   onCommit,
+  onToggle,
 }: {
   side: "sidebar" | "inspector";
   width: number;
@@ -15,6 +16,7 @@ export function ResizeHandle({
   max: number;
   onResize: (width: number) => void;
   onCommit: (width: number) => void;
+  onToggle?: () => void;
 }) {
   const drag = useRef<{ x: number; width: number; next: number } | null>(null);
   const frame = useRef<number | undefined>(undefined);
@@ -26,7 +28,17 @@ export function ResizeHandle({
   const direction =
     (side === "sidebar" ? 1 : -1) *
     (document.documentElement.dir === "rtl" ? -1 : 1);
-  const clamp = (value: number) => Math.max(min, Math.min(max, value));
+  const clamp = (value: number) => {
+    if (side === "sidebar") {
+      const threshold =
+        width === layout.sidebar.compact
+          ? Math.min(max, layout.sidebar.min + layout.resizeStep)
+          : layout.sidebar.min - layout.resizeStep;
+      if (value < threshold) return layout.sidebar.compact;
+      return Math.max(layout.sidebar.min, Math.min(max, value));
+    }
+    return Math.max(min, Math.min(max, value));
+  };
   return (
     <hr
       className="panel-resizer"
@@ -37,6 +49,7 @@ export function ResizeHandle({
       aria-valuemin={min}
       aria-valuemax={max}
       aria-valuenow={Math.round(width)}
+      onDoubleClick={onToggle}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();
@@ -72,9 +85,21 @@ export function ResizeHandle({
         drag.current = null;
       }}
       onKeyDown={(event) => {
+        const step =
+          event.key === "ArrowLeft"
+            ? -layout.resizeStep * direction
+            : layout.resizeStep * direction;
+        const arrowWidth =
+          side === "sidebar"
+            ? width === layout.sidebar.compact && step > 0
+              ? Math.min(max, layout.sidebar.min + layout.resizeStep)
+              : width <= layout.sidebar.min && step < 0
+                ? layout.sidebar.compact
+                : width + step
+            : width + step;
         const next = {
-          ArrowLeft: width - layout.resizeStep * direction,
-          ArrowRight: width + layout.resizeStep * direction,
+          ArrowLeft: arrowWidth,
+          ArrowRight: arrowWidth,
           Home: min,
           End: max,
         }[event.key];

@@ -36,7 +36,7 @@ export function Workspace({
   expanded = false,
   inspectorTitle = "Bot详情",
 }: {
-  sidebar: ReactNode;
+  sidebar: (compact: boolean, expand: () => void) => ReactNode;
   inspector: ReactNode;
   detailsOpen: boolean;
   obscured: boolean;
@@ -62,7 +62,7 @@ export function Workspace({
       modal: sizing.mobile,
       open: !sizing.mobile || contactsOpen,
       change: setContactsOpen,
-      content: sidebar,
+      content: sidebar(sizing.compact, sizing.expandSidebar),
     },
     {
       side: "inspector" as const,
@@ -80,6 +80,7 @@ export function Workspace({
       onKeyDownCapture={interruptMotion}
       ref={sizing.setRoot}
       data-mobile={sizing.mobile || undefined}
+      data-sidebar-compact={sizing.compact || undefined}
       data-platform={window.domosDesktop?.platform}
       data-details={(detailsOpen && !sizing.overlay && !expanded) || undefined}
       style={{
@@ -116,97 +117,112 @@ export function Workspace({
             style={{ display: "contents" }}
           >
             {modal && <PanelDialog.Backdrop className="panel-backdrop" />}
-            <PanelDialog.Popup
-              className="workspace-panel"
-              data-side={side}
-              data-modal={modal || undefined}
-              data-expanded={(side === "inspector" && expanded) || undefined}
-              aria-modal={modal || undefined}
-              style={{
-                width:
-                  modal && side === "inspector"
-                    ? undefined
-                    : sizing.widths[side],
-              }}
-              initialFocus={modal}
-              finalFocus={() => {
-                if (document.activeElement?.closest(".workspace-content"))
-                  return false;
-                const trigger = document.getElementById(
-                  side === "sidebar" ? "contacts-trigger" : "details-trigger",
-                );
-                return trigger?.closest("[inert], [aria-hidden='true']")
-                  ? false
-                  : trigger;
-              }}
+            <ViewTransition
+              update={side === "sidebar" ? "panel-layout" : "none"}
             >
-              <PanelDialog.Title className="sr-only">{title}</PanelDialog.Title>
-              {!modal && (
-                <ResizeHandle
-                  side={side}
-                  width={sizing.widths[side]}
-                  min={layout[side].min}
-                  max={sizing.maximum[side]}
-                  onResize={(width) => sizing.resize(side, width)}
-                  onCommit={(width) => sizing.resize(side, width, true)}
-                />
-              )}
-              <div className="panel-body">
-                {content}
-                {side === "sidebar" && (
-                  <footer className="sidebar-footer">
-                    <EnvironmentSwitcher />
-                    <nav aria-label="主导航">
-                      <Button
-                        variant="ghost"
-                        size="icon-small"
-                        aria-label="用量"
-                        title="用量"
-                        aria-pressed={usageOpen}
-                        onClick={() => {
-                          setContactsOpen(false);
-                          onUsage();
-                        }}
-                      >
-                        <ChartBarIcon />
-                      </Button>
-                      <Button
-                        id="settings-trigger"
-                        variant="ghost"
-                        size="icon-small"
-                        aria-label="设置"
-                        title="设置"
-                        onClick={() => {
-                          setContactsOpen(false);
-                          onSettings();
-                        }}
-                      >
-                        <GearSixIcon aria-hidden="true" />
-                      </Button>
-                      {window.domosDesktop && (
+              <PanelDialog.Popup
+                className="workspace-panel"
+                data-side={side}
+                data-modal={modal || undefined}
+                data-expanded={(side === "inspector" && expanded) || undefined}
+                aria-modal={modal || undefined}
+                style={{
+                  width:
+                    modal && side === "inspector"
+                      ? undefined
+                      : sizing.widths[side],
+                }}
+                initialFocus={modal}
+                finalFocus={() => {
+                  if (document.activeElement?.closest(".workspace-content"))
+                    return false;
+                  const trigger = document.getElementById(
+                    side === "sidebar" ? "contacts-trigger" : "details-trigger",
+                  );
+                  return trigger?.closest("[inert], [aria-hidden='true']")
+                    ? false
+                    : trigger;
+                }}
+              >
+                <PanelDialog.Title className="sr-only">
+                  {title}
+                </PanelDialog.Title>
+                {!modal && (
+                  <ResizeHandle
+                    side={side}
+                    width={sizing.widths[side]}
+                    min={
+                      side === "sidebar"
+                        ? layout.sidebar.compact
+                        : layout[side].min
+                    }
+                    max={sizing.maximum[side]}
+                    onResize={(width) => sizing.resize(side, width)}
+                    onCommit={(width) => sizing.resize(side, width, true)}
+                    onToggle={
+                      side === "sidebar" ? sizing.toggleSidebar : undefined
+                    }
+                  />
+                )}
+                <div className="panel-body">
+                  {content}
+                  {side === "sidebar" && (
+                    <footer className="sidebar-footer">
+                      <EnvironmentSwitcher />
+                      <nav aria-label="主导航">
                         <Button
                           variant="ghost"
                           size="icon-small"
-                          aria-label="应用菜单"
-                          title="应用菜单"
-                          onClick={() => void window.domosDesktop?.menu()}
+                          aria-label="用量"
+                          title="用量"
+                          aria-pressed={usageOpen}
+                          onClick={() => {
+                            setContactsOpen(false);
+                            onUsage();
+                          }}
                         >
-                          <DotsThreeIcon />
+                          <ChartBarIcon />
                         </Button>
-                      )}
-                      {modal && (
-                        <PanelDialog.Close
-                          aria-label="关闭联系人"
-                          render={<Button variant="ghost" size="icon-small" />}
+                        <Button
+                          id="settings-trigger"
+                          variant="ghost"
+                          size="icon-small"
+                          aria-label="设置"
+                          title="设置"
+                          onClick={() => {
+                            setContactsOpen(false);
+                            onSettings();
+                          }}
                         >
-                          <XIcon />
-                        </PanelDialog.Close>
-                      )}
-                    </nav>
-                  </footer>
-                )}
-              </div>
-            </PanelDialog.Popup>
+                          <GearSixIcon aria-hidden="true" />
+                        </Button>
+                        {window.domosDesktop && (
+                          <Button
+                            variant="ghost"
+                            size="icon-small"
+                            aria-label="应用菜单"
+                            title="应用菜单"
+                            onClick={() => void window.domosDesktop?.menu()}
+                          >
+                            <DotsThreeIcon />
+                          </Button>
+                        )}
+                        {modal && (
+                          <PanelDialog.Close
+                            aria-label="关闭联系人"
+                            render={
+                              <Button variant="ghost" size="icon-small" />
+                            }
+                          >
+                            <XIcon />
+                          </PanelDialog.Close>
+                        )}
+                      </nav>
+                    </footer>
+                  )}
+                </div>
+              </PanelDialog.Popup>
+            </ViewTransition>
           </PanelDialog.Portal>
         </PanelDialog.Root>
       ))}

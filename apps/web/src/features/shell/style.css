@@ -250,6 +250,18 @@
   top: auto;
   bottom: 100%;
 }
+.workspace[data-sidebar-compact] .sidebar-footer,
+.workspace[data-sidebar-compact] .sidebar-footer nav {
+  flex-direction: column;
+  align-items: center;
+}
+.workspace[data-sidebar-compact] .sidebar-footer nav {
+  margin-inline-start: 0;
+}
+.workspace[data-sidebar-compact] .environment-trigger span,
+.workspace[data-sidebar-compact] .environment-trigger svg:last-child {
+  display: none;
+}
 .panel-backdrop {
   position: absolute;
   inset: 0;

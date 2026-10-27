@@ -110,7 +110,7 @@ export function resolveTheme(
 export const layout = {
   titlebar: 48,
   chatMin: 400,
-  sidebar: { min: 208, initial: 272, max: 360 },
+  sidebar: { compact: 96, min: 208, initial: 272, max: 360 },
   inspector: { min: 320, initial: 384, max: 640 },
   resizeStep: 24,
 } as const;

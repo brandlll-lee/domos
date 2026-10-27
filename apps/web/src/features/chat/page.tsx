@@ -175,15 +175,17 @@ function BotChat({
         closePanel();
       }}
       onSettings={() => settings.open("general", bot.id)}
-      sidebar={
+      sidebar={(compact, expand) => (
         <Sidebar
+          compact={compact}
+          onExpand={expand}
           bots={bots}
           selected={bot}
           connected={directoryConnected}
           actions={<CreateBot onCreated={selectBot} />}
           onSelect={() => setView("chat")}
         />
-      }
+      )}
       inspector={
         <BotDetails
           takeoverId={takeoverId}

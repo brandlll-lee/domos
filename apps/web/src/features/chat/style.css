@@ -48,6 +48,13 @@
 .sidebar-search input::placeholder {
   color: var(--color-muted);
 }
+.sidebar-search[hidden] {
+  display: none;
+}
+.sidebar[data-compact] .sidebar-toolbar {
+  flex-direction: column;
+  padding-block: var(--space-4);
+}
 .sidebar nav {
   display: grid;
   align-content: start;
@@ -113,6 +120,16 @@
 }
 .sidebar-empty {
   margin: var(--space-3);
+}
+.sidebar[data-compact] .scroll-viewport {
+  padding-inline-end: 0;
+}
+.sidebar[data-compact] .contact-row {
+  justify-content: center;
+  padding-inline: var(--space-2);
+}
+.sidebar[data-compact] .chat-preview {
+  display: none;
 }
 .conversation {
   position: relative;
