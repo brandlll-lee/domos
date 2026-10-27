@@ -727,13 +727,12 @@ test("chat stays at the latest message in every painted resize frame", async ({
       box.y + 100,
       { steps: 50 },
     );
-    expect((await messages.boundingBox())?.width).toBeCloseTo(body.width, 1);
-    expect((await messages.boundingBox())?.height).toBeCloseTo(body.height, 1);
+    expect((await messages.boundingBox())?.width).not.toBe(body.width);
     expect((await input.boundingBox())?.width).not.toBe(composer.width);
     await page.mouse.move(box.x + (side === "联系人" ? -40 : 60), box.y + 100, {
       steps: 50,
     });
-    expect((await messages.boundingBox())?.width).toBeCloseTo(body.width, 1);
+    expect((await messages.boundingBox())?.width).not.toBe(body.width);
     expect(
       await page.evaluate(() => Boolean(document.activeViewTransition)),
     ).toBe(false);
@@ -896,6 +895,26 @@ test("contacts snap to an icon column and restore their width without losing cha
   await page.mouse.down();
   await page.mouse.move(x + 208 - width, y, { steps: 4 });
   await expect(handle).toHaveAttribute("aria-valuenow", "208");
+  await workspace.evaluate((root) => {
+    const panel = root.querySelector('.workspace-panel[data-side="sidebar"]');
+    const chat = root.querySelector(".conversation");
+    if (!panel || !chat) throw new Error("Workspace missing");
+    const avatar = root.querySelector(".contact-row .bot-avatar");
+    if (!avatar) throw new Error("Contact avatar missing");
+    const frames: [number, number, number][] = [];
+    root.setAttribute("data-sampling", "true");
+    const sample = () => {
+      const box = panel.getBoundingClientRect();
+      frames.push([
+        box.width,
+        Math.abs(box.right - chat.getBoundingClientRect().left),
+        avatar.getBoundingClientRect().top,
+      ]);
+      root.setAttribute("data-snap-frames", JSON.stringify(frames));
+      if (root.hasAttribute("data-sampling")) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
   await page.mouse.move(x + 176 - width, y);
   await expect(workspace).toHaveAttribute("data-sidebar-compact", "true");
   await expect(handle).toHaveAttribute("aria-valuenow", "96");
@@ -905,7 +924,24 @@ test("contacts snap to an icon column and restore their width without losing cha
   await page.mouse.move(x + 200 - width, y);
   await expect(handle).toHaveAttribute("aria-valuenow", "96");
   await page.mouse.up();
-  await page.evaluate(() => document.activeViewTransition?.finished);
+  await expect(sidebar).toHaveCSS("width", "96px");
+  const snapFrames = await workspace.evaluate((root) => {
+    root.removeAttribute("data-sampling");
+    return JSON.parse(root.getAttribute("data-snap-frames") ?? "[]") as [
+      number,
+      number,
+      number,
+    ][];
+  });
+  expect(snapFrames.some(([width]) => width > 97 && width < 207)).toBe(true);
+  expect(Math.max(...snapFrames.map(([, gap]) => gap))).toBeLessThanOrEqual(1);
+  const firstY = snapFrames[0]?.[2];
+  const lastY = snapFrames.at(-1)?.[2];
+  if (firstY === undefined || lastY === undefined)
+    throw new Error("Snap frames missing");
+  expect(snapFrames.some(([, , y]) => y > firstY + 1 && y < lastY - 1)).toBe(
+    true,
+  );
   const stored = await page.evaluate(() =>
     JSON.parse(localStorage.getItem("domos:layout:v1") ?? "{}"),
   );
@@ -974,7 +1010,7 @@ test("contacts snap to an icon column and restore their width without losing cha
   await search.fill("");
   await handle.press("Home");
   await expect(handle).toHaveAttribute("aria-valuenow", "96");
-  await page.evaluate(() => document.activeViewTransition?.finished);
+  await expect(sidebar).toHaveCSS("width", "96px");
   const rail = await handle.boundingBox();
   if (!rail) throw new Error("Compact resize handle missing");
   await page.mouse.move(rail.x + rail.width / 2, y);
@@ -982,11 +1018,48 @@ test("contacts snap to an icon column and restore their width without losing cha
   await page.mouse.move(rail.x + rail.width / 2 + 144, y, { steps: 5 });
   await expect(handle).toHaveAttribute("aria-valuenow", "240");
   await page.mouse.up();
+  await expect(sidebar).toHaveCSS("width", "240px");
   await handle.press("Home");
   await expect(handle).toHaveAttribute("aria-valuenow", "96");
+  await workspace.evaluate((root) => {
+    const panel = root.querySelector('.workspace-panel[data-side="sidebar"]');
+    if (!panel) throw new Error("Sidebar missing");
+    for (const animation of [
+      ...root.getAnimations(),
+      ...panel.getAnimations(),
+    ]) {
+      if (!(animation instanceof CSSTransition)) continue;
+      animation.pause();
+      animation.currentTime = 80;
+    }
+  });
+  const moving = await handle.boundingBox();
+  const currentWidth = (await sidebar.boundingBox())?.width;
+  if (!moving || !currentWidth) throw new Error("Moving sidebar missing");
+  expect(currentWidth).toBeGreaterThan(96);
+  expect(currentWidth).toBeLessThan(240);
+  await page.mouse.move(moving.x + moving.width / 2, y);
+  await page.mouse.down();
+  expect((await sidebar.boundingBox())?.width).toBeCloseTo(currentWidth, 0);
+  await page.mouse.move(moving.x + moving.width / 2 + 150, y);
+  await expect(handle).toHaveAttribute(
+    "aria-valuenow",
+    String(Math.round(currentWidth + 150)),
+  );
+  expect((await sidebar.boundingBox())?.width).toBeCloseTo(
+    currentWidth + 150,
+    0,
+  );
+  await page.mouse.up();
   await page.emulateMedia({ reducedMotion: "reduce" });
+  await handle.press("Home");
   await handle.press("ArrowRight");
   await expect(handle).toHaveAttribute("aria-valuenow", "232");
+  await expect(sidebar).toHaveCSS("width", "232px");
+  await expect(workspace).not.toHaveAttribute("data-sidebar-snapping");
+  expect(await workspace.evaluate((root) => root.getAnimations().length)).toBe(
+    0,
+  );
   await handle.press("Home");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "关闭", exact: true }).click();
@@ -1476,7 +1549,7 @@ test("resizing tolerates blocked preferences and pointer cancellation", async ({
   await handle.press("Home");
   const min = await handle.getAttribute("aria-valuemin");
   await expect(handle).toHaveAttribute("aria-valuenow", min ?? "");
-  await page.evaluate(() => document.activeViewTransition?.finished);
+  await handle.hover();
   const box = await handle.boundingBox();
   if (!box) throw new Error("Resize handle missing");
   await page.mouse.move(box.x + box.width / 2, box.y + 100);
@@ -1497,7 +1570,7 @@ test("resizing tolerates blocked preferences and pointer cancellation", async ({
   await expect
     .poll(async () => Number(await handle.getAttribute("aria-valuenow")))
     .toBeGreaterThan(Number(min));
-  await page.evaluate(() => document.activeViewTransition?.finished);
+  await handle.hover();
   const expanded = await handle.boundingBox();
   if (!expanded) throw new Error("Resize handle missing");
   await page.mouse.move(expanded.x + expanded.width / 2, expanded.y + 100);

@@ -20,7 +20,13 @@ export function ResizeHandle({
   onToggle?: () => void;
   onDragChange: (dragging: boolean) => void;
 }) {
-  const drag = useRef<{ x: number; width: number; next: number } | null>(null);
+  const drag = useRef<{
+    x: number;
+    width: number;
+    initial: number;
+    next: number;
+    scale: number;
+  } | null>(null);
   const frame = useRef<number | undefined>(undefined);
   const cancelFrame = useCallback(() => {
     if (frame.current !== undefined) cancelAnimationFrame(frame.current);
@@ -36,7 +42,7 @@ export function ResizeHandle({
   const cancelDrag = () => {
     cancelFrame();
     if (!drag.current) return;
-    onResize(drag.current.width);
+    onResize(drag.current.initial);
     drag.current = null;
     onDragChange(false);
   };
@@ -67,15 +73,27 @@ export function ResizeHandle({
       onDoubleClick={onToggle}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
+        const panel = event.currentTarget.parentElement;
+        if (!panel) return;
         event.preventDefault();
         event.currentTarget.setPointerCapture(event.pointerId);
-        drag.current = { x: event.clientX, width, next: width };
+        const current = parseFloat(getComputedStyle(panel).width);
+        const scale = panel.getBoundingClientRect().width / current;
+        drag.current = {
+          x: event.clientX,
+          width: current,
+          initial: width,
+          next: width,
+          scale,
+        };
+        onResize(current);
         onDragChange(true);
       }}
       onPointerMove={(event) => {
         if (!drag.current) return;
         drag.current.next = clamp(
-          drag.current.width + (event.clientX - drag.current.x) * direction,
+          drag.current.width +
+            ((event.clientX - drag.current.x) * direction) / drag.current.scale,
         );
         if (frame.current === undefined)
           frame.current = requestAnimationFrame(() => {

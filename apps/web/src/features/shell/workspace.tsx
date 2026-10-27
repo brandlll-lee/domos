@@ -7,7 +7,6 @@ import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
 import { ListIcon } from "@phosphor-icons/react/dist/csr/List";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import {
-  type CSSProperties,
   type ReactNode,
   startTransition,
   useCallback,
@@ -49,13 +48,13 @@ export function Workspace({
 }) {
   const sizing = useWorkspaceLayout(detailsOpen && !expanded);
   const [contactsOpen, setContactsOpen] = useState(false);
-  const [transcriptStyle, setTranscriptStyle] = useState<CSSProperties>();
+  const [dragging, setDragging] = useState(false);
   useEffect(() => {
     const interrupt = (event: Event) => {
       const transition = document.activeViewTransition;
       if (!transition || !sizing.root?.contains(event.target as Node)) return;
       transition.skipTransition();
-      flushSync(() => setTranscriptStyle(undefined));
+      flushSync(() => setDragging(false));
     };
     // React pauses synthetic events while the transition snapshot commits.
     window.addEventListener("pointerdown", interrupt, true);
@@ -67,20 +66,10 @@ export function Workspace({
   }, [sizing.root]);
   const dragChange = useCallback(
     (dragging: boolean) => {
-      if (dragging) {
-        const messages = sizing.root?.querySelector(".messages");
-        if (messages) {
-          const style = getComputedStyle(messages);
-          setTranscriptStyle({
-            "--transcript-resize-width": style.width,
-            "--transcript-resize-max-width": style.getPropertyValue(
-              "--message-max-width",
-            ),
-          } as CSSProperties);
-        }
-      } else startTransition(() => setTranscriptStyle(undefined));
+      if (dragging) sizing.setSnapping(false);
+      setDragging(dragging);
     },
-    [sizing.root],
+    [sizing.setSnapping],
   );
   useEffect(() => {
     const close = () => setContactsOpen(false);
@@ -111,6 +100,14 @@ export function Workspace({
       ref={sizing.setRoot}
       data-mobile={sizing.mobile || undefined}
       data-sidebar-compact={sizing.compact || undefined}
+      data-sidebar-snapping={sizing.snapping || undefined}
+      onTransitionEnd={(event) => {
+        if (
+          event.target === event.currentTarget &&
+          event.propertyName === "grid-template-columns"
+        )
+          sizing.setSnapping(false);
+      }}
       data-platform={window.domosDesktop?.platform}
       data-details={(detailsOpen && !sizing.overlay && !expanded) || undefined}
       style={{
@@ -130,11 +127,12 @@ export function Workspace({
           <ListIcon />
         </Button>
       )}
-      <ViewTransition update="panel-layout">
+      <ViewTransition
+        update={dragging || sizing.snapping ? "none" : "panel-layout"}
+      >
         <div
           className="workspace-content"
-          data-resizing={Boolean(transcriptStyle) || undefined}
-          style={transcriptStyle}
+          data-resizing={dragging || undefined}
         >
           {children}
         </div>
@@ -154,7 +152,11 @@ export function Workspace({
           >
             {modal && <PanelDialog.Backdrop className="panel-backdrop" />}
             <ViewTransition
-              update={side === "sidebar" ? "panel-layout" : "none"}
+              update={
+                side === "sidebar" && !dragging && !sizing.snapping
+                  ? "panel-layout"
+                  : "none"
+              }
             >
               <PanelDialog.Popup
                 className="workspace-panel"

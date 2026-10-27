@@ -1,5 +1,5 @@
 import { layout } from "@domos/ui/tokens";
-import { startTransition, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 type Side = "sidebar" | "inspector";
 const storageKey = "domos:layout:v1";
@@ -37,6 +37,7 @@ export function useWorkspaceLayout(details: boolean) {
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
   const [available, setAvailable] = useState(window.innerWidth);
   const [preferred, setPreferred] = useState(readWidths);
+  const [snapping, setSnapping] = useState(false);
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => {
       if (entry && entry.contentRect.width > 0)
@@ -86,8 +87,12 @@ export function useWorkspaceLayout(details: boolean) {
       next.inspector !== preferred.inspector ||
       next.collapsed !== preferred.collapsed
     ) {
-      if (persist) startTransition(() => setPreferred(next));
-      else setPreferred(next);
+      setSnapping(
+        side === "sidebar" &&
+          collapsed !== preferred.collapsed &&
+          !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      );
+      setPreferred(next);
     }
     if (persist) {
       try {
@@ -103,6 +108,8 @@ export function useWorkspaceLayout(details: boolean) {
     overlay,
     widths,
     maximum,
+    snapping,
+    setSnapping,
     resize,
     toggleSidebar: () =>
       resize(

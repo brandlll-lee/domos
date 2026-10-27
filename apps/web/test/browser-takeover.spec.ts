@@ -106,6 +106,11 @@ for (const refresh of [false, true]) {
     page,
     request,
   }, info) => {
+    let watches = 0;
+    await page.route("**/rpc/computer/watch", async (route) => {
+      watches++;
+      await route.continue();
+    });
     await page.addInitScript(() =>
       localStorage.setItem("domos:appearance:v1", "dark"),
     );
@@ -156,6 +161,15 @@ for (const refresh of [false, true]) {
     await expect(view.getByRole("status")).toHaveText("你正在操作");
     await expect(view.getByRole("alert")).toHaveCount(0);
     const grantMs = performance.now() - takeStarted;
+    const left = page.getByRole("separator", { name: "调整联系人宽度" });
+    const sidebar = page.locator('.workspace-panel[data-side="sidebar"]');
+    await left.press("Home");
+    await expect(sidebar).toHaveCSS("width", "96px");
+    await left.press("ArrowRight");
+    await expect(sidebar).toHaveCSS("width", "232px");
+    await page.getByRole("separator", { name: "调整详情宽度" }).press("End");
+    await expect(view.getByRole("status")).toHaveText("你正在操作");
+    expect(watches).toBe(1);
     const state = await (await request.get(`${url}/takeover-state`)).json();
     const at = await point(
       view.getByRole("img", { name: "工作电脑画面" }),

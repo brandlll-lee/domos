@@ -10,7 +10,13 @@
   align-items: center;
   gap: var(--space-2);
   min-height: var(--chat-header-height);
+  height: var(--chat-header-height);
+  flex-shrink: 0;
+  overflow: hidden;
   padding-block: var(--space-3);
+  transition:
+    height var(--motion-message-in) var(--ease-message-in),
+    padding var(--motion-message-in) var(--ease-message-in);
 }
 .sidebar-toolbar > .button {
   border-radius: var(--radius-round);
@@ -53,6 +59,7 @@
 }
 .sidebar[data-compact] .sidebar-toolbar {
   flex-direction: column;
+  height: calc(2 * var(--control-height) + var(--space-2) + 2 * var(--space-4));
   padding-block: var(--space-4);
 }
 .sidebar nav {
@@ -71,6 +78,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  width: 100%;
+  overflow: hidden;
   min-height: var(--contact-height);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-control);
@@ -92,6 +101,12 @@
   column-gap: var(--space-2);
   align-items: baseline;
   min-width: 0;
+  overflow: hidden;
+  transition:
+    opacity var(--motion-feedback),
+    translate var(--motion-message-in) var(--ease-message-in),
+    flex-grow var(--motion-message-in) var(--ease-message-in),
+    visibility 0s;
 }
 .chat-preview time {
   font-size: var(--text-caption);
@@ -128,13 +143,18 @@
 }
 .sidebar[data-compact] .contact-row {
   justify-self: center;
-  justify-content: center;
+  gap: 0;
   width: var(--contact-height);
   height: var(--contact-height);
-  padding: 0;
+  padding: calc((var(--contact-height) - var(--avatar-medium)) / 2);
 }
 .sidebar[data-compact] .chat-preview {
-  display: none;
+  flex: 0;
+  width: 0;
+  opacity: 0;
+  visibility: hidden;
+  translate: calc(-1 * var(--space-2)) 0;
+  transition-delay: 0s, 0s, 0s, var(--motion-feedback);
 }
 .conversation {
   position: relative;
@@ -273,19 +293,13 @@
   scroll-padding-block: calc(var(--control-height) + var(--space-6))
     calc(var(--composer-dock-height, 0px) + var(--composer-fade));
 }
-.workspace-content[data-resizing] .transcript > div {
-  overflow-x: clip;
-}
 .messages {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--message-gap);
-  width: var(--transcript-resize-width, 100%);
+  width: 100%;
   margin-inline: auto;
-}
-.workspace-content[data-resizing] .messages {
-  --message-max-width: var(--transcript-resize-max-width);
 }
 .conversation-time {
   display: block;

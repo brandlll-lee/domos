@@ -1526,17 +1526,23 @@ test("chat gutters stay full width while bubbles follow the available panel", as
     }
   }
   await page.setViewportSize({ width: 1920, height: 1080 });
+  await expect(page.locator(".workspace")).not.toHaveAttribute("data-mobile");
   const details = await openDetails(page);
-  await page.evaluate(() => document.activeViewTransition?.finished);
+  const inspector = page.locator('.workspace-panel[data-side="inspector"]');
+  await expect(inspector).toHaveAttribute("data-open", "");
+  await expect(inspector).not.toHaveAttribute("data-modal");
+  await expect(inspector).toHaveCSS("translate", "none");
   for (const zoom of [1, 1.25, 1.5]) {
     await page.evaluate((value) => {
       document.documentElement.style.zoom = String(value);
     }, zoom);
     const handle = page.getByRole("separator", { name: "调整详情宽度" });
+    await expect
+      .poll(async () => (await handle.boundingBox())?.x ?? Infinity)
+      .toBeLessThan(1920 - layout.inspector.min / 2);
     await handle.hover();
     const box = await handle.boundingBox();
     if (!box) throw new Error("Details resize handle missing");
-    const messageWidth = (await page.locator(".messages").boundingBox())?.width;
     await page.mouse.move(box.x + box.width / 2, box.y + 100);
     await page.mouse.down();
     await expect(page.locator(".workspace-content")).toHaveAttribute(
@@ -1547,11 +1553,19 @@ test("chat gutters stay full width while bubbles follow the available panel", as
       await page.mouse.move(box.x - distance, box.y + 100, { steps: 3 });
       const chat = await page.locator(".conversation").boundingBox();
       const panel = await details.boundingBox();
-      if (!chat || !panel || !messageWidth)
-        throw new Error("Chat panel missing");
+      if (!chat || !panel) throw new Error("Chat panel missing");
+      const transcript = await page.locator(".transcript").evaluate((node) => {
+        const style = getComputedStyle(node);
+        return (
+          (parseFloat(style.width) -
+            parseFloat(style.paddingLeft) -
+            parseFloat(style.paddingRight)) *
+          parseFloat(getComputedStyle(document.documentElement).zoom)
+        );
+      });
       expect(
         (await page.locator(".messages").boundingBox())?.width,
-      ).toBeCloseTo(messageWidth, 0);
+      ).toBeCloseTo(transcript, 0);
       expect(chat.x + chat.width).toBeLessThanOrEqual(panel.x + 1);
       expect(
         await page

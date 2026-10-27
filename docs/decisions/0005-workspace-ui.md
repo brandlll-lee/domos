@@ -14,7 +14,7 @@
 
 联系人目录统一提供忙碌状态和消息预览。预览读取 Pi 已提交的消息，空会话使用真实职责。目录按页读取近期记录，不保存第二份历史。列表展示与搜索使用同一预览，前端只订阅当前会话。
 
-左右面板共享指针和键盘调宽行为。布局状态使用 domos:layout:v1。拖动时每帧只应用最新宽度，宽度不变时不更新状态。消息正文保持起始排版宽度，分隔线和输入区实时调整。松手后恢复响应式排版，并使用一次共享过渡。拖动期间不创建快照过渡。新点击或按键先结束当前过渡，再处理输入。取消或移除分隔线时解除宽度保持。拖动结束后保存用户宽度。视口约束只改变展示宽度。存储不可用时继续保留本次交互。窄屏使用同一面板内容和 Dialog 焦点管理。实现依据：[React ViewTransition](https://react.dev/reference/react/ViewTransition)、[同步提交](https://react.dev/reference/react-dom/flushSync)、[布局开销](https://web.dev/articles/avoid-large-complex-layouts-and-layout-thrashing)。
+左右面板共享指针和键盘调宽行为。布局状态使用 domos:layout:v1。拖动时每帧只应用最新宽度，宽度不变时不更新状态。正文、图片、表格和输入区随实际宽度实时排版。消息继续复用缓存和分页。收起阈值触发一次共享 CSS 宽度过渡，侧栏与聊天区域同步变化。文字渐隐，头像随入口收拢。动画使用现有 220ms 令牌。中途开始拖动时，读取已显示的宽度并计入页面缩放。面板开关继续使用 React ViewTransition。拖动和吸附期间不创建聊天区快照。拖动结束后保存用户宽度。视口约束只改变展示宽度。存储不可用时继续保留本次交互。窄屏使用同一面板内容和 Dialog 焦点管理。实现依据：[React ViewTransition](https://react.dev/reference/react/ViewTransition)、[布局开销](https://web.dev/articles/avoid-large-complex-layouts-and-layout-thrashing)。
 
 联系人栏向左拖过收起阈值后，变为 96px 图标栏。头像入口使用联系人高度令牌，显示为居中的圆角正方形。选中底色使用 surface，悬停底色使用 hover，与搜索、新建按钮共用主题颜色。头像、搜索、新建和底部操作继续使用同一组件。向右拖动、双击分隔线或使用方向键可展开。搜索图标展开联系人栏并聚焦搜索。展开宽度与收起状态分别保存。收起和展开遵循减少动态效果设置。窄屏抽屉保持完整联系人列表。
 
