@@ -1840,6 +1840,20 @@ test("large histories render a bounded window and retain the earlier reading anc
       Math.abs(((await retained.boundingBox())?.y ?? 0) - (before?.y ?? 0)),
     )
     .toBeLessThan(2);
+  const input = page.getByLabel("消息", { exact: true });
+  await input.fill("调宽时保留的草稿");
+  for (const width of [1100, 1600, 1360]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect
+      .poll(async () =>
+        Math.abs(((await retained.boundingBox())?.y ?? 0) - (before?.y ?? 0)),
+      )
+      .toBeLessThan(2);
+    await expect(input).toHaveValue("调宽时保留的草稿");
+    await expect(
+      page.getByRole("button", { name: "返回最新", exact: true }),
+    ).toBeVisible();
+  }
   await older.scrollIntoViewIfNeeded();
   await older.click();
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(120);

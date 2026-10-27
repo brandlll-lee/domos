@@ -295,11 +295,17 @@
 }
 .messages {
   position: relative;
+  contain: inline-size;
   display: flex;
   flex-direction: column;
   gap: var(--message-gap);
   width: 100%;
   margin-inline: auto;
+}
+.messages > [data-transcript-key]:has(~ [data-transcript-key]) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 100px;
+  overflow-clip-margin: var(--space-2);
 }
 .conversation-time {
   display: block;

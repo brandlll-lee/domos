@@ -44,6 +44,7 @@ export function useTranscript(
   const animate = useRef(false);
   const scrolling = useRef(false);
   const anchor = useRef<{ key: string; top: number } | null>(null);
+  const reading = useRef<{ node: HTMLElement; top: number } | null>(null);
   const reply = useRef<string | null>(null);
   const [range, setRange] = useState<{ start: number; end: number } | null>(
     null,
@@ -96,6 +97,14 @@ export function useTranscript(
     }
     sent.current = sentRequest;
     received.current = ready ? items : null;
+    const nodes = new Map(
+      Array.from(content.current?.children ?? []).flatMap((child) =>
+        child instanceof HTMLElement && child.dataset.transcriptKey
+          ? [[child.dataset.transcriptKey, child] as const]
+          : [],
+      ),
+    );
+    const seen = new Set(previous.current.items.map(keyOf));
     measure.current = () => {
       const element = viewport.current;
       const list = content.current;
@@ -107,15 +116,29 @@ export function useTranscript(
         scrolling.current
       )
         return;
-      const nodes = new Map(
-        Array.from(list.children).flatMap((child) =>
-          child instanceof HTMLElement && child.dataset.transcriptKey
-            ? [[child.dataset.transcriptKey, child] as const]
-            : [],
-        ),
-      );
       const old = previous.current;
-      const seen = new Set(old.items.map(keyOf));
+      if (
+        old.ready &&
+        old.items === items &&
+        following.current &&
+        !jumping.current &&
+        (old.width !== element.clientWidth ||
+          old.height !== element.clientHeight ||
+          Math.abs(element.scrollTop - ownedTop.current) <= 1)
+      ) {
+        scrolled.current = false;
+        element.scrollTop = element.scrollHeight;
+        ownedTop.current = element.scrollTop;
+        setAtBottom(end === items.length);
+        if (end === items.length) setUnread(false);
+        previous.current = {
+          ...old,
+          width: element.clientWidth,
+          height: element.clientHeight,
+          padding: Number.parseFloat(getComputedStyle(element).paddingBottom),
+        };
+        return;
+      }
       const added =
         old.ready && old.items !== items
           ? items.filter((item) => incoming(item) && !seen.has(keyOf(item)))
@@ -131,6 +154,7 @@ export function useTranscript(
         old.padding === bottom &&
         Math.abs(element.scrollTop - ownedTop.current) > 1
       ) {
+        reading.current = null;
         following.current =
           element.scrollHeight - element.clientHeight - element.scrollTop <= 2;
         reply.current = null;
@@ -147,8 +171,10 @@ export function useTranscript(
         setUnread(false);
       } else if (anchor.current) {
         const node = nodes.get(anchor.current.key);
-        if (node)
+        if (node) {
           target += node.getBoundingClientRect().top - anchor.current.top;
+          reading.current = { node, top: anchor.current.top };
+        }
         anchor.current = null;
       } else if (added.length && following.current) {
         const first = added.map((item) => nodes.get(keyOf(item))).find(Boolean);
@@ -171,6 +197,10 @@ export function useTranscript(
       else if (reply.current) {
         const node = nodes.get(reply.current);
         if (node) target += node.getBoundingClientRect().top - bounds.top - top;
+      } else if (reading.current && list.contains(reading.current.node)) {
+        target +=
+          reading.current.node.getBoundingClientRect().top -
+          reading.current.top;
       }
       if (
         animate.current &&
@@ -192,6 +222,16 @@ export function useTranscript(
         element.scrollHeight - element.clientHeight - element.scrollTop <= 2;
       setAtBottom(bottomReached && end === items.length);
       if (bottomReached && end === items.length) setUnread(false);
+      if (!following.current && !reading.current) {
+        const node = document
+          .elementFromPoint(
+            bounds.left + bounds.width / 2,
+            bounds.top + top + 1,
+          )
+          ?.closest<HTMLElement>("[data-transcript-key]");
+        if (node && list.contains(node))
+          reading.current = { node, top: node.getBoundingClientRect().top };
+      } else if (following.current) reading.current = null;
       previous.current = {
         items,
         ready,

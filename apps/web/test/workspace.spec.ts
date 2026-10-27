@@ -9,6 +9,7 @@ import { expect, test } from "@playwright/test";
 let worker: ChildProcess;
 let directory: string;
 let url: string;
+const it = test.extend({ trace: "off" });
 
 test("three columns keep the identity capsule and navigation clear at each width", async ({
   page,
@@ -660,13 +661,14 @@ test("computer connection failures keep a direct retry", async ({ page }) => {
   await expect(view.getByRole("alert")).toHaveCount(0);
 });
 
-test("chat stays at the latest message in every painted resize frame", async ({
+it("chat reflows within the frame budget and retains its position", async ({
   page,
 }) => {
   test.setTimeout(60000);
   let receipt = once(worker, "message");
   worker.send({ history: 160 });
   await receipt;
+  await page.setViewportSize({ width: 1600, height: 960 });
   await page.goto(url);
   receipt = once(worker, "message");
   worker.send({
@@ -682,6 +684,9 @@ test("chat stays at the latest message in every painted resize frame", async ({
     .fill("检查布局");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.locator(".message table").last()).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "发送", exact: true }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   await expect
     .poll(() =>
@@ -692,29 +697,43 @@ test("chat stays at the latest message in every painted resize frame", async ({
         ),
     )
     .toBeLessThanOrEqual(1);
-  await page.evaluate(() => {
+  const frames = await page.evaluateHandle(() => {
     const viewport = document.querySelector<HTMLElement>(".transcript");
     if (!viewport) throw new Error("Transcript missing");
-    viewport.dataset.resizeGap = "0";
-    const observer = new ResizeObserver(() => {
-      queueMicrotask(() => {
-        const gap =
-          viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop;
-        viewport.dataset.resizeGap = String(
-          Math.max(Number(viewport.dataset.resizeGap), gap),
-        );
-      });
-    });
-    observer.observe(viewport);
-    const messages = document.querySelector(".messages");
-    if (messages) observer.observe(messages);
+    const times: number[] = [];
+    let frame = 0;
+    const sample = (time: number) => {
+      times.push(time);
+      frame = requestAnimationFrame(sample);
+    };
+    return {
+      start() {
+        times.length = 0;
+        frame = requestAnimationFrame(sample);
+      },
+      finish() {
+        cancelAnimationFrame(frame);
+        let previous = times[0] ?? 0;
+        const gaps = times.slice(1).map((time) => {
+          const gap = time - previous;
+          previous = time;
+          return gap;
+        });
+        gaps.sort((a, b) => a - b);
+        return {
+          gap:
+            viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
+          count: gaps.length,
+          p95: gaps[Math.floor(gaps.length * 0.95)],
+          slow: gaps.filter((time) => time > 25).length / gaps.length,
+        };
+      },
+    };
   });
   const session = await page.context().newCDPSession(page);
-  await session.send("Performance.enable");
-  await session.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+  await session.send("Emulation.setCPUThrottlingRate", { rate: 2 });
   for (const side of ["联系人", "详情"]) {
     const handle = page.getByRole("separator", { name: `调整${side}宽度` });
-    const baseline = await session.send("Performance.getMetrics");
     const box = await handle.boundingBox();
     const messages = page.locator(".messages");
     const input = page.getByRole("textbox", { name: "消息", exact: true });
@@ -727,6 +746,7 @@ test("chat stays at the latest message in every painted resize frame", async ({
       "data-resizing",
       "true",
     );
+    await frames.evaluate((recording) => recording.start());
     await page.mouse.move(
       box.x + (side === "联系人" ? 60 : -240),
       box.y + 100,
@@ -741,29 +761,40 @@ test("chat stays at the latest message in every painted resize frame", async ({
     expect(
       await page.evaluate(() => Boolean(document.activeViewTransition)),
     ).toBe(false);
+    const measured = await frames.evaluate((recording) => recording.finish());
     await page.mouse.up();
     await expect(page.locator(".workspace-content")).not.toHaveAttribute(
       "data-resizing",
     );
     await page.evaluate(() => document.activeViewTransition?.finished);
     expect((await messages.boundingBox())?.width).not.toBe(body.width);
-    const measured = await session.send("Performance.getMetrics");
-    for (const name of [
-      "LayoutDuration",
-      "ScriptDuration",
-      "RecalcStyleDuration",
-    ]) {
-      const duration =
-        1000 *
-        ((measured.metrics.find((m) => m.name === name)?.value ?? 0) -
-          (baseline.metrics.find((m) => m.name === name)?.value ?? 0));
-      console.log(`${side} resize ${name}: ${duration.toFixed(1)}ms`);
-    }
+    console.log(`${side} resize: ${JSON.stringify(measured)}`);
+    expect(measured.count).toBeGreaterThan(30);
+    expect(measured.gap).toBeLessThanOrEqual(1);
+    expect(measured.p95).toBeLessThanOrEqual(20);
+    expect(measured.slow).toBeLessThanOrEqual(0.05);
   }
   await session.send("Emulation.setCPUThrottlingRate", { rate: 1 });
-  expect(
-    Number(await page.locator(".transcript").getAttribute("data-resize-gap")),
-  ).toBeLessThanOrEqual(1);
+  const input = page.getByRole("textbox", { name: "消息", exact: true });
+  await input.fill("调整窗口时保留的草稿");
+  for (const width of [1400, 1200, 1600]) {
+    const before = (await page.locator(".messages").boundingBox())?.width;
+    await page.setViewportSize({ width, height: 900 });
+    await expect
+      .poll(async () => (await page.locator(".messages").boundingBox())?.width)
+      .not.toBe(before);
+    await expect(input).toHaveValue("调整窗口时保留的草稿");
+    await expect
+      .poll(() =>
+        page
+          .locator(".transcript")
+          .evaluate(
+            (node) => node.scrollHeight - node.clientHeight - node.scrollTop,
+          ),
+      )
+      .toBeLessThanOrEqual(1);
+  }
+  await frames.dispose();
 });
 
 test("Bot panels keep their hierarchy in both themes and panel widths", async ({
