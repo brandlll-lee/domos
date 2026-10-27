@@ -78,10 +78,12 @@
   text-decoration: none;
 }
 .contact-row[aria-current="page"] {
-  background: color-mix(in srgb, var(--color-text) 8%, var(--color-canvas));
+  background: var(--color-surface);
 }
-.contact-row:not([aria-current="page"]):hover {
-  background: color-mix(in srgb, var(--color-text) 4%, var(--color-canvas));
+@media (hover: hover) {
+  .contact-row:hover {
+    background: var(--color-hover);
+  }
 }
 .chat-preview {
   display: grid;
@@ -125,8 +127,11 @@
   padding-inline-end: 0;
 }
 .sidebar[data-compact] .contact-row {
+  justify-self: center;
   justify-content: center;
-  padding-inline: var(--space-2);
+  width: var(--contact-height);
+  height: var(--contact-height);
+  padding: 0;
 }
 .sidebar[data-compact] .chat-preview {
   display: none;

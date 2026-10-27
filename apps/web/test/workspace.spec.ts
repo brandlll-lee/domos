@@ -895,6 +895,34 @@ test("contacts snap to an icon column and restore their width without losing cha
   for (const theme of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    const contact = sidebar.locator('.contact-row[aria-current="page"]');
+    const searchButton = sidebar.getByRole("button", {
+      name: "搜索联系人",
+      exact: true,
+    });
+    const contactBox = await contact.boundingBox();
+    if (!contactBox) throw new Error("Contact missing");
+    expect(contactBox.width).toBeCloseTo(54, 0);
+    expect(contactBox.height).toBeCloseTo(contactBox.width, 1);
+    expect(Math.abs(contactBox.x + contactBox.width / 2 - 48)).toBeLessThan(1);
+    const matchingBackgrounds = async () =>
+      (await contact.evaluate(
+        (node) => getComputedStyle(node).backgroundColor,
+      )) ===
+      (await searchButton.evaluate(
+        (node) => getComputedStyle(node).backgroundColor,
+      ));
+    await expect.poll(matchingBackgrounds).toBe(true);
+    await searchButton.hover();
+    await searchButton.evaluate((node) =>
+      Promise.all(node.getAnimations().map((animation) => animation.finished)),
+    );
+    const hover = await searchButton.evaluate(
+      (node) => getComputedStyle(node).backgroundColor,
+    );
+    await contact.hover();
+    await expect(contact).toHaveCSS("background-color", hover);
+    await page.mouse.move(400, 800);
     await page.screenshot({
       path: info.outputPath(`contacts-compact-${theme}.png`),
       animations: "disabled",
