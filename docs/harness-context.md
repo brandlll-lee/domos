@@ -2,45 +2,55 @@
 
 ## Ownership and admission
 
-Pi Durable 1.4.0 owns the model context and execution loop. Domos stores the complete transcript. Chat, additional input, and routines use Conversation.submit. Stable request IDs deduplicate retries. The native inbox controls steering and follow-up input.
+Domos stores Bot identity, complete chat, memories, attachments, and computer permissions. Pi Durable 1.4.0 stores submissions and tasks. Runtime.submit admits ordinary chat, additional input, routines, API requests, and CLI requests. Stable request IDs deduplicate retries.
 
-GenerationTask and ToolTask own cancellation and recovery. Computer mutations are sequential tools. They do not declare replay safety. Pending approvals expire on restart. An uncertain action needs a fresh observation before another mutation.
+The selected native Harness runs on the Bot's work computer. It owns generation, model context, and native tools. The driver registry includes Pi RPC, Codex app-server, Claude Code stream JSON, OpenCode ACP, and custom ACP. UI choices come from the registry. Models and thinking levels come from the selected native program.
+
+Custom ACP uses the stable v1 SDK. The administrator supplies a program and arguments. Config options expose native model and thinking selectors. The adapter supplies the Domos MCP endpoint. Each additional Harness needs a compatibility check before it is listed as supported. Draft ACP v2 is not enabled.
+
+## Programs and accounts
+
+Discovery resolves the program on the work computer. Inspection, login, and execution use that path and OS user. Existing native account files remain authoritative. Domos does not copy retained service credentials into native account files.
+
+Downloads install a pinned package in the work computer's runtime directory. Node and npm must be available there. Existing installations stay in place. Installing an independent version does not activate it. Saving the selected model activates the resolved program. Configuration changes require an idle Bot.
+
+Pi login uses its native ModelRuntime through an RPC extension. Codex and Claude use native login commands. OpenCode uses its local account API. Account state and secret input are transient. The native program stores credentials. Administrators manage programs and accounts. Paired clients can select available models in the Bot's configured Harness.
 
 ## History and migration
 
-Before the upstream SQLite schema migration, openStorage creates a consistent .v1-backup. The migration retains messages, attachments, and memories. It settles old tasks and preserves partial replies as stopped messages. It imports bounded recent history as quoted context once per Bot. Existing Durable conversations retain their context.
+The forward migration keeps the current database. It sets migrated Bots to Pi and retains the current provider/model and thinking level. It settles old work and saves drafts as stopped messages. Missing native configuration requires user action. Migration does not silently select another model.
 
-The handoff scans up to 64 entries. Each text excerpt has a 4000-byte limit. The serialized packet has a 16000-byte limit. JSON escaping and metadata count toward that limit. UTF-8 characters stay intact. Historical images and private reasoning do not enter the handoff.
+Switching Harness or work computer creates a native session. The display history remains continuous. Native session keys include the computer, configuration, and native account fingerprint. Native recovery checks recorded outcomes before deciding that a turn completed. Uncertain work is not sent again.
 
-The conversation_read tool reads stored history:
+Handoffs contain quoted recent history. They scan up to 64 entries. Each text excerpt has a 4000-byte limit. The packet has a 16000-byte limit and may shrink to fit the native context budget. JSON escaping and metadata count toward the limit. UTF-8 characters stay intact. Historical images and private reasoning do not enter the handoff.
 
-- {} reads a recent page. Use its from cursor as before for older entries.
-- { "entryId": 123, "offset": 0 } reads a complete record in chunks. Follow nextOffset until null. Offsets count UTF-8 bytes and must align with a character boundary.
+The conversation_read tool reads the complete stored record:
 
-Each record read is bound to the current Bot. Text chunks have a 4000-byte limit. Mixed cursor modes and invalid offsets fail. File references retain their work computer identity.
+- `{}` reads a recent page. Pass its `from` cursor as `before` for older entries.
+- `{ "entryId": 123, "offset": 0 }` reads a record in UTF-8 chunks. Follow `nextOffset` until null.
 
-## Compaction and display
+Each read belongs to the current Bot. File references retain their work computer identity. Native recovery reads are bounded separately. The original native session and Domos evidence remain on disk.
 
-Durable owns automatic and manual compaction. Domos reports an estimate from the active native context and the configured model's context window. The estimate is not an exact provider tokenizer.
+## Tools and display
 
-Model HTTP uses Pi CLI 1.4.0's proxy-aware Undici configuration and matching fetch implementation. Durable retains retry and cancellation ownership.
+Product tools call existing Domos services through durable ToolTask records. Native permission requests use the shared ComputerRuntime approval callback. Browser and desktop actions use the existing computer service, control leases, takeover cards, and evidence storage. See [Browser Use](browser-use.md).
 
-The native Photon worker prepares images before model requests. Model image limits override the Pi defaults. Domos retains the latest two tool images in requests and bounds each to 512 KiB of base64. Earlier images become evidence references. User images retain the model limits. Resized images include coordinate mapping. Stored images, attachments, and tool details remain intact. Decode failures preserve the delivered result, as Pi CLI does. This request policy uses Durable's public beforeRequest hook; it is not a Pi CLI history policy.
+Pi file and command tools use the shipped approval extension. Claude uses its permission tool callback. Codex and ACP use protocol permission requests. Cancellation closes pending approvals. A successful tool call does not prove the user task completed.
 
-System sections keep stable instructions. routine_list supplies current host time and timezone. Tool rounds do not rewrite the system prompt with a new clock value.
+Native Harness processes own compaction. Domos records context readings, compaction events, and reported usage. Unsupported values stay unknown. Custom ACP recovery is unavailable until its driver can verify native outcomes. Domos does not infer cost or completion from a missing event.
 
-Desktop session state belongs to the work process. Saved element or capture tokens require observation in a new session before input. An ended session recovers observation only. The original action result remains intact, and recovery does not replay input.
-
-The UI reads raw stored entries. Compaction summaries and migration handoffs stay out of displayed messages. Compaction changes model context only. Full records remain available through conversation_read.
-
-The SQLite pagination patch reads 32 document revisions per query. It preserves order, historical bounds, version checks, and the read transaction. Recheck the patch on dependency upgrades.
+System instructions stay stable across tool rounds. routine_list supplies current host time and timezone. The UI reads complete stored entries. Handoffs and compaction records stay out of displayed messages. Current tool evidence retains the existing computer observation limits. Native CLI context policies are not the embedded Durable beforeRequest image policy.
 
 ## Verification
 
-harness-context.test.ts checks byte budgets, UTF-8 chunks, complete record reads, and Bot isolation. harness-recovery.test.ts checks migration, memory retention, expired approvals, submission deduplication, and full display history after compaction and restart. Lifecycle and takeover tests check the native loop and shared computer control. These tests do not prove paid-provider recall or native desktop input on every OS.
+Protocol tests cover native model controls, permission requests, and custom ACP setup. Lifecycle tests cover additional input and cancellation. Recovery tests cover uncertain dispatch and forward migration. History tests cover byte budgets and Bot isolation. Browser E2E checks include real input and result readback. See [Computer Use evals](computer-evals.md).
 
-## Sources
+## Official references
 
-- [Pi Durable 1.4.0](https://github.com/earendil-works/pi/tree/v1.4.0/packages/durable)
-- [Pi AI 1.4.0](https://github.com/earendil-works/pi/tree/v1.4.0/packages/ai)
-- [Pi CLI HTTP initialization](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/src/core/http-dispatcher.ts)
+Checked against installed packages and current official documentation on 2026-10-28.
+
+- [Pi RPC](https://pi.dev/docs/latest/rpc) and [extensions](https://pi.dev/docs/latest/extensions).
+- [Codex app-server](https://developers.openai.com/codex/app-server).
+- [Claude Code CLI](https://code.claude.com/docs/en/cli-reference).
+- [OpenCode ACP](https://opencode.ai/docs/acp/) and [server](https://opencode.ai/docs/server/).
+- [ACP v1 configuration options](https://agentclientprotocol.com/protocol/v1/session-config-options).

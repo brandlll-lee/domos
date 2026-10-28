@@ -1,110 +1,112 @@
 import type { Context } from "@earendil-works/chord/context";
-import type { Models } from "@earendil-works/pi-ai/models";
-import { estimateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
-import type {
-  ConversationId,
-  Cursor,
-  EntryId,
-  EntryRecord,
-  Harness,
-  TaskId,
-} from "@earendil-works/pi-durable";
 import {
-  CompactionTask,
-  defineDoc,
+  AgentDoc,
+  type ConversationId,
+  type Cursor,
+  type EntryId,
+  type EntryRecord,
+  type Harness,
   LiveDoc,
-  type LiveState,
 } from "@earendil-works/pi-durable";
 import { chatView } from "../chat-view.ts";
-import { ComputerRequests, type ComputerRuntime } from "../computer/runtime.ts";
-import { FileInput, type Files } from "../files.ts";
-import type { EngineInput } from "../harness/types.ts";
+import { ComputerRequests } from "../computer/runtime.ts";
+import { EngineConnections } from "../harness/connections.ts";
+import type { EngineExecution } from "../harness/execution.ts";
+import { EngineModelCatalog } from "../harness/model-catalog.ts";
+import { engineProvider, providers } from "../harness/providers/index.ts";
+import { readEngine, reconcileEngine } from "../harness/reconcile.ts";
+import { switchSession } from "../harness/sessions.ts";
+import { EngineDoc, EngineInputDoc, EngineMessage } from "../harness/state.ts";
+import { engineTask } from "../harness/task.ts";
+import { userMessage } from "../harness/task-types.ts";
+import type {
+  EngineAnswer,
+  EngineConfig,
+  EngineInput,
+} from "../harness/types.ts";
 import { type UsageFilter, UsageReader } from "../harness/usage.ts";
 import { materialText } from "../materials.ts";
-import { thinkingControl } from "../models.ts";
-import { stopChat } from "../stop-chat.ts";
 import { watchCommits } from "../watch.ts";
-import { actualPrompt } from "../work/prompt.ts";
-
-const CompactionRequests = defineDoc<{ tasks: Record<string, TaskId> }>({
-  kind: "domos.compaction-requests",
-  version: 1,
-  scope: "conversation",
-  checkpointWhen: () => false,
-  history: "latest",
-  fork: "initial",
-  initial: () => ({ tasks: {} }),
-});
+import { WorkError } from "../work/state.ts";
 
 export class Runtime {
-  private readonly reader: UsageReader;
-  private readonly harness: Harness;
-  private readonly models: Models;
-  readonly computer?: ComputerRuntime;
-  private readonly files?: Files;
   private readonly histories = new Map<number, EntryRecord[]>();
-  private readonly contexts = new Map<
-    number,
-    { key: string; tokens: number }
-  >();
-  constructor(
-    harness: Harness,
-    models: Models,
-    computer?: ComputerRuntime,
-    files?: Files,
-  ) {
+  private readonly stopping = new Set<number>();
+  private readonly usageReader: UsageReader;
+  private readonly harness: Harness;
+  readonly execution: EngineExecution;
+  readonly task;
+  readonly connections;
+  constructor(harness: Harness, execution: EngineExecution) {
     this.harness = harness;
-    this.models = models;
-    this.computer = computer;
-    this.files = files;
-    this.reader = new UsageReader(harness);
+    this.execution = execution;
+    this.task = engineTask(execution);
+    this.connections = new EngineConnections(
+      execution,
+      new EngineModelCatalog(harness),
+    );
+    this.usageReader = new UsageReader(harness);
   }
-  private async conversation(botId: number, context: Context) {
+
+  async profile(botId: number, context: Context) {
+    const id = botId as ConversationId;
+    const [doc, agent] = await Promise.all([
+      readEngine(this.harness, id, context),
+      this.harness.snapshot(AgentDoc, id, context),
+    ]);
+    const computerId = await this.execution.computers.computerId(
+      botId,
+      context,
+    );
+    const config = doc?.config ?? {
+      provider: "pi" as const,
+      model: agent?.model
+        ? `${agent.model.provider}/${agent.model.modelId}`
+        : null,
+    };
+    const models = await this.connections.catalog(botId, context, config);
+    return {
+      config,
+      model:
+        models
+          .find((item) => item.id === config.provider)
+          ?.models.find((item) => item.id === config.model) ?? null,
+      revision: doc?.revision ?? 0,
+      runtime:
+        doc?.computerId && doc.computerId !== computerId
+          ? null
+          : (doc?.runtime ?? null),
+      busy: Boolean(doc?.tasks.length),
+      error: doc?.error ?? null,
+      prepared: Boolean(
+        doc?.prepared &&
+          (doc.preparedComputerId ?? doc.computerId) === computerId,
+      ),
+      providers: [...providers.values()].map(({ id, name, capabilities }) => ({
+        id,
+        name,
+        capabilities,
+      })),
+    };
+  }
+
+  usage(botIds: number[], filter: UsageFilter, context: Context) {
+    return this.usageReader.read(botIds, filter, context);
+  }
+
+  async view(botId: number, context: Context) {
     const conversation = await this.harness.conversation(
       botId as ConversationId,
       context,
     );
-    if (!conversation) throw new Error("Bot 不存在。");
-    return conversation;
-  }
-  async profile(botId: number, context: Context) {
-    const conversation = await this.conversation(botId, context);
-    const agent = await conversation.agent(context);
-    const model = (await this.models.getAvailable()).find(
-      (item) =>
-        item.provider === agent.model?.provider &&
-        item.id === agent.model.modelId,
-    );
-    return {
-      model: model
-        ? {
-            id: `${model.provider}/${model.id}`,
-            name: model.name,
-            effort: thinkingControl(model),
-          }
-        : null,
-      config: {
-        provider: "pi" as const,
-        model: agent.model
-          ? `${agent.model.provider}/${agent.model.modelId}`
-          : null,
-        options: { thinkingLevel: agent.thinkingLevel },
-      },
-      prepared: Boolean(model),
-      busy: (await this.view(botId, context)).busy,
-    };
-  }
-  async view(botId: number, context: Context) {
-    const state = await (await this.conversation(botId, context)).viewState(
+    if (!conversation) throw new WorkError("NOT_FOUND", "Bot 不存在。");
+    const engine = await readEngine(
+      this.harness,
+      botId as ConversationId,
       context,
     );
+    const state = await conversation.viewState(context);
     try {
-      const requests = await this.harness.snapshot(
-        ComputerRequests,
-        botId as ConversationId,
-        context,
-      );
-      const conversation = await this.conversation(botId, context);
       const active = state.value.entries;
       const tail = Math.max(active[0]?.id ?? 0, active.at(-1)?.id ?? 0);
       let entries = this.histories.get(botId) ?? [];
@@ -123,154 +125,380 @@ export class Runtime {
         } while (cursor);
         this.histories.set(botId, entries);
       }
+      const requests = await this.harness.snapshot(
+        ComputerRequests,
+        botId as ConversationId,
+        context,
+      );
       const view = chatView(
         { ...state.value, entries },
         requests?.approvals ?? [],
       );
-      const key = `${active[0]?.id}:${tail}:${JSON.stringify(view.model)}`;
-      let cached = this.contexts.get(botId);
-      if (cached?.key !== key) {
-        cached = {
-          key,
-          tokens: estimateContextTokens(
-            (await conversation.context(context)).messages,
-          ).tokens,
-        };
-        this.contexts.set(botId, cached);
-      }
-      const model = (await this.models.getAvailable()).find(
-        (item) =>
-          item.provider === view.model?.provider &&
-          item.id === view.model.modelId,
+      view.messages.push(...((engine?.drafts ?? []) as typeof view.messages));
+      view.busy ||= Boolean(engine?.tasks.length);
+      view.processing = Boolean(
+        engine?.activeId &&
+          engine.runtime?.processing &&
+          !requests?.approvals.length,
       );
-      const live = state.value.docs[LiveDoc.definition.kind] as
-        | LiveState
-        | undefined;
-      return {
-        ...view,
-        runtime: {
-          contextTokens: cached.tokens,
-          contextWindow: model?.contextWindow ?? null,
-          context: {
-            source: "pi-durable",
-            basis: "window" as const,
-            estimated: true,
-            observedAt: Date.now(),
-            harness: "pi" as const,
-            sessionId: null,
-            model: model ? `${model.provider}/${model.id}` : null,
-          },
-          contextPolicy: {
-            manual: true,
-            automatic: "native" as const,
-            refresh: false,
-          },
-          ...(live?.compactions?.length
-            ? { compaction: "running" as const }
-            : live?.compactionFailure
-              ? { compaction: "failed" as const }
-              : {}),
-        },
-      };
+      view.activeTurnId = engine?.activeTurn ?? view.activeTurnId;
+      view.engine = engine?.config;
+      if (engine?.config.model) {
+        const separator = engine.config.model.indexOf("/");
+        view.model =
+          engine.config.provider === "pi" && separator > 0
+            ? {
+                provider: engine.config.model.slice(0, separator),
+                modelId: engine.config.model.slice(separator + 1),
+              }
+            : {
+                provider: engine.config.provider,
+                modelId: engine.config.model,
+              };
+      }
+      view.runtime = engine?.runtime;
+      view.error = engine?.error;
+      view.failed ||= Boolean(engine?.error);
+      return view;
     } finally {
       state.dispose();
     }
   }
+
   watch(botId: number, context: Context) {
     return watchCommits(
       this.harness,
       (change) =>
         (change.type === "entry" && change.value.conversationId === botId) ||
+        (change.type === "task" &&
+          change.value.conversationId === botId &&
+          change.value.state.status === "terminal") ||
         ((change.type === "document" || change.type === "document.copy") &&
           change.conversationId === botId),
       () => this.view(botId, context),
       context,
     );
   }
-  async submit(botId: number, input: EngineInput, context: Context) {
-    const conversation = await this.conversation(botId, context);
-    if (input.operation === "compact")
-      throw new Error("请使用上下文压缩入口。");
-    await this.computer?.prepare(botId, context);
-    const images =
-      (await this.files?.images(botId, input.attachments ?? [], context)) ?? [];
-    return conversation.submit(
+
+  async prompt(botId: number, context: Context) {
+    const doc = await this.harness.snapshot(
+      EngineDoc,
+      botId as ConversationId,
+      context,
+    );
+    return {
+      ...(doc?.prompt ?? { text: "", sections: {}, tools: [] }),
+      prepared: Boolean(doc?.prompt),
+    };
+  }
+
+  async controls(botId: number, context: Context) {
+    const id = botId as ConversationId;
+    const profile = await this.profile(botId, context);
+    if (profile.busy) throw new WorkError("CONFLICT", "请先停止 Bot 的工作。");
+    const doc = await this.harness.snapshot(EngineDoc, id, context);
+    const computerId = await this.execution.computers.computerId(
+      botId,
+      context,
+    );
+    if (
+      doc?.runtime?.controls &&
+      (doc.preparedComputerId ?? doc.computerId) === computerId
+    )
+      return doc.runtime.controls;
+    const controls = await this.connections.controls(
+      botId,
+      profile.config,
+      doc?.sessionId ?? null,
+      context,
+    );
+    await this.harness.commit(async (tx) => {
+      const current = await tx.doc(EngineDoc, id);
+      if (current.tasks.length || current.revision !== profile.revision)
+        throw new WorkError("CONFLICT", "配置已更新。请重新读取。");
+      current.runtime = { ...current.runtime, controls };
+      current.preparedComputerId = computerId;
+    }, context);
+    return controls;
+  }
+
+  async select(
+    botId: number,
+    input: {
+      model: string | null;
+      options?: Record<string, string>;
+      revision: number;
+      requestId: string;
+    },
+    context: Context,
+  ) {
+    const profile = await this.profile(botId, context);
+    const available = await this.connections.inspect(
+      botId,
+      profile.config,
+      context,
+    );
+    if (
+      !available.authenticated ||
+      (input.model &&
+        !available.models.some((model) => model.id === input.model))
+    )
+      throw new WorkError("BAD_REQUEST", "请选择工作电脑上可用的模型。");
+    const { options: _options, ...selected } = profile.config;
+    return this.configure(
+      botId,
       {
-        type: "input",
-        content: [
-          {
-            type: "text",
-            text: [
-              materialText(input.text, input.materials),
-              ...(input.attachments ?? []).map(
-                (file) => `Uploaded file: ${file.path}`,
-              ),
-            ]
-              .filter(Boolean)
-              .join("\n\n"),
-          },
-          ...images,
-        ],
+        revision: input.revision,
         requestId: input.requestId,
-        whenBusy: input.whenBusy ?? "steer",
-        entry: {
-          kind: FileInput,
-          data: JSON.parse(
-            JSON.stringify({
-              text: input.text,
-              attachments: input.attachments ?? [],
-              materials: input.materials,
-              requestId: input.requestId,
-            }),
-          ),
+        config: {
+          ...selected,
+          model: input.model,
+          ...(input.options ? { options: input.options } : {}),
         },
       },
       context,
     );
   }
-  async stop(botId: number, context: Context) {
-    await stopChat(await this.conversation(botId, context), context);
-  }
-  async prompt(botId: number, context: Context) {
-    return actualPrompt(await this.conversation(botId, context), context);
-  }
-  usage(botIds: number[], filter: UsageFilter, context: Context) {
-    return this.reader.read(botIds, filter, context);
-  }
-  async compact(botId: number, requestId: string, context: Context) {
-    const conversation = await this.conversation(botId, context);
-    return conversation.commit(async (tx) => {
-      const requests = await tx.doc(CompactionRequests, conversation.id);
-      const existing = requests.tasks[requestId];
-      if (existing !== undefined) return existing;
-      const taskId = await tx.createTask(
-        CompactionTask,
-        { reason: "manual" },
-        { ownership: { kind: "conversation" }, background: false },
+
+  async configure(
+    botId: number,
+    input: { config: EngineConfig; revision: number; requestId: string },
+    context: Context,
+  ) {
+    engineProvider(input.config.provider);
+    const previous = await readEngine(
+      this.harness,
+      botId as ConversationId,
+      context,
+    );
+    if (previous?.requestId === input.requestId)
+      return this.profile(botId, context);
+    if (this.connections.busy(botId))
+      throw new WorkError("CONFLICT", "请先完成账号连接。");
+    const connection = await this.connections.snapshot(
+      botId,
+      input.config,
+      context,
+    );
+    const computerId = await this.execution.computers.computerId(
+      botId,
+      context,
+    );
+    const models = await this.connections.catalog(botId, context, input.config);
+    const effort = models
+      .find((item) => item.id === input.config.provider)
+      ?.models.find((item) => item.id === input.config.model)?.effort;
+    await this.harness.commit(async (tx) => {
+      const doc = await tx.doc(EngineDoc, botId as ConversationId);
+      if (doc.requestId === input.requestId) return;
+      if (
+        doc.tasks.length ||
+        (await tx.doc(LiveDoc, botId as ConversationId)).run
+      )
+        throw new WorkError("CONFLICT", "请先停止 Bot 的工作。");
+      if (doc.revision !== input.revision)
+        throw new WorkError("CONFLICT", "配置已更新。请刷新后重试。");
+      const reset =
+        doc.config.provider !== input.config.provider ||
+        doc.config.model !== input.config.model ||
+        doc.config.command !== input.config.command ||
+        JSON.stringify(doc.config.args) !== JSON.stringify(input.config.args);
+      for (const [key, value] of Object.entries(input.config.options ?? {})) {
+        const control =
+          (reset
+            ? undefined
+            : doc.runtime?.controls?.options.find((item) => item.id === key)) ??
+          (effort?.id === key ? effort : undefined);
+        if (!control?.options.some((item) => item.id === value))
+          throw new WorkError(
+            "BAD_REQUEST",
+            "请先读取此模型的原生配置，再选择可用值。",
+          );
+      }
+      switchSession(doc, input.config, computerId);
+      doc.config = input.config;
+      doc.revision++;
+      doc.requestId = input.requestId;
+      if (!reset) {
+        if (doc.runtime) doc.runtime.controls = undefined;
+        return;
+      }
+      doc.runtime = {};
+      doc.turnId = null;
+      doc.dispatch = "ready";
+      doc.error = null;
+      doc.prepared = Boolean(
+        connection?.authenticated &&
+          (input.config.model === null ||
+            connection.models.some((item) => item.id === input.config.model)),
       );
-      const live = await tx.doc(LiveDoc, conversation.id);
-      live.compactions ??= [];
-      live.compactions.push({
-        taskId,
-        reason: "manual",
-        blocking: false,
-        attempt: 1,
-      });
-      requests.tasks[requestId] = taskId;
-      return taskId;
+      doc.preparedComputerId = computerId;
+      doc.prompt = null;
     }, context);
+    return this.profile(botId, context);
   }
+
+  async compact(botId: number, requestId: string, context: Context) {
+    const result = await this.submit(
+      botId,
+      { text: "", requestId, operation: "compact", whenBusy: "reject" },
+      context,
+    );
+    return result.id;
+  }
+
+  async submit(botId: number, input: EngineInput, context: Context) {
+    const id = botId as ConversationId;
+    if (this.connections.busy(botId))
+      throw new WorkError("CONFLICT", "请先完成账号连接。");
+    await this.execution.computers.preflight(botId, context);
+    if (!(await readEngine(this.harness, id, context))?.tasks.length)
+      await this.execution.computer.prepare(botId, context);
+    const computerId = await this.execution.computers.computerId(
+      botId,
+      context,
+    );
+    if (!computerId)
+      throw new WorkError("BAD_REQUEST", "请选择这个 Bot 的工作电脑。");
+    const submissionId = await this.harness.commit(async (tx) => {
+      const existing = await tx.submissionByRequest(id, input.requestId);
+      if (existing) return existing.id;
+      if (this.stopping.has(botId))
+        throw new WorkError("CONFLICT", "正在停止。请稍后发送。");
+      const doc = await reconcileEngine(tx, id);
+      if (
+        (await tx.doc(LiveDoc, id)).run ||
+        (doc.tasks.length && input.whenBusy === "reject")
+      )
+        throw new WorkError("CONFLICT", "Bot 正在工作。请稍后发送。");
+      if (doc.computerId !== computerId) {
+        switchSession(doc, doc.config, computerId);
+        doc.runtime = {};
+      }
+      const submission = await tx.createSubmission({
+        type: "input",
+        conversationId: id,
+        requestId: input.requestId,
+        status: "queued",
+      });
+      const turnId = `engine:${submission.id}`;
+      const entry = await tx.appendEntry(id, {
+        kind: input.operation ? "domos.engine-operation" : EngineMessage,
+        data: input.operation
+          ? { operation: input.operation }
+          : userMessage(
+              turnId,
+              input.displayText ?? input.text,
+              input.attachments,
+              input.requestId,
+              input.materials,
+            ),
+      });
+      tx.placeSubmission(submission.id, entry.id);
+      const taskId = await tx.createTask(
+        this.task,
+        {
+          text: [
+            materialText(input.text, input.materials),
+            ...(input.attachments ?? []).map(
+              (file) => `Uploaded file: ${file.path}`,
+            ),
+          ].join("\n\n"),
+          submissionId: submission.id,
+          previous: doc.taskId,
+          turnId,
+          entryId: entry.id,
+          ...(input.operation ? { operation: input.operation } : {}),
+          ...(input.attachments?.length
+            ? { attachments: input.attachments }
+            : {}),
+        },
+        {
+          ownership: { kind: "conversation" },
+          conversationId: id,
+          background: true,
+        },
+      );
+      doc.taskId = taskId;
+      doc.tasks.push(taskId);
+      if (input.whenBusy === "followUp")
+        (await tx.doc(EngineInputDoc, taskId)).status = "deferred";
+      return submission.id;
+    }, context);
+    this.execution.deliver(botId);
+    const submission = await this.harness.submission(submissionId, context);
+    if (!submission) throw new Error("任务记录不存在。");
+    return submission;
+  }
+
+  async stop(botId: number, context: Context) {
+    this.stopping.add(botId);
+    try {
+      const stopped = this.execution.stop(botId);
+      const doc = await this.harness.snapshot(
+        EngineDoc,
+        botId as ConversationId,
+        context,
+      );
+      await Promise.all(
+        [...(doc?.tasks ?? [])]
+          .reverse()
+          .map((id) => this.harness.abortTask(id, context)),
+      );
+      await stopped;
+      await readEngine(this.harness, botId as ConversationId, context);
+    } finally {
+      this.stopping.delete(botId);
+    }
+  }
+
+  async prepare(botId: number, context: Context, refresh = false) {
+    const profile = await this.profile(botId, context);
+    const computerId = await this.execution.computers.computerId(
+      botId,
+      context,
+    );
+    const result = await this.connections.inspect(
+      botId,
+      profile.config,
+      context,
+      refresh,
+    );
+    if (
+      computerId !== (await this.execution.computers.computerId(botId, context))
+    )
+      throw new WorkError("CONFLICT", "工作电脑已更换。请重新检查连接。");
+    await this.harness.commit(async (tx) => {
+      const doc = await tx.doc(EngineDoc, botId as ConversationId);
+      if (doc.revision !== profile.revision)
+        throw new WorkError("CONFLICT", "配置已更新。请重新检查连接。");
+      doc.prepared = result.authenticated;
+      doc.preparedComputerId = computerId;
+    }, context);
+    return result;
+  }
+
   async answer(
     botId: number,
     id: string,
-    answer: { allow: boolean },
+    answer: EngineAnswer,
     context: Context,
   ) {
-    if (!this.computer) throw new Error("电脑服务不可用。");
-    return this.computer.answer(botId, id, answer, context);
+    await this.execution.answer(botId, id, answer, context);
   }
-  async takeRequest(botId: number, id: string, view: string, context: Context) {
-    if (!this.computer) throw new Error("电脑服务不可用。");
-    return this.computer.takeRequest(botId, id, view, context);
+
+  takeRequest(botId: number, id: string, view: string, context: Context) {
+    return this.execution.takeRequest(botId, id, view, context);
   }
+}
+
+export { EngineExecution } from "../harness/execution.ts";
+export { engineTask } from "../harness/task.ts";
+
+export function engineCatalog() {
+  return [...providers.values()].map(({ id, name, capabilities }) => ({
+    id,
+    name,
+    capabilities,
+  }));
 }

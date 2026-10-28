@@ -1,15 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { messageText } from "@domos/agent/messages";
 import type { Runtime } from "@domos/agent/runtime";
-import { chatView } from "@domos/agent/view";
+import { type ChatView, chatView } from "@domos/agent/view";
 import {
   BACKGROUND_CONTEXT,
   type Context,
+  withAbortSignal,
 } from "@earendil-works/chord/context";
-import type {
-  Conversation,
-  ConversationView,
-} from "@earendil-works/pi-durable";
+import type { Conversation } from "@earendil-works/pi-durable";
 
 export async function reply(
   conversation: Conversation,
@@ -20,11 +18,13 @@ export async function reply(
 ) {
   const view = await conversation.viewState(context);
   const previous = new Set(
-    chatView(view.value).messages.map((message) => message.id),
+    (engines
+      ? await engines.view(conversation.id, context)
+      : chatView(view.value)
+    ).messages.map((message) => message.id),
   );
   let printed = "";
-  const render = (value: ConversationView) => {
-    const state = chatView(value);
+  const render = (state: ChatView) => {
     const messages = [
       ...state.messages,
       ...(state.draft ? [state.draft] : []),
@@ -37,7 +37,18 @@ export async function reply(
     write(text.startsWith(printed) ? text.slice(printed.length) : `\n${text}`);
     printed = text;
   };
-  view.subscribe(render);
+  const watch = new AbortController();
+  const watching = engines
+    ? (async () => {
+        for await (const value of engines.watch(
+          conversation.id,
+          withAbortSignal(watch.signal, context),
+        ))
+          render(value);
+      })()
+    : undefined;
+  void watching?.catch(() => {});
+  if (!engines) view.subscribe((value) => render(chatView(value)));
   try {
     const submission = engines
       ? await engines.submit(
@@ -50,9 +61,15 @@ export async function reply(
           BACKGROUND_CONTEXT,
         );
     const result = await submission.wait(context);
-    render(view.value);
+    render(
+      engines
+        ? await engines.view(conversation.id, context)
+        : chatView(view.value),
+    );
     return result.status === "done";
   } finally {
+    watch.abort();
+    await watching?.catch(() => {});
     view.dispose();
   }
 }

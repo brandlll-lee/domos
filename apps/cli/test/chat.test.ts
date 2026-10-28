@@ -5,9 +5,11 @@ import { openChat } from "@domos/agent/chat";
 import { loadConfig } from "@domos/agent/config";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { expect, onTestFinished, test, vi } from "vitest";
+import { configureModelHttp } from "../../../packages/agent/src/runtime/model-http.ts";
 import { reply } from "../src/chat.ts";
 
 const context = BACKGROUND_CONTEXT;
+configureModelHttp();
 
 async function database() {
   const directory = await mkdtemp(join(tmpdir(), "domos-chat-"));

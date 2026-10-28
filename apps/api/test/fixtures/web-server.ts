@@ -23,6 +23,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { getRequestListener } from "@hono/node-server";
 import { EngineMessage } from "../../../../packages/agent/src/harness/state.ts";
+import { PiProcess } from "../../../../packages/agent/test/fixtures/pi-process.ts";
 import { createApp } from "../../src/app.ts";
 import { hostingApp } from "../../src/hosting/routes.ts";
 import { takeoverFixture } from "./takeover-page.ts";
@@ -166,7 +167,57 @@ const computer = new Computers(
   ),
 );
 const takeoverMetrics: { name: string; elapsedMs: number }[] = [];
-const computers = computer;
+const computers = new Proxy(computer, {
+  get(target, key) {
+    if (key === "process")
+      return async (
+        botId: number,
+        tools: ConstructorParameters<typeof PiProcess>[2],
+        invoke: ConstructorParameters<typeof PiProcess>[3],
+      ) =>
+        new PiProcess(
+          (await files.workspace(botId, BACKGROUND_CONTEXT)).cwd,
+          models,
+          tools,
+          invoke,
+          [
+            {
+              name: toolName,
+              label: toolName,
+              description: "Return the supplied text.",
+              parameters: Type.Object({
+                text: Type.String(),
+                fail: Type.Optional(Type.Boolean()),
+              }),
+              execute: async (_id, args) => {
+                if (toolGate) await toolGate.promise;
+                if ((args as { fail?: boolean }).fail)
+                  throw new Error((args as { text: string }).text);
+                return {
+                  content: [
+                    { type: "text", text: (args as { text: string }).text },
+                  ],
+                  details: {},
+                };
+              },
+            },
+          ],
+          async (signal) => {
+            const waiting = toolGate;
+            if (!waiting) return;
+            const release = () => waiting.resolve();
+            signal.addEventListener("abort", release, { once: true });
+            try {
+              await waiting.promise;
+            } finally {
+              signal.removeEventListener("abort", release);
+            }
+          },
+        );
+    const value = Reflect.get(target, key);
+    return typeof value === "function" ? value.bind(target) : value;
+  },
+});
 if (process.argv[4] === "takeover") {
   const invoke = computer.tools.invoke.bind(computer.tools);
   computer.tools.invoke = async (...args) => {
@@ -232,6 +283,8 @@ const { harness, bots, work, engines } = await openAgent(
   BACKGROUND_CONTEXT,
 );
 await computer.initialize(harness, bots, BACKGROUND_CONTEXT, true);
+for (const bot of await bots.list(BACKGROUND_CONTEXT))
+  await engines?.prepare(bot.id, BACKGROUND_CONTEXT);
 const app = createApp(bots, models, files, work, computer, undefined, engines);
 let hosted: ReturnType<typeof hostingApp> | undefined;
 const store =

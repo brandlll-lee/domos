@@ -5,7 +5,6 @@ import {
   defineTool,
   type EntryId,
   type EntryRecord,
-  type Session,
 } from "@earendil-works/pi-durable";
 import {
   type ChatContent,
@@ -16,7 +15,10 @@ import { EngineMessage } from "./state.ts";
 
 type HistoryReader = {
   conversationId: import("@earendil-works/pi-durable").ConversationId;
-  commit: Session["commit"];
+  commit: (
+    change: (tx: import("@earendil-works/pi-durable").Tx) => Promise<undefined>,
+    context: Context,
+  ) => Promise<unknown>;
 };
 
 import { engineLimits } from "./types.ts";

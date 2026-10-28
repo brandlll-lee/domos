@@ -3,6 +3,7 @@ import type { CredentialStore } from "@earendil-works/pi-ai";
 import type { Models } from "@earendil-works/pi-ai/models";
 import {
   type AgentChange,
+  defineExtension,
   Harness,
   type HarnessOptions,
   type Registry,
@@ -14,7 +15,7 @@ import { ComputerRuntime } from "./computer/runtime.ts";
 import { messaging } from "./delivery.ts";
 import { Files } from "./files.ts";
 import { history } from "./harness/history.ts";
-import { Runtime } from "./runtime/index.ts";
+import { EngineExecution, engineTask, Runtime } from "./runtime/index.ts";
 import { migrateRuntime } from "./runtime/migrate.ts";
 import { modelDiagnostics } from "./runtime/model-diagnostics.ts";
 import { modelImages } from "./runtime/model-images.ts";
@@ -44,12 +45,32 @@ export async function openAgent(
   options.registry.install(memory);
   options.registry.install(skills);
   const computers = options.computers;
+  const execution = computers
+    ? new EngineExecution(computers, files)
+    : undefined;
+  if (execution)
+    options.registry.install(
+      defineExtension({
+        name: "domos-engines",
+        tasks: [engineTask(execution)],
+      }),
+    );
+  let engines: Runtime | undefined;
   let computerRuntime: ComputerRuntime | undefined;
   options.registry.install(
-    routineExtension(options.now, async (botId, ctx) => {
-      await computers?.preflight(botId, ctx);
-      await computerRuntime?.prepare(botId, ctx);
-    }),
+    routineExtension(
+      options.now,
+      async (botId, ctx) => {
+        await computers?.preflight(botId, ctx);
+        await computerRuntime?.prepare(botId, ctx);
+      },
+      execution
+        ? (botId, input, ctx) => {
+            if (!engines) throw new Error("任务引擎尚未启动。");
+            return engines.submit(botId, input, ctx);
+          }
+        : undefined,
+    ),
   );
   const storage = await openStorage(database);
   const models = modelDiagnostics(options.models);
@@ -68,7 +89,10 @@ export async function openAgent(
     computerRuntime = computers
       ? new ComputerRuntime(harness, options.registry, computers, files)
       : undefined;
-    const engines = new Runtime(harness, models, computerRuntime, files);
+    if (execution && computerRuntime) {
+      execution.computer = computerRuntime;
+      engines = new Runtime(harness, execution);
+    }
     for (const bot of await bots.list(context)) {
       await migrateRuntime(harness, bot.id, context);
       await computerRuntime?.prepare(bot.id, context, false);

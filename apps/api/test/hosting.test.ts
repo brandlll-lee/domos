@@ -149,7 +149,13 @@ test("hosting authenticates RPC, files, admin operations, origins and pairing", 
       ).status,
     ).toBe(403);
   }
-  for (const operation of ["accounts", "answerLogin"]) {
+  for (const operation of [
+    "configure",
+    "inspect",
+    "install",
+    "login",
+    "answerLogin",
+  ]) {
     expect(
       (
         await request(`/rpc/engines/${operation}`, {

@@ -75,7 +75,7 @@ export function createRouter(
         yield* watchDirectory(bots, computer, signal);
       }),
     },
-    models: modelRouter(bots, models),
+    models: modelRouter(bots, models, engines),
     get: os.input(botTarget).handler(async ({ input }) => {
       const conversation = await botConversation(bots, input.botId);
       if (engines) return engines.view(input.botId, BACKGROUND_CONTEXT);
@@ -117,10 +117,11 @@ export function createRouter(
           }),
         );
         try {
-          await requireConfiguredModel(
-            models,
-            (await conversation.agent(BACKGROUND_CONTEXT)).model,
-          );
+          if (!engines)
+            await requireConfiguredModel(
+              models,
+              (await conversation.agent(BACKGROUND_CONTEXT)).model,
+            );
           const submit = () =>
             files.exclusive(input.botId, async () => {
               const view =
@@ -148,11 +149,14 @@ export function createRouter(
               if (image) {
                 const model = (await conversation.agent(BACKGROUND_CONTEXT))
                   .model;
-                const supported = model
-                  ? (await models.getAvailable(model.provider))
-                      .find((item) => item.id === model.modelId)
-                      ?.input.includes("image")
-                  : undefined;
+                const supported = engines
+                  ? (await engines.prepare(input.botId, BACKGROUND_CONTEXT))
+                      .vision
+                  : model
+                    ? (await models.getAvailable(model.provider))
+                        .find((item) => item.id === model.modelId)
+                        ?.input.includes("image")
+                    : undefined;
                 if (supported === false)
                   throw new ORPCError("BAD_REQUEST", {
                     message: `${image.name}：当前模型不支持图片。请选择支持图片的模型。`,
@@ -220,7 +224,8 @@ export function createRouter(
       }),
     stop: os.input(botTarget).handler(async ({ input }) => {
       const conversation = await botConversation(bots, input.botId);
-      await stopChat(conversation, BACKGROUND_CONTEXT);
+      if (engines) await engines.stop(input.botId, BACKGROUND_CONTEXT);
+      else await stopChat(conversation, BACKGROUND_CONTEXT);
       return { ok: true };
     }),
     subscribe: os.input(botTarget).handler(async function* ({ input, signal }) {

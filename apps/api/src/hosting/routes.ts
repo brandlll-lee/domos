@@ -152,8 +152,8 @@ export function hostingApp(options: {
   for (const action of ["assistantConfigure", "assistantKey", "assistantTest"])
     protectedApp.use(`/computer/${action}`, administrator);
   for (const path of [
-    "accounts",
-    "key",
+    "configure",
+    "inspect",
     "install",
     "login",
     "loginState",

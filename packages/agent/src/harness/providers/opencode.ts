@@ -1,0 +1,666 @@
+import { Readable, Writable } from "node:stream";
+import {
+  ClientSideConnection,
+  ndJsonStream,
+  PROTOCOL_VERSION,
+  type RequestPermissionRequest,
+  type SessionConfigOption,
+} from "@agentclientprotocol/sdk";
+import {
+  type EngineAnswer,
+  type EngineControls,
+  type EngineEvent,
+  type EngineOpen,
+  type EngineProvider,
+  type EngineSession,
+  engineLimits,
+} from "../types.ts";
+
+type NativeMessage = {
+  info: {
+    id: string;
+    role: string;
+    parentID?: string;
+    finish?: string;
+    summary?: boolean;
+    error?: unknown;
+    time?: { created?: number; completed?: number };
+    modelID?: string;
+    providerID?: string;
+    cost?: number;
+    tokens?: {
+      input?: number;
+      output?: number;
+      cache?: { read?: number; write?: number };
+    };
+  };
+  parts: { type: string; text?: string }[];
+};
+
+function completedCompaction(messages: NativeMessage[]) {
+  return messages.findLast(
+    (message) =>
+      message.info.role === "assistant" &&
+      message.info.summary &&
+      message.info.finish &&
+      !message.info.error &&
+      messages.some(
+        (parent) =>
+          parent.info.id === message.info.parentID &&
+          parent.info.role === "user" &&
+          parent.parts.some((part) => part.type === "compaction"),
+      ),
+  );
+}
+
+export function acpProvider(
+  descriptor: Pick<
+    EngineProvider,
+    "id" | "name" | "command" | "package" | "login"
+  >,
+): EngineProvider {
+  return {
+    ...descriptor,
+    capabilities: {
+      approvals: true,
+      models: true,
+      recovery: descriptor.id === "opencode",
+    },
+    async open({
+      process,
+      config,
+      sessionId,
+      instructions,
+      emit,
+      approve,
+      env,
+    }: EngineOpen) {
+      const ready = await process.ready;
+      const openCode = descriptor.id === "opencode";
+      if (!openCode && !config.command)
+        throw new Error("请指定工作电脑上的 ACP 程序。");
+      let sequence = 0;
+      let active = false;
+      let compactionConfirmed = false;
+      let nativeId = sessionId;
+      let contextReading: Extract<EngineEvent, { type: "context" }> | undefined;
+      let messageId = "";
+      let replyText = "";
+      let completed = "";
+      let events = Promise.resolve();
+      const reply = async () => {
+        if (!replyText.trim() || replyText === completed) return;
+        await emit({ type: "message", id: messageId, text: replyText });
+        completed = replyText;
+      };
+      let configOptions: SessionConfigOption[] = [];
+      let commands: EngineControls["commands"] = [];
+      let modes:
+        | {
+            currentModeId: string;
+            availableModes: { id: string; name: string }[];
+          }
+        | undefined;
+      const controls = (): EngineControls => ({
+        compact: commands.some((item) => item.name === "compact"),
+        commands,
+        options: [
+          ...configOptions
+            .filter((item) => item.category !== "model")
+            .map((item) => ({
+              id: item.id,
+              ...(item.category === "thought_level"
+                ? { kind: "effort" as const }
+                : {}),
+              label: item.name,
+              value: String(item.currentValue),
+              options:
+                item.type === "boolean"
+                  ? [
+                      { id: "true", label: "开启" },
+                      { id: "false", label: "关闭" },
+                    ]
+                  : item.options.flatMap((option) =>
+                      "value" in option
+                        ? [{ id: option.value, label: option.name }]
+                        : option.options.map((value) => ({
+                            id: value.value,
+                            label: value.name,
+                          })),
+                    ),
+            })),
+          ...(modes
+            ? [
+                {
+                  id: "mode",
+                  label: "工作模式",
+                  value: modes.currentModeId,
+                  options: modes.availableModes.map((item) => ({
+                    id: item.id,
+                    label: item.name,
+                  })),
+                },
+              ]
+            : []),
+        ],
+      });
+      const pending = new Map<
+        string,
+        {
+          request: RequestPermissionRequest;
+          answer: (value: EngineAnswer) => void;
+        }
+      >();
+      const rpc = new ClientSideConnection(
+        () => ({
+          async requestPermission(request) {
+            const id = `permission:${++sequence}`;
+            const result = Promise.withResolvers<EngineAnswer>();
+            pending.set(id, { request, answer: result.resolve });
+            const timer = setTimeout(
+              () => result.resolve({ allow: false }),
+              engineLimits.approvalMs,
+            );
+            timer.unref();
+            try {
+              const event = {
+                type: "approval",
+                approval: {
+                  id,
+                  title: "允许这次操作？",
+                  detail:
+                    request.toolCall.title ??
+                    JSON.stringify(request.toolCall.rawInput ?? {}),
+                  kind: "permission",
+                  automatic: true,
+                  options: request.options.map((option) => ({
+                    id: option.optionId,
+                    label: option.name,
+                  })),
+                },
+              } satisfies Extract<EngineEvent, { type: "approval" }>;
+              if (approve) result.resolve(await approve(event.approval));
+              else await emit(event);
+              const answer = await result.promise;
+              const option = request.options.find((item) =>
+                answer.optionId
+                  ? item.optionId === answer.optionId
+                  : item.kind === (answer.allow ? "allow_once" : "reject_once"),
+              );
+              return {
+                outcome: option
+                  ? { outcome: "selected", optionId: option.optionId }
+                  : { outcome: "cancelled" },
+              };
+            } finally {
+              clearTimeout(timer);
+              pending.delete(id);
+              await emit({ type: "approval_closed", id });
+            }
+          },
+          async sessionUpdate(notification) {
+            events = events.then(async () => {
+              const { sessionId, update } = notification;
+              if (nativeId && sessionId !== nativeId) return;
+              if (update.sessionUpdate === "usage_update") {
+                contextReading = {
+                  type: "context",
+                  tokens: update.used,
+                  window: update.size,
+                  source: `${descriptor.id}.acp.usage_update`,
+                  basis: "window",
+                  estimated: false,
+                  model:
+                    configOptions
+                      .find((option) => option.category === "model")
+                      ?.currentValue?.toString() ?? config.model,
+                };
+                if (nativeId) await emit(contextReading);
+              }
+              if (active && update.sessionUpdate === "compaction_update") {
+                const status =
+                  update.status === "in_progress"
+                    ? "running"
+                    : update.status === "completed"
+                      ? "completed"
+                      : update.status === "failed" ||
+                          update.status === "cancelled"
+                        ? "failed"
+                        : null;
+                if (status) {
+                  compactionConfirmed = status === "completed";
+                  await emit({
+                    type: "compaction",
+                    status,
+                    nativeId: update.compactionId,
+                    ...(update.error ? { error: update.error } : {}),
+                  });
+                }
+              }
+              if (active && update.sessionUpdate === "compaction_summary_chunk")
+                await emit({
+                  type: "compaction",
+                  status: "running",
+                  nativeId: update.compactionId,
+                });
+              if (update.sessionUpdate === "notice")
+                await emit({
+                  type: "runtime",
+                  state: {
+                    notices: {
+                      [update.title]: update.description ?? update.title,
+                    },
+                  },
+                });
+              if (update.sessionUpdate === "available_commands_update") {
+                commands = update.availableCommands.map((item) => ({
+                  name: item.name,
+                  description: item.description,
+                }));
+                await emit({
+                  type: "runtime",
+                  state: {
+                    controls: controls(),
+                    contextPolicy: {
+                      manual: controls().compact,
+                      automatic: "native",
+                      refresh: false,
+                    },
+                  },
+                });
+              }
+              if (update.sessionUpdate === "config_option_update") {
+                configOptions = update.configOptions;
+                await emit({
+                  type: "runtime",
+                  state: { controls: controls() },
+                });
+              }
+              if (update.sessionUpdate === "current_mode_update" && modes) {
+                modes.currentModeId = update.currentModeId;
+                await emit({
+                  type: "runtime",
+                  state: { controls: controls() },
+                });
+              }
+              if (!active) return;
+              if (
+                (update.sessionUpdate === "agent_message_chunk" ||
+                  update.sessionUpdate === "agent_thought_chunk") &&
+                update.content.type === "text"
+              ) {
+                if (update.sessionUpdate === "agent_message_chunk") {
+                  if (update.messageId && update.messageId !== messageId) {
+                    await reply();
+                    messageId = update.messageId;
+                    replyText = "";
+                    completed = "";
+                  }
+                  replyText += update.content.text;
+                }
+                await emit({
+                  type:
+                    update.sessionUpdate === "agent_message_chunk"
+                      ? "text"
+                      : "thinking",
+                  id: update.messageId ?? messageId,
+                  text: update.content.text,
+                });
+              }
+              if (update.sessionUpdate === "tool_call") {
+                await reply();
+                await emit({
+                  type: "tool",
+                  id: update.toolCallId,
+                  name: update.title,
+                  input: (update.rawInput ?? {}) as Record<string, unknown>,
+                });
+              }
+              if (
+                update.sessionUpdate === "tool_call_update" &&
+                ["completed", "failed"].includes(update.status ?? "")
+              )
+                await emit({
+                  type: "tool_result",
+                  id: update.toolCallId,
+                  name: update.title ?? "OpenCode",
+                  text: JSON.stringify(
+                    update.rawOutput ?? update.content ?? "",
+                  ),
+                  failed: update.status === "failed",
+                });
+            });
+            await events;
+          },
+        }),
+        ndJsonStream(
+          Writable.toWeb(process.input),
+          Readable.toWeb(process.output) as ReadableStream<Uint8Array>,
+        ),
+      );
+      await process.launch(
+        openCode
+          ? {
+              command: config.command ?? descriptor.command,
+              args: [
+                "acp",
+                "--hostname",
+                "127.0.0.1",
+                "--port",
+                "__DOMOS_PORT__",
+              ],
+              http: {
+                timeoutMs: engineLimits.handshakeMs,
+                readyMs: engineLimits.handshakeMs,
+                listen: true,
+              },
+              instructions,
+              env: {
+                ...env,
+                OPENCODE_CONFIG_CONTENT: JSON.stringify({
+                  instructions: [`${ready.cwd}/.domos-instructions.md`],
+                }),
+              },
+            }
+          : {
+              command: config.command || descriptor.command,
+              args: config.args ?? [],
+              env,
+            },
+      );
+      const hello = await rpc.initialize({
+        protocolVersion: PROTOCOL_VERSION,
+        clientCapabilities: {
+          session: {
+            configOptions: { boolean: {} },
+            notices: {},
+            compaction: {},
+          },
+        },
+        clientInfo: { name: "domos", version: "1.0.0" },
+      });
+      const params = {
+        cwd: ready.cwd,
+        mcpServers: [
+          { type: "http" as const, name: "domos", url: ready.url, headers: [] },
+        ],
+      };
+      if (sessionId && !hello.agentCapabilities?.loadSession)
+        throw new Error("OpenCode 当前版本无法恢复这个会话。请开始新会话。");
+      const result = sessionId
+        ? await rpc.loadSession({ ...params, sessionId })
+        : await rpc.newSession(params);
+      const id = sessionId ?? (result as { sessionId: string }).sessionId;
+      configOptions = result.configOptions ?? [];
+      modes = result.modes ?? undefined;
+      const modelOption = result.configOptions?.find(
+        (item) => item.category === "model",
+      );
+      if (config.model && modelOption)
+        await rpc.setSessionConfigOption({
+          sessionId: id,
+          configId: modelOption.id,
+          value: config.model,
+        });
+      for (const [key, value] of Object.entries(config.options ?? {})) {
+        if (key === "mode" && modes) {
+          if (!modes.availableModes.some((item) => item.id === value))
+            throw new Error("此引擎没有提供这个工作模式。");
+          await rpc.setSessionMode({ sessionId: id, modeId: value });
+          modes.currentModeId = value;
+        } else {
+          const option = configOptions.find((item) => item.id === key);
+          if (
+            !option ||
+            !controls()
+              .options.find((item) => item.id === key)
+              ?.options.some((item) => item.id === value)
+          )
+            throw new Error("此引擎没有提供这个配置值。");
+          const changed = await rpc.setSessionConfigOption({
+            sessionId: id,
+            configId: key,
+            ...(option.type === "boolean"
+              ? { type: "boolean", value: value === "true" }
+              : { value }),
+          });
+          if (changed.configOptions.length)
+            configOptions = changed.configOptions;
+        }
+      }
+      await emit({ type: "session", id });
+      await emit({
+        type: "runtime",
+        state: {
+          contextPolicy: {
+            manual: controls().compact,
+            automatic: "native",
+            refresh: false,
+          },
+        },
+      });
+      nativeId = id;
+      if (contextReading) await emit(contextReading);
+      const messages = () =>
+        openCode
+          ? process.request<NativeMessage[]>(
+              `/session/${encodeURIComponent(id)}/message?limit=256`,
+            )
+          : Promise.resolve([] as NativeMessage[]);
+      const since = (history: NativeMessage[], baseline: string) => {
+        if (baseline.startsWith("time:")) {
+          const time = Number(baseline.slice(5));
+          if (
+            !Number.isFinite(time) ||
+            history.some((message) => !message.info.time?.created)
+          )
+            return null;
+          if (
+            history.length === 256 &&
+            (history[0]?.info.time?.created ?? 0) >= time
+          )
+            return null;
+          return history.filter(
+            (message) => (message.info.time?.created ?? 0) >= time,
+          );
+        }
+        const start = history.findIndex(
+          (message) => message.info.id === baseline,
+        );
+        return baseline && start < 0 ? null : history.slice(start + 1);
+      };
+      const record = async (message: NativeMessage) => {
+        if (message.info.tokens || message.info.cost !== undefined)
+          await emit({
+            type: "usage",
+            usage: {
+              id: message.info.id,
+              source: "opencode.message",
+              provider: message.info.providerID ?? null,
+              model: message.info.modelID ?? null,
+              input: message.info.tokens?.input ?? null,
+              output: message.info.tokens?.output ?? null,
+              cacheRead: message.info.tokens?.cache?.read ?? null,
+              cacheWrite: message.info.tokens?.cache?.write ?? null,
+              costUsd: message.info.cost ?? null,
+            },
+          });
+      };
+      const session: EngineSession = {
+        id,
+        controls: async () => controls(),
+        async compact() {
+          if (!controls().compact) throw new Error("此引擎尚未提供压缩命令。");
+          compactionConfirmed = false;
+          await session.prompt("/compact");
+          if (!compactionConfirmed)
+            throw new Error("OpenCode 没有返回压缩完成记录。结果未确认。");
+        },
+        async recoverCompaction(cursor) {
+          if (!openCode || !cursor?.startsWith("opencode:")) return false;
+          const history = await messages();
+          const baseline = cursor.slice(9);
+          const turn = since(history, baseline);
+          if (!turn) return false;
+          const compacted = completedCompaction(turn);
+          if (!compacted) return false;
+          await emit({
+            type: "compaction",
+            status: "completed",
+            nativeId: compacted.info.id,
+          });
+          if (contextReading) await emit(contextReading);
+          return true;
+        },
+        authenticated: async () => true,
+        vision: async () =>
+          hello.agentCapabilities?.promptCapabilities?.image ? null : false,
+        models: async () =>
+          modelOption?.type === "select"
+            ? modelOption.options.flatMap((item) =>
+                "value" in item
+                  ? [{ id: item.value, name: item.name }]
+                  : item.options.map((option) => ({
+                      id: option.value,
+                      name: option.name,
+                    })),
+              )
+            : [],
+        async prompt(text, images = []) {
+          if (
+            images.length &&
+            !hello.agentCapabilities?.promptCapabilities?.image
+          )
+            throw new Error(
+              "当前引擎协议不支持图片。请更换引擎或使用文本资料。",
+            );
+          active = true;
+          messageId = `opencode:${++sequence}`;
+          replyText = "";
+          completed = "";
+          const baseline = openCode
+            ? `time:${await process.checkpoint?.("opencode", id)}`
+            : "";
+          await emit({
+            type: "accepted",
+            id: `opencode:${baseline}`,
+          });
+          try {
+            contextReading = undefined;
+            const outcome = await rpc.prompt({
+              sessionId: id,
+              prompt: [
+                {
+                  type: "text",
+                  text: openCode ? text : `${instructions}\n\n${text}`,
+                },
+                ...images,
+              ],
+            });
+            await events;
+            if (outcome.stopReason === "cancelled")
+              throw new Error("工作已停止。");
+            await reply();
+            const updated =
+              since(
+                await messages().catch(async () => {
+                  await emit({
+                    type: "runtime",
+                    state: {
+                      notices: {
+                        history:
+                          "回复已完成，用量记录暂不可读。原生会话已保留。",
+                      },
+                    },
+                  });
+                  return [];
+                }),
+                baseline,
+              ) ?? [];
+            const compacted = completedCompaction(updated);
+            if (compacted && !compactionConfirmed) {
+              compactionConfirmed = true;
+              await emit({
+                type: "compaction",
+                status: "completed",
+                nativeId: compacted.info.id,
+              });
+              if (contextReading) await emit(contextReading);
+            }
+            for (const message of updated)
+              if (message.info.role === "assistant") {
+                await record(message);
+                await emit({
+                  type: "message",
+                  id: message.info.id,
+                  text: message.parts
+                    .filter((part) => part.type === "text")
+                    .map((part) => part.text ?? "")
+                    .join("\n"),
+                });
+              }
+          } finally {
+            active = false;
+          }
+        },
+        async interrupt() {
+          for (const item of pending.values()) item.answer({ allow: false });
+          await rpc.cancel({ sessionId: id });
+        },
+        async recover(cursor) {
+          if (!cursor?.startsWith("opencode:")) return false;
+          const history = await messages();
+          const baseline = cursor.slice(9);
+          const turn = since(history, baseline);
+          if (!turn) return false;
+          const users = turn.filter((message) => message.info.role === "user");
+          const final = turn.at(-1)?.info;
+          if (
+            users.length !== 1 ||
+            final?.role !== "assistant" ||
+            !final.time?.completed ||
+            !final.finish ||
+            ["tool-calls", "unknown"].includes(final.finish) ||
+            final.error ||
+            final.parentID !== users[0]?.info.id
+          )
+            return false;
+          for (const message of turn)
+            if (message.info.role === "assistant") {
+              await record(message);
+              await emit({
+                type: "message",
+                id: message.info.id,
+                text: message.parts
+                  .filter((part) => part.type === "text")
+                  .map((part) => part.text ?? "")
+                  .join("\n"),
+              });
+            }
+          return true;
+        },
+        async answer(requestId, answer) {
+          const item = pending.get(requestId);
+          if (!item) throw new Error("这次确认已经失效。");
+          item.answer(answer);
+        },
+      };
+      return session;
+    },
+  };
+}
+
+export const opencodeProvider = acpProvider({
+  id: "opencode",
+  name: "OpenCode",
+  command: "opencode",
+  package: "opencode-ai@1.19.0",
+  login: ["auth", "login"],
+});
+export const customAcpProvider = acpProvider({
+  id: "acp",
+  name: "自定义 ACP",
+  command: "",
+  package: "",
+  login: null,
+});

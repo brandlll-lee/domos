@@ -12,6 +12,7 @@ import {
   fauxProvider,
 } from "@earendil-works/pi-ai/providers/faux";
 import { getRequestListener } from "@hono/node-server";
+import { PiProcess } from "../../../../packages/agent/test/fixtures/pi-process.ts";
 import { createApp } from "../../src/app.ts";
 import { hostingApp } from "../../src/hosting/routes.ts";
 
@@ -35,6 +36,13 @@ const config = parseConfig(
   `${dirname(directory)}/config.json`,
 );
 const runtime = await openChat(BACKGROUND_CONTEXT, config, { models });
+runtime.computer.process = async (botId, tools, invoke) =>
+  new PiProcess(
+    (await runtime.computer.workspace(botId, BACKGROUND_CONTEXT)).cwd,
+    models,
+    tools,
+    invoke,
+  );
 const store = await HostingStore.open(directory);
 const sessions = new Sessions(store);
 const api = createApp(

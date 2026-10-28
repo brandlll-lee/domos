@@ -1,127 +1,383 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
-import { Type } from "@earendil-works/pi-ai";
-import {
-  fauxAssistantMessage,
-  fauxToolCall,
-} from "@earendil-works/pi-ai/providers/faux";
-import { defineExtension, defineTool } from "@earendil-works/pi-durable";
-import { expect, test } from "vitest";
-import { runtimeFixture } from "./fixtures/runtime.ts";
+import { createModels } from "@earendil-works/pi-ai/models";
+import { fauxProvider } from "@earendil-works/pi-ai/providers/faux";
+import { createRegistry } from "@earendil-works/pi-durable";
+import { expect, onTestFinished, test } from "vitest";
+import type { Computers } from "../src/computer/catalog.ts";
+import { openAgent } from "../src/open-agent.ts";
+import { ProtocolProcess } from "./fixtures/engine-process.ts";
 
-test.each(["steer", "followUp"] as const)(
-  "Durable %s accepts additional inputs during a tool round",
-  async (mode) => {
-    const runtime = await runtimeFixture();
-    const entered = Promise.withResolvers<void>();
-    const release = Promise.withResolvers<void>();
-    const extension = defineExtension({
-      name: "gated-tool",
-      tools: [
-        defineTool({
-          name: "wait",
-          parameters: Type.Object({}),
-          description: "Wait",
-          async execute() {
-            entered.resolve();
-            await release.promise;
-            return { output: [{ type: "text", text: "Released" }] };
-          },
-        }),
-      ],
+test.each(["accepted", "refused", "uncertain"] as const)(
+  "chat inputs handle %s delivery without duplicate work",
+  async (delivery) => {
+    const directory = await mkdtemp(join(tmpdir(), "domos-chat-inputs-"));
+    const models = createModels();
+    models.setProvider(fauxProvider().provider);
+    const workers: ProtocolProcess[] = [];
+    const started = Promise.withResolvers<void>();
+    const computers = {
+      initialize: async () => {},
+      preflight: async () => {},
+      computerId: async () => "shared",
+      process: async () => {
+        const worker = new ProtocolProcess();
+        workers.push(worker);
+        worker.receive = (request) => {
+          if (
+            request.method === "thread/start" ||
+            request.method === "thread/resume"
+          )
+            worker.response(request, { thread: { id: "chat" } });
+          else if (request.method === "turn/start") {
+            worker.response(request, { turn: { id: "current" } });
+            started.resolve();
+            if (workers.length > 1)
+              worker.frame({
+                method: "turn/completed",
+                params: { turn: { status: "completed" } },
+              });
+          } else if (request.method === "turn/steer") {
+            if (delivery === "refused") {
+              worker.frame({
+                id: request.id,
+                error: { code: -32600, message: "No active turn" },
+              });
+              worker.frame({
+                method: "turn/completed",
+                params: { turn: { status: "completed" } },
+              });
+              return;
+            }
+            if (delivery === "uncertain") {
+              void worker.close();
+              return;
+            }
+            worker.response(request, { turnId: "current" });
+            if (JSON.stringify(request.params).includes("third")) {
+              worker.frame({
+                method: "thread/tokenUsage/updated",
+                params: {
+                  turnId: "current",
+                  tokenUsage: {
+                    total: { inputTokens: 100, outputTokens: 20 },
+                    last: { inputTokens: 100, outputTokens: 20 },
+                  },
+                },
+              });
+              worker.frame({
+                method: "item/completed",
+                params: {
+                  item: {
+                    id: "answer",
+                    type: "agentMessage",
+                    text: "All three requests",
+                  },
+                },
+              });
+              worker.frame({
+                method: "turn/completed",
+                params: { turn: { status: "completed" } },
+              });
+            }
+          } else if (request.id !== undefined) worker.response(request, {});
+        };
+        return worker;
+      },
+      tools: { catalog: async () => [], finish: () => {} },
+    } as unknown as Computers;
+    const runtime = await openAgent(
+      join(directory, "agent.sqlite"),
+      { registry: createRegistry(), models, computers },
+      {},
+      context,
+    );
+    onTestFinished(async () => {
+      await runtime.engines?.stop(runtime.conversation.id, context);
+      await runtime.harness.close(context);
+      await Promise.all(workers.map((worker) => worker.close()));
+      await rm(directory, { recursive: true, force: true });
     });
-    runtime.registry.install(extension);
-    await runtime.conversation.configure(
-      { extensions: runtime.registry.snapshot().installed() },
+    const engines = runtime.engines;
+    if (!engines) throw new Error("Native engines required");
+    const botId = runtime.conversation.id;
+    await engines.configure(
+      botId,
+      {
+        config: { provider: "codex", model: null },
+        revision: 0,
+        requestId: crypto.randomUUID(),
+      },
       context,
     );
-    runtime.faux.setResponses([
-      fauxAssistantMessage(fauxToolCall("wait", {}), { stopReason: "toolUse" }),
-      fauxAssistantMessage("Done"),
-      fauxAssistantMessage("Follow up done"),
-    ]);
-    const first = await runtime.engines.submit(
-      runtime.conversation.id,
-      { text: "First", requestId: crypto.randomUUID() },
+    const first = await engines.submit(
+      botId,
+      { text: "first", requestId: crypto.randomUUID() },
       context,
     );
-    await entered.promise;
-    const input = {
-      text: "Additional",
-      requestId: crypto.randomUUID(),
-      ...(mode === "followUp" ? { whenBusy: mode } : {}),
-    };
-    const second = await runtime.engines.submit(
-      runtime.conversation.id,
-      input,
+    await started.promise;
+    const requestId = crypto.randomUUID();
+    const second = await engines.submit(
+      botId,
+      { text: "second", requestId },
       context,
     );
     expect(
-      (await runtime.engines.submit(runtime.conversation.id, input, context))
-        .id,
+      (await engines.submit(botId, { text: "second", requestId }, context)).id,
     ).toBe(second.id);
-    release.resolve();
-    expect((await first.wait(context)).status).toBe("done");
-    expect((await second.wait(context)).status).toBe("done");
-    const messages = (await runtime.conversation.context(context)).messages;
-    expect(JSON.stringify(messages)).toContain("Additional");
+    const third = await engines.submit(
+      botId,
+      { text: "third", requestId: crypto.randomUUID() },
+      context,
+    );
+    await expect
+      .poll(
+        () =>
+          workers[0]?.requests.filter(
+            (request) => request.method === "turn/steer",
+          ).length,
+      )
+      .toBe(delivery === "accepted" ? 2 : 1);
+    await expect
+      .poll(async () => (await engines.profile(botId, context)).busy)
+      .toBe(false);
+    const results = await Promise.all(
+      [first, second, third].map((submission) => submission.wait(context)),
+    );
+    expect(results).toMatchObject(
+      delivery === "uncertain"
+        ? [
+            { status: "unanswered" },
+            { status: "unanswered" },
+            { status: "done" },
+          ]
+        : [{ status: "done" }, { status: "done" }, { status: "done" }],
+    );
+    expect(workers).toHaveLength(
+      delivery === "accepted" ? 1 : delivery === "refused" ? 3 : 2,
+    );
     expect(
-      (await runtime.engines.view(runtime.conversation.id, context)).busy,
-    ).toBe(false);
+      workers[0]?.requests.filter((request) => request.method === "turn/start"),
+    ).toHaveLength(1);
+    expect(
+      workers[0]?.requests
+        .filter((request) => request.method === "turn/steer")
+        .map((request) => request.params),
+    ).toEqual([
+      {
+        threadId: "chat",
+        expectedTurnId: "current",
+        input: [{ type: "text", text: "second" }],
+      },
+      ...(delivery === "accepted"
+        ? [
+            {
+              threadId: "chat",
+              expectedTurnId: "current",
+              input: [{ type: "text", text: "third" }],
+            },
+          ]
+        : []),
+    ]);
   },
 );
 
-test("stop cancels the active tool and settles queued inputs", async () => {
-  const runtime = await runtimeFixture();
-  const entered = Promise.withResolvers<void>();
-  const aborted = Promise.withResolvers<void>();
-  const extension = defineExtension({
-    name: "cancel-tool",
-    tools: [
-      defineTool({
-        name: "wait",
-        parameters: Type.Object({}),
-        description: "Wait",
-        async execute(_args, _api, ctx) {
-          entered.resolve();
-          await new Promise<void>((resolve) =>
-            ctx.abortSignal?.addEventListener(
-              "abort",
-              () => {
-                aborted.resolve();
-                resolve();
-              },
-              { once: true },
-            ),
-          );
-          return { output: [] };
-        },
-      }),
-    ],
+test("engine connection readiness follows the selected work computer", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "domos-engine-computer-"));
+  const models = createModels();
+  models.setProvider(fauxProvider().provider);
+  let computerId = "shared";
+  const computers = {
+    initialize: async () => {},
+    computerId: async () => computerId,
+    process: async () => {
+      const worker = new ProtocolProcess();
+      worker.receive = (request) => {
+        worker.response(
+          request,
+          request.method === "account/read"
+            ? { account: { type: "apiKey" } }
+            : { thread: { id: "connection-check" }, data: [] },
+        );
+      };
+      return worker;
+    },
+    tools: { catalog: async () => [], finish: () => {} },
+  } as unknown as Computers;
+  const runtime = await openAgent(
+    join(directory, "agent.sqlite"),
+    { registry: createRegistry(), models, computers },
+    {},
+    context,
+  );
+  onTestFinished(async () => {
+    await runtime.harness.close(context);
+    await rm(directory, { recursive: true, force: true });
   });
-  runtime.registry.install(extension);
-  await runtime.conversation.configure(
-    { extensions: runtime.registry.snapshot().installed() },
+  const engines = runtime.engines;
+  if (!engines) throw new Error("Native engines required");
+  const botId = runtime.conversation.id;
+  await engines.configure(
+    botId,
+    {
+      config: { provider: "codex", model: null },
+      revision: 0,
+      requestId: crypto.randomUUID(),
+    },
     context,
   );
-  runtime.faux.setResponses([
-    fauxAssistantMessage(fauxToolCall("wait", {}), { stopReason: "toolUse" }),
-  ]);
-  const first = await runtime.engines.submit(
-    runtime.conversation.id,
-    { text: "First", requestId: crypto.randomUUID() },
+  await engines.prepare(botId, context);
+  expect((await engines.profile(botId, context)).prepared).toBe(true);
+  computerId = "dedicated";
+  expect((await engines.profile(botId, context)).prepared).toBe(false);
+  await engines.prepare(botId, context);
+  expect((await engines.profile(botId, context)).prepared).toBe(true);
+  computerId = "shared";
+  expect((await engines.profile(botId, context)).prepared).toBe(false);
+});
+
+test("routines use the selected native engine and stopping settles queued work", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "domos-native-routine-"));
+  const models = createModels();
+  models.setProvider(fauxProvider().provider);
+  const workers: ProtocolProcess[] = [];
+  const computers = {
+    initialize: async () => {},
+    preflight: async () => {},
+    computerId: async () => "shared",
+    process: async () => {
+      const worker = new ProtocolProcess();
+      workers.push(worker);
+      worker.receive = (request) => {
+        if (
+          request.method === "thread/start" ||
+          request.method === "thread/resume"
+        )
+          worker.response(request, { thread: { id: "routine-thread" } });
+        else if (request.method === "turn/start") {
+          worker.response(request, { turn: { id: `turn-${workers.length}` } });
+          if (workers.length === 1)
+            worker.frame({
+              method: "turn/completed",
+              params: { turn: { status: "completed" } },
+            });
+          else
+            worker.frame({
+              id: "approval",
+              method: "item/commandExecution/requestApproval",
+              params: { command: "make-report", cwd: "/work/bots/1" },
+            });
+        } else if (request.id !== undefined) worker.response(request, {});
+      };
+      return worker;
+    },
+    tools: { catalog: async () => [], finish: () => {} },
+  } as unknown as Computers;
+  const runtime = await openAgent(
+    join(directory, "agent.sqlite"),
+    { registry: createRegistry(), models, computers },
+    {},
     context,
   );
-  await entered.promise;
-  const second = await runtime.engines.submit(
-    runtime.conversation.id,
-    { text: "Queued", requestId: crypto.randomUUID(), whenBusy: "followUp" },
+  onTestFinished(async () => {
+    await runtime.harness.close(context);
+    await Promise.all(workers.map((worker) => worker.close()));
+    await rm(directory, { recursive: true, force: true });
+  });
+  const engines = runtime.engines;
+  if (!engines) throw new Error("Native engines required");
+  const botId = runtime.conversation.id;
+  await engines.configure(
+    botId,
+    {
+      config: { provider: "codex", model: null },
+      revision: 0,
+      requestId: crypto.randomUUID(),
+    },
     context,
   );
-  await runtime.engines.stop(runtime.conversation.id, context);
-  await aborted.promise;
-  expect((await first.wait(context)).status).toBe("unanswered");
-  expect((await second.wait(context)).status).toBe("unanswered");
+  const routine = await runtime.work.routines.save(
+    botId,
+    {
+      id: crypto.randomUUID(),
+      revision: 0,
+      title: "Report",
+      instructions: "Prepare the daily report",
+      schedule: { type: "cron", expression: "0 9 * * *", timeZone: "UTC" },
+      skillIds: [],
+      requestId: crypto.randomUUID(),
+    },
+    context,
+  );
+  const first = await runtime.work.routines.test(
+    botId,
+    routine.id,
+    crypto.randomUUID(),
+    context,
+  );
+  await runtime.harness.waitForTask(first, context);
   expect(
-    (await runtime.engines.view(runtime.conversation.id, context)).busy,
-  ).toBe(false);
+    (await runtime.work.routines.list(botId, context)).runs[0]?.status,
+  ).toBe("done");
+  expect(
+    JSON.stringify(
+      workers[0]?.requests.find((request) => request.method === "turn/start")
+        ?.params,
+    ),
+  ).toContain("Prepare the daily report");
+  const active = await engines.submit(
+    botId,
+    { text: "Wait for permission", requestId: crypto.randomUUID() },
+    context,
+  );
+  await expect
+    .poll(async () => (await engines.view(botId, context)).approvals?.length)
+    .toBe(1);
+  const additional = await engines.submit(
+    botId,
+    { text: "Include one more item", requestId: crypto.randomUUID() },
+    context,
+  );
+  await expect
+    .poll(() =>
+      workers[1]?.requests.some((request) => request.method === "turn/steer"),
+    )
+    .toBe(true);
+  const queued = await runtime.work.routines.test(
+    botId,
+    routine.id,
+    crypto.randomUUID(),
+    context,
+  );
+  await expect
+    .poll(
+      async () =>
+        (await runtime.work.routines.list(botId, context)).runs[1]
+          ?.submissionId,
+    )
+    .toEqual(expect.any(Number));
+  await engines.stop(botId, context);
+  expect(
+    workers[1]?.requests.some((request) => request.method === "turn/interrupt"),
+  ).toBe(true);
+  await runtime.harness.waitForTask(queued, context);
+  expect(await active.wait(context)).toMatchObject({
+    status: "unanswered",
+    reason: "aborted",
+  });
+  expect(await additional.wait(context)).toMatchObject({
+    status: "unanswered",
+    reason: "aborted",
+  });
+  expect(
+    (await runtime.work.routines.list(botId, context)).runs[1]?.status,
+  ).toBe("stopped");
+  expect((await engines.view(botId, context)).approvals).toEqual([]);
+  expect((await engines.profile(botId, context)).busy).toBe(false);
+  await expect(
+    engines.answer(botId, "approval", { allow: true }, context),
+  ).rejects.toThrow("这次确认已经失效");
+  expect(workers).toHaveLength(2);
 });

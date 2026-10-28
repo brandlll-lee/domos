@@ -1,6 +1,7 @@
 import type { Bots } from "@domos/agent/bots";
-import { engineIds } from "@domos/agent/harness/types";
 import { modelCatalog, modelProviders } from "@domos/agent/models";
+import type { Runtime } from "@domos/agent/runtime";
+import { WorkError } from "@domos/agent/work";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai/models";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/models";
@@ -22,12 +23,52 @@ export async function requireConfiguredModel(
   return model;
 }
 
-export function modelRouter(bots: Bots, models: Models) {
+export function modelRouter(bots: Bots, models: Models, runtime?: Runtime) {
+  const nativeSelect = async (...args: Parameters<Runtime["select"]>) => {
+    try {
+      return await runtime?.select(...args);
+    } catch (error) {
+      if (error instanceof WorkError)
+        throw new ORPCError(error.code, { message: error.message });
+      throw error;
+    }
+  };
   return {
     thinking: os
       .input(botTarget.extend({ thinkingLevel: z.string().max(32) }))
       .handler(async ({ input }) => {
         const conversation = await botConversation(bots, input.botId);
+        if (runtime) {
+          const profile = await runtime.profile(
+            input.botId,
+            BACKGROUND_CONTEXT,
+          );
+          const controls = await runtime.controls(
+            input.botId,
+            BACKGROUND_CONTEXT,
+          );
+          const effort = controls.options.find(
+            (option) => option.kind === "effort",
+          );
+          if (
+            !effort?.options.some((option) => option.id === input.thinkingLevel)
+          )
+            throw new ORPCError("BAD_REQUEST");
+          await nativeSelect(
+            input.botId,
+            {
+              model: profile.config.model,
+              options: {
+                ...profile.config.options,
+                [effort.id]: input.thinkingLevel,
+              },
+              revision: profile.revision,
+              requestId: crypto.randomUUID(),
+            },
+            BACKGROUND_CONTEXT,
+          );
+          return { ok: true };
+        }
         const selection = (await conversation.agent(BACKGROUND_CONTEXT)).model;
         const model = (await models.getAvailable()).find(
           (item) =>
@@ -49,7 +90,7 @@ export function modelRouter(bots: Bots, models: Models) {
     setVisibility: os
       .input(
         z.object({
-          harness: z.enum(engineIds),
+          harness: z.string().min(1).max(128),
           model: z.string().min(1).max(256),
           visible: z.boolean(),
         }),
@@ -84,6 +125,27 @@ export function modelRouter(bots: Bots, models: Models) {
         }),
       )
       .handler(async ({ input }) => {
+        if (runtime) {
+          await botConversation(bots, input.botId);
+          const profile = await runtime.profile(
+            input.botId,
+            BACKGROUND_CONTEXT,
+          );
+          if (profile.config.provider !== "pi")
+            throw new ORPCError("BAD_REQUEST", {
+              message: "请使用当前 Harness 的模型选择接口。",
+            });
+          await nativeSelect(
+            input.botId,
+            {
+              model: `${input.provider}/${input.modelId}`,
+              revision: profile.revision,
+              requestId: crypto.randomUUID(),
+            },
+            BACKGROUND_CONTEXT,
+          );
+          return { provider: input.provider, modelId: input.modelId };
+        }
         const selected = await requireConfiguredModel(models, input);
         const conversation = await botConversation(bots, input.botId);
         const model = { provider: input.provider, modelId: input.modelId };

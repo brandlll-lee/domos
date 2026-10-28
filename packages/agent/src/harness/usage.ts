@@ -5,7 +5,40 @@ import type {
   Cursor,
   Harness,
 } from "@earendil-works/pi-durable";
+import { defineDoc, type Tx } from "@earendil-works/pi-durable";
+import type { EngineRuntime } from "./task-types.ts";
 import type { EngineId, EngineUsage } from "./types.ts";
+
+export const UsageTaskDoc = defineDoc<{ items: Record<string, EngineUsage> }>({
+  kind: "domos.engine-usage",
+  version: 1,
+  checkpointWhen: () => false,
+  scope: "task",
+  initial: () => ({ items: {} }),
+});
+
+export async function finishUsage(
+  tx: Tx,
+  runtime: EngineRuntime,
+  harness: EngineId,
+  sessionId: string | null,
+) {
+  const doc = await tx.doc(UsageTaskDoc, runtime.taskId);
+  for (const usage of Object.values(doc.items)) {
+    await tx.appendEntry(runtime.conversationId, {
+      kind: EngineUsageEntry,
+      data: {
+        ...usage,
+        botId: runtime.conversationId,
+        harness,
+        taskId: String(runtime.taskId),
+        sessionId,
+        timestamp: Date.now(),
+      },
+    });
+  }
+  doc.items = {};
+}
 
 export const EngineUsageEntry = "domos.engine-usage";
 export type UsageRecord = EngineUsage & {

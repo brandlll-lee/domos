@@ -9,6 +9,7 @@ import {
 } from "../computer/activity.ts";
 import type { ComputerRequest } from "../computer/service-types.ts";
 import {
+  type EngineId,
   type EngineProcess,
   engineLimits,
   type ProcessReady,
@@ -207,6 +208,35 @@ export class WorkProcess implements EngineProcess {
     this.calls.clear();
     this.output.end();
     this.error.end();
+  }
+
+  request<T = unknown>(path: string, method = "GET", body?: unknown) {
+    return this.exchange<T>({ type: "http", path, method, body });
+  }
+
+  resolve(command: string) {
+    return this.exchange<string | null>({ type: "resolve", command });
+  }
+
+  checkpoint(provider: EngineId, sessionId: string) {
+    return this.exchange<string | null>({
+      type: "checkpoint",
+      provider,
+      sessionId,
+    });
+  }
+
+  account(provider: EngineId) {
+    return this.exchange<string>({ type: "account", provider });
+  }
+
+  history(sessionId: string, provider: EngineId = "claude", since?: string) {
+    return this.exchange<unknown[]>({
+      type: "history",
+      provider,
+      sessionId,
+      since,
+    });
   }
 
   computer(

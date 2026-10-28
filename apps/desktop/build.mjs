@@ -117,7 +117,11 @@ for (const name of [
   );
 for (const name of [
   "worker.mjs",
-  "process-environment.mjs",
+  "account-environment.mjs",
+  "pi-auth.mjs",
+  "pi-tools.mjs",
+  "http-service.mjs",
+  "native-history.mjs",
   "gateway.mjs",
   "browser-service.mjs",
   "browser-tools.mjs",

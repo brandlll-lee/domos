@@ -2,17 +2,18 @@
 
 Domos provides persistent AI companions with memory, tools, and work computers.
 Users choose their models and deployment: local, self-hosted, or cloud.
-Pi Durable 1.4.0 owns the Bot loop. Pi AI calls models. Domos owns product capabilities.
+Pi Durable 1.4.0 stores Bot tasks. Native Harness processes own model loops. Domos owns product capabilities.
 
 ## Architecture and ownership
 
 - The client device, Domos service computer, and Bot work computer are separate roles. They can be on different computers.
 - Commands, files, and desktop actions use the Bot's bound work computer. Do not assume that it is the client or service computer.
-- Domos owns Bot identity, full chat history, memories, credentials, and computer permissions.
-- Pi Durable owns input admission, generation, tool tasks, cancellation, recovery, and model context. Use its public extensions and hooks.
-- Model HTTP follows Pi CLI's proxy-aware transport setup. Use Durable's Photon image processor and model image limits. Preserve original evidence and include coordinate mapping when resizing observations.
+- Domos owns Bot identity, full chat history, memories, and computer permissions. Native Harness accounts use the work computer's OS user and configuration. Preserve retained service credentials during migration.
+- Durable owns input admission and persistent tasks. Native Harness processes own generation and model context. Adapters coordinate cancellation and recovery through public protocols. Observe uncertain results before more mutations.
+- Reuse the work computer's CLI before installing a version in its Domos runtime directory. Inspect, login, and execute with the same program and OS user. Switch programs and Harness only while the Bot is idle.
+- Native CLI transports own model HTTP. Use Photon and model image limits at the attachment boundary. Preserve original evidence and include coordinate mapping when resizing observations.
 - Keep system instructions stable across tool rounds. Read current time through routine_list. Bound tool images in model requests while retaining full evidence and user attachments. See [Harness context](docs/harness-context.md).
-- Send ordinary chat, additional input, and routines through the same Durable conversation. Keep request IDs stable through retries.
+- Send chat, additional input, routines, API calls, and CLI calls through Runtime.submit and the same Durable conversation. Keep request IDs stable through retries.
 - Keep model context separate from displayed history. Read [docs/harness-context.md](docs/harness-context.md) before changing history, migration, or compaction.
 - Keep computer rules in shared services. Persist tool results. Do not replay mutations whose outcomes are uncertain.
 
@@ -24,8 +25,8 @@ Pi Durable 1.4.0 owns the Bot loop. Pi AI calls models. Domos owns product capab
 | `apps/controller` | Authenticated control service for remote work sandboxes. |
 | `apps/cli` | Command-line entry points, hosting, and eval commands. |
 | `packages/agent` | Bots, durable tasks, chats, memory, files, and work environments. |
-| `packages/agent/src/runtime` | Durable integration, storage migration, and chat projection. |
-| `packages/agent/src/harness` | Work-process services, computer protocols, bounded history reads, and usage records. |
+| `packages/agent/src/runtime` | Durable admission, native task coordination, storage migration, and full chat projection. |
+| `packages/agent/src/harness` | Native drivers, CLI discovery and login, work-process services, bounded history reads, and usage records. |
 | `packages/agent/src/computer` | Computer bindings, shared tools, control ownership, viewers, and optional Jev assistance. |
 | `packages/hosting` | Hosting setup, credentials, device sessions, installation, and service lifecycle. |
 | `packages/ui` | Shared controls, theme tokens, avatars, and computer-effect rendering. |

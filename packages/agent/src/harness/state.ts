@@ -5,13 +5,26 @@ import {
   type TaskId,
 } from "@earendil-works/pi-durable";
 import type { ChatMessage } from "../messages.ts";
-import type {
-  EngineApproval,
-  EngineConfig,
-  EngineRuntimeState,
-} from "./types.ts";
+import type { EngineConfig, EngineRuntimeState } from "./types.ts";
 
 export const EngineMessage = "domos.engine-message";
+
+export const EngineInputDoc = defineDoc<{
+  status:
+    | "queued"
+    | "deferred"
+    | "sending"
+    | "accepted"
+    | "uncertain"
+    | "settled";
+  owner: TaskId | null;
+}>({
+  kind: "domos.engine-input",
+  version: 1,
+  checkpointWhen: () => false,
+  scope: "task",
+  initial: () => ({ status: "queued", owner: null }),
+});
 
 export type EngineState = {
   config: EngineConfig;
@@ -28,7 +41,6 @@ export type EngineState = {
   turnId: string | null;
   dispatch: "ready" | "sending" | "accepted";
   drafts: JsonRepresentation<ChatMessage>[];
-  approvals: EngineApproval[];
   error: string | null;
   runtime?: EngineRuntimeState;
   prepared: boolean;
@@ -59,7 +71,6 @@ export const EngineDoc = defineDoc<EngineState>({
     turnId: null,
     dispatch: "ready",
     drafts: [],
-    approvals: [],
     error: null,
     prepared: false,
     prompt: null,

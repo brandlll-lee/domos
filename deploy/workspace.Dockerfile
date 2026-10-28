@@ -4,13 +4,14 @@ FROM ${NODE_IMAGE} AS daemon
 ARG TARGETARCH
 WORKDIR /build
 RUN npm pack @earendil-works/pi-env@1.4.0 && tar -xzf earendil-works-pi-env-1.4.0.tgz && node -e "const fs=require('fs');const arch={amd64:'x64',arm64:'arm64'}[process.env.TARGETARCH];if(!arch)throw Error('Unsupported work image architecture');fs.copyFileSync('package/bin/pi-env-linux-'+arch+'/pi-env','/build/pi-env')"
-RUN npm install --prefix /opt/domos --omit=dev --no-audit --no-fund @modelcontextprotocol/sdk@1.32.1 cross-spawn@7.0.6 proper-lockfile@4.1.2 agent-browser@0.39.4 zod@4.6.7 @trycua/cua-driver@0.37.0 electron@44.8.0 && node -e "require('/opt/domos/node_modules/electron')"
+RUN npm install --prefix /opt/domos --omit=dev --no-audit --no-fund @modelcontextprotocol/sdk@1.32.1 @anthropic-ai/claude-agent-sdk@0.3.303 cross-spawn@7.0.6 proper-lockfile@4.1.2 agent-browser@0.39.4 zod@4.6.7 @trycua/cua-driver@0.37.0 electron@44.8.0 && node -e "require('/opt/domos/node_modules/electron')"
 
 FROM ${WORK_IMAGE}
 RUN apt-get update && apt-get install -y --no-install-recommends bash ca-certificates coreutils curl git python3 xvfb x11-utils dbus dbus-x11 openbox pcmanfm xterm chromium at-spi2-core libxi6 libxtst6 libxrandr2 libgtk-3-0 libnss3 libgbm1 libasound2 fonts-noto-cjk fonts-noto-color-emoji && rm -rf /var/lib/apt/lists/* && groupmod --new-name domos node && usermod --login domos --home /home/domos --move-home node
 COPY --from=daemon --chmod=0755 /build/pi-env /usr/local/bin/pi-env
 COPY --from=daemon /opt/domos /opt/domos
-COPY packages/agent/src/harness/worker.mjs packages/agent/src/harness/process-environment.mjs packages/agent/src/harness/gateway.mjs packages/agent/src/harness/browser-service.mjs packages/agent/src/harness/computer-service.mjs /opt/domos/
+COPY packages/agent/src/harness/worker.mjs packages/agent/src/harness/account-environment.mjs packages/agent/src/harness/http-service.mjs packages/agent/src/harness/native-history.mjs packages/agent/src/harness/gateway.mjs packages/agent/src/harness/browser-service.mjs packages/agent/src/harness/computer-service.mjs /opt/domos/
+COPY packages/agent/src/harness/pi-auth.mjs packages/agent/src/harness/pi-tools.mjs /opt/domos/
 COPY deploy/licenses/pi.txt /usr/share/doc/pi/LICENSE
 COPY packages/agent/src/harness/browser-view.mjs packages/agent/src/harness/desktop-view.mjs /opt/domos/
 COPY packages/agent/src/harness/browser-tools.mjs packages/agent/src/harness/browser-command.mjs /opt/domos/
