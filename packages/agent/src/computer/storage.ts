@@ -2,7 +2,7 @@ import { stat } from "node:fs/promises";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { createRegistry, Harness } from "@earendil-works/pi-durable";
-import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { openStorage } from "../runtime/storage.ts";
 import { type ComputerRecord, ComputersDoc } from "./state.ts";
 
 export async function storedComputers(database: string) {
@@ -12,7 +12,7 @@ export async function storedComputers(database: string) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw error;
   }
-  const storage = await openNodeSqliteStorage(database);
+  const storage = await openStorage(database);
   try {
     const record = await storage.findDocument(
       { kind: ComputersDoc.definition.kind, scope: { kind: "session" } },
@@ -39,7 +39,7 @@ export async function restoreComputers(
 ) {
   if (!items.length) return;
   const harness = await Harness.open(
-    await openNodeSqliteStorage(database),
+    await openStorage(database),
     { models: createModels(), registry: createRegistry() },
     BACKGROUND_CONTEXT,
   );

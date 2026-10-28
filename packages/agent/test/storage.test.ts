@@ -1,15 +1,50 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import {
   type DocumentId,
   ROOT_CONVERSATION_ID,
   type Seq,
 } from "@earendil-works/pi-durable";
-import { SqliteStorage } from "@earendil-works/pi-durable/storage/sqlite";
+import {
+  applySqliteMigrations,
+  SQLITE_MIGRATIONS,
+  SqliteStorage,
+} from "@earendil-works/pi-durable/storage/sqlite";
 import { openNodeSqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { expect, onTestFinished, test, vi } from "vitest";
+import { openStorage } from "../src/runtime/storage.ts";
+
+test("backs up schema v1 before migration and preserves the backup on reopen", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "domos-upgrade-"));
+  onTestFinished(() => rm(directory, { recursive: true, force: true }));
+  const file = join(directory, "agent.sqlite");
+  const database = await openNodeSqliteDatabase(file);
+  await applySqliteMigrations(database, SQLITE_MIGRATIONS.slice(0, 1));
+  await database.close();
+  const first = await openStorage(file);
+  await first.close(context);
+  const second = await openStorage(file);
+  await second.close(context);
+  for (const [path, version] of [
+    [file, 2],
+    [`${file}.v1-backup`, 1],
+  ] as const) {
+    const saved = new DatabaseSync(path, { readOnly: true });
+    try {
+      expect(
+        saved.prepare("SELECT version FROM durable_schema").get()?.version,
+      ).toBe(version);
+      expect(
+        saved.prepare("PRAGMA integrity_check").get()?.integrity_check,
+      ).toBe("ok");
+    } finally {
+      saved.close();
+    }
+  }
+});
 
 test("replays document history in bounded pages and preserves historical reads", async () => {
   const directory = await mkdtemp(join(tmpdir(), "domos-storage-"));
