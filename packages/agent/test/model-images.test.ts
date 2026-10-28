@@ -109,6 +109,18 @@ test("Pi normalizes user and tool images, preserves evidence, and applies new mo
         expect(result).toMatchObject({ isError: true });
         expect(result?.content).toContainEqual(broken);
         expect(JSON.stringify(result?.content)).toContain("2700x1800");
+        return fauxAssistantMessage([fauxToolCall("screen", {})], {
+          stopReason: "toolUse",
+        });
+      },
+      async (input) => {
+        const images = input.messages.flatMap((message) =>
+          Array.isArray(message.content)
+            ? message.content.filter((part) => part.type === "image")
+            : [],
+        );
+        expect(images).toHaveLength(3);
+        expect(JSON.stringify(input.messages)).toContain("Earlier tool image");
         return fauxAssistantMessage("Observed");
       },
     ]);
@@ -126,7 +138,7 @@ test("Pi normalizes user and tool images, preserves evidence, and applies new mo
         .map((message) => message.errorMessage)
         .filter(Boolean),
     ).toEqual([]);
-    expect(calls).toBe(1);
+    expect(calls).toBe(2);
     const state = await runtime.conversation.viewState(context);
     try {
       expect(JSON.stringify(state.value.entries)).toContain(original.data);
@@ -151,7 +163,7 @@ test("Pi normalizes user and tool images, preserves evidence, and applies new mo
         context,
       )
     ).wait(context);
-    expect(calls).toBe(1);
+    expect(calls).toBe(2);
     const history = await runtime.conversation.context(context);
     const tool = history.messages.find(
       (message) => message.role === "toolResult",

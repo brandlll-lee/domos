@@ -334,6 +334,7 @@ test("sessions recover reads once, preserve uncertain actions and bound failures
     isError: true,
     errorCode: "session_ended",
     text: "Session ended",
+    structuredJson: JSON.stringify({ steps: [{ ok: true }] }),
   };
   const callTool = vi.fn(async (name: string) =>
     name === "start_session" || name === "set_agent_cursor_enabled"
@@ -347,7 +348,9 @@ test("sessions recover reads once, preserve uncertain actions and bound failures
     callTool.mock.calls.filter(([name]) => name === "get_window_state"),
   ).toHaveLength(2);
   callTool.mockClear();
-  await session.call("click", args, "task");
+  const recovered = await session.call("click", args, "task");
+  expect(recovered.structuredJson).toBe(ended.structuredJson);
+  expect(recovered.text).toContain("no action was replayed");
   expect(callTool.mock.calls.filter(([name]) => name === "click")).toHaveLength(
     1,
   );
@@ -366,10 +369,47 @@ test("sessions recover reads once, preserve uncertain actions and bound failures
   expect(callTool.mock.calls.filter(([name]) => name === "click")).toHaveLength(
     4,
   );
+  const starts = callTool.mock.calls.filter(
+    ([name]) => name === "start_session",
+  ).length;
   await session.call("click", args, "next-task");
   expect(
     callTool.mock.calls.filter(([name]) => name === "start_session"),
-  ).toHaveLength(2);
+  ).toHaveLength(starts + 1);
+});
+
+test("a restarted desktop session returns fresh observation before using saved element tokens", async () => {
+  const callTool = vi.fn(async (name: string) => ({
+    isError: false,
+    images: [],
+    structuredJson: JSON.stringify(
+      name === "get_window_state"
+        ? { pid: 7, window_id: 90, snapshot_id: "fresh" }
+        : {},
+    ),
+  }));
+  const session = openDesktopSession({ callTool });
+  const args = {
+    session: "bot",
+    pid: 7,
+    window_id: 90,
+    steps: [{ click: { element_token: "old:15" } }],
+  };
+  const recovered = await session.call("run_steps", args, "task");
+  expect(recovered.isError).toBe(true);
+  expect(recovered.text).toContain("not executed");
+  expect(recovered.structuredJson).toBeUndefined();
+  expect(callTool.mock.calls.some(([name]) => name === "run_steps")).toBe(
+    false,
+  );
+  await session.call(
+    "run_steps",
+    { ...args, steps: [{ click: { element_token: "fresh:15" } }] },
+    "task",
+  );
+  expect(
+    callTool.mock.calls.filter(([name]) => name === "run_steps"),
+  ).toHaveLength(1);
 });
 
 test("image dedup retains target identity and resets with task ownership", async () => {

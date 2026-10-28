@@ -25,7 +25,11 @@ Durable owns automatic and manual compaction. Domos reports an estimate from the
 
 Model HTTP uses Pi CLI 1.4.0's proxy-aware Undici configuration and matching fetch implementation. Durable retains retry and cancellation ownership.
 
-The native Photon worker prepares user and tool images before model requests. Model image limits override the Pi defaults. Resized images include coordinate mapping. Stored images, attachments, and tool details remain intact. Each request starts from the original image, so a model change keeps the coordinate mapping correct. Decode failures preserve the delivered result, as Pi CLI does. Images already within the model limits retain their size; this does not impose a total conversation image budget.
+The native Photon worker prepares images before model requests. Model image limits override the Pi defaults. Domos retains the latest two tool images in requests and bounds each to 512 KiB of base64. Earlier images become evidence references. User images retain the model limits. Resized images include coordinate mapping. Stored images, attachments, and tool details remain intact. Decode failures preserve the delivered result, as Pi CLI does. This request policy uses Durable's public beforeRequest hook; it is not a Pi CLI history policy.
+
+System sections keep stable instructions. routine_list supplies current host time and timezone. Tool rounds do not rewrite the system prompt with a new clock value.
+
+Desktop session state belongs to the work process. Saved element or capture tokens require observation in a new session before input. An ended session recovers observation only. The original action result remains intact, and recovery does not replay input.
 
 The UI reads raw stored entries. Compaction summaries and migration handoffs stay out of displayed messages. Compaction changes model context only. Full records remain available through conversation_read.
 

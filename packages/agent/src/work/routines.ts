@@ -158,17 +158,20 @@ export function routineExtension(
       section(
         "routines",
         () =>
-          `Current host time: ${new Date(now()).toISOString()}. Host timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}. Use routine_create when the user requests future or repeated work. Confirm the intended timezone when unclear. New routines are paused. Ask the user to review and enable them in Bot details. Schedules execute only while the Domos host is running; after restart, missed repeats are coalesced into one run. Routine work uses the same tools and permissions as chat. Results return to this Bot's conversation. Never claim cloud availability.`,
+          `Host timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}. Read routine_list for current host time before resolving relative dates. Use routine_create when the user requests future or repeated work. Confirm the intended timezone when unclear. New routines are paused. Ask the user to review and enable them in Bot details. Schedules execute only while the Domos host is running; after restart, missed repeats are coalesced into one run. Routine work uses the same tools and permissions as chat. Results return to this Bot's conversation. Never claim cloud availability.`,
       ),
     ],
     tools: [
       defineTool({
         name: "routine_list",
-        description: "Read this Bot's routines and their run receipts.",
+        description:
+          "Read current host time, timezone, this Bot's routines and their run receipts.",
         parameters: Type.Object({}),
         async execute(_args, api, context) {
           const doc = await api.snapshot(RoutinesDoc, context);
           return toolResult({
+            now: new Date(now()).toISOString(),
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             items:
               doc?.items.filter((item) => item.botId === api.conversationId) ??
               [],

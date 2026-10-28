@@ -11,6 +11,7 @@ Pi Durable 1.4.0 owns the Bot loop. Pi AI calls models. Domos owns product capab
 - Domos owns Bot identity, full chat history, memories, credentials, and computer permissions.
 - Pi Durable owns input admission, generation, tool tasks, cancellation, recovery, and model context. Use its public extensions and hooks.
 - Model HTTP follows Pi CLI's proxy-aware transport setup. Use Durable's Photon image processor and model image limits. Preserve original evidence and include coordinate mapping when resizing observations.
+- Keep system instructions stable across tool rounds. Read current time through routine_list. Bound tool images in model requests while retaining full evidence and user attachments. See [Harness context](docs/harness-context.md).
 - Send ordinary chat, additional input, and routines through the same Durable conversation. Keep request IDs stable through retries.
 - Keep model context separate from displayed history. Read [docs/harness-context.md](docs/harness-context.md) before changing history, migration, or compaction.
 - Keep computer rules in shared services. Persist tool results. Do not replay mutations whose outcomes are uncertain.

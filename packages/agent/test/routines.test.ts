@@ -8,6 +8,43 @@ import { chatView } from "../src/chat-view.ts";
 import { nextScheduled, validateSchedule } from "../src/work/schedule.ts";
 import { context, setup, skillContent } from "./fixtures/work.ts";
 
+test("tool rounds keep the system clock stable and read current time through routines", async () => {
+  const fixture = await setup();
+  const runtime = await fixture.open();
+  fixture.faux.setResponses([
+    async () => {
+      fixture.advance(fixture.now() + 60_000);
+      return fauxAssistantMessage([fauxToolCall("routine_list", {})], {
+        stopReason: "toolUse",
+      });
+    },
+    async (input) => {
+      const sections = input.messages.filter(
+        (message) => message.role === "system" && message.sections?.routines,
+      );
+      expect(sections).toHaveLength(1);
+      const result = input.messages.findLast(
+        (message) => message.role === "toolResult",
+      );
+      expect(JSON.stringify(result?.content)).toContain(
+        new Date(fixture.now()).toISOString(),
+      );
+      return fauxAssistantMessage("Done");
+    },
+  ]);
+  try {
+    const result = await (
+      await runtime.conversation.submit(
+        { type: "input", content: "Read current time" },
+        context,
+      )
+    ).wait(context);
+    expect(result).toMatchObject({ status: "done" });
+  } finally {
+    await runtime.harness.close(context);
+  }
+});
+
 test("routine input queues behind active work and a chat stop settles its receipt", async () => {
   const fixture = await setup();
   const runtime = await fixture.open();

@@ -98,13 +98,43 @@ export function openDesktopSession(driver) {
           isError: true,
           text: `${state.attempt.result.text ?? ""}\nThe same action was attempted three times without a successful postcondition check. Use verify_state or run_steps with expect. Do not replay uncertain actions.`,
         };
-      const result = await driver.callTool(name, JSON.stringify(args), {
-        signal,
-      });
+      const savedTarget =
+        mutating &&
+        !state.observed &&
+        /"(?:element_token|capture_id|snapshot_id)"\s*:/.test(
+          JSON.stringify(args),
+        );
+      const result = savedTarget
+        ? { isError: true, errorCode: "session_ended" }
+        : await driver.callTool(name, JSON.stringify(args), { signal });
       if (result.errorCode === "session_ended") {
         sessions.delete(args.session);
         if (recover && observations.has(name))
           return this.call(name, args, owner, signal, false);
+        if (recover && mutating) {
+          const target = args.target?.kind === "window" ? args.target : args;
+          const window =
+            target.pid !== undefined && target.window_id !== undefined;
+          const fresh = await this.call(
+            window ? "get_window_state" : "get_desktop_state",
+            {
+              session: args.session,
+              ...(window
+                ? { pid: target.pid, window_id: target.window_id }
+                : {}),
+              max_image_dimension: 1200,
+            },
+            owner,
+            signal,
+            false,
+          );
+          return {
+            ...result,
+            images: [...(result.images ?? []), ...(fresh.images ?? [])],
+            isError: true,
+            text: `${savedTarget ? "The requested action was not executed because its saved desktop target needs a fresh observation." : "The desktop session ended. Preserve the original action result; no action was replayed."}\nOriginal result: ${result.text ?? result.structuredJson ?? result.errorCode}\nObservation${fresh.isError ? " failed" : ""}: ${fresh.text ?? fresh.structuredJson ?? "unavailable"}`,
+          };
+        }
       }
       const value = result.structuredJson
         ? JSON.parse(result.structuredJson)
@@ -119,10 +149,13 @@ export function openDesktopSession(driver) {
         !result.isError &&
         (observed ||
           name === "get_desktop_state" ||
+          name === "get_accessibility_tree" ||
           (name === "verify_state" &&
             ["satisfied", "unsatisfied"].includes(value?.status)))
-      )
+      ) {
         state.review = false;
+        state.observed = true;
+      }
       if (
         mutating &&
         !result.isError &&
