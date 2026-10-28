@@ -23,6 +23,10 @@ Each record read is bound to the current Bot. Text chunks have a 4000-byte limit
 
 Durable owns automatic and manual compaction. Domos reports an estimate from the active native context and the configured model's context window. The estimate is not an exact provider tokenizer.
 
+Model HTTP uses Pi CLI 1.4.0's proxy-aware Undici configuration and matching fetch implementation. Durable retains retry and cancellation ownership.
+
+The native Photon worker prepares user and tool images before model requests. Model image limits override the Pi defaults. Resized images include coordinate mapping. Stored images, attachments, and tool details remain intact. Each request starts from the original image, so a model change keeps the coordinate mapping correct. Decode failures preserve the delivered result, as Pi CLI does. Images already within the model limits retain their size; this does not impose a total conversation image budget.
+
 The UI reads raw stored entries. Compaction summaries and migration handoffs stay out of displayed messages. Compaction changes model context only. Full records remain available through conversation_read.
 
 The SQLite pagination patch reads 32 document revisions per query. It preserves order, historical bounds, version checks, and the read transaction. Recheck the patch on dependency upgrades.
@@ -35,3 +39,4 @@ harness-context.test.ts checks byte budgets, UTF-8 chunks, complete record reads
 
 - [Pi Durable 1.4.0](https://github.com/earendil-works/pi/tree/v1.4.0/packages/durable)
 - [Pi AI 1.4.0](https://github.com/earendil-works/pi/tree/v1.4.0/packages/ai)
+- [Pi CLI HTTP initialization](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/src/core/http-dispatcher.ts)

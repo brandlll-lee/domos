@@ -1116,7 +1116,7 @@ test("validation rejects empty input and snapshots hide provider error details",
     expect(chatTranscript(view).at(-1)).toMatchObject({
       kind: "notice",
       status: "failed",
-      error: "回复失败。请检查模型配置、余额或网络。",
+      error: expect.stringMatching(/^回复失败，原因待确认〔\d+:\d+〕$/),
     });
     faux.setResponses([fauxAssistantMessage("Complete")]);
     await client.send({

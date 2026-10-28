@@ -7,6 +7,7 @@ import {
   type HarnessOptions,
   type Registry,
 } from "@earendil-works/pi-durable";
+import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node";
 import { Bots, identity } from "./bots.ts";
 import type { Computers } from "./computer/catalog.ts";
 import { ComputerRuntime } from "./computer/runtime.ts";
@@ -16,6 +17,7 @@ import { history } from "./harness/history.ts";
 import { Runtime } from "./runtime/index.ts";
 import { migrateRuntime } from "./runtime/migrate.ts";
 import { modelDiagnostics } from "./runtime/model-diagnostics.ts";
+import { modelImages } from "./runtime/model-images.ts";
 import { openStorage } from "./runtime/storage.ts";
 import { botWork } from "./work/index.ts";
 import { memory } from "./work/memory.ts";
@@ -35,6 +37,7 @@ export async function openAgent(
   context: Context,
   files = new Files(database),
 ) {
+  options.registry.install(modelImages(await createNodePhotonImages()));
   options.registry.install(messaging);
   options.registry.install(history);
   options.registry.install(identity);

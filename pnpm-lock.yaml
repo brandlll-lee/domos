@@ -221,6 +221,9 @@ importers:
       remark-parse:
         specifier: 11.0.0
         version: 11.0.0
+      undici:
+        specifier: 8.10.2
+        version: 8.10.2
       unified:
         specifier: 11.0.5
         version: 11.0.5
@@ -6323,8 +6326,7 @@ snapshots:
   undici@7.30.1:
     optional: true
 
-  undici@8.10.2:
-    optional: true
+  undici@8.10.2: {}
 
   unified@11.0.5:
     dependencies:

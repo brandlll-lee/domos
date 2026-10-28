@@ -56,6 +56,7 @@ const external = [
   "@orpc/*",
   "hono",
   "hono/*",
+  "undici",
   "zod",
 ];
 for (const [entry, output] of [

@@ -12,6 +12,7 @@ import { Files } from "./files.ts";
 import { openAgent } from "./open-agent.ts";
 import { loadConfig, type RuntimeConfig } from "./runtime/config.ts";
 import { acquireDataLease } from "./runtime/lease.ts";
+import { configureModelHttp } from "./runtime/model-http.ts";
 
 export async function openChat(
   context: Context,
@@ -22,6 +23,7 @@ export async function openChat(
     lease?: boolean;
   } = {},
 ) {
+  configureModelHttp();
   const config = supplied ?? (await loadConfig());
   const models = options.models ?? builtinModels();
   const release =

@@ -1,0 +1,11 @@
+{
+  "provider": "deepseek",
+  "model": "deepseek-flash",
+  "runtime": "Electron 44.8.0 / Node 24.22.0",
+  "failure": "ECONNRESET before response headers",
+  "messages": 69,
+  "images": 9,
+  "requestBytes": 15350587,
+  "baseline": { "attempts": 3, "successes": 2 },
+  "piCliHttp": { "attempts": 3, "successes": 3 }
+}
