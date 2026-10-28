@@ -12,7 +12,6 @@ import {
 } from "react";
 import { CreateBot } from "../bots/create-bot.tsx";
 import { BotDetails, type BotPanelView } from "../bots/details/index.tsx";
-import { useEngine } from "../bots/details/use-engine.ts";
 import { selectBot, useBots } from "../bots/use-bots.ts";
 import { useComputer } from "../computer/use-computer.ts";
 import { useSettings } from "../settings/context.ts";
@@ -67,13 +66,6 @@ function BotChat({
 }) {
   const settings = useSettings();
   const chat = useChat(bot.id, () => settings.open("providers", bot.id));
-  const engine = useEngine(
-    bot.id,
-    chat.connected,
-    Boolean(chat.view?.busy),
-    undefined,
-    directory.computers.bindings[String(bot.id)]?.computerId ?? undefined,
-  );
   const computer = useComputer(bot.id, directory);
   const dock = useComposerDock();
   const draft = useDraft(bot.id);
@@ -195,17 +187,20 @@ function BotChat({
           onViewChange={setDetailPanel}
           onClose={closePanel}
           computer={computer}
-          chat={{ model: chat.view?.model ?? null, connected: chat.connected }}
+          chat={{
+            model: chat.view?.model ?? null,
+            connected: chat.connected,
+            busy: Boolean(chat.view?.busy),
+          }}
           context={
             <ContextRing
               botId={bot.id}
               state={chat.view?.runtime}
-              provider={engine.profile?.config.provider ?? "pi"}
+              provider={"pi"}
               busy={Boolean(chat.view?.busy)}
             />
           }
           canManage={settings.admin}
-          engine={engine}
           tab={panel === "settings" ? "bot" : panel}
           onTabChange={(tab) => {
             setPanel(tab === "bot" ? "settings" : tab);
@@ -218,12 +213,8 @@ function BotChat({
     >
       <RuntimeNotifications
         state={chat.view?.runtime}
-        provider={engine.profile?.config.provider ?? "pi"}
-        name={
-          engine.profile?.providers.find(
-            (item) => item.id === engine.profile?.config.provider,
-          )?.name ?? "Pi"
-        }
+        provider={"pi"}
+        name="Pi"
         onOpen={() => {
           if (!detailsOpen || panel !== "settings" || detailPanel !== "engine")
             showPanel("engine");
@@ -258,7 +249,7 @@ function BotChat({
               bot={bot}
               busy={Boolean(chat.view?.busy)}
               detailsOpen={detailsOpen}
-              provider={engine.profile?.config.provider ?? "pi"}
+              provider={"pi"}
               onDetails={() => showPanel("root")}
             />
             <span className="sr-only" role="status">
@@ -304,7 +295,7 @@ function BotChat({
                 conversationId={chat.view.id}
                 connected={chat.connected}
                 busy={chat.view.busy}
-                sending={chat.sending || engine.saving}
+                sending={chat.sending}
                 stopping={chat.stopping}
                 error={error}
                 onSend={chat.send}

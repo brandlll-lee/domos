@@ -6,7 +6,6 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { releaseSchema } from "@domos/hosting/install";
 import { expect, test } from "@playwright/test";
 import { WorkProcess } from "../../../packages/agent/src/harness/process.ts";
-import { piProvider } from "../../../packages/agent/src/harness/providers/pi.ts";
 
 test("desktop runtime starts its worker and discovers computer tools", async () => {
   const runtime = fileURLToPath(new URL("../runtime/", import.meta.url));
@@ -21,7 +20,7 @@ test("desktop runtime starts its worker and discovers computer tools", async () 
   );
   expect(browserObserve.name).toBe("agent_browser_observe");
   expect(browserRunSteps.name).toBe("agent_browser_run_steps");
-  for (const name of ["browser-command.mjs", "native-history.mjs"])
+  for (const name of ["browser-command.mjs"])
     expect(await readFile(join(workBrowser, name), "utf8")).not.toBe("");
   const directory = await mkdtemp(join(tmpdir(), "domos-runtime-"));
   const executable = createRequire(new URL("../package.json", import.meta.url))(
@@ -58,16 +57,6 @@ test("desktop runtime starts its worker and discovers computer tools", async () 
       expect.arrayContaining([
         expect.objectContaining({ name: "get_desktop_state" }),
       ]),
-    );
-    const session = await piProvider.open({
-      process: worker,
-      config: { provider: "pi", model: null },
-      sessionId: null,
-      instructions: "Use short replies.",
-      emit: async () => {},
-    });
-    expect(session.id.replaceAll("\\", "/")).toContain(
-      `${ready.home.replaceAll("\\", "/")}/pi/sessions/`,
     );
   } finally {
     await worker.close();

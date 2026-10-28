@@ -1,249 +1,75 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
-import { createModels } from "@earendil-works/pi-ai/models";
-import { createRegistry, defineExtension } from "@earendil-works/pi-durable";
-import { expect, onTestFinished, test } from "vitest";
-import type { Attachment } from "../src/attachments.ts";
-import { chatView } from "../src/chat-view.ts";
-import type { Computers } from "../src/computer/catalog.ts";
-import { Files } from "../src/files.ts";
-import { EngineExecution, Engines, engineTask } from "../src/harness/index.ts";
-import { openAgent } from "../src/open-agent.ts";
-import { ProtocolProcess } from "./fixtures/engine-process.ts";
+import {
+  fauxAssistantMessage,
+  fauxToolCall,
+} from "@earendil-works/pi-ai/providers/faux";
+import { expect, test } from "vitest";
+import { runtimeFixture } from "./fixtures/runtime.ts";
 
-test("a durable chat submission reads the stored image and sends its bytes to the engine", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "domos-image-turn-"));
-  const database = join(directory, "agent.sqlite");
-  const files = new Files(database);
-  const worker = new ProtocolProcess();
-  const computers = {
-    preflight: async () => {},
-    computerId: async () => "local",
-    process: async () => worker,
-    tools: { catalog: async () => [], finish: () => {} },
-  } as unknown as Computers;
-  const execution = new EngineExecution(computers, undefined, undefined, files);
-  const registry = createRegistry();
-  registry.install(
-    defineExtension({ name: "domos-engines", tasks: [engineTask(execution)] }),
-  );
-  worker.receive = (request) => {
-    if (request.method === "thread/start")
-      worker.response(request, { thread: { id: "native" } });
-    else if (request.method === "turn/start") {
-      worker.response(request, { turn: { id: "turn" } });
-      worker.frame({
-        method: "turn/completed",
-        params: { turn: { status: "completed" } },
-      });
-    } else if (request.id !== undefined) worker.response(request, {});
-  };
-  const runtime = await openAgent(
-    database,
-    { registry, models: createModels() },
-    {},
-    context,
-    files,
-  );
-  onTestFinished(async () => {
-    await runtime.harness.close(context);
-    await worker.close();
-    await rm(directory, { recursive: true, force: true });
-  });
-  const engines = new Engines(runtime.harness, execution);
-  const botId = runtime.conversation.id;
-  await engines.configure(
-    botId,
-    {
-      config: { provider: "codex", model: null },
-      revision: 0,
-      requestId: crypto.randomUUID(),
-    },
-    context,
-  );
+test("a durable submission sends stored image bytes and preserves attachment metadata", async () => {
+  const runtime = await runtimeFixture();
   const bytes = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
     "base64",
   );
-  const attachment = await files.upload(botId, "screen.png", bytes, context);
-  const submission = await engines.submit(
-    botId,
-    {
-      text: "Describe",
-      requestId: crypto.randomUUID(),
-      attachments: [attachment],
+  const id = runtime.conversation.id;
+  const file = await runtime.files.upload(id, "screen.png", bytes, context);
+  runtime.faux.setResponses([
+    (input) => {
+      const message = input.messages.find((message) => message.role === "user");
+      expect(message?.content).toContainEqual({
+        type: "image",
+        data: bytes.toString("base64"),
+        mimeType: "image/png",
+      });
+      return fauxAssistantMessage("Seen");
     },
+  ]);
+  const submission = await runtime.engines.submit(
+    id,
+    { text: "Describe", requestId: crypto.randomUUID(), attachments: [file] },
     context,
   );
-  expect(await submission.wait(context)).toMatchObject({ status: "done" });
+  expect((await submission.wait(context)).status).toBe("done");
   expect(
-    worker.requests.find((request) => request.method === "turn/start")?.params
-      ?.input,
-  ).toContainEqual({
-    type: "image",
-    url: `data:image/png;base64,${bytes.toString("base64")}`,
-  });
+    (await runtime.engines.view(id, context)).messages[0]?.attachments,
+  ).toMatchObject([{ id: file.id, name: "screen.png" }]);
 });
 
-test.each([false, true])("screenshot delivery: %s", async (deliver) => {
-  const directory = await mkdtemp(join(tmpdir(), "domos-evidence-"));
-  const database = join(directory, "agent.sqlite");
-  const files = new Files(database);
-  const worker = new ProtocolProcess();
-  const bytes = Buffer.from(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
-    "base64",
+test("published files use the shared delivery tool and survive reopening", async () => {
+  const runtime = await runtimeFixture();
+  const extension = runtime.files.extension();
+  runtime.registry.install(extension);
+  await runtime.conversation.configure(
+    { extensions: runtime.registry.snapshot().installed() },
+    context,
   );
-  let returned: unknown;
-  const execution = new EngineExecution(
-    {
-      preflight: async () => {},
-      computerId: async () => "local",
-      process: async (
-        _bot: number,
-        _tools: unknown,
-        invoke: (
-          id: string,
-          name: string,
-          args: object,
-          signal: AbortSignal,
-        ) => Promise<unknown>,
-      ) => {
-        worker.receive = (request) => {
-          if (request.method === "thread/start")
-            worker.response(request, { thread: { id: "native" } });
-          else if (request.method === "turn/start") {
-            worker.response(request, { turn: { id: "turn" } });
-            void invoke(
-              "capture",
-              "browser_observe",
-              {},
-              new AbortController().signal,
-            ).then(async (result) => {
-              returned = result;
-              if (deliver) {
-                const file = (
-                  result as { structuredContent: { evidence: Attachment[] } }
-                ).structuredContent.evidence[0];
-                await invoke(
-                  "deliver",
-                  "attach_file",
-                  { id: file?.id },
-                  new AbortController().signal,
-                );
-              }
-              worker.frame({
-                method: "turn/completed",
-                params: { turn: { status: "completed" } },
-              });
-            });
-          } else if (request.id !== undefined) worker.response(request, {});
-        };
-        return worker;
-      },
-      tools: {
-        catalog: async () => [
-          {
-            name: "browser_observe",
-            description: "Observe",
-            inputSchema: { type: "object" },
-          },
-        ],
-        invoke: async () => ({
-          content: [
-            {
-              type: "image",
-              mimeType: "image/png",
-              data: bytes.toString("base64"),
-            },
-          ],
-          structuredContent: {
-            source: {
-              url: "https://example.org/report",
-              capturedAt: "2026-10-19T12:00:00.000Z",
-            },
-          },
-        }),
-        finish: () => {},
-      },
-    } as unknown as Computers,
-    undefined,
-    undefined,
-    files,
+  const id = runtime.conversation.id;
+  const file = await runtime.files.upload(
+    id,
+    "report.txt",
+    Buffer.from("Report contents"),
+    context,
   );
-  const registry = createRegistry();
-  registry.install(files.extension());
-  registry.install(
-    defineExtension({
-      name: "domos-engines",
-      tasks: [engineTask(execution)],
+  runtime.faux.setResponses([
+    fauxAssistantMessage(fauxToolCall("attach_file", { id: file.id }), {
+      stopReason: "toolUse",
     }),
-  );
-  const runtime = await openAgent(
-    database,
-    { registry, models: createModels() },
-    {},
-    context,
-    files,
-  );
-  onTestFinished(async () => {
-    await runtime.harness.close(context);
-    await worker.close();
-    await rm(directory, { recursive: true, force: true });
-  });
-  const botId = runtime.conversation.id;
-  const engines = new Engines(runtime.harness, execution);
-  await engines.configure(
-    botId,
-    {
-      config: { provider: "codex", model: null },
-      revision: 0,
-      requestId: crypto.randomUUID(),
-    },
+    fauxAssistantMessage("Published"),
+  ]);
+  const submission = await runtime.engines.submit(
+    id,
+    { text: "Publish", requestId: crypto.randomUUID() },
     context,
   );
+  expect((await submission.wait(context)).status).toBe("done");
+  const reopened = await runtime.reopen();
   expect(
-    await (
-      await engines.submit(
-        botId,
-        { text: "Capture", requestId: crypto.randomUUID() },
-        context,
-      )
-    ).wait(context),
-  ).toMatchObject({ status: "done" });
-  const state = await runtime.conversation.viewState(context);
-  try {
-    const file = (returned as { structuredContent: { evidence: Attachment[] } })
-      .structuredContent.evidence[0];
-    expect(
-      chatView(state.value).messages.flatMap(
-        (message) => message.attachments ?? [],
-      ),
-    ).toEqual(deliver ? [file] : []);
-    expect(file?.source).toMatchObject({
-      url: "https://example.org/report",
-      capturedAt: "2026-10-19T12:00:00.000Z",
-      tool: "browser_observe",
-      callId: "capture",
-    });
-    if (!file) throw new Error("Evidence required");
-    expect(
-      Buffer.from(await (await files.download(botId, file.id)).arrayBuffer()),
-    ).toEqual(bytes);
-    expect(returned).toMatchObject({
-      content: expect.arrayContaining([
-        {
-          type: "image",
-          mimeType: "image/png",
-          data: bytes.toString("base64"),
-        },
-        { type: "text", text: expect.stringContaining(file.id) },
-      ]),
-      structuredContent: { evidence: [{ id: file.id }] },
-    });
-  } finally {
-    state.dispose();
-  }
+    (await reopened.engines.view(id, context)).messages.find((message) =>
+      message.attachments?.some((item) => item.id === file.id),
+    ),
+  ).toBeDefined();
+  expect(await (await reopened.files.download(id, file.id)).text()).toBe(
+    "Report contents",
+  );
 });

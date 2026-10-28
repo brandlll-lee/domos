@@ -224,3 +224,27 @@ test("adjacent delivered files form one gallery within their turn", () => {
   ]);
   expect(messages).toEqual(original);
 });
+
+test("takeover cards remain visible while waiting and after expiry", () => {
+  for (const state of ["waiting", "expired"] as const) {
+    const card = message(
+      "assistant",
+      "turn",
+      [{ type: "text", text: "Take over" }],
+      {
+        pending: state === "waiting",
+        stopped: state === "expired",
+        takeover: {
+          id: "request",
+          computerId: "bound",
+          revision: 1,
+          service: "browser",
+          state,
+        },
+      },
+    );
+    expect(chatTranscript(view([card]))).toEqual([
+      { kind: "message", id: card.id, message: card },
+    ]);
+  }
+});

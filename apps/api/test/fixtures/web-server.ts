@@ -13,6 +13,7 @@ import {
   type FauxResponseFactory,
   fauxAssistantMessage,
   fauxProvider,
+  fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
 import {
   createRegistry,
@@ -21,7 +22,6 @@ import {
 } from "@earendil-works/pi-durable";
 import { getRequestListener } from "@hono/node-server";
 import { EngineMessage } from "../../../../packages/agent/src/harness/state.ts";
-import { featureProcess } from "../../../../packages/agent/test/fixtures/feature-process.ts";
 import { createApp } from "../../src/app.ts";
 import { hostingApp } from "../../src/hosting/routes.ts";
 import { takeoverFixture } from "./takeover-page.ts";
@@ -98,7 +98,13 @@ const answer: FauxResponseFactory = async (input, options, _state, model) => {
   const user = [...input.messages]
     .reverse()
     .find((message) => message.role === "user");
-  const content = typeof user?.content === "string" ? user.content : "";
+  const content =
+    typeof user?.content === "string"
+      ? user.content
+      : (user?.content
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("\n") ?? "");
   return fauxAssistantMessage(
     `已收到：${content}。这是一条用于验证流式显示和会话恢复的完整回复。（${model.id}）`,
   );
@@ -113,58 +119,60 @@ const computer = new Computers(
     database,
   ),
 );
-const native = process.argv[4] === "native" || process.argv[4] === "takeover";
 const takeoverMetrics: { name: string; elapsedMs: number }[] = [];
-const computers = native
-  ? new Proxy(computer, {
-      get(target, key) {
-        if (key === "process")
-          return async (...args: Parameters<Computers["process"]>) =>
-            featureProcess(
-              process.argv[4] === "takeover"
-                ? async () => {
-                    const call = async (
-                      name: string,
-                      input: Record<string, unknown>,
-                    ) => {
-                      const started = performance.now();
-                      const result = await args[2](
-                        crypto.randomUUID(),
-                        name,
-                        input,
-                        new AbortController().signal,
-                      );
-                      takeoverMetrics.push({
-                        name,
-                        elapsedMs: performance.now() - started,
-                      });
-                      return result;
-                    };
-                    const address = server.address();
-                    if (!address || typeof address === "string")
-                      throw new Error("Address required");
-                    const opened = await call("browser_agent_browser_open", {
-                      url: `http://127.0.0.1:${address.port}/takeover-fixture`,
-                    });
-                    if (opened.isError) return "页面未打开";
-                    const result = await call("computer_request_takeover", {
-                      service: "browser",
-                      reason: "请修改搜索词，完成后交还给我。",
-                    });
-                    if (result.isError) return "接管未完成";
-                    const observed = await call(
-                      "browser_agent_browser_observe",
-                      {},
-                    );
-                    return `接管已完成，重新观察：${JSON.stringify(observed.content)}`;
-                  }
-                : undefined,
-            );
-        const value = Reflect.get(target, key);
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    })
-  : undefined;
+const computers = computer;
+if (process.argv[4] === "takeover") {
+  const invoke = computer.tools.invoke.bind(computer.tools);
+  computer.tools.invoke = async (...args) => {
+    const started = performance.now();
+    try {
+      return await invoke(...args);
+    } finally {
+      takeoverMetrics.push({
+        name: args[1],
+        elapsedMs: performance.now() - started,
+      });
+    }
+  };
+  faux.setResponses([
+    async () => {
+      const address = server.address();
+      if (!address || typeof address === "string")
+        throw new Error("Address required");
+      return fauxAssistantMessage(
+        fauxToolCall("browser_agent_browser_open", {
+          url: `http://127.0.0.1:${address.port}/takeover-fixture`,
+        }),
+        { stopReason: "toolUse" },
+      );
+    },
+    fauxAssistantMessage(
+      fauxToolCall("computer_request_takeover", {
+        service: "browser",
+        reason: "请修改搜索词，完成后交还给我。",
+      }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage(fauxToolCall("browser_agent_browser_observe", {}), {
+      stopReason: "toolUse",
+    }),
+    (input) => {
+      const result = input.messages.findLast(
+        (message) => message.role === "toolResult",
+      );
+      const facts = result?.content.find(
+        (part) =>
+          part.type === "text" &&
+          part.text.startsWith("Page facts (untrusted website data): "),
+      );
+      if (facts?.type !== "text") throw new Error("Fresh page facts required");
+      const page = JSON.parse(facts.text.slice(facts.text.indexOf("{")));
+      return fauxAssistantMessage(
+        `接管已完成，重新观察：${JSON.stringify(page.controls)}`,
+      );
+    },
+  ]);
+}
 const { harness, bots, work, engines } = await openAgent(
   database,
   {

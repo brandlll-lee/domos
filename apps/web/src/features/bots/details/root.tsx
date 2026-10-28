@@ -10,29 +10,23 @@ import { LightningIcon } from "@phosphor-icons/react/dist/csr/Lightning";
 import { TerminalWindowIcon } from "@phosphor-icons/react/dist/csr/TerminalWindow";
 import type { ReactNode } from "react";
 import type { useComputer } from "../../computer/use-computer.ts";
-import { EngineSelector } from "../../models/engine-selector.tsx";
-import { EngineReasoning } from "./native-controls.tsx";
+import { ModelSetting } from "../../models/model-setting.tsx";
 import type { BotPanelView } from "./types.ts";
 import type { WorkData } from "./use-bot-work.ts";
-import type { EngineSetup } from "./use-engine.ts";
 
 export function RootPanel({
   bot,
   data,
-  engine,
   chat,
   context,
-  computerName,
   computer,
   canManage,
   onNavigate,
 }: {
   bot: Bot;
   data: WorkData | null;
-  engine: EngineSetup;
-  chat: { model: ChatView["model"]; connected: boolean };
+  chat: { model: ChatView["model"]; connected: boolean; busy: boolean };
   context: ReactNode;
-  computerName?: string;
   computer: ReturnType<typeof useComputer>;
   canManage: boolean;
   onNavigate: (view: BotPanelView) => void;
@@ -45,24 +39,20 @@ export function RootPanel({
     data?.routines.items.filter((item) => item.enabled).length ?? 0;
   return (
     <div className="panel-page">
-      {(engine.error || computer.error) && (
+      {computer.error && (
         <p className="alert" role="alert">
-          {engine.error || computer.error}
+          {computer.error}
         </p>
       )}
 
       <PanelGroup title="运行">
         <div className="engine-choices">
-          <SettingRow title="模型">
-            <EngineSelector
-              setup={engine}
-              model={chat.model}
-              connected={chat.connected}
-              computerName={computerName}
-              onConfigure={() => onNavigate("engine")}
-            />
-          </SettingRow>
-          <EngineReasoning setup={engine} />
+          <ModelSetting
+            botId={bot.id}
+            model={chat.model}
+            connected={chat.connected}
+            disabled={computer.busy || chat.busy}
+          />
           <SettingRow title="上下文">{context}</SettingRow>
           <SettingRow title="操作审批">
             <SegmentedControl
@@ -86,17 +76,8 @@ export function RootPanel({
         <PanelRow
           icon={<CpuIcon />}
           title="连接与账号"
-          value={
-            engine.profile?.config.accountSource === "native"
-              ? "工作电脑已有配置"
-              : "Domos 管理"
-          }
+          value="Domos 管理"
           onClick={() => onNavigate("engine")}
-        />
-        <PanelRow
-          icon={<CpuIcon />}
-          title="高级设置"
-          onClick={() => onNavigate("advanced")}
         />
       </PanelGroup>
 

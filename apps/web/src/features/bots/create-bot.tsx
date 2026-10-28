@@ -11,7 +11,7 @@ import { rejectionMessage } from "../chat/request-error.ts";
 import { ComputerLocation } from "../computer/location.tsx";
 import { useSettings } from "../settings/context.ts";
 import { AvatarEditor } from "./avatar-editor.tsx";
-import { EnginePanel } from "./details/engine.tsx";
+import { ModelSetup } from "./details/model.tsx";
 
 export function CreateBot({ onCreated }: { onCreated: (bot: Bot) => void }) {
   const [open, setOpen] = useState(false);
@@ -23,7 +23,7 @@ export function CreateBot({ onCreated }: { onCreated: (bot: Bot) => void }) {
         if (!saving) setOpen(value);
       }}
       title="新建 Bot"
-      description="取个名字，再选择工作电脑和引擎。"
+      description="取个名字，再选择工作电脑和模型。"
       trigger={
         <Button
           variant="ghost"
@@ -74,7 +74,7 @@ function BotForm({
   if (created)
     return (
       <div className="detail-stack">
-        <h2>{computerReady ? "由谁处理任务？" : "Bot 在哪里工作？"}</h2>
+        <h2>{computerReady ? "选择对话模型" : "Bot 在哪里工作？"}</h2>
         <div hidden={computerReady}>
           <ComputerLocation
             botId={created.bot.id}
@@ -84,7 +84,7 @@ function BotForm({
           />
         </div>
         {computerReady && (
-          <EnginePanel
+          <ModelSetup
             botId={created.bot.id}
             canManage={settings.admin}
             onBusyChange={onSavingChange}
@@ -113,7 +113,6 @@ function BotForm({
           const setup = await client.computer.setup();
           const bot = await client.bots.create({
             ...input,
-            engine: { provider: "pi", model: null },
             computerId: null,
             requestId: request.current.id,
           });

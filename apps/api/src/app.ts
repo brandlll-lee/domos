@@ -3,7 +3,7 @@ import { MAX_FILE_BYTES } from "@domos/agent/attachments";
 import type { Bots } from "@domos/agent/bots";
 import type { Computers } from "@domos/agent/computer/catalog";
 import type { Files } from "@domos/agent/files";
-import type { Engines } from "@domos/agent/harness";
+import type { Runtime } from "@domos/agent/runtime";
 import type { BotWork } from "@domos/agent/work";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai/models";
@@ -20,7 +20,7 @@ export function createApp(
   work: BotWork,
   computer?: Computers,
   staticDir = fileURLToPath(new URL("../../web/dist", import.meta.url)),
-  engines?: Engines,
+  engines?: Runtime,
 ) {
   const app = new Hono();
   const handler = new RPCHandler(

@@ -83,9 +83,8 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
         attachmentTurn = id;
       }
     } else if (
-      !message.pending &&
-      !message.stopped &&
-      message.stopReason !== "error"
+      message.takeover ||
+      (!message.pending && !message.stopped && message.stopReason !== "error")
     ) {
       const content = message.content.filter(
         (part) =>

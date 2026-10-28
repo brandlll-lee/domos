@@ -1,188 +1,178 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
-import { createModels } from "@earendil-works/pi-ai/models";
-import { fauxProvider } from "@earendil-works/pi-ai/providers/faux";
-import { createRegistry, defineExtension } from "@earendil-works/pi-durable";
-import { expect, onTestFinished, test, vi } from "vitest";
+import {
+  fauxAssistantMessage,
+  fauxToolCall,
+} from "@earendil-works/pi-ai/providers/faux";
+import { expect, test, vi } from "vitest";
 import type { Computers } from "../src/computer/catalog.ts";
+import { ComputerRequests } from "../src/computer/runtime.ts";
 import { takeoverTool } from "../src/computer/takeover.ts";
-import { EngineExecution, Engines, engineTask } from "../src/harness/index.ts";
-import { engineProvider } from "../src/harness/providers/index.ts";
-import { EngineDoc } from "../src/harness/state.ts";
-import { engineIds, type ProductResult } from "../src/harness/types.ts";
-import { openAgent } from "../src/open-agent.ts";
-import { ProtocolProcess } from "./fixtures/engine-process.ts";
+import type { ProductResult } from "../src/harness/types.ts";
+import { runtimeFixture } from "./fixtures/runtime.ts";
 
-test.each([
-  ...engineIds.map((provider) => ({ provider, ending: "complete" })),
-  { provider: "pi" as const, ending: "stop" },
-])(
-  "$provider holds a durable takeover card through $ending",
-  async ({ provider, ending }) => {
-    const directory = await mkdtemp(join(tmpdir(), "domos-takeover-state-"));
-    const models = createModels();
-    models.setProvider(fauxProvider().provider);
-    let invoke!: (
-      id: string,
-      name: string,
-      args: Record<string, unknown>,
-      signal: AbortSignal,
-    ) => Promise<ProductResult>;
-    let taken = false;
-    let revision = 0;
-    const drain = Promise.withResolvers<void>();
-    const completed = Promise.withResolvers<void>();
-    const finishing = vi.fn(async () => {
-      if (!taken) throw new Error("take first");
-      await drain.promise;
-      taken = false;
-    });
-    const computer = {
-      preflight: async () => {},
-      computerId: async () => "pc",
-      binding: async () => ({ computerId: "pc", revision }),
-      serviceTarget: async () => ({
-        enabled: { browser: true, desktop: true },
-        target: {
-          services: {
-            call: async () => ({
-              structuredContent: {
-                response: { data: { url: "https://fixture.test/requested" } },
-              },
-            }),
+function computerFixture() {
+  const binding = { computerId: "bound", revision: 1 };
+  const finishRequest = vi.fn(async () => {});
+  const takeRequest = vi.fn(async () => ({ control: "user" }));
+  const result: ProductResult = {
+    content: [{ type: "text", text: "Observed result" }],
+    structuredContent: { strict: true },
+  };
+  const invoke = vi.fn<Computers["tools"]["invoke"]>(
+    async (_botId, name, args, _owner, signal, _ctx, approve) => {
+      if (!(await approve?.({ name, args }, signal)))
+        return { content: [{ type: "text", text: "Rejected" }], isError: true };
+      return result;
+    },
+  );
+  const computers = {
+    initialize: async () => {},
+    attach: async () => {},
+    preflight: async () => {},
+    binding: async () => binding,
+    serviceTarget: async () => ({
+      enabled: { browser: true, desktop: true },
+      target: {
+        services: {
+          call: async () => ({
+            content: [],
+            structuredContent: {
+              response: { data: { url: "https://example.com" } },
+            },
+          }),
+        },
+      },
+    }),
+    views: { capture: async () => undefined, takeRequest, finishRequest },
+    tools: {
+      catalog: async () => [
+        takeoverTool,
+        {
+          name: "desktop_run_steps",
+          description: "Mutate bound computer",
+          inputSchema: { type: "object", properties: {} },
+          outputSchema: {
+            type: "object",
+            properties: { strict: { type: "boolean" } },
+            additionalProperties: false,
           },
         },
-      }),
-      tools: { catalog: async () => [takeoverTool], finish: () => {} },
-      views: {
-        capture: async () => ({
-          type: "image",
-          mimeType: "image/png",
-          data: "eA==",
+      ],
+      finish: vi.fn(),
+      invoke,
+    },
+  } as unknown as Computers;
+  return { computers, binding, invoke, finishRequest, takeRequest };
+}
+
+test.each(["complete", "stop"])(
+  "takeover holds its request until %s and retains a final card",
+  async (ending) => {
+    const fixture = computerFixture();
+    const runtime = await runtimeFixture(fixture.computers);
+    runtime.faux.setResponses([
+      fauxAssistantMessage(
+        fauxToolCall("computer_request_takeover", {
+          service: "browser",
+          reason: "Please take over",
         }),
-        takeRequest: async () => {
-          taken = true;
-          return { controlling: true };
-        },
-        finishRequest: finishing,
-      },
-      process: async (
-        _id: number,
-        _tools: unknown,
-        callback: typeof invoke,
-      ) => {
-        invoke = callback;
-        return new ProtocolProcess();
-      },
-    } as unknown as Computers;
-    const execution = new EngineExecution(computer);
-    const registry = createRegistry();
-    registry.install(
-      defineExtension({
-        name: "domos-engines",
-        tasks: [engineTask(execution)],
-      }),
-    );
-    const opened = vi
-      .spyOn(engineProvider(provider), "open")
-      .mockImplementation(async (options) => ({
-        id: provider,
-        prompt: async () => {
-          await options.emit({ type: "accepted", id: "turn" });
-          const result = await invoke(
-            "handoff",
-            takeoverTool.name,
-            { service: "browser", reason: "请完成登录" },
-            new AbortController().signal,
-          );
-          expect(result.isError).toBe(ending === "stop");
-          await options.emit({
-            type: "message",
-            id: "answer",
-            text: "Observed fresh state",
-          });
-          completed.resolve();
-        },
-        answer: async () => {},
-        interrupt: async () => {},
-        models: async () => [],
-      }));
-    const runtime = await openAgent(
-      join(directory, "data.sqlite"),
-      { registry, models },
-      {},
-      context,
-    );
-    onTestFinished(async () => {
-      drain.resolve();
-      await execution.stop(runtime.conversation.id);
-      await runtime.harness.close(context);
-      opened.mockRestore();
-      await rm(directory, { recursive: true, force: true });
-    });
-    const engines = new Engines(runtime.harness, execution);
-    const botId = runtime.conversation.id;
-    await runtime.harness.commit(async (tx) => {
-      (await tx.doc(EngineDoc, botId)).config = { provider, model: null };
-    }, context);
-    await engines.submit(
-      botId,
-      { text: "需要我接管", requestId: crypto.randomUUID() },
-      context,
-    );
-    const state = () => runtime.harness.snapshot(EngineDoc, botId, context);
-    await expect.poll(async () => (await state())?.approvals.length).toBe(1);
-    const id = (await state())?.approvals[0]?.id;
-    if (!id) throw new Error("Request required");
-    expect(
-      (await state())?.drafts.find((message) => message.takeover)?.takeover
-        ?.state,
-    ).toBe("waiting");
-    expect(
-      (await state())?.drafts.find((message) => message.takeover)?.takeover
-        ?.url,
-    ).toBe("https://fixture.test/requested");
-    await expect(
-      invoke(
-        "duplicate",
-        takeoverTool.name,
-        { service: "browser", reason: "Another request" },
-        new AbortController().signal,
+        { stopReason: "toolUse" },
       ),
-    ).rejects.toThrow("等待用户");
-    if (ending === "stop") {
-      await engines.stop(botId, context);
-      await expect.poll(async () => (await state())?.activeId).toBe(null);
-      const entries = await runtime.conversation.viewState(context);
-      expect(JSON.stringify(entries.value)).toContain('"state":"expired"');
-      expect(JSON.stringify(entries.value)).not.toContain('"state":"done"');
-      return;
+      fauxAssistantMessage("Continued"),
+    ]);
+    const id = runtime.conversation.id;
+    const submission = await runtime.engines.submit(
+      id,
+      { text: "Work", requestId: crypto.randomUUID() },
+      context,
+    );
+    const approval = async () =>
+      (await runtime.harness.snapshot(ComputerRequests, id, context))
+        ?.approvals[0];
+    await expect.poll(approval).toMatchObject({
+      takeover: { state: "waiting", url: "https://example.com" },
+    });
+    const request = await approval();
+    if (!request) throw new Error("Request required");
+    const view = crypto.randomUUID();
+    if (ending === "complete") {
+      await runtime.engines.takeRequest(id, request.id, view, context);
+      expect(fixture.takeRequest).toHaveBeenCalledWith(
+        id,
+        view,
+        request.id,
+        "browser",
+        "bound",
+        context,
+      );
+      await runtime.engines.answer(id, request.id, { allow: true }, context);
+      expect((await submission.wait(context)).status).toBe("done");
+      expect(fixture.finishRequest).toHaveBeenCalledOnce();
+    } else {
+      await runtime.engines.stop(id, context);
+      expect((await submission.wait(context)).status).toBe("unanswered");
+      expect(fixture.finishRequest).not.toHaveBeenCalled();
     }
-    revision++;
-    await expect(
-      engines.takeRequest(botId, id, crypto.randomUUID(), context),
-    ).rejects.toThrow("配置已改变");
-    revision--;
-    await expect(
-      engines.answer(botId, id, { allow: true }, context),
-    ).rejects.toThrow("take first");
-    await engines.takeRequest(botId, id, crypto.randomUUID(), context);
-    const answer = engines.answer(botId, id, { allow: true }, context);
-    await expect.poll(() => finishing.mock.calls.length).toBe(2);
     expect(
-      (await state())?.drafts.find((message) => message.takeover)?.takeover
-        ?.state,
-    ).toBe("waiting");
-    drain.resolve();
-    await answer;
-    await completed.promise;
-    await expect.poll(async () => (await state())?.activeId).toBe(null);
-    const entries = await runtime.conversation.viewState(context);
-    expect(JSON.stringify(entries.value)).toContain('"state":"done"');
+      (await runtime.engines.view(id, context)).messages.find(
+        (message) => message.takeover,
+      )?.takeover?.state,
+    ).toBe(ending === "complete" ? "done" : "expired");
+    expect((await runtime.engines.view(id, context)).approvals).toEqual([]);
     await expect(
-      engines.takeRequest(botId, id, crypto.randomUUID(), context),
+      runtime.engines.answer(id, request.id, { allow: true }, context),
     ).rejects.toThrow("失效");
+  },
+);
+
+test.each([true, false])(
+  "shared approval %s preserves native schemas and prevents rejected mutations",
+  async (allow) => {
+    const fixture = computerFixture();
+    const runtime = await runtimeFixture(fixture.computers);
+    runtime.faux.setResponses([
+      fauxAssistantMessage(fauxToolCall("desktop_run_steps", {}), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("Finished"),
+    ]);
+    const id = runtime.conversation.id;
+    const submission = await runtime.engines.submit(
+      id,
+      { text: "Work", requestId: crypto.randomUUID() },
+      context,
+    );
+    const approvals = async () =>
+      (await runtime.engines.view(id, context)).approvals ?? [];
+    await expect.poll(approvals).toHaveLength(1);
+    const request = (await approvals())[0];
+    if (!request) throw new Error("Approval required");
+    const other = await runtime.bots.create(
+      { name: "Other", requestId: crypto.randomUUID() },
+      context,
+    );
+    await expect(
+      runtime.engines.answer(other.id, request.id, { allow }, context),
+    ).rejects.toThrow("失效");
+    await runtime.engines.answer(id, request.id, { allow }, context);
+    expect((await submission.wait(context)).status).toBe("done");
+    const result = (await runtime.conversation.context(context)).messages.find(
+      (message) => message.role === "toolResult",
+    );
+    expect(result).toMatchObject({ role: "toolResult", isError: !allow });
+    if (result?.role === "toolResult" && allow)
+      expect(result.details).toEqual({
+        content: [{ type: "text", text: "Observed result" }],
+        structuredContent: { strict: true },
+      });
+    expect(fixture.invoke).toHaveBeenCalledWith(
+      id,
+      "desktop_run_steps",
+      {},
+      `computer:${id}`,
+      expect.any(AbortSignal),
+      expect.anything(),
+      expect.any(Function),
+    );
   },
 );

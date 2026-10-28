@@ -1,64 +1,37 @@
 # Harness context
 
-## Ownership and delivery
+## Ownership and admission
 
-Domos stores each Bot's chat history. A Harness owns its native session. A native session is scoped by work computer, Harness, account source, and account identity. Model changes reuse a compatible session. Switching A → B → A restores A's session and sends the newer history.
+Pi Durable 1.4.0 owns the model context and execution loop. Domos stores the complete transcript. Chat, additional input, and routines use Conversation.submit. Stable request IDs deduplicate retries. The native inbox controls steering and follow-up input.
 
-Each session stores a `through` entry ID. It records the point reached by delivery, not a copy of all text in the native context. History handoffs can contain excerpts. Native compaction can also change the retained context.
+GenerationTask and ToolTask own cancellation and recovery. Computer mutations are sequential tools. They do not declare replay safety. Pending approvals expire on restart. An uncertain action needs a fresh observation before another mutation.
 
-A new session starts with `through: null`. Creating a session does not confirm receipt of a prompt. A native checkpoint with `ready: false` does not advance the cursor. Confirmed prompt acceptance advances it to the submitted input. Successful completion advances it to the stored answer.
+## History and migration
 
-A rejected prompt or a cancellation before dispatch leaves the history pending. The next explicit request can carry it after a service restart. A failure after acceptance keeps the confirmed input cursor. The next request includes newer stored errors and results. Pi session selection stops when its native response reports `cancelled: true`.
+Before the upstream SQLite schema migration, openStorage creates a consistent .v1-backup. The migration retains messages, attachments, and memories. It settles old tasks and preserves partial replies as stopped messages. It imports bounded recent history as quoted context once per Bot. Existing Durable conversations retain their context.
 
-Restart recovery checks the existing native operation. It does not send an uncertain operation again. A later explicit request can include that operation as quoted history. The prompt requires result verification before another action.
+The handoff scans up to 64 entries. Each text excerpt has a 4000-byte limit. The serialized packet has a 16000-byte limit. JSON escaping and metadata count toward that limit. UTF-8 characters stay intact. Historical images and private reasoning do not enter the handoff.
 
-## Stored history and reads
+The conversation_read tool reads stored history:
 
-SQLite document replay reads at most 32 revisions per query. The pinned storage patch preserves revision order, historical bounds, version checks, and the read transaction. It changes neither the database schema nor retained history. Keep the replay regression when updating the durable runtime. The package patch follows the [pnpm patch workflow](https://pnpm.io/cli/patch).
+- {} reads a recent page. Use its from cursor as before for older entries.
+- { "entryId": 123, "offset": 0 } reads a complete record in chunks. Follow nextOffset until null. Offsets count UTF-8 bytes and must align with a character boundary.
 
-History includes user and assistant text, selected material snapshots, tool arguments, linked tool results, errors, stop status, and file references. It also includes messages stored by the embedded Harness. File references retain their work computer identity. Historical images and private reasoning are not replayed as prompt content.
+Each record read is bound to the current Bot. Text chunks have a 4000-byte limit. Mixed cursor modes and invalid offsets fail. File references retain their work computer identity.
 
-Automatic handoff scans up to 64 stored entries. It selects recent messages within the byte budget. Each message excerpt has a 4000-byte text limit. The complete serialized packet has a 16000-byte limit. JSON escaping and packet metadata count toward that limit. UTF-8 characters stay intact. `excerpt` marks clipped content. An empty page of internal entries retains a cursor for older reads.
+## Compaction and display
 
-The shared `conversation_read` tool provides two reads:
+Durable owns automatic and manual compaction. Domos reports an estimate from the active native context and the configured model's context window. The estimate is not an exact provider tokenizer.
 
-- `{}` reads recent history. Pass the returned `from` as `before` to read older entries. This cursor also works for empty pages that contain internal entries.
-- `{ "entryId": 123, "offset": 0 }` reads one stored record. Follow `nextOffset` until it is `null`. Concatenate `text` chunks, then parse the result as JSON. Offsets count UTF-8 bytes in that serialized record. They must be character boundaries.
+The UI reads raw stored entries. Compaction summaries and migration handoffs stay out of displayed messages. Compaction changes model context only. Full records remain available through conversation_read.
 
-Record reads include the complete stored projection. They preserve long message tails and material snapshots. Each chunk carries at most 4000 bytes of text. Its response envelope remains below 16000 bytes. Records must belong to the current Bot. Invalid offsets and mixed cursor modes fail before a response is returned. Data already discarded before storage cannot be recovered by this tool.
+The SQLite pagination patch reads 32 document revisions per query. It preserves order, historical bounds, version checks, and the read transaction. Recheck the patch on dependency upgrades.
 
-## Target budget
+## Verification
 
-Execution reads the latest context state after opening the target session. It uses a reading only when its Harness, native session, and configured model match. The configured model identifies aliases; the reading can retain the native model's full name. Old readings without this field require a matching model name.
+harness-context.test.ts checks byte budgets, UTF-8 chunks, complete record reads, and Bot isolation. harness-recovery.test.ts checks migration, memory retention, expired approvals, submission deduplication, and full display history after compaction and restart. Lifecycle and takeover tests check the native loop and shared computer control. These tests do not prove paid-provider recall or native desktop input on every OS.
 
-Pi refreshes context during session opening. It uses `get_session_stats.contextUsage`, with the selected model's `contextWindow` as the window fallback. Other adapters use their existing native context events. A reading from the previous model cannot provide the new model's budget.
+## Sources
 
-For a known window, shared execution subtracts:
-
-- Reported context tokens. A `last-input` reading covers the previous input rather than the whole retained session. If the count is unknown for an existing session, the plan reserves half the window.
-- An output planning reserve of one quarter of the window, capped at 8192 tokens.
-- UTF-8 bytes for system instructions, the current request, and serialized tool definitions.
-- The image-token estimate from the installed Pi AI library and a 1024-token protocol reserve.
-- The handoff and current-request wrappers.
-
-The remaining space limits the serialized history packet. Required input that exceeds the plan fails before dispatch. A history packet that cannot fit also fails. Stored chat records remain available.
-
-This is an admission estimate. It is not an exact native tokenizer or an output limit setting. Text uses a conservative byte count. Images use the existing library estimate, so larger Base64 transport data does not itself consume more planned context tokens. Image costs, native system prompts, retained outputs, and native tools vary by engine. Native execution still owns final admission and compaction.
-
-When the target does not expose a matching window, Domos caps the history packet at 16000 bytes. It does not infer a window from the model name or use the previous model's window. This path cannot guarantee that the entire native request fits. Native errors remain visible.
-
-## Verification boundary
-
-The sanitized cases in `packages/agent/test/fixtures/harness-context.json` record the original failures. `harness-context.test.ts` runs the shared execution and storage regressions. It covers failed and cancelled first handoffs across restart, complete record reads, Bot isolation, target budget changes, JSON escaping, UTF-8, and A → B → A. Four Harness variants exercise the shared budget path with controlled native readings.
-
-`harness-recovery.test.ts` checks completed and uncertain operations across restart. The protocol and feature suites check the adapter frames, including Pi cancellation and context refresh. CI runs the context and recovery suites as a separate gate on Windows, Linux, and macOS. The remaining tests run once in the application gate.
-
-These checks do not prove a live model's recall, native context fit, task success rate, or cross-platform desktop acceptance. Paid-provider validation must use the installed engine versions and a controlled Bot.
-
-## Protocol sources
-
-- [Pi 1.2.0 RPC commands](https://github.com/earendil-works/pi/blob/v1.2.0/packages/coding-agent/docs/rpc-commands.md): prompt acceptance, session cancellation, session statistics, and model objects.
-- [Current Pi RPC commands](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/rpc-commands.md): current upstream contract.
-- [Pi AI 1.2.0 context estimates](https://github.com/earendil-works/pi/blob/v1.2.0/packages/ai/src/utils/estimate.ts): the shared image-token estimate.
-- [Codex App Server](https://developers.openai.com/codex/app-server/): native thread and turn recovery.
-- [ACP session setup](https://agentclientprotocol.com/protocol/v1/session-setup): session loading and history replay.
+- [Pi Durable 1.4.0](https://github.com/earendil-works/pi/tree/v1.4.0/packages/durable)
+- [Pi AI 1.4.0](https://github.com/earendil-works/pi/tree/v1.4.0/packages/ai)

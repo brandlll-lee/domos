@@ -1,13 +1,10 @@
-import type { EngineId, EngineModel } from "@domos/agent/harness/types";
 import { Button, Switch } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
 import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { client } from "../../client.ts";
+import { useState } from "react";
 import { EngineMark } from "../bots/engine-mark.tsx";
 import { useModels } from "../models/use-models.ts";
 import { useVisibility } from "../models/use-visibility.ts";
-import { userError } from "../user-error.ts";
 import { useConnectionContext } from "./use-connection-context.ts";
 
 export function ModelSettings({
@@ -17,82 +14,11 @@ export function ModelSettings({
   botId?: number;
   admin: boolean;
 }) {
-  const { target, error } = useConnectionContext(botId);
+  const { error } = useConnectionContext(botId);
   const pi = useModels(true);
   const visibility = useVisibility(true);
-  const [catalog, setCatalog] = useState<
-    { id: EngineId; name: string; models: EngineModel[]; error?: string }[]
-  >([]);
-  const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
-  const [failure, setFailure] = useState("");
-  const request = useRef<AbortController | null>(null);
-  const load = useCallback(
-    async (refresh = false) => {
-      if (!target) return;
-      request.current?.abort();
-      const controller = new AbortController();
-      request.current = controller;
-      setLoading(true);
-      setFailure("");
-      try {
-        if (!refresh) {
-          const value = await client.engines.models(
-            { botId: target.id },
-            { signal: controller.signal },
-          );
-          if (!controller.signal.aborted) setCatalog(value);
-          return;
-        }
-        window.dispatchEvent(new Event("domos:models"));
-        const providers = await client.engines.catalog(undefined, {
-          signal: controller.signal,
-        });
-        const next: typeof catalog = [];
-        for (const provider of providers.filter((item) => item.id !== "pi")) {
-          if (controller.signal.aborted) return;
-          try {
-            const connection = await client.engines.inspect(
-              { botId: target.id, provider: provider.id, refresh: true },
-              { signal: controller.signal },
-            );
-            if (!controller.signal.aborted)
-              next.push({ ...provider, models: connection.models });
-          } catch (cause) {
-            if (!controller.signal.aborted)
-              next.push({
-                ...provider,
-                models: [],
-                error: userError(cause, "模型读取失败。"),
-              });
-          }
-        }
-        if (!controller.signal.aborted) {
-          setCatalog(next);
-          window.dispatchEvent(
-            new CustomEvent("domos:engines", { detail: "models" }),
-          );
-        }
-      } catch (cause) {
-        if (!controller.signal.aborted)
-          setFailure(userError(cause, "引擎目录读取失败。"));
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
-      }
-    },
-    [target],
-  );
-  useEffect(() => {
-    void load();
-    const refresh = (event: Event) => {
-      if ((event as CustomEvent).detail !== "models") void load();
-    };
-    window.addEventListener("domos:engines", refresh);
-    return () => {
-      request.current?.abort();
-      window.removeEventListener("domos:engines", refresh);
-    };
-  }, [load]);
+  const load = () => window.dispatchEvent(new Event("domos:models"));
   const groups = [
     {
       id: "pi" as const,
@@ -104,12 +30,11 @@ export function ModelSettings({
       })),
       error: pi.error,
     },
-    ...catalog,
   ];
   return (
     <div
       className="settings-sections model-catalog"
-      aria-busy={visibility.pending || loading}
+      aria-busy={visibility.pending}
     >
       <TextField
         label="搜索模型"
@@ -172,25 +97,15 @@ export function ModelSettings({
             </details>
           );
         })}
-      {!groups.some((harness) => harness.models.length) && !loading && (
+      {!groups.some((harness) => harness.models.length) && (
         <p className="detail-note">还没有模型目录。点击刷新模型。</p>
       )}
-      {loading ? (
-        <p role="status" className="detail-note">
-          正在读取工作电脑的模型…
-        </p>
-      ) : (
-        <Button
-          variant="secondary"
-          size="small"
-          onClick={() => void load(true)}
-        >
-          刷新模型
-        </Button>
-      )}
-      {(error || failure || visibility.error) && (
+      <Button variant="secondary" size="small" onClick={load}>
+        刷新模型
+      </Button>
+      {(error || pi.error || visibility.error) && (
         <p className="alert" role="alert">
-          {error || failure || visibility.error}
+          {error || pi.error || visibility.error}
         </p>
       )}
     </div>

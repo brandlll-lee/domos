@@ -1,17 +1,18 @@
 # Domos
 
 Domos provides persistent AI companions with memory, tools, and work computers.
-Users choose their models, Harness, and deployment: local, self-hosted, or cloud.
-Keep these choices independent. Support Pi, Codex, Claude Code, and OpenCode through shared product capabilities.
+Users choose their models and deployment: local, self-hosted, or cloud.
+Pi Durable 1.4.0 owns the Bot loop. Pi AI calls models. Domos owns product capabilities.
 
 ## Architecture and ownership
 
 - The client device, Domos service computer, and Bot work computer are separate roles. They can be on different computers.
-- Commands, files, native engine accounts, and desktop actions use the Bot's bound work computer. Do not assume that it is the client or service computer.
-- Domos owns Bot identity, chat history, memories, and task records. Each Harness owns its native execution session.
-- Native sessions are scoped by work computer, engine, and account context. Preserve chat history across engine changes. Reuse compatible sessions. Keep context handoffs within size budgets.
-- Advance a session's history cursor after confirmed prompt acceptance. Keep pre-dispatch checkpoints separate from acceptance. For Harness history, recovery, or budgeting changes, read [docs/harness-context.md](docs/harness-context.md).
-- Keep product rules in shared services. Harness adapters translate native protocols; they do not each implement their own computer workflow.
+- Commands, files, and desktop actions use the Bot's bound work computer. Do not assume that it is the client or service computer.
+- Domos owns Bot identity, full chat history, memories, credentials, and computer permissions.
+- Pi Durable owns input admission, generation, tool tasks, cancellation, recovery, and model context. Use its public extensions and hooks.
+- Send ordinary chat, additional input, and routines through the same Durable conversation. Keep request IDs stable through retries.
+- Keep model context separate from displayed history. Read [docs/harness-context.md](docs/harness-context.md) before changing history, migration, or compaction.
+- Keep computer rules in shared services. Persist tool results. Do not replay mutations whose outcomes are uncertain.
 
 | Location | Responsibility |
 | --- | --- |
@@ -21,7 +22,8 @@ Keep these choices independent. Support Pi, Codex, Claude Code, and OpenCode thr
 | `apps/controller` | Authenticated control service for remote work sandboxes. |
 | `apps/cli` | Command-line entry points, hosting, and eval commands. |
 | `packages/agent` | Bots, durable tasks, chats, memory, files, and work environments. |
-| `packages/agent/src/harness` | Engine execution, session recovery, native protocol adapters, and work-process services. |
+| `packages/agent/src/runtime` | Durable integration, storage migration, and chat projection. |
+| `packages/agent/src/harness` | Work-process services, computer protocols, bounded history reads, and usage records. |
 | `packages/agent/src/computer` | Computer bindings, shared tools, control ownership, viewers, and optional Jev assistance. |
 | `packages/hosting` | Hosting setup, credentials, device sessions, installation, and service lifecycle. |
 | `packages/ui` | Shared controls, theme tokens, avatars, and computer-effect rendering. |

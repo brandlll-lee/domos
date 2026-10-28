@@ -456,44 +456,43 @@ test("Bot model selection saves choices and fits both themes", async ({
   page,
 }, info) => {
   await page.goto(url);
-  const trigger = page.getByRole("button", {
-    name: "选择引擎与模型",
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  const trigger = page.getByRole("combobox", {
+    name: "模型",
     exact: true,
   });
   await trigger.click();
-  const selector = page.getByRole("dialog", {
-    name: "任务引擎与模型",
-    exact: true,
-  });
-  const search = selector.getByRole("searchbox", {
-    name: "搜索模型",
+  const selector = page.locator(".picker-search-popup");
+  const search = selector.getByRole("combobox", {
+    name: "搜索模型…",
     exact: true,
   });
   await expect(selector.getByRole("alert")).toHaveCount(0);
   await search.fill("模型二");
-  const choice = selector.getByRole("button", { name: /测试模型二/ });
+  const choice = selector.getByRole("option", { name: /测试模型二/ });
   await expect(choice).toBeVisible();
   await expect(
-    selector.getByRole("button", { name: /测试模型一/ }),
+    selector.getByRole("option", { name: /测试模型一/ }),
   ).toHaveCount(0);
   await page.route("**/rpc/models/select", (route) => route.abort(), {
     times: 1,
   });
   await choice.click();
   await expect(selector).toBeHidden();
+  await expect(page.getByRole("alert")).toBeVisible();
   await trigger.click();
-  await expect(selector.getByRole("alert")).toBeVisible();
   await choice.click();
   await expect(selector).toBeHidden();
   await expect(trigger).toContainText("测试模型二");
   await page.reload();
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   await expect(trigger).toContainText("测试模型二");
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
     for (const width of [1360, 390]) {
       await page.setViewportSize({ width, height: 600 });
       await trigger.click();
-      await expect(choice).toHaveAttribute("aria-pressed", "true");
+      await expect(choice).toHaveAttribute("aria-selected", "true");
       const box = await selector.boundingBox();
       expect(box?.x).toBeGreaterThanOrEqual(0);
       expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(width);
@@ -570,7 +569,9 @@ test("computer viewing uses separate tabs and releases control when closed", asy
   ).toBeVisible();
   expect((await identity.boundingBox())?.height).toBe(first?.height);
   await details.getByRole("tab", { name: "Bot", exact: true }).click();
-  await expect(details.locator(".model-selector-trigger")).toBeVisible();
+  await expect(
+    details.getByRole("combobox", { name: "模型", exact: true }),
+  ).toBeVisible();
   await page.setViewportSize({ width: 1360, height: 900 });
   await details.getByRole("tab", { name: "Browser", exact: true }).click();
   await expect(
@@ -1377,19 +1378,14 @@ test("contact rows keep their density and searchable previews across selections"
     .fill("研究助手");
   await create.getByRole("button", { name: "创建", exact: true }).click();
   await create.getByRole("button", { name: "授权并继续", exact: true }).click();
-  await create.getByRole("button", { name: "连接模型", exact: true }).click();
-  const modelDialog = page.getByRole("dialog", {
-    name: "连接模型",
-    exact: true,
-  });
+  const modelDialog = create;
   await modelDialog
     .getByRole("combobox", { name: "模型", exact: true })
     .click();
   await page
     .getByRole("option", { name: "faux · 测试模型一", exact: true })
     .click();
-  await expect(modelDialog).toBeHidden();
-  await create.getByRole("button", { name: "开始使用", exact: true }).click();
+  await create.getByRole("button", { name: "开始", exact: true }).click();
   await expect(create).toBeHidden();
   await expect(
     page.getByRole("button", { name: "Bot详情", exact: true }),
@@ -1413,15 +1409,13 @@ test("contact rows keep their density and searchable previews across selections"
     .fill(longName);
   await create.getByRole("button", { name: "创建", exact: true }).click();
   await create.getByRole("button", { name: "授权并继续", exact: true }).click();
-  await create.getByRole("button", { name: "连接模型", exact: true }).click();
   await modelDialog
     .getByRole("combobox", { name: "模型", exact: true })
     .click();
   await page
     .getByRole("option", { name: "faux · 测试模型一", exact: true })
     .click();
-  await expect(modelDialog).toBeHidden();
-  await create.getByRole("button", { name: "开始使用", exact: true }).click();
+  await create.getByRole("button", { name: "开始", exact: true }).click();
   await expect(create).toBeHidden();
   await expect(
     page.getByRole("button", { name: "Bot详情", exact: true }),
@@ -1528,8 +1522,8 @@ test("control geometry and interaction states stay consistent", async ({
   await expect(save).toHaveCSS("background-color", color);
   await details.getByRole("button", { name: "还原", exact: true }).click();
   await details.getByRole("button", { name: "返回", exact: true }).click();
-  const model = details.getByRole("button", {
-    name: "选择引擎与模型",
+  const model = details.getByRole("combobox", {
+    name: "模型",
     exact: true,
   });
   expect((await model.boundingBox())?.height).toBeGreaterThanOrEqual(32);

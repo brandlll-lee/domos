@@ -18,6 +18,10 @@ const excerpt = (text: string) =>
   Array.from(text.trim()).slice(0, previewLength).join("");
 
 function entryPreview(entry: EntryRecord) {
+  if (
+    ["domos.context-history", "pi.compaction", "pi.reset"].includes(entry.kind)
+  )
+    return;
   if (entry.kind === EngineMessage) {
     const message = entry.data as unknown as ChatMessage;
     if (message.pending || message.stopped || message.stopReason === "error")

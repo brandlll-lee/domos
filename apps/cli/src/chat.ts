@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { Engines } from "@domos/agent/harness";
 import { messageText } from "@domos/agent/messages";
+import type { Runtime } from "@domos/agent/runtime";
 import { chatView } from "@domos/agent/view";
 import {
   BACKGROUND_CONTEXT,
@@ -10,17 +10,14 @@ import type {
   Conversation,
   ConversationView,
 } from "@earendil-works/pi-durable";
-import { engineReply } from "./engine-chat.ts";
 
 export async function reply(
   conversation: Conversation,
   input: string,
   context: Context,
   write: (text: string) => void,
-  engines?: Engines,
+  engines?: Runtime,
 ) {
-  if (engines)
-    return engineReply(engines, conversation.id, input, context, write);
   const view = await conversation.viewState(context);
   const previous = new Set(
     chatView(view.value).messages.map((message) => message.id),
@@ -42,10 +39,16 @@ export async function reply(
   };
   view.subscribe(render);
   try {
-    const submission = await conversation.submit(
-      { type: "input", content: input, requestId: randomUUID() },
-      BACKGROUND_CONTEXT,
-    );
+    const submission = engines
+      ? await engines.submit(
+          conversation.id,
+          { text: input, requestId: randomUUID() },
+          BACKGROUND_CONTEXT,
+        )
+      : await conversation.submit(
+          { type: "input", content: input, requestId: randomUUID() },
+          BACKGROUND_CONTEXT,
+        );
     const result = await submission.wait(context);
     render(view.value);
     return result.status === "done";

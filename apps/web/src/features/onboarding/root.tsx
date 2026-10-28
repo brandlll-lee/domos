@@ -2,7 +2,7 @@ import { Button } from "@domos/ui/controls";
 import { SetupPage } from "@domos/ui/setup";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { client } from "../../client.ts";
-import { EnginePanel } from "../bots/details/engine.tsx";
+import { ModelSetup } from "../bots/details/model.tsx";
 import { ComputerLocation } from "../computer/location.tsx";
 import type { SettingsAccess } from "../settings/sections.tsx";
 import { Titlebar } from "../shell/titlebar.tsx";
@@ -14,7 +14,6 @@ type Setup = {
   canIsolate: boolean;
   deployment: "native" | "container";
   prepared: boolean;
-  existing: boolean;
 };
 
 export function Onboarding({
@@ -31,11 +30,9 @@ export function Onboarding({
     const bots = await client.bots.list();
     const bot = bots[0];
     if (!bot) throw new Error("未找到初始 Bot。请重新连接 Domos。");
-    const [chat, binding, location, models, engine] = await Promise.all([
-      client.get({ botId: bot.id }),
+    const [binding, location, engine] = await Promise.all([
       client.computer.get({ botId: bot.id }),
       client.computer.setup(),
-      client.models.list(),
       client.engines.get({ botId: bot.id }),
     ]);
     const next: Setup = {
@@ -45,24 +42,13 @@ export function Onboarding({
       canIsolate: location.canIsolate,
       deployment: location.deployment,
       prepared: engine.prepared,
-      existing:
-        !chat.engine &&
-        Boolean(
-          chat.model &&
-            models.some(
-              (item) =>
-                item.provider === chat.model?.provider &&
-                item.modelId === chat.model.modelId,
-            ) &&
-            binding.computer?.authorized,
-        ),
     };
     setSetup(next);
     return next;
   }, []);
   const initialize = useCallback(async () => {
     const next = await refresh();
-    setFinished(next.existing || (next.prepared && next.computer));
+    setFinished(next.prepared && next.computer);
     setStep(next.computer ? 1 : 0);
   }, [refresh]);
   useEffect(() => {
@@ -73,8 +59,7 @@ export function Onboarding({
   const advance = () =>
     void refresh()
       .then((next) => {
-        if (next.existing || (next.prepared && next.computer))
-          setFinished(true);
+        if (next.prepared && next.computer) setFinished(true);
         else setStep(1);
       })
       .catch((cause) => setError(cause.message));
@@ -88,14 +73,14 @@ export function Onboarding({
             ? "正在读取配置…"
             : computer
               ? "Bot 在哪里工作？"
-              : "由谁处理任务？"
+              : "选择对话模型"
         }
         description={
           step === undefined
             ? undefined
             : computer
               ? "选择一台工作电脑。之后也可以更换。"
-              : "选择引擎并连接账号，开始第一项工作。"
+              : "连接模型账号，开始第一项工作。"
         }
         progress={
           step !== undefined ? { current: step + 1, total: 2 } : undefined
@@ -115,7 +100,7 @@ export function Onboarding({
                 />
               </div>
               {step === 1 && (
-                <EnginePanel
+                <ModelSetup
                   botId={setup.botId}
                   canManage={admin}
                   onBack={() => setStep(0)}

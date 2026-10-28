@@ -140,7 +140,7 @@ async function expectModel(
 ) {
   const details = await openDetails(page);
   await chooseDetail(details, "运行");
-  const picker = details.locator(".model-selector-trigger");
+  const picker = details.getByRole("combobox", { name: "模型", exact: true });
   await expect(picker).toContainText(text);
   await details.getByRole("button", { name: "关闭", exact: true }).click();
 }
@@ -152,8 +152,10 @@ async function expectTextContrast(page: import("@playwright/test").Page) {
     const context = canvas.getContext("2d");
     if (!context) throw new Error("Canvas required for color measurement");
     const luminance = (color: string) => {
-      context.fillStyle = color;
-      context.fillRect(0, 0, 1, 1);
+      if (color) {
+        context.fillStyle = color;
+        context.fillRect(0, 0, 1, 1);
+      }
       const channels = [...context.getImageData(0, 0, 1, 1).data]
         .slice(0, 3)
         .map((value) => {
@@ -170,20 +172,25 @@ async function expectTextContrast(page: import("@playwright/test").Page) {
         ".chat-preview span, .picker-trigger, .message-bubble, .picker-item, .message-composer textarea",
       ),
     ].map((element) => {
-      let background: Element | null = element;
-      while (
-        background &&
-        getComputedStyle(background).backgroundColor === "rgba(0, 0, 0, 0)"
+      const parents: Element[] = [];
+      for (
+        let parent: Element | null = element;
+        parent;
+        parent = parent.parentElement
       )
-        background = background.parentElement;
+        parents.unshift(parent);
+      context.clearRect(0, 0, 1, 1);
+      for (const parent of parents) {
+        context.fillStyle = getComputedStyle(parent).backgroundColor;
+        context.fillRect(0, 0, 1, 1);
+      }
+      const surface = luminance("");
       const foreground = luminance(
         getComputedStyle(
           element,
           element.matches("textarea") ? "::placeholder" : null,
         ).color,
       );
-      if (!background) throw new Error("Missing opaque background");
-      const surface = luminance(getComputedStyle(background).backgroundColor);
       return (
         (Math.max(foreground, surface) + 0.05) /
         (Math.min(foreground, surface) + 0.05)
@@ -205,477 +212,42 @@ test.afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
-test("engine notices use dismissible notifications above the workspace", async ({
+test("model selection waits for persistence and restores a failed save", async ({
   page,
-}, testInfo) => {
-  await stop();
-  await start(0, true);
-  await page.goto(url);
-  await page.getByLabel("消息", { exact: true }).fill("Work");
-  await page.getByRole("button", { name: "发送", exact: true }).click();
-  const notifications = page.getByRole("region", {
-    name: "引擎通知",
-    exact: true,
-  });
-  await expect(notifications).toBeVisible();
-  await expect(
-    notifications.getByText("Fixture MCP connection needs attention", {
-      exact: true,
-    }),
-  ).toHaveCount(1);
-  await expect(
-    page.getByLabel("上下文状态", { exact: true }),
-  ).not.toContainText("Fixture MCP");
-  const bounds = await notifications.boundingBox();
-  expect(bounds?.x).toBeGreaterThan(800);
-  expect(bounds?.y).toBeLessThan(100);
-  for (const colorScheme of ["light", "dark"] as const) {
-    await page.emulateMedia({ colorScheme });
-    await page.screenshot({
-      path: testInfo.outputPath(`notifications-${colorScheme}.png`),
-      animations: "disabled",
-    });
-  }
-  await notifications
-    .getByRole("button", { name: "查看", exact: true })
-    .click();
-  const details = page.locator("#bot-details");
-  await expect(
-    details.getByRole("heading", { name: "任务引擎", exact: true }),
-  ).toBeVisible();
-  await notifications
-    .getByRole("button", { name: "查看", exact: true })
-    .click();
-  await expect(
-    details.getByRole("heading", { name: "任务引擎", exact: true }),
-  ).toBeVisible();
-  await notifications
-    .getByRole("button", { name: "关闭通知", exact: true })
-    .click();
-  await expect(notifications).not.toBeVisible();
-  await expect(
-    page.getByRole("region", { name: "Choose target", exact: true }),
-  ).toBeVisible();
-});
-
-test("model selection is ordered and restored after a failed save", async ({
-  page,
-}, testInfo) => {
-  await stop();
-  await start(0, true);
+}) => {
   const saving = Promise.withResolvers<void>();
   const requested = Promise.withResolvers<void>();
   let requests = 0;
-  let inspections = 0;
-  await page.route("**/rpc/engines/inspect", async (route) => {
-    inspections++;
-    await route.continue();
-  });
-  await page.route("**/rpc/engines/configure", async (route) => {
+  await page.route("**/rpc/models/select", async (route) => {
     requests++;
     if (requests === 1) {
       requested.resolve();
       await saving.promise;
-    }
-    if (requests === 3) await route.abort();
-    else await route.continue();
+      await route.continue();
+    } else await route.abort();
   });
   try {
     await page.goto(url);
     const details = await openDetails(page);
-    const sidebar = details.locator(".model-selector-trigger");
-    await sidebar.click();
-    await page.getByRole("button", { name: "测试模型二", exact: true }).click();
-    await requested.promise;
-    await expect(sidebar).toContainText("测试模型二");
-    await expect(page.locator(".composer-action button")).toBeDisabled();
-    await expect(page.locator(".model-selector-popup")).toHaveCount(0);
-    await sidebar.click();
-    await page.getByRole("button", { name: "测试模型一", exact: true }).click();
-    await expect(sidebar).toContainText("测试模型一");
-    expect(requests).toBe(1);
-    saving.resolve();
-    await expect.poll(() => requests).toBe(2);
-    const api = createORPCClient<RouterClient<AppRouter>>(
-      new RPCLink({ url: `${url}/rpc` }),
-    );
-    await expect
-      .poll(async () => (await api.engines.get({ botId: 1 })).config.model)
-      .toBe("faux/faux-1");
-    await expect(page.locator(".model-selector-popup")).toHaveCount(0);
-    await sidebar.click();
-    await page.getByRole("button", { name: "测试模型二", exact: true }).click();
-    await expect(details.getByRole("alert")).toBeVisible();
-    await expect(sidebar).toContainText("测试模型一");
-    expect(inspections).toBeLessThanOrEqual(3);
-    for (const colorScheme of ["light", "dark"] as const) {
-      await page.emulateMedia({ colorScheme });
-      for (const width of [1440, 768, 390]) {
-        await page.setViewportSize({ width, height: 900 });
-        await page.screenshot({
-          path: testInfo.outputPath(`settings-${colorScheme}-${width}.png`),
-          animations: "disabled",
-        });
-        expect(
-          await page.evaluate(() => document.documentElement.scrollWidth),
-        ).toBe(width);
-      }
-    }
-  } finally {
-    saving.resolve();
-  }
-});
-
-test("model menus use catalog effort without reading runtime controls", async ({
-  page,
-}, info) => {
-  await stop();
-  await start(0, true);
-  let requests = 0;
-  await page.route("**/rpc/engines/controls", async (route) => {
-    requests++;
-    await route.abort();
-  });
-  await page.goto(url);
-  await page.locator("#bot-details .model-selector-trigger").click();
-  const menu = page.getByRole("dialog", {
-    name: "任务引擎与模型",
-    exact: true,
-  });
-  await expect(menu.getByRole("alert")).toHaveCount(0);
-  for (const query of ["测试", "模型", ""]) {
-    await menu
-      .getByRole("searchbox", { name: "搜索模型", exact: true })
-      .fill(query);
-    await expect(
-      menu.getByRole("button", { name: "测试模型二", exact: true }),
-    ).toBeEnabled();
-  }
-  expect(requests).toBe(0);
-  const api = createORPCClient<RouterClient<AppRouter>>(
-    new RPCLink({ url: `${url}/rpc` }),
-  );
-  const before = (await api.engines.get({ botId: 1 })).config;
-  const source = menu.getByRole("radiogroup", {
-    name: "账号来源",
-    exact: true,
-  });
-  await source.getByRole("radio", { name: "电脑", exact: true }).click();
-  await expect(
-    menu.getByRole("button", { name: "Test model", exact: true }),
-  ).toBeVisible();
-  expect((await api.engines.get({ botId: 1 })).config).toEqual(before);
-  let fail = true;
-  await page.route("**/rpc/engines/configure", (route) =>
-    fail ? route.abort() : route.continue(),
-  );
-  await menu.getByRole("button", { name: "Test model", exact: true }).click();
-  await expect(menu.getByRole("alert")).toBeVisible();
-  expect((await api.engines.get({ botId: 1 })).config).toEqual(before);
-  fail = false;
-  await page.locator("#bot-details .model-selector-trigger").click();
-  await source.getByRole("radio", { name: "电脑", exact: true }).click();
-  await menu.getByRole("button", { name: "Test model", exact: true }).click();
-  await expect
-    .poll(
-      async () => (await api.engines.get({ botId: 1 })).config.accountSource,
-    )
-    .toBe("native");
-  await page.locator("#bot-details .model-selector-trigger").click();
-  await expect(
-    source.getByRole("radio", { name: "电脑", exact: true }),
-  ).toBeChecked();
-  const effort = menu.getByRole("radiogroup", {
-    name: "推理强度",
-    exact: true,
-  });
-  await effort.getByRole("radio", { name: "低", exact: true }).click();
-  await expect(
-    effort.getByRole("radio", { name: "低", exact: true }),
-  ).toBeEnabled();
-  await effort.getByRole("radio", { name: "低", exact: true }).focus();
-  await page.keyboard.press("ArrowRight");
-  await expect(
-    effort.getByRole("radio", { name: "中", exact: true }),
-  ).toBeChecked();
-  await expect
-    .poll(
-      async () =>
-        (await api.engines.get({ botId: 1 })).config.options?.thinkingLevel,
-    )
-    .toBe("medium");
-  await effort.getByRole("radio", { name: "默认", exact: true }).click();
-  await expect
-    .poll(
-      async () =>
-        (await api.engines.get({ botId: 1 })).config.options?.thinkingLevel,
-    )
-    .toBeUndefined();
-  for (const colorScheme of ["light", "dark"] as const) {
-    await page.emulateMedia({ colorScheme });
-    for (const width of [1440, 768, 390]) {
-      await page.setViewportSize({ width, height: 900 });
-      await expect(menu).toBeVisible();
-      expect(
-        await menu.evaluate((node) => node.scrollWidth <= node.clientWidth),
-      ).toBe(true);
-      await page.screenshot({
-        path: info.outputPath(`model-${colorScheme}-${width}.png`),
-      });
-    }
-  }
-});
-
-test("saved catalogs and effort stay usable during background discovery", async ({
-  page,
-}) => {
-  await stop();
-  await start(0, true);
-  let api = createORPCClient<RouterClient<AppRouter>>(
-    new RPCLink({ url: `${url}/rpc` }),
-  );
-  const profile = await api.engines.get({ botId: 1 });
-  await api.engines.configure({
-    botId: 1,
-    revision: profile.revision,
-    requestId: crypto.randomUUID(),
-    config: {
-      provider: "pi",
-      accountSource: "native",
-      model: "test-provider/test-model",
-    },
-  });
-  await api.engines.inspect({ botId: 1 });
-  await stop();
-  await start(0, true);
-  api = createORPCClient<RouterClient<AppRouter>>(
-    new RPCLink({ url: `${url}/rpc` }),
-  );
-  const gate = Promise.withResolvers<void>();
-  let controls = 0;
-  await page.route("**/rpc/engines/controls", async (route) => {
-    controls++;
-    await route.abort();
-  });
-  await page.route("**/rpc/engines/inspect", async (route) => {
-    await gate.promise;
-    await route.abort();
-  });
-  try {
-    await page.goto(url);
-    const header = page.locator("#bot-details .model-selector-trigger");
-    await expect(header).toHaveText("Pi · Test model");
-    await header.click();
-    await expect(
-      page.getByRole("button", { name: "Test model two", exact: true }),
-    ).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(header).toHaveText("Pi · Test model");
-    const details = await openDetails(page);
-    const reasoning = details.getByRole("combobox", {
-      name: "推理强度",
-      exact: true,
-    });
-    await reasoning.click();
-    await page.getByRole("option", { name: "high", exact: true }).click();
-    await expect
-      .poll(
-        async () =>
-          (await api.engines.get({ botId: 1 })).config.options?.thinkingLevel,
-      )
-      .toBe("high");
-    await header.click();
+    const picker = details.getByRole("combobox", { name: "模型", exact: true });
+    await picker.click();
     await page
-      .getByRole("button", { name: "Test model two", exact: true })
+      .getByRole("option", { name: "faux · 测试模型二", exact: true })
       .click();
-    await expect
-      .poll(async () => (await api.engines.get({ botId: 1 })).config.model)
-      .toBe("test-provider/test-model-2");
-    await reasoning.click();
-    await expect(
-      page.getByRole("option", { name: "high", exact: true }),
-    ).toBeVisible();
-    expect(controls).toBe(0);
+    await requested.promise;
+    await expect(details.getByRole("status")).toContainText("正在保存");
+    saving.resolve();
+    await expect(picker).toContainText("测试模型二");
+    await picker.click();
+    await page
+      .getByRole("option", { name: "faux · 测试模型一", exact: true })
+      .click();
+    await expect(details.getByRole("alert")).toBeVisible();
+    await expect(picker).toContainText("测试模型二");
+    expect(requests).toBe(2);
   } finally {
-    gate.resolve();
+    saving.resolve();
   }
-});
-
-test("changing native effort keeps the model catalog and connection", async ({
-  page,
-}) => {
-  await stop();
-  await start(0, true);
-  const api = createORPCClient<RouterClient<AppRouter>>(
-    new RPCLink({ url: `${url}/rpc` }),
-  );
-  const profile = await api.engines.get({ botId: 1 });
-  await api.engines.configure({
-    botId: 1,
-    revision: profile.revision,
-    requestId: crypto.randomUUID(),
-    config: {
-      provider: "pi",
-      accountSource: "native",
-      model: "test-provider/test-model",
-    },
-  });
-  await api.engines.inspect({ botId: 1 });
-  let inspections = 0;
-  await page.route("**/rpc/engines/inspect", async (route) => {
-    inspections++;
-    await route.continue();
-  });
-  await page.goto(url);
-  const picker = page.locator("#bot-details .model-selector-trigger");
-  await expect(picker).toBeEnabled();
-  await picker.click();
-  await expect(
-    page.getByRole("button", { name: "Test model", exact: true }),
-  ).toBeVisible();
-  await page.keyboard.press("Escape");
-  const details = await openDetails(page);
-  await chooseDetail(details, "连接与账号");
-  await details.getByRole("button", { name: "检查连接", exact: true }).click();
-  await expect(
-    details.getByText("已读取工作电脑的账号和模型。", { exact: true }),
-  ).toBeVisible();
-  await chooseDetail(details, "运行");
-  await picker.click();
-  await expect(
-    page.getByRole("button", { name: "Test model", exact: true }),
-  ).toBeVisible();
-  await page.keyboard.press("Escape");
-  await chooseDetail(details, "运行");
-  await details
-    .getByRole("combobox", { name: "推理强度", exact: true })
-    .click();
-  await page.getByRole("option", { name: "high", exact: true }).click();
-  await expect(
-    details.getByRole("combobox", { name: "推理强度", exact: true }),
-  ).toContainText("high");
-  const loaded = inspections;
-  await picker.click();
-  await expect(
-    page.getByRole("button", { name: "Test model", exact: true }),
-  ).toBeVisible();
-  expect(inspections).toBe(loaded);
-  await page.keyboard.press("Escape");
-  await expect(
-    details.getByRole("combobox", { name: "推理强度", exact: true }),
-  ).toContainText("high");
-  await picker.click();
-  await page
-    .getByRole("button", { name: "Test model two", exact: true })
-    .click();
-  await expect(details.locator(".model-selector-trigger")).toContainText(
-    "Test model two",
-  );
-  await expect(page.locator(".model-selector-popup")).toHaveCount(0);
-  await details.locator(".model-selector-trigger").click();
-  await expect(
-    page.getByRole("button", { name: "Test model", exact: true }),
-  ).toBeVisible();
-  expect(inspections).toBe(loaded);
-});
-
-test("native controls, interaction, compaction and Usage work in both themes", async ({
-  page,
-}, testInfo) => {
-  await stop();
-  await start(0, true);
-  const api = createORPCClient<RouterClient<AppRouter>>(
-    new RPCLink({ url: `${url}/rpc` }),
-  );
-  const profile = await api.engines.get({ botId: 1 });
-  await api.engines.configure({
-    botId: 1,
-    revision: profile.revision,
-    requestId: crypto.randomUUID(),
-    config: {
-      provider: "pi",
-      accountSource: "native",
-      model: "test-provider/test-model",
-    },
-  });
-  await api.engines.inspect({ botId: 1 });
-  await page.goto(url);
-  await page.getByLabel("消息", { exact: true }).fill("Work");
-  await page.getByRole("button", { name: "发送", exact: true }).click();
-  const approval = page.getByRole("region", {
-    name: "Choose target",
-    exact: true,
-  });
-  await expect(approval).toBeVisible();
-  await approval
-    .getByRole("combobox", { name: "Choose target", exact: true })
-    .click();
-  await page.getByRole("option", { name: "Preview", exact: true }).click();
-  await approval.getByRole("button", { name: "发送回答", exact: true }).click();
-  await expect(page.getByLabel("Domos 的回复")).toContainText(
-    "Complete Preview",
-  );
-  await page.getByRole("button", { name: "上下文窗口", exact: true }).click();
-  await expect(
-    page
-      .getByRole("dialog", { name: "上下文窗口", exact: true })
-      .getByRole("button", { name: "压缩上下文", exact: true }),
-  ).toBeEnabled();
-  await page.keyboard.press("Escape");
-  const details = await openDetails(page);
-  await chooseDetail(details, "高级设置");
-  await details
-    .getByRole("button", { name: "读取原生配置", exact: true })
-    .click();
-  await chooseDetail(details, "运行");
-  await details
-    .getByRole("combobox", { name: "推理强度", exact: true })
-    .click();
-  await page.getByRole("option", { name: "high", exact: true }).click();
-  await expect(
-    details.getByRole("combobox", { name: "推理强度", exact: true }),
-  ).toContainText("high");
-  await page.getByRole("button", { name: "上下文窗口", exact: true }).click();
-  const contextWindow = page.getByRole("dialog", {
-    name: "上下文窗口",
-    exact: true,
-  });
-  await expect(contextWindow).toContainText("120");
-  for (const colorScheme of ["light", "dark"] as const) {
-    await page.emulateMedia({ colorScheme });
-    await expect(contextWindow).toBeVisible();
-    await page.screenshot({
-      path: testInfo.outputPath(`context-${colorScheme}.png`),
-      animations: "disabled",
-    });
-  }
-  await contextWindow
-    .getByRole("button", { name: "压缩上下文", exact: true })
-    .click();
-  await expect(page.getByLabel("上下文状态", { exact: true })).toContainText(
-    "压缩完成",
-  );
-  await expect(contextWindow).toContainText("未提供 / 32K");
-  await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "用量", exact: true }).click();
-  const usage = page.getByRole("main", { name: "用量", exact: true });
-  const table = usage.getByRole("table", { name: "用量明细", exact: true });
-  await expect(table).toContainText("test-provider");
-  await expect(table).toContainText("test-model");
-  await expect(table).toContainText("未提供");
-  for (const colorScheme of ["light", "dark"] as const) {
-    await page.emulateMedia({ colorScheme });
-    await expect(table).toBeVisible();
-    await page.screenshot({
-      path: testInfo.outputPath(`usage-${colorScheme}.png`),
-      animations: "disabled",
-    });
-  }
-  await usage.getByRole("combobox", { name: "Harness", exact: true }).click();
-  await page.getByRole("option", { name: "Codex", exact: true }).click();
-  await expect(
-    usage.getByText("此范围还没有用量记录。", { exact: true }),
-  ).toBeVisible();
 });
 
 async function createBot(
@@ -697,22 +269,15 @@ async function createBot(
   await expect(dialog.getByRole("combobox")).toHaveCount(0);
   await dialog.getByRole("button", { name: "创建", exact: true }).click();
   await dialog.getByRole("button", { name: "授权并继续", exact: true }).click();
-  await dialog.getByRole("button", { name: "连接模型", exact: true }).click();
-  const modelDialog = page.getByRole("dialog", {
-    name: "连接模型",
-    exact: true,
-  });
-  await modelDialog
-    .getByRole("combobox", { name: "模型", exact: true })
-    .click();
+
+  await dialog.getByRole("combobox", { name: "模型", exact: true }).click();
   await page
     .getByRole("option", {
       name: `faux · ${model ?? "测试模型一"}`,
       exact: true,
     })
     .click();
-  await expect(modelDialog).toBeHidden();
-  await dialog.getByRole("button", { name: "开始使用", exact: true }).click();
+  await dialog.getByRole("button", { name: "开始", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByLabel("消息", { exact: true })).toHaveAttribute(
     "placeholder",
@@ -1038,7 +603,9 @@ test("workspace separates Bot controls and global settings", async ({
     await trigger.click();
     const details = page.getByRole("complementary", { name: /的详情$/ });
     await chooseDetail(details, "运行");
-    await expect(details.locator(".model-selector-trigger")).toBeEnabled();
+    await expect(
+      details.getByRole("combobox", { name: "模型", exact: true }),
+    ).toBeEnabled();
     await expect(
       details.getByRole("combobox", { name: "外观", exact: true }),
     ).toHaveCount(0);
@@ -1190,19 +757,11 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
   await expect(dialog.getByRole("alert")).toContainText("创建未确认");
   await create.click();
   await dialog.getByRole("button", { name: "授权并继续", exact: true }).click();
-  await dialog.getByRole("button", { name: "连接模型", exact: true }).click();
-  const modelDialog = page.getByRole("dialog", {
-    name: "连接模型",
-    exact: true,
-  });
-  await modelDialog
-    .getByRole("combobox", { name: "模型", exact: true })
-    .click();
+  await dialog.getByRole("combobox", { name: "模型", exact: true }).click();
   await page
     .getByRole("option", { name: "faux · 测试模型一", exact: true })
     .click();
-  await expect(modelDialog).toBeHidden();
-  await dialog.getByRole("button", { name: "开始使用", exact: true }).click();
+  await dialog.getByRole("button", { name: "开始", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await page.getByRole("button", { name: "联系人", exact: true }).click();
   const contacts = page.getByRole("navigation", {
@@ -1232,12 +791,14 @@ test("model choices load from the server and selection survives a restart", asyn
   await page.goto(url);
   const details = await openDetails(page);
   await chooseDetail(details, "运行");
-  const picker = page.locator(".bot-details .model-selector-trigger");
+  const picker = page.getByRole("combobox", { name: "模型", exact: true });
   await expect(picker).not.toContainText("DeepSeek");
   subscription.resolve();
   await expect(picker).toBeEnabled();
   await picker.click();
-  await page.getByRole("button", { name: "测试模型二", exact: true }).click();
+  await page
+    .getByRole("option", { name: "faux · 测试模型二", exact: true })
+    .click();
   await expect(picker).toContainText("测试模型二");
   await page.reload();
   await chooseDetail(await openDetails(page), "运行");
@@ -1254,71 +815,6 @@ test("model choices load from the server and selection survives a restart", asyn
   await page.getByLabel("消息", { exact: true }).fill("验证模型选择");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.getByLabel("Domos 的回复")).toContainText("faux-2");
-});
-
-test("engine controls wait for model selection to finish", async ({ page }) => {
-  const saving = Promise.withResolvers<void>();
-  const requested = Promise.withResolvers<void>();
-  await page.route("**/rpc/models/select", async (route) => {
-    requested.resolve();
-    await saving.promise;
-    await route.continue();
-  });
-  try {
-    await page.goto(url);
-    const details = await openDetails(page);
-    await chooseDetail(details, "运行");
-    const picker = details.locator(".model-selector-trigger");
-    await picker.click();
-    await page.getByRole("button", { name: "测试模型二", exact: true }).click();
-    await requested.promise;
-    await chooseDetail(details, "连接与账号");
-    await expect(
-      details.getByRole("radio", { name: "Domos", exact: true }),
-    ).toBeDisabled();
-    await expect(
-      details.getByRole("button", { name: "检查连接", exact: true }),
-    ).toBeDisabled();
-    saving.resolve();
-    await expect(
-      details.getByRole("radio", { name: "Domos", exact: true }),
-    ).toBeEnabled();
-    await chooseDetail(details, "运行");
-    await expect(details.locator(".model-selector-trigger")).toContainText(
-      "测试模型二",
-    );
-  } finally {
-    saving.resolve();
-  }
-});
-
-test("model controls wait for engine checks to finish", async ({ page }) => {
-  const checking = Promise.withResolvers<void>();
-  await page.route("**/rpc/engines/inspect", async (route) => {
-    await checking.promise;
-    await route.continue();
-  });
-  try {
-    await page.goto(url);
-    const details = await openDetails(page);
-    await chooseDetail(details, "连接与账号");
-    await details
-      .getByRole("button", { name: "检查连接", exact: true })
-      .click();
-    await chooseDetail(details, "运行");
-    const picker = details.locator(".model-selector-trigger");
-    await expect(picker).toBeEnabled();
-    await picker.click();
-    await expect(
-      page.getByRole("button", { name: "测试模型二", exact: true }),
-    ).toBeDisabled();
-    checking.resolve();
-    await expect(
-      page.getByRole("button", { name: "测试模型二", exact: true }),
-    ).toBeEnabled();
-  } finally {
-    checking.resolve();
-  }
 });
 
 test("send, reload, disconnect, reconnect and restart preserve the conversation", async ({
@@ -1888,6 +1384,7 @@ test("published files wait for the complete reply", async ({ page }) => {
   await page.goto(url);
   await page.getByLabel("消息", { exact: true }).fill("生成报告");
   await page.getByRole("button", { name: "发送", exact: true }).click();
+  await page.getByRole("button", { name: "允许这次操作", exact: true }).click();
   await expect(page.locator(".typing-dots")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "下载 report.md", exact: true }),
@@ -2065,11 +1562,15 @@ test("text contrast, keyboard focus and message scrolling meet the UI contract",
   await expectTextContrast(page);
   const details = await openDetails(page);
   await chooseDetail(details, "运行");
-  const picker = page.locator(".bot-details .model-selector-trigger");
+  const picker = page.getByRole("combobox", { name: "模型", exact: true });
   const restingBorder = await page
     .locator(".message-composer")
     .evaluate((element) => getComputedStyle(element).borderColor);
   await picker.focus();
+  await page.keyboard.press("Tab");
+  await expect(
+    details.getByRole("button", { name: "连接模型", exact: true }),
+  ).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(
     details.getByRole("button", { name: "上下文窗口", exact: true }),
@@ -2520,21 +2021,23 @@ test("model search and themed popups support keyboard, dismissal, and narrow scr
 }) => {
   await page.goto(url);
   await chooseDetail(await openDetails(page), "运行");
-  const model = page.locator(".bot-details .model-selector-trigger");
+  const model = page.getByRole("combobox", { name: "模型", exact: true });
   const appearance = page.getByRole("combobox", { name: "外观", exact: true });
   await expect(model).toBeEnabled();
   await model.focus();
   await page.keyboard.press("Enter");
-  const search = page.getByRole("searchbox", { name: "搜索模型", exact: true });
+  const search = page.getByRole("combobox", { name: "搜索模型…", exact: true });
   await expect(search).toBeFocused();
   await search.click();
   await expect(search).toHaveCSS("outline-style", "none");
   await search.fill(crypto.randomUUID());
   await expect(page.getByText("没有找到模型", { exact: true })).toBeVisible();
-  await expect(page.locator(".model-selector-option")).toHaveCount(0);
+  await expect(page.getByRole("option")).toHaveCount(0);
   await search.fill("测试模型二");
-  await expect(page.locator(".model-selector-option")).toHaveCount(1);
-  await page.getByRole("button", { name: "测试模型二", exact: true }).click();
+  await expect(page.getByRole("option")).toHaveCount(1);
+  await page
+    .getByRole("option", { name: "faux · 测试模型二", exact: true })
+    .click();
   await expect(model).toContainText("测试模型二");
   await expect(search).toHaveCount(0);
   await expect(model).toBeFocused();
@@ -2551,7 +2054,7 @@ test("model search and themed popups support keyboard, dismissal, and narrow scr
   await expect(page.locator("select:visible")).toHaveCount(0);
   await page.setViewportSize({ width: 320, height: 568 });
   await model.click();
-  const popup = page.locator(".model-selector-popup");
+  const popup = page.locator(".picker-search-popup");
   await expect(popup).toBeVisible();
   const bounds = await popup.boundingBox();
   if (!bounds) throw new Error("Popup is not visible");
@@ -2628,8 +2131,15 @@ test("IM bubbles, sidebar search, and popup surfaces share both themes", async (
     await page.screenshot({ path: `test-results/im-${theme}.png` });
     const details = await openDetails(page);
     await chooseDetail(details, "运行");
-    await page.locator(".bot-details .model-selector-trigger").click();
-    await expect(page.locator(".model-selector-option").first()).toBeVisible();
+    await page.getByRole("combobox", { name: "模型", exact: true }).click();
+    await expect(page.getByRole("option").first()).toBeVisible();
+    await page
+      .locator(".picker-search-popup")
+      .evaluate((element) =>
+        Promise.all(
+          element.getAnimations().map((animation) => animation.finished),
+        ),
+      );
     await expectTextContrast(page);
     await page.screenshot({ path: `test-results/im-model-${theme}.png` });
     await page.keyboard.press("Escape");
@@ -2930,6 +2440,8 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
   });
   await expect(send).toBeEnabled();
   await send.click();
+  await page.getByRole("button", { name: "允许这次操作", exact: true }).click();
+  await page.getByRole("button", { name: "允许这次操作", exact: true }).click();
   const report = page.getByRole("button", {
     name: "下载 report.md",
     exact: true,
@@ -3352,6 +2864,7 @@ test("typing follows the Bot and failures retain their error message", async ({
   await control(call("stopped.md"));
   await input.fill("生成文件");
   await send.click();
+  await page.getByRole("button", { name: "允许这次操作", exact: true }).click();
   await expect(page.locator(".typing-dots")).toBeVisible();
   await createBot(page, "旁观助手");
   await expect(page.locator(".typing-dots")).toHaveCount(0);
@@ -3456,17 +2969,12 @@ test("chat keeps sending available while the Bot is working", async ({
       latestPosition &&
       typingPosition.y >= latestPosition.y + latestPosition.height,
   ).toBe(true);
-  await page
-    .getByRole("button", { name: "选择引擎与模型", exact: true })
-    .click();
-  const selector = page.getByRole("dialog", {
-    name: "任务引擎与模型",
+  const selector = (await openDetails(page)).getByRole("combobox", {
+    name: "模型",
     exact: true,
   });
-  await expect(
-    selector.getByRole("button", { name: /测试模型二/ }),
-  ).toBeDisabled();
-  await page.keyboard.press("Escape");
+  await expect(selector).toBeDisabled();
+  await page.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "停止生成", exact: true }),
   ).toBeVisible();
@@ -3839,19 +3347,11 @@ test("Bot identity stays consistent and image previews work in drafts and histor
   await dialog.getByLabel("名字", { exact: true }).fill("视觉助手");
   await dialog.getByRole("button", { name: "创建", exact: true }).click();
   await dialog.getByRole("button", { name: "授权并继续", exact: true }).click();
-  await dialog.getByRole("button", { name: "连接模型", exact: true }).click();
-  const modelDialog = page.getByRole("dialog", {
-    name: "连接模型",
-    exact: true,
-  });
-  await modelDialog
-    .getByRole("combobox", { name: "模型", exact: true })
-    .click();
+  await dialog.getByRole("combobox", { name: "模型", exact: true }).click();
   await page
     .getByRole("option", { name: "faux · 测试模型一", exact: true })
     .click();
-  await expect(modelDialog).toBeHidden();
-  await dialog.getByRole("button", { name: "开始使用", exact: true }).click();
+  await dialog.getByRole("button", { name: "开始", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   const selected = page.locator(
     '.contact-row[aria-current="page"] .bot-avatar',

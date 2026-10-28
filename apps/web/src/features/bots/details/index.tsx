@@ -7,24 +7,22 @@ import { type ReactNode, useState } from "react";
 import type { useComputer } from "../../computer/use-computer.ts";
 import { ComputerWorkspace } from "../../computer/workspace.tsx";
 import { ComputerSettings } from "./computer.tsx";
-import { EngineSettings } from "./engine-settings.tsx";
 import { BotIdentity, IdentityEditor } from "./identity.tsx";
 import { MemoryPanel } from "./memory.tsx";
-import { NativeControls } from "./native-controls.tsx";
+import { ModelSetup } from "./model.tsx";
 import { PromptPanel } from "./prompt.tsx";
 import { RootPanel } from "./root.tsx";
 import { RoutinesPanel } from "./routines.tsx";
 import { SkillsPanel } from "./skills.tsx";
 import type { BotPanelView, PanelEditor } from "./types.ts";
 import { useBotWork, useWorkAction } from "./use-bot-work.ts";
-import type { EngineSetup } from "./use-engine.ts";
 import "./style.css";
 
 export type { BotPanelView } from "./types.ts";
 
 const titles: Record<Exclude<BotPanelView, "root">, string> = {
   identity: "编辑资料",
-  engine: "任务引擎",
+  engine: "模型与账号",
   advanced: "高级设置",
   computer: "工作电脑",
   memory: "记忆",
@@ -43,7 +41,6 @@ export function BotDetails({
   chat,
   context,
   canManage,
-  engine,
   tab,
   onTabChange,
   expanded,
@@ -56,10 +53,9 @@ export function BotDetails({
   onViewChange: (view: BotPanelView) => void;
   onClose: () => void;
   computer: ReturnType<typeof useComputer>;
-  chat: { model: ChatView["model"]; connected: boolean };
+  chat: { model: ChatView["model"]; connected: boolean; busy: boolean };
   context: ReactNode;
   canManage: boolean;
-  engine: EngineSetup;
   tab: "bot" | "computer" | "browser";
   onTabChange: (tab: "bot" | "computer" | "browser") => void;
   expanded: boolean;
@@ -81,27 +77,17 @@ export function BotDetails({
       <RootPanel
         bot={bot}
         data={work.data}
-        engine={engine}
         chat={chat}
         context={context}
-        computerName={computer.status?.name}
         computer={computer}
         canManage={canManage}
         onNavigate={navigate}
       />
     );
   else if (view === "engine")
-    content = (
-      <EngineSettings botId={bot.id} setup={engine} canManage={canManage} />
-    );
-  else if (view === "advanced") content = <NativeControls setup={engine} />;
+    content = <ModelSetup botId={bot.id} canManage={canManage} />;
   else if (view === "computer")
-    content = (
-      <ComputerSettings
-        computer={{ ...computer, busy: computer.busy || engine.saving }}
-        botId={bot.id}
-      />
-    );
+    content = <ComputerSettings computer={computer} botId={bot.id} />;
   else if (view === "memory")
     content = work.data ? (
       <MemoryPanel

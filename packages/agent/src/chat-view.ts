@@ -10,7 +10,7 @@ import {
 import type { Attachment } from "./attachments.ts";
 import type { MessageDelivery } from "./delivery.ts";
 import { FileInput } from "./files.ts";
-import { EngineMessage, type EngineState } from "./harness/state.ts";
+import { EngineMessage } from "./harness/state.ts";
 import type {
   EngineApproval,
   EngineConfig,
@@ -42,7 +42,7 @@ export type ChatView = {
 
 export function chatView(
   view: ConversationView,
-  engine?: EngineState | null,
+  approvals: EngineApproval[] = [],
 ): ChatView {
   const live = view.docs[LiveDoc.definition.kind] as LiveState | undefined;
   const agent = view.docs[AgentDoc.definition.kind] as AgentState | undefined;
@@ -126,6 +126,12 @@ export function chatView(
     };
   };
   for (const entry of view.entries) {
+    if (
+      ["domos.context-history", "pi.compaction", "pi.reset"].includes(
+        entry.kind,
+      )
+    )
+      continue;
     if (entry.kind === EngineMessage) {
       const message = entry.data as unknown as ChatMessage;
       if (message.role === "user") turnId = message.turnId;
@@ -186,41 +192,38 @@ export function chatView(
   const draft = live?.generation?.message
     ? project(live.generation.message, "draft")
     : null;
-  messages.push(
-    ...((engine?.drafts ?? []).map((message) => ({
-      ...message,
-      pending: message.pending ?? true,
-    })) as ChatMessage[]),
-  );
-  if (engine) messages.sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
+  for (const approval of approvals) {
+    if (approval.takeover)
+      messages.push({
+        id: approval.id,
+        turnId,
+        role: "assistant",
+        content: [
+          { type: "text", text: approval.detail, key: approval.id },
+          ...(approval.preview
+            ? [{ ...approval.preview, key: `${approval.id}:preview` }]
+            : []),
+        ],
+        takeover: approval.takeover,
+        pending: true,
+        stopped: false,
+      });
+  }
   return {
     id: view.conversation.id,
     model: agent?.model ?? null,
     instructions: agent?.instructions ?? "",
     messages,
     draft,
-    activeTurnId: engine?.activeTurn ?? (live?.run ? (turnId ?? null) : null),
-    busy: Boolean(live?.run || engine?.tasks.length),
-    processing: engine
-      ? Boolean(
-          engine.activeId &&
-            engine.runtime?.processing &&
-            !engine.approvals.length,
-        )
-      : Boolean(
-          live?.run &&
-            (live.generation ||
-              live.tools?.some((tool) => tool.status !== "done")),
-        ),
-    failed: Boolean(engine?.error) || (failed && !live?.run),
-    ...(engine
-      ? {
-          engine: engine.config,
-          approvals: [...engine.approvals],
-          runtime: engine.runtime,
-          error: engine.error,
-        }
-      : {}),
+    activeTurnId: live?.run ? (turnId ?? null) : null,
+    busy: Boolean(live?.run),
+    processing: Boolean(
+      live?.run &&
+        !approvals.length &&
+        (live.generation || live.tools?.some((tool) => tool.status !== "done")),
+    ),
+    failed: failed && !live?.run,
+    approvals: approvals,
     tools:
       live?.tools?.map(({ callId, status, output }) => ({
         callId,

@@ -1,17 +1,29 @@
 import type { Context } from "@earendil-works/chord/context";
-import type { EntryId, EntryRecord } from "@earendil-works/pi-durable";
+import { Type } from "@earendil-works/pi-ai";
+import {
+  defineExtension,
+  defineTool,
+  type EntryId,
+  type EntryRecord,
+  type Session,
+} from "@earendil-works/pi-durable";
 import {
   type ChatContent,
   type ChatMessage,
   messageText,
 } from "../messages.ts";
 import { EngineMessage } from "./state.ts";
-import type { EngineRuntime, StoredMessage } from "./task-types.ts";
+
+type HistoryReader = {
+  conversationId: import("@earendil-works/pi-durable").ConversationId;
+  commit: Session["commit"];
+};
+
 import { engineLimits } from "./types.ts";
 
 type HistoryMessage = {
   entryId: EntryId;
-  role: StoredMessage["role"];
+  role: ChatMessage["role"];
   text: string;
   status: string;
   tool?: string;
@@ -20,7 +32,7 @@ type HistoryMessage = {
 
 function historyMessages(entry: EntryRecord): HistoryMessage[] {
   return entry.kind === EngineMessage
-    ? [historyMessage(entry.id, entry.data as StoredMessage)]
+    ? [historyMessage(entry.id, entry.data as unknown as ChatMessage)]
     : (entry.model ?? []).flatMap((message) =>
         message.role === "user" ||
         message.role === "assistant" ||
@@ -95,7 +107,7 @@ function utf8Prefix(bytes: Buffer, limit: number) {
 }
 
 export async function conversationEntry(
-  runtime: EngineRuntime,
+  runtime: HistoryReader,
   entryId: EntryId,
   offset: number,
   context: Context,
@@ -130,7 +142,7 @@ export async function conversationEntry(
 }
 
 export async function conversationHistory(
-  runtime: EngineRuntime,
+  runtime: HistoryReader,
   turnId: string | null,
   context: Context,
   through: EntryId | null,
@@ -139,12 +151,8 @@ export async function conversationHistory(
 ) {
   let entries: readonly EntryRecord[] = [];
   let bounded = before !== undefined;
-  await runtime.commit(async (tx, current) => {
-    const maxEntryId =
-      before ??
-      (turnId && current.input.entryId
-        ? ((current.input.entryId - 1) as EntryId)
-        : undefined);
+  await runtime.commit(async (tx) => {
+    const maxEntryId = before;
     bounded = maxEntryId !== undefined;
     entries = (
       await tx.scanEntries(
@@ -160,7 +168,7 @@ export async function conversationHistory(
   const current = entries.findIndex(
     (entry) =>
       entry.kind === EngineMessage &&
-      (entry.data as StoredMessage).id === turnId,
+      (entry.data as unknown as ChatMessage).id === turnId,
   );
   if (turnId && current < 0 && !bounded && entries.length)
     throw new Error("当前消息的上下文边界无法确认。");
@@ -222,3 +230,45 @@ export async function conversationHistory(
     );
   return result;
 }
+
+export const history = defineExtension({
+  name: "domos-history",
+  tools: [
+    defineTool({
+      name: "conversation_read",
+      description:
+        "Read quoted Bot history. Use from as before for older pages. Read entryId with a UTF-8 byte offset to recover omitted details. Files remain on their recorded computer.",
+      parameters: Type.Object({
+        before: Type.Optional(Type.Integer({ minimum: 1 })),
+        entryId: Type.Optional(Type.Integer({ minimum: 1 })),
+        offset: Type.Optional(Type.Integer({ minimum: 0 })),
+      }),
+      replay: "safe",
+      async execute(args, api, context) {
+        if (
+          (args.entryId !== undefined && args.before !== undefined) ||
+          (args.offset !== undefined && args.entryId === undefined)
+        )
+          throw new Error("聊天记录游标无效。");
+        const text =
+          args.entryId !== undefined
+            ? await conversationEntry(
+                api,
+                args.entryId as EntryId,
+                args.offset ?? 0,
+                context,
+              )
+            : await conversationHistory(
+                api,
+                null,
+                context,
+                null,
+                args.before === undefined
+                  ? undefined
+                  : ((args.before - 1) as EntryId),
+              );
+        return { output: [{ type: "text", text: text || "{}" }] };
+      },
+    }),
+  ],
+});

@@ -13,8 +13,6 @@ import {
 } from "@earendil-works/pi-durable";
 import { botPreview } from "./bot-preview.ts";
 import type { Computers } from "./computer/catalog.ts";
-import { readEngine } from "./harness/reconcile.ts";
-import { EngineDoc } from "./harness/state.ts";
 import type { EngineId } from "./harness/types.ts";
 import { watchCommits } from "./watch.ts";
 import { BOT_NAME_LENGTH } from "./work/limits.ts";
@@ -112,11 +110,10 @@ export class Bots {
     return Promise.all(
       (directory?.items ?? []).map(
         async ({ id, name, avatar, createdAt, welcomeComplete }) => {
-          const [live, agent, conversation, engine] = await Promise.all([
+          const [live, agent, conversation] = await Promise.all([
             this.harness.snapshot(LiveDoc, id, context),
             this.harness.snapshot(AgentDoc, id, context),
             this.harness.conversation(id, context),
-            readEngine(this.harness, id, context),
           ]);
           return {
             id,
@@ -124,7 +121,7 @@ export class Bots {
             avatar,
             createdAt,
             welcomeComplete: Boolean(welcomeComplete),
-            busy: Boolean(live?.run || engine?.tasks.length),
+            busy: Boolean(live?.run),
             ...(conversation
               ? await botPreview(
                   conversation,
@@ -239,7 +236,7 @@ export class Bots {
         change.type === "entry" ||
         (change.type === "task" && change.value.state.status === "terminal") ||
         ((change.type === "document" || change.type === "document.copy") &&
-          [BotDirectory, AgentDoc, LiveDoc, EngineDoc].some(
+          [BotDirectory, AgentDoc, LiveDoc].some(
             (doc) => doc.definition.kind === change.record.kind,
           )),
       () => this.list(context),

@@ -1,18 +1,11 @@
 import { once } from "node:events";
-import { mkdir, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { delimiter, join } from "node:path";
 import { createInterface } from "node:readline";
-import { fileURLToPath } from "node:url";
 import spawn from "cross-spawn";
-import {
-  accountEnvironment,
-  accountFingerprint,
-} from "./account-environment.mjs";
 import { openComputerService } from "./computer-service.mjs";
 import { openGateway } from "./gateway.mjs";
-import { openHttpService } from "./http-service.mjs";
-import { nativeCheckpoint, nativeHistory } from "./native-history.mjs";
-import { seedPiAccount } from "./pi-account.mjs";
+import { processEnvironment } from "./process-environment.mjs";
 
 delete process.env.ELECTRON_RUN_AS_NODE;
 const accountEnv = { ...process.env };
@@ -23,8 +16,6 @@ let closing;
 let configured = false;
 let sequence = 0;
 let home;
-let http;
-let accountSettings;
 const pending = new Map();
 const operations = new Map();
 let computer;
@@ -33,13 +24,11 @@ const emit = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 async function close() {
   closing ??= (async () => {
     gateway?.close();
-    http?.close();
     for (const item of pending.values())
       item.reject(new Error("Connection closed"));
     pending.clear();
     for (const operation of operations.values()) operation.abort();
     await computer?.close();
-    if (accountSettings) await rm(accountSettings, { force: true });
     if (!child?.pid || child.exitCode !== null || child.signalCode !== null)
       return;
     const exited = once(child, "close").catch(() => {});
@@ -80,7 +69,6 @@ async function configure(frame) {
   await mkdir(frame.cwd, { recursive: true, mode: 0o700 });
   await mkdir(frame.home, { recursive: true, mode: 0o700 });
   home = await realpath(frame.home);
-  process.env.CLAUDE_CONFIG_DIR = join(home, "claude");
   process.chdir(await realpath(frame.cwd));
   computer = openComputerService(process.cwd(), home, (value) =>
     emit({ type: "activity", value }),
@@ -118,26 +106,7 @@ async function launch(frame) {
     !Array.isArray(frame.args)
   )
     throw new Error("Invalid launch");
-  const account = await accountEnvironment(frame, home, accountEnv);
-  const env = account.env;
-  accountSettings = account.settingsPath;
-  process.env.CLAUDE_CONFIG_DIR =
-    env.CLAUDE_CONFIG_DIR || join(env.HOME, ".claude");
-  if (frame.http) {
-    http = await openHttpService(emit, frame.http);
-    env.OPENCODE_SERVER_PASSWORD = http.password;
-    frame.args = frame.args.map((arg) =>
-      arg === "__DOMOS_PORT__" ? String(http.port) : arg,
-    );
-  }
-  for (const directory of [
-    env.CODEX_HOME,
-    env.CLAUDE_CONFIG_DIR,
-    env.XDG_DATA_HOME,
-    env.XDG_CONFIG_HOME,
-  ]) {
-    if (directory) await mkdir(directory, { recursive: true, mode: 0o700 });
-  }
+  const env = processEnvironment(frame, home, accountEnv);
   env.NODE_USE_ENV_PROXY = "1";
   env.NO_PROXY = [env.NO_PROXY, "127.0.0.1", "localhost"]
     .filter(Boolean)
@@ -145,10 +114,7 @@ async function launch(frame) {
   const pathKey =
     Object.keys(env).find((key) => key.toUpperCase() === "PATH") ?? "PATH";
   const runtimePath = join(home, "runtime", "node_modules", ".bin");
-  env[pathKey] =
-    frame.accountSource === "native"
-      ? `${env[pathKey] ?? ""}${delimiter}${runtimePath}`
-      : `${runtimePath}${delimiter}${env[pathKey] ?? ""}`;
+  env[pathKey] = `${runtimePath}${delimiter}${env[pathKey] ?? ""}`;
   if (frame.instructions) {
     const path = join(process.cwd(), ".domos-instructions.md");
     await writeFile(path, frame.instructions, { mode: 0o600 });
@@ -169,61 +135,18 @@ async function launch(frame) {
       arg === "__DOMOS_MCP__" ? path : arg,
     );
   }
-  const piAuth = env.DOMOS_PI_AUTH;
-  delete env.DOMOS_PI_AUTH;
-  if (piAuth) {
-    const directory = env.PI_CODING_AGENT_DIR;
-    if (!directory) throw new Error("Pi account directory required");
-    await seedPiAccount(directory, JSON.parse(piAuth));
-  }
-  if (env.DOMOS_PI_MCP_URL) {
-    const path = join(process.cwd(), ".domos-pi.mjs");
-    await writeFile(
-      path,
-      `export default function(pi) {
-  pi.registerMcpServer("domos", { url: process.env.DOMOS_PI_MCP_URL, exposure: "direct" });
-  if (process.platform === "win32") pi.on("session_start", () => {
-    pi.setActiveTools([...pi.getActiveTools().filter(name => name !== "bash"), "powershell"]);
+  child = spawn(frame.command, frame.args, {
+    cwd: process.cwd(),
+    env,
+    windowsHide: true,
+    detached: process.platform !== "win32",
+    stdio: ["pipe", "pipe", "pipe"],
   });
-  pi.on("message_end", ({ message }) => {
-    if (message.role !== "toolResult" || !message.isError) return;
-    const tools = pi.getActiveTools();
-    if (tools.includes(message.toolName)) return;
-    return { message: { ...message, content: [{
-      type: "text",
-      text: "The requested tool is not active. Nothing was executed. Currently active tools: " + tools.join(", ") + ". Select an active tool by its exact name."
-    }] } };
-  });
-}\n`,
-      { mode: 0o600 },
-    );
-    frame.args.push("--extension", path);
-  }
-  const bundledPi = frame.command === "pi";
-  if (bundledPi) env.ELECTRON_RUN_AS_NODE = "1";
-  child = spawn(
-    bundledPi ? process.execPath : frame.command,
-    bundledPi
-      ? [
-          fileURLToPath(new URL("./pi-entry.mjs", import.meta.url)),
-          ...frame.args,
-        ]
-      : frame.args,
-    {
-      cwd: process.cwd(),
-      env,
-      windowsHide: true,
-      detached: process.platform !== "win32",
-      stdio: ["pipe", "pipe", "pipe"],
-    },
-  );
   child.stdin.on("error", () => {});
   child.stdout.setEncoding("utf8").on("data", (data) => {
-    http?.capture(data);
     emit({ type: "stdout", data });
   });
   child.stderr.setEncoding("utf8").on("data", (data) => {
-    http?.capture(data);
     emit({ type: "stderr", data });
   });
   child.once("spawn", () => emit({ type: "spawn" }));
@@ -235,7 +158,6 @@ async function launch(frame) {
     }),
   );
   child.once("close", (code) => {
-    http?.close();
     emit({ type: "exit", code });
     gateway?.close();
   });
@@ -252,38 +174,7 @@ lines.on("line", (line) => {
       if (frame.type === "configure") await configure(frame);
       else if (frame.type === "launch") await launch(frame);
       else if (frame.type === "input") child?.stdin.write(frame.data);
-      else if (frame.type === "http") {
-        if (!http) throw new Error("Service unavailable");
-        void http.request(frame);
-      } else if (["history", "checkpoint", "account"].includes(frame.type)) {
-        void (
-          frame.type === "history"
-            ? nativeHistory(frame, home)
-            : frame.type === "account"
-              ? accountFingerprint(
-                  frame.provider,
-                  frame.accountSource === "native"
-                    ? accountEnv
-                    : {
-                        HOME: home,
-                        PI_CODING_AGENT_DIR: join(home, "pi"),
-                        CODEX_HOME: join(home, "codex"),
-                        CLAUDE_CONFIG_DIR: join(home, "claude"),
-                        XDG_DATA_HOME: join(home, "opencode", "data"),
-                        XDG_CONFIG_HOME: join(home, "opencode", "config"),
-                      },
-                )
-              : nativeCheckpoint(frame, home)
-        )
-          .then((result) => emit({ type: "http", id: frame.id, result }))
-          .catch((error) =>
-            emit({
-              type: "http",
-              id: frame.id,
-              error: error.message,
-            }),
-          );
-      } else if (frame.type === "computer") {
+      else if (frame.type === "computer") {
         const controller = new AbortController();
         operations.set(frame.id, controller);
         void computer

@@ -1,22 +1,13 @@
 import type { Context } from "@earendil-works/chord/context";
-import {
-  type ConversationId,
-  type Cursor,
-  defineDoc,
-  type Harness,
-  type Tx,
+import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type {
+  ConversationId,
+  Cursor,
+  Harness,
 } from "@earendil-works/pi-durable";
-import type { EngineRuntime } from "./task-types.ts";
 import type { EngineId, EngineUsage } from "./types.ts";
 
 export const EngineUsageEntry = "domos.engine-usage";
-export const UsageTaskDoc = defineDoc<{ items: Record<string, EngineUsage> }>({
-  kind: "domos.engine-usage",
-  version: 1,
-  checkpointWhen: () => false,
-  scope: "task",
-  initial: () => ({ items: {} }),
-});
 export type UsageRecord = EngineUsage & {
   botId: number;
   harness: EngineId;
@@ -33,29 +24,6 @@ export type UsageFilter = {
   to?: number;
 };
 
-export async function finishUsage(
-  tx: Tx,
-  runtime: EngineRuntime,
-  harness: EngineId,
-  sessionId: string | null,
-) {
-  const doc = await tx.doc(UsageTaskDoc, runtime.taskId);
-  for (const usage of Object.values(doc.items)) {
-    await tx.appendEntry(runtime.conversationId, {
-      kind: EngineUsageEntry,
-      data: {
-        ...usage,
-        botId: runtime.conversationId,
-        harness,
-        taskId: String(runtime.taskId),
-        sessionId,
-        timestamp: Date.now(),
-      },
-    });
-  }
-  doc.items = {};
-}
-
 export class UsageReader {
   private readonly harness: Harness;
   private cached?: { key: string; result: Promise<UsageRecord[]> };
@@ -70,7 +38,9 @@ export class UsageReader {
         changes.some(
           (change) =>
             change.type === "conversation" ||
-            (change.type === "entry" && change.value.kind === EngineUsageEntry),
+            (change.type === "entry" &&
+              (change.value.kind === EngineUsageEntry ||
+                change.value.kind === "pi.assistant")),
         )
       )
         invalidate();
@@ -126,8 +96,30 @@ async function readUsage(
         context,
       );
       for (const entry of page.items) {
-        if (entry.kind !== EngineUsageEntry) continue;
-        const row = entry.data as UsageRecord;
+        if (entry.kind !== EngineUsageEntry && entry.kind !== "pi.assistant")
+          continue;
+        const message = entry.model?.find(
+          (item): item is AssistantMessage => item.role === "assistant",
+        );
+        const row: UsageRecord =
+          entry.kind === EngineUsageEntry
+            ? (entry.data as UsageRecord)
+            : {
+                id: String(entry.id),
+                source: "pi-durable",
+                provider: message?.provider ?? null,
+                model: message?.model ?? null,
+                input: message?.usage.input ?? null,
+                output: message?.usage.output ?? null,
+                cacheRead: message?.usage.cacheRead ?? null,
+                cacheWrite: message?.usage.cacheWrite ?? null,
+                costUsd: message?.usage.cost?.total ?? null,
+                botId: id,
+                harness: "pi",
+                taskId: String(entry.byTaskId ?? entry.id),
+                sessionId: null,
+                timestamp: message?.timestamp ?? 0,
+              };
         if (filter.harness && row.harness !== filter.harness) continue;
         if (filter.provider && row.provider !== filter.provider) continue;
         if (filter.model && row.model !== filter.model) continue;

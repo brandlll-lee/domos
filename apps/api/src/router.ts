@@ -2,8 +2,8 @@ import { MAX_ATTACHMENTS } from "@domos/agent/attachments";
 import type { Bots } from "@domos/agent/bots";
 import type { Computers } from "@domos/agent/computer/catalog";
 import { FileInput, type Files } from "@domos/agent/files";
-import type { Engines } from "@domos/agent/harness";
 import { materialText } from "@domos/agent/materials";
+import type { Runtime } from "@domos/agent/runtime";
 import { stopChat } from "@domos/agent/stop";
 import { chatView } from "@domos/agent/view";
 import { type BotWork, WorkError } from "@domos/agent/work";
@@ -18,7 +18,7 @@ import { z } from "zod";
 import { computerRouter } from "./computer.ts";
 import { botConversation, botTarget } from "./conversation.ts";
 import { watchDirectory } from "./directory.ts";
-import { engineConfig, engineRouter } from "./engines.ts";
+import { engineRouter } from "./engines.ts";
 import { fileRouter } from "./files.ts";
 import { materialsSchema, prepareMaterials } from "./materials.ts";
 import { modelRouter, requireConfiguredModel } from "./models.ts";
@@ -31,7 +31,7 @@ export function createRouter(
   files: Files,
   work: BotWork,
   computer?: Computers,
-  engines?: Engines,
+  engines?: Runtime,
 ) {
   return {
     computer: computerRouter(bots, computer),
@@ -58,23 +58,12 @@ export function createRouter(
             computerId: z.string().min(1).nullable().optional(),
             requestId: z.uuid(),
             avatar: z.uuid().optional(),
-            engine: engineConfig.optional(),
           }),
         )
         .handler(async ({ input }) => {
           if (input.model) await requireConfiguredModel(models, input.model);
           try {
             const bot = await bots.create(input, BACKGROUND_CONTEXT);
-            if (input.engine && engines)
-              await engines.configure(
-                bot.id,
-                {
-                  config: input.engine,
-                  revision: 0,
-                  requestId: input.requestId,
-                },
-                BACKGROUND_CONTEXT,
-              );
             return bot;
           } catch (error) {
             if (error instanceof WorkError)
@@ -86,7 +75,7 @@ export function createRouter(
         yield* watchDirectory(bots, computer, signal);
       }),
     },
-    models: modelRouter(bots, models, engines),
+    models: modelRouter(bots, models),
     get: os.input(botTarget).handler(async ({ input }) => {
       const conversation = await botConversation(bots, input.botId);
       if (engines) return engines.view(input.botId, BACKGROUND_CONTEXT);
@@ -128,11 +117,10 @@ export function createRouter(
           }),
         );
         try {
-          if (!engines)
-            await requireConfiguredModel(
-              models,
-              (await conversation.agent(BACKGROUND_CONTEXT)).model,
-            );
+          await requireConfiguredModel(
+            models,
+            (await conversation.agent(BACKGROUND_CONTEXT)).model,
+          );
           const submit = () =>
             files.exclusive(input.botId, async () => {
               const view =
@@ -158,33 +146,13 @@ export function createRouter(
                 file.mimeType?.startsWith("image/"),
               );
               if (image) {
-                const config = engines
-                  ? (await engines.profile(input.botId, BACKGROUND_CONTEXT))
-                      .config
-                  : undefined;
-                let supported: boolean | undefined;
-                if (
-                  !config ||
-                  (config.provider === "pi" &&
-                    config.accountSource !== "native")
-                ) {
-                  const model = (await conversation.agent(BACKGROUND_CONTEXT))
-                    .model;
-                  if (model)
-                    supported = (await models.getAvailable(model.provider))
+                const model = (await conversation.agent(BACKGROUND_CONTEXT))
+                  .model;
+                const supported = model
+                  ? (await models.getAvailable(model.provider))
                       .find((item) => item.id === model.modelId)
-                      ?.input.includes("image");
-                } else {
-                  const connection = await engines?.connections.snapshot(
-                    input.botId,
-                    config,
-                    BACKGROUND_CONTEXT,
-                  );
-                  if (connection?.ready && "models" in connection)
-                    supported = connection.models.find(
-                      (item) => item.id === config.model,
-                    )?.images;
-                }
+                      ?.input.includes("image")
+                  : undefined;
                 if (supported === false)
                   throw new ORPCError("BAD_REQUEST", {
                     message: `${image.name}：当前模型不支持图片。请选择支持图片的模型。`,
@@ -252,7 +220,6 @@ export function createRouter(
       }),
     stop: os.input(botTarget).handler(async ({ input }) => {
       const conversation = await botConversation(bots, input.botId);
-      await engines?.stop(input.botId, BACKGROUND_CONTEXT);
       await stopChat(conversation, BACKGROUND_CONTEXT);
       return { ok: true };
     }),

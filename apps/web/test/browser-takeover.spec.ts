@@ -120,7 +120,6 @@ for (const refresh of [false, true]) {
     const api = createORPCClient<RouterClient<AppRouter>>(
       new RPCLink({ url: `${url}/rpc` }),
     );
-    const profile = await api.engines.get({ botId: 1 });
     await api.computer.service({ botId: 1, service: "browser", enabled: true });
     const binding = await api.computer.get({ botId: 1 });
     if (!binding.computerId) throw new Error("Computer required");
@@ -130,17 +129,6 @@ for (const refresh of [false, true]) {
       revision: binding.revision,
       mode: "auto",
     });
-    await api.engines.configure({
-      botId: 1,
-      revision: profile.revision,
-      requestId: crypto.randomUUID(),
-      config: {
-        provider: "pi",
-        accountSource: "native",
-        model: "test-provider/test-model",
-      },
-    });
-    await api.engines.inspect({ botId: 1 });
     const started = performance.now();
     await page
       .getByLabel("消息", { exact: true })
@@ -225,7 +213,6 @@ for (const refresh of [false, true]) {
     const tools = await (await request.get(`${url}/takeover-metrics`)).json();
     expect(tools.map((item: { name: string }) => item.name)).toEqual([
       "browser_agent_browser_open",
-      "computer_request_takeover",
       "browser_agent_browser_observe",
     ]);
     const metrics = info.outputPath("takeover-flow.json");
