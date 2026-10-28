@@ -76,7 +76,7 @@ export function RootPanel({
         <PanelRow
           icon={<CpuIcon />}
           title="连接与账号"
-          value="Domos 管理"
+          value="工作电脑"
           onClick={() => onNavigate("engine")}
         />
       </PanelGroup>

@@ -1,22 +1,19 @@
+import type { EngineConfig } from "@domos/agent/harness/types";
 import type { ChatView } from "@domos/agent/view";
 import { Button } from "@domos/ui/controls";
+import { TextField } from "@domos/ui/field";
 import { ModelSelector } from "@domos/ui/model-selector";
+import { ChoicePicker, SearchPicker } from "@domos/ui/picker";
 import { SettingRow } from "@domos/ui/setting-row";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../client.ts";
-import { rejectionMessage } from "../chat/request-error.ts";
-import { PiAccountFlow } from "../hosting/model-account-flow.tsx";
-import { useModelAccount } from "../hosting/use-model-account.ts";
+import { EngineMark } from "../bots/engine-mark.tsx";
 import { useSettings } from "../settings/context.ts";
 import { Effort } from "./effort.tsx";
-import { ProviderMark } from "./provider-mark.tsx";
-import { modelKey, useModels } from "./use-models.ts";
 import { useVisibility } from "./use-visibility.ts";
-import "../hosting/models.css";
 
 export function ModelSetting({
   botId,
-  model,
   connected,
   disabled,
   onSelected,
@@ -30,263 +27,496 @@ export function ModelSetting({
   onBusyChange?: (busy: boolean) => void;
 }) {
   const settings = useSettings();
-  const {
-    choices,
-    providers,
-    error: catalogError,
-    refreshProvider,
-  } = useModels(connected);
   const visibility = useVisibility(connected);
-  const [open, setOpen] = useState(false);
-  const [provider, setProvider] = useState("");
-  const [configuring, setConfiguring] = useState(false);
-  const [accountBusy, setAccountBusy] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [refreshError, setRefreshError] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] =
     useState<Awaited<ReturnType<typeof client.engines.get>>>();
-  const refresh = useCallback(
-    () => client.engines.get({ botId }).then(setProfile),
-    [botId],
-  );
+  const [config, setConfig] = useState<EngineConfig>({
+    provider: "pi",
+    model: null,
+  });
+  const [connection, setConnection] =
+    useState<Awaited<ReturnType<typeof client.engines.inspect>>>();
+  const [login, setLogin] =
+    useState<Awaited<ReturnType<typeof client.engines.loginState>>>();
+  const [controls, setControls] =
+    useState<Awaited<ReturnType<typeof client.engines.controls>>>();
+  const [code, setCode] = useState("");
+  const [account, setAccount] = useState("");
+  const [method, setMethod] = useState("0");
+  const [inputs, setInputs] = useState<Record<string, string>>({});
+  const [args, setArgs] = useState("[]");
+  const [open, setOpen] = useState(false);
+  const [configuring, setConfiguring] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const refresh = useCallback(async () => {
+    const next = await client.engines.get({ botId });
+    setProfile(next);
+    setConfig(next.config);
+    setControls(next.runtime?.controls);
+    setArgs(JSON.stringify(next.config.args ?? []));
+  }, [botId]);
   useEffect(() => {
-    if (!connected) return;
-    void refresh().catch(() => setError("模型设置读取失败。请重试。"));
+    if (connected) void refresh().catch((e) => setError(e.message));
   }, [connected, refresh]);
-  const busy = saving || accountBusy;
-  useEffect(() => onBusyChange?.(busy), [busy, onBusyChange]);
-  useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
-  const selected = choices?.find(
-    (item) => model && modelKey(item) === modelKey(model),
-  );
-  const browsing = providers.find((item) => item.id === provider);
   useEffect(() => {
-    setRefreshError(false);
-    if (!open || !browsing?.configured || !browsing.dynamic) return;
-    const controller = new AbortController();
-    setRefreshing(true);
-    void refreshProvider(provider, controller.signal)
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setRefreshError(true);
-          setError("模型目录刷新失败。请重试。");
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setRefreshing(false);
-      });
-    return () => {
-      controller.abort();
-      setRefreshing(false);
-    };
-  }, [
-    open,
-    provider,
-    browsing?.configured,
-    browsing?.dynamic,
-    refreshProvider,
-  ]);
-  const locked = Boolean(disabled || !connected);
-  const canConfigure = settings.admin && !settings.standalone;
-  const back = useCallback(() => setConfiguring(false), []);
-  const configure = () => {
-    if (canConfigure) setConfiguring(true);
-  };
-  async function save(action: () => Promise<unknown>, close = false) {
-    setSaving(true);
-    setError(null);
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false);
+  }, [busy, onBusyChange]);
+  async function run(action: () => Promise<unknown>) {
+    setBusy(true);
+    setError("");
     try {
       await action();
-      await refresh();
-      await onSelected?.();
-      if (close) setOpen(false);
-    } catch (cause) {
-      setError(rejectionMessage(cause) ?? "模型设置保存失败。请重试。");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "操作未完成。");
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   }
-  return (
-    <>
-      <SettingRow
-        title="对话模型"
-        description={
-          <span role="status">{saving ? "正在保存…" : "用于下一次回复。"}</span>
+  async function inspect(next = config) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(args);
+    } catch {
+      throw new Error("启动参数必须是 JSON 字符串数组。");
+    }
+    if (
+      !Array.isArray(parsed) ||
+      !parsed.every((value) => typeof value === "string")
+    )
+      throw new Error("启动参数必须是 JSON 字符串数组。");
+    const selected = next.provider === "acp" ? { ...next, args: parsed } : next;
+    setConfig(selected);
+    setConnection(
+      await client.engines.inspect({ botId, config: selected, refresh: true }),
+    );
+  }
+  async function save(next: EngineConfig, close = true) {
+    if (!profile) return;
+    const input = {
+      botId,
+      config: { ...next, command: connection?.path ?? next.command },
+      revision: profile.revision,
+      requestId: crypto.randomUUID(),
+    };
+    const saved = settings.admin
+      ? await client.engines.configure(input)
+      : await client.engines.select({
+          botId,
+          model: next.model,
+          options: next.options,
+          revision: input.revision,
+          requestId: input.requestId,
+        });
+    const nextControls = await client.engines.controls({ botId });
+    await onSelected?.();
+    setProfile(saved);
+    setConfig(saved.config);
+    setControls(nextControls);
+    if (close) setOpen(false);
+  }
+  useEffect(() => {
+    if (!open || config.provider === "acp") return;
+    let current = true;
+    setConnection(undefined);
+    void (
+      settings.admin
+        ? client.engines.inspect({ botId, config })
+        : client.engines.available({ botId })
+    ).then(
+      (value) => {
+        if (current) {
+          setConnection(value);
+          if ("controls" in value) setControls(value.controls);
         }
-      >
+      },
+      (cause) => {
+        if (current) setError(cause.message);
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [open, botId, config, settings.admin]);
+  useEffect(() => {
+    if (login?.state !== "waiting") return;
+    let current = true;
+    const timer = setInterval(() => {
+      void client.engines
+        .loginState({ botId })
+        .then(async (next) => {
+          if (!current) return;
+          setLogin(next);
+          if (next?.state === "done") {
+            setCode("");
+            const value = await client.engines.inspect({
+              botId,
+              config,
+              refresh: true,
+            });
+            if (current) setConnection(value);
+          }
+        })
+        .catch((error) => {
+          if (current) setError(error.message);
+        });
+    }, 1000);
+    return () => {
+      current = false;
+      clearInterval(timer);
+    };
+  }, [login?.state, botId, config]);
+  useEffect(() => {
+    setCode("");
+  }, []);
+  const locked = Boolean(disabled || profile?.busy || busy || !settings.admin);
+  const providers = (profile?.providers ?? []).filter(
+    (provider) => settings.admin || provider.id === profile?.config.provider,
+  );
+  const accounts =
+    connection && "accounts" in connection
+      ? (connection.accounts?.providers ?? [])
+      : [];
+  const methods =
+    accounts.find((provider) => provider.id === account)?.methods ?? [];
+  return (
+    <div className="detail-stack">
+      <SettingRow title="运行模型">
         <ModelSelector
           open={open}
-          onOpenChange={(next) => {
-            if (next) {
-              setProvider(
-                model?.provider ??
-                  providers.find((item) => item.configured)?.id ??
-                  providers[0]?.id ??
-                  "",
-              );
-              setError(null);
-              void refresh().catch(() =>
-                setError("模型设置读取失败。请重试。"),
-              );
-            } else setConfiguring(false);
-            setOpen(next);
-          }}
+          onOpenChange={setOpen}
           providers={providers.map((item) => ({
             ...item,
-            icon: <ProviderMark provider={item.id} />,
+            icon: <EngineMark provider={item.id} />,
+            configured:
+              item.id === profile?.config.provider && profile.prepared,
           }))}
-          provider={provider}
-          onProviderChange={(id) => {
-            setProvider(id);
-            setError(null);
-            setConfiguring(false);
+          provider={config.provider}
+          onProviderChange={(provider) => {
+            setConnection(undefined);
+            setControls(undefined);
+            setError("");
+            setConfig({ provider, model: null });
+            setConfiguring(provider === "acp");
+            setLogin(null);
           }}
-          models={(refreshError ? [] : (choices ?? []))
-            .filter(
-              (item) =>
-                item.provider === provider &&
-                visibility.visible("pi", `${item.provider}/${item.modelId}`),
-            )
-            .map((item) => ({ id: modelKey(item), name: item.name }))}
-          value={model ? modelKey(model) : ""}
+          models={(connection?.models ?? []).filter((model) =>
+            visibility.visible(config.provider, model.id),
+          )}
+          value={profile?.config.model ?? ""}
           label={
-            selected
-              ? `${selected.providerName} · ${selected.name}`
-              : model
-                ? `${model.provider} / ${model.modelId}（未配置）`
-                : "选择模型"
+            profile?.model?.name ??
+            profile?.config.model ??
+            "选择 Harness 和模型"
           }
-          status={browsing?.configured ? "已连接" : "未连接"}
-          loading={choices === null || refreshing}
-          disabled={locked}
-          busy={busy}
-          error={error ?? catalogError ?? visibility.error}
-          onConfigure={canConfigure ? configure : undefined}
+          loading={!profile}
+          disabled={Boolean(disabled)}
+          busy={busy || login?.state === "waiting"}
+          error={error}
+          onSelect={(model) =>
+            void run(() => save({ ...config, model, options: undefined }))
+          }
+          status={connection ? connection.message : ""}
+          onConfigure={settings.admin ? () => setConfiguring(true) : undefined}
           notice={
-            browsing && !browsing.configured ? (
-              <div className="model-selector-notice">
-                <p>
-                  {canConfigure
-                    ? "连接此提供方后选择模型。"
-                    : "请管理员连接模型账号。"}
-                </p>
-                {canConfigure && (
-                  <Button
-                    size="small"
-                    variant="secondary"
-                    disabled={locked || busy}
-                    onClick={configure}
-                  >
-                    {browsing.methods.some((method) => method.type === "oauth")
-                      ? browsing.methods.some(
-                          (method) => method.type === "api_key",
-                        )
-                        ? "登录 / API 配置"
-                        : "登录"
-                      : "配置连接"}
-                  </Button>
-                )}
-              </div>
-            ) : browsing?.dynamic &&
-              (refreshError ||
-                !choices?.some((item) => item.provider === provider)) ? (
-              <p className="model-selector-note">尚未取得此账号的模型目录。</p>
-            ) : undefined
+            <>
+              {busy && <p role="status">正在保存…</p>}
+              {settings.admin ? (
+                <Button
+                  variant="ghost"
+                  size="small"
+                  disabled={locked}
+                  onClick={() => setConfiguring(true)}
+                >
+                  配置连接
+                </Button>
+              ) : (
+                <p className="detail-note">账号和程序由管理员配置。</p>
+              )}
+            </>
           }
           configuration={
-            configuring && canConfigure ? (
-              <ProviderConnection
-                key={provider}
-                provider={provider}
-                onBack={back}
-                onBusyChange={setAccountBusy}
-              />
+            configuring ? (
+              <div className="model-selector-connection">
+                <Button
+                  variant="ghost"
+                  size="small"
+                  disabled={busy || login?.state === "waiting"}
+                  onClick={() => setConfiguring(false)}
+                >
+                  返回模型
+                </Button>
+                {busy && (
+                  <p role="status" className="detail-note">
+                    正在保存…
+                  </p>
+                )}
+                {config.provider === "acp" && (
+                  <>
+                    <TextField
+                      label="程序路径"
+                      value={config.command ?? ""}
+                      onValueChange={(command) =>
+                        setConfig({ ...config, command })
+                      }
+                      disabled={locked || !settings.admin}
+                    />
+                    <TextField
+                      label="启动参数"
+                      value={args}
+                      onValueChange={setArgs}
+                      disabled={locked || !settings.admin}
+                    />
+                  </>
+                )}
+                {connection?.version && (
+                  <SettingRow title="版本">{connection.version}</SettingRow>
+                )}
+                {connection?.path && (
+                  <SettingRow title="程序路径">
+                    <span className="detail-note">{connection.path}</span>
+                  </SettingRow>
+                )}
+                {config.provider === "opencode" && (
+                  <>
+                    <SearchPicker
+                      label="模型提供方"
+                      placeholder="选择提供方"
+                      searchLabel="搜索提供方"
+                      emptyLabel="没有匹配的提供方"
+                      value={account}
+                      onValueChange={(value) => {
+                        setAccount(value);
+                        setMethod("0");
+                        setInputs({});
+                      }}
+                      items={accounts.map((provider) => ({
+                        value: provider.id,
+                        label: provider.name,
+                      }))}
+                      disabled={locked || login?.state === "waiting"}
+                    />
+                    <ChoicePicker
+                      label="登录方式"
+                      value={method}
+                      onValueChange={setMethod}
+                      items={methods.map((method, index) => ({
+                        value: String(index),
+                        label: method.label,
+                      }))}
+                      disabled={locked || login?.state === "waiting"}
+                    />
+                    {methods[Number(method)]?.prompts
+                      ?.filter(
+                        (prompt) =>
+                          !prompt.when ||
+                          (prompt.when.op === "eq"
+                            ? inputs[prompt.when.key] === prompt.when.value
+                            : inputs[prompt.when.key] !== prompt.when.value),
+                      )
+                      .map((prompt) =>
+                        prompt.type === "select" ? (
+                          <ChoicePicker
+                            key={prompt.key}
+                            label={prompt.message}
+                            value={inputs[prompt.key] ?? ""}
+                            items={prompt.options ?? []}
+                            onValueChange={(value) =>
+                              setInputs({ ...inputs, [prompt.key]: value })
+                            }
+                            disabled={locked}
+                          />
+                        ) : (
+                          <TextField
+                            key={prompt.key}
+                            label={prompt.message}
+                            value={inputs[prompt.key] ?? ""}
+                            onValueChange={(value) =>
+                              setInputs({ ...inputs, [prompt.key]: value })
+                            }
+                            disabled={locked}
+                          />
+                        ),
+                      )}
+                  </>
+                )}
+                <div className="dialog-actions">
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    disabled={locked}
+                    onClick={() => void run(() => inspect())}
+                  >
+                    检查连接
+                  </Button>
+                  {settings.admin && config.provider !== "acp" && (
+                    <Button
+                      variant="secondary"
+                      size="small"
+                      disabled={locked}
+                      onClick={() =>
+                        void run(async () => {
+                          const installed = await client.engines.install({
+                            botId,
+                            config,
+                          });
+                          setConfig(installed.config);
+                          setConnection(installed.connection);
+                        })
+                      }
+                    >
+                      {connection?.ready ? "下载独立版本" : "下载"}
+                    </Button>
+                  )}
+                  {settings.admin && config.provider !== "acp" && (
+                    <Button
+                      size="small"
+                      disabled={
+                        locked ||
+                        login?.state === "waiting" ||
+                        (config.provider === "opencode" && !account)
+                      }
+                      onClick={() =>
+                        void run(async () =>
+                          setLogin(
+                            await client.engines.login({
+                              botId,
+                              providerId: account || undefined,
+                              method: Number(method),
+                              inputs,
+                              config: {
+                                ...config,
+                                command: connection?.path ?? config.command,
+                              },
+                            }),
+                          ),
+                        )
+                      }
+                    >
+                      登录
+                    </Button>
+                  )}
+                  {connection?.authenticated && !connection.models.length && (
+                    <Button
+                      size="small"
+                      disabled={locked}
+                      onClick={() =>
+                        void run(() => save({ ...config, model: null }))
+                      }
+                    >
+                      使用默认模型
+                    </Button>
+                  )}
+                </div>
+                {login && (
+                  <div className="detail-stack">
+                    {login.state !== "waiting" && (
+                      <p role="status">
+                        {login.state === "done" ? "已登录" : "登录未完成"}
+                      </p>
+                    )}
+                    {login.url && (
+                      <a href={login.url} target="_blank" rel="noreferrer">
+                        打开登录页面
+                      </a>
+                    )}
+                    {login.code && <code>{login.code}</code>}
+                    {login.instructions && (
+                      <p className="detail-note">{login.instructions}</p>
+                    )}
+                    {login.prompt &&
+                      (login.options ? (
+                        <ChoicePicker
+                          label={login.prompt}
+                          value={code}
+                          items={login.options.map((value) => ({
+                            value,
+                            label: value,
+                          }))}
+                          onValueChange={setCode}
+                          disabled={busy}
+                        />
+                      ) : (
+                        <TextField
+                          label={login.prompt}
+                          type={login.secret ? "password" : "text"}
+                          value={code}
+                          onValueChange={setCode}
+                        />
+                      ))}
+                    <div className="dialog-actions">
+                      {login.prompt && (
+                        <Button
+                          disabled={locked}
+                          onClick={() =>
+                            void run(() =>
+                              client.engines.answerLogin({ botId, code }),
+                            )
+                          }
+                        >
+                          继续
+                        </Button>
+                      )}
+                      <Button
+                        disabled={locked}
+                        onClick={() =>
+                          void run(async () => {
+                            setLogin(
+                              await client.engines.loginState({ botId }),
+                            );
+                            await inspect();
+                          })
+                        }
+                      >
+                        检查登录
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        disabled={locked}
+                        onClick={() =>
+                          void run(async () => {
+                            await client.engines.cancelLogin({ botId });
+                            setLogin(null);
+                          })
+                        }
+                      >
+                        取消
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
             ) : undefined
           }
-          effort={
-            selected?.provider === provider &&
-            profile && (
+          effort={controls?.options
+            .filter((item) => item.kind === "effort")
+            .map((control) => (
               <Effort
-                control={{
-                  ...selected.effort,
-                  value: profile.config.options.thinkingLevel,
-                }}
-                disabled={locked || busy}
-                onChange={(thinkingLevel) =>
-                  void save(() =>
-                    client.models.thinking({ botId, thinkingLevel }),
-                  )
+                key={control.id}
+                control={control}
+                disabled={locked}
+                onChange={(value) =>
+                  void run(() => {
+                    const options = { ...config.options };
+                    if (value) options[control.id] = value;
+                    else delete options[control.id];
+                    return save({ ...config, options }, false);
+                  })
                 }
               />
-            )
-          }
-          onSelect={(value) => {
-            const choice = choices?.find((item) => modelKey(item) === value);
-            if (choice)
-              void save(
-                () =>
-                  client.models.select({
-                    botId,
-                    provider: choice.provider,
-                    modelId: choice.modelId,
-                  }),
-                true,
-              );
-          }}
+            ))}
         />
       </SettingRow>
-      <SettingRow
-        title="模型账号"
-        description={canConfigure ? "连接模型提供方。" : "请管理员管理连接。"}
-      >
-        <Button
-          variant="secondary"
-          size="small"
-          disabled={locked || busy}
-          onClick={() => {
-            setProvider(model?.provider ?? providers[0]?.id ?? "");
-            setOpen(true);
-            setConfiguring(canConfigure);
-          }}
-        >
-          连接模型
-        </Button>
-      </SettingRow>
-      {!open && (error ?? catalogError) && (
-        <p className="alert" role="alert">
-          {error ?? catalogError}
+      {busy && (
+        <p role="status" className="detail-note">
+          正在保存…
         </p>
       )}
-    </>
-  );
-}
-
-function ProviderConnection({
-  provider,
-  onBack,
-  onBusyChange,
-}: {
-  provider: string;
-  onBack: () => void;
-  onBusyChange: (busy: boolean) => void;
-}) {
-  const account = useModelAccount(onBusyChange, provider);
-  return (
-    <div className="model-selector-connection">
-      <Button variant="ghost" size="small" onClick={onBack}>
-        返回模型选择
-      </Button>
-      {!account.catalog && <p role="status">正在读取账号…</p>}
-      {account.catalog && (
-        <PiAccountFlow
-          account={account}
-          adding={false}
-          manage={account.selected?.configured}
-          onAddingChange={onBack}
-          onBack={onBack}
-        />
+      {error && !open && (
+        <p className="alert" role="alert">
+          {error}
+        </p>
       )}
     </div>
   );

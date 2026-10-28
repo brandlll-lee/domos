@@ -1,4 +1,5 @@
 import type { EngineId } from "@domos/agent/harness/types";
+import { TerminalWindowIcon } from "@phosphor-icons/react/dist/csr/TerminalWindow";
 
 const marks = {
   pi: {
@@ -47,7 +48,9 @@ const marks = {
 >;
 
 export function EngineMark({ provider }: { provider: EngineId }) {
-  const mark = marks[provider];
+  const mark = marks[provider as keyof typeof marks];
+  if (!mark)
+    return <TerminalWindowIcon className="engine-mark" aria-hidden="true" />;
   return (
     <svg
       className="engine-mark"

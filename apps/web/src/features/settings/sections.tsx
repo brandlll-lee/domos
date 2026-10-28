@@ -29,8 +29,8 @@ export const sections = {
     label: "Providers",
     description: "管理 Harness 和模型提供方的连接。",
     icon: CpuIcon,
-    render: ({ admin, standalone, botId }: SectionProps) =>
-      admin && !standalone ? (
+    render: ({ admin, botId }: SectionProps) =>
+      admin ? (
         <ProviderSettings botId={botId} />
       ) : (
         <p className="detail-note">请让管理员连接模型账号。</p>

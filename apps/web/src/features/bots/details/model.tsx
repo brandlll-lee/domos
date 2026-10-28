@@ -1,26 +1,19 @@
 import { Button } from "@domos/ui/controls";
-import { SettingRow } from "@domos/ui/setting-row";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../../client.ts";
-import { HostingModels } from "../../hosting/models.tsx";
-import { Effort } from "../../models/effort.tsx";
 import { ModelSetting } from "../../models/model-setting.tsx";
-import { useSettings } from "../../settings/context.ts";
 
 export function ModelSetup({
   botId,
-  canManage,
   onBusyChange,
   onBack,
   onReady,
 }: {
   botId: number;
-  canManage: boolean;
   onBusyChange?: (busy: boolean) => void;
   onBack?: () => void;
   onReady?: () => void;
 }) {
-  const settings = useSettings();
   const [profile, setProfile] =
     useState<Awaited<ReturnType<typeof client.engines.get>>>();
   const [error, setError] = useState("");
@@ -38,50 +31,16 @@ export function ModelSetup({
       .get({ botId })
       .then(setProfile, (cause) => setError(cause.message));
   }, [botId]);
-  const model = profile?.config.model;
-  const separator = model?.indexOf("/") ?? -1;
   return (
     <div className="detail-stack">
-      {canManage && !settings.standalone ? (
-        <HostingModels
-          botId={botId}
-          model={model}
-          onBusyChange={reportBusy}
-          onConfigured={refresh}
-        />
-      ) : (
-        <ModelSetting
-          botId={botId}
-          model={
-            model && separator > 0
-              ? {
-                  provider: model.slice(0, separator),
-                  modelId: model.slice(separator + 1),
-                }
-              : null
-          }
-          connected={Boolean(profile)}
-          disabled={profile?.busy}
-          onSelected={refresh}
-          onBusyChange={reportBusy}
-        />
-      )}
-      {canManage && !settings.standalone && profile?.model?.effort && (
-        <SettingRow title="推理强度">
-          <Effort
-            control={{
-              ...profile.model.effort,
-              value: profile.config.options.thinkingLevel,
-            }}
-            disabled={profile.busy}
-            onChange={(thinkingLevel) => {
-              void client.models
-                .thinking({ botId, thinkingLevel })
-                .then(refresh, (cause) => setError(cause.message));
-            }}
-          />
-        </SettingRow>
-      )}
+      <ModelSetting
+        botId={botId}
+        model={null}
+        connected={Boolean(profile)}
+        disabled={profile?.busy}
+        onSelected={refresh}
+        onBusyChange={reportBusy}
+      />
       {error && (
         <p role="alert" className="alert">
           {error}

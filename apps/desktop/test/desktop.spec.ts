@@ -221,10 +221,8 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     );
     await page.getByRole("combobox", { name: "模型", exact: true }).click();
     const selector = page.locator(".model-selector-popup");
-    await expect(selector.getByRole("tab")).toHaveCount(43);
-    await selector
-      .getByRole("tab", { name: "OpenRouter", exact: true })
-      .click();
+    await expect(selector.getByRole("tab")).toHaveCount(5);
+    await selector.getByRole("tab", { name: "OpenCode", exact: true }).click();
     await expect(
       selector.getByRole("button", { name: "配置连接", exact: true }),
     ).toBeVisible();

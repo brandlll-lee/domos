@@ -219,7 +219,7 @@ test("model selection waits for persistence and restores a failed save", async (
   const saving = Promise.withResolvers<void>();
   const requested = Promise.withResolvers<void>();
   let requests = 0;
-  await page.route("**/rpc/models/select", async (route) => {
+  await page.route("**/rpc/engines/configure", async (route) => {
     requests++;
     if (requests === 1) {
       requested.resolve();
@@ -233,15 +233,17 @@ test("model selection waits for persistence and restores a failed save", async (
     const picker = details.getByRole("combobox", { name: "模型", exact: true });
     await picker.click();
     await page
-      .getByRole("option", { name: "faux · 测试模型二", exact: true })
+      .getByRole("option", { name: "Pi · 测试模型二", exact: true })
       .click();
     await requested.promise;
-    await expect(details.getByRole("status")).toContainText("正在保存");
+    await expect(
+      page.locator(".model-selector-popup").getByRole("status"),
+    ).toContainText("正在保存");
     saving.resolve();
     await expect(picker).toContainText("测试模型二");
     await picker.click();
     await page
-      .getByRole("option", { name: "faux · 测试模型一", exact: true })
+      .getByRole("option", { name: "Pi · 测试模型一", exact: true })
       .click();
     await expect(page.getByRole("alert")).toBeVisible();
     await expect(picker).toContainText("测试模型二");
@@ -274,7 +276,7 @@ async function createBot(
   await dialog.getByRole("combobox", { name: "模型", exact: true }).click();
   await page
     .getByRole("option", {
-      name: `faux · ${model ?? "测试模型一"}`,
+      name: `Pi · ${model ?? "测试模型一"}`,
       exact: true,
     })
     .click();
@@ -561,14 +563,21 @@ test("Bot details share the desktop with chat and cover narrow screens", async (
   await panel.getByRole("button", { name: "读取实际提示词" }).click();
   await page.setViewportSize({ width: 1360, height: 500 });
   await panel.getByText("完整提示词", { exact: true }).click();
+  await expect
+    .poll(() =>
+      panel
+        .locator(".detail-content")
+        .evaluate((element) => element.scrollHeight > element.clientHeight),
+    )
+    .toBe(true);
   await panel.locator(".detail-content").evaluate((element) => {
     element.scrollTop = element.scrollHeight;
   });
-  expect(
-    await panel
-      .locator(".detail-content")
-      .evaluate((element) => element.scrollTop),
-  ).toBeGreaterThan(0);
+  await expect
+    .poll(() =>
+      panel.locator(".detail-content").evaluate((element) => element.scrollTop),
+    )
+    .toBeGreaterThan(0);
   await expect(input).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(
@@ -760,7 +769,7 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
   await dialog.getByRole("button", { name: "授权并继续", exact: true }).click();
   await dialog.getByRole("combobox", { name: "模型", exact: true }).click();
   await page
-    .getByRole("option", { name: "faux · 测试模型一", exact: true })
+    .getByRole("option", { name: "Pi · 测试模型一", exact: true })
     .click();
   await dialog.getByRole("button", { name: "开始", exact: true }).click();
   await expect(dialog).toHaveCount(0);
@@ -798,7 +807,7 @@ test("model choices load from the server and selection survives a restart", asyn
   await expect(picker).toBeEnabled();
   await picker.click();
   await page
-    .getByRole("option", { name: "faux · 测试模型二", exact: true })
+    .getByRole("option", { name: "Pi · 测试模型二", exact: true })
     .click();
   await expect(picker).toContainText("测试模型二");
   await page.reload();
@@ -1570,10 +1579,6 @@ test("text contrast, keyboard focus and message scrolling meet the UI contract",
   await picker.focus();
   await page.keyboard.press("Tab");
   await expect(
-    details.getByRole("button", { name: "连接模型", exact: true }),
-  ).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(
     details.getByRole("button", { name: "上下文窗口", exact: true }),
   ).toBeFocused();
   await page.keyboard.press("Tab");
@@ -2040,7 +2045,7 @@ test("model search and themed popups support keyboard, dismissal, and narrow scr
   await search.fill("测试模型二");
   await expect(page.getByRole("option")).toHaveCount(1);
   await page
-    .getByRole("option", { name: "faux · 测试模型二", exact: true })
+    .getByRole("option", { name: "Pi · 测试模型二", exact: true })
     .click();
   await expect(model).toContainText("测试模型二");
   await expect(search).toHaveCount(0);
@@ -3360,7 +3365,7 @@ test("Bot identity stays consistent and image previews work in drafts and histor
   await dialog.getByRole("button", { name: "授权并继续", exact: true }).click();
   await dialog.getByRole("combobox", { name: "模型", exact: true }).click();
   await page
-    .getByRole("option", { name: "faux · 测试模型一", exact: true })
+    .getByRole("option", { name: "Pi · 测试模型一", exact: true })
     .click();
   await dialog.getByRole("button", { name: "开始", exact: true }).click();
   await expect(dialog).toHaveCount(0);

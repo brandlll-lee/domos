@@ -133,7 +133,10 @@ test("first use prepares the default Bot with a computer and model before shared
     await setup
       .getByRole("button", { name: "授权并继续", exact: true })
       .click();
-    await setup.getByRole("button", { name: /^Faux Model faux-1/ }).click();
+    await setup.getByRole("combobox", { name: "模型", exact: true }).click();
+    await page
+      .getByRole("option", { name: "Pi · Faux Model", exact: true })
+      .click();
     await capture(page, testInfo, "model-setup");
     await setup.getByRole("button", { name: "开始", exact: true }).click();
     await expect(setup).toBeHidden();
@@ -172,7 +175,7 @@ test("first use prepares the default Bot with a computer and model before shared
         .click();
       await create.getByRole("combobox", { name: "模型", exact: true }).click();
       await second
-        .getByRole("option", { name: "faux · Faux Model", exact: true })
+        .getByRole("option", { name: "Pi · Faux Model", exact: true })
         .click();
       await create.getByRole("button", { name: "开始", exact: true }).click();
       await expect(create).toBeHidden();

@@ -9,7 +9,6 @@ import { useRef, useState } from "react";
 import { client } from "../../client.ts";
 import { rejectionMessage } from "../chat/request-error.ts";
 import { ComputerLocation } from "../computer/location.tsx";
-import { useSettings } from "../settings/context.ts";
 import { AvatarEditor } from "./avatar-editor.tsx";
 import { ModelSetup } from "./details/model.tsx";
 
@@ -61,7 +60,6 @@ function BotForm({
   onCancel: () => void;
   onCreated: (bot: Bot) => void;
 }) {
-  const settings = useSettings();
   const [computerReady, setComputerReady] = useState(false);
   const [name, setName] = useState("");
   const [avatar, setAvatar] = useState(characterSeed);
@@ -86,7 +84,6 @@ function BotForm({
         {computerReady && (
           <ModelSetup
             botId={created.bot.id}
-            canManage={settings.admin}
             onBusyChange={onSavingChange}
             onBack={() => setComputerReady(false)}
             onReady={() => onCreated(created.bot)}

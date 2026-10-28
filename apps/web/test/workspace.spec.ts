@@ -474,7 +474,7 @@ test("Bot model selection saves choices and fits both themes", async ({
   await expect(
     selector.getByRole("option", { name: /测试模型一/ }),
   ).toHaveCount(0);
-  await page.route("**/rpc/models/select", (route) => route.abort(), {
+  await page.route("**/rpc/engines/configure", (route) => route.abort(), {
     times: 1,
   });
   await choice.click();
@@ -511,7 +511,7 @@ test("Bot model selection saves choices and fits both themes", async ({
   }
 });
 
-test("Pi provider connection returns to models and synchronizes saved provider marks", async ({
+test("native Harness controls persist and client accounts retain model access", async ({
   page,
   browser,
 }, info) => {
@@ -537,33 +537,12 @@ test("Pi provider connection returns to models and synchronizes saved provider m
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   const trigger = page.getByRole("combobox", { name: "模型", exact: true });
   const popup = page.locator(".model-selector-popup");
-  const marks = page.locator(
-    ".chat-identity .provider-mark, .context-ring .provider-mark",
-  );
   await trigger.click();
-  await expect(popup.getByRole("tab")).toHaveCount(43);
-  await popup.getByRole("tab", { name: "OpenRouter", exact: true }).click();
-  for (const mark of await marks.all())
-    await expect(mark).toHaveAttribute("data-provider", "faux");
-  await popup.getByRole("button", { name: "配置连接", exact: true }).click();
+  await expect(popup.getByRole("tab")).toHaveCount(5);
   await popup
-    .getByRole("button", { name: "连接 OpenRouter", exact: true })
+    .getByRole("option", { name: "Pi · 测试模型二", exact: true })
     .click();
-  await popup.getByLabel("测试 API Key").fill("test-only");
-  await popup.getByRole("button", { name: "继续", exact: true }).click();
-  const option = popup.getByRole("option", {
-    name: "OpenRouter · 团队模型",
-    exact: true,
-  });
-  await expect(option).toBeVisible();
-  await expect(
-    popup.getByRole("tab", { name: "OpenRouter", exact: true }),
-  ).toHaveAttribute("aria-selected", "true");
-  await page.screenshot({ path: info.outputPath("provider-connected.png") });
-  await option.click();
-  await expect(trigger).toContainText("团队模型");
-  for (const mark of await marks.all())
-    await expect(mark).toHaveAttribute("data-provider", "openrouter");
+  await expect(trigger).toContainText("测试模型二");
   await trigger.click();
   const effort = popup.getByRole("radiogroup", { name: "推理强度" });
   await effort.getByRole("radio", { name: "高", exact: true }).click();
@@ -572,28 +551,28 @@ test("Pi provider connection returns to models and synchronizes saved provider m
   ).toBeChecked();
   await page.reload();
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
-  await page.route("**/rpc/models/refresh", (route) => route.abort(), {
-    times: 1,
-  });
-  await trigger.click();
-  await expect(popup.getByRole("alert")).toContainText("模型目录刷新失败");
-  await expect(popup.getByRole("option")).toHaveCount(0);
-  await page.keyboard.press("Escape");
   await trigger.click();
   await expect(
     effort.getByRole("radio", { name: "高", exact: true }),
   ).toBeChecked();
-  await effort.getByRole("radio", { name: "默认", exact: true }).click();
-  await expect(popup.getByRole("alert")).toHaveCount(0);
-  await expect(
-    effort.getByRole("radio", { name: "关闭", exact: true }),
-  ).toBeChecked();
-  await popup.getByRole("tab", { name: "Anthropic", exact: true }).click();
-  await expect(
-    popup.getByRole("button", { name: "登录 / API 配置", exact: true }),
-  ).toBeVisible();
-  for (const mark of await marks.all())
-    await expect(mark).toHaveAttribute("data-provider", "openrouter");
+  await popup.getByRole("tab", { name: "自定义 ACP", exact: true }).click();
+  await expect(popup.getByLabel("程序路径", { exact: true })).toBeVisible();
+  await popup.getByLabel("程序路径", { exact: true }).fill("example-acp");
+  await popup.getByLabel("启动参数", { exact: true }).fill("invalid");
+  await popup.getByRole("button", { name: "检查连接", exact: true }).click();
+  await expect(popup.getByRole("alert")).toContainText("JSON");
+  await expect(trigger).toContainText("测试模型二");
+  for (const width of [1360, 390]) {
+    await page.setViewportSize({ width, height: 600 });
+    await page.screenshot({
+      path: info.outputPath(`native-connection-${width}.png`),
+    });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  }
   await page.keyboard.press("Escape");
   const response = await page.request.post(`${url}/hosting/pairing`, {
     data: { scope: "client" },
@@ -608,13 +587,28 @@ test("Pi provider connection returns to models and synchronizes saved provider m
     await paired.getByRole("button", { name: "连接", exact: true }).click();
     await paired.getByRole("button", { name: "Bot详情", exact: true }).click();
     await paired.getByRole("combobox", { name: "模型", exact: true }).click();
-    await paired.getByRole("tab", { name: "Anthropic", exact: true }).click();
     await expect(
-      paired.getByText("请管理员连接模型账号。", { exact: true }),
+      paired.getByRole("tab", { name: "Pi", exact: true }),
     ).toBeVisible();
+    await expect(
+      paired.getByRole("button", { name: "配置连接", exact: true }),
+    ).toHaveCount(0);
+    await paired
+      .getByRole("option", { name: "Pi · 测试模型一", exact: true })
+      .click();
+    await expect(
+      paired.getByRole("combobox", { name: "模型", exact: true }),
+    ).toContainText("测试模型一");
     expect((await paired.request.get(`${url}/hosting/models`)).status()).toBe(
       403,
     );
+    expect(
+      (
+        await paired.request.post(`${url}/rpc/engines/install`, {
+          data: { json: { botId: 1, config: { provider: "pi", model: null } } },
+        })
+      ).status(),
+    ).toBe(403);
   } finally {
     await client.close();
   }
@@ -1492,7 +1486,7 @@ test("contact rows keep their density and searchable previews across selections"
     .getByRole("combobox", { name: "模型", exact: true })
     .click();
   await page
-    .getByRole("option", { name: "faux · 测试模型一", exact: true })
+    .getByRole("option", { name: "Pi · 测试模型一", exact: true })
     .click();
   await create.getByRole("button", { name: "开始", exact: true }).click();
   await expect(create).toBeHidden();
@@ -1522,7 +1516,7 @@ test("contact rows keep their density and searchable previews across selections"
     .getByRole("combobox", { name: "模型", exact: true })
     .click();
   await page
-    .getByRole("option", { name: "faux · 测试模型一", exact: true })
+    .getByRole("option", { name: "Pi · 测试模型一", exact: true })
     .click();
   await create.getByRole("button", { name: "开始", exact: true }).click();
   await expect(create).toBeHidden();

@@ -1,9 +1,9 @@
 import { Button, Switch } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
 import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { client } from "../../client.ts";
 import { EngineMark } from "../bots/engine-mark.tsx";
-import { useModels } from "../models/use-models.ts";
 import { useVisibility } from "../models/use-visibility.ts";
 import { useConnectionContext } from "./use-connection-context.ts";
 
@@ -14,23 +14,25 @@ export function ModelSettings({
   botId?: number;
   admin: boolean;
 }) {
-  const { error } = useConnectionContext(botId);
-  const pi = useModels(true);
+  const { target, error: targetError } = useConnectionContext(botId);
+  const [error, setError] = useState("");
+  const [groups, setGroups] = useState<
+    Awaited<ReturnType<typeof client.engines.models>>
+  >([]);
   const visibility = useVisibility(true);
   const [query, setQuery] = useState("");
-  const load = () => window.dispatchEvent(new Event("domos:models"));
-  const groups = [
-    {
-      id: "pi" as const,
-      name: "Pi",
-      models: (pi.choices ?? []).map((item) => ({
-        id: `${item.provider}/${item.modelId}`,
-        name: item.name,
-        group: item.providerName,
-      })),
-      error: pi.error,
-    },
-  ];
+  const load = useCallback(async () => {
+    if (!target) return;
+    try {
+      setGroups(await client.engines.models({ botId: target.id }));
+      setError("");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "模型目录读取失败。");
+    }
+  }, [target]);
+  useEffect(() => {
+    void load();
+  }, [load]);
   return (
     <div
       className="settings-sections model-catalog"
@@ -44,7 +46,7 @@ export function ModelSettings({
         placeholder="搜索名称或模型 ID"
       />
       {groups
-        .filter((harness) => harness.models.length || harness.error)
+        .filter((harness) => harness.models.length)
         .map((harness) => {
           const models = harness.models.filter((item) =>
             `${item.name} ${item.id} ${item.group ?? ""}`
@@ -89,8 +91,7 @@ export function ModelSettings({
                 ))}
                 {!models.length && (
                   <p className="detail-note model-catalog-empty">
-                    {harness.error ??
-                      (query ? "没有匹配的模型" : "尚无可用模型")}
+                    {query ? "没有匹配的模型" : "尚无可用模型"}
                   </p>
                 )}
               </div>
@@ -103,9 +104,9 @@ export function ModelSettings({
       <Button variant="secondary" size="small" onClick={load}>
         刷新模型
       </Button>
-      {(error || pi.error || visibility.error) && (
+      {(error || targetError || visibility.error) && (
         <p className="alert" role="alert">
-          {error || pi.error || visibility.error}
+          {error || targetError || visibility.error}
         </p>
       )}
     </div>

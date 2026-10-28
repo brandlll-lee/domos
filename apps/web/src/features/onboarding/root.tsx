@@ -102,7 +102,6 @@ export function Onboarding({
               {step === 1 && (
                 <ModelSetup
                   botId={setup.botId}
-                  canManage={admin}
                   onBack={() => setStep(0)}
                   onReady={() =>
                     void refresh()

@@ -84,8 +84,7 @@ export function BotDetails({
         onNavigate={navigate}
       />
     );
-  else if (view === "engine")
-    content = <ModelSetup botId={bot.id} canManage={canManage} />;
+  else if (view === "engine") content = <ModelSetup botId={bot.id} />;
   else if (view === "computer")
     content = <ComputerSettings computer={computer} botId={bot.id} />;
   else if (view === "memory")
