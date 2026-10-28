@@ -1,6 +1,7 @@
 import { fork } from "node:child_process";
 import { once } from "node:events";
 import { appendFile, mkdtemp, readFile, rm } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +11,7 @@ import {
 } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
 import { createModels } from "@earendil-works/pi-ai/models";
+import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import {
   fauxAssistantMessage,
   fauxProvider,
@@ -21,6 +23,7 @@ import {
   defineExtension,
   defineTool,
   Harness,
+  LiveDoc,
   type Submission,
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
@@ -33,6 +36,101 @@ import { chatTranscript } from "../src/transcript.ts";
 
 const context = BACKGROUND_CONTEXT;
 const agent = { model: { provider: "faux", modelId: "faux-1" } };
+
+test("Pi retries a broken HTTP stream and retains evidence after reopening", async () => {
+  const file = await database(onTestFinished);
+  const reached = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const chunk =
+    'data: {"choices":[{"index":0,"delta":{"content":"Recovered"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n';
+  let calls = 0;
+  const server = createServer((request, response) => {
+    request.resume();
+    response.setHeader("content-type", "text/event-stream");
+    response.setHeader("x-request-id", "fixture-request");
+    if (++calls === 1) {
+      response.setHeader("content-length", Buffer.byteLength(chunk) + 100);
+      response.setHeader("connection", "close");
+      response.end(chunk.slice(0, -14));
+    } else {
+      reached.resolve();
+      void release.promise.then(() => response.end(chunk));
+    }
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  onTestFinished(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const models = builtinModels();
+  const provider = models.getProvider("deepseek");
+  const address = server.address();
+  if (!provider || !address || typeof address === "string")
+    throw new Error("Fixture required");
+  models.setProvider({
+    ...provider,
+    getModels: () =>
+      provider.getModels().map((model) => ({
+        ...model,
+        baseUrl: `http://127.0.0.1:${address.port}`,
+      })),
+    auth: {
+      apiKey: {
+        name: "Fixture",
+        resolve: async () => ({ auth: { apiKey: "fixture-key" } }),
+      },
+    },
+  });
+  const options = {
+    models,
+    registry: createRegistry(),
+    settings: { retry: { baseDelayMs: 1 }, stream: { maxRetries: 0 } },
+  };
+  const selected = {
+    model: { provider: "deepseek", modelId: "deepseek-flash" },
+  };
+  let runtime = await openAgent(file, options, selected, context);
+  let state = await runtime.conversation.viewState(context);
+  try {
+    const submitted = await runtime.conversation.submit(
+      { type: "input", content: "Continue" },
+      context,
+    );
+    await reached.promise;
+    expect(
+      chatTranscript(chatView(state.value)).filter(
+        (item) => item.kind === "notice",
+      ),
+    ).toEqual([]);
+    release.resolve();
+    await submitted.wait(context);
+    expect(
+      chatTranscript(chatView(state.value)).filter(
+        (item) => item.kind === "notice",
+      ),
+    ).toEqual([]);
+    expect(state.value.docs[LiveDoc.definition.kind]).not.toHaveProperty("run");
+    expect(calls).toBe(2);
+    state.dispose();
+    await runtime.harness.close(context);
+    runtime = await openAgent(file, options, selected, context);
+    state = await runtime.conversation.viewState(context);
+    const evidence = state.value.entries
+      .flatMap((entry) => entry.model ?? [])
+      .flatMap((message) =>
+        message.role === "assistant" ? (message.diagnostics ?? []) : [],
+      );
+    expect(JSON.stringify(evidence)).toContain("fixture-request");
+    expect(JSON.stringify(evidence)).toContain('"phase":"body"');
+    expect(JSON.stringify(evidence)).toContain(
+      "UND_ERR_RES_CONTENT_LENGTH_MISMATCH",
+    );
+  } finally {
+    release.resolve();
+    state.dispose();
+    await runtime.harness.close(context);
+  }
+});
 
 function model() {
   const faux = fauxProvider();

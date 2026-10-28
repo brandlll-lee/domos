@@ -15,6 +15,7 @@ import { Files } from "./files.ts";
 import { history } from "./harness/history.ts";
 import { Runtime } from "./runtime/index.ts";
 import { migrateRuntime } from "./runtime/migrate.ts";
+import { modelDiagnostics } from "./runtime/model-diagnostics.ts";
 import { openStorage } from "./runtime/storage.ts";
 import { botWork } from "./work/index.ts";
 import { memory } from "./work/memory.ts";
@@ -48,7 +49,8 @@ export async function openAgent(
     }),
   );
   const storage = await openStorage(database);
-  const harness = await Harness.open(storage, options, context);
+  const models = modelDiagnostics(options.models);
+  const harness = await Harness.open(storage, { ...options, models }, context);
   try {
     const conversation = await harness.root(context, { agent });
     const bots = new Bots(harness, options.computers);
@@ -63,12 +65,7 @@ export async function openAgent(
     computerRuntime = computers
       ? new ComputerRuntime(harness, options.registry, computers, files)
       : undefined;
-    const engines = new Runtime(
-      harness,
-      options.models,
-      computerRuntime,
-      files,
-    );
+    const engines = new Runtime(harness, models, computerRuntime, files);
     for (const bot of await bots.list(context)) {
       await migrateRuntime(harness, bot.id, context);
       await computerRuntime?.prepare(bot.id, context, false);
@@ -80,7 +77,7 @@ export async function openAgent(
       bots,
       work: botWork(harness, options.now),
       files,
-      models: options.models,
+      models,
       engines,
     };
   } catch (error) {

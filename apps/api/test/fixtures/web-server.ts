@@ -322,6 +322,7 @@ process.on("message", async (message) => {
       ...message.responses.map((item) =>
         fauxAssistantMessage(item.content, {
           stopReason: item.stopReason ?? "stop",
+          errorMessage: item.errorMessage,
         }),
       ),
       answer,

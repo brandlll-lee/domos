@@ -57,6 +57,7 @@ async function control(
         responses: {
           content: unknown;
           stopReason?: "stop" | "toolUse" | "error";
+          errorMessage?: string;
         }[];
       },
 ) {
@@ -2877,14 +2878,23 @@ test("typing follows the Bot and failures retain their error message", async ({
   await expect(page.locator('.task-notice[data-state="stopped"]')).toHaveCount(
     0,
   );
+  await control({
+    responses: [
+      { content: "", stopReason: "error", errorMessage: "Connection error." },
+      { content: "重试已恢复", stopReason: "stop" },
+    ],
+  });
+  await input.fill("重试后继续");
+  await send.click();
+  await expect(page.locator(".messages").getByText("重试已恢复")).toBeVisible();
+  const failure = page.locator(".task-notice .message-bubble");
+  await expect(failure).toHaveCount(0);
   await control({ responses: [{ content: "", stopReason: "error" }] });
   await input.fill("再次生成");
   await send.click();
-  await expect(page.locator('.task-notice[data-state="failed"]')).toHaveCount(
-    1,
-  );
-  await page.screenshot({ path: testInfo.outputPath("failure.png") });
-  const failure = page.locator(".task-notice .message-bubble");
+  await expect(failure).toHaveCount(1);
+  await expect(failure).toContainText("回复失败，原因待确认");
+  await expect(failure).toContainText(/〔\d+:\d+〕/);
   await expect(failure.getByRole("alert")).toBeVisible();
   await expect(failure.locator('svg[aria-hidden="true"]')).toHaveCount(1);
   const errorText = await failure.innerText();
@@ -2893,9 +2903,7 @@ test("typing follows the Bot and failures retain their error message", async ({
   await start(port);
   await page.reload();
   await expect(send).toBeVisible();
-  await expect(page.locator('.task-notice[data-state="failed"]')).toHaveCount(
-    1,
-  );
+  await expect(failure).toHaveCount(1);
   await expect(failure).toHaveText(errorText);
   await page
     .locator("#bot-details")

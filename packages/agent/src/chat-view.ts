@@ -17,6 +17,7 @@ import type {
   EngineRuntimeState,
 } from "./harness/types.ts";
 import type { ChatContent, ChatMessage } from "./messages.ts";
+import { modelFailure } from "./runtime/model-diagnostics.ts";
 import { RoutineInput } from "./work/routine-state.ts";
 
 export type ChatView = {
@@ -47,6 +48,13 @@ export function chatView(
   const live = view.docs[LiveDoc.definition.kind] as LiveState | undefined;
   const agent = view.docs[AgentDoc.definition.kind] as AgentState | undefined;
   const messages: ChatMessage[] = [];
+  const lastAttempts = new Map<number, number>();
+  for (const entry of view.entries)
+    if (
+      entry.byTaskId &&
+      entry.model?.some((message) => message.role === "assistant")
+    )
+      lastAttempts.set(entry.byTaskId, entry.id);
   let turnId: string | undefined;
   let failed = false;
   const project = (
@@ -59,17 +67,8 @@ export function chatView(
   ): ChatMessage | null => {
     if (message.role === "system") return null;
     if (message.role === "user") turnId = id;
-    if (message.role === "assistant" && message.stopReason === "error")
-      return {
-        id,
-        turnId,
-        role: message.role,
-        content: [],
-        stopReason: "error",
-        stopped: false,
-        timestamp: message.timestamp,
-        error: "回复失败。请检查模型配置、余额或网络。",
-      };
+    const failure =
+      message.role === "assistant" && message.stopReason === "error";
     return {
       id,
       turnId,
@@ -93,7 +92,11 @@ export function chatView(
                     : [{ type: "thinking", thinking: part.thinking }];
                 case "image":
                   return [
-                    { type: "image", data: part.data, mimeType: part.mimeType },
+                    {
+                      type: "image",
+                      data: part.data,
+                      mimeType: part.mimeType,
+                    },
                   ];
                 case "toolCall":
                   return [
@@ -109,6 +112,7 @@ export function chatView(
               return exhaustive;
             })
       ).map((part, index) => ({ ...part, key: `${id}:${index}` })),
+      ...(failure ? { content: [], error: modelFailure(message, id) } : {}),
       stopped: message.role === "assistant" && message.stopReason === "aborted",
       ...(message.role === "toolResult"
         ? {
@@ -157,6 +161,14 @@ export function chatView(
         : undefined;
     const stopped = diagnostics?.some((item) => item.code === "aborted");
     entry.model?.forEach((message, index) => {
+      if (
+        message.role === "assistant" &&
+        message.stopReason === "error" &&
+        entry.byTaskId &&
+        (lastAttempts.get(entry.byTaskId) !== entry.id ||
+          entry.byTaskId === live?.run?.taskId)
+      )
+        return;
       const attachment =
         message.role === "toolResult"
           ? (message.details as { attachment?: Attachment } | undefined)
