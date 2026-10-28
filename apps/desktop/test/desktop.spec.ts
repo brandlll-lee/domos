@@ -213,12 +213,33 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     await expect(page.getByRole("button", { name: "Bot详情" })).toBeVisible();
     await expect(page.locator(".app-titlebar, .app-rail")).toHaveCount(0);
     await expect(page.locator("#bot-details")).toBeVisible();
-    await expect(page.locator(".chat-identity .engine-mark")).toBeVisible();
+    await expect(page.locator(".chat-identity .provider-mark")).toBeVisible();
     await captureWindow(
       desktop,
       page,
       testInfo.outputPath("workspace-native.png"),
     );
+    await page.getByRole("combobox", { name: "模型", exact: true }).click();
+    const selector = page.locator(".model-selector-popup");
+    await expect(selector.getByRole("tab")).toHaveCount(43);
+    await selector
+      .getByRole("tab", { name: "OpenRouter", exact: true })
+      .click();
+    await expect(
+      selector.getByRole("button", { name: "配置连接", exact: true }),
+    ).toBeVisible();
+    await expect(page.locator(".chat-identity .provider-mark")).toHaveAttribute(
+      "data-provider",
+      "faux",
+    );
+    await captureWindow(
+      desktop,
+      page,
+      testInfo.outputPath("model-provider-native.png"),
+    );
+    await selector
+      .getByRole("button", { name: "关闭模型选择", exact: true })
+      .click();
     const original = await desktop.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0]?.getBounds(),
     );

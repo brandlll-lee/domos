@@ -9,6 +9,7 @@ import { HostingStore } from "@domos/hosting/store";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
 import { createModels } from "@earendil-works/pi-ai/models";
+import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 import {
   type FauxResponseFactory,
   fauxAssistantMessage,
@@ -31,13 +32,58 @@ if (!database) throw new Error("Database required");
 const faux = fauxProvider({
   models: [
     { id: "faux-1", name: "测试模型一" },
-    { id: "faux-2", name: "测试模型二" },
+    { id: "faux-2", name: "测试模型二", reasoning: true },
   ],
   tokensPerSecond: 40,
   tokenSize: { min: 1, max: 1 },
 });
 const models = createModels();
+for (const provider of builtinProviders())
+  models.setProvider({
+    ...provider,
+    auth: {
+      ...provider.auth,
+      apiKey: {
+        ...provider.auth.apiKey,
+        name: provider.auth.apiKey?.name ?? "API key",
+        check: async () => undefined,
+        resolve: async () => undefined,
+      },
+    },
+  });
 models.setProvider(faux.provider);
+const routed = fauxProvider({
+  provider: "openrouter",
+  models: [{ id: "routed", name: "团队模型", reasoning: true }],
+});
+let routedCatalog: typeof routed.models | [] = [];
+models.setProvider({
+  ...routed.provider,
+  getModels: () => routedCatalog,
+  refreshModels: async (context) => {
+    if (context.credential)
+      await context.publish({
+        update: () => {
+          routedCatalog = routed.models;
+        },
+      });
+  },
+  name: "OpenRouter",
+  auth: {
+    apiKey: {
+      name: "API key",
+      login: async (interaction) => ({
+        type: "api_key",
+        key: await interaction.prompt({
+          type: "secret",
+          message: "测试 API Key",
+        }),
+      }),
+      resolve: async ({ credential }) =>
+        credential?.key ? { auth: { apiKey: credential.key } } : undefined,
+    },
+  },
+});
 let gate: ReturnType<typeof Promise.withResolvers<void>> | undefined;
 let toolGate: ReturnType<typeof Promise.withResolvers<void>> | undefined;
 const toolName = `tool_${crypto.randomUUID().replaceAll("-", "")}`;

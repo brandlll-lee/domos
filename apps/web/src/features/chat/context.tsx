@@ -1,9 +1,9 @@
-import type { EngineId, EngineRuntimeState } from "@domos/agent/harness/types";
+import type { EngineRuntimeState } from "@domos/agent/harness/types";
 import { ContextWindow, contextPercent } from "@domos/ui/context-window";
 import { Button } from "@domos/ui/controls";
 import { client } from "../../client.ts";
 import { useWorkAction } from "../bots/details/use-bot-work.ts";
-import { EngineMark } from "../bots/engine-mark.tsx";
+import { ProviderMark } from "../models/provider-mark.tsx";
 
 const compactNumber = (value: number) =>
   new Intl.NumberFormat("en", {
@@ -28,7 +28,7 @@ export function ContextRing({
 }: {
   botId: number;
   state?: EngineRuntimeState;
-  provider: EngineId;
+  provider?: string;
   busy: boolean;
 }) {
   const action = useWorkAction();
@@ -77,7 +77,7 @@ export function ContextRing({
               />
             )}
           </svg>
-          <EngineMark provider={provider} />
+          <ProviderMark provider={provider} />
         </button>
       }
     >

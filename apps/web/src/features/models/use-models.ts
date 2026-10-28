@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { client } from "../../client.ts";
 
 export type ModelChoice = Awaited<
@@ -6,23 +6,25 @@ export type ModelChoice = Awaited<
 >[number];
 export const modelKey = (model: { provider: string; modelId: string }) =>
   JSON.stringify([model.provider, model.modelId]);
-export const modelItems = (choices: ModelChoice[] | null) =>
-  choices?.map((choice) => ({
-    value: modelKey(choice),
-    label: `${choice.providerName} · ${choice.name}`,
-  })) ?? [];
 
 export function useModels(enabled: boolean) {
   const [choices, setChoices] = useState<ModelChoice[] | null>(null);
+  const [providers, setProviders] = useState<
+    Awaited<ReturnType<typeof client.models.providers>>
+  >([]);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (!enabled) return;
     const controller = new AbortController();
     const refresh = () => {
-      void client.models.list(undefined, { signal: controller.signal }).then(
-        (next) => {
+      void Promise.all([
+        client.models.list(undefined, { signal: controller.signal }),
+        client.models.providers(undefined, { signal: controller.signal }),
+      ]).then(
+        ([next, providers]) => {
           if (!controller.signal.aborted) {
             setChoices(next);
+            setProviders(providers);
             setError(null);
           }
         },
@@ -39,5 +41,12 @@ export function useModels(enabled: boolean) {
       window.removeEventListener("domos:models", refresh);
     };
   }, [enabled]);
-  return { choices, error };
+  const refreshProvider = useCallback(
+    async (provider: string, signal: AbortSignal) => {
+      const next = await client.models.refresh({ provider }, { signal });
+      if (!signal.aborted) setChoices(next);
+    },
+    [],
+  );
+  return { choices, providers, error, refreshProvider };
 }

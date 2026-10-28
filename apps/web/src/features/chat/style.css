@@ -201,7 +201,7 @@
 .chat-identity-icons .bot-avatar {
   z-index: 1;
 }
-.chat-identity-icons .engine-mark {
+.chat-identity-icons .provider-mark {
   width: var(--space-6);
   height: var(--space-6);
   margin-inline-start: calc(-1 * var(--space-2));
@@ -263,7 +263,7 @@
 .context-ring[data-level="high"] .context-ring-arc {
   stroke: var(--color-danger);
 }
-.context-ring .engine-mark {
+.context-ring .provider-mark {
   position: relative;
   width: 0.8125rem;
   height: 0.8125rem;

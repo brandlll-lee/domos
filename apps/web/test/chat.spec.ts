@@ -242,7 +242,7 @@ test("model selection waits for persistence and restores a failed save", async (
     await page
       .getByRole("option", { name: "faux · 测试模型一", exact: true })
       .click();
-    await expect(details.getByRole("alert")).toBeVisible();
+    await expect(page.getByRole("alert")).toBeVisible();
     await expect(picker).toContainText("测试模型二");
     expect(requests).toBe(2);
   } finally {
@@ -2026,7 +2026,10 @@ test("model search and themed popups support keyboard, dismissal, and narrow scr
   await expect(model).toBeEnabled();
   await model.focus();
   await page.keyboard.press("Enter");
-  const search = page.getByRole("combobox", { name: "搜索模型…", exact: true });
+  const search = page.getByRole("searchbox", {
+    name: "搜索模型…",
+    exact: true,
+  });
   await expect(search).toBeFocused();
   await search.click();
   await expect(search).toHaveCSS("outline-style", "none");
@@ -2054,7 +2057,7 @@ test("model search and themed popups support keyboard, dismissal, and narrow scr
   await expect(page.locator("select:visible")).toHaveCount(0);
   await page.setViewportSize({ width: 320, height: 568 });
   await model.click();
-  const popup = page.locator(".picker-search-popup");
+  const popup = page.locator(".model-selector-popup");
   await expect(popup).toBeVisible();
   const bounds = await popup.boundingBox();
   if (!bounds) throw new Error("Popup is not visible");
@@ -2134,7 +2137,7 @@ test("IM bubbles, sidebar search, and popup surfaces share both themes", async (
     await page.getByRole("combobox", { name: "模型", exact: true }).click();
     await expect(page.getByRole("option").first()).toBeVisible();
     await page
-      .locator(".picker-search-popup")
+      .locator(".model-selector-popup")
       .evaluate((element) =>
         Promise.all(
           element.getAnimations().map((animation) => animation.finished),

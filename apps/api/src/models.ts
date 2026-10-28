@@ -1,6 +1,6 @@
 import type { Bots } from "@domos/agent/bots";
 import { engineIds } from "@domos/agent/harness/types";
-import { modelCatalog } from "@domos/agent/models";
+import { modelCatalog, modelProviders } from "@domos/agent/models";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai/models";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/models";
@@ -13,13 +13,13 @@ export async function requireConfiguredModel(
   models: Models,
   selection: ModelRef | undefined,
 ) {
-  if (
-    !selection ||
-    !(await models.getAvailable(selection.provider)).some(
+  const model =
+    selection &&
+    (await models.getAvailable(selection.provider)).find(
       (model) => model.id === selection.modelId,
-    )
-  )
-    throw new ORPCError("PRECONDITION_FAILED");
+    );
+  if (!model) throw new ORPCError("PRECONDITION_FAILED");
+  return model;
 }
 
 export function modelRouter(bots: Bots, models: Models) {
@@ -38,9 +38,9 @@ export function modelRouter(bots: Bots, models: Models) {
         const level = getSupportedThinkingLevels(model).find(
           (item) => item === input.thinkingLevel,
         );
-        if (!model || !level) throw new ORPCError("BAD_REQUEST");
+        if (input.thinkingLevel && !level) throw new ORPCError("BAD_REQUEST");
         await conversation.configure(
-          { thinkingLevel: level },
+          { thinkingLevel: level ?? null },
           BACKGROUND_CONTEXT,
         );
         return { ok: true };
@@ -57,7 +57,25 @@ export function modelRouter(bots: Bots, models: Models) {
       .handler(({ input }) =>
         bots.setModelVisibility(input, BACKGROUND_CONTEXT),
       ),
+    refresh: os
+      .input(z.object({ provider: z.string().min(1).max(256) }))
+      .handler(async ({ input, signal }) => {
+        if (!models.getProvider(input.provider))
+          throw new ORPCError("BAD_REQUEST");
+        const timeout = AbortSignal.timeout(15_000);
+        const result = await models.refresh({
+          providers: [input.provider],
+          allowNetwork: true,
+          signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+        });
+        if (result.aborted || result.errors.size)
+          throw new ORPCError("BAD_GATEWAY", {
+            message: "模型目录刷新失败。请重试。",
+          });
+        return modelCatalog(models);
+      }),
     list: os.handler(() => modelCatalog(models)),
+    providers: os.handler(() => modelProviders(models)),
     select: os
       .input(
         botTarget.extend({
@@ -66,10 +84,21 @@ export function modelRouter(bots: Bots, models: Models) {
         }),
       )
       .handler(async ({ input }) => {
-        await requireConfiguredModel(models, input);
+        const selected = await requireConfiguredModel(models, input);
         const conversation = await botConversation(bots, input.botId);
         const model = { provider: input.provider, modelId: input.modelId };
-        await conversation.configure({ model }, BACKGROUND_CONTEXT);
+        const agent = await conversation.agent(BACKGROUND_CONTEXT);
+        await conversation.configure(
+          {
+            model,
+            thinkingLevel: getSupportedThinkingLevels(selected).includes(
+              agent.thinkingLevel,
+            )
+              ? agent.thinkingLevel
+              : null,
+          },
+          BACKGROUND_CONTEXT,
+        );
         return model;
       }),
   };

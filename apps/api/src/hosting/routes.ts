@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { RuntimeConfig } from "@domos/agent/config";
+import { modelProviders } from "@domos/agent/models";
 import { desktopSession } from "@domos/hosting/desktop";
 import type { Sessions } from "@domos/hosting/sessions";
 import type { Models } from "@earendil-works/pi-ai";
@@ -97,21 +98,7 @@ export function hostingApp(options: {
   });
   app.get("/hosting/models", async (c) =>
     c.json({
-      providers: await Promise.all(
-        models.getProviders().map(async (provider) => ({
-          id: provider.id,
-          name: provider.name,
-          methods: [
-            ...(provider.auth.apiKey?.login
-              ? [{ type: "api_key", name: provider.auth.apiKey.name }]
-              : []),
-            ...(provider.auth.oauth
-              ? [{ type: "oauth", name: provider.auth.oauth.name }]
-              : []),
-          ],
-          configured: Boolean(await models.checkAuth(provider.id)),
-        })),
-      ),
+      providers: await modelProviders(models),
       models: (await models.getAvailable()).map((model) => ({
         provider: model.provider,
         modelId: model.id,

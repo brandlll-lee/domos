@@ -31,6 +31,7 @@ export function TextField({
   | "disabled"
   | "autoFocus"
   | "inputMode"
+  | "onKeyDown"
 >) {
   return (
     <Field.Root className="field" invalid={Boolean(error) || undefined}>

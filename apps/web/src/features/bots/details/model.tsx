@@ -61,11 +61,12 @@ export function ModelSetup({
               : null
           }
           connected={Boolean(profile)}
+          disabled={profile?.busy}
           onSelected={refresh}
           onBusyChange={reportBusy}
         />
       )}
-      {profile?.model?.effort && (
+      {canManage && !settings.standalone && profile?.model?.effort && (
         <SettingRow title="推理强度">
           <Effort
             control={{

@@ -12,8 +12,9 @@ export function ModelSelector({
   models,
   provider,
   effort,
-  environment,
-  source,
+  status,
+  notice,
+  configuration,
   value,
   label,
   loading,
@@ -26,12 +27,18 @@ export function ModelSelector({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  providers: { id: string; name: string; icon: ReactNode }[];
+  providers: {
+    id: string;
+    name: string;
+    icon: ReactNode;
+    configured: boolean;
+  }[];
   models: { id: string; name: string; group?: string }[];
   provider: string;
   effort?: ReactNode;
-  environment?: string;
-  source?: ReactNode;
+  status?: string;
+  notice?: ReactNode;
+  configuration?: ReactNode;
   value: string;
   label: string;
   loading: boolean;
@@ -40,7 +47,7 @@ export function ModelSelector({
   error?: string | null;
   onProviderChange: (id: string) => void;
   onSelect: (id: string) => void;
-  onConfigure: () => void;
+  onConfigure?: () => void;
 }) {
   const [query, setQuery] = useState("");
   const popup = useRef<HTMLDivElement>(null);
@@ -64,7 +71,9 @@ export function ModelSelector({
             variant="ghost"
             size="small"
             className="model-selector-trigger"
-            aria-label="选择引擎与模型"
+            aria-label="模型"
+            role="combobox"
+            disabled={disabled}
           />
         }
       >
@@ -96,7 +105,7 @@ export function ModelSelector({
                 : true
             }
           >
-            <Popover.Title className="sr-only">任务引擎与模型</Popover.Title>
+            <Popover.Title className="sr-only">选择模型</Popover.Title>
             <Tabs.Root
               value={provider}
               orientation="vertical"
@@ -106,111 +115,167 @@ export function ModelSelector({
                 onProviderChange(String(id));
               }}
             >
-              <Tabs.List className="model-selector-rail" aria-label="任务引擎">
+              <Tabs.List
+                className="model-selector-rail"
+                aria-label="模型提供方"
+              >
                 {providers.map((item) => (
                   <Tabs.Tab
                     key={item.id}
                     value={item.id}
                     className="model-selector-provider"
                     aria-label={item.name}
-                    title={item.name}
+                    title={`${item.name} · ${item.configured ? "已连接" : "未连接"}`}
+                    data-connected={item.configured || undefined}
+                    disabled={busy}
                   >
                     {item.icon}
                   </Tabs.Tab>
                 ))}
-                <Button
-                  variant="ghost"
-                  size="icon-small"
-                  className="model-selector-config"
-                  aria-label="连接与账号设置"
-                  title="连接与账号设置"
-                  disabled={busy || disabled}
-                  onClick={onConfigure}
-                >
-                  <svg viewBox="0 0 20 20" aria-hidden="true">
-                    <path d="M4 5h12M4 10h12M4 15h12M7 3v4m6 1v4m-5 1v4" />
-                  </svg>
-                </Button>
+                {onConfigure && (
+                  <Button
+                    variant="ghost"
+                    size="icon-small"
+                    className="model-selector-config"
+                    aria-label="连接与账号设置"
+                    title="连接与账号设置"
+                    disabled={busy || disabled}
+                    onClick={onConfigure}
+                  >
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <path d="M4 5h12M4 10h12M4 15h12M7 3v4m6 1v4m-5 1v4" />
+                    </svg>
+                  </Button>
+                )}
               </Tabs.List>
               <Tabs.Panel value={provider} className="model-selector-panel">
                 <div className="model-selector-header">
                   <div className="model-selector-identity">
                     <strong>{selected?.name}</strong>
-                    {environment && (
-                      <span title={environment}>{environment}</span>
-                    )}
+                    {status && <span title={status}>{status}</span>}
                   </div>
-                  {source}
                 </div>
-                <div className="model-selector-search">
-                  <TextField
-                    label="搜索模型"
-                    type="search"
-                    placeholder={
-                      selected?.name ? `搜索 ${selected.name}` : "搜索模型"
-                    }
-                    value={query}
-                    onValueChange={setQuery}
-                  />
-                  <Popover.Close
-                    aria-label="关闭模型选择"
-                    render={<Button variant="ghost" size="icon-small" />}
-                  >
-                    <svg viewBox="0 0 16 16" aria-hidden="true">
-                      <path d="m4 4 8 8m0-8-8 8" />
-                    </svg>
-                  </Popover.Close>
-                </div>
-                <ScrollArea className="model-selector-scroll">
-                  <div className="model-selector-options">
-                    {loading ? (
-                      <p role="status">正在读取模型…</p>
-                    ) : (
-                      matches.map((item, index) => (
-                        <div key={item.id}>
-                          {item.group &&
-                            item.group !== matches[index - 1]?.group && (
-                              <p className="model-selector-group">
-                                {item.group}
-                              </p>
-                            )}
-                          <button
-                            type="button"
-                            className="model-selector-option"
-                            aria-pressed={item.id === value}
-                            disabled={disabled}
-                            onClick={() => onSelect(item.id)}
-                          >
-                            <span>{item.name}</span>
-                            {item.id === value && (
-                              <svg
-                                className="model-selector-check"
-                                viewBox="0 0 16 16"
-                                aria-hidden="true"
+                {configuration ?? (
+                  <>
+                    {notice}
+                    <div className="model-selector-search">
+                      <TextField
+                        label="搜索模型…"
+                        type="search"
+                        placeholder={
+                          selected?.name ? `搜索 ${selected.name}` : "搜索模型"
+                        }
+                        value={query}
+                        onValueChange={setQuery}
+                        onKeyDown={(event) => {
+                          if (event.key === "ArrowDown") {
+                            event.preventDefault();
+                            popup.current
+                              ?.querySelector<HTMLButtonElement>(
+                                '[role="option"]:not(:disabled)',
+                              )
+                              ?.focus();
+                          }
+                        }}
+                      />
+                      <Popover.Close
+                        aria-label="关闭模型选择"
+                        render={<Button variant="ghost" size="icon-small" />}
+                      >
+                        <svg viewBox="0 0 16 16" aria-hidden="true">
+                          <path d="m4 4 8 8m0-8-8 8" />
+                        </svg>
+                      </Popover.Close>
+                    </div>
+                    <ScrollArea className="model-selector-scroll">
+                      <div
+                        className="model-selector-options"
+                        role="listbox"
+                        aria-label="可用模型"
+                        onKeyDown={(event) => {
+                          if (
+                            !["ArrowDown", "ArrowUp", "Home", "End"].includes(
+                              event.key,
+                            )
+                          )
+                            return;
+                          const items = Array.from(
+                            event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                              'button[role="option"]:not(:disabled)',
+                            ),
+                          );
+                          const index = items.indexOf(
+                            document.activeElement as HTMLButtonElement,
+                          );
+                          const next =
+                            event.key === "Home"
+                              ? 0
+                              : event.key === "End"
+                                ? items.length - 1
+                                : Math.max(
+                                    0,
+                                    Math.min(
+                                      items.length - 1,
+                                      index +
+                                        (event.key === "ArrowDown" ? 1 : -1),
+                                    ),
+                                  );
+                          event.preventDefault();
+                          items[next]?.focus();
+                        }}
+                      >
+                        {loading ? (
+                          <p role="status">正在读取模型…</p>
+                        ) : (
+                          matches.map((item, index) => (
+                            <div key={item.id}>
+                              {item.group &&
+                                item.group !== matches[index - 1]?.group && (
+                                  <p className="model-selector-group">
+                                    {item.group}
+                                  </p>
+                                )}
+                              <button
+                                type="button"
+                                className="model-selector-option"
+                                role="option"
+                                aria-label={`${selected?.name} · ${item.name}`}
+                                aria-selected={item.id === value}
+                                disabled={disabled || busy}
+                                onClick={() => onSelect(item.id)}
                               >
-                                <path d="m3 8 3 3 7-7" />
-                              </svg>
-                            )}
-                          </button>
-                        </div>
-                      ))
+                                <span>{item.name}</span>
+                                {item.id === value && (
+                                  <svg
+                                    className="model-selector-check"
+                                    viewBox="0 0 16 16"
+                                    aria-hidden="true"
+                                  >
+                                    <path d="m3 8 3 3 7-7" />
+                                  </svg>
+                                )}
+                              </button>
+                            </div>
+                          ))
+                        )}
+                        {!loading && !matches.length && (
+                          <p>
+                            {models.length ? "没有找到模型" : "暂无可用模型"}
+                          </p>
+                        )}
+                      </div>
+                    </ScrollArea>
+                    {busy && !loading && (
+                      <p className="model-selector-note">工作结束后可切换</p>
                     )}
-                    {!loading && !matches.length && (
-                      <p>
-                        {models.length ? "没有找到模型" : "连接账号后选择模型"}
-                      </p>
-                    )}
-                  </div>
-                </ScrollArea>
-                {busy && !loading && (
-                  <p className="model-selector-note">工作结束后可切换</p>
+                    {effort}
+                  </>
                 )}
                 {error && (
                   <p className="alert" role="alert">
                     {error}
                   </p>
                 )}
-                {effort}
               </Tabs.Panel>
             </Tabs.Root>
           </Popover.Popup>

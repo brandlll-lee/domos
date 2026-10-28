@@ -40,11 +40,11 @@ test("three columns keep the identity capsule and navigation clear at each width
     Math.abs(pill.x + pill.width / 2 - frame.x - frame.width / 2),
   ).toBeLessThan(1);
   const avatar = await capsule.locator(".bot-avatar").boundingBox();
-  const mark = capsule.locator(".engine-mark");
+  const mark = capsule.locator(".provider-mark");
   const logo = await mark.boundingBox();
   if (!logo || !avatar) throw new Error("Identity icons missing");
   expect(logo.x).toBeLessThan(avatar.x + avatar.width);
-  await expect(mark).toHaveAttribute("data-provider", "pi");
+  await expect(mark).toHaveAttribute("data-provider", "faux");
   await expect(capsule.locator(".character")).toHaveCount(1);
   const footer = page.locator(".sidebar-footer");
   const composer = await page.locator(".message-composer").boundingBox();
@@ -462,8 +462,8 @@ test("Bot model selection saves choices and fits both themes", async ({
     exact: true,
   });
   await trigger.click();
-  const selector = page.locator(".picker-search-popup");
-  const search = selector.getByRole("combobox", {
+  const selector = page.locator(".model-selector-popup");
+  const search = selector.getByRole("searchbox", {
     name: "搜索模型…",
     exact: true,
   });
@@ -478,9 +478,9 @@ test("Bot model selection saves choices and fits both themes", async ({
     times: 1,
   });
   await choice.click();
-  await expect(selector).toBeHidden();
-  await expect(page.getByRole("alert")).toBeVisible();
-  await trigger.click();
+  await expect(selector).toBeVisible();
+  await expect(selector.getByRole("alert")).toBeVisible();
+  await expect(trigger).toContainText("测试模型一");
   await choice.click();
   await expect(selector).toBeHidden();
   await expect(trigger).toContainText("测试模型二");
@@ -508,6 +508,115 @@ test("Bot model selection saves choices and fits both themes", async ({
       });
       await page.keyboard.press("Escape");
     }
+  }
+});
+
+test("Pi provider connection returns to models and synchronizes saved provider marks", async ({
+  page,
+  browser,
+}, info) => {
+  const exited = once(worker, "exit");
+  worker.disconnect();
+  await exited;
+  worker = fork(
+    fileURLToPath(
+      new URL("../../api/test/fixtures/web-server.ts", import.meta.url),
+    ),
+    [join(directory, "data.sqlite"), "0", "hosting"],
+    { silent: true, execArgv: [] },
+  );
+  worker.stderr?.resume();
+  worker.stdout?.resume();
+  const [ready] = (await once(worker, "message")) as [
+    { port: number; pairing: string },
+  ];
+  url = `http://127.0.0.1:${ready.port}`;
+  await page.goto(url);
+  await page.getByLabel("配对码", { exact: true }).fill(ready.pairing);
+  await page.getByRole("button", { name: "连接", exact: true }).click();
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  const trigger = page.getByRole("combobox", { name: "模型", exact: true });
+  const popup = page.locator(".model-selector-popup");
+  const marks = page.locator(
+    ".chat-identity .provider-mark, .context-ring .provider-mark",
+  );
+  await trigger.click();
+  await expect(popup.getByRole("tab")).toHaveCount(43);
+  await popup.getByRole("tab", { name: "OpenRouter", exact: true }).click();
+  for (const mark of await marks.all())
+    await expect(mark).toHaveAttribute("data-provider", "faux");
+  await popup.getByRole("button", { name: "配置连接", exact: true }).click();
+  await popup
+    .getByRole("button", { name: "连接 OpenRouter", exact: true })
+    .click();
+  await popup.getByLabel("测试 API Key").fill("test-only");
+  await popup.getByRole("button", { name: "继续", exact: true }).click();
+  const option = popup.getByRole("option", {
+    name: "OpenRouter · 团队模型",
+    exact: true,
+  });
+  await expect(option).toBeVisible();
+  await expect(
+    popup.getByRole("tab", { name: "OpenRouter", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await page.screenshot({ path: info.outputPath("provider-connected.png") });
+  await option.click();
+  await expect(trigger).toContainText("团队模型");
+  for (const mark of await marks.all())
+    await expect(mark).toHaveAttribute("data-provider", "openrouter");
+  await trigger.click();
+  const effort = popup.getByRole("radiogroup", { name: "推理强度" });
+  await effort.getByRole("radio", { name: "高", exact: true }).click();
+  await expect(
+    effort.getByRole("radio", { name: "高", exact: true }),
+  ).toBeChecked();
+  await page.reload();
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  await page.route("**/rpc/models/refresh", (route) => route.abort(), {
+    times: 1,
+  });
+  await trigger.click();
+  await expect(popup.getByRole("alert")).toContainText("模型目录刷新失败");
+  await expect(popup.getByRole("option")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await trigger.click();
+  await expect(
+    effort.getByRole("radio", { name: "高", exact: true }),
+  ).toBeChecked();
+  await effort.getByRole("radio", { name: "默认", exact: true }).click();
+  await expect(popup.getByRole("alert")).toHaveCount(0);
+  await expect(
+    effort.getByRole("radio", { name: "关闭", exact: true }),
+  ).toBeChecked();
+  await popup.getByRole("tab", { name: "Anthropic", exact: true }).click();
+  await expect(
+    popup.getByRole("button", { name: "登录 / API 配置", exact: true }),
+  ).toBeVisible();
+  for (const mark of await marks.all())
+    await expect(mark).toHaveAttribute("data-provider", "openrouter");
+  await page.keyboard.press("Escape");
+  const response = await page.request.post(`${url}/hosting/pairing`, {
+    data: { scope: "client" },
+    headers: { Origin: url },
+  });
+  const pairing = await response.json();
+  const client = await browser.newContext();
+  try {
+    const paired = await client.newPage();
+    await paired.goto(url);
+    await paired.getByLabel("配对码", { exact: true }).fill(pairing.code);
+    await paired.getByRole("button", { name: "连接", exact: true }).click();
+    await paired.getByRole("button", { name: "Bot详情", exact: true }).click();
+    await paired.getByRole("combobox", { name: "模型", exact: true }).click();
+    await paired.getByRole("tab", { name: "Anthropic", exact: true }).click();
+    await expect(
+      paired.getByText("请管理员连接模型账号。", { exact: true }),
+    ).toBeVisible();
+    expect((await paired.request.get(`${url}/hosting/models`)).status()).toBe(
+      403,
+    );
+  } finally {
+    await client.close();
   }
 });
 

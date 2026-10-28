@@ -24,3 +24,22 @@ export async function modelCatalog(models: Models) {
     effort: thinkingControl(model),
   }));
 }
+
+export async function modelProviders(models: Models) {
+  return Promise.all(
+    models.getProviders().map(async (provider) => ({
+      id: provider.id,
+      name: provider.name,
+      methods: [
+        ...(provider.auth.apiKey?.login
+          ? [{ type: "api_key", name: provider.auth.apiKey.name }]
+          : []),
+        ...(provider.auth.oauth
+          ? [{ type: "oauth", name: provider.auth.oauth.name }]
+          : []),
+      ],
+      configured: Boolean(await models.checkAuth(provider.id)),
+      dynamic: Boolean(provider.refreshModels),
+    })),
+  );
+}
