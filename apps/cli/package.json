@@ -5,8 +5,8 @@
   "dependencies": {
     "@domos/agent": "workspace:*",
     "@domos/hosting": "workspace:*",
-    "@earendil-works/chord": "1.2.0",
-    "@earendil-works/pi-ai": "1.2.0",
-    "@earendil-works/pi-durable": "1.2.0"
+    "@earendil-works/chord": "1.4.0",
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-durable": "1.4.0"
   }
 }

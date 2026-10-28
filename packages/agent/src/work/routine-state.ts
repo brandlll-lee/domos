@@ -51,6 +51,7 @@ export type RoutineRun = {
 export const RoutinesDoc = defineDoc<{ items: Routine[]; runs: RoutineRun[] }>({
   kind: "domos.routines",
   version: 1,
+  checkpointWhen: () => false,
   scope: "session",
   initial: () => ({ items: [], runs: [] }),
 });

@@ -50,6 +50,7 @@ const BotDirectory = defineDoc<{
 }>({
   kind: "domos.bots",
   version: 1,
+  checkpointWhen: () => false,
   scope: "session",
   initial: () => ({ items: [] }),
 });
@@ -59,6 +60,7 @@ const ModelVisibility = defineDoc<{
 }>({
   kind: "domos.model-visibility",
   version: 1,
+  checkpointWhen: () => false,
   scope: "session",
   initial: () => ({ items: [] }),
 });

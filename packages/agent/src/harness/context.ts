@@ -16,6 +16,7 @@ const CompactionTaskDoc = defineDoc<{
 }>({
   kind: "domos.engine-compaction",
   version: 1,
+  checkpointWhen: () => false,
   scope: "task",
   initial: () => ({ items: {} }),
 });

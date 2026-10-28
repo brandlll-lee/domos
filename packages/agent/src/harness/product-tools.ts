@@ -23,6 +23,7 @@ const productExtensions = new Set([
 const ProductCalls = defineDoc<{ delivered: string[] }>({
   kind: "domos.engine-product-calls",
   version: 1,
+  checkpointWhen: () => false,
   scope: "task",
   initial: () => ({ delivered: [] }),
 });

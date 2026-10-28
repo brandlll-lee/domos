@@ -31,6 +31,7 @@ export type SkillInput = {
 export const SkillsDoc = defineDoc<{ items: Skill[] }>({
   kind: "domos.skills",
   version: 1,
+  checkpointWhen: () => false,
   scope: "session",
   initial: () => ({ items: [] }),
 });

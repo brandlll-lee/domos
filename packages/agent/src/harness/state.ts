@@ -25,6 +25,7 @@ export const EngineInputDoc = defineDoc<{
 }>({
   kind: "domos.engine-input",
   version: 1,
+  checkpointWhen: () => false,
   scope: "task",
   initial: () => ({ status: "queued", owner: null }),
 });
@@ -58,6 +59,7 @@ export type EngineState = {
 export const EngineDoc = defineDoc<EngineState>({
   kind: "domos.engine",
   version: 1,
+  checkpointWhen: () => false,
   scope: "conversation",
   history: "latest",
   fork: "initial",

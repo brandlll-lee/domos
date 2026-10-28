@@ -13,6 +13,7 @@ export const EngineUsageEntry = "domos.engine-usage";
 export const UsageTaskDoc = defineDoc<{ items: Record<string, EngineUsage> }>({
   kind: "domos.engine-usage",
   version: 1,
+  checkpointWhen: () => false,
   scope: "task",
   initial: () => ({ items: {} }),
 });

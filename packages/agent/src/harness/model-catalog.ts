@@ -14,6 +14,7 @@ const Catalog = defineDoc<{
 }>({
   kind: "domos.engine-catalog",
   version: 1,
+  checkpointWhen: () => false,
   scope: "session",
   initial: () => ({ items: [] }),
 });

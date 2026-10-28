@@ -1,5 +1,6 @@
 import type { Context } from "@earendil-works/chord/context";
 import type { CredentialStore } from "@earendil-works/pi-ai";
+import type { Models } from "@earendil-works/pi-ai/models";
 import {
   type AgentChange,
   defineExtension,
@@ -22,6 +23,7 @@ export async function openAgent(
   database: string,
   options: HarnessOptions & {
     registry: Registry;
+    models: Models;
     computers?: Computers;
     legacy?: boolean;
     credentials?: CredentialStore;

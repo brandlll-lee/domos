@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@domos/agent": "workspace:*",
-    "@earendil-works/pi-ai": "1.2.0",
+    "@earendil-works/pi-ai": "1.4.0",
     "zod": "4.6.7",
     "tar": "7.5.22"
   }

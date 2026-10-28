@@ -35,6 +35,7 @@ export type MemoryInput = {
 export const MemoryDoc = defineDoc<{ items: MemoryEntry[] }>({
   kind: "domos.memory",
   version: 1,
+  checkpointWhen: () => false,
   scope: "session",
   initial: () => ({ items: [] }),
 });

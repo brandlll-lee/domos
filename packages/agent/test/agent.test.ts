@@ -228,6 +228,7 @@ test("existing contacts receive stable identities across repeated starts", async
   }>({
     kind: "domos.bots",
     version: 1,
+    checkpointWhen: () => false,
     scope: "session",
     initial: () => ({ items: [] }),
   });

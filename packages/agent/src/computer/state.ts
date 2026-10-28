@@ -38,6 +38,7 @@ export const ComputersDoc = defineDoc<{
 }>({
   kind: "domos.computers",
   version: 1,
+  checkpointWhen: () => false,
   scope: "session",
   initial: () => ({
     items: [],

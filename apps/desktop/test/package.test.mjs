@@ -22,7 +22,7 @@ test("the Windows distribution contains its server dependencies and starts its p
   for (const path of [
     release.serviceBuild.dockerfile,
     "pnpm-lock.yaml",
-    "patches/@earendil-works__pi-durable@1.2.0.patch",
+    "patches/@earendil-works__pi-durable@1.4.0.patch",
     "apps/controller/src/health.ts",
     "packages/hosting/src/stack.ts",
     "packages/ui/assets/icon.png",

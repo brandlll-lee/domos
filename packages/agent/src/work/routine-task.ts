@@ -38,7 +38,14 @@ export function createRoutineTask(
     initial: ({ at }) => ({ phase: "wait", at }),
     phases: {
       async wait(task, runtime, context) {
-        await runtime.sleep(task.state.checkpoint.at, context);
+        if (runtime.now() < task.state.checkpoint.at) {
+          await runtime.sleepUntil(
+            task.state.checkpoint.at,
+            task.state.checkpoint,
+            context,
+          );
+          return;
+        }
         await runtime.commit(async (tx) => {
           const doc = await tx.doc(RoutinesDoc);
           const routine = doc.items.find(
