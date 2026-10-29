@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
+import { setTimeout as delay } from "node:timers/promises";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
@@ -9,6 +10,8 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 export async function openGateway(tools, invoke) {
+  const listed = Promise.withResolvers();
+  if (!tools.length) listed.resolve();
   const path = `/mcp/${randomBytes(32).toString("hex")}`;
   let sequence = 0;
   const sessions = new Map();
@@ -39,7 +42,10 @@ export async function openGateway(tools, invoke) {
           { name: "domos", version: "1.0.0" },
           { capabilities: { tools: {} } },
         );
-        mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
+        mcp.setRequestHandler(ListToolsRequestSchema, async () => {
+          listed.resolve();
+          return { tools };
+        });
         mcp.setRequestHandler(
           CallToolRequestSchema,
           async ({ params }, extra) => {
@@ -82,6 +88,24 @@ export async function openGateway(tools, invoke) {
   });
   return {
     url: `http://127.0.0.1:${server.address().port}${path}`,
+    async ready() {
+      const controller = new AbortController();
+      try {
+        await Promise.race([
+          listed.promise,
+          delay(30000, undefined, {
+            signal: controller.signal,
+            ref: false,
+          }).then(() => {
+            throw new Error(
+              "Harness 尚未读取 Domos 工具目录。请检查原生工具连接。",
+            );
+          }),
+        ]);
+      } finally {
+        controller.abort();
+      }
+    },
     close: async () => {
       await Promise.all([...sessions.values()].map(({ mcp }) => mcp.close()));
       sessions.clear();

@@ -208,6 +208,8 @@ export class EngineExecution {
         },
       });
       initialized.resolve(active.session);
+      await active.session.ready?.();
+      await active.process.toolsReady?.();
       if (operation === "compact") {
         const compactSession = active.session.compact;
         if (!compactSession) throw new Error("此引擎没有提供压缩能力。");

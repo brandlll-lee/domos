@@ -170,6 +170,7 @@ export type ProcessReady = {
   url: string;
   cwd: string;
   home: string;
+  tools?: string[];
 };
 export interface EngineProcess {
   readonly input: Writable;
@@ -178,6 +179,7 @@ export interface EngineProcess {
   readonly ready: Promise<ProcessReady>;
   readonly closed: Promise<{ code: number | null; error?: string }>;
   resolve?(command: string): Promise<string | null>;
+  toolsReady?(): Promise<void>;
   launch(spec: ProcessSpec): Promise<void>;
   request<T = unknown>(
     path: string,
@@ -196,6 +198,7 @@ export interface EngineProcess {
 
 export interface EngineSession {
   readonly id: string;
+  ready?(): Promise<void>;
   models(): Promise<EngineModel[]>;
   controls?(): Promise<EngineControls>;
   compact?(): Promise<void>;

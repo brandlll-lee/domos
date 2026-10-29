@@ -27,6 +27,7 @@ let http;
 const pending = new Map();
 const operations = new Map();
 let computer;
+let tools;
 const emit = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 
 async function close() {
@@ -73,6 +74,7 @@ async function close() {
 async function configure(frame) {
   if (configured) throw new Error("Worker already configured");
   configured = true;
+  tools = frame.tools;
   if (typeof frame.cwd !== "string" || typeof frame.home !== "string")
     throw new Error("Workspace required");
   await mkdir(frame.cwd, { recursive: true, mode: 0o700 });
@@ -104,6 +106,7 @@ async function configure(frame) {
     url: gateway.url,
     cwd: process.cwd(),
     home,
+    tools: tools.map((tool) => tool.name),
   });
 }
 
@@ -164,6 +167,11 @@ async function launch(frame) {
     );
   }
   if (env.DOMOS_PI_MCP_URL) {
+    const path = join(process.cwd(), ".domos-tools.json");
+    await writeFile(path, JSON.stringify({ url: gateway.url, tools }), {
+      mode: 0o600,
+    });
+    env.DOMOS_PI_TOOLS = path;
     frame.args.push(
       "--extension",
       fileURLToPath(new URL("./pi-tools.mjs", import.meta.url)),
@@ -220,6 +228,11 @@ lines.on("line", (line) => {
         const { env } = await accountEnvironment({}, home, accountEnv);
         await resolveProgram(frame.command, env).then(
           (result) => emit({ type: "http", id: frame.id, result }),
+          (error) => emit({ type: "http", id: frame.id, error: error.message }),
+        );
+      } else if (frame.type === "tools") {
+        void gateway.ready().then(
+          () => emit({ type: "http", id: frame.id, result: null }),
           (error) => emit({ type: "http", id: frame.id, error: error.message }),
         );
       } else if (frame.type === "http") {

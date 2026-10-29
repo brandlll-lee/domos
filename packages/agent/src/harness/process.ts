@@ -218,6 +218,10 @@ export class WorkProcess implements EngineProcess {
     return this.exchange<string | null>({ type: "resolve", command });
   }
 
+  toolsReady() {
+    return this.exchange<void>({ type: "tools" });
+  }
+
   checkpoint(provider: EngineId, sessionId: string) {
     return this.exchange<string | null>({
       type: "checkpoint",

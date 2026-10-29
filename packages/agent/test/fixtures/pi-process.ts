@@ -13,7 +13,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { nativeHistory } from "../../src/harness/native-history.mjs";
-import piTools from "../../src/harness/pi-tools.mjs";
+import { registerPiApprovals } from "../../src/harness/pi-tools.mjs";
 import type {
   ProcessSpec,
   ProductResult,
@@ -126,7 +126,7 @@ export class PiProcess extends ProtocolProcess {
         noPromptTemplates: true,
         noContextFiles: true,
         extensionFactories: [
-          piTools,
+          registerPiApprovals,
           (pi) => {
             pi.on("tool_call", (event) =>
               ["read", "write", "edit", "bash", "powershell"].includes(

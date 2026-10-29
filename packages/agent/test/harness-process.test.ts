@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { expect, onTestFinished, test } from "vitest";
+import piTools from "../src/harness/pi-tools.mjs";
 import { WorkProcess } from "../src/harness/process.ts";
 import type { ProductResult } from "../src/harness/types.ts";
 
@@ -44,7 +45,10 @@ async function worker(environment?: Record<string, string>) {
     ],
     async (_id, _name, args) => {
       calls.push(String(args.text));
-      return { content: [{ type: "text", text: String(args.text) }] };
+      return {
+        content: [{ type: "text", text: String(args.text) }],
+        structuredContent: { text: String(args.text) },
+      };
     },
   );
   onTestFinished(async () => {
@@ -63,6 +67,7 @@ test("workspace MCP routes tools through the authenticated process channel", asy
     expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual([
       "echo",
     ]);
+    await expect(process.toolsReady()).resolves.toBeNull();
     expect(
       (await client.callTool({ name: "echo", arguments: { text: "你好" } }))
         .content,
@@ -89,6 +94,78 @@ test("a missing work computer command reports a missing program", async () => {
     code: 1,
     error: "ENOENT",
   });
+});
+
+test("Pi registers product tools directly and retains structured MCP output", async () => {
+  const { process, directory, calls } = await worker();
+  const ready = await process.ready;
+  const manifest = join(directory, "tools.json");
+  await writeFile(
+    manifest,
+    JSON.stringify({
+      url: ready.url,
+      tools: [
+        {
+          name: "echo",
+          description: "Echo",
+          inputSchema: {
+            type: "object",
+            properties: { text: { type: "string" } },
+          },
+        },
+      ],
+    }),
+  );
+  const previous = globalThis.process.env.DOMOS_PI_TOOLS;
+  globalThis.process.env.DOMOS_PI_TOOLS = manifest;
+  const handlers = new Map<string, (() => Promise<void>)[]>();
+  let active: string[] = [];
+  let tool:
+    | {
+        name: string;
+        execute: (
+          id: string,
+          args: object,
+          signal: AbortSignal,
+        ) => Promise<ProductResult>;
+      }
+    | undefined;
+  try {
+    piTools({
+      registerTool: (value: typeof tool) => {
+        tool = value;
+      },
+      on: (name: string, handler: () => Promise<void>) =>
+        handlers.set(name, [...(handlers.get(name) ?? []), handler]),
+      getActiveTools: () => active,
+      setActiveTools: (value: string[]) => {
+        active = value;
+      },
+    } as unknown as Parameters<typeof piTools>[0]);
+  } finally {
+    if (previous === undefined) delete globalThis.process.env.DOMOS_PI_TOOLS;
+    else globalThis.process.env.DOMOS_PI_TOOLS = previous;
+  }
+  try {
+    for (const handler of handlers.get("session_start") ?? []) await handler();
+    await process.toolsReady();
+    expect(active).toContain("mcp__domos__echo");
+    expect(tool?.name).toBe("mcp__domos__echo");
+    expect(
+      await tool?.execute(
+        "test",
+        { text: "你好" },
+        new AbortController().signal,
+      ),
+    ).toMatchObject({
+      content: [{ type: "text", text: "你好" }],
+      structuredContent: { text: "你好" },
+    });
+    expect(calls).toEqual(["你好"]);
+  } finally {
+    for (const handler of handlers.get("session_shutdown") ?? [])
+      await handler();
+  }
 });
 
 test("program resolution and execution use the same absolute native entry", async () => {

@@ -379,6 +379,8 @@ export function acpProvider(
         },
         clientInfo: { name: "domos", version: "1.0.0" },
       });
+      if (!hello.agentCapabilities?.mcpCapabilities?.http)
+        throw new Error("此 Harness 不支持 Domos 所需的 HTTP MCP 工具连接。");
       const params = {
         cwd: ready.cwd,
         mcpServers: [

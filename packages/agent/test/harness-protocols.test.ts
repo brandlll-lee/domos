@@ -40,6 +40,24 @@ function protocol() {
   };
 }
 
+test("ACP rejects an agent that cannot connect Domos HTTP tools", async () => {
+  const { process, emit } = protocol();
+  process.receive = (request) =>
+    process.response(request, { protocolVersion: 1 });
+  await expect(
+    customAcpProvider.open({
+      process,
+      config: { provider: "acp", model: null, command: "agent" },
+      sessionId: null,
+      instructions: "Role",
+      emit,
+    }),
+  ).rejects.toThrow("HTTP MCP");
+  expect(
+    process.requests.some((request) => request.method === "session/new"),
+  ).toBe(false);
+});
+
 test("custom ACP handles permission during session setup and advertises native choices", async () => {
   const { process, emit } = protocol();
   let opening: (typeof process.requests)[number] | undefined;
@@ -720,7 +738,10 @@ test("OpenCode uses ACP model discovery, permissions and native session load", a
     if (request.method === "initialize")
       process.response(request, {
         protocolVersion: 1,
-        agentCapabilities: { loadSession: true },
+        agentCapabilities: {
+          loadSession: true,
+          mcpCapabilities: { http: true },
+        },
       });
     else if (request.method === "session/load")
       process.response(request, {
@@ -820,7 +841,13 @@ test("OpenCode reconciles native history after its saved checkpoint", async () =
     process.response(
       request,
       request.method === "initialize"
-        ? { protocolVersion: 1, agentCapabilities: { loadSession: true } }
+        ? {
+            protocolVersion: 1,
+            agentCapabilities: {
+              loadSession: true,
+              mcpCapabilities: { http: true },
+            },
+          }
         : {},
     );
   const session = await opencodeProvider.open({

@@ -279,6 +279,22 @@ export const codexProvider: EngineProvider = {
     });
     const session: EngineSession = {
       id,
+      async ready() {
+        if (!ready.tools?.length) return;
+        await process.toolsReady?.();
+        const status = await rpc.request<{
+          data: { name: string; tools: Record<string, { name: string }> }[];
+        }>("mcpServerStatus/list", {
+          threadId: id,
+          serverName: "domos",
+          limit: 100,
+        });
+        const catalog = Object.values(
+          status.data.find((server) => server.name === "domos")?.tools ?? {},
+        ).map((tool) => tool.name);
+        if (ready.tools.some((name) => !catalog.includes(name)))
+          throw new Error("Codex 的 Domos 工具目录不完整。");
+      },
       controls: client.controls,
       async compact() {
         compacting = true;

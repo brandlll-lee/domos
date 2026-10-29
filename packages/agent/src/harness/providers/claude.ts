@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import { JsonLines } from "../json-lines.ts";
 import {
   type EngineControls,
@@ -58,6 +59,11 @@ type ClaudeFrame = {
         supportedEffortLevels?: string[];
       }[];
       commands?: { name: string; description: string }[];
+      mcpServers?: {
+        name: string;
+        status: string;
+        tools?: { name: string }[];
+      }[];
     };
   };
   is_error?: boolean;
@@ -413,30 +419,57 @@ export const claudeProvider: EngineProvider = {
     let initialization:
       | Promise<NonNullable<ClaudeFrame["response"]>["response"]>
       | undefined;
+    async function control(subtype: string) {
+      const requestId = randomUUID();
+      const result =
+        Promise.withResolvers<
+          NonNullable<ClaudeFrame["response"]>["response"]
+        >();
+      const timer = setTimeout(() => {
+        controls.delete(requestId);
+        result.reject(new Error("引擎没有返回配置目录。"));
+      }, engineLimits.handshakeMs);
+      timer.unref();
+      controls.set(requestId, { ...result, timer });
+      await rpc.send({
+        type: "control_request",
+        request_id: requestId,
+        request: { subtype },
+      });
+      return result.promise;
+    }
     function initialize() {
-      initialization ??= (async () => {
-        const requestId = randomUUID();
-        const result =
-          Promise.withResolvers<
-            NonNullable<ClaudeFrame["response"]>["response"]
-          >();
-        const timer = setTimeout(() => {
-          controls.delete(requestId);
-          result.reject(new Error("引擎没有返回配置目录。"));
-        }, engineLimits.handshakeMs);
-        timer.unref();
-        controls.set(requestId, { ...result, timer });
-        await rpc.send({
-          type: "control_request",
-          request_id: requestId,
-          request: { subtype: "initialize" },
-        });
-        return result.promise;
-      })();
+      initialization ??= control("initialize");
       return initialization;
     }
     const session = {
       id,
+      async ready() {
+        if (!ready.tools?.length) return;
+        await initialize();
+        await process.toolsReady?.();
+        const deadline = Date.now() + engineLimits.handshakeMs;
+        let server:
+          | NonNullable<
+              NonNullable<
+                NonNullable<ClaudeFrame["response"]>["response"]
+              >["mcpServers"]
+            >[number]
+          | undefined;
+        do {
+          const status = await control("mcp_status");
+          server = status?.mcpServers?.find((item) => item.name === "domos");
+          if (server?.status !== "pending") break;
+          await delay(50);
+        } while (Date.now() < deadline);
+        if (
+          server?.status !== "connected" ||
+          ready.tools.some(
+            (name) => !server.tools?.some((tool) => tool.name === name),
+          )
+        )
+          throw new Error("Claude Code 的 Domos 工具尚未就绪。");
+      },
       async controls(): Promise<EngineControls> {
         const catalog = await initialize();
         const model = catalog?.models?.find(
