@@ -222,7 +222,16 @@ test("foreground input reuses its active window and visual reads do not delay ex
       owner: "task",
     });
   const target = { kind: "window", pid: 7, window_id: 90 };
-  await call({ target, x: 10, y: 20, delivery_mode: "foreground" });
+  const timed = await call({
+    target,
+    x: 10,
+    y: 20,
+    delivery_mode: "foreground",
+  });
+  expect(timed.content).toContainEqual({
+    type: "text",
+    text: expect.stringMatching(/^Domos computer tool time: \d+ ms\.$/),
+  });
   await call({ target, x: 20, y: 30, delivery_mode: "foreground" });
   expect(restored).toEqual([90, 90]);
   expect(events.filter((event) => event === "bring_to_front")).toHaveLength(1);

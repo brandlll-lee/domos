@@ -29,106 +29,109 @@ export function desktopMutation(name, args) {
 }
 
 export function openDesktopActions() {
-  const captures = new Map();
-  const snapshots = new Map();
-  let target;
-  let point;
-  let sequence = 0;
-  let batch = false;
-  let script = false;
-  let batchSequence = 0;
-  let session;
-  function resolve(args) {
-    const snapshot = snapshots.get(
-      `${args.session ?? ""}:${args.element_token?.split(":")[0]}`,
+  const snapshots = new Map(),
+    captures = new Map();
+  let target,
+    point,
+    session,
+    native = false,
+    sequence = 0,
+    batchSequence = 0;
+  const key = (id, owner = session) => `${owner ?? ""}:${id}`;
+  function snapshot(args) {
+    return snapshots.get(
+      key(args.snapshot_id ?? args.element_token?.split(":")[0], args.session),
     );
+  }
+  function resolve(args) {
     const chosen = args.target?.kind === "window" ? args.target : args;
     return (
-      snapshot?.target ??
+      snapshot(args)?.target ??
       (chosen.pid !== undefined || chosen.window_id !== undefined
         ? { pid: chosen.pid, window_id: chosen.window_id }
         : undefined)
     );
   }
   function observe(name, args, value) {
-    const session = args.session ?? "";
-    const key = (id) => `${session}:${id}`;
+    session = args.session ?? "";
     target = resolve(args) ?? target;
     if (name === "run_script") {
-      script = true;
+      native = true;
       return;
     }
-    if (desktopInputs.includes(name)) script = false;
     if (name === "run_steps") {
-      script = false;
-      batch = !value;
+      native = true;
       if (!value) {
         batchSequence = sequence;
         return;
       }
       const completed = (value.steps ?? []).filter((step) => step.ok).at(-1);
       if (completed && sequence === batchSequence) {
-        const { tool, args: input } = desktopStep(args.steps[completed.index]);
-        if (input)
+        const step = desktopStep(args.steps[completed.index]);
+        if (step.args)
           observe(
-            tool,
-            { ...args, ...input, ...(completed.target?.window ?? {}) },
-            undefined,
+            step.tool,
+            { ...args, ...step.args, ...completed.target?.window },
+            null,
           );
         if (point) point.action = "move_cursor";
       }
-      if (value?.observation?.ok)
+      native = true;
+      if (value.observation?.ok)
         observe("get_window_state", args, value.observation.state);
       return;
     }
-    const snapshot = snapshots.get(key(args.element_token?.split(":")[0]));
     if (value) {
       if (value.pid !== undefined || value.window_id !== undefined)
         target = { pid: value.pid, window_id: value.window_id };
-      if (value.snapshot_id && target) {
+      if (value.snapshot_id && target)
         snapshots.set(key(value.snapshot_id), {
           target,
           bounds: value.window_bounds,
           elements: new Map(
-            (value.elements ?? []).map((element) => [
-              element.element_token,
-              element.frame,
-            ]),
+            (value.elements ?? []).map((e) => [e.element_token, e.frame]),
           ),
         });
-      }
-      const { screenshot_width: width, screenshot_height: height } = value;
-      if (width > 0 && height > 0) {
-        const id =
-          name === "get_desktop_state" ? "desktop" : String(target?.window_id);
-        captures.set(key(id), { width, height });
-        if (value.capture_id)
-          captures.set(key(value.capture_id), { width, height });
+      if (value.screenshot_width > 0 && value.screenshot_height > 0) {
+        const capture = {
+          width: value.screenshot_width,
+          height: value.screenshot_height,
+        };
+        captures.set(
+          key(name === "get_desktop_state" ? "desktop" : target?.window_id),
+          capture,
+        );
+        if (value.capture_id) captures.set(key(value.capture_id), capture);
       }
       if (snapshots.size > 32) snapshots.delete(snapshots.keys().next().value);
       if (captures.size > 64) captures.delete(captures.keys().next().value);
       return;
     }
-    const frame = snapshot?.elements.get(args.element_token);
-    const x = args.to_x ?? args.x;
-    const y = args.to_y ?? args.y;
-    if (frame?.w > 0 && frame?.h > 0) {
+    if (!desktopInputs.includes(name)) return;
+    native = false;
+    const saved = snapshot(args),
+      frame = saved?.elements.get(args.element_token);
+    if (frame?.w > 0 && frame?.h > 0)
       point = {
         x: frame.x + frame.w / 2,
         y: frame.y + frame.h / 2,
-        bounds: snapshot.bounds,
+        bounds: saved.bounds,
         space: "screen",
       };
-    } else if (
-      [
-        "click",
-        "double_click",
-        "right_click",
-        "move_cursor",
-        "scroll",
-        "drag",
-      ].includes(name)
-    ) {
+    else {
+      const x = args.to_x ?? args.x,
+        y = args.to_y ?? args.y;
+      if (
+        ![
+          "click",
+          "double_click",
+          "right_click",
+          "move_cursor",
+          "scroll",
+          "drag",
+        ].includes(name)
+      )
+        return;
       const desktop =
         args.target?.kind === "desktop" || args.scope === "desktop";
       point =
@@ -139,20 +142,14 @@ export function openDesktopActions() {
               desktop,
               capture: captures.get(
                 key(
-                  args.capture_id ??
-                    (desktop ? "desktop" : String(target?.window_id)),
+                  args.capture_id ?? (desktop ? "desktop" : target?.window_id),
                 ),
               ),
               space: name === "move_cursor" && !desktop ? "logical" : "capture",
             }
           : undefined;
-    } else return;
-    if (point)
-      Object.assign(point, {
-        target,
-        action: name,
-        id: ++sequence,
-      });
+    }
+    if (point) Object.assign(point, { target, action: name, id: ++sequence });
   }
   return {
     get target() {
@@ -161,17 +158,15 @@ export function openDesktopActions() {
     set target(value) {
       target = value;
     },
-    observe(name, args, value) {
-      session = args.session ?? "";
-      observe(name, args, value);
-    },
     get session() {
-      return script || batch || !point ? session : undefined;
+      return native || !point ? session : undefined;
     },
+    resolve,
+    observe,
     track(state) {
       const position = state.position;
       if (
-        (!script && !batch && point) ||
+        (!native && point) ||
         !Number.isFinite(position?.x) ||
         !Number.isFinite(position?.y) ||
         (point?.x === position.x &&
@@ -187,13 +182,12 @@ export function openDesktopActions() {
         id: ++sequence,
       };
     },
-    resolve,
     pointer(window, screen, physical = (point) => point) {
       if (!point) return null;
       const bounds = window?.bounds;
+      if (point.space === "logical") return { ...point, ...physical(point) };
       if (
         !point.desktop &&
-        point.space !== "logical" &&
         (!window ||
           (point.target?.pid !== undefined &&
             point.target.pid !== window.pid) ||
@@ -201,33 +195,27 @@ export function openDesktopActions() {
             String(point.target.window_id) !== String(window.window_id)))
       )
         return null;
-      if (point.space === "logical") return { ...point, ...physical(point) };
-      if (point.space === "screen") {
-        if (!bounds || !point.bounds) return point;
-        return {
-          ...point,
-          x:
-            bounds.x +
-            ((point.x - point.bounds.x) * bounds.width) / point.bounds.width,
-          y:
-            bounds.y +
-            ((point.y - point.bounds.y) * bounds.height) / point.bounds.height,
-        };
-      }
+      const source = point.space === "screen" ? point.bounds : point.capture;
       const area = point.desktop ? screen : bounds;
-      return area && point.capture
-        ? {
-            ...point,
-            x: area.x + (point.x * area.width) / point.capture.width,
-            y: area.y + (point.y * area.height) / point.capture.height,
-          }
-        : null;
+      if (!area || !source) return point.space === "screen" ? point : null;
+      return {
+        ...point,
+        x:
+          area.x +
+          ((point.x - (point.space === "screen" ? source.x : 0)) * area.width) /
+            source.width,
+        y:
+          area.y +
+          ((point.y - (point.space === "screen" ? source.y : 0)) *
+            area.height) /
+            source.height,
+      };
     },
     clear() {
-      target = point = undefined;
-      batch = false;
-      script = false;
-      session = undefined;
+      target = point = session = undefined;
+      native = false;
+      snapshots.clear();
+      captures.clear();
     },
   };
 }

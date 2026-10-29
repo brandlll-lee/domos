@@ -35,7 +35,7 @@ Each read belongs to the current Bot. File references retain their work computer
 
 ## Tools and display
 
-Product tools call existing Domos services through durable ToolTask records. Native permission requests use the shared ComputerRuntime approval callback. Browser and desktop actions use the existing computer service, control leases, takeover cards, and evidence storage. See [Browser Use](browser-use.md).
+Product tools call existing Domos services through durable ToolTask records. Native permission requests use the shared ComputerRuntime approval callback. Browser and desktop actions use the existing computer service, control leases, takeover cards, and evidence storage. The desktop worker and Cua Driver runtime are shared by Bots on one bound work computer. Browser workers and profiles remain isolated per Bot. See [Browser Use](browser-use.md).
 
 Pi file and command tools use the shipped approval extension. Claude uses its permission tool callback. Codex and ACP use protocol permission requests. Cancellation closes pending approvals. A successful tool call does not prove the user task completed.
 

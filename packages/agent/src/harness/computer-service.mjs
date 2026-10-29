@@ -9,19 +9,24 @@ import { openDesktopView } from "./desktop-view.mjs";
 
 export function openComputerService(directory, home, emit = () => {}) {
   let desktop;
+  let starting;
   let activity;
   let sessions;
   let browser;
   const views = new Map();
   async function driver() {
-    if (!desktop) {
+    starting ??= (async () => {
       const { CuaDriver } = await import("@trycua/cua-driver");
       const { openDesktopActivity } = await import("./desktop-activity.mjs");
       desktop = CuaDriver.create();
       sessions = openDesktopSession(desktop);
       activity = openDesktopActivity(desktop, emit);
-    }
-    return desktop;
+      return desktop;
+    })().catch((error) => {
+      starting = undefined;
+      throw error;
+    });
+    return starting;
   }
   return {
     async request(input, signal) {
@@ -179,19 +184,13 @@ export function openComputerService(directory, home, emit = () => {}) {
           : input.name === "run_steps"
             ? args.observe
             : undefined;
-      const format = reading?.tree_format ?? "markdown";
       const batchCapture =
         input.name === "run_steps" &&
         reading?.include_screenshot &&
         !activity.captureExcluded;
       if (batchCapture) reading.include_screenshot = false;
-      if (reading && !reading.full_output) {
-        if (input.name === "run_steps" && reading.since === undefined)
-          reading.since = "latest";
-        if (!reading.since && format === "markdown")
-          reading.tree_format = "both";
-      }
       const call = () => send(input.name, args);
+      const startedAt = performance.now();
       const result = activation?.isError
         ? activation
         : ["get_desktop_state", "zoom"].includes(input.name) ||
@@ -235,22 +234,6 @@ export function openComputerService(directory, home, emit = () => {}) {
         if (signal.aborted) activity.clear(input.actor?.owner);
         else activity.observe("get_window_state", args, captured, input.actor);
       }
-      if (
-        reading &&
-        format === "markdown" &&
-        !input.arguments?.full_output &&
-        !input.arguments?.observe?.full_output &&
-        structured
-      ) {
-        const state =
-          input.name === "run_steps"
-            ? structured.observation?.state
-            : structured;
-        if (state) {
-          delete state.elements;
-          state.tree_format = "markdown";
-        }
-      }
       const action = desktopMutation(input.name, args);
       const outcome = action
         ? {
@@ -292,9 +275,11 @@ export function openComputerService(directory, home, emit = () => {}) {
                   : "Recover observation or use verify_state. Never replay a delivered action whose outcome is unknown.",
           }
         : undefined;
+      const elapsedMs = Math.round(performance.now() - startedAt);
       return {
         content: [
           ...(result.text ? [{ type: "text", text: result.text }] : []),
+          { type: "text", text: `Domos computer tool time: ${elapsedMs} ms.` },
           ...(captureError ? [{ type: "text", text: captureError }] : []),
           ...(outcome
             ? [{ type: "text", text: JSON.stringify({ domos: outcome }) }]

@@ -36,16 +36,21 @@ export class ComputerServices {
     this.open = open;
   }
 
-  private worker(botId: number, context: Context) {
-    let worker = this.workers.get(botId);
+  private worker(
+    botId: number,
+    context: Context,
+    service: ComputerService = "browser",
+  ) {
+    const key = service === "desktop" ? 0 : botId;
+    let worker = this.workers.get(key);
     if (!worker) {
       worker = this.open(botId, context);
-      this.workers.set(botId, worker);
+      this.workers.set(key, worker);
       void worker
         .then((process) => process.closed)
         .catch(() => {})
         .finally(() => {
-          if (this.workers.get(botId) === worker) this.workers.delete(botId);
+          if (this.workers.get(key) === worker) this.workers.delete(key);
         });
     }
     return worker;
@@ -71,7 +76,7 @@ export class ComputerServices {
     install = false,
   ): Promise<ServiceState> {
     try {
-      const worker = await this.worker(botId, context);
+      const worker = await this.worker(botId, context, service);
       if (install && service === "browser")
         await worker.computer({ operation: "install", service });
       const state = await worker.computer<
@@ -98,7 +103,7 @@ export class ComputerServices {
   }
 
   async catalog(botId: number, service: ComputerService, context: Context) {
-    return (await this.worker(botId, context)).computer({
+    return (await this.worker(botId, context, service)).computer({
       operation: "catalog",
       service,
     });
@@ -142,8 +147,8 @@ export class ComputerServices {
   ) {
     const worker =
       input.action === "open"
-        ? await this.worker(botId, context)
-        : await this.workers.get(botId);
+        ? await this.worker(botId, context, input.service)
+        : await this.workers.get(input.service === "desktop" ? 0 : botId);
     if (!worker) {
       if (input.action === "close") return {} as T;
       throw new Error("画面连接已失效。请重新连接。");
@@ -199,7 +204,7 @@ export class ComputerServices {
     actor?: { botId: number; color: string; owner: string },
   ) {
     return this.run(botId, service, owner, signal, async (combined) => {
-      const worker = await this.worker(botId, context);
+      const worker = await this.worker(botId, context, service);
       combined.throwIfAborted();
       return worker.computer<ProductResult>(
         { operation: "call", service, name, arguments: args, actor },
@@ -299,7 +304,7 @@ export class ComputerServices {
 
   private async clearActivity(control: Control) {
     const owner = control.owner;
-    const worker = control.botId && this.workers.get(control.botId);
+    const worker = this.workers.get(0);
     if (worker)
       await worker
         .then((process) => process.computer({ operation: "activity", owner }))
@@ -311,7 +316,7 @@ export class ComputerServices {
     signal: AbortSignal,
     context: Context,
   ): AsyncGenerator<ComputerActivity> {
-    const worker = await this.worker(botId, context);
+    const worker = await this.worker(botId, context, "desktop");
     const connection = new AbortController();
     const close = () => connection.abort();
     worker.events.once("closed", close);
@@ -319,9 +324,9 @@ export class ComputerServices {
       signal: AbortSignal.any([signal, connection.signal]),
     });
     try {
-      yield worker.activity;
+      yield worker.activity?.botId === botId ? worker.activity : null;
       for await (const [state] of events) {
-        yield state as ComputerActivity;
+        yield state?.botId === botId ? (state as ComputerActivity) : null;
       }
     } catch (error) {
       if (!connection.signal.aborted) throw error;

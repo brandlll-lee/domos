@@ -10,6 +10,27 @@ import type { WorkProcess } from "../src/harness/process.ts";
 
 const signal = () => new AbortController().signal;
 
+test("Bots share one desktop host and retain separate browser workers", async () => {
+  const open = vi.fn(
+    async () =>
+      ({
+        closed: new Promise(() => {}),
+        computer: vi.fn(async () => ({ available: true })),
+      }) as unknown as WorkProcess,
+  );
+  const services = new ComputerServices(open);
+  await Promise.all([
+    services.prepare(1, "desktop", context),
+    services.prepare(2, "desktop", context),
+  ]);
+  expect(open).toHaveBeenCalledTimes(1);
+  await Promise.all([
+    services.prepare(1, "browser", context),
+    services.prepare(2, "browser", context),
+  ]);
+  expect(open).toHaveBeenCalledTimes(3);
+});
+
 test.each(["browser", "desktop"] as const)(
   "mode switching preserves a viewer that owns %s control",
   async (service) => {

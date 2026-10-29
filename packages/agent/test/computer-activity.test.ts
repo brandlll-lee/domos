@@ -42,41 +42,39 @@ test("window targets use exact identity, app fallback and held windows; occlusio
   ).toBe(other);
 });
 
-test("batch completion updates position without replaying clicks and native trajectories resume in flight", () => {
-  const actions = openDesktopActions();
-  const target = { pid: 7, window_id: 90 };
-  const bounds = { x: 0, y: 0, width: 1000, height: 700 };
-  actions.observe("get_window_state", target, {
-    screenshot_width: 1000,
-    screenshot_height: 700,
-  });
-  const batch = {
-    ...target,
-    steps: [{ click: { x: 100, y: 200 } }, { click: { x: 900, y: 200 } }],
-  };
-  actions.observe("run_steps", batch);
-  expect(actions.pointer({ ...target, bounds }, bounds)).toBeNull();
-  actions.observe("run_steps", batch, {
-    steps: [
-      { index: 0, ok: true },
-      { index: 1, ok: false },
-    ],
-  });
-  const first = actions.pointer({ ...target, bounds }, bounds);
-  expect(first).toMatchObject({ id: 1, x: 100, y: 200, action: "move_cursor" });
-  actions.observe("run_steps", batch);
-  actions.track({ position: { x: 350, y: 200 } });
-  const tracked = actions.pointer({ ...target, bounds }, bounds);
-  actions.observe("run_steps", batch, { steps: [{ index: 1, ok: true }] });
-  expect(actions.pointer({ ...target, bounds }, bounds)).toEqual(tracked);
-  actions.track({ position: null });
-  vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60000);
-  expect(actions.pointer({ ...target, bounds }, bounds)).toMatchObject({
-    x: 350,
-    y: 200,
-  });
+test.each(["run_steps", "run_script"])(
+  "%s effects follow native cursor state across reads",
+  (name) => {
+    const actions = openDesktopActions();
+    const args = { session: "bot", pid: 7, window_id: 90, x: 10, y: 20 };
+    actions.observe(name, args);
+    expect(actions.pointer(null)).toBeNull();
+    actions.track({ position: { x: 350, y: 200 } });
+    actions.observe(name, args, {});
+    actions.observe("get_window_state", args, { snapshot_id: "s1" });
+    actions.track({ position: { x: 954, y: 370 } });
+    const point = actions.pointer(null);
+    expect(point).toMatchObject({ x: 954, y: 370, action: "move_cursor" });
+    actions.track({ position: null });
+    actions.track({ position: { x: 954, y: 370 } });
+    expect(actions.pointer(null)).toEqual(point);
+    expect(actions.resolve({ session: "bot", element_token: "s1:2" })).toEqual({
+      pid: 7,
+      window_id: 90,
+    });
+    expect(actions.session).toBe("bot");
+    actions.clear();
+    expect(actions.pointer(null)).toBeNull();
+    expect(
+      actions.resolve({ session: "bot", element_token: "s1:2" }),
+    ).toBeUndefined();
+  },
+);
+
+test("native trajectories resume in flight", () => {
   const motion = openDesktopMotion();
   vi.spyOn(Date, "now").mockReturnValue(1000);
+  const first = { id: 1, x: 100, y: 200, action: "move_cursor" };
   motion.move(first);
   const next = motion.move({ ...first, id: 2, x: 900 });
   expect(next.motion.length).toBeGreaterThan(2);
@@ -88,56 +86,18 @@ test("batch completion updates position without replaying clicks and native traj
   motion.clear();
 });
 
-test("scripts track the native cursor during execution and after returning", () => {
-  const actions = openDesktopActions();
-  const args = { session: "bot", pid: 7, window_id: 90 };
-  actions.observe("click", { ...args, x: 10, y: 20 });
-  actions.observe("run_script", args);
-  expect(actions.session).toBe("bot");
-  actions.track({ position: { x: 350, y: 200 } });
-  actions.observe("run_script", args, { result: "done" });
-  actions.track({ position: { x: 954, y: 370 } });
-  expect(actions.pointer(null)).toMatchObject({ x: 954, y: 370 });
-  actions.clear();
-  expect(actions.pointer(null)).toBeNull();
-});
-
 test.each([1, 1.25, 2])(
-  "control and screenshot coordinates agree at scale %s",
+  "native logical coordinates convert once at scale %s",
   (scale) => {
     const actions = openDesktopActions();
-    const target = { pid: 7, window_id: 90 };
-    const bounds = { x: -800, y: 100, width: 800, height: 600 };
-    const screen = { x: -1600, y: 0, width: 3520, height: 1080 };
-    actions.observe("get_window_state", target, {
-      snapshot_id: "s1",
-      window_bounds: bounds,
-      screenshot_width: 400,
-      screenshot_height: 300,
-      elements: [
-        { element_token: "s1:2", frame: { x: -650, y: 200, w: 100, h: 100 } },
-      ],
-    });
+    actions.track({ position: { x: -600, y: 250 } });
     const physical = (point: { x: number; y: number }) => ({
       x: point.x * scale,
       y: point.y * scale,
     });
-    actions.observe("click", { ...target, element_token: "s1:2" });
-    expect(
-      actions.pointer({ ...target, bounds }, screen, physical),
-    ).toMatchObject({
-      x: -600,
-      y: 250,
-    });
-    actions.observe("click", { ...target, x: 100, y: 75 });
-    expect(
-      actions.pointer({ ...target, window_id: 91, bounds }, screen, physical),
-    ).toBeNull();
-    expect(
-      actions.pointer({ ...target, bounds }, screen, physical),
-    ).toMatchObject({
-      x: -600,
-      y: 250,
+    expect(actions.pointer(null, null, physical)).toMatchObject({
+      x: -600 * scale,
+      y: 250 * scale,
     });
   },
 );
@@ -196,7 +156,9 @@ test("tracks window geometry and Bot identity; capture protection and short read
       structuredJson: JSON.stringify(
         name === "list_windows"
           ? { windows: windows() }
-          : { width: 1920, height: 1080 },
+          : name === "get_agent_cursor_state"
+            ? { position: { x: bounds.x + 400, y: 400 } }
+            : { width: 1920, height: 1080 },
       ),
     })),
   };
