@@ -1,5 +1,6 @@
 import type { Context } from "@earendil-works/chord/context";
 import { defineTask, type EntryId } from "@earendil-works/pi-durable";
+import { MemoryReviewDoc } from "../work/memory.ts";
 import { finishCompactions, projectContext } from "./context.ts";
 import type { EngineExecution } from "./execution.ts";
 import { EngineProjection } from "./projection.ts";
@@ -11,10 +12,12 @@ import {
   type EngineTaskInput,
   stored,
 } from "./task-types.ts";
-import { finishUsage } from "./usage.ts";
+import { finishUsage, UsageTaskDoc } from "./usage.ts";
 
 export function engineTask(execution: EngineExecution) {
-  return defineTask<EngineTaskInput, EngineCheckpoint, null, object>({
+  const taskDefinition: ReturnType<
+    typeof defineTask<EngineTaskInput, EngineCheckpoint, null, object>
+  > = defineTask<EngineTaskInput, EngineCheckpoint, null, object>({
     name: "domos.engine-turn",
     version: 1,
     initial: () => ({ phase: "run" }),
@@ -22,6 +25,63 @@ export function engineTask(execution: EngineExecution) {
       async run(task, runtime, context) {
         if (task.input.previous)
           await runtime.waitForTask(task.input.previous, context);
+        if (task.input.memoryReview) {
+          let completed = false;
+          let enabled = false;
+          await runtime.commit(async (tx) => {
+            const review = await tx.doc(
+              MemoryReviewDoc,
+              runtime.conversationId,
+            );
+            const doc = await tx.doc(EngineDoc, runtime.conversationId);
+            enabled = review.enabled && doc.tasks.every((id) => id === task.id);
+            review.reviewing = enabled;
+          }, context);
+          try {
+            if (enabled)
+              await execution.run(
+                runtime,
+                task.input.text,
+                context,
+                async (event) => {
+                  if (event.type !== "usage") return;
+                  await runtime.commit(async (tx) => {
+                    (await tx.doc(UsageTaskDoc, runtime.taskId)).items[
+                      event.usage.id
+                    ] = event.usage;
+                  }, context);
+                },
+                [],
+                undefined,
+                true,
+              );
+            completed = enabled;
+          } finally {
+            await runtime.commit(async (tx) => {
+              const doc = await tx.doc(EngineDoc, runtime.conversationId);
+              const review = await tx.doc(
+                MemoryReviewDoc,
+                runtime.conversationId,
+              );
+              review.reviewing = false;
+              if (completed) {
+                review.through = task.input.reviewThrough ?? review.through;
+                review.turns = Math.max(0, review.turns - 10);
+              }
+              await finishUsage(tx, runtime, doc.config.provider, null);
+              doc.tasks = doc.tasks.filter((id) => id !== runtime.taskId);
+              doc.taskId = doc.tasks.at(-1) ?? null;
+            }, context);
+          }
+          await runtime.commit(
+            () => ({
+              status: "terminal",
+              outcome: { status: "completed", result: null },
+            }),
+            context,
+          );
+          return;
+        }
         let delivered = false;
         await runtime.commit(async (tx) => {
           const doc = await reconcileEngine(tx, runtime.conversationId);
@@ -43,6 +103,8 @@ export function engineTask(execution: EngineExecution) {
         }
         await runtime.commit(async (tx) => {
           const doc = await tx.doc(EngineDoc, runtime.conversationId);
+          (await tx.doc(MemoryReviewDoc, runtime.conversationId)).reviewing =
+            false;
           if (doc.activeId !== task.id) {
             doc.activeId = task.id;
             doc.activeTurn = task.input.turnId;
@@ -91,13 +153,25 @@ export function engineTask(execution: EngineExecution) {
               : "任务未完成。请检查工作电脑和账号。";
           await projection.flush();
         }
-        await finish(runtime, context, error);
+        await finish(runtime, context, error, undefined, taskDefinition);
       },
     },
     async abort(_task, runtime, context) {
-      await finish(runtime, context, "工作已停止。", "aborted");
+      if (_task.input.memoryReview) {
+        await runtime.commit(async (tx) => {
+          const doc = await tx.doc(EngineDoc, runtime.conversationId);
+          (await tx.doc(MemoryReviewDoc, runtime.conversationId)).reviewing =
+            false;
+          await finishUsage(tx, runtime, doc.config.provider, null);
+          doc.tasks = doc.tasks.filter((id) => id !== runtime.taskId);
+          doc.taskId = doc.tasks.at(-1) ?? null;
+        }, context);
+        return;
+      }
+      await finish(runtime, context, "工作已停止。", "aborted", taskDefinition);
     },
   });
+  return taskDefinition;
 }
 
 async function finish(
@@ -105,6 +179,9 @@ async function finish(
   context: Context,
   error: string | null,
   reason = error,
+  taskDefinition: ReturnType<
+    typeof defineTask<EngineTaskInput, EngineCheckpoint, null, object>
+  >,
 ) {
   await runtime.commit(async (tx, current) => {
     const doc = await tx.doc(EngineDoc, runtime.conversationId);
@@ -213,25 +290,27 @@ async function finish(
       doc.sessions ??= {};
       doc.sessions[doc.sessionKey] = { id: doc.sessionId, through: answer };
     }
-    tx.settleSubmission(
-      current.input.submissionId,
-      error || !answer
-        ? { status: "unanswered", reason: reason ?? "执行结果未确认。" }
-        : { status: "done", answer },
-    );
+    if (current.input.submissionId)
+      tx.settleSubmission(
+        current.input.submissionId,
+        error || !answer
+          ? { status: "unanswered", reason: reason ?? "执行结果未确认。" }
+          : { status: "done", answer },
+      );
     for (const { id, delivery, input } of additional) {
       const confirmed = delivery.status === "accepted";
-      tx.settleSubmission(
-        input.submissionId,
-        confirmed && answer && !error
-          ? { status: "done", answer }
-          : {
-              status: "unanswered",
-              reason: confirmed
-                ? (reason ?? "执行结果未确认。")
-                : "追加消息的接收结果未确认。请核对回复后再发送。",
-            },
-      );
+      if (input.submissionId)
+        tx.settleSubmission(
+          input.submissionId,
+          confirmed && answer && !error
+            ? { status: "done", answer }
+            : {
+                status: "unanswered",
+                reason: confirmed
+                  ? (reason ?? "执行结果未确认。")
+                  : "追加消息的接收结果未确认。请核对回复后再发送。",
+              },
+        );
       if (!confirmed && reason !== "aborted")
         await tx.appendEntry(runtime.conversationId, {
           kind: EngineMessage,
@@ -250,6 +329,41 @@ async function finish(
     }
     doc.tasks = doc.tasks.filter((id) => id !== runtime.taskId);
     doc.taskId = doc.tasks.at(-1) ?? null;
+    if (
+      !error &&
+      !current.input.operation &&
+      current.input.submissionId &&
+      current.input.source !== "routine"
+    ) {
+      const memoryReview = await tx.doc(
+        MemoryReviewDoc,
+        runtime.conversationId,
+      );
+      if (memoryReview.enabled) memoryReview.turns++;
+      if (
+        memoryReview.enabled &&
+        memoryReview.turns >= 10 &&
+        doc.tasks.length === 0
+      ) {
+        const id = await tx.createTask(
+          taskDefinition,
+          {
+            text: "Review the recent conversation and save useful durable memories.",
+            previous: runtime.taskId,
+            turnId: `memory-review:${runtime.taskId}`,
+            memoryReview: true,
+            reviewThrough: answer,
+          },
+          {
+            ownership: { kind: "conversation" },
+            conversationId: runtime.conversationId,
+            background: true,
+          },
+        );
+        doc.tasks.push(id);
+        doc.taskId = id;
+      }
+    }
     return {
       status: "terminal",
       outcome: { status: "completed", result: null },

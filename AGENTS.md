@@ -9,6 +9,7 @@ Pi Durable 1.4.0 stores Bot tasks. Native Harness processes own model loops. Dom
 - The client device, Domos service computer, and Bot work computer are separate roles. They can be on different computers.
 - Commands, files, and desktop actions use the Bot's bound work computer. Do not assume that it is the client or service computer.
 - Domos owns Bot identity, full chat history, memories, and computer permissions. Native Harness accounts use the work computer's OS user and configuration. Preserve retained service credentials during migration.
+- Memory records belong to one Bot unless the user shares them. Keep profile snapshots stable for each Durable task. Route every Harness through the shared memory tools. Background review uses a separate native session and cannot change user-authored records.
 - Durable owns input admission and persistent tasks. Native Harness processes own generation and model context. Adapters coordinate cancellation and recovery through public protocols. Observe uncertain results before more mutations.
 - Reuse the work computer's CLI before installing a version in its Domos runtime directory. Inspect, login, and execute with the same program and OS user. Switch programs and Harness only while the Bot is idle.
 - Native CLI transports own model HTTP. Use Photon and model image limits at the attachment boundary. Preserve original evidence and include coordinate mapping when resizing observations.

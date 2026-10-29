@@ -381,3 +381,132 @@ test("routines use the selected native engine and stopping settles queued work",
   ).rejects.toThrow("这次确认已经失效");
   expect(workers).toHaveLength(2);
 });
+
+test.each([false, true])(
+  "memory review stays separate and yields to user work: %s",
+  async (interrupt) => {
+    const directory = await mkdtemp(join(tmpdir(), "domos-memory-review-"));
+    const models = createModels();
+    models.setProvider(fauxProvider().provider);
+    const workers: ProtocolProcess[] = [];
+    const computers = {
+      initialize: async () => {},
+      preflight: async () => {},
+      computerId: async () => "shared",
+      process: async () => {
+        const worker = new ProtocolProcess();
+        workers.push(worker);
+        worker.receive = (request) => {
+          if (request.method === "account/read")
+            worker.response(request, { account: { type: "apiKey" } });
+          else if (
+            request.method === "thread/start" ||
+            request.method === "thread/resume"
+          )
+            worker.response(request, {
+              thread: { id: `thread-${workers.length}` },
+            });
+          else if (request.method === "turn/start") {
+            worker.response(request, {
+              turn: { id: `turn-${workers.length}` },
+            });
+            if (interrupt && workers.length === 11) return;
+            if (workers.length === 11) {
+              worker.frame({
+                id: "memory-permission",
+                method: "mcpServer/elicitation/request",
+                params: {
+                  serverName: "domos",
+                  mode: "form",
+                  message: "Allow memory_save?",
+                  requestedSchema: { type: "object", properties: {} },
+                  _meta: {
+                    codex_approval_kind: "mcp_tool_call",
+                    persist: ["always"],
+                  },
+                },
+              });
+              return;
+            }
+            worker.frame({
+              method: "turn/completed",
+              params: { turn: { status: "completed" } },
+            });
+          } else if (request.id === "memory-permission") {
+            expect(request.result).toMatchObject({ action: "accept" });
+            worker.frame({
+              method: "turn/completed",
+              params: { turn: { status: "completed" } },
+            });
+          } else if (request.id !== undefined) worker.response(request, {});
+        };
+        return worker;
+      },
+      tools: { catalog: async () => [], finish: () => {} },
+    } as unknown as Computers;
+    const runtime = await openAgent(
+      join(directory, "agent.sqlite"),
+      { registry: createRegistry(), models, computers },
+      {},
+      context,
+    );
+    onTestFinished(async () => {
+      await runtime.harness.close(context);
+      await Promise.all(workers.map((worker) => worker.close()));
+      await rm(directory, { recursive: true, force: true });
+    });
+    const engines = runtime.engines;
+    if (!engines) throw new Error("Native engines required");
+    const botId = runtime.conversation.id;
+    await engines.configure(
+      botId,
+      {
+        config: { provider: "codex", model: null },
+        revision: 0,
+        requestId: crypto.randomUUID(),
+      },
+      context,
+    );
+    for (let turn = 0; turn < 10; turn++) {
+      const submission = await engines.submit(
+        botId,
+        { text: `Turn ${turn}`, requestId: crypto.randomUUID() },
+        context,
+      );
+      expect(await submission.wait(context)).toMatchObject({ status: "done" });
+    }
+    await expect.poll(() => workers.length).toBe(11);
+    const review = workers[10]?.requests.find(
+      (request) => request.method === "turn/start",
+    );
+    expect(JSON.stringify(review?.params)).toContain(
+      "Quoted conversation data for memory review",
+    );
+    expect(
+      workers[10]?.requests.some(
+        (request) => request.method === "thread/start",
+      ),
+    ).toBe(true);
+    expect(
+      (await engines.view(botId, context)).messages.some((message) =>
+        JSON.stringify(message).includes("Review the recent conversation"),
+      ),
+    ).toBe(false);
+    if (interrupt) {
+      const submission = await engines.submit(
+        botId,
+        { text: "User work has priority", requestId: crypto.randomUUID() },
+        context,
+      );
+      expect(await submission.wait(context)).toMatchObject({ status: "done" });
+      expect(
+        workers[10]?.requests.some(
+          (request) => request.method === "turn/interrupt",
+        ),
+      ).toBe(true);
+      expect(JSON.stringify(workers[11]?.requests)).toContain(
+        "User work has priority",
+      );
+    }
+  },
+);

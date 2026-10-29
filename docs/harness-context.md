@@ -47,11 +47,19 @@ Native Harness processes own compaction. Domos records context readings, compact
 
 System instructions stay stable across tool rounds. routine_list supplies current host time and timezone. The UI reads complete stored entries. Handoffs and compaction records stay out of displayed messages. Current tool evidence retains the existing computer observation limits. Native CLI context policies are not the embedded Durable beforeRequest image policy.
 
+## Memory
+
+Domos owns memory records. Each record belongs to one Bot unless the user shares it. User profile facts enter a fixed 8 KiB snapshot for one Durable task. Recovery and additional input reuse that snapshot. The next task reads current records. Work notes have a 24 KiB capacity and use memory_search or memory_list. Existing records remain work notes with their original text.
+
+The memory tools are Domos product tools. Pi, Codex, Claude, OpenCode and ACP call the same storage and validation path through their existing native tool bridges. The model decides when to save. Tool descriptions set the profile/work rules. Memory text is data, not permission.
+
+Background review is enabled by default. After ten successful user turns, Durable queues one task. It starts a separate native session and exposes only memory product tools with bounded recent history. It limits memory calls to 12 and stops after 120 seconds. It records native usage. It does not write review prompts or answers to displayed chat. The service rejects review edits to user-authored or shared entries. A new user turn cancels review. Users can disable review in the memory dialog. This task uses additional model calls.
+
 ## Verification
 
 Protocol tests cover native model controls, permission requests, and custom ACP setup. Lifecycle tests cover additional input and cancellation. Recovery tests cover uncertain dispatch and forward migration. History tests cover byte budgets and Bot isolation. Browser E2E checks include real input and result readback. See [Computer Use evals](computer-evals.md).
 
-`DOMOS_NATIVE_SMOKE=1 pnpm test packages/agent/test/harness-native.test.ts` runs real models through Pi, Codex, Claude, OpenCode and custom ACP with OpenCode. Models must read an image-only random marker, a structured-only marker, coordinates and `verified: false`. The tool also reads native windows. Set `DOMOS_NATIVE_<HARNESS>_MODEL` to select a model. This test incurs usage and requires installed, authenticated CLIs. It does not perform desktop input. Protocol tests do not establish OS permissions or universal ACP compatibility. See [readiness acceptance](reports/harness-readiness-2026-10-29.md).
+`DOMOS_NATIVE_SMOKE=1 pnpm test packages/agent/test/harness-native.test.ts` runs real models through Pi, Codex, Claude, OpenCode and custom ACP with OpenCode. Models must save and search a Chinese response preference through test memory tools. They must return the search receipt, an image-only random marker, a structured-only marker, coordinates and `verified: false`. The tool also reads native windows. Set `DOMOS_NATIVE_<HARNESS>_MODEL` to select a model. This test incurs usage and requires installed, authenticated CLIs. It does not perform desktop input. Protocol tests do not establish OS permissions or universal ACP compatibility. See [readiness acceptance](reports/harness-readiness-2026-10-29.md).
 
 ## Official references
 

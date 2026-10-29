@@ -29,6 +29,9 @@ test
     await browser.close();
     const replies: string[] = [];
     let calls = 0;
+    const memoryMarker = crypto.randomUUID();
+    let saved = "";
+    let searches = 0;
     const worker = new WorkProcess(
       [
         process.execPath,
@@ -37,6 +40,24 @@ test
       { cwd: directory, home: directory },
       [
         ...(id === "claude" ? [permissionTool] : []),
+        {
+          name: "memory_save",
+          description: "Save a lasting user profile fact.",
+          inputSchema: {
+            type: "object",
+            properties: { text: { type: "string" } },
+            required: ["text"],
+          },
+        },
+        {
+          name: "memory_search",
+          description: "Search saved memory and return its receipt marker.",
+          inputSchema: {
+            type: "object",
+            properties: { query: { type: "string" } },
+            required: ["query"],
+          },
+        },
         {
           name: "computer_probe",
           description: "Read the work computer observation.",
@@ -61,12 +82,43 @@ test
                 type: "text",
                 text: JSON.stringify(
                   claudePermission(args, {
-                    allow: args.tool_name === "mcp__domos__computer_probe",
+                    allow: [
+                      "mcp__domos__computer_probe",
+                      "mcp__domos__memory_save",
+                      "mcp__domos__memory_search",
+                    ].includes(String(args.tool_name)),
                   }),
                 ),
               },
             ],
           };
+        if (name === "memory_save") {
+          saved = String(args.text);
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  id: "profile",
+                  revision: 1,
+                  text: saved,
+                }),
+              },
+            ],
+          };
+        }
+        if (name === "memory_search") {
+          expect(saved).toMatch(/Chinese|中文/i);
+          searches++;
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({ text: saved, marker: memoryMarker }),
+              },
+            ],
+          };
+        }
         expect(name).toBe("computer_probe");
         const result = await worker.computer<ProductResult>({
           operation: "call",
@@ -95,6 +147,7 @@ test
       process: worker,
       config: {
         provider: id,
+        ...(id === "codex" ? { options: { effort: "low" } } : {}),
         model:
           process.env[`DOMOS_NATIVE_${id.toUpperCase()}_MODEL`] ??
           (id === "opencode" || id === "acp"
@@ -120,25 +173,29 @@ test
           }
         : {}),
       instructions:
-        "Call computer_probe once. Return the exact text from its image, its structured marker, coordinates and verified value. Do not use other tools. Do not infer verification from tool success.",
+        "Call computer_probe once. Then call memory_save with the fact 'User prefers Chinese replies', then memory_search with query 'Chinese'. Return the memory receipt marker and the exact text from the image, structured marker, coordinates and verified value. Use only these tools. Do not infer verification from tool success.",
       approve: async () => ({ allow: false }),
       emit: async (event) => {
         if (event.type === "message") replies.push(event.text);
         if (event.type === "approval")
           await session?.answer(event.approval.id, {
-            allow: event.approval.detail.includes("computer_probe"),
+            allow: /computer_probe|memory_save|memory_search/.test(
+              event.approval.detail,
+            ),
           });
       },
     });
     await session.ready?.();
     await worker.toolsReady();
     await session.prompt(
-      "Read computer_probe. Report the image text, marker, x, y, coordinate space and verified value.",
+      "Read computer_probe, save my Chinese response preference, then search it. Report the memory receipt marker, image text, marker, x, y, coordinate space and verified value.",
     );
     const answer = replies.join("\n");
     expect(calls, answer).toBe(1);
+    expect(searches, answer).toBeGreaterThanOrEqual(1);
     for (const value of [
       imageMarker,
+      memoryMarker,
       marker,
       "37",
       "91",

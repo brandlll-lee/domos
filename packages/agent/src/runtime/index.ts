@@ -18,7 +18,7 @@ import { readEngine, reconcileEngine } from "../harness/reconcile.ts";
 import { switchSession } from "../harness/sessions.ts";
 import { EngineDoc, EngineInputDoc, EngineMessage } from "../harness/state.ts";
 import { engineTask } from "../harness/task.ts";
-import { userMessage } from "../harness/task-types.ts";
+import { type EngineTaskInput, userMessage } from "../harness/task-types.ts";
 import type {
   EngineAnswer,
   EngineConfig,
@@ -352,6 +352,7 @@ export class Runtime {
 
   async submit(botId: number, input: EngineInput, context: Context) {
     const id = botId as ConversationId;
+    await this.cancelMemoryReview(botId, context);
     if (this.connections.busy(botId))
       throw new WorkError("CONFLICT", "请先完成账号连接。");
     await this.execution.computers.preflight(botId, context);
@@ -410,6 +411,7 @@ export class Runtime {
           submissionId: submission.id,
           previous: doc.taskId,
           turnId,
+          ...(input.source ? { source: input.source } : {}),
           entryId: entry.id,
           ...(input.operation ? { operation: input.operation } : {}),
           ...(input.attachments?.length
@@ -432,6 +434,22 @@ export class Runtime {
     const submission = await this.harness.submission(submissionId, context);
     if (!submission) throw new Error("任务记录不存在。");
     return submission;
+  }
+
+  async cancelMemoryReview(botId: number, context: Context) {
+    const tasks = await this.harness.commit(async (tx) => {
+      const doc = await tx.doc(EngineDoc, botId as ConversationId);
+      const tasks = await Promise.all(doc.tasks.map((id) => tx.task(id)));
+      return tasks.flatMap((task) =>
+        task && (task.input as EngineTaskInput).memoryReview ? [task.id] : [],
+      );
+    }, context);
+    if (!tasks.length) return;
+    await this.execution.stopMemoryReview(botId);
+    for (const id of tasks) {
+      await this.harness.abortTask(id, context);
+      await this.harness.waitForTask(id, context);
+    }
   }
 
   async stop(botId: number, context: Context) {

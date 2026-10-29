@@ -253,6 +253,7 @@ export type EngineInput = {
   attachments?: Attachment[];
   whenBusy?: "reject" | "followUp";
   operation?: "compact";
+  source?: "routine";
 };
 
 export const engineLimits = {

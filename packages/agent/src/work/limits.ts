@@ -1,6 +1,7 @@
 export const BOT_NAME_LENGTH = 80;
 export const WORK_TEXT_LENGTH = 16000;
 export const MEMORY_CONTEXT_BYTES = 32 * 1024;
+export const MEMORY_PROFILE_BYTES = 8 * 1024;
 export const SKILL_FILE_BYTES = 256 * 1024;
 export const SKILL_NAME_LENGTH = 64;
 export const SKILL_DESCRIPTION_LENGTH = 1024;

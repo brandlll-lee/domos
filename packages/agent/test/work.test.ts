@@ -3,8 +3,15 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
 import { expect, test } from "vitest";
-import { MEMORY_CONTEXT_BYTES } from "../src/work/limits.ts";
-import { type MemoryEntry, memoryContext } from "../src/work/memory.ts";
+import { MEMORY_PROFILE_BYTES } from "../src/work/limits.ts";
+import {
+  deleteMemory,
+  MemoryDoc,
+  type MemoryEntry,
+  MemoryReviewDoc,
+  memoryContext,
+  saveMemory,
+} from "../src/work/memory.ts";
 import { actualPrompt } from "../src/work/prompt.ts";
 import { parseSkill } from "../src/work/skill-format.ts";
 import { agent, context, setup, skillContent } from "./fixtures/work.ts";
@@ -45,6 +52,7 @@ test("profile and scoped memories persist and render through Pi sections", async
     const input = {
       id: crypto.randomUUID(),
       text: "Reports use metric units.",
+      category: "profile" as const,
       shared: false,
       revision: 0,
       requestId: crypto.randomUUID(),
@@ -54,6 +62,12 @@ test("profile and scoped memories persist and render through Pi sections", async
       memory,
     );
     expect(await runtime.work.memory.list(other.id, context)).toEqual([]);
+    expect(await runtime.work.memory.reviewEnabled(botId, context)).toBe(true);
+    await runtime.work.memory.setReviewEnabled(botId, false, context);
+    expect(await runtime.work.memory.reviewEnabled(botId, context)).toBe(false);
+    expect(await runtime.work.memory.reviewEnabled(other.id, context)).toBe(
+      true,
+    );
     await expect(
       runtime.work.memory.save(
         other.id,
@@ -123,7 +137,8 @@ test("memory context stays within its byte budget and keeps valid records", () =
   const entries: MemoryEntry[] = Array.from({ length: 20 }, (_, index) => ({
     id: String(index),
     botId: 1,
-    text: "中文🙂".repeat(1000),
+    text: "中文🙂".repeat(200),
+    category: "profile",
     updatedAt: index,
     revision: 1,
     source: "user",
@@ -131,7 +146,9 @@ test("memory context stays within its byte budget and keeps valid records", () =
   }));
   const text = memoryContext(entries, 1);
   if (!text) throw new Error("Memory context missing");
-  expect(Buffer.byteLength(text)).toBeLessThanOrEqual(MEMORY_CONTEXT_BYTES);
+  expect(Buffer.byteLength(text)).toBeLessThanOrEqual(
+    MEMORY_PROFILE_BYTES + 500,
+  );
   expect(text).not.toContain("�");
   const records = text
     .trim()
@@ -140,7 +157,13 @@ test("memory context stays within its byte budget and keeps valid records", () =
     .map((line) => JSON.parse(line));
   expect(records[0].id).toBe("19");
   expect(records.length).toBeGreaterThan(0);
-  expect(memoryContext(entries, 2)).toBeUndefined();
+  expect(memoryContext(entries, 2)).not.toContain('"id":');
+  expect(
+    memoryContext(
+      entries.map((entry) => ({ ...entry, category: "work" })),
+      1,
+    ),
+  ).not.toContain('"id":');
 });
 
 test("editing a shared memory through a tool preserves its scope", async () => {
@@ -153,6 +176,7 @@ test("editing a shared memory through a tool preserves its scope", async () => {
       {
         id: crypto.randomUUID(),
         text: "Use metric units.",
+        category: "profile",
         shared: true,
         revision: 0,
         requestId: crypto.randomUUID(),
@@ -168,6 +192,10 @@ test("editing a shared memory through a tool preserves its scope", async () => {
         }),
         { stopReason: "toolUse" },
       ),
+      fauxAssistantMessage(
+        fauxToolCall("memory_search", { query: "METRIC units" }),
+        { stopReason: "toolUse" },
+      ),
       fauxAssistantMessage("Saved"),
     ]);
     await (
@@ -180,6 +208,99 @@ test("editing a shared memory through a tool preserves its scope", async () => {
       botId: null,
       revision: 2,
     });
+    const history = await runtime.conversation.context(context);
+    expect(
+      JSON.stringify(
+        history.messages.filter(
+          (message) =>
+            message.role === "toolResult" &&
+            message.toolName === "memory_search",
+        ),
+      ),
+    ).toContain("Use metric units and concise paragraphs.");
+  } finally {
+    await runtime.harness.close(context);
+  }
+});
+
+test("memory preserves old notes, enforces UTF-8 capacity and protects user records in review", async () => {
+  const fixture = await setup();
+  const runtime = await fixture.open();
+  const botId = runtime.conversation.id;
+  try {
+    const input = {
+      id: "manual",
+      text: "User prefers Chinese",
+      category: "profile" as const,
+      shared: false,
+      revision: 0,
+      requestId: crypto.randomUUID(),
+    };
+    const manual = await runtime.work.memory.save(botId, input, context);
+    await runtime.harness.commit(async (tx) => {
+      (await tx.doc(MemoryDoc)).items.push({
+        id: "old",
+        botId,
+        text: "旧的工作笔记",
+        revision: 1,
+        updatedAt: 1,
+        source: "user",
+        requestId: "old",
+      });
+      await saveMemory(
+        tx,
+        botId,
+        {
+          ...input,
+          text: "User prefers concise Chinese",
+          revision: manual.revision,
+          requestId: "foreground",
+        },
+        "bot:foreground",
+      );
+      (await tx.doc(MemoryReviewDoc, botId)).reviewing = true;
+    }, context);
+    await expect(
+      runtime.harness.commit(
+        (tx) =>
+          saveMemory(
+            tx,
+            botId,
+            { ...input, revision: 2, requestId: "review" },
+            "bot:review",
+          ),
+        context,
+      ),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(
+      runtime.harness.commit(
+        (tx) => deleteMemory(tx, botId, input.id, 2, "bot:review"),
+        context,
+      ),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(
+      runtime.work.memory.save(
+        botId,
+        {
+          ...input,
+          id: "large",
+          text: "中".repeat(3000),
+          requestId: crypto.randomUUID(),
+        },
+        context,
+      ),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    const items = await runtime.work.memory.list(botId, context);
+    expect(items).toHaveLength(2);
+    expect(items.find((entry) => entry.id === "old")?.text).toBe(
+      "旧的工作笔记",
+    );
+    expect(memoryContext(items, botId)).not.toContain("旧的工作笔记");
+    await runtime.harness.commit(async (tx) => {
+      (await tx.doc(MemoryReviewDoc, botId)).reviewing = false;
+    }, context);
+    await runtime.work.memory.delete(botId, input.id, 2, context);
+    expect(await runtime.work.memory.list(botId, context)).toHaveLength(1);
   } finally {
     await runtime.harness.close(context);
   }

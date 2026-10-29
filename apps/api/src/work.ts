@@ -87,10 +87,27 @@ export function workRouter(bots: Bots, work: BotWork, engines?: Runtime) {
       );
     }),
     memory: {
+      review: {
+        setEnabled: os
+          .input(botTarget.extend({ enabled: z.boolean() }))
+          .handler(({ input }) =>
+            access(input.botId, async () => {
+              const result = await work.setMemoryReviewEnabled(
+                input.botId,
+                input.enabled,
+                context,
+              );
+              if (!input.enabled)
+                await engines?.cancelMemoryReview(input.botId, context);
+              return result;
+            }),
+          ),
+      },
       save: os
         .input(
           itemTarget.extend({
             text: z.string().min(1).max(WORK_TEXT_LENGTH),
+            category: z.enum(["profile", "work"]).optional(),
             shared: z.boolean(),
             requestId,
           }),

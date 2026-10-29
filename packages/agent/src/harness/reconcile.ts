@@ -33,7 +33,9 @@ export async function reconcileEngine(tx: Tx, id: ConversationId) {
   if (!terminal.size) return doc;
   const settlements = tasks.flatMap((task) =>
     task && terminal.has(task.id)
-      ? [(task.input as EngineTaskInput).submissionId]
+      ? [(task.input as EngineTaskInput).submissionId].filter(
+          (id): id is NonNullable<typeof id> => id !== undefined,
+        )
       : [],
   );
   for (const task of tasks) {
@@ -46,7 +48,8 @@ export async function reconcileEngine(tx: Tx, id: ConversationId) {
     )
       continue;
     input.status = "settled";
-    settlements.push((task.input as EngineTaskInput).submissionId);
+    const submissionId = (task.input as EngineTaskInput).submissionId;
+    if (submissionId) settlements.push(submissionId);
   }
   const active = tasks.find((task) => task?.id === doc.activeId);
   const error =

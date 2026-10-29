@@ -11,12 +11,15 @@ import type { ChatMessage } from "../messages.ts";
 
 export type EngineTaskInput = {
   text: string;
-  submissionId: SubmissionId;
+  submissionId?: SubmissionId;
   previous: TaskId | null;
   turnId: string;
   entryId?: EntryId;
   attachments?: Attachment[];
   operation?: "compact";
+  memoryReview?: boolean;
+  reviewThrough?: EntryId;
+  source?: "routine";
 };
 export type EngineCheckpoint = { phase: "run" };
 export type EngineRuntime = TaskRuntime<

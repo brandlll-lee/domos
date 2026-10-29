@@ -29,6 +29,7 @@ import {
   engineTask,
 } from "../src/runtime/index.ts";
 import { migrateRuntime } from "../src/runtime/migrate.ts";
+import { MemoryDoc } from "../src/work/memory.ts";
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
 
 test("forward migration preserves model, history and drafts and runs once", async () => {
@@ -205,6 +206,18 @@ test.each(["completed", "running", "sending"] as const)(
       },
       context,
     );
+    await runtime.harness.commit(async (tx) => {
+      (await tx.doc(MemoryDoc)).items.push({
+        id: "profile",
+        botId: id,
+        category: "profile",
+        text: "Original profile fact",
+        revision: 1,
+        updatedAt: 1,
+        source: "user",
+        requestId: "profile-1",
+      });
+    }, context);
     await runtime.engines.submit(id, { text: "Save once", requestId }, context);
     await expect
       .poll(
@@ -227,6 +240,10 @@ test.each(["completed", "running", "sending"] as const)(
         )
         .toBe(1);
     }
+    await runtime.harness.commit(async (tx) => {
+      const memory = (await tx.doc(MemoryDoc)).items[0];
+      if (memory) memory.text = "Updated profile fact";
+    }, context);
     await runtime.harness.close(context);
     runtime = await open();
     const submission = await runtime.engines.submit(
@@ -237,6 +254,14 @@ test.each(["completed", "running", "sending"] as const)(
     expect(await submission.wait(context)).toMatchObject({
       status: outcome === "completed" ? "done" : "unanswered",
     });
+    const instructions = JSON.stringify(
+      workers
+        .at(-1)
+        ?.requests.find((request) => request.method === "thread/resume")
+        ?.params,
+    );
+    expect(instructions).toContain("Original profile fact");
+    expect(instructions).not.toContain("Updated profile fact");
     if (outcome !== "sending") {
       const extra = await runtime.engines.submit(
         id,

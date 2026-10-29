@@ -67,7 +67,7 @@ export async function openAgent(
       execution
         ? (botId, input, ctx) => {
             if (!engines) throw new Error("任务引擎尚未启动。");
-            return engines.submit(botId, input, ctx);
+            return engines.submit(botId, { ...input, source: "routine" }, ctx);
           }
         : undefined,
     ),
