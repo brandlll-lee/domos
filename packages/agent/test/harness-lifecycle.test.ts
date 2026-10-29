@@ -155,6 +155,19 @@ test.each(["accepted", "refused", "uncertain"] as const)(
           ]
         : [{ status: "done" }, { status: "done" }, { status: "done" }],
     );
+    const workView = await engines.view(botId, context);
+    expect(workView.runs?.[0]).toMatchObject({
+      provider: "codex",
+      status: delivery === "uncertain" ? "failed" : "ended",
+      nativeId: "current",
+    });
+    if (delivery === "accepted")
+      expect(workView.runs?.[0]?.inputTurns).toHaveLength(2);
+    expect(
+      workView.runs?.every(
+        (run) => run.endedAt && run.endedAt >= run.startedAt,
+      ),
+    ).toBe(true);
     expect(workers).toHaveLength(
       delivery === "accepted" ? 1 : delivery === "refused" ? 3 : 2,
     );

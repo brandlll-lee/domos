@@ -255,15 +255,39 @@ export class WorkProcess implements EngineProcess {
     input: ComputerRequest,
     signal?: AbortSignal,
   ): Promise<T> {
-    return this.exchange<T>({ type: "computer", input }, signal);
+    return this.exchange<T>(
+      { type: "computer", input },
+      signal,
+      input.operation === "call" &&
+        input.service === "desktop" &&
+        [
+          "zoom",
+          "get_window_state",
+          "get_desktop_state",
+          "list_windows",
+          "list_apps",
+          "get_accessibility_tree",
+          "verify_state",
+        ].includes(input.name),
+    );
   }
 
-  private exchange<T>(frame: object, signal?: AbortSignal) {
+  private exchange<T>(
+    frame: object,
+    signal?: AbortSignal,
+    observation = false,
+  ) {
     signal?.throwIfAborted();
     const id = ++this.sequence;
     return new Promise<T>((resolve, reject) => {
       const abort = () => {
         void this.send({ type: "computer_cancel", id }).catch(() => {});
+        if (observation) {
+          clearTimeout(timer);
+          this.requests.delete(id);
+          clean();
+          reject(signal?.reason ?? new Error("观察已取消。"));
+        }
       };
       signal?.addEventListener("abort", abort, { once: true });
       const clean = () => signal?.removeEventListener("abort", abort);

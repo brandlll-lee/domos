@@ -22,6 +22,7 @@ export type CodexFrame = {
   id?: string | number;
   method: string;
   params?: {
+    plan?: import("../types.ts").EnginePlan;
     threadId?: string;
     turnId?: string;
     requestId?: string | number;

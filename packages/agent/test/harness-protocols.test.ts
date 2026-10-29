@@ -547,6 +547,10 @@ test("Codex handles approval, streams tools and recovers a completed native turn
     else if (request.method === "turn/start") {
       process.response(request, { turn: { id: "turn-1" } });
       process.frame({
+        method: "turn/plan/updated",
+        params: { plan: [{ step: "Read", status: "inProgress" }] },
+      });
+      process.frame({
         id: "approval",
         method: "item/commandExecution/requestApproval",
         params: { command: "write report.md" },
@@ -580,6 +584,10 @@ test("Codex handles approval, streams tools and recovers a completed native turn
     },
   });
   await session.prompt("Save report");
+  expect(events).toContainEqual({
+    type: "plan",
+    plan: [{ step: "Read", status: "inProgress" }],
+  });
   expect(approved).toBe(true);
   expect(events).toContainEqual({ type: "accepted", id: "turn-1" });
   expect(await session.recover?.("turn-1")).toBe(true);

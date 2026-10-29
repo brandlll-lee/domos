@@ -29,76 +29,89 @@ export class EngineProjection {
     this.messages = structuredClone(messages) as StoredMessage[];
   }
   async emit(event: EngineEvent) {
-    if (event.type === "approval" || event.type === "approval_closed") return;
+    const { runtime, context } = this;
     if (event.type === "runtime" && event.state.processing !== undefined)
       this.processing = event.state.processing;
     if (
-      event.type === "usage" ||
-      event.type === "runtime" ||
-      event.type === "context" ||
-      event.type === "compaction"
+      [
+        "usage",
+        "runtime",
+        "context",
+        "compaction",
+        "session",
+        "accepted",
+      ].includes(event.type)
     ) {
-      await this.runtime.commit(async (tx) => {
-        if (event.type === "usage")
-          (await tx.doc(UsageTaskDoc, this.runtime.taskId)).items[
-            event.usage.id
-          ] = event.usage;
-        else if (event.type === "context" || event.type === "compaction") {
-          await projectContext(
-            tx,
-            await tx.doc(EngineDoc, this.runtime.conversationId),
-            this.runtime,
-            event,
-          );
-        } else {
-          const doc = await tx.doc(EngineDoc, this.runtime.conversationId);
-          const notices = { ...doc.runtime?.notices, ...event.state.notices };
-          doc.runtime = {
-            ...doc.runtime,
-            ...event.state,
-            ...(event.state.notices ? { notices } : {}),
-          };
-        }
-      }, this.context);
-      return;
-    }
-    if (event.type === "session" || event.type === "accepted") {
-      await this.flush();
-      await this.runtime.commit(async (tx, current) => {
-        const doc = await tx.doc(EngineDoc, this.runtime.conversationId);
-        if (event.type === "session") {
-          if (doc.sessionId !== event.id)
-            doc.runtime = doc.runtime?.controls
-              ? { controls: doc.runtime.controls }
-              : {};
-          doc.sessionId = event.id;
-          if (doc.sessionKey) {
-            doc.sessions ??= {};
-            if (doc.sessions[doc.sessionKey]?.id !== event.id)
-              doc.sessions[doc.sessionKey] = { id: event.id, through: null };
+      await runtime.commit(async (tx, current) => {
+        const doc = await tx.doc(EngineDoc, runtime.conversationId);
+        switch (event.type) {
+          case "usage":
+            if (doc.run && event.usage.model) doc.run.model = event.usage.model;
+            (await tx.doc(UsageTaskDoc, runtime.taskId)).items[event.usage.id] =
+              event.usage;
+            break;
+          case "context":
+          case "compaction":
+            await projectContext(tx, doc, runtime, event);
+            break;
+          case "runtime": {
+            const notices = { ...doc.runtime?.notices, ...event.state.notices };
+            doc.runtime = {
+              ...doc.runtime,
+              ...event.state,
+              ...(event.state.notices ? { notices } : {}),
+            };
+            break;
+          }
+          case "session":
+            if (doc.sessionId !== event.id)
+              doc.runtime = doc.runtime?.controls
+                ? { controls: doc.runtime.controls }
+                : {};
+            doc.sessionId = event.id;
+            if (doc.sessionKey) {
+              doc.sessions ??= {};
+              if (doc.sessions[doc.sessionKey]?.id !== event.id)
+                doc.sessions[doc.sessionKey] = { id: event.id, through: null };
+            }
+            break;
+          case "accepted": {
+            doc.dispatch = "accepted";
+            doc.turnId = event.id ?? null;
+            if (doc.run && event.id) doc.run.nativeId = event.id;
+            const session = doc.sessionKey
+              ? doc.sessions?.[doc.sessionKey]
+              : undefined;
+            if (
+              event.ready !== false &&
+              !current.input.operation &&
+              current.input.entryId &&
+              session
+            )
+              session.through = current.input.entryId;
           }
         }
-        if (event.type === "accepted") {
-          doc.dispatch = "accepted";
-          doc.turnId = event.id ?? null;
-          const session = doc.sessionKey
-            ? doc.sessions?.[doc.sessionKey]
-            : undefined;
-          if (
-            event.ready !== false &&
-            !current.input.operation &&
-            current.input.entryId &&
-            session
-          )
-            session.through = current.input.entryId;
-        }
-      }, this.context);
-      return;
+      }, context);
+      if (
+        event.type !== "compaction" &&
+        !(
+          event.type === "runtime" &&
+          (event.state.notices || event.state.retry)
+        )
+      )
+        return;
     }
-    if (!this.processing)
-      await this.emit({ type: "runtime", state: { processing: true } });
-    const id = `${this.turnId}:${event.id}:${event.type === "thinking" ? "thinking" : event.type === "tool_result" ? "result" : "message"}`;
+    const contentEvent =
+      "id" in event &&
+      ["tool", "tool_result", "text", "thinking", "message"].includes(
+        event.type,
+      );
+    const key = contentEvent
+      ? `${event.id}:${event.type === "thinking" ? "thinking" : event.type === "tool_result" ? "result" : "message"}`
+      : `activity:${"id" in event ? `${event.type}:${event.id}` : this.messages.length}`;
+    const id = `${this.turnId}:${key}`;
     let message = this.messages.find((item) => item.id === id);
+    const now = Date.now();
     if (!message) {
       message = {
         id,
@@ -106,67 +119,89 @@ export class EngineProjection {
         role: event.type === "tool_result" ? "toolResult" : "assistant",
         content: [],
         stopped: false,
-        timestamp: performance.timeOrigin + performance.now(),
+        timestamp: now,
+        receivedAt: now,
       };
       this.messages.push(message);
     }
-    if (event.type === "tool")
-      message.content = [
-        stored({
-          type: "toolCall",
-          id: event.id,
-          name: event.name,
-          arguments: event.input,
-          key: id,
-        }),
-      ];
-    else if (event.type === "tool_result")
-      Object.assign(message, {
-        toolCallId: event.id,
-        toolName: event.name,
-        isError: event.failed,
-        toolStatus: event.failed ? "failed" : "done",
-        content: [
+    if (contentEvent)
+      for (const previous of this.messages) {
+        if (
+          previous.id !== id &&
+          previous.pending &&
+          !previous.content.some((part) => part.type === "toolCall")
+        ) {
+          previous.pending = false;
+          previous.endedAt = now;
+        }
+      }
+    switch (event.type) {
+      case "tool":
+        message.content = [
           {
-            type: "text",
-            text: event.text.slice(-engineLimits.outputCharacters),
+            type: "toolCall",
+            id: event.id,
+            name: event.name,
+            arguments: stored(event.input),
             key: id,
           },
-        ],
-        ...(event.attachments ? { attachments: event.attachments } : {}),
-      });
-    else if (event.type === "message") {
-      if (message.pending !== false)
-        message.timestamp = performance.timeOrigin + performance.now();
-      message.content = [{ type: "text", text: event.text, key: id }];
-      message.pending = false;
-    } else {
-      if (message.pending === false) return;
-      const previous = message.content[0];
-      const text =
-        `${event.replace ? "" : (previous && (previous.type === "text" ? previous.text : previous.type === "thinking" ? previous.thinking : "")) || ""}${event.text}`.slice(
-          -engineLimits.outputCharacters,
-        );
-      message.content = [
-        event.type === "text"
-          ? { type: "text", text, key: id }
-          : { type: "thinking", thinking: text, key: id },
-      ];
-      message.pending = true;
+        ];
+        break;
+      case "tool_result":
+        Object.assign(message, {
+          toolCallId: event.id,
+          toolName: event.name,
+          isError: event.failed,
+          toolStatus: event.failed ? "failed" : "done",
+          endedAt: now,
+          content: [{ type: "text", text: event.text, key: id }],
+          ...(event.attachments ? { attachments: event.attachments } : {}),
+        });
+        break;
+      case "message":
+        if (message.pending !== false) message.timestamp = now;
+        Object.assign(message, {
+          content: [{ type: "text", text: event.text, key: id }],
+          pending: false,
+          endedAt: now,
+        });
+        break;
+      case "text":
+      case "thinking": {
+        if (message.pending === false) return;
+        const part = message.content[0];
+        const previous =
+          part?.type === "text"
+            ? part.text
+            : part?.type === "thinking"
+              ? part.thinking
+              : "";
+        const text = `${event.replace ? "" : previous}${event.text}`;
+        message.content = [
+          event.type === "text"
+            ? { type: "text", text, key: id }
+            : { type: "thinking", thinking: text, key: id },
+        ];
+        message.pending = true;
+        break;
+      }
+      default:
+        message.activity = stored(event);
     }
     this.changed = true;
     if (
-      event.type === "message" ||
-      Date.now() - this.flushed >= engineLimits.flushMs
+      (event.type !== "text" && event.type !== "thinking") ||
+      now - this.flushed >= engineLimits.flushMs
     )
       await this.flush();
   }
-
   async flush() {
     if (!this.changed) return;
     const drafts = stored(this.messages);
     await this.runtime.commit(async (tx) => {
-      (await tx.doc(EngineDoc, this.runtime.conversationId)).drafts = drafts;
+      const doc = await tx.doc(EngineDoc, this.runtime.conversationId);
+      doc.drafts = drafts;
+      doc.runtime = { ...doc.runtime, processing: this.processing };
     }, this.context);
     this.changed = false;
     this.flushed = Date.now();

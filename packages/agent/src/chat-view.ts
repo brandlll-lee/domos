@@ -14,9 +14,10 @@ import { EngineMessage } from "./harness/state.ts";
 import type {
   EngineApproval,
   EngineConfig,
+  EngineRun,
   EngineRuntimeState,
 } from "./harness/types.ts";
-import type { ChatContent, ChatMessage } from "./messages.ts";
+import type { ChatMessage } from "./messages.ts";
 import { modelFailure } from "./runtime/model-diagnostics.ts";
 import { RoutineInput } from "./work/routine-state.ts";
 
@@ -33,6 +34,7 @@ export type ChatView = {
   engine?: EngineConfig;
   approvals?: EngineApproval[];
   runtime?: EngineRuntimeState;
+  runs?: EngineRun[];
   error?: string | null;
   tools: {
     callId: string;
@@ -48,6 +50,7 @@ export function chatView(
   const live = view.docs[LiveDoc.definition.kind] as LiveState | undefined;
   const agent = view.docs[AgentDoc.definition.kind] as AgentState | undefined;
   const messages: ChatMessage[] = [];
+  const runs: EngineRun[] = [];
   const lastAttempts = new Map<number, number>();
   for (const entry of view.entries)
     if (
@@ -67,64 +70,54 @@ export function chatView(
   ): ChatMessage | null => {
     if (message.role === "system") return null;
     if (message.role === "user") turnId = id;
-    const failure =
-      message.role === "assistant" && message.stopReason === "error";
+    const assistant = message.role === "assistant" ? message : null;
+    const tool = message.role === "toolResult" ? message : null;
+    const failure = assistant?.stopReason === "error";
+    const parts =
+      text !== undefined
+        ? [{ type: "text" as const, text }]
+        : typeof message.content === "string"
+          ? [{ type: "text" as const, text: message.content }]
+          : message.content.filter(
+              (part) => part.type !== "thinking" || !part.redacted,
+            );
     return {
       id,
       turnId,
       role: message.role,
       timestamp: message.timestamp,
-      ...(message.role === "assistant"
-        ? { stopReason: message.stopReason }
-        : {}),
       attachments,
-      content: (text !== undefined
-        ? [{ type: "text" as const, text }]
-        : typeof message.content === "string"
-          ? [{ type: "text" as const, text: message.content }]
-          : message.content.flatMap((part): ChatContent[] => {
-              switch (part.type) {
-                case "text":
-                  return [{ type: "text", text: part.text }];
-                case "thinking":
-                  return part.redacted
-                    ? []
-                    : [{ type: "thinking", thinking: part.thinking }];
-                case "image":
-                  return [
-                    {
-                      type: "image",
+      ...(assistant ? { stopReason: assistant.stopReason } : {}),
+      content: failure
+        ? []
+        : parts.map((part, index) => ({
+            ...(part.type === "text"
+              ? { type: part.type, text: part.text }
+              : part.type === "thinking"
+                ? { type: part.type, thinking: part.thinking }
+                : part.type === "image"
+                  ? {
+                      type: part.type,
                       data: part.data,
                       mimeType: part.mimeType,
-                    },
-                  ];
-                case "toolCall":
-                  return [
-                    {
-                      type: "toolCall",
+                    }
+                  : {
+                      type: part.type,
                       id: part.id,
                       name: part.name,
                       arguments: part.arguments,
-                    },
-                  ];
-              }
-              const exhaustive: never = part;
-              return exhaustive;
-            })
-      ).map((part, index) => ({ ...part, key: `${id}:${index}` })),
-      ...(failure ? { content: [], error: modelFailure(message, id) } : {}),
-      stopped: message.role === "assistant" && message.stopReason === "aborted",
-      ...(message.role === "toolResult"
+                    }),
+            key: `${id}:${index}`,
+          })),
+      ...(failure && assistant ? { error: modelFailure(assistant, id) } : {}),
+      stopped: assistant?.stopReason === "aborted",
+      ...(tool
         ? {
-            toolCallId: message.toolCallId,
-            toolName: message.toolName,
-            isError: message.isError,
+            toolCallId: tool.toolCallId,
+            toolName: tool.toolName,
+            isError: tool.isError,
             diagnostics,
-            toolStatus: stopped
-              ? "stopped"
-              : message.isError
-                ? "failed"
-                : "done",
+            toolStatus: stopped ? "stopped" : tool.isError ? "failed" : "done",
           }
         : {}),
     };
@@ -136,6 +129,10 @@ export function chatView(
       )
     )
       continue;
+    if (entry.kind === "domos.engine-run") {
+      runs.push(entry.data as unknown as EngineRun);
+      continue;
+    }
     if (entry.kind === EngineMessage) {
       const message = entry.data as unknown as ChatMessage;
       if (message.role === "user") turnId = message.turnId;
@@ -226,6 +223,7 @@ export function chatView(
     model: agent?.model ?? null,
     instructions: agent?.instructions ?? "",
     messages,
+    runs,
     draft,
     activeTurnId: live?.run ? (turnId ?? null) : null,
     busy: Boolean(live?.run),

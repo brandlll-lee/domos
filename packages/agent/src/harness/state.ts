@@ -43,6 +43,7 @@ export type EngineState = {
   drafts: JsonRepresentation<ChatMessage>[];
   error: string | null;
   runtime?: EngineRuntimeState;
+  run?: import("./types.ts").EngineRun;
   prepared: boolean;
   preparedComputerId?: string | null;
   prompt: {

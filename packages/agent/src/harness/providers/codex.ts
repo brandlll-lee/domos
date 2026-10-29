@@ -120,6 +120,8 @@ export const codexProvider: EngineProvider = {
               id: params.itemId,
               text: params.delta,
             });
+          if (frame.method === "turn/plan/updated")
+            await emit({ type: "plan", plan: params.plan ?? [] });
           const item = params.item;
           if (frame.method === "turn/started") {
             await emit({ type: "runtime", state: { processing: true } });

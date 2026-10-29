@@ -113,7 +113,23 @@ export type EngineAnswer = {
   answers?: Record<string, string[]>;
   optionId?: string;
 };
+export type EngineRun = {
+  turnId: string;
+  provider: EngineId;
+  model: string | null;
+  startedAt: number;
+  endedAt?: number;
+  status: "running" | "stopping" | "ended" | "stopped" | "failed" | "uncertain";
+  nativeId?: string;
+  inputTurns?: string[];
+};
+export type EnginePlan = {
+  step: string;
+  status: "pending" | "inProgress" | "completed";
+}[];
+
 export type EngineEvent =
+  | { type: "plan"; plan: EnginePlan }
   | {
       type: "context";
       tokens: number | null;

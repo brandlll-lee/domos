@@ -9,6 +9,7 @@ import { expect, test } from "@playwright/test";
 let worker: ChildProcess;
 let directory: string;
 let url: string;
+let toolName: string;
 const it = test.extend({ trace: "off" });
 
 test("three columns keep the identity capsule and navigation clear at each width", async ({
@@ -389,8 +390,11 @@ test.beforeEach(async () => {
   );
   worker.stderr?.resume();
   worker.stdout?.resume();
-  const [ready] = (await once(worker, "message")) as [{ port: number }];
+  const [ready] = (await once(worker, "message")) as [
+    { port: number; toolName: string },
+  ];
   url = `http://127.0.0.1:${ready.port}`;
+  toolName = ready.toolName;
 });
 
 test.afterEach(async () => {
@@ -1883,4 +1887,63 @@ test("panel transitions preserve the transcript and draft through rapid toggles 
     await expect(panel).toBeHidden();
     await expect(input).toHaveValue("保留这份草稿");
   }
+});
+
+test("Work follows a native turn, opens its record and preserves it after stop and reload", async ({
+  page,
+}, info) => {
+  worker.send("gate");
+  await once(worker, "message");
+  await page.goto(url);
+  await page.getByRole("tab", { name: "Work", exact: true }).click();
+  await page.getByLabel("消息", { exact: true }).fill("检查 Work 工作记录");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const card = page.locator(".work-card").first();
+  await expect(
+    card.getByRole("button", { name: "Stop", exact: true }),
+  ).toBeVisible();
+  await page.screenshot({ path: info.outputPath("work-running.png") });
+  await card.locator(".work-open").click();
+  const dialog = page.getByRole("dialog", { name: "工作记录", exact: true });
+  await expect(dialog).toContainText("检查 Work 工作记录");
+  await page.keyboard.press("Escape");
+  await expect(card.locator(".work-open")).toBeFocused();
+  await card.getByRole("button", { name: "Stop", exact: true }).click();
+  await expect(card).toContainText("已停止");
+  await page.reload();
+  await page.getByRole("tab", { name: "Work", exact: true }).click();
+  await expect(card).toContainText("已停止");
+  for (const theme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.screenshot({ path: info.outputPath(`work-${theme}.png`) });
+  }
+  await card.locator(".work-open").click();
+  await expect(dialog).toContainText("已停止");
+  await page.keyboard.press("Escape");
+  worker.send({
+    content: [
+      { type: "thinking", thinking: "核对原生记录。" },
+      {
+        type: "toolCall",
+        id: "work-tool",
+        name: toolName,
+        arguments: { text: "原生工具回执" },
+      },
+    ],
+    stopReason: "toolUse",
+  });
+  await once(worker, "message");
+  await page.getByLabel("消息", { exact: true }).fill("检查原生工具");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(card).toContainText("执行已结束");
+  await expect(page.locator(".work-card")).toHaveCount(2);
+  await card.locator(".work-open").click();
+  await dialog.locator("summary").filter({ hasText: "原生思考" }).click();
+  await expect(dialog).toContainText("核对原生记录。");
+  await dialog.locator("summary").filter({ hasText: toolName }).click();
+  await expect(
+    dialog.locator("pre").filter({ hasText: "原生工具回执" }),
+  ).toBeVisible();
+  await expect(dialog).toContainText("原生工具回执");
+  await page.screenshot({ path: info.outputPath("work-detail.png") });
 });

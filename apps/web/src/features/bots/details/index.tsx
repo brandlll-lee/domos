@@ -4,6 +4,8 @@ import { PanelHeader } from "@domos/ui/panel";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { Tabs } from "@domos/ui/tabs";
 import { type ReactNode, useState } from "react";
+import type { useChat } from "../../chat/use-chat.ts";
+import { WorkPanel } from "../../chat/work.tsx";
 import type { useComputer } from "../../computer/use-computer.ts";
 import { ComputerWorkspace } from "../../computer/workspace.tsx";
 import { ComputerSettings } from "./computer.tsx";
@@ -52,11 +54,14 @@ export function BotDetails({
   onViewChange: (view: BotPanelView) => void;
   onClose: () => void;
   computer: ReturnType<typeof useComputer>;
-  chat: { model: ChatView["model"]; connected: boolean; busy: boolean };
+  chat: ReturnType<typeof useChat> & {
+    model: ChatView["model"];
+    busy: boolean;
+  };
   context: ReactNode;
   canManage: boolean;
-  tab: "bot" | "computer" | "browser";
-  onTabChange: (tab: "bot" | "computer" | "browser") => void;
+  tab: "bot" | "computer" | "browser" | "work";
+  onTabChange: (tab: "bot" | "computer" | "browser" | "work") => void;
   expanded: boolean;
   onExpand: () => void;
   takeoverId?: string;
@@ -147,7 +152,7 @@ export function BotDetails({
             className="bot-tabs"
             value={tab}
             onValueChange={(value) =>
-              onTabChange(value as "bot" | "computer" | "browser")
+              onTabChange(value as "bot" | "computer" | "browser" | "work")
             }
           >
             <Tabs.List className="workspace-tabs" aria-label="Bot详情">
@@ -160,23 +165,29 @@ export function BotDetails({
               <Tabs.Tab className="workspace-tab" value="browser">
                 Browser
               </Tabs.Tab>
+              <Tabs.Tab className="workspace-tab" value="work">
+                Work
+              </Tabs.Tab>
             </Tabs.List>
           </Tabs.Root>
         </div>
       )}
-      {view === "root" && tab !== "bot" && active && (
-        <ComputerWorkspace
-          takeoverId={takeoverId}
-          key={tab}
-          bot={bot}
-          computer={computer}
-          admin={canManage}
-          service={tab === "browser" ? "browser" : "desktop"}
-          expanded={expanded}
-          onExpand={onExpand}
-          onSettings={() => navigate("computer")}
-        />
-      )}
+      {view === "root" && tab === "work" && active && <WorkPanel {...chat} />}
+      {view === "root" &&
+        (tab === "computer" || tab === "browser") &&
+        active && (
+          <ComputerWorkspace
+            takeoverId={takeoverId}
+            key={tab}
+            bot={bot}
+            computer={computer}
+            admin={canManage}
+            service={tab === "browser" ? "browser" : "desktop"}
+            expanded={expanded}
+            onExpand={onExpand}
+            onSettings={() => navigate("computer")}
+          />
+        )}
       <ScrollArea
         hidden={view === "root" && tab !== "bot"}
         className="detail-scroll"

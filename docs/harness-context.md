@@ -47,6 +47,12 @@ Native Harness processes own compaction. Domos records context readings, compact
 
 System instructions stay stable across tool rounds. routine_list supplies current host time and timezone. The UI reads complete stored entries. Handoffs and compaction records stay out of displayed messages. Current tool evidence retains the existing computer observation limits. Native CLI context policies are not the embedded Durable beforeRequest image policy.
 
+## Work records
+
+Work reads the existing conversation projection and EngineDoc. Native events supply text, exposed reasoning, tools, approvals, compaction, and Codex/ACP plans. Execution metadata retains the model, native ID, accepted additional inputs, and received times. Terminal metadata uses the existing conversation entries. Old records retain unknown fields. An ended run does not prove task completion. Desktop observation cancellation settles locally after forwarding native cancellation. Mutations retain their settlement path.
+
+Protocol sources: [Pi RPC](https://pi.dev/docs/latest/rpc), [Codex app-server](https://developers.openai.com/codex/app-server), [Claude streaming](https://code.claude.com/docs/en/agent-sdk/streaming-output), [ACP plans](https://agentclientprotocol.com/protocol/v1/agent-plan). See the [acceptance report](reports/work-turns-2026-10-30.md).
+
 ## Memory
 
 Domos owns memory records. Each record belongs to one Bot unless the user shares it. User profile facts enter a fixed 8 KiB snapshot for one Durable task. Recovery and additional input reuse that snapshot. The next task reads current records. Work notes have a 24 KiB capacity and use memory_search or memory_list. Existing records remain work notes with their original text.

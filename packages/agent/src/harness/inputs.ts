@@ -76,6 +76,14 @@ export class EngineInputs {
         const input = await tx.doc(EngineInputDoc, current.id);
         if (input.status !== "sending") return;
         input.status = result === "refused" ? "deferred" : result;
+        if (result === "accepted") {
+          const doc = await tx.doc(EngineDoc, this.runtime.conversationId);
+          if (doc.run)
+            doc.run.inputTurns = [
+              ...(doc.run.inputTurns ?? []),
+              current.input.turnId,
+            ];
+        }
         if (result === "refused") input.owner = null;
       }, this.context);
       if (result !== "accepted") {

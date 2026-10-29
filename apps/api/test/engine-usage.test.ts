@@ -137,7 +137,12 @@ test("HTTP usage retains native attribution, deduplicates and survives reopening
     .submission(compact.id, context)
     .then((item) => item?.wait(context));
   const after = await runtime.client.get({ botId });
-  expect(after.messages).toEqual(before.messages);
+  expect(after.messages.filter((message) => !message.activity)).toEqual(
+    before.messages,
+  );
+  expect(
+    after.messages.filter((message) => message.activity?.type === "compaction"),
+  ).toHaveLength(2);
   expect(
     (await runtime.client.engines.get({ botId })).runtime?.compaction,
   ).toBe("completed");

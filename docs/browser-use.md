@@ -44,7 +44,7 @@ While an outcome is unknown, Domos permits bounded observations. It blocks more 
 
 ## Human takeover
 
-The details panel keeps one fixed identity header and three tabs: Bot, Computer, and Browser. Computer shows the desktop. Browser shows the Bot's webpage through agent-browser streaming. It uses the same session and persistent profile as the Bot's browser tools. The default browser runs headless. An explicitly headed browser shares display control with Computer.
+The details panel keeps one fixed identity header and four tabs: Bot, Computer, Browser, and Work. Computer shows the desktop. Browser shows the Bot's webpage through agent-browser streaming. It uses the same session and persistent profile as the Bot's browser tools. The default browser runs headless. An explicitly headed browser shares display control with Computer.
 
 Click the screen to take control. The first click only requests control. It does not reach the remote screen. Click a field, then type, paste, select, or scroll. Shift+Escape returns focus to the toolbar. Return control when finished. Takeover keeps the panel size. The Bot must observe the page again.
 

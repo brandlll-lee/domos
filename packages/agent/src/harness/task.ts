@@ -108,6 +108,13 @@ export function engineTask(execution: EngineExecution) {
           if (doc.activeId !== task.id) {
             doc.activeId = task.id;
             doc.activeTurn = task.input.turnId;
+            doc.run = {
+              turnId: task.input.turnId,
+              provider: doc.config.provider,
+              model: doc.config.model,
+              startedAt: Date.now(),
+              status: "running",
+            };
             doc.dispatch = "ready";
             doc.turnId = null;
             doc.drafts = [];
@@ -215,6 +222,15 @@ async function finish(
     await finishUsage(tx, runtime, doc.config.provider, doc.sessionId);
     let answer: EntryId | undefined;
     if (doc.activeId === runtime.taskId) {
+      if (doc.run) {
+        doc.run.endedAt = Date.now();
+        doc.run.status =
+          reason === "aborted" ? "stopped" : error ? "failed" : "ended";
+        await tx.appendEntry(runtime.conversationId, {
+          kind: "domos.engine-run",
+          data: stored(doc.run),
+        });
+      }
       for (const draft of doc.drafts) {
         if (draft.takeover?.state === "waiting")
           draft.takeover.state = "expired";

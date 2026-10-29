@@ -77,20 +77,27 @@ export class EngineExecution {
     const approve = async (
       approval: EngineApproval,
       signal: AbortSignal,
-    ): Promise<EngineAnswer> =>
-      memoryReview
-        ? {
-            allow:
-              provider.id === "codex" &&
-              approval.automatic === true &&
-              approval.detail.startsWith("domos\n"),
-          }
-        : this.computer.approve(
-            runtime.conversationId,
-            approval,
-            signal,
-            context,
-          );
+    ): Promise<EngineAnswer> => {
+      if (!memoryReview) await emit({ type: "approval", approval });
+      try {
+        return await (memoryReview
+          ? {
+              allow:
+                provider.id === "codex" &&
+                approval.automatic === true &&
+                approval.detail.startsWith("domos\n"),
+            }
+          : this.computer.approve(
+              runtime.conversationId,
+              approval,
+              signal,
+              context,
+            ));
+      } finally {
+        if (!memoryReview)
+          await emit({ type: "approval_closed", id: approval.id });
+      }
+    };
     const catalog = await productCatalog(runtime, context);
     const tools = memoryReview
       ? catalog.filter((tool) => tool.name.startsWith("memory_"))

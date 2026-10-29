@@ -36,7 +36,7 @@ Pi Durable 1.4.0 stores Bot tasks. Native Harness processes own model loops. Dom
 ## Computer Use contracts
 
 - Reuse Cua for desktop execution and the existing browser service for DOM/CDP operations. Keep platform details at these boundaries.
-- Browser viewing uses the Agent browser viewport stream and browser input commands. Cua owns desktop viewing and input. Share display control only for a confirmed headed browser. Keep the identity header fixed across Bot, Computer, and Browser tabs. Use the native Fullscreen API for the screen and toolbar. See [Browser Use](docs/browser-use.md).
+- Browser viewing uses the Agent browser viewport stream and browser input commands. Cua owns desktop viewing and input. Share display control only for a confirmed headed browser. Keep the identity header fixed across Bot, Computer, Browser, and Work tabs. Use the native Fullscreen API for the screen and toolbar. See [Browser Use](docs/browser-use.md).
 - Desktop mutations normally use `run_steps` with end observation. Keep known continuous actions in one batch. Check a state transition before actions that depend on it.
 - Bind actions and observation to the same confirmed window and session. Discover and bind a new target when a dialog or window changes.
 - Distinguish action delivery, action verification, observation, and user-task completion. A successful call or screenshot alone does not prove task completion.
@@ -65,6 +65,7 @@ Pi Durable 1.4.0 stores Bot tasks. Native Harness processes own model loops. Dom
 - Keep tests proportional to behavior. Extend the existing relevant test where possible. Replace stale cases rather than stacking duplicate cases.
 - Use comments for non-obvious domain or OS constraints. Keep change history in Git.
 - Reuse `packages/ui` controls and tokens. Build visual hierarchy with spacing and typography. Add labels and descriptions only when they provide needed information.
+- Work projects native Harness events into per-execution cards and the shared record dialog. Preserve native plans, reasoning availability, stop confirmation, and original evidence. See [Harness context](docs/harness-context.md).
 - Keep workspace navigation in the contact column. The centered Bot capsule opens details. Put model and context controls in the Bot tab. Reserve native window controls and keep interactive controls outside drag regions. See [Workspace UI](docs/decisions/0005-workspace-ui.md).
 - Use React View Transitions for panel opening and closing. During pointer resize, apply the latest width once per frame and let transcript text reflow. Animate compact sidebar changes with shared CSS width transitions and motion tokens. Keep snapshot transitions out of dragging and snapping. Start an interrupted drag from the displayed width. Keep transcript position and drafts stable. Honor reduced motion. Closing a viewer still releases its control lease.
 - Use short sentences and active voice. Report confirmed results separately from assumptions and unverified behavior.

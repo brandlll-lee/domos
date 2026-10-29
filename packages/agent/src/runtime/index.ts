@@ -159,6 +159,12 @@ export class Runtime {
                 modelId: engine.config.model,
               };
       }
+      view.runs = [
+        ...(view.runs ?? []).filter(
+          (run) => run.turnId !== engine?.run?.turnId,
+        ),
+        ...(engine?.run ? [engine.run] : []),
+      ];
       view.runtime = engine?.runtime;
       view.error = engine?.error;
       view.failed ||= Boolean(engine?.error);
@@ -455,6 +461,10 @@ export class Runtime {
   async stop(botId: number, context: Context) {
     this.stopping.add(botId);
     try {
+      await this.harness.commit(async (tx) => {
+        const doc = await tx.doc(EngineDoc, botId as ConversationId);
+        if (doc.run && !doc.run.endedAt) doc.run.status = "stopping";
+      }, context);
       const stopped = this.execution.stop(botId);
       const doc = await this.harness.snapshot(
         EngineDoc,

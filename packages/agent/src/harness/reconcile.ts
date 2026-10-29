@@ -65,6 +65,14 @@ export async function reconcileEngine(tx: Tx, id: ConversationId) {
       if (draft.pending !== false) draft.stopped = true;
       await tx.appendEntry(id, { kind: EngineMessage, data: stored(draft) });
     }
+    if (doc.run) {
+      doc.run.status = "uncertain";
+      doc.run.endedAt = active?.endedAt ?? Date.now();
+      await tx.appendEntry(id, {
+        kind: "domos.engine-run",
+        data: stored(doc.run),
+      });
+    }
     doc.drafts = [];
     doc.activeId = null;
     doc.activeTurn = null;

@@ -284,6 +284,17 @@ export function acpProvider(
                 });
               }
               if (!active) return;
+              if (update.sessionUpdate === "plan")
+                await emit({
+                  type: "plan",
+                  plan: update.entries.map((entry) => ({
+                    step: entry.content,
+                    status:
+                      entry.status === "in_progress"
+                        ? "inProgress"
+                        : entry.status,
+                  })),
+                });
               if (
                 (update.sessionUpdate === "agent_message_chunk" ||
                   update.sessionUpdate === "agent_thought_chunk") &&

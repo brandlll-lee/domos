@@ -149,7 +149,12 @@ export function useChat(botId: number, onModelRequired?: () => void) {
     connected,
     error,
     sending,
-    stopping,
+    stopping:
+      stopping ||
+      view?.runs?.some(
+        (run) => run.turnId === view.activeTurnId && run.status === "stopping",
+      ) ||
+      false,
     send,
     stop,
   };

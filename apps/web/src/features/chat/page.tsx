@@ -24,7 +24,7 @@ import { chatCopy } from "./copy.ts";
 import { ErrorMessage } from "./error-message.tsx";
 import { ChatHeader } from "./header.tsx";
 import { Messages } from "./messages.tsx";
-import { RuntimeNotifications, RuntimeStatus } from "./runtime.tsx";
+import { RuntimeStatus } from "./runtime.tsx";
 import { Sidebar } from "./sidebar.tsx";
 import { useChat } from "./use-chat.ts";
 import { useComposerDock } from "./use-composer-dock.ts";
@@ -92,9 +92,9 @@ function BotChat({
     (open: boolean) => startTransition(() => updateDetailsOpen(open)),
     [],
   );
-  const [panel, setPanel] = useState<"settings" | "computer" | "browser">(
-    "settings",
-  );
+  const [panel, setPanel] = useState<
+    "settings" | "computer" | "browser" | "work"
+  >("settings");
   const [expanded, setExpanded] = useState(false);
   const [detailPanel, setDetailPanel] = useState<BotPanelView>("root");
   const [takeover, setTakeover] = useState<{
@@ -188,8 +188,8 @@ function BotChat({
           onClose={closePanel}
           computer={computer}
           chat={{
+            ...chat,
             model: chat.view?.model ?? null,
-            connected: chat.connected,
             busy: Boolean(chat.view?.busy),
           }}
           context={
@@ -211,15 +211,6 @@ function BotChat({
         />
       }
     >
-      <RuntimeNotifications
-        state={chat.view?.runtime}
-        provider={"pi"}
-        name="Pi"
-        onOpen={() => {
-          if (!detailsOpen || panel !== "settings" || detailPanel !== "engine")
-            showPanel("engine");
-        }}
-      />
       {view === "usage" ? (
         <UsageSurface />
       ) : (

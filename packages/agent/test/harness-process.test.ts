@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { once } from "node:events";
 import {
   chmod,
   mkdtemp,
@@ -423,4 +424,44 @@ test("a work computer forwards MCP cancellation to its active product call", asy
   await call;
   await cancelled.promise;
   expect((await client.listTools()).tools[0]?.name).toBe("wait");
+});
+
+test("stopping a desktop observation settles before its worker returns", async () => {
+  const process = new WorkProcess(
+    [
+      globalThis.process.execPath,
+      "--input-type=module",
+      "-e",
+      `
+      import { createInterface } from "node:readline";
+      const send = (frame) => console.log(JSON.stringify(frame));
+      createInterface({ input: process.stdin }).on("line", (line) => {
+        const frame = JSON.parse(line);
+        if (frame.type === "configure") send({ type: "ready" });
+        if (frame.type === "computer") send({ type: "stdout", data: "entered" });
+        if (frame.type === "close") process.exit();
+      });`,
+    ],
+    { cwd: tmpdir(), home: tmpdir() },
+    [],
+    async () => ({ content: [] }),
+  );
+  onTestFinished(() => process.close());
+  await process.ready;
+  const entered = once(process.output, "data");
+  const controller = new AbortController();
+  const result = expect(
+    process.computer(
+      {
+        operation: "call",
+        service: "desktop",
+        name: "get_window_state",
+        arguments: {},
+      },
+      controller.signal,
+    ),
+  ).rejects.toThrow("Stopped");
+  await entered;
+  controller.abort(new Error("Stopped"));
+  await result;
 });

@@ -17,6 +17,9 @@ export type ChatContent =
   | Pick<ToolCall, "type" | "id" | "name" | "arguments">;
 
 export type ChatMessage = {
+  activity?: import("./harness/types.ts").EngineEvent;
+  receivedAt?: number;
+  endedAt?: number;
   takeover?: {
     id: string;
     service: "browser" | "desktop";
