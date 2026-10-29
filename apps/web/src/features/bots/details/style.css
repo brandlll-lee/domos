@@ -21,6 +21,20 @@
 .detail-scroll[hidden] {
   display: none;
 }
+.memory-dialog {
+  width: min(44rem, calc(100% - var(--space-8)));
+}
+.memory-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.memory-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
 .bot-tabs {
   margin-top: var(--space-5);
 }

@@ -985,8 +985,11 @@ test("Bot panels keep their hierarchy in both themes and panel widths", async ({
     }
   }
   await details.getByRole("button", { name: /^记忆(?:\s|$)/ }).click();
-  await details.getByRole("button", { name: "新增记忆", exact: true }).click();
-  const memory = details.getByRole("textbox", {
+  const memoryDialog = page.getByRole("dialog", { name: "记忆" });
+  await expect(memoryDialog).toBeVisible();
+  await expect(page.locator("#bot-details .panel-page")).toBeVisible();
+  await memoryDialog.getByRole("button", { name: "新增记忆" }).click();
+  const memory = memoryDialog.getByRole("textbox", {
     name: "新增记忆",
     exact: true,
   });
@@ -998,9 +1001,12 @@ test("Bot panels keep their hierarchy in both themes and panel widths", async ({
     await expect(memory).toHaveCSS("outline-style", "none");
     await memory.press("Tab");
     await expect(
-      details.getByRole("checkbox", { name: "共享给所有 Bot" }),
+      memoryDialog.getByRole("checkbox", { name: "共享给所有 Bot" }),
     ).toBeFocused();
-    const save = details.getByRole("button", { name: "保存记忆", exact: true });
+    const save = memoryDialog.getByRole("button", {
+      name: "保存",
+      exact: true,
+    });
     await expect(save).toBeEnabled();
     if (theme === "dark") {
       const channels = await save.evaluate(
@@ -1011,25 +1017,34 @@ test("Bot panels keep their hierarchy in both themes and panel widths", async ({
       expect(channels).toHaveLength(3);
       expect(Math.max(...channels)).toBeLessThan(100);
     }
-    await details.screenshot({
+    await memoryDialog.screenshot({
       path: testInfo.outputPath(`memory-editor-${theme}.png`),
     });
   }
-  await details.getByRole("button", { name: "保存记忆", exact: true }).click();
-  const entry = details.getByRole("button", {
+  await memoryDialog.getByRole("button", { name: "保存", exact: true }).click();
+  const entry = memoryDialog.getByRole("button", {
     name: "会议记录使用简洁中文。",
     exact: true,
   });
   await expect(entry).toBeVisible();
   await entry.click();
-  await expect(details.locator(".item-list")).toHaveCount(0);
+  await expect(memoryDialog.locator(".item-list")).toHaveCount(0);
   await expect(
-    details.getByRole("textbox", { name: "修改记忆", exact: true }),
+    memoryDialog.getByRole("textbox", { name: "修改记忆", exact: true }),
   ).toHaveValue("会议记录使用简洁中文。");
-  await details.getByRole("button", { name: "返回", exact: true }).click();
+  await memoryDialog.getByRole("button", { name: "取消", exact: true }).click();
   await expect(entry).toBeVisible();
-  await details.screenshot({ path: testInfo.outputPath("memory-list.png") });
-  await details.getByRole("button", { name: "返回", exact: true }).click();
+  await memoryDialog.screenshot({
+    path: testInfo.outputPath("memory-list.png"),
+  });
+  await memoryDialog.getByRole("button", { name: "关闭弹窗" }).click();
+  await details.getByRole("button", { name: /^记忆(?:\s|$)/ }).click();
+  await expect(memoryDialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(memoryDialog).toBeHidden();
+  await expect(
+    details.getByRole("button", { name: /^记忆(?:\s|$)/ }),
+  ).toBeFocused();
   await details.getByRole("button", { name: /^技能(?:\s|$)/ }).click();
   await details.screenshot({ path: testInfo.outputPath("skills-list.png") });
   await details.getByRole("button", { name: "新建技能", exact: true }).click();

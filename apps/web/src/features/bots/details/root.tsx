@@ -22,6 +22,7 @@ export function RootPanel({
   computer,
   canManage,
   onNavigate,
+  onOpenMemory,
 }: {
   bot: Bot;
   data: WorkData | null;
@@ -30,6 +31,7 @@ export function RootPanel({
   computer: ReturnType<typeof useComputer>;
   canManage: boolean;
   onNavigate: (view: BotPanelView) => void;
+  onOpenMemory: () => void;
 }) {
   const memory = data?.memory.length ?? 0;
   const skills =
@@ -85,7 +87,7 @@ export function RootPanel({
           icon={<BrainIcon />}
           title="记忆"
           value={data ? `${memory} 条` : "读取中"}
-          onClick={() => onNavigate("memory")}
+          onClick={onOpenMemory}
         />
         <PanelRow
           icon={<LightningIcon />}

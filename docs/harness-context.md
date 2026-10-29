@@ -59,6 +59,8 @@ Background review is enabled by default. After ten successful user turns, Durabl
 
 Protocol tests cover native model controls, permission requests, and custom ACP setup. Lifecycle tests cover additional input and cancellation. Recovery tests cover uncertain dispatch and forward migration. History tests cover byte budgets and Bot isolation. Browser E2E checks include real input and result readback. See [Computer Use evals](computer-evals.md).
 
+Memory verification on Windows, 2026-10-29: 342 unit tests passed and 40 were skipped. The Bot panel E2E passed, including modal save, edit, Escape and focus return. Typecheck passed. Lint retained eight existing warnings. Native memory save/search passed on Pi, Claude, OpenCode and ACP with OpenCode. Codex reached memory-tool permission requests but did not finish within the 150-second test limit. Its live acceptance remains unverified. Other operating systems were not tested for this change.
+
 `DOMOS_NATIVE_SMOKE=1 pnpm test packages/agent/test/harness-native.test.ts` runs real models through Pi, Codex, Claude, OpenCode and custom ACP with OpenCode. Models must save and search a Chinese response preference through test memory tools. They must return the search receipt, an image-only random marker, a structured-only marker, coordinates and `verified: false`. The tool also reads native windows. Set `DOMOS_NATIVE_<HARNESS>_MODEL` to select a model. This test incurs usage and requires installed, authenticated CLIs. It does not perform desktop input. Protocol tests do not establish OS permissions or universal ACP compatibility. See [readiness acceptance](reports/harness-readiness-2026-10-29.md).
 
 ## Official references

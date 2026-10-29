@@ -1,103 +1,145 @@
 import { WORK_TEXT_LENGTH } from "@domos/agent/work/limits";
+import { SegmentedControl } from "@domos/ui/choice";
 import { Button } from "@domos/ui/controls";
-import { ConfirmDialog } from "@domos/ui/dialog";
+import { ConfirmDialog, Dialog } from "@domos/ui/dialog";
 import { Checkbox, TextField } from "@domos/ui/field";
 import { ActionMenu } from "@domos/ui/menu";
+import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { useState } from "react";
 import { client } from "../../../client.ts";
-import type { PanelEditor } from "./types.ts";
 import type { WorkAction, WorkData } from "./use-bot-work.ts";
 
-type MemoryEntry = WorkData["memory"][number];
+type Entry = WorkData["memory"][number];
 
-export function MemoryPanel({
+export function MemoryDialog({
+  open,
+  onOpenChange,
   botId,
   items,
+  reviewEnabled,
+  usage,
   action,
-  editor,
-  onEditorChange,
 }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   botId: number;
-  items: WorkData["memory"];
+  items: Entry[];
+  reviewEnabled: boolean;
+  usage: WorkData["memoryUsage"];
   action: WorkAction;
-  editor: Extract<PanelEditor, { view: "memory" }> | null;
-  onEditorChange: (editor: PanelEditor | null) => void;
 }) {
-  const [deleting, setDeleting] = useState<MemoryEntry | null>(null);
+  const [selected, setSelected] = useState<Entry | null | "new">(null);
+  const [deleting, setDeleting] = useState<Entry | null>(null);
   return (
-    <section className="detail-page" aria-label="记忆">
-      {!editor && (
-        <header className="detail-page-head">
-          <span className="detail-note">{items.length} 条记忆</span>
-          <Button
-            size="small"
-            disabled={action.busy}
-            onClick={() => onEditorChange({ view: "memory", entry: "new" })}
-          >
-            新增记忆
-          </Button>
-        </header>
-      )}
-
-      {editor && (
-        <MemoryEditor
-          key={editor.entry === "new" ? "new" : editor.entry.id}
-          botId={botId}
-          entry={editor.entry === "new" ? null : editor.entry}
-          action={action}
-          onDone={() => onEditorChange(null)}
-        />
-      )}
-
-      {!editor &&
-        (items.length ? (
-          <ul className="item-list">
-            {items.map((entry) => (
-              <li key={entry.id} className="item-card">
-                <button
-                  className="item-open item-text"
-                  type="button"
-                  onClick={() => onEditorChange({ view: "memory", entry })}
-                >
-                  {entry.text}
-                </button>
-                <div className="item-meta">
-                  <span className="item-tag">
-                    {entry.botId === null ? "共享" : "此 Bot"}
-                  </span>
-                  <span>
-                    {entry.source === "agent" ? "Bot 记录" : "你添加"}
-                  </span>
-                </div>
-                <div className="item-actions">
-                  <ActionMenu
-                    label="记忆操作"
-                    disabled={action.busy}
-                    items={[
-                      {
-                        label: "编辑",
-                        onSelect: () =>
-                          onEditorChange({ view: "memory", entry }),
-                      },
-                      {
-                        label: "删除",
-                        tone: "danger",
-                        onSelect: () => setDeleting(entry),
-                      },
-                    ]}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) setSelected(null);
+        onOpenChange(next);
+      }}
+      title={
+        selected === "new" ? (
+          "新增记忆"
+        ) : selected ? (
+          "编辑记忆"
         ) : (
-          <p className="detail-empty">暂无记忆</p>
-        ))}
+          <span className="memory-title">
+            记忆
+            <Button
+              variant="ghost"
+              size="icon-small"
+              disabled={action.busy}
+              onClick={() => setSelected("new")}
+              aria-label="新增记忆"
+            >
+              <PlusIcon />
+            </Button>
+          </span>
+        )
+      }
+      className="memory-dialog"
+      footer={
+        !selected && (
+          <div className="memory-footer">
+            <Checkbox
+              label="后台回顾"
+              checked={reviewEnabled}
+              disabled={action.busy}
+              onCheckedChange={(enabled) =>
+                void action.run(["memory.review", enabled], () =>
+                  client.work.memory.review.setEnabled({ botId, enabled }),
+                )
+              }
+            />
+          </div>
+        )
+      }
+    >
+      {action.error && (
+        <p role="alert" className="alert">
+          {action.error}
+        </p>
+      )}
+      {selected ? (
+        <MemoryEditor
+          botId={botId}
+          entry={selected === "new" ? null : selected}
+          action={action}
+          onDone={() => setSelected(null)}
+        />
+      ) : (
+        <section className="detail-page" aria-label="记忆">
+          <p className="detail-note">
+            用户档案会进入每轮上下文。工作笔记由 Bot 按需搜索。 档案：
+            {usage.profile} B / 8 KB；笔记：{usage.work} B / 24 KB。
+          </p>
+          {items.length ? (
+            <ul className="item-list">
+              {items.map((entry) => (
+                <li key={entry.id} className="item-card">
+                  <button
+                    className="item-open item-text"
+                    type="button"
+                    onClick={() => setSelected(entry)}
+                  >
+                    {entry.text}
+                  </button>
+                  <div className="item-meta">
+                    <span className="item-tag">
+                      {(entry.category ?? "work") === "profile"
+                        ? "用户档案"
+                        : "工作笔记"}
+                    </span>
+                    <span>{entry.botId === null ? "共享" : "此 Bot"}</span>
+                    <span>
+                      {entry.source.startsWith("bot:") ? "Bot 记录" : "你添加"}
+                    </span>
+                  </div>
+                  <div className="item-actions">
+                    <ActionMenu
+                      label="记忆操作"
+                      disabled={action.busy}
+                      items={[
+                        { label: "编辑", onSelect: () => setSelected(entry) },
+                        {
+                          label: "删除",
+                          tone: "danger",
+                          onSelect: () => setDeleting(entry),
+                        },
+                      ]}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="detail-empty">暂无记忆</p>
+          )}
+        </section>
+      )}
       <ConfirmDialog
         open={Boolean(deleting)}
-        onOpenChange={(open) => {
-          if (!open) setDeleting(null);
-        }}
+        onOpenChange={(next) => !next && setDeleting(null)}
         title="删除这条记忆？"
         description="删除后，Bot 将不再使用这条记忆。"
         onConfirm={() => {
@@ -113,7 +155,7 @@ export function MemoryPanel({
             );
         }}
       />
-    </section>
+    </Dialog>
   );
 }
 
@@ -124,18 +166,22 @@ function MemoryEditor({
   onDone,
 }: {
   botId: number;
-  entry: MemoryEntry | null;
+  entry: Entry | null;
   action: WorkAction;
   onDone: () => void;
 }) {
   const [id] = useState(() => entry?.id ?? crypto.randomUUID());
   const [text, setText] = useState(entry?.text ?? "");
-  const [shared, setShared] = useState(entry ? entry.botId === null : false);
+  const [category, setCategory] = useState<"profile" | "work">(
+    entry ? (entry.category ?? "work") : "profile",
+  );
+  const [shared, setShared] = useState(entry?.botId === null);
   const input = {
     botId,
     id,
     revision: entry?.revision ?? 0,
     text,
+    category,
     shared,
   };
   return (
@@ -152,6 +198,15 @@ function MemoryEditor({
       }}
     >
       <fieldset className="bot-fields" disabled={action.busy}>
+        <SegmentedControl
+          label="记忆类别"
+          value={category}
+          onValueChange={(value) => setCategory(value as "profile" | "work")}
+          options={[
+            { value: "profile", label: "用户档案" },
+            { value: "work", label: "工作笔记" },
+          ]}
+        />
         <TextField
           label={entry ? "修改记忆" : "新增记忆"}
           value={text}
@@ -165,7 +220,6 @@ function MemoryEditor({
           label="共享给所有 Bot"
           checked={shared}
           onCheckedChange={setShared}
-          disabled={action.busy}
         />
         <div className="form-actions">
           <Button type="button" variant="ghost" size="small" onClick={onDone}>
@@ -174,7 +228,6 @@ function MemoryEditor({
           <Button
             type="submit"
             size="small"
-            aria-label="保存记忆"
             pending={action.busy}
             disabled={!text.trim()}
           >

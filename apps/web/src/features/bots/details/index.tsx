@@ -8,7 +8,7 @@ import type { useComputer } from "../../computer/use-computer.ts";
 import { ComputerWorkspace } from "../../computer/workspace.tsx";
 import { ComputerSettings } from "./computer.tsx";
 import { BotIdentity, IdentityEditor } from "./identity.tsx";
-import { MemoryPanel } from "./memory.tsx";
+import { MemoryDialog } from "./memory.tsx";
 import { ModelSetup } from "./model.tsx";
 import { PromptPanel } from "./prompt.tsx";
 import { RootPanel } from "./root.tsx";
@@ -25,7 +25,6 @@ const titles: Record<Exclude<BotPanelView, "root">, string> = {
   engine: "模型与账号",
   advanced: "高级设置",
   computer: "工作电脑",
-  memory: "记忆",
   skills: "技能",
   routines: "定时",
   prompt: "提示词",
@@ -62,7 +61,12 @@ export function BotDetails({
   onExpand: () => void;
   takeoverId?: string;
 }) {
-  const work = useBotWork(bot.id, active && tab === "bot", view !== "root");
+  const [memoryOpen, setMemoryOpen] = useState(false);
+  const work = useBotWork(
+    bot.id,
+    active && tab === "bot",
+    view !== "root" || memoryOpen,
+  );
   const action = useWorkAction();
   const [selection, setSelection] = useState<PanelEditor | null>(null);
   const editor = selection?.view === view ? selection : null;
@@ -82,23 +86,12 @@ export function BotDetails({
         computer={computer}
         canManage={canManage}
         onNavigate={navigate}
+        onOpenMemory={() => setMemoryOpen(true)}
       />
     );
   else if (view === "engine") content = <ModelSetup botId={bot.id} />;
   else if (view === "computer")
     content = <ComputerSettings computer={computer} botId={bot.id} />;
-  else if (view === "memory")
-    content = work.data ? (
-      <MemoryPanel
-        botId={bot.id}
-        items={work.data.memory}
-        action={action}
-        editor={editor?.view === "memory" ? editor : null}
-        onEditorChange={setSelection}
-      />
-    ) : (
-      <p role="status">正在读取记忆…</p>
-    );
   else if (view === "skills")
     content = work.data ? (
       <SkillsPanel
@@ -221,6 +214,15 @@ export function BotDetails({
           </div>
         )}
       </ScrollArea>
+      <MemoryDialog
+        open={memoryOpen}
+        onOpenChange={setMemoryOpen}
+        botId={bot.id}
+        items={work.data?.memory ?? []}
+        reviewEnabled={work.data?.memoryReviewEnabled ?? true}
+        usage={work.data?.memoryUsage ?? { profile: 0, work: 0 }}
+        action={action}
+      />
     </aside>
   );
 }

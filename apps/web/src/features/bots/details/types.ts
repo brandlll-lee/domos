@@ -4,7 +4,6 @@ export type BotPanelView =
   | "engine"
   | "advanced"
   | "computer"
-  | "memory"
   | "skills"
   | "routines"
   | "prompt";
@@ -12,7 +11,6 @@ export type BotPanelView =
 import type { WorkData } from "./use-bot-work.ts";
 
 export type PanelEditor =
-  | { view: "memory"; entry: WorkData["memory"][number] | "new" }
   | {
       view: "skills";
       skill: WorkData["skills"][number] | null;
