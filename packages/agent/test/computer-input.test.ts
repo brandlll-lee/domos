@@ -338,6 +338,38 @@ test("activation failure returns its cause and does not send the input", async (
   await service.close();
 });
 
+test.each([true, false])(
+  "batch verification %s gives the next step from current evidence",
+  async (checked) => {
+    driver.callTool.mockResolvedValue({
+      images: [],
+      isError: false,
+      structuredJson: JSON.stringify({
+        steps: [{ ok: true }],
+        observation: {
+          ok: true,
+          state: { pid: 7, window_id: 90, snapshot_id: "s1" },
+        },
+      }),
+    });
+    const service = openComputerService(".", ".");
+    const result = await callDesktop(service, "run_steps", {
+      pid: 7,
+      window_id: 90,
+      steps: [
+        {
+          click: { x: 10, y: 20 },
+          ...(checked ? { expect: [{ text: "Playing" }] } : {}),
+        },
+      ],
+    });
+    expect(JSON.stringify(result.content)).toContain(
+      checked ? "Continue from" : "returned observation",
+    );
+    await service.close();
+  },
+);
+
 test.each(failures.mutations)(
   "%s preserves unknown outcomes, recovery and cancellation",
   async (name) => {

@@ -280,7 +280,16 @@ export function openComputerService(directory, home, emit = () => {}) {
             ...(structured?.escalation
               ? { escalation: structured.escalation }
               : {}),
-            next: "Check the intended postcondition with expect, verify_state or fresh observation. Observation alone does not confirm success. Never replay delivered actions to recover an observation failure.",
+            next:
+              result.postcondition &&
+              !captureError &&
+              structured?.observation?.ok !== false
+                ? "Continue from the checked postcondition. Task completion still requires the user's requested outcome."
+                : observed &&
+                    !captureError &&
+                    structured?.observation?.ok !== false
+                  ? "Evaluate the intended postcondition in the returned observation. Request a focused read only if evidence is missing. If current evidence proves background input failed, use explicit foreground delivery with approval; foreground_fallback handles refusals only."
+                  : "Recover observation or use verify_state. Never replay a delivered action whose outcome is unknown.",
           }
         : undefined;
       return {
