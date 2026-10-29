@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { chromium } from "@playwright/test";
 import { expect, onTestFinished, test } from "vitest";
 import { WorkProcess } from "../src/harness/process.ts";
 import { permissionTool } from "../src/harness/product-tools.ts";
@@ -11,10 +12,23 @@ import type { EngineSession, ProductResult } from "../src/harness/types.ts";
 
 test
   .skipIf(process.env.DOMOS_NATIVE_SMOKE !== "1")
-  .each(["pi", "codex", "claude", "opencode"])(
-  "%s discovers and calls a Domos tool on this work computer",
+  .each(["pi", "codex", "claude", "opencode", "acp"])(
+  "%s reads tool images, coordinates and verified results",
   async (id) => {
     const directory = await mkdtemp(join(tmpdir(), "domos-native-smoke-"));
+    const imageMarker = crypto.randomUUID();
+    const marker = crypto.randomUUID();
+    const browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({
+      viewport: { width: 800, height: 160 },
+    });
+    await page.setContent(
+      `<body style="font:28px monospace">${imageMarker}</body>`,
+    );
+    const image = (await page.screenshot()).toString("base64");
+    await browser.close();
+    const replies: string[] = [];
+    let calls = 0;
     const worker = new WorkProcess(
       [
         process.execPath,
@@ -25,17 +39,34 @@ test
         ...(id === "claude" ? [permissionTool] : []),
         {
           name: "computer_probe",
-          description: "Read the Domos work computer status.",
+          description: "Read the work computer observation.",
           inputSchema: { type: "object", properties: {} },
+          outputSchema: {
+            type: "object",
+            required: ["marker", "verified", "coordinates"],
+            properties: {
+              marker: { type: "string" },
+              verified: { type: "boolean" },
+              coordinates: { type: "object" },
+            },
+          },
+          annotations: { readOnlyHint: true },
         },
       ],
       async (_callId, name, args) => {
-        if (name === "approve") {
-          const result = claudePermission(args, {
-            allow: args.tool_name === "mcp__domos__computer_probe",
-          });
-          return { content: [{ type: "text", text: JSON.stringify(result) }] };
-        }
+        if (name === "approve")
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  claudePermission(args, {
+                    allow: args.tool_name === "mcp__domos__computer_probe",
+                  }),
+                ),
+              },
+            ],
+          };
         expect(name).toBe("computer_probe");
         const result = await worker.computer<ProductResult>({
           operation: "call",
@@ -45,26 +76,51 @@ test
         });
         expect(result.isError).not.toBe(true);
         calls++;
-        return { content: [{ type: "text", text: marker }] };
+        return {
+          content: [{ type: "image", data: image, mimeType: "image/png" }],
+          structuredContent: {
+            marker,
+            verified: false,
+            coordinates: { x: 37, y: 91, space: "screenshot" },
+          },
+        };
       },
     );
     onTestFinished(async () => {
       await worker.close();
       await rm(directory, { recursive: true, force: true, maxRetries: 10 });
     });
-    const replies: string[] = [];
-    const marker = `DOMOS_${crypto.randomUUID()}`;
-    let calls = 0;
-    let session: EngineSession | undefined;
+    let session: EngineSession;
     session = await engineProvider(id).open({
       process: worker,
       config: {
         provider: id,
-        model: process.env[`DOMOS_NATIVE_${id.toUpperCase()}_MODEL`] ?? null,
+        model:
+          process.env[`DOMOS_NATIVE_${id.toUpperCase()}_MODEL`] ??
+          (id === "opencode" || id === "acp"
+            ? "deepseek/deepseek-flash"
+            : null),
+        ...(id === "acp"
+          ? {
+              command: "opencode",
+              args: ["acp"],
+            }
+          : {}),
       },
       sessionId: null,
+      ...(id === "acp"
+        ? {
+            env: {
+              OPENCODE_CONFIG_CONTENT: JSON.stringify({
+                model:
+                  process.env.DOMOS_NATIVE_ACP_MODEL ??
+                  "deepseek/deepseek-flash",
+              }),
+            },
+          }
+        : {}),
       instructions:
-        "Call the Domos computer_probe tool once. Reply with its returned text. Do not change files or operate the desktop.",
+        "Call computer_probe once. Return the exact text from its image, its structured marker, coordinates and verified value. Do not use other tools. Do not infer verification from tool success.",
       approve: async () => ({ allow: false }),
       emit: async (event) => {
         if (event.type === "message") replies.push(event.text);
@@ -77,10 +133,19 @@ test
     await session.ready?.();
     await worker.toolsReady();
     await session.prompt(
-      "Read the work computer status with computer_probe. Return its text.",
+      "Read computer_probe. Report the image text, marker, x, y, coordinate space and verified value.",
     );
-    expect(calls, replies.join("\n")).toBe(1);
-    expect(replies.join("\n")).toContain(marker);
+    const answer = replies.join("\n");
+    expect(calls, answer).toBe(1);
+    for (const value of [
+      imageMarker,
+      marker,
+      "37",
+      "91",
+      "screenshot",
+      "false",
+    ])
+      expect(answer).toContain(value);
   },
-  90_000,
+  150_000,
 );

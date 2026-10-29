@@ -149,12 +149,13 @@ export type EngineEvent =
     }
   | { type: "approval"; approval: EngineApproval };
 
-export type ProductTool = {
-  name: string;
+export type ProductTool = Omit<
+  import("@modelcontextprotocol/sdk/types.js").Tool,
+  "inputSchema" | "outputSchema"
+> & {
   description: string;
   inputSchema: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
-  annotations?: import("@modelcontextprotocol/sdk/types.js").ToolAnnotations;
 };
 export type ProductResult =
   import("@modelcontextprotocol/sdk/types.js").CallToolResult;

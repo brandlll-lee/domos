@@ -8,6 +8,7 @@ import {
   type TaskId,
   ToolTask,
 } from "@earendil-works/pi-durable";
+import { ComputerRequests } from "../computer/runtime.ts";
 import type { MessageDelivery } from "../delivery.ts";
 import { conversationEntry, conversationHistory } from "./history.ts";
 import { EngineDoc, EngineMessage } from "./state.ts";
@@ -47,6 +48,9 @@ export async function productCatalog(
 ): Promise<ProductTool[]> {
   const agent = await runtime.agent(context);
   const names = new Set(agent.callable.map((tool) => tool.name));
+  const computer =
+    (await runtime.snapshot(ComputerRequests, runtime.conversationId, context))
+      ?.tools ?? [];
   return [
     ...runtime.registry
       .tools()
@@ -54,7 +58,6 @@ export async function productCatalog(
         ({ extension, tool }) =>
           names.has(tool.name) &&
           (productExtensions.has(extension.name) ||
-            extension.name.startsWith("domos-computer-tools-") ||
             tool.name === "attach_file"),
       )
       .map(({ tool }) => ({
@@ -62,6 +65,7 @@ export async function productCatalog(
         description: tool.description,
         inputSchema: stored(tool.parameters) as Record<string, unknown>,
       })),
+    ...computer.filter((tool) => names.has(tool.name)),
     {
       name: "conversation_read",
       description:

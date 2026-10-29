@@ -39,7 +39,9 @@ Product tools call existing Domos services through durable ToolTask records. Nat
 
 Pi file and command tools use the shipped approval extension. Claude uses its permission tool callback. Codex and ACP use protocol permission requests. Cancellation closes pending approvals. A successful tool call does not prove the user task completed.
 
-Pi registers Domos product tools directly through its extension API. User MCP extensions and account files remain intact. Each new or recovered task waits for the native session to read the Domos gateway catalog. Codex also checks its MCP tool catalog. Claude waits for a terminal connection state and checks tool names. ACP requires HTTP MCP capability. A failed check stops dispatch before the model receives the task.
+Pi registers product tools through its extension API. Each task waits for gateway discovery. Codex checks the native catalog. Claude checks terminal connection state and tool names. ACP requires HTTP MCP capability. Failed readiness stops dispatch. User extensions and account files remain intact.
+
+The gateway reads computer tools from the saved native catalog. Callable names still filter Bot access. Native output schemas, annotations and other tool metadata remain intact. Structured results also enter text content, so content-based Harness implementations can read coordinates and action status. Pi retains the MCP result in tool details. Evidence storage retains original images. Each requested screenshot is delivered with its current metadata.
 
 Native Harness processes own compaction. Domos records context readings, compaction events, and reported usage. Unsupported values stay unknown. Custom ACP recovery is unavailable until its driver can verify native outcomes. Domos does not infer cost or completion from a missing event.
 
@@ -49,7 +51,7 @@ System instructions stay stable across tool rounds. routine_list supplies curren
 
 Protocol tests cover native model controls, permission requests, and custom ACP setup. Lifecycle tests cover additional input and cancellation. Recovery tests cover uncertain dispatch and forward migration. History tests cover byte budgets and Bot isolation. Browser E2E checks include real input and result readback. See [Computer Use evals](computer-evals.md).
 
-`DOMOS_NATIVE_SMOKE=1 pnpm test packages/agent/test/harness-native.test.ts` uses native accounts on the current work computer. It calls a Domos tool, reads the desktop window list, and checks a fresh response marker. It incurs model usage. It does not perform desktop input. The test requires an interactive desktop and installed, authenticated CLIs. Set `DOMOS_NATIVE_<HARNESS>_MODEL` to select a model. Cross-platform protocol and resolver tests run in Checks. They do not prove native CLI login or OS permissions on every system. See the [2026-10-29 acceptance report](reports/harness-readiness-2026-10-29.md).
+`DOMOS_NATIVE_SMOKE=1 pnpm test packages/agent/test/harness-native.test.ts` runs real models through Pi, Codex, Claude, OpenCode and custom ACP with OpenCode. Models must read an image-only random marker, a structured-only marker, coordinates and `verified: false`. The tool also reads native windows. Set `DOMOS_NATIVE_<HARNESS>_MODEL` to select a model. This test incurs usage and requires installed, authenticated CLIs. It does not perform desktop input. Protocol tests do not establish OS permissions or universal ACP compatibility. See [readiness acceptance](reports/harness-readiness-2026-10-29.md).
 
 ## Official references
 

@@ -71,7 +71,10 @@ test("workspace MCP routes tools through the authenticated process channel", asy
     expect(
       (await client.callTool({ name: "echo", arguments: { text: "你好" } }))
         .content,
-    ).toEqual([{ type: "text", text: "你好" }]);
+    ).toEqual([
+      { type: "text", text: "你好" },
+      { type: "text", text: '{"text":"你好"}' },
+    ]);
     expect(calls).toEqual(["你好"]);
     expect(
       (
@@ -100,41 +103,29 @@ test("Pi registers product tools directly and retains structured MCP output", as
   const { process, directory, calls } = await worker();
   const ready = await process.ready;
   const manifest = join(directory, "tools.json");
+  const client = new Client({ name: "manifest", version: "1" });
+  await client.connect(new StreamableHTTPClientTransport(new URL(ready.url)));
   await writeFile(
     manifest,
-    JSON.stringify({
-      url: ready.url,
-      tools: [
-        {
-          name: "echo",
-          description: "Echo",
-          inputSchema: {
-            type: "object",
-            properties: { text: { type: "string" } },
-          },
-        },
-      ],
-    }),
+    JSON.stringify({ url: ready.url, tools: (await client.listTools()).tools }),
   );
+  await client.close();
   const previous = globalThis.process.env.DOMOS_PI_TOOLS;
   globalThis.process.env.DOMOS_PI_TOOLS = manifest;
   const handlers = new Map<string, (() => Promise<void>)[]>();
   let active: string[] = [];
-  let tool:
-    | {
-        name: string;
-        execute: (
-          id: string,
-          args: object,
-          signal: AbortSignal,
-        ) => Promise<ProductResult>;
-      }
-    | undefined;
+  const registered: {
+    name: string;
+    execute(
+      id: string,
+      args: object,
+      signal: AbortSignal,
+    ): Promise<ProductResult>;
+  }[] = [];
   try {
     piTools({
-      registerTool: (value: typeof tool) => {
-        tool = value;
-      },
+      registerTool: (value: (typeof registered)[number]) =>
+        registered.push(value),
       on: (name: string, handler: () => Promise<void>) =>
         handlers.set(name, [...(handlers.get(name) ?? []), handler]),
       getActiveTools: () => active,
@@ -150,6 +141,7 @@ test("Pi registers product tools directly and retains structured MCP output", as
     for (const handler of handlers.get("session_start") ?? []) await handler();
     await process.toolsReady();
     expect(active).toContain("mcp__domos__echo");
+    const tool = registered[0];
     expect(tool?.name).toBe("mcp__domos__echo");
     expect(
       await tool?.execute(
@@ -158,8 +150,12 @@ test("Pi registers product tools directly and retains structured MCP output", as
         new AbortController().signal,
       ),
     ).toMatchObject({
-      content: [{ type: "text", text: "你好" }],
+      content: [
+        { type: "text", text: "你好" },
+        { type: "text", text: '{"text":"你好"}' },
+      ],
       structuredContent: { text: "你好" },
+      details: { structuredContent: { text: "你好" } },
     });
     expect(calls).toEqual(["你好"]);
   } finally {

@@ -51,12 +51,24 @@ export async function openGateway(tools, invoke) {
           async ({ params }, extra) => {
             if (!tools.some((tool) => tool.name === params.name))
               throw new Error("工具不可用。");
-            return invoke(
+            const result = await invoke(
               `${++sequence}:${extra.requestId}`,
               params.name,
               params.arguments ?? {},
               extra.signal,
             );
+            return result.structuredContent === undefined
+              ? result
+              : {
+                  ...result,
+                  content: [
+                    ...result.content,
+                    {
+                      type: "text",
+                      text: JSON.stringify(result.structuredContent),
+                    },
+                  ],
+                };
           },
         );
         const transport = new StreamableHTTPServerTransport({

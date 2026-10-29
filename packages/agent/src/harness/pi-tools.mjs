@@ -33,7 +33,7 @@ export default function (pi) {
           ),
           structuredContent: result.structuredContent,
           isError: result.isError,
-          details: {},
+          details: result,
         };
       },
     });

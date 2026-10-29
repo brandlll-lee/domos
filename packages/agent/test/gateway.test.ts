@@ -28,7 +28,13 @@ test("MCP callers receive the original screenshot and structured result", async 
     await gateway.close();
   });
   await client.connect(new StreamableHTTPClientTransport(new URL(gateway.url)));
-  expect(await client.callTool({ name: "observe" })).toEqual(result);
+  expect(await client.callTool({ name: "observe" })).toEqual({
+    ...result,
+    content: [
+      ...result.content,
+      { type: "text", text: JSON.stringify(result.structuredContent) },
+    ],
+  });
 });
 
 test("cancelling an MCP call stops its work without closing other callers", async () => {
