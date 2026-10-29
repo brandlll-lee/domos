@@ -30,7 +30,12 @@ let computer;
 let tools;
 const emit = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 
-async function close() {
+async function close(force = false) {
+  if (force && child?.pid && process.platform !== "win32") {
+    try {
+      process.kill(-child.pid, "SIGKILL");
+    } catch {}
+  }
   closing ??= (async () => {
     gateway?.close();
     http?.close();
@@ -38,9 +43,8 @@ async function close() {
       item.reject(new Error("Connection closed"));
     pending.clear();
     for (const operation of operations.values()) operation.abort();
-    await computer?.close();
     if (!child?.pid || child.exitCode !== null || child.signalCode !== null)
-      return;
+      return computer?.close();
     const exited = once(child, "close").catch(() => {});
     if (process.platform === "win32") {
       await new Promise((resolve) => {
@@ -54,19 +58,20 @@ async function close() {
       });
     } else {
       try {
-        process.kill(-child.pid, "SIGTERM");
+        process.kill(-child.pid, force ? "SIGKILL" : "SIGTERM");
       } catch {}
     }
-    const force = setTimeout(() => {
+    const forceTimer = setTimeout(() => {
       if (process.platform !== "win32") {
         try {
           process.kill(-child.pid, "SIGKILL");
         } catch {}
       }
     }, 5000);
-    force.unref();
+    forceTimer.unref();
     await exited;
-    clearTimeout(force);
+    clearTimeout(forceTimer);
+    await computer?.close();
   })();
   return closing;
 }
@@ -111,6 +116,7 @@ async function configure(frame) {
 }
 
 async function launch(frame) {
+  if (closing) throw new Error("Session closed");
   if (
     !configured ||
     child ||
@@ -173,6 +179,9 @@ async function launch(frame) {
     });
     env.DOMOS_PI_TOOLS = path;
     frame.args.push(
+      "--no-extensions",
+      "--extension",
+      "builtin:mcp",
       "--extension",
       fileURLToPath(new URL("./pi-tools.mjs", import.meta.url)),
     );
@@ -182,6 +191,7 @@ async function launch(frame) {
       "--extension",
       fileURLToPath(new URL("./pi-auth.mjs", import.meta.url)),
     );
+  if (closing) throw new Error("Session closed");
   child = spawn(frame.command, frame.args, {
     cwd: process.cwd(),
     env,
@@ -216,6 +226,13 @@ async function launch(frame) {
 const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
 let changing = Promise.resolve();
 lines.on("line", (line) => {
+  if (line === '{"type":"stop"}') {
+    void close(true).finally(() => {
+      lines.close();
+      process.stdin.destroy();
+    });
+    return;
+  }
   changing = changing
     .then(async () => {
       if (Buffer.byteLength(line) > 16 * 1024 * 1024)

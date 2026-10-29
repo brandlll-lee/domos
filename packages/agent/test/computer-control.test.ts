@@ -10,6 +10,41 @@ import type { WorkProcess } from "../src/harness/process.ts";
 
 const signal = () => new AbortController().signal;
 
+test("desktop cancellation reaches the browser settlement before dispatch", async () => {
+  const entered = Promise.withResolvers<void>();
+  const pending = Promise.withResolvers<void>();
+  let settlingSignal: AbortSignal | undefined;
+  const services = new ComputerServices(
+    async () =>
+      ({
+        closed: new Promise(() => {}),
+        computer: async (
+          request: { operation: string },
+          signal?: AbortSignal,
+        ) => {
+          if (request.operation === "settle") {
+            settlingSignal = signal;
+            entered.resolve();
+            await pending.promise;
+          }
+          return { available: true };
+        },
+      }) as unknown as WorkProcess,
+  );
+  await services.prepare(1, "browser", context);
+  const controller = new AbortController();
+  const action = vi.fn(async () => {});
+  const call = expect(
+    services.run(1, "desktop", "task", controller.signal, action),
+  ).rejects.toThrow();
+  await entered.promise;
+  controller.abort();
+  pending.resolve();
+  await call;
+  expect(settlingSignal?.aborted).toBe(true);
+  expect(action).not.toHaveBeenCalled();
+});
+
 test("Bots share one desktop host and retain separate browser workers", async () => {
   const open = vi.fn(
     async () =>
@@ -481,4 +516,31 @@ test("a stale concurrent release cannot clear a new takeover", async () => {
     services.run(1, "browser", "task", signal(), async () => {}),
   ).rejects.toThrow("接管");
   await services.release(1, "browser", next);
+});
+
+test("Stop retains control until an issued desktop action settles", async () => {
+  const services = new ComputerServices(async () => {
+    throw new Error("Worker must stay idle");
+  });
+  const entered = Promise.withResolvers<void>();
+  const finish = Promise.withResolvers<void>();
+  const controller = new AbortController();
+  const first = expect(
+    services.run(1, "desktop", "computer:1", controller.signal, async () => {
+      entered.resolve();
+      await finish.promise;
+    }),
+  ).rejects.toThrow("待核对");
+  await entered.promise;
+  controller.abort();
+  services.finish("computer:1");
+  const next = vi.fn(async () => {});
+  await expect(
+    services.run(1, "desktop", "computer:1", signal(), next),
+  ).rejects.toThrow("尚未收束");
+  expect(next).not.toHaveBeenCalled();
+  finish.resolve();
+  await first;
+  await services.run(1, "desktop", "computer:1", signal(), next);
+  expect(next).toHaveBeenCalledOnce();
 });

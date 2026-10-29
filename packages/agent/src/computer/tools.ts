@@ -174,6 +174,7 @@ export class ComputerTools {
             botId,
             input.service,
             context,
+            signal,
           );
           const catalog = new Set(tools.map((tool) => tool.name));
           const binding = await this.computers.binding(botId, context);
@@ -332,6 +333,7 @@ export class ComputerTools {
             botId,
             service,
             context,
+            signal,
           );
           available.push(...catalog.map((item) => `${service}_${item.name}`));
           const tool = catalog.find(

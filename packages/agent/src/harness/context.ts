@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { defineDoc, type Tx } from "@earendil-works/pi-durable";
+import { defineDoc, type TaskId, type Tx } from "@earendil-works/pi-durable";
 import type { EngineState } from "./state.ts";
 import type { EngineRuntime } from "./task-types.ts";
 import type {
@@ -24,7 +24,7 @@ const CompactionTaskDoc = defineDoc<{
 export async function projectContext(
   tx: Tx,
   doc: EngineState,
-  runtime: EngineRuntime,
+  runtime: { taskId: TaskId },
   event: Extract<EngineEvent, { type: "context" | "compaction" }>,
 ) {
   doc.runtime ??= {};

@@ -235,9 +235,8 @@ test("foreground input keeps a restored window active and publishes its real out
     expect(control.structuredContent).toMatchObject({
       observation: { state: identity },
     });
-    expect(control.content).toContainEqual({
-      type: "text",
-      text: expect.stringContaining('"verification":"checked"'),
+    expect(control.structuredContent).toMatchObject({
+      steps: [{ ok: true }, { ok: true }],
     });
     await expect(page.locator("output")).toHaveText("Control input");
     const incomplete = await call("run_steps", {

@@ -44,6 +44,7 @@ export class EngineProjection {
     ) {
       await runtime.commit(async (tx, current) => {
         const doc = await tx.doc(EngineDoc, runtime.conversationId);
+        if (doc.activeId !== runtime.taskId) return;
         switch (event.type) {
           case "usage":
             if (doc.run && event.usage.model) doc.run.model = event.usage.model;
@@ -200,6 +201,7 @@ export class EngineProjection {
     const drafts = stored(this.messages);
     await this.runtime.commit(async (tx) => {
       const doc = await tx.doc(EngineDoc, this.runtime.conversationId);
+      if (doc.activeId !== this.runtime.taskId) return;
       doc.drafts = drafts;
       doc.runtime = { ...doc.runtime, processing: this.processing };
     }, this.context);

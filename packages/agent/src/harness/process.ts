@@ -258,17 +258,19 @@ export class WorkProcess implements EngineProcess {
     return this.exchange<T>(
       { type: "computer", input },
       signal,
-      input.operation === "call" &&
-        input.service === "desktop" &&
-        [
-          "zoom",
-          "get_window_state",
-          "get_desktop_state",
-          "list_windows",
-          "list_apps",
-          "get_accessibility_tree",
-          "verify_state",
-        ].includes(input.name),
+      ["catalog", "settle", "prepare"].includes(input.operation) ||
+        (input.operation === "call" &&
+          input.service === "desktop" &&
+          [
+            "zoom",
+            "get_window_state",
+            "get_desktop_state",
+            "list_windows",
+            "list_apps",
+            "get_accessibility_tree",
+            "verify_state",
+          ].includes(input.name)),
+      input.operation === "call",
     );
   }
 
@@ -276,6 +278,7 @@ export class WorkProcess implements EngineProcess {
     frame: object,
     signal?: AbortSignal,
     observation = false,
+    action = false,
   ) {
     signal?.throwIfAborted();
     const id = ++this.sequence;
@@ -291,11 +294,16 @@ export class WorkProcess implements EngineProcess {
       };
       signal?.addEventListener("abort", abort, { once: true });
       const clean = () => signal?.removeEventListener("abort", abort);
-      const timer = setTimeout(() => {
-        this.requests.delete(id);
-        clean();
-        reject(new Error("工作电脑请求已超时。请检查连接和操作结果。"));
-      }, engineLimits.approvalMs);
+      const timer = setTimeout(
+        () => {
+          void this.send({ type: "computer_cancel", id }).catch(() => {});
+          if (action && !observation) return;
+          this.requests.delete(id);
+          clean();
+          reject(new Error("工作电脑请求已超时。请检查连接和操作结果。"));
+        },
+        observation ? engineLimits.observationMs : engineLimits.executionMs,
+      );
       timer.unref();
       this.requests.set(id, {
         resolve: (value) => {
@@ -314,6 +322,11 @@ export class WorkProcess implements EngineProcess {
         reject(error);
       });
     });
+  }
+
+  terminate() {
+    for (const call of this.calls.values()) call.abort();
+    return this.send({ type: "stop" });
   }
 
   close() {

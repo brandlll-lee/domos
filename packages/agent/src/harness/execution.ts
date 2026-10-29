@@ -127,7 +127,14 @@ export class EngineExecution {
               throw new Error("后台回顾只能调用记忆工具。");
             if (memoryReview && ++reviewCalls > 12)
               throw new Error("本次回顾已达到工具调用上限。");
-            return callProductTool(runtime, callId, name, args, context);
+            return callProductTool(
+              runtime,
+              callId,
+              name,
+              args,
+              context,
+              combined,
+            );
           }
           if (provider.id !== "claude") throw new Error("确认方式不可用。");
           const id = randomUUID();
@@ -158,6 +165,21 @@ export class EngineExecution {
       ),
       controller: new AbortController(),
     };
+    try {
+      runtime.signal.throwIfAborted();
+      const current = await runtime.snapshot(
+        EngineDoc,
+        runtime.conversationId,
+        context,
+      );
+      if (!memoryReview && current?.activeId !== runtime.taskId)
+        throw new Error("工作已停止。");
+    } catch (error) {
+      void (active.process.terminate?.() ?? active.process.close()).catch(
+        () => {},
+      );
+      throw error;
+    }
     this.active.set(runtime.conversationId, active);
     const interrupted = () => {
       void this.stop(runtime.conversationId);
@@ -259,7 +281,7 @@ export class EngineExecution {
         instructions,
         approve: (approval) => approve(approval, active.controller.signal),
         emit: async (event) => {
-          if (!receiving) return;
+          if (!receiving || active.controller.signal.aborted) return;
           if (event.type === "approval") {
             void approve(event.approval, active.controller.signal)
               .then(async (answer) =>
@@ -435,24 +457,36 @@ export class EngineExecution {
       await runtime.commit(async (tx) => {
         (await tx.doc(EngineDoc, runtime.conversationId)).dispatch = "sending";
       }, context);
-      await active.session.prompt(
-        history
-          ? `${handoffInstructions}${history}${requestInstructions}${text}`
-          : text,
-        images,
-      );
+      const cancelled = Promise.withResolvers<never>();
+      const abort = () => cancelled.reject(active.controller.signal.reason);
+      active.controller.signal.addEventListener("abort", abort, { once: true });
+      try {
+        active.controller.signal.throwIfAborted();
+        await Promise.race([
+          active.session.prompt(
+            history
+              ? `${handoffInstructions}${history}${requestInstructions}${text}`
+              : text,
+            images,
+          ),
+          cancelled.promise,
+        ]);
+      } finally {
+        active.controller.signal.removeEventListener("abort", abort);
+      }
     } finally {
       receiving = false;
       initialized.resolve(null);
       active.controller.abort();
       runtime.signal.removeEventListener("abort", interrupted);
-      try {
+      if (active.stopping) {
+        void active.inputs?.close().catch(() => {});
+      } else {
         await active.inputs?.close();
-      } finally {
-        if (active.stopping) await active.stopping;
-        else await active.process.close();
-        if (this.active.get(runtime.conversationId) === active)
-          this.active.delete(runtime.conversationId);
+        await active.process.close();
+      }
+      if (this.active.get(runtime.conversationId) === active) {
+        this.active.delete(runtime.conversationId);
         this.computers.tools.finish(`computer:${runtime.conversationId}`);
       }
     }
@@ -472,21 +506,13 @@ export class EngineExecution {
     const active = this.active.get(botId);
     if (!active) return Promise.resolve();
     active.controller.abort();
-    active.stopping ??= (async () => {
-      const timeout = Promise.withResolvers<void>();
-      const timer = setTimeout(timeout.resolve, engineLimits.shutdownMs);
-      timer.unref();
-      try {
-        await Promise.race([
-          active.session?.interrupt().catch(() => {}),
-          timeout.promise,
-        ]);
-      } finally {
-        clearTimeout(timer);
-        await active.process.close();
-      }
-    })();
-    return active.stopping;
+    this.active.delete(botId);
+    this.computers.tools.finish(`computer:${botId}`);
+    void active.session?.interrupt().catch(() => {});
+    active.stopping ??= (
+      active.process.terminate?.() ?? active.process.close()
+    ).catch(() => {});
+    return Promise.resolve();
   }
 
   takeRequest(botId: number, id: string, view: string, context: Context) {

@@ -89,7 +89,9 @@ export async function callProductTool(
   name: string,
   args: Record<string, unknown>,
   context: Context,
+  signal: AbortSignal = runtime.signal,
 ): Promise<ProductResult> {
+  signal.throwIfAborted();
   if (name === "conversation_read") {
     if (
       Object.keys(args).some(
@@ -131,6 +133,7 @@ export async function callProductTool(
     };
   }
   const catalog = await productCatalog(runtime, context);
+  signal.throwIfAborted();
   if (!catalog.some((tool) => tool.name === name))
     throw new Error("产品工具不可用。");
   const key = createHash("sha256").update(callId).digest("hex");
@@ -173,7 +176,20 @@ export async function callProductTool(
     id = doc.taskId;
   }, context);
   if (!id) throw new Error("产品工具未能排队。");
-  await runtime.waitForTask(id, context);
+  const taskId = id;
+  const cancelled = Promise.withResolvers<never>();
+  const abort = () => {
+    void runtime.abortOwned(taskId, context).catch(() => {});
+    cancelled.reject(signal.reason);
+  };
+  signal.addEventListener("abort", abort, { once: true });
+  try {
+    if (signal.aborted) abort();
+    await Promise.race([runtime.waitForTask(id, context), cancelled.promise]);
+    signal.throwIfAborted();
+  } finally {
+    signal.removeEventListener("abort", abort);
+  }
   const result = (
     await runtime.snapshot(NestedCallDoc, runtime.taskId, key, context)
   )?.result;

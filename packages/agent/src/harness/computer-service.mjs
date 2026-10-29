@@ -1,9 +1,5 @@
 import { openBrowserService } from "./browser-service.mjs";
-import {
-  desktopInputs,
-  desktopMutation,
-  desktopStep,
-} from "./desktop-actions.mjs";
+import { desktopStep } from "./desktop-actions.mjs";
 import { openDesktopSession } from "./desktop-session.mjs";
 import { openDesktopView } from "./desktop-view.mjs";
 
@@ -83,17 +79,7 @@ export function openComputerService(directory, home, emit = () => {}) {
         return {};
       }
       if (input.operation === "catalog")
-        return JSON.parse(await instance.listToolsJson({ signal })).tools.map(
-          (tool) => ({
-            ...tool,
-            description:
-              tool.name === "run_steps"
-                ? `${tool.description}\nDomos adds end observation. Pixel and foreground steps default to screenshots; explicit observe options take precedence. Use both pid and window_id for numeric targets. Rebind a new dialog by its own identity or app/window name. Put expect immediately after a state transition before dependent actions: enter edit mode, confirm the editor, then type; submit editing before saving, then verify the saved result. Keep known continuous input in one batch. Wait with a check-only step: {wait_for:{text:"Ready",timeout_ms:5000}}. wait_for is a step field, not a tool. Never use shell sleeps to wait for UI state.`
-                : tool.name === "type_text"
-                  ? `${tool.description}\nPrefer set_value for accessible text fields. Delivery alone does not verify input; check the value or resulting UI before continuing.`
-                  : tool.description,
-          }),
-        );
+        return JSON.parse(await instance.listToolsJson({ signal })).tools;
       if (input.operation === "prepare") {
         try {
           const result = await activity.capture(() =>
@@ -160,42 +146,12 @@ export function openComputerService(directory, home, emit = () => {}) {
           ],
         };
       activity.observe(input.name, args, null, input.actor);
-      const foreground =
-        input.name === "run_steps"
-          ? args.steps
-              ?.map((step) => ({
-                ...args,
-                ...desktopStep(step).args,
-              }))
-              .find((step) => step.delivery_mode === "foreground")
-          : args.delivery_mode === "foreground" &&
-              desktopInputs.includes(input.name)
-            ? args
-            : undefined;
-      const target = foreground && activity.target(foreground);
-      const activation =
-        target?.pid !== undefined && !activity.active(target)
-          ? await send("bring_to_front", { ...target, session: args.session })
-          : undefined;
-      signal.throwIfAborted();
-      const reading =
-        input.name === "get_window_state"
-          ? args
-          : input.name === "run_steps"
-            ? args.observe
-            : undefined;
-      const batchCapture =
-        input.name === "run_steps" &&
-        reading?.include_screenshot &&
-        !activity.captureExcluded;
-      if (batchCapture) reading.include_screenshot = false;
       const call = () => send(input.name, args);
       const startedAt = performance.now();
-      const result = activation?.isError
-        ? activation
-        : ["get_desktop_state", "zoom"].includes(input.name) ||
-            (input.name === "get_window_state" &&
-              (args.include_screenshot !== false || args.screenshot_out_file))
+      const result =
+        ["get_desktop_state", "zoom", "run_steps"].includes(input.name) ||
+        (input.name === "get_window_state" &&
+          (args.include_screenshot !== false || args.screenshot_out_file))
           ? await activity.capture(call)
           : await call();
       if (signal.aborted) activity.clear(input.actor?.owner);
@@ -205,97 +161,20 @@ export function openComputerService(directory, home, emit = () => {}) {
       const structured = result.structuredJson
         ? JSON.parse(result.structuredJson)
         : undefined;
-      if (structured && input.name === "get_window_state")
-        structured.platform = process.platform;
-      let images = result.images;
-      let captureError;
-      const observed = structured?.observation?.state;
-      if (batchCapture && observed && !signal.aborted) {
-        const captured = await activity.capture(() =>
-          send("get_window_state", {
-            ...reading,
-            pid: observed.pid,
-            window_id: observed.window_id,
-            session: args.session,
-            include_accessibility_tree: false,
-            include_screenshot: true,
-          }),
-        );
-        images = captured.images;
-        captureError = captured.isError ? captured.text : undefined;
-        const capture = JSON.parse(captured.structuredJson ?? "{}");
-        if (!captured.isError) Object.assign(observed, capture);
-        else
-          structured.observation = {
-            ...structured.observation,
-            ok: false,
-            error: captured.text,
-          };
-        if (signal.aborted) activity.clear(input.actor?.owner);
-        else activity.observe("get_window_state", args, captured, input.actor);
-      }
-      const action = desktopMutation(input.name, args);
-      const outcome = action
-        ? {
-            execution:
-              !result.isError ||
-              (input.name === "run_steps" &&
-                structured?.steps?.length === args.steps?.length &&
-                structured.steps.every((step) => step.ok))
-                ? "delivered"
-                : "incomplete",
-            verification: result.postcondition
-              ? "checked"
-              : input.name !== "run_script" &&
-                  !result.isError &&
-                  (structured?.verified === true ||
-                    structured?.effect === "confirmed")
-                ? "confirmed"
-                : "required",
-            observation:
-              structured?.observation?.ok === false ||
-              captureError !== undefined
-                ? "failed"
-                : observed
-                  ? "available"
-                  : "not-requested",
-            ...(structured?.effect ? { effect: structured.effect } : {}),
-            ...(structured?.escalation
-              ? { escalation: structured.escalation }
-              : {}),
-            next:
-              result.postcondition &&
-              !captureError &&
-              structured?.observation?.ok !== false
-                ? "Continue from the checked postcondition. Task completion still requires the user's requested outcome."
-                : observed &&
-                    !captureError &&
-                    structured?.observation?.ok !== false
-                  ? "Evaluate the intended postcondition in the returned observation. Request a focused read only if evidence is missing. If current evidence proves background input failed, use explicit foreground delivery with approval; foreground_fallback handles refusals only."
-                  : "Recover observation or use verify_state. Never replay a delivered action whose outcome is unknown.",
-          }
-        : undefined;
       const elapsedMs = Math.round(performance.now() - startedAt);
       return {
+        _meta: { "domos/platform": process.platform },
         content: [
           ...(result.text ? [{ type: "text", text: result.text }] : []),
           { type: "text", text: `Domos computer tool time: ${elapsedMs} ms.` },
-          ...(captureError ? [{ type: "text", text: captureError }] : []),
-          ...(outcome
-            ? [{ type: "text", text: JSON.stringify({ domos: outcome }) }]
-            : []),
-          ...images.map((image) => ({
+          ...result.images.map((image) => ({
             type: "image",
             mimeType: image.mimeType,
             data: image.dataBase64,
           })),
         ],
         ...(structured ? { structuredContent: structured } : {}),
-        isError: Boolean(
-          result.isError ||
-            captureError !== undefined ||
-            structured?.observation?.ok === false,
-        ),
+        isError: Boolean(result.isError),
       };
     },
     async close() {

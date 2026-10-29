@@ -14,7 +14,11 @@ import { EngineConnections } from "../harness/connections.ts";
 import type { EngineExecution } from "../harness/execution.ts";
 import { EngineModelCatalog } from "../harness/model-catalog.ts";
 import { engineProvider, providers } from "../harness/providers/index.ts";
-import { readEngine, reconcileEngine } from "../harness/reconcile.ts";
+import {
+  readEngine,
+  reconcileEngine,
+  stopEngine,
+} from "../harness/reconcile.ts";
 import { switchSession } from "../harness/sessions.ts";
 import { EngineDoc, EngineInputDoc, EngineMessage } from "../harness/state.ts";
 import { engineTask } from "../harness/task.ts";
@@ -461,23 +465,13 @@ export class Runtime {
   async stop(botId: number, context: Context) {
     this.stopping.add(botId);
     try {
-      await this.harness.commit(async (tx) => {
-        const doc = await tx.doc(EngineDoc, botId as ConversationId);
-        if (doc.run && !doc.run.endedAt) doc.run.status = "stopping";
-      }, context);
-      const stopped = this.execution.stop(botId);
-      const doc = await this.harness.snapshot(
-        EngineDoc,
-        botId as ConversationId,
+      void this.execution.stop(botId);
+      const tasks = await this.harness.commit(
+        (tx) => stopEngine(tx, botId as ConversationId),
         context,
       );
-      await Promise.all(
-        [...(doc?.tasks ?? [])]
-          .reverse()
-          .map((id) => this.harness.abortTask(id, context)),
-      );
-      await stopped;
-      await readEngine(this.harness, botId as ConversationId, context);
+      for (const id of tasks.reverse())
+        void this.harness.abortTask(id, context).catch(() => {});
     } finally {
       this.stopping.delete(botId);
     }

@@ -251,149 +251,187 @@ test("engine connection readiness follows the selected work computer", async () 
   expect((await engines.profile(botId, context)).prepared).toBe(false);
 });
 
-test("routines use the selected native engine and stopping settles queued work", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "domos-native-routine-"));
-  const models = createModels();
-  models.setProvider(fauxProvider().provider);
-  const workers: ProtocolProcess[] = [];
-  const computers = {
-    initialize: async () => {},
-    preflight: async () => {},
-    computerId: async () => "shared",
-    process: async () => {
-      const worker = new ProtocolProcess();
-      workers.push(worker);
-      worker.receive = (request) => {
-        if (
-          request.method === "thread/start" ||
-          request.method === "thread/resume"
-        )
-          worker.response(request, { thread: { id: "routine-thread" } });
-        else if (request.method === "turn/start") {
-          worker.response(request, { turn: { id: `turn-${workers.length}` } });
-          if (workers.length === 1)
-            worker.frame({
-              method: "turn/completed",
-              params: { turn: { status: "completed" } },
+test.each([false, true])(
+  "Stop ends the runtime while native shutdown is blocked: %s",
+  async (blocked) => {
+    const release = Promise.withResolvers<void>();
+    const directory = await mkdtemp(join(tmpdir(), "domos-native-routine-"));
+    const models = createModels();
+    models.setProvider(fauxProvider().provider);
+    const workers: ProtocolProcess[] = [];
+    const computers = {
+      initialize: async () => {},
+      preflight: async () => {},
+      computerId: async () => "shared",
+      process: async () => {
+        const worker = new ProtocolProcess();
+        workers.push(worker);
+        if (blocked && workers.length === 2) {
+          const close = worker.close.bind(worker);
+          worker.close = async () => {
+            await release.promise;
+            await close();
+          };
+        }
+        worker.receive = (request) => {
+          if (!request.method) return;
+          if (
+            request.method === "thread/start" ||
+            request.method === "thread/resume"
+          )
+            worker.response(request, { thread: { id: "routine-thread" } });
+          else if (request.method === "turn/start") {
+            worker.response(request, {
+              turn: { id: `turn-${workers.length}` },
             });
-          else
-            worker.frame({
-              id: "approval",
-              method: "item/commandExecution/requestApproval",
-              params: { command: "make-report", cwd: "/work/bots/1" },
-            });
-        } else if (request.id !== undefined) worker.response(request, {});
-      };
-      return worker;
-    },
-    tools: { catalog: async () => [], finish: () => {} },
-  } as unknown as Computers;
-  const runtime = await openAgent(
-    join(directory, "agent.sqlite"),
-    { registry: createRegistry(), models, computers },
-    {},
-    context,
-  );
-  onTestFinished(async () => {
-    await runtime.harness.close(context);
-    await Promise.all(workers.map((worker) => worker.close()));
-    await rm(directory, { recursive: true, force: true });
-  });
-  const engines = runtime.engines;
-  if (!engines) throw new Error("Native engines required");
-  const botId = runtime.conversation.id;
-  await engines.configure(
-    botId,
-    {
-      config: { provider: "codex", model: null },
-      revision: 0,
-      requestId: crypto.randomUUID(),
-    },
-    context,
-  );
-  const routine = await runtime.work.routines.save(
-    botId,
-    {
-      id: crypto.randomUUID(),
-      revision: 0,
-      title: "Report",
-      instructions: "Prepare the daily report",
-      schedule: { type: "cron", expression: "0 9 * * *", timeZone: "UTC" },
-      skillIds: [],
-      requestId: crypto.randomUUID(),
-    },
-    context,
-  );
-  const first = await runtime.work.routines.test(
-    botId,
-    routine.id,
-    crypto.randomUUID(),
-    context,
-  );
-  await runtime.harness.waitForTask(first, context);
-  expect(
-    (await runtime.work.routines.list(botId, context)).runs[0]?.status,
-  ).toBe("done");
-  expect(
-    JSON.stringify(
-      workers[0]?.requests.find((request) => request.method === "turn/start")
-        ?.params,
-    ),
-  ).toContain("Prepare the daily report");
-  const active = await engines.submit(
-    botId,
-    { text: "Wait for permission", requestId: crypto.randomUUID() },
-    context,
-  );
-  await expect
-    .poll(async () => (await engines.view(botId, context)).approvals?.length)
-    .toBe(1);
-  const additional = await engines.submit(
-    botId,
-    { text: "Include one more item", requestId: crypto.randomUUID() },
-    context,
-  );
-  await expect
-    .poll(() =>
-      workers[1]?.requests.some((request) => request.method === "turn/steer"),
-    )
-    .toBe(true);
-  const queued = await runtime.work.routines.test(
-    botId,
-    routine.id,
-    crypto.randomUUID(),
-    context,
-  );
-  await expect
-    .poll(
-      async () =>
-        (await runtime.work.routines.list(botId, context)).runs[1]
-          ?.submissionId,
-    )
-    .toEqual(expect.any(Number));
-  await engines.stop(botId, context);
-  expect(
-    workers[1]?.requests.some((request) => request.method === "turn/interrupt"),
-  ).toBe(true);
-  await runtime.harness.waitForTask(queued, context);
-  expect(await active.wait(context)).toMatchObject({
-    status: "unanswered",
-    reason: "aborted",
-  });
-  expect(await additional.wait(context)).toMatchObject({
-    status: "unanswered",
-    reason: "aborted",
-  });
-  expect(
-    (await runtime.work.routines.list(botId, context)).runs[1]?.status,
-  ).toBe("stopped");
-  expect((await engines.view(botId, context)).approvals).toEqual([]);
-  expect((await engines.profile(botId, context)).busy).toBe(false);
-  await expect(
-    engines.answer(botId, "approval", { allow: true }, context),
-  ).rejects.toThrow("这次确认已经失效");
-  expect(workers).toHaveLength(2);
-});
+            if (workers.length === 1)
+              worker.frame({
+                method: "turn/completed",
+                params: { turn: { status: "completed" } },
+              });
+            else
+              worker.frame({
+                id: "approval",
+                method: "item/commandExecution/requestApproval",
+                params: { command: "make-report", cwd: "/work/bots/1" },
+              });
+          } else if (blocked && request.method === "turn/interrupt") {
+            return;
+          } else if (request.id !== undefined) worker.response(request, {});
+        };
+        return worker;
+      },
+      tools: { catalog: async () => [], finish: () => {} },
+    } as unknown as Computers;
+    const runtime = await openAgent(
+      join(directory, "agent.sqlite"),
+      { registry: createRegistry(), models, computers },
+      {},
+      context,
+    );
+    onTestFinished(async () => {
+      release.resolve();
+      await runtime.harness.close(context);
+      await Promise.all(workers.map((worker) => worker.close()));
+      await rm(directory, { recursive: true, force: true });
+    });
+    const engines = runtime.engines;
+    if (!engines) throw new Error("Native engines required");
+    const botId = runtime.conversation.id;
+    await engines.configure(
+      botId,
+      {
+        config: { provider: "codex", model: null },
+        revision: 0,
+        requestId: crypto.randomUUID(),
+      },
+      context,
+    );
+    const routine = await runtime.work.routines.save(
+      botId,
+      {
+        id: crypto.randomUUID(),
+        revision: 0,
+        title: "Report",
+        instructions: "Prepare the daily report",
+        schedule: { type: "cron", expression: "0 9 * * *", timeZone: "UTC" },
+        skillIds: [],
+        requestId: crypto.randomUUID(),
+      },
+      context,
+    );
+    const first = await runtime.work.routines.test(
+      botId,
+      routine.id,
+      crypto.randomUUID(),
+      context,
+    );
+    await runtime.harness.waitForTask(first, context);
+    expect(
+      (await runtime.work.routines.list(botId, context)).runs[0]?.status,
+    ).toBe("done");
+    expect(
+      JSON.stringify(
+        workers[0]?.requests.find((request) => request.method === "turn/start")
+          ?.params,
+      ),
+    ).toContain("Prepare the daily report");
+    const active = await engines.submit(
+      botId,
+      { text: "Wait for permission", requestId: crypto.randomUUID() },
+      context,
+    );
+    await expect
+      .poll(async () => (await engines.view(botId, context)).approvals?.length)
+      .toBe(1);
+    const additional = await engines.submit(
+      botId,
+      { text: "Include one more item", requestId: crypto.randomUUID() },
+      context,
+    );
+    await expect
+      .poll(() =>
+        workers[1]?.requests.some((request) => request.method === "turn/steer"),
+      )
+      .toBe(true);
+    const queued = await runtime.work.routines.test(
+      botId,
+      routine.id,
+      crypto.randomUUID(),
+      context,
+    );
+    await expect
+      .poll(
+        async () =>
+          (await runtime.work.routines.list(botId, context)).runs[1]
+            ?.submissionId,
+      )
+      .toEqual(expect.any(Number));
+    let stopped = false;
+    const stopping = engines.stop(botId, context).then(() => {
+      stopped = true;
+    });
+    await expect.poll(() => stopped, { timeout: 500 }).toBe(true);
+    await stopping;
+    expect((await engines.profile(botId, context)).busy).toBe(false);
+    release.resolve();
+
+    await runtime.harness.waitForTask(queued, context);
+    expect(await active.wait(context)).toMatchObject({
+      status: "unanswered",
+      reason: "aborted",
+    });
+    expect(await additional.wait(context)).toMatchObject({
+      status: "unanswered",
+      reason: "aborted",
+    });
+    expect(
+      (await runtime.work.routines.list(botId, context)).runs[1]?.status,
+    ).toBe("stopped");
+    expect((await engines.view(botId, context)).approvals).toEqual([]);
+    expect((await engines.profile(botId, context)).busy).toBe(false);
+    await expect(
+      engines.answer(botId, "approval", { allow: true }, context),
+    ).rejects.toThrow("这次确认已经失效");
+    const next = await engines.submit(
+      botId,
+      { text: "Next request", requestId: crypto.randomUUID() },
+      context,
+    );
+    await expect.poll(() => workers.length).toBe(3);
+    await expect
+      .poll(() =>
+        workers[2]?.requests.some((request) => request.method === "turn/start"),
+      )
+      .toBe(true);
+    await engines.stop(botId, context);
+    expect(await next.wait(context)).toMatchObject({
+      status: "unanswered",
+      reason: "aborted",
+    });
+    expect((await engines.view(botId, context)).busy).toBe(false);
+  },
+);
 
 test.each([false, true])(
   "memory review stays separate and yields to user work: %s",
@@ -512,11 +550,7 @@ test.each([false, true])(
         context,
       );
       expect(await submission.wait(context)).toMatchObject({ status: "done" });
-      expect(
-        workers[10]?.requests.some(
-          (request) => request.method === "turn/interrupt",
-        ),
-      ).toBe(true);
+      await expect(workers[10]?.closed).resolves.toMatchObject({ code: 0 });
       expect(JSON.stringify(workers[11]?.requests)).toContain(
         "User work has priority",
       );

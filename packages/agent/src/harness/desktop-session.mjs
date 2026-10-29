@@ -17,7 +17,7 @@ export function openDesktopSession(driver) {
       signal?.throwIfAborted();
       let state = sessions.get(args.session);
       if (!state || state.owner !== owner) {
-        state = { owner, scopes: new Map() };
+        state = { owner };
         sessions.delete(args.session);
         const started = await driver.callTool(
           "start_session",
@@ -38,36 +38,6 @@ export function openDesktopSession(driver) {
           return cursor;
         }
         sessions.set(args.session, state);
-      }
-      const reading = name === "get_window_state" ? args : args.observe;
-      const scope =
-        reading &&
-        JSON.stringify([
-          reading.query ?? "",
-          reading.max_elements ?? 250,
-          reading.max_depth ?? 25,
-          reading.full_output === true,
-        ]);
-      const readsTree = reading && reading.include_accessibility_tree !== false;
-      const baseline = (value) =>
-        JSON.stringify([value.pid, value.window_id, scope]);
-      if (readsTree) {
-        const previous = state.scopes.get(baseline({ ...args, ...reading }));
-        if (reading.full_output) delete reading.since;
-        else if (
-          reading.since ||
-          (name === "run_steps" && reading.since === undefined)
-        ) {
-          if (
-            previous &&
-            (!reading.since ||
-              reading.since === "latest" ||
-              reading.since === previous)
-          )
-            reading.since ??= "latest";
-          else if (name === "run_steps") reading.since = null;
-          else delete reading.since;
-        }
       }
       const steps =
         name === "run_steps"
@@ -138,11 +108,6 @@ export function openDesktopSession(driver) {
       ) {
         state.review = false;
         state.observed = true;
-      }
-      if (readsTree && !result.isError && observed?.snapshot_id) {
-        state.scopes.set(baseline(observed), observed.snapshot_id);
-        if (state.scopes.size > 32)
-          state.scopes.delete(state.scopes.keys().next().value);
       }
       const checked =
         !result.isError &&

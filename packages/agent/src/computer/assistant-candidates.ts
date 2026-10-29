@@ -94,12 +94,15 @@ export function candidates(
       role,
       input: purpose,
       state,
-      platform: String(result.structuredContent?.platform),
+      platform: String(
+        result._meta?.["domos/platform"] ?? result.structuredContent?.platform,
+      ),
     };
   };
   const target = { ...input.window, delivery_mode: input.delivery };
   if (input.service === "desktop") {
     const state = result.structuredContent ?? {};
+    const platform = String(result._meta?.["domos/platform"] ?? state.platform);
     // Driver tokens are valid only in the snapshot that produced them.
     if (
       state.pid !== input.window?.pid ||
@@ -122,7 +125,7 @@ export function candidates(
       const parsed = control.safeParse(raw);
       if (!parsed.success) continue;
       const item = parsed.data;
-      const role = roleClass(item.role, String(state.platform));
+      const role = roleClass(item.role, platform);
       const ancestors = [];
       const seen = new Set<number>();
       let parent = item.parent_index;
@@ -163,7 +166,7 @@ export function candidates(
           const method =
             input.steps.find(
               (step) =>
-                roleClass(step.role, String(state.platform)) === role &&
+                roleClass(step.role, platform) === role &&
                 step.label.toLowerCase() === label.toLowerCase() &&
                 step.input === value.purpose,
             )?.action === "type_text" ||

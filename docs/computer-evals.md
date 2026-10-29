@@ -66,7 +66,7 @@ pnpm exec vitest run packages/agent/test/computer-evals.test.ts
 
 这些测试验证评分器，不代表重新运行了 Agent。当前未提供自动截图判分、自动真实任务重跑或跨平台桌面成功率。
 
-共享执行入口的回归使用 `packages/agent/test/computer-input.test.ts`。它检查保存目录到 MCP 的完整契约、严格输出校验、批次窗口身份、收尾观察和增量基线。直接动作、批次与脚本在结果未知后都要求观察。改变延迟不能解除阻断。会话失效时只恢复观察。取消后不能发送动作。脚本属于修改操作，完成后须观察。脚本返回任意 JSON 不等于动作验证。`computer-activity.test.ts` 检查脚本原生光标跟踪。`computer-assistant.test.ts` 检查 Jev 交接与工具目录。
+共享执行入口的回归使用 `packages/agent/test/computer-input.test.ts`。它检查保存目录到 MCP 的完整契约、严格输出校验、批次窗口身份、原生收尾观察和原生增量游标。直接动作、批次与脚本在结果未知后都要求观察。改变延迟不能解除阻断。会话失效时只恢复观察。取消后不能发送动作。脚本属于修改操作，完成后须观察。脚本返回任意 JSON 不等于动作验证。`computer-activity.test.ts` 检查脚本原生光标跟踪。`computer-assistant.test.ts` 检查 Jev 交接与工具目录。
 
 Windows 图形会话可运行原生模拟：
 

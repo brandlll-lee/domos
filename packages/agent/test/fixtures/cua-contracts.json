@@ -5,5 +5,16 @@
     "Saved native outputSchema and annotations disappeared from tools/list.",
     "A script reached the driver while a previous action required observation.",
     "Native script cursor moved to 954,370; the effect retained the previous click."
-  ]
+  ],
+  "cancellation": {
+    "source": "task-9410:2026-10-30",
+    "completion": "not-completed",
+    "mcpTimeoutSeconds": 60,
+    "childAbortSeconds": [601.881, 601.421],
+    "parentStopSeconds": 770.535,
+    "observed": [
+      "Search text entered. Target track was not played.",
+      "Cancelled observation and action remained active."
+    ]
+  }
 }

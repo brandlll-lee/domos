@@ -21,11 +21,9 @@ import {
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
 
 test.each([
-  ...["pi", "codex", "claude", "opencode", "acp"].map((provider) => ({
-    provider,
-    ending: "complete",
-  })),
-  { provider: "pi" as const, ending: "stop" },
+  ...["pi", "codex", "claude", "opencode", "acp"].flatMap((provider) =>
+    ["complete", "stop"].map((ending) => ({ provider, ending })),
+  ),
 ])(
   "$provider holds a durable takeover card through $ending",
   async ({ provider, ending }) => {

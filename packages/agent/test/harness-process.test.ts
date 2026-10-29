@@ -10,14 +10,17 @@ import {
 } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { expect, onTestFinished, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import { openGateway } from "../src/harness/gateway.mjs";
 import piTools from "../src/harness/pi-tools.mjs";
 import { WorkProcess } from "../src/harness/process.ts";
+import { callProductTool } from "../src/harness/product-tools.ts";
+import type { EngineRuntime } from "../src/harness/task-types.ts";
 import type { ProductResult } from "../src/harness/types.ts";
 
 test("CUA text copies retain addresses and images without repeating observation payloads", async () => {
@@ -152,68 +155,28 @@ test("a missing work computer command reports a missing program", async () => {
   });
 });
 
-test("Pi registers product tools directly and retains structured MCP output", async () => {
-  const { process, directory, calls } = await worker();
-  const ready = await process.ready;
-  const manifest = join(directory, "tools.json");
-  const client = new Client({ name: "manifest", version: "1" });
-  await client.connect(new StreamableHTTPClientTransport(new URL(ready.url)));
-  await writeFile(
-    manifest,
-    JSON.stringify({ url: ready.url, tools: (await client.listTools()).tools }),
+test("Pi registers the product server with its native MCP lifecycle", async () => {
+  const manifest = join(
+    await mkdtemp(join(tmpdir(), "domos-pi-tools-")),
+    "tools.json",
   );
-  await client.close();
+  onTestFinished(() => rm(dirname(manifest), { recursive: true, force: true }));
+  await writeFile(manifest, JSON.stringify({ url: "http://127.0.0.1/mcp" }));
   const previous = globalThis.process.env.DOMOS_PI_TOOLS;
   globalThis.process.env.DOMOS_PI_TOOLS = manifest;
-  const handlers = new Map<string, (() => Promise<void>)[]>();
-  let active: string[] = [];
-  const registered: {
-    name: string;
-    execute(
-      id: string,
-      args: object,
-      signal: AbortSignal,
-    ): Promise<ProductResult>;
-  }[] = [];
+  const registerMcpServer = vi.fn();
   try {
-    piTools({
-      registerTool: (value: (typeof registered)[number]) =>
-        registered.push(value),
-      on: (name: string, handler: () => Promise<void>) =>
-        handlers.set(name, [...(handlers.get(name) ?? []), handler]),
-      getActiveTools: () => active,
-      setActiveTools: (value: string[]) => {
-        active = value;
-      },
-    } as unknown as Parameters<typeof piTools>[0]);
+    piTools({ registerMcpServer, on: vi.fn() } as unknown as Parameters<
+      typeof piTools
+    >[0]);
+    expect(registerMcpServer).toHaveBeenCalledWith("domos", {
+      url: "http://127.0.0.1/mcp",
+      exposure: "direct",
+      timeout: 600,
+    });
   } finally {
     if (previous === undefined) delete globalThis.process.env.DOMOS_PI_TOOLS;
     else globalThis.process.env.DOMOS_PI_TOOLS = previous;
-  }
-  try {
-    for (const handler of handlers.get("session_start") ?? []) await handler();
-    await process.toolsReady();
-    expect(active).toContain("mcp__domos__echo");
-    const tool = registered[0];
-    expect(tool?.name).toBe("mcp__domos__echo");
-    expect(
-      await tool?.execute(
-        "test",
-        { text: "你好" },
-        new AbortController().signal,
-      ),
-    ).toMatchObject({
-      content: [
-        { type: "text", text: "你好" },
-        { type: "text", text: '{"text":"你好"}' },
-      ],
-      structuredContent: { text: "你好" },
-      details: { structuredContent: { text: "你好" } },
-    });
-    expect(calls).toEqual(["你好"]);
-  } finally {
-    for (const handler of handlers.get("session_shutdown") ?? [])
-      await handler();
   }
 });
 
@@ -464,4 +427,161 @@ test("stopping a desktop observation settles before its worker returns", async (
   await entered;
   controller.abort(new Error("Stopped"));
   await result;
+});
+
+test("MCP abandonment cancels an admitted Durable product task", async () => {
+  const admitted = Promise.withResolvers<void>();
+  const settled = Promise.withResolvers<void>();
+  const nested: { taskId?: number } = {};
+  const abortOwned = vi.fn(async () => settled.resolve());
+  const runtime = {
+    taskId: 1,
+    conversationId: 1,
+    agent: async () => ({ callable: [{ name: "wait" }] }),
+    registry: {
+      tools: () => [
+        {
+          extension: { name: "domos-memory" },
+          tool: {
+            name: "wait",
+            description: "Wait",
+            parameters: { type: "object" },
+          },
+        },
+      ],
+    },
+    snapshot: async () => ({ result: { details: { content: [] } } }),
+    commit: async (change: (tx: object) => Promise<void>) =>
+      change({
+        doc: async () => nested,
+        createTask: async () => {
+          admitted.resolve();
+          return 7;
+        },
+      }),
+    waitForTask: () => settled.promise,
+    abortOwned,
+  } as unknown as EngineRuntime;
+  const gateway = await openGateway(
+    [{ name: "wait", description: "Wait", inputSchema: { type: "object" } }],
+    (id, name, args, signal) =>
+      callProductTool(runtime, id, name, args, BACKGROUND_CONTEXT, signal),
+  );
+  const client = new Client({ name: "test", version: "1" });
+  onTestFinished(async () => {
+    settled.resolve();
+    await client.close();
+    await gateway.close();
+  });
+  await client.connect(new StreamableHTTPClientTransport(new URL(gateway.url)));
+  const controller = new AbortController();
+  const result = expect(
+    client.callTool({ name: "wait" }, undefined, { signal: controller.signal }),
+  ).rejects.toThrow();
+  await admitted.promise;
+  controller.abort();
+  await result;
+  await expect
+    .poll(() => abortOwned.mock.calls.length, { timeout: 250 })
+    .toBe(1);
+  expect(abortOwned).toHaveBeenCalledWith(7, BACKGROUND_CONTEXT);
+});
+
+test("Stop terminates the native process tree while its protocol is silent", async () => {
+  const { process: workerProcess } = await worker();
+  const entered = once(workerProcess.output, "data");
+  await workerProcess.launch({
+    command: globalThis.process.execPath,
+    args: [
+      "--input-type=module",
+      "-e",
+      `
+      import { spawn } from "node:child_process";
+      const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { windowsHide: true, stdio: "ignore" });
+      child.once("spawn", () => console.log(JSON.stringify([process.pid, child.pid])));
+      setInterval(() => {}, 1000);
+    `,
+    ],
+  });
+  const [data] = await entered;
+  const pids: number[] = JSON.parse(String(data));
+  const exists = (pid: number) => {
+    try {
+      globalThis.process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  expect(pids.every(exists)).toBe(true);
+  const started = performance.now();
+  await workerProcess.terminate();
+  await expect.poll(() => pids.some(exists), { timeout: 2000 }).toBe(false);
+  await workerProcess.closed;
+  expect(performance.now() - started).toBeLessThan(2000);
+});
+
+test("computer deadlines cancel observation and preserve an in-flight action", async () => {
+  const workerProcess = new WorkProcess(
+    [
+      globalThis.process.execPath,
+      "--input-type=module",
+      "-e",
+      `
+      import { createInterface } from "node:readline";
+      const send = (value) => console.log(JSON.stringify(value));
+      createInterface({ input: process.stdin }).on("line", (line) => {
+        const frame = JSON.parse(line);
+        if (frame.type === "configure") send({type:"ready"});
+        if (frame.type === "computer") send({type:"stdout",data:"started"});
+        if (frame.type === "computer_cancel") send({type:"stdout",data:"cancelled"});
+        if (frame.type === "close") process.exit();
+      });
+    `,
+    ],
+    { cwd: tmpdir(), home: tmpdir() },
+    [],
+    async () => ({ content: [] }),
+  );
+  onTestFinished(async () => {
+    vi.useRealTimers();
+    await workerProcess.close();
+  });
+  await workerProcess.ready;
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  let entered = once(workerProcess.output, "data");
+  const observation = expect(
+    workerProcess.computer({
+      operation: "call",
+      service: "desktop",
+      name: "get_window_state",
+      arguments: {},
+    }),
+  ).rejects.toThrow("超时");
+  await entered;
+  let cancelled = once(workerProcess.output, "data");
+  await vi.advanceTimersByTimeAsync(30_000);
+  await cancelled;
+  await observation;
+  entered = once(workerProcess.output, "data");
+  let settled = false;
+  const action = workerProcess
+    .computer({
+      operation: "call",
+      service: "desktop",
+      name: "run_steps",
+      arguments: {},
+    })
+    .catch(() => {})
+    .finally(() => {
+      settled = true;
+    });
+  await entered;
+  cancelled = once(workerProcess.output, "data");
+  await vi.advanceTimersByTimeAsync(120_000);
+  await cancelled;
+  expect(settled).toBe(false);
+  vi.useRealTimers();
+  await workerProcess.close();
+  await action;
 });

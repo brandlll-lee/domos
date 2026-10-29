@@ -18,6 +18,7 @@ type Control = {
   calls: Set<{
     botId: number;
     controller: AbortController;
+    signal: AbortSignal;
     done: Promise<unknown>;
   }>;
   botId?: number;
@@ -102,11 +103,19 @@ export class ComputerServices {
     }
   }
 
-  async catalog(botId: number, service: ComputerService, context: Context) {
-    return (await this.worker(botId, context, service)).computer({
-      operation: "catalog",
-      service,
-    });
+  async catalog(
+    botId: number,
+    service: ComputerService,
+    context: Context,
+    signal?: AbortSignal,
+  ) {
+    return (await this.worker(botId, context, service)).computer(
+      {
+        operation: "catalog",
+        service,
+      },
+      signal,
+    );
   }
 
   async mode(botId: number, mode: "headless" | "headed", context: Context) {
@@ -157,16 +166,15 @@ export class ComputerServices {
       return worker.computer<T>(input, signal);
     const control = this.control(botId, input.service);
     if (control.releasing) throw new Error("正在交还控制权。请等待。");
-    if (input.message?.type !== "back") await this.settle(botId, input.service);
+    if (input.message?.type !== "back")
+      await this.settle(botId, input.service, signal);
     signal.throwIfAborted();
     if (control.releasing || !control.lease)
       throw new Error("请先接管，再操作电脑。");
     const controller = new AbortController();
-    const done = worker.computer<T>(
-      input,
-      AbortSignal.any([signal, controller.signal]),
-    );
-    const call = { botId, controller, done };
+    const combined = AbortSignal.any([signal, controller.signal]);
+    const done = worker.computer<T>(input, combined);
+    const call = { botId, controller, signal: combined, done };
     control.calls.add(call);
     try {
       return await done;
@@ -175,13 +183,20 @@ export class ComputerServices {
     }
   }
 
-  private async settle(botId: number, service: ComputerService) {
+  private async settle(
+    botId: number,
+    service: ComputerService,
+    signal?: AbortSignal,
+  ) {
     const control = this.control(botId, service);
     await Promise.all(
       [...this.workers]
         .filter(([id]) => this.control(id, "browser") === control)
         .map(async ([, worker]) =>
-          (await worker).computer({ operation: "settle", service: "browser" }),
+          (await worker).computer(
+            { operation: "settle", service: "browser" },
+            signal,
+          ),
         ),
     );
   }
@@ -221,9 +236,11 @@ export class ComputerServices {
     action: (signal: AbortSignal) => Promise<T>,
   ) {
     signal.throwIfAborted();
-    if (service === "desktop") await this.settle(botId, service);
+    if (service === "desktop") await this.settle(botId, service, signal);
     signal.throwIfAborted();
     const control = this.control(botId, service);
+    if ([...control.calls].some((call) => call.signal.aborted))
+      throw new Error("前次电脑操作尚未收束。请等待结果确认后再操作。");
     if (control.lease) throw new Error("用户正在接管。交还后请重新观察画面。");
     if (control.owner && control.owner !== owner)
       throw new Error("其他任务正在操作这台电脑。请等待该任务结束。");
@@ -233,7 +250,7 @@ export class ComputerServices {
     const controller = new AbortController();
     const combined = AbortSignal.any([signal, controller.signal]);
     const done = action(combined);
-    const pending = { botId, controller, done };
+    const pending = { botId, controller, signal: combined, done };
     control.calls.add(pending);
     try {
       const result = await done;

@@ -192,6 +192,14 @@ async function finish(
 ) {
   await runtime.commit(async (tx, current) => {
     const doc = await tx.doc(EngineDoc, runtime.conversationId);
+    if (!doc.tasks.includes(runtime.taskId)) {
+      await finishCompactions(tx, runtime);
+      await finishUsage(tx, runtime, doc.config.provider, null);
+      return {
+        status: "terminal",
+        outcome: { status: "completed", result: null },
+      };
+    }
     const additional = [];
     for (const id of doc.tasks) {
       if (id === runtime.taskId) continue;

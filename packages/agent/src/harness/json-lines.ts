@@ -85,6 +85,8 @@ export class JsonLines extends EventEmitter {
   }
 
   send(frame: object) {
+    if (this.process.input.writableEnded || this.process.input.destroyed)
+      return Promise.reject(new Error("引擎连接已关闭。"));
     return new Promise<void>((resolve, reject) => {
       this.process.input.write(`${JSON.stringify(frame)}\n`, (error) =>
         error ? reject(error) : resolve(),

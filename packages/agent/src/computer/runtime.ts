@@ -298,8 +298,11 @@ export class ComputerRuntime {
       this.pending.delete(approval.id);
       await this.harness.commit(async (tx) => {
         const doc = await tx.doc(ComputerRequests, botId as ConversationId);
+        const registered = doc.approvals.some(
+          (item) => item.id === approval.id,
+        );
         doc.approvals = doc.approvals.filter((item) => item.id !== approval.id);
-        if (approval.takeover)
+        if (approval.takeover && registered)
           await tx.appendEntry(botId as ConversationId, {
             kind: "domos.engine-message",
             data: {

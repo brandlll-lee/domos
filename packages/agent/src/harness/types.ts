@@ -211,6 +211,7 @@ export interface EngineProcess {
     since?: string,
   ): Promise<unknown[]>;
   close(): Promise<void>;
+  terminate?(): Promise<void>;
 }
 
 export interface EngineSession {
@@ -277,6 +278,8 @@ export const engineLimits = {
   compactionMs: 120_000,
   shutdownMs: 5_000,
   approvalMs: 10 * 60_000,
+  observationMs: 30_000,
+  executionMs: 120_000,
   frameBytes: 16 * 1024 * 1024,
   outputCharacters: 32_000,
   flushMs: 80,
