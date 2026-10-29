@@ -1,14 +1,13 @@
-import { execFile } from "node:child_process";
 import { once } from "node:events";
 import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import spawn from "cross-spawn";
 import {
   accountEnvironment,
   accountFingerprint,
+  resolveProgram,
 } from "./account-environment.mjs";
 import { openComputerService } from "./computer-service.mjs";
 import { openGateway } from "./gateway.mjs";
@@ -118,6 +117,11 @@ async function launch(frame) {
     throw new Error("Invalid launch");
   const account = await accountEnvironment(frame, home, accountEnv);
   const env = account.env;
+  frame.command = await resolveProgram(frame.command, env);
+  if (!frame.command)
+    throw Object.assign(new Error("工作电脑未安装所选程序。"), {
+      code: "ENOENT",
+    });
   process.env.CLAUDE_CONFIG_DIR =
     env.CLAUDE_CONFIG_DIR || join(env.HOME, ".claude");
   if (frame.http) {
@@ -214,18 +218,10 @@ lines.on("line", (line) => {
       else if (frame.type === "input") child?.stdin.write(frame.data);
       else if (frame.type === "resolve") {
         const { env } = await accountEnvironment({}, home, accountEnv);
-        const windows = process.platform === "win32";
-        const result = await promisify(execFile)(
-          windows ? "where.exe" : "/bin/sh",
-          windows
-            ? [frame.command]
-            : ["-c", 'command -v "$1"', "domos", frame.command],
-          { env, windowsHide: true, timeout: 10000 },
-        ).then(
-          ({ stdout }) => stdout.trim().split(/\r?\n/)[0] || null,
-          () => null,
+        await resolveProgram(frame.command, env).then(
+          (result) => emit({ type: "http", id: frame.id, result }),
+          (error) => emit({ type: "http", id: frame.id, error: error.message }),
         );
-        emit({ type: "http", id: frame.id, result });
       } else if (frame.type === "http") {
         if (!http) throw new Error("Service unavailable");
         void http.request(frame);
@@ -267,8 +263,12 @@ lines.on("line", (line) => {
         process.stdin.destroy();
       }
     })
-    .catch(async () => {
-      emit({ type: "failure", message: "引擎连接未完成。请检查工作电脑。" });
+    .catch(async (error) => {
+      emit({
+        type: "failure",
+        code: error.code,
+        message: "引擎连接未完成。请检查工作电脑。",
+      });
       await close();
       lines.close();
       process.stdin.destroy();

@@ -1,5 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -83,6 +90,48 @@ test("a missing work computer command reports a missing program", async () => {
     error: "ENOENT",
   });
 });
+
+test("program resolution and execution use the same absolute native entry", async () => {
+  const { process, directory } = await worker();
+  const executable = join(
+    directory,
+    "工具 with spaces" +
+      (globalThis.process.platform === "win32" ? ".cmd" : ""),
+  );
+  await writeFile(
+    executable,
+    globalThis.process.platform === "win32"
+      ? "@echo DOMOS_PROGRAM_OK\r\n"
+      : "#!/bin/sh\necho DOMOS_PROGRAM_OK\n",
+  );
+  await chmod(executable, 0o700);
+  expect(await process.resolve(executable)).toBe(executable);
+  if (globalThis.process.platform === "win32")
+    expect(await process.resolve(executable.slice(0, -4))).toBe(executable);
+  else {
+    const link = join(directory, "linked-cli");
+    await symlink(executable, link);
+    expect(await process.resolve(link)).toBe(link);
+  }
+  let output = "";
+  process.output.on("data", (data) => {
+    output += data;
+  });
+  await process.launch({ command: executable, args: [] });
+  expect((await process.closed).code).toBe(0);
+  expect(output).toContain("DOMOS_PROGRAM_OK");
+});
+
+test.runIf(globalThis.process.platform !== "win32")(
+  "a file without execution permission is an access error",
+  async () => {
+    const { process, directory } = await worker();
+    const path = join(directory, "restricted");
+    await writeFile(path, "#!/bin/sh\n", { mode: 0o600 });
+    await expect(process.resolve(path)).rejects.toThrow("EACCES");
+    expect(await process.resolve(join(directory, "absent"))).toBeNull();
+  },
+);
 
 test("a work computer discovers desktop tools from its own runtime", async () => {
   const { process } = await worker();

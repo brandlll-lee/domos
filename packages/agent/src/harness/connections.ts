@@ -107,14 +107,17 @@ export class EngineConnections {
     try {
       const result = await entry.result;
       entry.value = result;
-      if (this.catalogs.get(key) === entry && result.ready)
-        await this.modelCatalog?.save(
-          botId,
-          computerId,
-          config,
-          { models: result.models, version: result.version },
-          context,
-        );
+      if (this.catalogs.get(key) === entry) {
+        if (!result.ready) this.catalogs.delete(key);
+        else
+          await this.modelCatalog?.save(
+            botId,
+            computerId,
+            config,
+            { models: result.models, version: result.version },
+            context,
+          );
+      }
       return result;
     } catch (error) {
       if (this.catalogs.get(key) === entry) this.catalogs.delete(key);
