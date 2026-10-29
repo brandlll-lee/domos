@@ -41,7 +41,7 @@ Pi file and command tools use the shipped approval extension. Claude uses its pe
 
 Pi registers product tools through its extension API. Each task waits for gateway discovery. Codex checks the native catalog. Claude checks terminal connection state and tool names. ACP requires HTTP MCP capability. Failed readiness stops dispatch. User extensions and account files remain intact.
 
-The gateway reads computer tools from the saved native catalog. Callable names still filter Bot access. Native output schemas, annotations and other tool metadata remain intact. Structured results also enter text content, so content-based Harness implementations can read coordinates and action status. Pi retains the MCP result in tool details. Evidence storage retains original images. Each requested screenshot is delivered with its current metadata.
+The gateway reads computer tools from the saved native catalog. Callable names still filter Bot access. Native output schemas, annotations and other tool metadata remain intact. Structured results also enter a bounded text copy. It removes repeated text, binary strings and redundant element tables when snapshot addressing is available. It retains coordinates and action status. Native structured results remain intact. Pi retains the MCP result in tool details. Evidence storage retains original images. Each requested screenshot is delivered with its current metadata.
 
 Native Harness processes own compaction. Domos records context readings, compaction events, and reported usage. Unsupported values stay unknown. Custom ACP recovery is unavailable until its driver can verify native outcomes. Domos does not infer cost or completion from a missing event.
 

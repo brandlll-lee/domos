@@ -14,9 +14,61 @@ import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { expect, onTestFinished, test } from "vitest";
+import { openGateway } from "../src/harness/gateway.mjs";
 import piTools from "../src/harness/pi-tools.mjs";
 import { WorkProcess } from "../src/harness/process.ts";
 import type { ProductResult } from "../src/harness/types.ts";
+
+test("CUA text copies retain addresses and images without repeating observation payloads", async () => {
+  const tree = "[97] button Play\n".repeat(1200);
+  const state = {
+    pid: 7,
+    window_id: 90,
+    snapshot_id: "s1",
+    tree,
+    elements: [{ element_index: 97, element_token: "s1:97" }],
+    coordinates: { x: 37, y: 91 },
+    verified: false,
+  };
+  const raw = {
+    content: [
+      { type: "text" as const, text: tree },
+      { type: "image" as const, mimeType: "image/png", data: "aW1hZ2U=" },
+    ],
+    structuredContent: { observation: { ok: true, state } },
+  };
+  const gateway = await openGateway(
+    [
+      {
+        name: "desktop_probe",
+        description: "Observe",
+        inputSchema: { type: "object" },
+      },
+    ],
+    async () => raw,
+  );
+  const client = new Client({ name: "compact", version: "1" });
+  onTestFinished(async () => {
+    await client.close();
+    await gateway.close();
+  });
+  await client.connect(new StreamableHTTPClientTransport(new URL(gateway.url)));
+  const result = (await client.callTool({
+    name: "desktop_probe",
+  })) as ProductResult;
+  expect(result.structuredContent).toEqual(raw.structuredContent);
+  expect(result.content.slice(0, 2)).toEqual(raw.content);
+  const copy = JSON.parse((result.content.at(-1) as { text: string }).text);
+  expect(copy.observation.state).toMatchObject({
+    pid: 7,
+    window_id: 90,
+    snapshot_id: "s1",
+    coordinates: { x: 37, y: 91 },
+    verified: false,
+  });
+  expect(JSON.stringify(copy).length).toBeLessThan(600);
+  expect(copy.observation.state.elements).toBeUndefined();
+});
 
 async function worker(environment?: Record<string, string>) {
   const directory = await mkdtemp(join(tmpdir(), "domos-engine-"));

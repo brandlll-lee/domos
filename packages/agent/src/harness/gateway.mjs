@@ -9,6 +9,47 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
+function structuredText(result) {
+  const texts = result.content
+    .filter((part) => part.type === "text")
+    .map((part) => part.text);
+  function copy(value) {
+    if (typeof value === "string") {
+      if (value.length >= 256 && texts.some((text) => text.includes(value)))
+        return "[see result text]";
+      if (
+        value.length >= 1024 &&
+        (/^[A-Za-z0-9+/\r\n]+=*$/u.test(value) || value.startsWith("data:"))
+      )
+        return "[binary data retained in evidence]";
+      return value;
+    }
+    if (Array.isArray(value)) return value.map(copy);
+    if (!value || typeof value !== "object") return value;
+    const entries = Object.entries(value).filter(
+      ([key]) =>
+        !(
+          value.snapshot_id &&
+          Array.isArray(value.elements) &&
+          ["elements", "_note"].includes(key)
+        ),
+    );
+    return {
+      ...Object.fromEntries(entries.map(([key, item]) => [key, copy(item)])),
+      ...(value.snapshot_id && Array.isArray(value.elements)
+        ? {
+            element_address:
+              "Use pid, window_id, snapshot_id and the tree's element_index.",
+          }
+        : {}),
+    };
+  }
+  const json = JSON.stringify(copy(result.structuredContent));
+  return json.length <= 65536
+    ? json
+    : `${json.slice(0, 65536).replace(/[\uD800-\uDBFF]$/u, "")}\n[Text copy limited. Request a smaller query/max_elements. Native output is retained.]`;
+}
+
 export async function openGateway(tools, invoke) {
   const listed = Promise.withResolvers();
   if (!tools.length) listed.resolve();
@@ -65,7 +106,7 @@ export async function openGateway(tools, invoke) {
                     ...result.content,
                     {
                       type: "text",
-                      text: JSON.stringify(result.structuredContent),
+                      text: structuredText(result),
                     },
                   ],
                 };
