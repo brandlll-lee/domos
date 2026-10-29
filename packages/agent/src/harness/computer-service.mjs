@@ -1,5 +1,9 @@
 import { openBrowserService } from "./browser-service.mjs";
-import { desktopInputs, desktopStep } from "./desktop-actions.mjs";
+import {
+  desktopInputs,
+  desktopMutation,
+  desktopStep,
+} from "./desktop-actions.mjs";
 import { openDesktopSession } from "./desktop-session.mjs";
 import { openDesktopView } from "./desktop-view.mjs";
 
@@ -247,19 +251,7 @@ export function openComputerService(directory, home, emit = () => {}) {
           state.tree_format = "markdown";
         }
       }
-      const delivered = sessions.images(
-        args.session,
-        input.actor?.owner,
-        observed ? "get_window_state" : input.name,
-        observed ?? structured,
-        images,
-      );
-      const action =
-        desktopInputs.includes(input.name) ||
-        (input.name === "run_steps" &&
-          args.steps?.some((step) =>
-            desktopInputs.includes(desktopStep(step).tool),
-          ));
+      const action = desktopMutation(input.name, args);
       const outcome = action
         ? {
             execution:
@@ -271,7 +263,8 @@ export function openComputerService(directory, home, emit = () => {}) {
                 : "incomplete",
             verification: result.postcondition
               ? "checked"
-              : !result.isError &&
+              : input.name !== "run_script" &&
+                  !result.isError &&
                   (structured?.verified === true ||
                     structured?.effect === "confirmed")
                 ? "confirmed"
@@ -297,15 +290,7 @@ export function openComputerService(directory, home, emit = () => {}) {
           ...(outcome
             ? [{ type: "text", text: JSON.stringify({ domos: outcome }) }]
             : []),
-          ...(images.length && !delivered.length
-            ? [
-                {
-                  type: "text",
-                  text: "Screenshot unchanged. Use the previous image with the current capture and snapshot metadata.",
-                },
-              ]
-            : []),
-          ...delivered.map((image) => ({
+          ...images.map((image) => ({
             type: "image",
             mimeType: image.mimeType,
             data: image.dataBase64,

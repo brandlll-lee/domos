@@ -66,7 +66,7 @@ pnpm exec vitest run packages/agent/test/computer-evals.test.ts
 
 这些测试验证评分器，不代表重新运行了 Agent。当前未提供自动截图判分、自动真实任务重跑或跨平台桌面成功率。
 
-共享执行入口的回归使用 `packages/agent/test/computer-input.test.ts`。它检查严格 MCP 输出校验、批次窗口身份、默认收尾观察、增量基线兼容性、重复批次限制，以及观察失败后保留已执行步骤并阻止重放。`computer-assistant.test.ts` 检查主 Agent 的批次工具目录、Jev 交接与不可用工具提示。
+共享执行入口的回归使用 `packages/agent/test/computer-input.test.ts`。它检查保存目录到 MCP 的完整契约、严格输出校验、批次窗口身份、收尾观察和增量基线。直接动作、批次与脚本在结果未知后都要求观察。改变延迟不能解除阻断。会话失效时只恢复观察。取消后不能发送动作。脚本属于修改操作，完成后须观察。脚本返回任意 JSON 不等于动作验证。`computer-activity.test.ts` 检查脚本原生光标跟踪。`computer-assistant.test.ts` 检查 Jev 交接与工具目录。
 
 Windows 图形会话可运行原生模拟：
 
@@ -74,7 +74,7 @@ Windows 图形会话可运行原生模拟：
 pnpm exec playwright test --config apps/desktop/playwright.config.ts apps/desktop/test/computer-effect.spec.ts --grep "foreground input keeps"
 ```
 
-模拟窗口验证控件与前台两条路径，并读回输入值、按钮结果和光标位置。它还检查批次观察的窗口身份，以及失败的 `expect` 是否阻止后续输入。它不调用在线模型。Domos 补充状态放在文本内容中，原生结构化结果遵守工具输出协议。`domos.verification` 的 `confirmed` 表示驱动确认动作效果，`checked` 表示请求的后置条件通过，`required` 表示仍需核对。`domos.observation: failed` 时只恢复观察，不能重放已投递动作。上述结果都不等于完整用户任务验收。
+模拟窗口读回控件输入、前台输入、脚本输入和按钮结果。脚本返回后，下一脚本必须等待观察。批次检查目标身份与失败后停止。此 E2E 不调用在线模型。Domos 状态放在文本内容中。原生结构化输出遵守工具格式。`confirmed` 表示驱动确认效果，`checked` 表示后置条件通过，`required` 表示仍须核对。观察失败时保留动作结果，只恢复观察。这些状态不等于完整用户任务完成。
 
 ## 浏览器接管验收
 

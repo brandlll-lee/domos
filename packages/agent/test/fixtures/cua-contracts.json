@@ -1,0 +1,9 @@
+{
+  "source": "shared-contract-probe:2026-10-29",
+  "mutations": ["click", "run_steps", "run_script"],
+  "failures": [
+    "Saved native outputSchema and annotations disappeared from tools/list.",
+    "A script reached the driver while a previous action required observation.",
+    "Native script cursor moved to 954,370; the effect retained the previous click."
+  ]
+}

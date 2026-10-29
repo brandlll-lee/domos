@@ -40,7 +40,8 @@ Pi Durable 1.4.0 stores Bot tasks. Native Harness processes own model loops. Dom
 - Bind actions and observation to the same confirmed window and session. Discover and bind a new target when a dialog or window changes.
 - Distinguish action delivery, action verification, observation, and user-task completion. A successful call or screenshot alone does not prove task completion.
 - If an action ran but observation failed, preserve the execution record and recover observation. Do not replay an action whose outcome is uncertain.
-- Preserve native tool output schemas. Put Domos status in supported result content, not extra fields in strict structured output.
+- Preserve the saved native tool catalog, including output schemas and annotations. Deliver structured metadata in supported text content and retain screenshots with their current coordinates. Put Domos status outside strict native structured output.
+- Apply observation recovery and cancellation to direct actions, batches and scripts. Scripts require fresh observation before further mutations. Track script effects from native cursor state.
 - Preserve approval, cancellation, and user takeover on every execution path, including Jev assistance.
 - Route ordinary computer mutations through the shared approval callback. Browser observation tools use an explicit allowlist; arbitrary JavaScript requires approval.
 - Keep dispatched browser work alive until it settles. Cancel queued work. Preserve the page during takeover. Persist uncertain execution across worker restarts, and require explicit browser restart before more mutations.

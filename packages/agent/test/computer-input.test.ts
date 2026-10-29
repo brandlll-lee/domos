@@ -1,7 +1,11 @@
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import { openGateway } from "../src/harness/gateway.mjs";
+import { productCatalog } from "../src/harness/product-tools.ts";
+import type { EngineRuntime } from "../src/harness/task-types.ts";
+import failures from "./fixtures/cua-contracts.json" with { type: "json" };
 
 const { driver, activity } = vi.hoisted(() => ({
   driver: { callTool: vi.fn(), shutdown: vi.fn(), uniffiDestroy: vi.fn() },
@@ -23,6 +27,25 @@ const entry = "../src/harness/computer-service.mjs";
 const { openComputerService } = await import(entry);
 const sessionEntry = "../src/harness/desktop-session.mjs";
 const { openDesktopSession } = await import(sessionEntry);
+function callDesktop(
+  service: ReturnType<typeof openComputerService>,
+  name: string,
+  args: Record<string, unknown>,
+  signal = new AbortController().signal,
+  actor?: { botId: number; color: string; owner: string },
+) {
+  return service.request(
+    {
+      operation: "call",
+      service: "desktop",
+      name,
+      arguments: args,
+      ...(actor ? { actor } : {}),
+    },
+    signal,
+  );
+}
+
 afterEach(() => {
   vi.clearAllMocks();
   activity.active.mockReturnValue(false);
@@ -36,30 +59,34 @@ test("MCP validates native action output and retains Domos text", async () => {
     isError: false,
   });
   const service = openComputerService(".", ".");
-  const gateway = await openGateway(
-    [
-      {
-        name: "click",
-        description: "Click",
-        inputSchema: { type: "object" },
-        outputSchema: {
-          type: "object",
-          additionalProperties: false,
-          properties: { effect: { type: "string" }, route: { type: "string" } },
-          required: ["effect", "route"],
-        },
+  const tools = [
+    {
+      name: "click",
+      description: "Click",
+      inputSchema: { type: "object" },
+      annotations: { readOnlyHint: false, idempotentHint: false },
+      outputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: { effect: { type: "string" }, route: { type: "string" } },
+        required: ["effect", "route"],
       },
-    ],
-    async (_id, name, args, signal) =>
-      service.request(
-        {
-          operation: "call",
-          service: "desktop",
-          name,
-          arguments: args,
-        },
-        signal,
-      ),
+    },
+  ];
+  const catalog = await productCatalog(
+    {
+      agent: async () => ({ callable: tools }),
+      registry: { tools: () => [] },
+      snapshot: async () => ({
+        tools: [...tools, { ...tools[0], name: "other_bot" }],
+      }),
+    } as unknown as EngineRuntime,
+    BACKGROUND_CONTEXT,
+  );
+  expect(catalog.filter((tool) => tool.name === "click")).toEqual(tools);
+  expect(catalog.some((tool) => tool.name === "other_bot")).toBe(false);
+  const gateway = await openGateway(catalog, async (_id, name, args, signal) =>
+    callDesktop(service, name, args, signal),
   );
   const client = new Client({ name: "test", version: "1" });
   onTestFinished(async () => {
@@ -69,6 +96,7 @@ test("MCP validates native action output and retains Domos text", async () => {
   });
   await client.connect(new StreamableHTTPClientTransport(new URL(gateway.url)));
   await client.listTools();
+  expect((await client.listTools()).tools[0]).toEqual(tools[0]);
   const result = await client.callTool({
     name: "click",
     arguments: { pid: 7, window_id: 90 },
@@ -123,13 +151,10 @@ test.each([
       }),
     });
     const service = openComputerService(".", ".");
-    const result = await service.request(
-      {
-        operation: "call",
-        service: "desktop",
-        name: "run_steps",
-        arguments: { pid: 7, window_id: 90, ...input },
-      },
+    const result = await callDesktop(
+      service,
+      "run_steps",
+      { pid: 7, window_id: 90, ...input },
       new AbortController().signal,
     );
     const calls = driver.callTool.mock.calls.filter(
@@ -157,16 +182,13 @@ test.each([
   "batch rejects an incomplete numeric window identity before input: %j",
   async (target) => {
     const service = openComputerService(".", ".");
-    const result = await service.request(
+    const result = await callDesktop(
+      service,
+      "run_steps",
       {
-        operation: "call",
-        service: "desktop",
-        name: "run_steps",
-        arguments: {
-          ...target,
-          delivery_mode: "foreground",
-          observe: {},
-        },
+        ...target,
+        delivery_mode: "foreground",
+        observe: {},
       },
       new AbortController().signal,
     );
@@ -189,21 +211,16 @@ test("foreground input reuses its active window and visual reads do not delay ex
     events.push(name);
     if (name === "bring_to_front") front = args.window_id;
     if (name === "click") restored.push(front);
-    return { structuredJson: "{}", images: [], isError: false };
+    return { structuredJson: '{"verified":true}', images: [], isError: false };
   });
   const service = openComputerService(".", ".");
   const signal = new AbortController().signal;
   const call = (args: Record<string, unknown>, name = "click") =>
-    service.request(
-      {
-        operation: "call",
-        service: "desktop",
-        name,
-        arguments: args,
-        actor: { botId: 1, color: "#68b6ff", owner: "task" },
-      },
-      signal,
-    );
+    callDesktop(service, name, args, signal, {
+      botId: 1,
+      color: "#68b6ff",
+      owner: "task",
+    });
   const target = { kind: "window", pid: 7, window_id: 90 };
   await call({ target, x: 10, y: 20, delivery_mode: "foreground" });
   await call({ target, x: 20, y: 30, delivery_mode: "foreground" });
@@ -277,13 +294,10 @@ test("foreground input reuses its active window and visual reads do not delay ex
   });
   driver.callTool.mockClear();
   await expect(
-    service.request(
-      {
-        operation: "call",
-        service: "desktop",
-        name: "click",
-        arguments: { target, delivery_mode: "foreground" },
-      },
+    callDesktop(
+      service,
+      "click",
+      { target, delivery_mode: "foreground" },
       controller.signal,
     ),
   ).rejects.toThrow();
@@ -300,18 +314,15 @@ test("activation failure returns its cause and does not send the input", async (
     text: name === "bring_to_front" ? "Activation denied" : "",
   }));
   const service = openComputerService(".", ".");
-  const result = await service.request(
+  const result = await callDesktop(
+    service,
+    "click",
     {
-      operation: "call",
-      service: "desktop",
-      name: "click",
-      arguments: {
-        pid: 7,
-        window_id: 90,
-        x: 10,
-        y: 20,
-        delivery_mode: "foreground",
-      },
+      pid: 7,
+      window_id: 90,
+      x: 10,
+      y: 20,
+      delivery_mode: "foreground",
     },
     new AbortController().signal,
   );
@@ -327,56 +338,74 @@ test("activation failure returns its cause and does not send the input", async (
   await service.close();
 });
 
-test("sessions recover reads once, preserve uncertain actions and bound failures", async () => {
-  const ok = { isError: false, images: [] };
-  const ended = {
-    ...ok,
-    isError: true,
-    errorCode: "session_ended",
-    text: "Session ended",
-    structuredJson: JSON.stringify({ steps: [{ ok: true }] }),
-  };
-  const callTool = vi.fn(async (name: string) =>
-    name === "start_session" || name === "set_agent_cursor_enabled"
-      ? ok
-      : ended,
-  );
-  const session = openDesktopSession({ callTool });
-  const args = { session: "bot", pid: 7, window_id: 90 };
-  await session.call("get_window_state", args, "task");
-  expect(
-    callTool.mock.calls.filter(([name]) => name === "get_window_state"),
-  ).toHaveLength(2);
-  callTool.mockClear();
-  const recovered = await session.call("click", args, "task");
-  expect(recovered.structuredJson).toBe(ended.structuredJson);
-  expect(recovered.text).toContain("no action was replayed");
-  expect(callTool.mock.calls.filter(([name]) => name === "click")).toHaveLength(
-    1,
-  );
-  callTool.mockImplementation(async (name: string) =>
-    name === "click" ? { ...ended, errorCode: "target_unavailable" } : ok,
-  );
-  callTool.mockClear();
-  for (let index = 0; index < 4; index++) {
-    await session.call("bring_to_front", args, "task");
-    await session.call("click", args, "task");
-  }
-  expect(callTool.mock.calls.filter(([name]) => name === "click")).toHaveLength(
-    3,
-  );
-  await session.call("click", { ...args, x: 20 }, "task");
-  expect(callTool.mock.calls.filter(([name]) => name === "click")).toHaveLength(
-    4,
-  );
-  const starts = callTool.mock.calls.filter(
-    ([name]) => name === "start_session",
-  ).length;
-  await session.call("click", args, "next-task");
-  expect(
-    callTool.mock.calls.filter(([name]) => name === "start_session"),
-  ).toHaveLength(starts + 1);
-});
+test.each(failures.mutations)(
+  "%s preserves unknown outcomes, recovery and cancellation",
+  async (name) => {
+    const calls: string[] = [];
+    let ended = false;
+    const callTool = vi.fn(async (tool: string) => {
+      calls.push(tool);
+      return {
+        images: [],
+        isError: ended && tool === name,
+        ...(ended && tool === name ? { errorCode: "session_ended" } : {}),
+        structuredJson: JSON.stringify(
+          tool === "get_window_state"
+            ? { pid: 7, window_id: 90, snapshot_id: "s1" }
+            : { verified: false },
+        ),
+      };
+    });
+    const session = openDesktopSession({ callTool });
+    const args = {
+      session: "bot",
+      pid: 7,
+      window_id: 90,
+      steps: [{ click: { x: 10, y: 20 } }],
+      script: "await cua.click({x:10,y:20})",
+    };
+    await session.call(name, args, "task");
+    for (const next of ["click", "run_steps", "run_script"]) {
+      expect(
+        (await session.call(next, { ...args, delay: 130 }, "task")).isError,
+      ).toBe(true);
+    }
+    expect(calls.filter((tool) => tool === name)).toHaveLength(1);
+    await session.call("get_window_state", args, "task");
+    ended = true;
+    const result = await session.call(name, args, "task");
+    expect(result.text).toContain("no action was replayed");
+    expect(calls.filter((tool) => tool === name)).toHaveLength(2);
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      session.call(name, args, "task", controller.signal),
+    ).rejects.toThrow();
+    expect(calls.filter((tool) => tool === name)).toHaveLength(2);
+    ended = false;
+    await session.call("get_window_state", args, "next-task");
+    expect(calls.filter((tool) => tool === "start_session")).toHaveLength(3);
+    const entered = Promise.withResolvers<void>();
+    const running = new AbortController();
+    callTool.mockImplementationOnce(async () => {
+      entered.resolve();
+      await new Promise<void>((resolve) =>
+        running.signal.addEventListener("abort", () => resolve(), {
+          once: true,
+        }),
+      );
+      running.signal.throwIfAborted();
+      return { images: [], isError: false, structuredJson: "{}" };
+    });
+    const aborted = expect(
+      session.call(name, args, "next-task", running.signal),
+    ).rejects.toThrow();
+    await entered.promise;
+    running.abort();
+    await aborted;
+    expect((await session.call(name, args, "next-task")).isError).toBe(true);
+  },
+);
 
 test("a restarted desktop session returns fresh observation before using saved element tokens", async () => {
   const callTool = vi.fn(async (name: string) => ({
@@ -410,23 +439,6 @@ test("a restarted desktop session returns fresh observation before using saved e
   expect(
     callTool.mock.calls.filter(([name]) => name === "run_steps"),
   ).toHaveLength(1);
-});
-
-test("image dedup retains target identity and resets with task ownership", async () => {
-  const session = openDesktopSession({
-    callTool: async () => ({ isError: false, images: [] }),
-  });
-  const args = { session: "bot", pid: 7, window_id: 90 };
-  const images = [{ mimeType: "image/png", dataBase64: "pixels" }];
-  await session.call("list_windows", args, "task");
-  const frame = (target: object) =>
-    session.images("bot", "task", "get_window_state", target, images);
-  expect(frame(args)).toEqual(images);
-  expect(frame({ ...args, snapshot_id: "new" })).toEqual([]);
-  expect(frame({ ...args, window_id: 91 })).toEqual(images);
-  session.clear("task");
-  await session.call("list_windows", args, "task");
-  expect(frame(args)).toEqual(images);
 });
 
 test("unconfirmed input requires observation and tree deltas use a matching baseline", async () => {
@@ -471,35 +483,6 @@ test("unconfirmed input requires observation and tree deltas use a matching base
   );
 });
 
-test.each(["click", "run_steps"])(
-  "repeated %s stays bounded while screenshots animate",
-  async (name) => {
-    const callTool = vi.fn(async () => ({ isError: false, images: [] }));
-    const session = openDesktopSession({ callTool });
-    const args = {
-      session: "bot",
-      pid: 7,
-      window_id: 90,
-      steps: [{ click: { x: 10, y: 20 } }],
-    };
-    for (let index = 0; index < 4; index++) {
-      const result = await session.call(name, args, "task");
-      session.images("bot", "task", "get_window_state", args, [
-        { mimeType: "image/png", dataBase64: String(index) },
-      ]);
-      expect(result.isError).toBe(index === 3);
-    }
-    expect(callTool.mock.calls).toHaveLength(5);
-    callTool.mockImplementation(async () => ({
-      isError: false,
-      images: [],
-      structuredJson: '{"status":"satisfied","stable":true}',
-    }));
-    await session.call("verify_state", args, "task");
-    expect((await session.call(name, args, "task")).isError).toBe(false);
-  },
-);
-
 test.each(["capture", "batch", "checked"])(
   "%s observation failure preserves execution and blocks replay",
   async (failure) => {
@@ -524,20 +507,17 @@ test.each(["capture", "batch", "checked"])(
       ),
     }));
     const service = openComputerService(".", ".");
-    const result = await service.request(
+    const result = await callDesktop(
+      service,
+      "run_steps",
       {
-        operation: "call",
-        service: "desktop",
-        name: "run_steps",
-        arguments: {
-          steps: [
-            {
-              click: { x: 10, y: 20 },
-              ...(failure === "checked" ? { expect: [{ text: "Done" }] } : {}),
-            },
-          ],
-          observe: { include_screenshot: true },
-        },
+        steps: [
+          {
+            click: { x: 10, y: 20 },
+            ...(failure === "checked" ? { expect: [{ text: "Done" }] } : {}),
+          },
+        ],
+        observe: { include_screenshot: true },
       },
       new AbortController().signal,
     );
@@ -556,16 +536,13 @@ test.each(["capture", "batch", "checked"])(
     expect(
       driver.callTool.mock.calls.filter(([name]) => name === "run_steps"),
     ).toHaveLength(1);
-    const blocked = await service.request(
+    const blocked = await callDesktop(
+      service,
+      "run_steps",
       {
-        operation: "call",
-        service: "desktop",
-        name: "run_steps",
-        arguments: {
-          pid: 7,
-          window_id: 90,
-          steps: [{ click: { x: 10, y: 20 } }],
-        },
+        pid: 7,
+        window_id: 90,
+        steps: [{ click: { x: 10, y: 20 } }],
       },
       new AbortController().signal,
     );

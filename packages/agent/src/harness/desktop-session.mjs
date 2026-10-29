@@ -1,5 +1,4 @@
-import { createHash } from "node:crypto";
-import { desktopInputs, desktopStep } from "./desktop-actions.mjs";
+import { desktopMutation, desktopStep } from "./desktop-actions.mjs";
 
 const observations = new Set([
   "get_window_state",
@@ -15,6 +14,7 @@ export function openDesktopSession(driver) {
   const sessions = new Map();
   return {
     async call(name, args, owner, signal, recover = true) {
+      signal?.throwIfAborted();
       let state = sessions.get(args.session);
       if (!state || state.owner !== owner) {
         state = { owner, scopes: new Map() };
@@ -73,30 +73,12 @@ export function openDesktopSession(driver) {
         name === "run_steps"
           ? (args.steps ?? []).map(desktopStep)
           : [{ tool: name, args }];
-      const mutating = steps.some((step) => desktopInputs.includes(step.tool));
+      const mutating = desktopMutation(name, args);
       if (mutating && state.review)
         return {
           images: [],
           isError: true,
           text: "The previous action was delivered but its effect is unconfirmed. Observe that window or use verify_state before another action. Do not replay the previous action.",
-        };
-      const key = JSON.stringify([name, args], (key, value) =>
-        ["capture_id", "snapshot_id", "since", "observe"].includes(key)
-          ? undefined
-          : key === "element_token"
-            ? value?.split(":").at(-1)
-            : value,
-      );
-      const action = steps.some((step) =>
-        ["click", "double_click", "right_click"].includes(step.tool),
-      )
-        ? key
-        : undefined;
-      if (state.attempt?.key === key && state.attempt.count >= 3)
-        return {
-          ...state.attempt.result,
-          isError: true,
-          text: `${state.attempt.result.text ?? ""}\nThe same action was attempted three times without a successful postcondition check. Use verify_state or run_steps with expect. Do not replay uncertain actions.`,
         };
       const savedTarget =
         mutating &&
@@ -104,6 +86,7 @@ export function openDesktopSession(driver) {
         /"(?:element_token|capture_id|snapshot_id)"\s*:/.test(
           JSON.stringify(args),
         );
+      if (mutating) state.review = true;
       const result = savedTarget
         ? { isError: true, errorCode: "session_ended" }
         : await driver.callTool(name, JSON.stringify(args), { signal });
@@ -156,22 +139,6 @@ export function openDesktopSession(driver) {
         state.review = false;
         state.observed = true;
       }
-      if (
-        mutating &&
-        !result.isError &&
-        !observed &&
-        (value?.verified === false ||
-          ["unverifiable", "suspected_noop", "partial"].includes(
-            value?.effect,
-          ) ||
-          /not verified/i.test(result.text ?? ""))
-      )
-        state.review = true;
-      if (
-        (name === "get_window_state" && result.isError) ||
-        (mutating && value?.observation?.ok === false)
-      )
-        state.review = true;
       if (readsTree && !result.isError && observed?.snapshot_id) {
         state.scopes.set(baseline(observed), observed.snapshot_id);
         if (state.scopes.size > 32)
@@ -188,39 +155,21 @@ export function openDesktopSession(driver) {
             value.steps.every((step) => step.ok) &&
             (args.steps.at(-1)?.expect?.length ||
               (args.steps.at(-1)?.wait_for && !steps.at(-1)?.tool))));
-      if (checked) {
-        state.attempt = undefined;
-        state.review = false;
-      } else if (mutating)
-        state.attempt =
-          result.isError || action
-            ? {
-                key,
-                result,
-                count: state.attempt?.key === key ? state.attempt.count + 1 : 1,
-              }
-            : undefined;
+      if (mutating)
+        state.review =
+          name === "run_script" ||
+          result.isError ||
+          value?.observation?.ok === false ||
+          (!checked &&
+            !observed &&
+            value?.verified !== true &&
+            value?.effect !== "confirmed");
+      else if (name === "get_window_state" && result.isError)
+        state.review = true;
+      if (checked) state.review = false;
       if (name === "end_session" && !result.isError)
         sessions.delete(args.session);
       return checked ? { ...result, postcondition: true } : result;
-    },
-    images(session, owner, name, target, images) {
-      const state = sessions.get(session);
-      if (!state || state.owner !== owner || !images.length) return images;
-      const hash = createHash("sha256").update(
-        JSON.stringify([
-          name,
-          target?.pid,
-          target?.window_id,
-          target?.window_bounds,
-        ]),
-      );
-      for (const image of images)
-        hash.update(image.mimeType).update(image.dataBase64);
-      const frame = hash.digest("hex");
-      const same = frame === state.frame;
-      state.frame = frame;
-      return same ? [] : images;
     },
     clear(owner) {
       for (const [session, state] of sessions)

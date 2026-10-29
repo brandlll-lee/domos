@@ -17,6 +17,17 @@ export function desktopStep(step) {
   return { tool, args: step.args ?? step[tool] };
 }
 
+export function desktopMutation(name, args) {
+  return (
+    name === "run_script" ||
+    desktopInputs.includes(name) ||
+    (name === "run_steps" &&
+      (args.steps ?? []).some((step) =>
+        desktopInputs.includes(desktopStep(step).tool),
+      ))
+  );
+}
+
 export function openDesktopActions() {
   const captures = new Map();
   const snapshots = new Map();
@@ -24,6 +35,7 @@ export function openDesktopActions() {
   let point;
   let sequence = 0;
   let batch = false;
+  let script = false;
   let batchSequence = 0;
   let session;
   function resolve(args) {
@@ -42,7 +54,13 @@ export function openDesktopActions() {
     const session = args.session ?? "";
     const key = (id) => `${session}:${id}`;
     target = resolve(args) ?? target;
+    if (name === "run_script") {
+      script = true;
+      return;
+    }
+    if (desktopInputs.includes(name)) script = false;
     if (name === "run_steps") {
+      script = false;
       batch = !value;
       if (!value) {
         batchSequence = sequence;
@@ -148,12 +166,12 @@ export function openDesktopActions() {
       observe(name, args, value);
     },
     get session() {
-      return batch || !point ? session : undefined;
+      return script || batch || !point ? session : undefined;
     },
     track(state) {
       const position = state.position;
       if (
-        (!batch && point) ||
+        (!script && !batch && point) ||
         !Number.isFinite(position?.x) ||
         !Number.isFinite(position?.y) ||
         (point?.x === position.x &&
@@ -208,6 +226,7 @@ export function openDesktopActions() {
     clear() {
       target = point = undefined;
       batch = false;
+      script = false;
       session = undefined;
     },
   };

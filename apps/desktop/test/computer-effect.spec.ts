@@ -7,8 +7,12 @@ import { join, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { runAssistant } from "../../../packages/agent/src/computer/assistant.ts";
 import { assistInput } from "../../../packages/agent/src/computer/assistant-action.ts";
+import { openGateway } from "../../../packages/agent/src/harness/gateway.mjs";
 import { WorkProcess } from "../../../packages/agent/src/harness/process.ts";
-import type { ProductResult } from "../../../packages/agent/src/harness/types.ts";
+import type {
+  ProductResult,
+  ProductTool,
+} from "../../../packages/agent/src/harness/types.ts";
 import { mountComputerEffectWithArt } from "../../../packages/ui/src/computer-effect.mjs";
 import { effectArt } from "../../../packages/ui/src/computer-effect-art.mjs";
 
@@ -87,6 +91,42 @@ test("foreground input keeps a restored window active and publishes its real out
     });
     expect(restored.isError, JSON.stringify(restored.content)).toBe(false);
     expect(restored.structuredContent).toHaveProperty("snapshot_id");
+    const gateway = await openGateway(
+      await worker.computer<ProductTool[]>({
+        operation: "catalog",
+        service: "desktop",
+      }),
+      async (_id, name, args, signal) =>
+        worker.computer(
+          { operation: "call", service: "desktop", name, arguments: args },
+          signal,
+        ),
+    );
+    const agentRequire = createRequire(resolve("packages/agent/package.json"));
+    const { Client } = agentRequire(
+      "@modelcontextprotocol/sdk/client/index.js",
+    );
+    const { StreamableHTTPClientTransport } = agentRequire(
+      "@modelcontextprotocol/sdk/client/streamableHttp.js",
+    );
+    const client = new Client({ name: "native-schema", version: "1" });
+    try {
+      await client.connect(
+        new StreamableHTTPClientTransport(new URL(gateway.url)),
+      );
+      await client.listTools();
+      expect(
+        (
+          await client.callTool({
+            name: "get_window_state",
+            arguments: identity,
+          })
+        ).isError,
+      ).not.toBe(true);
+    } finally {
+      await client.close();
+      await gateway.close();
+    }
     const fetcher = globalThis.fetch;
     try {
       globalThis.fetch = async (_url, init) => {
@@ -228,6 +268,7 @@ test("foreground input keeps a restored window active and publishes its real out
       observation: { ok: true, state: identity },
     });
     await expect(page.locator("input")).toHaveValue("Checkpoint");
+    await call("get_window_state", { ...identity, include_screenshot: false });
     const scale =
       observed.structuredContent.screenshot_width /
       (await page.evaluate(() => innerWidth));
@@ -240,6 +281,8 @@ test("foreground input keeps a restored window active and publishes its real out
     await expect
       .poll(() => worker.activity?.window?.width !== target.bounds.width)
       .toBe(true);
+    await call("bring_to_front", identity);
+    await call("get_window_state", identity);
     for (const [name, args] of [
       [
         "click",
@@ -340,6 +383,19 @@ test("foreground input keeps a restored window active and publishes its real out
     });
     worker.events.off("activity", moved);
     expect(positions.size).toBeGreaterThanOrEqual(2);
+    await call("get_window_state", { ...identity, include_screenshot: false });
+    const script = await call("run_script", {
+      script: `const app = await cua.getApp(${JSON.stringify({ pid, windowId: target.window_id })}); await app.setValue({role:"textfield",name:"Song"}, "Script input"); await app.click({role:"button",name:"Play"}); return "done";`,
+    });
+    expect(script.isError, JSON.stringify(script.content)).toBe(false);
+    await expect(page.locator("output")).toHaveText("Script input");
+    const blocked = await call("run_script", {
+      script: 'return "not executed";',
+    });
+    expect(blocked.isError).toBe(true);
+    await call("get_window_state", { ...identity, include_screenshot: false });
+    const resumed = await call("run_script", { script: 'return "observed";' });
+    expect(resumed.isError, JSON.stringify(resumed.content)).toBe(false);
     await worker.computer({ operation: "activity", owner: "test" });
     expect(worker.activity).toBeNull();
   } finally {

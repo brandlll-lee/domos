@@ -241,6 +241,7 @@ test.each([
   "browser_agent_browser_click",
   "browser_agent_browser_eval",
   "desktop_run_steps",
+  "desktop_run_script",
 ])("%s requires shared approval", async (name) => {
   const services = {
     catalog: async (_id: number, service: string) => [

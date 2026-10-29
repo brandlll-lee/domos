@@ -88,6 +88,20 @@ test("batch completion updates position without replaying clicks and native traj
   motion.clear();
 });
 
+test("scripts track the native cursor during execution and after returning", () => {
+  const actions = openDesktopActions();
+  const args = { session: "bot", pid: 7, window_id: 90 };
+  actions.observe("click", { ...args, x: 10, y: 20 });
+  actions.observe("run_script", args);
+  expect(actions.session).toBe("bot");
+  actions.track({ position: { x: 350, y: 200 } });
+  actions.observe("run_script", args, { result: "done" });
+  actions.track({ position: { x: 954, y: 370 } });
+  expect(actions.pointer(null)).toMatchObject({ x: 954, y: 370 });
+  actions.clear();
+  expect(actions.pointer(null)).toBeNull();
+});
+
 test.each([1, 1.25, 2])(
   "control and screenshot coordinates agree at scale %s",
   (scale) => {
