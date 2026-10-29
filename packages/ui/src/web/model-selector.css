@@ -57,7 +57,7 @@
 }
 .model-selector-content {
   display: grid;
-  grid-template-columns: 3.5rem minmax(0, 1fr);
+  grid-template-columns: calc(2.5rem + var(--space-2) * 2 + 1px) minmax(0, 1fr);
   height: min(28rem, var(--available-height));
   min-height: 0;
 }

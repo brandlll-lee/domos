@@ -401,17 +401,9 @@
 .detail-content .setting-row {
   gap: var(--space-3);
 }
-.engine-settings > .setting-row {
-  padding-block: var(--space-3);
-}
 .computer-services > .setting-row,
 .computer-binding > .setting-row {
   padding: var(--space-3);
-}
-.engine-settings > .setting-row + .setting-row,
-.engine-settings > .setting-row + .engine-connection {
-  border-top: 1px solid
-    color-mix(in srgb, var(--color-divider) 72%, transparent);
 }
 .computer-services > .setting-row + .setting-row {
   border-top: 1px solid var(--color-divider);

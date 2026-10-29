@@ -235,37 +235,6 @@
 .provider-row > .detail-note:last-child {
   margin-inline-start: auto;
 }
-.provider-tabs {
-  display: flex;
-  gap: var(--space-1);
-  flex-wrap: wrap;
-  border-bottom: 1px solid var(--color-divider);
-  padding-bottom: var(--space-3);
-}
-.provider-tabs [aria-selected="true"] {
-  background: var(--color-selection);
-  color: var(--color-text);
-}
-.provider-tabs svg {
-  width: var(--space-4);
-  height: var(--space-4);
-}
-.provider-account-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-height: var(--panel-row-height);
-}
-.provider-account-row > :first-child {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.provider-row > .button:last-child {
-  margin-inline-start: auto;
-  flex-shrink: 0;
-}
 .model-catalog {
   gap: var(--space-3);
 }

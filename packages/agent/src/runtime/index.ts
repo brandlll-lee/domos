@@ -67,6 +67,9 @@ export class Runtime {
     const models = await this.connections.catalog(botId, context, config);
     return {
       config,
+      computerId,
+      catalog: models,
+      connection: await this.connections.snapshot(botId, config, context),
       model:
         models
           .find((item) => item.id === config.provider)

@@ -16,6 +16,7 @@ Pi Durable 1.4.0 stores Bot tasks. Native Harness processes own model loops. Dom
 - Send chat, additional input, routines, API calls, and CLI calls through Runtime.submit and the same Durable conversation. Keep request IDs stable through retries.
 - Keep model context separate from displayed history. Read [docs/harness-context.md](docs/harness-context.md) before changing history, migration, or compaction.
 - Keep computer rules in shared services. Persist tool results. Do not replay mutations whose outcomes are uncertain.
+- Verify product-tool discovery before native task dispatch. Read [Harness context](docs/harness-context.md) before changing tool bridges or readiness checks.
 
 | Location | Responsibility |
 | --- | --- |

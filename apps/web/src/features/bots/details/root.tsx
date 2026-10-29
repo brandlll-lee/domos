@@ -49,7 +49,6 @@ export function RootPanel({
         <div className="engine-choices">
           <ModelSetting
             botId={bot.id}
-            model={chat.model}
             connected={chat.connected}
             disabled={computer.busy || chat.busy}
           />

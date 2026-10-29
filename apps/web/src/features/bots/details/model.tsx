@@ -1,5 +1,5 @@
 import { Button } from "@domos/ui/controls";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { client } from "../../../client.ts";
 import { ModelSetting } from "../../models/model-setting.tsx";
 
@@ -16,7 +16,6 @@ export function ModelSetup({
 }) {
   const [profile, setProfile] =
     useState<Awaited<ReturnType<typeof client.engines.get>>>();
-  const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const reportBusy = useCallback(
     (value: boolean) => {
@@ -25,27 +24,15 @@ export function ModelSetup({
     },
     [onBusyChange],
   );
-  const refresh = () => client.engines.get({ botId }).then(setProfile);
-  useEffect(() => {
-    void client.engines
-      .get({ botId })
-      .then(setProfile, (cause) => setError(cause.message));
-  }, [botId]);
   return (
     <div className="detail-stack">
       <ModelSetting
         botId={botId}
-        model={null}
-        connected={Boolean(profile)}
+        connected
         disabled={profile?.busy}
-        onSelected={refresh}
+        onProfile={setProfile}
         onBusyChange={reportBusy}
       />
-      {error && (
-        <p role="alert" className="alert">
-          {error}
-        </p>
-      )}
       {(onBack || onReady) && (
         <div className="dialog-actions">
           {onBack && (

@@ -1,11 +1,10 @@
 import type { EngineConfig } from "@domos/agent/harness/types";
-import type { ChatView } from "@domos/agent/view";
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
 import { ModelSelector } from "@domos/ui/model-selector";
 import { ChoicePicker, SearchPicker } from "@domos/ui/picker";
 import { SettingRow } from "@domos/ui/setting-row";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { client } from "../../client.ts";
 import { EngineMark } from "../bots/engine-mark.tsx";
 import { useSettings } from "../settings/context.ts";
@@ -16,15 +15,14 @@ export function ModelSetting({
   botId,
   connected,
   disabled,
-  onSelected,
   onBusyChange,
+  onProfile,
 }: {
   botId: number;
-  model: ChatView["model"];
   connected: boolean;
   disabled?: boolean;
-  onSelected?: () => Promise<void>;
   onBusyChange?: (busy: boolean) => void;
+  onProfile?: (profile: Awaited<ReturnType<typeof client.engines.get>>) => void;
 }) {
   const settings = useSettings();
   const visibility = useVisibility(connected);
@@ -49,16 +47,25 @@ export function ModelSetting({
   const [configuring, setConfiguring] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const refresh = useCallback(async () => {
-    const next = await client.engines.get({ botId });
-    setProfile(next);
-    setConfig(next.config);
-    setControls(next.runtime?.controls);
-    setArgs(JSON.stringify(next.config.args ?? []));
-  }, [botId]);
   useEffect(() => {
-    if (connected) void refresh().catch((e) => setError(e.message));
-  }, [connected, refresh]);
+    if (!connected) return;
+    const controller = new AbortController();
+    void client.engines.get({ botId }, { signal: controller.signal }).then(
+      (next) => {
+        if (controller.signal.aborted) return;
+        setProfile(next);
+        onProfile?.(next);
+        setConfig(next.config);
+        setConnection(next.connection ?? undefined);
+        setControls(next.runtime?.controls);
+        setArgs(JSON.stringify(next.config.args ?? []));
+      },
+      (cause) => {
+        if (!controller.signal.aborted) setError(cause.message);
+      },
+    );
+    return () => controller.abort();
+  }, [connected, botId, onProfile]);
   useEffect(() => {
     onBusyChange?.(busy);
     return () => onBusyChange?.(false);
@@ -74,23 +81,29 @@ export function ModelSetting({
       setBusy(false);
     }
   }
-  async function inspect(next = config) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(args);
-    } catch {
-      throw new Error("启动参数必须是 JSON 字符串数组。");
+  async function inspect() {
+    let selected = config;
+    if (config.provider === "acp") {
+      try {
+        const parsed: unknown = JSON.parse(args);
+        if (
+          !Array.isArray(parsed) ||
+          parsed.some((value) => typeof value !== "string")
+        )
+          throw new Error();
+        selected = { ...config, args: parsed };
+      } catch {
+        throw new Error("启动参数必须是 JSON 字符串数组。");
+      }
     }
-    if (
-      !Array.isArray(parsed) ||
-      !parsed.every((value) => typeof value === "string")
-    )
-      throw new Error("启动参数必须是 JSON 字符串数组。");
-    const selected = next.provider === "acp" ? { ...next, args: parsed } : next;
     setConfig(selected);
-    setConnection(
-      await client.engines.inspect({ botId, config: selected, refresh: true }),
-    );
+    const value = await client.engines.inspect({
+      botId,
+      config: selected,
+      refresh: true,
+    });
+    setConnection(value);
+    if ("controls" in value) setControls(value.controls);
   }
   async function save(next: EngineConfig, close = true) {
     if (!profile) return;
@@ -110,19 +123,18 @@ export function ModelSetting({
           requestId: input.requestId,
         });
     const nextControls = await client.engines.controls({ botId });
-    await onSelected?.();
     setProfile(saved);
+    onProfile?.(saved);
     setConfig(saved.config);
     setControls(nextControls);
     if (close) setOpen(false);
   }
   useEffect(() => {
-    if (!open || config.provider === "acp") return;
+    if (!connected || !profile || config.provider === "acp") return;
     let current = true;
-    setConnection(undefined);
     void (
       settings.admin
-        ? client.engines.inspect({ botId, config })
+        ? client.engines.inspect({ botId, config, refresh: open })
         : client.engines.available({ botId })
     ).then(
       (value) => {
@@ -138,7 +150,7 @@ export function ModelSetting({
     return () => {
       current = false;
     };
-  }, [open, botId, config, settings.admin]);
+  }, [connected, open, profile, botId, config, settings.admin]);
   useEffect(() => {
     if (login?.state !== "waiting") return;
     let current = true;
@@ -167,9 +179,6 @@ export function ModelSetting({
       clearInterval(timer);
     };
   }, [login?.state, botId, config]);
-  useEffect(() => {
-    setCode("");
-  }, []);
   const locked = Boolean(disabled || profile?.busy || busy || !settings.admin);
   const providers = (profile?.providers ?? []).filter(
     (provider) => settings.admin || provider.id === profile?.config.provider,
@@ -180,8 +189,38 @@ export function ModelSetting({
       : [];
   const methods =
     accounts.find((provider) => provider.id === account)?.methods ?? [];
+  function field({
+    items,
+    key,
+    ...props
+  }: Parameters<typeof TextField>[0] & {
+    items?: { value: string; label: string }[];
+    key?: string;
+  }) {
+    return items ? (
+      <ChoicePicker key={key} disabled={locked} {...props} items={items} />
+    ) : (
+      <TextField key={key} disabled={locked} {...props} />
+    );
+  }
+  function action(
+    label: string,
+    callback: () => Promise<unknown>,
+    blocked = false,
+  ) {
+    return (
+      <Button
+        variant="secondary"
+        size="small"
+        disabled={locked || blocked}
+        onClick={() => void run(callback)}
+      >
+        {label}
+      </Button>
+    );
+  }
   return (
-    <div className="detail-stack">
+    <>
       <SettingRow title="运行模型">
         <ModelSelector
           open={open}
@@ -197,13 +236,20 @@ export function ModelSetting({
             setConnection(undefined);
             setControls(undefined);
             setError("");
-            setConfig({ provider, model: null });
+            setConfig(
+              provider === profile?.config.provider
+                ? profile.config
+                : { provider, model: null },
+            );
             setConfiguring(provider === "acp");
             setLogin(null);
           }}
-          models={(connection?.models ?? []).filter((model) =>
-            visibility.visible(config.provider, model.id),
-          )}
+          models={(
+            connection?.models ??
+            profile?.catalog.find((item) => item.id === config.provider)
+              ?.models ??
+            []
+          ).filter((model) => visibility.visible(config.provider, model.id))}
           value={profile?.config.model ?? ""}
           label={
             profile?.model?.name ??
@@ -220,21 +266,20 @@ export function ModelSetting({
           status={connection ? connection.message : ""}
           onConfigure={settings.admin ? () => setConfiguring(true) : undefined}
           notice={
-            <>
-              {busy && <p role="status">正在保存…</p>}
-              {settings.admin ? (
-                <Button
-                  variant="ghost"
-                  size="small"
-                  disabled={locked}
-                  onClick={() => setConfiguring(true)}
-                >
-                  配置连接
-                </Button>
-              ) : (
-                <p className="detail-note">账号和程序由管理员配置。</p>
-              )}
-            </>
+            busy ? (
+              <p role="status">正在保存…</p>
+            ) : settings.admin ? (
+              <Button
+                variant="ghost"
+                size="small"
+                disabled={locked}
+                onClick={() => setConfiguring(true)}
+              >
+                配置连接
+              </Button>
+            ) : (
+              <p className="detail-note">账号和程序由管理员配置。</p>
+            )
           }
           configuration={
             configuring ? (
@@ -247,27 +292,19 @@ export function ModelSetting({
                 >
                   返回模型
                 </Button>
-                {busy && (
-                  <p role="status" className="detail-note">
-                    正在保存…
-                  </p>
-                )}
                 {config.provider === "acp" && (
                   <>
-                    <TextField
-                      label="程序路径"
-                      value={config.command ?? ""}
-                      onValueChange={(command) =>
-                        setConfig({ ...config, command })
-                      }
-                      disabled={locked || !settings.admin}
-                    />
-                    <TextField
-                      label="启动参数"
-                      value={args}
-                      onValueChange={setArgs}
-                      disabled={locked || !settings.admin}
-                    />
+                    {field({
+                      label: "程序路径",
+                      value: config.command ?? "",
+                      onValueChange: (command) =>
+                        setConfig({ ...config, command }),
+                    })}
+                    {field({
+                      label: "启动参数",
+                      value: args,
+                      onValueChange: setArgs,
+                    })}
                   </>
                 )}
                 {connection?.version && (
@@ -297,16 +334,16 @@ export function ModelSetting({
                       }))}
                       disabled={locked || login?.state === "waiting"}
                     />
-                    <ChoicePicker
-                      label="登录方式"
-                      value={method}
-                      onValueChange={setMethod}
-                      items={methods.map((method, index) => ({
+                    {field({
+                      label: "登录方式",
+                      value: method,
+                      onValueChange: setMethod,
+                      items: methods.map((method, index) => ({
                         value: String(index),
                         label: method.label,
-                      }))}
-                      disabled={locked || login?.state === "waiting"}
-                    />
+                      })),
+                      disabled: locked || login?.state === "waiting",
+                    })}
                     {methods[Number(method)]?.prompts
                       ?.filter(
                         (prompt) =>
@@ -316,69 +353,38 @@ export function ModelSetting({
                             : inputs[prompt.when.key] !== prompt.when.value),
                       )
                       .map((prompt) =>
-                        prompt.type === "select" ? (
-                          <ChoicePicker
-                            key={prompt.key}
-                            label={prompt.message}
-                            value={inputs[prompt.key] ?? ""}
-                            items={prompt.options ?? []}
-                            onValueChange={(value) =>
-                              setInputs({ ...inputs, [prompt.key]: value })
-                            }
-                            disabled={locked}
-                          />
-                        ) : (
-                          <TextField
-                            key={prompt.key}
-                            label={prompt.message}
-                            value={inputs[prompt.key] ?? ""}
-                            onValueChange={(value) =>
-                              setInputs({ ...inputs, [prompt.key]: value })
-                            }
-                            disabled={locked}
-                          />
-                        ),
+                        field({
+                          key: prompt.key,
+                          label: prompt.message,
+                          value: inputs[prompt.key] ?? "",
+                          items:
+                            prompt.type === "select"
+                              ? (prompt.options ?? [])
+                              : undefined,
+                          onValueChange: (value) =>
+                            setInputs({ ...inputs, [prompt.key]: value }),
+                        }),
                       )}
                   </>
                 )}
                 <div className="dialog-actions">
-                  <Button
-                    variant="secondary"
-                    size="small"
-                    disabled={locked}
-                    onClick={() => void run(() => inspect())}
-                  >
-                    检查连接
-                  </Button>
+                  {action("检查连接", () => inspect())}
                   {settings.admin && config.provider !== "acp" && (
-                    <Button
-                      variant="secondary"
-                      size="small"
-                      disabled={locked}
-                      onClick={() =>
-                        void run(async () => {
+                    <>
+                      {action(
+                        connection?.ready ? "下载独立版本" : "下载",
+                        async () => {
                           const installed = await client.engines.install({
                             botId,
                             config,
                           });
                           setConfig(installed.config);
                           setConnection(installed.connection);
-                        })
-                      }
-                    >
-                      {connection?.ready ? "下载独立版本" : "下载"}
-                    </Button>
-                  )}
-                  {settings.admin && config.provider !== "acp" && (
-                    <Button
-                      size="small"
-                      disabled={
-                        locked ||
-                        login?.state === "waiting" ||
-                        (config.provider === "opencode" && !account)
-                      }
-                      onClick={() =>
-                        void run(async () =>
+                        },
+                      )}
+                      {action(
+                        "登录",
+                        async () =>
                           setLogin(
                             await client.engines.login({
                               botId,
@@ -391,23 +397,16 @@ export function ModelSetting({
                               },
                             }),
                           ),
-                        )
-                      }
-                    >
-                      登录
-                    </Button>
+                        login?.state === "waiting" ||
+                          (config.provider === "opencode" && !account),
+                      )}
+                    </>
                   )}
-                  {connection?.authenticated && !connection.models.length && (
-                    <Button
-                      size="small"
-                      disabled={locked}
-                      onClick={() =>
-                        void run(() => save({ ...config, model: null }))
-                      }
-                    >
-                      使用默认模型
-                    </Button>
-                  )}
+                  {connection?.authenticated &&
+                    !connection.models.length &&
+                    action("使用默认模型", () =>
+                      save({ ...config, model: null }),
+                    )}
                 </div>
                 {login && (
                   <div className="detail-stack">
@@ -426,63 +425,30 @@ export function ModelSetting({
                       <p className="detail-note">{login.instructions}</p>
                     )}
                     {login.prompt &&
-                      (login.options ? (
-                        <ChoicePicker
-                          label={login.prompt}
-                          value={code}
-                          items={login.options.map((value) => ({
-                            value,
-                            label: value,
-                          }))}
-                          onValueChange={setCode}
-                          disabled={busy}
-                        />
-                      ) : (
-                        <TextField
-                          label={login.prompt}
-                          type={login.secret ? "password" : "text"}
-                          value={code}
-                          onValueChange={setCode}
-                        />
-                      ))}
+                      field({
+                        label: login.prompt,
+                        value: code,
+                        onValueChange: setCode,
+                        type: login.secret ? "password" : "text",
+                        items: login.options?.map((value) => ({
+                          value,
+                          label: value,
+                        })),
+                        disabled: busy,
+                      })}
                     <div className="dialog-actions">
-                      {login.prompt && (
-                        <Button
-                          disabled={locked}
-                          onClick={() =>
-                            void run(() =>
-                              client.engines.answerLogin({ botId, code }),
-                            )
-                          }
-                        >
-                          继续
-                        </Button>
-                      )}
-                      <Button
-                        disabled={locked}
-                        onClick={() =>
-                          void run(async () => {
-                            setLogin(
-                              await client.engines.loginState({ botId }),
-                            );
-                            await inspect();
-                          })
-                        }
-                      >
-                        检查登录
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        disabled={locked}
-                        onClick={() =>
-                          void run(async () => {
-                            await client.engines.cancelLogin({ botId });
-                            setLogin(null);
-                          })
-                        }
-                      >
-                        取消
-                      </Button>
+                      {login.prompt &&
+                        action("继续", () =>
+                          client.engines.answerLogin({ botId, code }),
+                        )}
+                      {action("检查登录", async () => {
+                        setLogin(await client.engines.loginState({ botId }));
+                        await inspect();
+                      })}
+                      {action("取消", async () => {
+                        await client.engines.cancelLogin({ botId });
+                        setLogin(null);
+                      })}
                     </div>
                   </div>
                 )}
@@ -508,16 +474,11 @@ export function ModelSetting({
             ))}
         />
       </SettingRow>
-      {busy && (
-        <p role="status" className="detail-note">
-          正在保存…
-        </p>
-      )}
       {error && !open && (
         <p className="alert" role="alert">
           {error}
         </p>
       )}
-    </div>
+    </>
   );
 }

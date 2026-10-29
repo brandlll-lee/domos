@@ -3355,7 +3355,12 @@ test("Bot identity stays consistent and image previews work in drafts and histor
   const avatar = dialog.locator(".bot-avatar");
   const initial = await avatar.getAttribute("data-seed");
   await dialog.getByRole("button", { name: "选择头像", exact: true }).click();
-  await page.getByRole("button", { name: "换个形象", exact: true }).click();
+  const round = page.getByRole("button", { name: "外形：圆球", exact: true });
+  const replacement =
+    (await round.getAttribute("aria-pressed")) === "true"
+      ? page.getByRole("button", { name: "外形：云团", exact: true })
+      : round;
+  await replacement.click();
   await expect(avatar).not.toHaveAttribute("data-seed", initial ?? "");
   await page.keyboard.press("Escape");
   const seed = await avatar.getAttribute("data-seed");

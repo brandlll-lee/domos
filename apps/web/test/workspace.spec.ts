@@ -537,11 +537,48 @@ test("native Harness controls persist and client accounts retain model access", 
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   const trigger = page.getByRole("combobox", { name: "模型", exact: true });
   const popup = page.locator(".model-selector-popup");
+  const captions = await page
+    .locator(".engine-choices > .setting-row .setting-caption")
+    .evaluateAll((nodes) =>
+      nodes.map((node) => Math.round(node.getBoundingClientRect().x)),
+    );
+  expect(captions.length).toBe(3);
+  expect(new Set(captions).size).toBe(1);
   await trigger.click();
   await expect(popup.getByRole("tab")).toHaveCount(5);
-  await popup
-    .getByRole("option", { name: "Pi · 测试模型二", exact: true })
-    .click();
+  const choice = popup.getByRole("option", {
+    name: "Pi · 测试模型二",
+    exact: true,
+  });
+  await expect(choice).toBeVisible();
+  expect(
+    await popup
+      .locator(".model-selector-rail")
+      .evaluate((node) => node.scrollWidth === node.clientWidth),
+  ).toBe(true);
+  await page.keyboard.press("Escape");
+  const resumed = Promise.withResolvers<void>();
+  await page.route("**/rpc/engines/inspect", async (route) => {
+    await resumed.promise;
+    await route.continue();
+  });
+  try {
+    for (let index = 0; index < 2; index++) {
+      await trigger.click();
+      await expect(choice).toBeVisible({ timeout: 500 });
+      await expect(popup).not.toContainText("还未安装");
+      await expect(popup).not.toContainText("加载中");
+      await page.keyboard.press("Escape");
+    }
+    await trigger.click();
+    await popup.getByRole("tab", { name: "Codex", exact: true }).click();
+    await popup.getByRole("tab", { name: "Pi", exact: true }).click();
+    await expect(choice).toBeVisible({ timeout: 500 });
+  } finally {
+    resumed.resolve();
+    await page.unrouteAll({ behavior: "wait" });
+  }
+  await choice.click();
   await expect(trigger).toContainText("测试模型二");
   await trigger.click();
   const effort = popup.getByRole("radiogroup", { name: "推理强度" });

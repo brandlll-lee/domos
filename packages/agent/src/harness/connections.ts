@@ -92,7 +92,7 @@ export class EngineConnections {
       cached?.computerId === computerId &&
       cached.model === config.model &&
       cached.options === JSON.stringify(config.options ?? {}) &&
-      !refresh
+      (!refresh || !cached.value)
     )
       return cached.result;
     const entry: NonNullable<ReturnType<EngineConnections["catalogs"]["get"]>> =

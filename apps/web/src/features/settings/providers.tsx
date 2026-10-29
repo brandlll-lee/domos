@@ -8,7 +8,7 @@ export function ProviderSettings({ botId }: { botId?: number }) {
       {target && (
         <>
           <SettingRow title={target.name}>{target.computer}</SettingRow>
-          <ModelSetting botId={target.id} model={null} connected />
+          <ModelSetting botId={target.id} connected />
         </>
       )}
       {error && (
