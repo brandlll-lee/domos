@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "vitest";
 import { computerTrace, evaluateComputer } from "../src/evals/computer.ts";
 import { readOpenCodeTrace } from "../src/evals/opencode.ts";
+import music from "./fixtures/pi-music-baseline.json" with { type: "json" };
 
 const baseline = computerTrace.parse(
   JSON.parse(
@@ -15,6 +16,20 @@ const baseline = computerTrace.parse(
     ),
   ),
 );
+
+test("task 9954 retains the complete Pi music baseline", () => {
+  const result = evaluateComputer(music);
+  expect(result).toMatchObject({
+    passed: 2,
+    exercised: 3,
+    metrics: { elapsedMs: 238346, modelResponses: 30, toolCalls: 28 },
+  });
+  expect(
+    music.calls.filter((call) =>
+      call.output.includes("previous action outcome is unknown"),
+    ),
+  ).toHaveLength(3);
+});
 
 test("task 7094 retains three workflow failures despite a reviewed successful outcome", () => {
   const result = evaluateComputer(baseline);
