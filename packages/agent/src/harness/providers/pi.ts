@@ -171,12 +171,17 @@ export const piProvider: EngineProvider = {
         DOMOS_PI_MCP_URL: ready.url,
       },
     });
-    const selected = sessionId
-      ? await rpc.request<{ cancelled?: boolean }>("switch_session", {
+    if (sessionId) {
+      rpc.phase = "恢复会话";
+      const selected = await rpc.request<{ cancelled?: boolean }>(
+        "switch_session",
+        {
           sessionPath: sessionId,
-        })
-      : await rpc.request<{ cancelled?: boolean }>("new_session");
-    if (selected.cancelled) throw new Error("Pi 会话切换已取消。");
+        },
+      );
+      if (selected.cancelled) throw new Error("Pi 会话切换已取消。");
+    }
+    rpc.phase = "初始化";
     await rpc.request("set_steering_mode", { mode: "all" });
     if (config.model) {
       const separator = config.model.indexOf("/");
@@ -235,6 +240,7 @@ export const piProvider: EngineProvider = {
         },
       },
     });
+    rpc.phase = "执行";
     return {
       id: state.sessionFile,
       async controls() {

@@ -12,20 +12,22 @@ type Frame = {
   error?: unknown;
 };
 
+type RequestContext = { method: string; phase: string; startedAt: number };
+
 export class EngineRequestRejected extends Error {}
 
 export class JsonLines extends EventEmitter {
+  phase = "初始化";
   private readonly process: EngineProcess;
   private readonly pi: boolean;
   private sequence = 0;
   private connected = false;
   private readonly pending = new Map<
     string | number,
-    {
+    RequestContext & {
       resolve: (value: unknown) => void;
       reject: (error: Error) => void;
       timer?: NodeJS.Timeout;
-      method: string;
     }
   >();
 
@@ -53,15 +55,16 @@ export class JsonLines extends EventEmitter {
         ) {
           if (frame.id !== undefined) this.pending.delete(frame.id);
           clearTimeout(pending.timer);
-          if (frame.error || frame.success === false)
+          if (frame.error || frame.success === false) {
+            const native = frame.error as
+              | { code?: number; message?: string }
+              | undefined;
             pending.reject(
               new EngineRequestRejected(
-                (frame.error as { code?: number } | undefined)?.code === -32601
-                  ? `当前引擎版本不支持 ${pending.method}。请更新工作电脑的 CLI。`
-                  : `引擎拒绝了 ${pending.method} 请求。请检查模型和工作电脑。`,
+                `${this.describe(pending)}：${native?.code === -32601 ? "当前引擎版本不支持此请求" : "引擎拒绝请求"}。原生错误：${typeof frame.error === "string" ? frame.error : (native?.message ?? "未提供")}`,
               ),
             );
-          else
+          } else
             pending.resolve(
               this.pi ? (frame.data ?? {}) : (frame.result ?? {}),
             );
@@ -100,16 +103,21 @@ export class JsonLines extends EventEmitter {
     timeout = engineLimits.handshakeMs as number,
   ) {
     const id = ++this.sequence;
+    const context = { method, phase: this.phase, startedAt: Date.now() };
     return new Promise<T>((resolve, reject) => {
       const timer = timeout
         ? setTimeout(() => {
             this.pending.delete(id);
-            reject(new Error("引擎没有及时响应。请核对任务状态。"));
+            reject(
+              new Error(
+                `${this.describe(context)}：RPC 超时，未收到原生响应。`,
+              ),
+            );
           }, timeout)
         : undefined;
       timer?.unref();
       this.pending.set(id, {
-        method,
+        ...context,
         resolve: (value) => resolve(value as T),
         reject,
         timer,
@@ -119,15 +127,27 @@ export class JsonLines extends EventEmitter {
       ).catch((error) => {
         clearTimeout(timer);
         this.pending.delete(id);
-        reject(error);
+        reject(
+          new Error(`${this.describe(context)}：${error.message}`, {
+            cause: error,
+          }),
+        );
       });
     });
+  }
+
+  private describe(request: RequestContext) {
+    return `引擎 ${request.phase} / ${request.method}（${Date.now() - request.startedAt}ms）`;
   }
 
   private fail(error: Error) {
     for (const value of this.pending.values()) {
       clearTimeout(value.timer);
-      value.reject(error);
+      value.reject(
+        new Error(`${this.describe(value)}：${error.message}`, {
+          cause: error,
+        }),
+      );
     }
     this.pending.clear();
     this.emit("closed", error);

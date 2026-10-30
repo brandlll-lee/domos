@@ -6,6 +6,17 @@
     "A script reached the driver while a previous action required observation.",
     "Native script cursor moved to 954,370; the effect retained the previous click."
   ],
+  "initialization": {
+    "source": "task-9518:2026-10-30",
+    "completion": "not-completed",
+    "elapsedSeconds": 31.99,
+    "toolCalls": 0,
+    "observed": [
+      "RPC timed out after 30 seconds. The request method was not recorded.",
+      "Configured MCP servers required discovery tools that were not loaded.",
+      "The warning also occurred during successful startup probes. The timeout cause remains unknown."
+    ]
+  },
   "cancellation": {
     "source": "task-9410:2026-10-30",
     "completion": "not-completed",

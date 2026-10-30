@@ -1,4 +1,5 @@
-import { expect, onTestFinished, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
+import { EngineRequestRejected, JsonLines } from "../src/harness/json-lines.ts";
 import { claudeProvider } from "../src/harness/providers/claude.ts";
 import { codexProvider } from "../src/harness/providers/codex.ts";
 import {
@@ -10,21 +11,66 @@ import type { EngineEvent, EngineSession } from "../src/harness/types.ts";
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
 import { featureProcess } from "./fixtures/feature-process.ts";
 
-test("native Pi loads the tools that expose its MCP servers", async () => {
-  const process = featureProcess();
-  onTestFinished(() => process.close());
-  const session = await piProvider.open({
-    process,
-    config: { provider: "pi", model: null },
-    sessionId: null,
-    instructions: "Role",
-    emit: async () => {},
-  });
-  expect(process.spec?.args).toEqual(expect.arrayContaining(["--mode", "rpc"]));
-  expect((await session.controls?.())?.commands).toContainEqual({
-    name: "review",
-    description: "Review work",
-  });
+test.each([null, "/native/session"])(
+  "Pi selects its native session (%s)",
+  async (sessionId) => {
+    const process = featureProcess();
+    onTestFinished(() => process.close());
+    const session = await piProvider.open({
+      process,
+      config: { provider: "pi", model: null },
+      sessionId,
+      instructions: "Role",
+      emit: async () => {},
+    });
+    expect(process.spec?.args).toEqual(
+      expect.arrayContaining(["--mode", "rpc"]),
+    );
+    expect(
+      process.requests.filter((request) => request.type === "new_session"),
+    ).toEqual([]);
+    expect(
+      process.requests.filter((request) => request.type === "switch_session"),
+    ).toEqual(
+      sessionId ? [expect.objectContaining({ sessionPath: sessionId })] : [],
+    );
+    expect((await session.controls?.())?.commands).toContainEqual({
+      name: "review",
+      description: "Review work",
+    });
+  },
+);
+
+test.each([true, false])(
+  "RPC timeout identifies the request and phase (Pi: %s)",
+  async (pi) => {
+    const { process } = protocol();
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const rpc = new JsonLines(process, pi);
+    const result = rpc.request("get_state").catch((error) => error);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect((await result).message).toMatch(
+      /初始化.*get_state.*30000ms.*未收到原生响应/,
+    );
+  },
+);
+
+test.each([
+  "Native model unavailable",
+  { code: -32000, message: "Native model unavailable" },
+])("RPC retains the native rejection message (%j)", async (error) => {
+  const { process } = protocol();
+  process.receive = (request) =>
+    process.frame({ id: request.id, type: "response", success: false, error });
+  const rpc = new JsonLines(process, true);
+  const failure = await rpc.request("set_model").catch((error) => error);
+  expect(failure).toBeInstanceOf(EngineRequestRejected);
+  expect(failure.message).toMatch(
+    /初始化.*set_model.*\d+ms.*Native model unavailable/,
+  );
 });
 
 function protocol() {
@@ -125,7 +171,7 @@ test("custom ACP handles permission during session setup and advertises native c
   expect(customAcpProvider.capabilities.recovery).toBe(false);
 });
 
-test.each([null, "/work/session.jsonl"])(
+test.each(["/work/session.jsonl"])(
   "Pi stops a cancelled session selection (%s) before publishing a session",
   async (sessionId) => {
     const { process, events, emit } = protocol();

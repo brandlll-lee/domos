@@ -2,12 +2,14 @@ import { execFileSync } from "node:child_process";
 import { once } from "node:events";
 import {
   chmod,
+  mkdir,
   mkdtemp,
   readFile,
   rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
+import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -17,11 +19,19 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { expect, onTestFinished, test, vi } from "vitest";
 import { openGateway } from "../src/harness/gateway.mjs";
+import { JsonLines } from "../src/harness/json-lines.ts";
 import piTools from "../src/harness/pi-tools.mjs";
 import { WorkProcess } from "../src/harness/process.ts";
 import { callProductTool } from "../src/harness/product-tools.ts";
 import type { EngineRuntime } from "../src/harness/task-types.ts";
 import type { ProductResult } from "../src/harness/types.ts";
+
+const piCli = join(
+  dirname(
+    fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent")),
+  ),
+  "bundle/cli.js",
+);
 
 test("CUA text copies retain addresses and images without repeating observation payloads", async () => {
   const tree = "[97] button Play\n".repeat(1200);
@@ -179,6 +189,111 @@ test("Pi registers the product server with its native MCP lifecycle", async () =
     else globalThis.process.env.DOMOS_PI_TOOLS = previous;
   }
 });
+
+test("Pi exposes configured MCP servers through native discovery tools", async () => {
+  const { process, directory } = await worker();
+  const ready = await process.ready;
+  const account = join(directory, "pi");
+  await mkdir(account);
+  await writeFile(
+    join(account, "mcp.json"),
+    JSON.stringify({
+      mcpServers: {
+        code: { url: ready.url, exposure: "codemode" },
+        search: { url: ready.url, exposure: "deferred" },
+      },
+    }),
+  );
+  const warnings: string[] = [];
+  const rpc = new JsonLines(process, true);
+  rpc.on("frame", (frame) => {
+    if (frame.type === "extension_ui_request" && frame.method === "notify")
+      warnings.push(frame.message);
+  });
+  await process.launch({
+    command: globalThis.process.execPath,
+    args: [
+      piCli,
+      "--mode",
+      "rpc",
+      "--session-dir",
+      join(directory, "sessions"),
+    ],
+    env: { PI_CODING_AGENT_DIR: account, DOMOS_PI_MCP_URL: ready.url },
+  });
+  const state = await rpc.request<{ sessionFile: string }>("get_state");
+  expect(state.sessionFile).toBeTruthy();
+  await process.toolsReady();
+  expect(
+    warnings.filter((message) => message.includes("neither is active")),
+  ).toEqual([]);
+});
+
+test.each(["timeout", "stop"])(
+  "Pi settles a stalled MCP connection (%s)",
+  async (mode) => {
+    const { process, directory } = await worker();
+    const entered = Promise.withResolvers<void>();
+    const server = createServer((request) => {
+      request.resume();
+      entered.resolve();
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    onTestFinished(() => {
+      server.closeAllConnections();
+      server.close();
+    });
+    const address = server.address() as { port: number };
+    const account = join(directory, "pi");
+    await mkdir(account);
+    await writeFile(
+      join(account, "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          stalled: {
+            url: `http://127.0.0.1:${address.port}/mcp`,
+            exposure: "direct",
+            timeout: mode === "timeout" ? 1 : 60,
+          },
+        },
+      }),
+    );
+    const rpc = new JsonLines(process, true);
+    const notice = Promise.withResolvers<string>();
+    rpc.on("frame", (frame) => {
+      if (
+        frame.type === "extension_ui_request" &&
+        frame.message?.includes("stalled: failed")
+      )
+        notice.resolve(frame.message);
+    });
+    await process.launch({
+      command: globalThis.process.execPath,
+      args: [
+        piCli,
+        "--mode",
+        "rpc",
+        "--session-dir",
+        join(directory, "sessions"),
+      ],
+      env: {
+        PI_CODING_AGENT_DIR: account,
+        DOMOS_PI_MCP_URL: (await process.ready).url,
+      },
+    });
+    await rpc.request("get_state");
+    await entered.promise;
+    if (mode === "timeout")
+      expect(await notice.promise).toMatch(/timed out|timeout/i);
+    else {
+      const started = performance.now();
+      await process.terminate();
+      await process.closed;
+      expect(performance.now() - started).toBeLessThan(2000);
+    }
+  },
+);
 
 test("program resolution and execution use the same absolute native entry", async () => {
   const { process, directory } = await worker();

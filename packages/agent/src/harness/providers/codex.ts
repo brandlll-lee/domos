@@ -431,6 +431,7 @@ export const codexProvider: EngineProvider = {
         return true;
       },
     };
+    rpc.phase = "执行";
     return session;
   },
 };
