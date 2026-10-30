@@ -17,7 +17,6 @@ import {
   LiveDoc,
   type Registry,
   type TaskId,
-  ToolTask,
 } from "@earendil-works/pi-durable";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 import { z } from "zod";
@@ -90,25 +89,6 @@ export class ComputerRuntime {
       defineExtension({
         name: "domos-computer-control",
         hooks: [
-          hook(ToolTask, {
-            beforeTool: async (call, api, context) => {
-              if (!["bash", "powershell", "write", "edit"].includes(call.name))
-                return;
-              const answer = await this.approve(
-                api.conversationId,
-                {
-                  id: randomUUID(),
-                  title: `电脑操作 · ${call.name}`,
-                  detail: JSON.stringify(call.arguments),
-                  kind: "permission",
-                  automatic: true,
-                },
-                context.abortSignal ?? new AbortController().signal,
-                context,
-              );
-              if (!answer.allow) return { block: "操作未获批准。" };
-            },
-          }),
           hook(GenerationTask, {
             onYield: (_answer, api) => {
               computers.tools.finish(`computer:${api.conversationId}`);
