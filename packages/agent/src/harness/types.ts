@@ -282,7 +282,7 @@ export const engineLimits = {
   executionMs: 120_000,
   frameBytes: 16 * 1024 * 1024,
   outputCharacters: 32_000,
-  flushMs: 80,
+  flushMs: 300,
   historyEntries: 64,
   historyCharacters: 16_000,
 } as const;
