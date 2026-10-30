@@ -37,6 +37,50 @@ test("MCP callers receive the original screenshot and structured result", async 
   });
 });
 
+test("MCP error replies contain text while the original evidence stays intact", async () => {
+  const result: ProductResult = {
+    isError: true,
+    content: [
+      { type: "image", mimeType: "image/png", data: "c2NyZWVu" },
+      { type: "text", text: "Input failed. Screenshot saved as evidence." },
+    ],
+    structuredContent: { evidence: [{ id: "saved-screenshot" }] },
+  };
+  const original = structuredClone(result);
+  const gateway = await openGateway(
+    [
+      {
+        name: "operate",
+        description: "Operate",
+        inputSchema: { type: "object" },
+      },
+    ],
+    async () => result,
+  );
+  const client = new Client({ name: "test", version: "1" });
+  onTestFinished(async () => {
+    await client.close();
+    await gateway.close();
+  });
+  await client.connect(new StreamableHTTPClientTransport(new URL(gateway.url)));
+  const reply = await client.callTool({ name: "operate" });
+  expect(reply.isError).toBe(true);
+  expect(reply.content).toEqual(
+    expect.arrayContaining([
+      result.content[1],
+      {
+        type: "text",
+        text: "The screenshots in this error were removed. Call get_window_state again before any pixel action.",
+      },
+    ]),
+  );
+  expect(
+    (reply.content as { type: string }[]).every((part) => part.type === "text"),
+  ).toBe(true);
+  expect(reply.structuredContent).toEqual(result.structuredContent);
+  expect(result).toEqual(original);
+});
+
 test("cancelling an MCP call stops its work without closing other callers", async () => {
   const entered = Promise.withResolvers<void>();
   const cancelled = Promise.withResolvers<void>();

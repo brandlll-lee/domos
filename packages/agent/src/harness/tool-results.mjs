@@ -1,6 +1,22 @@
 import { z } from "zod";
 
 const budget = 8000;
+
+function textOnlyError(result) {
+  if (result.isError !== true) return result;
+  const content = result.content.filter((part) => part.type === "text");
+  if (content.length === result.content.length) return result;
+  return {
+    ...result,
+    content: [
+      ...content,
+      {
+        type: "text",
+        text: "The screenshots in this error were removed. Call get_window_state again before any pixel action.",
+      },
+    ],
+  };
+}
 const queryInput = z.strictObject({
   result: z.string(),
   path: z.string().optional(),
@@ -57,7 +73,8 @@ function bounded(value, remaining = { chars: budget }) {
 export function openToolResults() {
   const held = new Map();
   let sequence = 0;
-  function project(result) {
+  function project(raw) {
+    const result = textOnlyError(raw);
     const text = result.content.filter((part) => part.type === "text");
     const structured = result.structuredContent;
     const source = structured ?? text.map((part) => part.text).join("\n");
