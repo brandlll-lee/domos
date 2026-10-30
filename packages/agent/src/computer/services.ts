@@ -214,12 +214,13 @@ export class ComputerServices {
     owner: string,
     signal: AbortSignal,
     context: Context,
+    cursorColor?: string,
   ) {
     return this.run(botId, service, owner, signal, async (combined) => {
       const worker = await this.worker(botId, context, service);
       combined.throwIfAborted();
       return worker.computer<ProductResult>(
-        { operation: "call", service, name, arguments: args },
+        { operation: "call", service, name, arguments: args, cursorColor },
         combined,
       );
     });

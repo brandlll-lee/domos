@@ -341,6 +341,7 @@ export class EngineExecution {
           review?.through ?? null,
           undefined,
           6000,
+          "omit",
         );
         await runtime.commit(async (tx) => {
           (await tx.doc(MemorySnapshotDoc, runtime.taskId)).dispatched = true;
@@ -456,6 +457,7 @@ export class EngineExecution {
         resumed ? (doc.sessions?.[key]?.through ?? null) : null,
         undefined,
         budget,
+        "omit",
       );
       runtime.signal.throwIfAborted();
       active.controller.signal.throwIfAborted();

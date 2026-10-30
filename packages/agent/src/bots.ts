@@ -40,7 +40,7 @@ export type CreateBot = {
   avatar?: string;
 };
 
-const BotDirectory = defineDoc<{
+export const BotDirectory = defineDoc<{
   items: (Bot & {
     requestId: string | null;
     revision?: number;

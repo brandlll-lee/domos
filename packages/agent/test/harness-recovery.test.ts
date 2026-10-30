@@ -584,7 +584,7 @@ test.each(["tools", "ack", "gap"])(
       expect(prompts[1]).not.toContain("Native observation receipt");
     if (mode === "gap") {
       expect(prompts[1]).toContain("Unconfirmed extra input");
-      expect(prompts[1]).toContain("Native observation receipt");
+      expect(prompts[1]).not.toContain("Native observation receipt");
     }
   },
 );

@@ -124,6 +124,8 @@ for (const name of [
   "computer-service.mjs",
   "desktop-tools.mjs",
   "desktop-driver.mjs",
+  "cursor-theme.mjs",
+  "cursor.lottie",
 ])
   await cp(
     join(root, "packages/agent/src/harness", name),
@@ -140,6 +142,16 @@ await cp(
   join(
     nativeDirectory,
     process.platform === "win32" ? "cua-driver.exe" : "cua-driver",
+  ),
+);
+await cp(
+  join(
+    dirname(nativeBinary),
+    process.platform === "win32" ? "cua-cursor-theme.exe" : "cua-cursor-theme",
+  ),
+  join(
+    nativeDirectory,
+    process.platform === "win32" ? "cua-cursor-theme.exe" : "cua-cursor-theme",
   ),
 );
 await cp(

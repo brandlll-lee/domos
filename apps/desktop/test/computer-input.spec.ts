@@ -40,11 +40,13 @@ test("native desktop input, cursor and conditions use the driver session", async
     [],
     async () => ({ content: [] }),
   );
+  let cursorColor = "#4dd9cc";
   const call = async (name: string, args: Record<string, unknown>) => ({
     ...(await worker.computer<{
       isError: boolean;
       content: unknown[];
       structuredContent: {
+        theme: { id: string };
         windows: Array<{
           title: string;
           window_id: number;
@@ -63,6 +65,7 @@ test("native desktop input, cursor and conditions use the driver session", async
         service: "desktop",
         name,
         arguments: args,
+        cursorColor,
       },
       AbortSignal.timeout(30000),
     )),
@@ -214,6 +217,7 @@ test("native desktop input, cursor and conditions use the driver session", async
     expect(await call("get_agent_cursor_state", {})).toMatchObject({
       structuredContent: {
         enabled: true,
+        theme: { id: "app.domos.cursor.c4dd9cc" },
         motion: { style: "signature_arc", timing: "steady" },
         visual_state: { requested_action: "click" },
       },
@@ -317,6 +321,18 @@ test("native desktop input, cursor and conditions use the driver session", async
         session: expect.any(String),
       },
     });
+    cursorColor = "#ff776b";
+    await expect
+      .poll(() => call("get_agent_cursor_state", {}))
+      .toMatchObject({
+        structuredContent: { theme: { id: "app.domos.cursor.cff776b" } },
+      });
+    await expect
+      .poll(() => call("get_agent_cursor_state", { session: "color-check" }))
+      .toMatchObject({
+        structuredContent: { theme: { id: "app.domos.cursor.cff776b" } },
+      });
+    await call("end_session", { session: "color-check" });
     const batch = await call("run_steps", {
       ...identity,
       delivery_mode: "foreground",

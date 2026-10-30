@@ -24,7 +24,7 @@ The forward migration keeps the current database. It sets migrated Bots to Pi an
 
 Switching Harness or work computer creates a native session. The display history remains continuous. Native session keys include the computer, configuration, and native account fingerprint. Native recovery checks recorded outcomes before deciding that a turn completed. Uncertain work is not sent again.
 
-Handoffs contain quoted recent history. They scan up to 64 entries. Each text excerpt has a 4000-byte limit. The packet has a 16000-byte limit and may shrink to fit the native context budget. JSON escaping and metadata count toward the limit. UTF-8 characters stay intact. Historical images and private reasoning do not enter the handoff.
+Handoffs contain quoted recent chat text and retained summaries. They scan up to 64 entries. Each text excerpt has a 4000-byte limit. The packet has a 16000-byte limit and may shrink to fit the native context budget. JSON escaping and metadata count toward the limit. UTF-8 characters stay intact. Historical images and private reasoning do not enter the handoff. Native recovery sends only messages after the confirmed receipt cursor. Rebuilt sessions omit tool calls and results. The shared history selector can include at most 20 tool summaries of 120 characters each. These summaries contain tool names and status, not arguments, window handles or result trees. Complete tool records remain available through conversation_read. Chat text can still mention historical identifiers; it is quoted history, not current execution state.
 
 Native text, reasoning and tool records confirm receipt in the same accepted session, even when the turn later fails. The handoff cursor advances only through that confirmed range. Unconfirmed user input, stopped turns and terminal errors remain outside it. Compact operations retain their existing session boundary.
 
@@ -67,9 +67,11 @@ Work reads the existing conversation projection and EngineDoc. Native events sup
 
 The shared desktop boundary forwards the native tool catalog and structured results. Cua owns foreground delivery, tree cursors, and batch observation. Domos retains approvals, control leases, evidence, and unknown-result protection. A batch keeps its native end screenshot in the same request.
 
-The intent/result journal retains original calls and prevents replay of an issued call with a missing result. Earlier-turn window, process and snapshot identifiers require fresh discovery. Cua sessions own cursor visibility, position, motion and rendering. Native cursor timing honors reduced motion.
+The intent/result journal retains original calls and prevents replay of an issued call with a missing result. Earlier-turn window, process and snapshot identifiers require fresh discovery. Cua sessions own cursor visibility, position, motion and rendering. The host selects an installed native theme from the current Bot avatar color. Theme assets preserve native geometry, semantic animations and soft glow. Themes compile once per source and color on the work computer. Appearance metadata stays outside Agent tool arguments. Native cursor timing honors reduced motion. Theme errors leave native action results unchanged.
 
 See the [CUA lifecycle acceptance](reports/cua-lifecycle-2026-10-30.md) for current cancellation, native MCP, and Windows input checks.
+
+See the [handoff and cursor acceptance](reports/handoff-cursor-2026-10-30.md) for history selection and native Bot cursor colors.
 
 Protocol sources: [Pi RPC](https://pi.dev/docs/latest/rpc), [Codex app-server](https://developers.openai.com/codex/app-server), [Claude streaming](https://code.claude.com/docs/en/agent-sdk/streaming-output), [ACP plans](https://agentclientprotocol.com/protocol/v1/agent-plan). See the [acceptance report](reports/work-turns-2026-10-30.md).
 

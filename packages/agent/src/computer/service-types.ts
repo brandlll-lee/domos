@@ -24,5 +24,6 @@ export type ComputerRequest =
       service: ComputerService;
       name: string;
       arguments: Record<string, unknown>;
+      cursorColor?: string;
     };
 export type ComputerResponse = ProductTool[] | ProductResult | ServiceState;

@@ -42,6 +42,7 @@
     "agent-browser": "0.39.4",
     "croner": "10.0.1",
     "cross-spawn": "7.0.6",
+    "fflate": "0.8.2",
     "file-type": "^22.2.0",
     "jmespath": "0.16.0",
     "proper-lockfile": "4.1.2",

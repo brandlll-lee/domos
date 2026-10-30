@@ -1,5 +1,13 @@
 {
   "source": "shared-contract-probe:2026-10-29",
+  "handoff": {
+    "source": "task-10902:2026-10-31",
+    "observed": [
+      "A rebuilt native session received tool arguments with an earlier process and window identity.",
+      "A historical result stated that an old snapshot token remained valid.",
+      "The agent sent an observation to the stale target before confirming its new identity."
+    ]
+  },
   "nativeDiscovery": {
     "source": "task-10789:2026-10-31",
     "completion": "pass",

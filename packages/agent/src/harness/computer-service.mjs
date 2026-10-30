@@ -8,6 +8,7 @@ export function openComputerService(directory, home) {
   let desktopTools;
   let browser;
   const views = new Map();
+  const themes = new Map();
   async function driver() {
     starting ??= (async () => {
       desktop = await openDesktopDriver(home);
@@ -90,11 +91,31 @@ export function openComputerService(directory, home) {
         }
       }
       const args = input.arguments ?? {};
+      const session = args.session ?? "";
+      if (
+        input.cursorColor &&
+        input.name !== "end_session" &&
+        input.name !== "start_session"
+      ) {
+        if (themes.get(session)?.color !== input.cursorColor) {
+          const setting = desktop
+            .theme(input.cursorColor, session, signal)
+            .catch((error) => {
+              themes.delete(session);
+              console.error("Cursor theme:", error.message);
+            });
+          themes.set(session, { color: input.cursorColor, setting });
+        }
+        await themes.get(session)?.setting;
+        signal.throwIfAborted();
+      }
       const native = await desktop.client.callTool(
         { name: input.name, arguments: args },
         undefined,
         { signal },
       );
+      if (input.name === "end_session" || input.name === "start_session")
+        themes.delete(session);
       return {
         ...native,
         isError: Boolean(native.isError),

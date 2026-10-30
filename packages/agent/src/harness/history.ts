@@ -32,16 +32,21 @@ type HistoryMessage = {
   toolCallId?: string;
 };
 
-function historyMessages(entry: EntryRecord): HistoryMessage[] {
-  return entry.kind === EngineMessage
-    ? [historyMessage(entry.id, entry.data as unknown as ChatMessage)]
-    : (entry.model ?? []).flatMap((message) =>
-        message.role === "user" ||
-        message.role === "assistant" ||
-        message.role === "toolResult"
-          ? [historyMessage(entry.id, message)]
-          : [],
-      );
+function historyMessages(
+  entry: EntryRecord,
+  tools: "full" | "summary" | "omit" = "full",
+): HistoryMessage[] {
+  const messages =
+    entry.kind === EngineMessage
+      ? [entry.data as unknown as ChatMessage]
+      : (entry.model ?? []);
+  return messages.flatMap((message) =>
+    message.role === "user" ||
+    message.role === "assistant" ||
+    (message.role === "toolResult" && tools !== "omit")
+      ? [historyMessage(entry.id, message, tools)]
+      : [],
+  );
 }
 
 function historyMessage(
@@ -61,9 +66,23 @@ function historyMessage(
     > & {
       content: string | readonly ChatContent[];
     },
+  tools: "full" | "summary" | "omit" = "full",
 ): HistoryMessage {
+  const status =
+    message.error || message.isError
+      ? "failed"
+      : message.stopped
+        ? "stopped"
+        : "recorded";
+  if (tools === "summary" && message.role === "toolResult")
+    return {
+      entryId,
+      role: message.role,
+      text: `${message.toolName ?? "Tool"}: ${status}`.slice(0, 120),
+      status,
+    };
   const calls =
-    typeof message.content === "string"
+    tools !== "full" || typeof message.content === "string"
       ? []
       : message.content.filter((part) => part.type === "toolCall");
   const text = [
@@ -86,12 +105,7 @@ function historyMessage(
     entryId,
     role: message.role,
     text,
-    status:
-      message.error || message.isError
-        ? "failed"
-        : message.stopped
-          ? "stopped"
-          : "recorded",
+    status,
     ...(message.toolName ? { tool: message.toolName } : {}),
     ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
   };
@@ -150,6 +164,7 @@ export async function conversationHistory(
   through: EntryId | null,
   before?: EntryId,
   budget: number = engineLimits.historyCharacters,
+  tools: "full" | "summary" | "omit" = "full",
 ) {
   let entries: readonly EntryRecord[] = [];
   let bounded = before !== undefined;
@@ -179,8 +194,14 @@ export async function conversationHistory(
     .filter((entry) => !through || entry.id > through);
   const messages = previous
     .toReversed()
-    .flatMap(historyMessages)
+    .flatMap((entry) => historyMessages(entry, tools))
     .filter((message) => message.text.trim());
+  if (tools === "summary") {
+    let remaining = 20;
+    for (let index = messages.length - 1; index >= 0; index--)
+      if (messages[index]?.role === "toolResult" && remaining-- <= 0)
+        messages.splice(index, 1);
+  }
   const limit = Math.max(0, Math.min(engineLimits.historyCharacters, budget));
   type Excerpt = HistoryMessage & { excerpt?: boolean };
   const selected: Excerpt[] = [];

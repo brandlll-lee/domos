@@ -216,6 +216,7 @@ test("mode gates catalog and invocation; handoffs are explicit, single-use and o
     "owner",
     expect.any(AbortSignal),
     context,
+    undefined,
   );
   await expect(
     invoke("computer_assist", { ...input(), handoff }),
@@ -243,7 +244,7 @@ test("mode gates catalog and invocation; handoffs are explicit, single-use and o
     "computer_request_takeover",
   ]);
   await invoke("click");
-  await expect(invoke("wait_for_load")).rejects.toThrow("wait_for/expect");
+  await expect(invoke("wait_for_load")).rejects.toThrow("不可用");
 });
 
 test.each(["stale", "background", "partial", "empty"])(

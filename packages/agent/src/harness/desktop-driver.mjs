@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { CuaDriver, EmbeddedCuaDriverHost } from "@trycua/cua-driver";
+import { installCursorTheme } from "./cursor-theme.mjs";
 
 const run = promisify(execFile);
 export async function desktopBinary(home) {
@@ -127,10 +128,9 @@ export async function desktopBinary(home) {
 }
 
 export async function openDesktopDriver(home) {
-  const host = new EmbeddedCuaDriverHost(
-    await desktopBinary(home),
-    "com.domos.desktop",
-  );
+  const binary = await desktopBinary(home);
+  const themes = new Map();
+  const host = new EmbeddedCuaDriverHost(binary, "com.domos.desktop");
   const client = new Client({ name: "domos-computer", version: "1" });
   try {
     const connection = await host.start();
@@ -145,6 +145,25 @@ export async function openDesktopDriver(home) {
     return {
       driver,
       client,
+      async theme(color, session, signal) {
+        if (!themes.has(color))
+          themes.set(color, installCursorTheme(binary, home, color));
+        const themeId = await themes.get(color);
+        signal.throwIfAborted();
+        const result = await client.callTool(
+          {
+            name: "set_agent_cursor_theme",
+            arguments: {
+              ...(session ? { session } : {}),
+              theme_id: themeId,
+              reduced_motion: "auto",
+            },
+          },
+          undefined,
+          { signal },
+        );
+        if (result.isError) throw new Error(JSON.stringify(result.content));
+      },
       async close() {
         try {
           await client.close();

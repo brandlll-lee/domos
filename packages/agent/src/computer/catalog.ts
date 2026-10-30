@@ -1,5 +1,6 @@
 import { EventEmitter, on } from "node:events";
 import { platform } from "node:os";
+import { characterIdentity } from "@domos/ui/characters";
 import type { Context } from "@earendil-works/chord/context";
 import type { CredentialStore } from "@earendil-works/pi-ai";
 import {
@@ -10,7 +11,7 @@ import {
   type ToolRegistration,
   type Tx,
 } from "@earendil-works/pi-durable";
-import type { Bots } from "../bots.ts";
+import { BotDirectory, type Bots } from "../bots.ts";
 import type {
   EngineProcess,
   ProductResult,
@@ -300,12 +301,16 @@ export class Computers {
     const binding = doc?.bindings[String(botId)];
     if (!binding?.computerId)
       throw new WorkError("BAD_REQUEST", "请先选择工作电脑。");
+    const bot = (
+      await this.harness.snapshot(BotDirectory, context)
+    )?.items.find((item) => item.id === botId);
     return {
       id: binding.computerId,
       target: this.target(
         requireComputer(doc?.items ?? [], binding.computerId),
       ),
       enabled: binding.services ?? {},
+      cursorColor: bot ? characterIdentity(bot.avatar).color : undefined,
     };
   }
 

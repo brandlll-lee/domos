@@ -6,14 +6,20 @@ import { openGateway } from "../src/harness/gateway.mjs";
 import { productCatalog } from "../src/harness/product-tools.ts";
 import type { EngineRuntime } from "../src/harness/task-types.ts";
 
-const { driver } = vi.hoisted(() => ({
+const { driver, theme } = vi.hoisted(() => ({
+  theme: vi.fn(async () => {}),
   driver: {
     callTool: vi.fn(),
     listTools: vi.fn(async () => ({ tools: [] })),
   },
 }));
 vi.mock("../src/harness/desktop-driver.mjs", () => ({
-  openDesktopDriver: async () => ({ driver, client: driver, close: vi.fn() }),
+  openDesktopDriver: async () => ({
+    driver,
+    client: driver,
+    theme,
+    close: vi.fn(),
+  }),
 }));
 const entry = "../src/harness/computer-service.mjs";
 const { openComputerService } = await import(entry);
@@ -108,6 +114,45 @@ test("the desktop relay preserves the native MCP envelope", async () => {
   expect(result._meta).toMatchObject(native._meta);
   expect(result.structuredContent).toEqual(native.structuredContent);
   expect(result.content).toEqual(expect.arrayContaining(native.content));
+  await service.close();
+});
+
+test("cursor appearance follows Bot color and native sessions without changing action arguments", async () => {
+  driver.callTool.mockResolvedValue({ content: [], isError: false });
+  const service = openComputerService(".", ".");
+  const signal = new AbortController().signal;
+  const request = async (color: string, name = "click", args = {}) =>
+    service.request(
+      {
+        operation: "call",
+        service: "desktop",
+        name,
+        arguments: args,
+        cursorColor: color,
+      },
+      signal,
+    );
+  await request("#4dd9cc");
+  await request("#4dd9cc");
+  await request("#ff776b");
+  await request("#4dd9cc", "click", { session: "agent" });
+  expect(theme.mock.calls).toEqual([
+    ["#4dd9cc", "", signal],
+    ["#ff776b", "", signal],
+    ["#4dd9cc", "agent", signal],
+  ]);
+  await request("#4dd9cc", "end_session", { session: "agent" });
+  await request("#4dd9cc", "start_session", { session: "agent" });
+  await request("#4dd9cc", "click", { session: "agent" });
+  expect(theme).toHaveBeenCalledTimes(4);
+  expect(driver.callTool.mock.calls.at(-1)?.[0]).toEqual({
+    name: "click",
+    arguments: { session: "agent" },
+  });
+  theme.mockRejectedValueOnce(new Error("theme unavailable"));
+  const notice = vi.spyOn(console, "error").mockImplementation(() => {});
+  await expect(request("#659fff")).resolves.toMatchObject({ isError: false });
+  notice.mockRestore();
   await service.close();
 });
 

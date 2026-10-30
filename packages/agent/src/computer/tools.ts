@@ -162,10 +162,8 @@ export class ComputerTools {
     return this.computers.transfer(
       botId,
       async () => {
-        const { target, enabled, id } = await this.computers.serviceTarget(
-          botId,
-          context,
-        );
+        const { target, enabled, id, cursorColor } =
+          await this.computers.serviceTarget(botId, context);
         this.targets.add(target);
         if (name === assistTool.name) {
           const input = assistInput.parse(args);
@@ -206,6 +204,7 @@ export class ComputerTools {
               owner,
               aborted,
               context,
+              cursorColor,
             );
           };
           return target.services.run(
@@ -384,6 +383,7 @@ export class ComputerTools {
               owner,
               signal,
               context,
+              cursorColor,
             );
           }
         }
