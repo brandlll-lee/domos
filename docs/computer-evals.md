@@ -66,12 +66,12 @@ pnpm exec vitest run packages/agent/test/computer-evals.test.ts
 
 这些测试验证评分器，不代表重新运行了 Agent。当前未提供自动截图判分、自动真实任务重跑或跨平台桌面成功率。
 
-共享执行入口的回归使用 `packages/agent/test/computer-input.test.ts`。它检查原生目录、严格输出校验、图片、错误和 MCP 元数据。动作、批次、脚本、启动及剪贴板请求都只转发一次，参数保持原样。原生会话错误由 Agent 处理。外层动作记录阻止同一已发请求被重放。`computer-activity.test.ts` 检查效果仅使用返回的观察和动作。`harness-projection.test.ts` 使用受控慢存储检查事件继续接收、稀疏更新、真实接收时间、停止隔离及最终写入。原生会话接收确认仍须先落盘。
+共享执行入口的回归使用 `packages/agent/test/computer-input.test.ts`。它检查原生目录、严格输出校验、图片、错误和 MCP 元数据。动作、批次、脚本、启动及剪贴板请求都只转发一次，参数保持原样。原生会话错误由 Agent 处理。外层动作记录阻止同一已发请求被重放。原生宿主持有桌面光标和会话。`harness-projection.test.ts` 使用受控慢存储检查事件继续接收、稀疏更新、真实接收时间、停止隔离及最终写入。原生会话接收确认仍须先落盘。
 
 Windows 图形会话可运行原生模拟：
 
 ```sh
-pnpm exec playwright test --config apps/desktop/playwright.config.ts apps/desktop/test/computer-effect.spec.ts --grep "foreground input keeps"
+pnpm exec playwright test --config apps/desktop/playwright.config.ts apps/desktop/test/computer-input.spec.ts
 ```
 
 模拟窗口读回控件输入、前台输入、连续脚本输入和按钮结果。会话结束后，测试显式开始新会话。需要批次收尾观察时，测试显式传入 observe。批次检查失败后停止。此 E2E 不调用在线模型。Domos 状态放在文本内容中。原生结构化输出遵守工具格式。`confirmed` 表示驱动确认效果，`checked` 表示后置条件通过，`required` 表示仍须核对。观察失败时保留动作结果，只恢复观察。这些状态不等于完整用户任务完成。
@@ -90,7 +90,7 @@ pnpm exec playwright test apps/web/test/browser-takeover.spec.ts
 
 失败用例中只有故障注入拦截一次输入请求。它检查暂停、重新连接和输入不被自动重放。正常动作仍使用真实浏览器。队列测试检查动作顺序、未知结果后的停止、移动合并和容量上限。
 
-Playwright 保存 1440、768、390 宽度的截图，并检查固定身份区、四个 Tab、等比画面、底栏和全屏恢复。空状态回归检查连接中、未启用、未就绪和失败状态的水平居中及内容边界。桌面端验收另行检查原生窗口全屏与恢复。Checks 在三个系统运行网页画面和通用回归，保存 `test-results/web.xml`、失败轨迹和截图。Browser 验收不依赖 Cua 窗口捕获或屏幕录制授权。Computer 的原生桌面仍受系统图形会话和权限限制。Computer effects 同时运行坐标与输入队列测试。未 push 的提交没有远端 CI 结果。此验收不调用模型，不报告模型成功率或轮数改善。
+Playwright 保存 1440、768、390 宽度的截图，并检查固定身份区、四个 Tab、等比画面、底栏和全屏恢复。空状态回归检查连接中、未启用、未就绪和失败状态的水平居中及内容边界。桌面端验收另行检查原生窗口全屏与恢复。Checks 在三个系统运行网页画面和通用回归，保存 `test-results/web.xml`、失败轨迹和截图。Browser 验收不依赖 Cua 窗口捕获或屏幕录制授权。Computer 的原生桌面仍受系统图形会话和权限限制。Computer input 同时运行坐标与输入队列测试。未 push 的提交没有远端 CI 结果。此验收不调用模型，不报告模型成功率或轮数改善。
 
 接管消息使用真实共享执行入口和真实浏览器验收。Durable 工具与共享接管测试检查等待卡片、完成前输入排空、完成后恢复和过期请求。浏览器回归还检查刷新后等待与完成状态、卡片打开正确画面、中文输入后 Agent 重新读回实际值。截图作为测试产物保存。桌面卡片的控制权使用同一入口；原生桌面输入仍需相应系统环境验收。
 
@@ -104,7 +104,7 @@ Playwright 保存 1440、768、390 宽度的截图，并检查固定身份区、
 
 Checks 在 Linux 图形测试中使用 Xvfb。Windows 本地测试不证明其他系统已通过。未 push 的提交没有远端 CI 结果。上述测试不调用在线模型，不能报告 Agent 任务成功率或模型响应速度改善。
 
-连续操作基线保存在 `browser-failures.json` 的 `continuousInput`。回归按动画帧发送 120 次滚动，检查接管保持、交还完成和暂停次数。拖动用例在松开鼠标前读回选区。命令接口单测验证 Origin、回复确认、回复大小和取消。队列单测检查连续滚动、反向、按键及完成操作的顺序。Checks 与 Computer effects 包含这些测试。测试不依赖在线模型，不把协议测试或帧率上限当成性能改善数据。
+连续操作基线保存在 `browser-failures.json` 的 `continuousInput`。回归按动画帧发送 120 次滚动，检查接管保持、交还完成和暂停次数。拖动用例在松开鼠标前读回选区。命令接口单测验证 Origin、回复确认、回复大小和取消。队列单测检查连续滚动、反向、按键及完成操作的顺序。Checks 与 Computer input 包含这些测试。测试不依赖在线模型，不把协议测试或帧率上限当成性能改善数据。
 
 ## 首次接管与浏览器观察
 

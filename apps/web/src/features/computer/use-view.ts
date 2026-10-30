@@ -1,4 +1,3 @@
-import type { ComputerActivity } from "@domos/agent/computer/activity";
 import type { ViewFrame } from "@domos/agent/computer/viewer-types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../client.ts";
@@ -15,7 +14,6 @@ export function useView(
     [botId, service, attempt],
   );
   const [frame, setFrame] = useState<ViewFrame>();
-  const [activity, setActivity] = useState<ComputerActivity>(null);
   const [connected, setConnected] = useState(false);
   const [controlling, setControlling] = useState(false);
   const [error, setError] = useState<string>();
@@ -32,7 +30,6 @@ export function useView(
     const { botId, service } = connection;
     const controller = new AbortController();
     setFrame(undefined);
-    setActivity(null);
     setConnected(false);
     setControlling(false);
     setError(undefined);
@@ -40,22 +37,6 @@ export function useView(
     handoff.current = false;
     frameRate.current = 30;
     setBlocked(false);
-    const visual = new AbortController();
-    if (service === "desktop")
-      void (async () => {
-        const stream = await client.computer.activity(
-          { botId },
-          { signal: AbortSignal.any([controller.signal, visual.signal]) },
-        );
-        for await (const value of stream) {
-          if (controller.signal.aborted || visual.signal.aborted) break;
-          setActivity(value);
-        }
-      })()
-        .catch(() => {})
-        .finally(() => {
-          if (!controller.signal.aborted) setActivity(null);
-        });
     void (async () => {
       const stream = await client.computer.watch(
         { botId, service },
@@ -128,7 +109,6 @@ export function useView(
           setError(cause.message ?? "画面连接已断开。");
       })
       .finally(() => {
-        visual.abort();
         if (!controller.signal.aborted) session.current = undefined;
         if (!controller.signal.aborted) {
           setConnected(false);
@@ -186,7 +166,6 @@ export function useView(
   }, [botId, takeoverId, send]);
   return {
     frame,
-    activity,
     connected,
     controlling,
     error,

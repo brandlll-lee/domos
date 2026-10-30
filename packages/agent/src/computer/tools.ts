@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Context } from "@earendil-works/chord/context";
 import { browserObservations } from "../harness/browser-tools.mjs";
-import { desktopToolListed } from "../harness/desktop-actions.mjs";
+import { desktopToolListed } from "../harness/desktop-tools.mjs";
 import type { ProductResult, ProductTool } from "../harness/types.ts";
 import { runAssistant } from "./assistant.ts";
 import {
@@ -102,6 +102,8 @@ export class ComputerTools {
         service,
         context,
       )) {
+        if (service === "browser" && tool.name === "agent_browser_wait_ms")
+          continue;
         const exposedName =
           service === "desktop" ? tool.name : `${service}_${tool.name}`;
         if (
@@ -173,11 +175,6 @@ export class ComputerTools {
           );
           if (!connection || !enabled[input.service] || !approve)
             throw new Error("辅助决策未启用或审批通道不可用。");
-          const actor = {
-            botId,
-            color: await this.computers.color(botId, context),
-            owner,
-          };
           const tools = await target.services.catalog(
             botId,
             input.service,
@@ -209,7 +206,6 @@ export class ComputerTools {
               owner,
               aborted,
               context,
-              actor,
             );
           };
           return target.services.run(
@@ -388,11 +384,6 @@ export class ComputerTools {
               owner,
               signal,
               context,
-              {
-                botId,
-                color: await this.computers.color(botId, context),
-                owner,
-              },
             );
           }
         }
@@ -411,15 +402,6 @@ export class ComputerTools {
     );
     if (!enabled[service]) throw new Error("请先启用这项电脑服务。");
     return target.services.takeover(botId, service);
-  }
-
-  async *activity(botId: number, signal: AbortSignal, context: Context) {
-    const { target, enabled } = await this.computers.serviceTarget(
-      botId,
-      context,
-    );
-    if (!enabled.desktop) return;
-    yield* target.services.activity(botId, signal, context);
   }
 
   async release(

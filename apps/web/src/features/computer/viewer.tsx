@@ -6,7 +6,6 @@ import { CornersOutIcon } from "@phosphor-icons/react/dist/csr/CornersOut";
 import { CursorIcon } from "@phosphor-icons/react/dist/csr/Cursor";
 import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
 import { useEffect, useRef, useState } from "react";
-import { ComputerEffect } from "./effect.tsx";
 import { useView } from "./use-view.ts";
 import { ComputerViewport } from "./viewport.tsx";
 
@@ -27,7 +26,6 @@ export function ComputerViewer({
 }) {
   const {
     frame,
-    activity,
     connected,
     controlling,
     error,
@@ -105,9 +103,6 @@ export function ComputerViewer({
           />
         ) : (
           <p className="detail-note">{error ? "画面暂不可用" : "正在连接…"}</p>
-        )}
-        {frame && (
-          <ComputerEffect state={connected && !controlling ? activity : null} />
         )}
         {frame && connected && !controlling && !blocked && (
           <button

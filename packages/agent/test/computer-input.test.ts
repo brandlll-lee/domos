@@ -6,22 +6,14 @@ import { openGateway } from "../src/harness/gateway.mjs";
 import { productCatalog } from "../src/harness/product-tools.ts";
 import type { EngineRuntime } from "../src/harness/task-types.ts";
 
-const { driver, activity } = vi.hoisted(() => ({
+const { driver } = vi.hoisted(() => ({
   driver: {
     callTool: vi.fn(),
-    listToolsJson: vi.fn(async () => '{"tools":[]}'),
-    shutdown: vi.fn(),
-    uniffiDestroy: vi.fn(),
-  },
-  activity: {
-    observe: vi.fn(),
-    clear: vi.fn(),
-    close: vi.fn(),
+    listTools: vi.fn(async () => ({ tools: [] })),
   },
 }));
-vi.mock("@trycua/cua-driver", () => ({ CuaDriver: { create: () => driver } }));
-vi.mock("../src/harness/desktop-activity.mjs", () => ({
-  openDesktopActivity: () => activity,
+vi.mock("../src/harness/desktop-driver.mjs", () => ({
+  openDesktopDriver: async () => ({ driver, client: driver, close: vi.fn() }),
 }));
 const entry = "../src/harness/computer-service.mjs";
 const { openComputerService } = await import(entry);
@@ -30,7 +22,6 @@ function callDesktop(
   name: string,
   args: Record<string, unknown>,
   signal = new AbortController().signal,
-  actor?: { botId: number; color: string; owner: string },
 ) {
   return service.request(
     {
@@ -38,7 +29,6 @@ function callDesktop(
       service: "desktop",
       name,
       arguments: args,
-      ...(actor ? { actor } : {}),
     },
     signal,
   );
@@ -50,8 +40,8 @@ afterEach(() => {
 
 test("MCP validates native action output and retains Domos text", async () => {
   driver.callTool.mockResolvedValue({
-    structuredJson: '{"effect":"confirmed","route":"background"}',
-    images: [],
+    structuredContent: { effect: "confirmed", route: "background" },
+    content: [],
     isError: false,
   });
   const service = openComputerService(".", ".");
@@ -117,11 +107,7 @@ test("the desktop relay preserves the native MCP envelope", async () => {
     _meta: { receipt: "native" },
     structuredContent: { effect: "confirmed" },
   };
-  driver.callTool.mockResolvedValue({
-    rawJson: JSON.stringify(native),
-    images: [],
-    isError: false,
-  });
+  driver.callTool.mockResolvedValue(native);
   const service = openComputerService(".", ".");
   const result = await callDesktop(service, "click", { pid: 7, window_id: 90 });
   expect(result._meta).toMatchObject(native._meta);
@@ -148,7 +134,7 @@ test.each([
       structuredContent: { code: "session_ended", observation: { ok: false } },
       isError: true,
     };
-    driver.callTool.mockResolvedValue({ rawJson: JSON.stringify(native) });
+    driver.callTool.mockResolvedValue(native);
     const service = openComputerService(".", ".");
     const signal = new AbortController().signal;
     const input = structuredClone(args);
@@ -161,14 +147,14 @@ test.each([
     }
     expect(args).toEqual(input);
     expect(driver.callTool.mock.calls).toEqual([
-      [name, JSON.stringify(args), { signal }],
-      [name, JSON.stringify(args), { signal }],
+      [{ name, arguments: args }, undefined, { signal }],
+      [{ name, arguments: args }, undefined, { signal }],
     ]);
     await service.close();
   },
 );
 
-test("effect errors do not change native execution and cancellation prevents dispatch", async () => {
+test("cancellation prevents native dispatch", async () => {
   const service = openComputerService(".", ".");
   const controller = new AbortController();
   controller.abort(new Error("stopped"));
@@ -176,28 +162,25 @@ test("effect errors do not change native execution and cancellation prevents dis
     callDesktop(service, "click", {}, controller.signal),
   ).rejects.toThrow("stopped");
   expect(driver.callTool).not.toHaveBeenCalled();
-  activity.observe.mockImplementation(() => {
-    throw new Error("overlay unavailable");
-  });
   driver.callTool.mockResolvedValue({
-    rawJson: '{"content":[],"isError":false}',
+    content: [],
+    isError: false,
   });
   await expect(
     callDesktop(service, "click", { pid: 7 }),
   ).resolves.toMatchObject({ isError: false });
   expect(driver.callTool).toHaveBeenCalledOnce();
   await service.close();
-  activity.observe.mockReset();
 });
 
 test("cancellation during driver initialization prevents dispatch", async () => {
-  const catalog = Promise.withResolvers<string>();
-  driver.listToolsJson.mockReturnValueOnce(catalog.promise);
+  const catalog = Promise.withResolvers<{ tools: never[] }>();
+  driver.listTools.mockReturnValueOnce(catalog.promise);
   const service = openComputerService(".", ".");
   const controller = new AbortController();
   const request = callDesktop(service, "click", {}, controller.signal);
   controller.abort(new Error("stopped"));
-  catalog.resolve('{"tools":[]}');
+  catalog.resolve({ tools: [] });
   await expect(request).rejects.toThrow("stopped");
   expect(driver.callTool).not.toHaveBeenCalled();
   await service.close();

@@ -67,7 +67,7 @@ Work reads the existing conversation projection and EngineDoc. Native events sup
 
 The shared desktop boundary forwards the native tool catalog and structured results. Cua owns foreground delivery, tree cursors, and batch observation. Domos retains approvals, control leases, evidence, and unknown-result protection. A batch keeps its native end screenshot in the same request.
 
-The intent/result journal retains original calls and prevents replay of an issued call with a missing result. Earlier-turn window, process and snapshot identifiers require fresh discovery. Effects use returned window geometry and completed actions. Cached geometry expires. Effects do not call Cua or wait for capture acknowledgements. Native window content protection excludes the desktop overlay on supported Windows versions. Live script cursor motion belongs to the driver.
+The intent/result journal retains original calls and prevents replay of an issued call with a missing result. Earlier-turn window, process and snapshot identifiers require fresh discovery. Cua sessions own cursor visibility, position, motion and rendering. Native cursor timing honors reduced motion.
 
 See the [CUA lifecycle acceptance](reports/cua-lifecycle-2026-10-30.md) for current cancellation, native MCP, and Windows input checks.
 

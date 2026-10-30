@@ -32,7 +32,7 @@ Pi Durable 1.4.0 stores Bot tasks. Native Harness processes own model loops. Dom
 | `packages/agent/src/harness` | Native drivers, CLI discovery and login, work-process services, bounded history reads, and usage records. |
 | `packages/agent/src/computer` | Computer bindings, shared tools, control ownership, viewers, and optional Jev assistance. |
 | `packages/hosting` | Hosting setup, credentials, device sessions, installation, and service lifecycle. |
-| `packages/ui` | Shared controls, theme tokens, avatars, and computer-effect rendering. |
+| `packages/ui` | Shared controls, theme tokens, and avatars. |
 
 ## Computer Use contracts
 
@@ -43,7 +43,7 @@ Pi Durable 1.4.0 stores Bot tasks. Native Harness processes own model loops. Dom
 - Distinguish action delivery, action verification, observation, and user-task completion. A successful call or screenshot alone does not prove task completion.
 - If an action ran but observation failed, preserve the execution record and recover observation. Do not replay an action whose outcome is uncertain.
 - Preserve the saved native tool catalog, including output schemas and annotations. Deliver structured metadata in supported text content and retain screenshots with their current coordinates. Put Domos status outside strict native structured output.
-- Preserve cancellation for direct actions, batches, and scripts. Request observation explicitly when an outcome is unknown. Derive effects from returned observations and actions. Effects must not query Cua or delay capture.
+- Preserve cancellation for direct actions, batches, and scripts. Request observation explicitly when an outcome is unknown.
 - Preserve approval, cancellation, and user takeover on every execution path, including Jev assistance.
 - Route ordinary computer mutations through the shared approval callback. Browser observation tools use an explicit allowlist; arbitrary JavaScript requires approval.
 - Keep dispatched browser work alive until it settles. Cancel queued work. Preserve the page during takeover. Persist uncertain execution across worker restarts, and require explicit browser restart before more mutations.
@@ -54,8 +54,8 @@ Pi Durable 1.4.0 stores Bot tasks. Native Harness processes own model loops. Dom
 - Browser mode belongs to the shared work-browser service. Change it only through a confirmed restart. Reuse the Bot profile. Hold browser and desktop control during the change. Report observed access evidence; do not hardcode website fallbacks or open personal browsers.
 - For viewer input, layout, or reconnect changes, follow [docs/browser-use.md](docs/browser-use.md). Test clicks through the scaled image and read back the real page. Scripted focus and mocked RPC output do not verify takeover.
 - Preserve native action results when observation or evidence storage fails. Keep runtime browser arguments in Domos, and apply text limits at the browser boundary. See [docs/browser-use.md](docs/browser-use.md).
-- Keep cursor and border tracking separate from execution. Use the shared effect renderer and Bot theme color. Effect failures must not block actions or change their result.
-- Track coordinate units explicitly. For effects, convert physical pixels, logical points, and screenshot coordinates once at the drawing boundary.
+- Cua sessions own desktop cursors and motion. Use the native cursor renderer and timing.
+- Track physical pixels, logical points, and screenshot coordinates explicitly at input and viewing boundaries.
 
 ## Change discipline
 
@@ -82,7 +82,7 @@ Pi Durable 1.4.0 stores Bot tasks. Native Harness processes own model loops. Dom
 - Offline trajectory scoring evaluates recorded behavior. Scorer tests test the scorer. Neither reruns an Agent. Rule pass rates are separate from task success rates.
 - Verify visible UI changes in the running UI. Use real input and result readback for native input claims; simulated protocol tests are not native desktop acceptance.
 - Wait for a state or event in tests. Use timeouts as hang guards. Keep a performance threshold tied to the work it measures and report runner limits.
-- For cross-platform claims, inspect Windows, Linux, and macOS results for the same commit in `.github/workflows/checks.yml` and `.github/workflows/computer-effects.yml`.
+- For cross-platform claims, inspect Windows, Linux, and macOS results for the same commit in `.github/workflows/checks.yml` and `.github/workflows/computer-input.yml`.
 - Report skipped and untested capabilities explicitly. Green CI does not prove every OS permission, desktop session, or third-party application works.
 - Documentation-only edits need link, path, and diff checks. Do not add tests that assert document wording.
 - Push and PR workflows skip changes limited to root `AGENTS.md`, root `README*.md`, and Markdown under `docs/`. Other changes run the full workflows. Before making these workflows required checks, review path filtering so a skipped workflow cannot leave a required check pending.

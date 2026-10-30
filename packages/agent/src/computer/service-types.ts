@@ -7,7 +7,6 @@ export type ServiceState = {
   mode?: "headless" | "headed";
 };
 export type ComputerRequest =
-  | { operation: "activity"; owner?: string }
   | { operation: "settle"; service: "browser" }
   | { operation: "catalog"; service: ComputerService }
   | { operation: "prepare"; service: ComputerService }
@@ -25,6 +24,5 @@ export type ComputerRequest =
       service: ComputerService;
       name: string;
       arguments: Record<string, unknown>;
-      actor?: { botId: number; color: string; owner: string };
     };
 export type ComputerResponse = ProductTool[] | ProductResult | ServiceState;

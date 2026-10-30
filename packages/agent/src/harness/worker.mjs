@@ -86,9 +86,7 @@ async function configure(frame) {
   await mkdir(frame.home, { recursive: true, mode: 0o700 });
   home = await realpath(frame.home);
   process.chdir(await realpath(frame.cwd));
-  computer = openComputerService(process.cwd(), home, (value) =>
-    emit({ type: "activity", value }),
-  );
+  computer = openComputerService(process.cwd(), home);
   gateway = await openGateway(
     frame.tools,
     (callId, name, args, signal) =>

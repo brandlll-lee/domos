@@ -1,9 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { on } from "node:events";
 import type { Context } from "@earendil-works/chord/context";
 import type { WorkProcess } from "../harness/process.ts";
 import type { ProductResult } from "../harness/types.ts";
-import type { ComputerActivity } from "./activity.ts";
 import type {
   ComputerRequest,
   ComputerService,
@@ -216,13 +214,12 @@ export class ComputerServices {
     owner: string,
     signal: AbortSignal,
     context: Context,
-    actor?: { botId: number; color: string; owner: string },
   ) {
     return this.run(botId, service, owner, signal, async (combined) => {
       const worker = await this.worker(botId, context, service);
       combined.throwIfAborted();
       return worker.computer<ProductResult>(
-        { operation: "call", service, name, arguments: args, actor },
+        { operation: "call", service, name, arguments: args },
         combined,
       );
     });
@@ -279,7 +276,6 @@ export class ComputerServices {
     await Promise.allSettled([...control.calls].map((call) => call.done));
     try {
       await this.settle(botId, service);
-      await this.clearActivity(control);
       return lease;
     } catch (error) {
       control.lease = undefined;
@@ -306,50 +302,13 @@ export class ComputerServices {
     const calls = [...control.calls].filter((call) => call.botId === botId);
     for (const call of calls) call.controller.abort();
     await Promise.allSettled(calls.map((call) => call.done));
-    if (service === "desktop" && control.botId === botId)
-      await this.clearActivity(control);
   }
 
   finish(owner: string) {
     for (const control of this.controls.values()) {
       if (control.owner !== owner) continue;
       for (const call of control.calls) call.controller.abort();
-      void this.clearActivity(control);
       control.owner = undefined;
-    }
-  }
-
-  private async clearActivity(control: Control) {
-    const owner = control.owner;
-    const worker = this.workers.get(0);
-    if (worker)
-      await worker
-        .then((process) => process.computer({ operation: "activity", owner }))
-        .catch(() => {});
-  }
-
-  async *activity(
-    botId: number,
-    signal: AbortSignal,
-    context: Context,
-  ): AsyncGenerator<ComputerActivity> {
-    const worker = await this.worker(botId, context, "desktop");
-    const connection = new AbortController();
-    const close = () => connection.abort();
-    worker.events.once("closed", close);
-    const events = on(worker.events, "activity", {
-      signal: AbortSignal.any([signal, connection.signal]),
-    });
-    try {
-      yield worker.activity?.botId === botId ? worker.activity : null;
-      for await (const [state] of events) {
-        yield state?.botId === botId ? (state as ComputerActivity) : null;
-      }
-    } catch (error) {
-      if (!connection.signal.aborted) throw error;
-    } finally {
-      worker.events.off("closed", close);
-      await events.return?.();
     }
   }
 

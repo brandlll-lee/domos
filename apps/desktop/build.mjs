@@ -1,10 +1,12 @@
 import { spawnSync } from "node:child_process";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { metrics, themes } from "@domos/ui/tokens";
 import { build } from "esbuild";
+import { desktopBinary } from "../../packages/agent/src/harness/desktop-driver.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../..");
@@ -105,16 +107,6 @@ await mkdir(join(runtime, "work/deploy"), { recursive: true });
 await mkdir(join(runtime, "work/packages/agent/src/harness"), {
   recursive: true,
 });
-await mkdir(join(runtime, "work/packages/ui/src"), { recursive: true });
-for (const name of [
-  "package.json",
-  "src/computer-effect.mjs",
-  "src/computer-effect-art.mjs",
-])
-  await cp(
-    join(root, "packages/ui", name),
-    join(runtime, "work/packages/ui", name),
-  );
 for (const name of [
   "worker.mjs",
   "account-environment.mjs",
@@ -130,18 +122,18 @@ for (const name of [
   "browser-view.mjs",
   "desktop-view.mjs",
   "computer-service.mjs",
-  "desktop-activity.mjs",
-  "desktop-actions.mjs",
-  "desktop-motion.mjs",
-  "desktop-target.mjs",
-  "desktop-overlay.mjs",
-  "desktop-windows.mjs",
-  "desktop-overlay-preload.cjs",
+  "desktop-tools.mjs",
+  "desktop-driver.mjs",
 ])
   await cp(
     join(root, "packages/agent/src/harness", name),
     join(runtime, "work/packages/agent/src/harness", name),
   );
+await cp(
+  dirname(await desktopBinary(homedir())),
+  join(runtime, "work/packages/agent/src/harness/cua-driver"),
+  { recursive: true },
+);
 await cp(
   join(root, "deploy/workspace.Dockerfile"),
   join(runtime, "work/deploy/workspace.Dockerfile"),

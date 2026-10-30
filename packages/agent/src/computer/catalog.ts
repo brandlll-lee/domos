@@ -1,6 +1,5 @@
 import { EventEmitter, on } from "node:events";
 import { platform } from "node:os";
-import { characterIdentity } from "@domos/ui/characters";
 import type { Context } from "@earendil-works/chord/context";
 import type { CredentialStore } from "@earendil-works/pi-ai";
 import {
@@ -48,7 +47,6 @@ export class Computers {
   readonly tools = new ComputerTools(this);
   readonly views = new ComputerViews(this);
   private harness!: Harness;
-  private bots!: Bots;
   private readonly targets = new Map<string, Computer>();
   private readonly changing = new Set<string>();
   private readonly transfers = new Map<number, number>();
@@ -80,7 +78,6 @@ export class Computers {
     credentials?: CredentialStore,
   ) {
     this.harness = harness;
-    this.bots = bots;
     this.preparation = new ComputerPreparation(harness, this);
     this.assistance = new ComputerAssistance(harness, credentials);
     if (await harness.snapshot(ComputersDoc, context)) return;
@@ -310,11 +307,6 @@ export class Computers {
       ),
       enabled: binding.services ?? {},
     };
-  }
-
-  async color(botId: number, context: Context) {
-    return characterIdentity((await this.bots.profile(botId, context)).avatar)
-      .color;
   }
 
   async serviceSettings(

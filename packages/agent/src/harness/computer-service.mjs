@@ -1,21 +1,18 @@
 import { openBrowserService } from "./browser-service.mjs";
+import { openDesktopDriver } from "./desktop-driver.mjs";
 import { openDesktopView } from "./desktop-view.mjs";
 
-export function openComputerService(directory, home, emit = () => {}) {
+export function openComputerService(directory, home) {
   let desktop;
   let starting;
-  let activity;
   let desktopTools;
   let browser;
   const views = new Map();
   async function driver() {
     starting ??= (async () => {
-      const { CuaDriver } = await import("@trycua/cua-driver");
-      const { openDesktopActivity } = await import("./desktop-activity.mjs");
-      desktop = CuaDriver.create();
-      desktopTools = JSON.parse(await desktop.listToolsJson()).tools;
-      activity = openDesktopActivity(emit);
-      return desktop;
+      desktop = await openDesktopDriver(home);
+      desktopTools = (await desktop.client.listTools()).tools;
+      return desktop.driver;
     })().catch((error) => {
       starting = undefined;
       throw error;
@@ -25,10 +22,6 @@ export function openComputerService(directory, home, emit = () => {}) {
   return {
     async request(input, signal) {
       signal.throwIfAborted();
-      if (input.operation === "activity") {
-        activity?.clear(input.owner);
-        return {};
-      }
       if (input.service === "browser") {
         if (input.operation === "settle" && !browser) return {};
         if (!browser) {
@@ -98,33 +91,12 @@ export function openComputerService(directory, home, emit = () => {}) {
       }
       const args = input.arguments ?? {};
       const startedAt = performance.now();
-      try {
-        activity.observe(input.name, args, null, input.actor);
-      } catch {}
-      const result = await instance.callTool(input.name, JSON.stringify(args), {
-        signal,
-      });
+      const native = await desktop.client.callTool(
+        { name: input.name, arguments: args },
+        undefined,
+        { signal },
+      );
       const elapsed = Math.round(performance.now() - startedAt);
-      try {
-        if (signal.aborted) activity.clear(input.actor?.owner);
-        else activity.observe(input.name, args, result, input.actor);
-      } catch {}
-      const native = result.rawJson
-        ? JSON.parse(result.rawJson)
-        : {
-            content: [
-              ...(result.text ? [{ type: "text", text: result.text }] : []),
-              ...result.images.map((image) => ({
-                type: "image",
-                mimeType: image.mimeType,
-                data: image.dataBase64,
-              })),
-            ],
-            ...(result.structuredJson
-              ? { structuredContent: JSON.parse(result.structuredJson) }
-              : {}),
-            isError: Boolean(result.isError),
-          };
       return {
         ...native,
         isError: Boolean(native.isError),
@@ -144,9 +116,7 @@ export function openComputerService(directory, home, emit = () => {}) {
       if (browser)
         await browser.then((instance) => instance.close()).catch(() => {});
       if (!desktop) return;
-      await activity.close();
-      await desktop.shutdown();
-      desktop.uniffiDestroy();
+      await desktop.close();
     },
   };
 }

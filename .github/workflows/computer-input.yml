@@ -1,4 +1,4 @@
-name: Computer effects
+name: Computer input
 
 on:
   push:
@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 jobs:
-  effects:
+  input:
     strategy:
       fail-fast: false
       matrix:
@@ -38,14 +38,14 @@ jobs:
           printf 'abi <abi/4.0>,\ninclude <tunables/global>\nprofile domos-electron "%s" flags=(unconfined) { userns, }\n' "$electron_path" | sudo tee /etc/apparmor.d/domos-electron >/dev/null
           sudo apparmor_parser -r /etc/apparmor.d/domos-electron
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm exec vitest run apps/web/test/viewer-input.test.ts packages/agent/test/desktop-view.test.ts packages/agent/test/computer-activity.test.ts packages/agent/test/computer-input.test.ts packages/agent/test/browser-runtime.test.ts packages/agent/test/browser-command.test.ts packages/agent/test/takeover.test.ts packages/agent/test/computer-control.test.ts
+      - run: pnpm exec vitest run apps/web/test/viewer-input.test.ts packages/agent/test/desktop-view.test.ts packages/agent/test/computer-input.test.ts packages/agent/test/browser-runtime.test.ts packages/agent/test/browser-command.test.ts packages/agent/test/takeover.test.ts packages/agent/test/computer-control.test.ts
       - if: runner.os == 'Linux'
-        run: xvfb-run -a pnpm exec playwright test --config apps/desktop/playwright.config.ts computer-effect.spec.ts
+        run: xvfb-run -a pnpm exec playwright test --config apps/desktop/playwright.config.ts computer-input.spec.ts
       - if: runner.os != 'Linux'
-        run: pnpm exec playwright test --config apps/desktop/playwright.config.ts computer-effect.spec.ts
+        run: pnpm exec playwright test --config apps/desktop/playwright.config.ts computer-input.spec.ts
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: computer-effects-${{ matrix.os }}
+          name: computer-input-${{ matrix.os }}
           path: test-results/desktop/
           if-no-files-found: ignore
