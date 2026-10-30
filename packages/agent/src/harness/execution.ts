@@ -128,12 +128,15 @@ export class EngineExecution {
               throw new Error("后台回顾只能调用记忆工具。");
             if (memoryReview && ++reviewCalls > 12)
               throw new Error("本次回顾已达到工具调用上限。");
-            if (computerTools.some((tool) => tool.name === name))
+            const computerTool = computerTools.find(
+              (tool) => tool.name === name,
+            );
+            if (computerTool)
               return this.computer.call(
                 runtime.conversationId,
                 runtime.taskId,
                 callId,
-                name,
+                computerTool,
                 args,
                 combined,
                 context,

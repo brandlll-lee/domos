@@ -170,20 +170,12 @@ export class ComputerRuntime {
     botId: number,
     taskId: TaskId,
     callId: string,
-    name: string,
+    tool: ProductTool,
     args: Record<string, unknown>,
     signal: AbortSignal,
     context: Context,
   ): Promise<ProductResult> {
     signal.throwIfAborted();
-    const tool = (
-      await this.harness.snapshot(
-        ComputerRequests,
-        botId as ConversationId,
-        context,
-      )
-    )?.tools?.find((tool) => tool.name === name);
-    if (!tool) throw new Error("电脑工具不可用。");
     const checked = this.validator.getValidator(tool.inputSchema)(args);
     if (!checked.valid) throw new Error(checked.errorMessage);
     const key = createHash("sha256").update(callId).digest("hex");
@@ -192,7 +184,7 @@ export class ComputerRuntime {
       const call = await tx.doc(ComputerCallDoc, taskId, key, null);
       if (call.name) {
         if (
-          call.name !== name ||
+          call.name !== tool.name ||
           JSON.stringify(call.arguments) !== JSON.stringify(args)
         )
           throw new Error("工具请求标识重复。");
@@ -201,7 +193,7 @@ export class ComputerRuntime {
         cached = JSON.parse(JSON.stringify(call.result));
         return;
       }
-      call.name = name;
+      call.name = tool.name;
       call.arguments = JSON.parse(JSON.stringify(args));
     }, context);
     if (cached) return cached;
