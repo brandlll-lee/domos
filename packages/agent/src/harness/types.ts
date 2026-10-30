@@ -128,7 +128,7 @@ export type EnginePlan = {
   status: "pending" | "inProgress" | "completed";
 }[];
 
-export type EngineEvent =
+export type EngineEvent = { receivedAt?: number } & (
   | { type: "plan"; plan: EnginePlan }
   | {
       type: "context";
@@ -163,7 +163,8 @@ export type EngineEvent =
       failed: boolean;
       attachments?: Attachment[];
     }
-  | { type: "approval"; approval: EngineApproval };
+  | { type: "approval"; approval: EngineApproval }
+);
 
 export type ProductTool = Omit<
   import("@modelcontextprotocol/sdk/types.js").Tool,

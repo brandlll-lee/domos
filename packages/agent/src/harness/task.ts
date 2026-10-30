@@ -151,13 +151,13 @@ export function engineTask(execution: EngineExecution) {
             task.input.attachments,
             task.input.operation,
           );
-          await projection.flush();
         } catch (cause) {
           if (runtime.signal.aborted) throw cause;
           error =
             cause instanceof Error
               ? cause.message
               : "任务未完成。请检查工作电脑和账号。";
+        } finally {
           await projection.flush();
         }
         await finish(runtime, context, error, undefined, taskDefinition);

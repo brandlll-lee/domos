@@ -63,7 +63,6 @@ const ComputerCallDoc = defineDocFamily<
 
 export class ComputerRuntime {
   private readonly validator = new AjvJsonSchemaValidator();
-  private toolNames = new Set<string>();
   private readonly pending = new Map<
     string,
     {
@@ -115,7 +114,6 @@ export class ComputerRuntime {
             context,
           )
         )?.tools ?? []);
-    this.toolNames = new Set(catalog.map((tool) => tool.name));
     if (refresh)
       await this.harness.commit(async (tx) => {
         (await tx.doc(ComputerRequests, botId as ConversationId)).tools =
@@ -166,10 +164,6 @@ export class ComputerRuntime {
       { extensions: [...common, extension] },
       context,
     );
-  }
-
-  isComputerTool(name: string) {
-    return this.toolNames.has(name);
   }
 
   async call(

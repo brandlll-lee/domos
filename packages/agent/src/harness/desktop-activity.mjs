@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import { once } from "node:events";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -8,7 +7,7 @@ import { openDesktopActions } from "./desktop-actions.mjs";
 import { openDesktopMotion } from "./desktop-motion.mjs";
 import { desktopTarget } from "./desktop-target.mjs";
 
-export function openDesktopActivity(driver, emit) {
+export function openDesktopActivity(emit) {
   let actor;
   let owner;
   const actions = openDesktopActions();
@@ -17,38 +16,21 @@ export function openDesktopActivity(driver, emit) {
   let retryAt = 0;
   let frame;
   let ready = false;
-  let captureExcluded = false;
   let sending = false;
   let closed = false;
   let screen;
   let displays = [];
   let visibleWindows;
-  let timer;
   let heartbeat;
-  let cursorRead;
   let windows = [];
   let observedAt = 0;
-  let missingAt;
   let covered = [];
-  let sequence = 0;
   let located;
   let selected;
-  let generation = 0;
-  let pending;
-  let capturesInProgress = 0;
-  let captureReady = Promise.resolve();
-  const acknowledgements = new Map();
-  const read = async (name, args = {}) => {
-    const result = await driver.callTool(name, JSON.stringify(args), {
-      signal: AbortSignal.timeout(1500),
-    });
-    if (result.isError) throw new Error("Desktop observation failed");
-    return JSON.parse(result.structuredJson ?? "{}");
-  };
   function send(value) {
     frame = value;
     emit(value);
-    if (value && !capturesInProgress) start();
+    if (value) start();
     if (ready && child?.connected && !sending) {
       const overlay = child;
       sending = true;
@@ -61,8 +43,7 @@ export function openDesktopActivity(driver, emit) {
     }
   }
   function start() {
-    if (child || closed || !actor || capturesInProgress || Date.now() < retryAt)
-      return;
+    if (child || closed || !actor || Date.now() < retryAt) return;
     retryAt = Date.now() + 1000;
     try {
       const distribution = dirname(
@@ -96,22 +77,16 @@ export function openDesktopActivity(driver, emit) {
           screen = value.bounds;
           displays = value.displays ?? [];
           ready = true;
-          captureExcluded = value.captureExcluded === true;
-          for (const id of acknowledgements.keys())
-            overlay.send({ type: "capture", id, hidden: true }, () => {});
           send(frame ?? null);
         }
-        if (value.type === "capture") acknowledgements.get(value.id)?.();
       });
       const ended = () => {
         if (child !== overlay) return;
         child = undefined;
         ready = false;
-        captureExcluded = false;
         sending = false;
         visibleWindows = undefined;
         retryAt = Date.now() + 1000;
-        for (const acknowledge of acknowledgements.values()) acknowledge();
       };
       overlay.on("error", ended);
       overlay.on("exit", ended);
@@ -122,11 +97,8 @@ export function openDesktopActivity(driver, emit) {
     actions.clear();
     motion.clear();
     selected = undefined;
-    generation++;
-    clearTimeout(timer);
     clearInterval(heartbeat);
-    timer = heartbeat = undefined;
-    missingAt = undefined;
+    heartbeat = undefined;
     observedAt = 0;
     windows = [];
     covered = [];
@@ -182,106 +154,7 @@ export function openDesktopActivity(driver, emit) {
       expiresAt,
     });
   }
-  function pulse() {
-    publish();
-    const session = actions.session;
-    if (cursorRead || session === undefined) return;
-    const current = generation;
-    cursorRead = read("get_agent_cursor_state", { session })
-      .then((state) => {
-        if (
-          current !== generation ||
-          !actor ||
-          closed ||
-          actions.session !== session
-        )
-          return;
-        actions.track(state);
-        publish();
-      })
-      .catch(() => {})
-      .finally(() => {
-        cursorRead = undefined;
-      });
-  }
-  async function tick() {
-    if (!actor || closed) return;
-    const current = generation;
-    try {
-      const listed = await read("list_windows");
-      if (current !== generation || closed || !actor) return;
-      const eligible = (listed.windows ?? []).filter(
-        (item) =>
-          item.pid !== child?.pid &&
-          item.app_name !== "cua-driver" &&
-          item.app_name !== "cua-driver.exe" &&
-          item.on_current_space !== false &&
-          item.is_on_screen !== false &&
-          !item.minimized,
-      );
-      windows = eligible.filter(
-        (item) => !visibleWindows || visibleWindows.has(String(item.window_id)),
-      );
-      const { window } = desktopTarget(eligible, actions.target, selected);
-      const hidden =
-        selected &&
-        (listed.windows ?? []).some(
-          (item) =>
-            item.pid === selected.pid &&
-            String(item.window_id) === String(selected.window_id) &&
-            (item.minimized ||
-              item.is_on_screen === false ||
-              item.on_current_space === false),
-        );
-      if (window) {
-        if (!windows.includes(window)) windows.push(window);
-        selected = window;
-        missingAt = undefined;
-      } else {
-        missingAt ??= Date.now();
-        if (hidden || Date.now() - missingAt >= 500) selected = undefined;
-      }
-      if (window === selected)
-        covered = desktopTarget(windows, selected).covered;
-      else if (!selected) covered = [];
-      observedAt = Date.now();
-      if (!screen) {
-        const size = await read("get_screen_size");
-        if (current !== generation || closed || !actor) return;
-        screen ??= { x: 0, y: 0, width: size.width, height: size.height };
-      }
-      publish();
-    } catch {}
-  }
-  function schedule() {
-    if (pending) return pending;
-    pending = tick().finally(() => {
-      pending = undefined;
-      if (actor && !closed)
-        timer = setTimeout(() => {
-          timer = undefined;
-          schedule();
-        }, 250);
-    });
-    return pending;
-  }
   return {
-    target: actions.resolve,
-    get captureExcluded() {
-      return captureExcluded;
-    },
-    active(target) {
-      if (Date.now() - observedAt > 1000) return false;
-      const front = windows.reduce(
-        (best, item) => (!best || item.z_index > best.z_index ? item : best),
-        undefined,
-      );
-      return (
-        front?.pid === target.pid &&
-        (target.window_id === undefined ||
-          String(front.window_id) === String(target.window_id))
-      );
-    },
     observe(name, args, result, identity) {
       if (closed || !identity || !/^#[0-9a-f]{6}$/i.test(identity.color))
         return;
@@ -295,46 +168,38 @@ export function openDesktopActivity(driver, emit) {
           result ? JSON.parse(result.structuredJson ?? "{}") : null,
         );
       } catch {}
+      const value = result ? JSON.parse(result.structuredJson ?? "{}") : null;
+      const observation = value?.observation?.ok
+        ? value.observation.state
+        : value;
+      if (name === "list_windows" && Array.isArray(value?.windows))
+        windows = value.windows.filter(
+          (item) =>
+            item.pid !== child?.pid &&
+            !["cua-driver", "cua-driver.exe"].includes(item.app_name) &&
+            !item.minimized &&
+            item.is_on_screen !== false &&
+            item.on_current_space !== false,
+        );
+      if (observation?.window_bounds) {
+        const window = { ...actions.target, bounds: observation.window_bounds };
+        windows = windows.filter(
+          (item) => String(item.window_id) !== String(window.window_id),
+        );
+        windows.push(window);
+      }
+      if (value) {
+        const eligible = windows.filter(
+          (item) =>
+            !visibleWindows || visibleWindows.has(String(item.window_id)),
+        );
+        selected = desktopTarget(eligible, actions.target, selected).window;
+        covered = desktopTarget(eligible, selected).covered;
+        observedAt = Date.now();
+      }
       start();
-      heartbeat ??= setInterval(pulse, 100);
+      heartbeat ??= setInterval(publish, 250);
       publish();
-      if (!timer && !pending) schedule();
-    },
-    async capture(run) {
-      if (captureExcluded) return run();
-      const overlay = child;
-      const hidden = ++capturesInProgress;
-      if (hidden === 1) captureReady = Promise.resolve();
-      if (overlay?.connected && hidden === 1) {
-        const id = ++sequence;
-        captureReady = new Promise((resolve, reject) => {
-          const timer = setTimeout(async () => {
-            try {
-              const exited = once(overlay, "exit", {
-                signal: AbortSignal.timeout(1000),
-              });
-              overlay.kill();
-              await exited;
-              resolve();
-            } catch {
-              reject(new Error("电脑操作效果未能隐藏，请重试截图。"));
-            }
-          }, 2000);
-          acknowledgements.set(id, () => {
-            clearTimeout(timer);
-            resolve();
-          });
-          if (ready)
-            overlay.send({ type: "capture", id, hidden: true }, () => {});
-        }).finally(() => acknowledgements.delete(id));
-      }
-      try {
-        await captureReady;
-        return await run();
-      } finally {
-        if (--capturesInProgress === 0 && overlay?.connected)
-          overlay.send({ type: "capture", hidden: false }, () => {});
-      }
     },
     clear(expected) {
       if (!expected || expected === owner) clear();
@@ -342,7 +207,6 @@ export function openDesktopActivity(driver, emit) {
     async close() {
       closed = true;
       clear();
-      await Promise.allSettled([pending, cursorRead]);
       if (child?.connected) child.disconnect();
       if (child && child.exitCode === null) {
         const stop = setTimeout(() => child.kill(), 2000);

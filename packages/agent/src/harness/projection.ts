@@ -14,9 +14,12 @@ export class EngineProjection {
   private readonly turnId: string;
   private readonly context: Context;
   private readonly messages: StoredMessage[];
-  private changed = false;
+  private readonly changed = new Set<StoredMessage>();
+  private readonly events: EngineEvent[] = [];
+  private writing?: Promise<void>;
+  private timer?: ReturnType<typeof setTimeout>;
+  private failure?: unknown;
   private processing = false;
-  private flushed = 0;
   constructor(
     runtime: EngineRuntime,
     turnId: string,
@@ -29,7 +32,8 @@ export class EngineProjection {
     this.messages = structuredClone(messages) as StoredMessage[];
   }
   async emit(event: EngineEvent) {
-    const { runtime, context } = this;
+    if (this.failure) throw this.failure;
+    const now = event.receivedAt ?? Date.now();
     if (event.type === "runtime" && event.state.processing !== undefined)
       this.processing = event.state.processing;
     if (
@@ -42,57 +46,12 @@ export class EngineProjection {
         "accepted",
       ].includes(event.type)
     ) {
-      await runtime.commit(async (tx, current) => {
-        const doc = await tx.doc(EngineDoc, runtime.conversationId);
-        if (doc.activeId !== runtime.taskId) return;
-        switch (event.type) {
-          case "usage":
-            if (doc.run && event.usage.model) doc.run.model = event.usage.model;
-            (await tx.doc(UsageTaskDoc, runtime.taskId)).items[event.usage.id] =
-              event.usage;
-            break;
-          case "context":
-          case "compaction":
-            await projectContext(tx, doc, runtime, event);
-            break;
-          case "runtime": {
-            const notices = { ...doc.runtime?.notices, ...event.state.notices };
-            doc.runtime = {
-              ...doc.runtime,
-              ...event.state,
-              ...(event.state.notices ? { notices } : {}),
-            };
-            break;
-          }
-          case "session":
-            if (doc.sessionId !== event.id)
-              doc.runtime = doc.runtime?.controls
-                ? { controls: doc.runtime.controls }
-                : {};
-            doc.sessionId = event.id;
-            if (doc.sessionKey) {
-              doc.sessions ??= {};
-              if (doc.sessions[doc.sessionKey]?.id !== event.id)
-                doc.sessions[doc.sessionKey] = { id: event.id, through: null };
-            }
-            break;
-          case "accepted": {
-            doc.dispatch = "accepted";
-            doc.turnId = event.id ?? null;
-            if (doc.run && event.id) doc.run.nativeId = event.id;
-            const session = doc.sessionKey
-              ? doc.sessions?.[doc.sessionKey]
-              : undefined;
-            if (
-              event.ready !== false &&
-              !current.input.operation &&
-              current.input.entryId &&
-              session
-            )
-              session.through = current.input.entryId;
-          }
-        }
-      }, context);
+      this.events.push(event);
+      if (event.type === "session" || event.type === "accepted") {
+        await this.flush();
+        return;
+      }
+      this.schedule();
       if (
         event.type !== "compaction" &&
         !(
@@ -112,7 +71,6 @@ export class EngineProjection {
       : `activity:${"id" in event ? `${event.type}:${event.id}` : this.messages.length}`;
     const id = `${this.turnId}:${key}`;
     let message = this.messages.find((item) => item.id === id);
-    const now = Date.now();
     if (!message) {
       message = {
         id,
@@ -134,6 +92,7 @@ export class EngineProjection {
         ) {
           previous.pending = false;
           previous.endedAt = now;
+          this.changed.add(previous);
         }
       }
     switch (event.type) {
@@ -189,23 +148,108 @@ export class EngineProjection {
       default:
         message.activity = stored(event);
     }
-    this.changed = true;
-    if (
-      (event.type !== "text" && event.type !== "thinking") ||
-      now - this.flushed >= engineLimits.flushMs
-    )
-      await this.flush();
+    this.changed.add(message);
+    this.schedule();
+    if (event.type !== "text" && event.type !== "thinking")
+      void this.flush().catch((error) => {
+        this.failure = error;
+      });
   }
-  async flush() {
-    if (!this.changed) return;
-    const drafts = stored(this.messages);
-    await this.runtime.commit(async (tx) => {
-      const doc = await tx.doc(EngineDoc, this.runtime.conversationId);
-      if (doc.activeId !== this.runtime.taskId) return;
-      doc.drafts = drafts;
-      doc.runtime = { ...doc.runtime, processing: this.processing };
-    }, this.context);
-    this.changed = false;
-    this.flushed = Date.now();
+  private schedule() {
+    this.timer ??= setTimeout(() => {
+      this.timer = undefined;
+      void this.flush().catch((error) => {
+        this.failure = error;
+      });
+    }, engineLimits.flushMs);
+  }
+  flush(): Promise<void> {
+    clearTimeout(this.timer);
+    this.timer = undefined;
+    if (this.failure) return Promise.reject(this.failure);
+    this.writing ??= this.write()
+      .catch((error) => {
+        this.failure = error;
+        throw error;
+      })
+      .finally(() => {
+        this.writing = undefined;
+      });
+    return this.writing;
+  }
+  private async write() {
+    while (this.changed.size || this.events.length) {
+      const drafts = [...this.changed].map((message) => stored(message));
+      const events = this.events.splice(0);
+      this.changed.clear();
+      const { runtime, context } = this;
+      await runtime.commit(async (tx, current) => {
+        const doc = await tx.doc(EngineDoc, runtime.conversationId);
+        if (doc.activeId !== runtime.taskId) return;
+        for (const event of events) {
+          switch (event.type) {
+            case "usage":
+              if (doc.run && event.usage.model)
+                doc.run.model = event.usage.model;
+              (await tx.doc(UsageTaskDoc, runtime.taskId)).items[
+                event.usage.id
+              ] = event.usage;
+              break;
+            case "context":
+            case "compaction":
+              await projectContext(tx, doc, runtime, event);
+              break;
+            case "runtime": {
+              const notices = {
+                ...doc.runtime?.notices,
+                ...event.state.notices,
+              };
+              doc.runtime = {
+                ...doc.runtime,
+                ...event.state,
+                ...(event.state.notices ? { notices } : {}),
+              };
+              break;
+            }
+            case "session":
+              if (doc.sessionId !== event.id)
+                doc.runtime = doc.runtime?.controls
+                  ? { controls: doc.runtime.controls }
+                  : {};
+              doc.sessionId = event.id;
+              if (doc.sessionKey) {
+                doc.sessions ??= {};
+                if (doc.sessions[doc.sessionKey]?.id !== event.id)
+                  doc.sessions[doc.sessionKey] = {
+                    id: event.id,
+                    through: null,
+                  };
+              }
+              break;
+            case "accepted": {
+              doc.dispatch = "accepted";
+              doc.turnId = event.id ?? null;
+              if (doc.run && event.id) doc.run.nativeId = event.id;
+              const session = doc.sessionKey
+                ? doc.sessions?.[doc.sessionKey]
+                : undefined;
+              if (
+                event.ready !== false &&
+                !current.input.operation &&
+                current.input.entryId &&
+                session
+              )
+                session.through = current.input.entryId;
+            }
+          }
+        }
+        for (const draft of drafts) {
+          const index = doc.drafts.findIndex((item) => item.id === draft.id);
+          if (index < 0) doc.drafts.push(draft);
+          else doc.drafts[index] = draft;
+        }
+        doc.runtime = { ...doc.runtime, processing: this.processing };
+      }, context);
+    }
   }
 }

@@ -6,7 +6,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { thinkingControl } from "../../models.ts";
 import { EngineRequestRejected, JsonLines } from "../json-lines.ts";
-import type { EngineOpen, EngineProvider } from "../types.ts";
+import type { EngineEvent, EngineOpen, EngineProvider } from "../types.ts";
 import { piUI } from "./pi-ui.ts";
 
 export const piProvider: EngineProvider = {
@@ -56,8 +56,11 @@ export const piProvider: EngineProvider = {
       });
     };
     rpc.on("frame", (frame: AgentSessionEvent | RpcExtensionUIRequest) => {
+      const receivedAt = Date.now();
       events = events
         .then(async () => {
+          const forward = (event: EngineEvent) =>
+            emit({ ...event, receivedAt });
           if (frame.type === "extension_ui_request") {
             await ui.handle(frame);
             return;
@@ -67,12 +70,12 @@ export const piProvider: EngineProvider = {
             frame.message?.role === "assistant"
           ) {
             messageId = `pi:${++sequence}`;
-            await emit({ type: "runtime", state: { processing: true } });
+            await forward({ type: "runtime", state: { processing: true } });
           }
           if (frame.type === "message_update") {
             const part = frame.assistantMessageEvent;
             if (part?.type === "text_delta" || part?.type === "thinking_delta")
-              await emit({
+              await forward({
                 type: part.type === "text_delta" ? "text" : "thinking",
                 id: messageId,
                 text: part.delta,
@@ -84,7 +87,7 @@ export const piProvider: EngineProvider = {
           ) {
             const message = frame.message;
             if (message.usage)
-              await emit({
+              await forward({
                 type: "usage",
                 usage: {
                   id: `pi:${message.timestamp}`,
@@ -106,21 +109,21 @@ export const piProvider: EngineProvider = {
               message.stopReason !== "error" &&
               message.stopReason !== "aborted"
             )
-              await emit({
+              await forward({
                 type: "message",
                 id: messageId,
                 text: textContent(message.content),
               });
           }
           if (frame.type === "tool_execution_start")
-            await emit({
+            await forward({
               type: "tool",
               id: frame.toolCallId,
               name: frame.toolName,
               input: frame.args ?? {},
             });
           if (frame.type === "tool_execution_end")
-            await emit({
+            await forward({
               type: "tool_result",
               id: frame.toolCallId,
               name: frame.toolName,
@@ -132,7 +135,7 @@ export const piProvider: EngineProvider = {
             else completion?.resolve();
           }
           if (frame.type === "compaction_start")
-            await emit({
+            await forward({
               type: "compaction",
               status: "running",
               trigger: frame.reason === "manual" ? "manual" : "auto",
@@ -142,7 +145,7 @@ export const piProvider: EngineProvider = {
               frame.aborted || frame.errorMessage
                 ? (frame.errorMessage ?? "压缩已取消。")
                 : null;
-            await emit({
+            await forward({
               type: "compaction",
               status:
                 frame.aborted || frame.errorMessage ? "failed" : "completed",

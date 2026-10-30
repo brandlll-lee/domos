@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import { release } from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mountComputerEffectWithArt } from "@domos/ui/computer-effect";
@@ -9,10 +8,7 @@ import { app, BrowserWindow, screen } from "electron";
 export async function openDesktopOverlay(channel) {
   const windows = new Map();
   const loaded = new WeakSet();
-  const captureExcluded =
-    process.platform === "win32" && Number(release().split(".")[2]) >= 19041;
   let state;
-  let suspended = false;
   let heartbeat;
   let listing;
   let listingActive;
@@ -43,7 +39,7 @@ export async function openDesktopOverlay(channel) {
     }
     for (const display of displays) {
       let window = windows.get(display.id);
-      if (!state || suspended || state.expiresAt <= Date.now()) {
+      if (!state || state.expiresAt <= Date.now()) {
         if (window?.isVisible()) window.hide();
         continue;
       }
@@ -106,7 +102,6 @@ export async function openDesktopOverlay(channel) {
       windows.get(display.id)?.setBounds(display.bounds, false);
     channel.send({
       type: "screen",
-      captureExcluded,
       bounds: physical(screen.getPrimaryDisplay().bounds),
       displays: screen.getAllDisplays().map((display) => ({
         dip: display.bounds,
@@ -157,15 +152,6 @@ export async function openDesktopOverlay(channel) {
     try {
       if (JSON.stringify(value).length > 131072)
         throw new Error("Invalid frame");
-      if (value?.type === "capture") {
-        suspended = value.hidden && !captureExcluded;
-        render();
-        setTimeout(
-          () => channel.send({ type: "capture", id: value.id }, () => {}),
-          32,
-        );
-        return;
-      }
       state = value;
       listWindows(Boolean(state));
       clearTimeout(heartbeat);

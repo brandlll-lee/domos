@@ -51,11 +51,11 @@ The shared computer catalog exposes native actions, batches and scripts. It hide
 
 Large text results use complete records within an 8000-character preview budget. Native structured results and original evidence remain intact. The gateway retains the latest 20 result payloads. A partial-result notice provides a handle for the read-only query_result tool. It supports a dot-separated path, text search, field selection and record paging. Queries do not dispatch the original tool. Expired handles require the saved work record. JSON previews remain parseable. Native tool result records retain the full payload.
 
-Computer calls validate against the tool catalog prepared for the current turn. Intent and result journal commits retain replay protection. Text and reasoning drafts use a 300 ms flush interval. Tool and activity events flush immediately. The gateway sends text-only error content to each Harness after saving screenshot evidence. Successful image content stays intact.
+Computer calls validate against the tool catalog prepared for the current turn. Intent and result journal commits retain replay protection. Text and reasoning drafts use a 300 ms flush interval. Tool and activity boundaries request a background flush. Each write updates changed messages by identity. Event delivery does not wait for display writes. Terminal handling drains pending writes. Native session and acceptance receipts still wait for storage. Pi receipt times are captured before its event queue. The gateway sends text-only error content to each Harness after saving screenshot evidence. Successful image content stays intact.
 
 Product-tool errors retain diagnostic text when structured output is empty or partial. Screenshot evidence stays in the task archive. Model notices contain the screenshot id and name. The Agent uses that id for requested image delivery. Evidence archive paths are not workspace paths. Once evidence confirms the user goal, the Agent reports the result and ends the turn.
 
-A failed action does not itself require another observation. A successful native end observation can release the observation barrier even when a batch contains a failed step. Explicit refusal or zero executed actions also permits recovery. Unknown outcomes still require fresh observation. Session recovery never repeats a mutation.
+Cua owns native sessions, delivery, verification and observation. The desktop relay forwards each Agent request once, with its original name and arguments. The Agent starts a session explicitly after an explicit end. Native errors remain tool results. Host permissions, takeover, cancellation and the intent/result journal remain outside native tool semantics.
 
 Native Harness processes own compaction. Domos records context readings, compaction events, and reported usage. Unsupported values stay unknown. Custom ACP recovery is unavailable until its driver can verify native outcomes. Domos does not infer cost or completion from a missing event.
 
@@ -67,7 +67,7 @@ Work reads the existing conversation projection and EngineDoc. Native events sup
 
 The shared desktop boundary forwards the native tool catalog and structured results. Cua owns foreground delivery, tree cursors, and batch observation. Domos retains approvals, control leases, evidence, and unknown-result protection. A batch keeps its native end screenshot in the same request.
 
-Input actions and native mutation annotations set the uncertainty barrier. App launch, clipboard writes, window activation and frame changes do not set it. A failed window read does not set it. An uncertain input still requires fresh observation. Earlier-turn window, process and snapshot identifiers require fresh discovery.
+The intent/result journal retains original calls and prevents replay of an issued call with a missing result. Earlier-turn window, process and snapshot identifiers require fresh discovery. Effects use returned window geometry and completed actions. Cached geometry expires. Effects do not call Cua or wait for capture acknowledgements. Native window content protection excludes the desktop overlay on supported Windows versions. Live script cursor motion belongs to the driver.
 
 See the [CUA lifecycle acceptance](reports/cua-lifecycle-2026-10-30.md) for current cancellation, native MCP, and Windows input checks.
 

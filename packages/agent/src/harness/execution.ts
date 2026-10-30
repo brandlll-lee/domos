@@ -3,7 +3,7 @@ import type { Context } from "@earendil-works/chord/context";
 import type { Attachment } from "../attachments.ts";
 import type { Computers } from "../computer/catalog.ts";
 import { computerInstructions } from "../computer/instructions.ts";
-import type { ComputerRuntime } from "../computer/runtime.ts";
+import { ComputerRequests, type ComputerRuntime } from "../computer/runtime.ts";
 import type { Files } from "../files.ts";
 import {
   MemoryDoc,
@@ -103,9 +103,16 @@ export class EngineExecution {
     const tools = memoryReview
       ? catalog.filter((tool) => tool.name.startsWith("memory_"))
       : catalog;
-    const computerTools = tools.filter((tool) =>
-      this.computer.isComputerTool(tool.name),
+    const computerNames = new Set(
+      (
+        await runtime.snapshot(
+          ComputerRequests,
+          runtime.conversationId,
+          context,
+        )
+      )?.tools?.map((tool) => tool.name),
     );
+    const computerTools = tools.filter((tool) => computerNames.has(tool.name));
     if (provider.id === "claude") tools.push(permissionTool);
     let reviewCalls = 0;
     const active: Active = {

@@ -11,13 +11,6 @@ export const desktopInputs = [
   "move_cursor",
 ];
 
-export const desktopSetup = new Set([
-  "launch_app",
-  "clipboard_write",
-  "bring_to_front",
-  "set_window_frame",
-]);
-
 const desktopMaintenance = new Set([
   "get_config",
   "set_config",
@@ -58,24 +51,12 @@ export function desktopStep(step) {
   return { tool, args: step.args ?? step[tool] };
 }
 
-export function desktopMutation(name, args) {
-  return (
-    name === "run_script" ||
-    desktopInputs.includes(name) ||
-    (name === "run_steps" &&
-      (args.steps ?? []).some((step) =>
-        desktopInputs.includes(desktopStep(step).tool),
-      ))
-  );
-}
-
 export function openDesktopActions() {
   const snapshots = new Map(),
     captures = new Map();
   let target,
     point,
     session,
-    native = false,
     sequence = 0,
     batchSequence = 0;
   const key = (id, owner = session) => `${owner ?? ""}:${id}`;
@@ -97,11 +78,9 @@ export function openDesktopActions() {
     session = args.session ?? "";
     target = resolve(args) ?? target;
     if (name === "run_script") {
-      native = true;
       return;
     }
     if (name === "run_steps") {
-      native = true;
       if (!value) {
         batchSequence = sequence;
         return;
@@ -117,7 +96,6 @@ export function openDesktopActions() {
           );
         if (point) point.action = "move_cursor";
       }
-      native = true;
       if (value.observation?.ok)
         observe("get_window_state", args, value.observation.state);
       return;
@@ -149,7 +127,6 @@ export function openDesktopActions() {
       return;
     }
     if (!desktopInputs.includes(name)) return;
-    native = false;
     const saved = snapshot(args),
       frame = saved?.elements.get(args.element_token);
     if (frame?.w > 0 && frame?.h > 0)
@@ -199,30 +176,7 @@ export function openDesktopActions() {
     set target(value) {
       target = value;
     },
-    get session() {
-      return native || !point ? session : undefined;
-    },
-    resolve,
     observe,
-    track(state) {
-      const position = state.position;
-      if (
-        (!native && point) ||
-        !Number.isFinite(position?.x) ||
-        !Number.isFinite(position?.y) ||
-        (point?.x === position.x &&
-          point?.y === position.y &&
-          point.space === "logical")
-      )
-        return;
-      point = {
-        ...position,
-        space: "logical",
-        desktop: true,
-        action: "move_cursor",
-        id: ++sequence,
-      };
-    },
     pointer(window, screen, physical = (point) => point) {
       if (!point) return null;
       const bounds = window?.bounds;
@@ -254,7 +208,6 @@ export function openDesktopActions() {
     },
     clear() {
       target = point = session = undefined;
-      native = false;
       snapshots.clear();
       captures.clear();
     },

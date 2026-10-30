@@ -85,6 +85,9 @@ test("foreground input keeps a restored window active and publishes its real out
     if (!target) throw new Error("Target window required");
     const identity = { pid, window_id: target.window_id };
     expect((await call("end_session", {})).isError).toBe(false);
+    const ended = await call("get_window_state", identity);
+    expect(ended.isError).toBe(true);
+    expect((await call("start_session", {})).isError).toBe(false);
     const restored = await call("get_window_state", {
       ...identity,
       include_screenshot: false,
@@ -214,6 +217,7 @@ test("foreground input keeps a restored window active and publishes its real out
       .toBeLessThan(1);
     const control = await call("run_steps", {
       ...identity,
+      observe: {},
       steps: [
         {
           set_value: {
@@ -239,17 +243,6 @@ test("foreground input keeps a restored window active and publishes its real out
       steps: [{ ok: true }, { ok: true }],
     });
     await expect(page.locator("output")).toHaveText("Control input");
-    const incomplete = await call("run_steps", {
-      pid,
-      steps: [
-        {
-          set_value: { role: "textfield", name: "Song", value: "Wrong target" },
-        },
-      ],
-      observe: {},
-    });
-    expect(incomplete.isError).toBe(true);
-    await expect(page.locator("input")).toHaveValue("Control input");
     const checkpoint = await call("run_steps", {
       ...identity,
       steps: [
@@ -277,6 +270,7 @@ test("foreground input keeps a restored window active and publishes its real out
       await other.loadURL("data:text/html,<title>Domos other window</title>");
       other.focus();
     });
+    await call("list_windows", {});
     await expect
       .poll(() => worker.activity?.window?.width !== target.bounds.width)
       .toBe(true);
@@ -349,6 +343,7 @@ test("foreground input keeps a restored window active and publishes its real out
     const batch = await call("run_steps", {
       ...identity,
       delivery_mode: "foreground",
+      observe: { include_screenshot: true },
       steps: [
         {
           click: {
@@ -370,31 +365,14 @@ test("foreground input keeps a restored window active and publishes its real out
       batch.content.some((item) => (item as { type: string }).type === "image"),
     ).toBe(true);
     await expect(page.locator("output")).toHaveText("Batch input");
-    const positions = new Set<number>();
-    const moved = () => {
-      if (worker.activity?.pointer) positions.add(worker.activity.pointer.x);
-    };
-    worker.events.on("activity", moved);
-    await call("run_steps", {
-      ...identity,
-      steps: [100, 350, 600].map((x) => ({ move_cursor: { x, y: 300 } })),
-      delay_ms: 400,
-    });
-    worker.events.off("activity", moved);
-    expect(positions.size).toBeGreaterThanOrEqual(2);
     await call("get_window_state", { ...identity, include_screenshot: false });
     const script = await call("run_script", {
       script: `const app = await cua.getApp(${JSON.stringify({ pid, windowId: target.window_id })}); await app.setValue({role:"textfield",name:"Song"}, "Script input"); await app.click({role:"button",name:"Play"}); return "done";`,
     });
     expect(script.isError, JSON.stringify(script.content)).toBe(false);
     await expect(page.locator("output")).toHaveText("Script input");
-    const blocked = await call("run_script", {
-      script: 'return "not executed";',
-    });
-    expect(blocked.isError).toBe(true);
-    await call("get_window_state", { ...identity, include_screenshot: false });
-    const resumed = await call("run_script", { script: 'return "observed";' });
-    expect(resumed.isError, JSON.stringify(resumed.content)).toBe(false);
+    const next = await call("run_script", { script: 'return "done";' });
+    expect(next.isError, JSON.stringify(next.content)).toBe(false);
     await worker.computer({ operation: "activity", owner: "test" });
     expect(worker.activity).toBeNull();
   } finally {
@@ -512,15 +490,6 @@ test("the production overlay receives frames over IPC and closes with its parent
         }
       }
     }
-    const captured = (async () => {
-      for (;;) {
-        const [value] = await once(child, "message", { signal });
-        if (value.type === "capture" && value.id === 1) return value;
-      }
-    })();
-    child.send({ type: "capture", id: 1, hidden: true });
-    expect(await captured).toEqual({ type: "capture", id: 1 });
-    child.send({ type: "capture", hidden: false });
     const ended = once(child, "exit", { signal });
     child.disconnect();
     expect(await ended).toEqual([0, null]);
@@ -698,9 +667,6 @@ test("desktop effects follow displays, protect captures, reuse native windows an
       );
     });
     for (let id = 1; id <= 12; id++) {
-      await send({ type: "capture", id, hidden: true });
-      expect(await visible(captureExcluded)).toBe(true);
-      await send({ type: "capture", hidden: false });
       await send({ ...state, color: "#80b780", expiresAt: Date.now() + 10000 });
       await expect(rim).toBeVisible();
       await expect(page.locator(".cursor")).toBeVisible();
@@ -713,8 +679,8 @@ test("desktop effects follow displays, protect captures, reuse native windows an
     );
     expect(calls).toEqual({
       bounds: 0,
-      show: captureExcluded ? 0 : 12 * geometry.count,
-      hide: captureExcluded ? 0 : 12 * geometry.count,
+      show: 0,
+      hide: 0,
     });
     if (captureExcluded) {
       const entry = new URL(
@@ -726,7 +692,7 @@ test("desktop effects follow displays, protect captures, reuse native windows an
       try {
         const capture = async () => {
           const result = await driver.callTool("get_desktop_state", "{}");
-          expect(result.isError).toBe(false);
+          expect(result.isError, result.text).toBe(false);
           return application.evaluate(({ nativeImage }, image) => {
             const captured = nativeImage.createFromBuffer(
               Buffer.from(image, "base64"),

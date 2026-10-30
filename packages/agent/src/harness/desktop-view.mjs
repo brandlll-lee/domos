@@ -1,6 +1,6 @@
 import { setTimeout } from "node:timers/promises";
 
-export function openDesktopView(driver, id, activity) {
+export function openDesktopView(driver, id) {
   let seq = 0;
   let waiting;
   let pointer;
@@ -33,12 +33,10 @@ export function openDesktopView(driver, id, activity) {
         await setTimeout(500, undefined, { signal });
       }
       signal.throwIfAborted();
-      const result = await activity.capture(() =>
-        driver.callTool(
-          "get_desktop_state",
-          JSON.stringify({ session: id, max_image_dimension: 1920 }),
-          { signal },
-        ),
+      const result = await driver.callTool(
+        "get_desktop_state",
+        JSON.stringify({ session: id, max_image_dimension: 1920 }),
+        { signal },
       );
       const image = result.images[0];
       if (result.isError || !image)

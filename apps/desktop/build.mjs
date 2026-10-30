@@ -130,7 +130,6 @@ for (const name of [
   "browser-view.mjs",
   "desktop-view.mjs",
   "computer-service.mjs",
-  "desktop-session.mjs",
   "desktop-activity.mjs",
   "desktop-actions.mjs",
   "desktop-motion.mjs",

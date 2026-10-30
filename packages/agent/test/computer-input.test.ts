@@ -5,7 +5,6 @@ import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import { openGateway } from "../src/harness/gateway.mjs";
 import { productCatalog } from "../src/harness/product-tools.ts";
 import type { EngineRuntime } from "../src/harness/task-types.ts";
-import failures from "./fixtures/cua-contracts.json" with { type: "json" };
 
 const { driver, activity } = vi.hoisted(() => ({
   driver: {
@@ -16,12 +15,8 @@ const { driver, activity } = vi.hoisted(() => ({
   },
   activity: {
     observe: vi.fn(),
-    active: vi.fn(),
-    captureExcluded: true,
     clear: vi.fn(),
     close: vi.fn(),
-    capture: vi.fn(async (run: () => Promise<unknown>) => run()),
-    target: (args: Record<string, unknown>) => args.target ?? args,
   },
 }));
 vi.mock("@trycua/cua-driver", () => ({ CuaDriver: { create: () => driver } }));
@@ -30,8 +25,6 @@ vi.mock("../src/harness/desktop-activity.mjs", () => ({
 }));
 const entry = "../src/harness/computer-service.mjs";
 const { openComputerService } = await import(entry);
-const sessionEntry = "../src/harness/desktop-session.mjs";
-const { openDesktopSession } = await import(sessionEntry);
 function callDesktop(
   service: ReturnType<typeof openComputerService>,
   name: string,
@@ -53,8 +46,6 @@ function callDesktop(
 
 afterEach(() => {
   vi.clearAllMocks();
-  activity.active.mockReturnValue(false);
-  activity.captureExcluded = true;
 });
 
 test("MCP validates native action output and retains Domos text", async () => {
@@ -120,142 +111,6 @@ test("MCP validates native action output and retains Domos text", async () => {
   );
 });
 
-test.each([
-  {
-    steps: [{ scroll: { x: 100, y: 200, direction: "down", amount: 3 } }],
-    screenshot: true,
-  },
-  {
-    steps: [{ drag: { from_x: 10, from_y: 20, to_x: 100, to_y: 200 } }],
-    screenshot: true,
-  },
-  {
-    steps: [{ set_value: { role: "textfield", name: "Song", value: "Rain" } }],
-    screenshot: false,
-  },
-  {
-    steps: [{ press_key: { key: "return" } }],
-    delivery_mode: "foreground",
-    screenshot: true,
-  },
-  {
-    steps: [{ click: { x: 100, y: 200 } }],
-    observe: { include_screenshot: false, query: "Editor" },
-    screenshot: false,
-  },
-])(
-  "batch returns observation in one request: %j",
-  async ({ screenshot, ...input }) => {
-    const state = { pid: 7, window_id: 90, snapshot_id: "s1" };
-    driver.callTool.mockResolvedValue({
-      isError: false,
-      images: [],
-      structuredJson: JSON.stringify({
-        steps: [{ ok: true }],
-        observation: { ok: true, state },
-      }),
-    });
-    const service = openComputerService(".", ".");
-    const result = await callDesktop(
-      service,
-      "run_steps",
-      { pid: 7, window_id: 90, ...input },
-      new AbortController().signal,
-    );
-    const calls = driver.callTool.mock.calls.filter(
-      ([name]) => name === "run_steps",
-    );
-    expect(calls).toHaveLength(1);
-    expect(JSON.parse(calls[0]?.[1]).observe).toMatchObject({
-      include_screenshot: screenshot,
-      ...(input.observe ?? {}),
-    });
-    expect(
-      driver.callTool.mock.calls.some(([name]) => name === "get_window_state"),
-    ).toBe(false);
-    expect(result.structuredContent).toMatchObject({
-      observation: { ok: true, state },
-    });
-    await service.close();
-  },
-);
-
-test("native foreground delivery and batch evidence use one driver call", async () => {
-  const native = {
-    images: [{ mimeType: "image/png", dataBase64: "cGl4ZWw=" }],
-    text: "1/1 steps ok",
-    isError: false,
-    structuredJson: JSON.stringify({
-      steps: [{ ok: true }],
-      observation: { ok: true, state: { pid: 7, window_id: 90 } },
-    }),
-  };
-  driver.callTool.mockResolvedValue(native);
-  activity.captureExcluded = false;
-  const service = openComputerService(".", ".");
-  const signal = new AbortController().signal;
-  const result = await callDesktop(
-    service,
-    "run_steps",
-    {
-      pid: 7,
-      window_id: 90,
-      delivery_mode: "foreground",
-      steps: [{ click: { x: 10, y: 20 } }],
-      observe: { include_screenshot: true },
-    },
-    signal,
-  );
-  expect(driver.callTool.mock.calls.map(([name]) => name)).toEqual([
-    "start_session",
-    "set_agent_cursor_enabled",
-    "run_steps",
-  ]);
-  expect(result.structuredContent).toEqual(JSON.parse(native.structuredJson));
-  expect(result.content).toContainEqual({
-    type: "image",
-    mimeType: "image/png",
-    data: "cGl4ZWw=",
-  });
-  expect(result.content).toContainEqual({ type: "text", text: native.text });
-  await service.close();
-});
-
-test("a failed batch's end observation permits the next native foreground action", async () => {
-  const callTool = vi.fn(async (name: string) => ({
-    isError: name === "run_steps",
-    images: [],
-    structuredJson: JSON.stringify(
-      name === "run_steps"
-        ? {
-            executed: 1,
-            failed_step: 0,
-            observation: { ok: true, state: { pid: 7, window_id: 90 } },
-            steps: [{ ok: false, code: "background_unavailable" }],
-          }
-        : { effect: "confirmed" },
-    ),
-  }));
-  const session = openDesktopSession({ callTool });
-  const args = {
-    session: "music",
-    pid: 7,
-    window_id: 90,
-    steps: [{ click: { x: 10, y: 20 } }],
-  };
-  expect((await session.call("run_steps", args, "task")).isError).toBe(true);
-  expect(
-    (
-      await session.call(
-        "click",
-        { ...args, delivery_mode: "foreground" },
-        "task",
-      )
-    ).isError,
-  ).toBe(false);
-  expect(callTool.mock.calls.at(-1)?.[0]).toBe("click");
-});
-
 test("the desktop relay preserves the native MCP envelope", async () => {
   const native = {
     content: [{ type: "text", text: "native" }],
@@ -276,269 +131,74 @@ test("the desktop relay preserves the native MCP envelope", async () => {
 });
 
 test.each([
-  "clipboard_write",
-  "launch_app",
-  "bring_to_front",
-  "set_window_frame",
-  "get_window_state",
-])("%s cannot create input uncertainty", async (name) => {
-  const callTool = vi.fn(async (tool: string) => ({
-    images: [],
-    isError: tool === "get_window_state",
-    structuredJson: "{}",
-  }));
-  const args = { session: "music", pid: 7, window_id: 90 };
-  const annotated = openDesktopSession({ callTool }, [
-    { name, annotations: { readOnlyHint: name === "get_window_state" } },
-  ]);
-  await annotated.call(name, args, "task");
-  expect((await annotated.call("launch_app", args, "task")).isError).toBe(
-    false,
-  );
-  expect(
-    (
-      await annotated.call(
-        "run_steps",
-        {
-          ...args,
-          steps: [{ click: { x: 10, y: 20 } }],
-        },
-        "task",
-      )
-    ).isError,
-  ).toBe(false);
-  expect(callTool.mock.calls.at(-1)?.[0]).toBe("run_steps");
-});
-
-test("native mutation annotations retain the uncertainty barrier", async () => {
-  const callTool = vi.fn(async () => ({ images: [], isError: false }));
-  const session = openDesktopSession({ callTool }, [
-    { name: "close_window", annotations: { readOnlyHint: false } },
-  ]);
-  const args = { session: "music", pid: 7, window_id: 90 };
-  await session.call("close_window", args, "task");
-  expect((await session.call("click", args, "task")).isError).toBe(true);
-  expect(callTool.mock.calls).toHaveLength(3);
-});
-
-test.each(failures.mutations)(
-  "%s preserves unknown outcomes, recovery and cancellation",
-  async (name) => {
-    const calls: string[] = [];
-    let ended = false;
-    const callTool = vi.fn(async (tool: string) => {
-      calls.push(tool);
-      return {
-        images: [],
-        isError: ended && tool === name,
-        ...(ended && tool === name
-          ? {
-              errorCode: "session_ended",
-              rawJson:
-                '{"content":[{"type":"text","text":"session ended"}],"isError":true}',
-            }
-          : {}),
-        structuredJson: JSON.stringify(
-          tool === "get_window_state"
-            ? { pid: 7, window_id: 90, snapshot_id: "s1" }
-            : { verified: false },
-        ),
-      };
-    });
-    const session = openDesktopSession({ callTool });
-    const args = {
-      session: "bot",
-      pid: 7,
-      window_id: 90,
-      steps: [{ click: { x: 10, y: 20 } }],
-      script: "await cua.click({x:10,y:20})",
+  [
+    "get_window_state",
+    { window_id: 90, since: "latest", include_screenshot: false },
+  ],
+  ["click", { session: "explicit", element_token: "s1:2" }],
+  ["run_steps", { pid: 7, steps: [{ click: { x: 20, y: 30 } }] }],
+  ["run_script", { code: "return 1" }],
+  ["launch_app", { path: "player.exe" }],
+  ["clipboard_write", { text: "song" }],
+] as const)(
+  "forwards %s exactly once with original arguments",
+  async (name, args) => {
+    const native = {
+      content: [{ type: "image", mimeType: "image/png", data: "cGl4ZWw=" }],
+      structuredContent: { code: "session_ended", observation: { ok: false } },
+      isError: true,
     };
-    await session.call(name, args, "task");
-    for (const next of ["click", "run_steps", "run_script"]) {
-      expect(
-        (await session.call(next, { ...args, delay: 130 }, "task")).isError,
-      ).toBe(true);
-    }
-    expect(calls.filter((tool) => tool === name)).toHaveLength(1);
-    await session.call("get_window_state", args, "task");
-    ended = true;
-    const result = await session.call(name, args, "task");
-    expect(result.text).toContain("no action was replayed");
-    expect(result.rawJson).toBeUndefined();
-    expect(calls.filter((tool) => tool === name)).toHaveLength(2);
-    const controller = new AbortController();
-    controller.abort();
-    await expect(
-      session.call(name, args, "task", controller.signal),
-    ).rejects.toThrow();
-    expect(calls.filter((tool) => tool === name)).toHaveLength(2);
-    ended = false;
-    await session.call("get_window_state", args, "next-task");
-    expect(calls.filter((tool) => tool === "start_session")).toHaveLength(3);
-    const entered = Promise.withResolvers<void>();
-    const running = new AbortController();
-    callTool.mockImplementationOnce(async () => {
-      entered.resolve();
-      await new Promise<void>((resolve) =>
-        running.signal.addEventListener("abort", () => resolve(), {
-          once: true,
-        }),
-      );
-      running.signal.throwIfAborted();
-      return { images: [], isError: false, structuredJson: "{}" };
-    });
-    const aborted = expect(
-      session.call(name, args, "next-task", running.signal),
-    ).rejects.toThrow();
-    await entered.promise;
-    running.abort();
-    await aborted;
-    expect((await session.call(name, args, "next-task")).isError).toBe(true);
-  },
-);
-
-test("a restarted desktop session returns fresh observation before using saved element tokens", async () => {
-  const callTool = vi.fn(async (name: string) => ({
-    isError: false,
-    images: [],
-    structuredJson: JSON.stringify(
-      name === "get_window_state"
-        ? { pid: 7, window_id: 90, snapshot_id: "fresh" }
-        : {},
-    ),
-  }));
-  const session = openDesktopSession({ callTool });
-  const args = {
-    session: "bot",
-    pid: 7,
-    window_id: 90,
-    steps: [{ click: { element_token: "old:15" } }],
-  };
-  const recovered = await session.call("run_steps", args, "task");
-  expect(recovered.isError).toBe(true);
-  expect(recovered.text).toContain("not executed");
-  expect(recovered.structuredJson).toBeUndefined();
-  expect(callTool.mock.calls.some(([name]) => name === "run_steps")).toBe(
-    false,
-  );
-  await session.call(
-    "run_steps",
-    { ...args, steps: [{ click: { element_token: "fresh:15" } }] },
-    "task",
-  );
-  expect(
-    callTool.mock.calls.filter(([name]) => name === "run_steps"),
-  ).toHaveLength(1);
-});
-
-test("unconfirmed input requires observation and preserves native tree cursors", async () => {
-  const calls: Record<string, unknown>[] = [];
-  const session = openDesktopSession({
-    callTool: async (name: string, json: string) => {
-      const args = JSON.parse(json);
-      calls.push({ name, ...args });
-      return {
-        isError: false,
-        images: [],
-        structuredJson: JSON.stringify(
-          name === "type_text"
-            ? { verified: false, effect: "unverifiable" }
-            : name === "get_window_state"
-              ? { pid: args.pid, window_id: args.window_id, snapshot_id: "s1" }
-              : {},
-        ),
-      };
-    },
-  });
-  const args = { session: "bot", pid: 7, window_id: 90 };
-  const signal = new AbortController().signal;
-  await session.call("type_text", args, "task", signal);
-  expect((await session.call("press_key", args, "task", signal)).isError).toBe(
-    true,
-  );
-  for (const size of [250, 250, 120, 120, 250])
-    await session.call(
-      "get_window_state",
-      { ...args, since: "latest", max_elements: size },
-      "task",
-      signal,
-    );
-  expect(
-    calls
-      .filter((call) => call.name === "get_window_state")
-      .map((call) => call.since),
-  ).toEqual(["latest", "latest", "latest", "latest", "latest"]);
-  expect((await session.call("press_key", args, "task", signal)).isError).toBe(
-    false,
-  );
-});
-
-test.each(["batch", "checked"])(
-  "%s observation failure preserves execution and blocks replay",
-  async (failure) => {
-    activity.captureExcluded = failure !== "capture";
-    driver.callTool.mockImplementation(async (name: string) => ({
-      isError:
-        name === "get_window_state" ||
-        (name === "run_steps" && failure === "batch"),
-      images: [],
-      text:
-        name === "get_window_state" ? "Capture unavailable" : "1/1 steps ok",
-      structuredJson: JSON.stringify(
-        name === "run_steps"
-          ? {
-              steps: [{ index: 0, ok: true }],
-              observation:
-                failure !== "capture"
-                  ? { ok: false, error: "Capture unavailable" }
-                  : { ok: true, state: { pid: 7, window_id: 90 } },
-            }
-          : { code: "capture_unavailable" },
-      ),
-    }));
+    driver.callTool.mockResolvedValue({ rawJson: JSON.stringify(native) });
     const service = openComputerService(".", ".");
-    const result = await callDesktop(
-      service,
-      "run_steps",
-      {
-        steps: [
-          {
-            click: { x: 10, y: 20 },
-            ...(failure === "checked" ? { expect: [{ text: "Done" }] } : {}),
-          },
-        ],
-        observe: { include_screenshot: true },
-      },
-      new AbortController().signal,
-    );
-    expect(result).toMatchObject({
-      isError: failure === "batch",
-      structuredContent: {
-        observation: { ok: false, error: "Capture unavailable" },
-      },
-    });
-    expect(result.content).toContainEqual({
-      type: "text",
-      text: "1/1 steps ok",
-    });
-    expect(
-      driver.callTool.mock.calls.filter(([name]) => name === "run_steps"),
-    ).toHaveLength(1);
-    const blocked = await callDesktop(
-      service,
-      "run_steps",
-      {
-        pid: 7,
-        window_id: 90,
-        steps: [{ click: { x: 10, y: 20 } }],
-      },
-      new AbortController().signal,
-    );
-    expect(blocked.isError).toBe(true);
-    expect(JSON.stringify(blocked.content)).toContain("Observe that window");
-    expect(
-      driver.callTool.mock.calls.filter(([name]) => name === "run_steps"),
-    ).toHaveLength(1);
+    const signal = new AbortController().signal;
+    const input = structuredClone(args);
+    for (let i = 0; i < 2; i++) {
+      const result = await callDesktop(service, name, args, signal);
+      expect(result).toMatchObject({
+        ...native,
+        content: expect.arrayContaining(native.content),
+      });
+    }
+    expect(args).toEqual(input);
+    expect(driver.callTool.mock.calls).toEqual([
+      [name, JSON.stringify(args), { signal }],
+      [name, JSON.stringify(args), { signal }],
+    ]);
     await service.close();
   },
 );
+
+test("effect errors do not change native execution and cancellation prevents dispatch", async () => {
+  const service = openComputerService(".", ".");
+  const controller = new AbortController();
+  controller.abort(new Error("stopped"));
+  await expect(
+    callDesktop(service, "click", {}, controller.signal),
+  ).rejects.toThrow("stopped");
+  expect(driver.callTool).not.toHaveBeenCalled();
+  activity.observe.mockImplementation(() => {
+    throw new Error("overlay unavailable");
+  });
+  driver.callTool.mockResolvedValue({
+    rawJson: '{"content":[],"isError":false}',
+  });
+  await expect(
+    callDesktop(service, "click", { pid: 7 }),
+  ).resolves.toMatchObject({ isError: false });
+  expect(driver.callTool).toHaveBeenCalledOnce();
+  await service.close();
+  activity.observe.mockReset();
+});
+
+test("cancellation during driver initialization prevents dispatch", async () => {
+  const catalog = Promise.withResolvers<string>();
+  driver.listToolsJson.mockReturnValueOnce(catalog.promise);
+  const service = openComputerService(".", ".");
+  const controller = new AbortController();
+  const request = callDesktop(service, "click", {}, controller.signal);
+  controller.abort(new Error("stopped"));
+  catalog.resolve('{"tools":[]}');
+  await expect(request).rejects.toThrow("stopped");
+  expect(driver.callTool).not.toHaveBeenCalled();
+  await service.close();
+});

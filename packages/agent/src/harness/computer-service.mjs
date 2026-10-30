@@ -1,13 +1,10 @@
 import { openBrowserService } from "./browser-service.mjs";
-import { desktopStep } from "./desktop-actions.mjs";
-import { openDesktopSession } from "./desktop-session.mjs";
 import { openDesktopView } from "./desktop-view.mjs";
 
 export function openComputerService(directory, home, emit = () => {}) {
   let desktop;
   let starting;
   let activity;
-  let sessions;
   let desktopTools;
   let browser;
   const views = new Map();
@@ -17,8 +14,7 @@ export function openComputerService(directory, home, emit = () => {}) {
       const { openDesktopActivity } = await import("./desktop-activity.mjs");
       desktop = CuaDriver.create();
       desktopTools = JSON.parse(await desktop.listToolsJson()).tools;
-      sessions = openDesktopSession(desktop, desktopTools);
-      activity = openDesktopActivity(desktop, emit);
+      activity = openDesktopActivity(emit);
       return desktop;
     })().catch((error) => {
       starting = undefined;
@@ -31,7 +27,6 @@ export function openComputerService(directory, home, emit = () => {}) {
       signal.throwIfAborted();
       if (input.operation === "activity") {
         activity?.clear(input.owner);
-        sessions?.clear(input.owner);
         return {};
       }
       if (input.service === "browser") {
@@ -67,9 +62,10 @@ export function openComputerService(directory, home, emit = () => {}) {
       }
       if (input.service !== "desktop") throw new Error("服务不可用。");
       const instance = await driver();
+      signal.throwIfAborted();
       if (input.operation === "view") {
         if (input.action === "open") {
-          views.set(input.id, openDesktopView(instance, input.id, activity));
+          views.set(input.id, openDesktopView(instance, input.id));
           return {};
         }
         const view = views.get(input.id);
@@ -83,12 +79,10 @@ export function openComputerService(directory, home, emit = () => {}) {
       if (input.operation === "catalog") return desktopTools;
       if (input.operation === "prepare") {
         try {
-          const result = await activity.capture(() =>
-            instance.callTool(
-              "get_desktop_state",
-              JSON.stringify({ max_image_dimension: 320 }),
-              { signal },
-            ),
+          const result = await instance.callTool(
+            "get_desktop_state",
+            JSON.stringify({ max_image_dimension: 320 }),
+            { signal },
           );
           return {
             available: !result.isError && result.images.length > 0,
@@ -102,63 +96,19 @@ export function openComputerService(directory, home, emit = () => {}) {
           return { available: false, error: error.message };
         }
       }
-      const args = {
-        ...input.arguments,
-        ...(input.arguments?.observe
-          ? { observe: { ...input.arguments.observe } }
-          : {}),
-        session:
-          input.arguments?.session ??
-          `domos-${input.actor?.botId ?? "desktop"}`,
-      };
-      const send = (name, args) =>
-        sessions.call(name, args, input.actor?.owner, signal);
-      if (input.name === "run_steps") {
-        args.observe ??= {};
-        args.observe.include_screenshot ??= (args.steps ?? []).some((step) => {
-          const action = desktopStep(step).args ?? {};
-          return (
-            action.x !== undefined ||
-            action.y !== undefined ||
-            action.from_x !== undefined ||
-            (action.delivery_mode ?? args.delivery_mode) === "foreground"
-          );
-        });
-      }
-      if (
-        input.name === "run_steps" &&
-        [
-          args,
-          ...(args.steps ?? []).map((step) => desktopStep(step).args ?? {}),
-        ].some(
-          (target) =>
-            !target.app &&
-            !target.window &&
-            (target.pid !== undefined) !== (target.window_id !== undefined),
-        )
-      )
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text",
-              text: "Batch target requires both pid and window_id, or app/window names. Discover and confirm the target window before input. No batch action was sent.",
-            },
-          ],
-        };
-      activity.observe(input.name, args, null, input.actor);
-      const call = () => send(input.name, args);
+      const args = input.arguments ?? {};
       const startedAt = performance.now();
-      const result =
-        ["get_desktop_state", "zoom", "run_steps"].includes(input.name) ||
-        (input.name === "get_window_state" &&
-          (args.include_screenshot !== false || args.screenshot_out_file))
-          ? await activity.capture(call)
-          : await call();
-      if (signal.aborted) activity.clear(input.actor?.owner);
-      else {
-        activity.observe(input.name, args, result, input.actor);
-      }
+      try {
+        activity.observe(input.name, args, null, input.actor);
+      } catch {}
+      const result = await instance.callTool(input.name, JSON.stringify(args), {
+        signal,
+      });
+      const elapsed = Math.round(performance.now() - startedAt);
+      try {
+        if (signal.aborted) activity.clear(input.actor?.owner);
+        else activity.observe(input.name, args, result, input.actor);
+      } catch {}
       const native = result.rawJson
         ? JSON.parse(result.rawJson)
         : {
@@ -183,7 +133,7 @@ export function openComputerService(directory, home, emit = () => {}) {
           ...native.content,
           {
             type: "text",
-            text: `Domos computer tool time: ${Math.round(performance.now() - startedAt)} ms.`,
+            text: `Domos computer tool time: ${elapsed} ms.`,
           },
         ],
       };

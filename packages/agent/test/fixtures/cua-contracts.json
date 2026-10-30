@@ -56,5 +56,26 @@
       "Search text entered. Target track was not played.",
       "Cancelled observation and action remained active."
     ]
+  },
+  "nativeFlow": {
+    "source": "task-10519:2026-10-31",
+    "completion": "not-completed",
+    "elapsedSeconds": 155.762,
+    "modelResponses": 17,
+    "toolCalls": 17,
+    "timedDesktopCalls": 12,
+    "desktopWallSeconds": 39.489,
+    "driverReportedSeconds": 12.566,
+    "observationTimeoutSeconds": 31.497,
+    "observed": [
+      "The host started a session and supplied arguments not present in the Agent request.",
+      "Effects repeatedly queried windows and native cursor state.",
+      "Event projection waited for storage and replaced all turn drafts.",
+      "Foreground input lost focus. The target song was not verified before Stop."
+    ],
+    "limits": [
+      "The wall-time difference includes transport and storage. It does not identify one cause.",
+      "The observation timeout has no native result. Its internal blocking phase is unknown."
+    ]
   }
 }

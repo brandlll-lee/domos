@@ -1,0 +1,188 @@
+{
+  "harness": "pi",
+  "model": "deepseek-flash",
+  "coverage": "complete",
+  "completion": "pass",
+  "modelResponses": 11,
+  "source": "domos-native-flow:2026-10-31:isolated",
+  "startedAt": 0,
+  "endedAt": 32480,
+  "calls": [
+    {
+      "name": "list_apps",
+      "input": {
+        "session": "music"
+      },
+      "output": "Found 273 apps. The player was running.",
+      "startedAt": 2414,
+      "endedAt": 3382
+    },
+    {
+      "name": "list_windows",
+      "input": {
+        "pid": 7,
+        "session": "music"
+      },
+      "output": "Found one player window. It was minimized.",
+      "startedAt": 4579,
+      "endedAt": 4745
+    },
+    {
+      "name": "bring_to_front",
+      "input": {
+        "pid": 7,
+        "window_id": 90,
+        "session": "music"
+      },
+      "output": "Window restored and foreground.",
+      "startedAt": 5478,
+      "endedAt": 5549
+    },
+    {
+      "name": "get_window_state",
+      "input": {
+        "pid": 7,
+        "window_id": 90,
+        "session": "music",
+        "include_screenshot": true
+      },
+      "output": "elements=242 snapshot_id=s00000001",
+      "startedAt": 6579,
+      "endedAt": 7300
+    },
+    {
+      "name": "run_steps",
+      "input": {
+        "session": "music",
+        "pid": 7,
+        "window_id": 90,
+        "steps": [
+          {
+            "click": {
+              "x": 470,
+              "y": 45
+            }
+          },
+          {
+            "hotkey": {
+              "keys": ["ctrl", "a"]
+            }
+          },
+          {
+            "type_text": {
+              "text": "song artist",
+              "delay_ms": 40
+            }
+          },
+          {
+            "press_key": {
+              "key": "return"
+            }
+          }
+        ],
+        "observe": {}
+      },
+      "output": "run_steps: step 2 of 4 failed. Background delivery is not available for key_combo. One click was delivered. Two actions did not run.",
+      "startedAt": 10537,
+      "endedAt": 12375
+    },
+    {
+      "name": "run_steps",
+      "input": {
+        "observe": {},
+        "pid": 7,
+        "session": "music",
+        "steps": [
+          {
+            "set_value": {
+              "element_token": "s00000002:57",
+              "value": "song artist"
+            }
+          },
+          {
+            "press_key": {
+              "key": "return"
+            },
+            "expect": [
+              {
+                "text": "song"
+              }
+            ]
+          }
+        ],
+        "window_id": 90
+      },
+      "output": "run_steps: 2/2 steps ok. Set AXValue using UIA ValuePattern. Sent return via PostMessage (not verified). The expected state held. End observation returned.",
+      "startedAt": 15099,
+      "endedAt": 16203
+    },
+    {
+      "name": "get_window_state",
+      "input": {
+        "include_screenshot": true,
+        "pid": 7,
+        "session": "music",
+        "since": "latest",
+        "window_id": 90
+      },
+      "output": "elements=239 snapshot_id=s00000006",
+      "startedAt": 18410,
+      "endedAt": 18849
+    },
+    {
+      "name": "click",
+      "input": {
+        "element_token": "s00000006:94",
+        "pid": 7,
+        "session": "music",
+        "window_id": 90
+      },
+      "output": "UIA Invoke delivered. Effect unverifiable. Read the changed state before another click.",
+      "startedAt": 24915,
+      "endedAt": 24980
+    },
+    {
+      "name": "get_window_state",
+      "input": {
+        "include_screenshot": true,
+        "pid": 7,
+        "session": "music",
+        "since": "latest",
+        "window_id": 90
+      },
+      "output": "elements=239 snapshot_id=s00000007",
+      "startedAt": 26503,
+      "endedAt": 27032
+    },
+    {
+      "name": "run_steps",
+      "input": {
+        "observe": {
+          "query": "song",
+          "include_screenshot": true,
+          "since": null
+        },
+        "pid": 7,
+        "session": "music",
+        "steps": [
+          {
+            "expect": [
+              {
+                "role": "Image",
+                "name": "pause"
+              }
+            ],
+            "wait_for": {
+              "text": "song",
+              "timeout_ms": 5000
+            }
+          }
+        ],
+        "window_id": 90
+      },
+      "output": "wait_for: song visible after 250 ms. End observation: window title song - artist. Player pause control present.",
+      "startedAt": 29116,
+      "endedAt": 30068
+    }
+  ]
+}

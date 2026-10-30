@@ -510,7 +510,14 @@ test("Pi waits for settlement after tool and agent-end events", async () => {
   await prompted.promise;
   await new Promise((resolve) => setImmediate(resolve));
   expect(settled).toBe(false);
-  expect(events).toContainEqual({ type: "message", id: "pi:1", text: "Hello" });
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      type: "message",
+      id: "pi:1",
+      text: "Hello",
+      receivedAt: expect.any(Number),
+    }),
+  );
   process.frame({
     type: "tool_execution_end",
     toolCallId: "file",
@@ -538,14 +545,24 @@ test("Pi waits for settlement after tool and agent-end events", async () => {
   });
   process.frame({ type: "agent_settled" });
   await task;
-  expect(events).toContainEqual({ type: "message", id: "pi:3", text: "Done" });
-  expect(events).toContainEqual({
-    type: "tool_result",
-    id: "file",
-    name: "write",
-    text: "Saved",
-    failed: false,
-  });
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      type: "message",
+      id: "pi:3",
+      text: "Done",
+      receivedAt: expect.any(Number),
+    }),
+  );
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      type: "tool_result",
+      id: "file",
+      name: "write",
+      text: "Saved",
+      failed: false,
+      receivedAt: expect.any(Number),
+    }),
+  );
   process.receive = (request) => {
     process.frame({
       type: "response",

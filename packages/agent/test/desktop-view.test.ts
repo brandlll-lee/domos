@@ -5,7 +5,7 @@ const { openDesktopView } = await import(entry);
 
 test("a cancelled desktop gesture cannot become a late click", async () => {
   const callTool = vi.fn(async () => ({ isError: false }));
-  const view = openDesktopView({ callTool }, "test", {});
+  const view = openDesktopView({ callTool }, "test");
   const signal = AbortSignal.timeout(1000);
   const pointer = {
     type: "pointer",
