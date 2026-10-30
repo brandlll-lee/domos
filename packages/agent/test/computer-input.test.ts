@@ -275,6 +275,36 @@ test("the desktop relay preserves the native MCP envelope", async () => {
   await service.close();
 });
 
+test.each([
+  "clipboard_write",
+  "launch_app",
+  "set_window_frame",
+  "get_window_state",
+])("%s cannot create input uncertainty", async (name) => {
+  const callTool = vi.fn(async (tool: string) => ({
+    images: [],
+    isError: tool === "get_window_state",
+    structuredJson: "{}",
+  }));
+  const session = openDesktopSession({ callTool });
+  const args = { session: "music", pid: 7, window_id: 90 };
+  await session.call(name, args, "task");
+  expect((await session.call("launch_app", args, "task")).isError).toBe(false);
+  expect(
+    (
+      await session.call(
+        "run_steps",
+        {
+          ...args,
+          steps: [{ click: { x: 10, y: 20 } }],
+        },
+        "task",
+      )
+    ).isError,
+  ).toBe(false);
+  expect(callTool.mock.calls.at(-1)?.[0]).toBe("run_steps");
+});
+
 test.each(failures.mutations)(
   "%s preserves unknown outcomes, recovery and cancellation",
   async (name) => {

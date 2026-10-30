@@ -10,7 +10,7 @@ const observations = new Set([
   "zoom",
 ]);
 
-export function openDesktopSession(driver, tools = []) {
+export function openDesktopSession(driver) {
   const sessions = new Map();
   return {
     async call(name, args, owner, signal, recover = true) {
@@ -43,11 +43,7 @@ export function openDesktopSession(driver, tools = []) {
         name === "run_steps"
           ? (args.steps ?? []).map(desktopStep)
           : [{ tool: name, args }];
-      const mutating =
-        name === "run_steps"
-          ? desktopMutation(name, args)
-          : tools.find((tool) => tool.name === name)?.annotations
-              ?.readOnlyHint === false || desktopMutation(name, args);
+      const mutating = desktopMutation(name, args);
       if (mutating && state.review)
         return {
           images: [],
@@ -136,8 +132,6 @@ export function openDesktopSession(driver, tools = []) {
           !observed &&
           value?.verified !== true &&
           value?.effect !== "confirmed";
-      else if (name === "get_window_state" && result.isError)
-        state.review = true;
       if (checked) state.review = false;
       if (name === "end_session" && !result.isError)
         sessions.delete(args.session);
