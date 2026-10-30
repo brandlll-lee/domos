@@ -1,6 +1,20 @@
 {
   "source": "shared-contract-probe:2026-10-29",
   "mutations": ["click", "run_steps", "run_script"],
+  "piObservation": {
+    "source": "task-9586:2026-10-30",
+    "completion": "unreviewed",
+    "elapsedSeconds": 79.733,
+    "modelResponses": 9,
+    "toolCalls": 8,
+    "codemodeCalls": 8,
+    "observed": [
+      "A screenshot was serialized by text(result.content). The model received zero image blocks.",
+      "The serialized output exceeded 100000 tokens and was truncated.",
+      "A script failed with ReferenceError: setTimeout is not defined.",
+      "Enter did not specify the input control. The later click used a fresh Send message control."
+    ]
+  },
   "failures": [
     "Saved native outputSchema and annotations disappeared from tools/list.",
     "A script reached the driver while a previous action required observation.",

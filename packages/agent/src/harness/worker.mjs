@@ -181,13 +181,11 @@ async function launch(frame) {
     frame.args.push(
       "--no-extensions",
       "--extension",
-      "builtin:codemode",
-      "--extension",
       "builtin:tool-search",
       "--extension",
-      "builtin:mcp",
-      "--extension",
       fileURLToPath(new URL("./pi-tools.mjs", import.meta.url)),
+      "--extension",
+      "builtin:mcp",
     );
   }
   if (env.DOMOS_PI_LOGIN === "1")

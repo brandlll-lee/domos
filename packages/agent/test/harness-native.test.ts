@@ -18,16 +18,17 @@ test
     const directory = await mkdtemp(join(tmpdir(), "domos-native-smoke-"));
     const imageMarker = crypto.randomUUID();
     const marker = crypto.randomUUID();
-    const browser = await chromium.launch({ headless: true });
+    const title = `Domos image probe ${crypto.randomUUID()}`;
+    const browser = await chromium.launch({ headless: false });
+    onTestFinished(() => browser.close());
     const page = await browser.newPage({
       viewport: { width: 800, height: 160 },
     });
     await page.setContent(
-      `<body style="font:28px monospace">${imageMarker}</body>`,
+      `<title>${title}</title><body style="font:28px monospace">${imageMarker}</body>`,
     );
-    const image = (await page.screenshot()).toString("base64");
-    await browser.close();
     const replies: string[] = [];
+    const toolNames: string[] = [];
     let calls = 0;
     const memoryMarker = crypto.randomUUID();
     let saved = "";
@@ -120,16 +121,43 @@ test
           };
         }
         expect(name).toBe("computer_probe");
-        const result = await worker.computer<ProductResult>({
+        const listed = await worker.computer<{
+          isError: boolean;
+          structuredContent: {
+            windows: { title: string; window_id: number; pid: number }[];
+          };
+        }>({
           operation: "call",
           service: "desktop",
           name: "list_windows",
           arguments: {},
         });
-        expect(result.isError).not.toBe(true);
+        expect(listed.isError).not.toBe(true);
+        const target = listed.structuredContent.windows.find((window) =>
+          window.title.includes(title),
+        );
+        expect(target).toBeTruthy();
+        const observed = await worker.computer<ProductResult>({
+          operation: "call",
+          service: "desktop",
+          name: "get_window_state",
+          arguments: {
+            pid: target?.pid,
+            window_id: target?.window_id,
+            include_screenshot: true,
+          },
+        });
+        expect(
+          observed.isError,
+          JSON.stringify(
+            observed.content.filter((part) => part.type === "text"),
+          ),
+        ).not.toBe(true);
+        const images = observed.content.filter((part) => part.type === "image");
+        expect(images).toHaveLength(1);
         calls++;
         return {
-          content: [{ type: "image", data: image, mimeType: "image/png" }],
+          content: images,
           structuredContent: {
             marker,
             verified: false,
@@ -177,6 +205,7 @@ test
       approve: async () => ({ allow: false }),
       emit: async (event) => {
         if (event.type === "message") replies.push(event.text);
+        if (event.type === "tool") toolNames.push(event.name);
         if (event.type === "approval")
           await session?.answer(event.approval.id, {
             allow: /computer_probe|memory_save|memory_search/.test(
@@ -192,6 +221,10 @@ test
     );
     const answer = replies.join("\n");
     expect(calls, answer).toBe(1);
+    if (id === "pi") {
+      expect(toolNames).toContain("mcp__domos__computer_probe");
+      expect(toolNames).not.toContain("codemode");
+    }
     expect(searches, answer).toBeGreaterThanOrEqual(1);
     for (const value of [
       imageMarker,

@@ -190,7 +190,7 @@ test("Pi registers the product server with its native MCP lifecycle", async () =
   }
 });
 
-test("Pi exposes configured MCP servers through native discovery tools", async () => {
+test("Pi declares product tools directly and discovers configured MCP tools", async () => {
   const { process, directory } = await worker();
   const ready = await process.ready;
   const account = join(directory, "pi");
@@ -204,11 +204,25 @@ test("Pi exposes configured MCP servers through native discovery tools", async (
       },
     }),
   );
+  const probe = join(directory, "loadout.mjs");
+  await writeFile(
+    probe,
+    `export default (pi) => pi.registerCommand("loadout", {
+      handler: (_args, ctx) => ctx.ui.notify(JSON.stringify({
+        active: pi.getActiveTools(),
+        tools: pi.getAllTools().map(tool => tool.name)
+      }), "info")
+    });`,
+  );
   const warnings: string[] = [];
+  let loadout: { active: string[]; tools: string[] } | undefined;
   const rpc = new JsonLines(process, true);
   rpc.on("frame", (frame) => {
-    if (frame.type === "extension_ui_request" && frame.method === "notify")
+    if (frame.type === "extension_ui_request" && frame.method === "notify") {
       warnings.push(frame.message);
+      if (frame.message.startsWith('{"active":'))
+        loadout = JSON.parse(frame.message);
+    }
   });
   await process.launch({
     command: globalThis.process.execPath,
@@ -218,12 +232,22 @@ test("Pi exposes configured MCP servers through native discovery tools", async (
       "rpc",
       "--session-dir",
       join(directory, "sessions"),
+      "--extension",
+      probe,
     ],
     env: { PI_CODING_AGENT_DIR: account, DOMOS_PI_MCP_URL: ready.url },
   });
   const state = await rpc.request<{ sessionFile: string }>("get_state");
   expect(state.sessionFile).toBeTruthy();
   await process.toolsReady();
+  await vi.waitFor(async () => {
+    await rpc.request("prompt", { message: "/loadout" });
+    expect(loadout?.active).toContain("mcp__domos__echo");
+    expect(loadout?.active).toContain("tool_search");
+    expect(loadout?.tools).toContain("mcp__code__echo");
+    expect(loadout?.tools).toContain("mcp__search__echo");
+  });
+  expect(loadout?.tools).not.toContain("codemode");
   expect(
     warnings.filter((message) => message.includes("neither is active")),
   ).toEqual([]);
