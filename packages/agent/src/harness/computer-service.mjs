@@ -17,7 +17,7 @@ export function openComputerService(directory, home, emit = () => {}) {
       const { openDesktopActivity } = await import("./desktop-activity.mjs");
       desktop = CuaDriver.create();
       desktopTools = JSON.parse(await desktop.listToolsJson()).tools;
-      sessions = openDesktopSession(desktop);
+      sessions = openDesktopSession(desktop, desktopTools);
       activity = openDesktopActivity(desktop, emit);
       return desktop;
     })().catch((error) => {

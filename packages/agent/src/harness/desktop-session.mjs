@@ -1,4 +1,8 @@
-import { desktopMutation, desktopStep } from "./desktop-actions.mjs";
+import {
+  desktopMutation,
+  desktopSetup,
+  desktopStep,
+} from "./desktop-actions.mjs";
 
 const observations = new Set([
   "get_window_state",
@@ -10,7 +14,7 @@ const observations = new Set([
   "zoom",
 ]);
 
-export function openDesktopSession(driver) {
+export function openDesktopSession(driver, tools = []) {
   const sessions = new Map();
   return {
     async call(name, args, owner, signal, recover = true) {
@@ -43,7 +47,11 @@ export function openDesktopSession(driver) {
         name === "run_steps"
           ? (args.steps ?? []).map(desktopStep)
           : [{ tool: name, args }];
-      const mutating = desktopMutation(name, args);
+      const mutating =
+        desktopMutation(name, args) ||
+        (!desktopSetup.has(name) &&
+          tools.find((tool) => tool.name === name)?.annotations
+            ?.readOnlyHint === false);
       if (mutating && state.review)
         return {
           images: [],

@@ -278,6 +278,7 @@ test("the desktop relay preserves the native MCP envelope", async () => {
 test.each([
   "clipboard_write",
   "launch_app",
+  "bring_to_front",
   "set_window_frame",
   "get_window_state",
 ])("%s cannot create input uncertainty", async (name) => {
@@ -286,13 +287,17 @@ test.each([
     isError: tool === "get_window_state",
     structuredJson: "{}",
   }));
-  const session = openDesktopSession({ callTool });
   const args = { session: "music", pid: 7, window_id: 90 };
-  await session.call(name, args, "task");
-  expect((await session.call("launch_app", args, "task")).isError).toBe(false);
+  const annotated = openDesktopSession({ callTool }, [
+    { name, annotations: { readOnlyHint: name === "get_window_state" } },
+  ]);
+  await annotated.call(name, args, "task");
+  expect((await annotated.call("launch_app", args, "task")).isError).toBe(
+    false,
+  );
   expect(
     (
-      await session.call(
+      await annotated.call(
         "run_steps",
         {
           ...args,
@@ -303,6 +308,17 @@ test.each([
     ).isError,
   ).toBe(false);
   expect(callTool.mock.calls.at(-1)?.[0]).toBe("run_steps");
+});
+
+test("native mutation annotations retain the uncertainty barrier", async () => {
+  const callTool = vi.fn(async () => ({ images: [], isError: false }));
+  const session = openDesktopSession({ callTool }, [
+    { name: "close_window", annotations: { readOnlyHint: false } },
+  ]);
+  const args = { session: "music", pid: 7, window_id: 90 };
+  await session.call("close_window", args, "task");
+  expect((await session.call("click", args, "task")).isError).toBe(true);
+  expect(callTool.mock.calls).toHaveLength(3);
 });
 
 test.each(failures.mutations)(

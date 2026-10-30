@@ -11,6 +11,13 @@ export const desktopInputs = [
   "move_cursor",
 ];
 
+export const desktopSetup = new Set([
+  "launch_app",
+  "clipboard_write",
+  "bring_to_front",
+  "set_window_frame",
+]);
+
 const desktopMaintenance = new Set([
   "get_config",
   "set_config",
