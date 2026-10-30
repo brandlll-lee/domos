@@ -37,7 +37,7 @@ test("MCP callers receive the original screenshot and structured result", async 
   });
 });
 
-test("MCP error replies contain text while the original evidence stays intact", async () => {
+test("MCP error replies preserve native screenshots and diagnostics", async () => {
   const result: ProductResult = {
     isError: true,
     content: [
@@ -65,18 +65,7 @@ test("MCP error replies contain text while the original evidence stays intact", 
   await client.connect(new StreamableHTTPClientTransport(new URL(gateway.url)));
   const reply = await client.callTool({ name: "operate" });
   expect(reply.isError).toBe(true);
-  expect(reply.content).toEqual(
-    expect.arrayContaining([
-      result.content[1],
-      {
-        type: "text",
-        text: "The screenshots in this error were removed. Call get_window_state again before any pixel action.",
-      },
-    ]),
-  );
-  expect(
-    (reply.content as { type: string }[]).every((part) => part.type === "text"),
-  ).toBe(true);
+  expect(reply.content).toEqual(expect.arrayContaining(result.content));
   expect(reply.structuredContent).toEqual(result.structuredContent);
   expect(result).toEqual(original);
 });

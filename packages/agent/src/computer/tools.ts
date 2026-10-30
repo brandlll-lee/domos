@@ -388,7 +388,7 @@ export class ComputerTools {
           }
         }
         throw new Error(
-          `工具 ${name} 不可用。可用电脑工具：${available.join(", ") || "无"}。等待界面变化请使用 run_steps 的 wait_for/expect 步骤字段，或已列出的 verify_state。`,
+          `工具 ${name} 不可用。可用电脑工具：${available.join(", ") || "无"}。`,
         );
       },
       context,

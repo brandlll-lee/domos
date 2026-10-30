@@ -116,4 +116,4 @@ Checks 在 Linux 图形测试中使用 Xvfb。Windows 本地测试不证明其�
 
 完成后，共享执行入口调用只读观察并返回新值。`takeover-flow.json` 保存首次点击成功、冲突数、卡片等待、交接、读回、输入到画面变化、总耗时和工具耗时。`continuous-input.json` 保存滚动压力数据。测试使用脚本 Harness 和真实浏览器，不调用在线模型，不代表模型任务成功率或轮数改善。Checks 在三个系统运行并上传这些产物。版本对照与历史会话边界见 [调查与验证记录](reports/browser-takeover-2026-10-26.md)。
 
-共享 MCP 回归还检查结构裁剪后的 JSON、完整应用记录的只读查询、截图通道和重复请求去重。电脑调用不创建逐次 ToolTask。意图先落盘，原始结果随后落盘；结果未知的同一请求不会重放。任务 9843 的脱敏基线见 `cua-contracts.json` 中的 `playerDiscovery`。
+共享 MCP 回归还检查结构裁剪后的 JSON、完整应用记录的 JMESPath 只读查询、有效查询示例、无效表达式错误、成功与失败结果的截图通道，以及重复请求去重。电脑调用不创建逐次 ToolTask。意图先落盘，原始结果随后落盘；结果未知的同一请求不会重放。任务 9843 的脱敏基线见 `cua-contracts.json` 中的 `playerDiscovery`。任务 10789 的应用查询失败及 122.5 秒递归扫描基线见 `nativeDiscovery`。桌面 E2E 通过实际 MCP 目录调用 list_apps，并核对 JMESPath 返回的原生应用数量。

@@ -101,7 +101,7 @@ test("a held app catalog can be searched after structural trimming", async () =>
   const gateway = await openGateway(
     [
       {
-        name: "desktop_list_apps",
+        name: "list_apps",
         description: "Apps",
         inputSchema: { type: "object" },
       },
@@ -114,33 +114,45 @@ test("a held app catalog can be searched after structural trimming", async () =>
     await gateway.close();
   });
   await client.connect(new StreamableHTTPClientTransport(new URL(gateway.url)));
-  const first = await client.callTool({ name: "desktop_list_apps" });
+  const first = await client.callTool({ name: "list_apps" });
   const preview = JSON.parse(
     (first.content as { text: string }[])[1]?.text ?? "",
   );
   expect(preview.apps.length).toBeLessThan(280);
   expect(first.structuredContent).toEqual({ apps });
+  const notice = (first.content as { text: string }[]).at(-1)?.text ?? "";
+  expect(notice).toContain("apps: 280 items");
+  const example = notice.match(/Example: (.+?)\. Use query_result/)?.[1];
+  expect(example).toBeTruthy();
+  const sample = await client.callTool({
+    name: "query_result",
+    arguments: { result: "r1", query: example },
+  });
+  expect(
+    JSON.parse((sample.content as { text: string }[])[0]?.text ?? ""),
+  ).toHaveLength(20);
   const found = await client.callTool({
     name: "query_result",
     arguments: {
       result: "r1",
-      path: "apps",
-      search: "Target Music",
-      fields: ["name", "launch_path"],
+      query:
+        "apps[?contains(name, 'Target Music')].{name:name, launch_path:launch_path}",
     },
   });
-  expect(found.structuredContent).toEqual({
-    value: {
-      total: 1,
-      offset: 0,
-      items: [{ name: "Target Music", launch_path: apps[279]?.launch_path }],
-    },
+  expect(
+    JSON.parse((found.content as { text: string }[])[0]?.text ?? ""),
+  ).toEqual([{ name: "Target Music", launch_path: apps[279]?.launch_path }]);
+  const invalid = await client.callTool({
+    name: "query_result",
+    arguments: { result: "r1", query: "apps[?" },
   });
+  expect(invalid.isError).toBe(true);
+  expect(JSON.stringify(invalid.content)).toContain("Shape:");
   expect(invoke).toHaveBeenCalledTimes(1);
   await expect(
     client.callTool({
       name: "query_result",
-      arguments: { result: "r1", limit: -1 },
+      arguments: { result: "r1", search: "Target Music" },
     }),
   ).rejects.toThrow();
 });

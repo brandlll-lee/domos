@@ -1,5 +1,18 @@
 {
   "source": "shared-contract-probe:2026-10-29",
+  "nativeDiscovery": {
+    "source": "task-10789:2026-10-31",
+    "completion": "pass",
+    "elapsedSeconds": 204.543,
+    "toolCalls": 15,
+    "recursiveShellSeconds": 122.5,
+    "observed": [
+      "The app catalog contained 275 records. Nested result searches did not locate the installed player.",
+      "Recursive disk discovery timed out before a registry lookup found the player.",
+      "An empty accessibility tree preceded an ineffective input batch.",
+      "Native set_value and a later playback click completed the task. Delivery alone did not verify the search."
+    ]
+  },
   "mutations": ["click", "run_steps", "run_script"],
   "playerDiscovery": {
     "source": "task-9843:2026-10-30",

@@ -58,3 +58,8 @@ Copyright (c) 2023 LobeHub
 Licensed under the MIT License. See licenses/lobe-icons.txt.
 Source: https://github.com/lobehub/lobe-icons
 apps/web/src/features/models/logos contains selected provider SVGs.
+
+JMESPath 0.16.0
+Copyright 2014 James Saryerwinnie
+Licensed under the Apache License, Version 2.0. See licenses/jmespath.txt.
+Source: https://github.com/jmespath/jmespath.js

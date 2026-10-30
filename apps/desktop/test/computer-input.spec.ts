@@ -120,6 +120,18 @@ test("native desktop input, cursor and conditions use the driver session", async
           })
         ).isError,
       ).not.toBe(true);
+      const apps = await client.callTool({ name: "list_apps", arguments: {} });
+      expect(apps.isError).not.toBe(true);
+      const catalog = apps.structuredContent as { apps: unknown[] };
+      expect(Array.isArray(catalog.apps)).toBe(true);
+      const counted = await client.callTool({
+        name: "query_result",
+        arguments: { result: "r2", query: "length(apps)" },
+      });
+      expect(counted.isError).not.toBe(true);
+      expect(
+        JSON.parse((counted.content as { text: string }[])[0]?.text ?? ""),
+      ).toBe(catalog.apps.length);
     } finally {
       await client.close();
       await gateway.close();

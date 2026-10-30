@@ -1,50 +1,54 @@
+import jmespath from "jmespath";
 import { z } from "zod";
 
 const budget = 8000;
 
-function textOnlyError(result) {
-  if (result.isError !== true) return result;
-  const content = result.content.filter((part) => part.type === "text");
-  if (content.length === result.content.length) return result;
-  return {
-    ...result,
-    content: [
-      ...content,
-      {
-        type: "text",
-        text: "The screenshots in this error were removed. Call get_window_state again before any pixel action.",
-      },
-    ],
-  };
-}
 const queryInput = z.strictObject({
   result: z.string(),
-  path: z.string().optional(),
-  search: z.string().optional(),
-  fields: z.array(z.string()).optional(),
-  offset: z.number().int().min(0).optional(),
-  limit: z.number().int().min(1).max(50).optional(),
+  query: z.string().trim().min(1),
 });
 
 export const resultQueryTool = {
   name: "query_result",
   description:
-    "Read a held tool result without calling the original tool again. Use its result handle, an optional dot-separated path, and search to find records by text. Select fields to keep the answer small. Page with offset and limit.",
+    "Query a held result with JMESPath over the complete value. Use the supplied shape and example. Filter nested arrays and select fields, e.g. apps[?contains(name, 'Music')].{name:name, path:launch_path}. Bound large answers with [0:20]. Read-only; never calls the original tool.",
   inputSchema: {
     type: "object",
     properties: {
       result: { type: "string" },
-      path: { type: "string" },
-      search: { type: "string" },
-      fields: { type: "array", items: { type: "string" } },
-      offset: { type: "integer", minimum: 0 },
-      limit: { type: "integer", minimum: 1, maximum: 50 },
+      query: { type: "string" },
     },
-    required: ["result"],
+    required: ["result", "query"],
     additionalProperties: false,
   },
   annotations: { readOnlyHint: true, idempotentHint: true },
 };
+
+function queryGuide(value) {
+  const fields = (item) =>
+    item && typeof item === "object" && !Array.isArray(item)
+      ? Object.keys(item).slice(0, 12)
+      : [];
+  const arrays = Array.isArray(value)
+    ? [["", value]]
+    : Object.entries(value ?? {}).filter(([, item]) => Array.isArray(item));
+  const shape = arrays.length
+    ? arrays
+        .map(
+          ([key, items]) =>
+            `${key || "@"}: ${items.length} items; fields: ${fields(items.find((item) => item != null)).join(", ")}`,
+        )
+        .join("; ")
+    : `type: ${value === null ? "null" : typeof value}; keys: ${fields(value).join(", ")}`;
+  const [key, items] = arrays[0] ?? [];
+  const keys = items
+    ? fields(items.find((item) => item != null)).slice(0, 2)
+    : [];
+  const example = items
+    ? `${key ? JSON.stringify(key) : ""}[0:20]${keys.length ? `.{${keys.map((field) => `${JSON.stringify(field)}:${JSON.stringify(field)}`).join(",")}}` : ""}`
+    : "@";
+  return `Shape: ${shape}. Example: ${example}`;
+}
 
 function bounded(value, remaining = { chars: budget }) {
   if (Array.isArray(value)) {
@@ -73,11 +77,15 @@ function bounded(value, remaining = { chars: budget }) {
 export function openToolResults() {
   const held = new Map();
   let sequence = 0;
-  function project(raw) {
-    const result = textOnlyError(raw);
+  function project(result) {
     const text = result.content.filter((part) => part.type === "text");
     const structured = result.structuredContent;
-    const source = structured ?? text.map((part) => part.text).join("\n");
+    let source = structured ?? text.map((part) => part.text).join("\n");
+    if (typeof source === "string") {
+      try {
+        source = JSON.parse(source);
+      } catch {}
+    }
     const handle = `r${++sequence}`;
     held.set(handle, source);
     if (held.size > 20) held.delete(held.keys().next().value);
@@ -124,52 +132,34 @@ export function openToolResults() {
     if (trimmed)
       content.push({
         type: "text",
-        text: `Partial result. Full records are held as ${handle}. Use query_result with result:"${handle}" and path/search/fields to read the required records. Do not search files or repeat an action to recover this result.`,
+        text: `Partial result. Full records are held as ${handle}. ${queryGuide(source)}. Use query_result {"result":"${handle}","query":"<JMESPath>"}. Select only required records and fields. Do not search files or repeat an action to recover this result.`,
       });
     return { ...result, content };
   }
   return {
     project,
     query(input) {
-      const {
-        result,
-        path = "",
-        search,
-        fields,
-        offset = 0,
-        limit = 20,
-      } = queryInput.parse(input);
+      const { result, query } = queryInput.parse(input);
       if (!held.has(result))
         throw new Error("结果已失效。请读取原始工作记录。");
-      let value = held.get(result);
-      for (const key of path.split(".").filter(Boolean)) {
-        if (!value || typeof value !== "object" || !Object.hasOwn(value, key))
-          throw new Error("结果路径不存在。");
-        value = value[key];
+      const source = held.get(result);
+      let value;
+      try {
+        value = jmespath.search(source, query);
+      } catch (error) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: `Invalid JMESPath: ${error.message}. ${queryGuide(source)}`,
+            },
+          ],
+        };
       }
-      if (Array.isArray(value)) {
-        const matches = search
-          ? value.filter((item) =>
-              JSON.stringify(item)
-                .toLocaleLowerCase()
-                .includes(search.toLocaleLowerCase()),
-            )
-          : value;
-        const items = matches
-          .slice(offset, offset + limit)
-          .map((item) =>
-            fields && item && typeof item === "object"
-              ? Object.fromEntries(
-                  fields
-                    .filter((key) => Object.hasOwn(item, key))
-                    .map((key) => [key, item[key]]),
-                )
-              : item,
-          );
-        value = { total: matches.length, offset, items };
-      } else if (typeof value === "string")
-        value = value.slice(offset, offset + budget);
-      return project({ content: [], structuredContent: { value } });
+      return project({
+        content: [{ type: "text", text: JSON.stringify(value) ?? "null" }],
+      });
     },
   };
 }
