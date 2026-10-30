@@ -4,10 +4,9 @@ import type {
   Cursor,
   EntryRecord,
 } from "@earendil-works/pi-durable";
-import type { MessageDelivery } from "./delivery.ts";
 import { FileInput } from "./files.ts";
 import { EngineMessage } from "./harness/state.ts";
-import type { ChatMessage } from "./messages.ts";
+import type { ChatMessage, MessageDelivery } from "./messages.ts";
 import { messageText } from "./messages.ts";
 import { previewText } from "./preview-text.ts";
 import { RoutineInput } from "./work/routine-state.ts";

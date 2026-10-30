@@ -3,11 +3,12 @@ import {
   ClientSideConnection,
   ndJsonStream,
   PROTOCOL_VERSION,
-  type RequestPermissionRequest,
   type SessionConfigOption,
 } from "@agentclientprotocol/sdk";
+import type { z } from "zod";
 import {
   type EngineAnswer,
+  type EngineApproval,
   type EngineControls,
   type EngineEvent,
   type EngineOpen,
@@ -15,6 +16,7 @@ import {
   type EngineSession,
   engineLimits,
 } from "../types.ts";
+import { formContent, formQuestions } from "./question-form.ts";
 
 type NativeMessage = {
   info: {
@@ -147,56 +149,99 @@ export function acpProvider(
       const pending = new Map<
         string,
         {
-          request: RequestPermissionRequest;
+          validate?: (answer: EngineAnswer) => unknown;
           answer: (value: EngineAnswer) => void;
         }
       >();
+      async function ask(
+        approval: EngineApproval,
+        validate?: (answer: EngineAnswer) => unknown,
+      ) {
+        await reply();
+        const result = Promise.withResolvers<EngineAnswer>();
+        pending.set(approval.id, { answer: result.resolve, validate });
+        const timer = setTimeout(
+          () => result.resolve({ allow: false }),
+          engineLimits.approvalMs,
+        );
+        timer.unref();
+        try {
+          if (approve) {
+            const answer = await approve(approval);
+            if (answer.allow) validate?.(answer);
+            result.resolve(answer);
+          } else await emit({ type: "approval", approval });
+          return await result.promise;
+        } finally {
+          clearTimeout(timer);
+          pending.delete(approval.id);
+          await emit({ type: "approval_closed", id: approval.id });
+        }
+      }
+      void process.closed.then(() => {
+        for (const item of pending.values()) item.answer({ allow: false });
+      });
       const rpc = new ClientSideConnection(
         () => ({
+          async createElicitation(request) {
+            if (request.mode !== "form")
+              throw new Error("此引擎提问格式尚未支持。");
+            const schema =
+              request.requestedSchema as z.core.JSONSchema.JSONSchema;
+            const answer = await ask(
+              {
+                id: `question:${++sequence}`,
+                kind: "question",
+                title: request.message,
+                detail: "",
+                questions: formQuestions(schema),
+              },
+              (answer) => formContent(schema, answer),
+            );
+            return answer.allow
+              ? { action: "accept", content: formContent(schema, answer) }
+              : { action: "cancel" };
+          },
           async requestPermission(request) {
             const id = `permission:${++sequence}`;
-            const result = Promise.withResolvers<EngineAnswer>();
-            pending.set(id, { request, answer: result.resolve });
-            const timer = setTimeout(
-              () => result.resolve({ allow: false }),
-              engineLimits.approvalMs,
-            );
-            timer.unref();
-            try {
-              const event = {
-                type: "approval",
-                approval: {
-                  id,
-                  title: "允许这次操作？",
-                  detail:
-                    request.toolCall.title ??
-                    JSON.stringify(request.toolCall.rawInput ?? {}),
-                  kind: "permission",
-                  automatic: true,
-                  options: request.options.map((option) => ({
-                    id: option.optionId,
-                    label: option.name,
-                  })),
-                },
-              } satisfies Extract<EngineEvent, { type: "approval" }>;
-              if (approve) result.resolve(await approve(event.approval));
-              else await emit(event);
-              const answer = await result.promise;
-              const option = request.options.find((item) =>
-                answer.optionId
-                  ? item.optionId === answer.optionId
-                  : item.kind === (answer.allow ? "allow_once" : "reject_once"),
-              );
-              return {
-                outcome: option
-                  ? { outcome: "selected", optionId: option.optionId }
-                  : { outcome: "cancelled" },
-              };
-            } finally {
-              clearTimeout(timer);
-              pending.delete(id);
-              await emit({ type: "approval_closed", id });
-            }
+            const question = String(
+              request.toolCall.toolCallId ?? "",
+            ).startsWith("interaction_");
+            const options = request.options.map((option) => ({
+              id: option.optionId,
+              label: option.name,
+            }));
+            const title =
+              request.toolCall.title ??
+              JSON.stringify(request.toolCall.rawInput ?? {});
+            const answer = await ask({
+              id,
+              title: question ? title : "允许这次操作？",
+              detail: question ? "" : title,
+              kind: question ? "question" : "permission",
+              automatic: !question,
+              ...(question
+                ? { questions: [{ id, title, options }] }
+                : { options }),
+            });
+            const selected = question
+              ? answer.answers?.[id]?.[0]
+              : answer.optionId;
+            const option =
+              answer.allow || !question
+                ? request.options.find((item) =>
+                    selected
+                      ? item.optionId === selected
+                      : !question &&
+                        item.kind ===
+                          (answer.allow ? "allow_once" : "reject_once"),
+                  )
+                : undefined;
+            return {
+              outcome: option
+                ? { outcome: "selected", optionId: option.optionId }
+                : { outcome: "cancelled" },
+            };
           },
           async sessionUpdate(notification) {
             events = events.then(async () => {
@@ -382,6 +427,7 @@ export function acpProvider(
       const hello = await rpc.initialize({
         protocolVersion: PROTOCOL_VERSION,
         clientCapabilities: {
+          elicitation: { form: {} },
           session: {
             configOptions: { boolean: {} },
             notices: {},
@@ -655,6 +701,7 @@ export function acpProvider(
         async answer(requestId, answer) {
           const item = pending.get(requestId);
           if (!item) throw new Error("这次确认已经失效。");
+          if (answer.allow) item.validate?.(answer);
           item.answer(answer);
         },
       };

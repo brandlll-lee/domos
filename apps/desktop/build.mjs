@@ -129,10 +129,18 @@ for (const name of [
     join(root, "packages/agent/src/harness", name),
     join(runtime, "work/packages/agent/src/harness", name),
   );
+const nativeBinary = await desktopBinary(homedir());
+const nativeDirectory = join(
+  runtime,
+  "work/packages/agent/src/harness/cua-driver",
+);
+await mkdir(nativeDirectory, { recursive: true });
 await cp(
-  dirname(await desktopBinary(homedir())),
-  join(runtime, "work/packages/agent/src/harness/cua-driver"),
-  { recursive: true },
+  nativeBinary,
+  join(
+    nativeDirectory,
+    process.platform === "win32" ? "cua-driver.exe" : "cua-driver",
+  ),
 );
 await cp(
   join(root, "deploy/workspace.Dockerfile"),

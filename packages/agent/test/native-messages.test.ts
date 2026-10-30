@@ -19,7 +19,7 @@ import { chatView } from "../src/chat-view.ts";
 import { openAgent } from "../src/open-agent.ts";
 import { chatTranscript } from "../src/transcript.ts";
 
-test("complete messages arrive during work and survive restart", async () => {
+test("native assistant messages arrive during work and survive restart", async () => {
   const directory = await mkdtemp(join(tmpdir(), "domos-delivery-"));
   onTestFinished(() => rm(directory, { recursive: true, force: true }));
   const database = join(directory, "agent.sqlite");
@@ -55,19 +55,6 @@ test("complete messages arrive during work and survive restart", async () => {
   );
   faux.setResponses([
     fauxAssistantMessage(
-      [
-        fauxToolCall("message_user", {
-          message: "Which source should I check?",
-          kind: "question",
-        }),
-      ],
-      { stopReason: "toolUse" },
-    ),
-    fauxAssistantMessage(
-      [fauxToolCall("message_user", { message: "The source is available." })],
-      { stopReason: "toolUse" },
-    ),
-    fauxAssistantMessage(
       [{ type: "text", text: "I will check the source." }, work],
       { stopReason: "toolUse" },
     ),
@@ -100,11 +87,7 @@ test("complete messages arrive during work and survive restart", async () => {
       )
       .toBe(true);
     expect(chatView(state.value).busy).toBe(true);
-    expect(delivered()).toEqual([
-      "Which source should I check?",
-      "The source is available.",
-      "I will check the source.",
-    ]);
+    expect(delivered()).toEqual(["I will check the source."]);
   } finally {
     state.dispose();
     await first.harness.close(context);
@@ -122,12 +105,7 @@ test("complete messages arrive during work and survive restart", async () => {
               .map((part) => part.text)
           : [],
       );
-      expect(texts).toEqual([
-        "Which source should I check?",
-        "The source is available.",
-        "I will check the source.",
-        "Complete result",
-      ]);
+      expect(texts).toEqual(["I will check the source.", "Complete result"]);
       expect(new Set(items.map((item) => `${item.kind}:${item.id}`)).size).toBe(
         items.length,
       );
@@ -137,42 +115,5 @@ test("complete messages arrive during work and survive restart", async () => {
     }
   } finally {
     await second.harness.close(context);
-  }
-});
-
-test("a recovered product tool error leaves the final reply visible", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "domos-delivery-"));
-  onTestFinished(() => rm(directory, { recursive: true, force: true }));
-  const faux = fauxProvider();
-  const models = createModels();
-  models.setProvider(faux.provider);
-  faux.setResponses([
-    fauxAssistantMessage([fauxToolCall("message_user", { message: "   " })], {
-      stopReason: "toolUse",
-    }),
-    fauxAssistantMessage("Please provide your request."),
-  ]);
-  const runtime = await openAgent(
-    join(directory, "agent.sqlite"),
-    { models, registry: createRegistry() },
-    { model: { provider: "faux", modelId: "faux-1" } },
-    context,
-  );
-  try {
-    await runtime.conversation.submit(
-      { type: "input", content: "Hello" },
-      context,
-    );
-    await runtime.conversation.waitForIdle(context);
-    const state = await runtime.conversation.viewState(context);
-    try {
-      const items = chatTranscript(chatView(state.value));
-      expect(items.filter((item) => item.kind === "message")).toHaveLength(2);
-      expect(items.map((item) => item.kind)).toEqual(["message", "message"]);
-    } finally {
-      state.dispose();
-    }
-  } finally {
-    await runtime.harness.close(context);
   }
 });

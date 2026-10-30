@@ -9,14 +9,12 @@ import {
   ToolTask,
 } from "@earendil-works/pi-durable";
 import { ComputerRequests } from "../computer/runtime.ts";
-import type { MessageDelivery } from "../delivery.ts";
 import { conversationEntry, conversationHistory } from "./history.ts";
 import { EngineDoc, EngineMessage } from "./state.ts";
 import { type EngineRuntime, stored } from "./task-types.ts";
 import type { ProductResult, ProductTool } from "./types.ts";
 
 const productExtensions = new Set([
-  "domos-messaging",
   "domos-memory",
   "domos-skills",
   "domos-routines",
@@ -194,11 +192,9 @@ export async function callProductTool(
     await runtime.snapshot(NestedCallDoc, runtime.taskId, key, context)
   )?.result;
   if (!result) throw new Error("产品工具结果未确认。");
-  const details = result.details as
-    | { attachment?: unknown; delivery?: MessageDelivery }
-    | undefined;
+  const details = result.details as { attachment?: unknown } | undefined;
   if (details && "content" in details) return details as ProductResult;
-  if (details?.attachment || details?.delivery) {
+  if (details?.attachment) {
     await runtime.commit(async (tx) => {
       const doc = await tx.doc(ProductCalls, runtime.taskId);
       if (doc.delivered.includes(key)) return;
@@ -217,7 +213,6 @@ export async function callProductTool(
           toolStatus: "done",
           isError: false,
           ...(details.attachment ? { attachments: [details.attachment] } : {}),
-          ...(details.delivery ? { delivery: details.delivery } : {}),
         }),
       });
     }, context);

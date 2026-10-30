@@ -38,7 +38,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-test("MCP validates native action output and retains Domos text", async () => {
+test("MCP validates native action output and preserves content", async () => {
   driver.callTool.mockResolvedValue({
     structuredContent: { effect: "confirmed", route: "background" },
     content: [],
@@ -91,14 +91,9 @@ test("MCP validates native action output and retains Domos text", async () => {
     effect: "confirmed",
     route: "background",
   });
-  expect(result.content).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({
-        type: "text",
-        text: expect.stringContaining("Domos computer tool time:"),
-      }),
-    ]),
-  );
+  expect(result.content).toEqual([
+    { type: "text", text: JSON.stringify(result.structuredContent) },
+  ]);
 });
 
 test("the desktop relay preserves the native MCP envelope", async () => {

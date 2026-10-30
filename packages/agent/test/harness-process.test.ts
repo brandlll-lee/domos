@@ -238,9 +238,11 @@ test("Pi registers the product server with its native MCP lifecycle", async () =
   globalThis.process.env.DOMOS_PI_TOOLS = manifest;
   const registerMcpServer = vi.fn();
   try {
-    piTools({ registerMcpServer, on: vi.fn() } as unknown as Parameters<
-      typeof piTools
-    >[0]);
+    piTools({
+      registerMcpServer,
+      registerTool: vi.fn(),
+      on: vi.fn(),
+    } as unknown as Parameters<typeof piTools>[0]);
     expect(registerMcpServer).toHaveBeenCalledWith("domos", {
       url: "http://127.0.0.1/mcp",
       exposure: "direct",

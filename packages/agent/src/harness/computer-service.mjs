@@ -90,24 +90,15 @@ export function openComputerService(directory, home) {
         }
       }
       const args = input.arguments ?? {};
-      const startedAt = performance.now();
       const native = await desktop.client.callTool(
         { name: input.name, arguments: args },
         undefined,
         { signal },
       );
-      const elapsed = Math.round(performance.now() - startedAt);
       return {
         ...native,
         isError: Boolean(native.isError),
         _meta: { ...native._meta, "domos/platform": process.platform },
-        content: [
-          ...native.content,
-          {
-            type: "text",
-            text: `Domos computer tool time: ${elapsed} ms.`,
-          },
-        ],
       };
     },
     async close() {

@@ -7,8 +7,9 @@ import type {
 } from "@earendil-works/pi-ai";
 import type { ToolDiagnostic } from "@earendil-works/pi-durable";
 import type { Attachment } from "./attachments.ts";
-import type { MessageDelivery } from "./delivery.ts";
 import type { InputMaterials } from "./materials.ts";
+
+export type MessageDelivery = { text: string; kind?: "update" | "question" };
 
 export type ChatContent =
   | Pick<TextContent, "type" | "text">

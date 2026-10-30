@@ -216,7 +216,6 @@ test("mode gates catalog and invocation; handoffs are explicit, single-use and o
     "owner",
     expect.any(AbortSignal),
     context,
-    expect.any(Object),
   );
   await expect(
     invoke("computer_assist", { ...input(), handoff }),

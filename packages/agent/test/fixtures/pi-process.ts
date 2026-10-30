@@ -1,7 +1,10 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Models } from "@earendil-works/pi-ai/models";
-import type { RpcCommand } from "@earendil-works/pi-coding-agent";
+import type {
+  RpcCommand,
+  RpcExtensionUIResponse,
+} from "@earendil-works/pi-coding-agent";
 import {
   type AgentSession,
   createAgentSession,
@@ -13,7 +16,10 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { nativeHistory } from "../../src/harness/native-history.mjs";
-import { registerPiApprovals } from "../../src/harness/pi-tools.mjs";
+import {
+  registerPiApprovals,
+  registerPiQuestions,
+} from "../../src/harness/pi-tools.mjs";
 import type {
   ProcessSpec,
   ProductResult,
@@ -24,7 +30,10 @@ import { ProtocolProcess } from "./engine-process.ts";
 export class PiProcess extends ProtocolProcess {
   override readonly ready;
   private session?: AgentSession;
-  private readonly dialogs = new Map<string, (confirmed: boolean) => void>();
+  private readonly dialogs = new Map<
+    string,
+    (response: RpcExtensionUIResponse) => void
+  >();
   private readonly lifetime = new AbortController();
   private readonly beforeTool?: (signal: AbortSignal) => Promise<void>;
   private specReady = Promise.resolve();
@@ -65,11 +74,8 @@ export class PiProcess extends ProtocolProcess {
     });
     this.receive = (request) => {
       if (request.type === "extension_ui_response") {
-        const response = request as unknown as {
-          id: string;
-          confirmed?: boolean;
-        };
-        this.dialogs.get(response.id)?.(Boolean(response.confirmed));
+        const response = request as unknown as RpcExtensionUIResponse;
+        this.dialogs.get(response.id)?.(response);
         this.dialogs.delete(response.id);
         return;
       }
@@ -99,6 +105,7 @@ export class PiProcess extends ProtocolProcess {
     }
     this.specReady = mkdir(this.directory, { recursive: true }).then(() => {});
     await this.specReady;
+    await this.command({ type: "new_session" });
   }
   private async command(request: RpcCommand): Promise<unknown> {
     await this.specReady;
@@ -127,6 +134,7 @@ export class PiProcess extends ProtocolProcess {
         noContextFiles: true,
         extensionFactories: [
           registerPiApprovals,
+          registerPiQuestions,
           (pi) => {
             pi.on("tool_call", (event) =>
               ["read", "write", "edit", "bash", "powershell"].includes(
@@ -186,10 +194,41 @@ export class PiProcess extends ProtocolProcess {
         mode: "rpc",
         uiContext: new Proxy(
           {
+            select: (title: string, options: string[]) => {
+              const id = crypto.randomUUID();
+              const reply = Promise.withResolvers<string | undefined>();
+              this.dialogs.set(id, (response) =>
+                reply.resolve("value" in response ? response.value : undefined),
+              );
+              this.frame({
+                type: "extension_ui_request",
+                method: "select",
+                id,
+                title,
+                options,
+              });
+              return reply.promise;
+            },
+            input: (title: string) => {
+              const id = crypto.randomUUID();
+              const reply = Promise.withResolvers<string | undefined>();
+              this.dialogs.set(id, (response) =>
+                reply.resolve("value" in response ? response.value : undefined),
+              );
+              this.frame({
+                type: "extension_ui_request",
+                method: "input",
+                id,
+                title,
+              });
+              return reply.promise;
+            },
             confirm: (title: string, message: string) => {
               const id = crypto.randomUUID();
               const reply = Promise.withResolvers<boolean>();
-              this.dialogs.set(id, reply.resolve);
+              this.dialogs.set(id, (response) =>
+                reply.resolve("confirmed" in response && response.confirmed),
+              );
               this.frame({
                 type: "extension_ui_request",
                 method: "confirm",
@@ -246,7 +285,8 @@ export class PiProcess extends ProtocolProcess {
         return {};
       case "abort":
         this.lifetime.abort();
-        for (const answer of this.dialogs.values()) answer(false);
+        for (const answer of this.dialogs.values())
+          answer({ type: "extension_ui_response", id: "", cancelled: true });
         this.dialogs.clear();
         await session.abort();
         return {};
@@ -256,7 +296,8 @@ export class PiProcess extends ProtocolProcess {
   }
   override async close() {
     this.lifetime.abort();
-    for (const answer of this.dialogs.values()) answer(false);
+    for (const answer of this.dialogs.values())
+      answer({ type: "extension_ui_response", id: "", cancelled: true });
     this.dialogs.clear();
     await this.session?.abort();
     await this.session?.dispose();

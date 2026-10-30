@@ -200,7 +200,7 @@ function Approval({
           disabled={action.busy}
           onClick={() => void answer(false)}
         >
-          拒绝
+          {approval.kind === "question" ? "取消提问" : "拒绝"}
         </Button>
       </div>
       {action.error && (

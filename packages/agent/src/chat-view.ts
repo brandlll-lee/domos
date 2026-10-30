@@ -8,7 +8,6 @@ import {
   type ModelRef,
 } from "@earendil-works/pi-durable";
 import type { Attachment } from "./attachments.ts";
-import type { MessageDelivery } from "./delivery.ts";
 import { FileInput } from "./files.ts";
 import { EngineMessage } from "./harness/state.ts";
 import type {
@@ -17,7 +16,7 @@ import type {
   EngineRun,
   EngineRuntimeState,
 } from "./harness/types.ts";
-import type { ChatMessage } from "./messages.ts";
+import type { ChatMessage, MessageDelivery } from "./messages.ts";
 import { modelFailure } from "./runtime/model-diagnostics.ts";
 import { RoutineInput } from "./work/routine-state.ts";
 

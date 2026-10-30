@@ -73,6 +73,10 @@ See the [CUA lifecycle acceptance](reports/cua-lifecycle-2026-10-30.md) for curr
 
 Protocol sources: [Pi RPC](https://pi.dev/docs/latest/rpc), [Codex app-server](https://developers.openai.com/codex/app-server), [Claude streaming](https://code.claude.com/docs/en/agent-sdk/streaming-output), [ACP plans](https://agentclientprotocol.com/protocol/v1/agent-plan). See the [acceptance report](reports/work-turns-2026-10-30.md).
 
+## Messages and questions
+
+Native assistant messages deliver updates and final results. Pi questions use extension UI select/input requests. Codex uses native user-input and elicitation requests. Claude uses AskUserQuestion. OpenCode and ACP use native interaction permissions or form elicitation. These requests use the shared stored question card. Answers and cancellation return through the originating native protocol. An unavailable native question capability must remain unavailable.
+
 ## Memory
 
 Domos owns memory records. Each record belongs to one Bot unless the user shares it. User profile facts enter a fixed 8 KiB snapshot for one Durable task. Recovery and additional input reuse that snapshot. The next task reads current records. Work notes have a 24 KiB capacity and use memory_search or memory_list. Existing records remain work notes with their original text.

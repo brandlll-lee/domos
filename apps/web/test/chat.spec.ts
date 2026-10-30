@@ -3258,10 +3258,60 @@ test("typing dots share the avatar color and follow complete messages", async ({
   await page.reload();
   await expect(replies).toHaveCount(2);
 });
-test("complete product messages arrive during work and survive restart", async ({
+test("native questions use the shared card and native replies persist", async ({
   page,
 }) => {
-  await control("gate-tool");
+  await control({
+    responses: [
+      {
+        stopReason: "toolUse",
+        content: [
+          { type: "text", text: "正在核对资料。" },
+          {
+            type: "toolCall",
+            id: crypto.randomUUID(),
+            name: "ask_user",
+            arguments: {
+              questions: [
+                { question: "你要哪种结果？", options: ["简短", "详细"] },
+                { question: "说明用途" },
+              ],
+            },
+          },
+        ],
+      },
+      { content: "已按你的选择完成。" },
+    ],
+  });
+  await page.goto(url);
+  await page.getByLabel("消息", { exact: true }).fill("整理资料，先问我选择");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const replies = page.getByLabel("Domos 的回复", { exact: true });
+  await expect(replies).toHaveText(["正在核对资料。"]);
+  await expect(
+    page.getByRole("button", { name: "发送回答", exact: true }),
+  ).toBeDisabled();
+  await page.reload();
+  await page
+    .getByRole("combobox", { name: "你要哪种结果？", exact: true })
+    .click();
+  await page.getByRole("option", { name: "简短", exact: true }).click();
+  await page.getByRole("button", { name: "发送回答", exact: true }).click();
+  await page
+    .getByRole("textbox", { name: "说明用途", exact: true })
+    .fill("团队周报");
+  await page.screenshot({
+    path: "test-results/native-question.png",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "发送回答", exact: true }).click();
+  await expect(replies).toHaveText(["正在核对资料。", "已按你的选择完成。"]);
+  await expect(page.locator(".native-approval")).toHaveCount(0);
+  const port = Number(new URL(url).port);
+  await stop();
+  await start(port);
+  await page.reload();
+  await expect(replies).toHaveText(["正在核对资料。", "已按你的选择完成。"]);
   await control({
     responses: [
       {
@@ -3270,79 +3320,19 @@ test("complete product messages arrive during work and survive restart", async (
           {
             type: "toolCall",
             id: crypto.randomUUID(),
-            name: "message_user",
-            arguments: { message: "你想先核对哪份资料？", kind: "question" },
+            name: "ask_user",
+            arguments: { questions: [{ question: "继续吗？" }] },
           },
         ],
       },
-      {
-        stopReason: "toolUse",
-        content: [
-          {
-            type: "toolCall",
-            id: crypto.randomUUID(),
-            name: "message_user",
-            arguments: { message: "已找到资料，正在整理。" },
-          },
-        ],
-      },
-      {
-        stopReason: "toolUse",
-        content: [
-          { type: "text", text: "我会继续核对资料。" },
-          {
-            type: "toolCall",
-            id: crypto.randomUUID(),
-            name: toolName,
-            arguments: { text: "已核对。" },
-          },
-        ],
-      },
-      { content: "**报告已完成。**" },
+      { content: "提问已取消。" },
     ],
   });
-  await page.goto(url);
-  await page.getByLabel("消息", { exact: true }).fill("请整理资料");
+  await page.getByLabel("消息", { exact: true }).fill("再问一次");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  const replies = page.getByLabel("Domos 的回复", { exact: true });
-  await expect(replies).toHaveText([
-    "你想先核对哪份资料？",
-    "已找到资料，正在整理。",
-    "我会继续核对资料。",
-  ]);
-  await expect(
-    page.getByRole("button", { name: "停止生成", exact: true }),
-  ).toBeVisible();
-  await expect(page.locator(".typing-dots")).toBeVisible();
-  await page.reload();
-  await expect(replies).toHaveText([
-    "你想先核对哪份资料？",
-    "已找到资料，正在整理。",
-    "我会继续核对资料。",
-  ]);
-  await expect(page.locator(".typing-dots")).toBeVisible();
-  await control("release");
-  await expect(replies).toHaveText([
-    "你想先核对哪份资料？",
-    "已找到资料，正在整理。",
-    "我会继续核对资料。",
-    "报告已完成。",
-  ]);
-  await expect(page.locator(".typing-dots")).toHaveCount(0);
-  const port = Number(new URL(url).port);
-  await stop();
-  await start(port);
-  await page.reload();
-  await expect(replies).toHaveText([
-    "你想先核对哪份资料？",
-    "已找到资料，正在整理。",
-    "我会继续核对资料。",
-    "报告已完成。",
-  ]);
-  await page.screenshot({
-    path: "test-results/message-delivery.png",
-    fullPage: true,
-  });
+  await page.getByRole("button", { name: "取消提问", exact: true }).click();
+  await expect(replies.last()).toHaveText("提问已取消。");
+  await expect(page.locator(".native-approval")).toHaveCount(0);
 });
 
 test("Bot identity stays consistent and image previews work in drafts and history", async ({
