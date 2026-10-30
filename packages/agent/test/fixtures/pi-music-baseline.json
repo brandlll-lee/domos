@@ -44,12 +44,7 @@
       "input": {
         "result": "r3",
         "search": "cloudmusic",
-        "fields": [
-          "name",
-          "launch_path",
-          "running",
-          "kind"
-        ]
+        "fields": ["name", "launch_path", "running", "kind"]
       },
       "output": "{\"value\":{\"apps\":[{\"active\":false,\"bundle_id\":null,\"kind\":\"desktop\",\"last_used\":null,\"launch_path\":null,\"name\":\"TextInputHost.exe\",\"pid\":24104,\"running\":true,\"windows\":[]},{\"active\":false,\"bundle_id\":null,\"kind\":\"desktop\",\"last_used\":null,\"launch_path\":null,\"name\":\"LockApp.exe\",\"pid\":20072,\"running\":true,\"windows\":[]},{\"active\":false,\"bundle_id\":null,\"kind\":\"desktop\",\"last_used\":null,\"launch_path\":null,\"name\":\"ShellExperienceHost.exe\",\"pid\":25484,\"running\":true,\"windows\":[]},{\"active\":false,\"bundle_id\":null,\"kind\":\"desktop\",\"last_used\":null,\"launch_path\":null,\"name\":\"SearchHost.exe\",\"pid\":13712,\"running\":true,\"windows\":[]},{\"active\":false,\"bundle_id\":null,\"kind\":\"desktop\",\"last_used\":null,\"launch_path\":null,\"name\":\"StartMenuExperienceHost.exe\",\"pid\":2024,\"running\":true,\"windows\":[]},{\"active\":false,\"bundle_id\":\"C:/Apps/Music/player.exe\",\"kind\":\"desktop\",\"last_used\":\"2026-06-11T19:55:28Z\",\"launch_path\":\"C:/Apps/Music/player.exe",
       "startedAt": 28194,
@@ -133,7 +128,7 @@
         "session": "music-eval",
         "window_id": 90
       },
-      "output": "window_id=986766 pid=46132 elements=189 snapshot_id=s00000001\nDomos computer tool time: 366 ms.",
+      "output": "window_id=90 pid=7 elements=189 snapshot_id=s00000001\nDomos computer tool time: 366 ms.",
       "startedAt": 78572,
       "endedAt": 84472
     },
@@ -165,19 +160,13 @@
           {
             "tool": "hotkey",
             "args": {
-              "keys": [
-                "ctrl",
-                "a"
-              ]
+              "keys": ["ctrl", "a"]
             }
           },
           {
             "tool": "hotkey",
             "args": {
-              "keys": [
-                "ctrl",
-                "v"
-              ]
+              "keys": ["ctrl", "v"]
             }
           },
           {
@@ -238,19 +227,13 @@
           },
           {
             "args": {
-              "keys": [
-                "ctrl",
-                "a"
-              ]
+              "keys": ["ctrl", "a"]
             },
             "tool": "hotkey"
           },
           {
             "args": {
-              "keys": [
-                "ctrl",
-                "v"
-              ]
+              "keys": ["ctrl", "v"]
             },
             "tool": "hotkey"
           },
@@ -296,19 +279,13 @@
           },
           {
             "args": {
-              "keys": [
-                "ctrl",
-                "a"
-              ]
+              "keys": ["ctrl", "a"]
             },
             "tool": "hotkey"
           },
           {
             "args": {
-              "keys": [
-                "ctrl",
-                "v"
-              ]
+              "keys": ["ctrl", "v"]
             },
             "tool": "hotkey"
           },
@@ -321,7 +298,7 @@
         ],
         "window_id": 90
       },
-      "output": "run_steps: 4/4 steps ok\nwindow_id=986766 pid=46132 elements=239 snapshot_id=s00000002\nsince=latest: no earlier read of this window with the same query, max_elements and max_depth; full read follows.\nDomos computer tool time: 2574 ms.",
+      "output": "run_steps: 4/4 steps ok\nwindow_id=90 pid=7 elements=239 snapshot_id=s00000002\nsince=latest: no earlier read of this window with the same query, max_elements and max_depth; full read follows.\nDomos computer tool time: 2574 ms.",
       "startedAt": 122457,
       "endedAt": 127956
     },
@@ -363,7 +340,7 @@
         ],
         "window_id": 90
       },
-      "output": "run_steps: 1/1 steps ok\n1. type_text ok: 📨 Sent 0 char(s) to pid 46132 via PostMessage (30ms delay; not verified — could not read the focused field back, e.g. the target isn't foreground or exposes no ValuePattern). If it didn't land, retry with delivery_mode:\"foreground\".\nwindow_id=986766 pid=46132 elements=119 snapshot_id=s00000003\nDomos computer tool time: 638 ms.\n{\"executed\":1,\"failed_step\":null,\"observation\":{\"ok\":true,\"state\":{\"app_name\":\"cloudmusic.exe\",\"capture_id\":\"capture_b6ae88331132480eb34ee5d7049d453d_0000000000000006\",\"element_count\":119,\"elements_complete\":false,\"invalidated_snapshot_ids\":[\"s00000002\"],\"pid\":46132,\"returned_element_count\":119,\"screenshot_height\":938,\"screenshot_mime_type\":\"image/png\",\"screenshot_width\":1322,\"since\":\"s00000002\",\"since_status\":\"too_much_changed\",\"snapshot_id\":\"s00000003\",\"timeout_ms\":1000,\"total_element_count\":119,\"tree_format\":\"markdown\",\"tree_markdown\":\"[see result text]\",\"truncated\":false,\"window_bounds\":{\"height\":940,\"width\":1324,\"x\":299,\"y\":40},\"window_id\":986766,\"window_title\":\"陽だまりにて和む猫 - Falcom Sound Team J.D.K.\"},\"summary\":\"full read (no usable earlier read of this window to diff against)\",\"tool\":\"get_window_state\"},\"ok\":true,\"steps\":[{\"index\":0,\"message\":\"📨 Sent 0 char(s) to pid 46132 via PostMessage (30ms delay; not verified — could not read the focused field back, e.g. the target isn't foreground or exposes no ValuePattern). If it didn't land, retry with delivery_mode:\\\"foreground\\\".\",\"ok\":true,\"target\":{\"window\":{\"app\":null,\"pid\":46132,\"title\":null,\"window_id\":986766}},\"tool\":\"type_text\"}],\"total\":1,\"evidence\":[{\"id\":\"191c7a02d29eebd83418226184a745bd7bd2e9dfef60c91161ded8656726063d\",\"name\":\"93e3359a-524e-45c2-a1b5-b31605f91ce2.png\",\"size\":132832,\"path\":\"evidence/93e3359a-524e-45c2-a1b5-b31605f91ce2.png\",\"mimeType\":\"image/png\",\"computerId\":\"process\",\"source\":{\"tool\":\"desktop_run_steps\",\"taskId\":\"computer:1\",\"callId\":\"17:20\",\"capturedAt\":\"2026-10-30T10:23:33.575Z\"}}]}",
+      "output": "run_steps: 1/1 steps ok\n1. type_text ok: 📨 Sent 0 char(s) to pid 46132 via PostMessage (30ms delay; not verified — could not read the focused field back, e.g. the target isn't foreground or exposes no ValuePattern). If it didn't land, retry with delivery_mode:\"foreground\".\nwindow_id=90 pid=7 elements=119 snapshot_id=s00000003\nDomos computer tool time: 638 ms.\n{\"executed\":1,\"failed_step\":null,\"observation\":{\"ok\":true,\"state\":{\"app_name\":\"cloudmusic.exe\",\"capture_id\":\"capture_b6ae88331132480eb34ee5d7049d453d_0000000000000006\",\"element_count\":119,\"elements_complete\":false,\"invalidated_snapshot_ids\":[\"s00000002\"],\"pid\":46132,\"returned_element_count\":119,\"screenshot_height\":938,\"screenshot_mime_type\":\"image/png\",\"screenshot_width\":1322,\"since\":\"s00000002\",\"since_status\":\"too_much_changed\",\"snapshot_id\":\"s00000003\",\"timeout_ms\":1000,\"total_element_count\":119,\"tree_format\":\"markdown\",\"tree_markdown\":\"[see result text]\",\"truncated\":false,\"window_bounds\":{\"height\":940,\"width\":1324,\"x\":299,\"y\":40},\"window_id\":986766,\"window_title\":\"陽だまりにて和む猫 - Falcom Sound Team J.D.K.\"},\"summary\":\"full read (no usable earlier read of this window to diff against)\",\"tool\":\"get_window_state\"},\"ok\":true,\"steps\":[{\"index\":0,\"message\":\"📨 Sent 0 char(s) to pid 46132 via PostMessage (30ms delay; not verified — could not read the focused field back, e.g. the target isn't foreground or exposes no ValuePattern). If it didn't land, retry with delivery_mode:\\\"foreground\\\".\",\"ok\":true,\"target\":{\"window\":{\"app\":null,\"pid\":46132,\"title\":null,\"window_id\":986766}},\"tool\":\"type_text\"}],\"total\":1,\"evidence\":[{\"id\":\"191c7a02d29eebd83418226184a745bd7bd2e9dfef60c91161ded8656726063d\",\"name\":\"93e3359a-524e-45c2-a1b5-b31605f91ce2.png\",\"size\":132832,\"path\":\"evidence/93e3359a-524e-45c2-a1b5-b31605f91ce2.png\",\"mimeType\":\"image/png\",\"computerId\":\"process\",\"source\":{\"tool\":\"desktop_run_steps\",\"taskId\":\"computer:1\",\"callId\":\"17:20\",\"capturedAt\":\"2026-10-30T10:23:33.575Z\"}}]}",
       "startedAt": 142801,
       "endedAt": 149896
     },
@@ -397,7 +374,7 @@
         "session": "music-eval",
         "window_id": 90
       },
-      "output": "window_id=986766 pid=46132 elements=313 snapshot_id=s00000004\nDomos computer tool time: 364 ms.",
+      "output": "window_id=90 pid=7 elements=313 snapshot_id=s00000004\nDomos computer tool time: 364 ms.",
       "startedAt": 168928,
       "endedAt": 176292
     },
@@ -417,7 +394,7 @@
         ],
         "window_id": 90
       },
-      "output": "run_steps: 1/1 steps ok\nwindow_id=986766 pid=46132 elements=239 snapshot_id=s00000005\nDomos computer tool time: 412 ms.",
+      "output": "run_steps: 1/1 steps ok\nwindow_id=90 pid=7 elements=239 snapshot_id=s00000005\nDomos computer tool time: 412 ms.",
       "startedAt": 178744,
       "endedAt": 185607
     },
@@ -444,7 +421,7 @@
         ],
         "window_id": 90
       },
-      "output": "run_steps: 1/1 steps ok\nwindow_id=986766 pid=46132 elements=239 snapshot_id=s00000008\nDomos computer tool time: 1122 ms.",
+      "output": "run_steps: 1/1 steps ok\nwindow_id=90 pid=7 elements=239 snapshot_id=s00000008\nDomos computer tool time: 1122 ms.",
       "startedAt": 189241,
       "endedAt": 195870
     },
