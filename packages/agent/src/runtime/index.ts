@@ -33,8 +33,29 @@ import { materialText } from "../materials.ts";
 import { watchCommits } from "../watch.ts";
 import { WorkError } from "../work/state.ts";
 
+export function slimChatView(view: import("../chat-view.ts").ChatView) {
+  const slim = (message: import("../messages.ts").ChatMessage) => {
+    if (message.role === "toolResult")
+      return { ...message, content: [], detail: true };
+    const images = message.content.some((part) => part.type === "image");
+    return images
+      ? {
+          ...message,
+          detail: true,
+          content: message.content.map((part) =>
+            part.type === "image" ? { ...part, data: "" } : part,
+          ),
+        }
+      : message;
+  };
+  return {
+    ...view,
+    messages: view.messages.map(slim),
+    draft: view.draft ? slim(view.draft) : null,
+  };
+}
+
 export class Runtime {
-  private readonly histories = new Map<number, EntryRecord[]>();
   private readonly stopping = new Set<number>();
   private readonly usageReader: UsageReader;
   private readonly harness: Harness;
@@ -101,7 +122,11 @@ export class Runtime {
     return this.usageReader.read(botIds, filter, context);
   }
 
-  async view(botId: number, context: Context) {
+  async view(
+    botId: number,
+    context: Context,
+    page?: { before?: string; limit: number },
+  ) {
     const conversation = await this.harness.conversation(
       botId as ConversationId,
       context,
@@ -112,73 +137,126 @@ export class Runtime {
       botId as ConversationId,
       context,
     );
-    const state = await conversation.viewState(context);
-    try {
-      const active = state.value.entries;
-      const tail = Math.max(active[0]?.id ?? 0, active.at(-1)?.id ?? 0);
-      let entries = this.histories.get(botId) ?? [];
-      if (tail > (entries.at(-1)?.id ?? 0)) {
-        entries = [...entries];
-        const query = {
-          order: "ascending" as const,
-          minEntryId: ((entries.at(-1)?.id ?? 0) + 1) as EntryId,
-          maxEntryId: tail as EntryId,
-        };
-        let cursor: Cursor | undefined;
-        do {
-          const page = await conversation.entries(query, 500, cursor, context);
-          entries.push(...page.items);
-          cursor = page.next;
-        } while (cursor);
-        this.histories.set(botId, entries);
-      }
-      const requests = await this.harness.snapshot(
-        ComputerRequests,
+    const [agent, live] = await Promise.all([
+      this.harness.snapshot(AgentDoc, botId as ConversationId, context),
+      this.harness.snapshot(LiveDoc, botId as ConversationId, context),
+    ]);
+    const entries: EntryRecord[] = [];
+    const [beforeEntry = 0, beforeIndex = 0] =
+      page?.before?.split(":").map(Number) ?? [];
+    let cursor: Cursor | undefined;
+    do {
+      const batch = await conversation.entries(
+        {
+          order: page ? "descending" : "ascending",
+          ...(beforeEntry ? { maxEntryId: beforeEntry as EntryId } : {}),
+        },
+        page?.limit ?? 500,
+        cursor,
+        context,
+      );
+      entries.push(...batch.items);
+      cursor = batch.next;
+    } while (!page && cursor);
+    if (page) entries.reverse();
+    const requests = await this.harness.snapshot(
+      ComputerRequests,
+      botId as ConversationId,
+      context,
+    );
+    const view = chatView(
+      {
+        conversation,
+        entries,
+        docs: {
+          ...(agent ? { [AgentDoc.definition.kind]: agent } : {}),
+          ...(live ? { [LiveDoc.definition.kind]: live } : {}),
+        },
+      },
+      requests?.approvals ?? [],
+    );
+    if (page) {
+      const messages = view.messages.filter((message) => {
+        if (!beforeEntry || !message.cursor) return true;
+        const [entry = 0, index = 0] = message.cursor.split(":").map(Number);
+        return (
+          entry < beforeEntry || (entry === beforeEntry && index < beforeIndex)
+        );
+      });
+      view.messages = messages.slice(-page.limit);
+      if (cursor || messages.length > page.limit)
+        view.before = view.messages[0]?.cursor ?? `${entries[0]?.id}:0`;
+    }
+    view.messages.push(...((engine?.drafts ?? []) as typeof view.messages));
+    view.busy ||= Boolean(engine?.tasks.length);
+    view.processing = Boolean(
+      engine?.activeId &&
+        engine.runtime?.processing &&
+        !requests?.approvals.length,
+    );
+    view.activeTurnId = engine?.activeTurn ?? view.activeTurnId;
+    view.engine = engine?.config;
+    if (engine?.config.model) {
+      const separator = engine.config.model.indexOf("/");
+      view.model =
+        engine.config.provider === "pi" && separator > 0
+          ? {
+              provider: engine.config.model.slice(0, separator),
+              modelId: engine.config.model.slice(separator + 1),
+            }
+          : {
+              provider: engine.config.provider,
+              modelId: engine.config.model,
+            };
+    }
+    view.runs = [
+      ...(view.runs ?? []).filter((run) => run.turnId !== engine?.run?.turnId),
+      ...(engine?.run ? [engine.run] : []),
+    ];
+    view.runtime = engine?.runtime;
+    view.error = engine?.error;
+    view.failed ||= Boolean(engine?.error);
+    return view;
+  }
+
+  async message(
+    botId: number,
+    id: string,
+    cursor: string | undefined,
+    context: Context,
+  ) {
+    if (!cursor) {
+      const doc = await readEngine(
+        this.harness,
         botId as ConversationId,
         context,
       );
-      const view = chatView(
-        { ...state.value, entries },
-        requests?.approvals ?? [],
+      return (
+        (
+          doc?.drafts as import("../messages.ts").ChatMessage[] | undefined
+        )?.find((message) => message.id === id) ?? null
       );
-      view.messages.push(...((engine?.drafts ?? []) as typeof view.messages));
-      view.busy ||= Boolean(engine?.tasks.length);
-      view.processing = Boolean(
-        engine?.activeId &&
-          engine.runtime?.processing &&
-          !requests?.approvals.length,
-      );
-      view.activeTurnId = engine?.activeTurn ?? view.activeTurnId;
-      view.engine = engine?.config;
-      if (engine?.config.model) {
-        const separator = engine.config.model.indexOf("/");
-        view.model =
-          engine.config.provider === "pi" && separator > 0
-            ? {
-                provider: engine.config.model.slice(0, separator),
-                modelId: engine.config.model.slice(separator + 1),
-              }
-            : {
-                provider: engine.config.provider,
-                modelId: engine.config.model,
-              };
-      }
-      view.runs = [
-        ...(view.runs ?? []).filter(
-          (run) => run.turnId !== engine?.run?.turnId,
-        ),
-        ...(engine?.run ? [engine.run] : []),
-      ];
-      view.runtime = engine?.runtime;
-      view.error = engine?.error;
-      view.failed ||= Boolean(engine?.error);
-      return view;
-    } finally {
-      state.dispose();
     }
+    const conversation = await this.harness.conversation(
+      botId as ConversationId,
+      context,
+    );
+    if (!conversation) throw new WorkError("NOT_FOUND", "Bot 不存在。");
+    const entryId = Number(cursor.split(":")[0]) as EntryId;
+    const batch = await conversation.entries(
+      { minEntryId: entryId, maxEntryId: entryId },
+      1,
+      undefined,
+      context,
+    );
+    return (
+      chatView({ conversation, entries: batch.items, docs: {} }).messages.find(
+        (message) => message.id === id,
+      ) ?? null
+    );
   }
 
-  watch(botId: number, context: Context) {
+  watch(botId: number, context: Context, page?: { limit: number }) {
     return watchCommits(
       this.harness,
       (change) =>
@@ -188,9 +266,40 @@ export class Runtime {
           change.value.state.status === "terminal") ||
         ((change.type === "document" || change.type === "document.copy") &&
           change.conversationId === botId),
-      () => this.view(botId, context),
+      async () => {
+        const view = await this.view(botId, context, page);
+        return page ? slimChatView(view) : view;
+      },
       context,
     );
+  }
+
+  async *updates(botId: number, context: Context) {
+    let previous: import("../chat-view.ts").ChatView | undefined;
+    for await (const view of this.watch(botId, context, { limit: 200 })) {
+      if (!previous) yield { type: "snapshot" as const, view };
+      else {
+        const known = new Map(
+          previous.messages.map((message) => [message.id, message]),
+        );
+        const messages = view.messages.filter(
+          (message) =>
+            JSON.stringify(known.get(message.id)) !== JSON.stringify(message),
+        );
+        const retained = new Set(view.messages.map((message) => message.id));
+        const removed = previous.messages
+          .filter((message) => message.pending && !retained.has(message.id))
+          .map((message) => message.id);
+        const state: Partial<Omit<typeof view, "messages" | "before">> = {};
+        for (const key of Object.keys(view) as (keyof typeof view)[]) {
+          if (key === "messages" || key === "before") continue;
+          if (JSON.stringify(previous[key]) !== JSON.stringify(view[key]))
+            Object.assign(state, { [key]: view[key] });
+        }
+        yield { type: "update" as const, state, messages, removed };
+      }
+      previous = view;
+    }
   }
 
   async prompt(botId: number, context: Context) {

@@ -10,6 +10,7 @@ import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { EngineMark } from "../bots/engine-mark.tsx";
 import { Attachments } from "./attachments.tsx";
 import { MessageContent } from "./message-content.tsx";
+import { MessageDetail } from "./message-detail.tsx";
 import type { useChat } from "./use-chat.ts";
 import { workStatus, workTime, workTurns } from "./work-state.ts";
 import "./work.css";
@@ -30,6 +31,23 @@ export function WorkPanel(chat: ReturnType<typeof useChat>) {
   }, [view?.busy]);
   const turns = useMemo(() => (view ? workTurns(view) : []), [view]);
   const current = turns.find((turn) => turn.id === selected);
+  useEffect(() => {
+    if (
+      selected &&
+      selected === turns.at(-1)?.id &&
+      view?.before &&
+      !chat.loadingEarlier &&
+      !chat.error
+    )
+      void chat.loadEarlier();
+  }, [
+    selected,
+    turns,
+    view?.before,
+    chat.loadingEarlier,
+    chat.loadEarlier,
+    chat.error,
+  ]);
   const elapsed = (
     record: { startedAt?: number; endedAt?: number },
     active = false,
@@ -132,6 +150,15 @@ export function WorkPanel(chat: ReturnType<typeof useChat>) {
             </footer>
           </article>
         ))}
+        {view?.before && (
+          <Button
+            variant="ghost"
+            pending={chat.loadingEarlier}
+            onClick={() => void chat.loadEarlier()}
+          >
+            更早的工作记录
+          </Button>
+        )}
       </ScrollArea>
       <Dialog
         open={Boolean(current)}
@@ -175,7 +202,7 @@ export function WorkPanel(chat: ReturnType<typeof useChat>) {
                   <MessageContent content={item.detail} />
                 )}
                 {item.result && (
-                  <MessageContent content={item.result.content} />
+                  <MessageDetail botId={view.id} message={item.result} />
                 )}
                 {item.result?.attachments?.length ? (
                   <Attachments

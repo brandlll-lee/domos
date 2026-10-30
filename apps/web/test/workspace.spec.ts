@@ -183,6 +183,41 @@ test("sending paints the outgoing message before the network receipt", async ({
   }
 });
 
+test("chat reads older pages and retains them through live updates", async ({
+  page,
+}) => {
+  const receipt = once(worker, "message");
+  worker.send({ history: 160 });
+  await receipt;
+  await page.goto(url);
+  await expect(page.getByLabel("你的消息").last()).toContainText(
+    "历史任务 160",
+  );
+  const earlier = page.getByRole("button", {
+    name: "查看更早的消息",
+    exact: true,
+  });
+  await earlier.click();
+  const response = page.waitForResponse((response) =>
+    response.url().endsWith("/rpc/get"),
+  );
+  await earlier.click();
+  const pageData = (await (await response).json()).json;
+  expect(pageData.messages.length).toBeLessThanOrEqual(200);
+  await expect(page.getByLabel("你的消息").first()).toHaveText("历史任务 1");
+  await expect(earlier).toBeHidden();
+  const scripted = once(worker, "message");
+  worker.send({ content: "翻页后已完成" });
+  await scripted;
+  await page.getByLabel("消息", { exact: true }).fill("翻页后发送");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByLabel("Domos 的回复").last()).toContainText(
+    "翻页后已完成",
+  );
+  while (await earlier.isVisible()) await earlier.click();
+  await expect(page.getByLabel("你的消息").first()).toHaveText("历史任务 1");
+});
+
 test("usage reports native task costs and preserves session snapshots across themes", async ({
   page,
 }, info) => {
@@ -482,12 +517,30 @@ test("Bot model selection saves choices and fits both themes", async ({
     times: 1,
   });
   await choice.click();
-  await expect(selector).toBeVisible();
-  await expect(selector.getByRole("alert")).toBeVisible();
+  await expect(selector).toBeHidden();
+  await expect(
+    page
+      .getByRole("alert")
+      .filter({ hasText: /fetch|network|请求|Failed/i })
+      .first(),
+  ).toBeVisible();
   await expect(trigger).toContainText("测试模型一");
+  await trigger.click();
   await choice.click();
   await expect(selector).toBeHidden();
   await expect(trigger).toContainText("测试模型二");
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const response = await fetch("/rpc/engines/get", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ json: { botId: 1 } }),
+        });
+        return (await response.json()).json.config.model;
+      }),
+    )
+    .toBe("faux/faux-2");
   await page.reload();
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   await expect(trigger).toContainText("测试模型二");
@@ -582,14 +635,63 @@ test("native Harness controls persist and client accounts retain model access", 
     resumed.resolve();
     await page.unrouteAll({ behavior: "wait" });
   }
-  await choice.click();
-  await expect(trigger).toContainText("测试模型二");
-  await trigger.click();
+  const saveGate = Promise.withResolvers<void>();
+  let saves = 0;
+  let sends = 0;
+  await page.route("**/rpc/send", async (route) => {
+    sends++;
+    await route.fulfill({
+      status: 409,
+      contentType: "application/json",
+      body: JSON.stringify({
+        json: { code: "CONFLICT", message: "测试发送结束", status: 409 },
+      }),
+    });
+  });
+  await page.route("**/rpc/engines/configure", async (route) => {
+    saves++;
+    await saveGate.promise;
+    await route.continue();
+  });
   const effort = popup.getByRole("radiogroup", { name: "推理强度" });
-  await effort.getByRole("radio", { name: "高", exact: true }).click();
-  await expect(
-    effort.getByRole("radio", { name: "高", exact: true }),
-  ).toBeChecked();
+  try {
+    await choice.click();
+    await expect(trigger).toContainText("测试模型二", { timeout: 200 });
+    await expect(popup).toBeHidden();
+    await trigger.click();
+    await expect(
+      effort.getByRole("radio", { name: "高", exact: true }),
+    ).toBeEnabled();
+    await effort.getByRole("radio", { name: "高", exact: true }).click();
+    await expect(
+      effort.getByRole("radio", { name: "高", exact: true }),
+    ).toBeChecked();
+    expect(saves).toBe(1);
+    await page.keyboard.press("Escape");
+    await page.getByLabel("消息", { exact: true }).fill("等待配置保存后发送");
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    await expect(page.getByLabel("你的消息").last()).toContainText(
+      "等待配置保存后发送",
+    );
+    expect(sends).toBe(0);
+  } finally {
+    saveGate.resolve();
+    await page.unroute("**/rpc/engines/configure");
+  }
+  await expect.poll(() => sends).toBe(1);
+  await page.unroute("**/rpc/send");
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const response = await fetch("/rpc/engines/get", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ json: { botId: 1 } }),
+        });
+        return (await response.json()).json.config.options?.thinkingLevel;
+      }),
+    )
+    .toBe("high");
   await page.reload();
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   await trigger.click();

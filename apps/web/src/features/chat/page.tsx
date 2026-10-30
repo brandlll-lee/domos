@@ -256,6 +256,9 @@ function BotChat({
               createdAt={bot.createdAt}
               items={items}
               sentRequest={chat.sentRequest}
+              hasMore={Boolean(chat.view?.before)}
+              loadingEarlier={chat.loadingEarlier}
+              onEarlier={chat.loadEarlier}
               onResend={resend}
               welcome={
                 !bot.welcomeComplete &&

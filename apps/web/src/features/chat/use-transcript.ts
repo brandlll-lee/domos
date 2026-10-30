@@ -63,6 +63,18 @@ export function useTranscript(
   }, []);
 
   useLayoutEffect(() => {
+    const first = previous.current.items[0];
+    const prepended = first
+      ? items.findIndex((item) => keyOf(item) === keyOf(first))
+      : 0;
+    if (range && prepended > 0) {
+      previous.current = { ...previous.current, items };
+      setRange({
+        start: Math.max(0, range.start + prepended - pageSize),
+        end: range.start + prepended + pageSize,
+      });
+      return;
+    }
     if (
       received.current &&
       !document.hidden &&
@@ -299,7 +311,7 @@ export function useTranscript(
       setRange(null);
       schedule();
     },
-    loadEarlier() {
+    async loadEarlier(load?: () => Promise<void>) {
       const first = content.current?.querySelector<HTMLElement>(
         "[data-transcript-key]",
       );
@@ -310,6 +322,11 @@ export function useTranscript(
         };
       following.current = false;
       reply.current = null;
+      if (load) {
+        await load();
+        setRange({ start, end });
+        return;
+      }
       setRange({
         start: Math.max(0, start - pageSize),
         end: Math.min(items.length, start + pageSize),

@@ -9,6 +9,7 @@ import { client } from "../../client.ts";
 import { EngineMark } from "../bots/engine-mark.tsx";
 import { useSettings } from "../settings/context.ts";
 import { Effort } from "./effort.tsx";
+import { useModelSettings } from "./model-state.ts";
 import { useVisibility } from "./use-visibility.ts";
 
 export function ModelSetting({
@@ -26,18 +27,34 @@ export function ModelSetting({
 }) {
   const settings = useSettings();
   const visibility = useVisibility(connected);
-  const [profile, setProfile] =
-    useState<Awaited<ReturnType<typeof client.engines.get>>>();
-  const [config, setConfig] = useState<EngineConfig>({
-    provider: "pi",
-    model: null,
-  });
-  const [connection, setConnection] =
-    useState<Awaited<ReturnType<typeof client.engines.inspect>>>();
+  const {
+    store,
+    profile,
+    selected,
+    saving,
+    error: saveError,
+  } = useModelSettings(botId);
+  const [config, setConfig] = useState<EngineConfig>(
+    selected ?? {
+      provider: "pi",
+      model: null,
+    },
+  );
+  const connection = store.connection(config);
+  const setConnection = (
+    value: Awaited<ReturnType<typeof client.engines.inspect>>,
+  ) => store.remember(config, value);
   const [login, setLogin] =
     useState<Awaited<ReturnType<typeof client.engines.loginState>>>();
-  const [controls, setControls] =
-    useState<Awaited<ReturnType<typeof client.engines.controls>>>();
+  const model = (
+    connection?.models ??
+    profile?.catalog.find((item) => item.id === config.provider)?.models
+  )?.find((item) => item.id === config.model);
+  const controls = model?.effort
+    ? { options: [model.effort] }
+    : connection && "controls" in connection
+      ? connection.controls
+      : undefined;
   const [code, setCode] = useState("");
   const [account, setAccount] = useState("");
   const [method, setMethod] = useState("0");
@@ -49,27 +66,31 @@ export function ModelSetting({
   const [error, setError] = useState("");
   useEffect(() => {
     if (!connected) return;
-    const controller = new AbortController();
-    void client.engines.get({ botId }, { signal: controller.signal }).then(
-      (next) => {
-        if (controller.signal.aborted) return;
-        setProfile(next);
-        onProfile?.(next);
-        setConfig(next.config);
-        setConnection(next.connection ?? undefined);
-        setControls(next.runtime?.controls);
-        setArgs(JSON.stringify(next.config.args ?? []));
+    let current = true;
+    void store.load().then(
+      () => {
+        if (!current) return;
+        const next = store.snapshot().selected;
+        if (next) {
+          setConfig(next);
+          setArgs(JSON.stringify(next.args ?? []));
+        }
       },
       (cause) => {
-        if (!controller.signal.aborted) setError(cause.message);
+        if (current) setError(cause.message);
       },
     );
-    return () => controller.abort();
-  }, [connected, botId, onProfile]);
+    return () => {
+      current = false;
+    };
+  }, [connected, store]);
   useEffect(() => {
-    onBusyChange?.(busy);
+    if (profile) onProfile?.(profile);
+  }, [profile, onProfile]);
+  useEffect(() => {
+    onBusyChange?.(busy || saving);
     return () => onBusyChange?.(false);
-  }, [busy, onBusyChange]);
+  }, [busy, saving, onBusyChange]);
   async function run(action: () => Promise<unknown>) {
     setBusy(true);
     setError("");
@@ -97,52 +118,23 @@ export function ModelSetting({
       }
     }
     setConfig(selected);
-    const value = await client.engines.inspect({
-      botId,
-      config: selected,
-      refresh: true,
-    });
-    setConnection(value);
-    if ("controls" in value) setControls(value.controls);
+    await store.inspect(selected, settings.admin, true);
   }
   async function save(next: EngineConfig, close = true) {
     if (!profile) return;
-    const input = {
-      botId,
-      config: { ...next, command: connection?.path ?? next.command },
-      revision: profile.revision,
-      requestId: crypto.randomUUID(),
-    };
-    const saved = settings.admin
-      ? await client.engines.configure(input)
-      : await client.engines.select({
-          botId,
-          model: next.model,
-          options: next.options,
-          revision: input.revision,
-          requestId: input.requestId,
-        });
-    const nextControls = await client.engines.controls({ botId });
-    setProfile(saved);
-    onProfile?.(saved);
-    setConfig(saved.config);
-    setControls(nextControls);
+    next = { ...next, command: connection?.path ?? next.command };
+    if (connection) store.remember(next, connection);
+    setConfig(next);
     if (close) setOpen(false);
+    await store.save(next, settings.admin);
+    if (store.snapshot().error) setConfig(store.snapshot().selected ?? next);
   }
+  const loaded = Boolean(profile);
   useEffect(() => {
-    if (!connected || !profile || config.provider === "acp") return;
+    if (!connected || !loaded || config.provider === "acp") return;
     let current = true;
-    void (
-      settings.admin
-        ? client.engines.inspect({ botId, config, refresh: open })
-        : client.engines.available({ botId })
-    ).then(
-      (value) => {
-        if (current) {
-          setConnection(value);
-          if ("controls" in value) setControls(value.controls);
-        }
-      },
+    void store.inspect(config, settings.admin, open).then(
+      () => {},
       (cause) => {
         if (current) setError(cause.message);
       },
@@ -150,7 +142,7 @@ export function ModelSetting({
     return () => {
       current = false;
     };
-  }, [connected, open, profile, botId, config, settings.admin]);
+  }, [connected, open, loaded, store, config, settings.admin]);
   useEffect(() => {
     if (login?.state !== "waiting") return;
     let current = true;
@@ -162,12 +154,7 @@ export function ModelSetting({
           setLogin(next);
           if (next?.state === "done") {
             setCode("");
-            const value = await client.engines.inspect({
-              botId,
-              config,
-              refresh: true,
-            });
-            if (current) setConnection(value);
+            if (current) await store.inspect(config, settings.admin, true);
           }
         })
         .catch((error) => {
@@ -178,7 +165,7 @@ export function ModelSetting({
       current = false;
       clearInterval(timer);
     };
-  }, [login?.state, botId, config]);
+  }, [login?.state, botId, config, store, settings.admin]);
   const locked = Boolean(disabled || profile?.busy || busy || !settings.admin);
   const providers = (profile?.providers ?? []).filter(
     (provider) => settings.admin || provider.id === profile?.config.provider,
@@ -233,13 +220,9 @@ export function ModelSetting({
           }))}
           provider={config.provider}
           onProviderChange={(provider) => {
-            setConnection(undefined);
-            setControls(undefined);
             setError("");
             setConfig(
-              provider === profile?.config.provider
-                ? profile.config
-                : { provider, model: null },
+              store.snapshot().choices[provider] ?? { provider, model: null },
             );
             setConfiguring(provider === "acp");
             setLogin(null);
@@ -250,18 +233,20 @@ export function ModelSetting({
               ?.models ??
             []
           ).filter((model) => visibility.visible(config.provider, model.id))}
-          value={profile?.config.model ?? ""}
+          value={selected?.model ?? ""}
           label={
-            profile?.model?.name ??
-            profile?.config.model ??
+            profile?.catalog
+              .find((item) => item.id === selected?.provider)
+              ?.models.find((item) => item.id === selected?.model)?.name ??
+            selected?.model ??
             "选择 Harness 和模型"
           }
           loading={!profile}
           disabled={Boolean(disabled)}
           busy={busy || login?.state === "waiting"}
-          error={error}
+          error={error || saveError}
           onSelect={(model) =>
-            void run(() => save({ ...config, model, options: undefined }))
+            void save({ ...config, model, options: undefined })
           }
           status={connection ? connection.message : ""}
           onConfigure={settings.admin ? () => setConfiguring(true) : undefined}
@@ -460,23 +445,26 @@ export function ModelSetting({
             .map((control) => (
               <Effort
                 key={control.id}
-                control={control}
+                control={{
+                  ...control,
+                  value: config.options?.[control.id] ?? "",
+                }}
                 disabled={locked}
                 onChange={(value) =>
-                  void run(() => {
+                  void (() => {
                     const options = { ...config.options };
                     if (value) options[control.id] = value;
                     else delete options[control.id];
                     return save({ ...config, options }, false);
-                  })
+                  })()
                 }
               />
             ))}
         />
       </SettingRow>
-      {error && !open && (
+      {(error || saveError) && !open && (
         <p className="alert" role="alert">
-          {error}
+          {error || saveError}
         </p>
       )}
     </>

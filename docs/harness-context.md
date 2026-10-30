@@ -12,7 +12,9 @@ Custom ACP uses the stable v1 SDK. The administrator supplies a program and argu
 
 Discovery resolves the program on the work computer. Inspection, login, and execution use that path and OS user. Existing native account files remain authoritative. Domos does not copy retained service credentials into native account files.
 
-Absolute paths use filesystem checks. Windows selects an executable or command shim. POSIX checks execution permission and resolves login-shell commands. Missing programs, permission failures, and discovery failures remain distinct. Connection snapshots and persisted model catalogs serve the selector. Opening it retains the snapshot and refreshes in the background. Concurrent checks share an active request. Failed discovery is not cached as an installation result.
+Absolute paths use filesystem checks. Windows selects an executable or command shim. POSIX checks execution permission and resolves login-shell commands. Missing programs, permission failures, and discovery failures remain distinct. Connection snapshots and persisted model catalogs serve the selector. Shared client state retains each Harness snapshot while a background check runs. Concurrent checks share an active request. Matching refreshes reuse the last result for three seconds. Failed discovery is not cached as an installation result.
+
+Model and effort choices update the selector immediately. Saves run in order with the latest confirmed revision. A failed save restores the confirmed choice and reports the error. Chat dispatch waits for pending saves. Effort options come from the retained native model capabilities.
 
 Downloads install a pinned package in the work computer's runtime directory. Node and npm must be available there. Existing installations stay in place. Installing an independent version does not activate it. Saving the selected model activates the resolved program. Configuration changes require an idle Bot.
 
@@ -59,7 +61,7 @@ Cua owns native sessions, delivery, verification and observation. The desktop re
 
 Native Harness processes own compaction. Domos records context readings, compaction events, and reported usage. Unsupported values stay unknown. Custom ACP recovery is unavailable until its driver can verify native outcomes. Domos does not infer cost or completion from a missing event.
 
-System instructions stay stable across tool rounds. routine_list supplies current host time and timezone. The UI reads complete stored entries. Handoffs and compaction records stay out of displayed messages. Current tool evidence retains the existing computer observation limits. Native CLI context policies are not the embedded Durable beforeRequest image policy.
+System instructions stay stable across tool rounds. routine_list supplies current host time and timezone. The UI reads stored history in pages of at most 200 messages. Entry cursors preserve order across pages. The live connection starts with one bounded snapshot. It then sends changed messages, runtime fields and removed pending records. Reconnecting retains loaded older pages. Tool results and inline images use authenticated single-record reads when displayed. Original evidence stays in storage. Work loads preceding pages when the selected execution crosses a page boundary. Handoffs and compaction records stay out of displayed messages. Current tool evidence retains the existing computer observation limits. Native CLI context policies are not the embedded Durable beforeRequest image policy.
 
 ## Work records
 

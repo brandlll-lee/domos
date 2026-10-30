@@ -13,6 +13,10 @@ import { RPCLink } from "@orpc/client/fetch";
 import type { RouterClient } from "@orpc/server";
 import { expect, onTestFinished, test, vi } from "vitest";
 import {
+  EngineDoc,
+  EngineMessage,
+} from "../../../packages/agent/src/harness/state.ts";
+import {
   ProtocolProcess,
   type Request,
 } from "../../../packages/agent/test/fixtures/engine-process.ts";
@@ -206,6 +210,116 @@ test("model API selects native models and rejects models missing on the work com
   });
 });
 
+test("chat pages bound history, retain full results on demand and stream changed messages", async () => {
+  const f = await fixture();
+  const botId = f.runtime.conversation.id;
+  await f.runtime.harness.commit(async (tx) => {
+    for (let index = 0; index < 260; index++)
+      await tx.appendEntry(botId, {
+        kind: EngineMessage,
+        data: {
+          id: `message-${index}`,
+          turnId: `turn-${index}`,
+          role: "user",
+          stopped: false,
+          content: [{ type: "text", key: "text", text: `Question ${index}` }],
+        },
+      });
+    await tx.appendEntry(botId, {
+      kind: EngineMessage,
+      data: {
+        id: "result",
+        turnId: "turn-259",
+        role: "toolResult",
+        stopped: false,
+        toolCallId: "call",
+        isError: true,
+        content: [
+          { type: "text", key: "text", text: "result".repeat(200_000) },
+          {
+            type: "image",
+            key: "image",
+            data: "image-bytes",
+            mimeType: "image/png",
+          },
+        ],
+      },
+    });
+  }, context);
+  let page = await f.runtime.client.get({ botId });
+  expect(page.messages).toHaveLength(200);
+  expect(JSON.stringify(page).length).toBeLessThan(100_000);
+  const result = page.messages.find((message) => message.id === "result");
+  expect(result).toMatchObject({ detail: true, isError: true, content: [] });
+  const full = await f.runtime.client.message({
+    botId,
+    id: "result",
+    cursor: result?.cursor,
+  });
+  expect(full?.content[0]).toMatchObject({ text: "result".repeat(200_000) });
+  expect(full?.content[1]).toMatchObject({ data: "image-bytes" });
+  const ids = page.messages.map((message) => message.id);
+  while (page.before) {
+    page = await f.runtime.client.get({ botId, before: page.before });
+    expect(page.messages.length).toBeLessThanOrEqual(200);
+    ids.unshift(...page.messages.map((message) => message.id));
+  }
+  expect(ids).toEqual([
+    ...Array.from({ length: 260 }, (_, index) => `message-${index}`),
+    "result",
+  ]);
+  const controller = new AbortController();
+  const stream = await f.runtime.client.changes(
+    { botId },
+    { signal: controller.signal },
+  );
+  try {
+    expect((await stream.next()).value?.type).toBe("snapshot");
+    const next = stream.next();
+    await f.runtime.harness.commit(async (tx) => {
+      await tx.appendEntry(botId, {
+        kind: EngineMessage,
+        data: {
+          id: "latest",
+          turnId: "latest",
+          role: "user",
+          stopped: false,
+          content: [{ type: "text", key: "text", text: "New question" }],
+        },
+      });
+    }, context);
+    const event = (await next).value;
+    expect(event?.type).toBe("update");
+    if (event?.type !== "update") throw new Error("Update required");
+    expect(event.messages.map((message) => message.id)).toEqual(["latest"]);
+    expect(JSON.stringify(event).length).toBeLessThan(5000);
+    const draft = stream.next();
+    await f.runtime.harness.commit(async (tx) => {
+      (await tx.doc(EngineDoc, botId)).drafts = [
+        {
+          id: "pending",
+          role: "assistant",
+          pending: true,
+          stopped: false,
+          content: [],
+        },
+      ];
+    }, context);
+    await draft;
+    const stopped = stream.next();
+    await f.runtime.harness.commit(async (tx) => {
+      (await tx.doc(EngineDoc, botId)).drafts = [];
+    }, context);
+    expect((await stopped).value).toMatchObject({
+      type: "update",
+      removed: ["pending"],
+    });
+  } finally {
+    controller.abort();
+    await stream.return();
+  }
+});
+
 test("model catalogs survive restart and stay on their work computer", async () => {
   const f = await fixture();
   const botId = f.runtime.conversation.id;
@@ -282,6 +396,28 @@ test("model catalogs survive restart and stay on their work computer", async () 
       (item) => !item.models.length,
     ),
   ).toBe(true);
+});
+
+test("Harness checks share an in-flight read and reuse it for three seconds", async () => {
+  const f = await fixture();
+  const botId = f.runtime.conversation.id;
+  const gate = Promise.withResolvers<void>();
+  f.state.catalogGate = gate.promise;
+  const input = { botId, provider: "pi" as const, refresh: true };
+  const first = f.runtime.client.engines.inspect(input);
+  await f.state.catalogRead.promise;
+  const count = f.state.workers.length;
+  const second = f.runtime.client.engines.inspect(input);
+  gate.resolve();
+  const results = await Promise.all([first, second]);
+  expect(results[0]).toEqual(results[1]);
+  expect(f.state.workers).toHaveLength(count);
+  await f.runtime.client.engines.inspect(input);
+  expect(f.state.workers).toHaveLength(count);
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(Date.now() + 3001);
+  await f.runtime.client.engines.inspect(input);
+  expect(f.state.workers).toHaveLength(count * 2);
 });
 
 test("image validation uses native Pi models from the execution computer", async () => {

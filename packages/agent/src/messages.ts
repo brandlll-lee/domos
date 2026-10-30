@@ -18,6 +18,8 @@ export type ChatContent =
   | Pick<ToolCall, "type" | "id" | "name" | "arguments">;
 
 export type ChatMessage = {
+  cursor?: string;
+  detail?: boolean;
   activity?: import("./harness/types.ts").EngineEvent;
   receivedAt?: number;
   endedAt?: number;

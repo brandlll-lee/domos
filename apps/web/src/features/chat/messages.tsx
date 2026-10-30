@@ -12,7 +12,7 @@ import { ErrorMessage } from "./error-message.tsx";
 import { timeBreak } from "./format.ts";
 import { MaterialChips } from "./material-chips.tsx";
 import { MessageBody } from "./message-body.tsx";
-import { MessageContent } from "./message-content.tsx";
+import { MessageDetail } from "./message-detail.tsx";
 import { TakeoverCard } from "./takeover-card.tsx";
 import { TypingDots } from "./typing-dots.tsx";
 import { useTranscript } from "./use-transcript.ts";
@@ -69,10 +69,7 @@ const MessageRow = memo(function MessageRow({
               />
             )}
             <MaterialChips materials={message.materials} />
-            <MessageContent
-              content={message.content}
-              user={message.role === "user"}
-            />
+            <MessageDetail botId={botId} message={message} />
           </MessageBody>
         </MessageBubble>
       )}
@@ -100,6 +97,9 @@ export const Messages = memo(function Messages({
   welcome,
   onResend,
   sentRequest,
+  hasMore,
+  loadingEarlier,
+  onEarlier,
 }: {
   botId: number;
   ready: boolean;
@@ -112,6 +112,9 @@ export const Messages = memo(function Messages({
   welcome?: ReactNode;
   onResend: (message: ChatMessage) => void;
   sentRequest?: string;
+  hasMore?: boolean;
+  loadingEarlier?: boolean;
+  onEarlier?: () => Promise<void>;
 }) {
   const transcript = useTranscript(items, ready, sentRequest);
   const separators = new Map<string, { at: number; label: string }>();
@@ -160,12 +163,17 @@ export const Messages = memo(function Messages({
           aria-label={chatCopy.history}
           aria-live="off"
         >
-          {transcript.hasEarlier && (
+          {(transcript.hasEarlier || hasMore) && (
             <Button
               className="history-page"
               variant="ghost"
               size="small"
-              onClick={transcript.loadEarlier}
+              pending={loadingEarlier}
+              onClick={() =>
+                void transcript.loadEarlier(
+                  transcript.hasEarlier ? undefined : onEarlier,
+                )
+              }
             >
               {chatCopy.earlier}
             </Button>

@@ -3,7 +3,7 @@ import type { Bots } from "@domos/agent/bots";
 import type { Computers } from "@domos/agent/computer/catalog";
 import { FileInput, type Files } from "@domos/agent/files";
 import { materialText } from "@domos/agent/materials";
-import type { Runtime } from "@domos/agent/runtime";
+import { type Runtime, slimChatView } from "@domos/agent/runtime";
 import { stopChat } from "@domos/agent/stop";
 import { chatView } from "@domos/agent/view";
 import { type BotWork, WorkError } from "@domos/agent/work";
@@ -76,14 +76,61 @@ export function createRouter(
       }),
     },
     models: modelRouter(bots, models, engines),
-    get: os.input(botTarget).handler(async ({ input }) => {
+    get: os
+      .input(
+        botTarget.extend({
+          before: z
+            .string()
+            .regex(/^\d+:\d+$/)
+            .optional(),
+        }),
+      )
+      .handler(async ({ input }) => {
+        const conversation = await botConversation(bots, input.botId);
+        if (engines)
+          return slimChatView(
+            await engines.view(input.botId, BACKGROUND_CONTEXT, {
+              limit: 200,
+              before: input.before,
+            }),
+          );
+        const view = await conversation.viewState(BACKGROUND_CONTEXT);
+        try {
+          return chatView(view.value);
+        } finally {
+          view.dispose();
+        }
+      }),
+    message: os
+      .input(
+        botTarget.extend({
+          id: z.string().min(1).max(256),
+          cursor: z
+            .string()
+            .regex(/^\d+:\d+$/)
+            .optional(),
+        }),
+      )
+      .handler(async ({ input }) => {
+        await botConversation(bots, input.botId);
+        if (!engines) throw new ORPCError("NOT_IMPLEMENTED");
+        return engines.message(
+          input.botId,
+          input.id,
+          input.cursor,
+          BACKGROUND_CONTEXT,
+        );
+      }),
+    changes: os.input(botTarget).handler(async function* ({ input, signal }) {
       const conversation = await botConversation(bots, input.botId);
-      if (engines) return engines.view(input.botId, BACKGROUND_CONTEXT);
-      const view = await conversation.viewState(BACKGROUND_CONTEXT);
-      try {
-        return chatView(view.value);
-      } finally {
-        view.dispose();
+      const context = signal
+        ? withAbortSignal(signal, BACKGROUND_CONTEXT)
+        : BACKGROUND_CONTEXT;
+      if (engines) yield* engines.updates(input.botId, context);
+      else {
+        const watch = await conversation.watch(context);
+        for await (const value of watchValues(watch, signal))
+          yield { type: "snapshot" as const, view: chatView(value) };
       }
     }),
     send: os

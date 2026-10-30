@@ -20,6 +20,7 @@ export class EngineConnections {
       provider: EngineConfig["provider"];
       model: string | null;
       options: string;
+      settledAt?: number;
       value?: Awaited<ReturnType<EngineConnections["discover"]>>;
       result: Promise<Awaited<ReturnType<EngineConnections["discover"]>>>;
     }
@@ -92,7 +93,9 @@ export class EngineConnections {
       cached?.computerId === computerId &&
       cached.model === config.model &&
       cached.options === JSON.stringify(config.options ?? {}) &&
-      (!refresh || !cached.value)
+      (!refresh ||
+        cached.settledAt === undefined ||
+        Date.now() - cached.settledAt < 3000)
     )
       return cached.result;
     const entry: NonNullable<ReturnType<EngineConnections["catalogs"]["get"]>> =
@@ -107,6 +110,7 @@ export class EngineConnections {
     try {
       const result = await entry.result;
       entry.value = result;
+      entry.settledAt = Date.now();
       if (this.catalogs.get(key) === entry) {
         if (!result.ready) this.catalogs.delete(key);
         else

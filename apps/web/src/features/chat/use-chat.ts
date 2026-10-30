@@ -3,8 +3,9 @@ import type { InputMaterials, MaterialSelection } from "@domos/agent/materials";
 import type { TranscriptItem } from "@domos/agent/transcript";
 import type { ChatView } from "@domos/agent/view";
 import { ORPCError } from "@orpc/client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../client.ts";
+import { flushModelSettings } from "../models/model-state.ts";
 import { chatCopy } from "./copy.ts";
 import { rejectionMessage } from "./request-error.ts";
 import { transcriptState } from "./transcript-state.ts";
@@ -21,6 +22,8 @@ export function useChat(botId: number, onModelRequired?: () => void) {
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const current = useRef<ChatView | null>(null);
   const [sentRequest, setSentRequest] = useState<string>();
   const [outgoing, setOutgoing] = useState<TranscriptItem[]>([]);
   const [project] = useState(transcriptState);
@@ -39,7 +42,7 @@ export function useChat(botId: number, onModelRequired?: () => void) {
       if (!pending || controller.signal.aborted) return;
       const next = pending;
       pending = undefined;
-      setView(next);
+      setView(current.current ?? next);
       setConnected(true);
     };
     const visible = () => {
@@ -48,7 +51,7 @@ export function useChat(botId: number, onModelRequired?: () => void) {
     document.addEventListener("visibilitychange", visible);
     void (async () => {
       try {
-        const events = await client.subscribe(
+        const events = await client.changes(
           { botId },
           {
             signal: controller.signal,
@@ -60,8 +63,55 @@ export function useChat(botId: number, onModelRequired?: () => void) {
             },
           },
         );
-        for await (const next of events) {
+        for await (const event of events) {
           if (controller.signal.aborted) return;
+          const previous = current.current;
+          let next: ChatView;
+          if (event.type === "snapshot") {
+            const first = event.view.messages.find((message) => message.cursor);
+            const [entry = 0, index = 0] =
+              first?.cursor?.split(":").map(Number) ?? [];
+            const earlier =
+              previous?.messages.filter((message) => {
+                const [oldEntry = 0, oldIndex = 0] =
+                  message.cursor?.split(":").map(Number) ?? [];
+                return (
+                  oldEntry > 0 &&
+                  (oldEntry < entry || (oldEntry === entry && oldIndex < index))
+                );
+              }) ?? [];
+            next = {
+              ...event.view,
+              ...(earlier.length ? { before: previous?.before } : {}),
+              messages: [...earlier, ...event.view.messages],
+            };
+          } else if (previous) {
+            const changed = new Map(
+              event.messages.map((message) => [message.id, message]),
+            );
+            const known = new Set(
+              previous.messages.map((message) => message.id),
+            );
+            next = {
+              ...previous,
+              ...event.state,
+              messages: [
+                ...previous.messages
+                  .filter((message) => !event.removed.includes(message.id))
+                  .map((message) => changed.get(message.id) ?? message),
+                ...event.messages.filter((message) => !known.has(message.id)),
+              ],
+            };
+          } else continue;
+          next.runs = [
+            ...new Map(
+              [...(previous?.runs ?? []), ...(next.runs ?? [])].map((run) => [
+                run.turnId,
+                run,
+              ]),
+            ).values(),
+          ];
+          current.current = next;
           pending = next;
           if (document.hidden) {
             if (!next.busy || next.approvals?.length) flush();
@@ -82,6 +132,38 @@ export function useChat(botId: number, onModelRequired?: () => void) {
       document.removeEventListener("visibilitychange", visible);
     };
   }, [botId]);
+
+  async function loadEarlier() {
+    if (!current.current?.before || loadingEarlier) return;
+    setLoadingEarlier(true);
+    try {
+      const page = await client.get({ botId, before: current.current.before });
+      const view = current.current;
+      const known = new Set(view.messages.map((message) => message.id));
+      const next = {
+        ...view,
+        before: page.before,
+        runs: [
+          ...new Map(
+            [...(page.runs ?? []), ...(view.runs ?? [])].map((run) => [
+              run.turnId,
+              run,
+            ]),
+          ).values(),
+        ],
+        messages: [
+          ...page.messages.filter((message) => !known.has(message.id)),
+          ...view.messages,
+        ],
+      };
+      current.current = next;
+      setView(next);
+    } catch {
+      setError(chatCopy.errors.connect);
+    } finally {
+      setLoadingEarlier(false);
+    }
+  }
 
   async function send(
     input: SendInput,
@@ -113,6 +195,14 @@ export function useChat(botId: number, onModelRequired?: () => void) {
       },
     ]);
     try {
+      try {
+        await flushModelSettings(botId);
+      } catch (cause) {
+        throw new ORPCError("BAD_REQUEST", {
+          message:
+            cause instanceof Error ? cause.message : "模型配置保存失败。",
+        });
+      }
       await client.send({ ...input, botId });
       return "accepted" as const;
     } catch (cause) {
@@ -157,5 +247,7 @@ export function useChat(botId: number, onModelRequired?: () => void) {
       false,
     send,
     stop,
+    loadEarlier,
+    loadingEarlier,
   };
 }

@@ -21,6 +21,7 @@ import { modelFailure } from "./runtime/model-diagnostics.ts";
 import { RoutineInput } from "./work/routine-state.ts";
 
 export type ChatView = {
+  before?: string;
   id: number;
   model: ModelRef | null;
   instructions: string;
@@ -43,7 +44,9 @@ export type ChatView = {
 };
 
 export function chatView(
-  view: ConversationView,
+  view: Omit<ConversationView, "conversation"> & {
+    conversation: Pick<ConversationView["conversation"], "id">;
+  },
   approvals: EngineApproval[] = [],
 ): ChatView {
   const live = view.docs[LiveDoc.definition.kind] as LiveState | undefined;
@@ -135,7 +138,7 @@ export function chatView(
     if (entry.kind === EngineMessage) {
       const message = entry.data as unknown as ChatMessage;
       if (message.role === "user") turnId = message.turnId;
-      messages.push(message);
+      messages.push({ ...message, cursor: `${entry.id}:0` });
       continue;
     }
     const input =
@@ -187,6 +190,7 @@ export function chatView(
       if (projected)
         messages.push({
           ...projected,
+          cursor: `${entry.id}:${index}`,
           ...(projected.role === "user" && input?.requestId
             ? { requestId: input.requestId }
             : {}),

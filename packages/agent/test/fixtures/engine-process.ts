@@ -41,6 +41,7 @@ export class ProtocolProcess implements EngineProcess {
     });
   }
   frame(value: object) {
+    if (this.output.writableEnded) return;
     this.output.write(`${JSON.stringify(value)}\n`);
   }
   response(request: Request, result: object) {
