@@ -222,12 +222,20 @@ export async function callProductTool(
       });
     }, context);
   }
-  const text =
+  const output =
     typeof result.structuredOutput === "string"
       ? result.structuredOutput
       : result.structuredOutput !== undefined
         ? JSON.stringify(result.structuredOutput)
-        : result.diagnostics.map((item) => item.message).join("\n");
+        : "";
+  const text = [
+    output,
+    result.isError || !output
+      ? result.diagnostics.map((item) => item.message).join("\n")
+      : "",
+  ]
+    .filter((value) => value.trim())
+    .join("\n");
   return {
     content: [{ type: "text", text }],
     ...(result.isError ? { isError: true } : {}),

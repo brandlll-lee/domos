@@ -327,7 +327,7 @@ export class Files {
         defineTool({
           name: "attach_file",
           description:
-            "Send a file to the user. Provide a workspace path or a saved screenshot id. Only attach images you intend to deliver, not routine observations.",
+            "Deliver a requested file to the user. Provide a workspace path or the exact saved screenshot id. Evidence archive paths are not workspace files. Routine screenshot evidence is already saved; attach it only when the user requests image delivery.",
           parameters: Type.Object({
             path: Type.Optional(Type.String()),
             id: Type.Optional(Type.String()),

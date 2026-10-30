@@ -210,6 +210,43 @@ async function finish(
         continue;
       additional.push({ id, delivery, input: task.input as EngineTaskInput });
     }
+    const session = doc.sessionKey ? doc.sessions?.[doc.sessionKey] : undefined;
+    let received = Boolean(
+      doc.activeId === runtime.taskId &&
+        current.input.entryId &&
+        session &&
+        session.id === doc.sessionId &&
+        doc.dispatch === "accepted" &&
+        reason !== "aborted" &&
+        !current.input.operation,
+    );
+    if (received && current.input.entryId) {
+      const accepted = new Set([
+        current.input.entryId,
+        ...additional
+          .filter(({ delivery }) => delivery.status === "accepted")
+          .flatMap(({ input }) => (input.entryId ? [input.entryId] : [])),
+      ]);
+      const page = await tx.scanEntries(
+        {
+          conversationId: runtime.conversationId,
+          minEntryId: ((current.input.entryId as number) + 1) as EntryId,
+          order: "ascending",
+        },
+        64,
+      );
+      received =
+        !page.next &&
+        !page.items.some(
+          (entry) =>
+            entry.kind === EngineMessage &&
+            entry.data &&
+            typeof entry.data === "object" &&
+            "role" in entry.data &&
+            entry.data.role === "user" &&
+            !accepted.has(entry.id),
+        );
+    }
     if (
       current.input.operation &&
       doc.runtime?.compactionDetails?.taskId !== String(runtime.taskId)
@@ -248,6 +285,18 @@ async function finish(
           kind: EngineMessage,
           data: stored(draft),
         });
+        if (
+          received &&
+          session &&
+          ((draft.role === "toolResult" && draft.toolCallId) ||
+            draft.content.some(
+              (part) =>
+                part.type === "toolCall" ||
+                (part.type === "text" && part.text.trim()) ||
+                (part.type === "thinking" && part.thinking.trim()),
+            ))
+        )
+          session.through = entry.id;
         if (
           draft.role === "assistant" &&
           !draft.stopped &&
@@ -310,7 +359,13 @@ async function finish(
           }),
         })
       ).id;
-    if (!error && doc.sessionKey && doc.sessionId && answer) {
+    if (
+      !error &&
+      current.input.operation &&
+      doc.sessionKey &&
+      doc.sessionId &&
+      answer
+    ) {
       doc.sessions ??= {};
       doc.sessions[doc.sessionKey] = { id: doc.sessionId, through: answer };
     }

@@ -26,6 +26,8 @@ Switching Harness or work computer creates a native session. The display history
 
 Handoffs contain quoted recent history. They scan up to 64 entries. Each text excerpt has a 4000-byte limit. The packet has a 16000-byte limit and may shrink to fit the native context budget. JSON escaping and metadata count toward the limit. UTF-8 characters stay intact. Historical images and private reasoning do not enter the handoff.
 
+Native text, reasoning and tool records confirm receipt in the same accepted session, even when the turn later fails. The handoff cursor advances only through that confirmed range. Unconfirmed user input, stopped turns and terminal errors remain outside it. Compact operations retain their existing session boundary.
+
 The conversation_read tool reads the complete stored record:
 
 - `{}` reads a recent page. Pass its `from` cursor as `before` for older entries.
@@ -50,6 +52,8 @@ The shared computer catalog exposes native actions, batches and scripts. It hide
 Large text results use complete records within an 8000-character preview budget. Native structured results and original evidence remain intact. The gateway retains the latest 20 result payloads. A partial-result notice provides a handle for the read-only query_result tool. It supports a dot-separated path, text search, field selection and record paging. Queries do not dispatch the original tool. Expired handles require the saved work record. JSON previews remain parseable. Native tool result records retain the full payload.
 
 Computer calls validate against the tool catalog prepared for the current turn. Intent and result journal commits retain replay protection. Text and reasoning drafts use a 300 ms flush interval. Tool and activity events flush immediately. The gateway sends text-only error content to each Harness after saving screenshot evidence. Successful image content stays intact.
+
+Product-tool errors retain diagnostic text when structured output is empty or partial. Screenshot evidence stays in the task archive. Model notices contain the screenshot id and name. The Agent uses that id for requested image delivery. Evidence archive paths are not workspace paths. Once evidence confirms the user goal, the Agent reports the result and ends the turn.
 
 A failed action does not itself require another observation. A successful native end observation can release the observation barrier even when a batch contains a failed step. Explicit refusal or zero executed actions also permits recovery. Unknown outcomes still require fresh observation. Session recovery never repeats a mutation.
 
@@ -78,6 +82,8 @@ The memory tools are Domos product tools. Pi, Codex, Claude, OpenCode and ACP ca
 Background review is enabled by default. After ten successful user turns, Durable queues one task. It starts a separate native session and exposes only memory product tools with bounded recent history. It limits memory calls to 12 and stops after 120 seconds. It records native usage. It does not write review prompts or answers to displayed chat. The service rejects review edits to user-authored or shared entries. A new user turn cancels review. Users can disable review in the memory dialog. This task uses additional model calls.
 
 ## Verification
+
+Failure-recovery regression on Windows, 2026-10-30: 375 tests passed and 40 were skipped. Typecheck passed. Lint retained eight existing warnings. Tests cover empty and partial error output, failed Pi tool receipt, unconfirmed additional input and saved screenshot delivery. The sanitized `packages/agent/test/fixtures/pi-playlist-baseline.json` preserves task 10319: 94.334 seconds, 12 model responses and 11 tools. Its offline rules pass 2/3. The original incremental-scope failure remains in the fixture. This change has no new online CUA run or measured speed gain.
 
 Protocol tests cover native model controls, permission requests, and custom ACP setup. Lifecycle tests cover additional input and cancellation. Recovery tests cover uncertain dispatch and forward migration. History tests cover byte budgets and Bot isolation. Browser E2E checks include real input and result readback. See [Computer Use evals](computer-evals.md).
 

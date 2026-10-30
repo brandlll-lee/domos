@@ -688,6 +688,57 @@ test("MCP abandonment cancels an admitted Durable product task", async () => {
   expect(abortOwned).toHaveBeenCalledWith(7, BACKGROUND_CONTEXT);
 });
 
+test.each(["", "Partial output"])(
+  "product errors retain diagnostics with output %j",
+  async (output) => {
+    const runtime = {
+      taskId: 1,
+      conversationId: 1,
+      agent: async () => ({ callable: [{ name: "attach_file" }] }),
+      registry: {
+        tools: () => [
+          {
+            extension: { name: "domos-files" },
+            tool: {
+              name: "attach_file",
+              description: "Attach",
+              parameters: { type: "object" },
+            },
+          },
+        ],
+      },
+      commit: async (change: (tx: object) => Promise<void>) =>
+        change({
+          doc: async () => ({ taskId: 7 }),
+          task: async () => ({
+            input: { call: { name: "attach_file", arguments: {} } },
+          }),
+        }),
+      waitForTask: async () => {},
+      snapshot: async () => ({
+        result: {
+          isError: true,
+          structuredOutput: output,
+          diagnostics: [{ message: "Screenshot id does not exist" }],
+        },
+      }),
+    } as unknown as EngineRuntime;
+    const result = await callProductTool(
+      runtime,
+      "attach",
+      "attach_file",
+      {},
+      BACKGROUND_CONTEXT,
+      new AbortController().signal,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content).toContainEqual({
+      type: "text",
+      text: [output, "Screenshot id does not exist"].filter(Boolean).join("\n"),
+    });
+  },
+);
+
 test("Stop terminates the native process tree while its protocol is silent", async () => {
   const { process: workerProcess } = await worker();
   const entered = once(workerProcess.output, "data");

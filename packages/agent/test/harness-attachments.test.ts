@@ -297,6 +297,14 @@ test.each([false, true])("screenshot delivery: %s", async (deliver) => {
       callId: "capture",
     });
     if (!file) throw new Error("Evidence required");
+    const note = (
+      returned as { content: { type: string; text?: string }[] }
+    ).content.find((part) =>
+      part.text?.startsWith("Screenshots saved as task evidence."),
+    );
+    expect(JSON.parse(note?.text?.split("\n").at(-1) ?? "null")).toEqual([
+      { id: file.id, name: file.name },
+    ]);
     expect(
       Buffer.from(await (await files.download(botId, file.id)).arrayBuffer()),
     ).toEqual(bytes);

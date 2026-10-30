@@ -56,6 +56,9 @@ apps/web/src/features/bots/details adapts the list and editor composition
 of SimpleBotPanel with Domos data and controls.
 apps/web/src/features/computer/workspace.tsx adapts the persistent computer
 panel and embedded browser composition of ComputerPanel.tsx and BrowserPanel.tsx.
+packages/agent/src/harness/product-tools.ts adapts the error text pattern in
+server/drivers/agents-call.ts. Session receipt handling in harness/task.ts follows
+server/delta-context.ts. Completion guidance follows server/reply-habits.ts.
 
 agent-browser
 Licensed under the Apache License, Version 2.0. See licenses/agent-browser.txt.

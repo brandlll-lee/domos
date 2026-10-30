@@ -57,7 +57,7 @@ export async function computerEvidence(
       ...result.content,
       {
         type: "text" as const,
-        text: `Screenshots saved as task evidence. Use attach_file with an id only when you intend to send an image to the user.\n${JSON.stringify(attachments)}`,
+        text: `Screenshots saved as task evidence. Evidence paths are archive references, not workspace files. Use attach_file with the exact id only when the user requests image delivery.\n${JSON.stringify(attachments.map(({ id, name }) => ({ id, name })))}`,
       },
     ],
     ...(!outputSchema

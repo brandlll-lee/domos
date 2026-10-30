@@ -457,6 +457,138 @@ test("switching from embedded Pi imports recent conversation into the first nati
   state.dispose();
 });
 
+test.each(["tools", "ack", "gap"])(
+  "failed Pi handoff retains confirmed range: %s",
+  async (mode) => {
+    const directory = await mkdtemp(join(tmpdir(), "domos-pi-receipt-"));
+    const workers: ProtocolProcess[] = [];
+    const prompts: string[] = [];
+    let runtime: Awaited<ReturnType<typeof openAgent>>;
+    const execution = new EngineExecution({
+      preflight: async () => {},
+      computerId: async () => "shared",
+      tools: { catalog: async () => [], finish: () => {} },
+      process: async () => {
+        const worker = new ProtocolProcess();
+        workers.push(worker);
+        worker.receive = (request) => {
+          worker.frame({
+            type: "response",
+            id: request.id,
+            success: true,
+            data:
+              request.type === "get_state"
+                ? { sessionFile: "/pi/session" }
+                : {},
+          });
+          if (request.type !== "prompt") return;
+          prompts.push(String(request.message ?? ""));
+          void (async () => {
+            if (prompts.length === 1) {
+              if (mode === "gap")
+                await runtime.harness.commit(async (tx) => {
+                  await tx.appendEntry(runtime.conversation.id, {
+                    kind: "domos.engine-message",
+                    data: {
+                      id: "extra",
+                      role: "user",
+                      content: [
+                        { type: "text", text: "Unconfirmed extra input" },
+                      ],
+                    },
+                  });
+                }, context);
+              if (mode !== "ack") {
+                worker.frame({
+                  type: "tool_execution_start",
+                  toolCallId: "observe",
+                  toolName: "desktop_observe",
+                  args: {},
+                });
+                worker.frame({
+                  type: "tool_execution_end",
+                  toolCallId: "observe",
+                  toolName: "desktop_observe",
+                  result: {
+                    content: [
+                      { type: "text", text: "Native observation receipt" },
+                    ],
+                  },
+                });
+              }
+              worker.frame({
+                type: "message_end",
+                message: {
+                  role: "assistant",
+                  stopReason: "error",
+                  errorMessage: "402 Insufficient Balance",
+                },
+              });
+            } else
+              worker.frame({
+                type: "message_end",
+                message: {
+                  role: "assistant",
+                  stopReason: "stop",
+                  content: [{ type: "text", text: "Done" }],
+                },
+              });
+            worker.frame({ type: "agent_settled" });
+          })();
+        };
+        return worker;
+      },
+    } as unknown as Computers);
+    const registry = createRegistry();
+    registry.install(
+      defineExtension({
+        name: "domos-engines",
+        tasks: [engineTask(execution)],
+      }),
+    );
+    runtime = await openAgent(
+      join(directory, "agent.sqlite"),
+      { registry, models: createModels() },
+      {},
+      context,
+    );
+    onTestFinished(async () => {
+      await runtime.harness.close(context);
+      await Promise.all(workers.map((worker) => worker.close()));
+      await rm(directory, { recursive: true, force: true });
+    });
+    execution.computer = new ComputerRuntime(
+      runtime.harness,
+      registry,
+      execution.computers,
+      runtime.files,
+    );
+    const engines = new Engines(runtime.harness, execution);
+    const bot = runtime.conversation.id;
+    const first = await engines.submit(
+      bot,
+      { text: "Play music", requestId: crypto.randomUUID() },
+      context,
+    );
+    expect(await first.wait(context)).toMatchObject({ status: "unanswered" });
+    expect((await engines.view(bot, context)).error).toContain("402");
+    await (
+      await engines.submit(
+        bot,
+        { text: "Continue", requestId: crypto.randomUUID() },
+        context,
+      )
+    ).wait(context);
+    expect(prompts[1]).toContain("402 Insufficient Balance");
+    if (mode === "tools")
+      expect(prompts[1]).not.toContain("Native observation receipt");
+    if (mode === "gap") {
+      expect(prompts[1]).toContain("Unconfirmed extra input");
+      expect(prompts[1]).toContain("Native observation receipt");
+    }
+  },
+);
+
 test.each(["view", "stop", "reopen", "queued"])(
   "%s reconciles a terminal task and preserves its replies",
   async (action) => {
