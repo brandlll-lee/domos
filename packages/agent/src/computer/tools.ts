@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Context } from "@earendil-works/chord/context";
 import { browserObservations } from "../harness/browser-tools.mjs";
-import { desktopInputs } from "../harness/desktop-actions.mjs";
+import { desktopToolListed } from "../harness/desktop-actions.mjs";
 import type { ProductResult, ProductTool } from "../harness/types.ts";
 import { runAssistant } from "./assistant.ts";
 import {
@@ -101,7 +101,8 @@ export class ComputerTools {
         if (
           mode.enabled
             ? assistantDiscovery(`${service}_${tool.name}`)
-            : service !== "desktop" || !desktopInputs.includes(tool.name)
+            : service !== "desktop" ||
+              desktopToolListed(tool.name, Boolean(enabled.browser))
         )
           tools.push({ ...tool, name: `${service}_${tool.name}` });
     }

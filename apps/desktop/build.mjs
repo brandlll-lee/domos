@@ -123,6 +123,7 @@ for (const name of [
   "http-service.mjs",
   "native-history.mjs",
   "gateway.mjs",
+  "tool-results.mjs",
   "browser-service.mjs",
   "browser-tools.mjs",
   "browser-command.mjs",

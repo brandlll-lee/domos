@@ -10,7 +10,7 @@ const observations = new Set([
   "zoom",
 ]);
 
-export function openDesktopSession(driver) {
+export function openDesktopSession(driver, tools = []) {
   const sessions = new Map();
   return {
     async call(name, args, owner, signal, recover = true) {
@@ -43,12 +43,16 @@ export function openDesktopSession(driver) {
         name === "run_steps"
           ? (args.steps ?? []).map(desktopStep)
           : [{ tool: name, args }];
-      const mutating = desktopMutation(name, args);
+      const mutating =
+        name === "run_steps"
+          ? desktopMutation(name, args)
+          : tools.find((tool) => tool.name === name)?.annotations
+              ?.readOnlyHint === false || desktopMutation(name, args);
       if (mutating && state.review)
         return {
           images: [],
           isError: true,
-          text: "The previous action was delivered but its effect is unconfirmed. Observe that window or use verify_state before another action. Do not replay the previous action.",
+          text: "The previous action outcome is unknown. Observe that window or use verify_state before another action. Do not replay the previous action.",
         };
       const savedTarget =
         mutating &&
@@ -83,6 +87,7 @@ export function openDesktopSession(driver) {
           );
           return {
             ...result,
+            rawJson: undefined,
             images: [...(result.images ?? []), ...(fresh.images ?? [])],
             isError: true,
             text: `${savedTarget ? "The requested action was not executed because its saved desktop target needs a fresh observation." : "The desktop session ended. Preserve the original action result; no action was replayed."}\nOriginal result: ${result.text ?? result.structuredJson ?? result.errorCode}\nObservation${fresh.isError ? " failed" : ""}: ${fresh.text ?? fresh.structuredJson ?? "unavailable"}`,
@@ -99,12 +104,12 @@ export function openDesktopSession(driver) {
             ? value.observation.state
             : undefined;
       if (
-        !result.isError &&
-        (observed ||
-          name === "get_desktop_state" ||
-          name === "get_accessibility_tree" ||
-          (name === "verify_state" &&
-            ["satisfied", "unsatisfied"].includes(value?.status)))
+        observed ||
+        (!result.isError &&
+          (name === "get_desktop_state" ||
+            name === "get_accessibility_tree" ||
+            (name === "verify_state" &&
+              ["satisfied", "unsatisfied"].includes(value?.status))))
       ) {
         state.review = false;
         state.observed = true;
@@ -120,21 +125,23 @@ export function openDesktopSession(driver) {
             value.steps.every((step) => step.ok) &&
             (args.steps.at(-1)?.expect?.length ||
               (args.steps.at(-1)?.wait_for && !steps.at(-1)?.tool))));
+      const refused =
+        value?.refusal ||
+        value?.executed === 0 ||
+        value?.effect === "not_delivered";
       if (mutating)
         state.review =
-          name === "run_script" ||
-          result.isError ||
-          value?.observation?.ok === false ||
-          (!checked &&
-            !observed &&
-            value?.verified !== true &&
-            value?.effect !== "confirmed");
+          !refused &&
+          !checked &&
+          !observed &&
+          value?.verified !== true &&
+          value?.effect !== "confirmed";
       else if (name === "get_window_state" && result.isError)
         state.review = true;
       if (checked) state.review = false;
       if (name === "end_session" && !result.isError)
         sessions.delete(args.session);
-      return checked ? { ...result, postcondition: true } : result;
+      return result;
     },
     clear(owner) {
       for (const [session, state] of sessions)

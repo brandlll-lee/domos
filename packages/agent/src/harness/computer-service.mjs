@@ -8,6 +8,7 @@ export function openComputerService(directory, home, emit = () => {}) {
   let starting;
   let activity;
   let sessions;
+  let desktopTools;
   let browser;
   const views = new Map();
   async function driver() {
@@ -15,7 +16,8 @@ export function openComputerService(directory, home, emit = () => {}) {
       const { CuaDriver } = await import("@trycua/cua-driver");
       const { openDesktopActivity } = await import("./desktop-activity.mjs");
       desktop = CuaDriver.create();
-      sessions = openDesktopSession(desktop);
+      desktopTools = JSON.parse(await desktop.listToolsJson()).tools;
+      sessions = openDesktopSession(desktop, desktopTools);
       activity = openDesktopActivity(desktop, emit);
       return desktop;
     })().catch((error) => {
@@ -78,8 +80,7 @@ export function openComputerService(directory, home, emit = () => {}) {
         views.delete(input.id);
         return {};
       }
-      if (input.operation === "catalog")
-        return JSON.parse(await instance.listToolsJson({ signal })).tools;
+      if (input.operation === "catalog") return desktopTools;
       if (input.operation === "prepare") {
         try {
           const result = await activity.capture(() =>
@@ -141,7 +142,7 @@ export function openComputerService(directory, home, emit = () => {}) {
           content: [
             {
               type: "text",
-              text: "Batch target requires both pid and window_id, or app/window names. Discover and confirm the target window before input. Rebind when a dialog opens. No batch action was sent.",
+              text: "Batch target requires both pid and window_id, or app/window names. Discover and confirm the target window before input. No batch action was sent.",
             },
           ],
         };
@@ -158,23 +159,33 @@ export function openComputerService(directory, home, emit = () => {}) {
       else {
         activity.observe(input.name, args, result, input.actor);
       }
-      const structured = result.structuredJson
-        ? JSON.parse(result.structuredJson)
-        : undefined;
-      const elapsedMs = Math.round(performance.now() - startedAt);
+      const native = result.rawJson
+        ? JSON.parse(result.rawJson)
+        : {
+            content: [
+              ...(result.text ? [{ type: "text", text: result.text }] : []),
+              ...result.images.map((image) => ({
+                type: "image",
+                mimeType: image.mimeType,
+                data: image.dataBase64,
+              })),
+            ],
+            ...(result.structuredJson
+              ? { structuredContent: JSON.parse(result.structuredJson) }
+              : {}),
+            isError: Boolean(result.isError),
+          };
       return {
-        _meta: { "domos/platform": process.platform },
+        ...native,
+        isError: Boolean(native.isError),
+        _meta: { ...native._meta, "domos/platform": process.platform },
         content: [
-          ...(result.text ? [{ type: "text", text: result.text }] : []),
-          { type: "text", text: `Domos computer tool time: ${elapsedMs} ms.` },
-          ...result.images.map((image) => ({
-            type: "image",
-            mimeType: image.mimeType,
-            data: image.dataBase64,
-          })),
+          ...native.content,
+          {
+            type: "text",
+            text: `Domos computer tool time: ${Math.round(performance.now() - startedAt)} ms.`,
+          },
         ],
-        ...(structured ? { structuredContent: structured } : {}),
-        isError: Boolean(result.isError),
       };
     },
     async close() {

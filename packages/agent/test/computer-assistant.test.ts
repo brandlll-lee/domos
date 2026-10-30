@@ -138,7 +138,13 @@ test("mode gates catalog and invocation; handoffs are explicit, single-use and o
   const services = {
     prepare: vi.fn(async () => ({ available: true })),
     catalog: vi.fn(async () =>
-      ["get_window_state", "click", "run_steps", "launch_app"].map((name) => ({
+      [
+        "get_window_state",
+        "click",
+        "run_steps",
+        "launch_app",
+        "get_config",
+      ].map((name) => ({
         name,
         inputSchema: {},
         description: name,
@@ -232,6 +238,7 @@ test("mode gates catalog and invocation; handoffs are explicit, single-use and o
   enabled = false;
   expect((await tools.catalog(1, context)).map((tool) => tool.name)).toEqual([
     "desktop_get_window_state",
+    "desktop_click",
     "desktop_run_steps",
     "desktop_launch_app",
     "computer_request_takeover",

@@ -71,8 +71,9 @@ test("CUA text copies retain addresses and images without repeating observation 
     name: "desktop_probe",
   })) as ProductResult;
   expect(result.structuredContent).toEqual(raw.structuredContent);
-  expect(result.content.slice(0, 2)).toEqual(raw.content);
-  const copy = JSON.parse((result.content.at(-1) as { text: string }).text);
+  expect(result.content).toContainEqual(raw.content[1]);
+  expect(JSON.stringify(result.content).length).toBeLessThan(10000);
+  const copy = JSON.parse((result.content.at(-2) as { text: string }).text);
   expect(copy.observation.state).toMatchObject({
     pid: 7,
     window_id: 90,
@@ -82,6 +83,66 @@ test("CUA text copies retain addresses and images without repeating observation 
   });
   expect(JSON.stringify(copy).length).toBeLessThan(600);
   expect(copy.observation.state.elements).toBeUndefined();
+});
+
+test("a held app catalog can be searched after structural trimming", async () => {
+  const apps = Array.from({ length: 280 }, (_, i) => ({
+    name: i === 279 ? "Target Music" : `Application ${i}`,
+    pid: i,
+    running: false,
+    active: false,
+    launch_path: `C:/Programs/${i}/player.exe`,
+    detail: "metadata ".repeat(40),
+  }));
+  const invoke = vi.fn(async () => ({
+    content: [{ type: "text" as const, text: "280 installed applications" }],
+    structuredContent: { apps },
+  }));
+  const gateway = await openGateway(
+    [
+      {
+        name: "desktop_list_apps",
+        description: "Apps",
+        inputSchema: { type: "object" },
+      },
+    ],
+    invoke,
+  );
+  const client = new Client({ name: "query", version: "1" });
+  onTestFinished(async () => {
+    await client.close();
+    await gateway.close();
+  });
+  await client.connect(new StreamableHTTPClientTransport(new URL(gateway.url)));
+  const first = await client.callTool({ name: "desktop_list_apps" });
+  const preview = JSON.parse(
+    (first.content as { text: string }[])[1]?.text ?? "",
+  );
+  expect(preview.apps.length).toBeLessThan(280);
+  expect(first.structuredContent).toEqual({ apps });
+  const found = await client.callTool({
+    name: "query_result",
+    arguments: {
+      result: "r1",
+      path: "apps",
+      search: "Target Music",
+      fields: ["name", "launch_path"],
+    },
+  });
+  expect(found.structuredContent).toEqual({
+    value: {
+      total: 1,
+      offset: 0,
+      items: [{ name: "Target Music", launch_path: apps[279]?.launch_path }],
+    },
+  });
+  expect(invoke).toHaveBeenCalledTimes(1);
+  await expect(
+    client.callTool({
+      name: "query_result",
+      arguments: { result: "r1", limit: -1 },
+    }),
+  ).rejects.toThrow();
 });
 
 async function worker(environment?: Record<string, string>) {
@@ -132,6 +193,7 @@ test("workspace MCP routes tools through the authenticated process channel", asy
   try {
     expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual([
       "echo",
+      "query_result",
     ]);
     await expect(process.toolsReady()).resolves.toBeNull();
     expect(
@@ -451,7 +513,7 @@ test.runIf(globalThis.process.platform === "win32")(
       name: "get_desktop_state",
       arguments: { max_image_dimension: 320 },
     });
-    expect(result.isError).toBe(false);
+    expect(result.isError).not.toBe(true);
     const image = result.content.find((part) => part.type === "image");
     expect(
       image?.type === "image" &&

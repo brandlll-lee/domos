@@ -108,6 +108,7 @@ test.each([false, true])("screenshot delivery: %s", async (deliver) => {
     "base64",
   );
   let returned: unknown;
+  let observations = 0;
   const execution = new EngineExecution(
     {
       preflight: async () => {},
@@ -134,6 +135,46 @@ test.each([false, true])("screenshot delivery: %s", async (deliver) => {
               new AbortController().signal,
             ).then(async (result) => {
               returned = result;
+              expect(
+                await invoke(
+                  "capture",
+                  "browser_observe",
+                  {},
+                  new AbortController().signal,
+                ),
+              ).toEqual(result);
+              await expect(
+                invoke(
+                  "capture",
+                  "browser_observe",
+                  { scope: "all" },
+                  new AbortController().signal,
+                ),
+              ).rejects.toThrow("标识重复");
+              await expect(
+                invoke(
+                  "invalid",
+                  "browser_observe",
+                  { scope: 1 },
+                  new AbortController().signal,
+                ),
+              ).rejects.toThrow();
+              await expect(
+                invoke(
+                  "uncertain",
+                  "browser_observe",
+                  { scope: "fail" },
+                  new AbortController().signal,
+                ),
+              ).rejects.toThrow("Interrupted");
+              await expect(
+                invoke(
+                  "uncertain",
+                  "browser_observe",
+                  { scope: "fail" },
+                  new AbortController().signal,
+                ),
+              ).rejects.toThrow("结果未知");
               if (deliver) {
                 const file = (
                   result as { structuredContent: { evidence: Attachment[] } }
@@ -159,24 +200,35 @@ test.each([false, true])("screenshot delivery: %s", async (deliver) => {
           {
             name: "browser_observe",
             description: "Observe",
-            inputSchema: { type: "object" },
+            inputSchema: {
+              type: "object",
+              properties: { scope: { type: "string" } },
+            },
           },
         ],
-        invoke: async () => ({
-          content: [
-            {
-              type: "image",
-              mimeType: "image/png",
-              data: bytes.toString("base64"),
+        invoke: async (
+          _bot: number,
+          _name: string,
+          args: { scope?: string },
+        ) => {
+          observations++;
+          if (args.scope === "fail") throw new Error("Interrupted");
+          return {
+            content: [
+              {
+                type: "image",
+                mimeType: "image/png",
+                data: bytes.toString("base64"),
+              },
+            ],
+            structuredContent: {
+              source: {
+                url: "https://example.org/report",
+                capturedAt: "2026-10-19T12:00:00.000Z",
+              },
             },
-          ],
-          structuredContent: {
-            source: {
-              url: "https://example.org/report",
-              capturedAt: "2026-10-19T12:00:00.000Z",
-            },
-          },
-        }),
+          };
+        },
         finish: () => {},
       },
     } as unknown as Computers,
@@ -229,6 +281,7 @@ test.each([false, true])("screenshot delivery: %s", async (deliver) => {
     ).wait(context),
   ).toMatchObject({ status: "done" });
   const state = await runtime.conversation.viewState(context);
+  expect(observations).toBe(2);
   try {
     const file = (returned as { structuredContent: { evidence: Attachment[] } })
       .structuredContent.evidence[0];

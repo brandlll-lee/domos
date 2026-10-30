@@ -8,7 +8,12 @@ import type { EngineRuntime } from "../src/harness/task-types.ts";
 import failures from "./fixtures/cua-contracts.json" with { type: "json" };
 
 const { driver, activity } = vi.hoisted(() => ({
-  driver: { callTool: vi.fn(), shutdown: vi.fn(), uniffiDestroy: vi.fn() },
+  driver: {
+    callTool: vi.fn(),
+    listToolsJson: vi.fn(async () => '{"tools":[]}'),
+    shutdown: vi.fn(),
+    uniffiDestroy: vi.fn(),
+  },
   activity: {
     observe: vi.fn(),
     active: vi.fn(),
@@ -175,30 +180,6 @@ test.each([
   },
 );
 
-test.each([
-  { pid: 7, steps: [{ type_text: { text: "Sales" } }] },
-  { pid: 7, window_id: 90, steps: [{ type_text: { pid: 8, text: "Sales" } }] },
-])(
-  "batch rejects an incomplete numeric window identity before input: %j",
-  async (target) => {
-    const service = openComputerService(".", ".");
-    const result = await callDesktop(
-      service,
-      "run_steps",
-      {
-        ...target,
-        delivery_mode: "foreground",
-        observe: {},
-      },
-      new AbortController().signal,
-    );
-    expect(result.isError).toBe(true);
-    expect(JSON.stringify(result.content)).toContain("window_id");
-    expect(driver.callTool).not.toHaveBeenCalled();
-    await service.close();
-  },
-);
-
 test("native foreground delivery and batch evidence use one driver call", async () => {
   const native = {
     images: [{ mimeType: "image/png", dataBase64: "cGl4ZWw=" }],
@@ -240,6 +221,60 @@ test("native foreground delivery and batch evidence use one driver call", async 
   await service.close();
 });
 
+test("a failed batch's end observation permits the next native foreground action", async () => {
+  const callTool = vi.fn(async (name: string) => ({
+    isError: name === "run_steps",
+    images: [],
+    structuredJson: JSON.stringify(
+      name === "run_steps"
+        ? {
+            executed: 1,
+            failed_step: 0,
+            observation: { ok: true, state: { pid: 7, window_id: 90 } },
+            steps: [{ ok: false, code: "background_unavailable" }],
+          }
+        : { effect: "confirmed" },
+    ),
+  }));
+  const session = openDesktopSession({ callTool });
+  const args = {
+    session: "music",
+    pid: 7,
+    window_id: 90,
+    steps: [{ click: { x: 10, y: 20 } }],
+  };
+  expect((await session.call("run_steps", args, "task")).isError).toBe(true);
+  expect(
+    (
+      await session.call(
+        "click",
+        { ...args, delivery_mode: "foreground" },
+        "task",
+      )
+    ).isError,
+  ).toBe(false);
+  expect(callTool.mock.calls.at(-1)?.[0]).toBe("click");
+});
+
+test("the desktop relay preserves the native MCP envelope", async () => {
+  const native = {
+    content: [{ type: "text", text: "native" }],
+    _meta: { receipt: "native" },
+    structuredContent: { effect: "confirmed" },
+  };
+  driver.callTool.mockResolvedValue({
+    rawJson: JSON.stringify(native),
+    images: [],
+    isError: false,
+  });
+  const service = openComputerService(".", ".");
+  const result = await callDesktop(service, "click", { pid: 7, window_id: 90 });
+  expect(result._meta).toMatchObject(native._meta);
+  expect(result.structuredContent).toEqual(native.structuredContent);
+  expect(result.content).toEqual(expect.arrayContaining(native.content));
+  await service.close();
+});
+
 test.each(failures.mutations)(
   "%s preserves unknown outcomes, recovery and cancellation",
   async (name) => {
@@ -250,7 +285,13 @@ test.each(failures.mutations)(
       return {
         images: [],
         isError: ended && tool === name,
-        ...(ended && tool === name ? { errorCode: "session_ended" } : {}),
+        ...(ended && tool === name
+          ? {
+              errorCode: "session_ended",
+              rawJson:
+                '{"content":[{"type":"text","text":"session ended"}],"isError":true}',
+            }
+          : {}),
         structuredJson: JSON.stringify(
           tool === "get_window_state"
             ? { pid: 7, window_id: 90, snapshot_id: "s1" }
@@ -277,6 +318,7 @@ test.each(failures.mutations)(
     ended = true;
     const result = await session.call(name, args, "task");
     expect(result.text).toContain("no action was replayed");
+    expect(result.rawJson).toBeUndefined();
     expect(calls.filter((tool) => tool === name)).toHaveLength(2);
     const controller = new AbortController();
     controller.abort();

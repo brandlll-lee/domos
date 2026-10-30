@@ -1,6 +1,21 @@
 {
   "source": "shared-contract-probe:2026-10-29",
   "mutations": ["click", "run_steps", "run_script"],
+  "playerDiscovery": {
+    "source": "task-9843:2026-10-30",
+    "completion": "not-completed",
+    "elapsedSeconds": 161.074,
+    "toolCalls": 15,
+    "modelResponses": 15,
+    "imagesDelivered": 6,
+    "shellSeconds": 29.324,
+    "observed": [
+      "An application catalog was cut inside a JSON string. Parsing the saved output failed.",
+      "The agent searched disk roots before launching the player.",
+      "A failed batch included successful end observation, but the next action was blocked.",
+      "A script used background delivery again after its failure. The target track was not verified."
+    ]
+  },
   "piObservation": {
     "source": "task-9586:2026-10-30",
     "completion": "unreviewed",
