@@ -76,7 +76,7 @@ test.runIf(platform() === "win32")(
     });
     expect(
       (await runtime.computer.tools.catalog(botId, context)).some(
-        (tool) => tool.name === "desktop_get_desktop_state",
+        (tool) => tool.name === "get_desktop_state",
       ),
     ).toBe(true);
     const controller = new AbortController();

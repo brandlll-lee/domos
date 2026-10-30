@@ -176,15 +176,15 @@ test("mode gates catalog and invocation; handoffs are explicit, single-use and o
   } as unknown as Computers;
   const tools = new ComputerTools(computers);
   expect((await tools.catalog(1, context)).map((tool) => tool.name)).toEqual([
-    "desktop_get_window_state",
-    "desktop_launch_app",
+    "get_window_state",
+    "launch_app",
     "computer_assist",
     "computer_request_takeover",
   ]);
   const invoke = (name: string, args = {}, owner = "owner") =>
     tools.invoke(1, name, args, owner, signal(), context, async () => true);
-  await expect(invoke("desktop_click")).rejects.toThrow("Jev");
-  await invoke("desktop_get_window_state");
+  await expect(invoke("click")).rejects.toThrow("Jev");
+  await invoke("get_window_state");
   mockChoice(() => "abstain");
   const result = await invoke("computer_assist", input());
   const handoff = {
@@ -237,16 +237,14 @@ test("mode gates catalog and invocation; handoffs are explicit, single-use and o
   });
   enabled = false;
   expect((await tools.catalog(1, context)).map((tool) => tool.name)).toEqual([
-    "desktop_get_window_state",
-    "desktop_click",
-    "desktop_run_steps",
-    "desktop_launch_app",
+    "get_window_state",
+    "click",
+    "run_steps",
+    "launch_app",
     "computer_request_takeover",
   ]);
-  await invoke("desktop_click");
-  await expect(invoke("desktop_wait_for_load")).rejects.toThrow(
-    "wait_for/expect",
-  );
+  await invoke("click");
+  await expect(invoke("wait_for_load")).rejects.toThrow("wait_for/expect");
 });
 
 test.each(["stale", "background", "partial", "empty"])(

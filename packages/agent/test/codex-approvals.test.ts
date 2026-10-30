@@ -40,7 +40,7 @@ async function open() {
 
 const form = {
   mode: "form",
-  message: "Allow desktop_hotkey?",
+  message: "Allow hotkey?",
   requestedSchema: {
     type: "object",
     properties: {
@@ -99,7 +99,7 @@ test("Codex asks the user before desktop execution", async () => {
     type: "approval",
     approval: expect.objectContaining({
       id: "42",
-      detail: expect.stringContaining("desktop_hotkey"),
+      detail: expect.stringContaining("hotkey"),
       questions: [
         expect.objectContaining({
           id: "decision",
@@ -289,7 +289,7 @@ test.each([
       item: {
         id: "desktop",
         type: "mcpToolCall",
-        tool: "desktop_hotkey",
+        tool: "hotkey",
         status: item.error ? "failed" : "completed",
         ...item,
       },

@@ -103,11 +103,8 @@ export class EngineExecution {
     const tools = memoryReview
       ? catalog.filter((tool) => tool.name.startsWith("memory_"))
       : catalog;
-    const computerTools = tools.filter(
-      (tool) =>
-        tool.name.startsWith("computer_") ||
-        tool.name.startsWith("browser_") ||
-        tool.name.startsWith("desktop_"),
+    const computerTools = tools.filter((tool) =>
+      this.computer.isComputerTool(tool.name),
     );
     if (provider.id === "claude") tools.push(permissionTool);
     let reviewCalls = 0;

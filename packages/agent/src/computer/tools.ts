@@ -97,14 +97,21 @@ export class ComputerTools {
       const state = await target.services.prepare(botId, service, context);
       this.states.set(`${id}:${botId}:${service}`, state);
       if (!state.available) continue;
-      for (const tool of await target.services.catalog(botId, service, context))
+      for (const tool of await target.services.catalog(
+        botId,
+        service,
+        context,
+      )) {
+        const exposedName =
+          service === "desktop" ? tool.name : `${service}_${tool.name}`;
         if (
           mode.enabled
-            ? assistantDiscovery(`${service}_${tool.name}`)
+            ? assistantDiscovery(exposedName)
             : service !== "desktop" ||
               desktopToolListed(tool.name, Boolean(enabled.browser))
         )
-          tools.push({ ...tool, name: `${service}_${tool.name}` });
+          tools.push({ ...tool, name: exposedName });
+      }
     }
     if (mode.enabled && (enabled.browser || enabled.desktop))
       tools.push(assistTool);
@@ -336,9 +343,16 @@ export class ComputerTools {
             context,
             signal,
           );
-          available.push(...catalog.map((item) => `${service}_${item.name}`));
+          available.push(
+            ...catalog.map((item) =>
+              service === "desktop" ? item.name : `${service}_${item.name}`,
+            ),
+          );
           const tool = catalog.find(
-            (item) => `${service}_${item.name}` === name,
+            (item) =>
+              (service === "desktop"
+                ? item.name
+                : `${service}_${item.name}`) === name,
           );
           if (tool) {
             const observation =

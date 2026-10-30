@@ -296,12 +296,17 @@ test("takeover completion requires the matching viewer and closes input before r
 test.each([
   "browser_agent_browser_click",
   "browser_agent_browser_eval",
-  "desktop_run_steps",
-  "desktop_run_script",
+  "run_steps",
+  "run_script",
 ])("%s requires shared approval", async (name) => {
   const services = {
     catalog: async (_id: number, service: string) => [
-      { name: name.slice(service.length + 1), inputSchema: {} },
+      {
+        name: name.startsWith("browser_")
+          ? name.slice(service.length + 1)
+          : name,
+        inputSchema: {},
+      },
     ],
     call: vi.fn(async () => ({ content: [] })),
   };
@@ -312,7 +317,7 @@ test.each([
       target: { services },
       enabled: {
         browser: name.startsWith("browser"),
-        desktop: name.startsWith("desktop"),
+        desktop: !name.startsWith("browser"),
       },
     }),
     assistance: { state: async () => ({ enabled: false }) },

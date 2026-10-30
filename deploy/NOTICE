@@ -44,22 +44,6 @@ Domos supplies layout limits and saves preferences after interaction.
 apps/web/src/features/settings uses the navigation and content composition
 of Rakazo apps/web/src/pages/SettingsOverlay.tsx with Domos panels and tokens.
 
-OpenMausBot
-Licensed under the Apache License, Version 2.0. See licenses/openmausbot.txt.
-Source: https://github.com/milind-soni/OpenMausBot
-packages/ui/src/web/setting-row.tsx adapts
-src/components/SettingsPrimitives.tsx:SettingRow.
-Domos uses a fieldset, existing controls, and semantic theme variables.
-packages/ui/src/web/panel.tsx and panel.css adapt the compact settings row
-composition in src/components/bot-settings/SimpleBotPanel.tsx.
-apps/web/src/features/bots/details adapts the list and editor composition
-of SimpleBotPanel with Domos data and controls.
-apps/web/src/features/computer/workspace.tsx adapts the persistent computer
-panel and embedded browser composition of ComputerPanel.tsx and BrowserPanel.tsx.
-packages/agent/src/harness/product-tools.ts adapts the error text pattern in
-server/drivers/agents-call.ts. Session receipt handling in harness/task.ts follows
-server/delta-context.ts. Completion guidance follows server/reply-habits.ts.
-
 agent-browser
 Licensed under the Apache License, Version 2.0. See licenses/agent-browser.txt.
 Source: https://github.com/vercel-labs/agent-browser
