@@ -39,6 +39,7 @@ Pi Durable 1.4.0 stores Bot tasks. Native Harness processes own model loops. Dom
 - Reuse Cua for desktop execution and the existing browser service for DOM/CDP operations. Keep platform details at these boundaries.
 - Browser viewing uses the Agent browser viewport stream and browser input commands. Cua owns desktop viewing and input. Share display control only for a confirmed headed browser. Keep the identity header fixed across Bot, Computer, Browser, and Work tabs. Use the native Fullscreen API for the screen and toolbar. See [Browser Use](docs/browser-use.md).
 - Expose native desktop actions, batches, and scripts with their original parameters. The Agent selects the tool and requests observations. Check a state transition before dependent actions.
+- Keep desktop operation guidance in shared computer instructions. Computer boundary sections report environment and permissions. Native schemas and get_guide own syntax. Keep window focus separate from action delivery mode. Match snapshot controls to the intended role and label.
 - Bind actions and observation to the same confirmed target. Cua owns native sessions. Forward the Agent's parameters unchanged. Discover a new target when a dialog or window changes.
 - Distinguish action delivery, action verification, observation, and user-task completion. A successful call or screenshot alone does not prove task completion.
 - If an action ran but observation failed, preserve the execution record and recover observation. Do not replay an action whose outcome is uncertain.

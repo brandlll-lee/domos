@@ -11,10 +11,43 @@ import {
 import { createRegistry } from "@earendil-works/pi-durable";
 import { expect, onTestFinished, test } from "vitest";
 import { chatView } from "../src/chat-view.ts";
-import { computer } from "../src/computer.ts";
+import type { Computers } from "../src/computer/catalog.ts";
+import { computer, computersExtension } from "../src/computer.ts";
 import { Files } from "../src/files.ts";
 import { messageText } from "../src/messages.ts";
 import { openAgent } from "../src/open-agent.ts";
+
+test("the computer boundary reports its target without prescribing native actions", async () => {
+  const render = computersExtension({
+    binding: async () => ({
+      computer: {
+        id: "work",
+        name: "Work computer",
+        os: "win32",
+        arch: "x64",
+        state: "running",
+        authorized: true,
+        boundary: "host",
+        network: "host",
+      },
+    }),
+  } as unknown as Computers).sections?.[0]?.render;
+  if (!render) throw new Error("Computer section required");
+  const prompt = await render(
+    {
+      conversationId: 1,
+      env: { cwd: "/work" },
+      agent: { tools: [{ name: "click" }, { name: "run_steps" }] },
+    } as unknown as Parameters<typeof render>[0],
+    BACKGROUND_CONTEXT,
+  );
+  expect(prompt).toContain("Work computer (work)");
+  expect(prompt).toContain("/work");
+  expect(prompt).toContain("click, run_steps");
+  expect(prompt).not.toMatch(
+    /Use run_steps|wait_for and expect|Read the domos outcome/,
+  );
+});
 
 test.runIf(platform() === "win32")(
   "host commands report hardware, working directory, exit status, and durable errors",

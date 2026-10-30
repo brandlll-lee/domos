@@ -1,5 +1,21 @@
 {
   "source": "shared-contract-probe:2026-10-29",
+  "nativePolicy": {
+    "source": "task-11030:2026-10-31",
+    "completion": "pass",
+    "elapsedSeconds": 148.724,
+    "modelResponses": 25,
+    "toolCalls": 24,
+    "modelSeconds": 71.13,
+    "toolSeconds": 57.612,
+    "observed": [
+      "The computer boundary required run_steps for single actions while the shared policy delegated tool selection to the native driver.",
+      "A batch used wait_for as a tool name. A second batch lacked an observation target. Neither dispatched input.",
+      "Background clicks did not change playback. Bringing the window forward did not change the next click's delivery mode.",
+      "A smaller tree omitted the intended button. The agent selected a search token while intending to play.",
+      "A native playback button and subsequent screenshot confirmed the requested title and artist."
+    ]
+  },
   "handoff": {
     "source": "task-10902:2026-10-31",
     "observed": [
