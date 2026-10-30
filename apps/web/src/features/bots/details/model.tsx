@@ -41,7 +41,10 @@ export function ModelSetup({
             </Button>
           )}
           {onReady && (
-            <Button disabled={busy || !profile?.prepared} onClick={onReady}>
+            <Button
+              disabled={busy || !(profile?.revision || profile?.prepared)}
+              onClick={onReady}
+            >
               开始
             </Button>
           )}

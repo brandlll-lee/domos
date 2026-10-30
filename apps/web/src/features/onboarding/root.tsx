@@ -13,7 +13,7 @@ type Setup = {
   binding: Awaited<ReturnType<typeof client.computer.get>>;
   canIsolate: boolean;
   deployment: "native" | "container";
-  prepared: boolean;
+  configured: boolean;
 };
 
 export function Onboarding({
@@ -41,14 +41,14 @@ export function Onboarding({
       binding,
       canIsolate: location.canIsolate,
       deployment: location.deployment,
-      prepared: engine.prepared,
+      configured: engine.revision > 0 || engine.prepared,
     };
     setSetup(next);
     return next;
   }, []);
   const initialize = useCallback(async () => {
     const next = await refresh();
-    setFinished(next.prepared && next.computer);
+    setFinished(next.configured && next.computer);
     setStep(next.computer ? 1 : 0);
   }, [refresh]);
   useEffect(() => {
@@ -59,7 +59,7 @@ export function Onboarding({
   const advance = () =>
     void refresh()
       .then((next) => {
-        if (next.prepared && next.computer) setFinished(true);
+        if (next.configured && next.computer) setFinished(true);
         else setStep(1);
       })
       .catch((cause) => setError(cause.message));
@@ -106,8 +106,8 @@ export function Onboarding({
                   onReady={() =>
                     void refresh()
                       .then((next) => {
-                        if (next.prepared && next.computer) setFinished(true);
-                        else setError("请先完成连接检查。");
+                        if (next.configured && next.computer) setFinished(true);
+                        else setError("请先保存模型配置。");
                       })
                       .catch((cause) => setError(cause.message))
                   }

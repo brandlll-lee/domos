@@ -57,6 +57,12 @@ test("first use prepares the default Bot with a computer and model before shared
     const [ready] = (await once(worker, "message")) as [
       { port: number; code: string; clientCode: string },
     ];
+    await page.route("**/rpc/engines/{get,configure}", async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      body.json.prepared = false;
+      await route.fulfill({ response, json: body });
+    });
     await page.goto(`http://127.0.0.1:${ready.port}`);
     await expect(
       page.getByRole("heading", { name: "连接这个 Domos" }),

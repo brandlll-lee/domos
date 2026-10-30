@@ -16,6 +16,8 @@ Absolute paths use filesystem checks. Windows selects an executable or command s
 
 Model and effort choices update the selector immediately. Saves run in order with the latest confirmed revision. A failed save restores the confirmed choice and reports the error. Chat dispatch waits for pending saves. Effort options come from the retained native model capabilities.
 
+First setup uses the saved configuration revision. A temporary readiness failure does not return a configured Bot to setup. Task dispatch still checks the work computer and native connection.
+
 Downloads install a pinned package in the work computer's runtime directory. Node and npm must be available there. Existing installations stay in place. Installing an independent version does not activate it. Saving the selected model activates the resolved program. Configuration changes require an idle Bot.
 
 Pi login uses its native ModelRuntime through an RPC extension. Codex and Claude use native login commands. OpenCode uses its local account API. Account state and secret input are transient. The native program stores credentials. Administrators manage programs and accounts. Paired clients can select available models in the Bot's configured Harness.
