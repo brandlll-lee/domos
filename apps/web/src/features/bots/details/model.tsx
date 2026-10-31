@@ -1,6 +1,6 @@
 import { Button } from "@domos/ui/controls";
 import { useCallback, useState } from "react";
-import { client } from "../../../client.ts";
+import type { client } from "../../../client.ts";
 import { ModelSetting } from "../../models/model-setting.tsx";
 
 export function ModelSetup({

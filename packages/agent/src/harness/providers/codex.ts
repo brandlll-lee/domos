@@ -298,6 +298,7 @@ export const codexProvider: EngineProvider = {
           throw new Error("Codex 的 Domos 工具目录不完整。");
       },
       controls: client.controls,
+      skills: client.skills,
       async compact() {
         compacting = true;
         compactBoundary = false;

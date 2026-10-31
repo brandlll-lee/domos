@@ -5,7 +5,7 @@ import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { fauxProvider } from "@earendil-works/pi-ai/providers/faux";
 import { createRegistry } from "@earendil-works/pi-durable";
-import { expect, onTestFinished, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import type { Computers } from "../src/computer/catalog.ts";
 import { openAgent } from "../src/open-agent.ts";
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
@@ -555,5 +555,126 @@ test.each([false, true])(
         "User work has priority",
       );
     }
+  },
+);
+
+test.each(["question", "permission"] as const)(
+  "routine deadline pauses during %s and terminates its own native process",
+  async (kind) => {
+    const directory = await mkdtemp(join(tmpdir(), "domos-routine-clock-"));
+    const models = createModels();
+    models.setProvider(fauxProvider().provider);
+    let worker: ProtocolProcess | undefined;
+    const computers = {
+      initialize: async () => {},
+      preflight: async () => {},
+      computerId: async () => "shared",
+      tools: { catalog: async () => [], finish: () => {} },
+      process: async () => {
+        const process = new ProtocolProcess();
+        worker = process;
+        process.receive = (request) => {
+          if (!request.method) return;
+          process.response(
+            request,
+            request.method === "thread/start"
+              ? { thread: { id: "routine-clock" } }
+              : request.method === "turn/start"
+                ? { turn: { id: "clock" } }
+                : {},
+          );
+          if (request.method === "turn/start")
+            process.frame({
+              id: "ask",
+              method:
+                kind === "question"
+                  ? "item/tool/requestUserInput"
+                  : "item/commandExecution/requestApproval",
+              params:
+                kind === "question"
+                  ? {
+                      questions: [
+                        {
+                          id: "q",
+                          question: "Continue?",
+                          options: [{ label: "Yes" }],
+                        },
+                      ],
+                    }
+                  : { command: "test-command", cwd: "/work" },
+            });
+        };
+        return process;
+      },
+    } as unknown as Computers;
+    const runtime = await openAgent(
+      join(directory, "agent.sqlite"),
+      { registry: createRegistry(), models, computers },
+      {},
+      context,
+    );
+    onTestFinished(async () => {
+      await runtime.harness.close(context);
+      await rm(directory, { recursive: true, force: true });
+    });
+    const engines = runtime.engines;
+    if (!engines) throw new Error("Native runtime required");
+    const botId = runtime.conversation.id;
+    await engines.configure(
+      botId,
+      {
+        config: { provider: "codex", model: null },
+        revision: 0,
+        requestId: crypto.randomUUID(),
+      },
+      context,
+    );
+    const routine = await runtime.work.routines.save(
+      botId,
+      {
+        id: crypto.randomUUID(),
+        title: "Clock",
+        instructions: "Wait for approval",
+        schedule: { type: "cron", expression: "0 9 * * *", timeZone: "UTC" },
+        skillIds: [],
+        revision: 0,
+        executionMs: 1000,
+        requestId: crypto.randomUUID(),
+      },
+      context,
+    );
+    const taskId = await runtime.work.routines.test(
+      botId,
+      routine.id,
+      crypto.randomUUID(),
+      context,
+    );
+    const runs = async () =>
+      (await runtime.work.routines.list(botId, context)).runs;
+    const waiting = kind === "question" ? "waiting_answer" : "waiting_approval";
+    await vi.waitFor(async () =>
+      expect((await runs())[0]?.status).toBe(waiting),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    expect((await runs())[0]?.status).toBe(waiting);
+    await engines.answer(
+      botId,
+      "ask",
+      {
+        allow: true,
+        ...(kind === "question" ? { answers: { q: ["Yes"] } } : {}),
+      },
+      context,
+    );
+    await runtime.harness.waitForTask(taskId, context);
+    const run = (await runs())[0];
+    expect(run).toMatchObject({
+      status: "failed",
+      error: expect.stringContaining("执行期限"),
+      turnId: expect.stringContaining("engine:"),
+    });
+    expect(run?.waitingMs).toBeGreaterThanOrEqual(1100);
+    expect(run?.activeMs).toBeGreaterThanOrEqual(1000);
+    expect(await worker?.closed).toEqual({ code: 0 });
   },
 );

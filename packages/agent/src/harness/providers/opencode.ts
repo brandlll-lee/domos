@@ -547,7 +547,23 @@ export function acpProvider(
       };
       const session: EngineSession = {
         id,
-        controls: async () => controls(),
+        async skills() {
+          if (descriptor.id !== "opencode") return undefined;
+          const items =
+            await process.request<
+              { name: string; description: string; location: string }[]
+            >("/skill");
+          return items.map((item) => ({
+            name: item.name,
+            description: item.description,
+            path: item.location,
+            source: "opencode",
+          }));
+        },
+        controls: async () => ({
+          ...controls(),
+          skills: await session.skills?.(),
+        }),
         async compact() {
           if (!controls().compact) throw new Error("此引擎尚未提供压缩命令。");
           compactionConfirmed = false;

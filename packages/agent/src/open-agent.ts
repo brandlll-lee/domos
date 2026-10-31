@@ -22,8 +22,8 @@ import { modelImages } from "./runtime/model-images.ts";
 import { openStorage } from "./runtime/storage.ts";
 import { botWork } from "./work/index.ts";
 import { memory } from "./work/memory.ts";
-import { routineExtension } from "./work/routines.ts";
-import { skills } from "./work/skills.ts";
+import { Routines, routineExtension } from "./work/routines.ts";
+import { skillExtension } from "./work/skills.ts";
 
 export async function openAgent(
   database: string,
@@ -43,7 +43,7 @@ export async function openAgent(
   options.registry.install(history);
   options.registry.install(identity);
   options.registry.install(memory);
-  options.registry.install(skills);
+  options.registry.install(skillExtension(files));
   const computers = options.computers;
   const execution = computers
     ? new EngineExecution(computers, files)
@@ -57,6 +57,7 @@ export async function openAgent(
     );
   let engines: Runtime | undefined;
   let computerRuntime: ComputerRuntime | undefined;
+  let routines: Routines;
   options.registry.install(
     routineExtension(
       options.now,
@@ -68,6 +69,33 @@ export async function openAgent(
         ? (botId, input, ctx) => {
             if (!engines) throw new Error("任务引擎尚未启动。");
             return engines.submit(botId, { ...input, source: "routine" }, ctx);
+          }
+        : undefined,
+      execution
+        ? async (botId, change, requestId, ctx) => {
+            const computer = computerRuntime;
+            if (!computer) throw new Error("确认服务尚未启动。");
+            return routines.manage(
+              botId,
+              change,
+              requestId,
+              async (title, detail, context) =>
+                (
+                  await computer.approve(
+                    botId,
+                    {
+                      id: `routine:${requestId}`,
+                      title,
+                      detail,
+                      kind: "permission",
+                      automatic: false,
+                    },
+                    context.abortSignal ?? new AbortController().signal,
+                    context,
+                  )
+                ).allow,
+              ctx,
+            );
           }
         : undefined,
     ),
@@ -91,18 +119,21 @@ export async function openAgent(
       : undefined;
     if (execution && computerRuntime) {
       execution.computer = computerRuntime;
+      computerRuntime.onWaiting = (botId, status) =>
+        execution.waiting(botId, status);
       engines = new Runtime(harness, execution);
     }
     for (const bot of await bots.list(context)) {
       await migrateRuntime(harness, bot.id, context);
       await computerRuntime?.prepare(bot.id, context, false);
     }
+    routines = new Routines(harness, options.now);
     harness.resume();
     return {
       harness,
       conversation,
       bots,
-      work: botWork(harness, options.now),
+      work: botWork(harness, options.now, files),
       files,
       models,
       engines,

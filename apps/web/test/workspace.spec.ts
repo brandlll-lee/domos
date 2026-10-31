@@ -1,6 +1,7 @@
 import { type ChildProcess, fork } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -2281,4 +2282,142 @@ test("shared question and approval cards persist answers and terminal states", a
       path: info.outputPath(`interactions-${width}.png`),
     });
   }
+});
+
+test("skill packages preview changes and restore resources across reload", async ({
+  page,
+}, info) => {
+  const { zipSync, strToU8 } = createRequire(
+    new URL("../../../packages/agent/package.json", import.meta.url),
+  )("fflate");
+  const content =
+    "---\nname: weekly-report\ndescription: Prepare a weekly report\n---\nRead references/guide.md. Run scripts/report.py.";
+  const bundle = (script: string) =>
+    Buffer.from(
+      zipSync({
+        "weekly-report/SKILL.md": strToU8(content),
+        "weekly-report/references/guide.md": strToU8("Report guide"),
+        "weekly-report/scripts/report.py": strToU8(script),
+      }),
+    );
+  await page.goto(url);
+  const details = page.locator("#bot-details");
+  await details.getByRole("button", { name: /^技能(?:\s|$)/ }).click();
+  const upload = async (script: string) => {
+    await details.getByLabel("导入技能包").setInputFiles({
+      name: "weekly-report.zip",
+      mimeType: "application/zip",
+      buffer: bundle(script),
+    });
+    await expect(
+      details
+        .getByLabel("编辑 SKILL.md")
+        .or(details.getByLabel("新建 SKILL.md")),
+    ).toHaveValue(content);
+    await details
+      .getByRole("button", { name: "保存技能", exact: true })
+      .click();
+    await expect(
+      details.getByRole("region", { name: "技能差异" }),
+    ).toContainText("scripts/report.py");
+    await details
+      .getByRole("button", { name: "保存技能", exact: true })
+      .click();
+    await expect(
+      details.getByRole("heading", { name: "weekly-report", exact: true }),
+    ).toBeVisible();
+  };
+  await upload("print('v1')");
+  await details
+    .getByRole("switch", { name: "为此 Bot 启用 weekly-report" })
+    .click();
+  await upload("print('v2')");
+  await page.reload();
+  await page
+    .locator("#bot-details")
+    .getByRole("button", { name: /^技能(?:\s|$)/ })
+    .click();
+  await details
+    .getByRole("button")
+    .filter({
+      has: page.getByRole("heading", { name: "weekly-report", exact: true }),
+    })
+    .click();
+  await details.getByText("版本历史", { exact: true }).click();
+  await details.getByRole("button", { name: /^预览 v1/ }).click();
+  const diff = details.getByRole("region", { name: "技能差异" });
+  await diff.getByText("修改 · scripts/report.py", { exact: true }).click();
+  await expect(diff).toContainText("print('v1')");
+  await expect(diff).toContainText("print('v2')");
+  await details.screenshot({
+    path: info.outputPath("skill-version-preview.png"),
+  });
+  await details.getByRole("button", { name: "保存技能", exact: true }).click();
+  await expect(details.getByText("user · v3", { exact: true })).toBeVisible();
+  await expect(
+    details.getByRole("switch", { name: "为此 Bot 启用 weekly-report" }),
+  ).toBeChecked();
+});
+
+test("chat routine changes require confirmation and link runs to Work", async ({
+  page,
+}, info) => {
+  test.setTimeout(60_000);
+  await page.goto(url);
+  const details = page.locator("#bot-details");
+  const sendTool = async (name: string, args: Record<string, unknown>) => {
+    const ready = once(worker, "message");
+    worker.send({
+      content: [
+        { type: "toolCall", id: crypto.randomUUID(), name, arguments: args },
+      ],
+      stopReason: "toolUse",
+    });
+    await ready;
+    await page.getByLabel("消息", { exact: true }).fill(name);
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+  };
+  await sendTool("routine_create", {
+    title: "Daily report",
+    instructions: "Read the daily report",
+    schedule: {
+      type: "cron",
+      expression: "0 8 * * *",
+      timeZone: "Asia/Shanghai",
+    },
+    executionMs: 60_000,
+  });
+  const create = page.getByRole("region", {
+    name: "创建定时：Daily report",
+    exact: true,
+  });
+  await expect(create).toBeVisible();
+  await details.getByRole("button", { name: /^定时(?:\s|$)/ }).click();
+  await expect(
+    details.getByText("暂无定时任务", { exact: true }),
+  ).toBeVisible();
+  await create.getByRole("button", { name: "批准", exact: true }).click();
+  await expect(
+    details.getByRole("switch", { name: "启用 Daily report" }),
+  ).toBeChecked();
+  await expect(create.getByRole("status")).toHaveText("已批准");
+  await page.reload();
+  await expect(create.getByRole("status")).toHaveText("已批准");
+  await page
+    .locator("#bot-details")
+    .getByRole("button", { name: /^定时(?:\s|$)/ })
+    .click();
+  await details.getByRole("button", { name: "Daily report的操作" }).click();
+  await page.getByRole("menuitem", { name: "试跑", exact: true }).click();
+  await details.locator("summary").filter({ hasText: "运行记录" }).click();
+  await expect(details.locator(".run-list")).toContainText("已完成");
+  await expect(details.locator(".run-list")).toContainText("等人");
+  await details
+    .getByRole("button", { name: "查看工作记录", exact: true })
+    .click();
+  const record = page.getByRole("dialog", { name: "工作记录", exact: true });
+  await expect(record).toContainText("试跑：Daily report");
+  await record.locator("summary").filter({ hasText: "回复" }).click();
+  await expect(record).toContainText("Read the daily report");
+  await page.screenshot({ path: info.outputPath("routine-work-record.png") });
 });

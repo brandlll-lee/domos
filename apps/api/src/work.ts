@@ -6,6 +6,7 @@ import {
   ROUTINE_SKILLS_LIMIT,
   SCHEDULE_EXPRESSION_LENGTH,
   SKILL_FILE_BYTES,
+  SKILL_PACKAGE_BYTES,
   TIME_ZONE_LENGTH,
   WORK_TEXT_LENGTH,
 } from "@domos/agent/work/limits";
@@ -130,11 +131,69 @@ export function workRouter(bots: Bots, work: BotWork, engines?: Runtime) {
       ),
     },
     skills: {
+      preview: os
+        .input(
+          botTarget.extend({
+            id: id.optional(),
+            content: z.string().max(SKILL_FILE_BYTES),
+            archive: z
+              .string()
+              .max(SKILL_PACKAGE_BYTES * 2)
+              .optional(),
+          }),
+        )
+        .handler(({ input }) =>
+          access(input.botId, () =>
+            work.skills.preview(
+              input.content,
+              input.archive,
+              input.id,
+              context,
+            ),
+          ),
+        ),
+      export: os
+        .input(
+          botTarget.extend({
+            id,
+            hash: z
+              .string()
+              .regex(/^[a-f0-9]{64}$/)
+              .optional(),
+          }),
+        )
+        .handler(({ input }) =>
+          access(input.botId, () =>
+            work.skills.export(input.id, input.hash, context),
+          ),
+        ),
+      restore: os
+        .input(
+          itemTarget.extend({
+            hash: z.string().regex(/^[a-f0-9]{64}$/),
+            requestId,
+          }),
+        )
+        .handler(({ input }) =>
+          access(input.botId, () =>
+            work.skills.restore(
+              input.id,
+              input.hash,
+              input.revision,
+              input.requestId,
+              context,
+            ),
+          ),
+        ),
       save: os
         .input(
           botTarget.extend({
             id,
-            content: z.string().min(1).max(SKILL_FILE_BYTES),
+            content: z.string().max(SKILL_FILE_BYTES),
+            archive: z
+              .string()
+              .max(SKILL_PACKAGE_BYTES * 2)
+              .optional(),
             revision,
             requestId,
           }),
@@ -172,6 +231,7 @@ export function workRouter(bots: Bots, work: BotWork, engines?: Runtime) {
             instructions: z.string().trim().min(1).max(WORK_TEXT_LENGTH),
             schedule,
             skillIds: z.array(id).max(ROUTINE_SKILLS_LIMIT),
+            executionMs: z.number().int().min(1000).max(86_400_000).optional(),
             requestId,
           }),
         )

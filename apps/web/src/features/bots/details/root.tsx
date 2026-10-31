@@ -34,9 +34,12 @@ export function RootPanel({
   onOpenMemory: () => void;
 }) {
   const memory = data?.memory.length ?? 0;
-  const skills =
-    data?.skills.filter((item) => item.enabledBots.includes(bot.id)).length ??
-    0;
+  const skills = new Set([
+    ...(data?.nativeSkills?.map((item) => item.name) ?? []),
+    ...(data?.skills
+      .filter((item) => item.enabledBots.includes(bot.id))
+      .map((item) => item.name) ?? []),
+  ]).size;
   const routines =
     data?.routines.items.filter((item) => item.enabled).length ?? 0;
   return (
@@ -98,7 +101,7 @@ export function RootPanel({
         <PanelRow
           icon={<ClockIcon />}
           title="定时"
-          value={data ? `${routines} 个运行中` : "读取中"}
+          value={data ? `${routines} 个已启用` : "读取中"}
           onClick={() => onNavigate("routines")}
         />
         <PanelRow

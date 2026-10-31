@@ -5,6 +5,7 @@ import {
 import type { TaskId } from "@earendil-works/pi-durable";
 import { expect, test, vi } from "vitest";
 import { chatView } from "../src/chat-view.ts";
+import { type RoutineRun, transitionRun } from "../src/work/routine-state.ts";
 import { nextScheduled, validateSchedule } from "../src/work/schedule.ts";
 import { context, setup, skillContent } from "./fixtures/work.ts";
 
@@ -417,4 +418,106 @@ test("calendar validation uses IANA zones and strictly future DST occurrences", 
       now,
     ),
   ).toBe(Date.parse("2026-10-15T01:00:00Z"));
+});
+
+test("routine changes require confirmation, retain enabled state and deduplicate retries", async () => {
+  const fixture = await setup();
+  const runtime = await fixture.open();
+  try {
+    const bot = runtime.conversation.id;
+    const change = {
+      action: "create" as const,
+      id: crypto.randomUUID(),
+      title: "Daily",
+      instructions: "Read calendar",
+      schedule: {
+        type: "cron" as const,
+        expression: "0 9 * * *",
+        timeZone: "UTC",
+      },
+      skillIds: [],
+      revision: 0,
+      executionMs: 60_000,
+    };
+    const declined = await runtime.work.routines.manage(
+      bot,
+      change,
+      crypto.randomUUID(),
+      async () => false,
+      context,
+    );
+    expect(declined).toEqual({ status: "declined" });
+    expect((await runtime.work.routines.list(bot, context)).items).toEqual([]);
+    const approved = vi.fn(async () => true);
+    const requestId = crypto.randomUUID();
+    await runtime.work.routines.manage(
+      bot,
+      change,
+      requestId,
+      approved,
+      context,
+    );
+    await runtime.work.routines.manage(
+      bot,
+      change,
+      requestId,
+      approved,
+      context,
+    );
+    expect(approved).toHaveBeenCalledTimes(1);
+    let routine = (await runtime.work.routines.list(bot, context)).items[0];
+    expect(routine).toMatchObject({ enabled: true, executionMs: 60_000 });
+    for (const action of ["pause", "resume", "update"] as const) {
+      if (!routine) throw new Error("Routine required");
+      await runtime.work.routines.manage(
+        bot,
+        {
+          action,
+          id: routine.id,
+          revision: routine.revision,
+          ...(action === "update" ? { instructions: "Read inbox" } : {}),
+        },
+        crypto.randomUUID(),
+        approved,
+        context,
+      );
+      routine = (await runtime.work.routines.list(bot, context)).items[0];
+      expect(routine?.enabled).toBe(action !== "pause");
+    }
+    if (!routine) throw new Error("Routine required");
+    fixture.faux.setResponses([fauxAssistantMessage("Scheduled report")]);
+    await runtime.work.routines.manage(
+      bot,
+      { action: "run_now", id: routine.id, revision: routine.revision },
+      crypto.randomUUID(),
+      approved,
+      context,
+    );
+    await vi.waitFor(async () =>
+      expect(
+        (await runtime.work.routines.list(bot, context)).runs[0]?.status,
+      ).toBe("done"),
+    );
+    await runtime.work.routines.manage(
+      bot,
+      { action: "delete", id: routine.id, revision: routine.revision },
+      crypto.randomUUID(),
+      approved,
+      context,
+    );
+    expect((await runtime.work.routines.list(bot, context)).items).toEqual([]);
+  } finally {
+    await runtime.harness.close(context);
+  }
+});
+
+test("routine time separates queue, execution and human wait", () => {
+  const run = { status: "queued", firedAt: 0, changedAt: 0 } as RoutineRun;
+  transitionRun(run, "running", 10_000);
+  transitionRun(run, "waiting_answer", 12_000);
+  transitionRun(run, "waiting_approval", 32_000);
+  transitionRun(run, "running", 37_000);
+  transitionRun(run, "done", 40_000);
+  expect(run.activeMs).toBe(5000);
+  expect(run.waitingMs).toBe(25_000);
 });

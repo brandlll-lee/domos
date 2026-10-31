@@ -102,6 +102,7 @@ export function BotDetails({
       <SkillsPanel
         botId={bot.id}
         items={work.data.skills}
+        nativeSkills={work.data.nativeSkills}
         action={action}
         editor={editor?.view === "skills" ? editor : null}
         onEditorChange={setSelection}
@@ -114,6 +115,7 @@ export function BotDetails({
       <RoutinesPanel
         botId={bot.id}
         data={work.data.routines}
+        chat={chat}
         skills={work.data.skills}
         action={action}
         editor={editor?.view === "routines" ? editor : null}

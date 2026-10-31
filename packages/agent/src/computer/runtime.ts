@@ -63,6 +63,10 @@ const ComputerCallDoc = defineDocFamily<
 });
 
 export class ComputerRuntime {
+  onWaiting?: (
+    botId: number,
+    status: "running" | "waiting_answer" | "waiting_approval",
+  ) => Promise<void>;
   private readonly validator = new AjvJsonSchemaValidator();
   private readonly pending = new Map<
     string,
@@ -363,6 +367,10 @@ export class ComputerRuntime {
           await tx.doc(ComputerRequests, botId as ConversationId)
         ).approvals.push(JSON.parse(JSON.stringify(approval)));
       }, context);
+      await this.onWaiting?.(
+        botId,
+        approval.kind === "question" ? "waiting_answer" : "waiting_approval",
+      );
       signal.throwIfAborted();
       const result = await answer.promise;
       response = result;
@@ -371,7 +379,7 @@ export class ComputerRuntime {
       clearTimeout(timer);
       signal.removeEventListener("abort", abort);
       this.pending.delete(approval.id);
-      await this.harness.commit(async (tx) => {
+      const waiting = await this.harness.commit(async (tx) => {
         const doc = await tx.doc(ComputerRequests, botId as ConversationId);
         const registered = doc.approvals.some(
           (item) => item.id === approval.id,
@@ -394,7 +402,13 @@ export class ComputerRuntime {
               ),
             ),
           });
+        return doc.approvals.some((item) => item.kind === "question")
+          ? ("waiting_answer" as const)
+          : doc.approvals.length
+            ? ("waiting_approval" as const)
+            : ("running" as const);
       }, BACKGROUND_CONTEXT);
+      await this.onWaiting?.(botId, waiting);
     }
   }
 

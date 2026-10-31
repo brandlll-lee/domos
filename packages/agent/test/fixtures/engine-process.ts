@@ -24,6 +24,13 @@ export class ProtocolProcess implements EngineProcess {
   readonly closed = this.ended.promise;
   readonly requests: Request[] = [];
   spec?: ProcessSpec;
+  nativeSkills: {
+    name: string;
+    description?: string;
+    path?: string;
+    scope?: string;
+    enabled?: boolean;
+  }[] = [];
   receive: (request: Request) => void = () => {};
   checkpoint = async () => "previous";
   account = async () => "test-account";
@@ -37,7 +44,11 @@ export class ProtocolProcess implements EngineProcess {
     lines.on("line", (line) => {
       const request: Request = JSON.parse(line);
       this.requests.push(request);
-      this.receive(request);
+      if (request.method === "skills/list")
+        this.response(request, {
+          data: [{ cwd: "/work/bots/1", skills: this.nativeSkills }],
+        });
+      else this.receive(request);
     });
   }
   frame(value: object) {

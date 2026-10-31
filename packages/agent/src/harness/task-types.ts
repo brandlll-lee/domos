@@ -20,6 +20,7 @@ export type EngineTaskInput = {
   memoryReview?: boolean;
   reviewThrough?: EntryId;
   source?: "routine";
+  routineRunId?: string;
 };
 export type EngineCheckpoint = { phase: "run" };
 export type EngineRuntime = TaskRuntime<

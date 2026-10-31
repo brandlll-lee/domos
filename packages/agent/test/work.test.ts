@@ -1,8 +1,12 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import {
   fauxAssistantMessage,
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
+import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { expect, test } from "vitest";
+import { EngineDoc } from "../src/harness/state.ts";
 import { MEMORY_PROFILE_BYTES } from "../src/work/limits.ts";
 import {
   deleteMemory,
@@ -14,6 +18,7 @@ import {
 } from "../src/work/memory.ts";
 import { actualPrompt } from "../src/work/prompt.ts";
 import { parseSkill } from "../src/work/skill-format.ts";
+import { skillPackage } from "../src/work/skill-package.ts";
 import { agent, context, setup, skillContent } from "./fixtures/work.ts";
 
 test("profile and scoped memories persist and render through Pi sections", async () => {
@@ -421,4 +426,161 @@ test("Bot tools save memories, skills and paused routines using durable transact
   } finally {
     await runtime.harness.close(context);
   }
+});
+
+test("skill packages preserve support files, preview versions and restore across restart", async () => {
+  const fixture = await setup();
+  let runtime = await fixture.open();
+  try {
+    const zip = (script: string) =>
+      Buffer.from(
+        zipSync({
+          "weekly-report/SKILL.md": strToU8(skillContent),
+          "weekly-report/scripts/report.py": strToU8(script),
+          "weekly-report/assets/icon.bin": new Uint8Array([0, 1, 255]),
+          "weekly-report/references/guide.md": strToU8("Guide"),
+        }),
+      ).toString("base64");
+    const id = crypto.randomUUID();
+    const first = await runtime.work.skills.save(
+      {
+        id,
+        content: "",
+        archive: zip("print(1)"),
+        revision: 0,
+        requestId: crypto.randomUUID(),
+      },
+      context,
+    );
+    expect(first.versions).toHaveLength(1);
+    const preview = await runtime.work.skills.preview(
+      "",
+      zip("print(2)"),
+      id,
+      context,
+    );
+    expect(preview.changes).toEqual([
+      {
+        path: "scripts/report.py",
+        status: "changed",
+        before: "print(1)",
+        after: "print(2)",
+      },
+    ]);
+    const second = await runtime.work.skills.save(
+      {
+        id,
+        content: "",
+        archive: zip("print(2)"),
+        revision: first.revision,
+        requestId: crypto.randomUUID(),
+      },
+      context,
+    );
+    expect(second.hash).not.toBe(first.hash);
+    await runtime.harness.close(context);
+    runtime = await fixture.open();
+    const restored = await runtime.work.skills.restore(
+      id,
+      first.hash ?? "",
+      second.revision,
+      crypto.randomUUID(),
+      context,
+    );
+    expect(restored.hash).toBe(first.hash);
+    expect(restored.versions?.map((item) => item.version)).toEqual([1, 2, 3]);
+    const exported = unzipSync(
+      Buffer.from(
+        (await runtime.work.skills.export(id, undefined, context)).archive,
+        "base64",
+      ),
+    );
+    expect(strFromU8(exported["scripts/report.py"] ?? new Uint8Array())).toBe(
+      "print(1)",
+    );
+    expect([...(exported["assets/icon.bin"] ?? [])]).toEqual([0, 1, 255]);
+    await runtime.work.skills.enable(
+      runtime.conversation.id,
+      id,
+      true,
+      restored.revision,
+      crypto.randomUUID(),
+      context,
+    );
+    fixture.faux.setResponses([
+      fauxAssistantMessage(fauxToolCall("skill_read", { id }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("Read package"),
+    ]);
+    expect(
+      (
+        await (
+          await runtime.conversation.submit(
+            { type: "input", content: "Read the skill package" },
+            context,
+          )
+        ).wait(context)
+      ).status,
+    ).toBe("done");
+    const root = runtime.files.root;
+    expect(
+      await readFile(
+        join(
+          root,
+          String(runtime.conversation.id),
+          "workspace",
+          ".domos/skills",
+          first.hash ?? "",
+          "weekly-report/scripts/report.py",
+        ),
+        "utf8",
+      ),
+    ).toBe("print(1)");
+    await runtime.harness.commit(async (tx) => {
+      (await tx.doc(EngineDoc, runtime.conversation.id)).runtime = {
+        nativeSkills: [
+          {
+            name: "weekly-report",
+            source: "project",
+            path: "/work/skills/weekly-report/SKILL.md",
+          },
+        ],
+      };
+    }, context);
+    fixture.faux.setResponses([fauxAssistantMessage("Use native skill")]);
+    await (
+      await runtime.conversation.submit(
+        { type: "input", content: "Continue" },
+        context,
+      )
+    ).wait(context);
+    expect(
+      (await actualPrompt(runtime.conversation, context)).sections.skills,
+    ).toBeUndefined();
+  } finally {
+    await runtime.harness.close(context);
+  }
+});
+
+test("skill packages reject path traversal and decompressed size overflow", () => {
+  for (const path of [
+    "../outside.txt",
+    "/absolute.txt",
+    "C:/outside.txt",
+    "scripts/../outside.txt",
+    "scripts\\outside.txt",
+  ]) {
+    const archive = Buffer.from(
+      zipSync({ "SKILL.md": strToU8(skillContent), [path]: strToU8("bad") }),
+    ).toString("base64");
+    expect(() => skillPackage("", archive)).toThrow("路径");
+  }
+  const archive = Buffer.from(
+    zipSync({
+      "SKILL.md": strToU8(skillContent),
+      "assets/large": new Uint8Array(8 * 1024 * 1024 + 1),
+    }),
+  ).toString("base64");
+  expect(() => skillPackage("", archive)).toThrow("过大");
 });

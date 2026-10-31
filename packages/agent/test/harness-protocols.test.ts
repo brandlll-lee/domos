@@ -941,3 +941,148 @@ test("OpenCode reconciles native history after its saved checkpoint", async () =
     process.requests.some((request) => request.method === "session/prompt"),
   ).toBe(false);
 });
+
+test("Pi and Codex expose native skill metadata without treating other commands as skills", async () => {
+  const pi = featureProcess();
+  onTestFinished(() => pi.close());
+  const receive = pi.receive;
+  pi.receive = (request) => {
+    if (request.type === "get_commands")
+      pi.frame({
+        type: "response",
+        id: request.id,
+        success: true,
+        data: {
+          commands: [
+            {
+              name: "skill:report",
+              source: "skill",
+              description: "Prepare report",
+              sourceInfo: {
+                scope: "project",
+                path: "/work/skills/report/SKILL.md",
+              },
+            },
+            { name: "review", source: "extension" },
+            { name: "prompt", source: "prompt" },
+          ],
+        },
+      });
+    else receive(request);
+  };
+  const session = await piProvider.open({
+    process: pi,
+    config: { provider: "pi", model: null },
+    sessionId: null,
+    instructions: "Role",
+    emit: async () => {},
+  });
+  expect(await session.skills?.()).toEqual([
+    {
+      name: "report",
+      description: "Prepare report",
+      source: "project",
+      path: "/work/skills/report/SKILL.md",
+    },
+  ]);
+  const codex = protocol();
+  codex.process.nativeSkills = [
+    {
+      name: "report",
+      scope: "USER",
+      path: "/work/.codex/skills/report/SKILL.md",
+      enabled: true,
+    },
+    { name: "disabled", enabled: false },
+  ];
+  codex.process.receive = (request) =>
+    codex.process.response(
+      request,
+      request.method === "thread/start" ? { thread: { id: "catalog" } } : {},
+    );
+  const native = await codexProvider.open({
+    process: codex.process,
+    config: { provider: "codex", model: null },
+    sessionId: null,
+    instructions: "Role",
+    emit: codex.emit,
+  });
+  expect(await native.skills?.()).toEqual([
+    {
+      name: "report",
+      source: "USER",
+      path: "/work/.codex/skills/report/SKILL.md",
+    },
+  ]);
+});
+
+test("Claude and OpenCode read their native skill catalogs", async () => {
+  const claude = protocol();
+  claude.process.receive = (request) => {
+    const control = request as typeof request & {
+      request_id?: string;
+      request?: { subtype: string };
+    };
+    if (control.request?.subtype === "reload_skills")
+      claude.process.frame({
+        type: "control_response",
+        response: {
+          subtype: "success",
+          request_id: control.request_id,
+          response: {
+            skills: [{ name: "report", description: "Prepare report" }],
+          },
+        },
+      });
+  };
+  const session = await claudeProvider.open({
+    process: claude.process,
+    config: { provider: "claude", model: null },
+    sessionId: null,
+    instructions: "Role",
+    emit: claude.emit,
+  });
+  expect(await session.skills?.()).toEqual([
+    { name: "report", description: "Prepare report", source: "claude" },
+  ]);
+  const code = protocol();
+  code.process.receive = (request) =>
+    code.process.response(
+      request,
+      request.method === "initialize"
+        ? {
+            protocolVersion: 1,
+            agentCapabilities: {
+              loadSession: true,
+              mcpCapabilities: { http: true },
+            },
+          }
+        : {},
+    );
+  code.process.request = async <T>(path: string) => {
+    expect(path).toBe("/skill");
+    return [
+      {
+        name: "report",
+        description: "Prepare report",
+        location: "/work/.opencode/skills/report/SKILL.md",
+        content: "Private skill body",
+      },
+    ] as T;
+  };
+  const native = await opencodeProvider.open({
+    process: code.process,
+    config: { provider: "opencode", model: null },
+    sessionId: "session-1",
+    instructions: "Role",
+    emit: code.emit,
+  });
+  expect(await native.skills?.()).toEqual([
+    {
+      name: "report",
+      description: "Prepare report",
+      path: "/work/.opencode/skills/report/SKILL.md",
+      source: "opencode",
+    },
+  ]);
+});

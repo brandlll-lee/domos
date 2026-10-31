@@ -243,20 +243,37 @@ export const piProvider: EngineProvider = {
         },
       },
     });
+    type Command = {
+      name: string;
+      description?: string;
+      source: string;
+      sourceInfo?: { path?: string; scope?: string };
+    };
+    const commands = () =>
+      rpc.request<{ commands?: Command[] }>("get_commands");
+    const nativeSkills = (items: Command[]) =>
+      items
+        .filter((item) => item.source === "skill")
+        .map((item) => ({
+          name: item.name.replace(/^skill:/, ""),
+          description: item.description,
+          path: item.sourceInfo?.path,
+          source: item.sourceInfo?.scope ?? "pi",
+        }));
     rpc.phase = "执行";
     return {
       id: state.sessionFile,
+      skills: async () => nativeSkills((await commands()).commands ?? []),
       async controls() {
         const state = await rpc.request<RpcSessionState>("get_state");
         const levels = await rpc.request<{ levels?: string[] }>(
           "get_available_thinking_levels",
         );
-        const commands = await rpc.request<{
-          commands?: { name: string; description?: string }[];
-        }>("get_commands");
+        const catalog = (await commands()).commands ?? [];
         return {
           compact: true,
-          commands: (commands.commands ?? []).map((item) => ({
+          skills: nativeSkills(catalog),
+          commands: catalog.map((item) => ({
             name: item.name,
             description: item.description ?? "",
           })),

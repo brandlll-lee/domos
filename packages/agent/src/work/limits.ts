@@ -8,3 +8,5 @@ export const SKILL_DESCRIPTION_LENGTH = 1024;
 export const SCHEDULE_EXPRESSION_LENGTH = 256;
 export const TIME_ZONE_LENGTH = 128;
 export const ROUTINE_SKILLS_LIMIT = 50;
+
+export const SKILL_PACKAGE_BYTES = 8 * 1024 * 1024;

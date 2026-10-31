@@ -12,6 +12,11 @@ import {
   memoryContext,
 } from "../work/memory.ts";
 import {
+  type RoutineRun,
+  RoutinesDoc,
+  transitionRun,
+} from "../work/routine-state.ts";
+import {
   handoffBudget,
   handoffInstructions,
   requestInstructions,
@@ -48,6 +53,10 @@ type Active = {
   stopping?: Promise<void>;
   inputs?: EngineInputs;
   memoryReview: boolean;
+  routine?: {
+    update: (status: RoutineRun["status"]) => Promise<void>;
+    timer?: ReturnType<typeof setTimeout>;
+  };
 };
 export class EngineExecution {
   readonly active = new Map<number, Active>();
@@ -67,6 +76,7 @@ export class EngineExecution {
     attachments: readonly Attachment[] = [],
     operation?: "compact",
     memoryReview = false,
+    routineRunId?: string,
   ) {
     const doc = await runtime.snapshot(
       EngineDoc,
@@ -206,6 +216,42 @@ export class EngineExecution {
     let receiving = true;
     const initialized = Promise.withResolvers<EngineSession | null>();
     try {
+      if (routineRunId) {
+        const clock: NonNullable<Active["routine"]> = {
+          update: async (status) => {
+            clearTimeout(active.routine?.timer);
+            let remaining: number | null = null;
+            await runtime.commit(async (tx) => {
+              const run = (await tx.doc(RoutinesDoc)).runs.find(
+                (run) => run.id === routineRunId,
+              );
+              if (!run || this.active.get(runtime.conversationId) !== active)
+                return;
+              transitionRun(run, status, Date.now());
+              remaining = (run.executionMs ?? 900_000) - (run.activeMs ?? 0);
+            }, context);
+            if (
+              status === "running" &&
+              remaining !== null &&
+              this.active.get(runtime.conversationId) === active
+            ) {
+              clock.timer = setTimeout(
+                () => {
+                  if (this.active.get(runtime.conversationId) === active)
+                    void this.stop(
+                      runtime.conversationId,
+                      new Error("定时任务已达到执行期限。"),
+                    );
+                },
+                Math.max(0, remaining),
+              );
+              clock.timer.unref();
+            }
+          },
+        };
+        active.routine = clock;
+        await clock.update("running");
+      }
       runtime.signal.throwIfAborted();
       const account = await active.process.account?.(doc.config.provider);
       if (account === undefined)
@@ -397,6 +443,7 @@ export class EngineExecution {
         try {
           await Promise.race([compact(), timeout.promise]);
         } catch (error) {
+          clearTimeout(active.routine?.timer);
           receiving = false;
           const state = await runtime.snapshot(
             EngineDoc,
@@ -435,6 +482,21 @@ export class EngineExecution {
           );
         return;
       }
+      void active.session
+        .skills?.()
+        .then(async (nativeSkills) => {
+          if (nativeSkills && receiving && !active.controller.signal.aborted)
+            await emit({ type: "runtime", state: { nativeSkills } });
+        })
+        .catch(async (error) => {
+          if (receiving && !active.controller.signal.aborted)
+            await emit({
+              type: "runtime",
+              state: {
+                notices: { skills: `原生技能目录读取失败：${String(error)}` },
+              },
+            });
+        });
       active.inputs = new EngineInputs(
         runtime,
         active.session,
@@ -484,6 +546,7 @@ export class EngineExecution {
         active.controller.signal.removeEventListener("abort", abort);
       }
     } finally {
+      clearTimeout(active.routine?.timer);
       receiving = false;
       initialized.resolve(null);
       active.controller.abort();
@@ -511,10 +574,18 @@ export class EngineExecution {
       : Promise.resolve();
   }
 
-  stop(botId: number) {
+  async waiting(
+    botId: number,
+    status: "running" | "waiting_answer" | "waiting_approval",
+  ) {
+    await this.active.get(botId)?.routine?.update(status);
+  }
+
+  stop(botId: number, reason?: Error) {
     const active = this.active.get(botId);
     if (!active) return Promise.resolve();
-    active.controller.abort();
+    clearTimeout(active.routine?.timer);
+    active.controller.abort(reason);
     this.active.delete(botId);
     this.computers.tools.finish(`computer:${botId}`);
     void active.session?.interrupt().catch(() => {});

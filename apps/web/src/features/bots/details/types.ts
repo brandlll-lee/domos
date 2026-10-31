@@ -15,6 +15,7 @@ export type PanelEditor =
       view: "skills";
       skill: WorkData["skills"][number] | null;
       content: string;
+      archive?: string;
       token: string;
     }
   | {

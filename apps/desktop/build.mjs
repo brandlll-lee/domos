@@ -40,7 +40,7 @@ createRequire(join(runtime, "node_modules/@domos/agent/package.json"))(
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 const banner = {
-  js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);',
+  js: 'import { createRequire as createDesktopRequire } from "node:module"; const require = createDesktopRequire(import.meta.url);',
 };
 await build({
   entryPoints: [join(here, "src/main.ts")],

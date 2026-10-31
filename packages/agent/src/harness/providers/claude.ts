@@ -59,6 +59,7 @@ type ClaudeFrame = {
         supportedEffortLevels?: string[];
       }[];
       commands?: { name: string; description: string }[];
+      skills?: { name: string; description: string }[];
       mcpServers?: {
         name: string;
         status: string;
@@ -230,6 +231,10 @@ export const claudeProvider: EngineProvider = {
               state: {
                 integrations: frame.mcp_servers ?? [],
                 skills: frame.skills ?? [],
+                nativeSkills: (frame.skills ?? []).map((name) => ({
+                  name,
+                  source: "claude",
+                })),
               },
             });
           }
@@ -470,6 +475,10 @@ export const claudeProvider: EngineProvider = {
         )
           throw new Error("Claude Code 的 Domos 工具尚未就绪。");
       },
+      async skills() {
+        const result = await control("reload_skills");
+        return result?.skills?.map((skill) => ({ ...skill, source: "claude" }));
+      },
       async controls(): Promise<EngineControls> {
         const catalog = await initialize();
         const model = catalog?.models?.find(
@@ -478,6 +487,7 @@ export const claudeProvider: EngineProvider = {
         return {
           compact: true,
           commands: catalog?.commands ?? [],
+          skills: await session.skills?.(),
           options: [
             {
               id: "effort",

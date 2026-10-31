@@ -17,7 +17,12 @@ import { workStatus, workTime, workTurns } from "./work-state.ts";
 import "./work.css";
 
 export function WorkPanel(
-  chat: ReturnType<typeof useChat> & { botId: number },
+  chat: ReturnType<typeof useChat> & {
+    botId: number;
+    selectedRun?: string;
+    onRunClose?: () => void;
+    detailOnly?: boolean;
+  },
 ) {
   const { view, connected, stopping, stop } = chat;
   const { profile } = useModelSettings(chat.botId);
@@ -27,7 +32,9 @@ export function WorkPanel(
       ?.models.find((model) => model.id === run?.model)?.name ??
     run?.model ??
     "模型未提供";
-  const [selected, setSelected] = useState<string>();
+  const [selected, setSelected] = useState<string | undefined>(
+    chat.selectedRun,
+  );
   const [now, setNow] = useState(Date.now);
   const trigger = useRef<HTMLButtonElement | null>(null);
   const openRun = (id: string) => (event: MouseEvent<HTMLButtonElement>) => {
@@ -44,7 +51,8 @@ export function WorkPanel(
   useEffect(() => {
     if (
       selected &&
-      selected === turns.at(-1)?.id &&
+      (selected === turns.at(-1)?.id ||
+        !turns.some((turn) => turn.id === selected)) &&
       view?.before &&
       !chat.loadingEarlier &&
       !chat.error
@@ -64,92 +72,100 @@ export function WorkPanel(
   ) => workTime(record.startedAt, record.endedAt ?? (active ? now : undefined));
   return (
     <>
-      <ScrollArea className="detail-scroll" viewportClassName="detail-content">
-        {!connected && (
-          <p role="status" className="detail-note">
-            连接中断，显示最后收到的状态。
-          </p>
-        )}
-        {view && !turns.length && (
-          <p className="detail-note">开始对话后，这里会显示每轮工作记录。</p>
-        )}
-        {turns.length > 0 && (
-          <div className="work-list">
-            {turns.map((turn) => (
-              <article
-                className="work-row"
-                key={turn.id}
-                data-active={turn.active || undefined}
-              >
-                <Button
-                  variant="ghost"
-                  className="work-open"
-                  aria-label={`查看工作记录：${turn.request || turn.title}`}
-                  onClick={openRun(turn.id)}
+      {!chat.detailOnly && (
+        <ScrollArea
+          className="detail-scroll"
+          viewportClassName="detail-content"
+        >
+          {!connected && (
+            <p role="status" className="detail-note">
+              连接中断，显示最后收到的状态。
+            </p>
+          )}
+          {view && !turns.length && (
+            <p className="detail-note">开始对话后，这里会显示每轮工作记录。</p>
+          )}
+          {turns.length > 0 && (
+            <div className="work-list">
+              {turns.map((turn) => (
+                <article
+                  className="work-row"
+                  key={turn.id}
+                  data-active={turn.active || undefined}
                 >
-                  <span
-                    className="work-mark"
-                    data-state={
-                      turn.status === "failed"
-                        ? "failed"
-                        : turn.active
-                          ? !connected ||
-                            stopping ||
-                            turn.status === "stopping" ||
-                            view?.approvals?.length
-                            ? "waiting"
-                            : "running"
-                          : undefined
-                    }
-                  >
-                    {turn.run ? (
-                      <EngineMark provider={turn.run.provider} />
-                    ) : (
-                      <WrenchIcon />
-                    )}
-                  </span>
-                  <span className="work-label">
-                    <span title={modelName(turn.run)}>
-                      {modelName(turn.run)}
-                    </span>
-                    <span className="work-activity" title={turn.title}>
-                      {turn.title}
-                    </span>
-                  </span>
-                  <time>{elapsed(turn, turn.active)}</time>
-                  <CaretRightIcon className="work-chevron" />
-                </Button>
-                {turn.active && (
                   <Button
                     variant="ghost"
-                    size="icon-small"
-                    className="work-stop"
-                    aria-label="停止执行"
-                    disabled={!connected}
-                    pending={stopping || turn.status === "stopping"}
-                    onClick={() => void stop()}
+                    className="work-open"
+                    aria-label={`查看工作记录：${turn.request || turn.title}`}
+                    onClick={openRun(turn.id)}
                   >
-                    <StopIcon />
+                    <span
+                      className="work-mark"
+                      data-state={
+                        turn.status === "failed"
+                          ? "failed"
+                          : turn.active
+                            ? !connected ||
+                              stopping ||
+                              turn.status === "stopping" ||
+                              view?.approvals?.length
+                              ? "waiting"
+                              : "running"
+                            : undefined
+                      }
+                    >
+                      {turn.run ? (
+                        <EngineMark provider={turn.run.provider} />
+                      ) : (
+                        <WrenchIcon />
+                      )}
+                    </span>
+                    <span className="work-label">
+                      <span title={modelName(turn.run)}>
+                        {modelName(turn.run)}
+                      </span>
+                      <span className="work-activity" title={turn.title}>
+                        {turn.title}
+                      </span>
+                    </span>
+                    <time>{elapsed(turn, turn.active)}</time>
+                    <CaretRightIcon className="work-chevron" />
                   </Button>
-                )}
-              </article>
-            ))}
-          </div>
-        )}
-        {view?.before && (
-          <Button
-            variant="ghost"
-            pending={chat.loadingEarlier}
-            onClick={() => void chat.loadEarlier()}
-          >
-            更早的工作记录
-          </Button>
-        )}
-      </ScrollArea>
+                  {turn.active && (
+                    <Button
+                      variant="ghost"
+                      size="icon-small"
+                      className="work-stop"
+                      aria-label="停止执行"
+                      disabled={!connected}
+                      pending={stopping || turn.status === "stopping"}
+                      onClick={() => void stop()}
+                    >
+                      <StopIcon />
+                    </Button>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+          {view?.before && (
+            <Button
+              variant="ghost"
+              pending={chat.loadingEarlier}
+              onClick={() => void chat.loadEarlier()}
+            >
+              更早的工作记录
+            </Button>
+          )}
+        </ScrollArea>
+      )}
       <Dialog
         open={Boolean(current)}
         onOpenChange={(open) => {
-          if (!open) setSelected(undefined);
+          if (!open) {
+            setSelected(undefined);
+            chat.onRunClose?.();
+          }
         }}
         title="工作记录"
         finalFocus={() => trigger.current}

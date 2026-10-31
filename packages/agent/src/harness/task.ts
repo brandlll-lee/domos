@@ -1,6 +1,7 @@
 import type { Context } from "@earendil-works/chord/context";
 import { defineTask, type EntryId } from "@earendil-works/pi-durable";
 import { MemoryReviewDoc } from "../work/memory.ts";
+import { RoutinesDoc, transitionRun } from "../work/routine-state.ts";
 import { finishCompactions, projectContext } from "./context.ts";
 import type { EngineExecution } from "./execution.ts";
 import { EngineProjection } from "./projection.ts";
@@ -102,6 +103,15 @@ export function engineTask(execution: EngineExecution) {
           return;
         }
         await runtime.commit(async (tx) => {
+          if (task.input.routineRunId) {
+            const run = (await tx.doc(RoutinesDoc)).runs.find(
+              (item) => item.id === task.input.routineRunId,
+            );
+            if (run) {
+              transitionRun(run, "running", Date.now());
+              run.turnId = task.input.turnId;
+            }
+          }
           const doc = await tx.doc(EngineDoc, runtime.conversationId);
           (await tx.doc(MemoryReviewDoc, runtime.conversationId)).reviewing =
             false;
@@ -150,6 +160,8 @@ export function engineTask(execution: EngineExecution) {
             (event) => projection.emit(event),
             task.input.attachments,
             task.input.operation,
+            false,
+            task.input.routineRunId,
           );
         } catch (cause) {
           if (runtime.signal.aborted) throw cause;

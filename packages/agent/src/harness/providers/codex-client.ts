@@ -1,5 +1,10 @@
 import { EngineRequestRejected, JsonLines } from "../json-lines.ts";
-import type { EngineConfig, EngineControls, EngineProcess } from "../types.ts";
+import type {
+  EngineConfig,
+  EngineControls,
+  EngineProcess,
+  EngineSkill,
+} from "../types.ts";
 
 export async function openCodexClient(
   process: EngineProcess,
@@ -92,7 +97,25 @@ export async function openCodexClient(
       ? model.inputModalities.includes("image")
       : null;
   }
+  const skills = async () => {
+    const result = await rpc.request<{
+      data: {
+        skills: (EngineSkill & { scope?: string; enabled?: boolean })[];
+      }[];
+    }>("skills/list", { cwds: [ready.cwd] });
+    return result.data.flatMap((entry) =>
+      entry.skills
+        .filter((skill) => skill.enabled !== false)
+        .map((skill) => ({
+          name: skill.name,
+          description: skill.description,
+          path: skill.path,
+          source: skill.scope ?? "codex",
+        })),
+    );
+  };
   return {
+    skills,
     rpc,
     modes,
     async controls(): Promise<EngineControls> {
@@ -103,6 +126,7 @@ export async function openCodexClient(
       );
       return {
         compact: true,
+        skills: await skills(),
         commands: [],
         options: [
           {

@@ -6,13 +6,18 @@ import { ActionMenu } from "@domos/ui/menu";
 import { ChoicePicker } from "@domos/ui/picker";
 import { useState } from "react";
 import { client } from "../../../client.ts";
+import type { useChat } from "../../chat/use-chat.ts";
+import { WorkPanel } from "../../chat/work.tsx";
 import { RoutineSchedule, routineTimeLabel } from "./routine-schedule.tsx";
 import type { PanelEditor } from "./types.ts";
 import type { WorkAction, WorkData } from "./use-bot-work.ts";
 
 type Routine = WorkData["routines"]["items"][number];
 const runLabels = {
-  queued: "已提交／等待结果",
+  queued: "排队中",
+  running: "执行中",
+  waiting_answer: "等待回答",
+  waiting_approval: "等待审批",
   done: "已完成",
   failed: "失败",
   stopped: "已停止",
@@ -42,7 +47,9 @@ export function RoutinesPanel({
   action,
   editor,
   onEditorChange,
+  chat,
 }: {
+  chat: ReturnType<typeof useChat>;
   botId: number;
   data: WorkData["routines"];
   skills: WorkData["skills"];
@@ -50,6 +57,7 @@ export function RoutinesPanel({
   editor: Extract<PanelEditor, { view: "routines" }> | null;
   onEditorChange: (editor: PanelEditor | null) => void;
 }) {
+  const [selectedRun, setSelectedRun] = useState<string>();
   const [deleting, setDeleting] = useState<Routine | null>(null);
   const runs = [...data.runs].reverse();
   return (
@@ -129,7 +137,7 @@ export function RoutinesPanel({
                     className="item-tag"
                     data-tone={routine.enabled ? "ready" : undefined}
                   >
-                    {routine.enabled ? "运行中" : "已暂停"}
+                    {routine.enabled ? "已启用" : "已暂停"}
                   </span>
                   <span>{scheduleLabel(routine)}</span>
                 </div>
@@ -202,6 +210,20 @@ export function RoutinesPanel({
                       计划：{new Date(run.scheduledAt).toLocaleString()}；触发：
                       {new Date(run.firedAt).toLocaleString()}
                     </p>
+                    <p className="item-note">
+                      执行 {((run.activeMs ?? 0) / 1000).toFixed(1)} 秒 · 等人{" "}
+                      {((run.waitingMs ?? 0) / 1000).toFixed(1)} 秒 · 期限{" "}
+                      {Math.round((run.executionMs ?? 900_000) / 60_000)} 分钟
+                    </p>
+                    {run.turnId && (
+                      <Button
+                        variant="ghost"
+                        size="small"
+                        onClick={() => setSelectedRun(run.turnId)}
+                      >
+                        查看工作记录
+                      </Button>
+                    )}
                     {run.coalesced && (
                       <p className="item-note">
                         已将停机期间错过的周期合并为本次执行。
@@ -221,6 +243,15 @@ export function RoutinesPanel({
         </details>
       )}
 
+      {selectedRun && (
+        <WorkPanel
+          {...chat}
+          botId={botId}
+          selectedRun={selectedRun}
+          onRunClose={() => setSelectedRun(undefined)}
+          detailOnly
+        />
+      )}
       <ConfirmDialog
         open={Boolean(deleting)}
         onOpenChange={(open) => {
@@ -283,6 +314,9 @@ function RoutineEditor({
   const [timeZone, setTimeZone] = useState(
     routine?.schedule.timeZone ?? localZone,
   );
+  const [minutes, setMinutes] = useState(
+    String((routine?.executionMs ?? 900_000) / 60_000),
+  );
   const [skillIds, setSkillIds] = useState(routine?.skillIds ?? []);
   return (
     <form
@@ -302,6 +336,7 @@ function RoutineEditor({
           instructions,
           schedule,
           skillIds,
+          executionMs: Math.round(Number(minutes) * 60_000),
         };
         void action.run(
           ["routines.save", input],
@@ -328,6 +363,12 @@ function RoutineEditor({
           multiline
           required
           maxLength={WORK_TEXT_LENGTH}
+        />
+        <TextField
+          label="执行期限（分钟，不含等人时间）"
+          value={minutes}
+          onValueChange={setMinutes}
+          required
         />
         <div className="field">
           <span className="field-label">执行方式</span>

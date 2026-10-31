@@ -11,7 +11,14 @@ export type EngineConfig = {
   args?: string[];
   options?: Record<string, string>;
 };
+export type EngineSkill = {
+  name: string;
+  description?: string;
+  path?: string;
+  source: string;
+};
 export type EngineControls = {
+  skills?: EngineSkill[];
   options: {
     id: string;
     label: string;
@@ -76,6 +83,7 @@ export type EngineRuntimeState = {
   notices?: Record<string, string>;
   integrations?: { name: string; status: string }[];
   skills?: string[];
+  nativeSkills?: EngineSkill[];
   editorText?: string;
 };
 export type EngineModel = {
@@ -221,6 +229,7 @@ export interface EngineSession {
   ready?(): Promise<void>;
   models(): Promise<EngineModel[]>;
   controls?(): Promise<EngineControls>;
+  skills?(): Promise<EngineSkill[] | undefined>;
   compact?(): Promise<void>;
   authenticated?(): Promise<boolean>;
   vision?(): Promise<boolean | null>;
@@ -273,6 +282,7 @@ export type EngineInput = {
   whenBusy?: "reject" | "followUp";
   operation?: "compact";
   source?: "routine";
+  routineRunId?: string;
 };
 
 export const engineLimits = {

@@ -6,7 +6,12 @@ import {
 } from "@earendil-works/pi-durable";
 import type { EngineInput } from "../harness/types.ts";
 import type { Runtime as Engines } from "../runtime/index.ts";
-import { RoutineInput, type RoutineRun, RoutinesDoc } from "./routine-state.ts";
+import {
+  RoutineInput,
+  type RoutineRun,
+  RoutinesDoc,
+  transitionRun,
+} from "./routine-state.ts";
 import { nextScheduled } from "./schedule.ts";
 import { enabledSkill, SkillsDoc } from "./skills.ts";
 export type RoutineDispatch = (
@@ -70,7 +75,7 @@ export function createRoutineTask(
             const skills = await tx.doc(SkillsDoc);
             for (const id of routine.skillIds) {
               const skill = enabledSkill(skills.items, routine.botId, id);
-              content += `\n\nUse enabled skill ${skill.name} (revision ${skill.revision}):\n${skill.content}`;
+              content += `\n\nUse enabled skill ${skill.name} (revision ${skill.revision}). Read skill_read with id "${skill.id}" for supporting files:\n${skill.content}`;
             }
           } catch {
             error = "绑定技能已删除或未启用。请修改任务后重试。";
@@ -92,6 +97,10 @@ export function createRoutineTask(
             content,
             requestId: `routine:${task.input.requestId}:${at}`,
             submissionId: null,
+            executionMs: routine.executionMs ?? 900_000,
+            activeMs: 0,
+            waitingMs: 0,
+            changedAt: now,
           });
           if (task.input.mode === "scheduled") routine.nextAt = null;
           return { status: "running", checkpoint: { phase: "run", at, runId } };
@@ -163,7 +172,7 @@ async function finishRun(
   const run = (await runtime.snapshot(RoutinesDoc, context))?.runs.find(
     (item) => item.id === id,
   );
-  if (run?.status !== "queued") return;
+  if (!run || ["done", "failed", "stopped"].includes(run.status)) return;
   let status: RoutineRun["status"] = "failed";
   let error = run.error;
   let submissionId = run.submissionId;
@@ -189,13 +198,15 @@ async function finishRun(
     const saved = (await tx.doc(RoutinesDoc)).runs.find(
       (item) => item.id === id,
     );
-    if (saved)
+    if (saved) {
+      transitionRun(saved, status, runtime.now());
       Object.assign(saved, {
         status,
         error,
         submissionId,
         finishedAt: runtime.now(),
       });
+    }
   }, context);
 }
 
@@ -218,6 +229,7 @@ async function submitRun(
           displayText: `${run.mode === "test" ? "试跑" : "定时任务"}：${run.title}`,
           requestId: run.requestId,
           whenBusy: "followUp",
+          routineRunId: run.id,
         },
         context,
       )

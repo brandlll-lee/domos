@@ -353,7 +353,11 @@ export class Runtime {
       const current = await tx.doc(EngineDoc, id);
       if (current.tasks.length || current.revision !== profile.revision)
         throw new WorkError("CONFLICT", "配置已更新。请重新读取。");
-      current.runtime = { ...current.runtime, controls };
+      current.runtime = {
+        ...current.runtime,
+        controls,
+        nativeSkills: controls.skills,
+      };
       current.preparedComputerId = computerId;
     }, context);
     return controls;
@@ -546,6 +550,7 @@ export class Runtime {
           previous: doc.taskId,
           turnId,
           ...(input.source ? { source: input.source } : {}),
+          ...(input.routineRunId ? { routineRunId: input.routineRunId } : {}),
           entryId: entry.id,
           ...(input.operation ? { operation: input.operation } : {}),
           ...(input.attachments?.length
@@ -623,6 +628,10 @@ export class Runtime {
         throw new WorkError("CONFLICT", "配置已更新。请重新检查连接。");
       doc.prepared = result.authenticated;
       doc.preparedComputerId = computerId;
+      if ("controls" in result && result.controls?.skills) {
+        doc.runtime ??= {};
+        doc.runtime.nativeSkills = result.controls.skills;
+      }
     }, context);
     return result;
   }

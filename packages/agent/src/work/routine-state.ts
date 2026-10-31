@@ -18,6 +18,7 @@ export type Routine = {
   revision: number;
   requestId: string;
   source: string;
+  executionMs?: number;
 };
 
 export const RoutineInput = "domos.routine-input";
@@ -30,6 +31,7 @@ export type RoutineInput = Pick<
   | "skillIds"
   | "revision"
   | "requestId"
+  | "executionMs"
 >;
 export type RoutineRun = {
   id: string;
@@ -41,11 +43,23 @@ export type RoutineRun = {
   firedAt: number;
   finishedAt: number | null;
   coalesced: boolean;
-  status: "queued" | "done" | "failed" | "stopped";
+  status:
+    | "queued"
+    | "running"
+    | "waiting_answer"
+    | "waiting_approval"
+    | "done"
+    | "failed"
+    | "stopped";
   error: string | null;
   content: string;
   requestId: string;
   submissionId: number | null;
+  turnId?: string;
+  executionMs?: number;
+  activeMs?: number;
+  waitingMs?: number;
+  changedAt?: number;
 };
 
 export const RoutinesDoc = defineDoc<{ items: Routine[]; runs: RoutineRun[] }>({
@@ -81,9 +95,17 @@ export async function saveRoutine(
   requireRevision(previous?.revision ?? 0, input.revision);
   const skills = await tx.doc(SkillsDoc);
   for (const id of input.skillIds) enabledSkill(skills.items, botId, id);
+  if (
+    input.executionMs !== undefined &&
+    (!Number.isInteger(input.executionMs) ||
+      input.executionMs < 1000 ||
+      input.executionMs > 86_400_000)
+  )
+    throw new WorkError("BAD_REQUEST", "执行期限必须在 1 秒至 24 小时之间。");
   const item: Routine = {
     ...input,
     botId,
+    executionMs: input.executionMs ?? previous?.executionMs ?? 900_000,
     title: requiredText(input.title, BOT_NAME_LENGTH),
     instructions: requiredText(input.instructions, WORK_TEXT_LENGTH),
     schedule: validateSchedule(input.schedule, now),
@@ -97,4 +119,17 @@ export async function saveRoutine(
   if (previous) Object.assign(previous, item);
   else doc.items.push(item);
   return item;
+}
+
+export function transitionRun(
+  run: RoutineRun,
+  status: RoutineRun["status"],
+  now: number,
+) {
+  const elapsed = Math.max(0, now - (run.changedAt ?? run.firedAt));
+  if (run.status === "running") run.activeMs = (run.activeMs ?? 0) + elapsed;
+  if (run.status === "waiting_answer" || run.status === "waiting_approval")
+    run.waitingMs = (run.waitingMs ?? 0) + elapsed;
+  run.status = status;
+  run.changedAt = now;
 }
