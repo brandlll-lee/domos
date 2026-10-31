@@ -665,6 +665,79 @@ test("Codex handles approval, streams tools and recovers a completed native turn
   ).toMatchObject({ cwd: "/work/bots/1", approvalPolicy: "on-request" });
 });
 
+test("Claude retains resolved models and matches their native effort controls", async () => {
+  const { process, emit } = protocol();
+  const levels = ["low", "medium", "high", "xhigh", "max"];
+  const models = [
+    {
+      value: "sonnet",
+      resolvedModel: "claude-sonnet-5-5",
+      displayName: "Sonnet",
+      description: "Sonnet 5.5 · Efficient for routine tasks",
+      supportedEffortLevels: levels,
+    },
+    {
+      value: "haiku",
+      resolvedModel: "claude-haiku-4-5-20251001",
+      displayName: "Haiku",
+    },
+    {
+      value: "claude-fable-5-1",
+      resolvedModel: "claude-fable-5-1",
+      displayName: "Fable",
+    },
+  ];
+  process.receive = (request) => {
+    if (request.type !== "control_request") return;
+    process.frame({
+      type: "control_response",
+      response: {
+        request_id: (request as unknown as { request_id: string }).request_id,
+        subtype: "success",
+        response: { models, skills: [] },
+      },
+    });
+  };
+  const session = await claudeProvider.open({
+    process,
+    config: {
+      provider: "claude",
+      model: "sonnet",
+      options: { effort: "high" },
+    },
+    sessionId: null,
+    instructions: "Role",
+    emit,
+  });
+  const catalog = await session.models();
+  expect(catalog[0]).toMatchObject({
+    id: "sonnet",
+    name: "Sonnet · claude-sonnet-5-5",
+    effort: {
+      options: levels.map((id) => ({ id, label: id })),
+    },
+  });
+  expect(catalog[1]).toMatchObject({
+    id: "haiku",
+    name: "Haiku · claude-haiku-4-5-20251001",
+    effort: { options: [] },
+  });
+  expect(catalog[2]?.name).toBe("Fable · claude-fable-5-1");
+  process.frame({
+    type: "system",
+    subtype: "init",
+    model: "claude-sonnet-5-5",
+  });
+  const controls = await session.controls?.();
+  expect(controls?.options.find((item) => item.id === "effort")).toMatchObject({
+    value: "high",
+    options: levels.map((id) => ({ id, label: id })),
+  });
+  expect(process.spec?.args).toEqual(
+    expect.arrayContaining(["--model", "sonnet", "--effort", "high"]),
+  );
+});
+
 test("Claude uses the work computer account and keeps its own session", async () => {
   const { process, events, emit } = protocol();
   process.receive = (request) => {

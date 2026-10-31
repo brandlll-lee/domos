@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
+import type { ModelInfo } from "@anthropic-ai/claude-agent-sdk";
 import { JsonLines } from "../json-lines.ts";
 import {
   type EngineControls,
@@ -53,11 +54,7 @@ type ClaudeFrame = {
     subtype: string;
     error?: string;
     response?: {
-      models?: {
-        value: string;
-        displayName?: string;
-        supportedEffortLevels?: string[];
-      }[];
+      models?: ModelInfo[];
       commands?: { name: string; description: string }[];
       skills?: { name: string; description: string }[];
       mcpServers?: {
@@ -482,7 +479,8 @@ export const claudeProvider: EngineProvider = {
       async controls(): Promise<EngineControls> {
         const catalog = await initialize();
         const model = catalog?.models?.find(
-          (item) => item.value === nativeModel,
+          (item) =>
+            item.value === nativeModel || item.resolvedModel === nativeModel,
         );
         return {
           compact: true,
@@ -524,7 +522,9 @@ export const claudeProvider: EngineProvider = {
       models: async () =>
         ((await initialize())?.models ?? []).map((item) => ({
           id: item.value,
-          name: item.displayName ?? item.value,
+          name: item.resolvedModel
+            ? `${item.displayName} · ${item.resolvedModel}`
+            : (item.displayName ?? item.value),
           effort: {
             id: "effort",
             kind: "effort" as const,
