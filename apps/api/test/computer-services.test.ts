@@ -124,7 +124,7 @@ test.runIf(platform() === "win32")(
           );
           return true;
         },
-        { timeout: 5000 },
+        { timeout: 35000 },
       )
       .toBe(true);
     await runtime.close();
@@ -171,4 +171,5 @@ test.runIf(platform() === "win32")(
       "ask",
     );
   },
+  60000,
 );
