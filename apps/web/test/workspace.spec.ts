@@ -113,6 +113,13 @@ test("centered dialogs share stable geometry and Harness marks", async ({
     const settings = page.getByRole("dialog", { name: "设置", exact: true });
     await expect(settings).toBeVisible();
     const size = await settings.boundingBox();
+    for (const theme of ["dark", "light"] as const) {
+      await page.emulateMedia({ colorScheme: theme });
+      await expect(settings).toHaveCSS(
+        "background-color",
+        theme === "dark" ? "rgb(15, 15, 16)" : "rgb(253, 253, 253)",
+      );
+    }
     await expect(page.locator(".dialog-backdrop")).toHaveCSS(
       "backdrop-filter",
       "blur(8px)",
@@ -136,6 +143,13 @@ test("centered dialogs share stable geometry and Harness marks", async ({
         await memory
           .getByRole("button", { name: "新增记忆", exact: true })
           .click();
+      for (const theme of ["dark", "light"] as const) {
+        await page.emulateMedia({ colorScheme: theme });
+        await expect(memory).toHaveCSS(
+          "background-color",
+          theme === "dark" ? "rgb(15, 15, 16)" : "rgb(245, 245, 247)",
+        );
+      }
       const box = await memory.boundingBox();
       expect(box?.width).toBe(size?.width);
       expect(box?.height).toBe(size?.height);
@@ -2091,6 +2105,15 @@ test("Work follows a native turn, opens its record and preserves it after stop a
   await expect(card).toContainText("已停止");
   for (const theme of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: theme });
+    await card.locator(".work-open").click();
+    await expect(dialog).toHaveCSS(
+      "background-color",
+      theme === "dark" ? "rgb(15, 15, 16)" : "rgb(245, 245, 247)",
+    );
+    await page.screenshot({
+      path: info.outputPath(`work-dialog-${theme}.png`),
+    });
+    await page.keyboard.press("Escape");
     await page.screenshot({ path: info.outputPath(`work-${theme}.png`) });
   }
   await card.locator(".work-open").click();
@@ -2113,6 +2136,13 @@ test("Work follows a native turn, opens its record and preserves it after stop a
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(card).toContainText("执行已结束");
   await expect(page.locator(".work-row")).toHaveCount(2);
+  await expect(card).toHaveCSS("border-width", "1px");
+  await expect(page.locator(".work-list")).toHaveCSS("border-width", "0px");
+  const cards = await page.locator(".work-row").all();
+  const first = await cards[0]?.boundingBox();
+  const second = await cards[1]?.boundingBox();
+  if (!first || !second) throw new Error("Work cards missing");
+  expect(second.y - first.y - first.height).toBe(8);
   await card.locator(".work-open").click();
   await dialog.locator("summary").filter({ hasText: "原生思考" }).click();
   await expect(dialog).toContainText("核对原生记录。");

@@ -1,20 +1,22 @@
 .work-list {
-  border: 1px solid var(--color-edge);
-  border-radius: var(--radius-control);
-  padding: var(--space-1) 0;
+  display: grid;
+  gap: var(--space-2);
 }
 .work-row {
   position: relative;
   min-width: 0;
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius-control);
 }
 .work-open.button[data-variant="ghost"] {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr) auto 12px;
   gap: var(--space-3);
   width: 100%;
-  min-height: 60px;
+  min-height: 58px;
   padding: var(--space-2) var(--space-3);
-  border-radius: 0;
+  border: 0;
+  border-radius: inherit;
   background: transparent;
   color: var(--color-text);
   text-align: start;

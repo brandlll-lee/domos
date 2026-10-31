@@ -71,6 +71,9 @@ a,
   color: var(--color-text);
   box-shadow: var(--color-popup-shadow);
 }
+[data-theme="dark"] .dialog-popup {
+  background: var(--color-canvas);
+}
 .dialog-header {
   display: flex;
   align-items: center;
