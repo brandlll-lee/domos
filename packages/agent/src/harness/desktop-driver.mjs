@@ -85,7 +85,7 @@ export async function desktopBinary(home) {
     const archive = join(cache, name);
     if (process.platform === "win32") {
       const quote = (value) => `'${value.replaceAll("'", "''")}'`;
-      const script = `Invoke-WebRequest -Uri ${quote(asset.browser_download_url)} -OutFile ${quote(archive)}`;
+      const script = `$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri ${quote(asset.browser_download_url)} -OutFile ${quote(archive)}`;
       await run(
         "powershell.exe",
         [
