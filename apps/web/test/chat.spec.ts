@@ -67,6 +67,13 @@ async function control(
 }
 
 async function openSettings(page: import("@playwright/test").Page) {
+  if ((page.viewportSize()?.width ?? 0) < layout.sidebar.min + layout.chatMin)
+    await expect(page.locator(".workspace")).toHaveAttribute(
+      "data-mobile",
+      "true",
+    );
+  else
+    await expect(page.locator(".workspace")).not.toHaveAttribute("data-mobile");
   const settings = page.getByRole("main", { name: "设置", exact: true });
   if (!(await settings.isVisible())) {
     const overlay = page.locator(
@@ -82,6 +89,7 @@ async function openSettings(page: import("@playwright/test").Page) {
       await contacts.click();
     } else await expect(contacts).toHaveCount(0);
     await page.getByRole("button", { name: "设置", exact: true }).click();
+    await expect(page.locator(".settings-main")).toBeFocused();
   }
   await settings.getByRole("tab", { name: "通用", exact: true }).click();
   return settings;
@@ -1336,12 +1344,29 @@ test("background replies and reduced motion show complete messages without entry
     document.dispatchEvent(new Event("visibilitychange"));
   });
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await control({ content: "减少动画。".repeat(20) });
+  await control("gate-tool");
+  await control({
+    responses: [
+      {
+        stopReason: "toolUse",
+        content: [
+          {
+            type: "toolCall",
+            id: crypto.randomUUID(),
+            name: toolName,
+            arguments: { text: "减少动画。" },
+          },
+        ],
+      },
+      { content: "减少动画。" },
+    ],
+  });
   await input.fill("减少动画");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   const dot = page.locator(".typing-dots g").first();
   await expect(dot).toBeVisible();
   await expect(dot).toHaveCSS("animation-name", "none");
+  await control("release");
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(2);
   await expect
     .poll(() =>

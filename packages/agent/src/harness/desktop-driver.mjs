@@ -74,7 +74,12 @@ export async function desktopBinary(home) {
     const name = `cua-driver-rs-${version}-${platform}-${suffix}`;
     const response = await fetch(
       `https://api.github.com/repos/trycua/cua/releases/tags/cua-driver-rs-v${version}`,
-      { signal: AbortSignal.timeout(30000) },
+      {
+        signal: AbortSignal.timeout(30000),
+        headers: process.env.GITHUB_TOKEN
+          ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` }
+          : undefined,
+      },
     );
     if (!response.ok) throw new Error(`Cua release: HTTP ${response.status}`);
     const release = await response.json();
