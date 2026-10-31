@@ -64,6 +64,8 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
   desktop:
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7.0.1

@@ -172,6 +172,7 @@ export function Workspace({
                 }}
                 initialFocus={modal}
                 finalFocus={() => {
+                  if (obscured) return false;
                   if (document.activeElement?.closest(".workspace-content"))
                     return false;
                   const trigger = document.getElementById(

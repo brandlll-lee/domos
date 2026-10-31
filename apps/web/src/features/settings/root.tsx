@@ -1,6 +1,6 @@
 import { Button } from "@domos/ui/controls";
 import { Dialog, PanelDialog } from "@domos/ui/dialog";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { SettingsContext } from "./context.ts";
 import { SettingsPage } from "./page.tsx";
 import {
@@ -21,12 +21,10 @@ export function SettingsRoot({
   const [message, setMessage] = useState("");
   const content = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(null);
-  const frame = useRef<number>(undefined);
-  useEffect(() => () => cancelAnimationFrame(frame.current ?? 0), []);
 
   function returnTarget() {
     const panel = document.querySelector<HTMLElement>(
-      ".workspace-panel[data-modal]:not([data-closed])",
+      ".workspace-panel[data-modal]",
     );
     if (panel) return panel;
     return (
@@ -40,7 +38,6 @@ export function SettingsRoot({
   function finish() {
     setDiscard(false);
     setOpen(false);
-    frame.current = requestAnimationFrame(() => returnTarget()?.focus());
   }
   function close() {
     if (content.current?.querySelector('[aria-busy="true"]')) {
@@ -54,7 +51,6 @@ export function SettingsRoot({
     finish();
   }
   function show(next: SettingsSection = defaultSection, target?: number) {
-    cancelAnimationFrame(frame.current ?? 0);
     opener.current =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
@@ -84,6 +80,10 @@ export function SettingsRoot({
           <PanelDialog.Backdrop className="dialog-backdrop" forceRender />
           <PanelDialog.Popup
             className="dialog-popup settings-window"
+            initialFocus={() =>
+              content.current?.querySelector<HTMLElement>(".settings-main") ??
+              null
+            }
             finalFocus={returnTarget}
           >
             <PanelDialog.Title className="sr-only">设置</PanelDialog.Title>

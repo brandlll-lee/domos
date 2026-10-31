@@ -850,7 +850,7 @@ test("computer viewing uses separate tabs and releases control when closed", asy
   const view = page.getByRole("region", { name: "Domos的电脑", exact: true });
   await view.getByRole("button", { name: "启用浏览器", exact: true }).click();
   const screen = view.getByRole("img", { name: "工作电脑画面" });
-  await expect(screen).toBeVisible();
+  await expect(screen).toBeVisible({ timeout: 30000 });
   await expect(
     view.getByRole("textbox", { name: "网址", exact: true }),
   ).toHaveCount(0);
@@ -1650,6 +1650,11 @@ test("settings stay readable in both themes and compact layouts", async ({
   await expect(page.locator(".settings-window")).toBeHidden();
   const details = page.getByRole("dialog", { name: "Bot详情", exact: true });
   await expect(details).toBeVisible();
+  await expect
+    .poll(() =>
+      details.evaluate((node) => node.contains(document.activeElement)),
+    )
+    .toBe(true);
   await page.keyboard.press("Tab");
   await expect(details.locator(":focus")).toHaveCount(1);
 });

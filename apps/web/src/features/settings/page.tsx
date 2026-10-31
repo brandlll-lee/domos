@@ -33,7 +33,6 @@ export function SettingsPage({
   const [compact, setCompact] = useState(
     () => matchMedia(`(max-width: ${compactChat.maxWidth})`).matches,
   );
-  const main = useRef<HTMLElement>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const needle = query.trim().toLocaleLowerCase();
   const matches = (Object.keys(sections) as SettingsSection[]).filter((id) => {
@@ -51,7 +50,6 @@ export function SettingsPage({
   }, [section]);
 
   useEffect(() => {
-    main.current?.focus({ preventScroll: true });
     const media = matchMedia(`(max-width: ${compactChat.maxWidth})`);
     const sync = () => setCompact(media.matches);
     media.addEventListener("change", sync);
@@ -151,7 +149,6 @@ export function SettingsPage({
       <section
         className="settings-main"
         aria-label={sections[section].label}
-        ref={main}
         tabIndex={-1}
       >
         <header className="settings-header">
