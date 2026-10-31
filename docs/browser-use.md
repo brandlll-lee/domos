@@ -70,7 +70,7 @@ Take over opens the matching workspace and acquires a viewer lease for that requ
 
 The adapter targets agent-browser 0.39.1. Human input uses its loopback `POST /api/command` relay. Domos verifies `session_info` before opening the stream and sends the loopback Origin header. Each reply must confirm success. The route is an internal versioned contract. It is not an exposed arbitrary command API. It removes CLI launches from each human input. Browser preparation and Agent tools keep their existing paths.
 
-The stream requests a 30 FPS cap and keeps acknowledgement pacing. Slow acknowledgement round trips reduce the cap to 10 FPS. The viewport size remains fixed. Frames remain latest-only. A 30 FPS cap is not a measured end-to-end frame rate. JPEG quality remains the daemon's stream setting; this adapter does not change shared encoding during a session.
+The stream requests a 30 FPS cap and keeps acknowledgement pacing. Slow acknowledgement round trips reduce the cap to 10 FPS. Browser preparation sets the native viewport to 1280 × 720 in both modes. Stream metadata and input use this viewport. Frames remain latest-only. A 30 FPS cap is not a measured end-to-end frame rate. JPEG quality remains the daemon's stream setting; this adapter does not change shared encoding during a session.
 
 The relay contract was checked against the pinned [native HTTP handler](https://github.com/vercel-labs/agent-browser/blob/v0.39.1/cli/src/native/stream/http.rs) and [native input actions](https://github.com/vercel-labs/agent-browser/blob/v0.39.1/cli/src/native/actions.rs). Frame pacing follows the current [streaming reference](https://agent-browser.dev/streaming).
 

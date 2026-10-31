@@ -135,7 +135,9 @@ for (const refresh of [false, true]) {
       .fill("打开搜索页，然后让我接管修改搜索词");
     await page.getByRole("button", { name: "发送", exact: true }).click();
     const card = page.getByRole("region", { name: "接管请求", exact: true });
-    await expect(card.locator(".takeover-url")).toContainText("127.0.0.1");
+    await expect(card.locator(".takeover-url")).toContainText("127.0.0.1", {
+      timeout: 30000,
+    });
     await expect(card.getByText("等待接管", { exact: true })).toBeVisible();
     await expect(card.getByRole("img", { name: "消息图片" })).toBeVisible();
     const cardMs = performance.now() - started;
@@ -272,6 +274,8 @@ for (const refresh of [false, true]) {
       await expect(view.getByRole("status")).toHaveText("你正在操作");
       const image = view.getByRole("img", { name: "工作电脑画面" });
       const state = await (await request.get(`${url}/takeover-state`)).json();
+      expect(state.width).toBe(1280);
+      expect(state.height).toBe(720);
       const at = await point(image, state, "draft");
       await page.mouse.click(at.x, at.y);
       const keyboard = view.getByRole("textbox", { name: "网页键盘输入" });

@@ -341,7 +341,7 @@ export async function openBrowserService(directory, home) {
   const prepare = async (signal) => {
     for (let attempt = 0; ; attempt++) {
       try {
-        return await run(["get", "url", "--json"], signal);
+        return await run(["set", "viewport", "1280", "720", "--json"], signal);
       } catch (error) {
         if (attempt >= 2 || !error.message.includes("outcome_unknown"))
           throw error;

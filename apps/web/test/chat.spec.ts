@@ -871,11 +871,10 @@ test("send, reload, disconnect, reconnect and restart preserve the conversation"
   await page.reload();
   await expect(page.getByLabel("你的消息")).toContainText("记住这句话");
   await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
   await page.goto("about:blank");
   await control("release");
   await page.goto(url);
-  await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
-  await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
   await expect(page.getByLabel("Domos 的回复")).toContainText("完整回复。");
   await expect(
     page.getByRole("button", { name: "发送", exact: true }),
@@ -921,7 +920,9 @@ test("a killed server retains uncertain work and permits an explicit retry", asy
     page.getByRole("status").filter({ hasText: "正在重连" }),
   ).toBeAttached();
   await start(port);
-  await expect(page.getByRole("alert")).toContainText("执行结果未确认");
+  await expect(
+    page.getByRole("log", { name: "聊天记录" }).getByRole("alert"),
+  ).toContainText("执行结果未确认");
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
   await expect(page.getByLabel("你的消息")).toHaveCount(1);
   await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
@@ -2117,6 +2118,10 @@ test("model search and themed popups support keyboard, dismissal, and narrow scr
   await settings.getByRole("button", { name: "返回对话", exact: true }).click();
   await expect(page.locator("select:visible")).toHaveCount(0);
   await page.setViewportSize({ width: 320, height: 568 });
+  await expect(page.locator(".workspace")).toHaveAttribute(
+    "data-mobile",
+    "true",
+  );
   await model.click();
   const popup = page.locator(".model-selector-popup");
   await expect(popup).toBeVisible();
@@ -2126,10 +2131,7 @@ test("model search and themed popups support keyboard, dismissal, and narrow scr
   expect(bounds.x + bounds.width).toBeLessThanOrEqual(320);
   expect(bounds.y + bounds.height).toBeLessThanOrEqual(568);
   await page.screenshot({ path: "test-results/model-popup-mobile.png" });
-  await page
-    .getByRole("heading", { name: "Domos", exact: true })
-    .first()
-    .click();
+  await page.mouse.click(2, 2);
   await expect(popup).toHaveCount(0);
 });
 

@@ -59,6 +59,15 @@
     "pasteHandled": false,
     "compositionHandled": false
   },
+  "headedViewport": {
+    "platform": "macOS",
+    "browserVersion": "0.39.4",
+    "reportedWidth": 1280,
+    "pageWidth": 1024,
+    "target": { "x": 360, "y": 204 },
+    "dispatched": { "x": 450, "y": 255 },
+    "inputValue": "saved draft"
+  },
   "browserCompatibility": {
     "date": "2026-10-27",
     "platform": "Windows",

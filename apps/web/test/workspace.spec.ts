@@ -1941,6 +1941,8 @@ test("resizing tolerates blocked preferences and pointer cancellation", async ({
   await handle.press("Home");
   const min = await handle.getAttribute("aria-valuemin");
   await expect(handle).toHaveAttribute("aria-valuenow", min ?? "");
+  const sidebar = page.locator('.workspace-panel[data-side="sidebar"]');
+  await expect(sidebar).toHaveCSS("width", `${min}px`);
   await handle.hover();
   const box = await handle.boundingBox();
   if (!box) throw new Error("Resize handle missing");
@@ -1962,6 +1964,7 @@ test("resizing tolerates blocked preferences and pointer cancellation", async ({
   await expect
     .poll(async () => Number(await handle.getAttribute("aria-valuenow")))
     .toBeGreaterThan(Number(min));
+  await expect(sidebar).toHaveCSS("width", "232px");
   await handle.hover();
   const expanded = await handle.boundingBox();
   if (!expanded) throw new Error("Resize handle missing");
