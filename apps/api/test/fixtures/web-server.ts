@@ -23,6 +23,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { getRequestListener } from "@hono/node-server";
 import { EngineMessage } from "../../../../packages/agent/src/harness/state.ts";
+import type { EngineApproval } from "../../../../packages/agent/src/harness/types.ts";
 import { PiProcess } from "../../../../packages/agent/test/fixtures/pi-process.ts";
 import { createApp } from "../../src/app.ts";
 import { hostingApp } from "../../src/hosting/routes.ts";
@@ -331,6 +332,21 @@ server.listen(Number(process.argv[3] ?? 0), "127.0.0.1", () => {
 let release: (() => void) | undefined;
 process.on("message", async (message) => {
   if (
+    typeof message === "object" &&
+    message !== null &&
+    "approval" in message
+  ) {
+    const request = message.approval as EngineApproval;
+    const bot = (await bots.list(BACKGROUND_CONTEXT))[0];
+    if (!bot || !engines) throw new Error("Runtime required");
+    const controller = new AbortController();
+    release = () => controller.abort();
+    void engines.execution.computer
+      .approve(bot.id, request, controller.signal, BACKGROUND_CONTEXT)
+      .then((answer) => {
+        process.send?.({ type: "answered", answer });
+      });
+  } else if (
     typeof message === "object" &&
     message !== null &&
     "history" in message &&

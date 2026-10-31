@@ -136,17 +136,18 @@ for (const refresh of [false, true]) {
     await page.getByRole("button", { name: "发送", exact: true }).click();
     const card = page.getByRole("region", { name: "接管请求", exact: true });
     await expect(card.locator(".takeover-url")).toContainText("127.0.0.1");
-    await expect(card.getByText("需要你操作", { exact: true })).toBeVisible();
-    await expect(card.getByRole("img", { name: "接管画面预览" })).toBeVisible();
+    await expect(card.getByText("等待接管", { exact: true })).toBeVisible();
+    await expect(card.getByRole("img", { name: "消息图片" })).toBeVisible();
     const cardMs = performance.now() - started;
     if (refresh) await page.reload();
-    await expect(card.getByText("需要你操作", { exact: true })).toBeVisible();
+    await expect(card.getByText("等待接管", { exact: true })).toBeVisible();
     await page.screenshot({
       path: info.outputPath("takeover-card-waiting.png"),
     });
     const takeStarted = performance.now();
     await card.getByRole("button", { name: "接管", exact: true }).click();
     await expect(view.getByRole("status")).toHaveText("你正在操作");
+    await expect(card.getByText("控制中", { exact: true })).toBeVisible();
     await expect(view.getByRole("alert")).toHaveCount(0);
     const grantMs = performance.now() - takeStarted;
     const left = page.getByRole("separator", { name: "调整联系人宽度" });
@@ -203,7 +204,7 @@ for (const refresh of [false, true]) {
       .toBe(true);
     const inputToPaintMs = performance.now() - inputStarted;
     await card.getByRole("button", { name: "我已完成", exact: true }).click();
-    await expect(card.getByText("已完成", { exact: true })).toBeVisible();
+    await expect(card.getByText("已归还", { exact: true })).toBeVisible();
     await expect(card.getByRole("button")).toHaveCount(0);
     await expect(
       page
@@ -242,7 +243,7 @@ for (const refresh of [false, true]) {
     });
     await page.screenshot({ path: info.outputPath("takeover-card-done.png") });
     await page.reload();
-    await expect(card.getByText("已完成", { exact: true })).toBeVisible();
+    await expect(card.getByText("已归还", { exact: true })).toBeVisible();
     if (!refresh) {
       await page.getByRole("button", { name: "Bot详情", exact: true }).click();
       await page.getByRole("tab", { name: "Browser", exact: true }).click();

@@ -30,6 +30,7 @@ import type {
 } from "../harness/types.ts";
 import { type UsageFilter, UsageReader } from "../harness/usage.ts";
 import { materialText } from "../materials.ts";
+import { approvalMessage } from "../messages.ts";
 import { watchCommits } from "../watch.ts";
 import { WorkError } from "../work/state.ts";
 
@@ -50,6 +51,9 @@ export function slimChatView(view: import("../chat-view.ts").ChatView) {
   };
   return {
     ...view,
+    approvals: view.approvals?.map(
+      ({ preview: _preview, ...request }) => request,
+    ),
     messages: view.messages.map(slim),
     draft: view.draft ? slim(view.draft) : null,
   };
@@ -187,7 +191,10 @@ export class Runtime {
       if (cursor || messages.length > page.limit)
         view.before = view.messages[0]?.cursor ?? `${entries[0]?.id}:0`;
     }
-    view.messages.push(...((engine?.drafts ?? []) as typeof view.messages));
+    const saved = new Set(view.messages.map((message) => message.id));
+    view.messages.push(
+      ...(engine?.drafts ?? []).filter((message) => !saved.has(message.id)),
+    );
     view.busy ||= Boolean(engine?.tasks.length);
     view.processing = Boolean(
       engine?.activeId &&
@@ -226,6 +233,14 @@ export class Runtime {
     context: Context,
   ) {
     if (!cursor) {
+      const request = (
+        await this.harness.snapshot(
+          ComputerRequests,
+          botId as ConversationId,
+          context,
+        )
+      )?.approvals.find((item) => approvalMessage(item, "pending").id === id);
+      if (request) return approvalMessage(request, "pending");
       const doc = await readEngine(
         this.harness,
         botId as ConversationId,
@@ -288,7 +303,7 @@ export class Runtime {
         );
         const retained = new Set(view.messages.map((message) => message.id));
         const removed = previous.messages
-          .filter((message) => message.pending && !retained.has(message.id))
+          .filter((message) => !message.cursor && !retained.has(message.id))
           .map((message) => message.id);
         const state: Partial<Omit<typeof view, "messages" | "before">> = {};
         for (const key of Object.keys(view) as (keyof typeof view)[]) {

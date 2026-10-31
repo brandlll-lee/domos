@@ -1,209 +1,234 @@
-import type { EngineApproval } from "@domos/agent/harness/types";
+import type { EngineAnswer } from "@domos/agent/harness/types";
+import type { ChatMessage } from "@domos/agent/messages";
 import { Button } from "@domos/ui/controls";
-import { Checkbox, TextField } from "@domos/ui/field";
-import { ChoicePicker } from "@domos/ui/picker";
+import { TextField } from "@domos/ui/field";
 import { useState } from "react";
 import { client } from "../../client.ts";
 import { useWorkAction } from "../bots/details/use-bot-work.ts";
 
-export function Approvals({
+export function Approval({
   botId,
-  approvals,
+  message,
 }: {
   botId: number;
-  approvals: EngineApproval[];
+  message: ChatMessage;
 }) {
-  approvals = approvals.filter((approval) => !approval.takeover);
-  return (
-    <div className="detail-stack" aria-live="polite">
-      {approvals.length > 1 && (
-        <span className="activity-caption">{approvals.length} 项需要确认</span>
-      )}
-      {approvals.slice(0, 1).map((approval) => (
-        <Approval key={approval.id} botId={botId} approval={approval} />
-      ))}
-    </div>
-  );
-}
-function Approval({
-  botId,
-  approval,
-}: {
-  botId: number;
-  approval: EngineApproval;
-}) {
+  const record = message.approval;
+  const request = record?.request;
   const [text, setText] = useState("");
+  const [custom, setCustom] = useState<string>();
   const [answers, setAnswers] = useState<Record<string, string[]>>(() =>
     Object.fromEntries(
-      (approval.questions ?? [])
-        .filter((item) => item.value !== undefined)
-        .map((item) => [
-          item.id,
-          Array.isArray(item.value) ? item.value : [item.value ?? ""],
-        ]),
+      (request?.questions ?? []).map((question) => [
+        question.id,
+        Array.isArray(question.value)
+          ? question.value
+          : question.value
+            ? [question.value]
+            : [],
+      ]),
     ),
   );
   const action = useWorkAction();
-  const answer = (allow: boolean, optionId?: string) =>
-    action.run(["approval", approval.id, allow, text, answers, optionId], () =>
-      client.engines.answer({
-        botId,
-        id: approval.id,
-        allow,
-        ...(text ? { text } : {}),
-        answers,
-        ...(optionId ? { optionId } : {}),
-      }),
+  if (!record || !request) return null;
+  const pending = record.state === "pending";
+  const question = request.kind === "question";
+  const single =
+    request.questions?.length === 1 && !request.questions[0]?.multiple;
+  const respond = (answer: EngineAnswer) =>
+    action.run([request.id, answer], () =>
+      client.engines.answer({ botId, id: request.id, ...answer }),
     );
+  const selected = pending ? answers : (record.answer?.answers ?? {});
+  const summary = [
+    record.answer?.text,
+    request.options?.find((option) => option.id === record.answer?.optionId)
+      ?.label,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <section
-      className="settings-card detail-stack native-approval"
-      aria-label={approval.title}
+      className="interaction-card"
+      aria-label={request.title}
+      data-state={record.state}
     >
-      <strong>{approval.title}</strong>
-      <p className="approval-detail">{approval.detail}</p>
-      {approval.url && (
-        <a href={approval.url} target="_blank" rel="noopener noreferrer">
+      <strong>{request.title}</strong>
+      {request.detail && <p className="approval-detail">{request.detail}</p>}
+      {request.url && (
+        <a href={request.url} target="_blank" rel="noopener noreferrer">
           打开确认页面
         </a>
       )}
-      {approval.questions?.map((question) => (
-        <div className="detail-stack" key={question.id}>
-          {question.multiple ? (
-            <fieldset className="approval-choices">
-              <legend>{question.title}</legend>
-              {question.options?.map((option) => (
-                <Checkbox
+      {request.questions?.map((item) => (
+        <div className="question-field" key={item.id}>
+          {item.title !== request.title && <strong>{item.title}</strong>}
+          {!!item.options?.length && (
+            <div className="question-options">
+              {item.options.map((option, index) => (
+                <button
+                  type="button"
                   key={option.id}
-                  label={option.label}
-                  checked={answers[question.id]?.includes(option.id) ?? false}
-                  disabled={action.busy}
-                  onCheckedChange={(checked) =>
-                    setAnswers((current) => ({
-                      ...current,
-                      [question.id]: checked
-                        ? [...(current[question.id] ?? []), option.id]
-                        : (current[question.id] ?? []).filter(
+                  className="question-option"
+                  disabled={!pending || action.busy}
+                  aria-pressed={selected[item.id]?.includes(option.id) ?? false}
+                  onClick={() => {
+                    const values = item.multiple
+                      ? selected[item.id]?.includes(option.id)
+                        ? (selected[item.id] ?? []).filter(
                             (id) => id !== option.id,
-                          ),
-                    }))
-                  }
-                />
+                          )
+                        : [...(selected[item.id] ?? []), option.id]
+                      : [option.id];
+                    const next = { ...answers, [item.id]: values };
+                    setAnswers(next);
+                    setCustom(undefined);
+                    if (single) void respond({ allow: true, answers: next });
+                  }}
+                >
+                  <span className="option-letter">
+                    {String.fromCharCode(65 + index)}
+                  </span>
+                  <span>
+                    {option.label}
+                    {option.description && <small>{option.description}</small>}
+                  </span>
+                </button>
               ))}
-            </fieldset>
-          ) : question.options?.length ? (
-            <ChoicePicker
-              label={question.title}
-              value={answers[question.id]?.[0] ?? ""}
-              items={[
-                { value: "", label: "请选择" },
-                ...question.options.map((option) => ({
-                  value: option.id,
-                  label: option.label,
-                })),
-              ]}
-              disabled={action.busy}
-              onValueChange={(value) =>
-                setAnswers((current) => ({
-                  ...current,
-                  [question.id]: value ? [value] : [],
-                }))
-              }
-            />
-          ) : (
-            <TextField
-              label={question.title}
-              multiline={question.multiline}
-              value={answers[question.id]?.[0] ?? ""}
-              disabled={action.busy}
-              onValueChange={(value) =>
-                setAnswers((current) => ({
-                  ...current,
-                  [question.id]: [value],
-                }))
-              }
-            />
+            </div>
           )}
-          {question.options?.map(
-            (option) =>
-              option.description && (
-                <p className="detail-note" key={option.id}>
-                  {option.label}：{option.description}
-                </p>
-              ),
-          )}
-          {question.allowOther && !!question.options?.length && (
+          {pending &&
+            item.allowOther &&
+            !!item.options?.length &&
+            custom !== item.id && (
+              <Button
+                variant="ghost"
+                size="small"
+                onClick={() => {
+                  setCustom(item.id);
+                  if (!item.multiple)
+                    setAnswers((current) => ({ ...current, [item.id]: [] }));
+                }}
+              >
+                自定义回答
+              </Button>
+            )}
+          {pending && (!item.options?.length || custom === item.id) && (
             <TextField
-              label={`${question.title}：其他回答`}
-              value={(answers[question.id] ?? [])
-                .filter(
-                  (value) =>
-                    !question.options?.some((option) => option.id === value),
-                )
-                .join(", ")}
+              label="你的回答"
+              multiline={item.multiline}
+              value={
+                answers[item.id]
+                  ?.filter(
+                    (value) =>
+                      !item.options?.some((option) => option.id === value),
+                  )
+                  .join(", ") ?? ""
+              }
               disabled={action.busy}
               onValueChange={(value) =>
                 setAnswers((current) => ({
                   ...current,
-                  [question.id]: [
-                    ...(current[question.id] ?? []).filter((value) =>
-                      question.options?.some((option) => option.id === value),
-                    ),
+                  [item.id]: [
+                    ...(item.multiple
+                      ? (current[item.id] ?? []).filter((id) =>
+                          item.options?.some((option) => option.id === id),
+                        )
+                      : []),
                     ...(value ? [value] : []),
                   ],
                 }))
               }
             />
           )}
+          {!pending && !!selected[item.id]?.length && (
+            <p className="interaction-result">
+              {(selected[item.id] ?? [])
+                .map(
+                  (value) =>
+                    item.options?.find((option) => option.id === value)
+                      ?.label ?? value,
+                )
+                .join("、")}
+            </p>
+          )}
         </div>
       ))}
-      {approval.kind === "question" && !approval.questions?.length && (
-        <TextField
-          label="你的回答"
-          value={text}
-          onValueChange={setText}
-          disabled={action.busy}
-        />
-      )}
-      <div className="form-actions">
-        {approval.options?.map((option) => (
-          <Button
-            key={option.id}
-            size="small"
+      {pending &&
+        question &&
+        !request.questions?.length &&
+        !request.options?.length && (
+          <TextField
+            label="你的回答"
+            value={text}
+            onValueChange={setText}
             disabled={action.busy}
-            onClick={() => void answer(true, option.id)}
-          >
-            {option.label}
-          </Button>
-        ))}
-        {!approval.options?.length && (
+          />
+        )}
+      {pending ? (
+        <div className="interaction-actions">
+          {request.options?.map((option) => (
+            <Button
+              key={option.id}
+              size="small"
+              variant="secondary"
+              disabled={action.busy}
+              onClick={() => void respond({ allow: true, optionId: option.id })}
+            >
+              {option.label}
+            </Button>
+          ))}
+          {!request.options?.length &&
+            (!single || custom || !request.questions?.[0]?.options?.length) && (
+              <Button
+                size="small"
+                variant="secondary"
+                disabled={
+                  action.busy ||
+                  (question &&
+                    (request.questions?.length
+                      ? request.questions.some(
+                          (item) =>
+                            item.required !== false &&
+                            !answers[item.id]?.some((value) => value.trim()),
+                        )
+                      : !text.trim()))
+                }
+                onClick={() =>
+                  void respond({
+                    allow: true,
+                    answers,
+                    ...(text ? { text } : {}),
+                  })
+                }
+              >
+                {question ? "发送回答" : "批准"}
+              </Button>
+            )}
           <Button
             size="small"
-            disabled={
-              action.busy ||
-              Boolean(
-                approval.questions?.some(
-                  (question) =>
-                    question.required !== false &&
-                    !answers[question.id]?.some((value) => value.trim()),
-                ),
-              )
-            }
-            onClick={() => void answer(true)}
+            variant="ghost"
+            disabled={action.busy}
+            onClick={() => void respond({ allow: false })}
           >
-            {approval.kind === "question" ? "发送回答" : "允许这次操作"}
+            {question ? "取消" : "拒绝"}
           </Button>
-        )}
-        <Button
-          size="small"
-          variant="secondary"
-          disabled={action.busy}
-          onClick={() => void answer(false)}
-        >
-          {approval.kind === "question" ? "取消提问" : "拒绝"}
-        </Button>
-      </div>
-      {action.error && (
+        </div>
+      ) : (
+        <p className="interaction-result" role="status">
+          {record.state === "expired"
+            ? "已失效"
+            : record.state === "denied"
+              ? question
+                ? "已取消"
+                : "已拒绝"
+              : question
+                ? "已回答"
+                : "已批准"}
+          {summary && ` · ${summary}`}
+        </p>
+      )}
+      {pending && action.error && (
         <p className="alert" role="alert">
           {action.error}
         </p>

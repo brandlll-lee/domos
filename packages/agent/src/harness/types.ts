@@ -87,6 +87,7 @@ export type EngineModel = {
 };
 export type EngineImage = { type: "image"; data: string; mimeType: string };
 export type EngineApproval = {
+  requestedAt?: number;
   takeover?: NonNullable<ChatMessage["takeover"]>;
   preview?: EngineImage;
   id: string;

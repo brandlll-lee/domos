@@ -17,7 +17,6 @@ import { useComputer } from "../computer/use-computer.ts";
 import { useSettings } from "../settings/context.ts";
 import { Workspace } from "../shell/workspace.tsx";
 import { UsageSurface } from "../usage/page.tsx";
-import { Approvals } from "./approvals.tsx";
 import { Composer } from "./composer.tsx";
 import { ContextRing } from "./context.tsx";
 import { chatCopy } from "./copy.ts";
@@ -306,18 +305,10 @@ function BotChat({
                   setDetailsOpen(true);
                 }}
                 status={
-                  <>
-                    <RuntimeStatus
-                      state={chat.view.runtime}
-                      onDraft={(text) => draft.update({ text })}
-                    />
-                    {!!chat.view.approvals?.length && (
-                      <Approvals
-                        botId={bot.id}
-                        approvals={chat.view.approvals}
-                      />
-                    )}
-                  </>
+                  <RuntimeStatus
+                    state={chat.view.runtime}
+                    onDraft={(text) => draft.update({ text })}
+                  />
                 }
               />
             ) : (

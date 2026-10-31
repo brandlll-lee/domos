@@ -19,8 +19,18 @@ type View = {
 export class ComputerViews {
   private readonly sessions = new Map<string, View>();
   private readonly computers: Computers;
-  constructor(computers: Computers) {
+  private readonly requestControl: (
+    botId: number,
+    id: string,
+    controlling: boolean,
+    context: Context,
+  ) => Promise<void>;
+  constructor(
+    computers: Computers,
+    requestControl: ComputerViews["requestControl"] = async () => {},
+  ) {
     this.computers = computers;
+    this.requestControl = requestControl;
   }
 
   async open(
@@ -145,6 +155,8 @@ export class ComputerViews {
         await view.target.services.release(botId, view.service, view.lease);
       }
       view.lease = undefined;
+      if (view.requestId)
+        await this.requestControl(botId, view.requestId, false, context);
     } else {
       view.target.services.viewAccess(botId, view.service, view.lease);
       if (message.type !== "ack" && view.taking)
@@ -187,6 +199,8 @@ export class ComputerViews {
           view.service,
           view.lease,
         );
+      if (view.requestId)
+        await this.requestControl(view.botId, view.requestId, false, context);
     }
   }
 
@@ -232,6 +246,7 @@ export class ComputerViews {
       context,
     );
     view.requestId = requestId;
+    await this.requestControl(botId, requestId, true, context);
     return state;
   }
 

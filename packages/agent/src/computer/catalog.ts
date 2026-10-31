@@ -26,6 +26,7 @@ import { requiredText, requireRevision, WorkError } from "../work/state.ts";
 import { ComputerAssistance } from "./assistance.ts";
 import { Computer, type ComputerStatus } from "./index.ts";
 import { ComputerPreparation } from "./preparation.ts";
+import { ComputerRequests } from "./runtime.ts";
 import type { ComputerService } from "./service-types.ts";
 import {
   type ComputerRecord,
@@ -46,7 +47,18 @@ export type ComputerView = ComputerStatus & {
 
 export class Computers {
   readonly tools = new ComputerTools(this);
-  readonly views = new ComputerViews(this);
+  readonly views = new ComputerViews(
+    this,
+    async (botId, id, controlling, context) => {
+      await this.harness.commit(async (tx) => {
+        const request = (
+          await tx.doc(ComputerRequests, botId as ConversationId)
+        ).approvals.find((item) => item.id === id);
+        if (request?.takeover)
+          request.takeover.state = controlling ? "controlling" : "waiting";
+      }, context);
+    },
+  );
   private harness!: Harness;
   private readonly targets = new Map<string, Computer>();
   private readonly changing = new Set<string>();

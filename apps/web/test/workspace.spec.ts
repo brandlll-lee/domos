@@ -2163,3 +2163,122 @@ test("Work follows a native turn, opens its record and preserves it after stop a
   );
   await page.screenshot({ path: info.outputPath("work-narrow.png") });
 });
+
+test("shared question and approval cards persist answers and terminal states", async ({
+  page,
+}, info) => {
+  await page.goto(url);
+  const options = [
+    { id: "a", label: "第一项" },
+    { id: "b", label: "第二项" },
+  ];
+  for (const mode of [
+    "custom",
+    "multiple",
+    "approve",
+    "deny",
+    "expire",
+  ] as const) {
+    const title = `确认 ${mode}`;
+    worker.send({
+      approval: {
+        id: mode,
+        kind:
+          mode === "custom" || mode === "multiple" ? "question" : "permission",
+        title,
+        detail: mode === "approve" ? "测试操作参数" : "",
+        questions:
+          mode === "custom" || mode === "multiple"
+            ? [
+                {
+                  id: "q",
+                  title,
+                  options,
+                  allowOther: true,
+                  multiple: mode === "multiple",
+                },
+              ]
+            : undefined,
+      },
+    });
+    const card = page.getByRole("region", { name: title, exact: true });
+    await expect(card).toBeVisible();
+    await page.reload();
+    const reply = new Promise<{
+      type: string;
+      answer: { answers: Record<string, string[]> };
+    }>((resolve) => {
+      const receive = (value: {
+        type: string;
+        answer: { answers: Record<string, string[]> };
+      }) => {
+        if (value.type !== "answered") return;
+        worker.off("message", receive);
+        resolve(value);
+      };
+      worker.on("message", receive);
+    });
+    if (mode === "custom") {
+      await card
+        .getByRole("button", { name: "自定义回答", exact: true })
+        .click();
+      await expect(
+        card.getByRole("button", { name: "发送回答", exact: true }),
+      ).toBeDisabled();
+      await card
+        .getByRole("textbox", { name: "你的回答", exact: true })
+        .fill("我自己选择");
+      await card.getByRole("button", { name: "发送回答", exact: true }).click();
+    } else if (mode === "multiple") {
+      await card.getByRole("button", { name: "A 第一项", exact: true }).click();
+      await card.getByRole("button", { name: "B 第二项", exact: true }).click();
+      await expect(card).toHaveAttribute("data-state", "pending");
+      await card.getByRole("button", { name: "发送回答", exact: true }).click();
+    } else if (mode === "expire") worker.send("release");
+    else
+      await card
+        .getByRole("button", {
+          name: mode === "approve" ? "批准" : "拒绝",
+          exact: true,
+        })
+        .click();
+    const result = await reply;
+    expect(result.type).toBe("answered");
+    if (mode === "custom")
+      expect(result.answer.answers).toEqual({ q: ["我自己选择"] });
+    if (mode === "multiple")
+      expect(result.answer.answers).toEqual({ q: ["a", "b"] });
+    const expected =
+      mode === "expire"
+        ? "已失效"
+        : mode === "deny"
+          ? "已拒绝"
+          : mode === "approve"
+            ? "已批准"
+            : "已回答";
+    await expect(card.getByRole("status")).toHaveText(expected);
+    await page.reload();
+    await expect(card.getByRole("status")).toHaveText(expected);
+  }
+  for (const width of [1360, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(
+      page.getByRole("region", { name: "确认 expire", exact: true }),
+    ).toBeInViewport();
+    if (width === 390) {
+      const inspector = page.getByRole("complementary", { name: /的详情$/ });
+      await inspector
+        .getByRole("button", { name: "关闭", exact: true })
+        .click();
+      await expect(inspector).not.toBeVisible();
+    }
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: info.outputPath(`interactions-${width}.png`),
+    });
+  }
+});

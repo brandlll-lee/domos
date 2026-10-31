@@ -6,6 +6,7 @@ import { MessageBubble } from "@domos/ui/message";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { Fragment, memo, type ReactNode } from "react";
+import { Approval } from "./approvals.tsx";
 import { Attachments } from "./attachments.tsx";
 import { chatCopy } from "./copy.ts";
 import { ErrorMessage } from "./error-message.tsx";
@@ -42,7 +43,9 @@ const MessageRow = memo(function MessageRow({
   if (item.kind === "attachments")
     return (
       <div className="delivered-files" data-transcript-key={key}>
-        <Attachments botId={botId} files={item.files} />
+        <MessageBubble side="incoming">
+          <Attachments botId={botId} files={item.files} />
+        </MessageBubble>
       </div>
     );
   const { message } = item;
@@ -53,11 +56,21 @@ const MessageRow = memo(function MessageRow({
       aria-label={
         message.role === "user"
           ? chatCopy.userMessage
-          : chatCopy.assistantMessage(botName)
+          : message.approval
+            ? `${botName} 的${message.approval.request.kind === "question" ? "提问" : "审批"}`
+            : message.takeover
+              ? `${botName} 的接管请求`
+              : chatCopy.assistantMessage(botName)
       }
     >
-      {message.takeover ? (
-        <TakeoverCard botId={botId} message={message} />
+      {message.approval ? (
+        <MessageBubble side="incoming">
+          <Approval botId={botId} message={message} />
+        </MessageBubble>
+      ) : message.takeover ? (
+        <MessageBubble side="incoming">
+          <TakeoverCard botId={botId} message={message} />
+        </MessageBubble>
       ) : (
         <MessageBubble side={message.role === "user" ? "outgoing" : "incoming"}>
           <MessageBody>

@@ -6,11 +6,82 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { expect, onTestFinished, test } from "vitest";
+import type { ChatView } from "../src/chat-view.ts";
 import { Computer } from "../src/computer/index.ts";
+import { EngineDoc, EngineMessage } from "../src/harness/state.ts";
+import type { ChatMessage } from "../src/messages.ts";
 import { parseConfig } from "../src/runtime/config.ts";
+import { Runtime } from "../src/runtime/index.ts";
 import { acquireDataLease } from "../src/runtime/lease.ts";
+import { runtimeFixture } from "./fixtures/runtime.ts";
 
 const model = { provider: "faux", modelId: "faux-1" };
+
+test("history keeps the saved record when its draft snapshot overlaps", async () => {
+  const { harness, conversation } = await runtimeFixture();
+  const message = {
+    id: "reply",
+    role: "assistant",
+    content: [],
+    stopped: false,
+  } satisfies ChatMessage;
+  await harness.commit(async (tx) => {
+    (await tx.doc(EngineDoc, conversation.id)).drafts = [message];
+    await tx.appendEntry(conversation.id, {
+      kind: EngineMessage,
+      data: message,
+    });
+  }, BACKGROUND_CONTEXT);
+  const view = await Runtime.prototype.view.call(
+    { harness } as unknown as Runtime,
+    conversation.id,
+    BACKGROUND_CONTEXT,
+  );
+  expect(view.messages.filter((item) => item.id === "reply")).toHaveLength(1);
+  expect(
+    view.messages.find((item) => item.id === "reply")?.cursor,
+  ).toBeDefined();
+});
+
+test("incremental history replaces completed drafts and retains paged records", async () => {
+  const message = (id: string, cursor?: string) => ({
+    id,
+    cursor,
+    role: "assistant" as const,
+    content: [],
+    stopped: false,
+  });
+  const previous: ChatView = {
+    id: 1,
+    model: null,
+    instructions: "",
+    draft: null,
+    activeTurnId: null,
+    busy: false,
+    failed: false,
+    tools: [],
+    messages: [message("old", "1:0"), message("draft")],
+  };
+  const next = { ...previous, messages: [message("saved", "2:0")] };
+  const source = {
+    async *watch() {
+      yield previous;
+      yield next;
+    },
+  } as unknown as Runtime;
+  const events = [];
+  for await (const event of Runtime.prototype.updates.call(
+    source,
+    1,
+    BACKGROUND_CONTEXT,
+  ))
+    events.push(event);
+  expect(events[1]).toMatchObject({
+    type: "update",
+    messages: [message("saved", "2:0")],
+    removed: ["draft"],
+  });
+});
 async function directory() {
   const root = await mkdtemp(join(tmpdir(), "domos-runtime-"));
   onTestFinished(() => rm(root, { recursive: true, force: true }));

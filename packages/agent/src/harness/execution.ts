@@ -287,6 +287,8 @@ export class EngineExecution {
         approve: (approval) => approve(approval, active.controller.signal),
         emit: async (event) => {
           if (!receiving || active.controller.signal.aborted) return;
+          if (event.type === "approval_closed")
+            this.computer.expire(runtime.conversationId, event.id);
           if (event.type === "approval") {
             void approve(event.approval, active.controller.signal)
               .then(async (answer) =>

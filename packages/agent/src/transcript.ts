@@ -45,6 +45,27 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
     });
   }
   let attachmentTurn: string | undefined;
+  const delivered = new Set<string>();
+  const attached = new Set(
+    view.messages.flatMap((message) =>
+      message.role === "assistant" && !message.pending && !message.stopped
+        ? (message.attachments ?? []).map(
+            (file) => `${message.turnId ?? message.id}:${file.id}`,
+          )
+        : [],
+    ),
+  );
+  const filesFor = (message: ChatMessage) =>
+    message.attachments?.filter((file) => {
+      const key = `${message.turnId ?? message.id}:${file.id}`;
+      if (
+        delivered.has(key) ||
+        (message.role === "toolResult" && attached.has(key))
+      )
+        return false;
+      delivered.add(key);
+      return true;
+    });
   view.messages.forEach((message, index) => {
     const id = message.turnId ?? message.id;
     const held =
@@ -70,20 +91,22 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
             stopped: false,
           },
         });
-      if (!held && message.attachments?.length) {
+      const files = !held ? filesFor(message) : undefined;
+      if (files?.length) {
         const previous = items.at(-1);
         if (previous?.kind === "attachments" && attachmentTurn === id)
-          previous.files.push(...message.attachments);
+          previous.files.push(...files);
         else
           items.push({
             kind: "attachments",
             id: message.id,
-            files: [...message.attachments],
+            files,
           });
         attachmentTurn = id;
       }
     } else if (
       message.takeover ||
+      message.approval ||
       (!message.pending && !message.stopped && message.stopReason !== "error")
     ) {
       const content = message.content.filter(
@@ -91,8 +114,13 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
           part.type === "image" ||
           (part.type === "text" && part.text.trim().length > 0),
       );
-      const attachments = held ? undefined : message.attachments;
-      if (content.length || attachments?.length)
+      const attachments = held ? undefined : filesFor(message);
+      if (
+        message.approval ||
+        message.takeover ||
+        content.length ||
+        attachments?.length
+      )
         items.push({
           kind: "message",
           id: message.id,
@@ -102,5 +130,21 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
     const notice = notices.get(id);
     if (notice && index === ends.get(id)) items.push(notice);
   });
+  for (const card of items.filter(
+    (item) =>
+      item.kind === "message" &&
+      (item.message.approval || item.message.takeover),
+  )) {
+    if (card.kind !== "message" || card.message.timestamp === undefined)
+      continue;
+    const at = card.message.timestamp;
+    items.splice(items.indexOf(card), 1);
+    const index = items.findIndex(
+      (item) =>
+        item.kind === "message" &&
+        (item.message.receivedAt ?? item.message.timestamp ?? 0) > at,
+    );
+    items.splice(index < 0 ? items.length : index, 0, card);
+  }
   return items;
 }

@@ -28,6 +28,7 @@ import type {
   ProductResult,
   ProductTool,
 } from "../harness/types.ts";
+import { approvalMessage } from "../messages.ts";
 import type { Computers } from "./catalog.ts";
 import { ComputersDoc } from "./state.ts";
 import { takeoverInput } from "./takeover.ts";
@@ -68,6 +69,7 @@ export class ComputerRuntime {
     {
       botId: number;
       resolve: (answer: EngineAnswer) => void;
+      expire: () => void;
       completing: boolean;
     }
   >();
@@ -339,16 +341,22 @@ export class ComputerRuntime {
     )
       return { allow: true };
     signal.throwIfAborted();
+    approval = { ...approval, requestedAt: Date.now() };
     const answer = Promise.withResolvers<EngineAnswer>();
+    let expired = false;
+    const abort = () => {
+      expired = true;
+      answer.resolve({ allow: false });
+    };
     this.pending.set(approval.id, {
       botId,
       resolve: answer.resolve,
+      expire: abort,
       completing: false,
     });
-    const abort = () => answer.resolve({ allow: false });
     signal.addEventListener("abort", abort, { once: true });
     const timer = approval.takeover ? undefined : setTimeout(abort, 600_000);
-    let accepted = false;
+    let response: EngineAnswer | undefined;
     try {
       await this.harness.commit(async (tx) => {
         (
@@ -357,7 +365,7 @@ export class ComputerRuntime {
       }, context);
       signal.throwIfAborted();
       const result = await answer.promise;
-      accepted = result.allow;
+      response = result;
       return result;
     } finally {
       clearTimeout(timer);
@@ -369,25 +377,22 @@ export class ComputerRuntime {
           (item) => item.id === approval.id,
         );
         doc.approvals = doc.approvals.filter((item) => item.id !== approval.id);
-        if (approval.takeover && registered)
+        if (registered)
           await tx.appendEntry(botId as ConversationId, {
             kind: "domos.engine-message",
-            data: {
-              id: approval.id,
-              role: "assistant",
-              content: [
-                { type: "text", text: approval.detail, key: approval.id },
-                ...(approval.preview
-                  ? [{ ...approval.preview, key: `${approval.id}:preview` }]
-                  : []),
-              ],
-              timestamp: Date.now(),
-              stopped: !accepted,
-              takeover: {
-                ...approval.takeover,
-                state: accepted ? "done" : "expired",
-              },
-            },
+            data: JSON.parse(
+              JSON.stringify(
+                approvalMessage(
+                  approval,
+                  expired || !response
+                    ? "expired"
+                    : response.allow
+                      ? "answered"
+                      : "denied",
+                  response,
+                ),
+              ),
+            ),
           });
       }, BACKGROUND_CONTEXT);
     }
@@ -413,6 +418,11 @@ export class ComputerRuntime {
         throw new Error("工作电脑配置已改变。");
     }
     return { pending, approval };
+  }
+
+  expire(botId: number, id: string) {
+    const request = this.pending.get(id);
+    if (request?.botId === botId && !request.completing) request.expire();
   }
 
   async answer(

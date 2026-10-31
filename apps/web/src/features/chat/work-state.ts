@@ -17,6 +17,7 @@ export function workTurns(view: ChatView) {
     ...view.messages,
     ...(view.draft ? [view.draft] : []),
   ]) {
+    if (message.approval || message.takeover) continue;
     const original = message.turnId ?? message.id;
     const id =
       view.runs?.find((run) => run.inputTurns?.includes(original))?.turnId ??

@@ -1394,7 +1394,7 @@ test("published files wait for the complete reply", async ({ page }) => {
   await page.goto(url);
   await page.getByLabel("消息", { exact: true }).fill("生成报告");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  await page.getByRole("button", { name: "允许这次操作", exact: true }).click();
+  await page.getByRole("button", { name: "批准", exact: true }).click();
   await expect(page.locator(".typing-dots")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "下载 report.md", exact: true }),
@@ -2449,8 +2449,8 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
   });
   await expect(send).toBeEnabled();
   await send.click();
-  await page.getByRole("button", { name: "允许这次操作", exact: true }).click();
-  await page.getByRole("button", { name: "允许这次操作", exact: true }).click();
+  await page.getByRole("button", { name: "批准", exact: true }).click();
+  await page.getByRole("button", { name: "批准", exact: true }).click();
   const report = page.getByRole("button", {
     name: "下载 report.md",
     exact: true,
@@ -2873,7 +2873,7 @@ test("typing follows the Bot and failures retain their error message", async ({
   await control(call("stopped.md"));
   await input.fill("生成文件");
   await send.click();
-  await page.getByRole("button", { name: "允许这次操作", exact: true }).click();
+  await page.getByRole("button", { name: "批准", exact: true }).click();
   await expect(page.locator(".typing-dots")).toBeVisible();
   await createBot(page, "旁观助手");
   await expect(page.locator(".typing-dots")).toHaveCount(0);
@@ -3288,17 +3288,19 @@ test("native questions use the shared card and native replies persist", async ({
   await page.getByRole("button", { name: "发送", exact: true }).click();
   const replies = page.getByLabel("Domos 的回复", { exact: true });
   await expect(replies).toHaveText(["正在核对资料。"]);
-  await expect(
-    page.getByRole("button", { name: "发送回答", exact: true }),
-  ).toBeDisabled();
+  const choice = page.getByRole("region", {
+    name: "你要哪种结果？",
+    exact: true,
+  });
+  await expect(choice).toBeVisible();
+  await expect(page.locator(".composer-area .interaction-card")).toHaveCount(0);
+  await expect(choice.getByRole("combobox")).toHaveCount(0);
   await page.reload();
+  await choice.getByRole("button", { name: "A 简短", exact: true }).click();
+  await expect(choice.getByRole("status")).toHaveText("已回答");
   await page
-    .getByRole("combobox", { name: "你要哪种结果？", exact: true })
-    .click();
-  await page.getByRole("option", { name: "简短", exact: true }).click();
-  await page.getByRole("button", { name: "发送回答", exact: true }).click();
-  await page
-    .getByRole("textbox", { name: "说明用途", exact: true })
+    .getByRole("region", { name: "说明用途", exact: true })
+    .getByRole("textbox", { name: "你的回答", exact: true })
     .fill("团队周报");
   await page.screenshot({
     path: "test-results/native-question.png",
@@ -3306,12 +3308,18 @@ test("native questions use the shared card and native replies persist", async ({
   });
   await page.getByRole("button", { name: "发送回答", exact: true }).click();
   await expect(replies).toHaveText(["正在核对资料。", "已按你的选择完成。"]);
-  await expect(page.locator(".native-approval")).toHaveCount(0);
+  await expect(
+    page.locator('.interaction-card[data-state="pending"]'),
+  ).toHaveCount(0);
   const port = Number(new URL(url).port);
   await stop();
   await start(port);
   await page.reload();
   await expect(replies).toHaveText(["正在核对资料。", "已按你的选择完成。"]);
+  await expect(choice.getByRole("status")).toHaveText("已回答");
+  await expect(
+    choice.getByRole("button", { name: "A 简短", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await control({
     responses: [
       {
@@ -3330,9 +3338,33 @@ test("native questions use the shared card and native replies persist", async ({
   });
   await page.getByLabel("消息", { exact: true }).fill("再问一次");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  await page.getByRole("button", { name: "取消提问", exact: true }).click();
+  await page.getByRole("button", { name: "取消", exact: true }).click();
   await expect(replies.last()).toHaveText("提问已取消。");
-  await expect(page.locator(".native-approval")).toHaveCount(0);
+  await expect(
+    page.locator('.interaction-card[data-state="pending"]'),
+  ).toHaveCount(0);
+  await control({
+    content: [
+      {
+        type: "toolCall",
+        id: crypto.randomUUID(),
+        name: "ask_user",
+        arguments: { questions: [{ question: "停止前的问题" }] },
+      },
+    ],
+    stopReason: "toolUse",
+  });
+  await page.getByLabel("消息", { exact: true }).fill("等待我的回答");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const stopped = page.getByRole("region", {
+    name: "停止前的问题",
+    exact: true,
+  });
+  await expect(stopped).toBeVisible();
+  await page.getByRole("button", { name: "停止生成", exact: true }).click();
+  await expect(stopped.getByRole("status")).toHaveText("已失效");
+  await page.reload();
+  await expect(stopped.getByRole("status")).toHaveText("已失效");
 });
 
 test("Bot identity stays consistent and image previews work in drafts and history", async ({

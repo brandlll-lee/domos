@@ -16,7 +16,11 @@ import type {
   EngineRun,
   EngineRuntimeState,
 } from "./harness/types.ts";
-import type { ChatMessage, MessageDelivery } from "./messages.ts";
+import {
+  approvalMessage,
+  type ChatMessage,
+  type MessageDelivery,
+} from "./messages.ts";
 import { modelFailure } from "./runtime/model-diagnostics.ts";
 import { RoutineInput } from "./work/routine-state.ts";
 
@@ -205,21 +209,7 @@ export function chatView(
     ? project(live.generation.message, "draft")
     : null;
   for (const approval of approvals) {
-    if (approval.takeover)
-      messages.push({
-        id: approval.id,
-        turnId,
-        role: "assistant",
-        content: [
-          { type: "text", text: approval.detail, key: approval.id },
-          ...(approval.preview
-            ? [{ ...approval.preview, key: `${approval.id}:preview` }]
-            : []),
-        ],
-        takeover: approval.takeover,
-        pending: true,
-        stopped: false,
-      });
+    messages.push({ ...approvalMessage(approval, "pending"), turnId });
   }
   return {
     id: view.conversation.id,

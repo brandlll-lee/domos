@@ -239,6 +239,7 @@ test("Pi returns extension selections and cancellations to the native request", 
         {
           id: "choose",
           title: "Choose target",
+          allowOther: true,
           options: [
             { id: "Production", label: "Production" },
             { id: "Preview", label: "Preview" },
@@ -249,12 +250,12 @@ test("Pi returns extension selections and cancellations to the native request", 
   });
   await session.answer("choose", {
     allow: true,
-    answers: { choose: ["Preview"] },
+    answers: { choose: ["Custom target"] },
   });
   expect(process.requests).toContainEqual({
     type: "extension_ui_response",
     id: "choose",
-    value: "Preview",
+    value: "Custom target",
   });
   process.frame({
     type: "extension_ui_request",

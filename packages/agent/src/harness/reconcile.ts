@@ -6,6 +6,7 @@ import type {
   Tx,
 } from "@earendil-works/pi-durable";
 import { ComputerRequests } from "../computer/runtime.ts";
+import { approvalMessage } from "../messages.ts";
 import { projectContext } from "./context.ts";
 import { EngineDoc, EngineInputDoc, EngineMessage } from "./state.ts";
 import { type EngineTaskInput, stored } from "./task-types.ts";
@@ -55,22 +56,9 @@ export async function stopEngine(tx: Tx, id: ConversationId) {
   }
   const requests = await tx.doc(ComputerRequests, id);
   for (const approval of requests.approvals) {
-    if (!approval.takeover) continue;
     await tx.appendEntry(id, {
       kind: EngineMessage,
-      data: {
-        id: approval.id,
-        role: "assistant",
-        content: [
-          { type: "text", text: approval.detail, key: approval.id },
-          ...(approval.preview
-            ? [{ ...approval.preview, key: `${approval.id}:preview` }]
-            : []),
-        ],
-        timestamp: Date.now(),
-        stopped: true,
-        takeover: { ...approval.takeover, state: "expired" },
-      },
+      data: stored(approvalMessage(approval, "expired")),
     });
   }
   requests.approvals = [];

@@ -169,8 +169,8 @@ test("files arrive at task completion and stay hidden for interrupted tasks", ()
     },
   ]);
   const complete = chatTranscript(view(messages));
-  expect(complete[1]).toMatchObject({ kind: "attachments", files: [file] });
-  expect(complete[2]).toMatchObject({
+  expect(complete).toHaveLength(2);
+  expect(complete[1]).toMatchObject({
     kind: "message",
     message: { attachments: [file] },
   });
@@ -247,4 +247,56 @@ test("takeover cards remain visible while waiting and after expiry", () => {
       { kind: "message", id: card.id, message: card },
     ]);
   }
+});
+
+test("question and permission records remain in the transcript in all states", () => {
+  for (const kind of ["question", "permission"] as const)
+    for (const state of ["pending", "answered", "denied", "expired"] as const) {
+      const card = message("assistant", "turn", [], {
+        pending: state === "pending",
+        stopped: state === "expired",
+        approval: {
+          request: { id: "request", kind, title: "Confirm", detail: "" },
+          state,
+        },
+      });
+      expect(chatTranscript(view([card]))).toMatchObject([
+        { kind: "message", message: card },
+      ]);
+    }
+});
+
+test("saved questions keep their receipt order between progress and final text", () => {
+  const progress = message(
+    "assistant",
+    "turn",
+    [{ type: "text", text: "Checking" }],
+    { receivedAt: 10, timestamp: 25 },
+  );
+  const card = message("assistant", "turn", [], {
+    timestamp: 20,
+    approval: {
+      request: { id: "q", kind: "question", title: "Choose", detail: "" },
+      state: "answered",
+    },
+  });
+  const final = message("assistant", "turn", [{ type: "text", text: "Done" }], {
+    receivedAt: 30,
+    timestamp: 30,
+  });
+  expect(
+    chatTranscript(view([card, progress, final])).map((item) => item.id),
+  ).toEqual([progress.id, card.id, final.id]);
+});
+
+test("repeated file receipts appear once per turn", () => {
+  const file = { id: "same", name: "report.txt", path: "report.txt", size: 1 };
+  expect(
+    chatTranscript(
+      view([
+        message("toolResult", "turn", [], { attachments: [file, file] }),
+        message("toolResult", "turn", [], { attachments: [file] }),
+      ]),
+    ),
+  ).toMatchObject([{ kind: "attachments", files: [file] }]);
 });

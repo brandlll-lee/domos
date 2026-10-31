@@ -8,6 +8,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { ComputerRequests } from "../computer/runtime.ts";
 import { EngineDoc, EngineMessage } from "../harness/state.ts";
+import { approvalMessage } from "../messages.ts";
 import { stopChat } from "../stop-chat.ts";
 
 const RuntimeMigration = defineDoc<{ complete: boolean }>({
@@ -34,16 +35,9 @@ export async function migrateRuntime(
         .approvals) {
         await tx.appendEntry(botId, {
           kind: EngineMessage,
-          data: {
-            id: `expired:${approval.id}`,
-            role: "assistant",
-            content: [],
-            timestamp: Date.now(),
-            ...(approval.takeover
-              ? { takeover: { ...approval.takeover, state: "expired" } }
-              : {}),
-            stopped: true,
-          },
+          data: JSON.parse(
+            JSON.stringify(approvalMessage(approval, "expired")),
+          ),
         });
       }
       (await tx.doc(ComputerRequests, botId)).approvals = [];

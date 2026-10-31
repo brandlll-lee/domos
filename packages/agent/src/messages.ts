@@ -7,6 +7,7 @@ import type {
 } from "@earendil-works/pi-ai";
 import type { ToolDiagnostic } from "@earendil-works/pi-durable";
 import type { Attachment } from "./attachments.ts";
+import type { EngineAnswer, EngineApproval } from "./harness/types.ts";
 import type { InputMaterials } from "./materials.ts";
 
 export type MessageDelivery = { text: string; kind?: "update" | "question" };
@@ -23,12 +24,17 @@ export type ChatMessage = {
   activity?: import("./harness/types.ts").EngineEvent;
   receivedAt?: number;
   endedAt?: number;
+  approval?: {
+    request: EngineApproval;
+    state: "pending" | "answered" | "denied" | "expired";
+    answer?: EngineAnswer;
+  };
   takeover?: {
     id: string;
     service: "browser" | "desktop";
     computerId: string;
     revision: number;
-    state: "waiting" | "done" | "expired";
+    state: "waiting" | "controlling" | "done" | "expired";
     url?: string;
   };
   id: string;
@@ -50,6 +56,41 @@ export type ChatMessage = {
   toolStatus?: "pending" | "running" | "done" | "failed" | "stopped";
   diagnostics?: readonly ToolDiagnostic[];
 };
+
+export function approvalMessage(
+  request: EngineApproval,
+  state: NonNullable<ChatMessage["approval"]>["state"],
+  answer?: EngineAnswer,
+): ChatMessage {
+  return {
+    id: `approval:${request.id}:${request.requestedAt ?? 0}`,
+    role: "assistant",
+    content: request.takeover
+      ? [
+          { type: "text", text: request.detail, key: request.id },
+          ...(request.preview
+            ? [{ ...request.preview, key: `${request.id}:preview` }]
+            : []),
+        ]
+      : [],
+    timestamp: request.requestedAt,
+    pending: state === "pending",
+    stopped: state === "expired",
+    ...(request.takeover
+      ? {
+          takeover: {
+            ...request.takeover,
+            state:
+              state === "pending"
+                ? request.takeover.state
+                : state === "answered"
+                  ? "done"
+                  : "expired",
+          },
+        }
+      : { approval: { request, state, ...(answer ? { answer } : {}) } }),
+  };
+}
 
 export function messageText(message: {
   content: string | readonly ChatContent[];

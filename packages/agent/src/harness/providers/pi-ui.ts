@@ -88,6 +88,7 @@ export function piUI(
                     title: frame.title,
                     ...(frame.method === "select"
                       ? {
+                          allowOther: true,
                           options: frame.options.map((value) => ({
                             id: value,
                             label: value,
@@ -119,11 +120,6 @@ export function piUI(
         return;
       }
       const value = answer.answers?.[id]?.[0] ?? answer.text ?? "";
-      if (
-        item.request.method === "select" &&
-        !item.request.options.includes(value)
-      )
-        throw new Error("请选择引擎提供的选项。");
       clearTimeout(item.timer);
       pending.delete(id);
       await rpc.send({
