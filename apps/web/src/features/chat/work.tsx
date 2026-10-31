@@ -166,7 +166,6 @@ export function WorkPanel(chat: ReturnType<typeof useChat>) {
           if (!open) setSelected(undefined);
         }}
         title="工作记录"
-        className="work-dialog"
         finalFocus={() => trigger.current}
       >
         {current && view && (

@@ -57,7 +57,7 @@ Lobe Icons 1.101.0
 Copyright (c) 2023 LobeHub
 Licensed under the MIT License. See licenses/lobe-icons.txt.
 Source: https://github.com/lobehub/lobe-icons
-apps/web/src/features/models/logos contains selected provider SVGs.
+apps/web/src/features/bots/engine-mark.tsx contains selected Harness vectors.
 
 JMESPath 0.16.0
 Copyright 2014 James Saryerwinnie

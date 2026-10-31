@@ -1,19 +1,6 @@
-.settings-window {
-  position: fixed;
-  z-index: 3;
-  inset: 50% auto auto 50%;
-  transform: translate(-50%, -50%);
-  width: min(
-    calc(var(--settings-content-width) + var(--settings-nav-width)),
-    calc(100vw - var(--space-8))
-  );
-  height: min(var(--dialog-max-height), calc(100dvh - var(--space-8)));
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
+.dialog-popup.settings-window {
+  padding: 0;
   background: var(--color-canvas);
-  color: var(--color-text);
-  box-shadow: var(--color-popup-shadow);
   outline: none;
 }
 .settings-page {

@@ -3,7 +3,7 @@ import { ContextWindow, contextPercent } from "@domos/ui/context-window";
 import { Button } from "@domos/ui/controls";
 import { client } from "../../client.ts";
 import { useWorkAction } from "../bots/details/use-bot-work.ts";
-import { ProviderMark } from "../models/provider-mark.tsx";
+import { EngineMark } from "../bots/engine-mark.tsx";
 
 const compactNumber = (value: number) =>
   new Intl.NumberFormat("en", {
@@ -77,7 +77,7 @@ export function ContextRing({
               />
             )}
           </svg>
-          <ProviderMark provider={provider} />
+          {provider && <EngineMark provider={provider} />}
         </button>
       }
     >

@@ -196,7 +196,7 @@ function BotChat({
             <ContextRing
               botId={bot.id}
               state={chat.view?.runtime}
-              provider={chat.view?.model?.provider}
+              provider={chat.view?.engine?.provider}
               busy={Boolean(chat.view?.busy)}
             />
           }
@@ -240,7 +240,7 @@ function BotChat({
               bot={bot}
               busy={Boolean(chat.view?.busy)}
               detailsOpen={detailsOpen}
-              provider={chat.view?.model?.provider}
+              provider={chat.view?.engine?.provider}
               onDetails={() => showPanel("root")}
             />
             <span className="sr-only" role="status">

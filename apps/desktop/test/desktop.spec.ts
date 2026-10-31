@@ -213,7 +213,7 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     await expect(page.getByRole("button", { name: "Bot详情" })).toBeVisible();
     await expect(page.locator(".app-titlebar, .app-rail")).toHaveCount(0);
     await expect(page.locator("#bot-details")).toBeVisible();
-    await expect(page.locator(".chat-identity .provider-mark")).toBeVisible();
+    await expect(page.locator(".chat-identity .engine-mark")).toBeVisible();
     await captureWindow(
       desktop,
       page,
@@ -226,9 +226,9 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     await expect(
       selector.getByRole("button", { name: "配置连接", exact: true }),
     ).toBeVisible();
-    await expect(page.locator(".chat-identity .provider-mark")).toHaveAttribute(
+    await expect(page.locator(".chat-identity .engine-mark")).toHaveAttribute(
       "data-provider",
-      "faux",
+      "pi",
     );
     await captureWindow(
       desktop,

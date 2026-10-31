@@ -21,9 +21,6 @@
 .detail-scroll[hidden] {
   display: none;
 }
-.memory-dialog {
-  width: min(44rem, calc(100% - var(--space-8)));
-}
 .memory-footer {
   display: flex;
   align-items: center;

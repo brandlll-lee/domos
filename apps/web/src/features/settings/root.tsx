@@ -81,9 +81,9 @@ export function SettingsRoot({
         }}
       >
         <PanelDialog.Portal>
-          <PanelDialog.Backdrop className="dialog-backdrop" />
+          <PanelDialog.Backdrop className="dialog-backdrop" forceRender />
           <PanelDialog.Popup
-            className="settings-window"
+            className="dialog-popup settings-window"
             finalFocus={returnTarget}
           >
             <PanelDialog.Title className="sr-only">设置</PanelDialog.Title>

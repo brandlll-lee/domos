@@ -1,7 +1,7 @@
 import type { Bot } from "@domos/agent/bots";
 import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
-import { ProviderMark } from "../models/provider-mark.tsx";
+import { EngineMark } from "../bots/engine-mark.tsx";
 
 export function ChatHeader({
   bot,
@@ -34,7 +34,7 @@ export function ChatHeader({
             size="small"
             state={busy ? "running" : "idle"}
           />
-          <ProviderMark provider={provider} />
+          {provider && <EngineMark provider={provider} />}
         </span>
         <span className="chat-identity-name">{bot.name}</span>
       </Button>

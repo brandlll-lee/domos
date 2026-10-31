@@ -76,16 +76,10 @@
 .engine-footer {
   padding-top: var(--space-2);
 }
-.engine-dialog {
-  width: min(28rem, calc(100% - var(--space-8)));
-}
 .engine-dialog-body {
   display: grid;
   gap: var(--space-4);
   min-height: 0;
-}
-.dialog-popup.engine-dialog-models {
-  width: min(44rem, calc(100% - var(--space-8)));
 }
 .engine-dialog-title,
 .engine-dialog-identity {

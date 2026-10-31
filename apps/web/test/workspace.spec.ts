@@ -41,11 +41,11 @@ test("three columns keep the identity capsule and navigation clear at each width
     Math.abs(pill.x + pill.width / 2 - frame.x - frame.width / 2),
   ).toBeLessThan(1);
   const avatar = await capsule.locator(".bot-avatar").boundingBox();
-  const mark = capsule.locator(".provider-mark");
+  const mark = capsule.locator(".engine-mark");
   const logo = await mark.boundingBox();
   if (!logo || !avatar) throw new Error("Identity icons missing");
   expect(logo.x).toBeLessThan(avatar.x + avatar.width);
-  await expect(mark).toHaveAttribute("data-provider", "faux");
+  await expect(mark).toHaveAttribute("data-provider", "pi");
   await expect(capsule.locator(".character")).toHaveCount(1);
   const footer = page.locator(".sidebar-footer");
   const composer = await page.locator(".message-composer").boundingBox();
@@ -91,6 +91,62 @@ test("three columns keep the identity capsule and navigation clear at each width
   ).toBeVisible();
   await page.getByRole("link", { name: "Domos", exact: true }).click();
   await expect(page.getByLabel("消息", { exact: true })).toBeVisible();
+});
+
+test("centered dialogs share stable geometry and Harness marks", async ({
+  page,
+}) => {
+  await page.goto(url);
+  for (const selector of [".chat-identity", ".context-ring"]) {
+    const mark = page.locator(`${selector} .engine-mark`);
+    await expect(mark).toHaveAttribute("data-provider", "pi");
+    await expect(mark.locator("path")).not.toHaveCount(0);
+    await expect(mark).toHaveCSS("transform", "none");
+  }
+  for (const width of [1360, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    if (width === 390) {
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "联系人", exact: true }).click();
+    }
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    const settings = page.getByRole("dialog", { name: "设置", exact: true });
+    await expect(settings).toBeVisible();
+    const size = await settings.boundingBox();
+    await expect(page.locator(".dialog-backdrop")).toHaveCSS(
+      "backdrop-filter",
+      "blur(8px)",
+    );
+    await page.keyboard.press("Escape");
+    if (width === 390)
+      await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+    await page
+      .locator("#bot-details")
+      .getByRole("button", { name: /^记忆(?:\s|$)/ })
+      .click();
+    const memory = page.getByRole("dialog", { name: "记忆" });
+    await expect(memory).toBeVisible();
+    await expect(page.locator(".dialog-backdrop")).toBeVisible();
+    await expect(page.locator(".dialog-backdrop")).toHaveCSS(
+      "backdrop-filter",
+      "blur(8px)",
+    );
+    for (const state of ["list", "editor"]) {
+      if (state === "editor")
+        await memory
+          .getByRole("button", { name: "新增记忆", exact: true })
+          .click();
+      const box = await memory.boundingBox();
+      expect(box?.width).toBe(size?.width);
+      expect(box?.height).toBe(size?.height);
+      await expect(memory.locator(".dialog-body > .scroll-viewport")).toHaveCSS(
+        "overflow-y",
+        /auto|scroll/,
+      );
+    }
+    await page.keyboard.press("Escape");
+    if (width === 390) await page.keyboard.press("Escape");
+  }
 });
 
 test("chat input stays active while a panel closes", async ({ page }) => {

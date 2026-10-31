@@ -31,7 +31,7 @@ export function Dialog({
     <BaseDialog.Root open={open} onOpenChange={onOpenChange}>
       {trigger && <BaseDialog.Trigger render={trigger} />}
       <BaseDialog.Portal>
-        <BaseDialog.Backdrop className="dialog-backdrop" />
+        <BaseDialog.Backdrop className="dialog-backdrop" forceRender />
         <BaseDialog.Popup
           className={`dialog-popup ${className ?? ""}`}
           finalFocus={finalFocus}

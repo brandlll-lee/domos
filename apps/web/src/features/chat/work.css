@@ -115,9 +115,6 @@
 .work-run {
   margin-inline-start: auto;
 }
-.dialog-popup.work-dialog {
-  width: min(52rem, calc(100vw - 2 * var(--space-4)));
-}
 .work-detail {
   display: grid;
   gap: var(--space-4);

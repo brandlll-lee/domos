@@ -201,7 +201,7 @@
 .chat-identity-icons .bot-avatar {
   z-index: 1;
 }
-.chat-identity-icons .provider-mark {
+.chat-identity-icons .engine-mark {
   width: var(--space-6);
   height: var(--space-6);
   margin-inline-start: calc(-1 * var(--space-2));
@@ -240,7 +240,7 @@
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
-.context-ring svg {
+.context-ring > svg:first-child {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -263,7 +263,7 @@
 .context-ring[data-level="high"] .context-ring-arc {
   stroke: var(--color-danger);
 }
-.context-ring .provider-mark {
+.context-ring .engine-mark {
   position: relative;
   width: 0.8125rem;
   height: 0.8125rem;

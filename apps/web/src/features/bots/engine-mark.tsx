@@ -50,7 +50,13 @@ const marks = {
 export function EngineMark({ provider }: { provider: EngineId }) {
   const mark = marks[provider as keyof typeof marks];
   if (!mark)
-    return <TerminalWindowIcon className="engine-mark" aria-hidden="true" />;
+    return (
+      <TerminalWindowIcon
+        className="engine-mark"
+        data-provider={provider}
+        aria-hidden="true"
+      />
+    );
   return (
     <svg
       className="engine-mark"

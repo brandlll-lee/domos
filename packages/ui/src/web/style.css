@@ -46,8 +46,9 @@ a,
 .dialog-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 2;
+  z-index: 3;
   background: var(--color-scrim);
+  backdrop-filter: blur(var(--surface-blur));
 }
 .dialog-popup {
   display: flex;
@@ -57,12 +58,15 @@ a,
   left: 50%;
   z-index: 3;
   transform: translate(-50%, -50%);
-  width: min(28rem, calc(100% - var(--space-8)));
-  max-height: min(var(--dialog-max-height), calc(100dvh - var(--space-12)));
+  width: min(
+    calc(var(--settings-content-width) + var(--settings-nav-width)),
+    calc(100vw - var(--space-8))
+  );
+  height: min(var(--dialog-max-height), calc(100dvh - var(--space-8)));
   overflow: hidden;
   padding: var(--space-6);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-panel);
+  border-radius: var(--radius-control);
   background: var(--color-surface);
   color: var(--color-text);
   box-shadow: var(--color-popup-shadow);
@@ -84,7 +88,7 @@ a,
   stroke-linecap: round;
 }
 .dialog-body {
-  flex: 0 1 auto;
+  flex: 1;
 }
 .dialog-body > .scroll-viewport {
   padding-inline-end: var(--space-3);

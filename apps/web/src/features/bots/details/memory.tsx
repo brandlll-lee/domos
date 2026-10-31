@@ -57,7 +57,6 @@ export function MemoryDialog({
           </span>
         )
       }
-      className="memory-dialog"
       footer={
         !selected && (
           <div className="memory-footer">
