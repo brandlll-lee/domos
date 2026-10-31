@@ -172,7 +172,9 @@ export function BotDetails({
           </Tabs.Root>
         </div>
       )}
-      {view === "root" && tab === "work" && active && <WorkPanel {...chat} />}
+      {view === "root" && tab === "work" && active && (
+        <WorkPanel {...chat} botId={bot.id} />
+      )}
       {view === "root" &&
         (tab === "computer" || tab === "browser") &&
         active && (

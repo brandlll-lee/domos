@@ -2056,18 +2056,36 @@ test("Work follows a native turn, opens its record and preserves it after stop a
   await page.getByRole("tab", { name: "Work", exact: true }).click();
   await page.getByLabel("消息", { exact: true }).fill("检查 Work 工作记录");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  const card = page.locator(".work-card").first();
+  const card = page.locator(".work-row").first();
   await expect(
-    card.getByRole("button", { name: "Stop", exact: true }),
+    card.getByRole("button", { name: "停止执行", exact: true }),
   ).toBeVisible();
+  await expect(card.locator(".work-mark")).toHaveAttribute(
+    "data-state",
+    "running",
+  );
+  expect((await card.boundingBox())?.height).toBe(60);
+  const background = await card
+    .locator(".work-open")
+    .evaluate((el) => getComputedStyle(el).backgroundColor);
+  await card.locator(".work-open").hover();
+  await expect
+    .poll(() =>
+      card
+        .locator(".work-open")
+        .evaluate((el) => getComputedStyle(el).backgroundColor),
+    )
+    .toBe(background);
   await page.screenshot({ path: info.outputPath("work-running.png") });
   await card.locator(".work-open").click();
   const dialog = page.getByRole("dialog", { name: "工作记录", exact: true });
   await expect(dialog).toContainText("检查 Work 工作记录");
   await page.keyboard.press("Escape");
   await expect(card.locator(".work-open")).toBeFocused();
-  await card.getByRole("button", { name: "Stop", exact: true }).click();
+  await card.getByRole("button", { name: "停止执行", exact: true }).click();
   await expect(card).toContainText("已停止");
+  await expect(dialog).not.toBeVisible();
+  await expect(card.locator(".work-mark")).not.toHaveAttribute("data-state");
   await page.reload();
   await page.getByRole("tab", { name: "Work", exact: true }).click();
   await expect(card).toContainText("已停止");
@@ -2094,7 +2112,7 @@ test("Work follows a native turn, opens its record and preserves it after stop a
   await page.getByLabel("消息", { exact: true }).fill("检查原生工具");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(card).toContainText("执行已结束");
-  await expect(page.locator(".work-card")).toHaveCount(2);
+  await expect(page.locator(".work-row")).toHaveCount(2);
   await card.locator(".work-open").click();
   await dialog.locator("summary").filter({ hasText: "原生思考" }).click();
   await expect(dialog).toContainText("核对原生记录。");
@@ -2104,4 +2122,14 @@ test("Work follows a native turn, opens its record and preserves it after stop a
   ).toBeVisible();
   await expect(dialog).toContainText("原生工具回执");
   await page.screenshot({ path: info.outputPath("work-detail.png") });
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect((await card.boundingBox())?.height).toBe(60);
+  const label = card.locator(".work-label");
+  await expect(label).toHaveCSS("min-width", "0px");
+  await expect(label.locator("span").first()).toHaveCSS(
+    "text-overflow",
+    "ellipsis",
+  );
+  await page.screenshot({ path: info.outputPath("work-narrow.png") });
 });

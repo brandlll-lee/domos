@@ -1,4 +1,3 @@
-import type { EnginePlan } from "@domos/agent/harness/types";
 import type { ChatMessage } from "@domos/agent/messages";
 import type { ChatView } from "@domos/agent/view";
 
@@ -40,11 +39,9 @@ export function workTurns(view: ChatView) {
       const results = new Map(
         messages.filter((m) => m.toolCallId).map((m) => [m.toolCallId, m]),
       );
-      let plan: EnginePlan = [];
       const items = messages.flatMap((message): WorkItem[] => {
         if (message.role === "user" || message.role === "toolResult") return [];
         const event = message.activity;
-        if (event?.type === "plan") plan = event.plan;
         const rows = message.content.flatMap((part): WorkItem[] => {
           if (part.type === "image") return [];
           const tool = part.type === "toolCall" ? part : null;
@@ -121,7 +118,6 @@ export function workTurns(view: ChatView) {
         status,
         title,
         items,
-        plan,
         request: messages
           .filter((m) => m.role === "user")
           .flatMap((m) =>

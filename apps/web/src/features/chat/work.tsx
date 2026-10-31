@@ -1,13 +1,14 @@
+import type { EngineRun } from "@domos/agent/harness/types";
 import { ActivityDetails } from "@domos/ui/activity";
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
 import { ScrollArea } from "@domos/ui/scroll-area";
-import { ArrowUpRightIcon } from "@phosphor-icons/react/dist/csr/ArrowUpRight";
-import { BrainIcon } from "@phosphor-icons/react/dist/csr/Brain";
+import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
 import { StopIcon } from "@phosphor-icons/react/dist/csr/Stop";
 import { WrenchIcon } from "@phosphor-icons/react/dist/csr/Wrench";
 import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { EngineMark } from "../bots/engine-mark.tsx";
+import { useModelSettings } from "../models/model-state.ts";
 import { Attachments } from "./attachments.tsx";
 import { MessageContent } from "./message-content.tsx";
 import { MessageDetail } from "./message-detail.tsx";
@@ -15,8 +16,17 @@ import type { useChat } from "./use-chat.ts";
 import { workStatus, workTime, workTurns } from "./work-state.ts";
 import "./work.css";
 
-export function WorkPanel(chat: ReturnType<typeof useChat>) {
+export function WorkPanel(
+  chat: ReturnType<typeof useChat> & { botId: number },
+) {
   const { view, connected, stopping, stop } = chat;
+  const { profile } = useModelSettings(chat.botId);
+  const modelName = (run: EngineRun | undefined) =>
+    profile?.catalog
+      .find((entry) => entry.id === run?.provider)
+      ?.models.find((model) => model.id === run?.model)?.name ??
+    run?.model ??
+    "模型未提供";
   const [selected, setSelected] = useState<string>();
   const [now, setNow] = useState(Date.now);
   const trigger = useRef<HTMLButtonElement | null>(null);
@@ -63,93 +73,69 @@ export function WorkPanel(chat: ReturnType<typeof useChat>) {
         {view && !turns.length && (
           <p className="detail-note">开始对话后，这里会显示每轮工作记录。</p>
         )}
-        {turns.map((turn) => (
-          <article
-            className="work-card"
-            key={turn.id}
-            data-running={turn.active || undefined}
-          >
-            <Button
-              variant="ghost"
-              className="work-open"
-              type="button"
-              aria-label={`查看工作记录：${turn.request || turn.title}`}
-              onClick={openRun(turn.id)}
-            >
-              <div className="work-heading">
-                <span className="work-mark">
-                  {turn.run ? (
-                    <EngineMark provider={turn.run.provider} />
-                  ) : (
-                    <WrenchIcon />
-                  )}
-                </span>
-                <span title={turn.title}>{turn.title}</span>
-                <time>{elapsed(turn, turn.active)}</time>
-              </div>
-              <div className="work-meta">
-                <span>{turn.run?.model ?? "模型未提供"}</span>
-                <span>
-                  {turn.plan.length
-                    ? `步骤 ${turn.plan.filter((step) => step.status === "completed").length}/${turn.plan.length}`
-                    : `已记录 ${turn.items.filter((item) => item.kind === "toolCall").length} 项操作`}
-                </span>
-              </div>
-              <div
-                className="work-progress"
-                role="img"
-                aria-label={turn.plan.length ? "原生计划进度" : "执行状态"}
+        {turns.length > 0 && (
+          <div className="work-list">
+            {turns.map((turn) => (
+              <article
+                className="work-row"
+                key={turn.id}
+                data-active={turn.active || undefined}
               >
-                {turn.plan.length ? (
-                  turn.plan.map((step) => (
-                    <span
-                      key={step.step}
-                      title={step.step}
-                      data-state={step.status}
-                    />
-                  ))
-                ) : (
-                  <span
-                    data-state={turn.active ? "indeterminate" : "settled"}
-                  />
-                )}
-              </div>
-              <ul className="work-items">
-                {turn.items.slice(-5).map((item) => (
-                  <li key={item.id}>
-                    {item.kind === "thinking" ? <BrainIcon /> : <WrenchIcon />}
-                    <span title={item.label}>{item.label}</span>
-                    <time>
-                      {elapsed(item, turn.active && item.status === "running")}
-                    </time>
-                  </li>
-                ))}
-              </ul>
-            </Button>
-            <footer className="work-actions">
-              {turn.active && (
                 <Button
-                  variant="secondary"
-                  disabled={!connected}
-                  pending={stopping || turn.status === "stopping"}
-                  onClick={() => void stop()}
+                  variant="ghost"
+                  className="work-open"
+                  aria-label={`查看工作记录：${turn.request || turn.title}`}
+                  onClick={openRun(turn.id)}
                 >
-                  <StopIcon />
-                  Stop
+                  <span
+                    className="work-mark"
+                    data-state={
+                      turn.status === "failed"
+                        ? "failed"
+                        : turn.active
+                          ? !connected ||
+                            stopping ||
+                            turn.status === "stopping" ||
+                            view?.approvals?.length
+                            ? "waiting"
+                            : "running"
+                          : undefined
+                    }
+                  >
+                    {turn.run ? (
+                      <EngineMark provider={turn.run.provider} />
+                    ) : (
+                      <WrenchIcon />
+                    )}
+                  </span>
+                  <span className="work-label">
+                    <span title={modelName(turn.run)}>
+                      {modelName(turn.run)}
+                    </span>
+                    <span className="work-activity" title={turn.title}>
+                      {turn.title}
+                    </span>
+                  </span>
+                  <time>{elapsed(turn, turn.active)}</time>
+                  <CaretRightIcon className="work-chevron" />
                 </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="small"
-                className="work-run"
-                type="button"
-                onClick={openRun(turn.id)}
-              >
-                Open run <ArrowUpRightIcon />
-              </Button>
-            </footer>
-          </article>
-        ))}
+                {turn.active && (
+                  <Button
+                    variant="ghost"
+                    size="icon-small"
+                    className="work-stop"
+                    aria-label="停止执行"
+                    disabled={!connected}
+                    pending={stopping || turn.status === "stopping"}
+                    onClick={() => void stop()}
+                  >
+                    <StopIcon />
+                  </Button>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
         {view?.before && (
           <Button
             variant="ghost"
