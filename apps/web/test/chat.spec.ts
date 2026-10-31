@@ -213,7 +213,7 @@ test.afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
-test("model selection waits for persistence and restores a failed save", async ({
+test("model selection updates immediately and restores a failed save", async ({
   page,
 }) => {
   const saving = Promise.withResolvers<void>();
@@ -236,16 +236,16 @@ test("model selection waits for persistence and restores a failed save", async (
       .getByRole("option", { name: "Pi · 测试模型二", exact: true })
       .click();
     await requested.promise;
-    await expect(
-      page.locator(".model-selector-popup").getByRole("status"),
-    ).toContainText("正在保存");
+    await expect(picker).toContainText("测试模型二");
+    await expect(page.locator(".model-selector-popup")).toHaveCount(0);
+    await expect(picker).toBeEnabled();
     saving.resolve();
     await expect(picker).toContainText("测试模型二");
     await picker.click();
     await page
       .getByRole("option", { name: "Pi · 测试模型一", exact: true })
       .click();
-    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(details.getByRole("alert")).toBeVisible();
     await expect(picker).toContainText("测试模型二");
     expect(requests).toBe(2);
   } finally {
@@ -373,15 +373,21 @@ test("Bot details manage identity, memory, shared skills, routines and actual pr
   await dialog.getByRole("button", { name: "保存身份", exact: true }).click();
   await expect(dialog).toHaveAccessibleName("档案员的详情");
   await chooseDetail(sections, "记忆");
-  await dialog.getByRole("button", { name: "新增记忆", exact: true }).click();
-  await dialog.getByLabel("新增记忆").fill("报告使用公制单位。");
-  await dialog.getByLabel("共享给所有 Bot").check();
-  await dialog.getByRole("button", { name: "保存记忆", exact: true }).click();
-  await expect(dialog.locator(".item-list")).toContainText(
+  const memoryDialog = page.locator(".dialog-popup").first();
+  await memoryDialog
+    .getByRole("button", { name: "新增记忆", exact: true })
+    .click();
+  await memoryDialog.getByLabel("新增记忆").fill("报告使用公制单位。");
+  await memoryDialog.getByLabel("共享给所有 Bot").check();
+  await memoryDialog.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(memoryDialog.locator(".item-list")).toContainText(
     "报告使用公制单位。",
   );
+  await memoryDialog
+    .getByRole("button", { name: "关闭弹窗", exact: true })
+    .click();
   await chooseDetail(sections, "技能");
-  await dialog.getByLabel("导入 SKILL.md").setInputFiles({
+  await dialog.getByLabel("导入技能包").setInputFiles({
     name: "SKILL.md",
     mimeType: "text/markdown",
     buffer: Buffer.from(
@@ -389,6 +395,8 @@ test("Bot details manage identity, memory, shared skills, routines and actual pr
     ),
   });
   await expect(dialog.getByLabel("新建 SKILL.md")).toHaveValue(/name: report/);
+  await dialog.getByRole("button", { name: "保存技能", exact: true }).click();
+  await expect(dialog.getByRole("region", { name: "技能差异" })).toBeVisible();
   await dialog.getByRole("button", { name: "保存技能", exact: true }).click();
   const skill = dialog.locator(".item-list li").filter({ hasText: "report" });
   await expect(skill).toContainText("此 Bot 未启用");
@@ -404,7 +412,7 @@ test("Bot details manage identity, memory, shared skills, routines and actual pr
     .click();
   const download = page.waitForEvent("download");
   await page.getByRole("menuitem", { name: "导出", exact: true }).click();
-  expect((await download).suggestedFilename()).toBe("report.md");
+  expect((await download).suggestedFilename()).toBe("report.zip");
   await chooseDetail(sections, "定时");
   await dialog
     .getByRole("button", { name: "新建定时任务", exact: true })
@@ -431,7 +439,7 @@ test("Bot details manage identity, memory, shared skills, routines and actual pr
   });
   await enabled.click();
   await expect(enabled).toBeChecked();
-  await expect(routine).toContainText("运行中");
+  await expect(routine).toContainText("已启用");
   await enabled.click();
   await expect(enabled).not.toBeChecked();
   await expect(routine).toContainText("已暂停");
@@ -440,6 +448,10 @@ test("Bot details manage identity, memory, shared skills, routines and actual pr
     .getByRole("button", { name: "早间报告的操作", exact: true })
     .click();
   await page.getByRole("menuitem", { name: "试跑", exact: true }).click();
+  await dialog
+    .locator("summary")
+    .filter({ hasText: /^运行记录/ })
+    .click();
   await expect(dialog).toContainText("已完成");
   await chooseDetail(sections, "提示词");
   await dialog
@@ -463,13 +475,20 @@ test("Bot details manage identity, memory, shared skills, routines and actual pr
   await page.reload();
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   await chooseDetail(sections, "记忆");
-  await expect(dialog.locator(".item-list")).toContainText(
+  await expect(memoryDialog.locator(".item-list")).toContainText(
     "报告使用公制单位。",
   );
+  await memoryDialog
+    .getByRole("button", { name: "关闭弹窗", exact: true })
+    .click();
   await chooseDetail(sections, "定时");
+  await dialog
+    .locator("summary")
+    .filter({ hasText: /^运行记录/ })
+    .click();
   await expect(dialog).toContainText("已完成");
   await chooseDetail(sections, "记忆");
-  const memory = dialog
+  const memory = memoryDialog
     .locator(".item-list li")
     .filter({ hasText: "报告使用公制单位。" });
   const remove = memory.getByRole("button", { name: "记忆操作", exact: true });
@@ -748,6 +767,10 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
     await page.keyboard.press("Escape");
   }
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".workspace")).toHaveAttribute(
+    "data-mobile",
+    "true",
+  );
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "联系人", exact: true }).click();
   let first = true;
@@ -871,7 +894,7 @@ test("send, reload, disconnect, reconnect and restart preserve the conversation"
   await expect(contactTime).toHaveAttribute("datetime", savedTime ?? "");
 });
 
-test("a killed server resumes unfinished work and the page reconnects", async ({
+test("a killed server retains uncertain work and permits an explicit retry", async ({
   page,
 }) => {
   await page.goto(url);
@@ -882,6 +905,7 @@ test("a killed server resumes unfinished work and the page reconnects", async ({
   await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
   const contact = page.locator('.sidebar a[href="#bot/1"]');
   await expect(contact.getByRole("img", { name: "正在工作" })).toBeVisible();
+  await control("wait-model");
   const port = Number(new URL(url).port);
   await stop();
   await expect(contact.locator(".avatar-status")).toHaveCount(0);
@@ -889,10 +913,15 @@ test("a killed server resumes unfinished work and the page reconnects", async ({
     page.getByRole("status").filter({ hasText: "正在重连" }),
   ).toBeAttached();
   await start(port);
-  await expect(page.getByLabel("Domos 的回复")).toContainText("完整回复。");
+  await expect(page.getByRole("alert")).toContainText("执行结果未确认");
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
   await expect(page.getByLabel("你的消息")).toHaveCount(1);
   await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   await expect(contact.locator(".avatar-status")).toHaveCount(0);
+  await page.getByLabel("消息", { exact: true }).fill("重试恢复未完成任务");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByLabel("Domos 的回复")).toContainText("完整回复。");
+  await expect(page.getByLabel("你的消息")).toHaveCount(2);
 });
 
 test("working contacts retain green status across switches, concurrent work, reload, and stop", async ({
@@ -1307,6 +1336,7 @@ test("background replies and reduced motion show complete messages without entry
     document.dispatchEvent(new Event("visibilitychange"));
   });
   await page.emulateMedia({ reducedMotion: "reduce" });
+  await control({ content: "减少动画。".repeat(20) });
   await input.fill("减少动画");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   const dot = page.locator(".typing-dots g").first();
@@ -1339,7 +1369,7 @@ test("large histories render a bounded window and retain the earlier reading anc
   const key = await first.getAttribute("data-transcript-key");
   const before = await first.boundingBox();
   await older.click();
-  await expect(page.getByLabel("Domos 的回复")).toHaveCount(120);
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(100);
   const retained = page.locator(`[data-transcript-key="${key}"]`);
   await expect
     .poll(async () =>
@@ -2072,8 +2102,9 @@ test("model search and themed popups support keyboard, dismissal, and narrow scr
   expect(bounds.y + bounds.height).toBeLessThanOrEqual(568);
   await page.screenshot({ path: "test-results/model-popup-mobile.png" });
   await page
-    .locator(".bot-details .panel-header")
-    .click({ position: { x: 190, y: 20 } });
+    .getByRole("heading", { name: "Domos", exact: true })
+    .first()
+    .click();
   await expect(popup).toHaveCount(0);
 });
 

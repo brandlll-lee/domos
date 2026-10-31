@@ -87,6 +87,7 @@ models.setProvider({
   },
 });
 let gate: ReturnType<typeof Promise.withResolvers<void>> | undefined;
+const modelStarted = Promise.withResolvers<void>();
 let toolGate: ReturnType<typeof Promise.withResolvers<void>> | undefined;
 const toolName = `tool_${crypto.randomUUID().replaceAll("-", "")}`;
 const registry = createRegistry();
@@ -134,6 +135,7 @@ registry.install(
   }),
 );
 const answer: FauxResponseFactory = async (input, options, _state, model) => {
+  modelStarted.resolve();
   faux.appendResponses([answer]);
   const waiting = gate;
   gate = undefined;
@@ -421,6 +423,9 @@ process.on("message", async (message) => {
     gate = Promise.withResolvers<void>();
     release = gate.resolve;
     process.send?.({ type: "gated" });
+  } else if (message === "wait-model") {
+    await modelStarted.promise;
+    process.send?.({ type: "generating" });
   } else if (message === "release") {
     release?.();
     process.send?.({ type: "released" });

@@ -146,6 +146,10 @@ export async function openBrowserView(run, signal, ready, input, session) {
           text: message.text,
         });
       } else if (message.type === "key") {
+        if (message.modifiers === 4 && message.key.toLowerCase() === "a") {
+          await send({ action: "selectall", selector: ":focus" });
+          return;
+        }
         const modifiers = [
           [1, "Alt"],
           [2, "Control"],

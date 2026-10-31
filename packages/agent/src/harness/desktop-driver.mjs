@@ -119,7 +119,13 @@ export async function desktopBinary(home) {
       asset.digest
     )
       throw new Error("Cua download checksum mismatch.");
-    await run("tar", ["-xf", archive, "-C", cache], { windowsHide: true });
+    await run(
+      process.platform === "win32"
+        ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")
+        : "tar",
+      ["-xf", archive, "-C", cache],
+      { windowsHide: true },
+    );
     await rm(archive);
     binary = join(cache, executable);
     await access(binary);

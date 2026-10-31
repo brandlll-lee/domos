@@ -80,6 +80,15 @@
     "layoutChangeFrames": 1,
     "emptyMessageFrames": 0
   },
+  "selectAll": {
+    "platform": "macOS",
+    "browserVersion": "0.39.4",
+    "shortcut": "Meta+a",
+    "before": "saved draft",
+    "inserted": "京都天气",
+    "expected": "京都天气",
+    "received": "saved draft京都天气"
+  },
   "firstTakeover": {
     "reportedError": "用户正在另一窗口接管。请等待交还控制权。",
     "phase": "grant pending while same viewer requests next frame",

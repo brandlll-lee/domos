@@ -167,7 +167,7 @@ for (const refresh of [false, true]) {
     );
     await page.mouse.click(at.x, at.y);
     await page.keyboard.press(
-      process.platform === "darwin" ? "Meta+a" : "Control+a",
+      refresh || process.platform === "darwin" ? "Meta+a" : "Control+a",
     );
     const inputStarted = performance.now();
     await page.keyboard.insertText("京都天气");

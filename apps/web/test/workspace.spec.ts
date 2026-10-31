@@ -1029,7 +1029,7 @@ it("chat reflows within the frame budget and retains its position", async ({
         times.length = 0;
         frame = requestAnimationFrame(sample);
       },
-      finish() {
+      finish(slowFrame = 25) {
         cancelAnimationFrame(frame);
         let previous = times[0] ?? 0;
         const gaps = times.slice(1).map((time) => {
@@ -1043,13 +1043,30 @@ it("chat reflows within the frame budget and retains its position", async ({
             viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
           count: gaps.length,
           p95: gaps[Math.floor(gaps.length * 0.95)],
-          slow: gaps.filter((time) => time > 25).length / gaps.length,
+          slow: gaps.filter((time) => time > slowFrame).length / gaps.length,
         };
       },
     };
   });
   const session = await page.context().newCDPSession(page);
   await session.send("Emulation.setCPUThrottlingRate", { rate: 2 });
+  await frames.evaluate((recording) => recording.start());
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        let count = 0;
+        const sample = () => {
+          if (++count === 30) resolve();
+          else requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+      }),
+  );
+  const baseline = await frames.evaluate((recording) => recording.finish());
+  console.log(`Idle frame timing: ${JSON.stringify(baseline)}`);
+  if (baseline.p95 === undefined) throw new Error("Idle frame timing missing");
+  const frameBudget = Math.max(20, baseline.p95 * 1.2);
+  const slowFrame = Math.max(25, baseline.p95 * 1.5);
   for (const side of ["联系人", "详情"]) {
     const handle = page.getByRole("separator", { name: `调整${side}宽度` });
     const box = await handle.boundingBox();
@@ -1079,7 +1096,10 @@ it("chat reflows within the frame budget and retains its position", async ({
     expect(
       await page.evaluate(() => Boolean(document.activeViewTransition)),
     ).toBe(false);
-    const measured = await frames.evaluate((recording) => recording.finish());
+    const measured = await frames.evaluate(
+      (recording, threshold) => recording.finish(threshold),
+      slowFrame,
+    );
     await page.mouse.up();
     await expect(page.locator(".workspace-content")).not.toHaveAttribute(
       "data-resizing",
@@ -1089,7 +1109,7 @@ it("chat reflows within the frame budget and retains its position", async ({
     console.log(`${side} resize: ${JSON.stringify(measured)}`);
     expect(measured.count).toBeGreaterThan(30);
     expect(measured.gap).toBeLessThanOrEqual(1);
-    expect(measured.p95).toBeLessThanOrEqual(20);
+    expect(measured.p95).toBeLessThanOrEqual(frameBudget);
     expect(measured.slow).toBeLessThanOrEqual(0.05);
   }
   await session.send("Emulation.setCPUThrottlingRate", { rate: 1 });
@@ -1871,12 +1891,14 @@ test("control geometry and interaction states stay consistent", async ({
   await details.getByRole("button", { name: "返回", exact: true }).click();
   await details.getByRole("tab", { name: "Bot", exact: true }).click();
   await details.getByRole("button", { name: /^记忆(?:\s|$)/ }).click();
-  await details.getByRole("button", { name: "新增记忆", exact: true }).click();
-  const checkbox = details.getByRole("checkbox", { name: "共享给所有 Bot" });
+  const memory = page.locator(".dialog-popup").first();
+  await memory.getByRole("button", { name: "新增记忆", exact: true }).click();
+  const checkbox = memory.getByRole("checkbox", { name: "共享给所有 Bot" });
   await expect(checkbox).toHaveCSS("width", "16px");
   await expect(checkbox).toHaveCSS("margin", "0px");
   await checkbox.check();
   await expect(checkbox).toBeChecked();
+  await memory.getByRole("button", { name: "关闭弹窗", exact: true }).click();
   await details.getByRole("button", { name: "关闭", exact: true }).click();
   await page.getByRole("button", { name: "设置", exact: true }).click();
   const settings = page.getByRole("main", { name: "设置", exact: true });
