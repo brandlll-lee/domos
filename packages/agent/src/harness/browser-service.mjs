@@ -223,7 +223,7 @@ export async function openBrowserService(directory, home) {
           "-Command",
           `$p = Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}'; if ($p) { [pscustomobject]@{ path = $p.ExecutablePath; owned = ((Invoke-CimMethod -InputObject $p -MethodName GetOwnerSid).Sid -eq [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value) } | ConvertTo-Json -Compress }`,
         ],
-        { windowsHide: true, timeout: 5000 },
+        { windowsHide: true, timeout: 15000 },
       );
       if (!stdout.trim()) return;
       const identity = JSON.parse(stdout);
