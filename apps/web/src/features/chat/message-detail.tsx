@@ -1,14 +1,16 @@
 import type { ChatMessage } from "@domos/agent/messages";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { client } from "../../client.ts";
 import { MessageContent } from "./message-content.tsx";
 
 export function MessageDetail({
   botId,
   message,
+  children,
 }: {
   botId: number;
   message: ChatMessage;
+  children?: (message: ChatMessage) => ReactNode;
 }) {
   const [detail, setDetail] = useState<ChatMessage>();
   const [error, setError] = useState(false);
@@ -32,9 +34,10 @@ export function MessageDetail({
         },
       );
     return () => controller.abort();
-  }, [botId, message.id, message.cursor, message.detail]);
+  }, [botId, message]);
   if (error) return <p role="alert">记录读取失败，请重新打开。</p>;
   if (message.detail && !detail) return <p role="status">正在读取记录…</p>;
+  if (children) return children(detail ?? message);
   return (
     <MessageContent
       content={(detail ?? message).content}

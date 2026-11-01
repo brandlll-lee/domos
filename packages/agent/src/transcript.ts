@@ -105,9 +105,12 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
         attachmentTurn = id;
       }
     } else if (
-      message.takeover ||
-      message.approval ||
-      (!message.pending && !message.stopped && message.stopReason !== "error")
+      !message.parentId &&
+      (message.takeover ||
+        message.approval ||
+        (!message.pending &&
+          !message.stopped &&
+          message.stopReason !== "error"))
     ) {
       const content = message.content.filter(
         (part) =>

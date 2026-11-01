@@ -1,5 +1,4 @@
 import type { EngineRun } from "@domos/agent/harness/types";
-import { ActivityDetails } from "@domos/ui/activity";
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
 import { ScrollArea } from "@domos/ui/scroll-area";
@@ -9,11 +8,9 @@ import { WrenchIcon } from "@phosphor-icons/react/dist/csr/Wrench";
 import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { EngineMark } from "../bots/engine-mark.tsx";
 import { useModelSettings } from "../models/model-state.ts";
-import { Attachments } from "./attachments.tsx";
-import { MessageContent } from "./message-content.tsx";
-import { MessageDetail } from "./message-detail.tsx";
 import type { useChat } from "./use-chat.ts";
-import { workStatus, workTime, workTurns } from "./work-state.ts";
+import { WorkEntry } from "./work-entry.tsx";
+import { workTime, workTurns } from "./work-state.ts";
 import "./work.css";
 
 export function WorkPanel(
@@ -172,47 +169,25 @@ export function WorkPanel(
       >
         {current && view && (
           <div className="work-detail">
-            <p className="work-request">{current.request}</p>
-            <div className="work-meta">
-              <span>
-                {current.run?.provider ?? "Harness 未提供"} ·{" "}
-                {current.run?.model ?? "模型未提供"}
-              </span>
-              <time>{elapsed(current, current.active)}</time>
-            </div>
-            <p role="status">
-              {connected ? current.title : "连接中断，显示最后收到的状态"}
-            </p>
-            <p className="detail-note">
-              时间按事件接收时间记录。
-              {!current.run && "旧记录未保存完整执行元数据。"}
-            </p>
-            {!current.items.some((item) => item.kind === "thinking") && (
-              <p className="detail-note">Harness 未提供思考内容。</p>
-            )}
-            {current.items.map((item) => (
-              <ActivityDetails
-                key={item.id}
-                label={item.label}
-                status={`${workStatus(item.status)} · ${elapsed(item, current.active && item.status === "running")}`}
-                attention={item.status === "failed"}
-              >
-                {typeof item.detail === "string" ? (
-                  <pre>{item.detail}</pre>
-                ) : (
-                  <MessageContent content={item.detail} />
+            <header className="work-heading">
+              <p className="work-request">{current.request}</p>
+              <div className="work-meta">
+                {current.run && (
+                  <span>
+                    {current.run.provider} · {modelName(current.run)}
+                  </span>
                 )}
-                {item.result && (
-                  <MessageDetail botId={view.id} message={item.result} />
-                )}
-                {item.result?.attachments?.length ? (
-                  <Attachments
-                    botId={view.id}
-                    files={item.result.attachments}
-                  />
-                ) : null}
-              </ActivityDetails>
-            ))}
+                <span role="status">
+                  {connected ? current.title : "连接中断"}
+                </span>
+                <time>{elapsed(current, current.active)}</time>
+              </div>
+            </header>
+            <ol className="work-timeline" aria-label="执行时间线">
+              {current.items.map((item) => (
+                <WorkEntry key={item.id} botId={view.id} item={item} />
+              ))}
+            </ol>
           </div>
         )}
       </Dialog>

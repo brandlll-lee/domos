@@ -17,6 +17,7 @@ type ClaudePart = {
   name?: string;
   input?: Record<string, unknown>;
   thinking?: string;
+  text?: string;
   tool_use_id?: string;
   content?: unknown;
   is_error?: boolean;
@@ -37,6 +38,9 @@ type ClaudeFrame = {
   compact_result?: string;
   compact_metadata?: { trigger?: string; pre_tokens?: number };
   parent_tool_use_id?: string | null;
+  tool_use_id?: string;
+  tool_name?: string;
+  elapsed_time_seconds?: number;
   usage?: {
     input_tokens?: number;
     output_tokens?: number;
@@ -68,11 +72,12 @@ type ClaudeFrame = {
   message?: {
     id: string;
     model?: string;
-    content?: ClaudePart[];
+    content?: ClaudePart[] | string;
     usage?: ClaudeFrame["usage"];
   };
   event?: {
     type: string;
+    index?: number;
     message?: { id: string };
     delta?: { type: string; text?: string; thinking?: string };
   };
@@ -100,7 +105,15 @@ export const claudeProvider: EngineProvider = {
     let events = Promise.resolve();
     let messageId = "";
     const replies = new Map<string, Map<string, string>>();
-    const reply = async (id: string, content: unknown, blockId = id) => {
+    const reply = async (
+      id: string,
+      content: unknown,
+      blockId = id,
+      metadata: Pick<
+        import("../types.ts").EngineEvent,
+        "parentId" | "recovered" | "receivedAt"
+      > = {},
+    ) => {
       const text = textContent(content);
       if (!text.trim()) return;
       let blocks = replies.get(id);
@@ -113,7 +126,68 @@ export const claudeProvider: EngineProvider = {
         type: "message",
         id,
         text: [...blocks.values()].join("\n\n"),
+        ...metadata,
       });
+    };
+    const recordContent = async (
+      frame: ClaudeFrame,
+      recovered = false,
+      receivedAt?: number,
+    ) => {
+      const metadata = {
+        ...(receivedAt === undefined ? {} : { receivedAt }),
+        ...(frame.parent_tool_use_id
+          ? { parentId: frame.parent_tool_use_id }
+          : {}),
+        ...(recovered ? { recovered: true } : {}),
+      };
+      let replied = false;
+      for (const [index, part] of (Array.isArray(frame.message?.content)
+        ? frame.message.content
+        : []
+      ).entries()) {
+        if (
+          frame.type === "assistant" &&
+          part.type === "text" &&
+          !replied &&
+          frame.message
+        ) {
+          await reply(
+            frame.message.id,
+            frame.message.content,
+            frame.uuid,
+            metadata,
+          );
+          replied = true;
+        }
+        if (part.type === "thinking" && part.thinking)
+          await emit({
+            type: "thinking",
+            id: `${frame.message?.id}:${index}`,
+            text: part.thinking,
+            replace: true,
+            ...metadata,
+          });
+        if (part.type === "tool_use" && part.id && part.name)
+          await emit({
+            type: "tool",
+            id: part.id,
+            name: part.name,
+            input: part.input ?? {},
+            native: part,
+            ...metadata,
+          });
+        if (part.type === "tool_result" && part.tool_use_id)
+          await emit({
+            type: "tool_result",
+            id: part.tool_use_id,
+            name: "Claude Code",
+            text: textContent(part.content),
+            failed: Boolean(part.is_error),
+            native: part,
+            ...metadata,
+          });
+      }
     };
     let running = false;
     let compacting = false;
@@ -182,6 +256,9 @@ export const claudeProvider: EngineProvider = {
       | { id: string; result: ReturnType<typeof Promise.withResolvers<void>> }
       | undefined;
     rpc.on("frame", (frame: ClaudeFrame) => {
+      const receivedAt = Date.now();
+      const forward = (event: import("../types.ts").EngineEvent) =>
+        emit({ ...event, receivedAt });
       if (frame.type === "control_response" && frame.response) {
         const pending = controls.get(frame.response.request_id);
         if (pending) {
@@ -208,7 +285,24 @@ export const claudeProvider: EngineProvider = {
       }
       events = events
         .then(async () => {
-          if (frame.parent_tool_use_id) return;
+          const emit = forward;
+          if (frame.parent_tool_use_id) {
+            await recordContent(frame, false, receivedAt);
+            if (frame.type !== "tool_progress") return;
+          }
+          if (frame.type === "tool_progress" && frame.tool_use_id)
+            await emit({
+              type: "tool_result",
+              id: frame.tool_use_id,
+              name: frame.tool_name ?? "Claude Code",
+              text: "",
+              failed: false,
+              partial: true,
+              native: { elapsed_time_seconds: frame.elapsed_time_seconds },
+              ...(frame.parent_tool_use_id
+                ? { parentId: frame.parent_tool_use_id }
+                : {}),
+            });
           if (frame.type === "system" && frame.subtype === "api_retry") {
             const reason = frame.error_status
               ? `模型服务返回 HTTP ${frame.error_status}`
@@ -265,7 +359,9 @@ export const claudeProvider: EngineProvider = {
             if (messageId && (delta?.text || delta?.thinking))
               await emit({
                 type: delta.text ? "text" : "thinking",
-                id: messageId,
+                id: delta.text
+                  ? messageId
+                  : `${messageId}:${frame.event?.index}`,
                 text: delta.text ?? delta.thinking ?? "",
               });
           }
@@ -282,23 +378,7 @@ export const claudeProvider: EngineProvider = {
                 (message.usage.cache_creation_input_tokens ?? 0);
               await readContext();
             }
-            await reply(message.id, message.content, frame.uuid);
-            for (const part of message.content ?? []) {
-              if (part.type === "thinking" && part.thinking)
-                await emit({
-                  type: "thinking",
-                  id: message.id,
-                  text: part.thinking,
-                  replace: true,
-                });
-              if (part.type === "tool_use" && part.id && part.name)
-                await emit({
-                  type: "tool",
-                  id: part.id,
-                  name: part.name,
-                  input: part.input ?? {},
-                });
-            }
+            await recordContent(frame, false, receivedAt);
           }
           if (frame.type === "user") {
             if (frame.isReplay && frame.uuid) {
@@ -310,15 +390,7 @@ export const claudeProvider: EngineProvider = {
               }
               return;
             }
-            for (const part of frame.message?.content ?? [])
-              if (part.type === "tool_result" && part.tool_use_id)
-                await emit({
-                  type: "tool_result",
-                  id: part.tool_use_id,
-                  name: "Claude Code",
-                  text: textContent(part.content),
-                  failed: Boolean(part.is_error),
-                });
+            await recordContent(frame, false, receivedAt);
           }
           if (frame.type === "result") {
             if (frame.origin?.kind === "task-notification") return;
@@ -597,7 +669,7 @@ export const claudeProvider: EngineProvider = {
           type: string;
           uuid: string;
           parent_tool_use_id?: string | null;
-          message: { id?: string; content?: unknown; stop_reason?: string };
+          message: { id: string; content?: ClaudePart[]; stop_reason?: string };
         }[];
         const messages = history.filter(
           (message) => !message.parent_tool_use_id,
@@ -625,10 +697,11 @@ export const claudeProvider: EngineProvider = {
           ).length !== inputCount
         )
           return false;
-        for (const entry of turn) {
-          if (entry.type === "assistant" && entry.message.id)
-            await reply(entry.message.id, entry.message.content, entry.uuid);
-        }
+        const startIndex = history.findIndex(
+          (entry) => entry.uuid === cursor.slice(7),
+        );
+        for (const entry of history.slice(startIndex))
+          await recordContent(entry, true);
         return true;
       },
       answer: async () => {

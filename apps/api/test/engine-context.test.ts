@@ -233,6 +233,12 @@ test("chat pages bound history, retain full results on demand and stream changed
         role: "toolResult",
         stopped: false,
         toolCallId: "call",
+        native: {
+          type: "commandExecution",
+          status: "failed",
+          exitCode: 1,
+          aggregatedOutput: "native".repeat(200_000),
+        },
         isError: true,
         content: [
           { type: "text", key: "text", text: "result".repeat(200_000) },
@@ -258,6 +264,12 @@ test("chat pages bound history, retain full results on demand and stream changed
   });
   expect(full?.content[0]).toMatchObject({ text: "result".repeat(200_000) });
   expect(full?.content[1]).toMatchObject({ data: "image-bytes" });
+  expect(result?.native).toEqual({
+    type: "commandExecution",
+    status: "failed",
+    exitCode: 1,
+  });
+  expect(full?.native?.aggregatedOutput).toBe("native".repeat(200_000));
   const ids = page.messages.map((message) => message.id);
   while (page.before) {
     page = await f.runtime.client.get({ botId, before: page.before });

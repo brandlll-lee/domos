@@ -31,6 +31,7 @@ import {
 import { migrateRuntime } from "../src/runtime/migrate.ts";
 import { MemoryDoc } from "../src/work/memory.ts";
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
+import { codexWork } from "./fixtures/native-work.ts";
 
 test("forward migration preserves model, history and drafts and runs once", async () => {
   const directory = await mkdtemp(join(tmpdir(), "domos-native-migration-"));
@@ -149,6 +150,9 @@ test.each(["completed", "running", "sending"] as const)(
           else if (request.method === "thread/items/list")
             worker.response(request, {
               data: [
+                ...codexWork
+                  .filter((item) => item.type !== "agentMessage")
+                  .map((item) => ({ item })),
                 {
                   item: {
                     id: "answer",
@@ -284,11 +288,21 @@ test.each(["completed", "running", "sending"] as const)(
     ).toHaveLength(1);
     const state = await runtime.conversation.viewState(context);
     try {
-      if (outcome === "completed")
+      if (outcome === "completed") {
+        const records = chatView(state.value).messages;
+        expect(
+          records
+            .filter((message) => message.role === "toolResult")
+            .map((message) => message.toolCallId),
+        ).toEqual(["search", "command", "files", "child"]);
+        expect(
+          records.find((message) => message.toolCallId === "search")?.native
+            ?.action,
+        ).toEqual(codexWork[0]?.action);
         expect(chatView(state.value).messages.map(messageText)).toContain(
           "Recovered result",
         );
-      else
+      } else
         expect((await runtime.engines.view(id, context)).error).toContain(
           "执行结果未确认",
         );

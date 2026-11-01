@@ -4,6 +4,7 @@ import { openAgent } from "@domos/agent";
 import { Computers } from "@domos/agent/computer/catalog";
 import { parseConfig } from "@domos/agent/config";
 import { Files } from "@domos/agent/files";
+import type { ChatMessage } from "@domos/agent/messages";
 import { Sessions } from "@domos/hosting/sessions";
 import { HostingStore } from "@domos/hosting/store";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -23,6 +24,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { getRequestListener } from "@hono/node-server";
 import { EngineMessage } from "../../../../packages/agent/src/harness/state.ts";
+import { stored } from "../../../../packages/agent/src/harness/task-types.ts";
 import type { EngineApproval } from "../../../../packages/agent/src/harness/types.ts";
 import { PiProcess } from "../../../../packages/agent/test/fixtures/pi-process.ts";
 import { createApp } from "../../src/app.ts";
@@ -348,6 +350,22 @@ process.on("message", async (message) => {
       .then((answer) => {
         process.send?.({ type: "answered", answer });
       });
+  } else if (
+    typeof message === "object" &&
+    message !== null &&
+    "records" in message &&
+    Array.isArray(message.records)
+  ) {
+    const bot = (await bots.list(BACKGROUND_CONTEXT))[0];
+    if (!bot) throw new Error("Bot required");
+    await harness.commit(async (tx) => {
+      for (const record of message.records as ChatMessage[])
+        await tx.appendEntry(bot.id, {
+          kind: EngineMessage,
+          data: stored(record),
+        });
+    }, BACKGROUND_CONTEXT);
+    process.send?.({ type: "seeded" });
   } else if (
     typeof message === "object" &&
     message !== null &&

@@ -124,3 +124,111 @@ test("storage failures reach terminal flush", async () => {
   await f.projection.emit({ type: "tool", id: "t1", name: "click", input: {} });
   await expect(f.projection.flush()).rejects.toThrow("storage failed");
 });
+
+test("partial results update one record; recovery preserves identities and known times", async () => {
+  const f = fixture();
+  f.released.resolve();
+  await f.projection.emit({
+    type: "tool",
+    id: "command",
+    name: "commandExecution",
+    input: { command: "node --version" },
+    receivedAt: 100,
+  });
+  await f.projection.emit({
+    type: "tool_result",
+    id: "command",
+    name: "commandExecution",
+    text: "v24",
+    failed: false,
+    partial: true,
+    append: true,
+    receivedAt: 110,
+  });
+  await f.projection.flush();
+  expect(
+    f.doc.drafts.find((message) => message.toolCallId === "command"),
+  ).toMatchObject({
+    toolStatus: "running",
+    updatedAt: 110,
+    content: [{ text: "v24" }],
+  });
+  await f.projection.emit({
+    type: "tool_result",
+    id: "command",
+    name: "commandExecution",
+    text: ".16",
+    failed: false,
+    partial: true,
+    append: true,
+    receivedAt: 120,
+  });
+  const native = {
+    type: "commandExecution",
+    exitCode: 0,
+    aggregatedOutput: "v24.16",
+  };
+  await f.projection.emit({
+    type: "tool_result",
+    id: "command",
+    name: "commandExecution",
+    text: "v24.16",
+    failed: false,
+    native,
+    receivedAt: 130,
+  });
+  await f.projection.flush();
+  const count = f.doc.drafts.length;
+  const restored = new EngineProjection(
+    {
+      conversationId: 7,
+      taskId: 1,
+      commit: f.commit,
+    } as unknown as EngineRuntime,
+    "turn",
+    context,
+    f.doc.drafts,
+  );
+  await restored.emit({
+    type: "tool",
+    id: "command",
+    name: "commandExecution",
+    input: { command: "node --version" },
+    recovered: true,
+  });
+  await restored.emit({
+    type: "tool_result",
+    id: "command",
+    name: "commandExecution",
+    text: "v24.16",
+    failed: false,
+    native,
+    recovered: true,
+  });
+  await restored.emit({
+    type: "tool",
+    id: "search",
+    name: "webSearch",
+    input: { query: "example source" },
+    recovered: true,
+  });
+  await restored.flush();
+  expect(f.doc.drafts).toHaveLength(count + 1);
+  expect(
+    f.doc.drafts.find((message) => message.id === "turn:command:message")
+      ?.receivedAt,
+  ).toBe(100);
+  expect(
+    f.doc.drafts.find((message) => message.toolCallId === "command"),
+  ).toMatchObject({
+    toolStatus: "done",
+    endedAt: 130,
+    native,
+    content: [{ text: "v24.16" }],
+  });
+  const search = f.doc.drafts.find(
+    (message) => message.id === "turn:search:message",
+  );
+  expect(search?.timestamp).toBeUndefined();
+  expect(search?.receivedAt).toBeUndefined();
+});

@@ -7,6 +7,8 @@ export type WorkItem = {
   kind: "toolCall" | "thinking" | "text" | "event";
   detail: string | ChatMessage["content"];
   result?: ChatMessage;
+  message: ChatMessage;
+  input?: Record<string, unknown>;
   startedAt?: number;
   endedAt?: number;
   status: string;
@@ -58,11 +60,13 @@ export function workTurns(view: ChatView) {
             {
               id: part.key,
               detail: tool
-                ? JSON.stringify(tool.arguments, null, 2)
+                ? ""
                 : part.type === "thinking"
                   ? part.thinking
                   : [part],
               result,
+              message,
+              input: tool?.arguments,
               kind: part.type,
               label:
                 tool?.name ?? (part.type === "thinking" ? "原生思考" : "回复"),
@@ -71,7 +75,11 @@ export function workTurns(view: ChatView) {
                 ? (result?.endedAt ?? result?.timestamp)
                 : message.endedAt,
               status: result
-                ? (result.toolStatus ?? (result.isError ? "failed" : "done"))
+                ? result.toolStatus === "running" && !active
+                  ? status === "stopped"
+                    ? "stopped"
+                    : "uncertain"
+                  : (result.toolStatus ?? (result.isError ? "failed" : "done"))
                 : active && (tool || message.pending)
                   ? "running"
                   : tool
@@ -94,7 +102,8 @@ export function workTurns(view: ChatView) {
               label;
           rows.push({
             id: message.id,
-            detail: message.error ?? JSON.stringify(event, null, 2),
+            detail: message.error ?? "",
+            message,
             kind: "event",
             label,
             startedAt: message.timestamp,

@@ -37,7 +37,19 @@ import { WorkError } from "../work/state.ts";
 export function slimChatView(view: import("../chat-view.ts").ChatView) {
   const slim = (message: import("../messages.ts").ChatMessage) => {
     if (message.role === "toolResult")
-      return { ...message, content: [], detail: true };
+      return {
+        ...message,
+        native: message.native
+          ? {
+              type: message.native.type,
+              status: message.native.status,
+              exitCode: message.native.exitCode,
+              durationMs: message.native.durationMs,
+            }
+          : undefined,
+        content: [],
+        detail: true,
+      };
     const images = message.content.some((part) => part.type === "image");
     return images
       ? {

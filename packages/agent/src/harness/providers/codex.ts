@@ -13,6 +13,7 @@ import {
   type CodexFrame,
   type CodexTurn,
   codexApprovals,
+  codexItemEvents,
 } from "./codex-wire.ts";
 
 export const codexProvider: EngineProvider = {
@@ -56,11 +57,23 @@ export const codexProvider: EngineProvider = {
       NonNullable<CodexFrame["params"]>["tokenUsage"]
     >["total"];
     const requests = new Map<string, CodexFrame>();
+    const children = new Map<string, string>();
     rpc.on("frame", (frame: CodexFrame) => {
+      const receivedAt = Date.now();
+      const forward = (event: import("../types.ts").EngineEvent) =>
+        emit({ ...event, receivedAt });
       events = events
         .then(async () => {
           const params = frame.params ?? {};
-          if (params.threadId && params.threadId !== nativeId) return;
+          const parentId = children.get(params.threadId ?? "");
+          const emit = (event: import("../types.ts").EngineEvent) =>
+            forward({ ...event, ...(parentId ? { parentId } : {}) });
+          if (params.threadId && params.threadId !== nativeId && !parentId)
+            return;
+          const item = params.item;
+          if (item && Array.isArray(item.receiverThreadIds))
+            for (const thread of item.receiverThreadIds)
+              if (typeof thread === "string") children.set(thread, item.id);
           if (
             frame.method === "serverRequest/resolved" &&
             params.requestId !== undefined
@@ -122,7 +135,39 @@ export const codexProvider: EngineProvider = {
             });
           if (frame.method === "turn/plan/updated")
             await emit({ type: "plan", plan: params.plan ?? [] });
-          const item = params.item;
+          if (
+            item &&
+            (frame.method === "item/started" ||
+              frame.method === "item/completed")
+          )
+            for (const event of codexItemEvents(
+              item,
+              frame.method === "item/completed",
+            ))
+              await emit(event);
+          if (
+            frame.method === "item/commandExecution/outputDelta" &&
+            params.itemId
+          )
+            await emit({
+              type: "tool_result",
+              id: params.itemId,
+              name: "commandExecution",
+              text: params.delta ?? "",
+              failed: false,
+              partial: true,
+              append: true,
+            });
+          if (frame.method === "item/mcpToolCall/progress" && params.itemId)
+            await emit({
+              type: "tool_result",
+              id: params.itemId,
+              name: "mcpToolCall",
+              text: params.message ?? "",
+              failed: false,
+              partial: true,
+            });
+          if (parentId) return;
           if (frame.method === "turn/started") {
             await emit({ type: "runtime", state: { processing: true } });
             turnId = params.turn?.id ?? null;
@@ -186,53 +231,6 @@ export const codexProvider: EngineProvider = {
               status: frame.method === "item/started" ? "running" : "completed",
               nativeId: item.id,
             });
-          }
-          if (
-            frame.method === "item/started" &&
-            item &&
-            ["commandExecution", "fileChange", "mcpToolCall"].includes(
-              item.type,
-            )
-          )
-            await emit({
-              type: "tool",
-              id: item.id,
-              name: item.tool ?? item.type,
-              input: item.arguments ?? {
-                command: item.command,
-                changes: item.changes,
-              },
-            });
-          if (frame.method === "item/completed" && item) {
-            if (item.type === "agentMessage")
-              await emit({
-                type: "message",
-                id: item.id,
-                text: item.text ?? "",
-              });
-            else if (
-              ["commandExecution", "fileChange", "mcpToolCall"].includes(
-                item.type,
-              )
-            )
-              await emit({
-                type: "tool_result",
-                id: item.id,
-                name: item.tool ?? item.type,
-                text:
-                  [
-                    item.aggregatedOutput ??
-                      (item.result ? JSON.stringify(item.result) : undefined),
-                    item.error ? JSON.stringify(item.error) : undefined,
-                  ]
-                    .filter(Boolean)
-                    .join("\n") || JSON.stringify(item.changes ?? ""),
-                failed:
-                  item.status === "failed" ||
-                  Boolean(item.error) ||
-                  (item.result as { isError?: boolean } | null)?.isError ===
-                    true,
-              });
           }
           if (frame.method === "turn/completed") {
             if (compacting && params.turn?.status !== "completed")
@@ -423,12 +421,8 @@ export const codexProvider: EngineProvider = {
         const turn = await readCodexTurn(rpc, id, nativeTurn);
         if (turn?.status !== "completed") return false;
         for (const item of turn.items ?? [])
-          if (item.type === "agentMessage")
-            await emit({
-              type: "message",
-              id: item.id,
-              text: item.text ?? "",
-            });
+          for (const event of codexItemEvents(item, true, true))
+            await emit(event);
         return true;
       },
     };

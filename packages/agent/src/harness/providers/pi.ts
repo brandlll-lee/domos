@@ -55,6 +55,53 @@ export const piProvider: EngineProvider = {
           : config.model,
       });
     };
+    const recordMessage = async (
+      message: Extract<SessionEntry, { type: "message" }>["message"],
+      id: string,
+      forward: (event: EngineEvent) => Promise<void>,
+      recovered = false,
+    ) => {
+      const metadata = recovered
+        ? {
+            recovered: true,
+            timestamp: "timestamp" in message ? message.timestamp : undefined,
+          }
+        : {};
+      if (message.role === "assistant") {
+        for (const [index, part] of message.content.entries()) {
+          if (part.type === "thinking")
+            await forward({
+              type: "thinking",
+              id: `${id}:${index}`,
+              text: part.thinking,
+              replace: true,
+              ...metadata,
+            });
+        }
+        const text = textContent(message.content);
+        if (text.trim())
+          await forward({ type: "message", id, text, ...metadata });
+        for (const part of message.content) {
+          if (part.type === "toolCall")
+            await forward({
+              type: "tool",
+              id: part.id,
+              name: part.name,
+              input: part.arguments,
+              ...metadata,
+            });
+        }
+      } else if (message.role === "toolResult")
+        await forward({
+          type: "tool_result",
+          id: message.toolCallId,
+          name: message.toolName,
+          text: textContent(message.content),
+          failed: message.isError,
+          native: { content: message.content, details: message.details },
+          ...metadata,
+        });
+    };
     rpc.on("frame", (frame: AgentSessionEvent | RpcExtensionUIRequest) => {
       const receivedAt = Date.now();
       events = events
@@ -69,7 +116,7 @@ export const piProvider: EngineProvider = {
             frame.type === "message_start" &&
             frame.message?.role === "assistant"
           ) {
-            messageId = `pi:${++sequence}`;
+            messageId = `pi:${frame.message.timestamp ?? ++sequence}`;
             await forward({ type: "runtime", state: { processing: true } });
           }
           if (frame.type === "message_update") {
@@ -77,7 +124,10 @@ export const piProvider: EngineProvider = {
             if (part?.type === "text_delta" || part?.type === "thinking_delta")
               await forward({
                 type: part.type === "text_delta" ? "text" : "thinking",
-                id: messageId,
+                id:
+                  part.type === "thinking_delta"
+                    ? `${messageId}:${part.contentIndex}`
+                    : messageId,
                 text: part.delta,
               });
           }
@@ -109,11 +159,7 @@ export const piProvider: EngineProvider = {
               message.stopReason !== "error" &&
               message.stopReason !== "aborted"
             )
-              await forward({
-                type: "message",
-                id: messageId,
-                text: textContent(message.content),
-              });
+              await recordMessage(message, messageId, forward);
           }
           if (frame.type === "tool_execution_start")
             await forward({
@@ -122,13 +168,26 @@ export const piProvider: EngineProvider = {
               name: frame.toolName,
               input: frame.args ?? {},
             });
-          if (frame.type === "tool_execution_end")
+          if (
+            frame.type === "tool_execution_update" ||
+            frame.type === "tool_execution_end"
+          )
             await forward({
               type: "tool_result",
               id: frame.toolCallId,
               name: frame.toolName,
-              text: textContent(frame.result?.content),
-              failed: Boolean(frame.isError),
+              text: textContent(
+                frame.type === "tool_execution_update"
+                  ? frame.partialResult?.content
+                  : frame.result?.content,
+              ),
+              failed:
+                frame.type === "tool_execution_end" && Boolean(frame.isError),
+              partial: frame.type === "tool_execution_update",
+              native:
+                frame.type === "tool_execution_update"
+                  ? frame.partialResult
+                  : frame.result,
             });
           if (frame.type === "agent_settled") {
             if (failure) completion?.reject(new Error(failure));
@@ -435,30 +494,13 @@ export const piProvider: EngineProvider = {
         )
           return false;
         let index = 0;
-        for (const message of messages) {
-          if (message.role === "assistant") {
-            await emit({
-              type: "message",
-              id: `pi:${++index}`,
-              text: textContent(message.content),
-            });
-            for (const part of message.content)
-              if (part.type === "toolCall")
-                await emit({
-                  type: "tool",
-                  id: part.id,
-                  name: part.name,
-                  input: part.arguments,
-                });
-          } else if (message.role === "toolResult")
-            await emit({
-              type: "tool_result",
-              id: message.toolCallId,
-              name: message.toolName,
-              text: textContent(message.content),
-              failed: message.isError,
-            });
-        }
+        for (const message of messages)
+          await recordMessage(
+            message,
+            `pi:${("timestamp" in message ? message.timestamp : undefined) ?? ++index}`,
+            emit,
+            true,
+          );
         return true;
       },
       answer: ui.answer,

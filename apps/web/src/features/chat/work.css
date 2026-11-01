@@ -1,3 +1,6 @@
+:where(.work-row[data-active]) time {
+  margin-inline-end: 32px;
+}
 .work-list {
   display: grid;
   gap: var(--space-2);
@@ -79,34 +82,172 @@
 .work-mark[data-state="failed"]::after {
   background: var(--color-danger-icon);
 }
-.work-row[data-active] time {
-  margin-inline-end: 32px;
-}
 .work-stop {
   position: absolute;
   right: 30px;
   top: 50%;
   transform: translateY(-50%);
 }
+.work-heading {
+  display: grid;
+  gap: var(--space-2);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-edge);
+}
 .work-meta {
   display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
 }
-.work-meta > span:first-child {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.work-meta > span:last-child {
-  flex-shrink: 0;
+.work-meta time {
+  margin-inline-start: auto;
 }
 .work-detail {
-  display: grid;
-  gap: var(--space-4);
   min-width: 0;
+}
+.work-request {
+  margin: 0;
+  font-weight: 500;
 }
 .work-request,
 .work-detail pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.work-timeline {
+  margin: var(--space-5) 0 0;
+  padding: 0 0 0 var(--space-1);
+  list-style: none;
+}
+.work-entry {
+  position: relative;
+  padding: 0 0 var(--space-5) var(--space-5);
+  border-inline-start: 1px solid var(--color-edge);
+  line-height: 1.6;
+}
+.work-entry:last-child {
+  padding-bottom: 0;
+}
+.work-entry::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: -4px;
+  top: 8px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-muted);
+}
+.work-entry[data-state="done"]::before {
+  background: var(--color-working);
+}
+.work-entry[data-state="failed"]::before,
+.work-entry[data-state="uncertain"]::before {
+  background: var(--color-danger-icon);
+}
+.work-entry[data-state="running"]::before {
+  background: var(--color-waiting);
+}
+.work-entry > time,
+.work-exit,
+.work-thought,
+.work-operation-status {
+  color: var(--color-muted);
+  font-size: var(--text-small);
+  font-variant-numeric: tabular-nums;
+}
+.work-entry > time {
+  display: block;
+  margin-top: var(--space-3);
+  text-align: end;
+}
+.work-entry p,
+.work-entry .markdown > :first-child {
+  margin-top: 0;
+}
+.work-entry p:last-child,
+.work-entry .markdown > :last-child {
+  margin-bottom: 0;
+}
+.work-operation > summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  list-style: none;
+  cursor: pointer;
+}
+.work-operation > summary::-webkit-details-marker {
+  display: none;
+}
+.work-operation > summary strong {
+  flex-shrink: 0;
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+.work-operation > summary:hover {
+  color: var(--color-link);
+}
+.work-target {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-link);
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+}
+.work-operation-status {
+  margin-inline-start: auto;
+  white-space: nowrap;
+}
+.work-operation-body {
+  margin-top: var(--space-2);
+  min-width: 0;
+}
+.work-operation-body > pre {
+  max-height: var(--activity-detail-height);
+  overflow: auto;
+}
+.work-terminal,
+.work-file {
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius-control);
+  background: transparent;
+  font-size: var(--text-small);
+}
+.work-terminal-line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
+}
+.work-terminal-line + .work-terminal-line {
+  border-top: 1px solid var(--color-edge);
+}
+.work-terminal-line > span {
+  color: var(--color-muted);
+  font-size: var(--text-small);
+}
+.work-terminal-line pre {
+  margin: 0;
+  max-height: var(--activity-detail-height);
+  overflow: auto;
+  white-space: pre;
+  font-family: inherit;
+}
+.work-exit,
+.work-file {
+  padding: var(--space-2) var(--space-3);
+}
+.work-plan {
+  margin: 0;
+  padding-inline-start: var(--space-4);
+}
+.work-plan [data-state="completed"] {
+  color: var(--color-muted);
+}
+.work-entry[data-parent] > :not(time) {
+  margin-inline-start: var(--space-4);
 }

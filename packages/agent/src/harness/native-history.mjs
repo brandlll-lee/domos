@@ -112,7 +112,6 @@ export async function nativeHistory(input, home) {
         limit: 64,
       });
       for (const entry of page) {
-        if (entry.parent_tool_use_id) continue;
         if (entry.uuid === input.since) found = true;
         if (found) add(entry);
       }

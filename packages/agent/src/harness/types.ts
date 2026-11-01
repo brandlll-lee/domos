@@ -137,7 +137,14 @@ export type EnginePlan = {
   status: "pending" | "inProgress" | "completed";
 }[];
 
-export type EngineEvent = { receivedAt?: number } & (
+export type EngineEvent = {
+  receivedAt?: number;
+  timestamp?: number;
+  endedAt?: number;
+  recovered?: boolean;
+  parentId?: string;
+  native?: Record<string, unknown>;
+} & (
   | { type: "plan"; plan: EnginePlan }
   | {
       type: "context";
@@ -170,6 +177,8 @@ export type EngineEvent = { receivedAt?: number } & (
       name: string;
       text: string;
       failed: boolean;
+      partial?: boolean;
+      append?: boolean;
       attachments?: Attachment[];
     }
   | { type: "approval"; approval: EngineApproval }

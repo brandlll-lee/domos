@@ -228,26 +228,28 @@ test("Pi returns extension selections and cancellations to the native request", 
     options: ["Production", "Preview"],
   });
   await new Promise((resolve) => setImmediate(resolve));
-  expect(events).toContainEqual({
-    type: "approval",
-    approval: {
-      id: "choose",
-      kind: "question",
-      title: "Choose target",
-      detail: "",
-      questions: [
-        {
-          id: "choose",
-          title: "Choose target",
-          allowOther: true,
-          options: [
-            { id: "Production", label: "Production" },
-            { id: "Preview", label: "Preview" },
-          ],
-        },
-      ],
-    },
-  });
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      type: "approval",
+      approval: {
+        id: "choose",
+        kind: "question",
+        title: "Choose target",
+        detail: "",
+        questions: [
+          {
+            id: "choose",
+            title: "Choose target",
+            allowOther: true,
+            options: [
+              { id: "Production", label: "Production" },
+              { id: "Preview", label: "Preview" },
+            ],
+          },
+        ],
+      },
+    }),
+  );
   await session.answer("choose", {
     allow: true,
     answers: { choose: ["Custom target"] },
@@ -285,7 +287,9 @@ test("Pi returns extension selections and cancellations to the native request", 
       id: "expired",
       cancelled: true,
     });
-  expect(events).toContainEqual({ type: "approval_closed", id: "expired" });
+  expect(events).toContainEqual(
+    expect.objectContaining({ type: "approval_closed", id: "expired" }),
+  );
   expect(
     events.some(
       (event) => event.type === "approval" && event.approval.automatic,
@@ -381,6 +385,7 @@ test("Pi reconciles the recorded number of inputs without sending them again", a
       message: {
         role: "assistant",
         stopReason: complete ? "stop" : "toolUse",
+        timestamp: 1,
         content: [{ type: "text", text: "Saved result" }],
       },
     },
@@ -394,11 +399,13 @@ test("Pi reconciles the recorded number of inputs without sending them again", a
   });
   expect(await session.recover?.("pi:previous")).toBe(false);
   expect(await session.recover?.("pi:previous", 2)).toBe(true);
-  expect(events).toContainEqual({
-    type: "message",
-    id: "pi:1",
-    text: "Saved result",
-  });
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      type: "message",
+      id: "pi:1",
+      text: "Saved result",
+    }),
+  );
   complete = false;
   expect(await session.recover?.("pi:previous")).toBe(false);
   expect(process.requests.some((request) => request.type === "prompt")).toBe(
@@ -436,11 +443,13 @@ test("Claude reconciles the matching user UUID and refuses an unfinished turn", 
     emit,
   });
   expect(await session.recover?.("claude:request-uuid")).toBe(true);
-  expect(events).toContainEqual({
-    type: "message",
-    id: "native-answer",
-    text: "Complete result",
-  });
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      type: "message",
+      id: "native-answer",
+      text: "Complete result",
+    }),
+  );
   reason = "tool_use";
   expect(await session.recover?.("claude:request-uuid")).toBe(false);
   expect(await session.recover?.("claude:other-request")).toBe(false);
@@ -648,12 +657,16 @@ test("Codex handles approval, streams tools and recovers a completed native turn
     },
   });
   await session.prompt("Save report");
-  expect(events).toContainEqual({
-    type: "plan",
-    plan: [{ step: "Read", status: "inProgress" }],
-  });
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      type: "plan",
+      plan: [{ step: "Read", status: "inProgress" }],
+    }),
+  );
   expect(approved).toBe(true);
-  expect(events).toContainEqual({ type: "accepted", id: "turn-1" });
+  expect(events).toContainEqual(
+    expect.objectContaining({ type: "accepted", id: "turn-1" }),
+  );
   expect(await session.recover?.("turn-1")).toBe(true);
   expect(await session.recover?.("unknown")).toBe(false);
   expect(
@@ -790,23 +803,29 @@ test("Claude uses the work computer account and keeps its own session", async ()
   expect(process.spec?.env?.CLAUDE_CONFIG_DIR).toBeUndefined();
   expect(process.spec?.args).toContain("--resume");
   expect(process.spec?.args).toContain("mcp__domos__approve");
-  expect(events).toContainEqual({
-    type: "tool_result",
-    id: "write",
-    name: "Claude Code",
-    text: "Done",
-    failed: false,
-  });
-  expect(events).toContainEqual({
-    type: "text",
-    id: "message",
-    text: "Saved",
-  });
-  expect(events).toContainEqual({
-    type: "message",
-    id: "message",
-    text: "Saved",
-  });
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      type: "tool_result",
+      id: "write",
+      name: "Claude Code",
+      text: "Done",
+      failed: false,
+    }),
+  );
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      type: "text",
+      id: "message",
+      text: "Saved",
+    }),
+  );
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      type: "message",
+      id: "message",
+      text: "Saved",
+    }),
+  );
 });
 
 test("Claude reports retries, resumes output and preserves connection errors", async () => {
@@ -836,23 +855,27 @@ test("Claude reports retries, resumes output and preserves connection errors", a
   });
   await expect
     .poll(() => events)
-    .toContainEqual({
-      type: "runtime",
-      state: {
-        processing: false,
-        retry: "模型连接失败，正在重试（3/10，间隔 3 秒）。",
-      },
-    });
+    .toContainEqual(
+      expect.objectContaining({
+        type: "runtime",
+        state: {
+          processing: false,
+          retry: "模型连接失败，正在重试（3/10，间隔 3 秒）。",
+        },
+      }),
+    );
   process.frame({
     type: "stream_event",
     event: { type: "message_start", message: { id: "message" } },
   });
   await expect
     .poll(() => events)
-    .toContainEqual({
-      type: "runtime",
-      state: { processing: true, retry: null },
-    });
+    .toContainEqual(
+      expect.objectContaining({
+        type: "runtime",
+        state: { processing: true, retry: null },
+      }),
+    );
   process.frame({
     type: "result",
     is_error: true,
@@ -861,7 +884,7 @@ test("Claude reports retries, resumes output and preserves connection errors", a
   expect(await pending).toMatchObject({
     message: "Connection refused (ECONNREFUSED)",
   });
-  expect(events.at(-1)).toEqual({
+  expect(events.at(-1)).toMatchObject({
     type: "runtime",
     state: { processing: false, retry: null },
   });
@@ -942,18 +965,22 @@ test("OpenCode uses ACP model discovery, permissions and native session load", a
   });
   expect(await session.models()).toEqual([{ id: "test/model", name: "Test" }]);
   await session.prompt("Save report");
-  expect(events).toContainEqual({
-    type: "text",
-    id: "opencode:1",
-    text: "Saved",
-  });
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      type: "text",
+      id: "opencode:1",
+      text: "Saved",
+    }),
+  );
   expect(
     process.requests.find((request) => request.id === "permission")?.result,
   ).toEqual({ outcome: { outcome: "selected", optionId: "allow" } });
-  expect(events).toContainEqual({
-    type: "approval",
-    approval: expect.objectContaining({ automatic: true }),
-  });
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      type: "approval",
+      approval: expect.objectContaining({ automatic: true }),
+    }),
+  );
 });
 
 test("OpenCode reconciles native history after its saved checkpoint", async () => {
@@ -1003,11 +1030,13 @@ test("OpenCode reconciles native history after its saved checkpoint", async () =
     emit,
   });
   expect(await session.recover?.("opencode:baseline")).toBe(true);
-  expect(events).toContainEqual({
-    type: "message",
-    id: "result",
-    text: "Recovered answer",
-  });
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      type: "message",
+      id: "result",
+      text: "Recovered answer",
+    }),
+  );
   finish = "tool-calls";
   expect(await session.recover?.("opencode:baseline")).toBe(false);
   expect(

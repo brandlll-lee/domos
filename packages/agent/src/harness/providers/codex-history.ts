@@ -42,8 +42,7 @@ export async function readCodexTurn(
         cursor,
       });
     for (const { item } of page.data) {
-      if (!["agentMessage", "contextCompaction"].includes(item.type)) continue;
-      bytes += Buffer.byteLength(item.text ?? "");
+      bytes += Buffer.byteLength(JSON.stringify(item));
       if (bytes > 8 * 1024 * 1024)
         throw new Error("Codex 本轮恢复内容过大。原生记录已保留。");
       items.push(item);

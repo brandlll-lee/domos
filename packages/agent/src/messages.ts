@@ -23,7 +23,10 @@ export type ChatMessage = {
   detail?: boolean;
   activity?: import("./harness/types.ts").EngineEvent;
   receivedAt?: number;
+  updatedAt?: number;
   endedAt?: number;
+  native?: Record<string, unknown>;
+  parentId?: string;
   approval?: {
     request: EngineApproval;
     state: "pending" | "answered" | "denied" | "expired";

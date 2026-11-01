@@ -12,6 +12,7 @@ export type CodexItem = {
   result?: unknown;
   status?: string;
   error?: unknown;
+  [field: string]: unknown;
 };
 export type CodexTurn = {
   id: string;
@@ -64,3 +65,93 @@ export const codexApprovals = new Set([
   "item/commandExecution/requestApproval",
   "item/fileChange/requestApproval",
 ]);
+
+export function codexItemEvents(
+  item: CodexItem,
+  completed: boolean,
+  recovered = false,
+): import("../types.ts").EngineEvent[] {
+  const metadata = { native: item, ...(recovered ? { recovered: true } : {}) };
+  if (item.type === "agentMessage")
+    return completed
+      ? [{ type: "message", id: item.id, text: item.text ?? "", ...metadata }]
+      : [];
+  if (item.type === "reasoning")
+    return completed
+      ? [
+          {
+            type: "thinking",
+            id: item.id,
+            text: [
+              ...(Array.isArray(item.summary) ? item.summary : []),
+              ...(Array.isArray(item.content) ? item.content : []),
+            ].join("\n"),
+            replace: true,
+            ...metadata,
+          },
+        ]
+      : [];
+  if (
+    ![
+      "commandExecution",
+      "fileChange",
+      "mcpToolCall",
+      "dynamicToolCall",
+      "collabAgentToolCall",
+      "collabToolCall",
+      "webSearch",
+      "imageView",
+      "imageGeneration",
+    ].includes(item.type)
+  )
+    return [];
+  const name = item.tool ?? item.type;
+  const {
+    aggregatedOutput: _output,
+    result: _result,
+    error: _error,
+    ...inputNative
+  } = item;
+  const events: import("../types.ts").EngineEvent[] = [];
+  events.push({
+    type: "tool",
+    id: item.id,
+    name,
+    input: item.arguments ?? {
+      ...(item.command ? { command: item.command } : {}),
+      ...(item.changes ? { changes: item.changes } : {}),
+      ...(item.query ? { query: item.query } : {}),
+      ...(item.path ? { path: item.path } : {}),
+    },
+    ...metadata,
+    native: inputNative,
+  });
+  if (completed)
+    events.push({
+      type: "tool_result",
+      id: item.id,
+      name,
+      text:
+        item.aggregatedOutput ??
+        (item.error as { message?: string } | null)?.message ??
+        (
+          (
+            item.result as {
+              content?: { type: string; text?: string }[];
+            } | null
+          )?.content ?? []
+        )
+          .filter((part) => part.type === "text")
+          .map((part) => part.text ?? "")
+          .join("\n"),
+      failed:
+        ["failed", "declined", "interrupted", "cancelled"].includes(
+          item.status ?? "",
+        ) ||
+        Boolean(item.error) ||
+        item.success === false ||
+        (item.result as { isError?: boolean } | null)?.isError === true,
+      ...metadata,
+    });
+  return events;
+}

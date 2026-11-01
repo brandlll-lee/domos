@@ -95,22 +95,24 @@ test("Codex distinguishes tool consent from forms and sign-in", () => {
 test("Codex asks the user before desktop execution", async () => {
   const { process, events, session, request } = await open();
   await request(form, 42);
-  expect(events).toContainEqual({
-    type: "approval",
-    approval: expect.objectContaining({
-      id: "42",
-      detail: expect.stringContaining("hotkey"),
-      questions: [
-        expect.objectContaining({
-          id: "decision",
-          options: [
-            { id: "accept", label: "Allow once" },
-            { id: "decline", label: "Deny" },
-          ],
-        }),
-      ],
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      type: "approval",
+      approval: expect.objectContaining({
+        id: "42",
+        detail: expect.stringContaining("hotkey"),
+        questions: [
+          expect.objectContaining({
+            id: "decision",
+            options: [
+              { id: "accept", label: "Allow once" },
+              { id: "decline", label: "Deny" },
+            ],
+          }),
+        ],
+      }),
     }),
-  });
+  );
   expect(process.requests.filter((r) => r.id === 42)).toEqual([]);
   await session.answer("42", {
     allow: true,
@@ -131,7 +133,9 @@ test("Codex asks the user before desktop execution", async () => {
   });
   await expect
     .poll(() => events)
-    .toContainEqual({ type: "approval_closed", id: "42" });
+    .toContainEqual(
+      expect.objectContaining({ type: "approval_closed", id: "42" }),
+    );
 });
 
 test("Codex validates typed form answers and permits correction", async () => {
@@ -154,16 +158,18 @@ test("Codex validates typed form answers and permits correction", async () => {
       },
     },
   });
-  expect(events).toContainEqual({
-    type: "approval",
-    approval: expect.objectContaining({
-      questions: expect.arrayContaining([
-        expect.objectContaining({ id: "enabled", value: "false" }),
-        expect.objectContaining({ id: "note", required: false }),
-        expect.objectContaining({ id: "tags", multiple: true }),
-      ]),
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      type: "approval",
+      approval: expect.objectContaining({
+        questions: expect.arrayContaining([
+          expect.objectContaining({ id: "enabled", value: "false" }),
+          expect.objectContaining({ id: "note", required: false }),
+          expect.objectContaining({ id: "tags", multiple: true }),
+        ]),
+      }),
     }),
-  });
+  );
   for (const answers of [
     { enabled: ["false"], count: ["9"], tags: ["a"] },
     { enabled: ["maybe"], count: ["2"], tags: ["a"] },
@@ -212,7 +218,9 @@ test("Codex resolves confirmations and isolates other threads", async () => {
   });
   await expect
     .poll(() => events)
-    .toContainEqual({ type: "approval_closed", id: "approval" });
+    .toContainEqual(
+      expect.objectContaining({ type: "approval_closed", id: "approval" }),
+    );
   await expect(session.answer("approval", { allow: true })).rejects.toThrow(
     "失效",
   );
@@ -226,10 +234,12 @@ test("Codex presents a safe external authorization link", async () => {
     url: "https://example.com/connect",
     elicitationId: "auth",
   });
-  expect(events).toContainEqual({
-    type: "approval",
-    approval: expect.objectContaining({ url: "https://example.com/connect" }),
-  });
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      type: "approval",
+      approval: expect.objectContaining({ url: "https://example.com/connect" }),
+    }),
+  );
   await session.answer("approval", { allow: true });
   expect(process.requests).toContainEqual({
     id: "approval",

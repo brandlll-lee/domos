@@ -4,6 +4,8 @@ import {
   ndJsonStream,
   PROTOCOL_VERSION,
   type SessionConfigOption,
+  type ToolCall,
+  type ToolCallUpdate,
 } from "@agentclientprotocol/sdk";
 import type { z } from "zod";
 import {
@@ -36,7 +38,22 @@ type NativeMessage = {
       cache?: { read?: number; write?: number };
     };
   };
-  parts: { type: string; text?: string }[];
+  parts: {
+    id?: string;
+    type: string;
+    text?: string;
+    callID?: string;
+    tool?: string;
+    state?: {
+      status: string;
+      input?: Record<string, unknown>;
+      output?: string;
+      error?: string;
+      title?: string;
+      time?: { start?: number; end?: number };
+      metadata?: Record<string, unknown>;
+    };
+  }[];
 };
 
 function completedCompaction(messages: NativeMessage[]) {
@@ -94,6 +111,55 @@ export function acpProvider(
         if (!replyText.trim() || replyText === completed) return;
         await emit({ type: "message", id: messageId, text: replyText });
         completed = replyText;
+      };
+      const toolCalls = new Map<string, Partial<ToolCall>>();
+      const recordTool = async (
+        update: ToolCallUpdate | ToolCall,
+        recovered = false,
+        timing: {
+          timestamp?: number;
+          endedAt?: number;
+          receivedAt?: number;
+        } = {},
+      ) => {
+        const previous = toolCalls.get(update.toolCallId);
+        const native = {
+          ...previous,
+          ...Object.fromEntries(
+            Object.entries(update).filter(([, value]) => value != null),
+          ),
+        } as Partial<ToolCall>;
+        toolCalls.set(update.toolCallId, native);
+        const metadata = {
+          ...(recovered ? { recovered: true } : {}),
+          ...timing,
+        };
+        const { rawOutput: _output, content: _content, ...input } = native;
+        if (
+          !previous ||
+          update.rawInput != null ||
+          update.title != null ||
+          recovered
+        )
+          await emit({
+            type: "tool",
+            id: update.toolCallId,
+            name: native.title ?? "Tool",
+            input: (native.rawInput ?? {}) as Record<string, unknown>,
+            native: input,
+            ...metadata,
+          });
+        if (native.status || native.rawOutput != null || native.content?.length)
+          await emit({
+            type: "tool_result",
+            id: update.toolCallId,
+            name: native.title ?? "Tool",
+            text: "",
+            failed: native.status === "failed",
+            partial: !["completed", "failed"].includes(native.status ?? ""),
+            native: native as Record<string, unknown>,
+            ...metadata,
+          });
       };
       let configOptions: SessionConfigOption[] = [];
       let commands: EngineControls["commands"] = [];
@@ -244,7 +310,11 @@ export function acpProvider(
             };
           },
           async sessionUpdate(notification) {
+            const receivedAt = Date.now();
+            const forward = (event: EngineEvent) =>
+              emit({ ...event, receivedAt });
             events = events.then(async () => {
+              const emit = forward;
               const { sessionId, update } = notification;
               if (nativeId && sessionId !== nativeId) return;
               if (update.sessionUpdate === "usage_update") {
@@ -363,28 +433,13 @@ export function acpProvider(
                   text: update.content.text,
                 });
               }
-              if (update.sessionUpdate === "tool_call") {
-                await reply();
-                await emit({
-                  type: "tool",
-                  id: update.toolCallId,
-                  name: update.title,
-                  input: (update.rawInput ?? {}) as Record<string, unknown>,
-                });
-              }
               if (
-                update.sessionUpdate === "tool_call_update" &&
-                ["completed", "failed"].includes(update.status ?? "")
-              )
-                await emit({
-                  type: "tool_result",
-                  id: update.toolCallId,
-                  name: update.title ?? "OpenCode",
-                  text: JSON.stringify(
-                    update.rawOutput ?? update.content ?? "",
-                  ),
-                  failed: update.status === "failed",
-                });
+                update.sessionUpdate === "tool_call" ||
+                update.sessionUpdate === "tool_call_update"
+              ) {
+                await reply();
+                await recordTool(update, false, { receivedAt });
+              }
             });
             await events;
           },
@@ -545,6 +600,56 @@ export function acpProvider(
             },
           });
       };
+      const recordMessage = async (
+        message: NativeMessage,
+        recovered = false,
+      ) => {
+        await record(message);
+        const metadata = recovered
+          ? {
+              recovered: true,
+              timestamp: message.info.time?.created,
+              endedAt: message.info.time?.completed,
+            }
+          : {};
+        for (const [index, part] of message.parts.entries()) {
+          if (part.type === "reasoning" && part.text)
+            await emit({
+              type: "thinking",
+              id: part.id ?? `${message.info.id}:${index}`,
+              text: part.text,
+              replace: true,
+              ...metadata,
+            });
+          if (part.type === "tool" && part.callID && part.state)
+            await recordTool(
+              {
+                toolCallId: part.callID,
+                title: part.state.title ?? part.tool ?? "Tool",
+                rawInput: part.state.input,
+                rawOutput: part.state.output ?? part.state.error,
+                status:
+                  part.state.status === "error"
+                    ? "failed"
+                    : (part.state.status as ToolCall["status"]),
+              },
+              recovered,
+              {
+                timestamp: part.state.time?.start,
+                endedAt: part.state.time?.end,
+              },
+            );
+        }
+        await emit({
+          type: "message",
+          id: message.info.id,
+          text: message.parts
+            .filter((part) => part.type === "text")
+            .map((part) => part.text ?? "")
+            .join("\n"),
+          ...metadata,
+        });
+      };
       const session: EngineSession = {
         id,
         async skills() {
@@ -663,17 +768,7 @@ export function acpProvider(
               if (contextReading) await emit(contextReading);
             }
             for (const message of updated)
-              if (message.info.role === "assistant") {
-                await record(message);
-                await emit({
-                  type: "message",
-                  id: message.info.id,
-                  text: message.parts
-                    .filter((part) => part.type === "text")
-                    .map((part) => part.text ?? "")
-                    .join("\n"),
-                });
-              }
+              if (message.info.role === "assistant") await record(message);
           } finally {
             active = false;
           }
@@ -702,15 +797,7 @@ export function acpProvider(
             return false;
           for (const message of turn)
             if (message.info.role === "assistant") {
-              await record(message);
-              await emit({
-                type: "message",
-                id: message.info.id,
-                text: message.parts
-                  .filter((part) => part.type === "text")
-                  .map((part) => part.text ?? "")
-                  .join("\n"),
-              });
+              await recordMessage(message, true);
             }
           return true;
         },

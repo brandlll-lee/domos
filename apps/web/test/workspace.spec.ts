@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
+import { codexWork } from "../../../packages/agent/test/fixtures/native-work.ts";
 
 let worker: ChildProcess;
 let directory: string;
@@ -2257,9 +2258,26 @@ test("Work follows a native turn, opens its record and preserves it after stop a
     stopReason: "toolUse",
   });
   await once(worker, "message");
+  worker.send("gate-tool");
+  await once(worker, "message");
   await page.getByLabel("消息", { exact: true }).fill("检查原生工具");
   await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(card).toContainText(toolName);
+  await card.locator(".work-open").click();
+  await expect(dialog.locator(".work-entry[data-state=running]")).toHaveCount(
+    1,
+  );
+  worker.send("release");
+  await once(worker, "message");
   await expect(card).toContainText("执行已结束");
+  await expect(
+    dialog.locator("summary").filter({ hasText: toolName }),
+  ).toHaveCount(1);
+  await expect(dialog.locator(".work-entry[data-state=running]")).toHaveCount(
+    0,
+  );
+  await expect(dialog.locator(".work-entry").last()).toContainText("已收到");
+  await page.keyboard.press("Escape");
   await expect(page.locator(".work-row")).toHaveCount(2);
   await expect(card).toHaveCSS("border-width", "1px");
   await expect(page.locator(".work-list")).toHaveCSS("border-width", "0px");
@@ -2273,10 +2291,37 @@ test("Work follows a native turn, opens its record and preserves it after stop a
   await expect(dialog).toContainText("核对原生记录。");
   await dialog.locator("summary").filter({ hasText: toolName }).click();
   await expect(
-    dialog.locator("pre").filter({ hasText: "原生工具回执" }),
+    dialog.locator(".work-operation-body").filter({ hasText: "原生工具回执" }),
   ).toBeVisible();
+  await expect(dialog.getByRole("list", { name: "执行时间线" })).toBeVisible();
+  await expect(dialog.locator(".work-entry[data-state=done]")).toHaveCount(1);
+  await expect(
+    dialog.locator("summary").filter({ hasText: /^回复/ }),
+  ).toHaveCount(0);
+  await expect(dialog).not.toContainText("Harness 未提供思考内容");
+  await expect(dialog.locator(".work-entry time").first()).toHaveAttribute(
+    "datetime",
+    /T/,
+  );
   await expect(dialog).toContainText("原生工具回执");
-  await page.screenshot({ path: info.outputPath("work-detail.png") });
+  for (const theme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await expect(dialog.locator(".work-entry").first()).toHaveCSS(
+      "border-left-width",
+      "1px",
+    );
+    await page.screenshot({
+      path: info.outputPath(`work-timeline-${theme}.png`),
+    });
+  }
+  const recordCount = await dialog.locator(".work-entry").count();
+  await page.keyboard.press("Escape");
+  await page.reload();
+  await page.getByRole("tab", { name: "Work", exact: true }).click();
+  await card.locator(".work-open").click();
+  await expect(dialog.locator(".work-entry")).toHaveCount(recordCount);
+  await dialog.locator("summary").filter({ hasText: toolName }).click();
+  await expect(dialog).toContainText("原生工具回执");
   await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 390, height: 844 });
   expect((await card.boundingBox())?.height).toBe(60);
@@ -2287,6 +2332,97 @@ test("Work follows a native turn, opens its record and preserves it after stop a
     "ellipsis",
   );
   await page.screenshot({ path: info.outputPath("work-narrow.png") });
+});
+
+test("Work renders native search, file and terminal details in both themes", async ({
+  page,
+}, info) => {
+  const turnId = "native-work";
+  worker.send({
+    records: [
+      {
+        id: "native-request",
+        turnId,
+        role: "user",
+        content: [
+          { type: "text", key: "request", text: "检查搜索、文件和命令" },
+        ],
+        stopped: false,
+      },
+      ...codexWork
+        .filter((item) => item.type !== "agentMessage")
+        .flatMap((item) => [
+          {
+            id: `native:${item.id}`,
+            turnId,
+            role: "assistant",
+            content: [
+              {
+                type: "toolCall",
+                key: item.id,
+                id: item.id,
+                name: item.type,
+                arguments: {
+                  ...(item.command ? { command: item.command } : {}),
+                  ...(item.query ? { query: item.query } : {}),
+                },
+              },
+            ],
+            stopped: false,
+          },
+          {
+            id: `native:${item.id}:result`,
+            turnId,
+            role: "toolResult",
+            toolCallId: item.id,
+            content: [],
+            native: item,
+            toolStatus: "done",
+            stopped: false,
+          },
+        ]),
+    ],
+  });
+  await once(worker, "message");
+  await page.goto(url);
+  await page.getByRole("tab", { name: "Work", exact: true }).click();
+  await page.locator(".work-open").first().click();
+  const dialog = page.getByRole("dialog", { name: "工作记录", exact: true });
+  const entries = dialog.locator(".work-entry");
+  await expect(entries).toHaveCount(4);
+  await expect(dialog.locator(".work-terminal")).toContainText(
+    "node --version",
+  );
+  await expect(dialog.locator(".work-terminal")).toContainText("v24.16.0");
+  await expect(
+    dialog.locator(".work-terminal-line").first().locator("span"),
+  ).toHaveText("IN");
+  await expect(
+    dialog.locator(".work-terminal-line").nth(1).locator("span"),
+  ).toHaveText("OUT");
+  await expect(dialog).toContainText("退出码 0");
+  await dialog.locator("summary").filter({ hasText: "webSearch" }).click();
+  await expect(dialog).toContainText("example assets source");
+  await dialog.locator("summary").filter({ hasText: "fileChange" }).click();
+  await expect(dialog.locator(".work-file")).toContainText("note.md");
+  await expect(dialog.locator(".work-file")).toContainText("+confirmed");
+  await expect(entries.locator(":scope > time")).toHaveCount(0);
+  for (const theme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    const line = await entries.first().evaluate((el) => {
+      const entry = getComputedStyle(el);
+      const dot = getComputedStyle(el, "::before");
+      return {
+        line: entry.borderLeftWidth,
+        dot: dot.width,
+        position: dot.left,
+      };
+    });
+    expect(line).toEqual({ line: "1px", dot: "7px", position: "-4px" });
+    await page.screenshot({
+      path: info.outputPath(`work-native-${theme}.png`),
+    });
+  }
 });
 
 test("shared question and approval cards persist answers and terminal states", async ({

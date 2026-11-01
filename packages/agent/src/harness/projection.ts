@@ -33,7 +33,9 @@ export class EngineProjection {
   }
   async emit(event: EngineEvent) {
     if (this.failure) throw this.failure;
-    const now = event.receivedAt ?? Date.now();
+    const now = event.recovered
+      ? event.timestamp
+      : (event.receivedAt ?? Date.now());
     if (event.type === "runtime" && event.state.processing !== undefined)
       this.processing = event.state.processing;
     if (
@@ -79,10 +81,13 @@ export class EngineProjection {
         content: [],
         stopped: false,
         timestamp: now,
-        receivedAt: now,
+        ...(!event.recovered ? { receivedAt: now } : {}),
       };
       this.messages.push(message);
     }
+    if (event.native)
+      message.native = stored({ ...message.native, ...event.native });
+    if (event.parentId) message.parentId = event.parentId;
     if (contentEvent)
       for (const previous of this.messages) {
         if (
@@ -91,7 +96,7 @@ export class EngineProjection {
           !previous.content.some((part) => part.type === "toolCall")
         ) {
           previous.pending = false;
-          previous.endedAt = now;
+          previous.endedAt ??= now;
           this.changed.add(previous);
         }
       }
@@ -110,25 +115,42 @@ export class EngineProjection {
       case "tool_result":
         Object.assign(message, {
           toolCallId: event.id,
+          ...(!event.recovered ? { updatedAt: now } : {}),
           toolName: event.name,
           isError: event.failed,
-          toolStatus: event.failed ? "failed" : "done",
-          endedAt: now,
-          content: [{ type: "text", text: event.text, key: id }],
+          toolStatus: event.partial
+            ? "running"
+            : event.failed
+              ? "failed"
+              : "done",
+          ...(!event.partial
+            ? {
+                endedAt:
+                  event.endedAt ?? (event.recovered ? message.endedAt : now),
+              }
+            : {}),
+          content: [
+            {
+              type: "text",
+              text: `${event.append && message.content[0]?.type === "text" ? message.content[0].text : ""}${event.text}`,
+              key: id,
+            },
+          ],
           ...(event.attachments ? { attachments: event.attachments } : {}),
         });
         break;
       case "message":
-        if (message.pending !== false) message.timestamp = now;
+        if (message.pending !== false && now !== undefined)
+          message.timestamp = now;
         Object.assign(message, {
           content: [{ type: "text", text: event.text, key: id }],
           pending: false,
-          endedAt: now,
+          endedAt: event.endedAt ?? (event.recovered ? message.endedAt : now),
         });
         break;
       case "text":
       case "thinking": {
-        if (message.pending === false) return;
+        if (message.pending === false && !event.replace) return;
         const part = message.content[0];
         const previous =
           part?.type === "text"
@@ -142,7 +164,7 @@ export class EngineProjection {
             ? { type: "text", text, key: id }
             : { type: "thinking", thinking: text, key: id },
         ];
-        message.pending = true;
+        message.pending = !event.recovered;
         break;
       }
       default:
