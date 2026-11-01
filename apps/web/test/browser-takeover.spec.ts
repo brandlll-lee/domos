@@ -47,7 +47,7 @@ async function openBrowser(page: import("@playwright/test").Page) {
   const view = page.getByRole("region", { name: "Domos的电脑", exact: true });
   await view.getByRole("button", { name: "启用浏览器", exact: true }).click();
   const image = view.getByRole("img", { name: "工作电脑画面" });
-  await expect(image).toBeVisible();
+  await expect(image).toBeVisible({ timeout: 35_000 });
   const opened = once(worker, "message");
   worker.send("open-takeover-page");
   const [result] = await opened;

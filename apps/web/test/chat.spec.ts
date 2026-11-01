@@ -2221,6 +2221,7 @@ test("IM bubbles, sidebar search, and popup surfaces share both themes", async (
       .getByRole("button", { name: "返回对话", exact: true })
       .click();
     await details.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(details).not.toBeVisible();
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: "test-results/im-mobile.png" });
