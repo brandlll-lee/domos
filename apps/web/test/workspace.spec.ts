@@ -1049,6 +1049,20 @@ it("chat reflows within the frame budget and retains its position", async ({
     };
   });
   const session = await page.context().newCDPSession(page);
+  await session.send("Performance.enable", { timeDomain: "threadTicks" });
+  const metrics = async () => {
+    const { metrics } = await session.send("Performance.getMetrics");
+    const read = (name: string) => {
+      const value = metrics.find((metric) => metric.name === name)?.value;
+      if (value === undefined)
+        throw new Error(`Missing performance metric: ${name}`);
+      return value;
+    };
+    return {
+      layouts: read("LayoutCount"),
+      layoutMs: (read("LayoutDuration") + read("RecalcStyleDuration")) * 1000,
+    };
+  };
   await session.send("Emulation.setCPUThrottlingRate", { rate: 2 });
   await frames.evaluate((recording) => recording.start());
   await page.evaluate(
@@ -1065,7 +1079,6 @@ it("chat reflows within the frame budget and retains its position", async ({
   const baseline = await frames.evaluate((recording) => recording.finish());
   console.log(`Idle frame timing: ${JSON.stringify(baseline)}`);
   if (baseline.p95 === undefined) throw new Error("Idle frame timing missing");
-  const frameBudget = Math.max(20, baseline.p95 * 1.2);
   const slowFrame = Math.max(25, baseline.p95 * 1.5);
   for (const side of ["联系人", "详情"]) {
     const handle = page.getByRole("separator", { name: `调整${side}宽度` });
@@ -1081,6 +1094,7 @@ it("chat reflows within the frame budget and retains its position", async ({
       "data-resizing",
       "true",
     );
+    const before = await metrics();
     await frames.evaluate((recording) => recording.start());
     await page.mouse.move(
       box.x + (side === "联系人" ? 60 : -240),
@@ -1100,16 +1114,22 @@ it("chat reflows within the frame budget and retains its position", async ({
       (recording, threshold) => recording.finish(threshold),
       slowFrame,
     );
+    const after = await metrics();
+    const layouts = after.layouts - before.layouts;
+    const layoutMs = after.layoutMs - before.layoutMs;
     await page.mouse.up();
     await expect(page.locator(".workspace-content")).not.toHaveAttribute(
       "data-resizing",
     );
     await page.evaluate(() => document.activeViewTransition?.finished);
     expect((await messages.boundingBox())?.width).not.toBe(body.width);
-    console.log(`${side} resize: ${JSON.stringify(measured)}`);
+    console.log(
+      `${side} resize: ${JSON.stringify({ ...measured, layouts, layoutMs })}`,
+    );
     expect(measured.count).toBeGreaterThan(30);
     expect(measured.gap).toBeLessThanOrEqual(1);
-    expect(measured.p95).toBeLessThanOrEqual(frameBudget);
+    expect(layouts).toBeGreaterThan(0);
+    expect(layoutMs / layouts).toBeLessThanOrEqual(1000 / 60);
     expect(measured.slow).toBeLessThanOrEqual(0.05);
   }
   await session.send("Emulation.setCPUThrottlingRate", { rate: 1 });
