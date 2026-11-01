@@ -17,6 +17,7 @@ export function useTranscript(
   items: TranscriptItem[],
   ready: boolean,
   sentRequest?: string,
+  typing = false,
 ) {
   const viewport = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -29,14 +30,15 @@ export function useTranscript(
     width: number;
     height: number;
     padding: number;
+    typing: boolean;
   }>({
     items: [],
     ready: false,
     width: 0,
     height: 0,
     padding: 0,
+    typing: false,
   });
-  const received = useRef<TranscriptItem[] | null>(null);
   const sent = useRef(sentRequest);
   const ownedTop = useRef(0);
   const scrolled = useRef(false);
@@ -75,32 +77,7 @@ export function useTranscript(
       });
       return;
     }
-    if (
-      received.current &&
-      !document.hidden &&
-      !matchMedia("(prefers-reduced-motion: reduce)").matches
-    ) {
-      const known = new Set(received.current.map(keyOf));
-      const arrivals = new Set(
-        items.filter((item) => !known.has(keyOf(item))).map(keyOf),
-      );
-      for (const node of Array.from(content.current?.children ?? [])) {
-        if (
-          !(node instanceof HTMLElement) ||
-          !arrivals.has(node.dataset.transcriptKey ?? "")
-        )
-          continue;
-        node.dataset.arrival = "true";
-        node.addEventListener(
-          "animationend",
-          () => {
-            delete node.dataset.arrival;
-          },
-          { once: true },
-        );
-      }
-    }
-    if (received.current && sentRequest && sent.current !== sentRequest) {
+    if (previous.current.ready && sentRequest && sent.current !== sentRequest) {
       following.current = true;
       jumping.current = true;
       animate.current = false;
@@ -108,7 +85,6 @@ export function useTranscript(
       setRange(null);
     }
     sent.current = sentRequest;
-    received.current = ready ? items : null;
     const nodes = new Map(
       Array.from(content.current?.children ?? []).flatMap((child) =>
         child instanceof HTMLElement && child.dataset.transcriptKey
@@ -120,6 +96,7 @@ export function useTranscript(
     measure.current = () => {
       const element = viewport.current;
       const list = content.current;
+      if (previous.current.typing !== typing) scrolling.current = false;
       if (
         !element ||
         !list ||
@@ -129,28 +106,6 @@ export function useTranscript(
       )
         return;
       const old = previous.current;
-      if (
-        old.ready &&
-        old.items === items &&
-        following.current &&
-        !jumping.current &&
-        (old.width !== element.clientWidth ||
-          old.height !== element.clientHeight ||
-          Math.abs(element.scrollTop - ownedTop.current) <= 1)
-      ) {
-        scrolled.current = false;
-        element.scrollTop = element.scrollHeight;
-        ownedTop.current = element.scrollTop;
-        setAtBottom(end === items.length);
-        if (end === items.length) setUnread(false);
-        previous.current = {
-          ...old,
-          width: element.clientWidth,
-          height: element.clientHeight,
-          padding: Number.parseFloat(getComputedStyle(element).paddingBottom),
-        };
-        return;
-      }
       const added =
         old.ready && old.items !== items
           ? items.filter((item) => incoming(item) && !seen.has(keyOf(item)))
@@ -250,10 +205,11 @@ export function useTranscript(
         width: element.clientWidth,
         height: element.clientHeight,
         padding: bottom,
+        typing,
       };
     };
-    schedule();
-  }, [items, ready, range, start, end, schedule, sentRequest]);
+    measure.current();
+  }, [items, ready, range, start, end, sentRequest, typing]);
 
   useEffect(() => {
     const element = viewport.current;
@@ -286,12 +242,8 @@ export function useTranscript(
     };
   }, [schedule]);
 
-  const settle = useCallback(() => {
-    scrolling.current = false;
-    measure.current();
-  }, []);
   return {
-    settle,
+    initialized: previous.current.ready,
     viewport,
     content,
     visible,

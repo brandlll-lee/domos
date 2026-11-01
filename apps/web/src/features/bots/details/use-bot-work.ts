@@ -37,23 +37,38 @@ export function useWorkAction() {
   return { busy, error, run, clear: () => setError(null) };
 }
 
-export function useBotWork(botId: number, active: boolean, live: boolean) {
+export function useBotWork(
+  botId: number,
+  active: boolean,
+  live: boolean,
+  profileActive: boolean,
+) {
   const [data, setData] = useState<WorkData | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [connected, setConnected] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
   useEffect(() => {
-    if (!active) return;
+    if (!profileActive) return;
     const controller = new AbortController();
+    setProfileError(null);
     void client.work
       .profile({ botId }, { signal: controller.signal })
       .then((value) => {
-        if (!controller.signal.aborted) setProfile(value);
+        if (!controller.signal.aborted) {
+          setProfile(value);
+          setProfileError(null);
+        }
       })
       .catch(() => {
         if (!controller.signal.aborted)
-          setError("详情加载失败。请关闭后重试。");
+          setProfileError("资料加载失败。请关闭后重试。");
       });
+    return () => controller.abort();
+  }, [botId, profileActive]);
+  useEffect(() => {
+    if (!active) return;
+    const controller = new AbortController();
+    setError(null);
     void (async () => {
       try {
         if (!live) {
@@ -73,7 +88,8 @@ export function useBotWork(botId: number, active: boolean, live: boolean) {
             context: {
               retry: Number.POSITIVE_INFINITY,
               onRetry: () => {
-                if (!controller.signal.aborted) setConnected(false);
+                if (!controller.signal.aborted)
+                  setError("详情连接中断，正在重连。");
               },
             },
           },
@@ -81,16 +97,14 @@ export function useBotWork(botId: number, active: boolean, live: boolean) {
         for await (const value of events) {
           if (controller.signal.aborted) return;
           setData(value);
-          setConnected(true);
+          setError(null);
         }
       } catch {
         if (!controller.signal.aborted)
           setError("详情连接中断。请关闭后重试。");
-      } finally {
-        if (!controller.signal.aborted) setConnected(false);
       }
     })();
     return () => controller.abort();
   }, [botId, active, live]);
-  return { data, profile, setProfile, error, connected: active && connected };
+  return { data, profile, setProfile, error, profileError };
 }

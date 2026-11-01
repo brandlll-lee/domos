@@ -67,12 +67,22 @@ export function BotDetails({
   takeoverId?: string;
 }) {
   const [memoryOpen, setMemoryOpen] = useState(false);
+  const workActive =
+    active &&
+    ((view === "root" && tab === "bot") ||
+      view === "skills" ||
+      view === "routines" ||
+      memoryOpen);
   const work = useBotWork(
     bot.id,
-    active && tab === "bot",
+    workActive,
     view !== "root" || memoryOpen,
+    active && view === "identity",
   );
   const action = useWorkAction();
+  const error =
+    action.error ??
+    (view === "identity" ? work.profileError : workActive ? work.error : null);
   const [selection, setSelection] = useState<PanelEditor | null>(null);
   const editor = selection?.view === view ? selection : null;
   const navigate = (next: BotPanelView) => {
@@ -108,7 +118,7 @@ export function BotDetails({
         onEditorChange={setSelection}
       />
     ) : (
-      <p role="status">正在读取技能…</p>
+      !work.error && <p role="status">正在读取技能…</p>
     );
   else if (view === "routines")
     content = work.data ? (
@@ -122,7 +132,7 @@ export function BotDetails({
         onEditorChange={setSelection}
       />
     ) : (
-      <p role="status">正在读取定时任务…</p>
+      !work.error && <p role="status">正在读取定时任务…</p>
     );
   else if (view === "prompt")
     content = <PromptPanel botId={bot.id} action={action} />;
@@ -197,17 +207,12 @@ export function BotDetails({
         className="detail-scroll"
         viewportClassName="detail-content"
       >
-        {!work.connected && view !== "root" && (
-          <p className="detail-note" role="status">
-            正在连接详情…
-          </p>
-        )}
-        {(work.error || action.error) && (
+        {error && (
           <p className="alert" role="alert">
-            {action.error ?? work.error}
+            {error}
           </p>
         )}
-        {view === "identity" && !work.profile && (
+        {view === "identity" && !work.profile && !work.profileError && (
           <p role="status">正在读取资料…</p>
         )}
         {work.profile && (

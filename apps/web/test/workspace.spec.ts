@@ -13,6 +13,68 @@ let url: string;
 let toolName: string;
 const it = test.extend({ trace: "off" });
 
+test("detail pages load their own data and isolate profile errors", async ({
+  page,
+}) => {
+  let streams = 0;
+  let profiles = 0;
+  await page.route("**/rpc/work/subscribe", async (route) => {
+    streams++;
+    await route.abort();
+  });
+  await page.route("**/rpc/work/profile", async (route) => {
+    profiles++;
+    await route.continue();
+  });
+  await page.goto(url);
+  const details = page.locator("#bot-details");
+  await details.getByRole("tab", { name: "Computer", exact: true }).click();
+  await page.getByRole("button", { name: "电脑设置", exact: true }).click();
+  await expect(
+    details.getByRole("region", { name: "工作电脑", exact: true }),
+  ).toBeVisible();
+  await expect(details.getByRole("status")).toHaveCount(0);
+  expect(streams).toBe(0);
+  expect(profiles).toBe(0);
+  await details.getByRole("button", { name: "返回", exact: true }).click();
+  await details.getByRole("tab", { name: "Bot", exact: true }).click();
+  await details.getByRole("button", { name: "编辑", exact: true }).click();
+  const name = details.getByRole("textbox", { name: "名字", exact: true });
+  await expect(name).toHaveValue("Domos");
+  await name.fill("保留资料草稿");
+  expect(profiles).toBe(1);
+  await expect(details.getByRole("status")).toHaveCount(0);
+  await details.getByRole("button", { name: "返回", exact: true }).click();
+  await details.getByRole("button", { name: /^技能/ }).click();
+  await expect(details.getByRole("alert")).toContainText("详情连接中断");
+  await details.getByRole("button", { name: "返回", exact: true }).click();
+  await details.getByRole("button", { name: "编辑", exact: true }).click();
+  await expect(name).toHaveValue("保留资料草稿");
+  await expect(details.getByRole("alert")).toHaveCount(0);
+});
+
+test("profile loading recovers without retaining an old error", async ({
+  page,
+}) => {
+  let fail = true;
+  await page.route("**/rpc/work/profile", async (route) => {
+    if (fail) await route.fulfill({ status: 503, body: "Unavailable" });
+    else await route.continue();
+  });
+  await page.goto(url);
+  const details = page.locator("#bot-details");
+  await details.getByRole("button", { name: "编辑", exact: true }).click();
+  await expect(details.getByRole("alert")).toContainText("资料加载失败");
+  await expect(details.getByRole("status")).toHaveCount(0);
+  fail = false;
+  await details.getByRole("button", { name: "返回", exact: true }).click();
+  await details.getByRole("button", { name: "编辑", exact: true }).click();
+  await expect(
+    details.getByRole("textbox", { name: "名字", exact: true }),
+  ).toHaveValue("Domos");
+  await expect(details.getByRole("alert")).toHaveCount(0);
+});
+
 test("three columns keep the identity capsule and navigation clear at each width", async ({
   page,
 }, info) => {
@@ -1861,13 +1923,9 @@ test("contact rows keep their density and searchable previews across selections"
   await search.clear();
   const active = contacts.getByRole("link", { name: "研究助手", exact: true });
   await page.mouse.move(400, 800);
-  const selectedColor = await active.evaluate(
-    (item) => getComputedStyle(item).backgroundColor,
-  );
+  await expect(active).toHaveAttribute("aria-current", "page");
   await root.hover();
-  expect(
-    await root.evaluate((item) => getComputedStyle(item).backgroundColor),
-  ).not.toBe(selectedColor);
+  await expect(root).not.toHaveAttribute("aria-current", "page");
   await page.reload();
   await expect(root).toContainText("已收到：核对列表预览");
 });

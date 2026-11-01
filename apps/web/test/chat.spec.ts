@@ -385,7 +385,9 @@ test("Bot details manage identity, memory, shared skills, routines and actual pr
   await memoryDialog
     .getByRole("button", { name: "新增记忆", exact: true })
     .click();
-  await memoryDialog.getByLabel("新增记忆").fill("报告使用公制单位。");
+  await memoryDialog
+    .getByRole("textbox", { name: "内容", exact: true })
+    .fill("报告使用公制单位。");
   await memoryDialog.getByLabel("共享给所有 Bot").check();
   await memoryDialog.getByRole("button", { name: "保存", exact: true }).click();
   await expect(memoryDialog.locator(".item-list")).toContainText(
@@ -1236,17 +1238,6 @@ test("long replies start at the top and background messages preserve a reader's 
     (_, index) => `第 ${index + 1} 项：资料已核对。`,
   ).join("\n\n");
   await control({ content: answer });
-  await page.addInitScript(() => {
-    const arrivals: string[] = [];
-    Object.assign(window, { arrivals });
-    document.addEventListener("animationstart", (event) => {
-      if (
-        event.animationName === "message-in" &&
-        event.target instanceof HTMLElement
-      )
-        arrivals.push(event.target.dataset.transcriptKey ?? "");
-    });
-  });
   await page.goto(url);
   const input = page.getByLabel("消息", { exact: true });
   const send = page.getByRole("button", { name: "发送", exact: true });
@@ -1269,13 +1260,6 @@ test("long replies start at the top and background messages preserve a reader's 
       }),
     )
     .toBeLessThan(2);
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () => (window as unknown as { arrivals: string[] }).arrivals.length,
-      ),
-    )
-    .toBe(2);
   await page.screenshot({ path: "test-results/chat-long-reply.png" });
   await page.locator(".transcript").evaluate((node) => {
     node.scrollTop = 50;
@@ -1301,11 +1285,6 @@ test("long replies start at the top and background messages preserve a reader's 
   await expect(page.getByLabel("Domos 的回复").last()).toBeInViewport();
   await page.reload();
   await expect(page.getByLabel("Domos 的回复").last()).toHaveText("已完成。");
-  expect(
-    await page.evaluate(
-      () => (window as unknown as { arrivals: string[] }).arrivals,
-    ),
-  ).toEqual([]);
 });
 
 test("background replies and reduced motion show complete messages without entry animation", async ({
@@ -1317,9 +1296,9 @@ test("background replies and reduced motion show complete messages without entry
     Object.defineProperty(document, "hidden", { get: () => state.hidden });
     document.addEventListener("animationstart", (event) => {
       if (
-        event.animationName === "message-in" &&
-        event.target instanceof HTMLElement &&
-        event.target.closest(".message.assistant")
+        (state.hidden ||
+          matchMedia("(prefers-reduced-motion: reduce)").matches) &&
+        event.animationName === "message-in"
       )
         state.arrivals++;
     });
@@ -2558,6 +2537,12 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
 test("message media leads captions and bubble tails follow both themes", async ({
   page,
 }) => {
+  await control({ history: 40 });
+  const imageReady = Promise.withResolvers<void>();
+  await page.route(/\/files\/\d+\//, async (route) => {
+    await imageReady.promise;
+    await route.continue();
+  });
   await control({ content: "图片和文档已收到。" });
   await page.goto(url);
   await expect(
@@ -2576,9 +2561,24 @@ test("message media leads captions and bubble tails follow both themes", async (
   );
   await page.getByLabel("消息", { exact: true }).fill("请一起核对图片和文档。");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  const incoming = page.getByLabel("Domos 的回复").locator(".message-bubble");
-  const outgoing = page.getByLabel("你的消息").locator(".message-bubble");
+  const incoming = page
+    .getByLabel("Domos 的回复")
+    .last()
+    .locator(".message-bubble");
+  const outgoing = page
+    .getByLabel("你的消息")
+    .last()
+    .locator(".message-bubble");
   await expect(incoming).toContainText("图片和文档已收到。");
+  await page.evaluate(() => document.activeViewTransition?.finished);
+  const beforeImage = await incoming.boundingBox();
+  imageReady.resolve();
+  await expect(outgoing.locator("img")).toHaveJSProperty("naturalWidth", 320);
+  await expect(async () => {
+    const afterImage = await incoming.boundingBox();
+    if (!beforeImage || !afterImage) throw new Error("Reply required");
+    expect(Math.abs(afterImage.y - beforeImage.y)).toBeLessThanOrEqual(1);
+  }).toPass();
   let lightBackground = "";
   for (const [theme, label] of [
     ["light", "浅色"],
@@ -3083,6 +3083,128 @@ test("chat keeps sending available while the Bot is working", async ({
   await page.screenshot({ path: "test-results/chat-continuous-input.png" });
 });
 
+test("message insertion moves typing continuously and completion fades it out", async ({
+  page,
+}) => {
+  await control("gate-tool");
+  await control({
+    responses: [
+      {
+        stopReason: "toolUse",
+        content: [
+          {
+            type: "toolCall",
+            id: crypto.randomUUID(),
+            name: toolName,
+            arguments: { text: "已核对" },
+          },
+        ],
+      },
+      {
+        stopReason: "toolUse",
+        content: [
+          { type: "text", text: "正在核对资料。" },
+          {
+            type: "toolCall",
+            id: crypto.randomUUID(),
+            name: toolName,
+            arguments: { text: "已核对" },
+          },
+        ],
+      },
+      {
+        content: [
+          {
+            type: "thinking",
+            thinking: "资料已经核对。现在整理来源与结果，再提交完整回复。",
+            thinkingSignature: "signature",
+          },
+          { type: "text", text: "核对完成。" },
+        ],
+      },
+    ],
+  });
+  await page.goto(url);
+  const input = page.getByLabel("消息", { exact: true });
+  await input.fill("核对资料");
+  await input.press("Enter");
+  const typing = page.locator(".typing-row");
+  await expect(typing).toBeVisible();
+  await page.evaluate(() => document.activeViewTransition?.finished);
+  const before = await typing.boundingBox();
+  if (!before) throw new Error("Typing bubble required");
+  type Sample = {
+    pseudo: string;
+    y: number;
+    opacity: number;
+    time: number;
+    exit: boolean;
+  };
+  await page.evaluate((width) => {
+    const state = { frames: [] as Sample[], running: true };
+    Object.assign(window, { messageMotion: state });
+    const sample = (time: number) => {
+      for (const animation of document.getAnimations()) {
+        const pseudo = (animation.effect as KeyframeEffect | null)
+          ?.pseudoElement;
+        if (!pseudo) continue;
+        const style = getComputedStyle(document.documentElement, pseudo);
+        const exit =
+          (animation as CSSAnimation).animationName === "message-out";
+        if (
+          exit ||
+          (pseudo.startsWith("::view-transition-group(") &&
+            Math.abs(Number.parseFloat(style.width) - width) < 1)
+        )
+          state.frames.push({
+            pseudo,
+            y: new DOMMatrix(style.transform).m42,
+            opacity: Number(style.opacity),
+            time,
+            exit,
+          });
+      }
+      if (state.running) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  }, before.width);
+  await control("release");
+  await control("gate-tool");
+  await expect(page.getByLabel("Domos 的回复")).toHaveText("正在核对资料。");
+  await page.evaluate(() => document.activeViewTransition?.finished);
+  const after = await typing.boundingBox();
+  if (!after) throw new Error("Typing bubble required");
+  expect(after.y).toBeGreaterThan(before.y);
+  await control("release");
+  await expect(page.getByLabel("Domos 的回复").last()).toHaveText("核对完成。");
+  await page.evaluate(() => document.activeViewTransition?.finished);
+  await expect(typing).toHaveCount(0);
+  const frames = await page.evaluate(() => {
+    const state = (
+      window as unknown as {
+        messageMotion: { frames: Sample[]; running: boolean };
+      }
+    ).messageMotion;
+    state.running = false;
+    return state.frames;
+  });
+  const moving = frames.filter(
+    (frame) => !frame.exit && frame.y > before.y + 1 && frame.y < after.y - 1,
+  );
+  expect(moving.length).toBeGreaterThan(2);
+  for (let index = 1; index < moving.length; index++)
+    expect(moving[index]?.y).toBeGreaterThanOrEqual(
+      (moving[index - 1]?.y ?? 0) - 0.5,
+    );
+  const fading = frames.filter((frame) => frame.exit);
+  expect(fading.length).toBeGreaterThan(2);
+  expect(fading.at(-1)?.opacity).toBeLessThan(fading[0]?.opacity ?? 0);
+  await test.info().attach("message-motion", {
+    body: JSON.stringify(frames),
+    contentType: "application/json",
+  });
+});
+
 test("typing dots share the avatar color and follow complete messages", async ({
   page,
 }) => {
@@ -3352,6 +3474,7 @@ test("native questions use the shared card and native replies persist", async ({
     exact: true,
   });
   await expect(choice).toBeVisible();
+  await expect(page.locator(".typing-row")).toHaveCount(0);
   await expect(page.locator(".composer-area .interaction-card")).toHaveCount(0);
   await expect(choice.getByRole("combobox")).toHaveCount(0);
   await page.reload();
@@ -3397,7 +3520,10 @@ test("native questions use the shared card and native replies persist", async ({
   });
   await page.getByLabel("消息", { exact: true }).fill("再问一次");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  await page.getByRole("button", { name: "取消", exact: true }).click();
+  await page
+    .getByRole("region", { name: "继续吗？", exact: true })
+    .getByRole("button", { name: "取消", exact: true })
+    .click();
   await expect(replies.last()).toHaveText("提问已取消。");
   await expect(
     page.locator('.interaction-card[data-state="pending"]'),

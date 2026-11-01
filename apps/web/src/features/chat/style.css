@@ -302,11 +302,6 @@
   width: 100%;
   margin-inline: auto;
 }
-.messages > [data-transcript-key]:has(~ [data-transcript-key]) {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 100px;
-  overflow-clip-margin: var(--space-2);
-}
 .conversation-time {
   display: block;
   margin-block: var(--space-2) var(--space-6);
@@ -397,9 +392,25 @@
     opacity: 1;
   }
 }
-.message[data-arrival] > .message-bubble,
-.delivered-files[data-arrival] > .message-bubble {
+::view-transition-group(.chat-enter),
+::view-transition-group(.chat-layout),
+::view-transition-group(.chat-exit) {
+  animation-duration: var(--motion-message-in);
+  animation-timing-function: var(--ease-message-in);
+}
+::view-transition-new(.chat-enter) {
   animation: message-in var(--motion-message-in) var(--ease-message-in) both;
+}
+::view-transition-old(.chat-layout) {
+  display: none;
+}
+::view-transition-new(.chat-layout) {
+  animation: none;
+  object-fit: none;
+  object-position: left top;
+}
+::view-transition-old(.chat-exit) {
+  animation: message-out var(--motion-feedback) ease-out both;
 }
 @keyframes message-in {
   from {
@@ -411,9 +422,17 @@
     transform: none;
   }
 }
+@keyframes message-out {
+  to {
+    opacity: 0;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .message[data-arrival] > .message-bubble,
-  .delivered-files[data-arrival] > .message-bubble {
+  ::view-transition-group(.chat-enter),
+  ::view-transition-group(.chat-layout),
+  ::view-transition-group(.chat-exit),
+  ::view-transition-new(.chat-enter),
+  ::view-transition-old(.chat-exit) {
     animation: none;
   }
 }
@@ -459,31 +478,6 @@
   display: flex;
   align-self: flex-start;
   max-width: var(--message-max-width);
-  animation: typing-in var(--motion-feedback) ease-out both;
-}
-.typing-row[data-active="false"] {
-  position: absolute;
-  bottom: 0;
-  pointer-events: none;
-  animation: typing-out var(--motion-feedback) ease-out both;
-}
-@keyframes typing-in {
-  from {
-    opacity: 0;
-    transform: translateY(2px);
-  }
-}
-@keyframes typing-out {
-  to {
-    opacity: 0;
-    transform: translateY(2px);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .typing-row,
-  .typing-row[data-active="false"] {
-    animation-duration: 1ms;
-  }
 }
 .typing-dots {
   color: var(--bot-color);

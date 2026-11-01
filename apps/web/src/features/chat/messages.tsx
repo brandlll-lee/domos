@@ -5,7 +5,14 @@ import { ActionMenu } from "@domos/ui/menu";
 import { MessageBubble } from "@domos/ui/message";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
-import { Fragment, memo, type ReactNode } from "react";
+import {
+  Fragment,
+  memo,
+  type ReactNode,
+  useDeferredValue,
+  useMemo,
+  ViewTransition,
+} from "react";
 import { Approval } from "./approvals.tsx";
 import { Attachments } from "./attachments.tsx";
 import { chatCopy } from "./copy.ts";
@@ -129,10 +136,29 @@ export const Messages = memo(function Messages({
   loadingEarlier?: boolean;
   onEarlier?: () => Promise<void>;
 }) {
-  const transcript = useTranscript(items, ready, sentRequest);
+  const received = useMemo(
+    () => ({ items, ready, processing, retry, sentRequest }),
+    [items, ready, processing, retry, sentRequest],
+  );
+  const deferred = useDeferredValue(received);
+  const shown =
+    !deferred.ready || deferred.sentRequest !== sentRequest
+      ? received
+      : deferred;
+  const typing = shown.ready && (shown.processing || Boolean(shown.retry));
+  const transcript = useTranscript(
+    shown.items,
+    shown.ready,
+    shown.sentRequest,
+    typing,
+  );
+  const motion =
+    !transcript.initialized || document.hidden
+      ? { default: "none" }
+      : { enter: "chat-enter", update: "chat-layout", exit: "chat-exit" };
   const separators = new Map<string, { at: number; label: string }>();
   let previousAt: number | undefined;
-  for (const item of items) {
+  for (const item of shown.items) {
     if (item.kind !== "message") continue;
     const at = item.message.timestamp;
     const label = timeBreak(previousAt, at);
@@ -151,12 +177,12 @@ export const Messages = memo(function Messages({
             transcript.onScroll();
         }}
       >
-        {!ready ? (
+        {!shown.ready ? (
           <p className="working" role="status">
             {chatCopy.loading}
           </p>
         ) : (
-          !items.length &&
+          !shown.items.length &&
           createdAt !== undefined && (
             <div className="conversation-time">
               <time
@@ -168,7 +194,7 @@ export const Messages = memo(function Messages({
             </div>
           )
         )}
-        {ready && !items.length && welcome}
+        {shown.ready && !shown.items.length && welcome}
         <div
           className="messages"
           ref={transcript.content}
@@ -191,7 +217,7 @@ export const Messages = memo(function Messages({
               {chatCopy.earlier}
             </Button>
           )}
-          {ready &&
+          {shown.ready &&
             transcript.visible.map((item) => {
               const key = `${item.kind}:${item.id}`;
               const separator = separators.get(key);
@@ -204,25 +230,27 @@ export const Messages = memo(function Messages({
                       </time>
                     </div>
                   )}
-                  <MessageRow
-                    item={item}
-                    botId={botId}
-                    botName={botName}
-                    onResend={onResend}
-                  />
+                  <ViewTransition {...motion}>
+                    <MessageRow
+                      item={item}
+                      botId={botId}
+                      botName={botName}
+                      onResend={onResend}
+                    />
+                  </ViewTransition>
                 </Fragment>
               );
             })}
-          <TypingDots
-            active={
-              ready && (processing || Boolean(retry)) && transcript.atLatest
-            }
-            label={chatCopy.typing(botName)}
-            status={retry}
-            onLayout={transcript.settle}
-          />
+          {typing && transcript.atLatest && (
+            <ViewTransition {...motion}>
+              <TypingDots
+                label={chatCopy.typing(botName)}
+                status={shown.retry}
+              />
+            </ViewTransition>
+          )}
           <p className="sr-only" role="status">
-            {!busy && items.length ? chatCopy.complete : ""}
+            {!busy && shown.items.length ? chatCopy.complete : ""}
           </p>
         </div>
       </ScrollArea>

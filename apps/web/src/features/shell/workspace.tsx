@@ -59,9 +59,11 @@ export function Workspace({
     // React pauses synthetic events while the transition snapshot commits.
     window.addEventListener("pointerdown", interrupt, true);
     window.addEventListener("keydown", interrupt, true);
+    window.addEventListener("beforeinput", interrupt, true);
     return () => {
       window.removeEventListener("pointerdown", interrupt, true);
       window.removeEventListener("keydown", interrupt, true);
+      window.removeEventListener("beforeinput", interrupt, true);
     };
   }, [sizing.root]);
   const dragChange = useCallback(

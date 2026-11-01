@@ -1,33 +1,14 @@
 import { MessageBubble } from "@domos/ui/message";
-import { useLayoutEffect, useState } from "react";
 
 export function TypingDots({
-  active,
   label,
   status,
-  onLayout,
 }: {
-  active: boolean;
   label: string;
   status?: string | null;
-  onLayout: () => void;
 }) {
-  const [visible, setVisible] = useState(active);
-  useLayoutEffect(() => {
-    if (active) setVisible(true);
-  }, [active]);
-  useLayoutEffect(() => {
-    if (status || !active || !visible) onLayout();
-  }, [active, visible, onLayout, status]);
-  if (!visible) return null;
   return (
-    <div
-      className="typing-row"
-      data-active={active}
-      onAnimationEnd={(event) => {
-        if (event.target === event.currentTarget && !active) setVisible(false);
-      }}
-    >
+    <div className="typing-row">
       <MessageBubble side="incoming">
         {status ? (
           <p className="working" role="status">
