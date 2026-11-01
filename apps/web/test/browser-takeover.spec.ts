@@ -31,7 +31,8 @@ test.beforeEach(async () => {
   const [ready] = await once(worker, "message");
   url = `http://127.0.0.1:${ready.port}`;
 });
-test.afterEach(async () => {
+test.afterEach(async ({ page }) => {
+  await page.close();
   if (worker.connected) {
     const exited = once(worker, "exit");
     worker.disconnect();
