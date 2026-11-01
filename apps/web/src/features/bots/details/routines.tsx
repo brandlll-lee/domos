@@ -320,7 +320,7 @@ function RoutineEditor({
   const [skillIds, setSkillIds] = useState(routine?.skillIds ?? []);
   return (
     <form
-      className="bot-form detail-card"
+      className="bot-form"
       aria-busy={action.busy}
       onSubmit={(event) => {
         event.preventDefault();

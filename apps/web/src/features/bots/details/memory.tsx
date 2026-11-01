@@ -185,7 +185,7 @@ function MemoryEditor({
   };
   return (
     <form
-      className="bot-form detail-card"
+      className="bot-form"
       aria-busy={action.busy}
       onSubmit={(event) => {
         event.preventDefault();
@@ -207,7 +207,7 @@ function MemoryEditor({
           ]}
         />
         <TextField
-          label={entry ? "修改记忆" : "新增记忆"}
+          label="内容"
           value={text}
           onValueChange={setText}
           multiline

@@ -39,7 +39,7 @@ export function SkillPicker({
   return (
     <>
       <input
-        className="composer-picker-search"
+        className="composer-picker-search field-control"
         aria-label="搜索技能"
         placeholder="搜索技能…"
         value={search}
@@ -102,6 +102,7 @@ export function TextPicker({
   return (
     <div className="composer-text-picker">
       <textarea
+        className="field-control"
         aria-label="引用文本"
         placeholder="粘贴要引用的内容…"
         maxLength={WORK_TEXT_LENGTH}
@@ -151,7 +152,7 @@ export function MessagePicker({
   return (
     <>
       <input
-        className="composer-picker-search"
+        className="composer-picker-search field-control"
         aria-label="搜索消息"
         placeholder="搜索消息…"
         value={search}

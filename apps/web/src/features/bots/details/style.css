@@ -199,7 +199,6 @@
 }
 .item-list {
   display: grid;
-  gap: var(--space-2);
   padding: 0;
   margin: 0;
   list-style: none;
@@ -210,10 +209,11 @@
   gap: var(--space-1);
   min-width: 0;
   padding: var(--space-3) calc(var(--control-small) + var(--space-4))
-    var(--space-3) var(--space-3);
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
+    var(--space-3) 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+.item-card:last-child {
+  border-bottom: 0;
 }
 .item-open {
   min-width: 0;
@@ -324,16 +324,14 @@
 }
 .detail-disclosure {
   overflow: hidden;
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
+  border-top: 1px solid var(--color-divider);
 }
 .detail-disclosure summary {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   min-height: 2.75rem;
-  padding: var(--space-2) var(--space-3);
+  padding-block: var(--space-2);
   color: var(--color-text);
   font-size: var(--text-caption);
   font-weight: var(--weight-medium);
@@ -357,13 +355,10 @@
 .detail-disclosure[open] summary::after {
   transform: rotate(225deg) translate(-2px, -2px);
 }
-.detail-disclosure summary:hover {
-  background: color-mix(in srgb, var(--color-text) 4%, transparent);
-}
 .detail-disclosure-body {
   display: grid;
   gap: var(--space-3);
-  padding: 0 var(--space-3) var(--space-3);
+  padding-bottom: var(--space-3);
 }
 .disclosure-count {
   display: inline-grid;
@@ -500,11 +495,4 @@
   .disclosure-count {
     border: 1px solid CanvasText;
   }
-}
-
-.bot-details .bot-form.detail-card {
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
 }

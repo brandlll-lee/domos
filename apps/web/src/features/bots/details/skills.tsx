@@ -303,7 +303,7 @@ function SkillEditor({
   };
   return (
     <form
-      className="bot-form detail-card"
+      className="bot-form"
       aria-busy={action.busy}
       onSubmit={(event) => {
         event.preventDefault();

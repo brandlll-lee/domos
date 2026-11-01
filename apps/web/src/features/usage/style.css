@@ -499,7 +499,6 @@
 }
 .usage-table-scroll {
   overflow-x: auto;
-  scrollbar-width: thin;
 }
 .usage-table {
   width: 100%;

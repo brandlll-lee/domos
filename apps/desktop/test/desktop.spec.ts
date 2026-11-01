@@ -330,7 +330,7 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       await expect(page.locator(".chat-identity")).toHaveCSS(
         "background-color",
-        theme === "dark" ? "rgb(24, 24, 26)" : "rgb(245, 245, 247)",
+        theme === "dark" ? "rgb(20, 20, 22)" : "rgb(250, 250, 250)",
       );
       await captureWindow(
         desktop,

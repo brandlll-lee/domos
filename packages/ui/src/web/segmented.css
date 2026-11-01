@@ -29,7 +29,6 @@
 .segmented-option[data-checked] {
   background: var(--color-control-selected);
   color: var(--color-text);
-  box-shadow: 0 1px 3px #00000014;
 }
 .segmented-option:focus-visible {
   outline: 2px solid var(--color-focus);

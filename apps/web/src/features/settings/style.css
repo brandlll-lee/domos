@@ -59,7 +59,6 @@
   gap: var(--space-1);
   min-height: 0;
   overflow-y: auto;
-  scrollbar-width: thin;
 }
 .settings-nav button {
   display: flex;

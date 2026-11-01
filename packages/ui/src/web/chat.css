@@ -117,7 +117,6 @@
   font-size: var(--text-composer);
   font-weight: var(--weight-regular);
   line-height: var(--leading-body);
-  scrollbar-width: thin;
 }
 .message-composer textarea::placeholder {
   color: color-mix(in srgb, var(--color-muted) 95%, var(--color-composer));

@@ -18,6 +18,8 @@
 }
 * {
   box-sizing: border-box;
+  scrollbar-color: var(--color-scrollbar-thumb) transparent;
+  scrollbar-width: thin;
 }
 #root {
   isolation: isolate;
@@ -205,7 +207,6 @@ a,
   font-size: inherit;
   max-height: var(--activity-detail-height);
   overflow: auto;
-  scrollbar-width: thin;
 }
 .attachment-image {
   position: relative;

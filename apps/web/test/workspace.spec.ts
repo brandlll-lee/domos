@@ -64,7 +64,7 @@ test("three columns keep the identity capsule and navigation clear at each width
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     await expect(capsule).toHaveCSS(
       "background-color",
-      theme === "dark" ? "rgb(24, 24, 26)" : "rgb(245, 245, 247)",
+      theme === "dark" ? "rgb(20, 20, 22)" : "rgb(250, 250, 250)",
     );
     await expect(capsule).toHaveCSS("border-width", "1px");
     await expect(capsule).not.toHaveCSS("box-shadow", "none");
@@ -148,7 +148,7 @@ test("centered dialogs share stable geometry and Harness marks", async ({
         await page.emulateMedia({ colorScheme: theme });
         await expect(memory).toHaveCSS(
           "background-color",
-          theme === "dark" ? "rgb(15, 15, 16)" : "rgb(245, 245, 247)",
+          theme === "dark" ? "rgb(15, 15, 16)" : "rgb(250, 250, 250)",
         );
       }
       const box = await memory.boundingBox();
@@ -1207,7 +1207,7 @@ test("Bot panels keep their hierarchy in both themes and panel widths", async ({
   await expect(page.locator("#bot-details .panel-page")).toBeVisible();
   await memoryDialog.getByRole("button", { name: "新增记忆" }).click();
   const memory = memoryDialog.getByRole("textbox", {
-    name: "新增记忆",
+    name: "内容",
     exact: true,
   });
   await memory.fill("会议记录使用简洁中文。");
@@ -1215,6 +1215,16 @@ test("Bot panels keep their hierarchy in both themes and panel widths", async ({
     await page.emulateMedia({ colorScheme: theme });
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     await memory.click();
+    await expect(memory).toHaveCSS(
+      "background-color",
+      theme === "dark" ? "rgb(20, 20, 22)" : "rgb(250, 250, 250)",
+    );
+    await expect(memory).toHaveCSS("resize", "none");
+    await expect(memory).toHaveCSS("scrollbar-width", "thin");
+    await expect(memoryDialog.locator("form")).toHaveCSS(
+      "background-color",
+      "rgba(0, 0, 0, 0)",
+    );
     await expect(memory).toHaveCSS("outline-style", "none");
     await memory.press("Tab");
     await expect(
@@ -1247,7 +1257,7 @@ test("Bot panels keep their hierarchy in both themes and panel widths", async ({
   await entry.click();
   await expect(memoryDialog.locator(".item-list")).toHaveCount(0);
   await expect(
-    memoryDialog.getByRole("textbox", { name: "修改记忆", exact: true }),
+    memoryDialog.getByRole("textbox", { name: "内容", exact: true }),
   ).toHaveValue("会议记录使用简洁中文。");
   await memoryDialog.getByRole("button", { name: "取消", exact: true }).click();
   await expect(entry).toBeVisible();
@@ -1284,6 +1294,12 @@ test("Bot panels keep their hierarchy in both themes and panel widths", async ({
   for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await expect(
+      details.getByRole("textbox", { name: "工作要求与交付方式", exact: true }),
+    ).toHaveCSS(
+      "background-color",
+      theme === "dark" ? "rgb(20, 20, 22)" : "rgb(250, 250, 250)",
+    );
     await details.screenshot({
       path: testInfo.outputPath(`routine-editor-${theme}.png`),
     });
@@ -2159,7 +2175,7 @@ test("Work follows a native turn, opens its record and preserves it after stop a
     await card.locator(".work-open").click();
     await expect(dialog).toHaveCSS(
       "background-color",
-      theme === "dark" ? "rgb(15, 15, 16)" : "rgb(245, 245, 247)",
+      theme === "dark" ? "rgb(15, 15, 16)" : "rgb(250, 250, 250)",
     );
     await page.screenshot({
       path: info.outputPath(`work-dialog-${theme}.png`),

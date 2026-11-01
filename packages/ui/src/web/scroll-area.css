@@ -37,7 +37,7 @@
   width: 100%;
   min-height: var(--space-6);
   border-radius: var(--radius-round);
-  background: color-mix(in srgb, var(--color-muted) 45%, transparent);
+  background: var(--color-scrollbar-thumb);
 }
 .scroll-bar[data-orientation="horizontal"] {
   justify-content: flex-start;
@@ -53,5 +53,5 @@
   min-height: 0;
 }
 .scroll-bar:hover .scroll-thumb {
-  background: var(--color-muted);
+  background: var(--color-scrollbar-thumb-hover);
 }

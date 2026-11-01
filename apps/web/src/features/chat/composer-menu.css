@@ -81,24 +81,8 @@
   font: inherit;
   margin: 0;
 }
-.composer-picker-search,
-.composer-text-picker textarea {
-  box-sizing: border-box;
-  width: 100%;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  outline: none;
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-control);
-  color: var(--color-text);
-  font: inherit;
-  font-size: var(--text-body);
-}
-.composer-picker-search:focus,
-.composer-text-picker textarea:focus {
-  background: var(--color-control-hover);
-}
-.composer-picker-search {
+.composer-picker-search.field-control {
+  min-height: var(--control-small);
   height: var(--control-small);
 }
 .composer-picker-list {
@@ -127,7 +111,6 @@
 }
 .composer-text-picker textarea {
   min-height: var(--composer-max-height);
-  resize: vertical;
   max-height: var(--message-collapse-height);
 }
 .material-chips {

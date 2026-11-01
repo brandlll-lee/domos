@@ -22,7 +22,6 @@
   overflow: auto;
   overscroll-behavior: contain;
   padding: var(--space-8) var(--space-5);
-  scrollbar-width: thin;
 }
 .setup-content {
   display: grid;

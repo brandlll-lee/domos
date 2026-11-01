@@ -74,7 +74,7 @@
   background: var(--color-working);
 }
 .work-mark[data-state="waiting"]::after {
-  background: #c99545;
+  background: var(--color-waiting);
 }
 .work-mark[data-state="failed"]::after {
   background: var(--color-danger-icon);
