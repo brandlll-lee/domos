@@ -15,6 +15,7 @@ export function SettingsRoot({
   ...access
 }: SettingsAccess & { children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [showing, setShowing] = useState(false);
   const [section, setSection] = useState(defaultSection);
   const [botId, setBotId] = useState<number>();
   const [discard, setDiscard] = useState(false);
@@ -58,6 +59,7 @@ export function SettingsRoot({
     setSection(next);
     setBotId(target);
     setMessage("");
+    setShowing(true);
     setOpen(true);
   }
   return (
@@ -66,12 +68,15 @@ export function SettingsRoot({
         admin: access.admin,
         standalone: access.standalone,
         open: show,
-        showing: open,
+        showing,
       }}
     >
       {children}
       <PanelDialog.Root
         open={open}
+        onOpenChangeComplete={(next) => {
+          if (!next) setShowing(false);
+        }}
         onOpenChange={(next) => {
           if (!next) close();
         }}

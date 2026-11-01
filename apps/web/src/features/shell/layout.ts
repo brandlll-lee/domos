@@ -1,5 +1,5 @@
 import { layout } from "@domos/ui/tokens";
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 
 type Side = "sidebar" | "inspector";
 const storageKey = "domos:layout:v1";
@@ -8,6 +8,13 @@ const defaults = {
   inspector: layout.inspector.initial as number,
   collapsed: false,
 };
+
+function subscribeViewport(update: () => void) {
+  window.addEventListener("resize", update);
+  return () => window.removeEventListener("resize", update);
+}
+
+const viewportWidth = () => window.innerWidth;
 
 function readWidths() {
   try {
@@ -35,17 +42,9 @@ function readWidths() {
 
 export function useWorkspaceLayout(details: boolean) {
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
-  const [available, setAvailable] = useState(window.innerWidth);
+  const available = useSyncExternalStore(subscribeViewport, viewportWidth);
   const [preferred, setPreferred] = useState(readWidths);
   const [snapping, setSnapping] = useState(false);
-  useEffect(() => {
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry && entry.contentRect.width > 0)
-        setAvailable(entry.contentRect.width);
-    });
-    if (root) observer.observe(root);
-    return () => observer.disconnect();
-  }, [root]);
   const mobile = available < layout.sidebar.min + layout.chatMin;
   const compact = !mobile && preferred.collapsed;
   const sidebarMin = compact ? layout.sidebar.compact : layout.sidebar.min;

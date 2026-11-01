@@ -1,7 +1,10 @@
 packages:
   - apps/*
   - packages/*
+
 onlyBuiltDependencies:
   - agent-browser
+
 patchedDependencies:
   '@earendil-works/pi-durable@1.4.0': patches/@earendil-works__pi-durable@1.4.0.patch
+  react-dom@19.3.1: patches/react-dom@19.3.1.patch

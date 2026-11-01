@@ -2334,6 +2334,7 @@ test("skill packages preview changes and restore resources across reload", async
   const details = page.locator("#bot-details");
   await details.getByRole("button", { name: /^技能(?:\s|$)/ }).click();
   const upload = async (script: string) => {
+    await expect(details.getByLabel("导入技能包")).toBeEnabled();
     await details.getByLabel("导入技能包").setInputFiles({
       name: "weekly-report.zip",
       mimeType: "application/zip",
@@ -2358,9 +2359,21 @@ test("skill packages preview changes and restore resources across reload", async
     ).toBeVisible();
   };
   await upload("print('v1')");
+  let releaseEnable!: () => void;
+  const enabling = page.waitForRequest("**/rpc/work/skills/enable");
+  const enableGate = new Promise<void>((resolve) => {
+    releaseEnable = resolve;
+  });
+  await page.route("**/rpc/work/skills/enable", async (route) => {
+    await enableGate;
+    await route.continue();
+  });
   await details
     .getByRole("switch", { name: "为此 Bot 启用 weekly-report" })
     .click();
+  await enabling;
+  await expect(details.getByLabel("导入技能包")).toBeDisabled();
+  releaseEnable();
   await upload("print('v2')");
   await page.reload();
   await page

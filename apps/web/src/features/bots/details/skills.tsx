@@ -93,6 +93,7 @@ export function SkillsPanel({
         className="sr-only"
         ref={file}
         type="file"
+        disabled={action.busy}
         accept=".zip,.md,application/zip,text/markdown"
         aria-label="导入技能包"
         onChange={(event) => {
