@@ -1,10 +1,13 @@
+import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
+import { createServer } from "node:http";
 import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import { openChat } from "@domos/agent/chat";
 import { parseConfig } from "@domos/agent/config";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
+import { getRequestListener } from "@hono/node-server";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterClient } from "@orpc/server";
@@ -21,24 +24,37 @@ test.runIf(platform() === "win32")(
       join(directory, "config.json"),
     );
     let runtime = await openChat(context, config, { models: createModels() });
-    const client = () => {
-      const app = createApp(
-        runtime.bots,
-        createModels(),
-        runtime.files,
-        runtime.work,
-        runtime.computer,
-        undefined,
-        runtime.engines,
-      );
-      return createORPCClient<RouterClient<AppRouter>>(
+    const server = createServer(
+      getRequestListener(
+        (request) =>
+          createApp(
+            runtime.bots,
+            createModels(),
+            runtime.files,
+            runtime.work,
+            runtime.computer,
+            undefined,
+            runtime.engines,
+          ).fetch(request),
+        { overrideGlobalObjects: false },
+      ),
+    );
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Server required");
+    const client = () =>
+      createORPCClient<RouterClient<AppRouter>>(
         new RPCLink({
-          url: "http://localhost/rpc",
-          fetch: async (request, init) => app.fetch(new Request(request, init)),
+          url: `http://127.0.0.1:${address.port}/rpc`,
         }),
       );
-    };
     onTestFinished(async () => {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
       await runtime.close();
       await rm(directory, { recursive: true, force: true, maxRetries: 5 });
     });
