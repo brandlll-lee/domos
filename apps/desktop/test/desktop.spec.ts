@@ -244,10 +244,9 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     await page.getByRole("button", { name: "Bot详情", exact: true }).click();
     await page.getByRole("tab", { name: "Browser", exact: true }).click();
     await page.getByRole("button", { name: "启用浏览器", exact: true }).click();
-    await expect(
-      page.getByRole("button", { name: "启用浏览器", exact: true }),
-    ).toBeHidden({ timeout: 30_000 });
-    await expect(page.getByRole("img", { name: "工作电脑画面" })).toBeVisible();
+    await expect(page.getByRole("img", { name: "工作电脑画面" })).toBeVisible({
+      timeout: 30_000,
+    });
     await page.getByRole("button", { name: "全屏", exact: true }).click();
     await expect
       .poll(() =>

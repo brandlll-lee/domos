@@ -5,6 +5,7 @@ import { Computers } from "@domos/agent/computer/catalog";
 import { parseConfig } from "@domos/agent/config";
 import { Files } from "@domos/agent/files";
 import type { ChatMessage } from "@domos/agent/messages";
+import { persistentCredentials } from "@domos/hosting/credentials";
 import { Sessions } from "@domos/hosting/sessions";
 import { HostingStore } from "@domos/hosting/store";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -275,12 +276,14 @@ if (process.argv[4] === "takeover") {
     },
   ]);
 }
-const { harness, bots, work, engines } = await openAgent(
+const credentialStore = await HostingStore.open(dirname(database));
+const { harness, bots, work, engines, mcp } = await openAgent(
   database,
   {
     models,
     registry,
     computers,
+    credentials: persistentCredentials(credentialStore),
     legacy: true,
     env: ({ conversationId }) => files.workspace(conversationId),
   },
@@ -290,7 +293,7 @@ const { harness, bots, work, engines } = await openAgent(
 await computer.initialize(harness, bots, BACKGROUND_CONTEXT, true);
 for (const bot of await bots.list(BACKGROUND_CONTEXT))
   await engines?.prepare(bot.id, BACKGROUND_CONTEXT);
-const app = createApp(bots, models, files, work, computer, undefined, engines);
+let app: ReturnType<typeof createApp>;
 let hosted: ReturnType<typeof hostingApp> | undefined;
 const store =
   process.argv[4] === "hosting"
@@ -310,6 +313,17 @@ const server = createServer((request, response) => {
 server.listen(Number(process.argv[3] ?? 0), "127.0.0.1", () => {
   const address = server.address();
   if (address && typeof address === "object") {
+    app = createApp(
+      bots,
+      models,
+      files,
+      work,
+      computer,
+      undefined,
+      engines,
+      mcp,
+      `http://127.0.0.1:${address.port}/mcp/oauth/callback`,
+    );
     if (sessions)
       hosted = hostingApp({
         config: parseConfig(
@@ -408,10 +422,11 @@ process.on("message", async (message) => {
     Array.isArray(message.responses)
   ) {
     faux.setResponses([
-      ...message.responses.map((item) =>
+      ...message.responses.map((item, index) =>
         fauxAssistantMessage(item.content, {
           stopReason: item.stopReason ?? "stop",
           errorMessage: item.errorMessage,
+          timestamp: Date.now() + index,
         }),
       ),
       answer,
@@ -477,6 +492,7 @@ process.on("disconnect", () => {
   void (async () => {
     await computer.close(BACKGROUND_CONTEXT);
     await harness.close(BACKGROUND_CONTEXT);
+    await credentialStore.close();
     await store?.close();
   })().finally(() => process.exit());
 });

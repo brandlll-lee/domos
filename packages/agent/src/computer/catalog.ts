@@ -299,6 +299,48 @@ export class Computers {
       );
   }
 
+  async mcp<T = unknown>(
+    computerId: string,
+    input: Record<string, unknown>,
+    context: Context,
+    signal?: AbortSignal,
+    botId?: number,
+  ) {
+    const worker = await this.mcpProcess(computerId, context, botId);
+    try {
+      return await worker.mcp<T>(input, signal);
+    } finally {
+      await worker.close();
+    }
+  }
+
+  async mcpProcess(computerId: string, context: Context, bot?: number) {
+    const doc = await this.harness.snapshot(ComputersDoc, context);
+    const item = requireComputer(doc?.items ?? [], computerId);
+    if (!item.authorized)
+      throw new WorkError("BAD_REQUEST", "这台电脑的授权已撤销。");
+    if (item.scope) await this.ensureReady(computerId, context);
+    const botId =
+      item.scope?.kind === "dedicated"
+        ? item.scope.botId
+        : (bot ??
+          Number(
+            Object.entries(doc?.bindings ?? {}).find(
+              ([, binding]) => binding.computerId === computerId,
+            )?.[0],
+          ));
+    if (item.scope?.kind === "dedicated" && bot && item.scope.botId !== bot)
+      throw new WorkError("BAD_REQUEST", "此电脑属于其他 Bot。");
+    if (!botId)
+      throw new WorkError("BAD_REQUEST", "请先为此电脑分配 Bot，再测试 MCP。");
+    return this.target(item).process(
+      botId,
+      [],
+      async () => ({ content: [], isError: true }),
+      context,
+    );
+  }
+
   async computerId(botId: number, context: Context) {
     return (
       (await this.harness.snapshot(ComputersDoc, context))?.bindings[

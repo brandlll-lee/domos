@@ -3,6 +3,7 @@ import { MAX_FILE_BYTES } from "@domos/agent/attachments";
 import type { Bots } from "@domos/agent/bots";
 import type { Computers } from "@domos/agent/computer/catalog";
 import type { Files } from "@domos/agent/files";
+import type { McpConnections } from "@domos/agent/mcp";
 import type { Runtime } from "@domos/agent/runtime";
 import type { BotWork } from "@domos/agent/work";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -21,10 +22,21 @@ export function createApp(
   computer?: Computers,
   staticDir = fileURLToPath(new URL("../../web/dist", import.meta.url)),
   engines?: Runtime,
+  mcp?: McpConnections,
+  mcpCallback?: string,
 ) {
   const app = new Hono();
   const handler = new RPCHandler(
-    createRouter(bots, models, files, work, computer, engines),
+    createRouter(
+      bots,
+      models,
+      files,
+      work,
+      computer,
+      engines,
+      mcp,
+      mcpCallback,
+    ),
   );
   app.use(
     "/rpc/files/upload",
@@ -38,6 +50,20 @@ export function createApp(
     await next();
   });
   app.get("/health", (c) => c.json({ ok: true }));
+  app.get("/mcp/oauth/callback", async (c) => {
+    c.header("Cache-Control", "no-store");
+    c.header("Referrer-Policy", "no-referrer");
+    const state = c.req.query("state");
+    const code = c.req.query("code");
+    if (!mcp || !state || !code)
+      return c.text("授权未完成。请返回 Domos 重试。", 400);
+    try {
+      await mcp.complete(state, code, BACKGROUND_CONTEXT);
+      return c.text("授权已完成。请返回 Domos 刷新连接。");
+    } catch {
+      return c.text("授权失败或已取消。请返回 Domos 重试。", 400);
+    }
+  });
   app.get("/files/:botId/:id", async (c) => {
     const botId = Number(c.req.param("botId"));
     if (

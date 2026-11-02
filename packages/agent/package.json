@@ -26,7 +26,10 @@
     "./view": "./src/chat-view.ts",
     "./work": "./src/work/index.ts",
     "./work/limits": "./src/work/limits.ts",
-    "./materials": "./src/materials.ts"
+    "./materials": "./src/materials.ts",
+    "./mcp": "./src/mcp/connections.ts",
+    "./mcp/config": "./src/mcp/config.ts",
+    "./mcp/catalog": "./src/mcp/catalog.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.9.0",

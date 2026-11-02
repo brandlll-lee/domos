@@ -10,6 +10,7 @@ export async function openCodexClient(
   process: EngineProcess,
   config: EngineConfig,
   env?: Record<string, string>,
+  servers: { name: string; url: string }[] = [],
 ) {
   const ready = await process.ready;
   const rpc = new JsonLines(process);
@@ -21,6 +22,10 @@ export async function openCodexClient(
       "stdio://",
       "-c",
       `mcp_servers.domos.url=${JSON.stringify(ready.url)}`,
+      ...servers.flatMap(({ name, url }) => [
+        "-c",
+        `mcp_servers.${name}.url=${JSON.stringify(url)}`,
+      ]),
     ],
     env,
   });

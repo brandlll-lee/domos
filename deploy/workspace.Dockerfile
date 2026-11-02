@@ -12,6 +12,7 @@ COPY --from=daemon --chmod=0755 /build/pi-env /usr/local/bin/pi-env
 COPY --from=daemon /opt/domos /opt/domos
 COPY packages/agent/src/harness/worker.mjs packages/agent/src/harness/account-environment.mjs packages/agent/src/harness/http-service.mjs packages/agent/src/harness/native-history.mjs packages/agent/src/harness/gateway.mjs packages/agent/src/harness/tool-results.mjs packages/agent/src/harness/browser-service.mjs packages/agent/src/harness/computer-service.mjs /opt/domos/
 COPY packages/agent/src/harness/pi-auth.mjs packages/agent/src/harness/pi-tools.mjs /opt/domos/
+COPY packages/agent/src/harness/native-mcp.mjs packages/agent/src/harness/mcp-client.mjs /opt/domos/
 COPY deploy/licenses/pi.txt /usr/share/doc/pi/LICENSE
 COPY packages/agent/src/harness/browser-view.mjs packages/agent/src/harness/desktop-view.mjs /opt/domos/
 COPY packages/agent/src/harness/desktop-tools.mjs packages/agent/src/harness/desktop-driver.mjs /opt/domos/

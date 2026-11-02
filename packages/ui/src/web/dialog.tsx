@@ -1,5 +1,10 @@
 import { Dialog as BaseDialog } from "@base-ui/react/dialog";
-import { type ReactElement, type ReactNode, useRef } from "react";
+import {
+  type ReactElement,
+  type ReactNode,
+  type RefObject,
+  useRef,
+} from "react";
 import { Button } from "./controls.tsx";
 import { ScrollArea } from "./scroll-area.tsx";
 
@@ -15,6 +20,7 @@ export function Dialog({
   className,
   finalFocus,
   footer,
+  viewportRef,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -25,8 +31,10 @@ export function Dialog({
   className?: string;
   finalFocus?: () => HTMLElement | null;
   footer?: ReactNode;
+  viewportRef?: RefObject<HTMLDivElement | null>;
 }) {
-  const body = useRef<HTMLDivElement>(null);
+  const internalBody = useRef<HTMLDivElement>(null);
+  const body = viewportRef ?? internalBody;
   return (
     <BaseDialog.Root open={open} onOpenChange={onOpenChange}>
       {trigger && <BaseDialog.Trigger render={trigger} />}

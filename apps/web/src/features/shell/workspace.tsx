@@ -5,12 +5,14 @@ import { ChartBarIcon } from "@phosphor-icons/react/dist/csr/ChartBar";
 import { DotsThreeIcon } from "@phosphor-icons/react/dist/csr/DotsThree";
 import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
 import { ListIcon } from "@phosphor-icons/react/dist/csr/List";
+import { StorefrontIcon } from "@phosphor-icons/react/dist/csr/Storefront";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import {
   type ReactNode,
   startTransition,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useState,
   ViewTransition,
 } from "react";
@@ -29,6 +31,7 @@ export function Workspace({
   onDetailsChange,
   children,
   onSettings,
+  onApps,
   usageOpen,
   onUsage,
   expanded = false,
@@ -41,6 +44,7 @@ export function Workspace({
   onDetailsChange: (open: boolean) => void;
   children: ReactNode;
   onSettings: () => void;
+  onApps: () => void;
   usageOpen: boolean;
   onUsage: () => void;
   expanded?: boolean;
@@ -49,6 +53,11 @@ export function Workspace({
   const sizing = useWorkspaceLayout(detailsOpen && !expanded);
   const [contactsOpen, setContactsOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
+  useLayoutEffect(() => {
+    // The viewport can change before its resize event reaches React.
+    if (sizing.available !== window.innerWidth)
+      document.activeViewTransition?.skipTransition();
+  });
   useEffect(() => {
     const interrupt = (event: Event) => {
       const transition = document.activeViewTransition;
@@ -67,8 +76,8 @@ export function Workspace({
     };
   }, [sizing.root]);
   const dragChange = useCallback(
-    (dragging: boolean) => {
-      if (dragging) sizing.setSnapping(false);
+    (dragging: boolean, moving = false) => {
+      if (moving) sizing.setSnapping(false);
       setDragging(dragging);
     },
     [sizing.setSnapping],
@@ -212,6 +221,17 @@ export function Workspace({
                     <footer className="sidebar-footer">
                       <EnvironmentSwitcher />
                       <nav aria-label="主导航">
+                        <Button
+                          variant="ghost"
+                          size="small"
+                          className="apps-trigger"
+                          aria-label="应用"
+                          title="应用"
+                          onClick={onApps}
+                        >
+                          <StorefrontIcon aria-hidden="true" />
+                          <span>应用</span>
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon-small"

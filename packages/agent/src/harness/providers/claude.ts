@@ -97,6 +97,7 @@ export const claudeProvider: EngineProvider = {
     instructions,
     emit,
     env,
+    mcp,
   }: EngineOpen) {
     const ready = await process.ready;
     const id = sessionId ?? randomUUID();
@@ -470,7 +471,7 @@ export const claudeProvider: EngineProvider = {
         "__DOMOS_PROMPT__",
         "--mcp-config",
         "__DOMOS_MCP__",
-        "--strict-mcp-config",
+        ...(mcp?.inheritNative !== true ? ["--strict-mcp-config"] : []),
         "--permission-prompt-tool",
         "mcp__domos__approve",
         ...(config.model ? ["--model", config.model] : []),
@@ -480,7 +481,7 @@ export const claudeProvider: EngineProvider = {
           : []),
       ],
       instructions,
-      mcp: { url: ready.url },
+      mcp: { url: ready.url, servers: mcp?.servers },
       env,
     });
     await emit({ type: "session", id });

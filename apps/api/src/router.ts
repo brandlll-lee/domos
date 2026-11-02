@@ -3,6 +3,7 @@ import type { Bots } from "@domos/agent/bots";
 import type { Computers } from "@domos/agent/computer/catalog";
 import { FileInput, type Files } from "@domos/agent/files";
 import { materialText } from "@domos/agent/materials";
+import type { McpConnections } from "@domos/agent/mcp";
 import { type Runtime, slimChatView } from "@domos/agent/runtime";
 import { stopChat } from "@domos/agent/stop";
 import { chatView } from "@domos/agent/view";
@@ -21,6 +22,7 @@ import { watchDirectory } from "./directory.ts";
 import { engineRouter } from "./engines.ts";
 import { fileRouter } from "./files.ts";
 import { materialsSchema, prepareMaterials } from "./materials.ts";
+import { mcpRouter } from "./mcp.ts";
 import { modelRouter, requireConfiguredModel } from "./models.ts";
 import { watchValues } from "./subscribe.ts";
 import { workRouter } from "./work.ts";
@@ -32,8 +34,11 @@ export function createRouter(
   work: BotWork,
   computer?: Computers,
   engines?: Runtime,
+  mcp?: McpConnections,
+  mcpCallback?: string,
 ) {
   return {
+    mcp: mcpRouter(bots, mcp, mcpCallback),
     computer: computerRouter(bots, computer),
     engines: engineRouter(bots, engines),
     work: workRouter(bots, work, engines),

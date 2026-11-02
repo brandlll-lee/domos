@@ -1,5 +1,4 @@
 diff --git a/cjs/react-dom-client.development.js b/cjs/react-dom-client.development.js
-index 90a9293eb9d445819cfd7cdecc909a68e68973d2..c448739eaa3aff353c7245d475850cffc9ba785e 100644
 --- a/cjs/react-dom-client.development.js
 +++ b/cjs/react-dom-client.development.js
 @@ -24266,6 +24266,11 @@
@@ -14,11 +13,29 @@ index 90a9293eb9d445819cfd7cdecc909a68e68973d2..c448739eaa3aff353c7245d475850cff
                "Transition was aborted because of invalid state" ===
                  error.message
              )
+@@ -24446,7 +24451,7 @@
+             ownerDocument.__reactViewTransition === transition &&
+               (ownerDocument.__reactViewTransition = null);
+             try {
+-              (error = customizeViewTransitionError(error, !1)),
++              (error = customizeViewTransitionError(error, !0)),
+                 null !== error && errorCallback(error);
+             } finally {
+               mutationCallback(),
 diff --git a/cjs/react-dom-client.production.js b/cjs/react-dom-client.production.js
-index 9c66e78ba70a6ce5270bbbfc2e7e25f86dd2d64b..d46c53b0424132761d65fd5ef08f48e65c77d93e 100644
 --- a/cjs/react-dom-client.production.js
 +++ b/cjs/react-dom-client.production.js
-@@ -15875,6 +15875,11 @@ function startViewTransition(
+@@ -15867,6 +15867,9 @@
+         try {
+           if ("object" === typeof error && null !== error)
+             switch (error.name) {
++              case "AbortError":
++                error = null;
++                break;
+               case "InvalidStateError":
+                 if (
+                   "View transition was skipped because document visibility state is hidden." ===
+@@ -15875,6 +15878,11 @@
                      error.message ||
                    "Skipping view transition because viewport size changed." ===
                      error.message ||
@@ -31,7 +48,6 @@ index 9c66e78ba70a6ce5270bbbfc2e7e25f86dd2d64b..d46c53b0424132761d65fd5ef08f48e6
                      error.message
                  )
 diff --git a/cjs/react-dom-profiling.development.js b/cjs/react-dom-profiling.development.js
-index 148ba0ffd9262a0c0c99b06f5e4ce75b86a243f5..cc759475825ace835b7b79e66242052201a5ac85 100644
 --- a/cjs/react-dom-profiling.development.js
 +++ b/cjs/react-dom-profiling.development.js
 @@ -24274,6 +24274,11 @@
@@ -46,11 +62,29 @@ index 148ba0ffd9262a0c0c99b06f5e4ce75b86a243f5..cc759475825ace835b7b79e662420522
                "Transition was aborted because of invalid state" ===
                  error.message
              )
+@@ -24454,7 +24459,7 @@
+             ownerDocument.__reactViewTransition === transition &&
+               (ownerDocument.__reactViewTransition = null);
+             try {
+-              (error = customizeViewTransitionError(error, !1)),
++              (error = customizeViewTransitionError(error, !0)),
+                 null !== error && errorCallback(error);
+             } finally {
+               mutationCallback(),
 diff --git a/cjs/react-dom-profiling.profiling.js b/cjs/react-dom-profiling.profiling.js
-index 0cfceafc08812f93611d6c5fde82333d88aead84..42c5bb25ed1291725bdcb96146cd7c85bdf49d14 100644
 --- a/cjs/react-dom-profiling.profiling.js
 +++ b/cjs/react-dom-profiling.profiling.js
-@@ -17777,6 +17777,11 @@ function startViewTransition(
+@@ -17769,6 +17769,9 @@
+         try {
+           if ("object" === typeof error && null !== error)
+             switch (error.name) {
++              case "AbortError":
++                error = null;
++                break;
+               case "InvalidStateError":
+                 if (
+                   "View transition was skipped because document visibility state is hidden." ===
+@@ -17777,6 +17780,11 @@
                      error.message ||
                    "Skipping view transition because viewport size changed." ===
                      error.message ||

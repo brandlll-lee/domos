@@ -2,6 +2,7 @@ name: Checks
 
 on:
   push:
+    branches: [main]
     paths-ignore:
       - AGENTS.md
       - README*.md
@@ -11,19 +12,19 @@ on:
       - AGENTS.md
       - README*.md
       - docs/**/*.md
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v7.1.0
@@ -33,37 +34,84 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
+  native:
+    needs: check
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .node-version
+      - uses: pnpm/action-setup@v6.1.0
+      - run: pnpm install --frozen-lockfile
       - name: Select sandboxed system Chrome
         if: runner.os == 'Linux'
         run: echo "AGENT_BROWSER_EXECUTABLE_PATH=/opt/google/chrome/chrome" >> "$GITHUB_ENV"
-      - name: Verify Harness contracts, desktop execution and recovery
-        run: pnpm test packages/agent/test/harness-process.test.ts packages/agent/test/harness-protocols.test.ts packages/agent/test/harness-context.test.ts packages/agent/test/harness-recovery.test.ts packages/agent/test/computer-input.test.ts packages/agent/test/computer-activity.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/harness-context.xml
-      - name: Verify browser modes, access evidence, takeover and command latency
-        shell: bash
-        run: |
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            xvfb-run -a pnpm test packages/agent/test/computer-control.test.ts packages/agent/test/computer-services.test.ts packages/agent/test/browser-runtime.test.ts packages/agent/test/browser-command.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/browser.xml
-          else
-            pnpm test packages/agent/test/computer-control.test.ts packages/agent/test/computer-services.test.ts packages/agent/test/browser-runtime.test.ts packages/agent/test/browser-command.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/browser.xml
-          fi
+      - name: Verify Harness process and recovery contracts
+        run: pnpm test packages/agent/test/harness-process.test.ts packages/agent/test/harness-protocols.test.ts packages/agent/test/harness-context.test.ts packages/agent/test/harness-recovery.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/harness.xml
+      - name: Verify browser services on Linux
+        if: runner.os == 'Linux'
+        run: xvfb-run -a pnpm test packages/agent/test/computer-services.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/browser.xml
+      - name: Verify browser services
+        if: runner.os != 'Linux'
+        run: pnpm test packages/agent/test/computer-services.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/browser.xml
       - name: Verify application regressions
-        run: pnpm test --exclude=packages/agent/test/harness-process.test.ts --exclude=packages/agent/test/harness-protocols.test.ts --exclude=packages/agent/test/harness-context.test.ts --exclude=packages/agent/test/harness-recovery.test.ts --exclude=packages/agent/test/computer-input.test.ts --exclude=packages/agent/test/computer-activity.test.ts --exclude=packages/agent/test/computer-control.test.ts --exclude=packages/agent/test/computer-services.test.ts --exclude=packages/agent/test/browser-runtime.test.ts --exclude=packages/agent/test/browser-command.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml
+        run: pnpm test --exclude=apps/web/test/viewer-input.test.ts --exclude=packages/agent/test/desktop-view.test.ts --exclude=packages/agent/test/computer-input.test.ts --exclude=packages/agent/test/browser-runtime.test.ts --exclude=packages/agent/test/browser-command.test.ts --exclude=packages/agent/test/takeover.test.ts --exclude=packages/agent/test/computer-control.test.ts --exclude=packages/agent/test/harness-process.test.ts --exclude=packages/agent/test/harness-protocols.test.ts --exclude=packages/agent/test/harness-context.test.ts --exclude=packages/agent/test/harness-recovery.test.ts --exclude=packages/agent/test/computer-services.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: native-${{ matrix.os }}
+          path: test-results/
+          if-no-files-found: ignore
+  web:
+    needs: check
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        shard: [1, 2]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .node-version
+      - uses: pnpm/action-setup@v6.1.0
+      - run: pnpm install --frozen-lockfile
+      - name: Select sandboxed system Chrome
+        if: runner.os == 'Linux'
+        run: echo "AGENT_BROWSER_EXECUTABLE_PATH=/opt/google/chrome/chrome" >> "$GITHUB_ENV"
       - run: pnpm exec playwright install chromium --only-shell --with-deps
-      - name: Verify panel motion, browser mode handoff and web workflows
+      - name: Verify web workflows
         shell: bash
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
-            xvfb-run -a pnpm test:e2e --output=test-results/e2e
+            xvfb-run -a pnpm test:e2e --shard=${{ matrix.shard }}/2 --output=test-results/e2e
           else
-            pnpm test:e2e --output=test-results/e2e
+            pnpm test:e2e --shard=${{ matrix.shard }}/2 --output=test-results/e2e
           fi
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: web-${{ matrix.os }}
+          name: web-${{ matrix.os }}-${{ matrix.shard }}
           path: test-results/
           if-no-files-found: ignore
+  computer-input:
+    needs: check
+    uses: ./.github/workflows/computer-input.yml
   desktop:
+    needs: check
+    timeout-minutes: 15
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -76,7 +124,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: pnpm exec playwright install chromium --only-shell
-      - run: pnpm exec playwright test --config apps/desktop/playwright.config.ts
+      - run: pnpm exec playwright test --config apps/desktop/playwright.config.ts desktop.spec.ts runtime.spec.ts
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: desktop-e2e
+          path: test-results/desktop/
+          if-no-files-found: ignore
       - run: pnpm --filter @domos/desktop exec electron-builder --win nsis --config.win.signAndEditExecutable=false
       - run: node --test apps/desktop/test/package.test.mjs
       - uses: actions/upload-artifact@v6
@@ -84,6 +138,7 @@ jobs:
           name: domos-windows-test
           path: apps/desktop/release/*.exe
   sandbox:
+    needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:

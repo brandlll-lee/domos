@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { AppsCenter } from "../apps/center.tsx";
 import { CreateBot } from "../bots/create-bot.tsx";
 import { BotDetails, type BotPanelView } from "../bots/details/index.tsx";
 import { selectBot, useBots } from "../bots/use-bots.ts";
@@ -82,6 +83,7 @@ function BotChat({
     [draft.update],
   );
   const [view, setView] = useState<"chat" | "usage">("chat");
+  const [appsOpen, setAppsOpen] = useState(false);
   const [detailsOpen, updateDetailsOpen] = useState(
     () =>
       window.innerWidth >=
@@ -152,6 +154,7 @@ function BotChat({
   };
   return (
     <Workspace
+      onApps={() => setAppsOpen(true)}
       detailsOpen={detailsOpen}
       obscured={settings.showing}
       onDetailsChange={(open) => {
@@ -210,6 +213,12 @@ function BotChat({
         />
       }
     >
+      <AppsCenter
+        open={appsOpen}
+        onOpenChange={setAppsOpen}
+        bots={bots}
+        computers={directory.computers.items}
+      />
       {view === "usage" ? (
         <UsageSurface />
       ) : (

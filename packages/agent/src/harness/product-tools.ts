@@ -132,7 +132,7 @@ export async function callProductTool(
   }
   const catalog = await productCatalog(runtime, context);
   signal.throwIfAborted();
-  if (!catalog.some((tool) => tool.name === name))
+  if (name !== "mcp_call" && !catalog.some((tool) => tool.name === name))
     throw new Error("产品工具不可用。");
   const key = createHash("sha256").update(callId).digest("hex");
   let id: TaskId | undefined;

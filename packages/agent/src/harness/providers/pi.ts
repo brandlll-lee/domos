@@ -24,6 +24,7 @@ export const piProvider: EngineProvider = {
     emit,
     approve,
     env,
+    mcp,
   }: EngineOpen) {
     const ready = await process.ready;
     const rpc = new JsonLines(process, true);
@@ -228,6 +229,7 @@ export const piProvider: EngineProvider = {
         "__DOMOS_PROMPT__",
       ],
       instructions,
+      mcp: { url: ready.url, servers: mcp?.servers },
       env: {
         ...env,
         DOMOS_PI_MCP_URL: ready.url,

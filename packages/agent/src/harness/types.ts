@@ -199,7 +199,7 @@ export type ProcessSpec = {
   args: string[];
   env?: Record<string, string>;
   instructions?: string;
-  mcp?: { url: string };
+  mcp?: { url: string; servers?: { name: string; url: string }[] };
   http?: { timeoutMs: number; readyMs: number; listen?: boolean };
 };
 export type ProcessReady = {
@@ -209,6 +209,7 @@ export type ProcessReady = {
   tools?: string[];
 };
 export interface EngineProcess {
+  mcpNotification?: (id: string, notification: Record<string, unknown>) => void;
   readonly input: Writable;
   readonly output: Readable;
   readonly error: Readable;
@@ -216,6 +217,11 @@ export interface EngineProcess {
   readonly closed: Promise<{ code: number | null; error?: string }>;
   resolve?(command: string): Promise<string | null>;
   toolsReady?(): Promise<void>;
+  mcp?<T = unknown>(
+    input: Record<string, unknown>,
+    signal?: AbortSignal,
+    progress?: (value: Record<string, unknown>) => void,
+  ): Promise<T>;
   launch(spec: ProcessSpec): Promise<void>;
   request<T = unknown>(
     path: string,
@@ -259,6 +265,7 @@ export type EngineOpen = {
   sessionId: string | null;
   instructions: string;
   env?: Record<string, string>;
+  mcp?: { servers: { name: string; url: string }[]; inheritNative?: boolean };
   emit: (event: EngineEvent) => Promise<void>;
   approve?: (approval: EngineApproval) => Promise<EngineAnswer>;
 };

@@ -1,8 +1,12 @@
 import { readFileSync } from "node:fs";
 import { Type } from "@earendil-works/pi-ai";
 export default function (pi) {
-  const { url } = JSON.parse(readFileSync(process.env.DOMOS_PI_TOOLS, "utf8"));
+  const { url, servers = [] } = JSON.parse(
+    readFileSync(process.env.DOMOS_PI_TOOLS, "utf8"),
+  );
   pi.registerMcpServer("domos", { url, exposure: "direct", timeout: 600 });
+  for (const server of servers)
+    pi.registerMcpServer(server.name, { url: server.url, exposure: "direct" });
   pi.on("session_start", () => {
     pi.setActiveTools([...pi.getActiveTools(), "tool_search"]);
   });

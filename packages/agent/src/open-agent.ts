@@ -14,6 +14,8 @@ import type { Computers } from "./computer/catalog.ts";
 import { ComputerRuntime } from "./computer/runtime.ts";
 import { Files } from "./files.ts";
 import { history } from "./harness/history.ts";
+import { EngineDoc } from "./harness/state.ts";
+import { McpConnections } from "./mcp/connections.ts";
 import { messaging } from "./messaging.ts";
 import { EngineExecution, engineTask, Runtime } from "./runtime/index.ts";
 import { migrateRuntime } from "./runtime/migrate.ts";
@@ -55,6 +57,7 @@ export async function openAgent(
         tasks: [engineTask(execution)],
       }),
     );
+  if (execution) options.registry.install(execution.mcpExtension());
   let engines: Runtime | undefined;
   let computerRuntime: ComputerRuntime | undefined;
   let routines: Routines;
@@ -106,6 +109,7 @@ export async function openAgent(
   try {
     const conversation = await harness.root(context, { agent });
     const bots = new Bots(harness, options.computers);
+    const mcp = new McpConnections(harness, options.credentials);
     await bots.initialize(conversation.id, context);
     await options.computers?.initialize(
       harness,
@@ -117,7 +121,41 @@ export async function openAgent(
     computerRuntime = computers
       ? new ComputerRuntime(harness, options.registry, computers, files)
       : undefined;
-    if (execution && computerRuntime) {
+    if (execution && computerRuntime && computers) {
+      mcp.runner = (computerId, input, signal) =>
+        computers.mcp(computerId, input, context, signal);
+      mcp.nativeCatalog = async (botId, ctx) => {
+        const doc = await harness.snapshot(
+          EngineDoc,
+          botId as import("@earendil-works/pi-durable").ConversationId,
+          ctx,
+        );
+        if (!doc?.computerId)
+          throw new Error("请先选择 Bot 的工作电脑和 Harness。");
+        const catalog = await computers.mcp<{
+          items: {
+            name: string;
+            source: string;
+            enabled: boolean;
+            status: string;
+          }[];
+          inheritance: string;
+          readonly: boolean;
+        }>(
+          doc.computerId,
+          { action: "native", config: doc.config },
+          ctx,
+          undefined,
+          botId,
+        );
+        return {
+          ...catalog,
+          provider: doc.config.provider,
+          computerId: doc.computerId,
+          inherited: await mcp.native(botId, ctx),
+        };
+      };
+      execution.mcp = mcp;
       execution.computer = computerRuntime;
       computerRuntime.onWaiting = (botId, status) =>
         execution.waiting(botId, status);
@@ -137,6 +175,7 @@ export async function openAgent(
       files,
       models,
       engines,
+      mcp,
     };
   } catch (error) {
     await harness.close(context);

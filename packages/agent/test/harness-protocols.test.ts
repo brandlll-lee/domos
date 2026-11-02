@@ -647,6 +647,9 @@ test("Codex handles approval, streams tools and recovers a completed native turn
     process,
     config: { provider: "codex", model: null },
     sessionId: null,
+    mcp: {
+      servers: [{ name: "acceptance", url: "http://127.0.0.1/acceptance" }],
+    },
     instructions: "Role",
     emit: async (event) => {
       await emit(event);
@@ -656,6 +659,9 @@ test("Codex handles approval, streams tools and recovers a completed native turn
       }
     },
   });
+  expect(process.spec?.args).toContain(
+    'mcp_servers.acceptance.url="http://127.0.0.1/acceptance"',
+  );
   await session.prompt("Save report");
   expect(events).toContainEqual(
     expect.objectContaining({

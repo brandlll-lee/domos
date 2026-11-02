@@ -289,6 +289,7 @@
   margin-inline-start: 0;
 }
 .workspace[data-sidebar-compact] .environment-trigger span,
+.workspace[data-sidebar-compact] .apps-trigger span,
 .workspace[data-sidebar-compact] .environment-trigger svg:last-child {
   display: none;
 }

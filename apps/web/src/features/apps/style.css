@@ -1,0 +1,125 @@
+.apps-center {
+  display: grid;
+  gap: var(--space-4);
+}
+.apps-center-nav,
+.apps-center-search,
+.apps-actions,
+.apps-item-heading {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.apps-center-nav,
+.apps-actions {
+  flex-wrap: wrap;
+}
+.apps-center-spacer,
+.apps-center-search input,
+.apps-item-heading > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+.apps-center h3 {
+  font-size: var(--text-heading);
+  margin: 0;
+}
+.apps-catalog {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+  gap: var(--space-6);
+}
+.apps-catalog-item {
+  display: flex;
+  gap: var(--space-3);
+  align-items: start;
+  padding-block: var(--space-4);
+}
+.apps-catalog-item > div:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.apps-logo {
+  width: var(--space-10);
+  height: var(--space-10);
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+.apps-logo svg {
+  width: var(--space-6);
+  height: var(--space-6);
+}
+.apps-form,
+.apps-native {
+  display: grid;
+  gap: var(--space-3);
+  padding-block: var(--space-4);
+}
+.apps-form {
+  border-block: 1px solid var(--color-border);
+}
+.apps-form label,
+.apps-native > label,
+.apps-form-columns label {
+  display: grid;
+  gap: var(--space-2);
+}
+.apps-form-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: var(--space-4);
+}
+.apps-center textarea {
+  font-family: var(--font-mono);
+}
+.apps-center details > summary {
+  cursor: pointer;
+  color: var(--color-muted);
+  padding-block: var(--space-2);
+}
+.apps-center details[open] > summary {
+  margin-bottom: var(--space-2);
+}
+.apps-center p {
+  margin: var(--space-1) 0;
+}
+.apps-muted,
+.apps-catalog-item p,
+.apps-item-heading p,
+.apps-native-row span,
+.apps-native-row small {
+  color: var(--color-muted);
+  font-size: var(--text-label);
+}
+.apps-error {
+  color: var(--color-danger);
+}
+.apps-item {
+  display: grid;
+  gap: var(--space-2);
+  padding-block: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+.apps-item-heading {
+  flex-wrap: wrap;
+  align-items: start;
+  gap: var(--space-4);
+}
+.apps-grant {
+  padding-block: var(--space-2);
+}
+.apps-grant details {
+  padding-inline-start: var(--space-6);
+}
+.apps-native-row {
+  display: grid;
+  gap: var(--space-1);
+  padding-block: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  overflow-wrap: anywhere;
+}
+.apps-actions {
+  justify-content: flex-end;
+}

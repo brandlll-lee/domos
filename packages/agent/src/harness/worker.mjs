@@ -3,6 +3,7 @@ import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
+import { McpError } from "@modelcontextprotocol/sdk/types.js";
 import spawn from "cross-spawn";
 import {
   accountEnvironment,
@@ -12,7 +13,9 @@ import {
 import { openComputerService } from "./computer-service.mjs";
 import { openGateway } from "./gateway.mjs";
 import { openHttpService } from "./http-service.mjs";
+import { closeMcpClients, mcpOperation } from "./mcp-client.mjs";
 import { nativeCheckpoint, nativeHistory } from "./native-history.mjs";
+import { nativeMcp } from "./native-mcp.mjs";
 
 delete process.env.ELECTRON_RUN_AS_NODE;
 const accountEnv = { ...process.env };
@@ -28,6 +31,8 @@ const pending = new Map();
 const operations = new Map();
 let computer;
 let tools;
+const gateways = new Map();
+const mcpProgress = new Map();
 const emit = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 
 async function close(force = false) {
@@ -43,8 +48,14 @@ async function close(force = false) {
       item.reject(new Error("Connection closed"));
     pending.clear();
     for (const operation of operations.values()) operation.abort();
-    if (!child?.pid || child.exitCode !== null || child.signalCode !== null)
+    const mcpClosed = Promise.all([
+      ...[...gateways.values()].map((gateway) => gateway.close()),
+      closeMcpClients(),
+    ]);
+    if (!child?.pid || child.exitCode !== null || child.signalCode !== null) {
+      await mcpClosed;
       return computer?.close();
+    }
     const exited = once(child, "close").catch(() => {});
     if (process.platform === "win32") {
       await new Promise((resolve) => {
@@ -71,6 +82,7 @@ async function close(force = false) {
     forceTimer.unref();
     await exited;
     clearTimeout(forceTimer);
+    await mcpClosed;
     await computer?.close();
   })();
   return closing;
@@ -87,29 +99,78 @@ async function configure(frame) {
   home = await realpath(frame.home);
   process.chdir(await realpath(frame.cwd));
   computer = openComputerService(process.cwd(), home);
-  gateway = await openGateway(
-    frame.tools,
-    (callId, name, args, signal) =>
-      new Promise((resolve, reject) => {
-        const id = ++sequence;
-        const abort = () => emit({ type: "cancel", id });
-        signal.addEventListener("abort", abort, { once: true });
-        pending.set(id, {
-          resolve: (result) => {
-            signal.removeEventListener("abort", abort);
-            resolve(result);
-          },
-          reject,
-        });
-        emit({ type: "tool", id, callId, name, args });
-      }),
-  );
+  gateway = await openGateway(frame.tools, invoke);
   emit({
     type: "ready",
     url: gateway.url,
     cwd: process.cwd(),
     home,
     tools: tools.map((tool) => tool.name),
+  });
+}
+
+function invoke(callId, name, args, signal) {
+  return new Promise((resolve, reject) => {
+    const id = ++sequence;
+    const abort = () => emit({ type: "cancel", id });
+    signal.addEventListener("abort", abort, { once: true });
+    pending.set(id, {
+      resolve: (result) => {
+        signal.removeEventListener("abort", abort);
+        resolve(result);
+      },
+      reject,
+    });
+    emit({ type: "tool", id, callId, name, args });
+  });
+}
+
+async function manageMcp(input, signal, onprogress) {
+  if (input.action === "progress") {
+    await mcpProgress.get(input.requestId)?.(input.progress);
+    return {};
+  }
+  if (input.action === "notify") {
+    await gateways.get(input.id)?.notify(input.notification);
+    return {};
+  }
+  if (input.action === "native")
+    return nativeMcp(input.config, home, accountEnv, process.cwd());
+  if (input.action === "mount") {
+    if (gateways.has(input.id)) throw new Error("MCP 已挂载。");
+    const request = async (callId, method, params, signal, progress) => {
+      const requestId = `mcp:${input.id}:${callId}`;
+      if (progress) mcpProgress.set(requestId, progress);
+      try {
+        return await invoke(
+          requestId,
+          "mcp_call",
+          { id: input.id, method, params, requestId },
+          signal,
+        );
+      } finally {
+        mcpProgress.delete(requestId);
+      }
+    };
+    const gateway = await openGateway(
+      input.tools,
+      (callId, name, args, signal, _meta, progress) =>
+        request(
+          callId,
+          "tools/call",
+          { name, arguments: args, _meta },
+          signal,
+          progress,
+        ),
+      { name: input.name, capabilities: input.capabilities, request },
+    );
+    gateways.set(input.id, gateway);
+    return { url: gateway.url };
+  }
+  return mcpOperation(input, signal, onprogress, async (notification) => {
+    const gateway = gateways.get(input.id);
+    if (gateway) await gateway.notify(notification);
+    else emit({ type: "mcp_notification", id: input.id, notification });
   });
 }
 
@@ -162,7 +223,15 @@ async function launch(frame) {
     await writeFile(
       path,
       JSON.stringify({
-        mcpServers: { domos: { type: "http", url: frame.mcp.url } },
+        mcpServers: {
+          domos: { type: "http", url: frame.mcp.url },
+          ...Object.fromEntries(
+            (frame.mcp.servers ?? []).map(({ name, url }) => [
+              name,
+              { type: "http", url },
+            ]),
+          ),
+        },
       }),
       { mode: 0o600 },
     );
@@ -172,9 +241,17 @@ async function launch(frame) {
   }
   if (env.DOMOS_PI_MCP_URL) {
     const path = join(process.cwd(), ".domos-tools.json");
-    await writeFile(path, JSON.stringify({ url: gateway.url, tools }), {
-      mode: 0o600,
-    });
+    await writeFile(
+      path,
+      JSON.stringify({
+        url: gateway.url,
+        tools,
+        servers: frame.mcp?.servers ?? [],
+      }),
+      {
+        mode: 0o600,
+      },
+    );
     env.DOMOS_PI_TOOLS = path;
     frame.args.push(
       "--no-extensions",
@@ -271,6 +348,33 @@ lines.on("line", (line) => {
               error: error.message,
             }),
           );
+      } else if (frame.type === "mcp") {
+        const controller = new AbortController();
+        operations.set(frame.id, controller);
+        void manageMcp(frame.input, controller.signal, (progress) =>
+          emit({ type: "mcp_progress", id: frame.id, progress }),
+        )
+          .then((result) => emit({ type: "http", id: frame.id, result }))
+          .catch((error) =>
+            emit({
+              type: "http",
+              id: frame.id,
+              code:
+                error?.constructor?.name === "UnauthorizedError" ||
+                error?.code === 401
+                  ? "MCP_AUTH"
+                  : error instanceof McpError
+                    ? error.code
+                    : undefined,
+              error:
+                frame.input.action === "native" || error instanceof McpError
+                  ? error.message
+                  : "MCP 连接未完成。请检查配置和授权。",
+            }),
+          )
+          .finally(() => operations.delete(frame.id));
+      } else if (frame.type === "mcp_cancel") {
+        operations.get(frame.id)?.abort();
       } else if (frame.type === "computer") {
         const controller = new AbortController();
         operations.set(frame.id, controller);

@@ -140,6 +140,7 @@ export function hostingApp(options: {
   });
   const protectedApp = new Hono<HostingEnv>();
   protectedApp.use("*", authenticate(sessions));
+  protectedApp.use("/mcp/*", administrator);
   protectedApp.use("/computer/manage", administrator);
   protectedApp.use("/models/setVisibility", administrator);
   protectedApp.use("/computer/add", administrator);
@@ -211,6 +212,7 @@ export function hostingApp(options: {
     }
   });
   app.route("/rpc", protectedApp);
+  app.get("/mcp/oauth/callback", (c) => options.forward(c.req.raw));
   app.route("/files", protectedApp);
   app.use("/*", serveStatic({ root: config.staticDir }));
   app.onError((error, c) =>

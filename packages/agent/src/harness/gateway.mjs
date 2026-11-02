@@ -5,16 +5,23 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
+  GetPromptRequestSchema,
   isInitializeRequest,
+  ListPromptsRequestSchema,
+  ListResourcesRequestSchema,
+  ListResourceTemplatesRequestSchema,
   ListToolsRequestSchema,
+  ReadResourceRequestSchema,
+  SubscribeRequestSchema,
+  UnsubscribeRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { openToolResults, resultQueryTool } from "./tool-results.mjs";
 
-export async function openGateway(tools, invoke) {
-  const results = openToolResults();
+export async function openGateway(tools, invoke, options) {
+  const results = options ? undefined : openToolResults();
   const listed = Promise.withResolvers();
   if (!tools.length) listed.resolve();
-  tools = [...tools, resultQueryTool];
+  tools = options ? tools : [...tools, resultQueryTool];
   const path = `/mcp/${randomBytes(32).toString("hex")}`;
   let sequence = 0;
   const sessions = new Map();
@@ -42,33 +49,116 @@ export async function openGateway(tools, invoke) {
       let session = sessions.get(sessionId);
       if (!session && !sessionId && isInitializeRequest(body)) {
         const mcp = new Server(
-          { name: "domos", version: "1.0.0" },
-          { capabilities: { tools: {} } },
+          { name: options?.name ?? "domos", version: "1.0.0" },
+          {
+            capabilities: options
+              ? {
+                  ...(options.capabilities.tools
+                    ? { tools: options.capabilities.tools }
+                    : {}),
+                  ...(options.capabilities.resources
+                    ? { resources: options.capabilities.resources }
+                    : {}),
+                  ...(options.capabilities.prompts
+                    ? { prompts: options.capabilities.prompts }
+                    : {}),
+                }
+              : { tools: {} },
+          },
         );
-        mcp.setRequestHandler(ListToolsRequestSchema, async () => {
-          listed.resolve();
-          return { tools };
-        });
-        mcp.setRequestHandler(
-          CallToolRequestSchema,
-          async ({ params }, extra) => {
-            if (!tools.some((tool) => tool.name === params.name))
-              throw new Error("工具不可用。");
-            if (params.name === resultQueryTool.name)
-              return results.query(params.arguments ?? {});
-            return results.project(
-              await invoke(
+        if (!options || options.capabilities.tools) {
+          mcp.setRequestHandler(
+            ListToolsRequestSchema,
+            async (request, extra) => {
+              listed.resolve();
+              if (options) {
+                const result = await options.request(
+                  `${++sequence}:${extra.requestId}`,
+                  request.method,
+                  request.params ?? {},
+                  extra.signal,
+                );
+                const page = result.structuredContent.result;
+                tools = request.params?.cursor
+                  ? [...tools, ...page.tools]
+                  : page.tools;
+                return page;
+              }
+              return { tools };
+            },
+          );
+          mcp.setRequestHandler(
+            CallToolRequestSchema,
+            async ({ params }, extra) => {
+              if (!tools.some((tool) => tool.name === params.name))
+                throw new Error("工具不可用。");
+              if (!options && params.name === resultQueryTool.name)
+                return results.query(params.arguments ?? {});
+              const result = await invoke(
                 `${++sequence}:${extra.requestId}`,
                 params.name,
                 params.arguments ?? {},
                 extra.signal,
-              ),
-            );
-          },
-        );
+                params._meta,
+                (progress) =>
+                  params._meta?.progressToken === undefined
+                    ? undefined
+                    : mcp.notification(
+                        {
+                          method: "notifications/progress",
+                          params: {
+                            ...progress,
+                            progressToken: params._meta.progressToken,
+                          },
+                        },
+                        { relatedRequestId: extra.requestId },
+                      ),
+              );
+              return options ? result : results.project(result);
+            },
+          );
+        }
+        if (options) {
+          for (const [capability, schema, subscription] of [
+            ["resources", ListResourcesRequestSchema],
+            ["resources", ListResourceTemplatesRequestSchema],
+            ["resources", ReadResourceRequestSchema],
+            ["resources", SubscribeRequestSchema, true],
+            ["resources", UnsubscribeRequestSchema, true],
+            ["prompts", ListPromptsRequestSchema],
+            ["prompts", GetPromptRequestSchema],
+          ]) {
+            if (
+              options.capabilities[capability] &&
+              (!subscription || options.capabilities.resources?.subscribe)
+            )
+              mcp.setRequestHandler(schema, async (request, extra) => {
+                const result = await options.request(
+                  `${++sequence}:${extra.requestId}`,
+                  request.method,
+                  request.params ?? {},
+                  extra.signal,
+                  (progress) =>
+                    request.params?._meta?.progressToken === undefined
+                      ? undefined
+                      : mcp.notification(
+                          {
+                            method: "notifications/progress",
+                            params: {
+                              ...progress,
+                              progressToken: request.params._meta.progressToken,
+                            },
+                          },
+                          { relatedRequestId: extra.requestId },
+                        ),
+                );
+                return result.structuredContent.result;
+              });
+          }
+        }
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: randomUUID,
-          enableJsonResponse: true,
+          enableJsonResponse: !options,
           onsessioninitialized: (id) => sessions.set(id, { mcp, transport }),
         });
         await mcp.connect(transport);
@@ -95,6 +185,11 @@ export async function openGateway(tools, invoke) {
   });
   return {
     url: `http://127.0.0.1:${server.address().port}${path}`,
+    async notify(notification) {
+      await Promise.all(
+        [...sessions.values()].map(({ mcp }) => mcp.notification(notification)),
+      );
+    },
     async ready() {
       const controller = new AbortController();
       try {

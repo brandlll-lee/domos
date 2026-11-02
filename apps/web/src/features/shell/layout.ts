@@ -100,6 +100,7 @@ export function useWorkspaceLayout(details: boolean) {
     }
   }
   return {
+    available,
     root,
     setRoot,
     mobile,

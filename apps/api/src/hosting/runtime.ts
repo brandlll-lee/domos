@@ -34,6 +34,11 @@ export async function openHostedRuntime() {
       runtime.computer,
       config.staticDir,
       runtime.engines,
+      runtime.mcp,
+      new URL(
+        "/mcp/oauth/callback",
+        config.publicUrl ?? `http://127.0.0.1:${config.port}`,
+      ).href,
     );
     const hosted = hostingApp({
       config,

@@ -18,7 +18,7 @@ export function ResizeHandle({
   onResize: (width: number) => void;
   onCommit: (width: number) => void;
   onToggle?: () => void;
-  onDragChange: (dragging: boolean) => void;
+  onDragChange: (dragging: boolean, moving?: boolean) => void;
 }) {
   const drag = useRef<{
     x: number;
@@ -26,6 +26,7 @@ export function ResizeHandle({
     initial: number;
     next: number;
     scale: number;
+    moving: boolean;
   } | null>(null);
   const frame = useRef<number | undefined>(undefined);
   const cancelFrame = useCallback(() => {
@@ -42,9 +43,11 @@ export function ResizeHandle({
   const cancelDrag = () => {
     cancelFrame();
     if (!drag.current) return;
-    onResize(drag.current.initial);
-    drag.current = null;
+    if (drag.current.moving) {
+      onResize(drag.current.initial);
+    }
     onDragChange(false);
+    drag.current = null;
   };
   const direction =
     (side === "sidebar" ? 1 : -1) *
@@ -85,12 +88,13 @@ export function ResizeHandle({
           initial: width,
           next: width,
           scale,
+          moving: false,
         };
-        onResize(current);
         onDragChange(true);
       }}
       onPointerMove={(event) => {
         if (!drag.current) return;
+        if (!drag.current.moving && event.clientX === drag.current.x) return;
         drag.current.next = clamp(
           drag.current.width +
             ((event.clientX - drag.current.x) * direction) / drag.current.scale,
@@ -98,15 +102,24 @@ export function ResizeHandle({
         if (frame.current === undefined)
           frame.current = requestAnimationFrame(() => {
             frame.current = undefined;
-            if (drag.current) onResize(drag.current.next);
+            if (drag.current) {
+              onResize(drag.current.next);
+              if (!drag.current.moving) {
+                drag.current.moving = true;
+                onDragChange(true, true);
+              }
+            }
           });
       }}
       onPointerUp={(event) => {
         cancelFrame();
-        if (drag.current) {
+        if (
+          drag.current &&
+          (drag.current.moving || drag.current.next !== drag.current.initial)
+        ) {
           onCommit(drag.current.next);
-          onDragChange(false);
         }
+        if (drag.current) onDragChange(false);
         drag.current = null;
         if (event.currentTarget.hasPointerCapture(event.pointerId))
           event.currentTarget.releasePointerCapture(event.pointerId);

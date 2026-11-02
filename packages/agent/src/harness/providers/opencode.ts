@@ -93,6 +93,7 @@ export function acpProvider(
       emit,
       approve,
       env,
+      mcp,
     }: EngineOpen) {
       const ready = await process.ready;
       const openCode = descriptor.id === "opencode";
@@ -497,6 +498,12 @@ export function acpProvider(
         cwd: ready.cwd,
         mcpServers: [
           { type: "http" as const, name: "domos", url: ready.url, headers: [] },
+          ...(mcp?.servers ?? []).map(({ name, url }) => ({
+            type: "http" as const,
+            name,
+            url,
+            headers: [],
+          })),
         ],
       };
       if (sessionId && !hello.agentCapabilities?.loadSession)

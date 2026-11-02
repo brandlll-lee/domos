@@ -117,3 +117,13 @@ Checked against installed packages and current official documentation on 2026-10
 - [OpenCode ACP](https://opencode.ai/docs/acp/) and [server](https://opencode.ai/docs/server/).
 - [ACP v1 configuration options](https://agentclientprotocol.com/protocol/v1/session-config-options).
 - [ACP v1 MCP capabilities](https://agentclientprotocol.com/protocol/v1/session-setup).
+
+## Managed MCP connections
+
+Domos stores managed connection metadata in McpConnectionsDoc. The existing encrypted credential store holds configuration and OAuth data. Several Bots can reference one connection. Each call checks the current Bot grant and tool range before and after approval.
+
+The existing worker opens the official MCP SDK client on the selected computer. stdio requires the Bot work computer. HTTP uses its saved access computer. The same location handles checks, OAuth exchange and tool calls. Native Harness MCP configurations remain read-only. Domos does not copy native credentials. A source-name conflict stops dispatch and asks the user to choose a source.
+
+The existing gateway mounts managed tools, resources and prompts into each native session. Stable connection IDs provide safe native namespaces. Schemas, structured results, images, progress, list changes and cancellation retain SDK semantics. Product calls use the existing ToolTask and Work projection. Managed clients do not advertise sampling, elicitation or roots. Managed mounting for custom ACP is unavailable when its native MCP catalog cannot be verified.
+
+OAuth callbacks use the configured public service URL. A remote client must be able to reach it. Providers without dynamic client registration require their own client information. External providers can charge for use. The application directory does not require Composio.

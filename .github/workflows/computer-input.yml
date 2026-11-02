@@ -1,23 +1,19 @@
 name: Computer input
 
 on:
-  push:
-    paths-ignore:
-      - AGENTS.md
-      - README*.md
-      - docs/**/*.md
-  pull_request:
-    paths-ignore:
-      - AGENTS.md
-      - README*.md
-      - docs/**/*.md
+  workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-computer-input-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   input:
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -37,8 +33,7 @@ jobs:
           electron_path=$(pnpm --filter @domos/desktop exec node -p "require('electron')")
           printf 'abi <abi/4.0>,\ninclude <tunables/global>\nprofile domos-electron "%s" flags=(unconfined) { userns, }\n' "$electron_path" | sudo tee /etc/apparmor.d/domos-electron >/dev/null
           sudo apparmor_parser -r /etc/apparmor.d/domos-electron
-      - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm exec vitest run apps/web/test/viewer-input.test.ts packages/agent/test/desktop-view.test.ts packages/agent/test/computer-input.test.ts packages/agent/test/browser-runtime.test.ts packages/agent/test/browser-command.test.ts packages/agent/test/takeover.test.ts packages/agent/test/computer-control.test.ts
+      - run: pnpm exec vitest run apps/web/test/viewer-input.test.ts packages/agent/test/desktop-view.test.ts packages/agent/test/computer-input.test.ts packages/agent/test/browser-runtime.test.ts packages/agent/test/browser-command.test.ts packages/agent/test/takeover.test.ts packages/agent/test/computer-control.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/input.xml
       - if: runner.os == 'Linux'
         run: xvfb-run -a pnpm exec playwright test --config apps/desktop/playwright.config.ts computer-input.spec.ts
       - if: runner.os != 'Linux'
@@ -47,5 +42,5 @@ jobs:
         if: always()
         with:
           name: computer-input-${{ matrix.os }}
-          path: test-results/desktop/
+          path: test-results/
           if-no-files-found: ignore

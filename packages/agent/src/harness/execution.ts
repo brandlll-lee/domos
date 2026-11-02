@@ -1,10 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { Context } from "@earendil-works/chord/context";
+import { Type } from "@earendil-works/pi-ai";
+import { defineExtension, defineTool } from "@earendil-works/pi-durable";
+import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 import type { Attachment } from "../attachments.ts";
 import type { Computers } from "../computer/catalog.ts";
 import { computerInstructions } from "../computer/instructions.ts";
 import { ComputerRequests, type ComputerRuntime } from "../computer/runtime.ts";
 import type { Files } from "../files.ts";
+import type { McpConnections } from "../mcp/connections.ts";
 import {
   MemoryDoc,
   MemoryReviewDoc,
@@ -36,7 +40,7 @@ import {
 import { engineProvider } from "./providers/index.ts";
 import { selectSession, sessionKey } from "./sessions.ts";
 import { EngineDoc, EngineInputDoc } from "./state.ts";
-import type { EngineRuntime } from "./task-types.ts";
+import { type EngineRuntime, stored } from "./task-types.ts";
 import {
   type EngineAnswer,
   type EngineApproval,
@@ -53,12 +57,26 @@ type Active = {
   stopping?: Promise<void>;
   inputs?: EngineInputs;
   memoryReview: boolean;
+  managed?: Map<
+    string,
+    {
+      generation: number;
+      computerId: string;
+      worker: EngineProcess;
+      tools: import("./types.ts").ProductTool[];
+    }
+  >;
+  approve?: (
+    approval: EngineApproval,
+    signal: AbortSignal,
+  ) => Promise<EngineAnswer>;
   routine?: {
     update: (status: RoutineRun["status"]) => Promise<void>;
     timer?: ReturnType<typeof setTimeout>;
   };
 };
 export class EngineExecution {
+  mcp?: McpConnections;
   readonly active = new Map<number, Active>();
   readonly computers: Computers;
   readonly files?: Files;
@@ -66,6 +84,138 @@ export class EngineExecution {
   constructor(computers: Computers, files?: Files) {
     this.computers = computers;
     this.files = files;
+  }
+
+  mcpExtension() {
+    const validator = new AjvJsonSchemaValidator();
+    return defineExtension({
+      name: "domos-mcp",
+      tools: [
+        defineTool({
+          name: "mcp_call",
+          description:
+            "Execute an authorized MCP request through its current connection.",
+          parameters: Type.Object({
+            id: Type.String(),
+            requestId: Type.String(),
+            method: Type.String(),
+            params: Type.Record(Type.String(), Type.Unknown()),
+          }),
+          executionMode: "sequential",
+          execute: async (input, api, ctx) => {
+            const active = this.active.get(api.conversationId);
+            const mounted = active?.managed?.get(input.id);
+            const connections = this.mcp;
+            if (!connections || !active?.approve || !mounted?.worker.mcp)
+              throw new Error("MCP 会话已结束或未授权。");
+            const signal = AbortSignal.any([
+              ctx.abortSignal ?? active.controller.signal,
+              active.controller.signal,
+            ]);
+            const authorize = async () => {
+              const current = await connections.resolve(
+                input.id,
+                api.conversationId,
+                mounted.computerId,
+                ctx,
+              );
+              if (current.connection.generation !== mounted.generation)
+                throw new Error("MCP 配置或权限已更改。请开始下一轮任务。");
+              if (input.method === "tools/call") {
+                const tool = mounted.tools.find(
+                  (tool) => tool.name === input.params.name,
+                );
+                if (
+                  !tool ||
+                  (current.tools && !current.tools.includes(tool.name))
+                )
+                  throw new Error("MCP 工具未授权。");
+                const checked = validator.getValidator(tool.inputSchema)(
+                  input.params.arguments ?? {},
+                );
+                if (!checked.valid) throw new Error(checked.errorMessage);
+              }
+              signal.throwIfAborted();
+              return current;
+            };
+            const current = await authorize();
+            if (
+              ![
+                "tools/list",
+                "resources/list",
+                "resources/templates/list",
+                "prompts/list",
+              ].includes(input.method)
+            ) {
+              const answer = await active.approve(
+                {
+                  id: `mcp:${api.callId}`,
+                  title: `${current.connection.name} · ${String(input.params.name ?? input.method)}`,
+                  detail: JSON.stringify(input.params),
+                  kind: "permission",
+                  automatic: true,
+                },
+                signal,
+              );
+              if (!answer.allow) throw new Error("用户拒绝此 MCP 请求。");
+            }
+            await authorize();
+            const response = await mounted.worker.mcp<{
+              result: import("./types.ts").ProductResult;
+              oauth: Record<string, unknown>;
+            }>(
+              {
+                action: "request",
+                id: input.id,
+                method: input.method,
+                params: input.params,
+              },
+              signal,
+              (progress) => {
+                void active.process
+                  .mcp?.(
+                    {
+                      action: "progress",
+                      requestId: input.requestId,
+                      progress,
+                    },
+                    signal,
+                  )
+                  .catch(() => {});
+              },
+            );
+            await connections
+              .saveOAuth(input.id, mounted.generation, response.oauth, ctx)
+              .catch(() => {});
+            if (input.method === "tools/list") {
+              const list = response.result as unknown as {
+                tools: import("./types.ts").ProductTool[];
+              };
+              list.tools = list.tools.filter(
+                (tool) => !current.tools || current.tools.includes(tool.name),
+              );
+              mounted.tools = input.params.cursor
+                ? [...mounted.tools, ...list.tools]
+                : list.tools;
+            }
+            const result =
+              input.method === "tools/call"
+                ? response.result
+                : {
+                    content: [],
+                    structuredContent: { result: response.result },
+                  };
+            return {
+              output: result.content.filter(
+                (part) => part.type === "text" || part.type === "image",
+              ),
+              details: stored(result),
+              ...(result.isError ? { isError: true } : {}),
+            };
+          },
+        }),
+      ],
+    });
   }
 
   async run(
@@ -127,6 +277,7 @@ export class EngineExecution {
     let reviewCalls = 0;
     const active: Active = {
       memoryReview,
+      approve,
       process: await this.computers.process(
         runtime.conversationId,
         tools,
@@ -193,6 +344,21 @@ export class EngineExecution {
       ),
       controller: new AbortController(),
     };
+    const managed =
+      !memoryReview && this.mcp
+        ? (await this.mcp.list(context)).filter(
+            (item) =>
+              item.enabled &&
+              item.grants.some(
+                (grant) => grant.botId === runtime.conversationId,
+              ),
+          )
+        : [];
+    const inherited =
+      !memoryReview && this.mcp
+        ? await this.mcp.native(runtime.conversationId, context)
+        : !memoryReview;
+    const servers: { name: string; url: string }[] = [];
     try {
       runtime.signal.throwIfAborted();
       const current = await runtime.snapshot(
@@ -216,6 +382,93 @@ export class EngineExecution {
     let receiving = true;
     const initialized = Promise.withResolvers<EngineSession | null>();
     try {
+      active.managed = new Map();
+      if (managed.length) {
+        const connections = this.mcp;
+        if (!connections) throw new Error("连接服务不可用。");
+        if (!active.process.mcp) throw new Error("工作电脑需要更新 MCP 支持。");
+        const native = await active.process.mcp<{
+          items: { name: string; enabled: boolean }[];
+        }>({ action: "native", config: doc.config }, active.controller.signal);
+        for (const item of managed) {
+          if (
+            (provider.id !== "claude" || inherited) &&
+            native.items.some(
+              (entry) =>
+                entry.enabled &&
+                entry.name.toLowerCase() === item.name.toLowerCase(),
+            )
+          )
+            throw new Error(
+              `MCP ${item.name} 与原生来源同名。请为此 Bot 选择原生连接，或先在原生程序停用该连接。`,
+            );
+          const resolved = await connections.resolve(
+            item.id,
+            runtime.conversationId,
+            item.computerId,
+            context,
+          );
+          if (
+            resolved.config.transport === "stdio" &&
+            item.computerId !== doc.computerId
+          )
+            throw new Error(`MCP ${item.name} 只能在绑定的工作电脑使用。`);
+          const worker =
+            item.computerId === doc.computerId
+              ? active.process
+              : await this.computers.mcpProcess(
+                  item.computerId,
+                  context,
+                  runtime.conversationId,
+                );
+          if (!worker.mcp) throw new Error("工作电脑需要更新 MCP 支持。");
+          const connection = {
+            generation: item.generation,
+            computerId: item.computerId,
+            worker,
+            tools: [] as import("./types.ts").ProductTool[],
+          };
+          active.managed.set(item.id, connection);
+          if (worker !== active.process)
+            worker.mcpNotification = (id, notification) => {
+              void active.process
+                .mcp?.(
+                  { action: "notify", id, notification },
+                  active.controller.signal,
+                )
+                .catch(() => {});
+            };
+          const connected = await worker.mcp<{
+            tools: import("./types.ts").ProductTool[];
+            capabilities: Record<string, unknown>;
+            oauth: Record<string, unknown>;
+          }>(
+            { action: "connect", id: item.id, ...resolved },
+            active.controller.signal,
+          );
+          const tools = connected.tools.filter(
+            (tool) => !resolved.tools || resolved.tools.includes(tool.name),
+          );
+          connection.tools = tools;
+          await connections.saveOAuth(
+            item.id,
+            item.generation,
+            connected.oauth,
+            context,
+          );
+          const mounted = await active.process.mcp<{ url: string }>(
+            {
+              action: "mount",
+              id: item.id,
+              name: item.name,
+              tools,
+              capabilities: connected.capabilities,
+            },
+            active.controller.signal,
+          );
+          servers.push({ name: `domos_${item.id}`, url: mounted.url });
+        }
+      }
       if (routineRunId) {
         const clock: NonNullable<Active["routine"]> = {
           update: async (status) => {
@@ -256,8 +509,23 @@ export class EngineExecution {
       const account = await active.process.account?.(doc.config.provider);
       if (account === undefined)
         throw new Error("工作电脑尚未提供账号隔离标识。");
-      const key = sessionKey(doc.computerId, doc.config, account);
-      if (doc.dispatch !== "ready" && doc.sessionKey && doc.sessionKey !== key)
+      const key = sessionKey(
+        doc.computerId,
+        doc.config,
+        managed.length || !inherited
+          ? JSON.stringify([
+              account,
+              managed.map(({ id, revision }) => [id, revision]),
+              inherited,
+            ])
+          : account,
+      );
+      if (
+        !memoryReview &&
+        doc.dispatch !== "ready" &&
+        doc.sessionKey &&
+        doc.sessionKey !== key
+      )
         throw new Error("账号配置已变化。原任务执行结果未确认，请先检查结果。");
       if (!memoryReview) {
         await runtime.commit(async (tx) => {
@@ -326,6 +594,7 @@ export class EngineExecution {
         }, context);
       const resumed = Boolean(doc.sessionId);
       active.session = await provider.open({
+        mcp: { servers, inheritNative: inherited },
         process: active.process,
         config: doc.config,
         sessionId: memoryReview ? (snapshot.sessionId ?? null) : doc.sessionId,
@@ -550,6 +819,8 @@ export class EngineExecution {
       receiving = false;
       initialized.resolve(null);
       active.controller.abort();
+      for (const mounted of active.managed?.values() ?? [])
+        if (mounted.worker !== active.process) void mounted.worker.close();
       runtime.signal.removeEventListener("abort", interrupted);
       if (active.stopping) {
         void active.inputs?.close().catch(() => {});

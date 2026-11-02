@@ -39,9 +39,10 @@ export const codexProvider: EngineProvider = {
     instructions,
     emit,
     env,
+    mcp,
   }: EngineOpen) {
     const ready = await process.ready;
-    const client = await openCodexClient(process, config, env);
+    const client = await openCodexClient(process, config, env, mcp?.servers);
     const { rpc, modes, vision } = client;
     let completion: ReturnType<typeof Promise.withResolvers<void>> | undefined;
     let turnId: string | null = null;

@@ -114,6 +114,8 @@ for (const name of [
   "pi-tools.mjs",
   "http-service.mjs",
   "native-history.mjs",
+  "native-mcp.mjs",
+  "mcp-client.mjs",
   "gateway.mjs",
   "tool-results.mjs",
   "browser-service.mjs",

@@ -1,7 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 import { runAssistant } from "../../../packages/agent/src/computer/assistant.ts";
 import { assistInput } from "../../../packages/agent/src/computer/assistant-action.ts";
@@ -27,7 +28,7 @@ test("native desktop input, cursor and conditions use the driver session", async
     "Native input needs an interactive desktop and OS permissions",
   );
   const application = await playwright._electron.launch({
-    args: [resolve("apps/desktop/test/input-entry.mjs")],
+    args: [fileURLToPath(new URL("./input-entry.mjs", import.meta.url))],
     env: electronEnv,
   });
   const directory = await mkdtemp(join(tmpdir(), "domos-input-"));
@@ -35,7 +36,15 @@ test("native desktop input, cursor and conditions use the driver session", async
     "electron",
   );
   const worker = new WorkProcess(
-    [executable, resolve("packages/agent/src/harness/worker.mjs")],
+    [
+      executable,
+      fileURLToPath(
+        new URL(
+          "../../../packages/agent/src/harness/worker.mjs",
+          import.meta.url,
+        ),
+      ),
+    ],
     { cwd: directory, home: directory },
     [],
     async () => ({ content: [] }),
@@ -102,7 +111,9 @@ test("native desktop input, cursor and conditions use the driver session", async
           signal,
         ),
     );
-    const agentRequire = createRequire(resolve("packages/agent/package.json"));
+    const agentRequire = createRequire(
+      new URL("../../../packages/agent/package.json", import.meta.url),
+    );
     const { Client } = agentRequire(
       "@modelcontextprotocol/sdk/client/index.js",
     );

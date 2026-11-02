@@ -15,6 +15,7 @@ import {
 } from "./types.ts";
 
 export class WorkProcess implements EngineProcess {
+  mcpNotification?: (id: string, notification: Record<string, unknown>) => void;
   readonly events = new EventEmitter();
   readonly output = new PassThrough();
   readonly error = new PassThrough();
@@ -37,6 +38,7 @@ export class WorkProcess implements EngineProcess {
       resolve: (value: unknown) => void;
       reject: (error: Error) => void;
       timer: NodeJS.Timeout;
+      progress?: (value: Record<string, unknown>) => void;
     }
   >();
 
@@ -89,8 +91,15 @@ export class WorkProcess implements EngineProcess {
           if (!request) return;
           this.requests.delete(frame.id);
           clearTimeout(request.timer);
-          if (frame.error) request.reject(new Error(frame.error));
+          if (frame.error)
+            request.reject(
+              Object.assign(new Error(frame.error), { code: frame.code }),
+            );
           else request.resolve(frame.result);
+        } else if (frame.type === "mcp_notification") {
+          this.mcpNotification?.(frame.id, frame.notification);
+        } else if (frame.type === "mcp_progress") {
+          this.requests.get(frame.id)?.progress?.(frame.progress);
         } else if (frame.type === "tool") {
           const controller = new AbortController();
           this.calls.set(frame.id, controller);
@@ -209,6 +218,20 @@ export class WorkProcess implements EngineProcess {
     return this.exchange<void>({ type: "tools" });
   }
 
+  mcp<T = unknown>(
+    input: Record<string, unknown>,
+    signal?: AbortSignal,
+    progress?: (value: Record<string, unknown>) => void,
+  ) {
+    return this.exchange<T>(
+      { type: "mcp", input },
+      signal,
+      true,
+      false,
+      progress,
+    );
+  }
+
   checkpoint(provider: EngineId, sessionId: string) {
     return this.exchange<string | null>({
       type: "checkpoint",
@@ -266,12 +289,19 @@ export class WorkProcess implements EngineProcess {
     signal?: AbortSignal,
     observation = false,
     action = false,
+    progress?: (value: Record<string, unknown>) => void,
   ) {
     signal?.throwIfAborted();
     const id = ++this.sequence;
     return new Promise<T>((resolve, reject) => {
       const abort = () => {
-        void this.send({ type: "computer_cancel", id }).catch(() => {});
+        void this.send({
+          type:
+            "type" in frame && frame.type === "mcp"
+              ? "mcp_cancel"
+              : "computer_cancel",
+          id,
+        }).catch(() => {});
         if (observation) {
           clearTimeout(timer);
           this.requests.delete(id);
@@ -283,7 +313,13 @@ export class WorkProcess implements EngineProcess {
       const clean = () => signal?.removeEventListener("abort", abort);
       const timer = setTimeout(
         () => {
-          void this.send({ type: "computer_cancel", id }).catch(() => {});
+          void this.send({
+            type:
+              "type" in frame && frame.type === "mcp"
+                ? "mcp_cancel"
+                : "computer_cancel",
+            id,
+          }).catch(() => {});
           if (action && !observation) return;
           this.requests.delete(id);
           clean();
@@ -293,6 +329,7 @@ export class WorkProcess implements EngineProcess {
       );
       timer.unref();
       this.requests.set(id, {
+        progress,
         resolve: (value) => {
           clean();
           resolve(value as T);
