@@ -78,7 +78,7 @@ summary:focus-visible {
   outline-offset: 3px;
 }
 
-.button svg {
+.button > svg {
   width: var(--space-4);
   height: var(--space-4);
   flex-shrink: 0;

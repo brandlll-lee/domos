@@ -22,6 +22,21 @@ test("plush identities load, animate and survive profile changes", async ({
   worker.stderr?.resume();
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  const checkAvatarSizes = async () => {
+    const sizes = await page
+      .locator(".bot-avatar:visible")
+      .evaluateAll((items) =>
+        items.map((item) => ({
+          frame: item.getBoundingClientRect().toJSON(),
+          image: item.querySelector("svg")?.getBoundingClientRect().toJSON(),
+        })),
+      );
+    expect(sizes.length).toBeGreaterThan(0);
+    for (const { frame, image } of sizes) {
+      expect(image?.width).toBe(frame.width);
+      expect(image?.height).toBe(frame.height);
+    }
+  };
   try {
     const [ready] = (await once(worker, "message")) as [{ port: number }];
     await page.goto(`http://127.0.0.1:${ready.port}`);
@@ -29,6 +44,7 @@ test("plush identities load, animate and survive profile changes", async ({
       page.getByRole("button", { name: "Bot详情", exact: true }),
     ).toBeVisible();
     const avatar = page.locator(".chat-header .character");
+    await checkAvatarSizes();
     await page.getByLabel("消息", { exact: true }).fill("保存这条消息的主题");
     await page.getByRole("button", { name: "发送", exact: true }).click();
     const bubble = page.getByLabel("你的消息").locator(".message-bubble");
@@ -88,6 +104,7 @@ test("plush identities load, animate and survive profile changes", async ({
     const initial = await header.getAttribute("data-seed");
     await page.getByRole("button", { name: "Bot详情", exact: true }).click();
     const details = page.getByRole("complementary", { name: "Domos的详情" });
+    await checkAvatarSizes();
     await details.getByRole("button", { name: "编辑", exact: true }).click();
     await details
       .getByRole("button", { name: "选择头像", exact: true })
@@ -99,6 +116,7 @@ test("plush identities load, animate and survive profile changes", async ({
     await expect(picker.getByRole("button", { name: /^颜色：/ })).toHaveCount(
       18,
     );
+    await checkAvatarSizes();
     await picker.getByRole("button", { name: "换个形象", exact: true }).click();
     await picker
       .getByRole("button", { name: "外形：胶囊", exact: true })
@@ -142,6 +160,7 @@ test("plush identities load, animate and survive profile changes", async ({
       animations: "disabled",
     });
     await page.setViewportSize({ width: 390, height: 844 });
+    await checkAvatarSizes();
     await expect(async () => {
       const bounds = await picker.boundingBox();
       expect(bounds?.x).toBeGreaterThanOrEqual(0);
@@ -180,6 +199,7 @@ test("plush identities load, animate and survive profile changes", async ({
     await page.reload();
     await expect(header).toHaveAttribute("data-seed", next ?? "");
     await expect(bubble).toHaveCSS("background-color", themedBubble);
+    await checkAvatarSizes();
     await expect(header.locator(".character")).toHaveAttribute(
       "data-shape",
       identity ?? "",
