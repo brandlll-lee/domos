@@ -106,6 +106,17 @@ export function ComputerSettings({
         }}
         title="Bot 在哪里工作？"
         description="选择只应用到此 Bot。"
+        footer={
+          <div className="dialog-actions">
+            <Button
+              variant="secondary"
+              disabled={preparing}
+              onClick={() => setLocation(false)}
+            >
+              取消
+            </Button>
+          </div>
+        }
       >
         {setup && (
           <ComputerLocation
@@ -116,15 +127,6 @@ export function ComputerSettings({
             onBusyChange={setPreparing}
           />
         )}
-        <div className="dialog-actions">
-          <Button
-            variant="secondary"
-            disabled={preparing}
-            onClick={() => setLocation(false)}
-          >
-            取消
-          </Button>
-        </div>
       </Dialog>
     </section>
   );

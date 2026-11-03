@@ -1,4 +1,5 @@
 import type { EngineId } from "@domos/agent/harness/types";
+import { SearchField } from "@domos/ui/field";
 import { useState } from "react";
 import { EngineMark } from "../bots/engine-mark.tsx";
 import {
@@ -100,19 +101,18 @@ export function Records({
     : rows;
   return (
     <>
-      <label className="usage-search">
-        <input
-          type="search"
+      <div className="usage-search">
+        <SearchField
           aria-label="搜索用量记录"
           placeholder="搜索 Bot、模型或来源"
           spellCheck={false}
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onValueChange={setQuery}
         />
         <span aria-live="polite">
           {needle ? `${matches.length} / ${rows.length}` : `${rows.length} 条`}
         </span>
-      </label>
+      </div>
       {matches.length ? (
         <div className="usage-table-scroll">
           <table className="usage-table usage-records" aria-label="用量明细">

@@ -1,9 +1,10 @@
 import { Button } from "@domos/ui/controls";
+import { SearchField } from "@domos/ui/field";
+import { InlineNotice } from "@domos/ui/message";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { Tabs } from "@domos/ui/tabs";
 import { compactChat } from "@domos/ui/tokens";
 import { ArrowLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowLeft";
-import { MagnifyingGlassIcon } from "@phosphor-icons/react/dist/csr/MagnifyingGlass";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import {
@@ -102,33 +103,30 @@ export function SettingsPage({
           </Button>
           <h1>设置</h1>
         </div>
-        <label className="settings-search">
-          <MagnifyingGlassIcon aria-hidden="true" />
-          <input
-            className="field-control"
-            type="search"
-            aria-label="搜索设置"
-            placeholder="搜索设置"
-            spellCheck={false}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              const first = matches[0];
-              if (event.key !== "Enter" || !first) return;
-              event.preventDefault();
-              select(first);
-              requestAnimationFrame(() =>
-                document.getElementById(`settings-${first}`)?.focus(),
-              );
-            }}
-          />
-        </label>
+        <SearchField
+          className="settings-search"
+          aria-label="搜索设置"
+          placeholder="搜索设置"
+          spellCheck={false}
+          value={query}
+          onValueChange={setQuery}
+          onKeyDown={(event) => {
+            const first = matches[0];
+            if (event.key !== "Enter" || !first) return;
+            event.preventDefault();
+            select(first);
+            requestAnimationFrame(() =>
+              document.getElementById(`settings-${first}`)?.focus(),
+            );
+          }}
+        />
         <span className="settings-nav-heading">工作区</span>
         <Tabs.List className="settings-nav" aria-label="设置分区">
           {matches.map((id) => {
             const item = sections[id];
             return (
               <Tabs.Tab
+                className="navigation-tab"
                 key={id}
                 id={`settings-${id}`}
                 value={id}
@@ -173,9 +171,9 @@ export function SettingsPage({
               </Tabs.Panel>
             ))}
             {message && (
-              <p role="status" className="detail-note">
-                {message}
-              </p>
+              <div role="status">
+                <InlineNotice>{message}</InlineNotice>
+              </div>
             )}
           </div>
         </ScrollArea>

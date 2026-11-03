@@ -94,6 +94,11 @@ a,
 }
 .dialog-body {
   flex: 1;
+  min-height: 0;
+}
+.dialog-subheader {
+  flex-shrink: 0;
+  margin-bottom: var(--space-6);
 }
 .dialog-body > .scroll-viewport {
   padding-inline-end: var(--space-3);
@@ -128,13 +133,6 @@ a,
   max-height: calc(100dvh - var(--space-8));
   width: min(var(--settings-content-width), calc(100vw - var(--space-8)));
   border-radius: var(--radius-panel);
-}
-.decision-dialog .button {
-  border-radius: var(--radius-round);
-}
-.decision-dialog .button[data-variant="primary"] {
-  background: var(--color-text);
-  color: var(--color-canvas);
 }
 
 .skip-link {

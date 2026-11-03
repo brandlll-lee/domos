@@ -2,6 +2,7 @@ import type { EngineAnswer } from "@domos/agent/harness/types";
 import type { ChatMessage } from "@domos/agent/messages";
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
+import { InlineNotice } from "@domos/ui/message";
 import { QuestionIcon } from "@phosphor-icons/react/dist/csr/Question";
 import { ShieldCheckIcon } from "@phosphor-icons/react/dist/csr/ShieldCheck";
 import { useState } from "react";
@@ -49,12 +50,18 @@ export function Approval({
   ]
     .filter(Boolean)
     .join(" · ");
-  return (
-    <section
-      className="interaction-card"
-      aria-label={request.title}
-      data-state={record.state}
-    >
+  const status =
+    record.state === "expired"
+      ? "已失效"
+      : record.state === "denied"
+        ? question
+          ? "已取消"
+          : "已拒绝"
+        : question
+          ? "已回答"
+          : "已批准";
+  const body = (
+    <div className="interaction-card" data-state={record.state}>
       <header className="interaction-heading">
         {question ? (
           <QuestionIcon aria-hidden />
@@ -73,7 +80,15 @@ export function Approval({
           ))}
         </dl>
       ) : null}
-      {request.detail && <p className="approval-detail">{request.detail}</p>}
+      {request.detail &&
+        (pending || request.fields?.length ? (
+          <p className="approval-detail">{request.detail}</p>
+        ) : (
+          <details className="approval-technical">
+            <summary>原始内容</summary>
+            <p>{request.detail}</p>
+          </details>
+        ))}
       {request.url && (
         <a href={request.url} target="_blank" rel="noopener noreferrer">
           打开确认页面
@@ -186,6 +201,14 @@ export function Approval({
         )}
       {pending ? (
         <div className="interaction-actions">
+          <Button
+            size="small"
+            variant="secondary"
+            disabled={action.busy}
+            onClick={() => void respond({ allow: false })}
+          >
+            {question ? "取消" : "拒绝"}
+          </Button>
           {request.options?.map((option) => (
             <Button
               key={option.id}
@@ -224,34 +247,37 @@ export function Approval({
                 {question ? "发送回答" : (request.confirmLabel ?? "批准")}
               </Button>
             )}
-          <Button
-            size="small"
-            variant="secondary"
-            className="interaction-decline"
-            disabled={action.busy}
-            onClick={() => void respond({ allow: false })}
-          >
-            {question ? "取消" : "拒绝"}
-          </Button>
         </div>
-      ) : (
-        <p className="interaction-result" role="status">
-          {record.state === "expired"
-            ? "已失效"
-            : record.state === "denied"
-              ? question
-                ? "已取消"
-                : "已拒绝"
-              : question
-                ? "已回答"
-                : "已批准"}
-          {summary && ` · ${summary}`}
-        </p>
-      )}
+      ) : summary ? (
+        <p className="interaction-result">{summary}</p>
+      ) : null}
       {pending && action.error && (
         <p className="alert" role="alert">
           {action.error}
         </p>
+      )}
+    </div>
+  );
+  return (
+    <section
+      aria-label={request.title}
+      data-state={record.state}
+      className={pending ? undefined : "approval-record"}
+    >
+      {pending ? (
+        body
+      ) : (
+        <details>
+          <summary>
+            <InlineNotice
+              align="center"
+              icon={question ? <QuestionIcon /> : <ShieldCheckIcon />}
+            >
+              {request.title} · <span role="status">{status}</span>
+            </InlineNotice>
+          </summary>
+          {body}
+        </details>
       )}
     </section>
   );

@@ -2,7 +2,7 @@ import { type ChatMessage, messageText } from "@domos/agent/messages";
 import type { TranscriptItem } from "@domos/agent/transcript";
 import { Button } from "@domos/ui/controls";
 import { ActionMenu } from "@domos/ui/menu";
-import { MessageBubble } from "@domos/ui/message";
+import { InlineNotice, MessageBubble } from "@domos/ui/message";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import {
@@ -71,32 +71,39 @@ const MessageRow = memo(function MessageRow({
       }
     >
       {message.routine && message.role === "assistant" && (
-        <div className="routine-source">
-          ◷ {message.routine.title} · 计划{" "}
+        <InlineNotice
+          className="routine-source"
+          align="center"
+          icon="◷"
+          onClick={
+            message.routine.turnId
+              ? () =>
+                  window.dispatchEvent(
+                    new CustomEvent("domos:work-open", {
+                      detail: { botId, turnId: message.routine?.turnId },
+                    }),
+                  )
+              : undefined
+          }
+        >
+          {message.routine.title} · 计划{" "}
           {new Date(message.routine.scheduledAt).toLocaleTimeString("zh-CN", {
             hour: "2-digit",
             minute: "2-digit",
           })}
-          {message.routine.turnId && (
-            <Button
-              variant="ghost"
-              size="small"
-              onClick={() => {
-                const detail = { botId, turnId: message.routine?.turnId };
-                window.dispatchEvent(
-                  new CustomEvent("domos:work-open", { detail }),
-                );
-              }}
-            >
-              查看运行
-            </Button>
-          )}
-        </div>
+        </InlineNotice>
       )}
-      {message.approval ? (
-        <MessageBubble side="incoming">
+
+      {message.notice ? (
+        <InlineNotice align="center">{message.notice.text}</InlineNotice>
+      ) : message.approval ? (
+        message.approval.state === "pending" ? (
+          <MessageBubble side="incoming">
+            <Approval botId={botId} message={message} />
+          </MessageBubble>
+        ) : (
           <Approval botId={botId} message={message} />
-        </MessageBubble>
+        )
       ) : message.takeover ? (
         <MessageBubble side="incoming">
           <TakeoverCard botId={botId} message={message} />

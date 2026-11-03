@@ -21,13 +21,15 @@ export function ComputerDetails({
           查看详情
         </Button>
       }
+      footer={
+        <div className="dialog-actions">
+          <Button variant="secondary" onClick={() => setOpen(false)}>
+            关闭详情
+          </Button>
+        </div>
+      }
     >
       {children}
-      <div className="dialog-actions">
-        <Button variant="secondary" onClick={() => setOpen(false)}>
-          关闭详情
-        </Button>
-      </div>
     </Dialog>
   );
 }
@@ -64,25 +66,31 @@ export function ConfirmComputerAction({
           {title}
         </Button>
       }
+      footer={
+        <div className="dialog-actions">
+          <Button
+            variant="ghost"
+            disabled={busy}
+            onClick={() => setOpen(false)}
+          >
+            取消
+          </Button>
+          <Button
+            disabled={busy}
+            onClick={async () => {
+              if (await onConfirm()) setOpen(false);
+            }}
+          >
+            {busy ? "正在处理…" : label}
+          </Button>
+        </div>
+      }
     >
       {error && (
         <p className="alert" role="alert">
           {error}
         </p>
       )}
-      <div className="dialog-actions">
-        <Button variant="ghost" disabled={busy} onClick={() => setOpen(false)}>
-          取消
-        </Button>
-        <Button
-          disabled={busy}
-          onClick={async () => {
-            if (await onConfirm()) setOpen(false);
-          }}
-        >
-          {busy ? "正在处理…" : label}
-        </Button>
-      </div>
     </Dialog>
   );
 }

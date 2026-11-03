@@ -23,38 +23,7 @@
   background: var(--color-surface);
 }
 .sidebar-search {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
   flex: 1;
-  padding: 0 var(--space-4);
-  min-height: 2.25rem;
-  border-radius: var(--radius-round);
-  background: var(--color-surface);
-  color: var(--color-muted);
-}
-.sidebar-search:focus-within {
-  background: var(--color-control);
-}
-.sidebar-search svg {
-  flex-shrink: 0;
-}
-.sidebar-search input {
-  width: 100%;
-  min-width: 0;
-  padding: var(--space-1) 0;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: var(--color-text);
-  font-size: 12.5px;
-}
-.sidebar-search input::placeholder {
-  color: var(--color-muted);
-}
-.sidebar-search[hidden] {
-  display: none;
 }
 .sidebar[data-compact] .sidebar-toolbar {
   flex-direction: column;
@@ -815,8 +784,12 @@ body:has(.workspace[data-platform]) :is(.image-viewer, .image-viewer-backdrop) {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  line-height: var(--leading-control);
 }
 .interaction-heading > svg {
+  display: block;
+  width: var(--space-4);
+  height: var(--space-4);
   flex-shrink: 0;
   color: var(--color-muted);
 }
@@ -919,21 +892,34 @@ body:has(.workspace[data-platform]) :is(.image-viewer, .image-viewer-backdrop) {
   justify-content: flex-end;
   margin-top: var(--space-2);
 }
-.interaction-actions .button {
-  border-radius: var(--radius-round);
-}
-.interaction-actions .button[data-variant="primary"] {
-  background: var(--color-text);
-  color: var(--color-canvas);
-}
-.interaction-decline {
-  order: -1;
-}
 .routine-source {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  margin-block: var(--space-3);
+}
+.approval-record {
+  width: 100%;
+  min-width: 0;
+}
+.approval-record > details > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.approval-record > details > summary::-webkit-details-marker {
+  display: none;
+}
+.approval-record > details > summary .inline-notice-content::after {
+  content: "›";
+}
+.approval-record > details[open] > .interaction-card {
+  margin-top: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface);
+}
+.approval-technical {
   color: var(--color-muted);
   font-size: var(--text-label);
-  margin-bottom: var(--space-2);
+}
+.approval-technical > p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

@@ -182,6 +182,11 @@ export function chatView(
           ? (message.details as { delivery?: MessageDelivery } | undefined)
               ?.delivery
           : undefined;
+      const notice =
+        message.role === "toolResult" && !message.isError && !stopped
+          ? (message.details as { notice?: ChatMessage["notice"] } | undefined)
+              ?.notice
+          : undefined;
       failed = message.role === "assistant" && message.stopReason === "error";
       const projected = project(
         message,
@@ -202,6 +207,7 @@ export function chatView(
             ? { materials: input.materials }
             : {}),
           ...(delivery ? { delivery } : {}),
+          ...(notice ? { notice } : {}),
         });
     });
   }

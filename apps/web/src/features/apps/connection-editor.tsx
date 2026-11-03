@@ -20,27 +20,24 @@ export function ConnectionEditor({
   form,
   appInfo,
   computers,
-  busy,
   manual,
   setManual,
   change,
   onSave,
   onPreview,
-  onCancel,
 }: {
   form: Draft;
   appInfo?: Awaited<ReturnType<typeof client.mcp.catalog>>[number];
   computers: { id: string; name: string }[];
-  busy: boolean;
   manual: boolean;
   setManual: (value: boolean) => void;
   change: (value: Partial<Draft>) => void;
   onSave: () => void;
   onPreview: () => void;
-  onCancel: () => void;
 }) {
   return (
     <form
+      id="connection-editor"
       className="apps-form"
       onSubmit={(e) => {
         e.preventDefault();
@@ -159,19 +156,6 @@ export function ConnectionEditor({
           </details>
         </>
       )}
-      <div className="apps-actions">
-        <Button variant="ghost" type="button" onClick={onCancel}>
-          取消
-        </Button>
-        <Button
-          type="submit"
-          disabled={
-            busy || !(manual || appInfo || form.editing || form.address)
-          }
-        >
-          保存并测试
-        </Button>
-      </div>
     </form>
   );
 }

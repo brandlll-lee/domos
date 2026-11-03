@@ -194,43 +194,6 @@
   color: var(--color-muted);
   font-size: var(--text-caption);
 }
-.usage-segment {
-  display: inline-flex;
-  gap: 2px;
-  margin: 0;
-  padding: 2px;
-  border: 0;
-  min-inline-size: 0;
-  border-radius: var(--radius-round);
-  background: var(--color-surface);
-}
-.usage-segment button {
-  padding: 3px 10px;
-  border: 0;
-  border-radius: var(--radius-round);
-  background: transparent;
-  color: var(--color-muted);
-  font: inherit;
-  font-size: var(--text-caption);
-  line-height: 1.5;
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    background var(--motion-feedback),
-    color var(--motion-feedback);
-}
-.usage-segment button:hover {
-  color: var(--color-text);
-}
-.usage-segment button[aria-pressed="true"] {
-  background: color-mix(in srgb, var(--color-text) 10%, var(--color-surface));
-  color: var(--color-text);
-  box-shadow: 0 1px 2px #0000001a;
-}
-.usage-segment button:focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
-}
 .usage-chart {
   --usage-chart-height: clamp(9.5rem, 21vh, 13.5rem);
   display: grid;
@@ -475,27 +438,9 @@
   flex-shrink: 0;
   white-space: nowrap;
 }
-.usage-search input {
+.usage-search .search-field {
   flex: 1;
-  width: auto;
-  max-width: 17rem;
-  min-height: 1.875rem;
-  padding-inline: var(--space-3);
-  border: 0;
-  outline: none;
-  border-radius: var(--radius-round);
-  background: var(--color-surface);
-  color: var(--color-text);
-  font-size: var(--text-caption);
-}
-.usage-search input::placeholder {
-  color: var(--color-muted);
-}
-.usage-search input:focus {
-  background: var(--color-control);
-}
-.usage-search input::-webkit-search-cancel-button {
-  display: none;
+  max-width: 20rem;
 }
 .usage-table-scroll {
   overflow-x: auto;
@@ -770,9 +715,6 @@
     grid-template-columns: 2.5rem minmax(0, 1fr);
     column-gap: var(--space-2);
   }
-  .usage-search input {
-    max-width: none;
-  }
   .usage-truncate {
     max-width: min(15rem, 52vw);
   }
@@ -783,7 +725,6 @@
 @media (prefers-reduced-motion: reduce) {
   .usage-bar-stack > span,
   .usage-chip .picker-trigger,
-  .usage-segment button,
   .usage-breakdown-track > span {
     transition: none;
   }

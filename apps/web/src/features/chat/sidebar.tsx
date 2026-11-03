@@ -2,6 +2,7 @@ import type { Bot, BotPresence } from "@domos/agent/bots";
 import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { PanelDialog } from "@domos/ui/dialog";
+import { SearchField } from "@domos/ui/field";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { MagnifyingGlassIcon as MagnifyingGlass } from "@phosphor-icons/react/dist/csr/MagnifyingGlass";
 import { type ReactNode, useEffect, useRef, useState } from "react";
@@ -65,17 +66,15 @@ export function Sidebar({
             <MagnifyingGlass />
           </Button>
         )}
-        <label className="sidebar-search" hidden={compact}>
-          <MagnifyingGlass size={14} aria-hidden="true" />
-          <input
-            ref={search}
-            type="search"
-            aria-label={chatCopy.search}
-            placeholder="搜索"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </label>
+        <SearchField
+          className="sidebar-search"
+          hidden={compact}
+          inputRef={search}
+          aria-label={chatCopy.search}
+          placeholder="搜索"
+          value={query}
+          onValueChange={setQuery}
+        />
         {actions}
       </div>
       <ScrollArea className="sidebar-scroll">

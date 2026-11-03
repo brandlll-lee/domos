@@ -3547,6 +3547,11 @@ test("native questions use the shared card and native replies persist", async ({
   await page.reload();
   await expect(replies).toHaveText(["正在核对资料。", "已按你的选择完成。"]);
   await expect(choice.getByRole("status")).toHaveText("已回答");
+  await expect(choice.locator("details").first()).not.toHaveAttribute(
+    "open",
+    "",
+  );
+  await choice.locator("summary").first().click();
   await expect(
     choice.getByRole("button", { name: "A 简短", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");

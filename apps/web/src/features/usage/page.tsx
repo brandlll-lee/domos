@@ -1,3 +1,4 @@
+import { SegmentedControl } from "@domos/ui/choice";
 import { Button } from "@domos/ui/controls";
 import { ChoicePicker } from "@domos/ui/picker";
 import { ScrollArea } from "@domos/ui/scroll-area";
@@ -37,33 +38,6 @@ const limits = [
   { value: "10", label: "Top 10" },
   { value: "20", label: "Top 20" },
 ];
-
-function Segmented<T extends string>({
-  label,
-  value,
-  items,
-  onChange,
-}: {
-  label: string;
-  value: T;
-  items: readonly { value: T; label: string }[];
-  onChange: (value: T) => void;
-}) {
-  return (
-    <fieldset className="usage-segment" aria-label={label}>
-      {items.map((item) => (
-        <button
-          type="button"
-          key={item.value}
-          aria-pressed={item.value === value}
-          onClick={() => onChange(item.value)}
-        >
-          {item.label}
-        </button>
-      ))}
-    </fieldset>
-  );
-}
 
 function Filter({
   label,
@@ -356,11 +330,11 @@ export function UsageSurface() {
                 <h2>
                   {metrics.find((item) => item.value === metric)?.label}趋势
                 </h2>
-                <Segmented
+                <SegmentedControl
                   label="统计指标"
                   value={metric}
-                  onChange={setMetric}
-                  items={metrics}
+                  onValueChange={setMetric}
+                  options={metrics}
                 />
               </header>
               <DailyChart days={days} groups={groups} metric={metric} />
@@ -370,11 +344,11 @@ export function UsageSurface() {
               <header className="usage-section-head">
                 <h2>构成</h2>
                 <div className="usage-section-tools">
-                  <Segmented
+                  <SegmentedControl
                     label="分组维度"
                     value={dimension}
-                    onChange={setDimension}
-                    items={dimensions}
+                    onValueChange={setDimension}
+                    options={dimensions}
                   />
                   <ChoicePicker
                     label="显示数量"

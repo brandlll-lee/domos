@@ -2,6 +2,7 @@ import type { InputMaterials } from "@domos/agent/materials";
 import { type ChatMessage, messageText } from "@domos/agent/messages";
 import { WORK_TEXT_LENGTH } from "@domos/agent/work/limits";
 import { Button } from "@domos/ui/controls";
+import { SearchField } from "@domos/ui/field";
 import { useEffect, useState } from "react";
 import { client } from "../../client.ts";
 import { userError } from "../user-error.ts";
@@ -38,12 +39,12 @@ export function SkillPicker({
   );
   return (
     <>
-      <input
-        className="composer-picker-search field-control"
+      <SearchField
+        className="composer-picker-search"
         aria-label="搜索技能"
         placeholder="搜索技能…"
         value={search}
-        onChange={(event) => setSearch(event.target.value)}
+        onValueChange={setSearch}
       />
       {error ? (
         <div className="composer-picker-state" role="alert">
@@ -151,12 +152,12 @@ export function MessagePicker({
     .toReversed();
   return (
     <>
-      <input
-        className="composer-picker-search field-control"
+      <SearchField
+        className="composer-picker-search"
         aria-label="搜索消息"
         placeholder="搜索消息…"
         value={search}
-        onChange={(event) => setSearch(event.target.value)}
+        onValueChange={setSearch}
       />
       <div className="composer-picker-list">
         {choices.length ? (

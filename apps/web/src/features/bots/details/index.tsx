@@ -170,16 +170,16 @@ export function BotDetails({
             }
           >
             <Tabs.List className="workspace-tabs" aria-label="Bot详情">
-              <Tabs.Tab className="workspace-tab" value="bot">
+              <Tabs.Tab className="navigation-tab" value="bot">
                 Bot
               </Tabs.Tab>
-              <Tabs.Tab className="workspace-tab" value="computer">
+              <Tabs.Tab className="navigation-tab" value="computer">
                 Computer
               </Tabs.Tab>
-              <Tabs.Tab className="workspace-tab" value="browser">
+              <Tabs.Tab className="navigation-tab" value="browser">
                 Browser
               </Tabs.Tab>
-              <Tabs.Tab className="workspace-tab" value="work">
+              <Tabs.Tab className="navigation-tab" value="work">
                 Work
               </Tabs.Tab>
             </Tabs.List>

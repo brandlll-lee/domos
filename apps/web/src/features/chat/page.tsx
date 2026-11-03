@@ -171,7 +171,7 @@ function BotChat({
     <Workspace
       onApps={() => setAppsOpen(true)}
       detailsOpen={detailsOpen}
-      obscured={settings.showing}
+      obscured={settings.showing || appsOpen}
       onDetailsChange={(open) => {
         if (open) setDetailsOpen(true);
         else closePanel();

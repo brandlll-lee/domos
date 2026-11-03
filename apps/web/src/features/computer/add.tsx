@@ -35,8 +35,24 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
           添加 Docker 电脑
         </Button>
       }
+      footer={
+        <div className="dialog-actions">
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => setOpen(false)}
+          >
+            取消
+          </Button>
+          <Button type="submit" form="add-computer" pending={busy}>
+            {busy ? "正在添加…" : "添加电脑"}
+          </Button>
+        </div>
+      }
     >
       <form
+        id="add-computer"
         className="setup-form"
         aria-busy={busy}
         onSubmit={async (event) => {
@@ -202,19 +218,6 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
             </>
           )}
         </fieldset>
-        <div className="dialog-actions">
-          <Button
-            type="button"
-            variant="ghost"
-            disabled={busy}
-            onClick={() => setOpen(false)}
-          >
-            取消
-          </Button>
-          <Button type="submit" pending={busy}>
-            {busy ? "正在添加…" : "添加电脑"}
-          </Button>
-        </div>
         {error && <p role="alert">{error}</p>}
       </form>
     </Dialog>

@@ -493,21 +493,30 @@ export function routineExtension(
         replay: "safe",
         executionMode: "sequential",
         async execute(args, api, context) {
-          if (manage)
-            return toolResult(
-              await manage(
-                api.conversationId,
-                {
-                  ...args,
-                  action: "create",
-                  id: `routine-${api.taskId}`,
-                  revision: 0,
-                  skillIds: args.skillIds ?? [],
-                },
-                String(api.taskId),
-                context,
-              ),
+          if (manage) {
+            const result = await manage(
+              api.conversationId,
+              {
+                ...args,
+                action: "create",
+                id: `routine-${api.taskId}`,
+                revision: 0,
+                skillIds: args.skillIds ?? [],
+              },
+              String(api.taskId),
+              context,
             );
+            return {
+              ...toolResult(result),
+              ...(result && typeof result === "object" && "title" in result
+                ? {
+                    details: {
+                      notice: { text: `已创建定时　◷　${result.title}` },
+                    },
+                  }
+                : {}),
+            };
+          }
           return toolResult(
             await api.commit(
               (tx) =>

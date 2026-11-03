@@ -193,9 +193,14 @@ export async function callProductTool(
     await runtime.snapshot(NestedCallDoc, runtime.taskId, key, context)
   )?.result;
   if (!result) throw new Error("产品工具结果未确认。");
-  const details = result.details as { attachment?: unknown } | undefined;
+  const details = result.details as
+    | {
+        attachment?: unknown;
+        notice?: import("../messages.ts").ChatMessage["notice"];
+      }
+    | undefined;
   if (details && "content" in details) return details as ProductResult;
-  if (details?.attachment) {
+  if (details?.attachment || (details?.notice && !result.isError)) {
     await runtime.commit(async (tx) => {
       const doc = await tx.doc(ProductCalls, runtime.taskId);
       if (doc.delivered.includes(key)) return;
@@ -229,6 +234,9 @@ export async function callProductTool(
           toolName: name,
           toolStatus: "done",
           isError: false,
+          ...(details.notice && !result.isError
+            ? { notice: details.notice }
+            : {}),
           ...(details.attachment ? { attachments: [details.attachment] } : {}),
         }),
       });

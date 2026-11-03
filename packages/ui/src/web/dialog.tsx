@@ -22,6 +22,7 @@ export function Dialog({
   footer,
   viewportRef,
   headerActions,
+  subheader,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -34,6 +35,7 @@ export function Dialog({
   footer?: ReactNode;
   viewportRef?: RefObject<HTMLDivElement | null>;
   headerActions?: ReactNode;
+  subheader?: ReactNode;
 }) {
   const internalBody = useRef<HTMLDivElement>(null);
   const body = viewportRef ?? internalBody;
@@ -79,6 +81,7 @@ export function Dialog({
               {description}
             </BaseDialog.Description>
           )}
+          {subheader && <div className="dialog-subheader">{subheader}</div>}
           <ScrollArea className="dialog-body" viewportRef={body}>
             {children}
           </ScrollArea>

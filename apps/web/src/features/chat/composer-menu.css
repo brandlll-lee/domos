@@ -81,10 +81,6 @@
   font: inherit;
   margin: 0;
 }
-.composer-picker-search.field-control {
-  min-height: var(--control-small);
-  height: var(--control-small);
-}
 .composer-picker-list {
   max-height: var(--message-collapse-height);
   overflow: auto;

@@ -1,9 +1,9 @@
 import { type McpConfig, parseMcp } from "@domos/agent/mcp/config";
+import { SegmentedControl } from "@domos/ui/choice";
 import { Button } from "@domos/ui/controls";
 import { ConfirmDialog, Dialog } from "@domos/ui/dialog";
-import { Checkbox } from "@domos/ui/field";
+import { Checkbox, SearchField } from "@domos/ui/field";
 import { ActionMenu } from "@domos/ui/menu";
-import { Tabs } from "@domos/ui/tabs";
 import { ArrowClockwiseIcon as ArrowClockwise } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
 import { BookOpenIcon as BookOpen } from "@phosphor-icons/react/dist/csr/BookOpen";
 import { CodeIcon as Code } from "@phosphor-icons/react/dist/csr/Code";
@@ -213,72 +213,115 @@ export function AppsCenter({
         viewportRef={viewport}
         headerActions={
           !form && (
-            <Button
-              variant="ghost"
-              size="icon-small"
-              aria-label="刷新连接"
-              disabled={reading || busy || nativeReading}
-              onClick={() => {
-                void refresh();
-                if (view === "mcp") void refreshNative(nativeBot);
-              }}
-            >
-              <ArrowClockwise />
-            </Button>
+            <>
+              {!selectedId && (
+                <Button
+                  variant="ghost"
+                  aria-label={`已添加 ${items.length}`}
+                  onClick={() =>
+                    setView(view === "connected" ? "apps" : "connected")
+                  }
+                >
+                  已添加 {items.length} ›
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="icon-small"
+                aria-label="刷新连接"
+                disabled={reading || busy || nativeReading}
+                onClick={() => {
+                  void refresh();
+                  if (view === "mcp") void refreshNative(nativeBot);
+                }}
+              >
+                <ArrowClockwise />
+              </Button>
+            </>
+          )
+        }
+        subheader={
+          <div className="apps-navigation">
+            {form || selectedId ? (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setForm(null);
+                  setSelectedId(undefined);
+                  requestAnimationFrame(() => {
+                    if (viewport.current)
+                      viewport.current.scrollTop = positions.current[view];
+                  });
+                }}
+              >
+                ‹ 返回列表
+              </Button>
+            ) : (
+              <>
+                <div className="apps-search-row">
+                  {view !== "apps" && (
+                    <Button
+                      variant="ghost"
+                      aria-label="返回应用"
+                      onClick={() => setView("apps")}
+                    >
+                      ‹ 应用
+                    </Button>
+                  )}
+                  <SearchField
+                    aria-label="搜索当前页面"
+                    placeholder={view === "apps" ? "搜索应用" : "搜索连接"}
+                    value={query}
+                    onValueChange={setQuery}
+                  />
+                  <Button
+                    variant="secondary"
+                    aria-label="MCP"
+                    aria-pressed={view === "mcp"}
+                    onClick={() => setView("mcp")}
+                  >
+                    <Plugs />
+                    MCP 服务器
+                  </Button>
+                </div>
+                {view === "apps" && (
+                  <SegmentedControl
+                    label="应用分类"
+                    value={category}
+                    onValueChange={setCategory}
+                    options={[
+                      { value: "", label: "全部" },
+                      ...categories.map((name) => ({
+                        value: name,
+                        label: name,
+                      })),
+                    ]}
+                  />
+                )}
+              </>
+            )}
+          </div>
+        }
+        footer={
+          form && (
+            <div className="dialog-actions">
+              <Button variant="secondary" onClick={() => setForm(null)}>
+                取消
+              </Button>
+              <Button
+                type="submit"
+                form="connection-editor"
+                disabled={
+                  busy || !(manual || appInfo || form.editing || form.address)
+                }
+              >
+                保存并测试
+              </Button>
+            </div>
           )
         }
       >
         <div className="apps-center" aria-busy={busy}>
-          {form || selectedId ? (
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setForm(null);
-                setSelectedId(undefined);
-                requestAnimationFrame(() => {
-                  if (viewport.current)
-                    viewport.current.scrollTop = positions.current[view];
-                });
-              }}
-            >
-              返回列表
-            </Button>
-          ) : (
-            <>
-              <div className="apps-center-nav">
-                <Tabs.Root
-                  value={view}
-                  onValueChange={(value) => setView(value as typeof view)}
-                >
-                  <Tabs.List aria-label="连接中心" className="apps-tabs">
-                    {(
-                      [
-                        ["apps", "应用"],
-                        ["mcp", "MCP"],
-                        ["connected", `已添加 ${items.length}`],
-                      ] as const
-                    ).map(([value, label]) => (
-                      <Tabs.Tab
-                        key={value}
-                        value={value}
-                        className="button"
-                        data-variant={view === value ? "secondary" : "ghost"}
-                      >
-                        {label}
-                      </Tabs.Tab>
-                    ))}
-                  </Tabs.List>
-                </Tabs.Root>
-              </div>
-              <input
-                className="field-control"
-                aria-label="搜索当前页面"
-                placeholder="搜索当前页面…"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-            </>
-          )}
           {!loaded && reading && <p role="status">正在读取连接…</p>}
           {!loaded && error && (
             <Button variant="secondary" onClick={() => void refresh()}>
@@ -324,57 +367,65 @@ export function AppsCenter({
           )}
           {view === "apps" && !form && !selectedId ? (
             <>
-              <nav className="apps-center-nav" aria-label="应用分类">
-                {["", ...categories].map((name) => (
-                  <Button
-                    key={name}
-                    variant={category === name ? "secondary" : "ghost"}
-                    onClick={() => setCategory(name)}
-                  >
-                    {name || "全部"}
-                  </Button>
-                ))}
-              </nav>
               {loaded && !catalog.length && (
                 <p className="apps-muted">暂无可用应用。</p>
               )}
               <div className="apps-catalog">
-                {catalog
+                {categories
                   .filter(
-                    (app) =>
-                      (!category || app.category === category) &&
-                      `${app.name} ${app.description}`
-                        .toLowerCase()
-                        .includes(query.toLowerCase()),
+                    (name) =>
+                      (!category || name === category) &&
+                      catalog.some(
+                        (app) =>
+                          app.category === name &&
+                          `${app.name} ${app.description}`
+                            .toLowerCase()
+                            .includes(query.toLowerCase()),
+                      ),
                   )
-                  .map((app) => (
-                    <section className="apps-catalog-item" key={app.id}>
-                      <div className="apps-logo" aria-hidden="true">
-                        {(() => {
-                          const Icon =
-                            (
-                              { BookOpen, Code } as Record<
-                                string,
-                                typeof BookOpen
+                  .map((name) => (
+                    <section className="apps-category" key={name}>
+                      <h3>{name}</h3>
+                      <div className="apps-catalog-rows">
+                        {catalog
+                          .filter(
+                            (app) =>
+                              app.category === name &&
+                              `${app.name} ${app.description}`
+                                .toLowerCase()
+                                .includes(query.toLowerCase()),
+                          )
+                          .map((app) => (
+                            <section className="apps-catalog-item" key={app.id}>
+                              <div className="apps-logo" aria-hidden="true">
+                                {(() => {
+                                  const Icon =
+                                    (
+                                      { BookOpen, Code } as Record<
+                                        string,
+                                        typeof BookOpen
+                                      >
+                                    )[app.icon] ?? Plugs;
+                                  return <Icon />;
+                                })()}
+                              </div>
+                              <div>
+                                <strong>{app.name}</strong>
+                                <p>{app.description}</p>
+                              </div>
+                              <Button
+                                variant="secondary"
+                                onClick={() => {
+                                  start();
+                                  setAppInfo(app);
+                                  setConfig(app.name, app.config);
+                                }}
                               >
-                            )[app.icon] ?? Plugs;
-                          return <Icon />;
-                        })()}
+                                连接
+                              </Button>
+                            </section>
+                          ))}
                       </div>
-                      <div>
-                        <strong>{app.name}</strong>
-                        <p>{app.description}</p>
-                      </div>
-                      <Button
-                        variant="secondary"
-                        onClick={() => {
-                          start();
-                          setAppInfo(app);
-                          setConfig(app.name, app.config);
-                        }}
-                      >
-                        连接
-                      </Button>
                     </section>
                   ))}
               </div>
@@ -383,12 +434,7 @@ export function AppsCenter({
             <>
               {view === "mcp" && !form && !selectedId && (
                 <div className="apps-center-nav">
-                  <Button
-                    variant="secondary"
-                    onClick={() => setView("connected")}
-                  >
-                    查看已添加连接
-                  </Button>
+                  <h3>MCP 服务器</h3>
                   <span className="apps-center-spacer" />
                   <Button onClick={() => start()} disabled={busy}>
                     <Plus />
@@ -401,11 +447,9 @@ export function AppsCenter({
                   form={form}
                   appInfo={appInfo}
                   computers={computers}
-                  busy={busy}
                   manual={manual}
                   setManual={setManual}
                   change={change}
-                  onCancel={() => setForm(null)}
                   onSave={() => {
                     void run(async () => {
                       if (form.paste.trim())

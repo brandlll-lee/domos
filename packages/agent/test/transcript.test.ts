@@ -149,6 +149,27 @@ test("task failures use the runtime error and tool errors can recover", () => {
   ).toHaveLength(1);
 });
 
+test("saved product notices remain visible without exposing raw tool output", () => {
+  const notice = { text: "已创建定时　◷　晚间简报" };
+  const saved = message(
+    "toolResult",
+    "turn",
+    [{ type: "text", text: "Raw result" }],
+    { notice },
+  );
+  const original = structuredClone(saved);
+  expect(chatTranscript(view([saved]))).toMatchObject([
+    {
+      kind: "message",
+      id: saved.id,
+      message: { role: "assistant", content: [], notice },
+    },
+  ]);
+  expect(saved).toEqual(original);
+  expect(chatTranscript(view([{ ...saved, isError: true }]))).toEqual([]);
+  expect(chatTranscript(view([{ ...saved, hidden: true }]))).toEqual([]);
+});
+
 test("files arrive at task completion and stay hidden for interrupted tasks", () => {
   const file = { id: "file", name: "report.txt", size: 12, path: "report.txt" };
   const messages = [

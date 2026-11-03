@@ -1,5 +1,6 @@
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
+import { InlineNotice } from "@domos/ui/message";
 import { SettingRow } from "@domos/ui/setting-row";
 import { useEffect, useState } from "react";
 import type { DesktopState } from "./desktop.ts";
@@ -92,7 +93,11 @@ export function DataBackup() {
         <p role="status">请在运行此 Domos 的电脑上管理备份。</p>
       )}
       {!state && !error && <p role="status">正在读取本机后台状态…</p>}
-      {message && <p role="status">{message}</p>}
+      {message && (
+        <div role="status">
+          <InlineNotice>{message}</InlineNotice>
+        </div>
+      )}
       {error && (
         <p role="alert" className="alert">
           {error}

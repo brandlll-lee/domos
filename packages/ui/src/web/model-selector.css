@@ -101,7 +101,7 @@
   margin-top: var(--space-2);
 }
 .model-selector-config svg,
-.model-selector-search svg {
+.model-selector-search > .button svg {
   width: 1rem;
   height: 1rem;
   fill: none;
@@ -147,24 +147,8 @@
   color: var(--color-muted);
   font-size: var(--text-caption);
 }
-.model-selector-search .field {
+.model-selector-search .search-field {
   flex: 1;
-  min-width: 0;
-}
-.model-selector-search .field-label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-.model-selector-search .field-control {
-  border-radius: var(--radius-round);
-  background: color-mix(in srgb, var(--color-text) 5%, transparent);
-}
-.model-selector-search .field-control:focus {
-  background: var(--color-control-hover);
 }
 .model-selector-scroll {
   min-height: 0;

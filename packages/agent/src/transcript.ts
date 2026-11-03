@@ -75,6 +75,12 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
     if (message.role === "user")
       items.push({ kind: "message", id: message.id, message });
     else if (message.role === "toolResult") {
+      if (message.notice && !message.isError)
+        items.push({
+          kind: "message",
+          id: message.id,
+          message: { ...message, role: "assistant", content: [] },
+        });
       if (message.delivery)
         items.push({
           kind: "message",

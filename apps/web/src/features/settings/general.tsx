@@ -80,13 +80,15 @@ export function GeneralSettings({ admin, deviceId }: SettingsAccess) {
         }}
         title="在其他设备上使用"
         description="为你信任的设备授权。撤销后，该设备将无法继续访问。"
+        footer={
+          <div className="dialog-actions">
+            <Button variant="secondary" onClick={() => setFlow(null)}>
+              完成
+            </Button>
+          </div>
+        }
       >
         {deviceId && <Devices current={deviceId} />}
-        <div className="dialog-actions">
-          <Button variant="secondary" onClick={() => setFlow(null)}>
-            完成
-          </Button>
-        </div>
       </Dialog>
       <Dialog
         open={flow === "backup"}
@@ -95,13 +97,15 @@ export function GeneralSettings({ admin, deviceId }: SettingsAccess) {
         }}
         title="数据与备份"
         description="管理运行在这台电脑上的 Domos 数据。"
+        footer={
+          <div className="dialog-actions">
+            <Button variant="secondary" onClick={() => setFlow(null)}>
+              关闭
+            </Button>
+          </div>
+        }
       >
         <DataBackup />
-        <div className="dialog-actions">
-          <Button variant="secondary" onClick={() => setFlow(null)}>
-            关闭
-          </Button>
-        </div>
       </Dialog>
     </div>
   );

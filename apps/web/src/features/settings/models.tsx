@@ -1,5 +1,5 @@
 import { Button, Switch } from "@domos/ui/controls";
-import { TextField } from "@domos/ui/field";
+import { SearchField } from "@domos/ui/field";
 import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../client.ts";
@@ -38,9 +38,8 @@ export function ModelSettings({
       className="settings-sections model-catalog"
       aria-busy={visibility.pending}
     >
-      <TextField
-        label="搜索模型"
-        type="search"
+      <SearchField
+        aria-label="搜索模型"
         value={query}
         onValueChange={setQuery}
         placeholder="搜索名称或模型 ID"

@@ -19,6 +19,7 @@ export type ChatContent =
   | Pick<ToolCall, "type" | "id" | "name" | "arguments">;
 
 export type ChatMessage = {
+  notice?: { text: string };
   cursor?: string;
   routine?: {
     runId: string;

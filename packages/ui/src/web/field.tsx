@@ -1,6 +1,55 @@
 import { Checkbox as BaseCheckbox } from "@base-ui/react/checkbox";
 import { Field } from "@base-ui/react/field";
-import type { ComponentProps } from "react";
+import { type ComponentProps, type RefObject, useRef } from "react";
+import { Button } from "./controls.tsx";
+
+export function SearchField({
+  value,
+  onValueChange,
+  className = "",
+  inputRef,
+  hidden,
+  ...props
+}: Omit<ComponentProps<"input">, "value" | "onChange" | "type" | "ref"> & {
+  value: string;
+  onValueChange: (value: string) => void;
+  inputRef?: RefObject<HTMLInputElement | null>;
+}) {
+  const local = useRef<HTMLInputElement>(null);
+  const ref = inputRef ?? local;
+  return (
+    <div className={`search-field ${className}`} hidden={hidden}>
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <circle cx="8.5" cy="8.5" r="5.5" />
+        <path d="m13 13 4 4" />
+      </svg>
+      <input
+        {...props}
+        ref={ref}
+        type="search"
+        value={value}
+        onChange={(event) => onValueChange(event.target.value)}
+      />
+      {value && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-small"
+          disabled={props.disabled || props.readOnly}
+          aria-label={`清除${props["aria-label"] ?? "搜索"}`}
+          onClick={() => {
+            onValueChange("");
+            ref.current?.focus();
+          }}
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="m6 6 8 8m0-8-8 8" />
+          </svg>
+        </Button>
+      )}
+    </div>
+  );
+}
 
 export function TextField({
   label,

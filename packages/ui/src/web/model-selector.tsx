@@ -2,7 +2,7 @@ import { Popover } from "@base-ui/react/popover";
 import { Tabs } from "@base-ui/react/tabs";
 import { type ReactNode, useRef, useState } from "react";
 import { Button } from "./controls.tsx";
-import { TextField } from "./field.tsx";
+import { SearchField } from "./field.tsx";
 import { ScrollArea } from "./scroll-area.tsx";
 
 export function ModelSelector({
@@ -159,9 +159,8 @@ export function ModelSelector({
                   <>
                     {notice}
                     <div className="model-selector-search">
-                      <TextField
-                        label="搜索模型…"
-                        type="search"
+                      <SearchField
+                        aria-label="搜索模型…"
                         placeholder={
                           selected?.name ? `搜索 ${selected.name}` : "搜索模型"
                         }
