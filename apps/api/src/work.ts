@@ -231,6 +231,13 @@ export function workRouter(bots: Bots, work: BotWork, engines?: Runtime) {
             instructions: z.string().trim().min(1).max(WORK_TEXT_LENGTH),
             schedule,
             skillIds: z.array(id).max(ROUTINE_SKILLS_LIMIT),
+            delivery: z.enum(["always", "conditional"]).optional(),
+            condition: z
+              .string()
+              .trim()
+              .min(1)
+              .max(WORK_TEXT_LENGTH)
+              .optional(),
             executionMs: z.number().int().min(1000).max(86_400_000).optional(),
             requestId,
           }),

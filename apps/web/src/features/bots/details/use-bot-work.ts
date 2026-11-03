@@ -4,6 +4,7 @@ import { userError } from "../../user-error.ts";
 
 export type WorkData = Awaited<ReturnType<typeof client.work.get>>;
 export type Profile = Awaited<ReturnType<typeof client.work.profile>>;
+type IdentityDraft = Pick<Profile, "name" | "instructions" | "avatar">;
 export type WorkAction = ReturnType<typeof useWorkAction>;
 
 export function useWorkAction() {
@@ -37,14 +38,46 @@ export function useWorkAction() {
   return { busy, error, run, clear: () => setError(null) };
 }
 
+const retained = new Map<
+  number,
+  { data: WorkData | null; profile: Profile | null; draft?: IdentityDraft }
+>();
+export function useIdentityDraft(profile: Profile) {
+  const [draft, update] = useState<IdentityDraft>(
+    () =>
+      retained.get(profile.id)?.draft ?? {
+        name: profile.name,
+        instructions: profile.instructions,
+        avatar: profile.avatar,
+      },
+  );
+  const change = (patch: Partial<IdentityDraft>) =>
+    update((current) => {
+      const next = { ...current, ...patch };
+      const state = retained.get(profile.id);
+      if (state) state.draft = next;
+      return next;
+    });
+  return { ...draft, change };
+}
+export function clearBotWork(ids?: Set<number>) {
+  for (const id of retained.keys()) if (!ids?.has(id)) retained.delete(id);
+}
+window.addEventListener("domos:pair", () => retained.clear());
 export function useBotWork(
   botId: number,
   active: boolean,
   live: boolean,
   profileActive: boolean,
 ) {
-  const [data, setData] = useState<WorkData | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [saved] = useState(
+    () => retained.get(botId) ?? { data: null, profile: null },
+  );
+  retained.set(botId, saved);
+  const [data, setData] = useState<WorkData | null>(saved.data);
+  const [profile, setProfile] = useState<Profile | null>(saved.profile);
+  saved.data = data;
+  saved.profile = profile;
   const [error, setError] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   useEffect(() => {

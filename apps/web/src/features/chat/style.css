@@ -799,8 +799,6 @@ body:has(.workspace[data-platform]) :is(.image-viewer, .image-viewer-backdrop) {
 }
 .approval-detail {
   margin: 0;
-  max-height: 12rem;
-  overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--color-muted);
@@ -809,11 +807,20 @@ body:has(.workspace[data-platform]) :is(.image-viewer, .image-viewer-backdrop) {
 
 .interaction-card {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-4);
   min-width: 0;
-  padding-block: var(--space-2);
+  padding-block: var(--space-3);
 }
-.interaction-card > strong,
+.interaction-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.interaction-heading > svg {
+  flex-shrink: 0;
+  color: var(--color-muted);
+}
+.interaction-heading strong,
 .question-field > strong {
   font-weight: var(--weight-medium);
 }
@@ -883,10 +890,50 @@ body:has(.workspace[data-platform]) :is(.image-viewer, .image-viewer-backdrop) {
 }
 
 .message-bubble:has(.interaction-card) {
-  width: 34rem;
+  width: min(100%, var(--settings-content-width));
   border: 1px solid var(--color-edge);
-  border-bottom-left-radius: var(--radius-message);
+  border-radius: var(--radius-panel);
 }
 .message-bubble:has(.interaction-card)::after {
   display: none;
+}
+
+.approval-fields {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+.approval-fields > div {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-4);
+}
+.approval-fields dt {
+  color: var(--color-muted);
+}
+.approval-fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.interaction-actions {
+  justify-content: flex-end;
+  margin-top: var(--space-2);
+}
+.interaction-actions .button {
+  border-radius: var(--radius-round);
+}
+.interaction-actions .button[data-variant="primary"] {
+  background: var(--color-text);
+  color: var(--color-canvas);
+}
+.interaction-decline {
+  order: -1;
+}
+.routine-source {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--text-label);
+  margin-bottom: var(--space-2);
 }

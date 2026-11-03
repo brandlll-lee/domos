@@ -4,6 +4,8 @@ import {
   defineTask,
   type TaskRuntime,
 } from "@earendil-works/pi-durable";
+import { EngineMessage } from "../harness/state.ts";
+import { stored } from "../harness/task-types.ts";
 import type { EngineInput } from "../harness/types.ts";
 import type { Runtime as Engines } from "../runtime/index.ts";
 import {
@@ -70,6 +72,11 @@ export function createRoutineTask(
           const at = task.state.checkpoint.at;
           const runId = `${task.id}:${at}`;
           let content = `Scheduled task: ${routine.title}\n${routine.instructions}`;
+          if (routine.delivery === "conditional")
+            content += `
+Monitoring condition: ${routine.condition}
+Previous successful baseline: ${routine.baseline ?? "Unknown; establish the first baseline unless the explicit condition is already met."}
+Use routine_report once after checking evidence. Do not send ordinary chat updates. Its text is the single notification when notify is true. Reuse existing file references for attachments.`;
           let error: string | null = null;
           try {
             const skills = await tx.doc(SkillsDoc);
@@ -86,6 +93,9 @@ export function createRoutineTask(
             botId: routine.botId,
             title: routine.title,
             mode: task.input.mode,
+            revision: routine.revision,
+            delivery: routine.delivery ?? "always",
+            ...(routine.condition ? { condition: routine.condition } : {}),
             scheduledAt: at,
             firedAt: now,
             finishedAt: null,
@@ -195,10 +205,70 @@ async function finishRun(
     }
   }
   await runtime.commit(async (tx) => {
-    const saved = (await tx.doc(RoutinesDoc)).runs.find(
-      (item) => item.id === id,
-    );
-    if (saved) {
+    const doc = await tx.doc(RoutinesDoc);
+    const saved = doc.runs.find((item) => item.id === id);
+    if (saved && !["done", "failed", "stopped"].includes(saved.status)) {
+      if (saved.delivery === "conditional" && status === "done") {
+        if (!saved.report) {
+          status = "failed";
+          error = "监控未提交有效检查结论。";
+        } else {
+          const item = doc.items.find(
+            (item) => item.id === saved.routineId && item.botId === saved.botId,
+          );
+          saved.delivered = false;
+          if (item && item.revision === saved.revision) {
+            item.baseline = saved.report.summary;
+            if (saved.report.notify && saved.report.key !== item.notifiedKey) {
+              saved.delivered = true;
+              item.notifiedKey = saved.report.key;
+              await tx.appendEntry(saved.botId as ConversationId, {
+                kind: EngineMessage,
+                data: stored({
+                  id: `routine-result:${saved.id}`,
+                  turnId: saved.turnId,
+                  role: "assistant",
+                  stopped: false,
+                  routine: {
+                    runId: saved.id,
+                    title: saved.title,
+                    scheduledAt: saved.scheduledAt,
+                    turnId: saved.turnId,
+                  },
+                  ...(saved.files?.length ? { attachments: saved.files } : {}),
+                  timestamp: runtime.now(),
+                  content: [
+                    { type: "text", text: saved.report.text, key: saved.id },
+                  ],
+                }),
+              });
+            }
+          }
+        }
+      }
+      if (
+        saved.delivery === "conditional" &&
+        (status === "failed" || status === "stopped")
+      )
+        await tx.appendEntry(saved.botId as ConversationId, {
+          kind: EngineMessage,
+          data: stored({
+            id: `routine-status:${saved.id}`,
+            turnId: saved.turnId,
+            role: "assistant",
+            stopped: false,
+            routine: {
+              runId: saved.id,
+              title: saved.title,
+              scheduledAt: saved.scheduledAt,
+              turnId: saved.turnId,
+            },
+            timestamp: runtime.now(),
+            content: [
+              { type: "text", text: error ?? "监控已停止。", key: saved.id },
+            ],
+          }),
+        });
       transitionRun(saved, status, runtime.now());
       Object.assign(saved, {
         status,
@@ -230,6 +300,7 @@ async function submitRun(
           requestId: run.requestId,
           whenBusy: "followUp",
           routineRunId: run.id,
+          source: "routine",
         },
         context,
       )

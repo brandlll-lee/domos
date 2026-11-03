@@ -1,4 +1,5 @@
 import type { Context } from "@earendil-works/chord/context";
+import { RoutinesDoc } from "../work/routine-state.ts";
 import { projectContext } from "./context.ts";
 import { EngineDoc } from "./state.ts";
 import {
@@ -265,7 +266,27 @@ export class EngineProjection {
             }
           }
         }
+        const run = current.input.routineRunId
+          ? (await tx.doc(RoutinesDoc)).runs.find(
+              (run) => run.id === current.input.routineRunId,
+            )
+          : undefined;
         for (const draft of drafts) {
+          if (run?.delivery === "conditional") {
+            draft.routine = {
+              runId: run.id,
+              title: run.title,
+              scheduledAt: run.scheduledAt,
+              turnId: current.input.turnId,
+              delivery: run.delivery,
+            };
+            if (
+              run.delivery === "conditional" &&
+              !draft.approval &&
+              !draft.takeover
+            )
+              draft.hidden = true;
+          }
           const index = doc.drafts.findIndex((item) => item.id === draft.id);
           if (index < 0) doc.drafts.push(draft);
           else doc.drafts[index] = draft;

@@ -483,6 +483,13 @@ test("routine changes require confirmation, retain enabled state and deduplicate
       );
       routine = (await runtime.work.routines.list(bot, context)).items[0];
       expect(routine?.enabled).toBe(action !== "pause");
+      if (action === "update")
+        expect(approved).toHaveBeenLastCalledWith(
+          expect.any(String),
+          "Read inbox",
+          context,
+          { confirmLabel: "修改任务", fields: [] },
+        );
     }
     if (!routine) throw new Error("Routine required");
     fixture.faux.setResponses([fauxAssistantMessage("Scheduled report")]);

@@ -305,7 +305,14 @@ export class ComputerRuntime {
                 {
                   id: randomUUID(),
                   title: `电脑操作 · ${action.name}`,
-                  detail: JSON.stringify(action.args),
+                  detail: "",
+                  fields: Object.entries(action.args).map(([label, value]) => ({
+                    label,
+                    value:
+                      typeof value === "string"
+                        ? value
+                        : (JSON.stringify(value) ?? ""),
+                  })),
                   kind: "permission",
                   automatic: true,
                 },

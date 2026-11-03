@@ -7,6 +7,18 @@ import {
   useState,
 } from "react";
 
+const positions = new Map<
+  number,
+  {
+    top: number;
+    following: boolean;
+    range: { start: number; end: number } | null;
+  }
+>();
+export function clearTranscriptPositions(ids?: Set<number>) {
+  for (const id of positions.keys()) if (!ids?.has(id)) positions.delete(id);
+}
+window.addEventListener("domos:pair", () => positions.clear());
 const pageSize = 120;
 const keyOf = (item: TranscriptItem) => `${item.kind}:${item.id}`;
 const incoming = (item: TranscriptItem) =>
@@ -18,10 +30,14 @@ export function useTranscript(
   ready: boolean,
   sentRequest?: string,
   typing = false,
+  botId?: number,
 ) {
   const viewport = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
-  const following = useRef(true);
+  const restored = useRef(
+    botId === undefined ? undefined : positions.get(botId),
+  );
+  const following = useRef(restored.current?.following ?? true);
   const frame = useRef<number | undefined>(undefined);
   const measure = useRef(() => {});
   const previous = useRef<{
@@ -49,7 +65,7 @@ export function useTranscript(
   const reading = useRef<{ node: HTMLElement; top: number } | null>(null);
   const reply = useRef<string | null>(null);
   const [range, setRange] = useState<{ start: number; end: number } | null>(
-    null,
+    restored.current?.range ?? null,
   );
   const [atBottom, setAtBottom] = useState(true);
   const [unread, setUnread] = useState(false);
@@ -131,8 +147,13 @@ export function useTranscript(
       scrolled.current = false;
       let target = element.scrollTop;
       if (!old.ready || jumping.current) {
-        target = element.scrollHeight;
-        following.current = true;
+        target =
+          restored.current && !restored.current.following
+            ? restored.current.top
+            : element.scrollHeight;
+        const wasFollowing = restored.current?.following ?? true;
+        restored.current = undefined;
+        following.current = wasFollowing;
         reply.current = null;
         jumping.current = false;
         setUnread(false);
@@ -185,6 +206,12 @@ export function useTranscript(
       animate.current = false;
       if (target !== element.scrollTop) element.scrollTop = target;
       ownedTop.current = element.scrollTop;
+      if (botId !== undefined)
+        positions.set(botId, {
+          top: element.scrollTop,
+          following: following.current,
+          range,
+        });
       const bottomReached =
         element.scrollHeight - element.clientHeight - element.scrollTop <= 2;
       setAtBottom(bottomReached && end === items.length);
@@ -209,7 +236,7 @@ export function useTranscript(
       };
     };
     measure.current();
-  }, [items, ready, range, start, end, sentRequest, typing]);
+  }, [items, ready, range, start, end, sentRequest, typing, botId]);
 
   useEffect(() => {
     const element = viewport.current;

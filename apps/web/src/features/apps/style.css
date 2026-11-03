@@ -3,7 +3,6 @@
   gap: var(--space-4);
 }
 .apps-center-nav,
-.apps-center-search,
 .apps-actions,
 .apps-item-heading {
   display: flex;
@@ -15,7 +14,6 @@
   flex-wrap: wrap;
 }
 .apps-center-spacer,
-.apps-center-search input,
 .apps-item-heading > div:first-child {
   flex: 1;
   min-width: 0;
@@ -26,18 +24,36 @@
 }
 .apps-catalog {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
-  gap: var(--space-6);
+  grid-template-columns: repeat(
+      auto-fit,
+      minmax(min(100%, calc(var(--settings-content-width) / 2)), 1fr)
+    );
+  gap: var(--space-3);
 }
 .apps-catalog-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: var(--space-10) minmax(0, 1fr) auto;
   gap: var(--space-3);
-  align-items: start;
-  padding-block: var(--space-4);
+  align-items: center;
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius-panel);
 }
 .apps-catalog-item > div:nth-child(2) {
-  flex: 1;
-  min-width: 0;
+  display: contents;
+}
+.apps-catalog-item strong {
+  grid-column: 2;
+  grid-row: 1;
+}
+.apps-catalog-item > .button {
+  grid-column: 3;
+  grid-row: 1;
+}
+.apps-catalog-item p {
+  grid-column: 1 / -1;
+  grid-row: 2;
 }
 .apps-logo {
   width: var(--space-10);
@@ -56,9 +72,6 @@
   display: grid;
   gap: var(--space-3);
   padding-block: var(--space-4);
-}
-.apps-form {
-  border-block: 1px solid var(--color-border);
 }
 .apps-form label,
 .apps-native > label,
@@ -97,6 +110,7 @@
   color: var(--color-danger);
 }
 .apps-item {
+  min-width: 0;
   display: grid;
   gap: var(--space-2);
   padding-block: var(--space-4);
@@ -122,4 +136,18 @@
 }
 .apps-actions {
   justify-content: flex-end;
+}
+
+.dialog-popup.apps-dialog {
+  height: auto;
+  max-height: min(var(--dialog-max-height), calc(100dvh - var(--space-8)));
+  border-radius: var(--radius-panel);
+}
+.apps-dialog .dialog-body {
+  min-height: 0;
+}
+.apps-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }

@@ -1,6 +1,7 @@
 import type { Bot, BotPresence } from "@domos/agent/bots";
 import { type ChatMessage, messageText } from "@domos/agent/messages";
 import { characterIdentity } from "@domos/ui/characters";
+import { Button } from "@domos/ui/controls";
 import { layout } from "@domos/ui/tokens";
 import {
   type CSSProperties,
@@ -93,9 +94,23 @@ function BotChat({
     (open: boolean) => startTransition(() => updateDetailsOpen(open)),
     [],
   );
+  const [workRun, setWorkRun] = useState<string>();
   const [panel, setPanel] = useState<
     "settings" | "computer" | "browser" | "work"
   >("settings");
+  useEffect(() => {
+    const open = (event: Event) => {
+      const detail = (event as CustomEvent<{ botId: number; turnId: string }>)
+        .detail;
+      if (detail.botId !== bot.id) return;
+      setWorkRun(detail.turnId);
+      setDetailPanel("root");
+      setPanel("work");
+      setDetailsOpen(true);
+    };
+    window.addEventListener("domos:work-open", open);
+    return () => window.removeEventListener("domos:work-open", open);
+  }, [bot.id, setDetailsOpen]);
   const [expanded, setExpanded] = useState(false);
   const [detailPanel, setDetailPanel] = useState<BotPanelView>("root");
   const [takeover, setTakeover] = useState<{
@@ -184,6 +199,7 @@ function BotChat({
         <BotDetails
           takeoverId={takeoverId}
           active={detailsOpen}
+          workRun={workRun}
           bot={bot}
           view={detailPanel}
           onViewChange={setDetailPanel}
@@ -256,7 +272,7 @@ function BotChat({
             </span>
             <Messages
               botId={bot.id}
-              ready={Boolean(chat.view)}
+              ready={Boolean(chat.view) || Boolean(chat.error)}
               busy={Boolean(chat.view?.busy)}
               processing={Boolean(chat.view?.processing)}
               retry={chat.view?.busy ? chat.view.runtime?.retry : null}
@@ -269,6 +285,7 @@ function BotChat({
               onEarlier={chat.loadEarlier}
               onResend={resend}
               welcome={
+                !chat.error &&
                 !bot.welcomeComplete &&
                 !chat.view?.messages.length && (
                   <ChatWelcome
@@ -321,7 +338,17 @@ function BotChat({
                 }
               />
             ) : (
-              error && <ErrorMessage>{error}</ErrorMessage>
+              error && (
+                <div>
+                  <ErrorMessage>{error}</ErrorMessage>
+                  <Button
+                    variant="secondary"
+                    onClick={() => window.location.reload()}
+                  >
+                    重新连接
+                  </Button>
+                </div>
+              )
             )}
           </main>
         </>

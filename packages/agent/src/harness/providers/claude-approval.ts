@@ -18,9 +18,23 @@ export function claudeApproval(
   return {
     id,
     title: items ? "需要你的回答" : "允许这次操作？",
-    detail: items
-      ? ""
-      : `${String(args.tool_name)}\n${JSON.stringify(args.input ?? {})}`,
+    detail: "",
+    ...(!items
+      ? {
+          fields: [
+            { label: "工具", value: String(args.tool_name) },
+            ...Object.entries(
+              (args.input as Record<string, unknown>) ?? {},
+            ).map(([label, value]) => ({
+              label,
+              value:
+                typeof value === "string"
+                  ? value
+                  : (JSON.stringify(value) ?? ""),
+            })),
+          ],
+        }
+      : {}),
     kind: items ? "question" : "permission",
     automatic:
       typeof args.tool_name === "string" &&

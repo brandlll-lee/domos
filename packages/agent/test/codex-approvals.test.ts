@@ -56,6 +56,26 @@ const form = {
   },
 } satisfies NonNullable<CodexFrame["params"]>;
 
+test("Codex permission fields retain the full requested scope", () => {
+  const scope = "scope/".repeat(2000);
+  expect(
+    codexApproval({
+      id: 1,
+      method: "item/permissions/requestApproval",
+      params: {
+        permissions: { filesystem: scope },
+        reason: "Read the project",
+      },
+    }),
+  ).toMatchObject({
+    detail: "",
+    fields: [
+      { label: "filesystem", value: scope },
+      { label: "原因", value: "Read the project" },
+    ],
+  });
+});
+
 test("Codex distinguishes tool consent from forms and sign-in", () => {
   const frame = {
     id: 1,

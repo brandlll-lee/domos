@@ -488,7 +488,8 @@ test("Bot details manage identity, memory, shared skills, routines and actual pr
   await page.screenshot({ path: "test-results/bot-work-desktop.png" });
   await dialog.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(page.getByLabel("档案员 的回复")).toContainText("报告已交付。");
-  await expect(page.getByLabel("你的消息")).toContainText("试跑：早间报告");
+  await expect(page.getByLabel("你的消息")).toHaveCount(0);
+  await expect(page.locator(".routine-source")).toContainText("早间报告");
   const port = Number(new URL(url).port);
   await stop();
   await start(port);

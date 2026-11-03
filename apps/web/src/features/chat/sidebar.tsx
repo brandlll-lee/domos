@@ -7,6 +7,7 @@ import { MagnifyingGlassIcon as MagnifyingGlass } from "@phosphor-icons/react/di
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { chatCopy } from "./copy.ts";
 import { contactTime } from "./format.ts";
+import { prefetchChat } from "./use-chat.ts";
 
 const contactPreview = (bot: BotPresence) =>
   bot.busy ? chatCopy.working : bot.preview || "开始对话";
@@ -86,6 +87,8 @@ export function Sidebar({
                 key={bot.id}
                 render={<a href={`#bot/${bot.id}`} />}
                 onClick={onSelect}
+                onPointerEnter={() => prefetchChat(bot.id)}
+                onFocus={() => prefetchChat(bot.id)}
                 aria-label={bot.name}
                 title={compact ? bot.name : undefined}
                 aria-current={bot.id === selected.id ? "page" : undefined}

@@ -19,6 +19,10 @@ export type Routine = {
   requestId: string;
   source: string;
   executionMs?: number;
+  delivery?: "always" | "conditional";
+  condition?: string;
+  baseline?: string;
+  notifiedKey?: string;
 };
 
 export const RoutineInput = "domos.routine-input";
@@ -32,6 +36,8 @@ export type RoutineInput = Pick<
   | "revision"
   | "requestId"
   | "executionMs"
+  | "delivery"
+  | "condition"
 >;
 export type RoutineRun = {
   id: string;
@@ -60,6 +66,12 @@ export type RoutineRun = {
   activeMs?: number;
   waitingMs?: number;
   changedAt?: number;
+  revision?: number;
+  delivery?: "always" | "conditional";
+  condition?: string;
+  files?: import("../attachments.ts").Attachment[];
+  report?: { notify: boolean; text: string; summary: string; key?: string };
+  delivered?: boolean;
 };
 
 export const RoutinesDoc = defineDoc<{ items: Routine[]; runs: RoutineRun[] }>({
@@ -102,9 +114,20 @@ export async function saveRoutine(
       input.executionMs > 86_400_000)
   )
     throw new WorkError("BAD_REQUEST", "执行期限必须在 1 秒至 24 小时之间。");
+  const delivery = input.delivery ?? previous?.delivery ?? "always";
+  const condition =
+    delivery === "conditional"
+      ? requiredText(
+          input.condition ?? previous?.condition ?? "",
+          WORK_TEXT_LENGTH,
+        )
+      : undefined;
   const item: Routine = {
+    ...(previous ?? {}),
     ...input,
     botId,
+    delivery,
+    ...(condition ? { condition } : {}),
     executionMs: input.executionMs ?? previous?.executionMs ?? 900_000,
     title: requiredText(input.title, BOT_NAME_LENGTH),
     instructions: requiredText(input.instructions, WORK_TEXT_LENGTH),
@@ -116,6 +139,18 @@ export async function saveRoutine(
     taskId: null,
     source,
   };
+  if (delivery !== previous?.delivery || condition !== previous?.condition) {
+    delete item.baseline;
+    delete item.notifiedKey;
+    if (previous) {
+      delete previous.baseline;
+      delete previous.notifiedKey;
+    }
+  }
+  if (delivery === "always") {
+    delete item.condition;
+    if (previous) delete previous.condition;
+  }
   if (previous) Object.assign(previous, item);
   else doc.items.push(item);
   return item;

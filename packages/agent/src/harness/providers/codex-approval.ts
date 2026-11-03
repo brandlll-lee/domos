@@ -35,16 +35,27 @@ export function codexApproval(frame: CodexFrame): EngineApproval {
   return {
     id: String(frame.id),
     title: params.questions ? "需要你的回答" : "允许这次操作？",
-    detail: [
-      params.command,
-      params.cwd,
-      params.reason,
-      ...(params.questions?.map((q) => q.question) ?? []),
-      params.permissions ? JSON.stringify(params.permissions) : "",
-    ]
-      .filter(Boolean)
-      .join("\n")
-      .slice(0, 8000),
+    detail: "",
+    ...(!params.questions
+      ? {
+          fields: [
+            ...Object.entries(params.permissions ?? {}).map(
+              ([label, value]) => ({
+                label,
+                value:
+                  typeof value === "string"
+                    ? value
+                    : (JSON.stringify(value) ?? ""),
+              }),
+            ),
+            ...(params.command
+              ? [{ label: "命令", value: params.command }]
+              : []),
+            ...(params.cwd ? [{ label: "工作目录", value: params.cwd }] : []),
+            ...(params.reason ? [{ label: "原因", value: params.reason }] : []),
+          ],
+        }
+      : {}),
     kind: params.questions ? "question" : "permission",
     automatic: [
       "item/commandExecution/requestApproval",

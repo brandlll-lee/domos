@@ -1,3 +1,7 @@
+import { days, expressionPattern } from "@domos/agent/work/schedule-label";
+
+export { routineTimeLabel } from "@domos/agent/work/schedule-label";
+
 import {
   SCHEDULE_EXPRESSION_LENGTH,
   TIME_ZONE_LENGTH,
@@ -14,21 +18,6 @@ const frequencies = [
   { value: "weekly", label: "每周" },
   { value: "custom", label: "自定义" },
 ];
-const days = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
-const expressionPattern = /^(\d{1,2}) (\d{1,2}) \* \* (\*|1-5|[0-6])$/;
-
-export function routineTimeLabel(expression: string) {
-  const match = expressionPattern.exec(expression);
-  if (!match) return expression;
-  const [, minute = "0", hour = "9", weekday = "*"] = match;
-  const frequency =
-    weekday === "*"
-      ? "每天"
-      : weekday === "1-5"
-        ? "工作日"
-        : `每${days[Number(weekday)]}`;
-  return `${frequency} ${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
-}
 
 export function RoutineSchedule({
   expression,

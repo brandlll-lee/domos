@@ -678,3 +678,238 @@ test.each(["question", "permission"] as const)(
     expect(await worker?.closed).toEqual({ code: 0 });
   },
 );
+
+test("monitor reports commit only after success, deduplicate notifications and retain the baseline after failure", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "domos-monitor-"));
+  const models = createModels();
+  models.setProvider(fauxProvider().provider);
+  let iteration = 0;
+  let invocation: Parameters<Computers["process"]>[2] | undefined;
+  const reports = [
+    { notify: false, text: "", summary: "v1" },
+    { notify: true, text: "Release v2", summary: "v2", key: "release/v2" },
+    { notify: true, text: "Release v2", summary: "v2", key: "release/v2" },
+    { notify: true, text: "Release v3", summary: "v3", key: "release/v3" },
+    null,
+    { notify: true, text: "Release v4", summary: "v4", key: "release/v4" },
+    { notify: false, text: "", summary: "v5" },
+  ];
+  const gates = [0, 1, 2, 3].map(() => ({
+    entered: Promise.withResolvers<void>(),
+    release: Promise.withResolvers<void>(),
+  }));
+  const computers = {
+    initialize: async () => {},
+    preflight: async () => {},
+    computerId: async () => "shared",
+    process: async (
+      _botId: number,
+      _tools: unknown,
+      invoke: Parameters<Computers["process"]>[2],
+    ) => {
+      invocation = invoke;
+      const worker = new ProtocolProcess();
+      worker.receive = (request) => {
+        if (
+          request.method === "thread/start" ||
+          request.method === "thread/resume"
+        )
+          worker.response(request, { thread: { id: "monitor" } });
+        else if (request.method === "turn/start") {
+          const index = iteration++;
+          worker.response(request, { turn: { id: `check-${index}` } });
+          worker.frame({
+            method: "item/completed",
+            params: {
+              item: {
+                id: "progress",
+                type: "agentMessage",
+                text: index === 7 ? "Visible answer" : "Internal check",
+              },
+            },
+          });
+          void (async () => {
+            const report = reports[index];
+            if (report)
+              await invoke(
+                `report-${index}`,
+                "routine_report",
+                report,
+                new AbortController().signal,
+              );
+            const gate = index === 7 ? undefined : gates[index - 5];
+            if (gate) {
+              gate.entered.resolve();
+              await gate.release.promise;
+            }
+            worker.frame({
+              method: "turn/completed",
+              params: {
+                turn: {
+                  status: index === 3 ? "failed" : "completed",
+                  ...(index === 3
+                    ? { error: { message: "Source unavailable" } }
+                    : {}),
+                },
+              },
+            });
+          })();
+        } else if (request.id !== undefined) worker.response(request, {});
+      };
+      return worker;
+    },
+    tools: { catalog: async () => [], finish: () => {} },
+  } as unknown as Computers;
+  const runtime = await openAgent(
+    join(directory, "agent.sqlite"),
+    { registry: createRegistry(), models, computers },
+    {},
+    context,
+  );
+  onTestFinished(async () => {
+    await runtime.harness.close(context);
+    await rm(directory, { recursive: true, force: true });
+  });
+  const engines = runtime.engines;
+  if (!engines) throw new Error("Native runtime required");
+  const botId = runtime.conversation.id;
+  await engines.configure(
+    botId,
+    {
+      config: { provider: "codex", model: null },
+      revision: 0,
+      requestId: crypto.randomUUID(),
+    },
+    context,
+  );
+  const routine = await runtime.work.routines.save(
+    botId,
+    {
+      id: crypto.randomUUID(),
+      revision: 0,
+      title: "Releases",
+      instructions: "Check releases",
+      schedule: { type: "cron", expression: "0 * * * *", timeZone: "UTC" },
+      skillIds: [],
+      delivery: "conditional",
+      condition: "Notify for a new version",
+      requestId: crypto.randomUUID(),
+    },
+    context,
+  );
+  for (let index = 0; index < reports.length; index++) {
+    const task = await runtime.work.routines.test(
+      botId,
+      routine.id,
+      crypto.randomUUID(),
+      context,
+    );
+    if (index >= 5) {
+      const gate = index === 7 ? undefined : gates[index - 5];
+      if (!gate) throw new Error("Gate required");
+      await gate.entered.promise;
+      if (index === 5) {
+        const current = (await runtime.work.routines.list(botId, context))
+          .items[0];
+        if (!current) throw new Error("Routine required");
+        await runtime.work.routines.save(
+          botId,
+          {
+            ...current,
+            instructions: "Check the updated release source",
+            requestId: crypto.randomUUID(),
+          },
+          context,
+        );
+      } else {
+        const submission = await engines.submit(
+          botId,
+          {
+            text: "My real question",
+            requestId: crypto.randomUUID(),
+          },
+          context,
+        );
+        expect(iteration).toBe(7);
+        expect(
+          (await engines.view(botId, context)).messages.some(
+            (message) =>
+              message.role === "user" &&
+              message.content.some(
+                (part) =>
+                  part.type === "text" && part.text === "My real question",
+              ),
+          ),
+        ).toBe(true);
+        gate.release.resolve();
+        await submission.wait(context);
+      }
+      gate.release.resolve();
+    }
+    await runtime.harness.waitForTask(task, context);
+    const state = await runtime.work.routines.list(botId, context);
+    const run = state.runs.find((run) => run.id.startsWith(`${task}:`));
+    expect(run?.status).toBe(index === 3 || index === 4 ? "failed" : "done");
+    expect(state.items[0]?.baseline).toBe(
+      index === 0 ? "v1" : index === 6 ? "v5" : "v2",
+    );
+    const view = await engines.view(botId, context);
+    const { chatTranscript } = await import("../src/transcript.ts");
+    const items = chatTranscript(view);
+    expect(
+      items.filter((item) => item.id.startsWith("routine-result:")),
+    ).toHaveLength(index === 0 ? 0 : 1);
+    expect(
+      items.some(
+        (item) => item.kind === "message" && item.message.role === "user",
+      ),
+    ).toBe(index === 6);
+    if (index === 6) expect(JSON.stringify(items)).toContain("Visible answer");
+    expect(JSON.stringify(items)).not.toContain("Internal check");
+    if (index === 3 || index === 4)
+      expect(
+        items.some((item) => item.id === `routine-status:${run?.id}`),
+      ).toBe(true);
+  }
+  reports[8] = {
+    notify: true,
+    text: "Release v6",
+    summary: "v6",
+    key: "release/v6",
+  };
+  const stoppedTask = await runtime.work.routines.test(
+    botId,
+    routine.id,
+    crypto.randomUUID(),
+    context,
+  );
+  const stoppedGate = gates[3];
+  if (!stoppedGate) throw new Error("Gate required");
+  await stoppedGate.entered.promise;
+  await engines.stop(botId, context);
+  stoppedGate.release.resolve();
+  await runtime.harness.waitForTask(stoppedTask, context);
+  const stoppedState = await runtime.work.routines.list(botId, context);
+  expect(stoppedState.items[0]?.baseline).toBe("v5");
+  expect(
+    stoppedState.runs.find((run) => run.id.startsWith(`${stoppedTask}:`)),
+  ).toMatchObject({ status: "stopped" });
+  expect(
+    (await engines.view(botId, context)).messages.some(
+      (message) =>
+        message.routine &&
+        message.content.some(
+          (part) => part.type === "text" && part.text === "Release v6",
+        ),
+    ),
+  ).toBe(false);
+  if (!invocation) throw new Error("Invocation required");
+  await expect(
+    invocation(
+      "late-report",
+      "routine_report",
+      { notify: false, text: "", summary: "late" },
+      new AbortController().signal,
+    ),
+  ).rejects.toThrow();
+});

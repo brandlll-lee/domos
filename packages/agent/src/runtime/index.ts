@@ -32,6 +32,8 @@ import { type UsageFilter, UsageReader } from "../harness/usage.ts";
 import { materialText } from "../materials.ts";
 import { approvalMessage } from "../messages.ts";
 import { watchCommits } from "../watch.ts";
+import { applyRoutineDelivery } from "../work/routine-delivery.ts";
+import { RoutinesDoc } from "../work/routine-state.ts";
 import { WorkError } from "../work/state.ts";
 
 export function slimChatView(view: import("../chat-view.ts").ChatView) {
@@ -235,6 +237,12 @@ export class Runtime {
     view.runtime = engine?.runtime;
     view.error = engine?.error;
     view.failed ||= Boolean(engine?.error);
+    applyRoutineDelivery(
+      view,
+      (await this.harness.snapshot(RoutinesDoc, context))?.runs.filter(
+        (run) => run.botId === botId,
+      ) ?? [],
+    );
     return view;
   }
 
@@ -536,17 +544,33 @@ export class Runtime {
         status: "queued",
       });
       const turnId = `engine:${submission.id}`;
+      const routine = input.routineRunId
+        ? (await tx.doc(RoutinesDoc)).runs.find(
+            (run) => run.id === input.routineRunId && run.botId === botId,
+          )
+        : undefined;
       const entry = await tx.appendEntry(id, {
         kind: input.operation ? "domos.engine-operation" : EngineMessage,
         data: input.operation
           ? { operation: input.operation }
-          : userMessage(
-              turnId,
-              input.displayText ?? input.text,
-              input.attachments,
-              input.requestId,
-              input.materials,
-            ),
+          : {
+              ...userMessage(
+                turnId,
+                input.displayText ?? input.text,
+                input.attachments,
+                input.requestId,
+                input.materials,
+              ),
+              ...(routine
+                ? {
+                    routine: {
+                      runId: routine.id,
+                      title: routine.title,
+                      scheduledAt: routine.scheduledAt,
+                    },
+                  }
+                : {}),
+            },
       });
       tx.placeSubmission(submission.id, entry.id);
       const taskId = await tx.createTask(

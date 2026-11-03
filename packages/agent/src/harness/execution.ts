@@ -151,7 +151,16 @@ export class EngineExecution {
                 {
                   id: `mcp:${api.callId}`,
                   title: `${current.connection.name} · ${String(input.params.name ?? input.method)}`,
-                  detail: JSON.stringify(input.params),
+                  detail: "",
+                  fields: Object.entries(input.params).map(
+                    ([label, value]) => ({
+                      label,
+                      value:
+                        typeof value === "string"
+                          ? value
+                          : (JSON.stringify(value) ?? ""),
+                    }),
+                  ),
                   kind: "permission",
                   automatic: true,
                 },

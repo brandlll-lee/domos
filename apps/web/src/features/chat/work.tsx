@@ -32,6 +32,9 @@ export function WorkPanel(
   const [selected, setSelected] = useState<string | undefined>(
     chat.selectedRun,
   );
+  useEffect(() => {
+    if (chat.selectedRun) setSelected(chat.selectedRun);
+  }, [chat.selectedRun]);
   const [now, setNow] = useState(Date.now);
   const trigger = useRef<HTMLButtonElement | null>(null);
   const openRun = (id: string) => (event: MouseEvent<HTMLButtonElement>) => {

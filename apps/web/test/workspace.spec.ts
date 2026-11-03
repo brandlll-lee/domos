@@ -23,20 +23,50 @@ test("Apps manages a real MCP connection and Bot grants across reloads and theme
   try {
     await page.goto(url);
     await page.getByRole("button", { name: "应用", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: "应用", exact: true });
+    const dialog = page.locator(".apps-dialog");
     await expect(
       dialog.getByText("Microsoft Learn", { exact: true }),
     ).toBeVisible();
-    const search = dialog.getByRole("textbox", { name: "搜索应用或连接" });
+    const search = dialog.getByRole("textbox", { name: "搜索当前页面" });
     await search.fill("Context7");
     await expect(dialog.getByText("Context7", { exact: true })).toBeVisible();
     await expect(
       dialog.getByText("Microsoft Learn", { exact: true }),
     ).toHaveCount(0);
-    await search.clear();
-    await dialog
-      .getByRole("button", { name: "MCP 服务器", exact: true })
-      .click();
+    await search.fill("不存在的连接");
+    await expect(dialog.getByRole("status")).toContainText("没有找到匹配项");
+    await dialog.getByRole("button", { name: "清除筛选" }).click();
+    for (const theme of ["dark", "light"] as const) {
+      await page.emulateMedia({ colorScheme: theme });
+      for (const width of [1360, 768, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        await expect
+          .poll(() =>
+            dialog.evaluate((node) => node.scrollWidth <= node.clientWidth),
+          )
+          .toBe(true);
+        const cards = dialog.locator(".apps-catalog-item");
+        await expect(cards).toHaveCount(2);
+        expect(
+          await dialog.evaluate((node) => {
+            const last = node
+              .querySelector(".apps-catalog")
+              ?.getBoundingClientRect();
+            if (!last) throw new Error("Catalog missing");
+            return Math.abs(
+              node.getBoundingClientRect().bottom -
+                last.bottom -
+                parseFloat(getComputedStyle(node).paddingBottom),
+            );
+          }),
+        ).toBeLessThan(3);
+        await dialog.screenshot({
+          path: info.outputPath(`catalog-${theme}-${width}.png`),
+        });
+      }
+    }
+    await page.setViewportSize({ width: 1360, height: 900 });
+    await dialog.getByRole("tab", { name: "MCP", exact: true }).click();
     await dialog.getByRole("button", { name: "添加 MCP", exact: true }).click();
     await dialog.getByLabel("粘贴 MCP 地址或配置").fill(
       JSON.stringify({
@@ -64,7 +94,7 @@ test("Apps manages a real MCP connection and Bot grants across reloads and theme
     await expect(
       dialog.getByText("private-test-value", { exact: false }),
     ).toHaveCount(0);
-    await connection.getByText("Bot 权限", { exact: false }).click();
+    await connection.getByText("机器人权限", { exact: false }).click();
     await connection
       .getByRole("checkbox", { name: "Domos", exact: true })
       .click();
@@ -91,9 +121,12 @@ test("Apps manages a real MCP connection and Bot grants across reloads and theme
     }
     await page.reload();
     await page.getByRole("button", { name: "应用", exact: true }).click();
-    await dialog.getByRole("button", { name: "已连接", exact: true }).click();
+    await dialog.getByRole("tab", { name: /^已添加/ }).click();
+    await dialog
+      .getByRole("button", { name: /^查看 (Local Docs|OAuth Docs)$/ })
+      .click();
     await expect(connection.getByText(/^可用/)).toBeVisible();
-    await connection.getByText("Bot 权限", { exact: false }).click();
+    await connection.getByText("机器人权限", { exact: false }).click();
     await expect(
       connection.getByRole("checkbox", { name: "Domos", exact: true }),
     ).toBeChecked();
@@ -104,10 +137,13 @@ test("Apps manages a real MCP connection and Bot grants across reloads and theme
     await expect(
       connection.getByRole("checkbox", { name: "write", exact: true }),
     ).not.toBeChecked();
-    await connection.getByRole("button", { name: "停用", exact: true }).click();
+    await connection.getByRole("button", { name: "Local Docs的操作" }).click();
+    await page.getByRole("menuitem", { name: "停用", exact: true }).click();
     await expect(connection.getByText(/^已禁用/)).toBeVisible();
-    await connection.getByRole("button", { name: "启用", exact: true }).click();
-    await connection.getByRole("button", { name: "编辑", exact: true }).click();
+    await connection.getByRole("button", { name: "Local Docs的操作" }).click();
+    await page.getByRole("menuitem", { name: "启用", exact: true }).click();
+    await connection.getByRole("button", { name: "Local Docs的操作" }).click();
+    await page.getByRole("menuitem", { name: "编辑", exact: true }).click();
     await dialog
       .getByRole("textbox", { name: "名称", exact: true })
       .fill("Team Docs");
@@ -119,7 +155,8 @@ test("Apps manages a real MCP connection and Bot grants across reloads and theme
       .locator(".apps-item")
       .filter({ hasText: "Team Docs" });
     await expect(renamed.getByText(/^可用/)).toBeVisible({ timeout: 20_000 });
-    await renamed.getByRole("button", { name: "删除", exact: true }).click();
+    await renamed.getByRole("button", { name: "Team Docs的操作" }).click();
+    await page.getByRole("menuitem", { name: "删除", exact: true }).click();
     await page
       .getByRole("dialog", { name: "删除连接", exact: true })
       .getByRole("button", { name: "删除", exact: true })
@@ -138,18 +175,16 @@ test("Apps completes and cancels browser OAuth with stored state", async ({
   try {
     await page.goto(url);
     await page.getByRole("button", { name: "应用", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: "应用", exact: true });
-    await dialog
-      .getByRole("button", { name: "MCP 服务器", exact: true })
-      .click();
+    const dialog = page.locator(".apps-dialog");
+    await dialog.getByRole("tab", { name: "MCP", exact: true }).click();
     await dialog.getByRole("button", { name: "添加 MCP", exact: true }).click();
+    await dialog.getByRole("button", { name: "手动配置", exact: true }).click();
     await dialog.getByLabel("名称", { exact: true }).fill("OAuth Docs");
     await dialog.getByLabel("MCP 地址", { exact: true }).fill(upstream.url);
     await dialog.getByLabel("运行／访问电脑").selectOption({ index: 1 });
     await dialog.getByRole("button", { name: "保存并测试" }).click();
     const item = dialog.locator(".apps-item").filter({ hasText: "OAuth Docs" });
     await expect(item.getByText(/^待授权/)).toBeVisible({ timeout: 20_000 });
-    await item.getByText("登录与凭据", { exact: true }).click();
     const popup = page.waitForEvent("popup");
     await item.getByRole("button", { name: "浏览器登录" }).click();
     const authorization = await popup;
@@ -176,7 +211,10 @@ test("Apps completes and cancels browser OAuth with stored state", async ({
     await cancelled.close();
     await page.reload();
     await page.getByRole("button", { name: "应用", exact: true }).click();
-    await dialog.getByRole("button", { name: "已连接", exact: true }).click();
+    await dialog.getByRole("tab", { name: /^已添加/ }).click();
+    await dialog
+      .getByRole("button", { name: /^查看 (Local Docs|OAuth Docs)$/ })
+      .click();
     await item.getByText("登录与凭据", { exact: true }).click();
     await expect(item.getByRole("button", { name: "取消登录" })).toHaveCount(0);
   } finally {
@@ -2860,11 +2898,24 @@ test("chat routine changes require confirmation and link runs to Work", async ({
     exact: true,
   });
   await expect(create).toBeVisible();
+  await expect(create).toContainText("每天 08:00");
+  await expect(create).not.toContainText('"schedule"');
+  expect(
+    await create
+      .locator(".approval-detail")
+      .evaluate((node) => getComputedStyle(node).overflowY),
+  ).toBe("visible");
+  for (const theme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await create.screenshot({
+      path: info.outputPath(`routine-approval-${theme}.png`),
+    });
+  }
   await details.getByRole("button", { name: /^定时(?:\s|$)/ }).click();
   await expect(
     details.getByText("暂无定时任务", { exact: true }),
   ).toBeVisible();
-  await create.getByRole("button", { name: "批准", exact: true }).click();
+  await create.getByRole("button", { name: "创建任务", exact: true }).click();
   await expect(
     details.getByRole("switch", { name: "启用 Daily report" }),
   ).toBeChecked();
@@ -2887,4 +2938,186 @@ test("chat routine changes require confirmation and link runs to Work", async ({
   await expect(record).toContainText("试跑：Daily report");
   await expect(record).toContainText("Read the daily report");
   await page.screenshot({ path: info.outputPath("routine-work-record.png") });
+});
+
+test("connection pages distinguish first read, empty search and refreshed native sources", async ({
+  page,
+}) => {
+  const gate = Promise.withResolvers<void>();
+  await page.route("**/rpc/mcp/catalog", async (route) => {
+    await gate.promise;
+    await route.continue();
+  });
+  let reads = 0;
+  await page.route("**/rpc/mcp/native", async (route) => {
+    reads++;
+    await route.fulfill({
+      json: {
+        json: {
+          provider: "pi",
+          computerId: "local",
+          readonly: true,
+          inheritance: "selectable",
+          inherited: false,
+          items: [
+            {
+              name: `原生服务 ${reads}`,
+              source: "测试配置",
+              enabled: true,
+              status: "configured",
+            },
+          ],
+        },
+      },
+    });
+  });
+  await page.goto(url);
+  await page.getByRole("button", { name: "应用", exact: true }).click();
+  const dialog = page.locator(".apps-dialog");
+  await expect(dialog.getByRole("status")).toHaveText("正在读取连接…");
+  gate.resolve();
+  await expect(dialog.getByText("Context7", { exact: true })).toBeVisible();
+  await dialog.getByRole("tab", { name: "MCP", exact: true }).click();
+  await dialog
+    .getByRole("combobox", { name: "选择机器人" })
+    .selectOption({ index: 1 });
+  await expect(dialog.getByText("原生服务 1", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "刷新连接", exact: true }).click();
+  await expect(dialog.getByText("原生服务 2", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("原生服务 1", { exact: true })).toHaveCount(0);
+});
+
+test("returning to a Bot shows retained messages and draft while its stream is delayed", async ({
+  page,
+}, info) => {
+  const receipt = once(worker, "message");
+  worker.send({ history: 60 });
+  await receipt;
+  await page.goto(url);
+  await expect(page.getByLabel("你的消息").last()).toContainText("历史任务 60");
+  await page.getByLabel("消息", { exact: true }).fill("甲的草稿");
+  const transcript = page.locator(".transcript");
+  await transcript.evaluate((element) => {
+    element.scrollTop = element.scrollHeight / 2;
+  });
+  const top = await transcript.evaluate((element) => element.scrollTop);
+  await expect
+    .poll(() => transcript.evaluate((element) => element.scrollTop))
+    .toBe(top);
+  await page.getByRole("button", { name: "新建 Bot", exact: true }).click();
+  const create = page.getByRole("dialog", { name: "新建 Bot", exact: true });
+  await create.getByRole("textbox", { name: "名字", exact: true }).fill("乙");
+  await create.getByRole("button", { name: "创建", exact: true }).click();
+  await create.getByRole("button", { name: "授权并继续", exact: true }).click();
+  await create.getByRole("combobox", { name: "模型", exact: true }).click();
+  await page
+    .getByRole("option", { name: "Pi · 测试模型一", exact: true })
+    .click();
+  await create.getByRole("button", { name: "开始", exact: true }).click();
+  await expect(create).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Bot详情", exact: true }),
+  ).toContainText("乙");
+  const gate = Promise.withResolvers<void>();
+  let waiting = false;
+  await page.route("**/rpc/changes", async (route) => {
+    waiting = true;
+    await gate.promise;
+    await route.continue();
+  });
+  try {
+    const started = Date.now();
+    await page.locator(".contact-row").filter({ hasText: "Domos" }).click();
+    await expect.poll(() => waiting).toBe(true);
+    await expect(page.getByLabel("你的消息").last()).toContainText(
+      "历史任务 60",
+    );
+    await expect(page.getByText("正在加载对话…", { exact: true })).toHaveCount(
+      0,
+    );
+    await expect(page.getByLabel("消息", { exact: true })).toHaveValue(
+      "甲的草稿",
+    );
+    await expect
+      .poll(() => transcript.evaluate((element) => element.scrollTop))
+      .toBe(top);
+    await info.attach("cached-return", {
+      body: JSON.stringify({
+        elapsedMs: Date.now() - started,
+        freshSnapshotBlocked: waiting,
+        scrollTop: top,
+      }),
+      contentType: "application/json",
+    });
+  } finally {
+    gate.resolve();
+  }
+});
+
+test("monitoring stays quiet, delivers one result and opens the native Work record", async ({
+  page,
+}, info) => {
+  test.setTimeout(60_000);
+  await page.goto(url);
+  const sendTool = async (name: string, args: object) => {
+    const ready = once(worker, "message");
+    worker.send({
+      content: [
+        { type: "toolCall", id: crypto.randomUUID(), name, arguments: args },
+      ],
+      stopReason: "toolUse",
+    });
+    await ready;
+  };
+  await sendTool("routine_create", {
+    title: "版本监控",
+    instructions: "Check releases",
+    schedule: { type: "cron", expression: "0 * * * *", timeZone: "UTC" },
+    delivery: "conditional",
+    condition: "新版本时通知",
+  });
+  await page.getByLabel("消息", { exact: true }).fill("监控版本");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const approval = page.getByRole("region", { name: "创建定时：版本监控" });
+  await approval.getByRole("button", { name: "创建任务", exact: true }).click();
+  await expect(approval.getByRole("status")).toHaveText("已批准");
+  const details = page.locator("#bot-details");
+  await details.getByRole("button", { name: /^定时(?:\s|$)/ }).click();
+  await details.locator("summary").filter({ hasText: "运行记录" }).click();
+  for (const notify of [false, true]) {
+    await sendTool("routine_report", {
+      notify,
+      text: notify ? "发布了新版本 v2" : "",
+      summary: notify ? "v2" : "v1",
+      ...(notify ? { key: "release/v2" } : {}),
+    });
+    await details.getByRole("button", { name: "版本监控的操作" }).click();
+    await page.getByRole("menuitem", { name: "试跑", exact: true }).click();
+    await expect(details.locator(".run-list")).toContainText(
+      notify ? "已交付" : "静默完成",
+    );
+    await expect(page.getByLabel("你的消息")).toHaveCount(1);
+    await expect(page.locator(".typing-dots")).toHaveCount(0);
+  }
+  await expect(page.locator(".routine-source")).toHaveCount(1);
+  await expect(
+    page
+      .getByRole("log", { name: "聊天记录" })
+      .getByText("发布了新版本 v2", { exact: true }),
+  ).toBeVisible();
+  await page
+    .locator(".routine-source")
+    .getByRole("button", { name: "查看运行" })
+    .click();
+  const record = page.getByRole("dialog", { name: "工作记录", exact: true });
+  await expect(record).toBeVisible();
+  await expect(record).toContainText("routine_report");
+  await record.getByRole("button", { name: "关闭弹窗" }).click();
+  for (const theme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.screenshot({ path: info.outputPath(`monitor-${theme}.png`) });
+  }
+  await page.reload();
+  await expect(page.locator(".routine-source")).toHaveCount(1);
+  await expect(page.getByLabel("你的消息")).toHaveCount(1);
 });

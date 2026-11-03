@@ -47,6 +47,7 @@ export function BotDetails({
   expanded,
   onExpand,
   takeoverId,
+  workRun,
 }: {
   bot: Bot;
   active: boolean;
@@ -65,6 +66,7 @@ export function BotDetails({
   expanded: boolean;
   onExpand: () => void;
   takeoverId?: string;
+  workRun?: string;
 }) {
   const [memoryOpen, setMemoryOpen] = useState(false);
   const workActive =
@@ -185,7 +187,7 @@ export function BotDetails({
         </div>
       )}
       {view === "root" && tab === "work" && active && (
-        <WorkPanel {...chat} botId={bot.id} />
+        <WorkPanel {...chat} botId={bot.id} selectedRun={workRun} />
       )}
       {view === "root" &&
         (tab === "computer" || tab === "browser") &&

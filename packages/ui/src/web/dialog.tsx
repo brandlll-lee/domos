@@ -21,6 +21,7 @@ export function Dialog({
   finalFocus,
   footer,
   viewportRef,
+  headerActions,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -32,6 +33,7 @@ export function Dialog({
   finalFocus?: () => HTMLElement | null;
   footer?: ReactNode;
   viewportRef?: RefObject<HTMLDivElement | null>;
+  headerActions?: ReactNode;
 }) {
   const internalBody = useRef<HTMLDivElement>(null);
   const body = viewportRef ?? internalBody;
@@ -62,6 +64,7 @@ export function Dialog({
             <BaseDialog.Title className="dialog-title">
               {title}
             </BaseDialog.Title>
+            {headerActions}
             <BaseDialog.Close
               aria-label="关闭弹窗"
               render={<Button variant="ghost" size="icon-small" />}
@@ -107,6 +110,7 @@ export function ConfirmDialog({
       onOpenChange={onOpenChange}
       title={title}
       description={description}
+      className="decision-dialog"
       footer={
         <div className="dialog-actions">
           <Button variant="secondary" onClick={() => onOpenChange(false)}>

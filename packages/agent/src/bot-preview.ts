@@ -23,7 +23,13 @@ function entryPreview(entry: EntryRecord) {
     return;
   if (entry.kind === EngineMessage) {
     const message = entry.data as unknown as ChatMessage;
-    if (message.pending || message.stopped || message.stopReason === "error")
+    if (
+      message.hidden ||
+      (message.role === "user" && message.routine) ||
+      message.pending ||
+      message.stopped ||
+      message.stopReason === "error"
+    )
       return;
     if (
       (message.delivery ||

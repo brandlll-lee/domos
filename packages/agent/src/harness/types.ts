@@ -101,6 +101,8 @@ export type EngineApproval = {
   id: string;
   title: string;
   detail: string;
+  fields?: { label: string; value: string }[];
+  confirmLabel?: string;
   kind: "permission" | "question";
   automatic?: boolean;
   url?: string;

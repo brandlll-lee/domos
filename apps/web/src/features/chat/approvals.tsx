@@ -2,6 +2,8 @@ import type { EngineAnswer } from "@domos/agent/harness/types";
 import type { ChatMessage } from "@domos/agent/messages";
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
+import { QuestionIcon } from "@phosphor-icons/react/dist/csr/Question";
+import { ShieldCheckIcon } from "@phosphor-icons/react/dist/csr/ShieldCheck";
 import { useState } from "react";
 import { client } from "../../client.ts";
 import { useWorkAction } from "../bots/details/use-bot-work.ts";
@@ -53,7 +55,24 @@ export function Approval({
       aria-label={request.title}
       data-state={record.state}
     >
-      <strong>{request.title}</strong>
+      <header className="interaction-heading">
+        {question ? (
+          <QuestionIcon aria-hidden />
+        ) : (
+          <ShieldCheckIcon aria-hidden />
+        )}
+        <strong>{request.title}</strong>
+      </header>
+      {request.fields?.length ? (
+        <dl className="approval-fields">
+          {request.fields.map((field) => (
+            <div key={field.label}>
+              <dt>{field.label}</dt>
+              <dd>{field.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
       {request.detail && <p className="approval-detail">{request.detail}</p>}
       {request.url && (
         <a href={request.url} target="_blank" rel="noopener noreferrer">
@@ -182,7 +201,7 @@ export function Approval({
             (!single || custom || !request.questions?.[0]?.options?.length) && (
               <Button
                 size="small"
-                variant="secondary"
+                variant="primary"
                 disabled={
                   action.busy ||
                   (question &&
@@ -202,12 +221,13 @@ export function Approval({
                   })
                 }
               >
-                {question ? "发送回答" : "批准"}
+                {question ? "发送回答" : (request.confirmLabel ?? "批准")}
               </Button>
             )}
           <Button
             size="small"
-            variant="ghost"
+            variant="secondary"
+            className="interaction-decline"
             disabled={action.busy}
             onClick={() => void respond({ allow: false })}
           >

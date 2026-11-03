@@ -4,10 +4,13 @@ import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
 import { PencilSimpleIcon } from "@phosphor-icons/react/dist/csr/PencilSimple";
-import { useState } from "react";
 import { client } from "../../../client.ts";
 import { AvatarEditor } from "../avatar-editor.tsx";
-import type { Profile, WorkAction } from "./use-bot-work.ts";
+import {
+  type Profile,
+  useIdentityDraft,
+  type WorkAction,
+} from "./use-bot-work.ts";
 
 export function IdentityEditor({
   profile,
@@ -18,9 +21,10 @@ export function IdentityEditor({
   action: WorkAction;
   onSaved: (profile: Profile) => void;
 }) {
-  const [name, setName] = useState(profile.name);
-  const [instructions, setInstructions] = useState(profile.instructions);
-  const [avatar, setAvatar] = useState(profile.avatar);
+  const { name, instructions, avatar, change } = useIdentityDraft(profile);
+  const setName = (name: string) => change({ name });
+  const setInstructions = (instructions: string) => change({ instructions });
+  const setAvatar = (avatar: string) => change({ avatar });
   const dirty =
     name !== profile.name ||
     instructions !== profile.instructions ||

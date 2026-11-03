@@ -111,7 +111,6 @@ export function RoutinesPanel({
                     }
                   >
                     <h3>{routine.title}</h3>
-                    <p className="item-description">{routine.instructions}</p>
                   </button>
                   <Switch
                     label={`启用 ${routine.title}`}
@@ -231,7 +230,13 @@ export function RoutinesPanel({
                     )}
                     {run.error && <p role="status">{run.error}</p>}
                     {run.status === "done" && (
-                      <p className="item-note">结果已发回此 Bot 的聊天。</p>
+                      <p className="item-note">
+                        {run.delivery === "conditional"
+                          ? run.delivered
+                            ? "已交付"
+                            : "静默完成"
+                          : "执行完成，查看聊天与工作记录。"}
+                      </p>
                     )}
                   </li>
                 ))}
@@ -317,6 +322,10 @@ function RoutineEditor({
   const [minutes, setMinutes] = useState(
     String((routine?.executionMs ?? 900_000) / 60_000),
   );
+  const [delivery, setDelivery] = useState<"always" | "conditional">(
+    routine?.delivery ?? "always",
+  );
+  const [condition, setCondition] = useState(routine?.condition ?? "");
   const [skillIds, setSkillIds] = useState(routine?.skillIds ?? []);
   return (
     <form
@@ -334,6 +343,8 @@ function RoutineEditor({
           revision: routine?.revision ?? 0,
           title,
           instructions,
+          delivery,
+          condition: delivery === "conditional" ? condition : undefined,
           schedule,
           skillIds,
           executionMs: Math.round(Number(minutes) * 60_000),
@@ -364,6 +375,28 @@ function RoutineEditor({
           required
           maxLength={WORK_TEXT_LENGTH}
         />
+        <label>
+          交付方式
+          <select
+            className="field-control"
+            value={delivery}
+            onChange={(event) =>
+              setDelivery(event.target.value as typeof delivery)
+            }
+          >
+            <option value="always">每次交付</option>
+            <option value="conditional">满足条件才通知</option>
+          </select>
+        </label>
+        {delivery === "conditional" && (
+          <TextField
+            label="通知条件"
+            value={condition}
+            onValueChange={setCondition}
+            required
+            maxLength={WORK_TEXT_LENGTH}
+          />
+        )}
         <TextField
           label="执行期限（分钟，不含等人时间）"
           value={minutes}

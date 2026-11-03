@@ -3,7 +3,14 @@ import type { InputMaterials, MaterialSelection } from "@domos/agent/materials";
 import type { TranscriptItem } from "@domos/agent/transcript";
 import type { ChatView } from "@domos/agent/view";
 import { ORPCError } from "@orpc/client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { client } from "../../client.ts";
 import { flushModelSettings } from "../models/model-state.ts";
 import { chatCopy } from "./copy.ts";
@@ -16,16 +23,91 @@ export type SendInput = MaterialSelection & {
   attachments?: string[];
 };
 
+type RetainedChat = {
+  view: ChatView | null;
+  outgoing: TranscriptItem[];
+  sentRequest?: string;
+  sending: boolean;
+  error: string | null;
+};
+function createChatState() {
+  let state: RetainedChat = {
+    view: null,
+    outgoing: [],
+    sending: false,
+    error: null,
+  };
+  const listeners = new Set<() => void>();
+  return {
+    snapshot: () => state,
+    observed: () => listeners.size > 0,
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    update(patch: Partial<RetainedChat>) {
+      state = { ...state, ...patch };
+      for (const listener of listeners) listener();
+    },
+  };
+}
+const retained = new Map<number, ReturnType<typeof createChatState>>();
+function chatState(botId: number) {
+  let state = retained.get(botId);
+  if (!state) {
+    state = createChatState();
+    retained.set(botId, state);
+  }
+  return state;
+}
+export function clearChatState(ids?: Set<number>) {
+  for (const id of retained.keys()) if (!ids?.has(id)) retained.delete(id);
+}
+window.addEventListener("domos:pair", () => clearChatState());
+export function prefetchChat(botId: number) {
+  if (retained.has(botId)) return;
+  const store = chatState(botId);
+  void client
+    .get({ botId })
+    .then((view) => {
+      if (retained.get(botId) === store && !store.snapshot().view)
+        store.update({ view });
+    })
+    .catch(() => {
+      if (
+        retained.get(botId) === store &&
+        !store.snapshot().view &&
+        !store.observed()
+      )
+        retained.delete(botId);
+    });
+}
+
 export function useChat(botId: number, onModelRequired?: () => void) {
-  const [view, setView] = useState<ChatView | null>(null);
+  const [store] = useState(() => chatState(botId));
+  const { view, outgoing, sentRequest, sending, error } = useSyncExternalStore(
+    store.subscribe,
+    store.snapshot,
+  );
+  const current = useRef<ChatView | null>(view);
+  current.current ??= view;
+  const setView = useCallback(
+    (view: ChatView) => store.update({ view }),
+    [store],
+  );
+  const setError = useCallback(
+    (error: string | null) => store.update({ error }),
+    [store],
+  );
+  const setSending = (sending: boolean) => store.update({ sending });
+  const setSentRequest = (sentRequest: string) => store.update({ sentRequest });
+  const setOutgoing = (update: (items: TranscriptItem[]) => TranscriptItem[]) =>
+    store.update({ outgoing: update(store.snapshot().outgoing) });
   const [connected, setConnected] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
-  const current = useRef<ChatView | null>(null);
-  const [sentRequest, setSentRequest] = useState<string>();
-  const [outgoing, setOutgoing] = useState<TranscriptItem[]>([]);
   const [project] = useState(transcriptState);
   const { items } = useMemo(
     () => (view ? project(view, outgoing) : { items: outgoing }),
@@ -127,11 +209,12 @@ export function useChat(botId: number, onModelRequired?: () => void) {
       }
     })();
     return () => {
+      if (current.current) store.update({ view: current.current });
       controller.abort();
       if (frame !== undefined) cancelAnimationFrame(frame);
       document.removeEventListener("visibilitychange", visible);
     };
-  }, [botId]);
+  }, [botId, store, setView, setError]);
 
   async function loadEarlier() {
     if (!current.current?.before || loadingEarlier) return;

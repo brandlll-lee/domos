@@ -23,6 +23,7 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
     (message) => message.role === "user",
   )?.turnId;
   view.messages.forEach((message, index) => {
+    if (message.hidden || (message.role === "user" && message.routine)) return;
     const id = message.turnId ?? message.id;
     ends.set(id, index);
     if (message.role !== "assistant") return;
@@ -67,6 +68,7 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
       return true;
     });
   view.messages.forEach((message, index) => {
+    if (message.hidden || (message.role === "user" && message.routine)) return;
     const id = message.turnId ?? message.id;
     const held =
       id === view.activeTurnId || notices.has(id) || interrupted.has(id);

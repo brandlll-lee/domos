@@ -9,6 +9,7 @@ import {
   ToolTask,
 } from "@earendil-works/pi-durable";
 import { ComputerRequests } from "../computer/runtime.ts";
+import { RoutinesDoc } from "../work/routine-state.ts";
 import { conversationEntry, conversationHistory } from "./history.ts";
 import { EngineDoc, EngineMessage } from "./state.ts";
 import { type EngineRuntime, stored } from "./task-types.ts";
@@ -199,11 +200,27 @@ export async function callProductTool(
       const doc = await tx.doc(ProductCalls, runtime.taskId);
       if (doc.delivered.includes(key)) return;
       doc.delivered.push(key);
+      const task = await tx.task(runtime.taskId);
+      const runId = (task?.input as { routineRunId?: string } | undefined)
+        ?.routineRunId;
+      const run = runId
+        ? (await tx.doc(RoutinesDoc)).runs.find((run) => run.id === runId)
+        : undefined;
+      if (run && details.attachment)
+        run.files = [
+          ...new Map(
+            [
+              ...(run.files ?? []),
+              details.attachment as import("../attachments.ts").Attachment,
+            ].map((file) => [file.id, file]),
+          ).values(),
+        ];
       await tx.appendEntry(runtime.conversationId, {
         kind: EngineMessage,
         data: stored({
           id: `product:${id}`,
           turnId: (await tx.doc(EngineDoc, runtime.conversationId)).activeTurn,
+          hidden: run?.delivery === "conditional",
           role: "toolResult",
           content: [],
           stopped: false,

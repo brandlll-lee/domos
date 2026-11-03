@@ -280,11 +280,26 @@ export function acpProvider(
             }));
             const title =
               request.toolCall.title ??
-              JSON.stringify(request.toolCall.rawInput ?? {});
+              (question ? "需要你的回答" : "工具权限请求");
             const answer = await ask({
               id,
               title: question ? title : "允许这次操作？",
               detail: question ? "" : title,
+              ...(!question && request.toolCall.rawInput
+                ? {
+                    fields: Object.entries(
+                      typeof request.toolCall.rawInput === "object"
+                        ? request.toolCall.rawInput
+                        : { 参数: request.toolCall.rawInput },
+                    ).map(([label, value]) => ({
+                      label,
+                      value:
+                        typeof value === "string"
+                          ? value
+                          : (JSON.stringify(value) ?? ""),
+                    })),
+                  }
+                : {}),
               kind: question ? "question" : "permission",
               automatic: !question,
               ...(question

@@ -1,6 +1,7 @@
 import type { Context } from "@earendil-works/chord/context";
 import type { TaskId } from "@earendil-works/pi-durable";
 import type { Files } from "../files.ts";
+import { RoutinesDoc } from "../work/routine-state.ts";
 import { EngineDoc, EngineInputDoc } from "./state.ts";
 import type { EngineRuntime, EngineTaskInput } from "./task-types.ts";
 import type { EngineSession } from "./types.ts";
@@ -48,6 +49,16 @@ export class EngineInputs {
       await this.runtime.commit(async (tx) => {
         const doc = await tx.doc(EngineDoc, this.runtime.conversationId);
         if (doc.activeId !== this.runtime.taskId) return;
+        const active = await tx.task(this.runtime.taskId);
+        const runId = (active?.input as EngineTaskInput | undefined)
+          ?.routineRunId;
+        if (
+          runId &&
+          (await tx.doc(RoutinesDoc)).runs.some(
+            (run) => run.id === runId && run.delivery === "conditional",
+          )
+        )
+          return;
         for (const id of doc.tasks) {
           if (id === this.runtime.taskId) continue;
           const task = await tx.task(id);

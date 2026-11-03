@@ -300,3 +300,70 @@ test("repeated file receipts appear once per turn", () => {
     ),
   ).toMatchObject([{ kind: "attachments", files: [file] }]);
 });
+
+test("routine projection hides scheduled input and quiet files but preserves questions and ordinary chat", async () => {
+  const { applyRoutineDelivery } = await import(
+    "../src/work/routine-delivery.ts"
+  );
+  const input = message("user", "monitor", [{ type: "text", text: "Check" }], {
+    requestId: "run-request",
+  });
+  const reply = message("assistant", "monitor", [
+    { type: "text", text: "Checking" },
+  ]);
+  const ordinary = message("user", "next", [
+    { type: "text", text: "My question" },
+  ]);
+  const approval = message("assistant", "monitor", [], {
+    approval: {
+      request: {
+        id: "permission",
+        title: "Allow?",
+        detail: "Scope",
+        kind: "permission",
+      },
+      state: "pending",
+    },
+  });
+  const snapshot = view([input, reply, approval, ordinary], {
+    activeTurnId: "monitor",
+    processing: true,
+  });
+  const run = {
+    id: "run",
+    requestId: "run-request",
+    turnId: "monitor",
+    title: "Check",
+    scheduledAt: 123,
+    delivery: "conditional",
+    status: "running",
+  } as import("../src/work/routine-state.ts").RoutineRun;
+  applyRoutineDelivery(snapshot, [run]);
+  const items = chatTranscript(snapshot);
+  expect(items.map((item) => item.id)).toEqual([approval.id, ordinary.id]);
+  expect(snapshot.processing).toBe(false);
+  run.status = "done";
+  run.delivered = true;
+  run.report = {
+    notify: true,
+    text: "New release",
+    summary: "v2",
+    key: "release/v2",
+  };
+  snapshot.messages.push(
+    message("assistant", "monitor", [{ type: "text", text: "New release" }], {
+      id: "routine-result:run",
+      routine: { runId: "run", title: "Check", scheduledAt: 123 },
+    }),
+  );
+  applyRoutineDelivery(snapshot, [run]);
+  applyRoutineDelivery(snapshot, [run]);
+  expect(
+    chatTranscript(snapshot).filter((item) => item.id === "routine-result:run"),
+  ).toHaveLength(1);
+  expect(
+    chatTranscript(snapshot).find((item) => item.id === "routine-result:run"),
+  ).toMatchObject({
+    message: { routine: { title: "Check", scheduledAt: 123 } },
+  });
+});

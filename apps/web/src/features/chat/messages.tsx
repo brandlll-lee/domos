@@ -70,6 +70,29 @@ const MessageRow = memo(function MessageRow({
               : chatCopy.assistantMessage(botName)
       }
     >
+      {message.routine && message.role === "assistant" && (
+        <div className="routine-source">
+          ◷ {message.routine.title} · 计划{" "}
+          {new Date(message.routine.scheduledAt).toLocaleTimeString("zh-CN", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+          {message.routine.turnId && (
+            <Button
+              variant="ghost"
+              size="small"
+              onClick={() => {
+                const detail = { botId, turnId: message.routine?.turnId };
+                window.dispatchEvent(
+                  new CustomEvent("domos:work-open", { detail }),
+                );
+              }}
+            >
+              查看运行
+            </Button>
+          )}
+        </div>
+      )}
       {message.approval ? (
         <MessageBubble side="incoming">
           <Approval botId={botId} message={message} />
@@ -151,6 +174,7 @@ export const Messages = memo(function Messages({
     shown.ready,
     shown.sentRequest,
     typing,
+    botId,
   );
   const motion =
     !transcript.initialized || document.hidden

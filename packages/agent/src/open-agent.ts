@@ -82,7 +82,7 @@ export async function openAgent(
               botId,
               change,
               requestId,
-              async (title, detail, context) =>
+              async (title, detail, context, presentation) =>
                 (
                   await computer.approve(
                     botId,
@@ -90,6 +90,7 @@ export async function openAgent(
                       id: `routine:${requestId}`,
                       title,
                       detail,
+                      ...presentation,
                       kind: "permission",
                       automatic: false,
                     },

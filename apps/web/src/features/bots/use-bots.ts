@@ -1,6 +1,9 @@
 import type { Bot, BotPresence } from "@domos/agent/bots";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { client } from "../../client.ts";
+import { clearChatState } from "../chat/use-chat.ts";
+import { clearTranscriptPositions } from "../chat/use-transcript.ts";
+import { clearBotWork } from "./details/use-bot-work.ts";
 
 function subscribeLocation(listener: () => void) {
   window.addEventListener("hashchange", listener);
@@ -37,6 +40,10 @@ export function useBots() {
         });
         for await (const next of events) {
           if (controller.signal.aborted) return;
+          const ids = new Set(next.items.map((bot) => bot.id));
+          clearChatState(ids);
+          clearBotWork(ids);
+          clearTranscriptPositions(ids);
           setItems(next.items);
           updateComputers({
             items: next.computers,

@@ -9,6 +9,7 @@ import {
   type TaskId,
   type Tx,
 } from "@earendil-works/pi-durable";
+import { EngineDoc } from "../harness/state.ts";
 import { BOT_NAME_LENGTH, WORK_TEXT_LENGTH } from "./limits.ts";
 import {
   findRoutine,
@@ -22,6 +23,8 @@ import {
   routineTask,
 } from "./routine-task.ts";
 import { nextScheduled, validateSchedule } from "./schedule.ts";
+import { routineTimeLabel } from "./schedule-label.ts";
+import { SkillsDoc } from "./skills.ts";
 import { requireRevision, toolResult, WorkError } from "./state.ts";
 
 export type RoutineChange = Partial<RoutineInput> & {
@@ -31,6 +34,10 @@ export type RoutineConfirm = (
   title: string,
   detail: string,
   context: Context,
+  presentation?: Pick<
+    import("../harness/types.ts").EngineApproval,
+    "fields" | "confirmLabel"
+  >,
 ) => Promise<boolean>;
 
 async function scheduleRoutine(
@@ -216,22 +223,55 @@ export class Routines {
       run_now: "立即执行",
       delete: "删除",
     };
+    const fields = routineFields(input);
+    const previousFields = current ? routineFields(current) : [];
+    if (change.action === "update" && input.title !== current?.title) {
+      fields.unshift({ label: "任务名称", value: input.title });
+      previousFields.unshift({
+        label: "任务名称",
+        value: current?.title ?? "",
+      });
+    }
+    if (input.skillIds.length || current?.skillIds.length) {
+      const skills =
+        (await this.harness.snapshot(SkillsDoc, context))?.items ?? [];
+      const names = (ids: string[]) =>
+        ids
+          .map((id) => skills.find((skill) => skill.id === id)?.name ?? id)
+          .join("、") || "未绑定";
+      fields.push({ label: "使用技能", value: names(input.skillIds) });
+      previousFields.push({
+        label: "使用技能",
+        value: names(current?.skillIds ?? []),
+      });
+    }
     if (
       !(await confirm(
         `${labels[change.action]}定时：${input.title}`,
-        JSON.stringify(
-          {
-            action: change.action,
-            title: input.title,
-            instructions: input.instructions,
-            schedule: input.schedule,
-            skillIds: input.skillIds,
-            executionMs: input.executionMs ?? 900_000,
-          },
-          null,
-          2,
-        ),
+        change.action === "update" &&
+          input.instructions === current?.instructions
+          ? ""
+          : (input.instructions ?? ""),
         context,
+        {
+          confirmLabel: `${labels[change.action]}任务`,
+          fields: fields.flatMap((field) => {
+            if (change.action !== "update" || !current) return [field];
+            const previous = previousFields.find(
+              (item) => item.label === field.label,
+            );
+            return previous?.value === field.value
+              ? []
+              : [
+                  {
+                    ...field,
+                    value: previous
+                      ? `${previous.value} → ${field.value}`
+                      : field.value,
+                  },
+                ];
+          }),
+        },
       ))
     )
       return { status: "declined" };
@@ -290,6 +330,58 @@ export function routineExtension(
     ],
     tools: [
       defineTool({
+        name: "routine_report",
+        description:
+          "Submit this monitoring run's result. notify is true only when the agreed condition is met. Supply a stable source key when notifying. summary becomes the bounded next-run baseline after successful completion. Call exactly once after checking actual evidence.",
+        parameters: Type.Object({
+          notify: Type.Boolean(),
+          text: Type.String({ maxLength: WORK_TEXT_LENGTH }),
+          summary: Type.String({ minLength: 1, maxLength: WORK_TEXT_LENGTH }),
+          key: Type.Optional(Type.String({ minLength: 1, maxLength: 1024 })),
+        }),
+        replay: "safe",
+        executionMode: "sequential",
+        async execute(args, api, context) {
+          return toolResult(
+            await api.commit(async (tx) => {
+              const task = await tx.task(api.taskId);
+              const parent = (task?.input as { parent?: TaskId } | undefined)
+                ?.parent;
+              const owner = parent ? await tx.task(parent) : task;
+              const engine = await tx.doc(EngineDoc, api.conversationId);
+              if (engine.activeId !== owner?.id)
+                throw new WorkError("CONFLICT", "本轮执行已结束。");
+              const input = owner?.input as
+                | { routineRunId?: string }
+                | undefined;
+              const doc = await tx.doc(RoutinesDoc);
+              const run = doc.runs.find(
+                (run) =>
+                  run.id === input?.routineRunId &&
+                  run.botId === api.conversationId,
+              );
+              if (run?.delivery !== "conditional" || run.status !== "running")
+                throw new WorkError(
+                  "BAD_REQUEST",
+                  "当前没有可提交结论的监控运行。",
+                );
+              if (args.notify && (!args.text.trim() || !args.key?.trim()))
+                throw new WorkError(
+                  "BAD_REQUEST",
+                  "通知需要正文与稳定事项标识。",
+                );
+              if (
+                run.report &&
+                JSON.stringify(run.report) !== JSON.stringify(args)
+              )
+                throw new WorkError("CONFLICT", "本轮已经提交检查结论。");
+              run.report = args;
+              return { accepted: true };
+            }, context),
+          );
+        },
+      }),
+      defineTool({
         name: "routine_manage",
         description:
           "Propose a routine change for user confirmation. Read routine_list first. Supply its stable ID and current revision. Update only the fields that must change. Execution time excludes waiting for user input.",
@@ -322,6 +414,12 @@ export function routineExtension(
             ]),
           ),
           skillIds: Type.Optional(Type.Array(Type.String())),
+          delivery: Type.Optional(
+            Type.Union([Type.Literal("always"), Type.Literal("conditional")]),
+          ),
+          condition: Type.Optional(
+            Type.String({ minLength: 1, maxLength: WORK_TEXT_LENGTH }),
+          ),
           executionMs: Type.Optional(
             Type.Integer({ minimum: 1000, maximum: 86_400_000 }),
           ),
@@ -382,6 +480,12 @@ export function routineExtension(
             }),
           ]),
           skillIds: Type.Optional(Type.Array(Type.String())),
+          delivery: Type.Optional(
+            Type.Union([Type.Literal("always"), Type.Literal("conditional")]),
+          ),
+          condition: Type.Optional(
+            Type.String({ minLength: 1, maxLength: WORK_TEXT_LENGTH }),
+          ),
           executionMs: Type.Optional(
             Type.Integer({ minimum: 1000, maximum: 86_400_000 }),
           ),
@@ -427,4 +531,30 @@ export function routineExtension(
       }),
     ],
   });
+}
+
+function routineFields(input: RoutineInput) {
+  return [
+    {
+      label: "执行时间",
+      value:
+        input.schedule.type === "once"
+          ? new Date(input.schedule.at).toLocaleString("zh-CN", {
+              timeZone: input.schedule.timeZone,
+            })
+          : routineTimeLabel(input.schedule.expression),
+    },
+    { label: "时区", value: input.schedule.timeZone },
+    {
+      label: "执行期限",
+      value: `${(input.executionMs ?? 900_000) / 60_000} 分钟（不含等待）`,
+    },
+    {
+      label: "交付方式",
+      value:
+        input.delivery === "conditional"
+          ? `满足条件才通知：${input.condition}`
+          : "每次交付",
+    },
+  ];
 }

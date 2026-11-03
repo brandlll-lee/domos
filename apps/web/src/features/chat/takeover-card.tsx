@@ -18,9 +18,7 @@ export function TakeoverCard({
   return (
     <section className="interaction-card takeover-card" aria-label="接管请求">
       <header>
-        <strong>
-          {request.service === "browser" ? "Browser" : "Computer"}
-        </strong>
+        <strong>{request.service === "browser" ? "浏览器" : "电脑"}</strong>
         <span className="takeover-badge" data-state={request.state}>
           {controlling
             ? "控制中"

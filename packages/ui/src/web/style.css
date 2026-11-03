@@ -107,6 +107,7 @@ a,
 }
 .dialog-title {
   margin: 0;
+  flex: 1;
   font-size: var(--text-heading);
   font-weight: var(--weight-semibold);
 }
@@ -122,6 +123,20 @@ a,
   justify-content: flex-end;
   gap: var(--space-2);
 }
+.decision-dialog {
+  height: auto;
+  max-height: calc(100dvh - var(--space-8));
+  width: min(var(--settings-content-width), calc(100vw - var(--space-8)));
+  border-radius: var(--radius-panel);
+}
+.decision-dialog .button {
+  border-radius: var(--radius-round);
+}
+.decision-dialog .button[data-variant="primary"] {
+  background: var(--color-text);
+  color: var(--color-canvas);
+}
+
 .skip-link {
   position: fixed;
   top: var(--space-3);

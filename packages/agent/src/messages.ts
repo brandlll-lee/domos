@@ -20,6 +20,14 @@ export type ChatContent =
 
 export type ChatMessage = {
   cursor?: string;
+  routine?: {
+    runId: string;
+    title: string;
+    scheduledAt: number;
+    turnId?: string;
+    delivery?: "always" | "conditional";
+  };
+  hidden?: boolean;
   detail?: boolean;
   activity?: import("./harness/types.ts").EngineEvent;
   receivedAt?: number;
