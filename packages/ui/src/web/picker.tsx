@@ -10,12 +10,13 @@ type PickerProps = {
   items: Choice[];
   onValueChange: (value: string) => void;
   disabled?: boolean;
+  required?: boolean;
 };
 
 function Caret() {
   return (
     <svg className="picker-caret" viewBox="0 0 16 16" aria-hidden="true">
-      <path d="m5.5 6 2.5-2.5L10.5 6m-5 4 2.5 2.5 2.5-2.5" />
+      <path d="m4 6 4 4 4-4" />
     </svg>
   );
 }
@@ -30,6 +31,7 @@ export function ChoicePicker({
   items,
   onValueChange,
   disabled,
+  required,
   size = "default",
   id,
 }: PickerProps & { size?: "default" | "small"; id?: string }) {
@@ -38,6 +40,7 @@ export function ChoicePicker({
       items={items}
       value={value}
       disabled={disabled}
+      required={required}
       onValueChange={(next) => {
         if (next !== null) onValueChange(next);
       }}

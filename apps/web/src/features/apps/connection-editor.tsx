@@ -1,4 +1,5 @@
 import { Button } from "@domos/ui/controls";
+import { ChoicePicker } from "@domos/ui/picker";
 import type { client } from "../../client.ts";
 import { appsCopy } from "./copy.ts";
 
@@ -86,39 +87,35 @@ export function ConnectionEditor({
                 onChange={(e) => change({ name: e.target.value })}
               />
             </label>
-            <label>
-              运行／访问电脑
-              <select
-                className="field-control"
+            <div className="field">
+              <span className="field-label">运行／访问电脑</span>
+              <ChoicePicker
+                label="运行／访问电脑"
                 required
                 value={form.computerId}
-                onChange={(e) => change({ computerId: e.target.value })}
-              >
-                <option value="">选择电脑</option>
-                {computers.map((pc) => (
-                  <option key={pc.id} value={pc.id}>
-                    {pc.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+                items={[
+                  { value: "", label: "选择电脑" },
+                  ...computers.map((pc) => ({ value: pc.id, label: pc.name })),
+                ]}
+                onValueChange={(computerId) => change({ computerId })}
+              />
+            </div>
           </div>
           {form.editing && <p className="apps-muted">{appsCopy.secretHint}</p>}
-          <label>
-            传输方式
-            <select
-              className="field-control"
+          <div className="field">
+            <span className="field-label">传输方式</span>
+            <ChoicePicker
+              label="传输方式"
               value={form.transport}
-              onChange={(e) =>
-                change({
-                  transport: e.target.value as Draft["transport"],
-                })
+              items={[
+                { value: "http", label: "HTTP / SSE" },
+                { value: "stdio", label: "本地命令（stdio）" },
+              ]}
+              onValueChange={(transport) =>
+                change({ transport: transport as Draft["transport"] })
               }
-            >
-              <option value="http">HTTP / SSE</option>
-              <option value="stdio">本地命令（stdio）</option>
-            </select>
-          </label>
+            />
+          </div>
           <label>
             {form.transport === "http" ? "MCP 地址" : "启动程序"}
             <input

@@ -4,6 +4,7 @@ import { Button } from "@domos/ui/controls";
 import { ConfirmDialog, Dialog } from "@domos/ui/dialog";
 import { Checkbox, SearchField } from "@domos/ui/field";
 import { ActionMenu } from "@domos/ui/menu";
+import { ChoicePicker } from "@domos/ui/picker";
 import { ArrowClockwiseIcon as ArrowClockwise } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
 import { BookOpenIcon as BookOpen } from "@phosphor-icons/react/dist/csr/BookOpen";
 import { CodeIcon as Code } from "@phosphor-icons/react/dist/csr/Code";
@@ -689,14 +690,20 @@ export function AppsCenter({
                   {nativeReading && <p role="status">正在读取原生连接…</p>}
                   {nativeError && <p role="alert">{nativeError}</p>}
                   <p className="apps-muted">{appsCopy.nativeHint}</p>
-                  <label>
-                    选择机器人
-                    <select
-                      className="field-control"
+                  <div className="field">
+                    <span className="field-label">选择机器人</span>
+                    <ChoicePicker
+                      label="选择机器人"
                       value={nativeBot}
                       disabled={busy}
-                      onChange={(e) => {
-                        const id = e.target.value;
+                      items={[
+                        { value: "", label: "选择机器人" },
+                        ...bots.map((bot) => ({
+                          value: String(bot.id),
+                          label: bot.name,
+                        })),
+                      ]}
+                      onValueChange={(id) => {
                         nativeSelection.current = id;
                         setNativeBot(id);
                         setNative(null);
@@ -704,15 +711,8 @@ export function AppsCenter({
                         setNativeReading(false);
                         void refreshNative(id);
                       }}
-                    >
-                      <option value="">选择机器人</option>
-                      {bots.map((bot) => (
-                        <option key={bot.id} value={bot.id}>
-                          {bot.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                    />
+                  </div>
                   {native && (
                     <>
                       <p>

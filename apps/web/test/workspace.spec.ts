@@ -91,7 +91,8 @@ test("Apps manages a real MCP connection and Bot grants across reloads and theme
       dialog.getByRole("textbox", { name: "名称", exact: true }),
     ).toHaveValue("Local Docs");
     const computer = dialog.getByRole("combobox", { name: "运行／访问电脑" });
-    await computer.selectOption({ index: 1 });
+    await computer.click();
+    await page.getByRole("option").nth(1).click();
     await dialog.getByRole("button", { name: "保存并测试" }).click();
     const connection = dialog
       .locator(".apps-item")
@@ -190,7 +191,8 @@ test("Apps completes and cancels browser OAuth with stored state", async ({
     await dialog.getByRole("button", { name: "手动配置", exact: true }).click();
     await dialog.getByLabel("名称", { exact: true }).fill("OAuth Docs");
     await dialog.getByLabel("MCP 地址", { exact: true }).fill(upstream.url);
-    await dialog.getByLabel("运行／访问电脑").selectOption({ index: 1 });
+    await dialog.getByRole("combobox", { name: "运行／访问电脑" }).click();
+    await page.getByRole("option").nth(1).click();
     await dialog.getByRole("button", { name: "保存并测试" }).click();
     const item = dialog.locator(".apps-item").filter({ hasText: "OAuth Docs" });
     await expect(item.getByText(/^待授权/)).toBeVisible({ timeout: 20_000 });
@@ -1572,7 +1574,7 @@ test("Bot panels keep their hierarchy in both themes and panel widths", async ({
     await page.emulateMedia({ colorScheme: theme });
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     await expect(
-      details.getByRole("textbox", { name: "工作要求与交付方式", exact: true }),
+      details.getByRole("textbox", { name: "工作要求", exact: true }),
     ).toHaveCSS(
       "background-color",
       theme === "dark" ? "rgb(20, 20, 22)" : "rgb(250, 250, 250)",
@@ -2169,6 +2171,72 @@ test("contact rows keep their density and searchable previews across selections"
   await expect(root).not.toHaveAttribute("aria-current", "page");
   await page.reload();
   await expect(root).toContainText("已收到：核对列表预览");
+});
+
+test("routine forms share quiet pointer focus and keep actions outside scrolling", async ({
+  page,
+}, info) => {
+  await page.goto(url);
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  const details = page.locator("#bot-details");
+  await details.getByRole("button", { name: /^定时(?:\s|$)/ }).click();
+  await details
+    .getByRole("button", { name: "新建定时任务", exact: true })
+    .click();
+  const name = details.getByRole("textbox", { name: "任务名称", exact: true });
+  await expect(name).toBeVisible();
+  for (const theme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await name.click();
+    await expect(name).toHaveCSS("outline-style", "none");
+    await name.press("Shift+Tab");
+    await page.keyboard.press("Tab");
+    await expect(name).toBeFocused();
+    await expect(name).toHaveCSS("outline-style", "solid");
+    await name.click();
+    expect(
+      await name.evaluate((el) => getComputedStyle(el).borderColor),
+    ).not.toBe(
+      await name.evaluate((el) => {
+        const probe = document.createElement("span");
+        probe.style.color = "var(--color-focus)";
+        el.appendChild(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      }),
+    );
+    await expect(details.locator("select")).toHaveCount(0);
+    const footer = details.locator(".detail-footer");
+    await expect(footer).toBeVisible();
+    expect(
+      await footer.evaluate((el) => Boolean(el.closest(".scroll-viewport"))),
+    ).toBe(false);
+    await details
+      .getByRole("combobox", { name: "交付方式", exact: true })
+      .click();
+    await page
+      .getByRole("option", { name: "满足条件才通知", exact: true })
+      .click();
+    await expect(
+      details.getByRole("textbox", { name: "通知条件", exact: true }),
+    ).toBeVisible();
+    for (const width of [1360, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect
+        .poll(() => details.evaluate((el) => el.scrollWidth <= el.clientWidth))
+        .toBe(true);
+      const before = await footer.boundingBox();
+      await details.locator(".detail-content").evaluate((el) => {
+        el.scrollTop = el.scrollHeight;
+      });
+      expect(await footer.boundingBox()).toEqual(before);
+      await details.screenshot({
+        path: info.outputPath(`routine-form-${theme}-${width}.png`),
+      });
+    }
+    await page.setViewportSize({ width: 1360, height: 900 });
+  }
 });
 
 test("control geometry and interaction states stay consistent", async ({
@@ -2994,9 +3062,8 @@ test("connection pages distinguish first read, empty search and refreshed native
   gate.resolve();
   await expect(dialog.getByText("Context7", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "MCP", exact: true }).click();
-  await dialog
-    .getByRole("combobox", { name: "选择机器人" })
-    .selectOption({ index: 1 });
+  await dialog.getByRole("combobox", { name: "选择机器人" }).click();
+  await page.getByRole("option").nth(1).click();
   await expect(dialog.getByText("原生服务 1", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "刷新连接", exact: true }).click();
   await expect(dialog.getByText("原生服务 2", { exact: true })).toBeVisible();

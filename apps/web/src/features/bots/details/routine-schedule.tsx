@@ -10,6 +10,7 @@ import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
 import { TextField } from "@domos/ui/field";
 import { ChoicePicker } from "@domos/ui/picker";
+import { SettingRow } from "@domos/ui/setting-row";
 import { useState } from "react";
 
 const frequencies = [
@@ -62,38 +63,39 @@ export function RoutineSchedule({
   }
   return (
     <>
-      <div className="field">
-        <span className="field-label">重复时间</span>
-        <div className="schedule-row">
+      <SettingRow title="重复频率">
+        <ChoicePicker
+          label="重复频率"
+          items={frequencies}
+          value={frequency}
+          onValueChange={(value) => update(value, time, day)}
+        />
+      </SettingRow>
+      {frequency === "weekly" && (
+        <SettingRow title="星期">
           <ChoicePicker
-            label="重复频率"
-            items={frequencies}
-            value={frequency}
-            onValueChange={(value) => update(value, time, day)}
+            label="星期"
+            items={days.map((label, value) => ({
+              label,
+              value: String(value),
+            }))}
+            value={day}
+            onValueChange={(value) => update(frequency, time, value)}
           />
-          {frequency === "weekly" && (
-            <ChoicePicker
-              label="星期"
-              items={days.map((label, value) => ({
-                label,
-                value: String(value),
-              }))}
-              value={day}
-              onValueChange={(value) => update(frequency, time, value)}
-            />
-          )}
-          {frequency !== "custom" && (
-            <input
-              className="field-control"
-              aria-label="每天执行时间"
-              type="time"
-              value={time}
-              required
-              onChange={(event) => update(frequency, event.target.value, day)}
-            />
-          )}
-        </div>
-      </div>
+        </SettingRow>
+      )}
+      {frequency !== "custom" && (
+        <SettingRow title="执行时间">
+          <input
+            className="field-control"
+            aria-label="每天执行时间"
+            type="time"
+            value={time}
+            required
+            onChange={(event) => update(frequency, event.target.value, day)}
+          />
+        </SettingRow>
+      )}
       {frequency === "custom" && (
         <TextField
           label="自定义时间规则"
@@ -103,17 +105,16 @@ export function RoutineSchedule({
           maxLength={SCHEDULE_EXPRESSION_LENGTH}
         />
       )}
-      <div className="detail-actions">
-        <span className="detail-note">按 {timeZone} 时间执行</span>
+      <SettingRow title="时区">
         <Button
           type="button"
           variant="ghost"
           size="small"
           onClick={() => setZoneOpen(true)}
         >
-          更改时区
+          {timeZone}
         </Button>
-      </div>
+      </SettingRow>
       <Dialog
         open={zoneOpen}
         onOpenChange={setZoneOpen}

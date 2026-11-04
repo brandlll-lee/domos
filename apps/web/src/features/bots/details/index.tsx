@@ -1,5 +1,6 @@
 import type { Bot } from "@domos/agent/bots";
 import type { ChatView } from "@domos/agent/view";
+import { Button } from "@domos/ui/controls";
 import { PanelHeader } from "@domos/ui/panel";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { Tabs } from "@domos/ui/tabs";
@@ -236,6 +237,27 @@ export function BotDetails({
           </div>
         )}
       </ScrollArea>
+      {view === "routines" && editor?.view === "routines" && (
+        <footer className="detail-footer form-actions">
+          <Button
+            variant="ghost"
+            size="small"
+            disabled={action.busy}
+            onClick={() => setSelection(null)}
+          >
+            取消
+          </Button>
+          <Button
+            type="submit"
+            form={`routine-${bot.id}`}
+            size="small"
+            disabled={action.busy}
+            aria-label="保存为暂停"
+          >
+            保存
+          </Button>
+        </footer>
+      )}
       <MemoryDialog
         open={memoryOpen}
         onOpenChange={setMemoryOpen}

@@ -4,6 +4,7 @@ import { ConfirmDialog } from "@domos/ui/dialog";
 import { Checkbox, TextField } from "@domos/ui/field";
 import { ActionMenu } from "@domos/ui/menu";
 import { ChoicePicker } from "@domos/ui/picker";
+import { SettingRow } from "@domos/ui/setting-row";
 import { useState } from "react";
 import { client } from "../../../client.ts";
 import type { useChat } from "../../chat/use-chat.ts";
@@ -88,7 +89,6 @@ export function RoutinesPanel({
           routine={editor.routine}
           skills={skills}
           action={action}
-          onCancel={() => onEditorChange(null)}
           onSaved={() => onEditorChange(null)}
         />
       )}
@@ -112,6 +112,22 @@ export function RoutinesPanel({
                   >
                     <h3>{routine.title}</h3>
                   </button>
+                </div>
+                <div className="item-meta">
+                  <span
+                    className="item-tag"
+                    data-tone={routine.enabled ? "ready" : undefined}
+                  >
+                    {routine.enabled ? "已启用" : "已暂停"}
+                  </span>
+                  <span>{scheduleLabel(routine)}</span>
+                </div>
+                {routine.nextAt && (
+                  <p className="item-note">
+                    下次：{new Date(routine.nextAt).toLocaleString()}
+                  </p>
+                )}
+                <div className="item-actions">
                   <Switch
                     label={`启用 ${routine.title}`}
                     checked={routine.enabled}
@@ -130,22 +146,6 @@ export function RoutinesPanel({
                       )
                     }
                   />
-                </div>
-                <div className="item-meta">
-                  <span
-                    className="item-tag"
-                    data-tone={routine.enabled ? "ready" : undefined}
-                  >
-                    {routine.enabled ? "已启用" : "已暂停"}
-                  </span>
-                  <span>{scheduleLabel(routine)}</span>
-                </div>
-                {routine.nextAt && (
-                  <p className="item-note">
-                    下次：{new Date(routine.nextAt).toLocaleString()}
-                  </p>
-                )}
-                <div className="item-actions">
                   <ActionMenu
                     label={`${routine.title}的操作`}
                     disabled={action.busy}
@@ -291,14 +291,12 @@ function RoutineEditor({
   routine,
   skills,
   action,
-  onCancel,
   onSaved,
 }: {
   botId: number;
   routine: Routine | null;
   skills: WorkData["skills"];
   action: WorkAction;
-  onCancel: () => void;
   onSaved: () => void;
 }) {
   const [id] = useState(() => routine?.id ?? crypto.randomUUID());
@@ -329,6 +327,7 @@ function RoutineEditor({
   const [skillIds, setSkillIds] = useState(routine?.skillIds ?? []);
   return (
     <form
+      id={`routine-${botId}`}
       className="bot-form"
       aria-busy={action.busy}
       onSubmit={(event) => {
@@ -357,83 +356,91 @@ function RoutineEditor({
       }}
     >
       <fieldset className="bot-fields" disabled={action.busy}>
-        <div className="detail-form-head">
-          <h3>{routine ? "编辑定时任务" : "新建定时任务"}</h3>
-        </div>
         <TextField
-          label={routine ? "修改任务名称" : "新任务名称"}
+          label="任务名称"
           value={title}
           onValueChange={setTitle}
           required
           maxLength={BOT_NAME_LENGTH}
         />
         <TextField
-          label="工作要求与交付方式"
+          label="工作要求"
           value={instructions}
           onValueChange={setInstructions}
           multiline
           required
           maxLength={WORK_TEXT_LENGTH}
         />
-        <label>
-          交付方式
-          <select
-            className="field-control"
-            value={delivery}
-            onChange={(event) =>
-              setDelivery(event.target.value as typeof delivery)
-            }
-          >
-            <option value="always">每次交付</option>
-            <option value="conditional">满足条件才通知</option>
-          </select>
-        </label>
-        {delivery === "conditional" && (
-          <TextField
-            label="通知条件"
-            value={condition}
-            onValueChange={setCondition}
-            required
-            maxLength={WORK_TEXT_LENGTH}
-          />
-        )}
-        <TextField
-          label="执行期限（分钟，不含等人时间）"
-          value={minutes}
-          onValueChange={setMinutes}
-          required
-        />
-        <div className="field">
-          <span className="field-label">执行方式</span>
-          <ChoicePicker
-            label="执行方式"
-            value={type}
-            onValueChange={(value) => setType(value as "once" | "cron")}
-            items={[
-              { value: "cron", label: "周期执行" },
-              { value: "once", label: "执行一次" },
-            ]}
-          />
-        </div>
-        {type === "once" ? (
-          <label className="field">
-            <span className="field-label">执行时间（{localZone}）</span>
-            <input
-              className="field-control"
-              type="datetime-local"
-              value={at}
-              onChange={(event) => setAt(event.target.value)}
+        <section className="settings-group" aria-label="执行安排">
+          <div className="settings-card">
+            <SettingRow title="执行方式">
+              <ChoicePicker
+                label="执行方式"
+                value={type}
+                onValueChange={(value) => setType(value as "once" | "cron")}
+                items={[
+                  { value: "cron", label: "周期执行" },
+                  { value: "once", label: "执行一次" },
+                ]}
+              />
+            </SettingRow>
+            {type === "once" ? (
+              <SettingRow title="执行时间" description={localZone}>
+                <input
+                  className="field-control"
+                  aria-label="执行时间"
+                  type="datetime-local"
+                  value={at}
+                  onChange={(event) => setAt(event.target.value)}
+                  required
+                />
+              </SettingRow>
+            ) : (
+              <RoutineSchedule
+                expression={expression}
+                onExpressionChange={setExpression}
+                timeZone={timeZone}
+                onTimeZoneChange={setTimeZone}
+              />
+            )}
+          </div>
+        </section>
+        <section className="settings-group" aria-label="交付设置">
+          <div className="settings-card">
+            <SettingRow title="交付方式">
+              <ChoicePicker
+                label="交付方式"
+                value={delivery}
+                onValueChange={(value) => setDelivery(value as typeof delivery)}
+                items={[
+                  { value: "always", label: "每次交付" },
+                  { value: "conditional", label: "满足条件才通知" },
+                ]}
+              />
+            </SettingRow>
+            <SettingRow
+              title="执行期限"
+              description="分钟，不含等待回答或审批的时间"
+            >
+              <input
+                className="field-control"
+                aria-label="执行期限"
+                value={minutes}
+                onChange={(event) => setMinutes(event.target.value)}
+                required
+              />
+            </SettingRow>
+          </div>
+          {delivery === "conditional" && (
+            <TextField
+              label="通知条件"
+              value={condition}
+              onValueChange={setCondition}
               required
+              maxLength={WORK_TEXT_LENGTH}
             />
-          </label>
-        ) : (
-          <RoutineSchedule
-            expression={expression}
-            onExpressionChange={setExpression}
-            timeZone={timeZone}
-            onTimeZoneChange={setTimeZone}
-          />
-        )}
+          )}
+        </section>
         {skills
           .filter((skill) => skill.enabledBots.includes(botId))
           .map((skill) => (
@@ -451,14 +458,6 @@ function RoutineEditor({
               }
             />
           ))}
-        <div className="form-actions">
-          <Button type="button" variant="ghost" size="small" onClick={onCancel}>
-            取消
-          </Button>
-          <Button type="submit" size="small" aria-label="保存为暂停">
-            保存
-          </Button>
-        </div>
       </fieldset>
     </form>
   );

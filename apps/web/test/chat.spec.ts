@@ -437,10 +437,8 @@ test("Bot details manage identity, memory, shared skills, routines and actual pr
   await dialog
     .getByRole("button", { name: "新建定时任务", exact: true })
     .click();
-  await dialog.getByLabel("新任务名称").fill("早间报告");
-  await dialog
-    .getByLabel("工作要求与交付方式")
-    .fill("整理报告，发回当前聊天。");
+  await dialog.getByLabel("任务名称").fill("早间报告");
+  await dialog.getByLabel("工作要求").fill("整理报告，发回当前聊天。");
   await dialog.getByLabel("report", { exact: true }).check();
   await dialog.getByRole("combobox", { name: "重复频率", exact: true }).click();
   await page.getByRole("option", { name: "每周", exact: true }).click();
@@ -457,6 +455,17 @@ test("Bot details manage identity, memory, shared skills, routines and actual pr
     name: "启用 早间报告",
     exact: true,
   });
+  const actions = routine.locator(".item-actions");
+  const centers = await actions
+    .locator('[role="switch"], [aria-haspopup="menu"]')
+    .evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const box = node.getBoundingClientRect();
+        return box.y + box.height / 2;
+      }),
+    );
+  expect(centers).toHaveLength(2);
+  expect(centers[0]).toBe(centers[1]);
   await enabled.click();
   await expect(enabled).toBeChecked();
   await expect(routine).toContainText("已启用");

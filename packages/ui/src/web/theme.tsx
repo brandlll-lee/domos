@@ -66,6 +66,22 @@ export function ThemeProvider({
   const [preference, setPreference] = useState(initialPreference);
   const [error, setError] = useState(false);
   useEffect(() => {
+    const root = document.documentElement;
+    const pointer = () => {
+      root.dataset.navigation = "pointer";
+    };
+    const keyboard = (event: KeyboardEvent) => {
+      if (event.key === "Tab") root.dataset.navigation = "keyboard";
+    };
+    document.addEventListener("pointerdown", pointer, true);
+    document.addEventListener("keydown", keyboard, true);
+    return () => {
+      document.removeEventListener("pointerdown", pointer, true);
+      document.removeEventListener("keydown", keyboard, true);
+      delete root.dataset.navigation;
+    };
+  }, []);
+  useEffect(() => {
     const media = matchMedia(mediaQuery);
     const update = () => apply(preference);
     const sync = (event: StorageEvent) => {

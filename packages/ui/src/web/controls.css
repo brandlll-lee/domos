@@ -103,7 +103,7 @@ summary:focus-visible {
   display: none;
 }
 .search-field:focus-within {
-  border-color: var(--color-focus);
+  border-color: var(--color-input-active);
 }
 .search-field > svg,
 .search-field :where(.button) svg {
@@ -273,9 +273,6 @@ button.inline-notice-content:hover {
 .field-error {
   color: var(--color-danger);
 }
-.field-control[aria-invalid="true"] {
-  border-color: var(--color-danger);
-}
 .field-control:disabled {
   opacity: 0.6;
 }
@@ -313,7 +310,16 @@ textarea.field-control {
 }
 .field-control:focus,
 .picker-search:focus {
-  border-color: var(--color-focus);
+  border-color: var(--color-input-active);
+}
+:root:not([data-navigation="pointer"]) .field-control:focus-visible,
+:root:not([data-navigation="pointer"]) .search-field:has(input:focus-visible),
+:root:not([data-navigation="pointer"]) .picker-search:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 3px;
+}
+.field-control[aria-invalid="true"] {
+  border-color: var(--color-danger);
 }
 .picker-popup {
   min-width: max(var(--anchor-width), 9rem);
@@ -687,4 +693,13 @@ textarea.field-control {
   .choice-card:not([data-disabled], :has(:disabled)):hover {
     background: var(--color-control-hover);
   }
+}
+
+.setting-control > .field-control {
+  width: var(--settings-control-width);
+  max-width: 100%;
+}
+.field-control:is([type="time"], [type="datetime-local"]) {
+  font-variant-numeric: tabular-nums;
+  color-scheme: inherit;
 }

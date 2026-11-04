@@ -182,6 +182,19 @@ export function SkillsPanel({
                         {skill.description || "暂无说明"}
                       </p>
                     </button>
+                  </div>
+                  <div className="item-meta">
+                    <span
+                      className="item-tag"
+                      data-tone={enabled ? "ready" : undefined}
+                    >
+                      {enabled ? "此 Bot 已启用" : "此 Bot 未启用"}
+                    </span>
+                    <span>
+                      {skill.source} · v{skill.versions?.at(-1)?.version ?? 1}
+                    </span>
+                  </div>
+                  <div className="item-actions">
                     <Switch
                       label={`为此 Bot 启用 ${skill.name}`}
                       checked={enabled}
@@ -200,19 +213,6 @@ export function SkillsPanel({
                         )
                       }
                     />
-                  </div>
-                  <div className="item-meta">
-                    <span
-                      className="item-tag"
-                      data-tone={enabled ? "ready" : undefined}
-                    >
-                      {enabled ? "此 Bot 已启用" : "此 Bot 未启用"}
-                    </span>
-                    <span>
-                      {skill.source} · v{skill.versions?.at(-1)?.version ?? 1}
-                    </span>
-                  </div>
-                  <div className="item-actions">
                     <ActionMenu
                       label={`${skill.name}的操作`}
                       disabled={action.busy}
