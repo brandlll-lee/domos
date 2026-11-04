@@ -2,6 +2,7 @@ import type { Bot, BotPresence } from "@domos/agent/bots";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { client } from "../../client.ts";
 import { clearChatState } from "../chat/use-chat.ts";
+import { clearDraftState } from "../chat/use-draft.ts";
 import { clearTranscriptPositions } from "../chat/use-transcript.ts";
 import { clearBotWork } from "./details/use-bot-work.ts";
 
@@ -42,6 +43,7 @@ export function useBots() {
           if (controller.signal.aborted) return;
           const ids = new Set(next.items.map((bot) => bot.id));
           clearChatState(ids);
+          clearDraftState(ids);
           clearBotWork(ids);
           clearTranscriptPositions(ids);
           setItems(next.items);

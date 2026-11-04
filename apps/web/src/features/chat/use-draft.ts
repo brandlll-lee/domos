@@ -1,6 +1,6 @@
 import type { Attachment } from "@domos/agent/attachments";
 import type { InputMaterials } from "@domos/agent/materials";
-import { useCallback, useRef, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { chatCopy } from "./copy.ts";
 import type { SendInput } from "./use-chat.ts";
 
@@ -68,24 +68,51 @@ function load(key: string): { draft: Draft; error: string | null } {
   }
 }
 
-export function useDraft(conversationId: number) {
-  const key = `domos:composer:v1:${conversationId}`;
-  const [state, setState] = useState(() => load(key));
-  const current = useRef(state.draft);
-  const update = useCallback(
-    (patch: Partial<Draft>) => {
+function createDraft(key: string) {
+  let state = load(key);
+  const current = { current: state.draft };
+  const listeners = new Set<() => void>();
+  return {
+    current,
+    snapshot: () => state,
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    update(patch: Partial<Draft>) {
       const draft = { ...current.current, ...patch };
       current.current = draft;
+      let saved = true;
       try {
         localStorage.setItem(key, JSON.stringify(draft));
-        setState({ draft, error: null });
-        return true;
+        state = { draft, error: null };
       } catch {
-        setState({ draft, error: storageError });
-        return false;
+        state = { draft, error: storageError };
+        saved = false;
       }
+      for (const listener of listeners) listener();
+      return saved;
     },
-    [key],
-  );
-  return { ...state, current, update };
+  };
+}
+
+const retained = new Map<number, ReturnType<typeof createDraft>>();
+export function clearDraftState(ids?: Set<number>) {
+  for (const id of retained.keys()) if (!ids?.has(id)) retained.delete(id);
+}
+window.addEventListener("domos:pair", () => clearDraftState());
+
+export function useDraft(conversationId: number) {
+  const [store] = useState(() => {
+    let store = retained.get(conversationId);
+    if (!store) {
+      store = createDraft(`domos:composer:v1:${conversationId}`);
+      retained.set(conversationId, store);
+    }
+    return store;
+  });
+  const state = useSyncExternalStore(store.subscribe, store.snapshot);
+  return { ...state, current: store.current, update: store.update };
 }

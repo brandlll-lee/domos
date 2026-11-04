@@ -84,9 +84,18 @@ export function useComposer(
   }
   return {
     value: draft.draft.text,
-    materials: draft.draft.materials,
+    materials: {
+      skills: draft.draft.materials.skills.filter(
+        (skill) => !pending?.skills?.some((item) => item.id === skill.id),
+      ),
+      context: draft.draft.materials.context.filter(
+        (context) => !pending?.context?.some((item) => item.id === context.id),
+      ),
+    },
     setMaterials: (materials: InputMaterials) => draft.update({ materials }),
-    attachments: draft.draft.attachments,
+    attachments: draft.draft.attachments.filter(
+      (file) => !pending?.attachments?.includes(file.id),
+    ),
     remove: (id: string) =>
       draft.update({
         attachments: draft.current.current.attachments.filter(
@@ -98,6 +107,8 @@ export function useComposer(
     pending: pending !== null,
     error:
       draft.error ??
-      (pending && !submitting.current ? chatCopy.errors.unconfirmed : null),
+      (pending && !submitting.current && canSubmit
+        ? chatCopy.errors.unconfirmed
+        : null),
   };
 }

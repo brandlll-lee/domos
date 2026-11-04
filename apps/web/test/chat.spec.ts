@@ -3732,6 +3732,7 @@ test("attachment retry keeps its request and draft after a lost receipt", async 
   await page.reload();
   const retry = page.getByRole("button", { name: "重试发送", exact: true });
   await expect(retry).toBeEnabled();
+  await expect(page.locator(".composer-attachments")).toHaveCount(0);
   await retry.click();
   await expect(
     page.getByRole("button", { name: "发送", exact: true }),
@@ -3742,6 +3743,145 @@ test("attachment retry keeps its request and draft after a lost receipt", async 
   ).toHaveCount(1);
   await expect(page.locator(".composer-attachments")).toHaveCount(0);
 });
+
+for (const method of ["click", "Enter"] as const) {
+  test(`sending attachments clears the editor before the receipt via ${method}`, async ({
+    page,
+  }) => {
+    await page.goto(url);
+    await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
+    await attachFiles(page, [
+      {
+        name: "source.txt",
+        mimeType: "text/plain",
+        buffer: Buffer.from("Source"),
+      },
+      { name: "image.png", mimeType: "image/png", buffer: png(1, 1) },
+    ]);
+    await expect(
+      page.getByRole("button", { name: "移除文件 source.txt" }),
+    ).toBeEnabled();
+    await expect(
+      page.getByRole("button", { name: "移除文件 image.png" }),
+    ).toBeEnabled();
+    const receipt = Promise.withResolvers<void>();
+    await page.route("**/rpc/send", async (route) => {
+      await receipt.promise;
+      await route.continue();
+    });
+    const input = page.getByLabel("消息", { exact: true });
+    if (method === "click") await input.fill("处理附件");
+    try {
+      if (method === "click")
+        await page.getByRole("button", { name: "发送", exact: true }).click();
+      else await input.press("Enter");
+      await expect(input).toHaveValue("");
+      const outgoing = page.getByLabel("你的消息", { exact: true });
+      await expect(
+        outgoing.getByRole("button", { name: "下载 source.txt", exact: true }),
+      ).toBeVisible();
+      await expect(outgoing.locator("img")).toHaveJSProperty("naturalWidth", 1);
+      await expect(page.locator(".composer-attachments")).toHaveCount(0);
+      await input.fill("下一条草稿");
+    } finally {
+      receipt.resolve();
+    }
+    await expect(
+      page.getByRole("button", { name: "发送", exact: true }),
+    ).toBeVisible();
+    await expect(input).toHaveValue("下一条草稿");
+    await page.reload();
+    await expect(input).toHaveValue("下一条草稿");
+    await expect(page.locator(".composer-attachments")).toHaveCount(0);
+  });
+}
+
+test("a send receipt preserves the draft after switching away and back", async ({
+  page,
+}) => {
+  await page.goto(url);
+  await createBot(page, "其他助手");
+  await page.getByRole("link", { name: "Domos", exact: true }).click();
+  await attachFiles(page, {
+    name: "source.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("Source"),
+  });
+  await expect(
+    page.getByRole("button", { name: "移除文件 source.txt" }),
+  ).toBeEnabled();
+  const receipt = Promise.withResolvers<void>();
+  await page.route("**/rpc/send", async (route) => {
+    await receipt.promise;
+    await route.continue();
+  });
+  const input = page.getByLabel("消息", { exact: true });
+  try {
+    await input.fill("处理文件");
+    await input.press("Enter");
+    await expect(
+      page.getByRole("button", { name: "发送中…", exact: true }),
+    ).toBeVisible();
+    await page.getByRole("link", { name: "其他助手", exact: true }).click();
+    await input.fill("其他机器人的草稿");
+    await page.getByRole("link", { name: "Domos", exact: true }).click();
+    await input.fill("下一条草稿");
+    await expect(page.getByRole("alert")).toHaveCount(0);
+  } finally {
+    receipt.resolve();
+  }
+  await expect(
+    page.getByRole("button", { name: "发送", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".composer-attachments")).toHaveCount(0);
+  await expect(input).toHaveValue("下一条草稿");
+  await page.reload();
+  await expect(input).toHaveValue("下一条草稿");
+  await page.getByRole("link", { name: "其他助手", exact: true }).click();
+  await expect(input).toHaveValue("其他机器人的草稿");
+});
+
+for (const nextDraft of ["", "下一条草稿"]) {
+  test(`a rejected attachment send restores the editor with next draft '${nextDraft}'`, async ({
+    page,
+  }) => {
+    await page.goto(url);
+    await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
+    await attachFiles(page, {
+      name: "source.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("Source"),
+    });
+    await expect(
+      page.getByRole("button", { name: "移除文件 source.txt" }),
+    ).toBeEnabled();
+    const receipt = Promise.withResolvers<void>();
+    await page.route("**/rpc/send", async (route) => {
+      await receipt.promise;
+      await route.fulfill({
+        status: 409,
+        json: {
+          json: { code: "CONFLICT", message: "任务未接收", status: 409 },
+        },
+      });
+    });
+    const input = page.getByLabel("消息", { exact: true });
+    try {
+      await input.fill("处理文件");
+      await input.press("Enter");
+      await expect(page.locator(".composer-attachments")).toHaveCount(0);
+      await input.fill(nextDraft);
+    } finally {
+      receipt.resolve();
+    }
+    await expect(page.getByRole("alert")).toContainText("会话正在回复");
+    await expect(input).toHaveValue(nextDraft || "处理文件");
+    await expect(
+      page.getByRole("button", { name: "移除文件 source.txt" }),
+    ).toBeEnabled();
+    await expect(page.getByLabel("你的消息", { exact: true })).toHaveCount(0);
+  });
+}
 
 test("computer details share live directory status and recover a failed refresh", async ({
   page,
@@ -3885,7 +4025,19 @@ test("composer menu adds task materials, keeps drafts, and fits both themes", as
   ).toBeVisible();
   await control({ content: "材料已处理。" });
   await page.getByLabel("消息", { exact: true }).fill("使用这些材料");
-  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const receipt = Promise.withResolvers<void>();
+  await page.route("**/rpc/send", async (route) => {
+    await receipt.promise;
+    await route.continue();
+  });
+  try {
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    await expect(page.locator(".composer-attachments")).toHaveCount(0);
+    await expect(page.getByLabel("你的消息")).toContainText("report");
+    await expect(page.getByLabel("你的消息")).toContainText("这些是引用材料");
+  } finally {
+    receipt.resolve();
+  }
   await expect(page.getByLabel("Domos 的回复")).toContainText("材料已处理。");
   await expect(page.locator(".composer-attachments")).toHaveCount(0);
   const sent = (await rpc.get({ botId: bot.id })).messages.find(

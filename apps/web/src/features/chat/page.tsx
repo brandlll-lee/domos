@@ -4,6 +4,7 @@ import { characterIdentity } from "@domos/ui/characters";
 import { Button } from "@domos/ui/controls";
 import { layout } from "@domos/ui/tokens";
 import {
+  addTransitionType,
   type CSSProperties,
   startTransition,
   useCallback,
@@ -91,7 +92,11 @@ function BotChat({
       layout.sidebar.min + layout.chatMin + layout.inspector.min,
   );
   const setDetailsOpen = useCallback(
-    (open: boolean) => startTransition(() => updateDetailsOpen(open)),
+    (open: boolean) =>
+      startTransition(() => {
+        addTransitionType("panel-layout");
+        updateDetailsOpen(open);
+      }),
     [],
   );
   const [workRun, setWorkRun] = useState<string>();
@@ -224,7 +229,12 @@ function BotChat({
             setExpanded(false);
           }}
           expanded={expanded}
-          onExpand={() => startTransition(() => setExpanded((value) => !value))}
+          onExpand={() =>
+            startTransition(() => {
+              addTransitionType("panel-layout");
+              setExpanded((value) => !value);
+            })
+          }
         />
       }
     >

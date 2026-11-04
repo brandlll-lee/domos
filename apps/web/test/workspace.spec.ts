@@ -473,6 +473,148 @@ test("chat input stays active while a panel closes", async ({ page }) => {
   ).toBeEnabled();
 });
 
+for (const dialogName of [
+  "设置",
+  "工作记录",
+  "连接中心",
+  "添加工作电脑",
+] as const) {
+  test(`background replies stay behind ${dialogName} during transition frames`, async ({
+    page,
+  }, info) => {
+    await page.emulateMedia({
+      colorScheme: dialogName === "设置" ? "dark" : "light",
+    });
+    if (dialogName === "添加工作电脑")
+      await page.setViewportSize({ width: 768, height: 900 });
+    await page.goto(url);
+    if (dialogName === "工作记录")
+      await page.getByRole("tab", { name: "Work", exact: true }).click();
+    const gated = once(worker, "message");
+    worker.send("gate");
+    await gated;
+    await page
+      .getByRole("textbox", { name: "消息", exact: true })
+      .fill("后台更新");
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "停止生成", exact: true }),
+    ).toBeVisible();
+    if (dialogName === "设置" || dialogName === "添加工作电脑") {
+      await page.getByRole("button", { name: "用户菜单", exact: true }).click();
+      await page.getByRole("menuitem", { name: "设置", exact: true }).click();
+      if (dialogName === "添加工作电脑") {
+        await page
+          .getByRole("group", { name: "工作电脑", exact: true })
+          .getByRole("button", { name: "打开", exact: true })
+          .click();
+        await page
+          .getByRole("button", { name: "添加工作电脑", exact: true })
+          .click();
+      }
+    } else if (dialogName === "连接中心") {
+      await page.getByRole("button", { name: "连接中心", exact: true }).click();
+    } else {
+      await page.locator(".work-row .work-open").first().click();
+    }
+    const dialog = page.getByRole("dialog", { name: dialogName, exact: true });
+    await expect(dialog).toBeVisible();
+    await page.evaluate(() => document.activeViewTransition?.finished);
+    const session = await page.context().newCDPSession(page);
+    const captures: string[] = [];
+    session.on("Page.screencastFrame", (event) => {
+      captures.push(event.data);
+      void session.send("Page.screencastFrameAck", {
+        sessionId: event.sessionId,
+      });
+    });
+    await session.send("Page.startScreencast", {
+      format: "png",
+      everyNthFrame: 1,
+    });
+    await dialog.evaluate((node) => {
+      const frames: {
+        connected: boolean;
+        visible: boolean;
+        snapshots: boolean;
+      }[] = [];
+      document.documentElement.dataset.modalRecording = "true";
+      const sample = () => {
+        const style = getComputedStyle(node);
+        frames.push({
+          connected: node.isConnected,
+          visible: style.visibility === "visible" && style.opacity === "1",
+          snapshots:
+            Boolean(document.activeViewTransition) &&
+            getComputedStyle(document.documentElement, "::view-transition")
+              .display !== "none",
+        });
+        document.documentElement.dataset.modalFrames = JSON.stringify(frames);
+        if (document.documentElement.dataset.modalRecording === "true")
+          requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+    });
+    try {
+      const released = once(worker, "message");
+      worker.send("release");
+      await released;
+      await expect(page.locator(".messages")).toContainText("完整回复。");
+      await page.waitForFunction(
+        () =>
+          JSON.parse(document.documentElement.dataset.modalFrames ?? "[]")
+            .length >= 20,
+      );
+    } finally {
+      await page.evaluate(() => {
+        document.documentElement.dataset.modalRecording = "false";
+      });
+      await session.send("Page.stopScreencast");
+    }
+    const frames = await page.evaluate(
+      () =>
+        JSON.parse(document.documentElement.dataset.modalFrames ?? "[]") as {
+          connected: boolean;
+          visible: boolean;
+          snapshots: boolean;
+        }[],
+    );
+    await writeFile(
+      info.outputPath("modal-frames.json"),
+      JSON.stringify(frames),
+    );
+    for (const [index, capture] of captures.entries())
+      await info.attach(`frame-${index}.png`, {
+        body: Buffer.from(capture, "base64"),
+        contentType: "image/png",
+      });
+    expect(captures.length).toBeGreaterThan(0);
+    expect(
+      frames.every(
+        (frame) => frame.connected && frame.visible && !frame.snapshots,
+      ),
+    ).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    if (dialogName === "添加工作电脑") {
+      await expect(
+        page.getByRole("dialog", { name: "设置", exact: true }),
+      ).toBeVisible();
+      const receipt = once(worker, "message");
+      worker.send({ history: 1 });
+      await receipt;
+      await expect(page.locator(".messages")).toContainText("历史任务 1");
+      expect(
+        await page.evaluate(
+          () =>
+            getComputedStyle(document.documentElement, "::view-transition")
+              .display,
+        ),
+      ).toBe("none");
+    }
+  });
+}
+
 test("sending paints the outgoing message before the network receipt", async ({
   page,
 }) => {

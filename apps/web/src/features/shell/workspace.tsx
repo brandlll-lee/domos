@@ -11,6 +11,7 @@ import { StorefrontIcon } from "@phosphor-icons/react/dist/csr/Storefront";
 import { UserIcon } from "@phosphor-icons/react/dist/csr/User";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import {
+  addTransitionType,
   type ReactNode,
   startTransition,
   useCallback,
@@ -143,13 +144,22 @@ export function Workspace({
           variant="ghost"
           size="icon-small"
           aria-label="联系人"
-          onClick={() => startTransition(() => setContactsOpen(true))}
+          onClick={() =>
+            startTransition(() => {
+              addTransitionType("panel-layout");
+              setContactsOpen(true);
+            })
+          }
         >
           <ListIcon />
         </Button>
       )}
       <ViewTransition
-        update={dragging || sizing.snapping ? "none" : "panel-layout"}
+        update={
+          dragging || sizing.snapping
+            ? "none"
+            : { default: "none", "panel-layout": "panel-layout" }
+        }
       >
         <div
           className="workspace-content"
@@ -164,7 +174,12 @@ export function Workspace({
           open={open && !obscured}
           modal={modal}
           disablePointerDismissal={!modal}
-          onOpenChange={(open) => startTransition(() => change(open))}
+          onOpenChange={(open) =>
+            startTransition(() => {
+              addTransitionType("panel-layout");
+              change(open);
+            })
+          }
         >
           <PanelDialog.Portal
             container={sizing.root}
@@ -175,7 +190,7 @@ export function Workspace({
             <ViewTransition
               update={
                 side === "sidebar" && !dragging && !sizing.snapping
-                  ? "panel-layout"
+                  ? { default: "none", "panel-layout": "panel-layout" }
                   : "none"
               }
             >

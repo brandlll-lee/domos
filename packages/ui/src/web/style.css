@@ -24,6 +24,15 @@
 #root {
   isolation: isolate;
 }
+/* View-transition snapshots paint above DOM modal layers. */
+:root:has(
+  :is(.dialog-backdrop, .panel-backdrop, .image-viewer-backdrop):is(
+      [data-open],
+      [data-ending-style]
+    )
+)::view-transition {
+  display: none;
+}
 body {
   margin: 0;
   font-size: var(--text-body);
