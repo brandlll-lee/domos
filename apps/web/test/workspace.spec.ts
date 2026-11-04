@@ -1,6 +1,6 @@
 import { type ChildProcess, fork } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -262,7 +262,7 @@ test("detail pages load their own data and isolate profile errors", async ({
   await details.getByRole("tab", { name: "Computer", exact: true }).click();
   await page.getByRole("button", { name: "电脑设置", exact: true }).click();
   await expect(
-    details.getByRole("region", { name: "工作电脑", exact: true }),
+    details.getByRole("region", { name: "工作目录与权限", exact: true }),
   ).toBeVisible();
   await expect(details.getByRole("status")).toHaveCount(0);
   expect(streams).toBe(0);
@@ -477,7 +477,7 @@ for (const dialogName of [
   "设置",
   "工作记录",
   "连接中心",
-  "添加工作电脑",
+  "添加容器环境",
 ] as const) {
   test(`background replies stay behind ${dialogName} during transition frames`, async ({
     page,
@@ -485,7 +485,7 @@ for (const dialogName of [
     await page.emulateMedia({
       colorScheme: dialogName === "设置" ? "dark" : "light",
     });
-    if (dialogName === "添加工作电脑")
+    if (dialogName === "添加容器环境")
       await page.setViewportSize({ width: 768, height: 900 });
     await page.goto(url);
     if (dialogName === "工作记录")
@@ -500,16 +500,17 @@ for (const dialogName of [
     await expect(
       page.getByRole("button", { name: "停止生成", exact: true }),
     ).toBeVisible();
-    if (dialogName === "设置" || dialogName === "添加工作电脑") {
+    if (dialogName === "设置" || dialogName === "添加容器环境") {
       await page.getByRole("button", { name: "用户菜单", exact: true }).click();
       await page.getByRole("menuitem", { name: "设置", exact: true }).click();
-      if (dialogName === "添加工作电脑") {
+      if (dialogName === "添加容器环境") {
         await page
-          .getByRole("group", { name: "工作电脑", exact: true })
+          .getByRole("group", { name: "电脑", exact: true })
           .getByRole("button", { name: "打开", exact: true })
           .click();
+        await page.locator(".settings-group > .disclosure > summary").click();
         await page
-          .getByRole("button", { name: "添加工作电脑", exact: true })
+          .getByRole("button", { name: "添加容器环境", exact: true })
           .click();
       }
     } else if (dialogName === "连接中心") {
@@ -596,7 +597,7 @@ for (const dialogName of [
     ).toBe(true);
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
-    if (dialogName === "添加工作电脑") {
+    if (dialogName === "添加容器环境") {
       await expect(
         page.getByRole("dialog", { name: "设置", exact: true }),
       ).toBeVisible();
@@ -948,172 +949,87 @@ test.afterEach(async () => {
   await rm(directory, { recursive: true, force: true, maxRetries: 5 });
 });
 
-test("work computers separate access, defaults and existing Bot bindings", async ({
+test("computer ownership, project directories and access stay distinct", async ({
   page,
 }, info) => {
   await page.goto(url);
-  const before = await (
-    await page.request.post(`${url}/rpc/computer/list`, { data: { json: {} } })
-  ).json();
+  const rpc = async (method: string, json: object = {}) =>
+    (
+      await (
+        await page.request.post(`${url}/rpc/${method}`, { data: { json } })
+      ).json()
+    ).json;
+  const node = await rpc("computer/node");
+  const before = await rpc("computer/list");
   await page.getByRole("button", { name: "用户菜单", exact: true }).click();
   await page.getByRole("menuitem", { name: "设置", exact: true }).click();
   const settings = page.getByRole("main", { name: "设置", exact: true });
   await settings
-    .getByRole("group", { name: "工作电脑", exact: true })
+    .getByRole("group", { name: "电脑", exact: true })
     .getByRole("button", { name: "打开", exact: true })
     .click();
-  const computers = settings
-    .getByRole("region", {
-      name: "工作电脑",
-      exact: true,
-    })
-    .last();
   await expect(
-    computers.getByRole("group", { name: "工具访问", exact: true }),
+    settings.getByRole("combobox", { name: "新机器人使用" }),
   ).toHaveCount(0);
-  const defaults = computers.getByRole("combobox", {
-    name: "新机器人使用",
-    exact: true,
-  });
-  await defaults.click();
-  await page.getByRole("option", { name: "服务所在电脑", exact: true }).click();
-  await expect(defaults).toContainText("服务所在电脑");
-  const created = await (
-    await page.request.post(`${url}/rpc/bots/create`, {
-      data: { json: { name: "Writer", requestId: crypto.randomUUID() } },
-    })
-  ).json();
-  await defaults.click();
-  await page.getByRole("option", { name: "不分配电脑", exact: true }).click();
-  await expect(defaults).toContainText("不分配电脑");
-  const after = await (
-    await page.request.post(`${url}/rpc/computer/list`, { data: { json: {} } })
-  ).json();
-  for (const [id, binding] of Object.entries(before.json.bindings))
-    expect(after.json.bindings[id]).toEqual(binding);
-  expect(after.json.bindings[String(created.json.id)].computerId).toBe(
-    "process",
-  );
-  expect(after.json.defaultId).toBeNull();
-  await computers.getByRole("button", { name: /服务所在电脑.*机器人/ }).click();
-  const details = page.getByRole("dialog", {
-    name: "服务所在电脑",
-    exact: true,
-  });
+  await settings.getByLabel("电脑名称", { exact: true }).fill("ASUS");
+  await settings.getByRole("button", { name: "保存", exact: true }).click();
+  await expect.poll(async () => (await rpc("computer/node")).name).toBe("ASUS");
+  expect((await rpc("computer/node")).id).toBe(node.id);
   await expect(
-    details.getByRole("group", { name: "网络", exact: true }),
-  ).toBeVisible();
-  await expect(details.locator("summary")).toHaveCount(0);
-  await expect(
-    details.getByRole("group", { name: "使用此电脑的机器人", exact: true }),
-  ).toContainText("Domos");
-  await details.getByRole("button", { name: "撤销授权", exact: true }).click();
+    settings.locator(".settings-group[aria-label=电脑]"),
+  ).toHaveAttribute("aria-busy", "false");
+  const created = await rpc("bots/create", {
+    name: "Writer",
+    requestId: crypto.randomUUID(),
+  });
+  const after = await rpc("computer/list");
+  for (const [id, binding] of Object.entries(before.bindings))
+    expect(after.bindings[id]).toEqual(binding);
+  expect(after.bindings[String(created.id)].computerId).toBe("process");
+  await settings.getByRole("button", { name: "撤销授权", exact: true }).click();
   const confirm = page.getByRole("dialog", { name: "撤销授权", exact: true });
   await expect(confirm).toContainText("Domos");
   await confirm.getByRole("button", { name: "取消", exact: true }).click();
   for (const theme of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await page.setViewportSize({ width: 390, height: 900 });
-    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     await expect
       .poll(() =>
-        details.evaluate((node) =>
-          [...node.querySelectorAll(".setting-control")].every(
-            (control) => control.scrollWidth <= control.clientWidth,
-          ),
-        ),
+        settings.evaluate((node) => node.scrollWidth <= node.clientWidth),
       )
       .toBe(true);
-    await page.screenshot({
-      path: info.outputPath(`work-computer-${theme}.png`),
-      animations: "disabled",
-    });
+    await page.screenshot({ path: info.outputPath(`computer-${theme}.png`) });
   }
-  await details.getByRole("button", { name: "关闭弹窗", exact: true }).click();
-  for (const width of [390, 1360]) {
-    await page.setViewportSize({ width, height: 900 });
-    await expect
-      .poll(() =>
-        computers.evaluate((node) => node.scrollWidth <= node.clientWidth),
-      )
-      .toBe(true);
-    await page.screenshot({
-      path: info.outputPath(`work-computers-${width}.png`),
-    });
-  }
-});
-
-test("computer selection reflects authorization, availability and Harness requirements", async ({
-  page,
-}) => {
-  await page.goto(url);
-  await page.route("**/rpc/engines/get", async (route) => {
-    const response = await route.fetch();
-    const body = await response.json();
-    body.json.config.provider = "codex";
-    await route.fulfill({ response, json: body });
-  });
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await settings.getByRole("button", { name: "返回对话", exact: true }).click();
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   await page.getByRole("tab", { name: "Computer", exact: true }).click();
   await page.getByRole("button", { name: "电脑设置", exact: true }).click();
-  await page
-    .getByRole("combobox", { name: "此 Bot 使用的电脑", exact: true })
-    .click();
+  const project = join(directory, "project");
+  await mkdir(project);
+  await writeFile(join(project, "source.txt"), "project");
+  await page.getByRole("button", { name: "更改目录", exact: true }).click();
+  const picker = page.getByRole("dialog", {
+    name: "选择工作目录",
+    exact: true,
+  });
+  await picker.getByLabel("目录路径", { exact: true }).fill(project);
+  await picker.getByRole("button", { name: "使用此目录", exact: true }).click();
+  await expect(picker).toBeHidden();
   await expect(
-    page.getByRole("option", { name: "仅聊天", exact: true }),
-  ).toHaveCount(0);
-  await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "用户菜单", exact: true }).click();
-  await page.getByRole("menuitem", { name: "设置", exact: true }).click();
-  const settings = page.getByRole("main", { name: "设置", exact: true });
-  await settings
-    .getByRole("group", { name: "工作电脑", exact: true })
-    .getByRole("button", { name: "打开", exact: true })
-    .click();
-  const catalog = (
-    await (
-      await page.request.post(`${url}/rpc/computer/list`, {
-        data: { json: {} },
+    page.getByRole("complementary", { name: "Domos的详情", exact: true }),
+  ).toContainText(project);
+  await page.reload();
+  expect(
+    (
+      await rpc("computer/get", {
+        botId: Number(Object.keys(before.bindings)[0]),
       })
-    ).json()
-  ).json;
-  for (const state of ["unavailable", "unauthorized", "empty"]) {
-    await page.route("**/rpc/computer/list", (route) =>
-      route.fulfill({
-        json: {
-          json: {
-            ...catalog,
-            items:
-              state === "empty"
-                ? []
-                : catalog.items.map((item: object) => ({
-                    ...item,
-                    ...(state === "unauthorized"
-                      ? { authorized: false }
-                      : { state, error: "" }),
-                  })),
-          },
-        },
-      }),
-    );
-    await settings
-      .getByRole("button", { name: "刷新电脑状态", exact: true })
-      .click();
-    if (state === "empty")
-      await expect(settings.getByRole("status")).toHaveText("还没有工作电脑。");
-    else
-      await expect(
-        settings.getByRole("button", {
-          name: new RegExp(
-            `服务所在电脑.*${state === "unauthorized" ? "待授权" : "连接不可用"}`,
-          ),
-        }),
-      ).toBeVisible();
-    await page.unroute("**/rpc/computer/list");
-  }
+    ).directory,
+  ).toBe(project);
 });
 
-test("remote Docker setup submits the selected browser network policy", async ({
+test("local container setup submits the selected browser network policy", async ({
   page,
 }, testInfo) => {
   await page.goto(url);
@@ -1121,14 +1037,15 @@ test("remote Docker setup submits the selected browser network policy", async ({
   await page.getByRole("menuitem", { name: "设置", exact: true }).click();
   const settings = page.getByRole("main", { name: "设置", exact: true });
   await settings
-    .getByRole("group", { name: "工作电脑", exact: true })
+    .getByRole("group", { name: "电脑", exact: true })
     .getByRole("button", { name: "打开", exact: true })
     .click();
+  await settings.locator(".settings-group > .disclosure > summary").click();
   await settings
-    .getByRole("button", { name: "添加工作电脑", exact: true })
+    .getByRole("button", { name: "添加容器环境", exact: true })
     .click();
   const dialog = page.getByRole("dialog", {
-    name: "添加工作电脑",
+    name: "添加容器环境",
     exact: true,
   });
   const advanced = dialog.locator(".disclosure").filter({
@@ -1145,14 +1062,9 @@ test("remote Docker setup submits the selected browser network policy", async ({
   await expect(advanced).not.toHaveAttribute("open");
   await heading.click();
   await expect(heading).toHaveCSS("list-style-type", "none");
-  await dialog.getByRole("combobox", { name: "Docker 位置" }).click();
-  await page.getByRole("option", { name: "远程 Docker", exact: true }).click();
-  await dialog
-    .getByLabel("SSH 主机", { exact: true })
-    .fill("work.example.test");
-  await dialog
-    .getByLabel("主机密钥文件路径", { exact: true })
-    .fill("/home/user/.ssh/known_hosts");
+  await expect(
+    dialog.getByRole("combobox", { name: "Docker 位置" }),
+  ).toHaveCount(0);
   await expect(
     dialog.getByRole("combobox", { name: "网络策略" }),
   ).toContainText("关闭外部网络");
@@ -1183,14 +1095,12 @@ test("remote Docker setup submits the selected browser network policy", async ({
     submitted.resolve(route.request().postDataJSON());
     await route.abort();
   });
-  await dialog.getByRole("button", { name: "添加电脑", exact: true }).click();
+  await dialog.getByRole("button", { name: "添加环境", exact: true }).click();
   expect(JSON.stringify(await submitted.promise)).toContain('"network":"web"');
   expect(JSON.stringify(await submitted.promise)).toContain(
     '"proxyImage":"domos-egress:1"',
   );
-  expect(JSON.stringify(await submitted.promise)).toContain(
-    '"host":"work.example.test"',
-  );
+  expect(JSON.stringify(await submitted.promise)).not.toContain('"ssh"');
   await expect(dialog.getByRole("alert")).toBeVisible();
 });
 
@@ -1550,7 +1460,7 @@ test("workspace empty states stay centered at every panel width", async ({
     await page.getByRole("tab", { name: "Computer", exact: true }).click();
     if (state === "loading")
       await expect(
-        page.getByRole("heading", { name: "正在连接工作电脑…" }),
+        page.getByRole("heading", { name: "正在连接电脑…" }),
       ).toBeVisible();
     else if (state === "failed")
       await expect(
@@ -2280,7 +2190,7 @@ test("settings stay readable in both themes and compact layouts", async ({
     settings.getByRole("tab", { name: "通用", exact: true }),
   ).toBeVisible();
   await expect(
-    settings.getByRole("tab", { name: "工作电脑", exact: true }),
+    settings.getByRole("tab", { name: "电脑", exact: true }),
   ).toHaveCount(0);
   await search.fill("不存在的设置");
   await expect(settings.getByRole("status")).toHaveText("没有匹配的设置");
@@ -2294,31 +2204,33 @@ test("settings stay readable in both themes and compact layouts", async ({
   ).toBeFocused();
   await expect(search).toHaveValue("");
   await settings
-    .getByRole("group", { name: "工作电脑", exact: true })
+    .getByRole("group", { name: "电脑", exact: true })
     .getByRole("button", { name: "打开", exact: true })
     .click();
+  await settings.locator(".settings-group > .disclosure > summary").click();
   await settings
-    .getByRole("button", { name: "添加工作电脑", exact: true })
+    .getByRole("button", { name: "添加容器环境", exact: true })
     .click();
   const add = page.getByRole("dialog", {
-    name: "添加工作电脑",
+    name: "添加容器环境",
     exact: true,
   });
   let additions = 0;
   page.on("request", (request) => {
     if (request.url().endsWith("/rpc/computer/add")) additions++;
   });
-  await add.getByLabel("电脑名称", { exact: true }).fill("尚未添加");
+  await add.getByLabel("环境名称", { exact: true }).fill("尚未添加");
   await add.getByRole("button", { name: "取消", exact: true }).click();
   await settings.getByRole("tab", { name: "通用", exact: true }).click();
   await settings
-    .getByRole("group", { name: "工作电脑", exact: true })
+    .getByRole("group", { name: "电脑", exact: true })
     .getByRole("button", { name: "打开", exact: true })
     .click();
+
   await settings
-    .getByRole("button", { name: "添加工作电脑", exact: true })
+    .getByRole("button", { name: "添加容器环境", exact: true })
     .click();
-  await expect(add.getByLabel("电脑名称", { exact: true })).toHaveValue(
+  await expect(add.getByLabel("环境名称", { exact: true })).toHaveValue(
     "尚未添加",
   );
   await page.keyboard.press("Escape");
@@ -2395,20 +2307,12 @@ test("empty chats retain their creation time and compact controls across layouts
   await page.getByRole("button", { name: "电脑设置", exact: true }).click();
   const details = page.getByRole("complementary", { name: "Domos的详情" });
   await expect(
-    details.getByRole("combobox", { name: "此 Bot 使用的电脑", exact: true }),
+    details.getByRole("button", { name: "更改目录", exact: true }),
   ).toBeVisible();
-  await details
-    .getByRole("button", { name: "准备新电脑", exact: true })
-    .click();
-  const environment = page.getByRole("dialog", {
-    name: "Bot 在哪里工作？",
-    exact: true,
-  });
+  await details.locator("summary", { hasText: "高级设置" }).click();
   await expect(
-    environment.getByRole("radiogroup", { name: "此 Bot 的工作环境" }),
+    details.getByRole("combobox", { name: "执行环境", exact: true }),
   ).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(environment).toBeHidden();
   await details.getByRole("button", { name: "返回", exact: true }).click();
   await details.getByRole("tab", { name: "Bot", exact: true }).click();
   await details.getByRole("button", { name: "编辑", exact: true }).click();
@@ -2438,7 +2342,6 @@ test("contact rows keep their density and searchable previews across selections"
     .getByRole("textbox", { name: "名字", exact: true })
     .fill("研究助手");
   await create.getByRole("button", { name: "创建", exact: true }).click();
-  await create.getByRole("button", { name: "授权并继续", exact: true }).click();
   const modelDialog = create;
   await modelDialog
     .getByRole("combobox", { name: "模型", exact: true })
@@ -2469,7 +2372,6 @@ test("contact rows keep their density and searchable previews across selections"
     .getByRole("textbox", { name: "名字", exact: true })
     .fill(longName);
   await create.getByRole("button", { name: "创建", exact: true }).click();
-  await create.getByRole("button", { name: "授权并继续", exact: true }).click();
   await modelDialog
     .getByRole("combobox", { name: "模型", exact: true })
     .click();
@@ -2653,8 +2555,9 @@ test("control geometry and interaction states stay consistent", async ({
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   await page.getByRole("tab", { name: "Computer", exact: true }).click();
   await page.getByRole("button", { name: "电脑设置", exact: true }).click();
+  await details.locator("summary", { hasText: "高级设置" }).click();
   const select = details.getByRole("combobox", {
-    name: "此 Bot 使用的电脑",
+    name: "执行环境",
     exact: true,
   });
   expect((await select.boundingBox())?.height).toBe(inputHeight);
@@ -3471,7 +3374,6 @@ test("returning to a Bot shows retained messages and draft while its stream is d
   const create = page.getByRole("dialog", { name: "新建 Bot", exact: true });
   await create.getByRole("textbox", { name: "名字", exact: true }).fill("乙");
   await create.getByRole("button", { name: "创建", exact: true }).click();
-  await create.getByRole("button", { name: "授权并继续", exact: true }).click();
   await create.getByRole("combobox", { name: "模型", exact: true }).click();
   await page
     .getByRole("option", { name: "Pi · 测试模型一", exact: true })

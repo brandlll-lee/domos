@@ -8,7 +8,6 @@ import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { useRef, useState } from "react";
 import { client } from "../../client.ts";
 import { rejectionMessage } from "../chat/request-error.ts";
-import { ComputerLocation } from "../computer/location.tsx";
 import { AvatarEditor } from "./avatar-editor.tsx";
 import { ModelSetup } from "./details/model.tsx";
 
@@ -22,7 +21,7 @@ export function CreateBot({ onCreated }: { onCreated: (bot: Bot) => void }) {
         if (!saving) setOpen(value);
       }}
       title="新建 Bot"
-      description="取个名字，再选择工作电脑和模型。"
+      description="取个名字，再选择模型。"
       trigger={
         <Button
           variant="ghost"
@@ -60,36 +59,18 @@ function BotForm({
   onCancel: () => void;
   onCreated: (bot: Bot) => void;
 }) {
-  const [computerReady, setComputerReady] = useState(false);
   const [name, setName] = useState("");
   const [avatar, setAvatar] = useState(characterSeed);
   const [error, setError] = useState<string | null>(null);
-  const [created, setCreated] = useState<{
-    bot: Bot;
-    setup: Awaited<ReturnType<typeof client.computer.setup>>;
-  }>();
+  const [created, setCreated] = useState<Bot>();
   const request = useRef<{ id: string; payload: string } | null>(null);
   if (created)
     return (
-      <div className="detail-stack">
-        <h2>{computerReady ? "选择对话模型" : "Bot 在哪里工作？"}</h2>
-        <div hidden={computerReady}>
-          <ComputerLocation
-            botId={created.bot.id}
-            {...created.setup}
-            onBusyChange={onSavingChange}
-            onReady={() => setComputerReady(true)}
-          />
-        </div>
-        {computerReady && (
-          <ModelSetup
-            botId={created.bot.id}
-            onBusyChange={onSavingChange}
-            onBack={() => setComputerReady(false)}
-            onReady={() => onCreated(created.bot)}
-          />
-        )}
-      </div>
+      <ModelSetup
+        botId={created.id}
+        onBusyChange={onSavingChange}
+        onReady={() => onCreated(created)}
+      />
     );
   return (
     <form
@@ -107,13 +88,11 @@ function BotForm({
         onSavingChange(true);
         setError(null);
         try {
-          const setup = await client.computer.setup();
           const bot = await client.bots.create({
             ...input,
-            computerId: null,
             requestId: request.current.id,
           });
-          setCreated({ bot, setup });
+          setCreated(bot);
         } catch (cause) {
           setError(
             rejectionMessage(cause) ?? "创建未确认。请重试，系统会核对原请求。",

@@ -1,7 +1,14 @@
 import { EventEmitter, on } from "node:events";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import {
+  access,
+  constants,
+  mkdir,
+  readFile,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { arch, platform, release } from "node:os";
-import { join, posix } from "node:path";
+import { isAbsolute, join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Context } from "@earendil-works/chord/context";
 import { getOrThrow } from "@earendil-works/pi-durable/env";
@@ -41,7 +48,7 @@ export class Computer {
   readonly config: RuntimeConfig;
   private readonly driver: ComputerDriver | undefined;
   private readonly environments = new Map<
-    number,
+    string,
     Promise<Workspace | SandboxWorkspace>
   >();
   private readonly connections = new Map<number, Connection>();
@@ -78,18 +85,18 @@ export class Computer {
     }
   }
 
-  async workspace(botId: number, context: Context) {
+  async workspace(botId: number, context: Context, directory?: string) {
     if (this.changing)
       throw new Error("工作电脑正在切换运行状态。请稍后重试。");
     if (!Number.isSafeInteger(botId) || botId < 1)
       throw new Error("Invalid Bot ID");
-    const existing = this.environments.get(botId);
+    const key = JSON.stringify([botId, directory]);
+    const existing = this.environments.get(key);
     if (existing) return existing;
-    const created = this.createWorkspace(botId, context);
-    this.environments.set(botId, created);
+    const created = this.createWorkspace(botId, context, directory);
+    this.environments.set(key, created);
     void created.catch(() => {
-      if (this.environments.get(botId) === created)
-        this.environments.delete(botId);
+      if (this.environments.get(key) === created) this.environments.delete(key);
     });
     return created;
   }
@@ -104,8 +111,9 @@ export class Computer {
       signal: AbortSignal,
     ) => Promise<ProductResult>,
     context: Context,
+    directory?: string,
   ) {
-    const workspace = await this.workspace(botId, context);
+    const workspace = await this.workspace(botId, context, directory);
     const command = this.driver
       ? await this.driver.process?.(botId)
       : [
@@ -128,15 +136,25 @@ export class Computer {
     return worker;
   }
 
-  private async createWorkspace(botId: number, context: Context) {
+  private async createWorkspace(
+    botId: number,
+    context: Context,
+    directory?: string,
+  ) {
     if (!this.driver) {
-      const cwd = join(
-        this.config.dataDir,
-        "agent.sqlite.files",
-        String(botId),
-        "workspace",
-      );
-      await mkdir(cwd, { recursive: true });
+      const cwd =
+        directory ??
+        join(
+          this.config.dataDir,
+          "agent.sqlite.files",
+          String(botId),
+          "workspace",
+        );
+      if (directory) {
+        if (!isAbsolute(directory) || !(await stat(directory)).isDirectory())
+          throw new Error("请选择已存在的绝对目录。");
+        await access(directory, constants.R_OK | constants.W_OK);
+      } else await mkdir(cwd, { recursive: true });
       const env = new Workspace({ cwd });
       return env;
     }
@@ -162,11 +180,17 @@ export class Computer {
       {
         connection,
         id: `domos:${this.driver.config.id}`,
-        cwd: posix.join(this.driver.directory, "bots", String(botId)),
+        cwd:
+          directory ?? posix.join(this.driver.directory, "bots", String(botId)),
       },
       remote.tmpdir,
     );
-    getOrThrow(await env.createDir(env.cwd, { recursive: true }, context));
+    if (directory) {
+      if (!posix.isAbsolute(directory)) throw new Error("请选择绝对目录。");
+      const info = getOrThrow(await env.fileInfo(directory, context));
+      if (info.kind !== "directory") throw new Error("请选择已存在的目录。");
+    } else
+      getOrThrow(await env.createDir(env.cwd, { recursive: true }, context));
     const timeout = this.driver.config.timeoutSeconds;
     const exec = env.exec.bind(env);
     env.exec = (command, options, ctx) => {

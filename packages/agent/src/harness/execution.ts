@@ -528,6 +528,8 @@ export class EngineExecution {
               inherited,
             ])
           : account,
+        (await this.computers.binding(runtime.conversationId, context))
+          .directory,
       );
       if (
         !memoryReview &&

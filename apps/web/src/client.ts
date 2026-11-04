@@ -19,3 +19,10 @@ const link = new RPCLink<ClientRetryPluginContext>({
 
 export const client: RouterClient<AppRouter, ClientRetryPluginContext> =
   createORPCClient(link);
+
+export let computerScope = window.location.origin;
+export function selectComputer(id: string) {
+  if (computerScope === id) return;
+  computerScope = id;
+  window.dispatchEvent(new Event("domos:computer"));
+}

@@ -66,6 +66,7 @@ export function clearChatState(ids?: Set<number>) {
   for (const id of retained.keys()) if (!ids?.has(id)) retained.delete(id);
 }
 window.addEventListener("domos:pair", () => clearChatState());
+window.addEventListener("domos:computer", () => clearChatState());
 export function prefetchChat(botId: number) {
   if (retained.has(botId)) return;
   const store = chatState(botId);

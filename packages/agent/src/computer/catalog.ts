@@ -1,5 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { EventEmitter, on } from "node:events";
-import { platform } from "node:os";
+import { readdir } from "node:fs/promises";
+import { hostname, platform } from "node:os";
+import { dirname, isAbsolute, join, posix } from "node:path";
 import { characterIdentity } from "@domos/ui/characters";
 import type { Context } from "@earendil-works/chord/context";
 import type { CredentialStore } from "@earendil-works/pi-ai";
@@ -12,6 +15,7 @@ import {
   type Tx,
 } from "@earendil-works/pi-durable";
 import { BotDirectory, type Bots } from "../bots.ts";
+import { EngineDoc } from "../harness/state.ts";
 import type {
   EngineProcess,
   ProductResult,
@@ -43,6 +47,7 @@ export type ComputerView = ComputerStatus & {
   capabilities: { commands: boolean; files: boolean; desktop: false };
   scope?: ComputerRecord["scope"];
   busy: boolean;
+  local: boolean;
 };
 
 export class Computers {
@@ -93,13 +98,20 @@ export class Computers {
     this.harness = harness;
     this.preparation = new ComputerPreparation(harness, this);
     this.assistance = new ComputerAssistance(harness, credentials);
-    if (await harness.snapshot(ComputersDoc, context)) return;
+    if (await harness.snapshot(ComputersDoc, context)) {
+      await harness.commit(async (tx) => {
+        const doc = await tx.doc(ComputersDoc);
+        doc.node ??= { id: randomUUID(), name: hostname() };
+      }, context);
+      return;
+    }
     if (legacy) await new Computer(this.config).bind();
     const contacts = await bots.list(context);
     const configured = this.config.computer;
     const id = configured.kind === "process" ? "process" : configured.id;
     await harness.commit(async (tx) => {
       const doc = await tx.doc(ComputersDoc);
+      doc.node = { id: randomUUID(), name: hostname() };
       doc.attachmentComputerId = legacy ? id : null;
       doc.items.push({
         id: "process",
@@ -115,17 +127,32 @@ export class Computers {
           authorized: true,
         });
       for (const bot of contacts)
-        await this.attach(tx, bot.id, legacy ? id : null);
+        await this.attach(tx, bot.id, legacy ? id : undefined, legacy);
     }, context);
   }
 
-  async attach(tx: Tx, botId: number, computerId?: string | null) {
+  async attach(
+    tx: Tx,
+    botId: number,
+    computerId?: string | null,
+    migrating = false,
+  ) {
     const doc = await tx.doc(ComputersDoc);
-    const id = computerId === undefined ? doc.defaultId : computerId;
+    const id = computerId === undefined ? "process" : computerId;
     const item = id === null ? undefined : requireComputer(doc.items, id);
+    if (
+      !migrating &&
+      item &&
+      (item.config.kind === "controller" ||
+        (item.config.kind === "docker" && item.config.ssh))
+    )
+      throw new WorkError(
+        "BAD_REQUEST",
+        "请连接目标电脑上的 Domos，再创建 Bot。",
+      );
     if (id && this.changing.has(id))
       throw new WorkError("CONFLICT", "工作电脑正在操作中。");
-    if (item && !item.authorized)
+    if (computerId !== undefined && item && !item.authorized)
       throw new WorkError("BAD_REQUEST", "请先授权这台电脑。");
     if (item?.scope?.kind === "dedicated" && item.scope.botId !== botId)
       throw new WorkError("BAD_REQUEST", "这台独立电脑属于另一个 Bot。");
@@ -135,6 +162,17 @@ export class Computers {
       requestId: "",
     };
     await this.configure(tx, botId, item);
+  }
+
+  async node(context: Context, name?: string) {
+    if (name !== undefined)
+      await this.harness.commit(async (tx) => {
+        const doc = await tx.doc(ComputersDoc);
+        if (doc.node) doc.node.name = requiredText(name, 80);
+      }, context);
+    const doc = await this.harness.snapshot(ComputersDoc, context);
+    if (!doc?.node) throw new WorkError("NOT_FOUND", "电脑信息尚未初始化。");
+    return { ...doc.node, state: "running" as const };
   }
 
   private configure(tx: Tx, botId: number, item?: ComputerRecord) {
@@ -206,9 +244,12 @@ export class Computers {
       name:
         item.config.kind === "process"
           ? this.config.deployment === "container"
-            ? "服务所在容器"
-            : "服务所在电脑"
+            ? "应用容器"
+            : "此电脑"
           : item.name,
+      local:
+        item.config.kind === "process" ||
+        (item.config.kind === "docker" && !item.config.ssh),
       authorized: item.authorized,
       scope: item.scope,
       busy: this.changing.has(item.id),
@@ -231,13 +272,18 @@ export class Computers {
       binding.computerId === null
         ? undefined
         : requireComputer(doc?.items ?? [], binding.computerId);
-    return { ...binding, computer: item ? await this.view(item) : null };
+    return {
+      ...binding,
+      directory: binding.directory ?? null,
+      computer: item ? await this.view(item) : null,
+    };
   }
 
   async workspace(
     botId: number,
     context: Context,
     read: DocumentReader = this.harness,
+    directory?: string | null,
   ) {
     const doc = await read.snapshot(ComputersDoc, context);
     const id = doc?.bindings[String(botId)]?.computerId;
@@ -248,12 +294,20 @@ export class Computers {
     if (item.scope) await this.ensureReady(id, context);
     if (this.changing.has(id))
       throw new WorkError("CONFLICT", "工作电脑正在操作中。");
-    return this.target(item).workspace(botId, context);
+    return this.target(item).workspace(
+      botId,
+      context,
+      directory === null
+        ? undefined
+        : (directory ?? doc?.bindings[String(botId)]?.directory),
+    );
   }
 
   async environment(botId: number, context: Context, read: DocumentReader) {
     const doc = await read.snapshot(ComputersDoc, context);
-    if (!doc?.bindings[String(botId)]?.computerId) return undefined;
+    const id = doc?.bindings[String(botId)]?.computerId;
+    if (!id || !requireComputer(doc?.items ?? [], id).authorized)
+      return undefined;
     return this.workspace(botId, context, read);
   }
 
@@ -277,7 +331,13 @@ export class Computers {
         if (!id) throw new WorkError("BAD_REQUEST", "请先选择工作电脑。");
         const worker = await this.target(
           requireComputer(doc?.items ?? [], id),
-        ).process(botId, tools, invoke, context);
+        ).process(
+          botId,
+          tools,
+          invoke,
+          context,
+          doc?.bindings[String(botId)]?.directory,
+        );
         ready.resolve(worker);
         await worker.closed;
       },
@@ -338,6 +398,7 @@ export class Computers {
       [],
       async () => ({ content: [], isError: true }),
       context,
+      doc?.bindings[String(botId)]?.directory,
     );
   }
 
@@ -439,11 +500,101 @@ export class Computers {
       const previous = doc.bindings[String(botId)];
       if (previous?.requestId === input.requestId) return;
       requireRevision(previous?.revision ?? 0, input.revision);
+      if (input.computerId && input.computerId !== previous?.computerId) {
+        const target = requireComputer(doc.items, input.computerId).config;
+        if (
+          target.kind === "controller" ||
+          (target.kind === "docker" && target.ssh)
+        )
+          throw new WorkError(
+            "BAD_REQUEST",
+            "请连接目标电脑上的 Domos，再创建 Bot。",
+          );
+      }
       await this.idle(tx, botId);
-      await this.attach(tx, botId, input.computerId);
+      await this.attach(
+        tx,
+        botId,
+        input.computerId,
+        input.computerId === previous?.computerId,
+      );
       doc.bindings[String(botId)] = { ...input, revision: input.revision + 1 };
     }, context);
     return this.binding(botId, context);
+  }
+
+  async directory(
+    input: {
+      botId: number;
+      directory: string | null;
+      revision: number;
+      requestId: string;
+    },
+    context: Context,
+  ) {
+    const binding = await this.binding(input.botId, context);
+    if (binding.requestId === input.requestId) return binding;
+    requireRevision(binding.revision, input.revision);
+    if (!binding.computer?.authorized)
+      throw new WorkError("BAD_REQUEST", "请先授权文件与命令访问。");
+    const doc = await this.harness.snapshot(ComputersDoc, context);
+    const target = this.target(
+      requireComputer(doc?.items ?? [], binding.computer.id),
+    );
+    const directory =
+      input.directory === null
+        ? undefined
+        : requiredText(input.directory, 4096);
+    await target.workspace(input.botId, context, directory);
+    await this.harness.commit(async (tx) => {
+      const current = (await tx.doc(ComputersDoc)).bindings[
+        String(input.botId)
+      ];
+      if (!current) throw new WorkError("NOT_FOUND", "Bot 环境不存在。");
+      requireRevision(current.revision, input.revision);
+      await this.idle(tx, input.botId);
+      current.directory = directory;
+      current.requestId = input.requestId;
+      current.revision++;
+      const engine = await tx.doc(EngineDoc, input.botId as ConversationId);
+      engine.prepared = false;
+      engine.runtime = undefined;
+      engine.prompt = null;
+      engine.revision++;
+    }, context);
+    return this.binding(input.botId, context);
+  }
+
+  async directories(botId: number, path: string | undefined, context: Context) {
+    const workspace = await this.workspace(botId, context);
+    const binding = await this.binding(botId, context);
+    const current = path ?? workspace.cwd;
+    if (binding.computer?.kind === "process") {
+      if (!isAbsolute(current))
+        throw new WorkError("BAD_REQUEST", "请输入绝对目录。");
+      const entries = await readdir(current, { withFileTypes: true });
+      return {
+        path: current,
+        parent: dirname(current),
+        items: entries
+          .filter((item) => item.isDirectory())
+          .map((item) => ({ name: item.name, path: join(current, item.name) }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      };
+    }
+    const entries = await workspace.listDir(
+      await workspace.path(current),
+      context,
+    );
+    if (!entries.ok) throw entries.error;
+    return {
+      path: current,
+      parent: posix.dirname(current),
+      items: entries.value
+        .filter((item) => item.kind === "directory")
+        .map(({ name, path }) => ({ name, path }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    };
   }
 
   async approval(
@@ -466,6 +617,14 @@ export class Computers {
 
   async add(input: { name: string; config: ComputerConfig }, context: Context) {
     const config = computerSchema.parse(input.config);
+    if (
+      config.kind === "controller" ||
+      (config.kind === "docker" && config.ssh)
+    )
+      throw new WorkError(
+        "BAD_REQUEST",
+        "请连接目标电脑上的 Domos，再创建 Bot。",
+      );
     if (config.kind === "process")
       throw new WorkError("BAD_REQUEST", "本机已在电脑目录中。");
     const item = {

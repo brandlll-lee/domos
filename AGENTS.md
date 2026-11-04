@@ -1,13 +1,14 @@
 # Domos
 
-Domos provides persistent AI companions with memory, tools, and work computers.
+Domos provides persistent AI companions with memory, tools, and computer-owned workspaces.
 Users choose their models and deployment: local, self-hosted, or cloud.
 Pi Durable 1.4.0 stores Bot tasks. Native Harness processes own model loops. Domos owns product capabilities.
 
 ## Architecture and ownership
 
-- The client device, Domos service computer, and Bot work computer are separate roles. They can be on different computers.
-- Commands, files, and desktop actions use the Bot's bound work computer. Do not assume that it is the client or service computer.
+- Each Domos computer owns its Bots, chats, memories, routines, and files. Clients access that computer. Switching computers does not move Bots. Scope client caches and drafts by the persisted computer identity.
+- New Bots use their owning computer and get a persistent personal directory. System tool access still requires authorization. A Bot can select an existing project directory while idle. Native sessions distinguish project directories. Preserve each attachment's source directory.
+- Local Docker containers are advanced execution environments on the owning computer. Commands, files, MCP, browser, and desktop use the same selected environment. Do not create new cross-host bindings. Retain existing remote and container bindings, volumes, files, and accounts until an explicit migration.
 - Domos owns Bot identity, full chat history, memories, and computer permissions. Native Harness accounts use the work computer's OS user and configuration. Preserve retained service credentials during migration.
 - Memory records belong to one Bot unless the user shares them. Keep profile snapshots stable for each Durable task. Route every Harness through the shared memory tools. Background review uses a separate native session and cannot change user-authored records.
 - Durable owns input admission and persistent tasks. Native Harness processes own generation and model context. Adapters coordinate cancellation and recovery through public protocols. Observe uncertain results before more mutations.

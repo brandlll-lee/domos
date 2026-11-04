@@ -26,6 +26,7 @@ test("a durable chat submission reads the stored image and sends its bytes to th
   const computers = {
     preflight: async () => {},
     computerId: async () => "local",
+    binding: async () => ({ directory: null }),
     process: async () => worker,
     tools: { catalog: async () => [], finish: () => {} },
   } as unknown as Computers;
@@ -113,6 +114,7 @@ test.each([false, true])("screenshot delivery: %s", async (deliver) => {
     {
       preflight: async () => {},
       computerId: async () => "local",
+      binding: async () => ({ directory: null }),
       process: async (
         _bot: number,
         _tools: unknown,

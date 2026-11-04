@@ -7,6 +7,7 @@ import { BrainIcon } from "@phosphor-icons/react/dist/csr/Brain";
 import { ClockIcon } from "@phosphor-icons/react/dist/csr/Clock";
 import { CpuIcon } from "@phosphor-icons/react/dist/csr/Cpu";
 import { FilesIcon } from "@phosphor-icons/react/dist/csr/Files";
+import { FolderIcon } from "@phosphor-icons/react/dist/csr/Folder";
 import { LightningIcon } from "@phosphor-icons/react/dist/csr/Lightning";
 import { TerminalWindowIcon } from "@phosphor-icons/react/dist/csr/TerminalWindow";
 import type { ReactNode } from "react";
@@ -72,7 +73,7 @@ export function RootPanel({
                 {
                   value: "auto",
                   label: "自动",
-                  title: "自动批准当前工作电脑上的操作。提问和登录仍需确认。",
+                  title: "自动批准当前环境中的操作。提问和登录仍需确认。",
                 },
               ]}
             />
@@ -80,9 +81,13 @@ export function RootPanel({
         </div>
         <PanelRow
           icon={<CpuIcon />}
-          title="连接与账号"
-          value="工作电脑"
+          title="模型与账号"
           onClick={() => onNavigate("engine")}
+        />
+        <PanelRow
+          icon={<FolderIcon />}
+          title="工作目录与权限"
+          onClick={() => onNavigate("computer")}
         />
       </PanelGroup>
 

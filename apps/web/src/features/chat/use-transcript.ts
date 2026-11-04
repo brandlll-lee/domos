@@ -19,6 +19,7 @@ export function clearTranscriptPositions(ids?: Set<number>) {
   for (const id of positions.keys()) if (!ids?.has(id)) positions.delete(id);
 }
 window.addEventListener("domos:pair", () => positions.clear());
+window.addEventListener("domos:computer", () => positions.clear());
 const pageSize = 120;
 const keyOf = (item: TranscriptItem) => `${item.kind}:${item.id}`;
 const incoming = (item: TranscriptItem) =>

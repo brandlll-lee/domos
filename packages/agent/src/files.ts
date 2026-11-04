@@ -98,12 +98,20 @@ export class Files {
     context: Context,
   ) => Promise<string | null>;
   private readonly environment:
-    | ((botId: number, context: Context) => Promise<WorkEnvironment>)
+    | ((
+        botId: number,
+        context: Context,
+        directory?: string | null,
+      ) => Promise<WorkEnvironment>)
     | undefined;
 
   constructor(
     database: string,
-    environment?: (botId: number, context: Context) => Promise<WorkEnvironment>,
+    environment?: (
+      botId: number,
+      context: Context,
+      directory?: string | null,
+    ) => Promise<WorkEnvironment>,
     target?: (botId: number, context: Context) => Promise<string | null>,
     attachmentComputerId?: (context: Context) => Promise<string | null>,
   ) {
@@ -113,9 +121,13 @@ export class Files {
     this.attachmentComputerId = attachmentComputerId;
   }
 
-  async workspace(botId: number, context = BACKGROUND_CONTEXT) {
-    if (this.environment) return this.environment(botId, context);
-    const cwd = join(this.root, String(botId), "workspace");
+  async workspace(
+    botId: number,
+    context = BACKGROUND_CONTEXT,
+    directory?: string | null,
+  ) {
+    if (this.environment) return this.environment(botId, context, directory);
+    const cwd = directory ?? join(this.root, String(botId), "workspace");
     await mkdir(cwd, { recursive: true });
     return new Workspace({ cwd });
   }
@@ -143,6 +155,7 @@ export class Files {
     computerId?: string,
     source?: EvidenceSource,
     uploadId?: string,
+    workspace?: string,
   ): Promise<Attachment> {
     if (bytes.byteLength > MAX_FILE_BYTES)
       throw new Error("File exceeds 10 MiB");
@@ -151,6 +164,7 @@ export class Files {
       .update("\0")
       .update(bytes)
       .update(computerId ?? "")
+      .update(workspace ?? "")
       .digest("hex");
     const mimeType =
       (await fileTypeFromBuffer(bytes).catch(() => undefined))?.mime ??
@@ -165,6 +179,7 @@ export class Files {
       ...(computerId ? { computerId } : {}),
       ...(source ? { source } : {}),
       ...(uploadId ? { uploadId } : {}),
+      ...(workspace ? { directory: workspace } : {}),
     };
     const directory = this.directory(botId, id);
     await mkdir(directory, { recursive: true });
@@ -232,6 +247,7 @@ export class Files {
         computerId ?? undefined,
         undefined,
         uploadId,
+        workspace.cwd,
       );
     } catch (error) {
       await workspace.remove(path, { force: true }, BACKGROUND_CONTEXT);
@@ -249,10 +265,20 @@ export class Files {
     if (!file?.uploadId) return;
     const computerId = await this.target?.(botId, BACKGROUND_CONTEXT);
     if (!this.target || computerId === file.computerId) {
-      const workspace = await this.workspace(botId);
+      const workspace = await this.workspace(
+        botId,
+        BACKGROUND_CONTEXT,
+        file.directory ?? null,
+      );
+      const path = file.directory
+        ? (file.directory.startsWith("/") ? posix : win32).resolve(
+            file.directory,
+            file.path,
+          )
+        : file.path;
       getOrThrow(
         await workspace.remove(
-          await workspace.path(file.path),
+          await workspace.path(path),
           { force: true },
           BACKGROUND_CONTEXT,
         ),
@@ -327,6 +353,15 @@ export class Files {
       )
     )
       throw new Error("附件属于另一台电脑。请在当前电脑上重新上传。");
+    for (const file of attachments) {
+      const source = await this.metadata(botId, file.id);
+      const directory =
+        source.directory ?? (await this.workspace(botId, context, null)).cwd;
+      file.path = (directory.startsWith("/") ? posix : win32).resolve(
+        directory,
+        source.path,
+      );
+    }
   }
 
   async publish(botId: number, path: string, context: Context) {
@@ -352,6 +387,9 @@ export class Files {
           .replaceAll("\\", "/"),
         bytes.value,
         (await this.target?.(botId, context)) ?? undefined,
+        undefined,
+        undefined,
+        workspace.cwd,
       );
     } finally {
       await reader.value.close(context);

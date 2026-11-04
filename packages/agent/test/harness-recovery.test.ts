@@ -130,6 +130,7 @@ test.each(["completed", "running", "sending"] as const)(
     const computers = {
       preflight: async () => {},
       computerId: async () => "shared",
+      binding: async () => ({ directory: null }),
       process: async () => {
         const worker = new ProtocolProcess();
         workers.push(worker);
@@ -321,9 +322,11 @@ test("switching from embedded Pi imports recent conversation into the first nati
   const workers: ProtocolProcess[] = [];
   let prompt = "";
   let computerId = "shared";
+  let project: string | null = null;
   const execution = new EngineExecution({
     preflight: async () => {},
     computerId: async () => computerId,
+    binding: async () => ({ directory: project }),
     process: async () => {
       const worker = new ProtocolProcess();
       workers.push(worker);
@@ -457,6 +460,25 @@ test("switching from embedded Pi imports recent conversation into the first nati
   ).toBe(true);
   expect(prompt).toContain("Pi completed the blue folder task");
   expect(prompt).toContain("Remember the blue folder");
+  project = "/projects/code";
+  await change("codex", "second-model");
+  expect(
+    workers
+      .at(-1)
+      ?.requests.some((request) => request.method === "thread/start"),
+  ).toBe(true);
+  expect(
+    workers
+      .at(-1)
+      ?.requests.some((request) => request.method === "thread/resume"),
+  ).toBe(false);
+  project = null;
+  await change("codex", "second-model");
+  expect(
+    workers
+      .at(-1)
+      ?.requests.some((request) => request.method === "thread/start"),
+  ).toBe(true);
   computerId = "remote";
   await change("codex", "second-model");
   expect(
@@ -481,6 +503,7 @@ test.each(["tools", "ack", "gap"])(
     const execution = new EngineExecution({
       preflight: async () => {},
       computerId: async () => "shared",
+      binding: async () => ({ directory: null }),
       tools: { catalog: async () => [], finish: () => {} },
       process: async () => {
         const worker = new ProtocolProcess();
@@ -634,6 +657,7 @@ test.each(["view", "stop", "reopen", "queued"])(
         throw new Error("Unexpected execution");
       },
       computerId: async () => "local",
+      binding: async () => ({ directory: null }),
       tools: { catalog: async () => [], finish: () => {} },
     } as unknown as Computers;
     const open = async () => {

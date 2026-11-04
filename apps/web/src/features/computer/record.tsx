@@ -90,14 +90,14 @@ export function ComputerRecord(props: RecordProps) {
   );
 }
 
-function ComputerAccess({ item, bots, busy, error, run }: RecordProps) {
+export function ComputerAccess({ item, bots, busy, error, run }: RecordProps) {
   return (
     <SettingRow
       title="工具访问"
       description={
         item.kind === "process"
-          ? "使用服务所在电脑的命令与文件，权限与服务进程相同。"
-          : "允许已分配的 Bot 使用此电脑的命令与文件。"
+          ? "允许机器人使用这台电脑的文件和命令。权限与 Domos 相同。"
+          : "允许使用此环境的机器人访问命令与文件。"
       }
     >
       {item.authorized ? (

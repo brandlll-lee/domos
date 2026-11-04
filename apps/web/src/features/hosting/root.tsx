@@ -2,6 +2,7 @@ import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
 import { SetupPage } from "@domos/ui/setup";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { client, selectComputer } from "../../client.ts";
 import { Onboarding } from "../onboarding/root.tsx";
 import { SettingsRoot } from "../settings/root.tsx";
 import { Titlebar } from "../shell/titlebar.tsx";
@@ -14,6 +15,7 @@ export function HostingRoot({ children }: { children: ReactNode }) {
   const [state, setState] = useState<
     "loading" | "pair" | "ready" | "standalone"
   >("loading");
+  const [computerId, setComputerId] = useState("");
   const [session, setSession] = useState<Session>();
   const [error, setError] = useState("");
   const [code, setCode] = useState("");
@@ -22,6 +24,9 @@ export function HostingRoot({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     const info = await fetch("/hosting/info");
     if (info.status === 404) {
+      const node = await client.computer.node();
+      selectComputer(node.id);
+      setComputerId(node.id);
       setState("standalone");
       return;
     }
@@ -33,6 +38,9 @@ export function HostingRoot({ children }: { children: ReactNode }) {
     }
     if (!response.ok) throw new Error("无法读取设备状态。");
     const value: Session = await response.json();
+    const node = await client.computer.node();
+    selectComputer(node.id);
+    setComputerId(node.id);
     setSession(value);
     setState("ready");
   }, []);
@@ -48,6 +56,7 @@ export function HostingRoot({ children }: { children: ReactNode }) {
   if (state === "ready" || state === "standalone")
     return (
       <SettingsRoot
+        key={computerId}
         admin={session?.device.scope === "admin" || state === "standalone"}
         deviceId={session?.device.id}
         standalone={state === "standalone"}

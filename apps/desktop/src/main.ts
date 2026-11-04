@@ -51,7 +51,7 @@ function updateMenu() {
         label: "Domos",
         submenu: [
           { label: "打开本机 Domos", click: () => void local().catch(failure) },
-          { label: "连接其他 Domos…", click: () => connection.open() },
+          { label: "连接其他电脑…", click: () => connection.open() },
           ...instances.map((instance) => ({
             label: instance.name,
             type: "radio" as const,

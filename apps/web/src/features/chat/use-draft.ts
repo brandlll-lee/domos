@@ -1,6 +1,7 @@
 import type { Attachment } from "@domos/agent/attachments";
 import type { InputMaterials } from "@domos/agent/materials";
 import { useState, useSyncExternalStore } from "react";
+import { computerScope } from "../../client.ts";
 import { chatCopy } from "./copy.ts";
 import type { SendInput } from "./use-chat.ts";
 
@@ -20,7 +21,15 @@ const storageError = chatCopy.errors.draft;
 
 function load(key: string): { draft: Draft; error: string | null } {
   try {
-    const raw = localStorage.getItem(key);
+    const owner = localStorage.getItem("domos:composer:owner");
+    if (!owner) localStorage.setItem("domos:composer:owner", computerScope);
+    const raw =
+      localStorage.getItem(key) ??
+      (!owner || owner === computerScope
+        ? localStorage.getItem(
+            `domos:composer:v1:${key.slice(key.lastIndexOf(":") + 1)}`,
+          )
+        : null);
     if (!raw) return { draft: empty, error: null };
     const value = JSON.parse(raw);
     if (
@@ -103,12 +112,15 @@ export function clearDraftState(ids?: Set<number>) {
   for (const id of retained.keys()) if (!ids?.has(id)) retained.delete(id);
 }
 window.addEventListener("domos:pair", () => clearDraftState());
+window.addEventListener("domos:computer", () => clearDraftState());
 
 export function useDraft(conversationId: number) {
   const [store] = useState(() => {
     let store = retained.get(conversationId);
     if (!store) {
-      store = createDraft(`domos:composer:v1:${conversationId}`);
+      store = createDraft(
+        `domos:composer:v2:${computerScope}:${conversationId}`,
+      );
       retained.set(conversationId, store);
     }
     return store;

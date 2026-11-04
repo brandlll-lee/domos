@@ -64,6 +64,7 @@ export function clearBotWork(ids?: Set<number>) {
   for (const id of retained.keys()) if (!ids?.has(id)) retained.delete(id);
 }
 window.addEventListener("domos:pair", () => retained.clear());
+window.addEventListener("domos:computer", () => retained.clear());
 export function useBotWork(
   botId: number,
   active: boolean,

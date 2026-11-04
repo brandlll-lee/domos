@@ -604,7 +604,6 @@ async function createBot(
   await expect(dialog.getByRole("textbox")).toHaveCount(1);
   await expect(dialog.getByRole("combobox")).toHaveCount(0);
   await dialog.getByRole("button", { name: "创建", exact: true }).click();
-  await dialog.getByRole("button", { name: "授权并继续", exact: true }).click();
 
   await dialog.getByRole("combobox", { name: "模型", exact: true }).click();
   await page
@@ -1134,7 +1133,6 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
   await create.click();
   await expect(dialog.getByRole("alert")).toContainText("创建未确认");
   await create.click();
-  await dialog.getByRole("button", { name: "授权并继续", exact: true }).click();
   await dialog.getByRole("combobox", { name: "模型", exact: true }).click();
   await page
     .getByRole("option", { name: "Pi · 测试模型一", exact: true })
@@ -1866,6 +1864,33 @@ test("drafts survive reload and reopening in the same browser", async ({
   await expect(reopened.getByLabel("你的消息")).toHaveCount(0);
 });
 
+test("drafts stay on their computer when the same address changes hosts", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "domos:composer:v1:1",
+      JSON.stringify({ text: "原有草稿", attachments: [], pending: null }),
+    );
+  });
+  await page.goto(url);
+  const input = page.getByLabel("消息", { exact: true });
+  await expect(input).toHaveValue("原有草稿");
+  await input.fill("ASUS 草稿");
+  await page.route("**/rpc/computer/node", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.json.id = "another-computer";
+    await route.fulfill({ response, json: body });
+  });
+  await page.reload();
+  await expect(input).toHaveValue("");
+  await input.fill("云电脑草稿");
+  await page.unroute("**/rpc/computer/node");
+  await page.reload();
+  await expect(input).toHaveValue("ASUS 草稿");
+});
+
 test("editing during a send preserves the next draft", async ({ page }) => {
   await page.goto(url);
   await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
@@ -1976,7 +2001,7 @@ test("text contrast, keyboard focus and message scrolling meet the UI contract",
   ).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(
-    details.getByRole("button", { name: /^连接与账号/ }),
+    details.getByRole("button", { name: /^模型与账号/ }),
   ).toBeFocused();
   await expect(
     page.getByRole("button", { name: "添加内容", exact: true }),
@@ -2798,7 +2823,7 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
   ).toBeEnabled();
   const file = await page.evaluate(() => {
     const key = Object.keys(localStorage).find((key) =>
-      key.startsWith("domos:composer:v1:"),
+      key.startsWith("domos:composer:v2:"),
     );
     return JSON.parse(localStorage.getItem(key ?? "") ?? "{}")
       .attachments[0] as { id: string; path: string };
@@ -3036,7 +3061,7 @@ test("delivered images form a gallery with viewer downloads and keyboard navigat
   );
   const files = await page.evaluate(() => {
     const key = Object.keys(localStorage).find((key) =>
-      key.startsWith("domos:composer:v1:"),
+      key.startsWith("domos:composer:v2:"),
     );
     return JSON.parse(localStorage.getItem(key ?? "") ?? "{}").attachments as {
       path: string;
@@ -3961,7 +3986,6 @@ test("Bot identity stays consistent and image previews work in drafts and histor
   expect(seed).toBeTruthy();
   await dialog.getByLabel("名字", { exact: true }).fill("视觉助手");
   await dialog.getByRole("button", { name: "创建", exact: true }).click();
-  await dialog.getByRole("button", { name: "授权并继续", exact: true }).click();
   await dialog.getByRole("combobox", { name: "模型", exact: true }).click();
   await page
     .getByRole("option", { name: "Pi · 测试模型一", exact: true })
@@ -4204,22 +4228,22 @@ test("computer details share live directory status and recover a failed refresh"
   const details = await openDetails(page);
   await chooseDetail(details, "电脑");
   const computer = details.getByRole("region", {
-    name: "工作电脑",
+    name: "工作目录与权限",
     exact: true,
   });
+  await computer.locator("summary", { hasText: "高级设置" }).click();
   await expect(
-    computer.getByRole("combobox", { name: "此 Bot 使用的电脑", exact: true }),
-  ).toContainText("服务所在电脑");
+    computer.getByRole("combobox", { name: "执行环境", exact: true }),
+  ).toContainText("此电脑");
   await expect(computer.getByRole("button", { name: "启动电脑" })).toHaveCount(
     0,
   );
-  await computer
-    .getByRole("button", { name: "管理所有电脑", exact: true })
-    .click();
+  await computer.getByRole("button", { name: "电脑设置", exact: true }).click();
   const settings = page.getByRole("main", {
     name: "设置",
     exact: true,
   });
+  await settings.locator(".settings-group > .disclosure > summary").click();
   await page.route("**/rpc/computer/list", (route) => route.abort("failed"));
   await settings.getByRole("button", { name: "刷新电脑状态" }).click();
   await expect(settings.getByRole("alert")).toBeVisible();
@@ -4231,7 +4255,7 @@ test("computer details share live directory status and recover a failed refresh"
   await chooseAppearance(page, "深色");
   await page.setViewportSize({ width: 375, height: 812 });
   await expect(
-    computer.getByRole("button", { name: "管理所有电脑", exact: true }),
+    computer.getByRole("button", { name: "电脑设置", exact: true }),
   ).toBeInViewport();
   expect(
     await page.evaluate(
@@ -4239,9 +4263,7 @@ test("computer details share live directory status and recover a failed refresh"
     ),
   ).toBe(true);
   await page.screenshot({ path: "test-results/computer-mobile-dark.png" });
-  await computer
-    .getByRole("button", { name: "管理所有电脑", exact: true })
-    .focus();
+  await computer.getByRole("button", { name: "电脑设置", exact: true }).focus();
   await page.keyboard.press("Escape");
   await expect(details).toHaveCount(0);
   await expect(

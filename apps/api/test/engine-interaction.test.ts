@@ -27,6 +27,7 @@ test("Claude questions return distinct answers and use the Bot skill and memory 
     initialize: async () => {},
     preflight: async () => {},
     computerId: async () => "local",
+    binding: async () => ({ directory: null }),
     tools: { catalog: async () => [], finish: () => {} },
     process: async (...args: Parameters<Computers["process"]>) => {
       const process = new ProtocolProcess();

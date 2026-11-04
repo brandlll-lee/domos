@@ -79,7 +79,7 @@ test("first use prepares the default Bot with a computer and model before shared
     await page.getByRole("button", { name: "连接", exact: true }).click();
     const setup = page.getByRole("main", { name: "首次设置" });
     await expect(
-      setup.getByRole("heading", { name: "Bot 在哪里工作？" }),
+      setup.getByRole("heading", { name: "选择对话模型" }),
     ).toBeVisible();
     await expect(
       page.getByRole("textbox", { name: "消息", exact: true }),
@@ -90,43 +90,25 @@ test("first use prepares the default Bot with a computer and model before shared
     await expect(
       setup.getByRole("textbox", { name: "职责与长期指令" }),
     ).toHaveCount(0);
-    await expect(setup).toContainText("第 1 步，共 2 步");
     await capture(page, testInfo, "computer-setup");
     await page.setViewportSize({ width: 390, height: 600 });
-    const next = setup.getByRole("button", { name: "授权并继续", exact: true });
+    const next = setup.getByRole("button", {
+      name: "允许访问并继续",
+      exact: true,
+    });
     await next.scrollIntoViewIfNeeded();
     await expect(next).toBeInViewport();
     await page.setViewportSize({ width: 1360, height: 900 });
-    const service = setup.getByRole("radio", { name: /^使用服务所在电脑/ });
-    const title = await service.locator("strong").boundingBox();
-    const description = await service
-      .locator(".choice-description")
-      .boundingBox();
-    expect(description?.y).toBeGreaterThan(
-      (title?.y ?? 0) + (title?.height ?? 0),
-    );
-    await page.screenshot({
-      path: testInfo.outputPath("work-environment.png"),
-    });
-    await expect(
-      setup.getByRole("heading", { name: "Bot 在哪里工作？" }),
-    ).toBeVisible();
-    await expect(
-      setup.getByRole("radio", { name: /^共用一台隔离电脑/ }),
-    ).toBeDisabled();
-    await expect(
-      setup.getByRole("button", { name: "返回", exact: true }),
-    ).toHaveCount(0);
-    await expect(service).toBeChecked();
-    await page.route("**/rpc/computer/configure", (route) => route.abort());
+    await expect(setup.getByRole("radiogroup")).toHaveCount(0);
+    await page.route("**/rpc/computer/authorize", (route) => route.abort());
     await setup
-      .getByRole("button", { name: "授权并继续", exact: true })
+      .getByRole("button", { name: "允许访问并继续", exact: true })
       .click();
     await expect(setup.getByRole("alert")).toBeVisible();
     await expect(setup).toBeVisible();
-    await page.unroute("**/rpc/computer/configure");
+    await page.unroute("**/rpc/computer/authorize");
     await setup
-      .getByRole("button", { name: "授权并继续", exact: true })
+      .getByRole("button", { name: "允许访问并继续", exact: true })
       .click();
     await expect(
       setup.getByRole("heading", { name: "选择对话模型" }),
@@ -134,11 +116,6 @@ test("first use prepares the default Bot with a computer and model before shared
     await expect(
       setup.getByRole("button", { name: "开始", exact: true }),
     ).toBeDisabled();
-    await setup.getByRole("button", { name: "返回", exact: true }).click();
-    await expect(service).toBeChecked();
-    await setup
-      .getByRole("button", { name: "授权并继续", exact: true })
-      .click();
     await setup.getByRole("combobox", { name: "模型", exact: true }).click();
     await page
       .getByRole("option", { name: "Pi · Faux Model", exact: true })
@@ -176,9 +153,9 @@ test("first use prepares the default Bot with a computer and model before shared
       });
       await create.getByLabel("名字", { exact: true }).fill("资料伙伴");
       await create.getByRole("button", { name: "创建", exact: true }).click();
-      await create
-        .getByRole("button", { name: "授权并继续", exact: true })
-        .click();
+      await expect(
+        create.getByRole("button", { name: "允许访问并继续", exact: true }),
+      ).toHaveCount(0);
       await create.getByRole("combobox", { name: "模型", exact: true }).click();
       await second
         .getByRole("option", { name: "Pi · Faux Model", exact: true })

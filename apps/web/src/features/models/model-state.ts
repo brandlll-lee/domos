@@ -5,6 +5,8 @@ import { client } from "../../client.ts";
 type Profile = Awaited<ReturnType<typeof client.engines.get>>;
 type Connection = Awaited<ReturnType<typeof client.engines.inspect>>;
 const stores = new Map<number, ReturnType<typeof createSettings>>();
+window.addEventListener("domos:computer", () => stores.clear());
+window.addEventListener("domos:pair", () => stores.clear());
 const keyOf = (config: EngineConfig) =>
   JSON.stringify([config.provider, config.command, config.args]);
 

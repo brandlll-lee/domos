@@ -44,7 +44,7 @@ export function GeneralSettings({ admin, deviceId }: SettingsAccess) {
         <section className="settings-group">
           <h3>管理</h3>
           <div className="settings-card">
-            <SettingRow title="工作电脑">
+            <SettingRow title="电脑">
               <Button
                 variant="secondary"
                 size="small"

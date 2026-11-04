@@ -47,7 +47,7 @@ export const sections = {
   },
   computers: {
     primary: false,
-    label: "工作电脑",
+    label: "电脑",
     description: "",
     icon: DesktopIcon,
     render: ({ admin }: SectionProps) => <ComputerSettings admin={admin} />,

@@ -146,6 +146,14 @@ export function hostingApp(options: {
   protectedApp.use("/computer/add", administrator);
   protectedApp.use("/computer/authorize", administrator);
   protectedApp.use("/computer/default", administrator);
+  for (const action of [
+    "rename",
+    "directory",
+    "directories",
+    "prepare",
+    "assign",
+  ])
+    protectedApp.use(`/computer/${action}`, administrator);
   protectedApp.use("/computer/configure", administrator);
   protectedApp.use("/computer/service", administrator);
   protectedApp.use("/computer/browserMode", administrator);

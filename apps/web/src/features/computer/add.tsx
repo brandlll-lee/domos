@@ -9,14 +9,9 @@ import { client } from "../../client.ts";
 
 export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("工作电脑");
+  const [name, setName] = useState("容器环境");
   const [id, setId] = useState(() => `work-${crypto.randomUUID().slice(0, 8)}`);
   const [image, setImage] = useState("domos-workspace:3");
-  const [host, setHost] = useState("");
-  const [user, setUser] = useState("");
-  const [knownHostsFile, setKnownHostsFile] = useState("");
-  const [identityFile, setIdentityFile] = useState("");
-  const [remote, setRemote] = useState(false);
   const [network, setNetwork] = useState<"none" | "web" | "restricted">("none");
   const [proxyImage, setProxyImage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -28,12 +23,12 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
       onOpenChange={(next) => {
         if (!busy) setOpen(next);
       }}
-      title="添加工作电脑"
-      description="使用已准备 Pi 工作镜像的 Docker 主机。远程电脑通过 SSH 接入。"
+      title="添加容器环境"
+      description="在这台电脑上运行隔离容器。需要 Docker 和工作镜像。"
       trigger={
         <Button variant="secondary" size="small">
           <PlusIcon size={14} />
-          添加工作电脑
+          添加容器环境
         </Button>
       }
       footer={
@@ -47,7 +42,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
             取消
           </Button>
           <Button type="submit" form="add-computer" pending={busy}>
-            {busy ? "正在添加…" : "添加电脑"}
+            {busy ? "正在添加…" : "添加环境"}
           </Button>
         </div>
       }
@@ -74,17 +69,6 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
                 memoryMiB: 1024,
                 pids: 256,
                 timeoutSeconds: 120,
-                ...(remote
-                  ? {
-                      ssh: {
-                        host,
-                        knownHostsFile,
-                        hostKeyAlias: id,
-                        ...(user ? { user } : {}),
-                        ...(identityFile ? { identityFile } : {}),
-                      },
-                    }
-                  : {}),
               },
             });
             await onAdded();
@@ -99,7 +83,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
           }
         }}
       >
-        {!remote && desktop && (
+        {desktop && (
           <div className="form-actions">
             <Button
               type="button"
@@ -134,7 +118,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
         )}
         <fieldset className="setup-form" disabled={busy}>
           <TextField
-            label="电脑名称"
+            label="环境名称"
             value={name}
             maxLength={80}
             required
@@ -143,7 +127,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
           <Disclosure label="高级设置">
             <div className="setup-form">
               <TextField
-                label="电脑标识"
+                label="环境标识"
                 value={id}
                 pattern="[a-z0-9][a-z0-9_.-]{0,62}"
                 required
@@ -180,44 +164,6 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
                 <p className="detail-note">
                   Docker 主机需要安装 Domos 出网防火墙规则。
                 </p>
-              )}
-              <div className="field">
-                <span className="field-label">Docker 位置</span>
-                <ChoicePicker
-                  label="Docker 位置"
-                  value={remote ? "remote" : "local"}
-                  onValueChange={(value) => setRemote(value === "remote")}
-                  items={[
-                    { value: "local", label: "本地 Docker" },
-                    { value: "remote", label: "远程 Docker" },
-                  ]}
-                />
-              </div>
-              {remote && (
-                <>
-                  <TextField
-                    label="SSH 主机"
-                    value={host}
-                    required
-                    onValueChange={setHost}
-                  />
-                  <TextField
-                    label="SSH 用户"
-                    value={user}
-                    onValueChange={setUser}
-                  />
-                  <TextField
-                    label="主机密钥文件路径"
-                    value={knownHostsFile}
-                    required
-                    onValueChange={setKnownHostsFile}
-                  />
-                  <TextField
-                    label="身份文件路径"
-                    value={identityFile}
-                    onValueChange={setIdentityFile}
-                  />
-                </>
               )}
             </div>
           </Disclosure>

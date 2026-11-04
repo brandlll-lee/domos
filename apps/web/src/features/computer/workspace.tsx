@@ -62,13 +62,13 @@ export function ComputerWorkspace({
                 )}
                 <h3>
                   {!status
-                    ? "为 Bot 选择一台电脑"
+                    ? "允许机器人访问此电脑"
                     : !status.authorized
                       ? "电脑需要授权"
                       : !state
                         ? error
                           ? "电脑暂时无法连接"
-                          : "正在连接工作电脑…"
+                          : "正在连接电脑…"
                         : item?.enabled
                           ? `${label}尚未就绪`
                           : `${label}尚未启用`}
@@ -86,7 +86,7 @@ export function ComputerWorkspace({
             )}
             {!status?.authorized ? (
               <Button size="small" variant="secondary" onClick={onSettings}>
-                配置工作电脑
+                设置访问权限
               </Button>
             ) : (
               state &&

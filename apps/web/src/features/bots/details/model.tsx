@@ -1,6 +1,7 @@
 import { Button } from "@domos/ui/controls";
-import { useCallback, useState } from "react";
-import type { client } from "../../../client.ts";
+import { useCallback, useEffect, useState } from "react";
+import { client } from "../../../client.ts";
+import { ComputerPermission } from "../../computer/permission.tsx";
 import { ModelSetting } from "../../models/model-setting.tsx";
 
 export function ModelSetup({
@@ -24,6 +25,26 @@ export function ModelSetup({
     },
     [onBusyChange],
   );
+  const [binding, setBinding] =
+    useState<Awaited<ReturnType<typeof client.computer.get>>>();
+  const [error, setError] = useState("");
+  const refresh = useCallback(
+    () => client.computer.get({ botId }).then(setBinding),
+    [botId],
+  );
+  useEffect(() => {
+    void refresh().catch((cause) => setError(cause.message));
+  }, [refresh]);
+  if (!binding)
+    return <p role={error ? "alert" : "status"}>{error || "正在读取配置…"}</p>;
+  if (!binding.computer?.authorized)
+    return (
+      <ComputerPermission
+        botId={botId}
+        onReady={refresh}
+        onBusyChange={onBusyChange}
+      />
+    );
   return (
     <div className="detail-stack">
       <ModelSetting

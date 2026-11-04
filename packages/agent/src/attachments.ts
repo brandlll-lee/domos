@@ -14,6 +14,7 @@ export type Attachment = {
   path: string;
   mimeType?: string;
   computerId?: string;
+  directory?: string;
   source?: EvidenceSource;
   display?: "inline";
 };

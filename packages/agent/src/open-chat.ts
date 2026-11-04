@@ -42,7 +42,8 @@ export async function openChat(
     );
     const files = new Files(
       database,
-      (botId, ctx) => computer.workspace(botId, ctx),
+      (botId, ctx, directory) =>
+        computer.workspace(botId, ctx, undefined, directory),
       (botId, ctx) => computer.computerId(botId, ctx),
       (ctx) => computer.attachmentComputerId(ctx),
     );

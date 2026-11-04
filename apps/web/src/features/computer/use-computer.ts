@@ -49,6 +49,7 @@ export function useComputer(
   });
   return {
     status,
+    directory: binding?.directory ?? null,
     approvalMode: binding?.approvalMode ?? "ask",
     setApprovalMode: (mode: "ask" | "auto") =>
       run(() =>

@@ -27,6 +27,7 @@ async function fixture() {
   const directory = await mkdtemp(join(tmpdir(), "domos-context-"));
   const state = {
     computerId: "local",
+    directory: null as string | null,
     tokens: 240 as number | null,
     compacted: false,
     hold: false,
@@ -44,6 +45,7 @@ async function fixture() {
     initialize: async () => {},
     preflight: async () => {},
     computerId: async () => state.computerId,
+    binding: async () => ({ directory: state.directory }),
     tools: { catalog: async () => [], finish: () => {} },
     process: async () => {
       const process = new ProtocolProcess();
@@ -430,6 +432,9 @@ test("Harness checks share an in-flight read and reuse it for three seconds", as
   vi.setSystemTime(Date.now() + 3001);
   await f.runtime.client.engines.inspect(input);
   expect(f.state.workers).toHaveLength(count * 2);
+  f.state.directory = "/project";
+  await f.runtime.client.engines.inspect(input);
+  expect(f.state.workers).toHaveLength(count * 3);
 });
 
 test("image validation uses native Pi models from the execution computer", async () => {

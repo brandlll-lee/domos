@@ -23,6 +23,7 @@ test("HTTP usage retains native attribution, deduplicates and survives reopening
     initialize: async () => {},
     preflight: async () => {},
     computerId: async () => "local",
+    binding: async () => ({ directory: null }),
     tools: { catalog: async () => [], finish: () => {} },
     process: async () => {
       const process = new ProtocolProcess();

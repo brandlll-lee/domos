@@ -22,6 +22,7 @@ test.each(["accepted", "refused", "uncertain"] as const)(
       initialize: async () => {},
       preflight: async () => {},
       computerId: async () => "shared",
+      binding: async () => ({ directory: null }),
       process: async () => {
         const worker = new ProtocolProcess();
         workers.push(worker);
@@ -205,6 +206,7 @@ test("engine connection readiness follows the selected work computer", async () 
   const computers = {
     initialize: async () => {},
     computerId: async () => computerId,
+    binding: async () => ({ directory: null }),
     process: async () => {
       const worker = new ProtocolProcess();
       worker.receive = (request) => {
@@ -263,6 +265,7 @@ test.each([false, true])(
       initialize: async () => {},
       preflight: async () => {},
       computerId: async () => "shared",
+      binding: async () => ({ directory: null }),
       process: async () => {
         const worker = new ProtocolProcess();
         workers.push(worker);
@@ -444,6 +447,7 @@ test.each([false, true])(
       initialize: async () => {},
       preflight: async () => {},
       computerId: async () => "shared",
+      binding: async () => ({ directory: null }),
       process: async () => {
         const worker = new ProtocolProcess();
         workers.push(worker);
@@ -569,6 +573,7 @@ test.each(["question", "permission"] as const)(
       initialize: async () => {},
       preflight: async () => {},
       computerId: async () => "shared",
+      binding: async () => ({ directory: null }),
       tools: { catalog: async () => [], finish: () => {} },
       process: async () => {
         const process = new ProtocolProcess();
@@ -702,6 +707,7 @@ test("monitor reports commit only after success, deduplicate notifications and r
     initialize: async () => {},
     preflight: async () => {},
     computerId: async () => "shared",
+    binding: async () => ({ directory: null }),
     process: async (
       _botId: number,
       _tools: unknown,

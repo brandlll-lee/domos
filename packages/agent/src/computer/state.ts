@@ -17,6 +17,7 @@ export type ComputerRecord = {
 };
 
 export const ComputersDoc = defineDoc<{
+  node?: { id: string; name: string };
   items: ComputerRecord[];
   defaultId: string | null;
   attachmentComputerId: string | null;
@@ -26,6 +27,7 @@ export const ComputersDoc = defineDoc<{
       computerId: string | null;
       revision: number;
       requestId: string;
+      directory?: string;
       approvalMode?: "ask" | "auto";
       services?: { browser?: boolean; desktop?: boolean };
       assistance?: {

@@ -95,15 +95,22 @@ test("HTTP uploads retain file content, ownership and actionable errors after ru
       http.files.download({ botId, id: uploaded.id }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   }
+  const secondFile = await http.files.upload({
+    botId: other.id,
+    file: new File(["source"], "source.txt"),
+  });
+  expect(
+    await (
+      await http.files.download({ botId: other.id, id: secondFile.id })
+    ).text(),
+  ).toBe("source");
+  await client.computer.authorize({ id: "process", authorized: false });
   await expect(
     http.files.upload({
       botId: other.id,
-      file: new File(["source"], "source.txt"),
+      file: new File(["denied"], "denied.txt"),
     }),
-  ).rejects.toMatchObject({
-    code: "BAD_REQUEST",
-    message: "请先为 Bot 分配工作电脑。",
-  });
+  ).rejects.toMatchObject({ code: "BAD_REQUEST" });
 });
 
 async function fixture() {
@@ -155,7 +162,9 @@ test("Bot creation needs only a name and model setup preserves an empty transcri
   const bot = await client.bots.create(input);
   expect(await client.bots.create(input)).toEqual(bot);
   expect((await client.get({ botId: bot.id })).model).toBeNull();
-  expect((await client.computer.get({ botId: bot.id })).computer).toBeNull();
+  expect((await client.computer.get({ botId: bot.id })).computer).toMatchObject(
+    { id: "process", authorized: false },
+  );
   await expect(
     client.send({
       botId: bot.id,
@@ -195,7 +204,7 @@ test("chat works before computer authorization and Pi rejects computer tools", a
     "powershell",
   ])
     expect(tools).not.toContain(name);
-  await expect(runtime.files.workspace(botId)).rejects.toThrow("分配");
+  await expect(runtime.files.workspace(botId)).rejects.toThrow("授权");
   await expect(
     client.files.upload({ botId, file: new File(["data"], "input.txt") }),
   ).rejects.toMatchObject({ code: "BAD_REQUEST" });
@@ -205,7 +214,7 @@ test("chat works before computer authorization and Pi rejects computer tools", a
         .filter((item) => item.role === "system")
         .flatMap((item) => Object.values(item.sections ?? {}))
         .join("\n");
-      expect(prompt).toContain("no assigned computer");
+      expect(prompt).toContain("Authorized: false");
       return fauxAssistantMessage(
         [fauxToolCall("write", { path: "denied.txt", content: "denied" })],
         { stopReason: "toolUse" },
@@ -501,7 +510,7 @@ test("unavailable assigned computers fail scheduled work and retain their target
   expect((await client.get({ botId })).messages).toEqual([]);
 });
 
-test("migration keeps existing Bot targets and grants while new Bots start unassigned", async () => {
+test("migration keeps existing Bot targets and grants while new Bots use the owner", async () => {
   const directory = await mkdtemp(join(tmpdir(), "domos-migration-"));
   const config = parseConfig(
     { dataDir: directory, model },
@@ -539,9 +548,9 @@ test("migration keeps existing Bot targets and grants while new Bots start unass
       { name: "New", requestId: crypto.randomUUID() },
       context,
     );
-    expect(
-      (await runtime.computer.binding(bot.id, context)).computerId,
-    ).toBeNull();
+    expect((await runtime.computer.binding(bot.id, context)).computerId).toBe(
+      "process",
+    );
     await runtime.files.verify(existing.id, [attachment], context);
     await runtime.close();
     await rm(join(directory, "computer.json"));

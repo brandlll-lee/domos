@@ -29,7 +29,7 @@ const titles: Record<Exclude<BotPanelView, "root">, string> = {
   identity: "编辑资料",
   engine: "模型与账号",
   advanced: "高级设置",
-  computer: "工作电脑",
+  computer: "工作目录与权限",
   skills: "技能",
   routines: "定时",
   prompt: "提示词",

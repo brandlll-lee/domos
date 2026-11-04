@@ -4,6 +4,14 @@ Status: accepted.
 
 Durable documents own Bot memory, managed skill metadata, routine definitions, and run receipts. Writes use revisions and request IDs. Memory and skill text do not grant permissions.
 
+## Computer ownership
+
+A Domos computer owns its Bots and product data. A client only accesses that computer. Switching computers does not transfer Bots. Each computer has a persisted identity. Client drafts and retained UI state use that identity.
+
+New Bots use the owning computer. They get a persistent personal workspace. Tool access requires explicit authorization. An idle Bot can use an existing project directory on the same computer. Native sessions distinguish project directories. Saved attachments retain their original source directory. Browser profiles and native account storage keep their persistent locations.
+
+Local Docker containers are optional environments under advanced settings. All tools use the selected environment. New remote work bindings are rejected. Existing bindings, directories, volumes, and account stores remain in place until the user confirms a migration.
+
 ## Skills
 
 Native Harness protocols supply their loaded skill catalogs. The catalog shows the reported source and path. Native entries are read-only in Domos. Enabled managed skills with the same name are omitted from model instructions. An unavailable catalog stays unknown. Generic ACP does not define a skill catalog.

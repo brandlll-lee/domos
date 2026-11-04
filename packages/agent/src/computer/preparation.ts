@@ -24,7 +24,9 @@ export class ComputerPreparation {
 
   private get template() {
     const { workComputer, computer } = this.computers.config;
-    return workComputer ?? (computer.kind !== "process" ? computer : undefined);
+    const template =
+      workComputer ?? (computer.kind !== "process" ? computer : undefined);
+    return template?.kind === "docker" && !template.ssh ? template : undefined;
   }
 
   async state(_context: Context) {
@@ -66,10 +68,7 @@ export class ComputerPreparation {
   ): Promise<ComputerRecord> {
     const template = this.template;
     if (mode !== "process" && !template)
-      throw new WorkError(
-        "BAD_REQUEST",
-        "这台服务尚未配置隔离电脑。请联系管理员。",
-      );
+      throw new WorkError("BAD_REQUEST", "请先在此电脑准备本地 Docker 环境。");
     return this.harness.commit(async (tx) => {
       const doc = await tx.doc(ComputersDoc);
       const existing = doc.items.find((item) =>
@@ -83,14 +82,14 @@ export class ComputerPreparation {
       if (existing) return { ...existing };
       if (!template) throw new WorkError("NOT_FOUND", "未找到服务环境。");
       const id = `${mode}-${randomUUID().slice(0, 12)}`;
-      const config = computerSchema.parse(
-        template.kind === "controller"
-          ? { ...template, id }
-          : { ...template, id, volume: `domos-${id}-work` },
-      );
+      const config = computerSchema.parse({
+        ...template,
+        id,
+        volume: `domos-${id}-work`,
+      });
       const item: ComputerRecord = {
         id,
-        name: mode === "shared" ? "共用隔离电脑" : "独立隔离电脑",
+        name: mode === "shared" ? "共享容器" : "隔离容器",
         config,
         authorized: true,
         scope:

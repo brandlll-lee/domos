@@ -17,6 +17,7 @@ export class EngineConnections {
     string,
     {
       computerId: string | null;
+      directory: string | null;
       provider: EngineConfig["provider"];
       model: string | null;
       options: string;
@@ -39,6 +40,10 @@ export class EngineConnections {
       botId,
       context,
     );
+    const { directory } = await this.execution.computers.binding(
+      botId,
+      context,
+    );
     const cached =
       this.catalogs.get(
         `${botId}:${config.provider}:${config.command ?? ""}:${JSON.stringify(config.args ?? [])}`,
@@ -47,13 +52,20 @@ export class EngineConnections {
         ([key, entry]) =>
           key.startsWith(`${botId}:${config.provider}:`) &&
           entry.value?.path === config.command &&
-          entry.computerId === computerId,
+          entry.computerId === computerId &&
+          entry.directory === directory,
       )?.[1];
-    return cached?.computerId === computerId ? (cached.value ?? null) : null;
+    return cached?.computerId === computerId && cached.directory === directory
+      ? (cached.value ?? null)
+      : null;
   }
 
   async catalog(botId: number, context: Context, config?: EngineConfig) {
     const computerId = await this.execution.computers.computerId(
+      botId,
+      context,
+    );
+    const { directory } = await this.execution.computers.binding(
       botId,
       context,
     );
@@ -66,7 +78,9 @@ export class EngineConnections {
         `${botId}:${id}:${command}:${JSON.stringify(selected.args ?? [])}`,
       );
       const connection =
-        cached?.computerId === computerId ? cached.value : null;
+        cached?.computerId === computerId && cached.directory === directory
+          ? cached.value
+          : null;
       const saved = stored?.find((item) => item.provider === id);
       return {
         id,
@@ -88,9 +102,14 @@ export class EngineConnections {
       botId,
       context,
     );
+    const { directory } = await this.execution.computers.binding(
+      botId,
+      context,
+    );
     const cached = this.catalogs.get(key);
     if (
       cached?.computerId === computerId &&
+      cached.directory === directory &&
       cached.model === config.model &&
       cached.options === JSON.stringify(config.options ?? {}) &&
       (!refresh ||
@@ -101,6 +120,7 @@ export class EngineConnections {
     const entry: NonNullable<ReturnType<EngineConnections["catalogs"]["get"]>> =
       {
         computerId,
+        directory,
         provider: config.provider,
         model: config.model,
         options: JSON.stringify(config.options ?? {}),

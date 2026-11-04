@@ -118,7 +118,7 @@ test("native setup starts and resumes with Docker unavailable", async ({
     await setup.getByRole("button", { name: "继续", exact: true }).click();
     const page = await opened;
     await expect(
-      page.getByRole("heading", { name: "Bot 在哪里工作？" }),
+      page.getByRole("heading", { name: "选择对话模型" }),
     ).toBeVisible();
     await desktop.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows().find((window) =>
@@ -134,7 +134,7 @@ test("native setup starts and resumes with Docker unavailable", async ({
         .evaluate((main) => main.scrollWidth <= main.clientWidth),
     ).toBe(true);
     const continueSetup = page.getByRole("button", {
-      name: "授权并继续",
+      name: "允许访问并继续",
       exact: true,
     });
     await continueSetup.scrollIntoViewIfNeeded();
@@ -151,10 +151,10 @@ test("native setup starts and resumes with Docker unavailable", async ({
       predicate: (window) => window.url().startsWith(origin),
     });
     await expect(
-      resumed.getByRole("heading", { name: "Bot 在哪里工作？" }),
+      resumed.getByRole("heading", { name: "选择对话模型" }),
     ).toBeVisible();
     await resumed
-      .getByRole("button", { name: "授权并继续", exact: true })
+      .getByRole("button", { name: "允许访问并继续", exact: true })
       .click();
     await expect(
       resumed.getByRole("heading", { name: "选择对话模型" }),
@@ -390,7 +390,7 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
         }),
     );
     await environment.click();
-    await page.getByRole("menuitem", { name: "运行环境", exact: true }).click();
+    await page.getByRole("menuitem", { name: "切换电脑", exact: true }).click();
     await menuShown;
     await desktop.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()?.items[0]?.submenu?.closePopup(),
@@ -449,7 +449,7 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
         (item) => item.label,
       ),
     );
-    expect(nativeMenu).toContain("连接其他 Domos…");
+    expect(nativeMenu).toContain("连接其他电脑…");
     await desktop.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(2),
     );
@@ -522,7 +522,7 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     await desktop.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()
         ?.items[0]?.submenu?.items.find(
-          (item) => item.label === "连接其他 Domos…",
+          (item) => item.label === "连接其他电脑…",
         )
         ?.click(),
     );

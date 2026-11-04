@@ -34,6 +34,47 @@ export function computerRouter(bots: Bots, computers?: Computers) {
   const context = BACKGROUND_CONTEXT;
   const service = z.enum(["browser", "desktop"]);
   return {
+    node: os.handler(() => access((target) => target.node(context))),
+    rename: os
+      .input(z.object({ name: z.string().trim().min(1).max(80) }))
+      .handler(({ input }) =>
+        access((target) => target.node(context, input.name)),
+      ),
+    directory: os
+      .input(
+        botTarget.extend({
+          directory: z
+            .string()
+            .trim()
+            .min(1)
+            .max(4096)
+            .refine((value) => !value.includes("\0"))
+            .nullable(),
+          revision: z.number().int().nonnegative(),
+          requestId: z.uuid(),
+        }),
+      )
+      .handler(async ({ input }) => {
+        await botConversation(bots, input.botId);
+        return access((target) => target.directory(input, context));
+      }),
+    directories: os
+      .input(
+        botTarget.extend({
+          path: z
+            .string()
+            .min(1)
+            .max(4096)
+            .refine((value) => !value.includes("\0"))
+            .optional(),
+        }),
+      )
+      .handler(async ({ input }) => {
+        await botConversation(bots, input.botId);
+        return access((target) =>
+          target.directories(input.botId, input.path, context),
+        );
+      }),
     assistant: os.input(botTarget).handler(async ({ input }) => {
       await botConversation(bots, input.botId);
       return access((target) => target.assistance.state(input.botId, context));

@@ -287,7 +287,7 @@ export function Workspace({
                           ...(window.domosDesktop
                             ? [
                                 {
-                                  label: "运行环境",
+                                  label: "切换电脑",
                                   icon: <MonitorIcon />,
                                   separator: true,
                                   onSelect: () =>
