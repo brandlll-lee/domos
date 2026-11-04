@@ -1,6 +1,6 @@
 import { Button, Switch } from "@domos/ui/controls";
+import { Disclosure } from "@domos/ui/disclosure";
 import { SearchField } from "@domos/ui/field";
-import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../client.ts";
 import { EngineMark } from "../bots/engine-mark.tsx";
@@ -53,18 +53,19 @@ export function ModelSettings({
               .includes(query.trim().toLowerCase()),
           );
           return (
-            <details
+            <Disclosure
               open
               key={harness.id}
               className="settings-group"
               aria-label={`${harness.name} 模型`}
+              label={
+                <span className="provider-row">
+                  <EngineMark provider={harness.id} />
+                  {harness.name}
+                  <span className="detail-note">{models.length}</span>
+                </span>
+              }
             >
-              <summary className="provider-row">
-                <CaretRightIcon className="model-catalog-chevron" />
-                <EngineMark provider={harness.id} />
-                {harness.name}
-                <span className="detail-note">{models.length}</span>
-              </summary>
               <div className="model-catalog-list">
                 {models.map((item, index) => (
                   <div key={item.id}>
@@ -94,7 +95,7 @@ export function ModelSettings({
                   </p>
                 )}
               </div>
-            </details>
+            </Disclosure>
           );
         })}
       {!groups.some((harness) => harness.models.length) && (

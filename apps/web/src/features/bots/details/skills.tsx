@@ -4,6 +4,7 @@ import {
 } from "@domos/agent/work/limits";
 import { Button, Switch } from "@domos/ui/controls";
 import { ConfirmDialog } from "@domos/ui/dialog";
+import { Disclosure } from "@domos/ui/disclosure";
 import { TextField } from "@domos/ui/field";
 import { ActionMenu } from "@domos/ui/menu";
 import { useRef, useState } from "react";
@@ -332,8 +333,7 @@ function SkillEditor({
           maxLength={SKILL_FILE_BYTES}
         />
         {skill?.versions && skill.versions.length > 1 && (
-          <details>
-            <summary>版本历史</summary>
+          <Disclosure label="版本历史">
             {[...skill.versions].reverse().map((version) => (
               <Button
                 key={version.version}
@@ -365,7 +365,7 @@ function SkillEditor({
                 预览 v{version.version} · {version.hash.slice(0, 8)}
               </Button>
             ))}
-          </details>
+          </Disclosure>
         )}
         {preview && (
           <section aria-label="技能差异">
@@ -373,15 +373,19 @@ function SkillEditor({
               {preview.hash.slice(0, 12)} · {preview.changes.length} 个文件变更
             </p>
             {preview.changes.map((change) => (
-              <details key={change.path}>
-                <summary>
-                  {
-                    { added: "新增", removed: "删除", changed: "修改" }[
-                      change.status
-                    ]
-                  }{" "}
-                  · {change.path}
-                </summary>
+              <Disclosure
+                key={change.path}
+                label={
+                  <>
+                    {
+                      { added: "新增", removed: "删除", changed: "修改" }[
+                        change.status
+                      ]
+                    }{" "}
+                    · {change.path}
+                  </>
+                }
+              >
                 {change.before !== null && (
                   <div>
                     <p className="detail-note">当前版本</p>
@@ -394,7 +398,7 @@ function SkillEditor({
                     <pre>{change.after}</pre>
                   </div>
                 )}
-              </details>
+              </Disclosure>
             ))}
           </section>
         )}

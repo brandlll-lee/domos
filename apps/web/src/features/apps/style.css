@@ -92,14 +92,6 @@
 .apps-center textarea {
   font-family: var(--font-mono);
 }
-.apps-center details > summary {
-  cursor: pointer;
-  color: var(--color-muted);
-  padding-block: var(--space-2);
-}
-.apps-center details[open] > summary {
-  margin-bottom: var(--space-2);
-}
 .apps-center p {
   margin: var(--space-1) 0;
 }

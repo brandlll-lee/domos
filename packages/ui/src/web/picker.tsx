@@ -1,6 +1,7 @@
 import { Combobox } from "@base-ui/react/combobox";
 import { Select } from "@base-ui/react/select";
 import { useMemo } from "react";
+import { Caret } from "./caret.tsx";
 import { ScrollArea } from "./scroll-area.tsx";
 
 type Choice = { value: string; label: string };
@@ -12,14 +13,6 @@ type PickerProps = {
   disabled?: boolean;
   required?: boolean;
 };
-
-function Caret() {
-  return (
-    <svg className="picker-caret" viewBox="0 0 16 16" aria-hidden="true">
-      <path d="m4 6 4 4 4-4" />
-    </svg>
-  );
-}
 
 function Check() {
   return <span aria-hidden="true">✓</span>;

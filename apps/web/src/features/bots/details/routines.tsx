@@ -1,6 +1,7 @@
 import { BOT_NAME_LENGTH, WORK_TEXT_LENGTH } from "@domos/agent/work/limits";
 import { Button, Switch } from "@domos/ui/controls";
 import { ConfirmDialog } from "@domos/ui/dialog";
+import { Disclosure } from "@domos/ui/disclosure";
 import { Checkbox, TextField } from "@domos/ui/field";
 import { ActionMenu } from "@domos/ui/menu";
 import { ChoicePicker } from "@domos/ui/picker";
@@ -190,13 +191,17 @@ export function RoutinesPanel({
         ))}
 
       {!editor && (
-        <details className="detail-disclosure">
-          <summary>
-            运行记录
-            {runs.length > 0 && (
-              <span className="disclosure-count">{runs.length}</span>
-            )}
-          </summary>
+        <Disclosure
+          className="detail-disclosure"
+          label={
+            <>
+              运行记录
+              {runs.length > 0 && (
+                <span className="disclosure-count">{runs.length}</span>
+              )}
+            </>
+          }
+        >
           <div className="detail-disclosure-body">
             {runs.length ? (
               <ul className="run-list">
@@ -244,7 +249,7 @@ export function RoutinesPanel({
               <p className="detail-note">还没有运行记录。</p>
             )}
           </div>
-        </details>
+        </Disclosure>
       )}
 
       {selectedRun && (

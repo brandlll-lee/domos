@@ -1,5 +1,6 @@
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
+import { Disclosure } from "@domos/ui/disclosure";
 import { TextField } from "@domos/ui/field";
 import { ChoicePicker } from "@domos/ui/picker";
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
@@ -28,7 +29,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
         if (!busy) setOpen(next);
       }}
       title="添加工作电脑"
-      description="连接已准备好工作环境的 Docker 主机。"
+      description="使用已准备 Pi 工作镜像的 Docker 主机。远程电脑通过 SSH 接入。"
       trigger={
         <Button variant="secondary" size="small">
           <PlusIcon size={14} />
@@ -98,39 +99,38 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
           }
         }}
       >
-        <p className="detail-note">
-          使用已准备 Pi 工作镜像的 Docker 主机。远程电脑通过 SSH
-          接入。选择网络策略后，Bot 按该策略访问网站。
-        </p>
         {!remote && desktop && (
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              setError("");
-              try {
-                const result = await desktop.prepare();
-                if (!result.ok || !result.value) throw new Error(result.error);
-                setImage(result.value.image);
-                if (result.value.proxyImage) {
-                  setProxyImage(result.value.proxyImage);
-                  setNetwork("web");
+          <div className="form-actions">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setError("");
+                try {
+                  const result = await desktop.prepare();
+                  if (!result.ok || !result.value)
+                    throw new Error(result.error);
+                  setImage(result.value.image);
+                  if (result.value.proxyImage) {
+                    setProxyImage(result.value.proxyImage);
+                    setNetwork("web");
+                  }
+                } catch (cause) {
+                  setError(
+                    cause instanceof Error
+                      ? cause.message
+                      : "Docker 准备未完成。",
+                  );
+                } finally {
+                  setBusy(false);
                 }
-              } catch (cause) {
-                setError(
-                  cause instanceof Error
-                    ? cause.message
-                    : "Docker 准备未完成。",
-                );
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            准备本地 Docker 镜像
-          </Button>
+              }}
+            >
+              准备本地 Docker 镜像
+            </Button>
+          </div>
         )}
         <fieldset className="setup-form" disabled={busy}>
           <TextField
@@ -140,8 +140,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
             required
             onValueChange={setName}
           />
-          <details>
-            <summary>高级设置</summary>
+          <Disclosure label="高级设置">
             <div className="setup-form">
               <TextField
                 label="电脑标识"
@@ -221,7 +220,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
                 </>
               )}
             </div>
-          </details>
+          </Disclosure>
         </fieldset>
         {error && <p role="alert">{error}</p>}
       </form>

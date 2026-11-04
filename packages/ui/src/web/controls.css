@@ -241,8 +241,9 @@ button.inline-notice-content:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.picker-caret {
+.control-caret {
   display: block;
+  flex-shrink: 0;
   width: var(--space-4);
   height: var(--space-4);
   fill: none;
@@ -251,6 +252,50 @@ button.inline-notice-content:hover {
   stroke-linecap: round;
   stroke-linejoin: round;
   color: var(--color-muted);
+}
+.disclosure {
+  min-width: 0;
+}
+.disclosure-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-small);
+  padding-block: var(--space-2);
+  border-radius: var(--radius-control);
+  color: var(--color-muted);
+  font-size: var(--text-label);
+  line-height: var(--leading-control);
+  list-style: none;
+  cursor: pointer;
+}
+.disclosure-heading::-webkit-details-marker {
+  display: none;
+}
+.disclosure-heading:hover {
+  color: var(--color-text);
+}
+.disclosure-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.disclosure-heading > .control-caret {
+  transition: transform var(--motion-feedback);
+}
+.disclosure[open] > .disclosure-heading {
+  margin-bottom: var(--space-2);
+}
+.disclosure[open] > .disclosure-heading > .control-caret {
+  transform: rotate(180deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .disclosure-heading > .control-caret {
+    transition: none;
+  }
 }
 .picker-positioner {
   z-index: 10;

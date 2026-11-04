@@ -196,6 +196,17 @@ test("Apps completes and cancels browser OAuth with stored state", async ({
     await dialog.getByRole("button", { name: "保存并测试" }).click();
     const item = dialog.locator(".apps-item").filter({ hasText: "OAuth Docs" });
     await expect(item.getByText(/^待授权/)).toBeVisible({ timeout: 20_000 });
+    const login = item.locator(".disclosure").filter({
+      has: page.locator("summary", { hasText: /^登录与凭据$/ }),
+    });
+    await expect(login).toHaveAttribute("open", "");
+    const custom = login.locator(".disclosure");
+    await custom.locator("summary").click();
+    await expect(custom).toHaveAttribute("open", "");
+    await expect(login).toHaveAttribute("open", "");
+    await custom.locator("summary").click();
+    await expect(custom).not.toHaveAttribute("open");
+    await expect(login).toHaveAttribute("open", "");
     const popup = page.waitForEvent("popup");
     await item.getByRole("button", { name: "浏览器登录" }).click();
     const authorization = await popup;
@@ -848,6 +859,10 @@ test("work computers separate access, defaults and existing Bot bindings", async
     exact: true,
   });
   await expect(
+    details.getByRole("group", { name: "网络", exact: true }),
+  ).toBeVisible();
+  await expect(details.locator("summary")).toHaveCount(0);
+  await expect(
     details.getByRole("group", { name: "使用此电脑的机器人", exact: true }),
   ).toContainText("Domos");
   await details.getByRole("button", { name: "撤销授权", exact: true }).click();
@@ -974,7 +989,20 @@ test("remote Docker setup submits the selected browser network policy", async ({
     name: "添加工作电脑",
     exact: true,
   });
-  await dialog.getByText("高级设置", { exact: true }).click();
+  const advanced = dialog.locator(".disclosure").filter({
+    has: page.locator("summary", { hasText: "高级设置" }),
+  });
+  const heading = advanced.locator("summary");
+  await expect(heading.locator("svg")).toBeVisible();
+  await expect(dialog.getByLabel("工作镜像", { exact: true })).toBeHidden();
+  await heading.focus();
+  await heading.press("Enter");
+  await expect(advanced).toHaveAttribute("open", "");
+  await expect(dialog.getByLabel("工作镜像", { exact: true })).toBeVisible();
+  await heading.press("Space");
+  await expect(advanced).not.toHaveAttribute("open");
+  await heading.click();
+  await expect(heading).toHaveCSS("list-style-type", "none");
   await dialog.getByRole("combobox", { name: "Docker 位置" }).click();
   await page.getByRole("option", { name: "远程 Docker", exact: true }).click();
   await dialog
@@ -991,6 +1019,20 @@ test("remote Docker setup submits the selected browser network policy", async ({
     .getByRole("option", { name: "允许 HTTP(S) 网站", exact: true })
     .click();
   await dialog.getByLabel("代理镜像", { exact: true }).fill("domos-egress:1");
+  for (const theme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await heading.scrollIntoViewIfNeeded();
+    const row = await heading.boundingBox();
+    const caret = await heading.locator("svg").boundingBox();
+    if (!row || !caret) throw new Error("折叠栏不可见");
+    expect(caret.x + caret.width).toBeCloseTo(row.x + row.width, 0);
+    expect(caret.y + caret.height / 2).toBeCloseTo(row.y + row.height / 2, 0);
+    await page.screenshot({
+      path: testInfo.outputPath(`disclosure-${theme}.png`),
+    });
+  }
   await page.screenshot({
     path: testInfo.outputPath("remote-browser-network.png"),
   });
@@ -2081,6 +2123,16 @@ test("settings stay readable in both themes and compact layouts", async ({
     });
   }
   const search = settings.getByRole("searchbox", { name: "搜索设置" });
+  await settings.getByRole("tab", { name: "Models", exact: true }).click();
+  const models = settings.locator(".model-catalog .disclosure").first();
+  await expect(models).toHaveAttribute("open", "");
+  await models.locator("summary").focus();
+  await models.locator("summary").press("Enter");
+  await expect(models).not.toHaveAttribute("open");
+  await models.locator("summary").press("Space");
+  await expect(models).toHaveAttribute("open", "");
+  await expect(models.getByRole("switch").first()).toBeVisible();
+  await settings.getByRole("tab", { name: "通用", exact: true }).click();
   await search.fill("主题");
   await expect(
     settings.getByRole("tab", { name: "通用", exact: true }),

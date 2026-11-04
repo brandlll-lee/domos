@@ -1,4 +1,5 @@
 import { Button } from "@domos/ui/controls";
+import { Disclosure } from "@domos/ui/disclosure";
 import { ChoicePicker } from "@domos/ui/picker";
 import type { client } from "../../client.ts";
 import { appsCopy } from "./copy.ts";
@@ -126,8 +127,7 @@ export function ConnectionEditor({
               onChange={(e) => change({ address: e.target.value })}
             />
           </label>
-          <details>
-            <summary>高级设置</summary>
+          <Disclosure label="高级设置">
             {form.transport === "stdio" && (
               <label>
                 参数（JSON 数组）
@@ -150,7 +150,7 @@ export function ConnectionEditor({
                 onChange={(e) => change({ settings: e.target.value })}
               />
             </label>
-          </details>
+          </Disclosure>
         </>
       )}
     </form>

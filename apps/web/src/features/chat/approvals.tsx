@@ -2,6 +2,7 @@ import type { EngineAnswer } from "@domos/agent/harness/types";
 import type { ChatMessage } from "@domos/agent/messages";
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
+import { Disclosure } from "@domos/ui/disclosure";
 import { TextField } from "@domos/ui/field";
 import { InlineNotice } from "@domos/ui/message";
 import { QuestionIcon } from "@phosphor-icons/react/dist/csr/Question";
@@ -88,10 +89,9 @@ export function Approval({
         (pending || request.fields?.length ? (
           <p className="approval-detail">{request.detail}</p>
         ) : (
-          <details className="approval-technical">
-            <summary>技术详情</summary>
+          <Disclosure className="approval-technical" label="技术详情">
             <p>{request.detail}</p>
-          </details>
+          </Disclosure>
         ))}
       {request.url && (
         <a href={request.url} target="_blank" rel="noopener noreferrer">

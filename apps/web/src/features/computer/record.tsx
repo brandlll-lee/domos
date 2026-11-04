@@ -1,5 +1,6 @@
 import type { ComputerView } from "@domos/agent/computer/catalog";
 import { Dialog } from "@domos/ui/dialog";
+import { Disclosure } from "@domos/ui/disclosure";
 import { ActionMenu } from "@domos/ui/menu";
 import { PanelRow } from "@domos/ui/panel";
 import { SettingRow } from "@domos/ui/setting-row";
@@ -35,13 +36,17 @@ export function ComputerRecord(props: RecordProps) {
           label={`${item.name}的更多操作`}
           items={[
             { label: "查看详情", onSelect: () => setOpen(true) },
-            {
-              label: "高级设置",
-              onSelect: () => {
-                setAdvanced(true);
-                setOpen(true);
-              },
-            },
+            ...(item.kind === "process"
+              ? []
+              : [
+                  {
+                    label: "高级设置",
+                    onSelect: () => {
+                      setAdvanced(true);
+                      setOpen(true);
+                    },
+                  },
+                ]),
           ]}
         />
       </div>
@@ -63,18 +68,22 @@ export function ComputerRecord(props: RecordProps) {
             </p>
           )}
           {admin && <ComputerAccess {...props} />}
-          <details
-            open={advanced}
-            onToggle={(event) => setAdvanced(event.currentTarget.open)}
-          >
-            <summary>高级设置</summary>
+          {item.kind === "process" ? (
             <SettingRow title="网络">
               {computerLabels.network[item.network]}
             </SettingRow>
-            {admin && item.authorized && item.kind !== "process" && (
-              <ContainerSettings {...props} />
-            )}
-          </details>
+          ) : (
+            <Disclosure
+              open={advanced}
+              onToggle={(event) => setAdvanced(event.currentTarget.open)}
+              label="高级设置"
+            >
+              <SettingRow title="网络">
+                {computerLabels.network[item.network]}
+              </SettingRow>
+              {admin && item.authorized && <ContainerSettings {...props} />}
+            </Disclosure>
+          )}
         </div>
       </Dialog>
     </>

@@ -1,4 +1,5 @@
 import type { ChatMessage } from "@domos/agent/messages";
+import { Disclosure } from "@domos/ui/disclosure";
 import { useState } from "react";
 import { Attachments } from "./attachments.tsx";
 import { MessageContent } from "./message-content.tsx";
@@ -160,10 +161,9 @@ function ToolRecord({
         !content.length &&
         !output.length &&
         Object.keys(native).length > 0 && (
-          <details>
-            <summary>原始记录</summary>
+          <Disclosure label="原始记录">
             <pre>{JSON.stringify(native, null, 2)}</pre>
-          </details>
+          </Disclosure>
         )}
       {message?.attachments?.length ? (
         <Attachments botId={botId} files={message.attachments} />
@@ -192,16 +192,12 @@ export function WorkEntry({ item, botId }: { item: WorkItem; botId: number }) {
           content={typeof item.detail === "string" ? [] : item.detail}
         />
       ) : item.kind === "toolCall" || item.kind === "thinking" ? (
-        <details
+        <Disclosure
           className="work-operation"
           open={expanded}
-          onToggle={(event) => {
-            if (event.target === event.currentTarget)
-              setExpanded(event.currentTarget.open);
-          }}
-        >
-          <summary>
-            {item.kind === "thinking" ? (
+          onToggle={(event) => setExpanded(event.currentTarget.open)}
+          label={
+            item.kind === "thinking" ? (
               <span className="work-thought">{item.label}</span>
             ) : (
               <>
@@ -219,8 +215,9 @@ export function WorkEntry({ item, botId }: { item: WorkItem; botId: number }) {
                   </span>
                 )}
               </>
-            )}
-          </summary>
+            )
+          }
+        >
           {expanded && (
             <div className="work-operation-body">
               {item.kind === "thinking" ? (
@@ -244,7 +241,7 @@ export function WorkEntry({ item, botId }: { item: WorkItem; botId: number }) {
               )}
             </div>
           )}
-        </details>
+        </Disclosure>
       ) : event?.type === "plan" ? (
         <ul className="work-plan">
           {event.plan.map((step) => (

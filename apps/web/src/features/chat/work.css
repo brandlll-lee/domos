@@ -170,24 +170,10 @@
 .work-entry .markdown > :last-child {
   margin-bottom: 0;
 }
-.work-operation > summary {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  min-width: 0;
-  list-style: none;
-  cursor: pointer;
-}
-.work-operation > summary::-webkit-details-marker {
-  display: none;
-}
 .work-operation > summary strong {
   flex-shrink: 0;
   font-size: var(--text-body);
-  font-weight: 600;
-}
-.work-operation > summary:hover {
-  color: var(--color-link);
+  font-weight: var(--weight-medium);
 }
 .work-target {
   overflow: hidden;

@@ -2,6 +2,7 @@ import { type McpConfig, parseMcp } from "@domos/agent/mcp/config";
 import { SegmentedControl } from "@domos/ui/choice";
 import { Button } from "@domos/ui/controls";
 import { ConfirmDialog, Dialog } from "@domos/ui/dialog";
+import { Disclosure } from "@domos/ui/disclosure";
 import { Checkbox, SearchField } from "@domos/ui/field";
 import { ActionMenu } from "@domos/ui/menu";
 import { ChoicePicker } from "@domos/ui/picker";
@@ -596,11 +597,16 @@ export function AppsCenter({
                         <ConnectionLogin item={item} busy={busy} run={run} />
                       )}
                       {selectedId && (
-                        <details>
-                          <summary>
-                            机器人权限
-                            {item.tools ? ` · ${item.tools.length} 个工具` : ""}
-                          </summary>
+                        <Disclosure
+                          label={
+                            <>
+                              机器人权限
+                              {item.tools
+                                ? ` · ${item.tools.length} 个工具`
+                                : ""}
+                            </>
+                          }
+                        >
                           {bots.map((bot) => {
                             const current = item.grants.find(
                               (g) => g.botId === bot.id,
@@ -620,12 +626,13 @@ export function AppsCenter({
                                   }
                                 />
                                 {current && item.tools && (
-                                  <details>
-                                    <summary>
-                                      {current.tools === null
+                                  <Disclosure
+                                    label={
+                                      current.tools === null
                                         ? "全部工具"
-                                        : `已选 ${current.tools.length} 个工具`}
-                                    </summary>
+                                        : `已选 ${current.tools.length} 个工具`
+                                    }
+                                  >
                                     <Checkbox
                                       label="全部工具"
                                       checked={current.tools === null}
@@ -661,12 +668,12 @@ export function AppsCenter({
                                         }}
                                       />
                                     ))}
-                                  </details>
+                                  </Disclosure>
                                 )}
                               </div>
                             );
                           })}
-                        </details>
+                        </Disclosure>
                       )}
                       {selectedId && item.capabilities && (
                         <p className="apps-muted">
@@ -811,11 +818,11 @@ function ConnectionLogin({
   const [oauthSecret, setOauthSecret] = useState("");
   const [authorizationUrl, setAuthorizationUrl] = useState<string | null>(null);
   return (
-    <details
+    <Disclosure
       open={loginOpen}
       onToggle={(event) => setLoginOpen(event.currentTarget.open)}
+      label="登录与凭据"
     >
-      <summary>登录与凭据</summary>
       <div className="apps-actions">
         <Button
           variant="secondary"
@@ -871,8 +878,7 @@ function ConnectionLogin({
           继续浏览器授权
         </a>
       )}
-      <details>
-        <summary>自定义 OAuth 客户端</summary>
+      <Disclosure label="自定义 OAuth 客户端">
         <div className="apps-form-columns">
           <label>
             客户端编号
@@ -893,7 +899,7 @@ function ConnectionLogin({
             />
           </label>
         </div>
-      </details>
-    </details>
+      </Disclosure>
+    </Disclosure>
   );
 }
