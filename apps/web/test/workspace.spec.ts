@@ -795,6 +795,167 @@ test.afterEach(async () => {
   await rm(directory, { recursive: true, force: true, maxRetries: 5 });
 });
 
+test("work computers separate access, defaults and existing Bot bindings", async ({
+  page,
+}, info) => {
+  await page.goto(url);
+  const before = await (
+    await page.request.post(`${url}/rpc/computer/list`, { data: { json: {} } })
+  ).json();
+  await page.getByRole("button", { name: "用户菜单", exact: true }).click();
+  await page.getByRole("menuitem", { name: "设置", exact: true }).click();
+  const settings = page.getByRole("main", { name: "设置", exact: true });
+  await settings
+    .getByRole("group", { name: "工作电脑", exact: true })
+    .getByRole("button", { name: "打开", exact: true })
+    .click();
+  const computers = settings
+    .getByRole("region", {
+      name: "工作电脑",
+      exact: true,
+    })
+    .last();
+  await expect(
+    computers.getByRole("group", { name: "工具访问", exact: true }),
+  ).toHaveCount(0);
+  const defaults = computers.getByRole("combobox", {
+    name: "新机器人使用",
+    exact: true,
+  });
+  await defaults.click();
+  await page.getByRole("option", { name: "服务所在电脑", exact: true }).click();
+  await expect(defaults).toContainText("服务所在电脑");
+  const created = await (
+    await page.request.post(`${url}/rpc/bots/create`, {
+      data: { json: { name: "Writer", requestId: crypto.randomUUID() } },
+    })
+  ).json();
+  await defaults.click();
+  await page.getByRole("option", { name: "不分配电脑", exact: true }).click();
+  await expect(defaults).toContainText("不分配电脑");
+  const after = await (
+    await page.request.post(`${url}/rpc/computer/list`, { data: { json: {} } })
+  ).json();
+  for (const [id, binding] of Object.entries(before.json.bindings))
+    expect(after.json.bindings[id]).toEqual(binding);
+  expect(after.json.bindings[String(created.json.id)].computerId).toBe(
+    "process",
+  );
+  expect(after.json.defaultId).toBeNull();
+  await computers.getByRole("button", { name: /服务所在电脑.*机器人/ }).click();
+  const details = page.getByRole("dialog", {
+    name: "服务所在电脑",
+    exact: true,
+  });
+  await expect(
+    details.getByRole("group", { name: "使用此电脑的机器人", exact: true }),
+  ).toContainText("Domos");
+  await details.getByRole("button", { name: "撤销授权", exact: true }).click();
+  const confirm = page.getByRole("dialog", { name: "撤销授权", exact: true });
+  await expect(confirm).toContainText("Domos");
+  await confirm.getByRole("button", { name: "取消", exact: true }).click();
+  for (const theme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.setViewportSize({ width: 390, height: 900 });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await expect
+      .poll(() =>
+        details.evaluate((node) =>
+          [...node.querySelectorAll(".setting-control")].every(
+            (control) => control.scrollWidth <= control.clientWidth,
+          ),
+        ),
+      )
+      .toBe(true);
+    await page.screenshot({
+      path: info.outputPath(`work-computer-${theme}.png`),
+      animations: "disabled",
+    });
+  }
+  await details.getByRole("button", { name: "关闭弹窗", exact: true }).click();
+  for (const width of [390, 1360]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect
+      .poll(() =>
+        computers.evaluate((node) => node.scrollWidth <= node.clientWidth),
+      )
+      .toBe(true);
+    await page.screenshot({
+      path: info.outputPath(`work-computers-${width}.png`),
+    });
+  }
+});
+
+test("computer selection reflects authorization, availability and Harness requirements", async ({
+  page,
+}) => {
+  await page.goto(url);
+  await page.route("**/rpc/engines/get", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.json.config.provider = "codex";
+    await route.fulfill({ response, json: body });
+  });
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  await page.getByRole("tab", { name: "Computer", exact: true }).click();
+  await page.getByRole("button", { name: "电脑设置", exact: true }).click();
+  await page
+    .getByRole("combobox", { name: "此 Bot 使用的电脑", exact: true })
+    .click();
+  await expect(
+    page.getByRole("option", { name: "仅聊天", exact: true }),
+  ).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "用户菜单", exact: true }).click();
+  await page.getByRole("menuitem", { name: "设置", exact: true }).click();
+  const settings = page.getByRole("main", { name: "设置", exact: true });
+  await settings
+    .getByRole("group", { name: "工作电脑", exact: true })
+    .getByRole("button", { name: "打开", exact: true })
+    .click();
+  const catalog = (
+    await (
+      await page.request.post(`${url}/rpc/computer/list`, {
+        data: { json: {} },
+      })
+    ).json()
+  ).json;
+  for (const state of ["unavailable", "unauthorized", "empty"]) {
+    await page.route("**/rpc/computer/list", (route) =>
+      route.fulfill({
+        json: {
+          json: {
+            ...catalog,
+            items:
+              state === "empty"
+                ? []
+                : catalog.items.map((item: object) => ({
+                    ...item,
+                    ...(state === "unauthorized"
+                      ? { authorized: false }
+                      : { state, error: "" }),
+                  })),
+          },
+        },
+      }),
+    );
+    await settings
+      .getByRole("button", { name: "刷新电脑状态", exact: true })
+      .click();
+    if (state === "empty")
+      await expect(settings.getByRole("status")).toHaveText("还没有工作电脑。");
+    else
+      await expect(
+        settings.getByRole("button", {
+          name: new RegExp(
+            `服务所在电脑.*${state === "unauthorized" ? "待授权" : "连接不可用"}`,
+          ),
+        }),
+      ).toBeVisible();
+    await page.unroute("**/rpc/computer/list");
+  }
+});
+
 test("remote Docker setup submits the selected browser network policy", async ({
   page,
 }, testInfo) => {
@@ -803,16 +964,17 @@ test("remote Docker setup submits the selected browser network policy", async ({
   await page.getByRole("menuitem", { name: "设置", exact: true }).click();
   const settings = page.getByRole("main", { name: "设置", exact: true });
   await settings
-    .getByRole("group", { name: "电脑高级管理", exact: true })
+    .getByRole("group", { name: "工作电脑", exact: true })
     .getByRole("button", { name: "打开", exact: true })
     .click();
   await settings
-    .getByRole("button", { name: "添加 Docker 电脑", exact: true })
+    .getByRole("button", { name: "添加工作电脑", exact: true })
     .click();
   const dialog = page.getByRole("dialog", {
-    name: "添加 Docker 电脑",
+    name: "添加工作电脑",
     exact: true,
   });
+  await dialog.getByText("高级设置", { exact: true }).click();
   await dialog.getByRole("combobox", { name: "Docker 位置" }).click();
   await page.getByRole("option", { name: "远程 Docker", exact: true }).click();
   await dialog
@@ -1924,7 +2086,7 @@ test("settings stay readable in both themes and compact layouts", async ({
     settings.getByRole("tab", { name: "通用", exact: true }),
   ).toBeVisible();
   await expect(
-    settings.getByRole("tab", { name: "电脑高级管理", exact: true }),
+    settings.getByRole("tab", { name: "工作电脑", exact: true }),
   ).toHaveCount(0);
   await search.fill("不存在的设置");
   await expect(settings.getByRole("status")).toHaveText("没有匹配的设置");
@@ -1938,14 +2100,14 @@ test("settings stay readable in both themes and compact layouts", async ({
   ).toBeFocused();
   await expect(search).toHaveValue("");
   await settings
-    .getByRole("group", { name: "电脑高级管理", exact: true })
+    .getByRole("group", { name: "工作电脑", exact: true })
     .getByRole("button", { name: "打开", exact: true })
     .click();
   await settings
-    .getByRole("button", { name: "添加 Docker 电脑", exact: true })
+    .getByRole("button", { name: "添加工作电脑", exact: true })
     .click();
   const add = page.getByRole("dialog", {
-    name: "添加 Docker 电脑",
+    name: "添加工作电脑",
     exact: true,
   });
   let additions = 0;
@@ -1956,11 +2118,11 @@ test("settings stay readable in both themes and compact layouts", async ({
   await add.getByRole("button", { name: "取消", exact: true }).click();
   await settings.getByRole("tab", { name: "通用", exact: true }).click();
   await settings
-    .getByRole("group", { name: "电脑高级管理", exact: true })
+    .getByRole("group", { name: "工作电脑", exact: true })
     .getByRole("button", { name: "打开", exact: true })
     .click();
   await settings
-    .getByRole("button", { name: "添加 Docker 电脑", exact: true })
+    .getByRole("button", { name: "添加工作电脑", exact: true })
     .click();
   await expect(add.getByLabel("电脑名称", { exact: true })).toHaveValue(
     "尚未添加",

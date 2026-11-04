@@ -6,7 +6,7 @@ export const computerLabels = {
     unavailable: "连接不可用",
   },
   boundary: {
-    host: "当前电脑",
+    host: "服务所在电脑",
     application: "应用容器",
     sandbox: "独立工作沙箱",
   },

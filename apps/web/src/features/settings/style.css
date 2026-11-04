@@ -167,6 +167,20 @@
   width: 100%;
   min-width: 0;
 }
+.computer-record {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--color-divider);
+}
+.computer-record .panel-row {
+  flex: 1;
+  border: 0;
+  padding-inline-start: 0;
+}
+.settings-page[data-section="computers"] .section-heading {
+  justify-content: flex-end;
+}
 .provider-row > svg {
   flex-shrink: 0;
   width: var(--space-5);

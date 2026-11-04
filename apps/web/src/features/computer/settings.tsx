@@ -1,4 +1,6 @@
 import { Button } from "@domos/ui/controls";
+import { ChoicePicker } from "@domos/ui/picker";
+import { SettingRow } from "@domos/ui/setting-row";
 import { ArrowClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../client.ts";
@@ -9,11 +11,18 @@ export function ComputerSettings({ admin }: { admin: boolean }) {
   const [catalog, setCatalog] =
     useState<Awaited<ReturnType<typeof client.computer.list>>>();
   const [busy, setBusy] = useState(false);
+  const [bots, setBots] = useState<
+    Awaited<ReturnType<typeof client.bots.list>>
+  >([]);
   const [error, setError] = useState("");
-  const refresh = useCallback(
-    async () => setCatalog(await client.computer.list()),
-    [],
-  );
+  const refresh = useCallback(async () => {
+    const [catalog, bots] = await Promise.all([
+      client.computer.list(),
+      client.bots.list(),
+    ]);
+    setCatalog(catalog);
+    setBots(bots);
+  }, []);
   useEffect(() => {
     void refresh().catch((cause) => setError(cause.message));
   }, [refresh]);
@@ -34,9 +43,8 @@ export function ComputerSettings({ admin }: { admin: boolean }) {
     }
   }
   return (
-    <section className="settings-group" aria-label="电脑管理" aria-busy={busy}>
+    <section className="settings-group" aria-label="工作电脑" aria-busy={busy}>
       <div className="section-heading">
-        <strong>已连接的电脑</strong>
         <div className="form-actions">
           <Button
             variant="secondary"
@@ -51,9 +59,6 @@ export function ComputerSettings({ admin }: { admin: boolean }) {
           {admin && <AddComputer onAdded={refresh} />}
         </div>
       </div>
-      <p className="detail-note">
-        这些操作会影响使用同一电脑的 Bot。请在 Bot 的电脑页选择共享或独立环境。
-      </p>
       {catalog?.items.map((item) => (
         <ComputerRecord
           key={item.id}
@@ -61,10 +66,35 @@ export function ComputerSettings({ admin }: { admin: boolean }) {
           admin={admin}
           busy={busy}
           error={error}
-          defaultId={catalog.defaultId}
+          bots={bots
+            .filter(
+              (bot) => catalog.bindings[String(bot.id)]?.computerId === item.id,
+            )
+            .map((bot) => bot.name)}
           run={run}
         />
       ))}
+      {catalog?.items.length === 0 && <p role="status">还没有工作电脑。</p>}
+      {admin && catalog && (
+        <SettingRow title="新机器人使用" description="只影响新建机器人。">
+          <ChoicePicker
+            label="新机器人使用"
+            value={catalog.defaultId ?? ""}
+            disabled={busy}
+            onValueChange={(id) =>
+              void run(() => client.computer.default({ id: id || null }))
+            }
+            items={[
+              { value: "", label: "不分配电脑" },
+              ...catalog.items
+                .filter(
+                  (item) => item.authorized && item.scope?.kind !== "dedicated",
+                )
+                .map((item) => ({ value: item.id, label: item.name })),
+            ]}
+          />
+        </SettingRow>
+      )}
       {error && (
         <p className="alert" role="alert">
           {error}

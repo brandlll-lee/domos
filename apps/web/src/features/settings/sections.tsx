@@ -47,8 +47,8 @@ export const sections = {
   },
   computers: {
     primary: false,
-    label: "电脑高级管理",
-    description: "管理镜像、SSH、工作路径和容器生命周期。",
+    label: "工作电脑",
+    description: "",
     icon: DesktopIcon,
     render: ({ admin }: SectionProps) => <ComputerSettings admin={admin} />,
   },

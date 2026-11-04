@@ -27,12 +27,12 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
       onOpenChange={(next) => {
         if (!busy) setOpen(next);
       }}
-      title="添加 Docker 电脑"
+      title="添加工作电脑"
       description="连接已准备好工作环境的 Docker 主机。"
       trigger={
         <Button variant="secondary" size="small">
           <PlusIcon size={14} />
-          添加 Docker 电脑
+          添加工作电脑
         </Button>
       }
       footer={
@@ -140,83 +140,88 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
             required
             onValueChange={setName}
           />
-          <TextField
-            label="电脑标识"
-            value={id}
-            pattern="[a-z0-9][a-z0-9_.-]{0,62}"
-            required
-            onValueChange={setId}
-          />
-          <TextField
-            label="工作镜像"
-            value={image}
-            required
-            onValueChange={setImage}
-          />
-          <div className="field">
-            <span className="field-label">网络策略</span>
-            <ChoicePicker
-              label="网络策略"
-              value={network}
-              onValueChange={(value) => setNetwork(value as typeof network)}
-              items={[
-                { value: "none", label: "关闭外部网络" },
-                { value: "web", label: "允许 HTTP(S) 网站" },
-                { value: "restricted", label: "受限公网出网" },
-              ]}
-            />
-          </div>
-          {network === "web" && (
-            <TextField
-              label="代理镜像"
-              value={proxyImage}
-              required
-              onValueChange={setProxyImage}
-            />
-          )}
-          {network === "restricted" && (
-            <p className="detail-note">
-              Docker 主机需要安装 Domos 出网防火墙规则。
-            </p>
-          )}
-          <div className="field">
-            <span className="field-label">Docker 位置</span>
-            <ChoicePicker
-              label="Docker 位置"
-              value={remote ? "remote" : "local"}
-              onValueChange={(value) => setRemote(value === "remote")}
-              items={[
-                { value: "local", label: "本地 Docker" },
-                { value: "remote", label: "远程 Docker" },
-              ]}
-            />
-          </div>
-          {remote && (
-            <>
+          <details>
+            <summary>高级设置</summary>
+            <div className="setup-form">
               <TextField
-                label="SSH 主机"
-                value={host}
+                label="电脑标识"
+                value={id}
+                pattern="[a-z0-9][a-z0-9_.-]{0,62}"
                 required
-                onValueChange={setHost}
+                onValueChange={setId}
               />
               <TextField
-                label="SSH 用户"
-                value={user}
-                onValueChange={setUser}
-              />
-              <TextField
-                label="主机密钥文件路径"
-                value={knownHostsFile}
+                label="工作镜像"
+                value={image}
                 required
-                onValueChange={setKnownHostsFile}
+                onValueChange={setImage}
               />
-              <TextField
-                label="身份文件路径"
-                value={identityFile}
-                onValueChange={setIdentityFile}
-              />
-            </>
-          )}
+              <div className="field">
+                <span className="field-label">网络策略</span>
+                <ChoicePicker
+                  label="网络策略"
+                  value={network}
+                  onValueChange={(value) => setNetwork(value as typeof network)}
+                  items={[
+                    { value: "none", label: "关闭外部网络" },
+                    { value: "web", label: "允许 HTTP(S) 网站" },
+                    { value: "restricted", label: "受限公网出网" },
+                  ]}
+                />
+              </div>
+              {network === "web" && (
+                <TextField
+                  label="代理镜像"
+                  value={proxyImage}
+                  required
+                  onValueChange={setProxyImage}
+                />
+              )}
+              {network === "restricted" && (
+                <p className="detail-note">
+                  Docker 主机需要安装 Domos 出网防火墙规则。
+                </p>
+              )}
+              <div className="field">
+                <span className="field-label">Docker 位置</span>
+                <ChoicePicker
+                  label="Docker 位置"
+                  value={remote ? "remote" : "local"}
+                  onValueChange={(value) => setRemote(value === "remote")}
+                  items={[
+                    { value: "local", label: "本地 Docker" },
+                    { value: "remote", label: "远程 Docker" },
+                  ]}
+                />
+              </div>
+              {remote && (
+                <>
+                  <TextField
+                    label="SSH 主机"
+                    value={host}
+                    required
+                    onValueChange={setHost}
+                  />
+                  <TextField
+                    label="SSH 用户"
+                    value={user}
+                    onValueChange={setUser}
+                  />
+                  <TextField
+                    label="主机密钥文件路径"
+                    value={knownHostsFile}
+                    required
+                    onValueChange={setKnownHostsFile}
+                  />
+                  <TextField
+                    label="身份文件路径"
+                    value={identityFile}
+                    onValueChange={setIdentityFile}
+                  />
+                </>
+              )}
+            </div>
+          </details>
         </fieldset>
         {error && <p role="alert">{error}</p>}
       </form>

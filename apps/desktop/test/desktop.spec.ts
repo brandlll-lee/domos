@@ -153,6 +153,78 @@ test("native setup starts and resumes with Docker unavailable", async ({
     await expect(
       resumed.getByRole("heading", { name: "Bot 在哪里工作？" }),
     ).toBeVisible();
+    await resumed
+      .getByRole("button", { name: "授权并继续", exact: true })
+      .click();
+    await expect(
+      resumed.getByRole("heading", { name: "选择对话模型" }),
+    ).toBeVisible();
+    await resumed.evaluate(async () => {
+      const rpc = async (name: string, json: unknown) => {
+        const response = await fetch(`/rpc/${name}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ json }),
+        });
+        if (!response.ok) throw new Error(`RPC ${name}: ${response.status}`);
+        return (await response.json()).json;
+      };
+      const [bot] = await rpc("bots/list", {});
+      const profile = await rpc("engines/get", { botId: bot.id });
+      await rpc("engines/configure", {
+        botId: bot.id,
+        config: { provider: "pi", model: null },
+        revision: profile.revision,
+        requestId: crypto.randomUUID(),
+      });
+    });
+    await resumed.reload();
+    await expect(
+      resumed.getByRole("button", { name: "添加内容", exact: true }),
+    ).toBeEnabled();
+    await resumed
+      .getByRole("button", { name: "添加内容", exact: true })
+      .click();
+    const chooser = resumed.waitForEvent("filechooser");
+    await resumed
+      .getByRole("menuitem", { name: "添加文件", exact: true })
+      .click();
+    await (await chooser).setFiles([
+      {
+        name: "image.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1kAAAAASUVORK5CYII=",
+          "base64",
+        ),
+      },
+      {
+        name: "notes.txt",
+        mimeType: "text/plain",
+        buffer: Buffer.from("Desktop upload"),
+      },
+    ]);
+    await expect(
+      resumed.locator(".composer-attachments .attachment"),
+    ).toHaveCount(2);
+    await expect(resumed.locator(".attachment-image img")).toBeVisible();
+    await expect
+      .poll(() =>
+        resumed
+          .locator(".attachment-image img")
+          .evaluate((image: HTMLImageElement) => image.naturalWidth),
+      )
+      .toBe(1);
+    await expect(
+      resumed
+        .locator(".composer-attachments")
+        .getByRole("button", { name: "重试", exact: true }),
+    ).toHaveCount(0);
+    await captureWindow(
+      desktop,
+      resumed,
+      testInfo.outputPath("native-uploads.png"),
+    );
   } finally {
     await desktop.close();
     await rm(directory, { recursive: true, force: true });

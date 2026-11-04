@@ -2,11 +2,11 @@ import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
 import { ChoicePicker } from "@domos/ui/picker";
 import { SettingRow } from "@domos/ui/setting-row";
-import { useState } from "react";
-import { computerLabels } from "../../computer/copy.ts";
+import { useEffect, useState } from "react";
 import { ComputerLocation } from "../../computer/location.tsx";
 import { ComputerServices } from "../../computer/services.tsx";
 import type { useComputer } from "../../computer/use-computer.ts";
+import { useModelSettings } from "../../models/model-state.ts";
 import { useSettings } from "../../settings/context.ts";
 
 export function ComputerSettings({
@@ -20,6 +20,11 @@ export function ComputerSettings({
   const settings = useSettings();
   const [location, setLocation] = useState(false);
   const [preparing, setPreparing] = useState(false);
+  const { store, profile } = useModelSettings(botId);
+  const [profileError, setProfileError] = useState("");
+  useEffect(() => {
+    void store.load().catch((cause) => setProfileError(cause.message));
+  }, [store]);
   const ready = () => {
     setLocation(false);
     void refresh();
@@ -27,36 +32,37 @@ export function ComputerSettings({
   return (
     <section className="detail-page" aria-label="工作电脑" aria-busy={busy}>
       <div className="panel-card computer-binding">
-        <SettingRow title="工作位置">
+        <SettingRow title="工作电脑">
           <ChoicePicker
             label="此 Bot 使用的电脑"
             value={status?.id ?? ""}
-            disabled={busy}
-            onValueChange={(value) => void assign(value || null)}
+            disabled={busy || !profile}
+            onValueChange={(value) => {
+              if (!value && profile?.config.provider !== "pi")
+                setLocation(true);
+              else void assign(value || null);
+            }}
             items={[
-              { value: "", label: "仅聊天" },
+              ...(profile?.config.provider === "pi" || !status
+                ? [
+                    {
+                      value: "",
+                      label:
+                        profile?.config.provider === "pi"
+                          ? "仅聊天"
+                          : "选择工作电脑",
+                    },
+                  ]
+                : []),
               ...choices
-                .filter((item) => item.authorized)
-                .map((item) => ({ value: item.id, label: item.name })),
+                .filter((item) => item.authorized || item.id === status?.id)
+                .map((item) => ({
+                  value: item.id,
+                  label: item.authorized ? item.name : `${item.name}（待授权）`,
+                })),
             ]}
           />
         </SettingRow>
-        <div className="computer-binding-status">
-          <span
-            className="status-tag"
-            data-tone={status?.authorized ? "ready" : "attention"}
-          >
-            {status
-              ? `${computerLabels.state[status.state]} · ${status.authorized ? "已授权" : "待授权"}`
-              : "仅聊天"}
-          </span>
-          {status && (
-            <div className="computer-capabilities">
-              <span data-on={status.capabilities.commands}>命令</span>
-              <span data-on={status.capabilities.files}>文件</span>
-            </div>
-          )}
-        </div>
       </div>
       {busy && <p role="status">正在准备并连接电脑…</p>}
       {status?.error && (
@@ -71,9 +77,9 @@ export function ComputerSettings({
           admin={settings.admin}
         />
       )}
-      {error && (
+      {(error || profileError) && (
         <p className="alert" role="alert">
-          {error}
+          {error || profileError}
         </p>
       )}
 

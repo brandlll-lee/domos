@@ -3,7 +3,6 @@ import {
   Client,
   type Dispatcher,
   EnvHttpProxyAgent,
-  install,
   Pool,
   setGlobalDispatcher,
 } from "undici";
@@ -37,6 +36,5 @@ export function configureModelHttp() {
     }),
   );
   setGlobalDispatcher(dispatcher);
-  install();
   configured = true;
 }

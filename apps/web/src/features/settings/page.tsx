@@ -152,7 +152,9 @@ export function SettingsPage({
         <header className="settings-header">
           <div>
             <h2>{sections[section].label}</h2>
-            <p>{sections[section].description}</p>
+            {sections[section].description && (
+              <p>{sections[section].description}</p>
+            )}
           </div>
           <Button
             variant="ghost"

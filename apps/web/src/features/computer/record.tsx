@@ -1,93 +1,109 @@
 import type { ComputerView } from "@domos/agent/computer/catalog";
-import { Button, Switch } from "@domos/ui/controls";
+import { Dialog } from "@domos/ui/dialog";
+import { ActionMenu } from "@domos/ui/menu";
+import { PanelRow } from "@domos/ui/panel";
 import { SettingRow } from "@domos/ui/setting-row";
+import { DesktopIcon } from "@phosphor-icons/react/dist/csr/Desktop";
+import { useState } from "react";
 import { client } from "../../client.ts";
 import { computerLabels } from "./copy.ts";
-import { ComputerDetails, ConfirmComputerAction } from "./dialogs.tsx";
+import { ConfirmComputerAction } from "./dialogs.tsx";
 
 type RecordProps = {
   item: ComputerView;
   admin: boolean;
   busy: boolean;
   error: string;
-  defaultId: string | null;
+  bots: string[];
   run: (action: () => Promise<unknown>) => Promise<boolean>;
 };
 
 export function ComputerRecord(props: RecordProps) {
-  const { item, admin, busy, defaultId, run } = props;
+  const { item, admin, bots } = props;
+  const [open, setOpen] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
   return (
-    <section className="settings-card" aria-label={item.name}>
-      <SettingRow
-        title={item.name}
-        description={`${computerLabels.boundary[item.boundary]} · ${computerLabels.state[item.state]} · ${item.authorized ? "已授权" : "待授权"}`}
-      >
-        <ComputerDetails name={item.name}>
-          <dl className="computer-facts">
-            <dt>工作根目录</dt>
-            <dd>{item.directory}</dd>
-            <dt>能力</dt>
-            <dd>
-              {item.capabilities.commands ? "命令与文件" : "当前不可执行"}
-            </dd>
-            <dt>网络</dt>
-            <dd>{computerLabels.network[item.network]}</dd>
-          </dl>
-        </ComputerDetails>
-      </SettingRow>
-      {item.error && (
-        <p className="alert" role="alert">
-          {item.error}
-        </p>
-      )}
-      {admin && <ComputerAccess {...props} />}
-      {admin && item.authorized && item.scope?.kind !== "dedicated" && (
-        <SettingRow
-          title="默认电脑"
-          description="新建 Bot 时自动分配。已有 Bot 的归属保持不变。"
-        >
-          <Switch
-            label={`新 Bot 默认使用${item.name}`}
-            checked={defaultId === item.id}
-            disabled={busy}
-            onCheckedChange={(checked) =>
-              void run(() =>
-                client.computer.default({ id: checked ? item.id : null }),
-              )
-            }
-          />
-        </SettingRow>
-      )}
-      {admin && item.authorized && item.kind !== "process" && (
-        <ContainerSettings {...props} />
-      )}
-    </section>
+    <>
+      <div className="computer-record">
+        <PanelRow
+          icon={<DesktopIcon />}
+          title={item.name}
+          value={`${item.error ? "连接异常" : item.authorized ? computerLabels.state[item.state] : "待授权"} · ${bots.length} 个机器人`}
+          onClick={() => setOpen(true)}
+        />
+        <ActionMenu
+          label={`${item.name}的更多操作`}
+          items={[
+            { label: "查看详情", onSelect: () => setOpen(true) },
+            {
+              label: "高级设置",
+              onSelect: () => {
+                setAdvanced(true);
+                setOpen(true);
+              },
+            },
+          ]}
+        />
+      </div>
+      <Dialog open={open} onOpenChange={setOpen} title={item.name}>
+        <div className="settings-group">
+          <SettingRow title="位置">
+            {computerLabels.boundary[item.boundary]}
+          </SettingRow>
+          <SettingRow title="状态">
+            {computerLabels.state[item.state]}
+          </SettingRow>
+          <SettingRow title="使用此电脑的机器人">
+            {bots.join("、") || "暂无"}
+          </SettingRow>
+          <SettingRow title="文件位置">{item.directory}</SettingRow>
+          {item.error && (
+            <p className="alert" role="alert">
+              {item.error}
+            </p>
+          )}
+          {admin && <ComputerAccess {...props} />}
+          <details
+            open={advanced}
+            onToggle={(event) => setAdvanced(event.currentTarget.open)}
+          >
+            <summary>高级设置</summary>
+            <SettingRow title="网络">
+              {computerLabels.network[item.network]}
+            </SettingRow>
+            {admin && item.authorized && item.kind !== "process" && (
+              <ContainerSettings {...props} />
+            )}
+          </details>
+        </div>
+      </Dialog>
+    </>
   );
 }
 
-function ComputerAccess({ item, busy, error, run }: RecordProps) {
+function ComputerAccess({ item, bots, busy, error, run }: RecordProps) {
   return (
     <SettingRow
       title="工具访问"
       description={
         item.kind === "process"
-          ? "允许 Bot 使用本机命令与文件。工具使用服务进程的系统权限。"
+          ? "使用服务所在电脑的命令与文件，权限与服务进程相同。"
           : "允许已分配的 Bot 使用此电脑的命令与文件。"
       }
     >
       {item.authorized ? (
-        <Button
-          variant="secondary"
-          size="small"
-          disabled={busy}
-          onClick={() =>
-            void run(() =>
+        <ConfirmComputerAction
+          title="撤销授权"
+          label="撤销授权"
+          description={`此电脑上的命令与文件工具将停用。使用者：${bots.join("、") || "暂无"}。`}
+          busy={busy}
+          error={error}
+          onConfirm={() =>
+            run(() =>
               client.computer.authorize({ id: item.id, authorized: false }),
             )
           }
-        >
-          撤销授权
-        </Button>
+        />
       ) : (
         <ConfirmComputerAction
           title={`授权使用${item.name}`}
@@ -107,7 +123,7 @@ function ComputerAccess({ item, busy, error, run }: RecordProps) {
   );
 }
 
-function ContainerSettings({ item, busy, error, run }: RecordProps) {
+function ContainerSettings({ item, bots, busy, error, run }: RecordProps) {
   const running = item.state === "running";
   return (
     <>
@@ -115,21 +131,21 @@ function ContainerSettings({ item, busy, error, run }: RecordProps) {
         title="容器运行"
         description="停止容器内的进程。下次使用工具时，自动准备的电脑会重新启动。"
       >
-        <Button
-          variant="secondary"
-          size="small"
-          disabled={busy}
-          onClick={() =>
-            void run(() =>
+        <ConfirmComputerAction
+          title={running ? "停止电脑" : "启动电脑"}
+          label={running ? "确认停止" : "确认启动"}
+          description={`使用者：${bots.join("、") || "暂无"}。${running ? "容器内的进程将结束。" : "将启动此工作电脑。"}`}
+          busy={busy}
+          error={error}
+          onConfirm={() =>
+            run(() =>
               client.computer.manage({
                 id: item.id,
                 action: running ? "stop" : "start",
               }),
             )
           }
-        >
-          {running ? "停止电脑" : "启动电脑"}
-        </Button>
+        />
       </SettingRow>
       <SettingRow
         title="重建容器"
@@ -138,7 +154,7 @@ function ContainerSettings({ item, busy, error, run }: RecordProps) {
         <ConfirmComputerAction
           title="重建工作容器"
           label="确认重建"
-          description="工作卷保留。容器内的进程将结束。"
+          description={`工作卷保留，容器内的进程将结束。使用者：${bots.join("、") || "暂无"}。`}
           busy={busy}
           error={error}
           onConfirm={() =>

@@ -26,7 +26,7 @@ export function GeneralSettings({ admin, deviceId }: SettingsAccess) {
           <h3>访问</h3>
           <div className="settings-card">
             <SettingRow
-              title="在其他设备上使用"
+              title="访问设备"
               description="连接手机或另一台电脑，继续使用这些 Bot。"
             >
               <Button
@@ -44,10 +44,7 @@ export function GeneralSettings({ admin, deviceId }: SettingsAccess) {
         <section className="settings-group">
           <h3>管理</h3>
           <div className="settings-card">
-            <SettingRow
-              title="电脑高级管理"
-              description="管理镜像、远程连接和容器。Bot 的工作环境可在对话中选择。"
-            >
+            <SettingRow title="工作电脑">
               <Button
                 variant="secondary"
                 size="small"
@@ -78,7 +75,7 @@ export function GeneralSettings({ admin, deviceId }: SettingsAccess) {
         onOpenChange={(open) => {
           if (!open) setFlow(null);
         }}
-        title="在其他设备上使用"
+        title="访问设备"
         description="为你信任的设备授权。撤销后，该设备将无法继续访问。"
         footer={
           <div className="dialog-actions">

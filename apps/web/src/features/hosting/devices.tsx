@@ -39,7 +39,7 @@ export function Devices({ current }: { current: string }) {
   return (
     <section
       className="settings-sections"
-      aria-label="访问授权"
+      aria-label="访问设备"
       aria-busy={busy}
     >
       <section className="settings-group">

@@ -1,38 +1,6 @@
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
-import { type ReactNode, useState } from "react";
-
-export function ComputerDetails({
-  name,
-  children,
-}: {
-  name: string;
-  children: ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={setOpen}
-      title={name}
-      description="查看电脑的工作目录、能力与网络。"
-      trigger={
-        <Button variant="secondary" size="small">
-          查看详情
-        </Button>
-      }
-      footer={
-        <div className="dialog-actions">
-          <Button variant="secondary" onClick={() => setOpen(false)}>
-            关闭详情
-          </Button>
-        </div>
-      }
-    >
-      {children}
-    </Dialog>
-  );
-}
+import { useState } from "react";
 
 export function ConfirmComputerAction({
   title,

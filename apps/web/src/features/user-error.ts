@@ -16,7 +16,7 @@ export function userError(cause: unknown, fallback: string) {
       case "PRECONDITION_FAILED":
         return "当前状态不允许此操作。";
       case "BAD_REQUEST":
-        return "提交的内容不完整，请检查后重试。";
+        return "请求内容无效，请检查后重试。";
       case "SERVICE_UNAVAILABLE":
         return "服务暂时不可用，请稍后重试。";
       case "NOT_IMPLEMENTED":

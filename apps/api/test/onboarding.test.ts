@@ -1,4 +1,6 @@
+import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
+import { createServer } from "node:http";
 import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import { openAgent } from "@domos/agent";
@@ -13,6 +15,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
 import { createRegistry } from "@earendil-works/pi-durable";
+import { getRequestListener } from "@hono/node-server";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterClient } from "@orpc/server";
@@ -22,6 +25,86 @@ import type { AppRouter } from "../src/router.ts";
 
 const context = BACKGROUND_CONTEXT;
 const model = { provider: "faux", modelId: "faux-1" };
+
+test("HTTP uploads retain file content, ownership and actionable errors after runtime startup", async () => {
+  const { runtime, client } = await fixture();
+  const app = createApp(
+    runtime.bots,
+    runtime.models,
+    runtime.files,
+    runtime.work,
+    runtime.computer,
+  );
+  const server = createServer(getRequestListener(app.fetch)).listen(
+    0,
+    "127.0.0.1",
+  );
+  await once(server, "listening");
+  onTestFinished(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const address = server.address();
+  if (!address || typeof address === "string")
+    throw new Error("Server required");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const http = createORPCClient<RouterClient<AppRouter>>(
+    new RPCLink({ url: `${origin}/rpc` }),
+  );
+  const botId = runtime.conversation.id;
+  const binding = await client.computer.get({ botId });
+  await client.computer.configure({
+    botId,
+    mode: "process",
+    revision: binding.revision,
+    requestId: crypto.randomUUID(),
+  });
+  const other = await client.bots.create({
+    name: "Other",
+    requestId: crypto.randomUUID(),
+  });
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1kAAAAASUVORK5CYII=",
+    "base64",
+  );
+  for (const file of [
+    new File([png], "image.png", { type: "image/png" }),
+    new File(["source"], "source.txt"),
+    new File(["%PDF-1.7\n%%EOF"], "report.pdf", { type: "application/pdf" }),
+  ]) {
+    const input = { botId, file, requestId: crypto.randomUUID() };
+    const uploaded = await http.files.upload(input);
+    expect(await http.files.upload(input)).toEqual(uploaded);
+    expect(
+      Buffer.from(
+        await (
+          await http.files.download({ botId, id: uploaded.id })
+        ).arrayBuffer(),
+      ),
+    ).toEqual(Buffer.from(await file.arrayBuffer()));
+    await expect(
+      http.files.download({ botId: other.id, id: uploaded.id }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    if (file.type === "image/png") {
+      const preview = await fetch(`${origin}/files/${botId}/${uploaded.id}`);
+      expect(preview.headers.get("content-type")).toBe("image/png");
+      expect(Buffer.from(await preview.arrayBuffer())).toEqual(png);
+    }
+    await http.files.discard({ botId, id: uploaded.id });
+    await expect(
+      http.files.download({ botId, id: uploaded.id }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  }
+  await expect(
+    http.files.upload({
+      botId: other.id,
+      file: new File(["source"], "source.txt"),
+    }),
+  ).rejects.toMatchObject({
+    code: "BAD_REQUEST",
+    message: "请先为 Bot 分配工作电脑。",
+  });
+});
 
 async function fixture() {
   const directory = await mkdtemp(join(tmpdir(), "domos-onboarding-"));
