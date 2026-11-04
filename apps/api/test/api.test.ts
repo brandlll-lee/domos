@@ -32,7 +32,7 @@ const botInput = (name: string, modelId = "faux-1") => ({
   avatar: crypto.randomUUID(),
 });
 
-async function setup() {
+async function setup(staticDir?: string) {
   const directory = await mkdtemp(join(tmpdir(), "domos-api-"));
   onTestFinished(() => rm(directory, { recursive: true, force: true }));
   const faux = fauxProvider();
@@ -61,6 +61,7 @@ async function setup() {
       runtime.files,
       runtime.work,
       computer,
+      staticDir,
     );
     const client: RouterClient<AppRouter> = createORPCClient(
       new RPCLink({
@@ -1435,5 +1436,25 @@ test("attachment validation uses detected MIME and the selected model capability
     expect((await runtime.client.get({ botId })).messages).toEqual([]);
   } finally {
     await runtime.harness.close(context);
+  }
+});
+
+test("local HTML entry points use fresh resources after an update", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "domos-local-entry-"));
+  onTestFinished(() => rm(directory, { recursive: true, force: true }));
+  const { open } = await setup(directory);
+  const runtime = await open();
+  onTestFinished(() => runtime.harness.close(context));
+  for (const version of ["first", "second"]) {
+    await writeFile(
+      join(directory, "index.html"),
+      `<script src="/assets/${version}.js"></script>`,
+    );
+    for (const path of ["/", "/index.html"]) {
+      const response = await runtime.app.request(`http://localhost${path}`);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(await response.text()).toContain(`/assets/${version}.js`);
+    }
   }
 });

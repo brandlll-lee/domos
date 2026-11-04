@@ -1,4 +1,5 @@
 import { Menu } from "@base-ui/react/menu";
+import type { ReactElement, ReactNode } from "react";
 import { Button } from "./controls.tsx";
 import "./menu.css";
 
@@ -14,6 +15,8 @@ function MoreIcon() {
 
 export type ActionMenuItem = {
   label: string;
+  icon?: ReactNode;
+  separator?: boolean;
   onSelect: () => void;
   disabled?: boolean;
   tone?: "danger";
@@ -23,31 +26,38 @@ export function ActionMenu({
   label,
   items,
   disabled,
+  trigger,
+  side = "bottom",
 }: {
   label: string;
   items: ActionMenuItem[];
   disabled?: boolean;
+  trigger?: ReactElement;
+  side?: "top" | "bottom";
 }) {
   return (
     <Menu.Root>
       <Menu.Trigger
         render={
-          <Button
-            variant="ghost"
-            size="icon-small"
-            className="action-menu-trigger"
-            aria-label={label}
-            disabled={disabled}
-          />
+          trigger ?? (
+            <Button
+              variant="ghost"
+              size="icon-small"
+              className="action-menu-trigger"
+              aria-label={label}
+              disabled={disabled}
+            />
+          )
         }
       >
-        <MoreIcon />
+        {trigger ? undefined : <MoreIcon />}
       </Menu.Trigger>
       <Menu.Portal>
         <Menu.Positioner
           className="action-menu-positioner"
           sideOffset={4}
-          align="end"
+          side={side}
+          align={side === "top" ? "start" : "end"}
         >
           <Menu.Popup className="action-menu">
             {items.map((item) => (
@@ -55,9 +65,11 @@ export function ActionMenu({
                 key={item.label}
                 className="action-menu-item"
                 data-tone={item.tone}
+                data-separator={item.separator || undefined}
                 disabled={item.disabled}
                 onClick={item.onSelect}
               >
+                {item.icon}
                 {item.label}
               </Menu.Item>
             ))}

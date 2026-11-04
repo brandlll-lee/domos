@@ -1,6 +1,7 @@
 import type { EngineAnswer } from "@domos/agent/harness/types";
 import type { ChatMessage } from "@domos/agent/messages";
 import { Button } from "@domos/ui/controls";
+import { Dialog } from "@domos/ui/dialog";
 import { TextField } from "@domos/ui/field";
 import { InlineNotice } from "@domos/ui/message";
 import { QuestionIcon } from "@phosphor-icons/react/dist/csr/Question";
@@ -18,6 +19,7 @@ export function Approval({
 }) {
   const record = message.approval;
   const request = record?.request;
+  const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [custom, setCustom] = useState<string>();
   const [answers, setAnswers] = useState<Record<string, string[]>>(() =>
@@ -62,14 +64,16 @@ export function Approval({
           : "已批准";
   const body = (
     <div className="interaction-card" data-state={record.state}>
-      <header className="interaction-heading">
-        {question ? (
-          <QuestionIcon aria-hidden />
-        ) : (
-          <ShieldCheckIcon aria-hidden />
-        )}
-        <strong>{request.title}</strong>
-      </header>
+      {pending && (
+        <header className="interaction-heading">
+          {question ? (
+            <QuestionIcon aria-hidden />
+          ) : (
+            <ShieldCheckIcon aria-hidden />
+          )}
+          <strong>{request.title}</strong>
+        </header>
+      )}
       {request.fields?.length ? (
         <dl className="approval-fields">
           {request.fields.map((field) => (
@@ -85,7 +89,7 @@ export function Approval({
           <p className="approval-detail">{request.detail}</p>
         ) : (
           <details className="approval-technical">
-            <summary>原始内容</summary>
+            <summary>技术详情</summary>
             <p>{request.detail}</p>
           </details>
         ))}
@@ -267,17 +271,26 @@ export function Approval({
       {pending ? (
         body
       ) : (
-        <details>
-          <summary>
-            <InlineNotice
-              align="center"
-              icon={question ? <QuestionIcon /> : <ShieldCheckIcon />}
-            >
-              {request.title} · <span role="status">{status}</span>
-            </InlineNotice>
-          </summary>
-          {body}
-        </details>
+        <>
+          <InlineNotice
+            align="center"
+            icon={question ? <QuestionIcon /> : <ShieldCheckIcon />}
+            onClick={() => setOpen(true)}
+          >
+            {request.title} · <span role="status">{status}</span>
+          </InlineNotice>
+          <Dialog
+            open={open}
+            onOpenChange={setOpen}
+            title={request.title}
+            className="decision-dialog"
+          >
+            <p className="interaction-result" role="status">
+              {status}
+            </p>
+            {body}
+          </Dialog>
+        </>
       )}
     </section>
   );

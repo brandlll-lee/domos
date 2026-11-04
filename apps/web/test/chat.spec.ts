@@ -98,7 +98,8 @@ async function openSettings(page: import("@playwright/test").Page) {
     ) {
       await contacts.click();
     } else await expect(contacts).toHaveCount(0);
-    await page.getByRole("button", { name: "设置", exact: true }).click();
+    await page.getByRole("button", { name: "用户菜单", exact: true }).click();
+    await page.getByRole("menuitem", { name: "设置", exact: true }).click();
     await expect(page.locator(".settings-main")).toBeFocused();
   }
   await settings.getByRole("tab", { name: "通用", exact: true }).click();
@@ -3556,14 +3557,16 @@ test("native questions use the shared card and native replies persist", async ({
   await page.reload();
   await expect(replies).toHaveText(["正在核对资料。", "已按你的选择完成。"]);
   await expect(choice.getByRole("status")).toHaveText("已回答");
-  await expect(choice.locator("details").first()).not.toHaveAttribute(
-    "open",
-    "",
-  );
-  await choice.locator("summary").first().click();
+  await expect(choice.locator(".interaction-card")).toHaveCount(0);
+  await choice.getByRole("button").click();
+  const answered = page.getByRole("dialog", {
+    name: "你要哪种结果？",
+    exact: true,
+  });
   await expect(
-    choice.getByRole("button", { name: "A 简短", exact: true }),
+    answered.getByRole("button", { name: "A 简短", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("Escape");
   await control({
     responses: [
       {

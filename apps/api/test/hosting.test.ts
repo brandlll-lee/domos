@@ -200,3 +200,40 @@ test("hosting authenticates RPC, files, admin operations, origins and pairing", 
     (await request("/files/1/test", { headers: { Cookie: cookie } })).status,
   ).toBe(401);
 });
+
+test("HTML entry points use fresh resources after an update", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "domos-web-entry-"));
+  const store = await HostingStore.open(directory);
+  const hosted = hostingApp({
+    config: parseConfig(
+      { dataDir: directory, staticDir: directory },
+      join(directory, "config.json"),
+    ),
+    sessions: new Sessions(store),
+    models: createModels(),
+    forward: async () => Response.json({ ok: true }),
+  });
+  onTestFinished(async () => {
+    hosted.close();
+    await store.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  for (const version of ["first", "second"]) {
+    await writeFile(
+      join(directory, "index.html"),
+      `<script src="/assets/${version}.js"></script>`,
+    );
+    for (const path of ["/", "/index.html"]) {
+      const response = await hosted.app.request(`http://127.0.0.1:4310${path}`);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(await response.text()).toContain(`/assets/${version}.js`);
+    }
+  }
+  await writeFile(join(directory, "app.js"), "export {};");
+  expect(
+    (await hosted.app.request("http://127.0.0.1:4310/app.js")).headers.get(
+      "cache-control",
+    ),
+  ).not.toBe("no-store");
+});

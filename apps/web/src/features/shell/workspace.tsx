@@ -1,11 +1,14 @@
 import { Button } from "@domos/ui/controls";
 import { PanelDialog } from "@domos/ui/dialog";
+import { ActionMenu } from "@domos/ui/menu";
 import { layout } from "@domos/ui/tokens";
 import { ChartBarIcon } from "@phosphor-icons/react/dist/csr/ChartBar";
 import { DotsThreeIcon } from "@phosphor-icons/react/dist/csr/DotsThree";
 import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
 import { ListIcon } from "@phosphor-icons/react/dist/csr/List";
+import { MonitorIcon } from "@phosphor-icons/react/dist/csr/Monitor";
 import { StorefrontIcon } from "@phosphor-icons/react/dist/csr/Storefront";
+import { UserIcon } from "@phosphor-icons/react/dist/csr/User";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import {
   type ReactNode,
@@ -17,7 +20,6 @@ import {
   ViewTransition,
 } from "react";
 import { flushSync } from "react-dom";
-import { EnvironmentSwitcher } from "./environment-switcher.tsx";
 import { useWorkspaceLayout } from "./layout.ts";
 import { ResizeHandle } from "./resize-handle.tsx";
 import { Titlebar } from "./titlebar.tsx";
@@ -32,7 +34,6 @@ export function Workspace({
   children,
   onSettings,
   onApps,
-  usageOpen,
   onUsage,
   expanded = false,
   inspectorTitle = "Bot详情",
@@ -45,13 +46,13 @@ export function Workspace({
   children: ReactNode;
   onSettings: () => void;
   onApps: () => void;
-  usageOpen: boolean;
   onUsage: () => void;
   expanded?: boolean;
   inspectorTitle?: string;
 }) {
   const sizing = useWorkspaceLayout(detailsOpen && !expanded);
   const [contactsOpen, setContactsOpen] = useState(false);
+  const [menuError, setMenuError] = useState("");
   const [dragging, setDragging] = useState(false);
   useLayoutEffect(() => {
     // The viewport can change before its resize event reaches React.
@@ -87,6 +88,15 @@ export function Workspace({
     window.addEventListener("hashchange", close);
     return () => window.removeEventListener("hashchange", close);
   }, []);
+  const desktopMenu = async (scope?: "environment") => {
+    setMenuError("");
+    try {
+      const result = await window.domosDesktop?.menu(scope);
+      if (!result?.ok) setMenuError("无法打开桌面菜单");
+    } catch {
+      setMenuError("无法打开桌面菜单");
+    }
+  };
   const panels = [
     {
       side: "sidebar" as const,
@@ -216,70 +226,83 @@ export function Workspace({
                   />
                 )}
                 <div className="panel-body">
+                  {side === "sidebar" && modal && (
+                    <PanelDialog.Close
+                      className="contacts-close"
+                      aria-label="关闭联系人"
+                      render={<Button variant="ghost" size="icon-small" />}
+                    >
+                      <XIcon />
+                    </PanelDialog.Close>
+                  )}
                   {content}
                   {side === "sidebar" && (
                     <footer className="sidebar-footer">
-                      <EnvironmentSwitcher />
-                      <nav aria-label="主导航">
-                        <Button
-                          variant="ghost"
-                          size="small"
-                          className="apps-trigger"
-                          aria-label="应用"
-                          title="应用"
-                          onClick={onApps}
-                        >
-                          <StorefrontIcon aria-hidden="true" />
-                          <span>应用</span>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon-small"
-                          aria-label="用量"
-                          title="用量"
-                          aria-pressed={usageOpen}
-                          onClick={() => {
-                            setContactsOpen(false);
-                            onUsage();
-                          }}
-                        >
-                          <ChartBarIcon />
-                        </Button>
-                        <Button
-                          id="settings-trigger"
-                          variant="ghost"
-                          size="icon-small"
-                          aria-label="设置"
-                          title="设置"
-                          onClick={() => {
-                            setContactsOpen(false);
-                            onSettings();
-                          }}
-                        >
-                          <GearSixIcon aria-hidden="true" />
-                        </Button>
-                        {window.domosDesktop && (
+                      <ActionMenu
+                        label="用户菜单"
+                        side="top"
+                        trigger={
                           <Button
-                            variant="ghost"
-                            size="icon-small"
-                            aria-label="应用菜单"
-                            title="应用菜单"
-                            onClick={() => void window.domosDesktop?.menu()}
+                            id="settings-trigger"
+                            variant="secondary"
+                            size="icon"
+                            aria-label="用户菜单"
+                            title="用户菜单"
                           >
-                            <DotsThreeIcon />
+                            <UserIcon aria-hidden="true" />
                           </Button>
-                        )}
-                        {modal && (
-                          <PanelDialog.Close
-                            aria-label="关闭联系人"
-                            render={
-                              <Button variant="ghost" size="icon-small" />
-                            }
-                          >
-                            <XIcon />
-                          </PanelDialog.Close>
-                        )}
-                      </nav>
+                        }
+                        items={[
+                          {
+                            label: "设置",
+                            icon: <GearSixIcon />,
+                            onSelect: () => {
+                              setContactsOpen(false);
+                              onSettings();
+                            },
+                          },
+                          {
+                            label: "用量",
+                            icon: <ChartBarIcon />,
+                            onSelect: () => {
+                              setContactsOpen(false);
+                              onUsage();
+                            },
+                          },
+                          ...(window.domosDesktop
+                            ? [
+                                {
+                                  label: "运行环境",
+                                  icon: <MonitorIcon />,
+                                  separator: true,
+                                  onSelect: () =>
+                                    void desktopMenu("environment"),
+                                },
+                                {
+                                  label: "桌面操作",
+                                  icon: <DotsThreeIcon />,
+                                  onSelect: () => void desktopMenu(),
+                                },
+                              ]
+                            : []),
+                        ]}
+                      />
+                      <Button
+                        variant="secondary"
+                        size="small"
+                        className="apps-trigger"
+                        aria-label="连接中心"
+                        title="连接中心"
+                        onClick={onApps}
+                      >
+                        <StorefrontIcon aria-hidden="true" />
+                        <span>连接中心</span>
+                      </Button>
+                      {menuError && (
+                        <p className="sidebar-menu-error" role="alert">
+                          {menuError}
+                        </p>
+                      )}
                     </footer>
                   )}
                 </div>

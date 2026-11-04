@@ -214,7 +214,15 @@ export function hostingApp(options: {
   app.route("/rpc", protectedApp);
   app.get("/mcp/oauth/callback", (c) => options.forward(c.req.raw));
   app.route("/files", protectedApp);
-  app.use("/*", serveStatic({ root: config.staticDir }));
+  app.use(
+    "/*",
+    async (c, next) => {
+      await next();
+      if (c.res.headers.get("Content-Type")?.startsWith("text/html"))
+        c.header("Cache-Control", "no-store");
+    },
+    serveStatic({ root: config.staticDir }),
+  );
   app.onError((error, c) =>
     c.json(
       {

@@ -86,7 +86,15 @@ export function createApp(
       return c.notFound();
     }
   });
-  app.use("/*", serveStatic({ root: staticDir }));
+  app.use(
+    "/*",
+    async (c, next) => {
+      await next();
+      if (c.res.headers.get("Content-Type")?.startsWith("text/html"))
+        c.header("Cache-Control", "no-store");
+    },
+    serveStatic({ root: staticDir }),
+  );
   app.onError(() => new Response("服务暂时不可用。", { status: 500 }));
   return app;
 }

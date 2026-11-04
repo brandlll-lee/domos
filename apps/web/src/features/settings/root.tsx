@@ -25,15 +25,22 @@ export function SettingsRoot({
 
   function returnTarget() {
     const panel = document.querySelector<HTMLElement>(
-      ".workspace-panel[data-modal]",
+      '.workspace-panel[data-side="inspector"][data-modal]',
     );
-    if (panel) return panel;
+    if (
+      panel &&
+      document
+        .getElementById("details-trigger")
+        ?.getAttribute("aria-expanded") === "true"
+    )
+      return panel;
     return (
       [
         opener.current,
         document.getElementById("settings-trigger"),
         document.getElementById("contacts-trigger"),
-      ].find((element) => element?.checkVisibility()) ?? null
+      ].find((element) => element?.isConnected && element.checkVisibility()) ??
+      null
     );
   }
   function finish() {

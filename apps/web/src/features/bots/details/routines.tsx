@@ -5,6 +5,7 @@ import { Checkbox, TextField } from "@domos/ui/field";
 import { ActionMenu } from "@domos/ui/menu";
 import { ChoicePicker } from "@domos/ui/picker";
 import { SettingRow } from "@domos/ui/setting-row";
+import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
 import { useState } from "react";
 import { client } from "../../../client.ts";
 import type { useChat } from "../../chat/use-chat.ts";
@@ -61,6 +62,7 @@ export function RoutinesPanel({
   const [selectedRun, setSelectedRun] = useState<string>();
   const [deleting, setDeleting] = useState<Routine | null>(null);
   const runs = [...data.runs].reverse();
+  const selected = runs.find((run) => run.turnId === selectedRun);
   return (
     <section className="detail-page" aria-label="定时">
       {!editor && (
@@ -199,43 +201,40 @@ export function RoutinesPanel({
             {runs.length ? (
               <ul className="run-list">
                 {runs.map((run) => (
-                  <li key={run.id}>
-                    <div className="run-heading">
-                      <strong>{run.title}</strong>
-                      <span>{run.mode === "test" ? "试跑" : "定时"}</span>
-                    </div>
-                    <p className="item-note">{runLabels[run.status]}</p>
-                    <p className="item-note">
-                      计划：{new Date(run.scheduledAt).toLocaleString()}；触发：
-                      {new Date(run.firedAt).toLocaleString()}
-                    </p>
-                    <p className="item-note">
-                      执行 {((run.activeMs ?? 0) / 1000).toFixed(1)} 秒 · 等人{" "}
-                      {((run.waitingMs ?? 0) / 1000).toFixed(1)} 秒 · 期限{" "}
-                      {Math.round((run.executionMs ?? 900_000) / 60_000)} 分钟
-                    </p>
-                    {run.turnId && (
-                      <Button
-                        variant="ghost"
-                        size="small"
-                        onClick={() => setSelectedRun(run.turnId)}
-                      >
-                        查看工作记录
-                      </Button>
-                    )}
-                    {run.coalesced && (
-                      <p className="item-note">
-                        已将停机期间错过的周期合并为本次执行。
-                      </p>
-                    )}
-                    {run.error && <p role="status">{run.error}</p>}
-                    {run.status === "done" && (
-                      <p className="item-note">
-                        {run.delivery === "conditional"
+                  <li key={run.id} data-state={run.status}>
+                    <Button
+                      variant="ghost"
+                      className="routine-run"
+                      disabled={!run.turnId}
+                      aria-label={`查看工作记录：${run.title}`}
+                      onClick={() => setSelectedRun(run.turnId)}
+                    >
+                      <span className="routine-run-copy">
+                        <strong>{run.title}</strong>
+                        <span className="item-note">
+                          {new Date(run.firedAt).toLocaleString("zh-CN", {
+                            month: "long",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: false,
+                          })}
+                          {run.activeMs !== undefined &&
+                            ` · 执行 ${(run.activeMs / 1000).toFixed(1)} 秒`}
+                        </span>
+                      </span>
+                      <span className="routine-run-status">
+                        {run.status === "done" && run.delivery === "conditional"
                           ? run.delivered
                             ? "已交付"
                             : "静默完成"
-                          : "执行完成，查看聊天与工作记录。"}
+                          : runLabels[run.status]}
+                      </span>
+                      <CaretRightIcon aria-hidden="true" />
+                    </Button>
+                    {run.error && (
+                      <p className="alert" role="status">
+                        {run.error}
                       </p>
                     )}
                   </li>
@@ -255,6 +254,44 @@ export function RoutinesPanel({
           selectedRun={selectedRun}
           onRunClose={() => setSelectedRun(undefined)}
           detailOnly
+          runDetails={
+            selected && (
+              <dl className="approval-fields">
+                <div>
+                  <dt>执行方式</dt>
+                  <dd>{selected.mode === "test" ? "试跑" : "定时"}</dd>
+                </div>
+                <div>
+                  <dt>计划时间</dt>
+                  <dd>{new Date(selected.scheduledAt).toLocaleString()}</dd>
+                </div>
+                <div>
+                  <dt>触发时间</dt>
+                  <dd>{new Date(selected.firedAt).toLocaleString()}</dd>
+                </div>
+                <div>
+                  <dt>耗时</dt>
+                  <dd>
+                    执行 {((selected.activeMs ?? 0) / 1000).toFixed(1)} 秒 ·
+                    等人 {((selected.waitingMs ?? 0) / 1000).toFixed(1)} 秒
+                  </dd>
+                </div>
+                <div>
+                  <dt>执行期限</dt>
+                  <dd>
+                    {Math.round((selected.executionMs ?? 900_000) / 60_000)}{" "}
+                    分钟
+                  </dd>
+                </div>
+                {selected.coalesced && (
+                  <div>
+                    <dt>错过的周期</dt>
+                    <dd>已合并为本次执行</dd>
+                  </div>
+                )}
+              </dl>
+            )
+          }
         />
       )}
       <ConfirmDialog

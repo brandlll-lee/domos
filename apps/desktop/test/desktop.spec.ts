@@ -282,7 +282,7 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
       .getByRole("button", { name: "关闭", exact: true })
       .click();
     const environment = page.getByRole("button", {
-      name: "切换 Domos 环境：我的 Domos",
+      name: "用户菜单",
       exact: true,
     });
     await expect(environment).toBeVisible();
@@ -318,8 +318,8 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
         }),
     );
     await environment.click();
+    await page.getByRole("menuitem", { name: "运行环境", exact: true }).click();
     await menuShown;
-    await expect(environment).toHaveAttribute("aria-expanded", "true");
     await desktop.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()?.items[0]?.submenu?.closePopup(),
     );
@@ -347,7 +347,8 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
       window.domosDesktop?.prepare(),
     );
     expect(restricted?.ok).toBe(false);
-    await page.getByRole("button", { name: "设置", exact: true }).click();
+    await page.getByRole("button", { name: "用户菜单", exact: true }).click();
+    await page.getByRole("menuitem", { name: "设置", exact: true }).click();
     const settings = page.getByRole("main", { name: "设置", exact: true });
     await expect(settings.getByRole("tab")).toHaveText([
       "通用",
@@ -404,11 +405,17 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     await desktop.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(1),
     );
-    await reopened.getByRole("button", { name: "用量", exact: true }).click();
+    await reopened
+      .getByRole("button", { name: "用户菜单", exact: true })
+      .click();
+    await reopened.getByRole("menuitem", { name: "用量", exact: true }).click();
     await expect(
       reopened.getByRole("main", { name: "用量", exact: true }),
     ).toContainText("此范围还没有用量记录。");
-    await reopened.getByRole("button", { name: "用量", exact: true }).click();
+    await reopened
+      .getByRole("button", { name: "用户菜单", exact: true })
+      .click();
+    await reopened.getByRole("menuitem", { name: "用量", exact: true }).click();
     await expect(
       reopened.getByRole("button", { name: "Bot详情" }),
     ).toBeVisible();

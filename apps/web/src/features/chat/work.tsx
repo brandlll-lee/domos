@@ -5,7 +5,14 @@ import { ScrollArea } from "@domos/ui/scroll-area";
 import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
 import { StopIcon } from "@phosphor-icons/react/dist/csr/Stop";
 import { WrenchIcon } from "@phosphor-icons/react/dist/csr/Wrench";
-import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type MouseEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { EngineMark } from "../bots/engine-mark.tsx";
 import { useModelSettings } from "../models/model-state.ts";
 import type { useChat } from "./use-chat.ts";
@@ -19,6 +26,7 @@ export function WorkPanel(
     selectedRun?: string;
     onRunClose?: () => void;
     detailOnly?: boolean;
+    runDetails?: ReactNode;
   },
 ) {
   const { view, connected, stopping, stop } = chat;
@@ -186,6 +194,7 @@ export function WorkPanel(
                 <time>{elapsed(current, current.active)}</time>
               </div>
             </header>
+            {chat.runDetails}
             <ol className="work-timeline" aria-label="执行时间线">
               {current.items.map((item) => (
                 <WorkEntry key={item.id} botId={view.id} item={item} />

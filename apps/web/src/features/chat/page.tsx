@@ -178,7 +178,6 @@ function BotChat({
       }}
       expanded={panel !== "settings" && expanded}
       inspectorTitle="Bot详情"
-      usageOpen={view === "usage"}
       onUsage={() => {
         setView(view === "usage" ? "chat" : "usage");
         closePanel();

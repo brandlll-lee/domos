@@ -22,7 +22,7 @@ test("Apps manages a real MCP connection and Bot grants across reloads and theme
   const upstream = await mcpFixture();
   try {
     await page.goto(url);
-    await page.getByRole("button", { name: "应用", exact: true }).click();
+    await page.getByRole("button", { name: "连接中心", exact: true }).click();
     const dialog = page.locator(".apps-dialog");
     await expect(
       dialog.getByText("Microsoft Learn", { exact: true }),
@@ -130,7 +130,7 @@ test("Apps manages a real MCP connection and Bot grants across reloads and theme
       await dialog.screenshot({ path: info.outputPath(`apps-${theme}.png`) });
     }
     await page.reload();
-    await page.getByRole("button", { name: "应用", exact: true }).click();
+    await page.getByRole("button", { name: "连接中心", exact: true }).click();
     await dialog.getByRole("button", { name: /^已添加/ }).click();
     await dialog
       .getByRole("button", { name: /^查看 (Local Docs|OAuth Docs)$/ })
@@ -184,7 +184,7 @@ test("Apps completes and cancels browser OAuth with stored state", async ({
   const upstream = await mcpFixture({ oauth: true });
   try {
     await page.goto(url);
-    await page.getByRole("button", { name: "应用", exact: true }).click();
+    await page.getByRole("button", { name: "连接中心", exact: true }).click();
     const dialog = page.locator(".apps-dialog");
     await dialog.getByRole("button", { name: "MCP", exact: true }).click();
     await dialog.getByRole("button", { name: "添加 MCP", exact: true }).click();
@@ -221,7 +221,7 @@ test("Apps completes and cancels browser OAuth with stored state", async ({
     ).toBeVisible();
     await cancelled.close();
     await page.reload();
-    await page.getByRole("button", { name: "应用", exact: true }).click();
+    await page.getByRole("button", { name: "连接中心", exact: true }).click();
     await dialog.getByRole("button", { name: /^已添加/ }).click();
     await dialog
       .getByRole("button", { name: /^查看 (Local Docs|OAuth Docs)$/ })
@@ -335,10 +335,10 @@ test("three columns keep the identity capsule and navigation clear at each width
   if (!composer) throw new Error("Composer missing");
   expect(composer.y + composer.height).toBeGreaterThan(930);
   await expect(
-    footer.getByRole("button", { name: "用量", exact: true }),
+    footer.getByRole("button", { name: "连接中心", exact: true }),
   ).toBeVisible();
   await expect(
-    footer.getByRole("button", { name: "设置", exact: true }),
+    footer.getByRole("button", { name: "用户菜单", exact: true }),
   ).toBeVisible();
   await page.getByLabel("消息", { exact: true }).fill("保留这份草稿");
   for (const theme of ["dark", "light"] as const) {
@@ -370,7 +370,7 @@ test("three columns keep the identity capsule and navigation clear at each width
   }
   await page.getByRole("button", { name: "联系人", exact: true }).click();
   await expect(
-    footer.getByRole("button", { name: "设置", exact: true }),
+    footer.getByRole("button", { name: "用户菜单", exact: true }),
   ).toBeVisible();
   await page.getByRole("link", { name: "Domos", exact: true }).click();
   await expect(page.getByLabel("消息", { exact: true })).toBeVisible();
@@ -392,7 +392,8 @@ test("centered dialogs share stable geometry and Harness marks", async ({
       await page.keyboard.press("Escape");
       await page.getByRole("button", { name: "联系人", exact: true }).click();
     }
-    await page.getByRole("button", { name: "设置", exact: true }).click();
+    await page.getByRole("button", { name: "用户菜单", exact: true }).click();
+    await page.getByRole("menuitem", { name: "设置", exact: true }).click();
     const settings = page.getByRole("dialog", { name: "设置", exact: true });
     await expect(settings).toBeVisible();
     const size = await settings.boundingBox();
@@ -600,7 +601,8 @@ test("usage reports native task costs and preserves session snapshots across the
       await route.fulfill({ json: { json: mode === "empty" ? [] : records } });
   });
   await page.goto(url);
-  await page.getByRole("button", { name: "用量", exact: true }).click();
+  await page.getByRole("button", { name: "用户菜单", exact: true }).click();
+  await page.getByRole("menuitem", { name: "用量", exact: true }).click();
   const usage = page.getByRole("main", { name: "用量", exact: true });
   await expect(usage.getByLabel("正在读取用量")).toBeVisible();
   mode = "data";
@@ -693,7 +695,8 @@ test("usage totals distinguish unknown costs and include recorded zero-cost days
     route.fulfill({ json: { json: records } }),
   );
   await page.goto(url);
-  await page.getByRole("button", { name: "用量", exact: true }).click();
+  await page.getByRole("button", { name: "用户菜单", exact: true }).click();
+  await page.getByRole("menuitem", { name: "用量", exact: true }).click();
   const usage = page.getByRole("main", { name: "用量", exact: true });
   const total = usage.locator(".usage-breakdown-total");
   await expect(usage.locator(".usage-hero-value")).toHaveText("未提供");
@@ -796,7 +799,8 @@ test("remote Docker setup submits the selected browser network policy", async ({
   page,
 }, testInfo) => {
   await page.goto(url);
-  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: "用户菜单", exact: true }).click();
+  await page.getByRole("menuitem", { name: "设置", exact: true }).click();
   const settings = page.getByRole("main", { name: "设置", exact: true });
   await settings
     .getByRole("group", { name: "电脑高级管理", exact: true })
@@ -1666,7 +1670,7 @@ test("contacts snap to an icon column and restore their width without losing cha
     sidebar.getByRole("button", { name: "新建 Bot", exact: true }),
   ).toBeVisible();
   await expect(
-    sidebar.getByRole("button", { name: "设置", exact: true }),
+    sidebar.getByRole("button", { name: "用户菜单", exact: true }),
   ).toBeVisible();
   expect((await sidebar.boundingBox())?.width).toBe(96);
   for (const theme of ["dark", "light"] as const) {
@@ -1889,8 +1893,9 @@ test("settings stay readable in both themes and compact layouts", async ({
   await page.goto(url);
   const input = page.getByRole("textbox", { name: "消息", exact: true });
   await input.fill("返回后继续编辑");
-  const trigger = page.getByRole("button", { name: "设置", exact: true });
+  const trigger = page.getByRole("button", { name: "用户菜单", exact: true });
   await trigger.click();
+  await page.getByRole("menuitem", { name: "设置", exact: true }).click();
   const settings = page.getByRole("main", { name: "设置", exact: true });
   await expect(page.locator(".app-titlebar")).toHaveCount(0);
   await expect(input).toBeHidden();
@@ -1979,11 +1984,12 @@ test("settings stay readable in both themes and compact layouts", async ({
   }
   await page.keyboard.press("Escape");
   await expect(
-    page.getByRole("button", { name: "设置", exact: true }),
+    page.getByRole("button", { name: "用户菜单", exact: true }),
   ).toBeFocused();
   await expect(input).toHaveValue("返回后继续编辑");
   await expect(page.locator("#bot-details")).toBeVisible();
   await trigger.click();
+  await page.getByRole("menuitem", { name: "设置", exact: true }).click();
   await page.setViewportSize({ width: 768, height: 800 });
   await expect(settings).toBeVisible();
   await page.keyboard.press("Escape");
@@ -2056,7 +2062,8 @@ test("empty chats retain their creation time and compact controls across layouts
   await details.getByRole("button", { name: "关闭", exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "联系人", exact: true }).click();
-  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: "用户菜单", exact: true }).click();
+  await page.getByRole("menuitem", { name: "设置", exact: true }).click();
   const settings = page.getByRole("main", { name: "设置", exact: true });
   await settings.getByRole("button", { name: "返回对话", exact: true }).click();
   await expect(
@@ -2308,7 +2315,8 @@ test("control geometry and interaction states stay consistent", async ({
   await expect(checkbox).toBeChecked();
   await memory.getByRole("button", { name: "关闭弹窗", exact: true }).click();
   await details.getByRole("button", { name: "关闭", exact: true }).click();
-  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: "用户菜单", exact: true }).click();
+  await page.getByRole("menuitem", { name: "设置", exact: true }).click();
   const settings = page.getByRole("main", { name: "设置", exact: true });
   const nav = settings.getByRole("tablist", { name: "设置分区" });
   await expect(nav).toHaveAttribute("aria-orientation", "vertical");
@@ -2826,6 +2834,15 @@ test("shared question and approval cards persist answers and terminal states", a
             ? "已批准"
             : "已回答";
     await expect(card.getByRole("status")).toHaveText(expected);
+    await expect(card.locator(".interaction-card")).toHaveCount(0);
+    await card.getByRole("button").click();
+    const recordDialog = page.getByRole("dialog", { name: title, exact: true });
+    await expect(recordDialog).toBeVisible();
+    if (mode === "approve") {
+      await recordDialog.getByText("技术详情", { exact: true }).click();
+      await expect(recordDialog).toContainText("测试操作参数");
+    }
+    await page.keyboard.press("Escape");
     await page.reload();
     await expect(card.getByRole("status")).toHaveText(expected);
   }
@@ -2998,9 +3015,14 @@ test("chat routine changes require confirmation and link runs to Work", async ({
   await expect(
     page.getByText("已创建定时　◷　Daily report", { exact: true }),
   ).toBeVisible();
-  await expect(create.locator("details").first()).not.toHaveAttribute("open");
-  await create.locator("summary").first().click();
-  await expect(create).toContainText("每天 08:00");
+  await expect(create.locator(".interaction-card")).toHaveCount(0);
+  await create.getByRole("button").click();
+  const approvalDetails = page.getByRole("dialog", {
+    name: "创建定时：Daily report",
+    exact: true,
+  });
+  await expect(approvalDetails).toContainText("每天 08:00");
+  await page.keyboard.press("Escape");
   await page.reload();
   await expect(create.getByRole("status")).toHaveText("已批准");
   await expect(
@@ -3014,13 +3036,15 @@ test("chat routine changes require confirmation and link runs to Work", async ({
   await page.getByRole("menuitem", { name: "试跑", exact: true }).click();
   await details.locator("summary").filter({ hasText: "运行记录" }).click();
   await expect(details.locator(".run-list")).toContainText("已完成");
-  await expect(details.locator(".run-list")).toContainText("等人");
+  await expect(details.locator(".run-list")).not.toContainText("等人");
   await details
-    .getByRole("button", { name: "查看工作记录", exact: true })
+    .getByRole("button", { name: "查看工作记录：Daily report", exact: true })
     .click();
   const record = page.getByRole("dialog", { name: "工作记录", exact: true });
   await expect(record).toContainText("试跑：Daily report");
   await expect(record).toContainText("Read the daily report");
+  await expect(record).toContainText("等人");
+  await expect(record).toContainText("计划时间");
   await page.screenshot({ path: info.outputPath("routine-work-record.png") });
 });
 
@@ -3056,7 +3080,7 @@ test("connection pages distinguish first read, empty search and refreshed native
     });
   });
   await page.goto(url);
-  await page.getByRole("button", { name: "应用", exact: true }).click();
+  await page.getByRole("button", { name: "连接中心", exact: true }).click();
   const dialog = page.locator(".apps-dialog");
   await expect(dialog.getByRole("status")).toHaveText("正在读取连接…");
   gate.resolve();
@@ -3201,4 +3225,46 @@ test("monitoring stays quiet, delivers one result and opens the native Work reco
   await page.reload();
   await expect(page.locator(".routine-source")).toHaveCount(1);
   await expect(page.getByLabel("你的消息")).toHaveCount(1);
+});
+
+test("sidebar footer keeps two entries and opens the account menu above them", async ({
+  page,
+}, info) => {
+  await page.goto(url);
+  const footer = page.locator(".sidebar-footer");
+  await expect(footer.getByRole("button")).toHaveCount(2);
+  const account = footer.getByRole("button", { name: "用户菜单", exact: true });
+  const connections = footer.getByRole("button", {
+    name: "连接中心",
+    exact: true,
+  });
+  for (const theme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await account.click();
+    const menu = page.getByRole("menu");
+    await expect(
+      menu.getByRole("menuitem", { name: "设置", exact: true }),
+    ).toBeVisible();
+    await expect(
+      menu.getByRole("menuitem", { name: "用量", exact: true }),
+    ).toBeVisible();
+    const menuBox = await menu.boundingBox();
+    const accountBox = await account.boundingBox();
+    if (!menuBox || !accountBox) throw new Error("Menu geometry missing");
+    expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(accountBox.y);
+    await page.screenshot({
+      path: info.outputPath(`account-menu-${theme}.png`),
+    });
+    await page.keyboard.press("Escape");
+    await expect(account).toBeFocused();
+  }
+  await account.press("ArrowUp");
+  await page.getByRole("menuitem", { name: "用量", exact: true }).click();
+  await expect(
+    page.getByRole("main", { name: "用量", exact: true }),
+  ).toBeVisible();
+  await connections.click();
+  await expect(
+    page.getByRole("dialog", { name: "连接中心", exact: true }),
+  ).toBeVisible();
 });
