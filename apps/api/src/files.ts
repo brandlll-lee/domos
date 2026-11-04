@@ -1,10 +1,13 @@
 import { MAX_FILE_BYTES } from "@domos/agent/attachments";
 import type { Bots } from "@domos/agent/bots";
 import type { Computers } from "@domos/agent/computer/catalog";
-import type { Files } from "@domos/agent/files";
+import { conversationFiles, type Files } from "@domos/agent/files";
 import { chatView } from "@domos/agent/view";
 import { WorkError } from "@domos/agent/work";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import {
+  BACKGROUND_CONTEXT,
+  withAbortSignal,
+} from "@earendil-works/chord/context";
 import { ORPCError, os } from "@orpc/server";
 import { z } from "zod";
 import { botConversation, botTarget } from "./conversation.ts";
@@ -26,6 +29,26 @@ export function fileRouter(bots: Bots, files: Files, computers?: Computers) {
     await files.discard(botId, id);
   }
   return {
+    list: os
+      .input(
+        botTarget.extend({
+          query: z.string().max(200).default(""),
+          offset: z.number().int().nonnegative().default(0),
+          limit: z.number().int().min(1).max(100).default(50),
+        }),
+      )
+      .handler(async ({ input, signal }) => {
+        const conversation = await botConversation(bots, input.botId);
+        return conversationFiles(
+          conversation,
+          input.query,
+          input.offset,
+          input.limit,
+          signal
+            ? withAbortSignal(signal, BACKGROUND_CONTEXT)
+            : BACKGROUND_CONTEXT,
+        );
+      }),
     upload: os
       .input(
         botTarget.extend({

@@ -10,6 +10,7 @@ import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterClient } from "@orpc/server";
 import { expect, type FileChooser, type Page, test } from "@playwright/test";
+import { pdf } from "../../../packages/agent/test/fixtures/pdf.ts";
 import { png } from "../../../packages/agent/test/fixtures/png.ts";
 import type { AppRouter } from "../../api/src/router.ts";
 
@@ -230,6 +231,319 @@ test.beforeEach(async () => {
 test.afterEach(async () => {
   if (worker.exitCode === null) await stop();
   await rm(directory, { recursive: true, force: true });
+});
+
+test("files preview documents, search old history and return to the source", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const client: RouterClient<AppRouter> = createORPCClient(
+    new RPCLink({ url: `${url}/rpc` }),
+  );
+  const bot = (await client.bots.list())[0];
+  if (!bot) throw new Error("Bot required");
+  const documents = [
+    new File(["# 文件预览验收\n\n**中文文档**"], "说明.md"),
+    new File(['name,value\n"one,two",001\n"multi\nline",002'], "数据.csv"),
+    new File(["const greeting = '你好';"], "代码.ts"),
+    new File(["%PDF-1.7\ninvalid"], "损坏.pdf"),
+    new File([new Uint8Array([0, 255, 0])], "文件.bin"),
+  ];
+  const attachments = [];
+  for (const file of documents)
+    attachments.push(await client.files.upload({ botId: bot.id, file }));
+  await control({ content: "已完成。" });
+  await client.send({
+    botId: bot.id,
+    text: "文件验收",
+    attachments: attachments.map((file) => file.id),
+    requestId: crypto.randomUUID(),
+  });
+  await expect
+    .poll(async () => (await client.get({ botId: bot.id })).busy)
+    .toBe(false);
+  await page.goto(url);
+  await page.getByText("说明.md", { exact: true }).click();
+  const panel = page.getByRole("complementary", {
+    name: "文件预览",
+    exact: true,
+  });
+  await expect(
+    panel.getByRole("heading", { name: "文件预览验收", exact: true }),
+  ).toBeVisible();
+  const download = page.waitForEvent("download");
+  await panel.getByRole("button", { name: "下载文件", exact: true }).click();
+  expect((await download).suggestedFilename()).toBe("说明.md");
+  await panel.getByRole("button", { name: "关闭", exact: true }).click();
+  for (const [name, value] of [
+    ["数据.csv", "one,two"],
+    ["代码.ts", "const greeting"],
+    ["损坏.pdf", "PDF 无法打开"],
+    ["文件.bin", "此格式暂不支持预览"],
+  ]) {
+    await page
+      .getByRole("button", { name: `预览 ${name}`, exact: true })
+      .click();
+    await expect(panel).toContainText(value ?? "");
+    if (name === "数据.csv") {
+      await expect(
+        panel.getByRole("cell", { name: "001", exact: true }),
+      ).toBeVisible();
+      await expect(
+        panel.getByRole("cell", { name: "multi line", exact: true }),
+      ).toBeVisible();
+    }
+    await panel.getByRole("button", { name: "关闭", exact: true }).click();
+  }
+  await control({ history: 240 });
+  await page.reload();
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  await page
+    .locator("#bot-details")
+    .getByRole("button", { name: "文件", exact: true })
+    .click();
+  await page
+    .getByRole("searchbox", { name: "搜索文件", exact: true })
+    .fill("说明");
+  await expect(page.locator(".file-list-row")).toHaveCount(1);
+  await page.getByRole("button", { name: "在聊天中查看", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "预览 说明.md", exact: true }),
+  ).toBeInViewport();
+});
+
+test("interactive HTML keeps its state when expanded and cannot access the host or network", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const client: RouterClient<AppRouter> = createORPCClient(
+    new RPCLink({ url: `${url}/rpc` }),
+  );
+  const bot = (await client.bots.list())[0];
+  if (!bot) throw new Error("Bot required");
+  const html = `<!doctype html><html><body><label>金额<input aria-label="金额" value="10"></label><button id="calc" onclick="document.querySelector('output').textContent=Number(document.querySelector('input').value)*2">计算</button><output>20</output><p id="security"></p><a href="https://example.invalid/escape">外部链接</a><script>
+let blocked=false;try{parent.document.body.dataset.escaped='yes'}catch{blocked=true}
+document.querySelector('#security').textContent=blocked&&typeof window.domosDesktop==='undefined'?'已隔离':'隔离失败';
+fetch('https://example.invalid/leak').catch(()=>{});
+</script></body></html>`;
+  const file = await client.files.upload({
+    botId: bot.id,
+    file: new File([html], "计算器.html"),
+  });
+  await control({
+    responses: [
+      {
+        content: [
+          {
+            type: "toolCall",
+            id: "inline-html",
+            name: "attach_file",
+            arguments: { path: file.path, display: "inline" },
+          },
+        ],
+        stopReason: "toolUse",
+      },
+      { content: "计算器已就绪。" },
+    ],
+  });
+  await client.send({
+    botId: bot.id,
+    text: "交付计算器",
+    requestId: crypto.randomUUID(),
+  });
+  await expect
+    .poll(async () => (await client.get({ botId: bot.id })).busy)
+    .toBe(false);
+  let network = 0;
+  await page.route("https://example.invalid/**", (route) => {
+    network++;
+    return route.abort();
+  });
+  await page.goto(url);
+  const inline = page
+    .frameLocator(".inline-file iframe")
+    .frameLocator("iframe");
+  await expect(inline.getByText("已隔离", { exact: true })).toBeVisible();
+  await inline.getByRole("textbox", { name: "金额", exact: true }).fill("123");
+  await inline.getByRole("button", { name: "计算", exact: true }).click();
+  await expect(inline.locator("output")).toHaveText("246");
+  await page
+    .getByRole("button", { name: "预览 计算器.html", exact: true })
+    .click();
+  const panel = page.getByRole("complementary", {
+    name: "文件预览",
+    exact: true,
+  });
+  const expanded = panel.frameLocator("iframe").frameLocator("iframe");
+  await expect(
+    expanded.getByRole("textbox", { name: "金额", exact: true }),
+  ).toHaveValue("123");
+  await expect(expanded.locator("output")).toHaveText("246");
+  await expanded.getByRole("link", { name: "外部链接", exact: true }).click();
+  await expect(
+    expanded.getByRole("textbox", { name: "金额", exact: true }),
+  ).toBeVisible();
+  expect(network).toBe(0);
+  expect(await page.locator("body").getAttribute("data-escaped")).toBeNull();
+  await control({ content: "已完成。" });
+  await client.send({
+    botId: bot.id,
+    text: "后台更新",
+    requestId: crypto.randomUUID(),
+  });
+  await expect
+    .poll(async () => (await client.get({ botId: bot.id })).busy)
+    .toBe(false);
+  await expect(
+    expanded.getByRole("textbox", { name: "金额", exact: true }),
+  ).toHaveValue("123");
+  await panel.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(
+    inline.getByRole("textbox", { name: "金额", exact: true }),
+  ).toHaveValue("123");
+  await page.reload();
+  await expect(
+    inline.getByRole("textbox", { name: "金额", exact: true }),
+  ).toHaveValue("10");
+  await inline.getByRole("button", { name: "计算", exact: true }).click();
+  await expect(inline.locator("output")).toHaveText("20");
+});
+
+test("PDF preview renders selectable pages in both themes and a narrow panel", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  await control({ content: "已收到。" });
+  await page.goto(url);
+  await attachFiles(page, {
+    name: "阅读.pdf",
+    mimeType: "application/pdf",
+    buffer: pdf(),
+  });
+  await expect(
+    page.getByRole("button", { name: "移除文件 阅读.pdf", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "消息", exact: true })
+    .fill("阅读文件");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await page
+    .getByRole("button", { name: "预览 阅读.pdf", exact: true })
+    .click();
+  const panel = page.getByRole("complementary", {
+    name: "文件预览",
+    exact: true,
+  });
+  await expect(panel.locator(".textLayer").first()).toContainText(
+    "PDF page one",
+  );
+  await expect(panel.locator("canvas").first()).toBeVisible();
+  await panel.getByRole("button", { name: "下一页", exact: true }).click();
+  await expect(panel.getByRole("toolbar")).toContainText("2 / 2");
+  await expect(panel.locator(".textLayer").last()).toContainText(
+    "PDF page two",
+  );
+  await panel.getByRole("button", { name: "放大", exact: true }).click();
+  await page.screenshot({ path: testInfo.outputPath("files-pdf-light.png") });
+  await panel.getByRole("button", { name: "关闭", exact: true }).click();
+  await chooseAppearance(page, "深色");
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page
+    .getByRole("button", { name: "预览 阅读.pdf", exact: true })
+    .click();
+  await expect(panel.getByRole("toolbar")).toContainText("2 / 2");
+  await panel.getByRole("button", { name: "上一页", exact: true }).click();
+  await expect(panel.getByRole("toolbar")).toContainText("1 / 2");
+  await expect(panel.locator(".textLayer").first()).toContainText(
+    "PDF page one",
+  );
+  await expect(panel).toBeInViewport();
+  expect(
+    await panel.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("files-pdf-dark-narrow.png"),
+  });
+});
+
+test("file reads recover from failure and cannot cross a Bot switch", async ({
+  page,
+}) => {
+  const client: RouterClient<AppRouter> = createORPCClient(
+    new RPCLink({ url: `${url}/rpc` }),
+  );
+  const bot = (await client.bots.list())[0];
+  if (!bot) throw new Error("Bot required");
+  const file = await client.files.upload({
+    botId: bot.id,
+    file: new File(["长内容".repeat(80_000)], "长文.txt"),
+  });
+  await control({ content: "已收到。" });
+  await client.send({
+    botId: bot.id,
+    text: "保存文件",
+    attachments: [file.id],
+    requestId: crypto.randomUUID(),
+  });
+  await expect
+    .poll(async () => (await client.get({ botId: bot.id })).busy)
+    .toBe(false);
+  await page.goto(url);
+  await createBot(page, "文件隔离助手");
+  const contacts = page.getByRole("navigation", {
+    name: "联系人",
+    exact: true,
+  });
+  await contacts.getByRole("link", { name: /^Domos/ }).click();
+  const release = Promise.withResolvers<void>();
+  const requested = Promise.withResolvers<void>();
+  await page.route("**/rpc/files/download", async (route) => {
+    requested.resolve();
+    await release.promise;
+    await route.continue().catch(() => {});
+  });
+  try {
+    await page
+      .getByRole("button", { name: "预览 长文.txt", exact: true })
+      .click();
+    await requested.promise;
+    await expect(
+      page.getByRole("complementary", { name: "文件预览", exact: true }),
+    ).toContainText("正在打开文件");
+    await contacts.getByRole("link", { name: /^文件隔离助手/ }).click();
+    release.resolve();
+    await expect(
+      page.getByRole("complementary", { name: "文件预览", exact: true }),
+    ).toHaveCount(0);
+    await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+    await page
+      .locator("#bot-details")
+      .getByRole("button", { name: "文件", exact: true })
+      .click();
+    await expect(page.locator(".file-list")).toContainText(
+      "发送和收到的文件会显示在这里",
+    );
+  } finally {
+    release.resolve();
+    await page.unroute("**/rpc/files/download");
+  }
+  await contacts.getByRole("link", { name: /^Domos/ }).click();
+  await page.route("**/rpc/files/download", (route) => route.abort(), {
+    times: 1,
+  });
+  await page
+    .getByRole("button", { name: "预览 长文.txt", exact: true })
+    .click();
+  const panel = page.getByRole("complementary", {
+    name: "文件预览",
+    exact: true,
+  });
+  await expect(panel.getByRole("alert")).toContainText("文件读取失败");
+  await panel.getByRole("button", { name: "重试", exact: true }).click();
+  await expect(panel).toContainText("仅预览前 200,000 个字符");
+  expect(await panel.locator("pre").textContent()).toHaveLength(200_000);
 });
 
 test("model selection updates immediately and restores a failed save", async ({
@@ -3893,12 +4207,9 @@ test("computer details share live directory status and recover a failed refresh"
     name: "工作电脑",
     exact: true,
   });
-  await expect(computer.locator(".computer-capabilities")).toContainText(
-    "命令",
-  );
-  await expect(computer.locator(".computer-capabilities")).toContainText(
-    "文件",
-  );
+  await expect(
+    computer.getByRole("combobox", { name: "此 Bot 使用的电脑", exact: true }),
+  ).toContainText("服务所在电脑");
   await expect(computer.getByRole("button", { name: "启动电脑" })).toHaveCount(
     0,
   );

@@ -6,7 +6,8 @@ export type BotPanelView =
   | "computer"
   | "skills"
   | "routines"
-  | "prompt";
+  | "prompt"
+  | "files";
 
 import type { WorkData } from "./use-bot-work.ts";
 

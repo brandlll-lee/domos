@@ -14,6 +14,14 @@ export default defineConfig({
         await cp(`${source}/licenses`, `${output}/licenses`, {
           recursive: true,
         });
+        const pdf = fileURLToPath(
+          new URL("./node_modules/pdfjs-dist/", import.meta.url),
+        );
+        for (const directory of ["cmaps", "standard_fonts", "wasm"]) {
+          await cp(`${pdf}/${directory}`, `${output}/pdf/${directory}`, {
+            recursive: true,
+          });
+        }
       },
     },
   ],

@@ -1,4 +1,5 @@
 import type { Bot } from "@domos/agent/bots";
+import type { ConversationFile } from "@domos/agent/files";
 import type { ChatView } from "@domos/agent/view";
 import { Button } from "@domos/ui/controls";
 import { PanelHeader } from "@domos/ui/panel";
@@ -9,6 +10,7 @@ import type { useChat } from "../../chat/use-chat.ts";
 import { WorkPanel } from "../../chat/work.tsx";
 import type { useComputer } from "../../computer/use-computer.ts";
 import { ComputerWorkspace } from "../../computer/workspace.tsx";
+import { FilesList } from "../../files/list.tsx";
 import { ComputerSettings } from "./computer.tsx";
 import { BotIdentity, IdentityEditor } from "./identity.tsx";
 import { MemoryDialog } from "./memory.tsx";
@@ -31,6 +33,7 @@ const titles: Record<Exclude<BotPanelView, "root">, string> = {
   skills: "技能",
   routines: "定时",
   prompt: "提示词",
+  files: "文件",
 };
 
 export function BotDetails({
@@ -49,6 +52,7 @@ export function BotDetails({
   onExpand,
   takeoverId,
   workRun,
+  onShowMessage,
 }: {
   bot: Bot;
   active: boolean;
@@ -68,6 +72,7 @@ export function BotDetails({
   onExpand: () => void;
   takeoverId?: string;
   workRun?: string;
+  onShowMessage: (item: ConversationFile) => Promise<void>;
 }) {
   const [memoryOpen, setMemoryOpen] = useState(false);
   const workActive =
@@ -139,6 +144,8 @@ export function BotDetails({
     );
   else if (view === "prompt")
     content = <PromptPanel botId={bot.id} action={action} />;
+  else if (view === "files")
+    content = <FilesList botId={bot.id} onShowMessage={onShowMessage} />;
   return (
     <aside
       tabIndex={-1}

@@ -64,6 +64,7 @@ export function useTranscript(
   const anchor = useRef<{ key: string; top: number } | null>(null);
   const reading = useRef<{ node: HTMLElement; top: number } | null>(null);
   const reply = useRef<string | null>(null);
+  const requested = useRef<string | null>(null);
   const [range, setRange] = useState<{ start: number; end: number } | null>(
     restored.current?.range ?? null,
   );
@@ -79,6 +80,38 @@ export function useTranscript(
       measure.current();
     });
   }, []);
+
+  useEffect(() => {
+    const reveal = (event: Event) => {
+      const request = (
+        event as CustomEvent<{
+          botId: number;
+          messageId: string;
+          fileId: string;
+        }>
+      ).detail;
+      if (request.botId !== botId) return;
+      const index = items.findIndex(
+        (item) =>
+          item.id === request.messageId ||
+          (item.kind === "message" && item.message.id === request.messageId) ||
+          (item.kind === "attachments" &&
+            item.files.some((file) => file.id === request.fileId)),
+      );
+      const item = items[index];
+      if (!item) return;
+      requested.current = keyOf(item);
+      following.current = false;
+      reply.current = null;
+      setRange({
+        start: Math.max(0, index - 20),
+        end: Math.min(items.length, index + pageSize),
+      });
+      schedule();
+    };
+    window.addEventListener("domos:message-reveal", reveal);
+    return () => window.removeEventListener("domos:message-reveal", reveal);
+  }, [items, botId, schedule]);
 
   useLayoutEffect(() => {
     const first = previous.current.items[0];
@@ -146,7 +179,16 @@ export function useTranscript(
       }
       scrolled.current = false;
       let target = element.scrollTop;
-      if (!old.ready || jumping.current) {
+      const requestedNode = requested.current
+        ? nodes.get(requested.current)
+        : undefined;
+      if (requestedNode) {
+        const node = requestedNode;
+        target += node.getBoundingClientRect().top - bounds.top - top;
+        reading.current = { node, top: bounds.top + top };
+        requested.current = null;
+        animate.current = false;
+      } else if (!old.ready || jumping.current) {
         target =
           restored.current && !restored.current.following
             ? restored.current.top

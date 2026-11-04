@@ -5,6 +5,8 @@ import type { Context } from "@earendil-works/chord/context";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
 import {
+  type Conversation,
+  type Cursor,
   defineExtension,
   defineTool,
   section,
@@ -21,9 +23,67 @@ import {
   type Attachment,
   type EvidenceSource,
   MAX_FILE_BYTES,
+  textFileType,
 } from "./attachments.ts";
+import { chatView } from "./chat-view.ts";
 import { WorkError } from "./work/state.ts";
 import { type WorkEnvironment, Workspace } from "./workspace.ts";
+
+export type ConversationFile = {
+  file: Attachment;
+  messageId: string;
+  timestamp?: number;
+};
+
+export async function conversationFiles(
+  conversation: Conversation,
+  query: string,
+  offset: number,
+  limit: number,
+  context: Context,
+) {
+  const items: ConversationFile[] = [];
+  const seen = new Set<string>();
+  const search = query.trim().toLocaleLowerCase();
+  let cursor: Cursor | undefined;
+  let matched = 0;
+  do {
+    const batch = await conversation.entries(
+      { order: "descending" },
+      200,
+      cursor,
+      context,
+    );
+    const view = chatView({
+      conversation,
+      entries: [...batch.items].reverse(),
+      docs: {},
+    });
+    for (const message of view.messages.reverse()) {
+      if (
+        message.hidden ||
+        message.pending ||
+        message.stopped ||
+        message.isError
+      )
+        continue;
+      for (const file of message.attachments ?? []) {
+        if (seen.has(file.id)) continue;
+        seen.add(file.id);
+        if (!file.name.toLocaleLowerCase().includes(search)) continue;
+        if (matched++ < offset) continue;
+        if (items.length === limit) return { items, next: offset + limit };
+        items.push({
+          file,
+          messageId: message.id,
+          timestamp: message.timestamp,
+        });
+      }
+    }
+    cursor = batch.next;
+  } while (cursor);
+  return { items, next: null };
+}
 
 export const FileInput = "domos.file-input";
 
@@ -94,6 +154,7 @@ export class Files {
       .digest("hex");
     const mimeType =
       (await fileTypeFromBuffer(bytes).catch(() => undefined))?.mime ??
+      textFileType(path, bytes) ??
       "application/octet-stream";
     const file = {
       id,
@@ -204,10 +265,11 @@ export class Files {
     const file: Attachment = JSON.parse(
       await readFile(join(this.directory(botId, id), "metadata.json"), "utf8"),
     );
-    if (!file.mimeType) {
+    if (!file.mimeType || file.mimeType === "application/octet-stream") {
       const bytes = await readFile(join(this.directory(botId, id), "content"));
       file.mimeType =
         (await fileTypeFromBuffer(bytes).catch(() => undefined))?.mime ??
+        textFileType(file.name, bytes) ??
         "application/octet-stream";
       await writeFile(
         join(this.directory(botId, id), "metadata.json"),
@@ -327,10 +389,11 @@ export class Files {
         defineTool({
           name: "attach_file",
           description:
-            "Deliver a requested file to the user. Provide a workspace path or the exact saved screenshot id. Evidence archive paths are not workspace files. Routine screenshot evidence is already saved; attach it only when the user requests image delivery.",
+            "Deliver a requested file to the user. Provide a workspace path or the exact saved screenshot id. For an interactive chart, calculator or page, write one self-contained HTML file with inline CSS and JavaScript, then use display: inline. It runs without network, cookies, storage, Node or host access. Use the provided --color-text, --color-muted, --color-surface, --color-border and --font-sans CSS variables, fluid width, and no outer card or banner title. Ordinary files omit display. Evidence archive paths are not workspace files. Routine screenshot evidence is already saved; attach it only when the user requests image delivery.",
           parameters: Type.Object({
             path: Type.Optional(Type.String()),
             id: Type.Optional(Type.String()),
+            display: Type.Optional(Type.Literal("inline")),
           }),
           executionMode: "sequential",
           async execute(args, api, context) {
@@ -348,6 +411,11 @@ export class Files {
               throw new Error(
                 "Provide either a workspace path or a saved screenshot id.",
               );
+            }
+            if (args.display) {
+              if (file.mimeType !== "text/html")
+                throw new Error("Only HTML files support inline display.");
+              file = { ...file, display: args.display };
             }
             return {
               output: [

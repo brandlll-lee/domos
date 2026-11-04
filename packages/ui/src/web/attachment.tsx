@@ -7,6 +7,7 @@ export function FileAttachment({
   preview,
   icon,
   type,
+  onOpen,
 }: {
   name: string;
   size: number;
@@ -14,6 +15,7 @@ export function FileAttachment({
   preview?: string;
   icon?: ReactNode;
   type?: string;
+  onOpen?: () => void;
 }) {
   const [failed, setFailed] = useState(false);
   if (preview && !failed)
@@ -36,6 +38,7 @@ export function FileAttachment({
       : size < 1024 * 1024
         ? `${(size / 1024).toFixed(1)} KB`
         : `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  const Caption = onOpen ? "button" : "div";
   return (
     <div className="attachment">
       <div className="file-attachment">
@@ -49,13 +52,18 @@ export function FileAttachment({
             <path d="M14 3v5h5M8 13h8M8 17h5" />
           </svg>
         )}
-        <div className="file-caption">
+        <Caption
+          className="file-caption"
+          type={onOpen ? "button" : undefined}
+          onClick={onOpen}
+          aria-label={onOpen ? `预览 ${name}` : undefined}
+        >
           <strong title={name}>{name}</strong>
           <span>
             {type && `${type} · `}
             {units}
           </span>
-        </div>
+        </Caption>
         {action}
       </div>
     </div>

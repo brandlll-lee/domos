@@ -316,6 +316,18 @@ export function useChat(botId: number, onModelRequired?: () => void) {
   }
 
   return {
+    async revealMessage(id: string) {
+      while (
+        current.current &&
+        !current.current.messages.some((message) => message.id === id)
+      ) {
+        const before = current.current.before;
+        if (!before) throw new Error("原消息不存在。");
+        await loadEarlier();
+        if (current.current.before === before)
+          throw new Error("原消息读取失败。");
+      }
+    },
     view,
     items,
     sentRequest,

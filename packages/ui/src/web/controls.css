@@ -70,6 +70,8 @@
   opacity: 0.45;
 }
 .button:focus-visible,
+.file-caption:focus-visible,
+.file-open:focus-visible,
 .inline-notice-content:focus-visible,
 .picker-trigger:focus-visible,
 a:focus-visible,

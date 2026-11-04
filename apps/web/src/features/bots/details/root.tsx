@@ -6,6 +6,7 @@ import { SettingRow } from "@domos/ui/setting-row";
 import { BrainIcon } from "@phosphor-icons/react/dist/csr/Brain";
 import { ClockIcon } from "@phosphor-icons/react/dist/csr/Clock";
 import { CpuIcon } from "@phosphor-icons/react/dist/csr/Cpu";
+import { FilesIcon } from "@phosphor-icons/react/dist/csr/Files";
 import { LightningIcon } from "@phosphor-icons/react/dist/csr/Lightning";
 import { TerminalWindowIcon } from "@phosphor-icons/react/dist/csr/TerminalWindow";
 import type { ReactNode } from "react";
@@ -86,6 +87,11 @@ export function RootPanel({
       </PanelGroup>
 
       <PanelGroup title="能力">
+        <PanelRow
+          icon={<FilesIcon />}
+          title="文件"
+          onClick={() => onNavigate("files")}
+        />
         <PanelRow
           icon={<BrainIcon />}
           title="记忆"

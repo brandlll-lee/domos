@@ -51,7 +51,7 @@ const MessageRow = memo(function MessageRow({
     return (
       <div className="delivered-files" data-transcript-key={key}>
         <MessageBubble side="incoming">
-          <Attachments botId={botId} files={item.files} />
+          <Attachments botId={botId} files={item.files} inline />
         </MessageBubble>
       </div>
     );
@@ -116,6 +116,7 @@ const MessageRow = memo(function MessageRow({
                 botId={botId}
                 files={message.attachments}
                 caption={messageText(message)}
+                inline={message.role === "assistant"}
               />
             )}
             <MaterialChips materials={message.materials} />

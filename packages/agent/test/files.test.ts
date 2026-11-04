@@ -27,6 +27,31 @@ import { png } from "./fixtures/png.ts";
 
 const context = BACKGROUND_CONTEXT;
 
+test("text attachments retain useful MIME types and binary data stays binary", async () => {
+  const { files } = await setup();
+  for (const [name, text, mimeType] of [
+    ["说明.md", "# 你好", "text/markdown"],
+    ["report.csv", 'name,value\n"one,two",001', "text/csv"],
+    ["index.html", "<!doctype html><p>你好</p>", "text/html"],
+    ["main.ts", "const value = 1;", "text/plain"],
+  ] as const) {
+    const file = await files.upload(1, name, new TextEncoder().encode(text));
+    expect(file.mimeType).toBe(mimeType);
+    await writeFile(
+      join(files.root, "1", "artifacts", file.id, "metadata.json"),
+      JSON.stringify({ ...file, mimeType: "application/octet-stream" }),
+    );
+    expect((await files.download(1, file.id)).type).toBe(mimeType);
+    await expect(files.download(2, file.id)).rejects.toThrow();
+  }
+  const binary = await files.upload(
+    1,
+    "binary.html",
+    new Uint8Array([0, 255, 0]),
+  );
+  expect(binary.mimeType).toBe("application/octet-stream");
+});
+
 async function setup() {
   const directory = await mkdtemp(join(tmpdir(), "domos-files-"));
   onTestFinished(() => rm(directory, { recursive: true, force: true }));

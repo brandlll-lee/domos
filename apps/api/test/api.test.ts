@@ -32,6 +32,150 @@ const botInput = (name: string, modelId = "faux-1") => ({
   avatar: crypto.randomUUID(),
 });
 
+test("file search returns published history, pages unique files and excludes staged uploads", async () => {
+  const { open, faux } = await setup();
+  const runtime = await open();
+  try {
+    const botId = runtime.conversation.id;
+    faux.setResponses([
+      fauxAssistantMessage("Received"),
+      fauxAssistantMessage("Received again"),
+    ]);
+    const file = await runtime.client.files.upload({
+      botId,
+      file: new File(["# report"], "报告.md"),
+    });
+    const second = await runtime.client.files.upload({
+      botId,
+      file: new File(["name,value\na,1"], "表格.csv"),
+    });
+    await runtime.client.files.upload({
+      botId,
+      file: new File(["draft"], "草稿.txt"),
+    });
+    await runtime.client.send({
+      botId,
+      text: "read",
+      requestId: crypto.randomUUID(),
+      attachments: [file.id, second.id],
+    });
+    await runtime.conversation.waitForIdle(context);
+    await runtime.client.send({
+      botId,
+      text: "again",
+      requestId: crypto.randomUUID(),
+      attachments: [file.id],
+    });
+    await runtime.conversation.waitForIdle(context);
+    const page = await runtime.client.files.list({
+      botId,
+      query: "报告",
+      offset: 0,
+      limit: 1,
+    });
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]).toMatchObject({
+      file: { id: file.id, name: "报告.md" },
+      messageId: expect.any(String),
+    });
+    expect(page.next).toBeNull();
+    const firstPage = await runtime.client.files.list({ botId, limit: 1 });
+    expect(firstPage.items[0]?.file.id).toBe(file.id);
+    expect(firstPage.next).toBe(1);
+    const secondPage = await runtime.client.files.list({
+      botId,
+      offset: 1,
+      limit: 1,
+    });
+    expect(secondPage.items[0]?.file.id).toBe(second.id);
+    expect(secondPage.next).toBeNull();
+    expect(
+      (await runtime.client.files.list({ botId, query: "草稿" })).items,
+    ).toEqual([]);
+    const other = await runtime.client.bots.create(botInput("Other"));
+    expect(
+      (await runtime.client.files.list({ botId: other.id })).items,
+    ).toEqual([]);
+    await expect(
+      runtime.client.files.list({ botId: 99999999 }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  } finally {
+    await runtime.harness.close(context);
+  }
+});
+
+test("interactive HTML delivery keeps its file snapshot and display metadata after restart", async () => {
+  const { open, faux } = await setup();
+  const first = await open();
+  const botId = first.conversation.id;
+  const source = "<!doctype html><button>计算</button>";
+  let fileId = "";
+  try {
+    const upload = await first.client.files.upload({
+      botId,
+      file: new File([source], "计算器.html"),
+    });
+    faux.setResponses([
+      fauxAssistantMessage(
+        [fauxToolCall("attach_file", { path: upload.path, display: "inline" })],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("Ready"),
+    ]);
+    await first.client.send({
+      botId,
+      text: "calculator",
+      requestId: crypto.randomUUID(),
+    });
+    await first.conversation.waitForIdle(context);
+    const items = (await first.client.files.list({ botId })).items;
+    expect(items).toHaveLength(1);
+    expect(items[0]?.file).toMatchObject({
+      display: "inline",
+      mimeType: "text/html",
+    });
+    fileId = items[0]?.file.id ?? "";
+    expect((await first.app.request(`/files/${botId}/${fileId}`)).status).toBe(
+      404,
+    );
+    const text = await first.client.files.upload({
+      botId,
+      file: new File(["text"], "note.txt"),
+    });
+    faux.setResponses([
+      fauxAssistantMessage(
+        [fauxToolCall("attach_file", { path: text.path, display: "inline" })],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("Not a page"),
+    ]);
+    await first.client.send({
+      botId,
+      text: "bad inline",
+      requestId: crypto.randomUUID(),
+    });
+    await first.conversation.waitForIdle(context);
+    expect((await first.client.files.list({ botId })).items).toHaveLength(1);
+  } finally {
+    await first.harness.close(context);
+  }
+  const second = await open();
+  try {
+    expect(
+      (await second.client.files.list({ botId })).items[0]?.file.display,
+    ).toBe("inline");
+    expect(
+      await (await second.client.files.download({ botId, id: fileId })).text(),
+    ).toBe(source);
+    const other = await second.client.bots.create(botInput("Other"));
+    await expect(
+      second.client.files.download({ botId: other.id, id: fileId }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  } finally {
+    await second.harness.close(context);
+  }
+});
+
 async function setup(staticDir?: string) {
   const directory = await mkdtemp(join(tmpdir(), "domos-api-"));
   onTestFinished(() => rm(directory, { recursive: true, force: true }));

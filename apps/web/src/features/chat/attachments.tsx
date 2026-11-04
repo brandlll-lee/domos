@@ -4,6 +4,9 @@ import { Button } from "@domos/ui/controls";
 import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
 import { useState } from "react";
 import { client } from "../../client.ts";
+import { InlineFile } from "../files/content.tsx";
+import { useFilePreview } from "../files/context.tsx";
+import { downloadFile } from "../files/use-file.ts";
 import { chatCopy } from "./copy.ts";
 import { ImageGallery } from "./image-gallery.tsx";
 
@@ -11,12 +14,15 @@ export function Attachments({
   botId,
   files,
   caption,
+  inline = false,
 }: {
   botId: number;
   files: Attachment[];
   caption?: string;
+  inline?: boolean;
 }) {
   const [error, setError] = useState(false);
+  const preview = useFilePreview();
   const [downloading, setDownloading] = useState<string | null>(null);
   const images = files.filter((file) => file.mimeType?.startsWith("image/"));
   const documents = files.filter(
@@ -27,12 +33,7 @@ export function Attachments({
     setError(false);
     try {
       const blob = await client.files.download({ botId, id: file.id });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = file.name;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      downloadFile(blob, file.name);
     } catch {
       setError(true);
     } finally {
@@ -52,24 +53,29 @@ export function Attachments({
         />
       )}
       {documents.map((file) => (
-        <FileAttachment
-          key={file.id}
-          name={file.name}
-          size={file.size}
-          action={
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={`${chatCopy.download} ${file.name}`}
-              title={chatCopy.download}
-              disabled={downloading !== null}
-              onClick={() => void download(file)}
-            >
-              <DownloadSimpleIcon />
-            </Button>
-          }
-        />
+        <div key={file.id}>
+          {inline && file.display === "inline" && (
+            <InlineFile botId={botId} file={file} />
+          )}
+          <FileAttachment
+            name={file.name}
+            size={file.size}
+            onOpen={() => preview?.open(file)}
+            action={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={`${chatCopy.download} ${file.name}`}
+                title={chatCopy.download}
+                disabled={downloading !== null}
+                onClick={() => void download(file)}
+              >
+                <DownloadSimpleIcon />
+              </Button>
+            }
+          />
+        </div>
       ))}
       {error && images.length === 0 && (
         <p role="alert" className="alert">

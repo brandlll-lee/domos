@@ -169,6 +169,15 @@
   gap: var(--space-1);
   flex: 1;
   min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+}
+button.file-caption {
+  cursor: pointer;
 }
 .file-icon {
   flex-shrink: 0;

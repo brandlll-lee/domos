@@ -124,7 +124,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: pnpm exec playwright install chromium --only-shell
-      - run: pnpm exec playwright test --config apps/desktop/playwright.config.ts desktop.spec.ts runtime.spec.ts
+      - run: pnpm exec playwright test --config apps/desktop/playwright.config.ts desktop.spec.ts files.spec.ts runtime.spec.ts
       - uses: actions/upload-artifact@v6
         if: always()
         with:
