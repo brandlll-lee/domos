@@ -309,15 +309,26 @@ export function acpProvider(
             const selected = question
               ? answer.answers?.[id]?.[0]
               : answer.optionId;
-            const option =
-              answer.allow || !question
-                ? request.options.find((item) =>
-                    selected
-                      ? item.optionId === selected
-                      : !question &&
-                        item.kind ===
-                          (answer.allow ? "allow_once" : "reject_once"),
-                  )
+            const option = selected
+              ? request.options.find(
+                  (item) =>
+                    item.optionId === selected &&
+                    (question ||
+                      (answer.allow
+                        ? item.kind.startsWith("allow_")
+                        : item.kind.startsWith("reject_"))),
+                )
+              : !question
+                ? (request.options.find(
+                    (item) =>
+                      item.kind ===
+                      (answer.allow ? "allow_once" : "reject_once"),
+                  ) ??
+                  request.options.find(
+                    (item) =>
+                      item.kind ===
+                      (answer.allow ? "allow_always" : "reject_always"),
+                  ))
                 : undefined;
             return {
               outcome: option
@@ -486,6 +497,12 @@ export function acpProvider(
                 ...env,
                 OPENCODE_CONFIG_CONTENT: JSON.stringify({
                   instructions: [`${ready.cwd}/.domos-instructions.md`],
+                  ...(config.approvalMode
+                    ? {
+                        permission:
+                          config.approvalMode === "full" ? "allow" : "ask",
+                      }
+                    : {}),
                 }),
               },
             }

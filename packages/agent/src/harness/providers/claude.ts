@@ -476,9 +476,15 @@ export const claudeProvider: EngineProvider = {
         "mcp__domos__approve",
         ...(config.model ? ["--model", config.model] : []),
         ...(config.options?.effort ? ["--effort", config.options.effort] : []),
-        ...(config.options?.permissionMode
-          ? ["--permission-mode", config.options.permissionMode]
-          : []),
+        "--permission-mode",
+        config.approvalMode
+          ? {
+              ask: "default",
+              edits: "acceptEdits",
+              auto: "auto",
+              full: "bypassPermissions",
+            }[config.approvalMode]
+          : (config.options?.permissionMode ?? "default"),
       ],
       instructions,
       mcp: { url: ready.url, servers: mcp?.servers },
@@ -569,16 +575,6 @@ export const claudeProvider: EngineProvider = {
                 id,
                 label: id,
               })),
-            },
-            {
-              id: "permissionMode",
-              label: "工作模式",
-              value: config.options?.permissionMode ?? "default",
-              options: [
-                { id: "default", label: "默认确认" },
-                { id: "plan", label: "计划" },
-                { id: "acceptEdits", label: "允许文件编辑" },
-              ],
             },
           ],
         };

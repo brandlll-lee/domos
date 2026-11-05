@@ -124,6 +124,7 @@ export function ModelSetting({
     await store.inspect(selected, settings.admin, true);
   }
   async function save(next: EngineConfig, close = true) {
+    next = { ...next, approvalMode: store.snapshot().selected?.approvalMode };
     if (!profile) return;
     next = { ...next, command: connection?.path ?? next.command };
     if (connection) store.remember(next, connection);
@@ -445,93 +446,94 @@ export function ModelSetting({
     );
   }
   return (
-    <>
-      <SettingRow title="运行模型">
-        <ModelSelector
-          open={open}
-          onOpenChange={setOpen}
-          providers={providers.map((item) => ({
-            ...item,
-            icon: <EngineMark provider={item.id} />,
-            configured:
-              item.id === profile?.config.provider && profile.prepared,
-          }))}
-          provider={config.provider}
-          onProviderChange={(provider) => {
-            setError("");
-            setConfig(
-              store.snapshot().choices[provider] ?? { provider, model: null },
-            );
-            setConfiguring(provider === "acp");
-            setLogin(null);
-          }}
-          models={(
-            connection?.models ??
-            profile?.catalog.find((item) => item.id === config.provider)
-              ?.models ??
-            []
-          ).filter((model) => visibility.visible(config.provider, model.id))}
-          value={selected?.model ?? ""}
-          label={
-            profile?.catalog
-              .find((item) => item.id === selected?.provider)
-              ?.models.find((item) => item.id === selected?.model)?.name ??
-            selected?.model ??
-            "选择连接和模型"
-          }
-          loading={!profile}
-          disabled={Boolean(disabled)}
-          busy={busy || login?.state === "waiting"}
-          error={error || saveError}
-          onSelect={(model) =>
-            void save({ ...config, model, options: undefined })
-          }
-          status={connection ? connection.message : ""}
-          onConfigure={settings.admin ? () => setConfiguring(true) : undefined}
-          notice={
-            busy ? (
-              <p role="status">正在保存…</p>
-            ) : settings.admin ? (
-              <Button
-                variant="ghost"
-                size="small"
-                disabled={locked}
-                onClick={() => setConfiguring(true)}
-              >
-                配置连接
-              </Button>
-            ) : (
-              <p className="detail-note">账号和程序由管理员配置。</p>
-            )
-          }
-          configuration={configuring ? configuration : undefined}
-          effort={controls?.options
-            .filter((item) => item.kind === "effort")
-            .map((control) => (
-              <Effort
-                key={control.id}
-                control={{
-                  ...control,
-                  value: config.options?.[control.id] ?? "",
-                }}
-                disabled={locked}
-                onChange={(value) =>
-                  void (() => {
-                    const options = { ...config.options };
-                    if (value) options[control.id] = value;
-                    else delete options[control.id];
-                    return save({ ...config, options }, false);
-                  })()
-                }
-              />
-            ))}
-        />
-      </SettingRow>
-      {(error || saveError) && !open && (
-        <p className="alert" role="alert">
-          {error || saveError}
-        </p>
-      )}
-    </>
+    <SettingRow
+      title="运行模型"
+      notice={
+        (error || saveError) && !open ? (
+          <p className="alert" role="alert">
+            {error || saveError}
+          </p>
+        ) : undefined
+      }
+    >
+      <ModelSelector
+        open={open}
+        onOpenChange={setOpen}
+        providers={providers.map((item) => ({
+          ...item,
+          icon: <EngineMark provider={item.id} />,
+          configured: item.id === profile?.config.provider && profile.prepared,
+        }))}
+        provider={config.provider}
+        onProviderChange={(provider) => {
+          setError("");
+          setConfig(
+            store.snapshot().choices[provider] ?? { provider, model: null },
+          );
+          setConfiguring(provider === "acp");
+          setLogin(null);
+        }}
+        models={(
+          connection?.models ??
+          profile?.catalog.find((item) => item.id === config.provider)
+            ?.models ??
+          []
+        ).filter((model) => visibility.visible(config.provider, model.id))}
+        value={selected?.model ?? ""}
+        label={
+          profile?.catalog
+            .find((item) => item.id === selected?.provider)
+            ?.models.find((item) => item.id === selected?.model)?.name ??
+          selected?.model ??
+          "选择连接和模型"
+        }
+        loading={!profile}
+        disabled={Boolean(disabled)}
+        busy={busy || login?.state === "waiting"}
+        error={error || saveError}
+        onSelect={(model) =>
+          void save({ ...config, model, options: undefined })
+        }
+        status={connection ? connection.message : ""}
+        onConfigure={settings.admin ? () => setConfiguring(true) : undefined}
+        notice={
+          busy ? (
+            <p role="status">正在保存…</p>
+          ) : settings.admin ? (
+            <Button
+              variant="ghost"
+              size="small"
+              disabled={locked}
+              onClick={() => setConfiguring(true)}
+            >
+              配置连接
+            </Button>
+          ) : (
+            <p className="detail-note">账号和程序由管理员配置。</p>
+          )
+        }
+        configuration={configuring ? configuration : undefined}
+        effort={controls?.options
+          .filter((item) => item.kind === "effort")
+          .map((control) => (
+            <Effort
+              key={control.id}
+              control={{
+                ...control,
+                value: config.options?.[control.id] ?? "",
+              }}
+              disabled={locked}
+              onChange={(value) =>
+                void (() => {
+                  const options = { ...config.options };
+                  if (value) options[control.id] = value;
+                  else delete options[control.id];
+                  return save({ ...config, options }, false);
+                })()
+              }
+            />
+          ))}
+      />
+    </SettingRow>
   );
 }

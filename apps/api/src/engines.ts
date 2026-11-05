@@ -1,4 +1,5 @@
 import type { Bots } from "@domos/agent/bots";
+import { approvalModes } from "@domos/agent/harness/types";
 import { engineCatalog, type Runtime } from "@domos/agent/runtime";
 import { WorkError } from "@domos/agent/work";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
@@ -14,6 +15,7 @@ const config = z
       .max(128)
       .refine((id) => engineCatalog().some((item) => item.id === id)),
     model: z.string().min(1).max(256).nullable(),
+    approvalMode: z.enum(approvalModes).optional(),
     command: z
       .string()
       .min(1)

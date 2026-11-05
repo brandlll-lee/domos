@@ -519,6 +519,11 @@ export class Computers {
         input.computerId === previous?.computerId,
       );
       doc.bindings[String(botId)] = { ...input, revision: input.revision + 1 };
+      const engine = await tx.doc(EngineDoc, botId as ConversationId);
+      if (engine.config.approvalMode) {
+        engine.config.approvalMode = "ask";
+        engine.revision++;
+      }
     }, context);
     return this.binding(botId, context);
   }
@@ -610,6 +615,12 @@ export class Computers {
         throw new WorkError("CONFLICT", "工作电脑已改变。请刷新后重试。");
       if (!requireComputer(doc.items, input.computerId).authorized)
         throw new WorkError("BAD_REQUEST", "请先授权这台电脑。");
+      await this.idle(tx, botId);
+      const engine = await tx.doc(EngineDoc, botId as ConversationId);
+      if (engine.config.approvalMode) {
+        delete engine.config.approvalMode;
+        engine.revision++;
+      }
       binding.approvalMode = input.mode;
     }, context);
     return this.list(context);
@@ -657,10 +668,18 @@ export class Computers {
       for (const [botId] of bindings) await this.idle(tx, Number(botId));
       item.authorized = authorized;
       if (!authorized)
-        for (const [, binding] of bindings) {
+        for (const [botId, binding] of bindings) {
           delete binding.approvalMode;
           delete binding.assistance;
           binding.revision++;
+          const engine = await tx.doc(
+            EngineDoc,
+            Number(botId) as ConversationId,
+          );
+          if (engine.config.approvalMode) {
+            engine.config.approvalMode = "ask";
+            engine.revision++;
+          }
         }
       if (!authorized && doc.defaultId === id) doc.defaultId = null;
       for (const [botId] of bindings)

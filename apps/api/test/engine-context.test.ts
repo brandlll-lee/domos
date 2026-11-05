@@ -184,6 +184,39 @@ async function fixture() {
   };
 }
 
+test("permission modes persist, reject unsupported choices and reset when switching Harness", async () => {
+  const f = await fixture();
+  const botId = f.runtime.conversation.id;
+  const configure = async (
+    config: import("../../../packages/agent/src/harness/types.ts").EngineConfig,
+  ) => {
+    const profile = await f.runtime.client.engines.get({ botId });
+    return f.runtime.client.engines.configure({
+      botId,
+      config,
+      revision: profile.revision,
+      requestId: crypto.randomUUID(),
+    });
+  };
+  await expect(
+    configure({ provider: "pi", model: null, approvalMode: "auto" }),
+  ).rejects.toThrow("不支持");
+  const full = await configure({
+    provider: "pi",
+    model: null,
+    approvalMode: "full",
+  });
+  expect(full.config.approvalMode).toBe("full");
+  await f.reopen();
+  expect(
+    (await f.runtime.client.engines.get({ botId })).config.approvalMode,
+  ).toBe("full");
+  await configure({ provider: "claude", model: null, approvalMode: "edits" });
+  const pi = await configure({ provider: "pi", model: null });
+  expect(pi.config.approvalMode).toBe("ask");
+  expect(pi.runtime?.notices?.permissions).toContain("不支持");
+});
+
 test("model API selects native models and rejects models missing on the work computer", async () => {
   const f = await fixture();
   const botId = f.runtime.conversation.id;

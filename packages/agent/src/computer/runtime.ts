@@ -22,6 +22,7 @@ import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv
 import { z } from "zod";
 import type { Files } from "../files.ts";
 import { computerEvidence } from "../harness/evidence.ts";
+import { EngineDoc } from "../harness/state.ts";
 import type {
   EngineAnswer,
   EngineApproval,
@@ -344,11 +345,17 @@ export class ComputerRuntime {
     signal: AbortSignal,
     context: Context,
   ) {
+    const mode = (
+      await this.harness.snapshot(EngineDoc, botId as ConversationId, context)
+    )?.config.approvalMode;
     if (
+      approval.kind === "permission" &&
       approval.automatic &&
-      (await this.harness.snapshot(ComputersDoc, context))?.bindings[
-        String(botId)
-      ]?.approvalMode === "auto"
+      (mode === "full" ||
+        (!mode &&
+          (await this.harness.snapshot(ComputersDoc, context))?.bindings[
+            String(botId)
+          ]?.approvalMode === "auto"))
     )
       return { allow: true };
     signal.throwIfAborted();

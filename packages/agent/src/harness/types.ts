@@ -4,12 +4,29 @@ import type { InputMaterials } from "../materials.ts";
 import type { ChatMessage } from "../messages.ts";
 
 export type EngineId = string;
+export const approvalModes = ["ask", "edits", "auto", "full"] as const;
+export type ApprovalMode = (typeof approvalModes)[number];
+export const approvalLabels: Record<ApprovalMode, string> = {
+  ask: "按需询问",
+  edits: "自动接受编辑",
+  auto: "智能审批",
+  full: "完全访问",
+};
+
+export function supportedApprovalModes(provider: string): ApprovalMode[] {
+  if (provider === "claude") return [...approvalModes];
+  if (provider === "codex") return ["ask", "auto", "full"];
+  if (provider === "pi" || provider === "opencode") return ["ask", "full"];
+  return ["ask"];
+}
+
 export type EngineConfig = {
   provider: EngineId;
   model: string | null;
   command?: string;
   args?: string[];
   options?: Record<string, string>;
+  approvalMode?: ApprovalMode;
 };
 export type EngineSkill = {
   name: string;

@@ -78,7 +78,7 @@ export function ComputerServices({
       >
         {error && <p role="alert">{error}</p>}
       </Dialog>
-      <div className="panel-card computer-services">
+      <div className="panel-card">
         {(["browser", "desktop"] as const).map((service) => (
           <SettingRow
             key={service}

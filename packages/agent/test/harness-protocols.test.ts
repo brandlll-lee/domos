@@ -86,6 +86,83 @@ function protocol() {
   };
 }
 
+test.each(["ask", "auto", "full"] as const)(
+  "Codex applies %s permissions on start, resume and each turn",
+  async (approvalMode) => {
+    const { process, emit } = protocol();
+    process.receive = (request) => {
+      if (
+        request.method === "thread/start" ||
+        request.method === "thread/resume"
+      )
+        process.response(request, { thread: { id: "thread" } });
+      else if (request.method === "turn/start") {
+        process.response(request, { turn: { id: "turn" } });
+        process.frame({
+          jsonrpc: "2.0",
+          method: "turn/completed",
+          params: { turn: { id: "turn", status: "completed" } },
+        });
+      } else process.response(request, {});
+    };
+    for (const sessionId of [null, "thread"]) {
+      const session = await codexProvider.open({
+        process,
+        config: { provider: "codex", model: null, approvalMode },
+        sessionId,
+        instructions: "Role",
+        emit,
+      });
+      await session.prompt("Work");
+    }
+    for (const request of process.requests.filter(
+      (item) =>
+        item.method === "thread/start" ||
+        item.method === "thread/resume" ||
+        item.method === "turn/start",
+    )) {
+      expect(request.params).toMatchObject({
+        approvalPolicy: approvalMode === "full" ? "never" : "on-request",
+        approvalsReviewer: approvalMode === "auto" ? "auto_review" : "user",
+        ...(request.method === "turn/start"
+          ? {
+              sandboxPolicy: {
+                type:
+                  approvalMode === "full"
+                    ? "dangerFullAccess"
+                    : "workspaceWrite",
+              },
+            }
+          : {
+              sandbox:
+                approvalMode === "full"
+                  ? "danger-full-access"
+                  : "workspace-write",
+            }),
+      });
+    }
+  },
+);
+
+test.each([
+  ["ask", "default"],
+  ["edits", "acceptEdits"],
+  ["auto", "auto"],
+  ["full", "bypassPermissions"],
+] as const)("Claude maps %s to native %s", async (approvalMode, native) => {
+  const { process, emit } = protocol();
+  await claudeProvider.open({
+    process,
+    config: { provider: "claude", model: null, approvalMode },
+    sessionId: "session",
+    instructions: "Role",
+    emit,
+  });
+  expect(process.spec?.args).toEqual(
+    expect.arrayContaining(["--permission-mode", native]),
+  );
+});
+
 test("ACP rejects an agent that cannot connect Domos HTTP tools", async () => {
   const { process, emit } = protocol();
   process.receive = (request) =>
@@ -103,6 +180,33 @@ test("ACP rejects an agent that cannot connect Domos HTTP tools", async () => {
     process.requests.some((request) => request.method === "session/new"),
   ).toBe(false);
 });
+
+test.each(["ask", "full"] as const)(
+  "OpenCode applies %s permissions to its native process",
+  async (approvalMode) => {
+    const { process, emit } = protocol();
+    process.receive = (request) =>
+      process.response(
+        request,
+        request.method === "initialize"
+          ? {
+              protocolVersion: 1,
+              agentCapabilities: { mcpCapabilities: { http: true } },
+            }
+          : { sessionId: "session" },
+      );
+    await opencodeProvider.open({
+      process,
+      config: { provider: "opencode", model: null, approvalMode },
+      sessionId: null,
+      instructions: "Role",
+      emit,
+    });
+    expect(
+      JSON.parse(process.spec?.env?.OPENCODE_CONFIG_CONTENT ?? "{}").permission,
+    ).toBe(approvalMode === "full" ? "allow" : "ask");
+  },
+);
 
 test("custom ACP handles permission during session setup and advertises native choices", async () => {
   const { process, emit } = protocol();
@@ -122,7 +226,7 @@ test("custom ACP handles permission during session setup and advertises native c
         params: {
           sessionId: "custom-session",
           toolCall: { toolCallId: "read", title: "Read workspace" },
-          options: [{ optionId: "allow", name: "Allow", kind: "allow_once" }],
+          options: [{ optionId: "allow", name: "Allow", kind: "allow_always" }],
         },
       });
     } else if (request.id === "permission" && opening) {

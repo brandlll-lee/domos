@@ -146,6 +146,13 @@ test.runIf(platform() === "win32")(
     await runtime.close();
     runtime = await openChat(context, config, { models: createModels() });
     expect((await client().computer.get({ botId })).approvalMode).toBe("auto");
+    const permissions = await client().engines.get({ botId });
+    await client().engines.configure({
+      botId,
+      config: { ...permissions.config, approvalMode: "full" },
+      revision: permissions.revision,
+      requestId: crypto.randomUUID(),
+    });
     expect((await client().computer.services({ botId })).desktop.enabled).toBe(
       true,
     );
@@ -166,6 +173,9 @@ test.runIf(platform() === "win32")(
       await expect(client().computer.approval(approval)).rejects.toThrow();
     }
     expect((await client().computer.get({ botId })).approvalMode ?? "ask").toBe(
+      "ask",
+    );
+    expect((await client().engines.get({ botId })).config.approvalMode).toBe(
       "ask",
     );
     await client().computer.approval({ ...approval, revision });

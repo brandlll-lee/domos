@@ -12,6 +12,7 @@ import { RPCLink } from "@orpc/client/fetch";
 import type { RouterClient } from "@orpc/server";
 import { expect, onTestFinished, test } from "vitest";
 import { ComputersDoc } from "../../../packages/agent/src/computer/state.ts";
+import { EngineDoc } from "../../../packages/agent/src/harness/state.ts";
 import { ProtocolProcess } from "../../../packages/agent/test/fixtures/engine-process.ts";
 import { createApp } from "../src/app.ts";
 import type { AppRouter } from "../src/router.ts";
@@ -152,7 +153,7 @@ test("Claude questions return distinct answers and use the Bot skill and memory 
   }, context);
   await client.engines.configure({
     botId,
-    config: { provider: "claude", model: null },
+    config: { provider: "claude", model: null, approvalMode: "full" },
     revision: 0,
     requestId: crypto.randomUUID(),
   });
@@ -201,6 +202,7 @@ test("Claude questions return distinct answers and use the Bot skill and memory 
   await runtime.harness.commit(async (tx) => {
     const binding = (await tx.doc(ComputersDoc)).bindings[String(botId)];
     if (binding) binding.approvalMode = "ask";
+    (await tx.doc(EngineDoc, botId)).config.approvalMode = "ask";
   }, context);
   await client.engines.answer({
     botId,

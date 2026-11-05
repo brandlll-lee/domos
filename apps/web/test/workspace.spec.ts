@@ -1104,6 +1104,197 @@ test("local container setup submits the selected browser network policy", async 
   await expect(dialog.getByRole("alert")).toBeVisible();
 });
 
+test("settings rows keep content insets across Bot, computer and settings views", async ({
+  page,
+}, info) => {
+  test.setTimeout(60_000);
+  await page.goto(url);
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  const details = page.getByRole("complementary", {
+    name: "Domos的详情",
+    exact: true,
+  });
+  await details
+    .getByRole("button", { name: "工作目录与权限", exact: true })
+    .click();
+  const directoryRow = details.getByRole("group", {
+    name: "工作目录",
+    exact: true,
+  });
+  await expect(directoryRow).toBeVisible();
+  await expect(directoryRow).toHaveCSS("padding-left", "12px");
+  await expect(directoryRow).toHaveCSS("padding-right", "12px");
+  const project = join(directory, "项目资料".repeat(15));
+  await mkdir(project);
+  await directoryRow
+    .getByRole("button", { name: "更改目录", exact: true })
+    .click();
+  const picker = page.getByRole("dialog", {
+    name: "选择工作目录",
+    exact: true,
+  });
+  await picker.getByLabel("目录路径", { exact: true }).fill(project);
+  await picker.getByRole("button", { name: "使用此目录", exact: true }).click();
+  await expect(directoryRow).toContainText(project);
+
+  for (const colorScheme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme });
+    for (const width of [1360, 390]) {
+      await page.setViewportSize({ width, height: 800 });
+      const rows = details.locator(".panel-card > .setting-row");
+      expect(await rows.count()).toBeGreaterThan(2);
+      for (const row of await rows.all()) {
+        await expect(row).toHaveCSS("padding-left", "12px");
+        await expect(row).toHaveCSS("padding-right", "12px");
+        expect(
+          await row.evaluate((node) => node.scrollWidth <= node.clientWidth),
+        ).toBe(true);
+      }
+      await details.screenshot({
+        path: info.outputPath(`directory-${colorScheme}-${width}.png`),
+      });
+    }
+  }
+  await page.setViewportSize({ width: 1360, height: 800 });
+  await details.getByRole("button", { name: "返回", exact: true }).click();
+  await page.getByRole("button", { name: "用户菜单", exact: true }).click();
+  await page.getByRole("menuitem", { name: "设置", exact: true }).click();
+  const settings = page.getByRole("main", { name: "设置", exact: true });
+  for (const colorScheme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme });
+    for (const width of [1360, 390]) {
+      await page.setViewportSize({ width, height: 800 });
+      const row = settings.getByRole("group", { name: "主题", exact: true });
+      const inset = await row.evaluate((node) => {
+        const card = node.parentElement;
+        const caption = node.querySelector(".setting-caption");
+        if (!card || !caption) throw new Error("设置内容不可见");
+        return (
+          caption.getBoundingClientRect().left -
+          card.getBoundingClientRect().left
+        );
+      });
+      expect(inset).toBeCloseTo(12, 0);
+      await settings.screenshot({
+        path: info.outputPath(`settings-${colorScheme}-${width}.png`),
+      });
+      for (const name of ["Providers", "Models"]) {
+        await settings.getByRole("tab", { name, exact: true }).click();
+        const rows = settings.locator(".setting-row:visible");
+        await expect(rows.first()).toBeVisible();
+        for (const row of await rows.all()) {
+          await expect(row).toHaveCSS("padding-left", "12px");
+          await expect(row).toHaveCSS("padding-right", "12px");
+          expect(
+            await row.evaluate((node) => node.scrollWidth <= node.clientWidth),
+          ).toBe(true);
+        }
+        await settings.screenshot({
+          path: info.outputPath(`${name}-${colorScheme}-${width}.png`),
+        });
+      }
+      await settings.getByRole("tab", { name: "通用", exact: true }).click();
+    }
+  }
+});
+
+test("permission choices match the Harness, persist and retain keyboard access", async ({
+  page,
+}, info) => {
+  await page.goto(url);
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  const picker = page.getByRole("combobox", { name: "操作审批", exact: true });
+  await expect(picker).toContainText("按需询问");
+  await picker.click();
+  await expect(
+    page.getByRole("option", { name: "智能审批", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("option", { name: "自动接受编辑", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("option", { name: "完全访问", exact: true }).click();
+  await expect(picker).toBeEnabled();
+  await expect(picker).toContainText("完全访问");
+  await page.reload();
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  await expect(picker).toContainText("完全访问");
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await page.setViewportSize({
+      width: colorScheme === "light" ? 1360 : 390,
+      height: 700,
+    });
+    await picker.focus();
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("option", { name: "完全访问", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await page.screenshot({
+      path: info.outputPath(`permissions-${colorScheme}.png`),
+    });
+    await page.keyboard.press("Escape");
+    await expect(picker).toBeFocused();
+  }
+  await picker.click();
+  await page.getByRole("option", { name: "按需询问", exact: true }).click();
+  await expect(picker).toContainText("按需询问");
+  await expect(picker).toBeEnabled();
+  const rpc = async (method: string, json: object) =>
+    (
+      await (
+        await page.request.post(`${url}/rpc/${method}`, { data: { json } })
+      ).json()
+    ).json;
+  const profile = await rpc("engines/get", { botId: 1 });
+  await rpc("engines/configure", {
+    botId: 1,
+    config: { provider: "claude", model: null },
+    revision: profile.revision,
+    requestId: crypto.randomUUID(),
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  await picker.click();
+  await expect(
+    page.getByRole("option", { name: "智能审批", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("option", { name: "自动接受编辑", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("option", { name: "智能审批", exact: true }).click();
+  await expect(picker).toBeEnabled();
+  const claude = await rpc("engines/get", { botId: 1 });
+  expect(claude.config.approvalMode).toBe("auto");
+  await rpc("engines/configure", {
+    botId: 1,
+    config: { provider: "pi", model: null },
+    revision: claude.revision,
+    requestId: crypto.randomUUID(),
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  await expect(picker).toContainText("按需询问");
+  await expect(
+    page.getByText("此运行方式不支持原权限模式，已改为按需询问。", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  const notice = page.getByRole("group", { name: "操作审批", exact: true });
+  await expect(notice).toContainText(
+    "此运行方式不支持原权限模式，已改为按需询问。",
+  );
+  const alignment = await notice.evaluate((node) => {
+    const caption = node.querySelector(".setting-caption");
+    const message = node.querySelector(".inline-notice-content");
+    if (!caption || !message) throw new Error("审批说明不可见");
+    return Math.abs(
+      caption.getBoundingClientRect().left -
+        message.getBoundingClientRect().left,
+    );
+  });
+  expect(alignment).toBeLessThan(1);
+});
+
 test("Bot model selection saves choices and fits both themes", async ({
   page,
 }, info) => {

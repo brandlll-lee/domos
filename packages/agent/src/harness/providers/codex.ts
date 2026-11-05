@@ -263,8 +263,16 @@ export const codexProvider: EngineProvider = {
       cwd: ready.cwd,
       ...(config.model ? { model: config.model } : {}),
       developerInstructions: instructions,
-      approvalPolicy: "on-request",
-      sandbox: "workspace-write",
+      approvalPolicy:
+        config.approvalMode === "full"
+          ? "never"
+          : (config.options?.approvalPolicy ?? "on-request"),
+      approvalsReviewer:
+        config.approvalMode === "auto" ? "auto_review" : "user",
+      sandbox:
+        config.approvalMode === "full"
+          ? "danger-full-access"
+          : "workspace-write",
     });
     const id = response.thread?.id;
     nativeId = id;
@@ -342,9 +350,18 @@ export const codexProvider: EngineProvider = {
             ...(config.options?.effort
               ? { effort: config.options.effort }
               : {}),
-            ...(config.options?.approvalPolicy
-              ? { approvalPolicy: config.options.approvalPolicy }
-              : {}),
+            approvalPolicy:
+              config.approvalMode === "full"
+                ? "never"
+                : (config.options?.approvalPolicy ?? "on-request"),
+            approvalsReviewer:
+              config.approvalMode === "auto" ? "auto_review" : "user",
+            sandboxPolicy: {
+              type:
+                config.approvalMode === "full"
+                  ? "dangerFullAccess"
+                  : "workspaceWrite",
+            },
             ...(mode
               ? {
                   collaborationMode: {

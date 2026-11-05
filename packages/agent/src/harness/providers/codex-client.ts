@@ -149,15 +149,6 @@ export async function openCodexClient(
             ),
           },
           {
-            id: "approvalPolicy",
-            label: "工作模式",
-            value: config.options?.approvalPolicy ?? "on-request",
-            options: [
-              { id: "on-request", label: "按需确认" },
-              { id: "untrusted", label: "受限操作确认" },
-            ],
-          },
-          {
             id: "mode",
             label: "协作模式",
             value: config.options?.mode ?? "",

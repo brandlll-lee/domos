@@ -15,6 +15,7 @@ export function sessionKey(
     config.args ?? [],
     createHash("sha256").update(account).digest("hex"),
     ...(directory ? [directory] : []),
+    ...(config.approvalMode ? [{ approvalMode: config.approvalMode }] : []),
   ]);
 }
 
@@ -40,6 +41,7 @@ export function switchSession(
     doc.computerId === computerId &&
     doc.config.provider === config.provider &&
     doc.config.command === config.command &&
+    doc.config.approvalMode === config.approvalMode &&
     JSON.stringify(doc.config.args) === JSON.stringify(config.args);
   if (compatible) return;
   if (doc.sessionId) {

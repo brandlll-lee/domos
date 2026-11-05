@@ -10,6 +10,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { chatView } from "../chat-view.ts";
 import { ComputerRequests } from "../computer/runtime.ts";
+import { ComputersDoc } from "../computer/state.ts";
 import { EngineConnections } from "../harness/connections.ts";
 import type { EngineExecution } from "../harness/execution.ts";
 import { EngineModelCatalog } from "../harness/model-catalog.ts";
@@ -28,6 +29,7 @@ import type {
   EngineConfig,
   EngineInput,
 } from "../harness/types.ts";
+import { supportedApprovalModes } from "../harness/types.ts";
 import { type UsageFilter, UsageReader } from "../harness/usage.ts";
 import { materialText } from "../materials.ts";
 import { approvalMessage } from "../messages.ts";
@@ -110,6 +112,12 @@ export class Runtime {
     const models = await this.connections.catalog(botId, context, config);
     return {
       config,
+      approvalModes: supportedApprovalModes(config.provider),
+      automaticApproval:
+        !config.approvalMode &&
+        (await this.harness.snapshot(ComputersDoc, context))?.bindings[
+          String(botId)
+        ]?.approvalMode === "auto",
       computerId,
       catalog: models,
       connection: await this.connections.snapshot(botId, config, context),
@@ -434,6 +442,25 @@ export class Runtime {
     );
     if (previous?.requestId === input.requestId)
       return this.profile(botId, context);
+    const modes = supportedApprovalModes(input.config.provider);
+    const requested =
+      input.config.approvalMode ?? previous?.config.approvalMode ?? "ask";
+    const unsupported = !modes.includes(requested);
+    if (unsupported && previous?.config.provider === input.config.provider)
+      throw new WorkError("BAD_REQUEST", "此 Harness 不支持所选权限模式。");
+    const config: EngineConfig = {
+      ...input.config,
+      ...(input.config.approvalMode || previous?.config.approvalMode
+        ? { approvalMode: unsupported ? "ask" : requested }
+        : {}),
+    };
+    if (config.approvalMode && config.options) {
+      config.options = { ...config.options };
+      if (config.provider === "codex") delete config.options.approvalPolicy;
+      if (config.provider === "claude") delete config.options.permissionMode;
+      if (!Object.keys(config.options).length) delete config.options;
+    }
+    input = { ...input, config };
     if (this.connections.busy(botId))
       throw new WorkError("CONFLICT", "请先完成账号连接。");
     const connection = await this.connections.snapshot(
@@ -480,11 +507,20 @@ export class Runtime {
       doc.config = input.config;
       doc.revision++;
       doc.requestId = input.requestId;
+      const notice = unsupported
+        ? "此运行方式不支持原权限模式，已改为按需询问。"
+        : undefined;
       if (!reset) {
-        if (doc.runtime) doc.runtime.controls = undefined;
+        if (doc.runtime) {
+          doc.runtime.controls = undefined;
+          doc.runtime.notices = {
+            ...doc.runtime.notices,
+            permissions: notice ?? "",
+          };
+        }
         return;
       }
-      doc.runtime = {};
+      doc.runtime = { notices: { permissions: notice ?? "" } };
       doc.turnId = null;
       doc.dispatch = "ready";
       doc.error = null;
