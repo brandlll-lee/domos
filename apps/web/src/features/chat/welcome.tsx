@@ -6,13 +6,13 @@ import { client } from "../../client.ts";
 import "./welcome.css";
 
 const suggestions = [
-  { label: "起草一份文档", text: "帮我起草一份文档。先问我用途和要求。" },
+  { label: "帮我完成一项任务", text: "帮我完成一项任务。先问我目标和要求。" },
   {
-    label: "分析一份资料",
+    label: "分析文件",
     text: "帮我分析一份资料。先问我资料内容和我关心的问题。",
   },
   {
-    label: "整理工作文件",
+    label: "整理资料",
     text: "帮我整理工作文件。先确认目录和整理规则，再开始操作。",
   },
 ];

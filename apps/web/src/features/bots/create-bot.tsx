@@ -1,11 +1,12 @@
 import type { Bot } from "@domos/agent/bots";
 import { BOT_NAME_LENGTH } from "@domos/agent/work/limits";
+import { BotAvatar } from "@domos/ui/avatar";
 import { characterSeed } from "@domos/ui/characters";
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
 import { TextField } from "@domos/ui/field";
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { client } from "../../client.ts";
 import { rejectionMessage } from "../chat/request-error.ts";
 import { AvatarEditor } from "./avatar-editor.tsx";
@@ -63,6 +64,13 @@ function BotForm({
   const [avatar, setAvatar] = useState(characterSeed);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<Bot>();
+  const [second, setSecond] = useState(false);
+  useEffect(() => {
+    void client.bots.list().then(
+      (bots) => setSecond(bots.length === 1),
+      () => {},
+    );
+  }, []);
   const request = useRef<{ id: string; payload: string } | null>(null);
   if (created)
     return (
@@ -102,6 +110,25 @@ function BotForm({
         }
       }}
     >
+      {second && (
+        <>
+          <p className="setup-team-heading">不同的事，交给不同的 Bot</p>
+          <section className="setup-team" aria-label="Bot 用途示例">
+            {(
+              [
+                ["项目开发", "triangle", "#659fff"],
+                ["资料研究", "cloud", "#46d99e"],
+                ["日常事务", "round", "#f8bd3e"],
+              ] as const
+            ).map(([label, shape, color]) => (
+              <div key={label}>
+                <BotAvatar seed={characterSeed(shape, color)} size="panel" />
+                <span>{label}</span>
+              </div>
+            ))}
+          </section>
+        </>
+      )}
       <fieldset disabled={saving} className="bot-fields">
         <div className="profile-identity">
           <AvatarEditor value={avatar} onChange={setAvatar} />

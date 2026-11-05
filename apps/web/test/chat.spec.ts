@@ -605,6 +605,7 @@ async function createBot(
   await expect(dialog.getByRole("combobox")).toHaveCount(0);
   await dialog.getByRole("button", { name: "创建", exact: true }).click();
 
+  await dialog.getByRole("button", { name: "Pi", exact: true }).click();
   await dialog.getByRole("combobox", { name: "模型", exact: true }).click();
   await page
     .getByRole("option", {
@@ -612,7 +613,7 @@ async function createBot(
       exact: true,
     })
     .click();
-  await dialog.getByRole("button", { name: "开始", exact: true }).click();
+  await dialog.getByRole("button", { name: "开始聊天", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByLabel("消息", { exact: true })).toHaveAttribute(
     "placeholder",
@@ -633,16 +634,14 @@ test("chat suggestions fill the draft and dismissal stays complete on other devi
     if (request.url().endsWith("/rpc/send")) sends++;
   });
   await welcome
-    .getByRole("button", { name: "起草一份文档", exact: true })
+    .getByRole("button", { name: "帮我完成一项任务", exact: true })
     .click();
-  await expect(input).toHaveValue("帮我起草一份文档。先问我用途和要求。");
+  await expect(input).toHaveValue("帮我完成一项任务。先问我目标和要求。");
   await expect(input).toBeFocused();
   await expect(page.getByLabel("你的消息", { exact: true })).toHaveCount(0);
   expect(sends).toBe(0);
   await input.fill("我已有的草稿");
-  await welcome
-    .getByRole("button", { name: "分析一份资料", exact: true })
-    .click();
+  await welcome.getByRole("button", { name: "分析文件", exact: true }).click();
   await expect(input).toHaveValue(
     "我已有的草稿\n\n帮我分析一份资料。先问我资料内容和我关心的问题。",
   );
@@ -1133,11 +1132,12 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
   await create.click();
   await expect(dialog.getByRole("alert")).toContainText("创建未确认");
   await create.click();
+  await dialog.getByRole("button", { name: "Pi", exact: true }).click();
   await dialog.getByRole("combobox", { name: "模型", exact: true }).click();
   await page
     .getByRole("option", { name: "Pi · 测试模型一", exact: true })
     .click();
-  await dialog.getByRole("button", { name: "开始", exact: true }).click();
+  await dialog.getByRole("button", { name: "开始聊天", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await page.getByRole("button", { name: "联系人", exact: true }).click();
   const contacts = page.getByRole("navigation", {
@@ -3967,11 +3967,29 @@ test("native questions use the shared card and native replies persist", async ({
 test("Bot identity stays consistent and image previews work in drafts and history", async ({
   page,
 }) => {
-  await page.goto(url);
+  const texture = Promise.withResolvers<void>();
+  await page.route("**/*.webp", async (route) => {
+    await texture.promise;
+    await route.continue();
+  });
+  try {
+    await page.goto(url, { waitUntil: "domcontentloaded" });
+    await expect(page.locator(".contact-row .character").first()).toHaveCSS(
+      "opacity",
+      "0",
+    );
+  } finally {
+    texture.resolve();
+  }
+  await expect(page.locator(".contact-row .character").first()).toHaveCSS(
+    "opacity",
+    "1",
+  );
+  await page.unroute("**/*.webp");
   await chooseAppearance(page, "浅色");
   await page.getByRole("button", { name: "新建 Bot", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "新建 Bot", exact: true });
-  const avatar = dialog.locator(".bot-avatar");
+  const avatar = dialog.locator(".avatar-editor > .bot-avatar");
   const initial = await avatar.getAttribute("data-seed");
   await dialog.getByRole("button", { name: "选择头像", exact: true }).click();
   const round = page.getByRole("button", { name: "外形：圆球", exact: true });
@@ -3986,11 +4004,12 @@ test("Bot identity stays consistent and image previews work in drafts and histor
   expect(seed).toBeTruthy();
   await dialog.getByLabel("名字", { exact: true }).fill("视觉助手");
   await dialog.getByRole("button", { name: "创建", exact: true }).click();
+  await dialog.getByRole("button", { name: "Pi", exact: true }).click();
   await dialog.getByRole("combobox", { name: "模型", exact: true }).click();
   await page
     .getByRole("option", { name: "Pi · 测试模型一", exact: true })
     .click();
-  await dialog.getByRole("button", { name: "开始", exact: true }).click();
+  await dialog.getByRole("button", { name: "开始聊天", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   const selected = page.locator(
     '.contact-row[aria-current="page"] .bot-avatar',

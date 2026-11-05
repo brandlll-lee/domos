@@ -59,7 +59,7 @@ test("native setup starts and resumes with Docker unavailable", async ({
   try {
     const setup = await desktop.firstWindow();
     await expect(
-      setup.getByRole("heading", { name: "欢迎使用 Domos" }),
+      setup.getByRole("heading", { name: "认识一下 Domos" }),
     ).toBeVisible();
     await desktop.evaluate(({ nativeTheme }) => {
       nativeTheme.themeSource = "dark";
@@ -97,7 +97,7 @@ test("native setup starts and resumes with Docker unavailable", async ({
           .evaluate((main) => main.scrollWidth <= main.clientWidth),
       )
       .toBe(true);
-    const next = setup.getByRole("button", { name: "继续", exact: true });
+    const next = setup.getByRole("button", { name: "开始使用", exact: true });
     await next.scrollIntoViewIfNeeded();
     await expect(next).toBeInViewport({ ratio: 1 });
     await captureWindow(
@@ -110,15 +110,19 @@ test("native setup starts and resumes with Docker unavailable", async ({
       window?.setSize(680, 760);
       window?.webContents.setZoomFactor(1);
     });
+    await expect(
+      setup.getByLabel("在 Docker 中运行", { exact: false }),
+    ).toBeHidden();
+    await setup.getByText("高级设置", { exact: true }).click();
     await setup.getByLabel("在 Docker 中运行", { exact: false }).check();
-    await setup.getByRole("button", { name: "继续", exact: true }).click();
+    await setup.getByRole("button", { name: "开始使用", exact: true }).click();
     await expect(setup.getByRole("alert")).toContainText("Docker Desktop");
     await setup.getByLabel("直接运行", { exact: false }).check();
     const opened = desktop.waitForEvent("window");
-    await setup.getByRole("button", { name: "继续", exact: true }).click();
+    await setup.getByRole("button", { name: "重试", exact: true }).click();
     const page = await opened;
     await expect(
-      page.getByRole("heading", { name: "选择对话模型" }),
+      page.getByRole("heading", { name: "连接你的 AI" }),
     ).toBeVisible();
     await desktop.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows().find((window) =>
@@ -133,6 +137,7 @@ test("native setup starts and resumes with Docker unavailable", async ({
         .locator("main")
         .evaluate((main) => main.scrollWidth <= main.clientWidth),
     ).toBe(true);
+    await page.getByRole("button", { name: "Pi", exact: true }).click();
     const continueSetup = page.getByRole("button", {
       name: "允许访问并继续",
       exact: true,
@@ -151,13 +156,14 @@ test("native setup starts and resumes with Docker unavailable", async ({
       predicate: (window) => window.url().startsWith(origin),
     });
     await expect(
-      resumed.getByRole("heading", { name: "选择对话模型" }),
+      resumed.getByRole("heading", { name: "连接你的 AI" }),
     ).toBeVisible();
+    await resumed.getByRole("button", { name: "Pi", exact: true }).click();
     await resumed
       .getByRole("button", { name: "允许访问并继续", exact: true })
       .click();
     await expect(
-      resumed.getByRole("heading", { name: "选择对话模型" }),
+      resumed.getByRole("heading", { name: "连接你的 AI" }),
     ).toBeVisible();
     await resumed.evaluate(async () => {
       const rpc = async (name: string, json: unknown) => {
@@ -270,12 +276,21 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
   try {
     const setup = await desktop.firstWindow();
     await expect(
-      setup.getByRole("heading", { name: "欢迎使用 Domos" }),
+      setup.getByRole("heading", { name: "认识一下 Domos" }),
     ).toBeVisible();
-    await setup.getByLabel("连接已有 Domos", { exact: false }).check();
+    await setup
+      .getByRole("button", { name: "连接另一台电脑", exact: true })
+      .click();
     await setup.getByLabel("Domos 地址").fill(`http://127.0.0.1:${ready.port}`);
+    await setup.getByRole("button", { name: "返回", exact: true }).click();
+    await setup
+      .getByRole("button", { name: "连接另一台电脑", exact: true })
+      .click();
+    await expect(setup.getByLabel("Domos 地址")).toHaveValue(
+      `http://127.0.0.1:${ready.port}`,
+    );
     const opened = desktop.waitForEvent("window");
-    await setup.getByRole("button", { name: "继续", exact: true }).click();
+    await setup.getByRole("button", { name: "连接", exact: true }).click();
     const page = await opened;
     await expect(
       page.getByRole("heading", { name: "连接这个 Domos" }),
@@ -528,9 +543,11 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     );
     const chooser = await choosing;
     await expect(
-      chooser.getByRole("heading", { name: "欢迎使用 Domos" }),
+      chooser.getByRole("heading", { name: "认识一下 Domos" }),
     ).toBeVisible();
-    await chooser.getByLabel("连接已有 Domos", { exact: false }).check();
+    await chooser
+      .getByRole("button", { name: "连接另一台电脑", exact: true })
+      .click();
     await chooser
       .getByRole("button", { name: "我的 Domos", exact: true })
       .click();

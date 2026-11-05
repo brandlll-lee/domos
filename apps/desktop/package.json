@@ -14,12 +14,18 @@
     "dist": "pnpm build && electron-builder"
   },
   "dependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/noto-sans-sc": "5.3.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "@domos/agent": "workspace:*",
     "@domos/hosting": "workspace:*",
     "zod": "4.6.7",
     "@domos/ui": "workspace:*"
   },
   "devDependencies": {
+    "@types/react-dom": "19.3.0",
+    "@types/react": "19.3.0",
     "electron": "44.8.0",
     "electron-builder": "26.15.3",
     "esbuild": "0.28.2"

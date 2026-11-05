@@ -77,9 +77,9 @@ test("first use prepares the default Bot with a computer and model before shared
     );
     await page.unroute("**/hosting/exchange");
     await page.getByRole("button", { name: "连接", exact: true }).click();
-    const setup = page.getByRole("main", { name: "首次设置" });
+    const setup = page.getByRole("main", { name: "连接你的 AI" });
     await expect(
-      setup.getByRole("heading", { name: "选择对话模型" }),
+      setup.getByRole("heading", { name: "连接你的 AI" }),
     ).toBeVisible();
     await expect(
       page.getByRole("textbox", { name: "消息", exact: true }),
@@ -90,6 +90,23 @@ test("first use prepares the default Bot with a computer and model before shared
     await expect(
       setup.getByRole("textbox", { name: "职责与长期指令" }),
     ).toHaveCount(0);
+    const inspections: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/rpc/engines/inspect"))
+        inspections.push(request.url());
+    });
+    await expect(
+      setup.getByRole("button", { name: "Pi", exact: true }),
+    ).toBeVisible();
+    expect(inspections).toHaveLength(0);
+    await capture(page, testInfo, "connection-list");
+    await setup.getByRole("button", { name: "Pi", exact: true }).click();
+    await expect(
+      setup.getByText("允许 Domos 运行本机程序并访问文件", { exact: true }),
+    ).toBeVisible();
+    expect(inspections).toHaveLength(0);
+    await setup.getByRole("button", { name: "返回", exact: true }).click();
+    await setup.getByRole("button", { name: "Pi", exact: true }).click();
     await capture(page, testInfo, "computer-setup");
     await page.setViewportSize({ width: 390, height: 600 });
     const next = setup.getByRole("button", {
@@ -111,17 +128,92 @@ test("first use prepares the default Bot with a computer and model before shared
       .getByRole("button", { name: "允许访问并继续", exact: true })
       .click();
     await expect(
-      setup.getByRole("heading", { name: "选择对话模型" }),
+      setup.getByRole("heading", { name: "连接你的 AI" }),
     ).toBeVisible();
+    await setup.getByRole("button", { name: "返回", exact: true }).click();
+    await setup
+      .getByRole("button", { name: "自定义 ACP", exact: true })
+      .click();
     await expect(
-      setup.getByRole("button", { name: "开始", exact: true }),
+      setup.getByRole("button", { name: "检查连接", exact: true }),
+    ).toBeEnabled();
+    await setup.getByLabel("程序路径", { exact: true }).fill("custom-agent");
+    await setup.getByLabel("启动参数", { exact: true }).fill("invalid");
+    await setup.getByRole("button", { name: "检查连接", exact: true }).click();
+    await expect(setup.getByRole("alert")).toContainText("JSON 字符串数组");
+    await expect(setup.getByLabel("程序路径", { exact: true })).toHaveValue(
+      "custom-agent",
+    );
+    await setup.getByRole("button", { name: "返回", exact: true }).click();
+    const connection = {
+      ready: false,
+      authenticated: false,
+      models: [],
+      version: null,
+      path: null,
+      message: "需要下载程序",
+    };
+    await page.route("**/rpc/engines/inspect", (route) => {
+      if (route.request().postDataJSON().json.config?.provider !== "codex")
+        return route.continue();
+      return route.fulfill({ json: { json: connection } });
+    });
+    await page.route("**/rpc/engines/install", (route) => route.abort());
+    await setup.getByRole("button", { name: "Codex", exact: true }).click();
+    await setup
+      .getByRole("button", { name: "下载并继续", exact: true })
+      .click();
+    await expect(setup.getByRole("alert")).toBeVisible();
+    await expect(setup.locator(".setup-provider-name")).toHaveText("Codex");
+    await capture(page, testInfo, "download-failure");
+    connection.ready = true;
+    await page.unroute("**/rpc/engines/install");
+    await page.route("**/rpc/engines/install", (route) =>
+      route.fulfill({
+        json: {
+          json: { config: { provider: "codex", model: null }, connection },
+        },
+      }),
+    );
+    await setup
+      .getByRole("button", { name: "下载并继续", exact: true })
+      .click();
+    const login = {
+      state: "waiting",
+      url: null,
+      code: null,
+      prompt: null,
+      instructions: "请在浏览器中完成登录。",
+    };
+    await page.route("**/rpc/engines/login", (route) =>
+      route.fulfill({ json: { json: login } }),
+    );
+    await page.route("**/rpc/engines/loginState", (route) =>
+      route.fulfill({ json: { json: login } }),
+    );
+    await page.route("**/rpc/engines/cancelLogin", (route) =>
+      route.fulfill({ json: { json: null } }),
+    );
+    await setup.getByRole("button", { name: "登录", exact: true }).click();
+    await expect(setup.getByText("等待登录…", { exact: true })).toBeVisible();
+    await capture(page, testInfo, "login");
+    const cancelled = page.waitForRequest("**/rpc/engines/cancelLogin");
+    await setup.getByRole("button", { name: "取消", exact: true }).click();
+    await cancelled;
+    await expect(setup.getByText("等待登录…", { exact: true })).toBeHidden();
+    await expect(setup.locator(".setup-provider-name")).toHaveText("Codex");
+    await page.unroute("**/rpc/engines/inspect");
+    await setup.getByRole("button", { name: "返回", exact: true }).click();
+    await setup.getByRole("button", { name: "Pi", exact: true }).click();
+    await expect(
+      setup.getByRole("button", { name: "开始聊天", exact: true }),
     ).toBeDisabled();
     await setup.getByRole("combobox", { name: "模型", exact: true }).click();
     await page
       .getByRole("option", { name: "Pi · Faux Model", exact: true })
       .click();
     await capture(page, testInfo, "model-setup");
-    await setup.getByRole("button", { name: "开始", exact: true }).click();
+    await setup.getByRole("button", { name: "开始聊天", exact: true }).click();
     await expect(setup).toBeHidden();
     await page
       .getByRole("textbox", { name: "消息", exact: true })
@@ -151,16 +243,23 @@ test("first use prepares the default Bot with a computer and model before shared
         name: "新建 Bot",
         exact: true,
       });
+      await expect(
+        create.getByText("不同的事，交给不同的 Bot", { exact: true }),
+      ).toBeVisible();
+      await second.screenshot({ path: testInfo.outputPath("second-bot.png") });
       await create.getByLabel("名字", { exact: true }).fill("资料伙伴");
       await create.getByRole("button", { name: "创建", exact: true }).click();
       await expect(
         create.getByRole("button", { name: "允许访问并继续", exact: true }),
       ).toHaveCount(0);
+      await create.getByRole("button", { name: "Pi", exact: true }).click();
       await create.getByRole("combobox", { name: "模型", exact: true }).click();
       await second
         .getByRole("option", { name: "Pi · Faux Model", exact: true })
         .click();
-      await create.getByRole("button", { name: "开始", exact: true }).click();
+      await create
+        .getByRole("button", { name: "开始聊天", exact: true })
+        .click();
       await expect(create).toBeHidden();
       await expect(second.getByLabel("消息", { exact: true })).toHaveAttribute(
         "placeholder",

@@ -2,70 +2,53 @@
   box-sizing: border-box;
 }
 body {
-  color-scheme: light dark;
   margin: 0;
+  color-scheme: light dark;
   background: var(--color-canvas);
   color: var(--color-text);
   font-family: var(--font-body);
   font-size: var(--text-body);
   line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
 }
 button,
 input {
-  font-family: inherit;
+  font: inherit;
 }
 .titlebar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
   height: var(--titlebar-height);
-  padding-inline: var(--space-5) var(--window-controls-width);
   -webkit-app-region: drag;
-  font-weight: var(--weight-semibold);
   user-select: none;
 }
-:root[data-platform="darwin"] .titlebar {
-  padding-inline: var(--mac-controls-width) var(--space-5);
-}
-.titlebar img {
-  width: var(--avatar-small);
-  height: var(--avatar-small);
-}
-legend {
-  margin-bottom: var(--space-3);
-  color: var(--color-muted);
-  font-size: var(--text-caption);
-}
-label.choice-card::before {
-  display: none;
-}
-.choice-card input {
-  appearance: none;
-  width: var(--space-4);
-  height: var(--space-4);
-  margin: 0;
-  border: 1px solid var(--color-muted);
-  border-radius: var(--radius-round);
-}
-.choice-card input:checked {
-  background: var(--color-text);
-  box-shadow: inset 0 0 0 var(--space-1) var(--color-control);
-}
-.connection-progress {
-  display: grid;
-  gap: var(--space-2);
-  color: var(--color-muted);
+.setup-remote {
+  flex: 1;
 }
 .saved-connections {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
 }
-progress {
-  width: 100%;
-  height: var(--space-1);
+.setup-advanced {
+  width: min(100%, var(--setup-button-width));
+  color: var(--color-muted);
+  font-size: var(--text-label);
+}
+.setup-advanced .setup-form {
+  padding-top: var(--space-4);
+}
+.setup-advanced label {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+.setup-advanced input {
   accent-color: var(--color-text);
 }
-[hidden] {
-  display: none;
+.alert {
+  color: var(--color-danger);
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+.detail-note {
+  color: var(--color-muted);
 }

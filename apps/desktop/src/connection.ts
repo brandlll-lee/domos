@@ -111,7 +111,7 @@ export class ConnectionSetup {
       return;
     }
     const window = createWindow("./setup-preload.cjs");
-    window.setSize(680, 760);
+    window.setSize(1120, 820);
     window.setMinimumSize(360, 540);
     window.webContents.on("will-navigate", (event) => event.preventDefault());
     window.webContents.on("will-redirect", (event) => event.preventDefault());

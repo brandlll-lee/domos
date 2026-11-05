@@ -77,16 +77,19 @@ for (const [entry, output] of [
     banner,
   });
 await cp(join(here, "src/preload.cjs"), join(dist, "preload.cjs"));
-for (const name of ["setup.html", "setup.css", "setup.js", "setup-preload.cjs"])
+await build({
+  entryPoints: [join(here, "src/setup.tsx")],
+  outfile: join(dist, "setup.js"),
+  bundle: true,
+  platform: "browser",
+  format: "esm",
+  target: "chrome144",
+  loader: { ".webp": "file", ".woff2": "file" },
+  assetNames: "assets/[name]-[hash]",
+  define: { "process.env.NODE_ENV": '"production"' },
+});
+for (const name of ["setup.html", "setup-preload.cjs"])
   await cp(join(here, "src", name), join(dist, name));
-await cp(
-  join(root, "packages/ui/src/web/controls.css"),
-  join(dist, "controls.css"),
-);
-await cp(
-  join(root, "packages/ui/src/web/setup.css"),
-  join(dist, "setup-layout.css"),
-);
 const variables = (values, prefix = "") =>
   Object.entries(values)
     .map(([key, value]) => `--${prefix}${key}:${value};`)

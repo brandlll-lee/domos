@@ -1,16 +1,15 @@
 import { type ReactNode, useEffect, useRef } from "react";
+import { BrandMark } from "./avatar.tsx";
 
 export function SetupPage({
   title,
-  label,
   description,
-  progress,
+  footer,
   children,
 }: {
   title: string;
-  label?: string;
   description?: string;
-  progress?: { current: number; total: number };
+  footer?: ReactNode;
   children: ReactNode;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
@@ -18,34 +17,44 @@ export function SetupPage({
     if (title) heading.current?.focus({ preventScroll: true });
   }, [title]);
   return (
-    <main className="setup-page" aria-label={label ?? title}>
+    <main className="setup-page" aria-label={title}>
       <div className="setup-content">
         <header className="setup-heading">
-          {progress && (
-            <div className="setup-progress">
-              <span className="setup-dots" aria-hidden="true">
-                {Array.from(
-                  { length: progress.total },
-                  (_, index) => index + 1,
-                ).map((step) => (
-                  <span
-                    key={step}
-                    data-complete={step <= progress.current || undefined}
-                  />
-                ))}
-              </span>
-              <span role="status">
-                第 {progress.current} 步，共 {progress.total} 步
-              </span>
-            </div>
-          )}
           <h1 ref={heading} tabIndex={-1}>
             {title}
           </h1>
           {description && <p>{description}</p>}
         </header>
-        {children}
+        <div className="setup-body">{children}</div>
+        {footer && <footer className="setup-actions">{footer}</footer>}
       </div>
     </main>
+  );
+}
+
+export function SetupStatus({ children }: { children: ReactNode }) {
+  return (
+    <div className="setup-status" role="status">
+      <BrandMark />
+      <span>{children}</span>
+    </div>
+  );
+}
+
+export function SetupComputer() {
+  return (
+    <div className="setup-computer" aria-hidden="true">
+      <div className="setup-computer-window">
+        <span />
+        <span />
+        <span />
+        <div className="setup-computer-lines">
+          <i />
+          <i />
+          <i />
+        </div>
+      </div>
+      <BrandMark />
+    </div>
   );
 }

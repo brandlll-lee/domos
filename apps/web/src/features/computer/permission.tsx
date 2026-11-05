@@ -1,34 +1,48 @@
 import { Button } from "@domos/ui/controls";
-import { useRef, useState } from "react";
+import { SetupComputer } from "@domos/ui/setup";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { client } from "../../client.ts";
 
 export function ComputerPermission({
   botId,
   onReady,
   onBusyChange,
+  footer,
 }: {
   botId: number;
   onReady: () => Promise<unknown>;
   onBusyChange?: (busy: boolean) => void;
+  footer?: ReactNode;
 }) {
   const request = useRef(crypto.randomUUID());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [computer, setComputer] = useState("");
+  useEffect(() => {
+    void client.computer.get({ botId }).then(
+      (binding) => setComputer(binding.computer?.name ?? "Bot 所属电脑"),
+      (cause) => setError(cause.message),
+    );
+  }, [botId]);
   return (
-    <div className="detail-stack">
-      <p>机器人已归属这台电脑。使用模型和工具前，请允许访问文件与命令。</p>
+    <div className="setup-permission">
+      <SetupComputer />
+      <p className="setup-permission-title">
+        允许 Domos 运行本机程序并访问文件
+      </p>
       <p className="detail-note">
-        授权会应用到使用同一环境的机器人。命令使用 Domos
-        的系统权限。工作目录不提供安全隔离。
+        授权对象：{computer || "正在读取…"}。此授权适用于共用该环境的机器人。
+        程序与文件访问使用该电脑上 Domos 的系统权限，范围不限于工作目录。
       </p>
       {error && (
         <p className="alert" role="alert">
           {error}
         </p>
       )}
-      <div className="form-actions">
+      <div className="setup-actions">
         <Button
           pending={busy}
+          disabled={!computer}
           onClick={async () => {
             if (busy) return;
             setBusy(true);
@@ -61,6 +75,7 @@ export function ComputerPermission({
         >
           允许访问并继续
         </Button>
+        {footer}
       </div>
     </div>
   );

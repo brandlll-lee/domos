@@ -1,12 +1,31 @@
-import { useId } from "react";
+import { useId, useState } from "react";
+import capsule from "../../assets/characters/capsule.webp";
+
+import cat from "../../assets/characters/cat.webp";
+import cloud from "../../assets/characters/cloud.webp";
+import drop from "../../assets/characters/drop.webp";
+import ivory from "../../assets/characters/eye-ivory.webp";
+import pupil from "../../assets/characters/eye-velvet.webp";
+import heart from "../../assets/characters/heart.webp";
+import hex from "../../assets/characters/hex.webp";
+import round from "../../assets/characters/round.webp";
+import soft from "../../assets/characters/soft.webp";
+import star from "../../assets/characters/star.webp";
+import triangle from "../../assets/characters/triangle.webp";
 import { type CharacterShape, characterBaseColor } from "../characters.ts";
 
-const ivory = new URL("../../assets/characters/eye-ivory.webp", import.meta.url)
-  .href;
-const pupil = new URL(
-  "../../assets/characters/eye-velvet.webp",
-  import.meta.url,
-).href;
+const textures = {
+  cat,
+  cloud,
+  drop,
+  heart,
+  hex,
+  round,
+  soft,
+  star,
+  triangle,
+  capsule,
+};
 const channels = (color: string) =>
   [1, 3, 5].map((index) => Number.parseInt(color.slice(index, index + 2), 16));
 
@@ -61,10 +80,8 @@ export function Character({
   state: "idle" | "running";
 }) {
   const id = useId();
-  const texture = new URL(
-    `../../assets/characters/${shape}.webp`,
-    import.meta.url,
-  ).href;
+  const texture = textures[shape];
+  const [loaded, setLoaded] = useState("");
   return (
     <svg
       className="character"
@@ -72,6 +89,7 @@ export function Character({
       aria-hidden="true"
       data-state={state}
       data-shape={shape}
+      opacity={loaded === texture ? 1 : 0}
     >
       <defs>
         <filter id={`${id}-tint`} colorInterpolationFilters="sRGB">
@@ -119,6 +137,7 @@ export function Character({
         <g className="character-body">
           <image
             href={texture}
+            onLoad={() => setLoaded(texture)}
             width="100"
             height="100"
             filter={`url(#${id}-tint)`}

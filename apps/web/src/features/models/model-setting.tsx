@@ -1,5 +1,6 @@
 import type { EngineConfig } from "@domos/agent/harness/types";
 import { Button } from "@domos/ui/controls";
+import { Disclosure } from "@domos/ui/disclosure";
 import { TextField } from "@domos/ui/field";
 import { ModelSelector } from "@domos/ui/model-selector";
 import { ChoicePicker, SearchPicker } from "@domos/ui/picker";
@@ -18,8 +19,10 @@ export function ModelSetting({
   disabled,
   onBusyChange,
   onProfile,
+  setupProvider,
 }: {
   botId: number;
+  setupProvider?: string;
   connected: boolean;
   disabled?: boolean;
   onBusyChange?: (busy: boolean) => void;
@@ -35,7 +38,7 @@ export function ModelSetting({
     error: saveError,
   } = useModelSettings(botId);
   const [config, setConfig] = useState<EngineConfig>(
-    selected ?? {
+    (setupProvider ? { provider: setupProvider, model: null } : selected) ?? {
       provider: "pi",
       model: null,
     },
@@ -71,7 +74,7 @@ export function ModelSetting({
       () => {
         if (!current) return;
         const next = store.snapshot().selected;
-        if (next) {
+        if (next && (!setupProvider || next.provider === setupProvider)) {
           setConfig(next);
           setArgs(JSON.stringify(next.args ?? []));
         }
@@ -83,7 +86,7 @@ export function ModelSetting({
     return () => {
       current = false;
     };
-  }, [connected, store]);
+  }, [connected, store, setupProvider]);
   useEffect(() => {
     if (profile) onProfile?.(profile);
   }, [profile, onProfile]);
@@ -206,6 +209,241 @@ export function ModelSetting({
       </Button>
     );
   }
+  const configuration = (
+    <div className="model-selector-connection">
+      {!setupProvider && (
+        <Button
+          variant="ghost"
+          size="small"
+          disabled={busy || login?.state === "waiting"}
+          onClick={() => setConfiguring(false)}
+        >
+          返回模型
+        </Button>
+      )}
+      {(config.provider === "acp" ||
+        connection?.version ||
+        connection?.path) && (
+        <Disclosure
+          label="高级配置"
+          open={config.provider === "acp" ? true : undefined}
+        >
+          {config.provider === "acp" && (
+            <>
+              {field({
+                label: "程序路径",
+                value: config.command ?? "",
+                onValueChange: (command) => setConfig({ ...config, command }),
+              })}
+              {field({
+                label: "启动参数",
+                value: args,
+                onValueChange: setArgs,
+              })}
+            </>
+          )}
+          {connection?.version && (
+            <SettingRow title="版本">{connection.version}</SettingRow>
+          )}
+          {connection?.path && (
+            <SettingRow title="程序路径">
+              <span className="detail-note">{connection.path}</span>
+            </SettingRow>
+          )}
+        </Disclosure>
+      )}
+      {config.provider === "opencode" && (
+        <>
+          <SearchPicker
+            label="模型提供方"
+            placeholder="选择提供方"
+            searchLabel="搜索提供方"
+            emptyLabel="没有匹配的提供方"
+            value={account}
+            onValueChange={(value) => {
+              setAccount(value);
+              setMethod("0");
+              setInputs({});
+            }}
+            items={accounts.map((provider) => ({
+              value: provider.id,
+              label: provider.name,
+            }))}
+            disabled={locked || login?.state === "waiting"}
+          />
+          {field({
+            label: "登录方式",
+            value: method,
+            onValueChange: setMethod,
+            items: methods.map((method, index) => ({
+              value: String(index),
+              label: method.label,
+            })),
+            disabled: locked || login?.state === "waiting",
+          })}
+          {methods[Number(method)]?.prompts
+            ?.filter(
+              (prompt) =>
+                !prompt.when ||
+                (prompt.when.op === "eq"
+                  ? inputs[prompt.when.key] === prompt.when.value
+                  : inputs[prompt.when.key] !== prompt.when.value),
+            )
+            .map((prompt) =>
+              field({
+                key: prompt.key,
+                label: prompt.message,
+                value: inputs[prompt.key] ?? "",
+                items:
+                  prompt.type === "select" ? (prompt.options ?? []) : undefined,
+                onValueChange: (value) =>
+                  setInputs({ ...inputs, [prompt.key]: value }),
+              }),
+            )}
+        </>
+      )}
+      <div className="dialog-actions">
+        {(!setupProvider ||
+          config.provider === "acp" ||
+          error ||
+          (connection?.ready &&
+            !connection.models.length &&
+            connection.authenticated)) &&
+          action("检查连接", () => inspect())}
+        {settings.admin && config.provider !== "acp" && (
+          <>
+            {(!setupProvider || (connection && !connection.ready)) &&
+              action(
+                setupProvider
+                  ? "下载并继续"
+                  : connection?.ready
+                    ? "下载独立版本"
+                    : "下载",
+                async () => {
+                  const installed = await client.engines.install({
+                    botId,
+                    config,
+                  });
+                  setConfig(installed.config);
+                  setConnection(installed.connection);
+                },
+              )}
+            {(!setupProvider ||
+              (connection?.ready && !connection.authenticated)) &&
+              action(
+                "登录",
+                async () =>
+                  setLogin(
+                    await client.engines.login({
+                      botId,
+                      providerId: account || undefined,
+                      method: Number(method),
+                      inputs,
+                      config: {
+                        ...config,
+                        command: connection?.path ?? config.command,
+                      },
+                    }),
+                  ),
+                login?.state === "waiting" ||
+                  (config.provider === "opencode" && !account),
+              )}
+          </>
+        )}
+        {connection?.authenticated &&
+          !connection.models.length &&
+          action("使用默认模型", () => save({ ...config, model: null }))}
+      </div>
+      {login && (
+        <div className="detail-stack">
+          {login.state !== "waiting" && (
+            <p role="status">
+              {login.state === "done" ? "已登录" : "登录未完成"}
+            </p>
+          )}
+          {login.url && (
+            <a href={login.url} target="_blank" rel="noreferrer">
+              打开登录页面
+            </a>
+          )}
+          {login.code && <code>{login.code}</code>}
+          {login.instructions && (
+            <p className="detail-note">{login.instructions}</p>
+          )}
+          {login.prompt &&
+            field({
+              label: login.prompt,
+              value: code,
+              onValueChange: setCode,
+              type: login.secret ? "password" : "text",
+              items: login.options?.map((value) => ({
+                value,
+                label: value,
+              })),
+              disabled: busy,
+            })}
+          <div className="dialog-actions">
+            {login.prompt &&
+              action("继续", () => client.engines.answerLogin({ botId, code }))}
+            {action("检查登录", async () => {
+              setLogin(await client.engines.loginState({ botId }));
+              await inspect();
+            })}
+            {action("取消", async () => {
+              await client.engines.cancelLogin({ botId });
+              setLogin(null);
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+  if (setupProvider) {
+    const models = (
+      connection?.models ??
+      profile?.catalog.find((item) => item.id === config.provider)?.models ??
+      []
+    ).filter((model) => visibility.visible(config.provider, model.id));
+    return (
+      <div className="setup-connection">
+        <div className="setup-provider-name">
+          <EngineMark provider={config.provider} />
+          {providers.find((item) => item.id === config.provider)?.name}
+        </div>
+        {!connection && !error && <p role="status">正在检查连接…</p>}
+        {busy && <p role="status">正在处理连接…</p>}
+        {login?.state === "waiting" && <p role="status">等待登录…</p>}
+        {models.length > 0 && (
+          <SearchPicker
+            label="模型"
+            searchLabel="搜索模型"
+            placeholder="选择模型"
+            emptyLabel="没有可用模型"
+            value={config.model ?? ""}
+            items={models.map((model) => ({
+              value: model.id,
+              label: `${providers.find((item) => item.id === config.provider)?.name} · ${model.name}`,
+            }))}
+            disabled={Boolean(disabled || profile?.busy || busy || saving)}
+            onValueChange={(model) =>
+              void save({ ...config, model, options: undefined })
+            }
+          />
+        )}
+        {connection?.authenticated && models.length > 0 && !login ? (
+          <Disclosure label="连接设置">{configuration}</Disclosure>
+        ) : (
+          configuration
+        )}
+        {(error || saveError) && (
+          <p className="alert" role="alert">
+            {error || saveError}
+          </p>
+        )}
+        {saving && <p role="status">正在保存模型…</p>}
+      </div>
+    );
+  }
   return (
     <>
       <SettingRow title="运行模型">
@@ -239,7 +477,7 @@ export function ModelSetting({
               .find((item) => item.id === selected?.provider)
               ?.models.find((item) => item.id === selected?.model)?.name ??
             selected?.model ??
-            "选择 Harness 和模型"
+            "选择连接和模型"
           }
           loading={!profile}
           disabled={Boolean(disabled)}
@@ -266,180 +504,7 @@ export function ModelSetting({
               <p className="detail-note">账号和程序由管理员配置。</p>
             )
           }
-          configuration={
-            configuring ? (
-              <div className="model-selector-connection">
-                <Button
-                  variant="ghost"
-                  size="small"
-                  disabled={busy || login?.state === "waiting"}
-                  onClick={() => setConfiguring(false)}
-                >
-                  返回模型
-                </Button>
-                {config.provider === "acp" && (
-                  <>
-                    {field({
-                      label: "程序路径",
-                      value: config.command ?? "",
-                      onValueChange: (command) =>
-                        setConfig({ ...config, command }),
-                    })}
-                    {field({
-                      label: "启动参数",
-                      value: args,
-                      onValueChange: setArgs,
-                    })}
-                  </>
-                )}
-                {connection?.version && (
-                  <SettingRow title="版本">{connection.version}</SettingRow>
-                )}
-                {connection?.path && (
-                  <SettingRow title="程序路径">
-                    <span className="detail-note">{connection.path}</span>
-                  </SettingRow>
-                )}
-                {config.provider === "opencode" && (
-                  <>
-                    <SearchPicker
-                      label="模型提供方"
-                      placeholder="选择提供方"
-                      searchLabel="搜索提供方"
-                      emptyLabel="没有匹配的提供方"
-                      value={account}
-                      onValueChange={(value) => {
-                        setAccount(value);
-                        setMethod("0");
-                        setInputs({});
-                      }}
-                      items={accounts.map((provider) => ({
-                        value: provider.id,
-                        label: provider.name,
-                      }))}
-                      disabled={locked || login?.state === "waiting"}
-                    />
-                    {field({
-                      label: "登录方式",
-                      value: method,
-                      onValueChange: setMethod,
-                      items: methods.map((method, index) => ({
-                        value: String(index),
-                        label: method.label,
-                      })),
-                      disabled: locked || login?.state === "waiting",
-                    })}
-                    {methods[Number(method)]?.prompts
-                      ?.filter(
-                        (prompt) =>
-                          !prompt.when ||
-                          (prompt.when.op === "eq"
-                            ? inputs[prompt.when.key] === prompt.when.value
-                            : inputs[prompt.when.key] !== prompt.when.value),
-                      )
-                      .map((prompt) =>
-                        field({
-                          key: prompt.key,
-                          label: prompt.message,
-                          value: inputs[prompt.key] ?? "",
-                          items:
-                            prompt.type === "select"
-                              ? (prompt.options ?? [])
-                              : undefined,
-                          onValueChange: (value) =>
-                            setInputs({ ...inputs, [prompt.key]: value }),
-                        }),
-                      )}
-                  </>
-                )}
-                <div className="dialog-actions">
-                  {action("检查连接", () => inspect())}
-                  {settings.admin && config.provider !== "acp" && (
-                    <>
-                      {action(
-                        connection?.ready ? "下载独立版本" : "下载",
-                        async () => {
-                          const installed = await client.engines.install({
-                            botId,
-                            config,
-                          });
-                          setConfig(installed.config);
-                          setConnection(installed.connection);
-                        },
-                      )}
-                      {action(
-                        "登录",
-                        async () =>
-                          setLogin(
-                            await client.engines.login({
-                              botId,
-                              providerId: account || undefined,
-                              method: Number(method),
-                              inputs,
-                              config: {
-                                ...config,
-                                command: connection?.path ?? config.command,
-                              },
-                            }),
-                          ),
-                        login?.state === "waiting" ||
-                          (config.provider === "opencode" && !account),
-                      )}
-                    </>
-                  )}
-                  {connection?.authenticated &&
-                    !connection.models.length &&
-                    action("使用默认模型", () =>
-                      save({ ...config, model: null }),
-                    )}
-                </div>
-                {login && (
-                  <div className="detail-stack">
-                    {login.state !== "waiting" && (
-                      <p role="status">
-                        {login.state === "done" ? "已登录" : "登录未完成"}
-                      </p>
-                    )}
-                    {login.url && (
-                      <a href={login.url} target="_blank" rel="noreferrer">
-                        打开登录页面
-                      </a>
-                    )}
-                    {login.code && <code>{login.code}</code>}
-                    {login.instructions && (
-                      <p className="detail-note">{login.instructions}</p>
-                    )}
-                    {login.prompt &&
-                      field({
-                        label: login.prompt,
-                        value: code,
-                        onValueChange: setCode,
-                        type: login.secret ? "password" : "text",
-                        items: login.options?.map((value) => ({
-                          value,
-                          label: value,
-                        })),
-                        disabled: busy,
-                      })}
-                    <div className="dialog-actions">
-                      {login.prompt &&
-                        action("继续", () =>
-                          client.engines.answerLogin({ botId, code }),
-                        )}
-                      {action("检查登录", async () => {
-                        setLogin(await client.engines.loginState({ botId }));
-                        await inspect();
-                      })}
-                      {action("取消", async () => {
-                        await client.engines.cancelLogin({ botId });
-                        setLogin(null);
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : undefined
-          }
+          configuration={configuring ? configuration : undefined}
           effort={controls?.options
             .filter((item) => item.kind === "effort")
             .map((control) => (

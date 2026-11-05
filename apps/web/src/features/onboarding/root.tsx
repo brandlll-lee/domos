@@ -1,5 +1,5 @@
 import { Button } from "@domos/ui/controls";
-import { SetupPage } from "@domos/ui/setup";
+import { SetupPage, SetupStatus } from "@domos/ui/setup";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { client } from "../../client.ts";
 import { ModelSetup } from "../bots/details/model.tsx";
@@ -44,10 +44,7 @@ export function Onboarding({
   return (
     <div className="setup-window">
       <Titlebar />
-      <SetupPage
-        label="首次设置"
-        title={setup ? "选择对话模型" : "正在读取配置…"}
-      >
+      <SetupPage title={setup ? "连接你的 AI" : "正在启动 Domos…"}>
         {setup &&
           (admin && !standalone ? (
             <ModelSetup
@@ -64,7 +61,7 @@ export function Onboarding({
           ) : (
             <p role="status">请让管理员完成首次设置，然后重试。</p>
           ))}
-        {!setup && !error && <p role="status">正在读取配置…</p>}
+        {!setup && !error && <SetupStatus>正在读取配置…</SetupStatus>}
         {error && (
           <p role="alert" className="alert">
             {error}
