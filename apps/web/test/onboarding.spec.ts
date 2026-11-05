@@ -23,9 +23,9 @@ async function capture(page: Page, info: TestInfo, name: string) {
         const box = await frame.boundingBox();
         expect(box?.y).toBe(0);
         expect(box?.height).toBe(900);
-        await expect(page.locator(".setup-page")).toHaveCSS(
+        await expect(page.locator(".setup-page .scroll-viewport")).toHaveCSS(
           "overflow-y",
-          "auto",
+          /auto|scroll/,
         );
       }
       await page.screenshot({

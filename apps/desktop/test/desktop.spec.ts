@@ -114,13 +114,18 @@ test("native setup starts and resumes with Docker unavailable", async ({
       window?.webContents.setZoomFactor(1);
     });
     await expect(
-      setup.getByLabel("在 Docker 中运行", { exact: false }),
+      setup.getByRole("menuitem", { name: "在 Docker 中运行", exact: true }),
     ).toBeHidden();
-    await setup.getByText("高级设置", { exact: true }).click();
-    await setup.getByLabel("在 Docker 中运行", { exact: false }).check();
+    await setup.getByRole("button", { name: "高级", exact: true }).click();
+    await setup
+      .getByRole("menuitem", { name: "在 Docker 中运行", exact: true })
+      .click();
     await setup.getByRole("button", { name: "开始使用", exact: true }).click();
     await expect(setup.getByRole("alert")).toContainText("Docker Desktop");
-    await setup.getByLabel("直接运行", { exact: false }).check();
+    await setup.getByRole("button", { name: "高级", exact: true }).click();
+    await setup
+      .getByRole("menuitem", { name: "直接运行", exact: true })
+      .click();
     const opened = desktop.waitForEvent("window");
     await setup.getByRole("button", { name: "重试", exact: true }).click();
     const page = await opened;

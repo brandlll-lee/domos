@@ -17,13 +17,28 @@
 }
 .setup-page {
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
+  overflow: hidden;
+}
+.setup-scroll {
+  flex: 1;
+}
+.setup-scroll .scroll-viewport {
+  height: 100%;
   scroll-padding-block: var(--space-5);
-  padding: clamp(var(--space-5), 9vh, 6rem) var(--space-5);
+}
+.setup-scroll :where(.scroll-viewport > div) {
+  display: flex;
+  min-height: 100%;
+  padding: clamp(var(--space-5), 5vh, 4rem) var(--space-5);
+  padding-bottom: var(--space-8);
+}
+.setup-corner {
+  align-self: flex-end;
+  flex-shrink: 0;
+  margin: 0 var(--space-5) var(--space-3);
 }
 .setup-content {
   display: flex;
@@ -32,7 +47,6 @@
   width: 100%;
   max-width: var(--setup-content-width);
   min-width: 0;
-  min-height: 100%;
   margin-inline: auto;
 }
 .setup-heading {
@@ -316,7 +330,7 @@
   }
 }
 @media (max-width: 30rem), (max-height: 40rem) {
-  .setup-page {
+  .setup-scroll .scroll-viewport > div {
     padding: var(--space-5);
   }
   .setup-content {
@@ -337,5 +351,16 @@
   .setup-providers,
   .setup-permission {
     animation: none;
+  }
+}
+@media (max-height: 40rem) {
+  .setup-content {
+    gap: var(--space-4);
+  }
+  .setup-welcome {
+    padding-block: 0;
+  }
+  .setup-actions {
+    padding-top: var(--space-4);
   }
 }

@@ -1,6 +1,8 @@
 import { type ReactNode, useEffect, useRef } from "react";
 import { BrandMark } from "./avatar.tsx";
 import { CharacterTeam } from "./character-team.tsx";
+import { ScrollArea } from "./scroll-area.tsx";
+import "./scroll-area.css";
 
 export { CharacterTeam };
 
@@ -8,11 +10,13 @@ export function SetupPage({
   title,
   description,
   footer,
+  corner,
   children,
 }: {
   title: string;
   description?: string;
   footer?: ReactNode;
+  corner?: ReactNode;
   children: ReactNode;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
@@ -21,16 +25,19 @@ export function SetupPage({
   }, [title]);
   return (
     <main className="setup-page" aria-label={title}>
-      <div className="setup-content">
-        <header className="setup-heading">
-          <h1 ref={heading} tabIndex={-1}>
-            {title}
-          </h1>
-          {description && <p>{description}</p>}
-        </header>
-        <div className="setup-body">{children}</div>
-        {footer && <footer className="setup-actions">{footer}</footer>}
-      </div>
+      <ScrollArea className="setup-scroll">
+        <div className="setup-content">
+          <header className="setup-heading">
+            <h1 ref={heading} tabIndex={-1}>
+              {title}
+            </h1>
+            {description && <p>{description}</p>}
+          </header>
+          <div className="setup-body">{children}</div>
+          {footer && <footer className="setup-actions">{footer}</footer>}
+        </div>
+      </ScrollArea>
+      {corner && <div className="setup-corner">{corner}</div>}
     </main>
   );
 }

@@ -29,20 +29,8 @@ input {
   gap: var(--space-2);
 }
 .setup-advanced {
-  width: min(100%, var(--setup-button-width));
   color: var(--color-muted);
   font-size: var(--text-label);
-}
-.setup-advanced .setup-form {
-  padding-top: var(--space-4);
-}
-.setup-advanced label {
-  display: flex;
-  gap: var(--space-3);
-  align-items: center;
-}
-.setup-advanced input {
-  accent-color: var(--color-text);
 }
 .alert {
   color: var(--color-danger);

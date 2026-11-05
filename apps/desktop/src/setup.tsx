@@ -1,8 +1,8 @@
 import type { InstallProgress } from "@domos/hosting/install";
 import type { Instance } from "@domos/hosting/instance";
 import { Button } from "@domos/ui/controls";
-import { Disclosure } from "@domos/ui/disclosure";
 import { TextField } from "@domos/ui/field";
+import { ActionMenu, Caret } from "@domos/ui/menu";
 import { CharacterTeam, SetupPage, SetupStatus } from "@domos/ui/setup";
 import { useEffect, useEffectEvent, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -43,7 +43,6 @@ function Welcome() {
   const [loaded, setLoaded] = useState(false);
   const [remote, setRemote] = useState(false);
   const [runtime, setRuntime] = useState<Runtime>("native");
-  const [advanced, setAdvanced] = useState(false);
   const [connections, setConnections] = useState<Instance[]>([]);
   const [url, setUrl] = useState("");
   const [name, setName] = useState("我的 Domos");
@@ -103,6 +102,38 @@ function Welcome() {
         title={
           !loaded || busy ? "" : remote ? "连接另一台电脑" : "认识一下 Domos"
         }
+        corner={
+          loaded &&
+          !busy &&
+          !remote && (
+            <ActionMenu
+              label="高级"
+              side="top"
+              trigger={
+                <Button
+                  variant="ghost"
+                  className="setup-advanced"
+                  aria-label="高级"
+                  title={
+                    runtime === "docker"
+                      ? "需要安装并启动 Docker。首次会下载运行包。"
+                      : undefined
+                  }
+                >
+                  {runtime === "docker" ? "高级 · Docker" : "高级"}
+                  <Caret />
+                </Button>
+              }
+              items={[
+                { label: "直接运行", onSelect: () => setRuntime("native") },
+                {
+                  label: "在 Docker 中运行",
+                  onSelect: () => setRuntime("docker"),
+                },
+              ]}
+            />
+          )
+        }
         footer={
           busy ? (
             <Button variant="secondary" onClick={() => void bridge.cancel()}>
@@ -130,41 +161,6 @@ function Welcome() {
               >
                 {remote ? "返回" : "连接另一台电脑"}
               </Button>
-              {!remote && (
-                <Disclosure
-                  label="高级设置"
-                  className="setup-advanced"
-                  open={advanced}
-                  onToggle={(event) => setAdvanced(event.currentTarget.open)}
-                >
-                  <fieldset className="setup-form">
-                    <legend>运行环境</legend>
-                    <label>
-                      <input
-                        type="radio"
-                        name="runtime"
-                        checked={runtime === "native"}
-                        onChange={() => setRuntime("native")}
-                      />
-                      直接运行
-                    </label>
-                    <label>
-                      <input
-                        type="radio"
-                        name="runtime"
-                        checked={runtime === "docker"}
-                        onChange={() => setRuntime("docker")}
-                      />
-                      在 Docker 中运行
-                    </label>
-                    {runtime === "docker" && (
-                      <p className="detail-note">
-                        需要安装并启动 Docker。首次会下载运行包。
-                      </p>
-                    )}
-                  </fieldset>
-                </Disclosure>
-              )}
             </>
           ) : undefined
         }

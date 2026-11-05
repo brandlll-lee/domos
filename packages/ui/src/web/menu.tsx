@@ -3,6 +3,8 @@ import type { ReactElement, ReactNode } from "react";
 import { Button } from "./controls.tsx";
 import "./menu.css";
 
+export { Caret } from "./caret.tsx";
+
 function MoreIcon() {
   return (
     <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">

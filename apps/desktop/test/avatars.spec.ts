@@ -32,6 +32,54 @@ test("welcome characters keep their layout while they follow and greet", async (
     await expect(buttons).toHaveCount(7);
     for (const svg of await team.locator("svg").all())
       await expect(svg).toHaveAttribute("opacity", "1");
+    const viewport = page.locator(".setup-page .scroll-viewport");
+    await expect(viewport).toHaveCount(1);
+    await expect(viewport).toHaveCSS("scrollbar-width", "none");
+    expect(
+      await viewport.evaluate(
+        (node) => node.scrollHeight <= node.clientHeight + 1,
+      ),
+    ).toBe(true);
+    const advanced = page.getByRole("button", { name: "高级", exact: true });
+    const corner = await advanced.boundingBox();
+    const windowSize = await page.evaluate(() => ({
+      width: innerWidth,
+      height: innerHeight,
+    }));
+    expect(corner?.x).toBeGreaterThan(windowSize.width * 0.8);
+    expect(corner?.y).toBeGreaterThan(windowSize.height * 0.85);
+    await advanced.click();
+    const docker = page.getByRole("menuitem", {
+      name: "在 Docker 中运行",
+      exact: true,
+    });
+    await expect(docker).toBeVisible();
+    expect((await docker.boundingBox())?.y).toBeLessThan(corner?.y ?? 0);
+    await docker.click();
+    await expect(page.getByRole("menu")).toBeHidden();
+    await expect(advanced).toContainText("Docker");
+    await advanced.click();
+    await page.getByRole("menuitem", { name: "直接运行", exact: true }).click();
+    await advanced.focus();
+    await page.keyboard.press("ArrowUp");
+    await expect(page.getByRole("menu")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(advanced).toBeFocused();
+    await desktop.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.setSize(1120, 640),
+    );
+    await expect.poll(() => page.evaluate(() => innerHeight)).toBeLessThan(650);
+    await expect
+      .poll(() =>
+        viewport.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
+      )
+      .toBe(true);
+    await desktop.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.setSize(1120, 820),
+    );
+    await expect
+      .poll(() => page.evaluate(() => innerHeight))
+      .toBeGreaterThan(700);
     await page.emulateMedia({ reducedMotion: "reduce" });
     const measure = () =>
       buttons.evaluateAll((nodes) =>
@@ -186,6 +234,15 @@ test("welcome characters keep their layout while they follow and greet", async (
     ).toBe(true);
     await expect(buttons.nth(0)).toBeInViewport();
     await expect(buttons.nth(6)).toBeInViewport();
+    expect(
+      await viewport.evaluate((node) => node.scrollHeight > node.clientHeight),
+    ).toBe(true);
+    await page
+      .getByRole("button", { name: "连接另一台电脑", exact: true })
+      .scrollIntoViewIfNeeded();
+    await expect(
+      page.getByRole("button", { name: "连接另一台电脑", exact: true }),
+    ).toBeInViewport({ ratio: 1 });
     await page.screenshot({
       path: testInfo.outputPath("welcome-narrow.png"),
       scale: "css",
