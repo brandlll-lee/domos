@@ -61,6 +61,9 @@ test("native setup starts and resumes with Docker unavailable", async ({
     await expect(
       setup.getByRole("heading", { name: "认识一下 Domos" }),
     ).toBeVisible();
+    await expect(
+      setup.getByRole("group", { name: "Domos 角色" }).getByRole("button"),
+    ).toHaveCount(7);
     await desktop.evaluate(({ nativeTheme }) => {
       nativeTheme.themeSource = "dark";
     });

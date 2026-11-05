@@ -21,7 +21,7 @@ test("saved identities retain their shape and color", () => {
   });
 });
 
-test("all nine shapes and eighteen colors can be selected independently", () => {
+test("all fifteen shapes and eighteen colors can be selected independently", () => {
   const identities = new Set<string>();
   for (const shape of Object.keys(
     characterNames,
@@ -32,9 +32,20 @@ test("all nine shapes and eighteen colors can be selected independently", () => 
       identities.add(seed);
     }
   }
-  expect(identities.size).toBe(162);
+  expect(identities.size).toBe(270);
   expect(characterIdentity(characterSeed("capsule", "#b39aff"))).toEqual({
     shape: "capsule",
     color: "#b39aff",
+  });
+});
+
+test("saved shape numbers retain their identities as the catalog grows", () => {
+  expect(characterIdentity("d0900008-0000-8000-8000-c6e95b000000")).toEqual({
+    shape: "cloud",
+    color: "#c6e95b",
+  });
+  expect(characterIdentity("d0900009-0000-8000-8000-f69dd1000000")).toEqual({
+    shape: "bunny",
+    color: "#f69dd1",
   });
 });

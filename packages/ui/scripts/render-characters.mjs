@@ -9,22 +9,37 @@ await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 try {
   const page = await browser.newPage();
-  const outlines = await page.evaluate((shapes) => {
-    return Object.entries(shapes).map(([name, path]) => {
-      const element = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "path",
-      );
-      element.setAttribute("d", path);
-      const length = element.getTotalLength();
-      const count = Math.ceil(length * 4);
-      const points = Array.from({ length: count }, (_, index) => {
-        const point = element.getPointAtLength((length * index) / count);
-        return [point.x, point.y];
-      });
-      return { name, points };
-    });
-  }, characterShapes);
+  const selected = process.argv.slice(3);
+  const outlines = await page.evaluate(
+    ({ shapes, selected }) => {
+      return Object.entries(shapes)
+        .filter(([name]) => !selected.length || selected.includes(name))
+        .map(([name, path]) => {
+          const element = document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "path",
+          );
+          element.setAttribute("d", path);
+          const length = element.getTotalLength();
+          const count = Math.ceil(length * 4);
+          const points = Array.from({ length: count }, (_, index) => {
+            const point = element.getPointAtLength((length * index) / count);
+            return [point.x, point.y];
+          });
+          const canvas = document.createElement("canvas");
+          canvas.width = canvas.height = 2048;
+          const context = canvas.getContext("2d");
+          context.scale(20.48, 20.48);
+          context.fill(new Path2D(path), "nonzero");
+          return {
+            name,
+            points,
+            mask: canvas.toDataURL("image/png").split(",")[1],
+          };
+        });
+    },
+    { shapes: characterShapes, selected },
+  );
   const result = spawnSync(
     process.argv[2] ?? "python",
     [fileURLToPath(new URL("./render-characters.py", import.meta.url)), output],

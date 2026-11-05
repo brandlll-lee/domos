@@ -93,10 +93,6 @@
   text-align: center;
   padding-block: var(--space-8);
 }
-.setup-welcome > .brand-mark {
-  width: 6rem;
-  height: 6rem;
-}
 .setup-welcome h2 {
   margin: 0;
   font-size: 1.375rem;
@@ -121,10 +117,6 @@
   text-align: center;
   color: var(--color-muted);
   padding-block: var(--space-8);
-}
-.setup-status .brand-mark {
-  width: var(--avatar-large);
-  height: var(--avatar-large);
 }
 .setup-status > span:last-child {
   width: min(100%, 30rem);

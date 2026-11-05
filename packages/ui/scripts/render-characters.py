@@ -1,4 +1,6 @@
 import json
+import base64
+import io
 import sys
 from pathlib import Path
 import numpy as np
@@ -51,11 +53,10 @@ def fibers(fur, rng, inside, normals, height, distance, color, clumps, groom, li
         draw.line([tuple(p2[i]), tuple(p3[i])], fill=tuple(tip_colors[i]) + (235,), width=max(1, width - 1))
 
 
-def render(points, base):
+def render(points, base, mask_data):
     rng = np.random.default_rng(7349)
     boundary = np.array(points)
-    mask = Image.new('L', (SIZE, SIZE))
-    ImageDraw.Draw(mask).polygon([tuple(point * SCALE) for point in boundary], fill=255)
+    mask = Image.open(io.BytesIO(base64.b64decode(mask_data))).getchannel('A')
     inside = np.asarray(mask) > 0
     grid = 384
     gy, gx = np.mgrid[0:grid, 0:grid].astype(np.float32) * (100 / grid)
@@ -97,5 +98,5 @@ config = json.load(sys.stdin)
 base = np.array([int(config['color'][i:i + 2], 16) for i in (1, 3, 5)])
 for outline in config['outlines']:
     output = Path(sys.argv[1]) / f"{outline['name']}.webp"
-    render(outline['points'], base).save(output, quality=95, method=6)
+    render(outline['points'], base, outline['mask']).save(output, quality=95, method=6)
     print(f"{output.name}: {output.stat().st_size}", flush=True)

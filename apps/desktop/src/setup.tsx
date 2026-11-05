@@ -1,10 +1,9 @@
 import type { InstallProgress } from "@domos/hosting/install";
 import type { Instance } from "@domos/hosting/instance";
-import { BrandMark } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { Disclosure } from "@domos/ui/disclosure";
 import { TextField } from "@domos/ui/field";
-import { SetupPage, SetupStatus } from "@domos/ui/setup";
+import { CharacterTeam, SetupPage, SetupStatus } from "@domos/ui/setup";
 import { useEffect, useEffectEvent, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "@fontsource-variable/geist/wght.css";
@@ -221,7 +220,7 @@ function Welcome() {
           </form>
         ) : (
           <div className="setup-welcome">
-            <BrandMark />
+            <CharacterTeam />
             <div>
               <h2>你的 AI 队友，在电脑上工作，随时与你连接。</h2>
               <p>

@@ -1,5 +1,8 @@
 import { type ReactNode, useEffect, useRef } from "react";
 import { BrandMark } from "./avatar.tsx";
+import { CharacterTeam } from "./character-team.tsx";
+
+export { CharacterTeam };
 
 export function SetupPage({
   title,
@@ -35,7 +38,7 @@ export function SetupPage({
 export function SetupStatus({ children }: { children: ReactNode }) {
   return (
     <div className="setup-status" role="status">
-      <BrandMark />
+      <CharacterTeam />
       <span>{children}</span>
     </div>
   );

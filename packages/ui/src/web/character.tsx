@@ -1,21 +1,36 @@
 import { useId, useState } from "react";
+import bunny from "../../assets/characters/bunny.webp";
 import capsule from "../../assets/characters/capsule.webp";
-
 import cat from "../../assets/characters/cat.webp";
+import chat from "../../assets/characters/chat.webp";
 import cloud from "../../assets/characters/cloud.webp";
+import controller from "../../assets/characters/controller.webp";
 import drop from "../../assets/characters/drop.webp";
 import ivory from "../../assets/characters/eye-ivory.webp";
 import pupil from "../../assets/characters/eye-velvet.webp";
+import ghost from "../../assets/characters/ghost.webp";
 import heart from "../../assets/characters/heart.webp";
 import hex from "../../assets/characters/hex.webp";
+import rocket from "../../assets/characters/rocket.webp";
 import round from "../../assets/characters/round.webp";
 import soft from "../../assets/characters/soft.webp";
+import sprout from "../../assets/characters/sprout.webp";
 import star from "../../assets/characters/star.webp";
 import triangle from "../../assets/characters/triangle.webp";
-import { type CharacterShape, characterBaseColor } from "../characters.ts";
+import {
+  type CharacterShape,
+  characterBaseColor,
+  characterFaces,
+} from "../characters.ts";
 
 const textures = {
   cat,
+  bunny,
+  ghost,
+  rocket,
+  controller,
+  sprout,
+  chat,
   cloud,
   drop,
   heart,
@@ -57,14 +72,16 @@ function Eye({
         filter={`url(#${shadow})`}
       />
       <image href={ivory} x={cx - 11.8} y="31.6" width="23.6" height="29.6" />
-      <g className="character-pupils">
-        <image
-          href={pupil}
-          x={cx - 5.35}
-          y="38.65"
-          width="10.7"
-          height="15.5"
-        />
+      <g className="character-look">
+        <g className="character-pupils">
+          <image
+            href={pupil}
+            x={cx - 5.35}
+            y="38.65"
+            width="10.7"
+            height="15.5"
+          />
+        </g>
       </g>
     </g>
   );
@@ -74,18 +91,21 @@ export function Character({
   shape,
   color,
   state,
+  viewBox = "0 0 100 100",
 }: {
   shape: CharacterShape;
   color: string;
   state: "idle" | "running";
+  viewBox?: string;
 }) {
   const id = useId();
+  const face = characterFaces[shape] ?? { x: 50, y: 46.4, scale: 1 };
   const texture = textures[shape];
   const [loaded, setLoaded] = useState("");
   return (
     <svg
       className="character"
-      viewBox="0 0 100 100"
+      viewBox={viewBox}
       aria-hidden="true"
       data-state={state}
       data-shape={shape}
@@ -142,15 +162,19 @@ export function Character({
             height="100"
             filter={`url(#${id}-tint)`}
           />
-          <g className="character-face">
-            {[37.4, 62.6].map((cx, index) => (
-              <Eye
-                key={cx}
-                cx={cx}
-                clip={`${id}-${index}`}
-                shadow={`${id}-shadow`}
-              />
-            ))}
+          <g
+            transform={`translate(${face.x} ${face.y}) scale(${face.scale}) translate(-50 -46.4)`}
+          >
+            <g className="character-face">
+              {[37.4, 62.6].map((cx, index) => (
+                <Eye
+                  key={cx}
+                  cx={cx}
+                  clip={`${id}-${index}`}
+                  shadow={`${id}-shadow`}
+                />
+              ))}
+            </g>
           </g>
         </g>
       </g>
