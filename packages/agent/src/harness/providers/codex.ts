@@ -71,6 +71,11 @@ export const codexProvider: EngineProvider = {
             forward({ ...event, ...(parentId ? { parentId } : {}) });
           if (params.threadId && params.threadId !== nativeId && !parentId)
             return;
+          const frameTurn = params.turnId ?? params.turn?.id;
+          if (frameTurn && !parentId) {
+            await starting;
+            if (turnId && frameTurn !== turnId) return;
+          }
           const item = params.item;
           if (item && Array.isArray(item.receiverThreadIds))
             for (const thread of item.receiverThreadIds)
@@ -332,6 +337,7 @@ export const codexProvider: EngineProvider = {
       vision,
       authenticated: client.authenticated,
       async prompt(text, images = []) {
+        children.clear();
         if (images.length && (await vision()) === false)
           throw new Error("当前模型不支持图片。请选择支持图片的模型。");
         completion = Promise.withResolvers<void>();

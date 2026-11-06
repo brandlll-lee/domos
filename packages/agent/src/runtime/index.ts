@@ -218,11 +218,7 @@ export class Runtime {
       ...(engine?.drafts ?? []).filter((message) => !saved.has(message.id)),
     );
     view.busy ||= Boolean(engine?.tasks.length);
-    view.processing = Boolean(
-      engine?.activeId &&
-        engine.runtime?.processing &&
-        !requests?.approvals.length,
-    );
+    view.processing = Boolean(engine?.activeId && !requests?.approvals.length);
     view.activeTurnId = engine?.activeTurn ?? view.activeTurnId;
     view.engine = engine?.config;
     if (engine?.config.model) {
@@ -532,6 +528,7 @@ export class Runtime {
       doc.preparedComputerId = computerId;
       doc.prompt = null;
     }, context);
+    await this.execution.closeIdle(botId);
     return this.profile(botId, context);
   }
 

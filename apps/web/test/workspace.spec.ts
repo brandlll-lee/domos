@@ -616,7 +616,7 @@ for (const dialogName of [
   });
 }
 
-test("sending paints the outgoing message before the network receipt", async ({
+test("sending paints the outgoing message and waiting feedback before the network receipt", async ({
   page,
 }) => {
   await page.goto(url);
@@ -675,7 +675,7 @@ test("sending paints the outgoing message before the network receipt", async ({
       `send paint with 320 history messages and 4x CPU: ${duration.toFixed(1)}ms`,
     );
     expect(duration).toBeLessThan(200);
-    await expect(page.locator(".typing-dots")).toHaveCount(0);
+    await expect(page.locator(".typing-dots")).toBeVisible();
     await expect
       .poll(() =>
         page

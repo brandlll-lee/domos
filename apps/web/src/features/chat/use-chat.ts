@@ -27,6 +27,7 @@ type RetainedChat = {
   view: ChatView | null;
   outgoing: TranscriptItem[];
   sentRequest?: string;
+  pendingRequest?: string;
   sending: boolean;
   error: string | null;
 };
@@ -88,10 +89,8 @@ export function prefetchChat(botId: number) {
 
 export function useChat(botId: number, onModelRequired?: () => void) {
   const [store] = useState(() => chatState(botId));
-  const { view, outgoing, sentRequest, sending, error } = useSyncExternalStore(
-    store.subscribe,
-    store.snapshot,
-  );
+  const { view, outgoing, sentRequest, pendingRequest, sending, error } =
+    useSyncExternalStore(store.subscribe, store.snapshot);
   const current = useRef<ChatView | null>(view);
   current.current ??= view;
   const setView = useCallback(
@@ -125,7 +124,15 @@ export function useChat(botId: number, onModelRequired?: () => void) {
       if (!pending || controller.signal.aborted) return;
       const next = pending;
       pending = undefined;
-      setView(current.current ?? next);
+      const view = current.current ?? next;
+      const pendingRequest = store.snapshot().pendingRequest;
+      if (
+        pendingRequest &&
+        (view.activeTurnId || !view.busy) &&
+        view.messages.some((message) => message.requestId === pendingRequest)
+      )
+        store.update({ view, pendingRequest: undefined });
+      else setView(view);
       setConnected(true);
     };
     const visible = () => {
@@ -255,6 +262,7 @@ export function useChat(botId: number, onModelRequired?: () => void) {
     materials?: InputMaterials,
   ) {
     setSentRequest(input.requestId);
+    store.update({ pendingRequest: input.requestId });
     setSending(true);
     setError(null);
     setOutgoing((current) => [
@@ -290,6 +298,8 @@ export function useChat(botId: number, onModelRequired?: () => void) {
       await client.send({ ...input, botId });
       return "accepted" as const;
     } catch (cause) {
+      if (store.snapshot().pendingRequest === input.requestId)
+        store.update({ pendingRequest: undefined });
       if (cause instanceof ORPCError && cause.code === "PRECONDITION_FAILED")
         onModelRequired?.();
       const message = rejectionMessage(cause);
@@ -305,6 +315,7 @@ export function useChat(botId: number, onModelRequired?: () => void) {
   }
 
   async function stop() {
+    store.update({ pendingRequest: undefined });
     setStopping(true);
     setError(null);
     try {
@@ -335,6 +346,10 @@ export function useChat(botId: number, onModelRequired?: () => void) {
     connected,
     error,
     sending,
+    processing:
+      !stopping &&
+      !view?.approvals?.length &&
+      (Boolean(pendingRequest) || Boolean(view?.processing)),
     stopping:
       stopping ||
       view?.runs?.some(

@@ -3428,7 +3428,10 @@ test("typing follows the Bot and failures retain their error message", async ({
   await expect(page.locator(".typing-dots")).toHaveCount(0);
   await page.goto(primary);
   await expect(page.locator(".typing-dots")).toBeVisible();
+  const stoppedReceipt = page.waitForResponse("**/rpc/stop");
   await page.getByRole("button", { name: "停止生成", exact: true }).click();
+  await stoppedReceipt;
+  await expect(page.locator(".typing-dots")).toHaveCount(0);
   await expect(page.locator('.task-notice[data-state="stopped"]')).toHaveCount(
     0,
   );
@@ -3438,7 +3441,7 @@ test("typing follows the Bot and failures retain their error message", async ({
       { content: "重试已恢复", stopReason: "stop" },
     ],
   });
-  await input.fill("重试后继续");
+  await input.pressSequentially("重试后继续");
   await send.click();
   await expect(page.locator(".messages").getByText("重试已恢复")).toBeVisible();
   const failure = page.locator(".task-notice .message-bubble");
@@ -4248,6 +4251,7 @@ for (const method of ["click", "Enter"] as const) {
       ).toBeVisible();
       await expect(outgoing.locator("img")).toHaveJSProperty("naturalWidth", 1);
       await expect(page.locator(".composer-attachments")).toHaveCount(0);
+      await expect(page.locator(".typing-dots")).toBeVisible();
       await input.fill("下一条草稿");
     } finally {
       receipt.resolve();

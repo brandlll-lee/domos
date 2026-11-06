@@ -7,8 +7,234 @@ import { fauxProvider } from "@earendil-works/pi-ai/providers/faux";
 import { createRegistry } from "@earendil-works/pi-durable";
 import { expect, onTestFinished, test, vi } from "vitest";
 import type { Computers } from "../src/computer/catalog.ts";
+import { engineLimits } from "../src/harness/types.ts";
 import { openAgent } from "../src/open-agent.ts";
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
+import { featureProcess } from "./fixtures/feature-process.ts";
+import { runtimeFixture } from "./fixtures/runtime.ts";
+
+test.each(["pi", "claude"] as const)(
+  "%s reuses its session and binds product tools to each new task",
+  async (provider) => {
+    const workers: ProtocolProcess[] = [];
+    const reads: string[] = [];
+    let directory = null as string | null;
+    const computers = {
+      initialize: async () => {},
+      preflight: async () => {},
+      computerId: async () => "shared",
+      binding: async () => ({ directory }),
+      tools: { catalog: async () => [], finish: () => {} },
+      process: async (
+        ...[_id, _tools, invoke]: Parameters<Computers["process"]>
+      ) => {
+        const read = async () => {
+          const result = await invoke(
+            crypto.randomUUID(),
+            "conversation_read",
+            {},
+            new AbortController().signal,
+          );
+          reads.push(JSON.stringify(result));
+          return `Reply ${reads.length}`;
+        };
+        const worker =
+          provider === "pi" ? featureProcess(read) : new ProtocolProcess();
+        if (provider === "claude")
+          worker.receive = async (request) => {
+            if (request.type === "control_request") {
+              worker.frame({
+                type: "control_response",
+                response: {
+                  request_id: (request as unknown as { request_id: string })
+                    .request_id,
+                  subtype: "success",
+                  response: { models: [] },
+                },
+              });
+            } else if (request.type === "user") {
+              worker.frame({
+                type: "assistant",
+                message: {
+                  id: crypto.randomUUID(),
+                  content: [{ type: "text", text: await read() }],
+                },
+              });
+              worker.frame({ type: "result", is_error: false });
+            }
+          };
+        workers.push(worker);
+        return worker;
+      },
+    } as unknown as Computers;
+    onTestFinished(async () => {
+      await Promise.all(workers.map((worker) => worker.close()));
+    });
+    const runtime = await runtimeFixture(computers);
+    const engines = runtime.engines;
+    if (!engines) throw new Error("Native engines required");
+    const botId = runtime.conversation.id;
+    await engines.configure(
+      botId,
+      {
+        config: { provider, model: null },
+        revision: 0,
+        requestId: crypto.randomUUID(),
+      },
+      context,
+    );
+    const send = async (text: string) => {
+      const task = await engines.submit(
+        botId,
+        { text, requestId: crypto.randomUUID() },
+        context,
+      );
+      expect(await task.wait(context)).toMatchObject({ status: "done" });
+    };
+    await send("First request");
+    await send("Second request");
+    expect(workers).toHaveLength(1);
+    expect(reads[1]).toContain("Second request");
+    directory = "/new-project";
+    await send("New project request");
+    expect(workers).toHaveLength(2);
+    expect(workers[0]?.output.writableEnded).toBe(true);
+    await computers.onIdle?.(botId);
+    expect(workers[1]?.output.writableEnded).toBe(true);
+  },
+);
+
+test("consecutive turns reuse Codex while account changes and Stop retire its process", async () => {
+  const workers: ProtocolProcess[] = [];
+  const tools: string[] = [];
+  let account = "first-account";
+  let turns = 0;
+  const started = Promise.withResolvers<void>();
+  const computers = {
+    initialize: async () => {},
+    preflight: async () => {},
+    computerId: async () => "shared",
+    binding: async () => ({ directory: null }),
+    tools: { catalog: async () => [], finish: () => {} },
+    process: async (
+      ...[_botId, _tools, invoke]: Parameters<Computers["process"]>
+    ) => {
+      const worker = new ProtocolProcess();
+      worker.account = async () => account;
+      workers.push(worker);
+      worker.receive = async (request) => {
+        if (
+          request.method === "thread/start" ||
+          request.method === "thread/resume"
+        )
+          worker.response(request, { thread: { id: "chat" } });
+        else if (request.method === "turn/start") {
+          const id = `turn-${++turns}`;
+          worker.response(request, { turn: { id } });
+          if (turns === 2)
+            worker.frame({
+              method: "item/completed",
+              params: {
+                threadId: "chat",
+                turnId: "turn-1",
+                item: {
+                  id: "late",
+                  type: "agentMessage",
+                  text: "Late first-turn result",
+                },
+              },
+            });
+          if (turns === 4) {
+            started.resolve();
+            return;
+          }
+          const result = await invoke(
+            `read-${turns}`,
+            "conversation_read",
+            {},
+            new AbortController().signal,
+          );
+          tools.push(JSON.stringify(result));
+          worker.frame({
+            method: "item/completed",
+            params: {
+              threadId: "chat",
+              turnId: id,
+              item: { id, type: "agentMessage", text: `Reply ${turns}` },
+            },
+          });
+          worker.frame({
+            method: "turn/completed",
+            params: { threadId: "chat", turn: { id, status: "completed" } },
+          });
+        } else if (request.id !== undefined) worker.response(request, {});
+      };
+      return worker;
+    },
+  } as unknown as Computers;
+  onTestFinished(async () => {
+    await Promise.all(workers.map((worker) => worker.close()));
+  });
+  const runtime = await runtimeFixture(computers);
+  const engines = runtime.engines;
+  if (!engines) throw new Error("Native engines required");
+  const botId = runtime.conversation.id;
+  await engines.configure(
+    botId,
+    {
+      config: { provider: "codex", model: null },
+      revision: 0,
+      requestId: crypto.randomUUID(),
+    },
+    context,
+  );
+  const send = async () => {
+    const task = await engines.submit(
+      botId,
+      { text: `Request ${turns + 1}`, requestId: crypto.randomUUID() },
+      context,
+    );
+    await task.wait(context);
+    await expect
+      .poll(async () => (await engines.profile(botId, context)).busy)
+      .toBe(false);
+  };
+  await send();
+  await send();
+  expect(tools).toHaveLength(2);
+  expect(tools[1]).toContain("Request 2");
+  expect(workers).toHaveLength(1);
+  expect(
+    workers[0]?.requests.filter((request) => request.method === "initialize"),
+  ).toHaveLength(1);
+  account = "second-account";
+  await send();
+  expect(workers).toHaveLength(2);
+  expect(workers[0]?.output.writableEnded).toBe(true);
+  const pending = await engines.submit(
+    botId,
+    { text: "Stop this turn", requestId: crypto.randomUUID() },
+    context,
+  );
+  await started.promise;
+  await engines.stop(botId, context);
+  await pending.wait(context);
+  expect(workers[1]?.output.writableEnded).toBe(true);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    await send();
+    expect(workers).toHaveLength(3);
+    await vi.advanceTimersByTimeAsync(engineLimits.idleMs);
+    expect(workers[2]?.output.writableEnded).toBe(true);
+  } finally {
+    vi.useRealTimers();
+  }
+  const text = JSON.stringify((await engines.view(botId, context)).messages);
+  expect(text).toContain("Reply 1");
+  expect(text).toContain("Reply 2");
+  expect(text).toContain("Reply 5");
+  expect(text).not.toContain("Late first-turn result");
+});
 
 test.each(["accepted", "refused", "uncertain"] as const)(
   "chat inputs handle %s delivery without duplicate work",
@@ -17,6 +243,7 @@ test.each(["accepted", "refused", "uncertain"] as const)(
     const models = createModels();
     models.setProvider(fauxProvider().provider);
     const workers: ProtocolProcess[] = [];
+    let turns = 0;
     const started = Promise.withResolvers<void>();
     const computers = {
       initialize: async () => {},
@@ -35,7 +262,7 @@ test.each(["accepted", "refused", "uncertain"] as const)(
           else if (request.method === "turn/start") {
             worker.response(request, { turn: { id: "current" } });
             started.resolve();
-            if (workers.length > 1)
+            if (++turns > 1)
               worker.frame({
                 method: "turn/completed",
                 params: { turn: { status: "completed" } },
@@ -169,12 +396,10 @@ test.each(["accepted", "refused", "uncertain"] as const)(
         (run) => run.endedAt && run.endedAt >= run.startedAt,
       ),
     ).toBe(true);
-    expect(workers).toHaveLength(
-      delivery === "accepted" ? 1 : delivery === "refused" ? 3 : 2,
-    );
+    expect(workers).toHaveLength(delivery === "uncertain" ? 2 : 1);
     expect(
       workers[0]?.requests.filter((request) => request.method === "turn/start"),
-    ).toHaveLength(1);
+    ).toHaveLength(delivery === "refused" ? 3 : 1);
     expect(
       workers[0]?.requests
         .filter((request) => request.method === "turn/steer")
@@ -185,7 +410,7 @@ test.each(["accepted", "refused", "uncertain"] as const)(
         expectedTurnId: "current",
         input: [{ type: "text", text: "second" }],
       },
-      ...(delivery === "accepted"
+      ...(delivery !== "uncertain"
         ? [
             {
               threadId: "chat",
@@ -261,6 +486,7 @@ test.each([false, true])(
     const models = createModels();
     models.setProvider(fauxProvider().provider);
     const workers: ProtocolProcess[] = [];
+    let turns = 0;
     const computers = {
       initialize: async () => {},
       preflight: async () => {},
@@ -269,7 +495,7 @@ test.each([false, true])(
       process: async () => {
         const worker = new ProtocolProcess();
         workers.push(worker);
-        if (blocked && workers.length === 2) {
+        if (blocked && workers.length === 1) {
           const close = worker.close.bind(worker);
           worker.close = async () => {
             await release.promise;
@@ -285,9 +511,9 @@ test.each([false, true])(
             worker.response(request, { thread: { id: "routine-thread" } });
           else if (request.method === "turn/start") {
             worker.response(request, {
-              turn: { id: `turn-${workers.length}` },
+              turn: { id: `turn-${++turns}` },
             });
-            if (workers.length === 1)
+            if (turns === 1)
               worker.frame({
                 method: "turn/completed",
                 params: { turn: { status: "completed" } },
@@ -374,7 +600,7 @@ test.each([false, true])(
     );
     await expect
       .poll(() =>
-        workers[1]?.requests.some((request) => request.method === "turn/steer"),
+        workers[0]?.requests.some((request) => request.method === "turn/steer"),
       )
       .toBe(true);
     const queued = await runtime.work.routines.test(
@@ -421,10 +647,10 @@ test.each([false, true])(
       { text: "Next request", requestId: crypto.randomUUID() },
       context,
     );
-    await expect.poll(() => workers.length).toBe(3);
+    await expect.poll(() => workers.length).toBe(2);
     await expect
       .poll(() =>
-        workers[2]?.requests.some((request) => request.method === "turn/start"),
+        workers[1]?.requests.some((request) => request.method === "turn/start"),
       )
       .toBe(true);
     await engines.stop(botId, context);
@@ -465,8 +691,8 @@ test.each([false, true])(
             worker.response(request, {
               turn: { id: `turn-${workers.length}` },
             });
-            if (interrupt && workers.length === 11) return;
-            if (workers.length === 11) {
+            if (interrupt && workers.length === 2) return;
+            if (workers.length === 2) {
               worker.frame({
                 id: "memory-permission",
                 method: "mcpServer/elicitation/request",
@@ -530,17 +756,15 @@ test.each([false, true])(
       );
       expect(await submission.wait(context)).toMatchObject({ status: "done" });
     }
-    await expect.poll(() => workers.length).toBe(11);
-    const review = workers[10]?.requests.find(
+    await expect.poll(() => workers.length).toBe(2);
+    const review = workers[1]?.requests.find(
       (request) => request.method === "turn/start",
     );
     expect(JSON.stringify(review?.params)).toContain(
       "Quoted conversation data for memory review",
     );
     expect(
-      workers[10]?.requests.some(
-        (request) => request.method === "thread/start",
-      ),
+      workers[1]?.requests.some((request) => request.method === "thread/start"),
     ).toBe(true);
     expect(
       (await engines.view(botId, context)).messages.some((message) =>
@@ -554,8 +778,8 @@ test.each([false, true])(
         context,
       );
       expect(await submission.wait(context)).toMatchObject({ status: "done" });
-      await expect(workers[10]?.closed).resolves.toMatchObject({ code: 0 });
-      expect(JSON.stringify(workers[11]?.requests)).toContain(
+      await expect(workers[1]?.closed).resolves.toMatchObject({ code: 0 });
+      expect(JSON.stringify(workers[2]?.requests)).toContain(
         "User work has priority",
       );
     }

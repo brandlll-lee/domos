@@ -348,7 +348,7 @@ function BotChat({
                 botId={bot.id}
                 ready={Boolean(chat.view) || Boolean(chat.error)}
                 busy={Boolean(chat.view?.busy)}
-                processing={Boolean(chat.view?.processing)}
+                processing={chat.processing}
                 retry={chat.view?.busy ? chat.view.runtime?.retry : null}
                 botName={bot.name}
                 createdAt={bot.createdAt}

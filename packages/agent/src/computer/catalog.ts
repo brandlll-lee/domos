@@ -51,6 +51,7 @@ export type ComputerView = ComputerStatus & {
 };
 
 export class Computers {
+  onIdle?: (botId: number) => Promise<void>;
   readonly tools = new ComputerTools(this);
   readonly views = new ComputerViews(
     this,
@@ -466,6 +467,7 @@ export class Computers {
   }
 
   private async idle(tx: Tx, botId: number) {
+    await this.onIdle?.(botId);
     if (this.transfers.has(botId))
       throw new WorkError("CONFLICT", "请等待文件传输或消息提交完成。");
     await requireIdle(tx, botId);

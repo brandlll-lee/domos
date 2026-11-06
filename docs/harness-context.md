@@ -24,6 +24,10 @@ Downloads install a pinned package in the work computer's runtime directory. Nod
 
 Pi login uses its native ModelRuntime through an RPC extension. Codex and Claude use native login commands. OpenCode uses its local account API. Account state and secret input are transient. The native program stores credentials. Administrators manage programs and accounts. Paired clients can select available models in the Bot's configured Harness.
 
+Codex, Claude and Pi retain compatible connections between completed chat turns. Compatibility includes the program, account, directory, permissions, instructions and tool configuration. Each turn binds its own events, approvals, tools and cancellation. Idle connections close after ten minutes. Configuration and directory changes close idle connections. Stop terminates the active process tree. Review and summary tasks keep separate native sessions. Uncertain outcomes still require recovery before more execution.
+
+Chat shows waiting feedback when the client submits a message. The server's active task then owns that feedback, including native startup. Approval requests replace it with their own state. Failure and Stop settle the local feedback.
+
 ## History and migration
 
 The forward migration keeps the current database. It sets migrated Bots to Pi and retains the current provider/model and thinking level. It settles old work and saves drafts as stopped messages. Missing native configuration requires user action. Migration does not silently select another model.

@@ -29,6 +29,7 @@ import { conversationHandoff, summaryInstructions } from "./handoff.ts";
 import { conversationHistory } from "./history.ts";
 import { EngineInputs } from "./inputs.ts";
 import { EngineRequestRejected } from "./json-lines.ts";
+import { LiveSession, type TurnHandlers } from "./live-session.ts";
 import {
   callProductTool,
   permissionTool,
@@ -81,12 +82,23 @@ type Active = {
 export class EngineExecution {
   mcp?: McpConnections;
   readonly active = new Map<number, Active>();
+  private readonly idle = new Map<
+    number,
+    {
+      key: string;
+      live: LiveSession;
+      timer: ReturnType<typeof setTimeout>;
+      managed: Active["managed"];
+      servers: { name: string; url: string }[];
+    }
+  >();
   readonly computers: Computers;
   readonly files?: Files;
   computer!: ComputerRuntime;
   constructor(computers: Computers, files?: Files) {
     this.computers = computers;
     this.files = files;
+    computers.onIdle = (botId) => this.closeIdle(botId);
   }
 
   private async summarize(
@@ -364,76 +376,6 @@ export class EngineExecution {
     );
     const computerTools = tools.filter((tool) => computerNames.has(tool.name));
     if (provider.id === "claude") tools.push(permissionTool);
-    let reviewCalls = 0;
-    const active: Active = {
-      memoryReview,
-      approve,
-      process: await this.computers.process(
-        runtime.conversationId,
-        tools,
-        async (callId, name, args, signal) => {
-          const combined = AbortSignal.any([
-            signal,
-            runtime.signal,
-            active.controller.signal,
-          ]);
-          combined.throwIfAborted();
-          if (name !== "approve") {
-            if (memoryReview && !name.startsWith("memory_"))
-              throw new Error("后台回顾只能调用记忆工具。");
-            if (memoryReview && ++reviewCalls > 12)
-              throw new Error("本次回顾已达到工具调用上限。");
-            const computerTool = computerTools.find(
-              (tool) => tool.name === name,
-            );
-            if (computerTool)
-              return this.computer.call(
-                runtime.conversationId,
-                runtime.taskId,
-                callId,
-                computerTool,
-                args,
-                combined,
-                context,
-              );
-            return callProductTool(
-              runtime,
-              callId,
-              name,
-              args,
-              context,
-              combined,
-            );
-          }
-          if (provider.id !== "claude") throw new Error("确认方式不可用。");
-          const id = randomUUID();
-          const approval = claudeApproval(id, args);
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify(
-                  claudePermission(
-                    args,
-                    memoryReview
-                      ? {
-                          allow: tools.some(
-                            (tool) =>
-                              tool.name.startsWith("memory_") &&
-                              args.tool_name === `mcp__domos__${tool.name}`,
-                          ),
-                        }
-                      : await approve(approval, combined),
-                  ),
-                ),
-              },
-            ],
-          };
-        },
-        context,
-      ),
-      controller: new AbortController(),
-    };
     const managed =
       !memoryReview && this.mcp
         ? (await this.mcp.list(context)).filter(
@@ -448,7 +390,155 @@ export class EngineExecution {
       !memoryReview && this.mcp
         ? await this.mcp.native(runtime.conversationId, context)
         : !memoryReview;
-    const servers: { name: string; url: string }[] = [];
+    const agent = await runtime.agent(context);
+    const env = await runtime.env(context);
+    const sections = Object.fromEntries(
+      await Promise.all(
+        agent.sections
+          .filter((section) => section.key !== "workspace")
+          .map(async (section) => [
+            section.key,
+            (await section.render(
+              {
+                conversationId: runtime.conversationId,
+                agent,
+                env,
+                shown: {},
+                read: runtime,
+              },
+              context,
+            )) ?? "",
+          ]),
+      ),
+    );
+    let snapshot = await runtime.snapshot(
+      MemorySnapshotDoc,
+      runtime.taskId,
+      context,
+    );
+    if (!snapshot) {
+      const memories = await runtime.snapshot(MemoryDoc, context);
+      const text = memoryContext(memories?.items ?? [], runtime.conversationId);
+      await runtime.commit(async (tx) => {
+        (await tx.doc(MemorySnapshotDoc, runtime.taskId)).text = text ?? "";
+      }, context);
+      snapshot = { text: text ?? "" };
+    }
+    sections.memory = snapshot.text;
+    const instructions = memoryReview
+      ? `Review the recent conversation. Save only durable facts. Put cross-task user facts in profile and task-specific procedures in work notes. Keep facts declarative. Do not change or delete user-authored memories. Use only memory tools.\n\n${sections.memory ?? ""}`
+      : [
+          agent.instructions,
+          ...Object.values(sections),
+          "Use your native tools for commands and files in this Bot's work directory. Publish deliverable files with attach_file. Bots sharing this computer share OS permissions and accessible files.",
+          computerInstructions(computerTools),
+        ]
+          .filter(Boolean)
+          .join("\n\n");
+    if (!memoryReview)
+      await runtime.commit(async (tx) => {
+        (await tx.doc(EngineDoc, runtime.conversationId)).prompt = {
+          text: instructions,
+          sections,
+          tools: tools.map((tool) => tool.name),
+        };
+      }, context);
+    let reviewCalls = 0;
+    const invoke: TurnHandlers["invoke"] = async (
+      callId,
+      name,
+      args,
+      signal,
+    ) => {
+      const combined = AbortSignal.any([
+        signal,
+        runtime.signal,
+        active.controller.signal,
+      ]);
+      combined.throwIfAborted();
+      if (name !== "approve") {
+        if (memoryReview && !name.startsWith("memory_"))
+          throw new Error("后台回顾只能调用记忆工具。");
+        if (memoryReview && ++reviewCalls > 12)
+          throw new Error("本次回顾已达到工具调用上限。");
+        const computerTool = computerTools.find((tool) => tool.name === name);
+        if (computerTool)
+          return this.computer.call(
+            runtime.conversationId,
+            runtime.taskId,
+            callId,
+            computerTool,
+            args,
+            combined,
+            context,
+          );
+        return callProductTool(runtime, callId, name, args, context, combined);
+      }
+      if (provider.id !== "claude") throw new Error("确认方式不可用。");
+      const id = randomUUID();
+      const approval = claudeApproval(id, args);
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              claudePermission(
+                args,
+                memoryReview
+                  ? {
+                      allow: tools.some(
+                        (tool) =>
+                          tool.name.startsWith("memory_") &&
+                          args.tool_name === `mcp__domos__${tool.name}`,
+                      ),
+                    }
+                  : await approve(approval, combined),
+              ),
+            ),
+          },
+        ],
+      };
+    };
+    const binding = await this.computers.binding(
+      runtime.conversationId,
+      context,
+    );
+    const connectionKey = JSON.stringify([
+      doc.computerId,
+      binding.directory,
+      doc.config,
+      instructions,
+      tools,
+      managed.map(({ id, revision }) => [id, revision]),
+      inherited,
+    ]);
+    const retained = this.idle.get(runtime.conversationId);
+    this.idle.delete(runtime.conversationId);
+    clearTimeout(retained?.timer);
+    let live = retained?.live;
+    if (
+      live &&
+      (memoryReview ||
+        retained?.key !== connectionKey ||
+        live.closed ||
+        live.account !== (await live.process.account?.(doc.config.provider)))
+    ) {
+      await live.process.close();
+      live = undefined;
+    }
+    live ??= new LiveSession();
+    if (!live.process)
+      await live.start((invoke) =>
+        this.computers.process(runtime.conversationId, tools, invoke, context),
+      );
+    const connection = live;
+    const active: Active = {
+      memoryReview,
+      approve,
+      process: connection.process,
+      controller: new AbortController(),
+    };
+    const servers = retained?.live === connection ? retained.servers : [];
     try {
       runtime.signal.throwIfAborted();
       const current = await runtime.snapshot(
@@ -471,9 +561,12 @@ export class EngineExecution {
     runtime.signal.addEventListener("abort", interrupted, { once: true });
     let receiving = true;
     const initialized = Promise.withResolvers<EngineSession | null>();
+    let completed = false;
     try {
-      active.managed = new Map();
-      if (managed.length) {
+      active.managed =
+        (retained?.live === connection ? retained.managed : undefined) ??
+        new Map();
+      if (managed.length && retained?.live !== connection) {
         const connections = this.mcp;
         if (!connections) throw new Error("连接服务不可用。");
         if (!active.process.mcp) throw new Error("工作电脑需要更新 MCP 支持。");
@@ -599,6 +692,7 @@ export class EngineExecution {
       const account = await active.process.account?.(doc.config.provider);
       if (account === undefined)
         throw new Error("工作电脑尚未提供账号隔离标识。");
+      connection.account = account;
       const key = sessionKey(
         doc.computerId,
         doc.config,
@@ -628,69 +722,9 @@ export class EngineExecution {
           await runtime.snapshot(EngineDoc, runtime.conversationId, context),
         );
       }
-      const agent = await runtime.agent(context);
-      const env = await runtime.env(context);
-      const sections = Object.fromEntries(
-        await Promise.all(
-          agent.sections
-            .filter((section) => section.key !== "workspace")
-            .map(async (section) => [
-              section.key,
-              (await section.render(
-                {
-                  conversationId: runtime.conversationId,
-                  agent,
-                  env,
-                  shown: {},
-                  read: runtime,
-                },
-                context,
-              )) ?? "",
-            ]),
-        ),
-      );
-      let snapshot = await runtime.snapshot(
-        MemorySnapshotDoc,
-        runtime.taskId,
-        context,
-      );
-      if (!snapshot) {
-        const memories = await runtime.snapshot(MemoryDoc, context);
-        const text = memoryContext(
-          memories?.items ?? [],
-          runtime.conversationId,
-        );
-        await runtime.commit(async (tx) => {
-          (await tx.doc(MemorySnapshotDoc, runtime.taskId)).text = text ?? "";
-        }, context);
-        snapshot = { text: text ?? "" };
-      }
-      sections.memory = snapshot.text;
-      const instructions = memoryReview
-        ? `Review the recent conversation. Save only durable facts. Put cross-task user facts in profile and task-specific procedures in work notes. Keep facts declarative. Do not change or delete user-authored memories. Use only memory tools.\n\n${sections.memory ?? ""}`
-        : [
-            agent.instructions,
-            ...Object.values(sections),
-            "Use your native tools for commands and files in this Bot's work directory. Publish deliverable files with attach_file. Bots sharing this computer share OS permissions and accessible files.",
-            computerInstructions(computerTools),
-          ]
-            .filter(Boolean)
-            .join("\n\n");
-      if (!memoryReview)
-        await runtime.commit(async (tx) => {
-          (await tx.doc(EngineDoc, runtime.conversationId)).prompt = {
-            text: instructions,
-            sections,
-            tools: tools.map((tool) => tool.name),
-          };
-        }, context);
       const resumed = Boolean(doc.sessionId);
-      active.session = await provider.open({
-        mcp: { servers, inheritNative: inherited },
-        process: active.process,
-        config: doc.config,
-        sessionId: memoryReview ? (snapshot.sessionId ?? null) : doc.sessionId,
-        instructions,
+      connection.handlers = {
+        invoke,
         approve: (approval) => approve(approval, active.controller.signal),
         emit: async (event) => {
           if (!receiving || active.controller.signal.aborted) return;
@@ -728,6 +762,12 @@ export class EngineExecution {
           if (event.type === "accepted" && event.ready !== false)
             active.inputs?.start();
         },
+      };
+      active.session = await connection.initialize({
+        mcp: { servers, inheritNative: inherited },
+        config: doc.config,
+        sessionId: memoryReview ? (snapshot.sessionId ?? null) : doc.sessionId,
+        instructions,
       });
       initialized.resolve(active.session);
       await active.session.ready?.();
@@ -927,6 +967,7 @@ export class EngineExecution {
           ),
           cancelled.promise,
         ]);
+        completed = true;
       } finally {
         active.controller.signal.removeEventListener("abort", abort);
       }
@@ -939,16 +980,55 @@ export class EngineExecution {
         if (mounted.worker !== active.process) void mounted.worker.close();
       runtime.signal.removeEventListener("abort", interrupted);
       if (active.stopping) {
+        connection.release();
         void active.inputs?.close().catch(() => {});
       } else {
         await active.inputs?.close();
-        await active.process.close();
+        if (
+          completed &&
+          !memoryReview &&
+          [...(active.managed?.values() ?? [])].every(
+            (mounted) => mounted.worker === active.process,
+          ) &&
+          ["codex", "claude", "pi"].includes(provider.id) &&
+          connection.release()
+        ) {
+          const timer = setTimeout(() => {
+            if (this.idle.get(runtime.conversationId)?.live === connection)
+              void this.closeIdle(runtime.conversationId);
+          }, engineLimits.idleMs);
+          timer.unref();
+          this.idle.set(runtime.conversationId, {
+            key: connectionKey,
+            live: connection,
+            timer,
+            managed: active.managed,
+            servers,
+          });
+          void active.process.closed.then(() => {
+            if (this.idle.get(runtime.conversationId)?.live === connection) {
+              clearTimeout(timer);
+              this.idle.delete(runtime.conversationId);
+            }
+          });
+        } else {
+          connection.release();
+          await active.process.close();
+        }
       }
       if (this.active.get(runtime.conversationId) === active) {
         this.active.delete(runtime.conversationId);
         this.computers.tools.finish(`computer:${runtime.conversationId}`);
       }
     }
+  }
+
+  async closeIdle(botId: number) {
+    const retained = this.idle.get(botId);
+    if (!retained) return;
+    this.idle.delete(botId);
+    clearTimeout(retained.timer);
+    await retained.live.process.close();
   }
 
   deliver(botId: number) {
@@ -970,7 +1050,7 @@ export class EngineExecution {
 
   stop(botId: number, reason?: Error) {
     const active = this.active.get(botId);
-    if (!active) return Promise.resolve();
+    if (!active) return this.closeIdle(botId);
     clearTimeout(active.routine?.timer);
     active.controller.abort(reason);
     this.active.delete(botId);

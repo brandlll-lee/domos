@@ -333,6 +333,7 @@ export const engineLimits = {
   handshakeMs: 30_000,
   compactionMs: 120_000,
   shutdownMs: 5_000,
+  idleMs: 10 * 60_000,
   approvalMs: 10 * 60_000,
   observationMs: 30_000,
   executionMs: 120_000,
