@@ -3,6 +3,7 @@ import { type ChatMessage, messageText } from "@domos/agent/messages";
 import { WORK_TEXT_LENGTH } from "@domos/agent/work/limits";
 import { Button } from "@domos/ui/controls";
 import { SearchField } from "@domos/ui/field";
+import { Loading } from "@domos/ui/loading";
 import { useEffect, useState } from "react";
 import { client } from "../../client.ts";
 import { userError } from "../user-error.ts";
@@ -60,9 +61,7 @@ export function SkillPicker({
           </Button>
         </div>
       ) : !skills ? (
-        <p className="composer-picker-state" role="status">
-          正在加载…
-        </p>
+        <Loading label="正在读取技能" />
       ) : !filtered?.length ? (
         <p className="composer-picker-state">
           {search ? "没有匹配的技能" : "暂无已启用的技能"}

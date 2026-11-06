@@ -1,4 +1,5 @@
 import { Button } from "@domos/ui/controls";
+import { Loading } from "@domos/ui/loading";
 import { useEffect, useRef, useState } from "react";
 import "pdfjs-dist/web/pdf_viewer.css";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -85,7 +86,11 @@ export default function PdfPreview({ blob }: { blob: Blob }) {
               上一页
             </Button>
             <span aria-live="polite">
-              {state.total ? `${state.page} / ${state.total}` : "正在读取 PDF…"}
+              {state.total ? (
+                `${state.page} / ${state.total}`
+              ) : (
+                <Loading label="正在读取 PDF" inline />
+              )}
             </span>
             <Button
               variant="ghost"

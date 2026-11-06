@@ -235,7 +235,7 @@ test.afterEach(async () => {
 
 test("files preview documents, search old history and return to the source", async ({
   page,
-}) => {
+}, testInfo) => {
   test.setTimeout(60_000);
   const client: RouterClient<AppRouter> = createORPCClient(
     new RPCLink({ url: `${url}/rpc` }),
@@ -298,13 +298,75 @@ test("files preview documents, search old history and return to the source", asy
   await control({ history: 240 });
   await page.reload();
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  const reading = Promise.withResolvers<void>();
+  await page.route("**/rpc/files/list", async (route) => {
+    await reading.promise;
+    await route.continue();
+  });
   await page
     .locator("#bot-details")
     .getByRole("button", { name: "文件", exact: true })
     .click();
+  const loading = page.getByRole("status", {
+    name: "正在读取文件",
+    exact: true,
+  });
+  try {
+    await expect(loading).toBeVisible();
+    await expect(loading.locator(".loading-spinner")).toBeVisible();
+    const bounds = await loading.boundingBox();
+    const content = await page.locator(".detail-scroll").boundingBox();
+    const search = await page.locator(".file-list .search-field").boundingBox();
+    if (!bounds || !content || !search)
+      throw new Error("Loading area required");
+    expect(
+      Math.abs(bounds.x + bounds.width / 2 - content.x - content.width / 2),
+    ).toBeLessThan(2);
+    expect(bounds.height).toBeGreaterThan(content.height / 2);
+    expect(
+      Math.abs(
+        bounds.y +
+          bounds.height / 2 -
+          (search.y + search.height + content.y + content.height) / 2,
+      ),
+    ).toBeLessThan(16);
+    await expect(loading).not.toContainText("正在读取文件");
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.screenshot({
+        path: testInfo.outputPath(`files-loading-${colorScheme}.png`),
+      });
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(loading).toBeInViewport();
+    await page.screenshot({
+      path: testInfo.outputPath("files-loading-narrow.png"),
+    });
+    await page.setViewportSize({ width: 1360, height: 900 });
+  } finally {
+    reading.resolve();
+  }
+  await expect(loading).toBeHidden();
+  await page.unroute("**/rpc/files/list");
+  const filtering = Promise.withResolvers<void>();
+  await page.route("**/rpc/files/list", async (route) => {
+    await filtering.promise;
+    await route.continue();
+  });
+  const rows = await page.locator(".file-list-row").count();
   await page
     .getByRole("searchbox", { name: "搜索文件", exact: true })
     .fill("说明");
+  try {
+    await expect(loading).toBeVisible();
+    await expect(page.locator(".file-list-row")).toHaveCount(rows);
+    await expect(
+      page.getByRole("searchbox", { name: "搜索文件", exact: true }),
+    ).toBeFocused();
+  } finally {
+    filtering.resolve();
+  }
+  await expect(loading).toBeHidden();
   await expect(page.locator(".file-list-row")).toHaveCount(1);
   await page.getByRole("button", { name: "在聊天中查看", exact: true }).click();
   await expect(
@@ -510,8 +572,10 @@ test("file reads recover from failure and cannot cross a Bot switch", async ({
       .click();
     await requested.promise;
     await expect(
-      page.getByRole("complementary", { name: "文件预览", exact: true }),
-    ).toContainText("正在打开文件");
+      page
+        .getByRole("complementary", { name: "文件预览", exact: true })
+        .getByRole("status", { name: "正在打开文件", exact: true }),
+    ).toBeVisible();
     await contacts.getByRole("link", { name: /^文件隔离助手/ }).click();
     release.resolve();
     await expect(

@@ -1,5 +1,6 @@
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
+import { Loading } from "@domos/ui/loading";
 import { InlineNotice } from "@domos/ui/message";
 import { SettingRow } from "@domos/ui/setting-row";
 import { useEffect, useState } from "react";
@@ -92,7 +93,7 @@ export function DataBackup() {
       {state?.mode === "existing" && (
         <p role="status">请在运行此 Domos 的电脑上管理备份。</p>
       )}
-      {!state && !error && <p role="status">正在读取本机后台状态…</p>}
+      {!state && !error && <Loading label="正在读取本机后台状态" />}
       {message && (
         <div role="status">
           <InlineNotice>{message}</InlineNotice>

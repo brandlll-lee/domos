@@ -118,6 +118,7 @@ export function BotIdentity({
         onClick={onEdit}
       >
         <BotAvatar
+          interactive
           seed={profile?.avatar ?? bot.avatar}
           size="panel"
           statusLabel="正在工作"

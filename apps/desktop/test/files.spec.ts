@@ -47,10 +47,12 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
   });
   try {
     const setup = await desktop.firstWindow();
-    await setup.getByLabel("连接已有 Domos", { exact: false }).check();
+    await setup
+      .getByRole("button", { name: "连接另一台电脑", exact: true })
+      .click();
     await setup.getByLabel("Domos 地址").fill(`http://127.0.0.1:${ready.port}`);
     const opened = desktop.waitForEvent("window");
-    await setup.getByRole("button", { name: "继续", exact: true }).click();
+    await setup.getByRole("button", { name: "连接", exact: true }).click();
     const page = await opened;
     await page.getByLabel("配对码", { exact: true }).fill(ready.pairing);
     await page.getByRole("button", { name: "连接", exact: true }).click();

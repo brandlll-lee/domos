@@ -158,11 +158,27 @@ test("first use prepares the default Bot with a computer and model before shared
         return route.continue();
       return route.fulfill({ json: { json: connection } });
     });
-    await page.route("**/rpc/engines/install", (route) => route.abort());
+    const installing = Promise.withResolvers<void>();
+    await page.route("**/rpc/engines/install", async (route) => {
+      await installing.promise;
+      await route.abort();
+    });
     await setup.getByRole("button", { name: "Codex", exact: true }).click();
-    await setup
-      .getByRole("button", { name: "下载并继续", exact: true })
-      .click();
+    const install = setup.getByRole("button", {
+      name: "下载并继续",
+      exact: true,
+    });
+    const installSize = await install.boundingBox();
+    await install.click();
+    try {
+      await expect(install).toBeDisabled();
+      await expect(install.locator(".button-spinner")).toBeVisible();
+      const pendingSize = await install.boundingBox();
+      expect(pendingSize?.width).toBe(installSize?.width);
+      expect(pendingSize?.height).toBe(installSize?.height);
+    } finally {
+      installing.resolve();
+    }
     await expect(setup.getByRole("alert")).toBeVisible();
     await expect(setup.locator(".setup-provider-name")).toHaveText("Codex");
     await capture(page, testInfo, "download-failure");

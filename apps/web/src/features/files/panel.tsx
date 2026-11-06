@@ -1,6 +1,7 @@
 import type { Attachment } from "@domos/agent/attachments";
 import { filePreviewKind } from "@domos/agent/attachments";
 import { Button } from "@domos/ui/controls";
+import { Loading } from "@domos/ui/loading";
 import { PanelHeader } from "@domos/ui/panel";
 import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
 import { ImageGallery } from "../chat/image-gallery.tsx";
@@ -73,7 +74,7 @@ export function FilePanel({
           </p>
         )}
         {!inline && !data.blob && !data.error && (
-          <p role="status">正在打开文件…</p>
+          <Loading label="正在打开文件" />
         )}
       </div>
     </aside>

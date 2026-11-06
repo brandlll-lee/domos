@@ -18,10 +18,26 @@
     background-color var(--motion-feedback),
     transform var(--motion-feedback);
 }
+.button-content {
+  display: inline-flex;
+  align-items: center;
+  gap: inherit;
+  opacity: 0;
+}
+.button[aria-busy="true"] {
+  display: inline-grid;
+}
+.button-content,
+.button-spinner {
+  grid-area: 1 / 1;
+  justify-self: center;
+  align-self: center;
+}
 .button:active:not(:disabled) {
   transform: translateY(1px);
 }
-.button-spinner {
+.button-spinner,
+.loading-spinner {
   width: var(--space-4);
   height: var(--space-4);
   flex-shrink: 0;
@@ -39,6 +55,39 @@
   .button-spinner {
     animation: none;
   }
+}
+.loading {
+  display: grid;
+  place-items: center;
+  min-height: 10rem;
+  width: 100%;
+  height: 100%;
+  color: var(--color-muted);
+}
+.loading-spinner {
+  animation:
+    button-spin var(--motion-spinner) linear infinite,
+    loading-reveal 150ms step-end both;
+}
+@keyframes loading-reveal {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner {
+    animation: none;
+  }
+}
+.loading[data-inline] {
+  display: inline-grid;
+  width: auto;
+  height: auto;
+  min-height: var(--control-small);
+  vertical-align: middle;
 }
 .button[data-variant="secondary"] {
   background: var(--color-control-hover);
@@ -80,7 +129,8 @@ summary:focus-visible {
   outline-offset: 3px;
 }
 
-.button > svg {
+.button > svg,
+.button-content > svg {
   width: var(--space-4);
   height: var(--space-4);
   flex-shrink: 0;

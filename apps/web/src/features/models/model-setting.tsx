@@ -2,6 +2,7 @@ import type { EngineConfig } from "@domos/agent/harness/types";
 import { Button } from "@domos/ui/controls";
 import { Disclosure } from "@domos/ui/disclosure";
 import { TextField } from "@domos/ui/field";
+import { Loading } from "@domos/ui/loading";
 import { ModelSelector } from "@domos/ui/model-selector";
 import { ChoicePicker, SearchPicker } from "@domos/ui/picker";
 import { SettingRow } from "@domos/ui/setting-row";
@@ -65,7 +66,8 @@ export function ModelSetting({
   const [args, setArgs] = useState("[]");
   const [open, setOpen] = useState(false);
   const [configuring, setConfiguring] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState("");
+  const busy = Boolean(busyAction);
   const [error, setError] = useState("");
   useEffect(() => {
     if (!connected) return;
@@ -94,15 +96,15 @@ export function ModelSetting({
     onBusyChange?.(busy || saving);
     return () => onBusyChange?.(false);
   }, [busy, saving, onBusyChange]);
-  async function run(action: () => Promise<unknown>) {
-    setBusy(true);
+  async function run(label: string, action: () => Promise<unknown>) {
+    setBusyAction(label);
     setError("");
     try {
       await action();
     } catch (e) {
       setError(e instanceof Error ? e.message : "操作未完成。");
     } finally {
-      setBusy(false);
+      setBusyAction("");
     }
   }
   async function inspect() {
@@ -204,7 +206,8 @@ export function ModelSetting({
         variant="secondary"
         size="small"
         disabled={locked || blocked}
-        onClick={() => void run(callback)}
+        pending={busyAction === label}
+        onClick={() => void run(label, callback)}
       >
         {label}
       </Button>
@@ -411,8 +414,7 @@ export function ModelSetting({
           <EngineMark provider={config.provider} />
           {providers.find((item) => item.id === config.provider)?.name}
         </div>
-        {!connection && !error && <p role="status">正在检查连接…</p>}
-        {busy && <p role="status">正在处理连接…</p>}
+        {!connection && !error && <Loading label="正在检查连接" inline />}
         {login?.state === "waiting" && <p role="status">等待登录…</p>}
         {models.length > 0 && (
           <SearchPicker
@@ -441,7 +443,7 @@ export function ModelSetting({
             {error || saveError}
           </p>
         )}
-        {saving && <p role="status">正在保存模型…</p>}
+        {saving && <Loading label="正在保存模型" inline />}
       </div>
     );
   }
@@ -498,7 +500,7 @@ export function ModelSetting({
         onConfigure={settings.admin ? () => setConfiguring(true) : undefined}
         notice={
           busy ? (
-            <p role="status">正在保存…</p>
+            <Loading label="正在保存" inline />
           ) : settings.admin ? (
             <Button
               variant="ghost"

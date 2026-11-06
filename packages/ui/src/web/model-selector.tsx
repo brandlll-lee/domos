@@ -3,6 +3,7 @@ import { Tabs } from "@base-ui/react/tabs";
 import { type ReactNode, useRef, useState } from "react";
 import { Button } from "./controls.tsx";
 import { SearchField } from "./field.tsx";
+import { Loading } from "./loading.tsx";
 import { ScrollArea } from "./scroll-area.tsx";
 
 export function ModelSelector({
@@ -224,7 +225,7 @@ export function ModelSelector({
                         }}
                       >
                         {loading ? (
-                          <p role="status">正在读取模型…</p>
+                          <Loading label="正在读取模型" />
                         ) : (
                           matches.map((item, index) => (
                             <div key={item.id}>

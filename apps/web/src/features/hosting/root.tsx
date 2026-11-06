@@ -1,6 +1,6 @@
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
-import { SetupPage } from "@domos/ui/setup";
+import { SetupPage, SetupStatus } from "@domos/ui/setup";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { client, selectComputer } from "../../client.ts";
 import { Onboarding } from "../onboarding/root.tsx";
@@ -81,11 +81,7 @@ export function HostingRoot({ children }: { children: ReactNode }) {
             : undefined
         }
       >
-        {state === "loading" && (
-          <p role="status" className="detail-note">
-            正在读取连接信息…
-          </p>
-        )}
+        {state === "loading" && <SetupStatus>正在读取连接信息…</SetupStatus>}
         {state === "pair" && (
           <form
             className="setup-form"

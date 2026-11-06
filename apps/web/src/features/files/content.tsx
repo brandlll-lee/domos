@@ -1,5 +1,6 @@
 import { type Attachment, filePreviewKind } from "@domos/agent/attachments";
 import { Button } from "@domos/ui/controls";
+import { Loading } from "@domos/ui/loading";
 import { MessageMarkdown } from "@domos/ui/markdown";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useFilePreview } from "./context.tsx";
@@ -46,11 +47,11 @@ export function FileContent({
   if (kind === "download")
     return <p className="file-empty">此格式暂不支持预览，请下载后查看。</p>;
   return (
-    <Suspense fallback={<p role="status">正在打开文件…</p>}>
+    <Suspense fallback={<Loading label="正在打开文件" />}>
       {kind === "pdf" && <PdfPreview blob={blob} />}
       {kind === "csv" && <CsvPreview blob={blob} />}
       {["text", "markdown", "html"].includes(kind) && text === undefined && (
-        <p role="status">正在读取内容…</p>
+        <Loading label="正在读取内容" />
       )}
       {text !== undefined && kind === "html" && (
         <HtmlPreview
@@ -121,7 +122,7 @@ export function InlineFile({
           </Button>
         </p>
       )}
-      {!data.blob && !data.error && <p role="status">正在打开页面…</p>}
+      {!data.blob && !data.error && <Loading label="正在打开页面" />}
     </div>
   );
 }

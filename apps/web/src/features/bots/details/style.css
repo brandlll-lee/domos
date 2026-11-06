@@ -9,8 +9,9 @@
   outline: none;
 }
 .detail-content {
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
   gap: var(--space-4);
   min-width: 0;
   padding: var(--space-4) var(--space-4) var(--space-6);
@@ -20,6 +21,13 @@
 }
 .detail-scroll[hidden] {
   display: none;
+}
+.detail-content > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: 100%;
+  flex: 1 0 auto;
 }
 .memory-footer {
   display: flex;
@@ -67,6 +75,9 @@
   min-width: 0;
 }
 .detail-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
   min-width: 0;
   animation: detail-enter var(--motion-message-in) var(--ease-message-in);
 }

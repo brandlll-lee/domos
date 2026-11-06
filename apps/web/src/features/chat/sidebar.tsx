@@ -93,6 +93,7 @@ export function Sidebar({
                 aria-current={bot.id === selected.id ? "page" : undefined}
               >
                 <BotAvatar
+                  interactive
                   seed={bot.avatar}
                   state={connected && bot.busy ? "running" : "idle"}
                   statusLabel={chatCopy.botWorking}

@@ -111,10 +111,11 @@
 .character-team .character-eyelid {
   animation-delay: var(--character-delay);
 }
-.character-team[data-paused] * {
+.bot-avatar[data-paused] *,
+.character-team [data-paused] * {
   animation-play-state: paused;
 }
-.character-team [data-blink] .character-eyelid {
+[data-blink] .character-eyelid {
   animation: none;
   transform: scaleY(var(--character-blink));
 }

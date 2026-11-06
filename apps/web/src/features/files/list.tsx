@@ -2,6 +2,7 @@ import type { ConversationFile } from "@domos/agent/files";
 import { FileAttachment } from "@domos/ui/attachment";
 import { Button } from "@domos/ui/controls";
 import { SearchField } from "@domos/ui/field";
+import { Loading } from "@domos/ui/loading";
 import { useEffect, useState } from "react";
 import { client } from "../../client.ts";
 import { useFilePreview } from "./context.tsx";
@@ -30,7 +31,6 @@ export function FilesList({
     const controller = new AbortController();
     setState((previous) => ({
       ...previous,
-      items: offset === 0 ? [] : previous.items,
       loading: true,
       error: "",
     }));
@@ -117,7 +117,9 @@ export function FilesList({
           </Button>
         </div>
       ))}
-      {state.loading && <p role="status">正在读取文件…</p>}
+      {state.loading && (
+        <Loading label="正在读取文件" inline={state.items.length > 0} />
+      )}
       {state.next !== null && !state.loading && (
         <Button
           variant="ghost"

@@ -1,6 +1,7 @@
 import { type ChatMessage, messageText } from "@domos/agent/messages";
 import type { TranscriptItem } from "@domos/agent/transcript";
 import { Button } from "@domos/ui/controls";
+import { Loading } from "@domos/ui/loading";
 import { ActionMenu } from "@domos/ui/menu";
 import { InlineNotice, MessageBubble } from "@domos/ui/message";
 import { ScrollArea } from "@domos/ui/scroll-area";
@@ -210,9 +211,7 @@ export const Messages = memo(function Messages({
         }}
       >
         {!shown.ready ? (
-          <p className="working" role="status">
-            {chatCopy.loading}
-          </p>
+          <Loading label={chatCopy.loading} />
         ) : (
           !shown.items.length &&
           createdAt !== undefined && (

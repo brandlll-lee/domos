@@ -2,6 +2,7 @@ import type { Bot } from "@domos/agent/bots";
 import type { ConversationFile } from "@domos/agent/files";
 import type { ChatView } from "@domos/agent/view";
 import { Button } from "@domos/ui/controls";
+import { Loading } from "@domos/ui/loading";
 import { PanelHeader } from "@domos/ui/panel";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { Tabs } from "@domos/ui/tabs";
@@ -126,7 +127,7 @@ export function BotDetails({
         onEditorChange={setSelection}
       />
     ) : (
-      !work.error && <p role="status">正在读取技能…</p>
+      !work.error && <Loading label="正在读取技能" />
     );
   else if (view === "routines")
     content = work.data ? (
@@ -140,7 +141,7 @@ export function BotDetails({
         onEditorChange={setSelection}
       />
     ) : (
-      !work.error && <p role="status">正在读取定时任务…</p>
+      !work.error && <Loading label="正在读取定时任务" />
     );
   else if (view === "prompt")
     content = <PromptPanel botId={bot.id} action={action} />;
@@ -223,7 +224,7 @@ export function BotDetails({
           </p>
         )}
         {view === "identity" && !work.profile && !work.profileError && (
-          <p role="status">正在读取资料…</p>
+          <Loading label="正在读取资料" />
         )}
         {work.profile && (
           <div hidden={view !== "identity"}>

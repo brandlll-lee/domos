@@ -31,8 +31,13 @@
   tab-size: 2;
 }
 .file-list {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
   gap: var(--space-3);
+}
+.file-list > .loading {
+  flex: 1;
 }
 .file-list-row {
   min-width: 0;

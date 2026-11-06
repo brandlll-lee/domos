@@ -4,6 +4,7 @@ import { Button } from "@domos/ui/controls";
 import { ConfirmDialog, Dialog } from "@domos/ui/dialog";
 import { Disclosure } from "@domos/ui/disclosure";
 import { Checkbox, SearchField } from "@domos/ui/field";
+import { Loading } from "@domos/ui/loading";
 import { ActionMenu } from "@domos/ui/menu";
 import { ChoicePicker } from "@domos/ui/picker";
 import { ArrowClockwiseIcon as ArrowClockwise } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
@@ -324,7 +325,7 @@ export function AppsCenter({
         }
       >
         <div className="apps-center" aria-busy={busy}>
-          {!loaded && reading && <p role="status">正在读取连接…</p>}
+          {!loaded && reading && <Loading label="正在读取连接" />}
           {!loaded && error && (
             <Button variant="secondary" onClick={() => void refresh()}>
               重新读取
@@ -694,7 +695,7 @@ export function AppsCenter({
               {view === "mcp" && !form && !selectedId && (
                 <section className="apps-native">
                   <h3>引擎原生连接</h3>
-                  {nativeReading && <p role="status">正在读取原生连接…</p>}
+                  {nativeReading && <Loading label="正在读取原生连接" />}
                   {nativeError && <p role="alert">{nativeError}</p>}
                   <p className="apps-muted">{appsCopy.nativeHint}</p>
                   <div className="field">

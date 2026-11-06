@@ -3,6 +3,7 @@ import type { Bot, BotPresence } from "@domos/agent/bots";
 import { type ChatMessage, messageText } from "@domos/agent/messages";
 import { characterIdentity } from "@domos/ui/characters";
 import { Button } from "@domos/ui/controls";
+import { Loading } from "@domos/ui/loading";
 import { layout } from "@domos/ui/tokens";
 import {
   addTransitionType,
@@ -39,10 +40,12 @@ import { ChatWelcome } from "./welcome.tsx";
 export function ChatPage() {
   const bots = useBots();
   if (!bots.selected)
-    return (
-      <p className="working" role={bots.error ? "alert" : "status"}>
-        {bots.error ?? "正在加载联系人…"}
+    return bots.error ? (
+      <p className="working" role="alert">
+        {bots.error}
       </p>
+    ) : (
+      <Loading label="正在读取联系人" />
     );
   return (
     <BotChat

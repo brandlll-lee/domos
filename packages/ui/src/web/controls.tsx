@@ -24,7 +24,7 @@ export function Button({
       {...props}
     >
       {pending && <span className="button-spinner" aria-hidden="true" />}
-      {children}
+      {pending ? <span className="button-content">{children}</span> : children}
     </button>
   );
 }

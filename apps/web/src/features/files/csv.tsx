@@ -1,3 +1,4 @@
+import { Loading } from "@domos/ui/loading";
 import { useEffect, useState } from "react";
 
 export default function CsvPreview({ blob }: { blob: Blob }) {
@@ -21,7 +22,7 @@ export default function CsvPreview({ blob }: { blob: Blob }) {
     worker.postMessage(blob);
     return () => worker.terminate();
   }, [blob]);
-  if (!state) return <p role="status">正在读取表格…</p>;
+  if (!state) return <Loading label="正在读取表格" />;
   return (
     <div className="file-document">
       {state.error && <p role="alert">{state.error}</p>}

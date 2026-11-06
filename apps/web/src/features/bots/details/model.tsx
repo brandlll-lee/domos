@@ -1,5 +1,6 @@
 import type { EngineConfig } from "@domos/agent/harness/types";
 import { Button } from "@domos/ui/controls";
+import { Loading } from "@domos/ui/loading";
 import { SetupStatus } from "@domos/ui/setup";
 import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
 import { useCallback, useEffect, useState } from "react";
@@ -49,8 +50,10 @@ export function ModelSetup({
   if (!binding || !profile)
     return error ? (
       <p role="alert">{error}</p>
-    ) : (
+    ) : setup ? (
       <SetupStatus>正在读取连接…</SetupStatus>
+    ) : (
+      <Loading label="正在读取连接" />
     );
   if (!provider)
     return (

@@ -45,6 +45,39 @@ test("plush identities load, animate and survive profile changes", async ({
     ).toBeVisible();
     const avatar = page.locator(".chat-header .character");
     await checkAvatarSizes();
+    const contact = page.locator('.contact-row[aria-current="page"]');
+    const contactAvatar = contact.locator(".bot-avatar");
+    const frame = await contactAvatar.boundingBox();
+    if (!frame) throw new Error("Contact avatar required");
+    await page.mouse.move(frame.x + frame.width + 150, frame.y);
+    await expect
+      .poll(() =>
+        contactAvatar.evaluate((node) =>
+          Number.parseFloat(node.style.getPropertyValue("--character-gaze-x")),
+        ),
+      )
+      .toBeGreaterThan(0.1);
+    await contactAvatar.hover({
+      position: { x: frame.width * 0.8, y: frame.height * 0.6 },
+    });
+    const gesture = contactAvatar.locator(".character-gesture");
+    await expect
+      .poll(() =>
+        gesture.evaluate(
+          (node) => new DOMMatrix(getComputedStyle(node).transform).e,
+        ),
+      )
+      .toBeGreaterThan(0.1);
+    await contact.focus();
+    await page.keyboard.press("Enter");
+    await expect
+      .poll(() =>
+        gesture.evaluate(
+          (node) => new DOMMatrix(getComputedStyle(node).transform).f,
+        ),
+      )
+      .toBeLessThan(-0.1);
+    expect(await contactAvatar.boundingBox()).toEqual(frame);
     await page.getByLabel("消息", { exact: true }).fill("保存这条消息的主题");
     await page.getByRole("button", { name: "发送", exact: true }).click();
     const bubble = page.getByLabel("你的消息").locator(".message-bubble");
@@ -105,13 +138,31 @@ test("plush identities load, animate and survive profile changes", async ({
     await page.getByRole("button", { name: "Bot详情", exact: true }).click();
     const details = page.getByRole("complementary", { name: "Domos的详情" });
     await checkAvatarSizes();
+    await expect(details.locator(".bot-hero .character-gesture")).toHaveCount(
+      1,
+    );
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    const hero = details.locator(".bot-hero .bot-avatar");
+    const heroBox = await hero.boundingBox();
+    if (!heroBox) throw new Error("Profile avatar required");
+    await page.mouse.move(heroBox.x - 180, heroBox.y + heroBox.height / 2);
+    await expect
+      .poll(() =>
+        hero.evaluate((node) =>
+          Number.parseFloat(node.style.getPropertyValue("--character-gaze-x")),
+        ),
+      )
+      .toBeLessThan(-0.1);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await contactAvatar.hover();
+    await expect(gesture).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
     await details.getByRole("button", { name: "编辑", exact: true }).click();
     await details
       .getByRole("button", { name: "选择头像", exact: true })
       .click();
     const picker = page.getByRole("dialog", { name: "头像外观", exact: true });
     await expect(picker.getByRole("button", { name: /^外形：/ })).toHaveCount(
-      9,
+      15,
     );
     await expect(picker.getByRole("button", { name: /^颜色：/ })).toHaveCount(
       18,
