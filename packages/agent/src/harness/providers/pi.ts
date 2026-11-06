@@ -1,12 +1,18 @@
 import type {
   AgentSessionEvent,
+  CompactionResult,
   RpcExtensionUIRequest,
   RpcSessionState,
   SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 import { thinkingControl } from "../../models.ts";
 import { EngineRequestRejected, JsonLines } from "../json-lines.ts";
-import type { EngineEvent, EngineOpen, EngineProvider } from "../types.ts";
+import type {
+  EngineEvent,
+  EngineOpen,
+  EngineProvider,
+  NativeSummary,
+} from "../types.ts";
 import { piUI } from "./pi-ui.ts";
 
 export const piProvider: EngineProvider = {
@@ -15,7 +21,12 @@ export const piProvider: EngineProvider = {
   command: "pi",
   package: "@earendil-works/pi-coding-agent@1.4.0",
   login: null,
-  capabilities: { approvals: true, models: true, recovery: true },
+  capabilities: {
+    approvals: true,
+    models: true,
+    recovery: true,
+    summary: true,
+  },
   async open({
     process,
     config,
@@ -25,6 +36,7 @@ export const piProvider: EngineProvider = {
     approve,
     env,
     mcp,
+    purpose,
   }: EngineOpen) {
     const ready = await process.ready;
     const rpc = new JsonLines(process, true);
@@ -35,6 +47,38 @@ export const piProvider: EngineProvider = {
     let completion: ReturnType<typeof Promise.withResolvers<void>> | undefined;
     let events = Promise.resolve();
     const ui = piUI(rpc, emit, approve);
+    let exportedSummary = "";
+    const compactionSummary = async (
+      result?: Partial<CompactionResult>,
+    ): Promise<NativeSummary | undefined> => {
+      if (!result?.summary?.trim() || !result.firstKeptEntryId) return;
+      const key = JSON.stringify([result.firstKeptEntryId, result.summary]);
+      if (key === exportedSummary) return;
+      const snapshot = await rpc
+        .request<{
+          messages: { role: string; summary?: string; content?: unknown }[];
+        }>("get_messages")
+        .catch(() => null);
+      const index =
+        snapshot?.messages?.findLastIndex(
+          (message) =>
+            message.role === "compactionSummary" &&
+            message.summary === result.summary,
+        ) ?? -1;
+      if (!snapshot || index < 0) return;
+      exportedSummary = key;
+      return {
+        text: result.summary,
+        nativeBoundary: result.firstKeptEntryId,
+        retained: snapshot.messages.slice(index + 1).flatMap((message) => {
+          const text = textContent(message.content);
+          return text.trim() &&
+            (message.role === "user" || message.role === "assistant")
+            ? [{ role: message.role, text }]
+            : [];
+        }),
+      };
+    };
     const readContext = async () => {
       const stats = await rpc
         .request<{
@@ -210,6 +254,9 @@ export const piProvider: EngineProvider = {
               status:
                 frame.aborted || frame.errorMessage ? "failed" : "completed",
               ...(frame.errorMessage ? { error: frame.errorMessage } : {}),
+              ...(!compactionError
+                ? { summary: await compactionSummary(frame.result) }
+                : {}),
             });
           }
         })
@@ -225,14 +272,25 @@ export const piProvider: EngineProvider = {
         "rpc",
         "--session-dir",
         `${ready.home}/pi/sessions`,
-        "--append-system-prompt",
-        "__DOMOS_PROMPT__",
+        ...(purpose === "summary"
+          ? [
+              "--no-tools",
+              "--no-extensions",
+              "--no-skills",
+              "--no-prompt-templates",
+              "--system-prompt",
+              instructions,
+            ]
+          : ["--append-system-prompt", "__DOMOS_PROMPT__"]),
       ],
-      instructions,
-      mcp: { url: ready.url, servers: mcp?.servers },
+      instructions: purpose === "summary" ? undefined : instructions,
+      mcp:
+        purpose === "summary"
+          ? undefined
+          : { url: ready.url, servers: mcp?.servers },
       env: {
         ...env,
-        DOMOS_PI_MCP_URL: ready.url,
+        DOMOS_PI_MCP_URL: purpose === "summary" ? "" : ready.url,
       },
     });
     if (sessionId) {
@@ -375,10 +433,14 @@ export const piProvider: EngineProvider = {
           id: `pi:${before ?? ""}`,
           ready: false,
         });
-        await rpc.request("compact", {}, 0);
+        const result = await rpc.request<CompactionResult>("compact", {}, 0);
         await events;
         if (compactionError) throw new Error(compactionError);
-        await emit({ type: "compaction", status: "completed" });
+        await emit({
+          type: "compaction",
+          status: "completed",
+          summary: await compactionSummary(result),
+        });
         await readContext();
       },
       async recoverCompaction(cursor) {

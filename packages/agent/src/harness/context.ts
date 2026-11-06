@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { defineDoc, type TaskId, type Tx } from "@earendil-works/pi-durable";
+import {
+  type ConversationId,
+  defineDoc,
+  type EntryId,
+  type TaskId,
+  type Tx,
+} from "@earendil-works/pi-durable";
 import type { EngineState } from "./state.ts";
 import type { EngineRuntime } from "./task-types.ts";
 import type {
@@ -24,7 +30,11 @@ const CompactionTaskDoc = defineDoc<{
 export async function projectContext(
   tx: Tx,
   doc: EngineState,
-  runtime: { taskId: TaskId },
+  runtime: {
+    taskId: TaskId;
+    conversationId: ConversationId;
+    entryId?: EntryId;
+  },
   event: Extract<EngineEvent, { type: "context" | "compaction" }>,
 ) {
   doc.runtime ??= {};
@@ -57,6 +67,27 @@ export async function projectContext(
     )
       state.compactionDetails.afterTokens = event.tokens;
   } else {
+    if (event.status === "completed" && event.summary && runtime.entryId) {
+      const previous = (
+        await tx.scanEntries(
+          {
+            conversationId: runtime.conversationId,
+            maxEntryId: (runtime.entryId - 1) as EntryId,
+            order: "descending",
+          },
+          1,
+        )
+      ).items[0];
+      if (previous)
+        doc.summary = {
+          ...event.summary,
+          through: previous.id,
+          harness: doc.config.provider,
+          sessionId: doc.sessionId,
+          model: doc.config.model,
+          computerId: doc.computerId,
+        };
+    }
     if (
       (event.status === "running" && state.compaction !== "running") ||
       state.compactionDetails?.taskId !== String(runtime.taskId) ||

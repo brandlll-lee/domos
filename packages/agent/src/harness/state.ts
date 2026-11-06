@@ -5,7 +5,22 @@ import {
   type TaskId,
 } from "@earendil-works/pi-durable";
 import type { ChatMessage } from "../messages.ts";
-import type { EngineConfig, EngineRuntimeState } from "./types.ts";
+import type {
+  EngineConfig,
+  EngineRuntimeState,
+  NativeSummary,
+} from "./types.ts";
+
+export type HandoffSummary = {
+  text: string;
+  through: EntryId;
+  harness?: string;
+  sessionId?: string | null;
+  model?: string | null;
+  nativeBoundary?: string;
+  computerId?: string | null;
+  retained?: NativeSummary["retained"];
+};
 
 export const EngineMessage = "domos.engine-message";
 
@@ -33,6 +48,7 @@ export type EngineState = {
   sessionId: string | null;
   sessions?: Record<string, { id: string; through: EntryId | null }>;
   sessionKey?: string;
+  summary?: HandoffSummary;
   computerId: string | null;
   taskId: TaskId | null;
   tasks: TaskId[];

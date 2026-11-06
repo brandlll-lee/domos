@@ -53,6 +53,7 @@ async function control(
   command:
     | string
     | { history: number }
+    | { handoff: string }
     | { content: unknown; stopReason?: "stop" | "toolUse" }
     | {
         responses: {
@@ -231,6 +232,47 @@ test.beforeEach(async () => {
 test.afterEach(async () => {
   if (worker.exitCode === null) await stop();
   await rm(directory, { recursive: true, force: true });
+});
+
+test("context handoff scope stays readable in both themes and narrow panels", async ({
+  page,
+}, testInfo) => {
+  const notice = "已交接摘要和近期原文。省略的细节可通过聊天记录查询。";
+  await control({ handoff: notice });
+  await page.goto(url);
+  await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
+  for (const theme of ["浅色", "深色"]) {
+    await chooseAppearance(page, theme);
+    const details = await openDetails(page);
+    await details
+      .getByRole("button", { name: "上下文窗口", exact: true })
+      .click();
+    await expect(
+      page.getByRole("status").filter({ hasText: notice }),
+    ).toBeVisible();
+    await page.locator(".context-window-popup").evaluate(async (element) => {
+      await Promise.all(
+        element.getAnimations().map((animation) => animation.finished),
+      );
+    });
+    await expectTextContrast(page);
+    const path = testInfo.outputPath(`handoff-${theme}.png`);
+    await page.screenshot({ path });
+    await testInfo.attach(`handoff-${theme}`, {
+      path,
+      contentType: "image/png",
+    });
+    await page.keyboard.press("Escape");
+  }
+  await page.setViewportSize({ width: 540, height: 760 });
+  await (await openDetails(page))
+    .getByRole("button", { name: "上下文窗口", exact: true })
+    .click();
+  const status = page.getByRole("status").filter({ hasText: notice });
+  await expect(status).toBeVisible();
+  const bounds = await status.boundingBox();
+  expect(bounds?.x).toBeGreaterThanOrEqual(0);
+  expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(540);
 });
 
 test("files preview documents, search old history and return to the source", async ({

@@ -220,7 +220,16 @@ export class EngineProjection {
               break;
             case "context":
             case "compaction":
-              await projectContext(tx, doc, runtime, event);
+              await projectContext(
+                tx,
+                doc,
+                {
+                  taskId: runtime.taskId,
+                  conversationId: runtime.conversationId,
+                  entryId: current.input.entryId,
+                },
+                event,
+              );
               break;
             case "runtime": {
               const notices = {

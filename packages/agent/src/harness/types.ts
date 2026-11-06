@@ -156,6 +156,12 @@ export type EnginePlan = {
   status: "pending" | "inProgress" | "completed";
 }[];
 
+export type NativeSummary = {
+  text: string;
+  nativeBoundary: string;
+  retained: { role: "user" | "assistant"; text: string }[];
+};
+
 export type EngineEvent = {
   receivedAt?: number;
   timestamp?: number;
@@ -181,6 +187,7 @@ export type EngineEvent = {
       beforeTokens?: number;
       error?: string;
       nativeId?: string;
+      summary?: NativeSummary;
     }
   | { type: "approval_closed"; id: string }
   | { type: "usage"; usage: EngineUsage }
@@ -279,6 +286,7 @@ export interface EngineSession {
 }
 
 export type EngineOpen = {
+  purpose?: "summary";
   process: EngineProcess;
   config: EngineConfig;
   sessionId: string | null;
@@ -298,6 +306,7 @@ export interface EngineProvider {
     approvals: boolean;
     models: boolean;
     recovery: boolean;
+    summary?: boolean;
   };
   open(input: EngineOpen): Promise<EngineSession>;
   inspect?(input: Pick<EngineOpen, "process" | "config" | "env">): Promise<{

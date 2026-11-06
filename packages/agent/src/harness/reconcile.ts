@@ -35,7 +35,7 @@ export async function stopEngine(tx: Tx, id: ConversationId) {
     await projectContext(
       tx,
       doc,
-      { taskId: doc.activeId },
+      { taskId: doc.activeId, conversationId: id },
       {
         type: "compaction",
         status: "uncertain",

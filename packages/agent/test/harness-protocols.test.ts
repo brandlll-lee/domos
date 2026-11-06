@@ -86,6 +86,125 @@ function protocol() {
   };
 }
 
+test.each([piProvider, claudeProvider])(
+  "$id handoff summaries use a separate text-only native session",
+  async (provider) => {
+    const process =
+      provider.id === "pi" ? featureProcess() : protocol().process;
+    onTestFinished(() => process.close());
+    await provider.open({
+      purpose: "summary",
+      process,
+      config: { provider: provider.id, model: null, approvalMode: "full" },
+      sessionId: null,
+      instructions: "Summarize quoted history.",
+      emit: async () => {},
+      mcp: {
+        servers: [{ name: "saved-tools", url: "http://localhost:1" }],
+        inheritNative: false,
+      },
+    });
+    expect(process.spec?.instructions).toBeUndefined();
+    expect(process.spec?.mcp).toBeUndefined();
+    expect(process.spec?.args).toEqual(
+      expect.arrayContaining(["--system-prompt", "Summarize quoted history."]),
+    );
+    if (provider.id === "pi") {
+      expect(process.spec?.args).toEqual(
+        expect.arrayContaining([
+          "--no-tools",
+          "--no-extensions",
+          "--no-skills",
+          "--no-prompt-templates",
+        ]),
+      );
+      expect(process.spec?.env?.DOMOS_PI_MCP_URL).toBe("");
+      expect(
+        process.requests.some((request) => request.type === "switch_session"),
+      ).toBe(false);
+    } else {
+      expect(process.spec?.args).toEqual(
+        expect.arrayContaining([
+          "--tools",
+          "",
+          "--strict-mcp-config",
+          "--settings",
+          '{"disableAllHooks":true}',
+          "--permission-mode",
+          "default",
+        ]),
+      );
+      expect(process.spec?.args).not.toContain("--resume");
+      expect(process.spec?.args).not.toContain("--permission-prompt-tool");
+    }
+  },
+);
+
+test("Pi exports compaction text with retained chat and the native boundary", async () => {
+  const { process, events, emit } = protocol();
+  process.receive = (request) => {
+    const data =
+      request.type === "get_state"
+        ? { sessionFile: "/native/session" }
+        : request.type === "compact"
+          ? {
+              summary:
+                "Goal: review files. Constraint: do not install dependencies.",
+              firstKeptEntryId: "native-kept",
+              tokensBefore: 12000,
+            }
+          : request.type === "get_messages"
+            ? {
+                messages: [
+                  {
+                    role: "compactionSummary",
+                    summary:
+                      "Goal: review files. Constraint: do not install dependencies.",
+                  },
+                  {
+                    role: "user",
+                    content: "Cancel the deployment. Review only.",
+                  },
+                  {
+                    role: "assistant",
+                    content: [
+                      { type: "thinking", thinking: "private" },
+                      { type: "text", text: "Review pending." },
+                    ],
+                  },
+                  {
+                    role: "toolResult",
+                    content: [{ type: "text", text: "window=old-handle" }],
+                  },
+                ],
+              }
+            : {};
+    process.frame({ type: "response", id: request.id, success: true, data });
+  };
+  const session = await piProvider.open({
+    process,
+    emit,
+    config: { provider: "pi", model: null },
+    sessionId: null,
+    instructions: "Role",
+  });
+  await session.compact?.();
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      type: "compaction",
+      status: "completed",
+      summary: {
+        text: "Goal: review files. Constraint: do not install dependencies.",
+        nativeBoundary: "native-kept",
+        retained: [
+          { role: "user", text: "Cancel the deployment. Review only." },
+          { role: "assistant", text: "Review pending." },
+        ],
+      },
+    }),
+  );
+});
+
 test.each(["ask", "auto", "full"] as const)(
   "Codex applies %s permissions on start, resume and each turn",
   async (approvalMode) => {

@@ -11,9 +11,9 @@ import {
   type ChatMessage,
   messageText,
 } from "../messages.ts";
-import { EngineMessage } from "./state.ts";
+import { EngineMessage, type HandoffSummary } from "./state.ts";
 
-type HistoryReader = {
+export type HistoryReader = {
   conversationId: import("@earendil-works/pi-durable").ConversationId;
   commit: (
     change: (tx: import("@earendil-works/pi-durable").Tx) => Promise<undefined>,
@@ -111,7 +111,7 @@ function historyMessage(
   };
 }
 
-function utf8Prefix(bytes: Buffer, limit: number) {
+export function utf8Prefix(bytes: Buffer, limit: number) {
   let end = Math.max(0, Math.min(bytes.length, Math.floor(limit)));
   while (
     end > 0 &&
@@ -165,6 +165,7 @@ export async function conversationHistory(
   before?: EntryId,
   budget: number = engineLimits.historyCharacters,
   tools: "full" | "summary" | "omit" = "full",
+  summary?: HandoffSummary,
 ) {
   let entries: readonly EntryRecord[] = [];
   let bounded = before !== undefined;
@@ -191,7 +192,7 @@ export async function conversationHistory(
     throw new Error("当前消息的上下文边界无法确认。");
   const previous = entries
     .slice(current + 1)
-    .filter((entry) => !through || entry.id > through);
+    .filter((entry) => entry.id > (through ?? summary?.through ?? 0));
   const messages = previous
     .toReversed()
     .flatMap((entry) => historyMessages(entry, tools))
@@ -208,11 +209,13 @@ export async function conversationHistory(
   const packet = (items: Excerpt[]) =>
     JSON.stringify({
       after: through,
+      ...(summary ? { summary } : {}),
       from: items[0]?.entryId ?? previous.at(-1)?.id,
       through: items.at(-1)?.entryId,
       excerpt:
         items.length < messages.length ||
-        entries.length === engineLimits.historyEntries ||
+        (entries.length === engineLimits.historyEntries &&
+          (entries.at(-1)?.id ?? 0) > (through ?? summary?.through ?? 0)) ||
         items.some((item) => item.excerpt),
       messages: items,
     });
@@ -238,6 +241,7 @@ export async function conversationHistory(
     selected.unshift(item);
   }
   if (
+    !summary &&
     !selected.length &&
     !messages.length &&
     !(previous.length && entries.length === engineLimits.historyEntries)
@@ -252,6 +256,39 @@ export async function conversationHistory(
       "会话交接预算不足。聊天记录已保留，请压缩会话或选择更大上下文的模型。",
     );
   return result;
+}
+
+export async function* conversationText(
+  runtime: HistoryReader,
+  context: Context,
+  after: EntryId | null,
+  through: EntryId,
+) {
+  let cursor = after;
+  for (;;) {
+    let entries: readonly EntryRecord[] = [];
+    await runtime.commit(async (tx) => {
+      entries = (
+        await tx.scanEntries(
+          {
+            conversationId: runtime.conversationId,
+            order: "ascending",
+            ...(cursor ? { minEntryId: (cursor + 1) as EntryId } : {}),
+            maxEntryId: through,
+          },
+          engineLimits.historyEntries,
+        )
+      ).items;
+    }, context);
+    for (const entry of entries) {
+      const messages = historyMessages(entry, "omit").filter((message) =>
+        message.text.trim(),
+      );
+      if (messages.length) yield { entryId: entry.id, messages };
+    }
+    if (entries.length < engineLimits.historyEntries) return;
+    cursor = entries.at(-1)?.id ?? null;
+  }
 }
 
 export const history = defineExtension({

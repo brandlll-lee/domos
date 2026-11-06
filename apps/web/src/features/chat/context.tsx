@@ -82,6 +82,11 @@ export function ContextRing({
       }
     >
       <div className="context-window-footer">
+        {state?.notices?.handoff && (
+          <p className="context-window-meta" role="status">
+            {state.notices.handoff}
+          </p>
+        )}
         {state?.compaction && (
           <p className="context-window-status" role="status">
             {status}

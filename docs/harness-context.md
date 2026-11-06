@@ -34,6 +34,10 @@ Handoffs contain quoted recent chat text and retained summaries. They scan up to
 
 Native text, reasoning and tool records confirm receipt in the same accepted session, even when the turn later fails. The handoff cursor advances only through that confirmed range. Unconfirmed user input, stopped turns and terminal errors remain outside it. Compact operations retain their existing session boundary.
 
+Compatible native sessions resume when only the model changes. Rebuilt sessions first use original chat that fits the target budget. Longer handoffs reuse a saved readable summary, its retained native chat, and newer original messages. Pi exports readable compaction summaries with their native boundary. Domos saves a separate conservative entry cursor before the current input. Native IDs are not Domos entry IDs. Summary metadata retains the source Harness, session, model and computer.
+
+Only a rebuilt handoff that still exceeds the budget requests a new summary. It reads complete older chat text in bounded pages and UTF-8 chunks. Pi and Claude support isolated text-only summary sessions through the selected native account and model. These sessions disable task tools, extensions or hooks, and MCP. Their usage is recorded separately. Stop terminates both processes. Other drivers reuse saved summaries and original excerpts until their text-only controls are verified. Failure retains the original history and reports the delivered scope in the existing context popover. Summaries preserve current goals, constraints, corrections, decisions, progress and file references. They do not verify artifacts or authorize replay of uncertain actions. Raw evidence remains available through conversation_read.
+
 The conversation_read tool reads the complete stored record:
 
 - `{}` reads a recent page. Pass its `from` cursor as `before` for older entries.

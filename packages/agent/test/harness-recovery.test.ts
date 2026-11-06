@@ -19,7 +19,11 @@ import { expect, onTestFinished, test } from "vitest";
 import { chatView } from "../src/chat-view.ts";
 import type { Computers } from "../src/computer/catalog.ts";
 import { ComputerRuntime } from "../src/computer/runtime.ts";
-import { EngineDoc, EngineInputDoc } from "../src/harness/state.ts";
+import {
+  EngineDoc,
+  EngineInputDoc,
+  EngineMessage,
+} from "../src/harness/state.ts";
 import type { EngineTaskInput } from "../src/harness/task-types.ts";
 import { messageText } from "../src/messages.ts";
 import { openAgent } from "../src/open-agent.ts";
@@ -32,6 +36,7 @@ import { migrateRuntime } from "../src/runtime/migrate.ts";
 import { MemoryDoc } from "../src/work/memory.ts";
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
 import { codexWork } from "./fixtures/native-work.ts";
+import { runtimeFixture } from "./fixtures/runtime.ts";
 
 test("forward migration preserves model, history and drafts and runs once", async () => {
   const directory = await mkdtemp(join(tmpdir(), "domos-native-migration-"));
@@ -313,25 +318,34 @@ test.each(["completed", "running", "sending"] as const)(
   },
 );
 
-test("switching from embedded Pi imports recent conversation into the first native session", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "domos-engine-history-"));
-  const faux = fauxProvider();
-  faux.setResponses([fauxAssistantMessage("Remember the blue folder")]);
-  const models = createModels();
-  models.setProvider(faux.provider);
-  const workers: ProtocolProcess[] = [];
-  let prompt = "";
-  let computerId = "shared";
-  let project: string | null = null;
-  const execution = new EngineExecution({
-    preflight: async () => {},
-    computerId: async () => computerId,
-    binding: async () => ({ directory: project }),
-    process: async () => {
-      const worker = new ProtocolProcess();
-      workers.push(worker);
-      worker.receive = (request) => {
-        if (request.type) {
+test.each(["stop", "failure"])(
+  "handoff summary %s preserves the task boundary",
+  async (mode) => {
+    const workers: ProtocolProcess[] = [];
+    const started = Promise.withResolvers<void>();
+    const runtime = await runtimeFixture({
+      initialize: async () => {},
+      preflight: async () => {},
+      computerId: async () => "shared",
+      binding: async () => ({ directory: null }),
+      process: async () => {
+        const worker = new ProtocolProcess();
+        workers.push(worker);
+        worker.receive = (request) => {
+          if (
+            request.type === "prompt" &&
+            worker.spec?.args.includes("--no-tools")
+          ) {
+            started.resolve();
+            if (mode === "failure")
+              worker.frame({
+                type: "response",
+                id: request.id,
+                success: false,
+                error: "quota exhausted",
+              });
+            return;
+          }
           worker.frame({
             type: "response",
             id: request.id,
@@ -348,7 +362,160 @@ test("switching from embedded Pi imports recent conversation into the first nati
                 role: "assistant",
                 stopReason: "stop",
                 content: [
-                  { type: "text", text: "Pi completed the blue folder task" },
+                  {
+                    type: "text",
+                    text: "Review only. Check original records.",
+                  },
+                ],
+              },
+            });
+            worker.frame({ type: "agent_settled" });
+          }
+        };
+        return worker;
+      },
+      tools: { catalog: async () => [], finish: () => {} },
+    } as unknown as Computers);
+    onTestFinished(async () => {
+      await Promise.all(workers.map((worker) => worker.close()));
+    });
+    const engines = runtime.engines;
+    if (!engines) throw new Error("Native engines required");
+    const botId = runtime.conversation.id;
+    await runtime.harness.commit(async (tx) => {
+      for (let index = 0; index < 70; index++)
+        await tx.appendEntry(botId, {
+          kind: EngineMessage,
+          data: {
+            id: `entry-${index}`,
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Verify an unknown result before retrying.",
+              },
+            ],
+          },
+        });
+    }, context);
+    await engines.configure(
+      botId,
+      {
+        config: { provider: "pi", model: null },
+        revision: 0,
+        requestId: crypto.randomUUID(),
+      },
+      context,
+    );
+    const task = await engines.submit(
+      botId,
+      { text: "Review only", requestId: crypto.randomUUID() },
+      context,
+    );
+    await started.promise;
+    if (mode === "stop") {
+      await engines.stop(botId, context);
+      expect(await task.wait(context)).toMatchObject({
+        status: "unanswered",
+        reason: "aborted",
+      });
+      expect(
+        workers
+          .filter((worker) => !worker.spec?.args.includes("--no-tools"))
+          .some((worker) =>
+            worker.requests.some((request) => request.type === "prompt"),
+          ),
+      ).toBe(false);
+      await workers.find((worker) => worker.spec?.args.includes("--no-tools"))
+        ?.closed;
+    } else {
+      await task.wait(context);
+      expect(
+        (await engines.profile(botId, context)).runtime?.notices?.handoff,
+      ).toContain("失败");
+      expect(
+        workers
+          .filter((worker) => !worker.spec?.args.includes("--no-tools"))
+          .some((worker) =>
+            worker.requests.some((request) => request.type === "prompt"),
+          ),
+      ).toBe(true);
+    }
+    expect(
+      (await runtime.harness.snapshot(EngineDoc, botId, context))?.summary,
+    ).toBeUndefined();
+    expect((await engines.profile(botId, context)).busy).toBe(false);
+  },
+);
+
+test("switching from embedded Pi imports recent conversation into the first native session", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "domos-engine-history-"));
+  const faux = fauxProvider();
+  faux.setResponses([fauxAssistantMessage("Remember the blue folder")]);
+  const models = createModels();
+  models.setProvider(faux.provider);
+  const workers: ProtocolProcess[] = [];
+  let prompt = "";
+  let computerId = "shared";
+  let project: string | null = null;
+  const summaries: string[] = [];
+  const nativeSummary =
+    "Goal: use the blue folder. Constraint: do not install dependencies. Evidence: report.csv. Next: review only.";
+  const execution = new EngineExecution({
+    preflight: async () => {},
+    computerId: async () => computerId,
+    binding: async () => ({ directory: project }),
+    process: async () => {
+      const worker = new ProtocolProcess();
+      workers.push(worker);
+      worker.receive = (request) => {
+        if (request.type) {
+          worker.frame({
+            type: "response",
+            id: request.id,
+            success: true,
+            data:
+              request.type === "get_state"
+                ? { sessionFile: "/pi/session" }
+                : request.type === "get_messages"
+                  ? {
+                      messages: [
+                        { role: "compactionSummary", summary: nativeSummary },
+                        {
+                          role: "user",
+                          content: "Cancel deployment. Review only.",
+                        },
+                      ],
+                    }
+                  : {},
+          });
+          if (request.type === "prompt") {
+            const source = (request as unknown as { message: string }).message;
+            const summarizing = worker.spec?.args.includes("--no-tools");
+            if (summarizing) summaries.push(source);
+            else {
+              worker.frame({ type: "compaction_start", reason: "threshold" });
+              worker.frame({
+                type: "compaction_end",
+                result: {
+                  summary: nativeSummary,
+                  firstKeptEntryId: "pi-native-kept",
+                  tokensBefore: 12000,
+                },
+              });
+            }
+            worker.frame({
+              type: "message_end",
+              message: {
+                role: "assistant",
+                stopReason: "stop",
+                content: [
+                  {
+                    type: "text",
+                    text: summarizing
+                      ? "Goal: use the blue folder. Constraint: do not install dependencies. Evidence: report.csv. Next: review only."
+                      : "Pi completed the blue folder task",
+                  },
                 ],
               },
             });
@@ -436,7 +603,7 @@ test("switching from embedded Pi imports recent conversation into the first nati
       },
       context,
     );
-    await (
+    return await (
       await engines.submit(
         runtime.conversation.id,
         { text: "Continue", requestId: crypto.randomUUID() },
@@ -451,7 +618,66 @@ test("switching from embedded Pi imports recent conversation into the first nati
       .at(-1)
       ?.requests.find((request) => request.method === "thread/resume")?.params,
   ).toMatchObject({ threadId: "native", excludeTurns: true });
-  await change("pi");
+  expect(summaries).toHaveLength(0);
+  await runtime.harness.commit(async (tx) => {
+    await tx.appendEntry(runtime.conversation.id, {
+      kind: EngineMessage,
+      data: {
+        id: "constraint",
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "Do not install dependencies. The evidence is report.csv.",
+          },
+        ],
+      },
+    });
+    for (let index = 0; index < 70; index++)
+      await tx.appendEntry(runtime.conversation.id, {
+        kind: EngineMessage,
+        data: {
+          id: `check-${index}`,
+          role: "assistant",
+          content: [{ type: "text", text: `Checked item ${index}.` }],
+        },
+      });
+    await tx.appendEntry(runtime.conversation.id, {
+      kind: EngineMessage,
+      data: {
+        id: "correction",
+        role: "user",
+        content: [{ type: "text", text: "Cancel deployment. Review only." }],
+      },
+    });
+  }, context);
+  const piTurn = await change("pi");
+  expect(summaries.join("\n")).toContain("Do not install dependencies.");
+  const summaryWorker = workers.find((worker) =>
+    worker.spec?.args.includes("--no-tools"),
+  );
+  expect(summaryWorker?.spec?.env?.DOMOS_PI_MCP_URL).toBe("");
+  expect(summaryWorker?.spec?.mcp).toBeUndefined();
+  const piPrompt = workers
+    .findLast(
+      (worker) =>
+        worker.spec?.command === "pi" &&
+        !worker.spec.args.includes("--no-tools"),
+    )
+    ?.requests.find((request) => request.type === "prompt");
+  expect(JSON.stringify(piPrompt)).toContain("do not install dependencies");
+  expect(JSON.stringify(piPrompt)).toContain("Cancel deployment. Review only.");
+  const compacted = (
+    await runtime.harness.snapshot(EngineDoc, runtime.conversation.id, context)
+  )?.summary;
+  expect(compacted).toMatchObject({
+    text: nativeSummary,
+    nativeBoundary: "pi-native-kept",
+    harness: "pi",
+    retained: [{ role: "user", text: "Cancel deployment. Review only." }],
+  });
+  expect(typeof compacted?.through).toBe("number");
+  expect(compacted?.through).toBeLessThan(piTurn.entry ?? 0);
   await change("codex", "second-model");
   expect(
     workers
@@ -459,7 +685,7 @@ test("switching from embedded Pi imports recent conversation into the first nati
       ?.requests.some((request) => request.method === "thread/start"),
   ).toBe(true);
   expect(prompt).toContain("Pi completed the blue folder task");
-  expect(prompt).toContain("Remember the blue folder");
+  expect(prompt).toContain("blue folder");
   project = "/projects/code";
   await change("codex", "second-model");
   expect(

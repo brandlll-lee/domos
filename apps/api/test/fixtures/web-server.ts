@@ -24,7 +24,10 @@ import {
   defineTool,
 } from "@earendil-works/pi-durable";
 import { getRequestListener } from "@hono/node-server";
-import { EngineMessage } from "../../../../packages/agent/src/harness/state.ts";
+import {
+  EngineDoc,
+  EngineMessage,
+} from "../../../../packages/agent/src/harness/state.ts";
 import { stored } from "../../../../packages/agent/src/harness/task-types.ts";
 import type { EngineApproval } from "../../../../packages/agent/src/harness/types.ts";
 import { PiProcess } from "../../../../packages/agent/test/fixtures/pi-process.ts";
@@ -349,6 +352,27 @@ server.listen(Number(process.argv[3] ?? 0), "127.0.0.1", () => {
 });
 let release: (() => void) | undefined;
 process.on("message", async (message) => {
+  if (
+    typeof message === "object" &&
+    message !== null &&
+    "handoff" in message &&
+    typeof message.handoff === "string"
+  ) {
+    const bot = (await bots.list(BACKGROUND_CONTEXT))[0];
+    if (!bot) throw new Error("Bot required");
+    await harness.commit(async (tx) => {
+      const doc = await tx.doc(EngineDoc, bot.id);
+      doc.runtime = {
+        ...doc.runtime,
+        notices: {
+          ...doc.runtime?.notices,
+          handoff: message.handoff as string,
+        },
+      };
+    }, BACKGROUND_CONTEXT);
+    process.send?.({ type: "context-updated" });
+    return;
+  }
   if (
     typeof message === "object" &&
     message !== null &&

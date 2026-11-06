@@ -1,12 +1,249 @@
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import type { EntryId } from "@earendil-works/pi-durable";
 import { expect, test } from "vitest";
+import { conversationHandoff } from "../src/harness/handoff.ts";
 import {
   conversationEntry,
   conversationHistory,
 } from "../src/harness/history.ts";
 import { EngineMessage } from "../src/harness/state.ts";
+import scenario from "./fixtures/harness-context.json" with { type: "json" };
 import { runtimeFixture } from "./fixtures/runtime.ts";
+
+test("long handoffs retain early constraints and later corrections without changing source history", async () => {
+  const runtime = await runtimeFixture();
+  const reader = {
+    conversationId: runtime.conversation.id,
+    commit: runtime.harness.commit.bind(runtime.harness),
+  };
+  let first!: EntryId;
+  await reader.commit(async (tx) => {
+    for (let index = 0; index < 75; index++) {
+      const entry = await tx.appendEntry(reader.conversationId, {
+        kind: EngineMessage,
+        data: {
+          id: `history-${index}`,
+          role: index % 2 ? "assistant" : "user",
+          content: [
+            {
+              type: "text",
+              text:
+                index === 0
+                  ? `${scenario.handoff.constraint} ${"earlier detail ".repeat(400)} ${scenario.longMessage.tail}`
+                  : index === 74
+                    ? scenario.handoff.correction
+                    : `Checked item ${index}.`,
+            },
+          ],
+        },
+      });
+      if (index === 0) first = entry.id;
+    }
+  }, context);
+  const calls: string[] = [];
+  const result = await conversationHandoff(
+    reader,
+    null,
+    context,
+    null,
+    3000,
+    undefined,
+    async (text) => {
+      calls.push(text);
+      return "Goal: review report.csv. Constraint: do not install dependencies. Deployment was cancelled. Next: review only.";
+    },
+  );
+  expect(calls.join("\n")).toContain("Do not install dependencies.");
+  expect(calls.join("\n")).toContain(scenario.longMessage.tail);
+  expect(result.history).toContain("do not install dependencies");
+  expect(result.history).toContain("Cancel deployment. Review only.");
+  expect(result.summary?.through).toBeGreaterThan(first);
+  expect(Buffer.byteLength(result.history)).toBeLessThanOrEqual(3000);
+  expect(await conversationEntry(reader, first, 0, context)).toContain(
+    "Do not install dependencies.",
+  );
+});
+
+test("short history and confirmed native receipts do not request summaries", async () => {
+  const runtime = await runtimeFixture();
+  const reader = {
+    conversationId: runtime.conversation.id,
+    commit: runtime.harness.commit.bind(runtime.harness),
+  };
+  let first!: EntryId;
+  await reader.commit(async (tx) => {
+    first = (
+      await tx.appendEntry(reader.conversationId, {
+        kind: EngineMessage,
+        data: {
+          id: "early",
+          role: "user",
+          content: [{ type: "text", text: scenario.handoff.constraint }],
+        },
+      })
+    ).id;
+    await tx.appendEntry(reader.conversationId, {
+      kind: EngineMessage,
+      data: {
+        id: "latest",
+        role: "user",
+        content: [{ type: "text", text: scenario.handoff.correction }],
+      },
+    });
+  }, context);
+  let calls = 0;
+  const summarize = async () => {
+    calls++;
+    return "summary";
+  };
+  const fresh = await conversationHandoff(
+    reader,
+    null,
+    context,
+    null,
+    3000,
+    undefined,
+    summarize,
+  );
+  expect(fresh.history).toContain(scenario.handoff.constraint);
+  const resumed = await conversationHandoff(
+    reader,
+    null,
+    context,
+    first,
+    3000,
+    undefined,
+    summarize,
+  );
+  expect(resumed.history).not.toContain(scenario.handoff.constraint);
+  expect(resumed.history).toContain(scenario.handoff.correction);
+  expect(calls).toBe(0);
+});
+
+test.each([true, false])(
+  "saved native summaries retain their tail with newer messages: %s",
+  async (newer) => {
+    const runtime = await runtimeFixture();
+    const reader = {
+      conversationId: runtime.conversation.id,
+      commit: runtime.harness.commit.bind(runtime.harness),
+    };
+    let through!: EntryId;
+    await reader.commit(async (tx) => {
+      for (let index = 0; index < 70; index++)
+        through = (
+          await tx.appendEntry(reader.conversationId, {
+            kind: EngineMessage,
+            data: {
+              id: `old-${index}`,
+              role: "assistant",
+              content: [{ type: "text", text: `Checked ${index}` }],
+            },
+          })
+        ).id;
+      if (newer)
+        await tx.appendEntry(reader.conversationId, {
+          kind: EngineMessage,
+          data: {
+            id: "correction",
+            role: "user",
+            content: [{ type: "text", text: scenario.handoff.correction }],
+          },
+        });
+    }, context);
+    const saved = {
+      text: scenario.handoff.constraint,
+      through,
+      nativeBoundary: "pi-native-kept",
+      retained: [
+        { role: "assistant" as const, text: scenario.handoff.unknown },
+      ],
+    };
+    const result = await conversationHandoff(
+      reader,
+      null,
+      context,
+      null,
+      3000,
+      saved,
+      async () => {
+        throw new Error("Summary must be reused");
+      },
+    );
+    expect(result.notice).not.toContain("失败");
+    expect(JSON.parse(result.history)).toMatchObject({
+      summary: saved,
+      excerpt: false,
+    });
+    if (newer) expect(result.history).toContain(scenario.handoff.correction);
+    expect(result.history).toContain(scenario.handoff.unknown);
+    expect(result.summary).toBeUndefined();
+  },
+);
+
+test.each(["unavailable", "oversized"])(
+  "failed summary (%s) preserves original history and quoted file references",
+  async (failure) => {
+    const runtime = await runtimeFixture();
+    const reader = {
+      conversationId: runtime.conversation.id,
+      commit: runtime.harness.commit.bind(runtime.harness),
+    };
+    let first!: EntryId;
+    await reader.commit(async (tx) => {
+      for (let index = 0; index < 70; index++) {
+        const entry = await tx.appendEntry(reader.conversationId, {
+          kind: EngineMessage,
+          data: {
+            id: `old-${index}`,
+            role: "user",
+            content: [{ type: "text", text: scenario.handoff.unknown }],
+            attachments: [
+              {
+                id: "evidence",
+                name: "report.csv",
+                path: "/reports/report.csv",
+                computerId: "source-computer",
+              },
+            ],
+          },
+        });
+        if (index === 0) first = entry.id;
+      }
+    }, context);
+    const original = await conversationHistory(
+      reader,
+      null,
+      context,
+      null,
+      undefined,
+      3000,
+      "omit",
+    );
+    const calls: string[] = [];
+    const result = await conversationHandoff(
+      reader,
+      null,
+      context,
+      null,
+      3000,
+      undefined,
+      async (text) => {
+        calls.push(text);
+        if (failure === "unavailable") throw new Error("quota exhausted");
+        return "x".repeat(3000);
+      },
+    );
+    expect(calls[0]).toContain("source-computer");
+    expect(calls[0]).toContain(scenario.handoff.unknown);
+    expect(result.history).toBe(original);
+    expect(result.summary).toBeUndefined();
+    expect(result.notice).toContain("失败");
+    expect(await conversationEntry(reader, first, 0, context)).toContain(
+      "report.csv",
+    );
+  },
+);
 
 test("history packets preserve quoted material and UTF-8 pagination within byte limits", async () => {
   const runtime = await runtimeFixture();
