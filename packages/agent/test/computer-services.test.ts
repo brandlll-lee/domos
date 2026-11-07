@@ -172,12 +172,87 @@ test("cold browser commands and native batches preserve real page results", asyn
   await writeFile(
     `test-results/browser-latency-${platform()}.json`,
     JSON.stringify(
-      { runner: platform(), browserVersion: "0.39.4", model: "none", rows },
+      {
+        runner: platform(),
+        browserVersion: JSON.parse(
+          await readFile(
+            new URL(import.meta.resolve("agent-browser/package.json")),
+            "utf8",
+          ),
+        ).version,
+        model: "none",
+        rows,
+      },
       null,
       2,
     ),
   );
 }, 60000);
+
+test("headed preparation preserves input in maximized and minimized windows", async () => {
+  const entry = "../src/harness/browser-service.mjs";
+  const { openBrowserService } = await import(entry);
+  const { chromium } = await import("@playwright/test");
+  const directory = await mkdtemp(join(tmpdir(), "domos-window-state-"));
+  const browser = await openBrowserService(directory, directory);
+  onTestFinished(async () => {
+    await browser.close();
+    await rm(directory, { recursive: true, force: true, maxRetries: 10 });
+  });
+  expect(
+    await browser.mode("headed", AbortSignal.timeout(15000)),
+  ).toMatchObject({
+    available: true,
+    mode: "headed",
+  });
+  await browser.call(
+    "agent_browser_open",
+    {
+      url: "data:text/html,<title>Window state</title><input id='draft' value='retained'>",
+    },
+    AbortSignal.timeout(10000),
+  );
+  const [port] = (
+    await readFile(
+      join(directory, ".domos", "browser", "DevToolsActivePort"),
+      "utf8",
+    )
+  )
+    .trim()
+    .split(/\r?\n/);
+  const connection = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
+  const cdp = await connection.newBrowserCDPSession();
+  const { targetInfos } = await cdp.send("Target.getTargets");
+  const target = targetInfos.find((target) => target.type === "page");
+  if (!target) throw new Error("Browser page required");
+  const { windowId } = await cdp.send("Browser.getWindowForTarget", {
+    targetId: target.targetId,
+  });
+  for (const windowState of [
+    "maximized",
+    "normal",
+    "minimized",
+    "normal",
+  ] as const) {
+    await cdp.send("Browser.setWindowBounds", {
+      windowId,
+      bounds: { windowState },
+    });
+    expect(await browser.prepare(AbortSignal.timeout(5000))).toMatchObject({
+      available: true,
+    });
+    const result = await browser.call(
+      "agent_browser_eval",
+      {
+        script: "document.querySelector('#draft').value",
+      },
+      AbortSignal.timeout(5000),
+    );
+    expect(result.isError).not.toBe(true);
+    expect(JSON.stringify(result.content)).toContain("retained");
+  }
+  await cdp.detach();
+}, 30000);
 
 test("browser profiles persist across a restart and stay separate for each Bot", async () => {
   const directory = await mkdtemp(

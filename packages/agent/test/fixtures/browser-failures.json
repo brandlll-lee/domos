@@ -1,4 +1,20 @@
 {
+  "viewportPreparation": {
+    "date": "2026-11-07",
+    "browserVersion": "0.39.4",
+    "windowStates": ["maximized", "minimized"],
+    "nativeError": "Restore window to normal state before setting content size",
+    "stderrOpen": "success",
+    "stderrClosed": "outcome_unknown",
+    "command": ["set", "viewport", "1280", "720", "--json"],
+    "response": {
+      "success": false,
+      "data": null,
+      "error": "Invalid response: EOF while parsing a value at line 1 column 0 (the command reached the daemon but no response came back; it may or may not have run, so it was not retried)",
+      "code": "outcome_unknown"
+    },
+    "pageRead": { "success": true, "data": { "url": "about:blank" } }
+  },
   "repeatedAction": {
     "date": "2026-11-07",
     "browserVersion": "0.39.4",

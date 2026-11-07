@@ -338,17 +338,7 @@ export async function openBrowserService(directory, home) {
       await stop(pid);
     }
   };
-  const prepare = async (signal) => {
-    for (let attempt = 0; ; attempt++) {
-      try {
-        return await run(["set", "viewport", "1280", "720", "--json"], signal);
-      } catch (error) {
-        if (attempt >= 2 || !error.message.includes("outcome_unknown"))
-          throw error;
-        await setTimeout(100, undefined, { signal });
-      }
-    }
-  };
+  const prepare = (signal) => run(["get", "url", "--json"], signal);
   const restart = async (next = mode) => {
     uncertain = true;
     await writeFile(interruption, "pending", { mode: 0o600 });
@@ -578,7 +568,7 @@ export async function openBrowserService(directory, home) {
       await pending;
       let error = null;
       try {
-        if (!uncertain) await prepare(signal);
+        await prepare(signal);
       } catch (cause) {
         error = cause.message;
       }

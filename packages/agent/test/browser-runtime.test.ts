@@ -408,6 +408,37 @@ test("catalog cleanup does not launch a browser to close it", async () => {
   expect(mocks.spawn).not.toHaveBeenCalled();
 });
 
+test("preparation preserves a headed page when viewport resizing fails", async () => {
+  const service = await setup();
+  mocks.spawn.mockImplementation((_command, args) => {
+    const child = Object.assign(new EventEmitter(), {
+      stdout: Object.assign(new EventEmitter(), { destroy() {} }),
+      stderr: Object.assign(new EventEmitter(), { destroy() {} }),
+    });
+    queueMicrotask(() => {
+      const response = args.includes("viewport")
+        ? baseline.viewportPreparation.response
+        : baseline.viewportPreparation.pageRead;
+      child.stdout.emit("data", JSON.stringify(response));
+      child.emit("exit", response.success ? 0 : 1);
+    });
+    return child;
+  });
+  expect(await service.mode("headed", AbortSignal.timeout(5000))).toMatchObject(
+    {
+      available: true,
+      mode: "headed",
+    },
+  );
+  expect(await service.prepare(AbortSignal.timeout(5000))).toMatchObject({
+    available: true,
+    mode: "headed",
+  });
+  expect(
+    mocks.spawn.mock.calls.some(([, args]) => args.includes("viewport")),
+  ).toBe(false);
+});
+
 test("restart waits for the closing daemon before reconnecting", async () => {
   const service = await setup();
   await service.prepare(new AbortController().signal);
@@ -481,6 +512,10 @@ test("a failed headed launch reports its saved mode and permits a confirmed reco
   expect(
     await service.mode("headed", new AbortController().signal),
   ).toMatchObject({ available: false, mode: "headed" });
+  expect(await service.prepare(AbortSignal.timeout(5000))).toMatchObject({
+    available: false,
+    mode: "headed",
+  });
   await expect(service.settle()).rejects.toThrow("结果未知");
   mocks.cliError = false;
   expect(

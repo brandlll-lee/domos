@@ -104,6 +104,8 @@ test("mode switching holds browser and desktop control and releases both after f
         await finish.promise;
         headed = request.mode === "headed";
       }
+      if (headed && request.operation === "prepare")
+        throw new Error("A second preparation interrupted the confirmed mode");
       return {
         available: true,
         error: null,

@@ -43,7 +43,7 @@
     "@earendil-works/pi-env": "1.4.0",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@trycua/cua-driver": "0.37.0",
-    "agent-browser": "0.39.4",
+    "agent-browser": "0.41.2",
     "croner": "10.0.1",
     "cross-spawn": "7.0.6",
     "fflate": "0.8.2",

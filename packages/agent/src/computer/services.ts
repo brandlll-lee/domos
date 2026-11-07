@@ -133,11 +133,10 @@ export class ComputerServices {
         service: "browser",
         mode,
       });
-      if (!state.available) {
-        this.isolatedBrowsers.delete(botId);
-        return state;
-      }
-      return await this.prepare(botId, "browser", context);
+      if (state.available && state.mode === "headless")
+        this.isolatedBrowsers.add(botId);
+      else this.isolatedBrowsers.delete(botId);
+      return state;
     } finally {
       for (const control of controls) {
         control.lease = undefined;

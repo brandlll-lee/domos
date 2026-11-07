@@ -1,5 +1,6 @@
 import type { Bot } from "@domos/agent/bots";
 import { Button } from "@domos/ui/controls";
+import { Disclosure } from "@domos/ui/disclosure";
 import { DesktopIcon } from "@phosphor-icons/react/dist/csr/Desktop";
 import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
 import { GlobeIcon } from "@phosphor-icons/react/dist/csr/Globe";
@@ -39,6 +40,9 @@ export function ComputerWorkspace({
   );
   const item = state?.[service];
   const label = serviceLabels[service];
+  const install =
+    service === "browser" &&
+    Boolean(item?.error?.includes("Chrome not found."));
   return (
     <section className="computer-workspace" aria-label={`${bot.name}的电脑`}>
       <div className="computer-workspace-stage">
@@ -75,7 +79,11 @@ export function ComputerWorkspace({
                 </h3>
               </>
             )}
-            {item?.error && <p>{item.error}</p>}
+            {item?.error && (
+              <Disclosure label="错误详情">
+                <p>{item.error}</p>
+              </Disclosure>
+            )}
             {error && (
               <p role="alert" className="alert">
                 {error}
@@ -96,20 +104,12 @@ export function ComputerWorkspace({
                   variant="secondary"
                   pending={busy === service}
                   disabled={Boolean(busy)}
-                  onClick={() =>
-                    void configure(
-                      service,
-                      true,
-                      service === "browser" &&
-                        Boolean(item?.enabled) &&
-                        !item?.available,
-                    )
-                  }
+                  onClick={() => void configure(service, true, install)}
                 >
                   {item?.enabled
-                    ? service === "browser"
+                    ? install
                       ? "安装并连接浏览器"
-                      : "重新检查桌面"
+                      : `重新检查${label}`
                     : `启用${label}`}
                 </Button>
               )

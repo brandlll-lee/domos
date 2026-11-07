@@ -275,8 +275,8 @@ for (const refresh of [false, true]) {
       await expect(view.getByRole("status")).toHaveText("你正在操作");
       const image = view.getByRole("img", { name: "工作电脑画面" });
       const state = await (await request.get(`${url}/takeover-state`)).json();
-      expect(state.width).toBe(1280);
-      expect(state.height).toBe(720);
+      expect(state.width).toBeGreaterThan(0);
+      expect(state.height).toBeGreaterThan(0);
       const at = await point(image, state, "draft");
       await page.mouse.click(at.x, at.y);
       const keyboard = view.getByRole("textbox", { name: "网页键盘输入" });

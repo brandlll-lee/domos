@@ -1633,6 +1633,47 @@ test("computer viewing uses separate tabs and releases control when closed", asy
   ).toBeFocused();
 });
 
+for (const [error, action, install] of [
+  [
+    JSON.stringify({ code: "outcome_unknown", error: "Invalid response: EOF" }),
+    "重新检查浏览器",
+    false,
+  ],
+  ["Chrome not found. Run agent-browser install.", "安装并连接浏览器", true],
+] as const) {
+  test(`browser recovery offers ${action} for the native failure`, async ({
+    page,
+  }, info) => {
+    const state = {
+      browser: { enabled: true, available: false, mode: "headed", error },
+      desktop: { enabled: false, available: false },
+    };
+    await page.route("**/rpc/computer/services", (route) =>
+      route.fulfill({ json: { json: state } }),
+    );
+    const submitted = Promise.withResolvers<unknown>();
+    await page.route("**/rpc/computer/service", async (route) => {
+      submitted.resolve(route.request().postDataJSON());
+      await route.fulfill({ json: { json: state } });
+    });
+    await page.goto(url);
+    await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+    await page.getByRole("tab", { name: "Browser", exact: true }).click();
+    const view = page.getByRole("region", { name: "Domos的电脑", exact: true });
+    await expect(
+      view.getByRole("heading", { name: "浏览器尚未就绪" }),
+    ).toBeVisible();
+    await expect(view.getByText(error, { exact: true })).toBeHidden();
+    await page.screenshot({ path: info.outputPath("browser-recovery.png") });
+    await view.getByText("错误详情", { exact: true }).click();
+    await expect(view.getByText(error, { exact: true })).toBeVisible();
+    await view.getByRole("button", { name: action, exact: true }).click();
+    expect(await submitted.promise).toMatchObject({
+      json: { service: "browser", enabled: true, install },
+    });
+  });
+}
+
 test("workspace empty states stay centered at every panel width", async ({
   page,
 }, info) => {
