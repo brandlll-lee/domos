@@ -1,3 +1,4 @@
+import { openCodeRequest } from "./http-service.mjs";
 import { type EngineModel, type EngineProcess, engineLimits } from "./types.ts";
 
 export type AccountPrompt = {
@@ -59,9 +60,11 @@ export async function openOpenCodeAccount(
   async function catalog(model: string | null = null) {
     const [native, methods] = await Promise.all([
       worker.request<{ all: NativeProvider[]; connected: string[] }>(
-        "/provider",
+        ...openCodeRequest("providers"),
       ),
-      worker.request<Record<string, AccountMethod[]>>("/provider/auth"),
+      worker.request<Record<string, AccountMethod[]>>(
+        ...openCodeRequest("authMethods"),
+      ),
     ]);
     const connected = new Set(native.connected);
     const models: EngineModel[] = native.all
@@ -120,8 +123,7 @@ export async function openOpenCodeAccount(
       if (item.methods[method]?.type !== "oauth")
         throw new Error("此连接方式不可用。请重新选择。");
       const result = await worker.request<Authorization | null>(
-        `/provider/${encodeURIComponent(id)}/oauth/authorize`,
-        "POST",
+        ...openCodeRequest("authorize", id),
         { method, inputs },
       );
       if (!result || !["auto", "code"].includes(result.method))
@@ -133,8 +135,7 @@ export async function openOpenCodeAccount(
     },
     async complete(id: string, method: number, code?: string) {
       const result = await worker.request<boolean>(
-        `/provider/${encodeURIComponent(id)}/oauth/callback`,
-        "POST",
+        ...openCodeRequest("callback", id),
         { method, code },
       );
       if (!result) throw new Error("登录未完成。请重试。");
@@ -142,8 +143,7 @@ export async function openOpenCodeAccount(
     async key(id: string, key: string | null) {
       await provider(id);
       await worker.request(
-        `/auth/${encodeURIComponent(id)}`,
-        key ? "PUT" : "DELETE",
+        ...openCodeRequest(key ? "saveKey" : "removeKey", id),
         key ? { type: "api", key } : undefined,
       );
     },

@@ -8,6 +8,7 @@ import {
   type ToolCallUpdate,
 } from "@agentclientprotocol/sdk";
 import type { z } from "zod";
+import { openCodeRequest } from "../http-service.mjs";
 import {
   type EngineAnswer,
   type EngineApproval,
@@ -596,9 +597,7 @@ export function acpProvider(
       if (contextReading) await emit(contextReading);
       const messages = () =>
         openCode
-          ? process.request<NativeMessage[]>(
-              `/session/${encodeURIComponent(id)}/message?limit=256`,
-            )
+          ? process.request<NativeMessage[]>(...openCodeRequest("messages", id))
           : Promise.resolve([] as NativeMessage[]);
       const since = (history: NativeMessage[], baseline: string) => {
         if (baseline.startsWith("time:")) {
@@ -693,10 +692,9 @@ export function acpProvider(
         id,
         async skills() {
           if (descriptor.id !== "opencode") return undefined;
-          const items =
-            await process.request<
-              { name: string; description: string; location: string }[]
-            >("/skill");
+          const items = await process.request<
+            { name: string; description: string; location: string }[]
+          >(...openCodeRequest("skills"));
           return items.map((item) => ({
             name: item.name,
             description: item.description,

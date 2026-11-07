@@ -20,11 +20,14 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { expect, onTestFinished, test, vi } from "vitest";
 import { openGateway } from "../src/harness/gateway.mjs";
 import { JsonLines } from "../src/harness/json-lines.ts";
+import { openOpenCodeAccount } from "../src/harness/opencode-account.ts";
 import piTools from "../src/harness/pi-tools.mjs";
 import { WorkProcess } from "../src/harness/process.ts";
 import { callProductTool } from "../src/harness/product-tools.ts";
+import { opencodeProvider } from "../src/harness/providers/opencode.ts";
 import type { EngineRuntime } from "../src/harness/task-types.ts";
 import type { ProductResult } from "../src/harness/types.ts";
+import { ProtocolProcess } from "./fixtures/engine-process.ts";
 
 const piCli = join(
   dirname(
@@ -196,6 +199,156 @@ async function worker(environment?: Record<string, string>) {
   });
   return { process, directory, calls };
 }
+
+test("OpenCode reads native skills through the authenticated work-process bridge", async () => {
+  const requests: { path: string; method: string; authenticated: boolean }[] =
+    [];
+  let skills = [
+    {
+      name: "report",
+      description: "Prepare report",
+      location: "/work/.opencode/skills/report/SKILL.md",
+      content: "Private skill body",
+    },
+  ];
+  let status = 200;
+  const server = createServer((request, response) => {
+    requests.push({
+      path: request.url ?? "",
+      method: request.method ?? "",
+      authenticated:
+        request.headers.authorization?.startsWith("Basic ") ?? false,
+    });
+    response.statusCode = status;
+    response.setHeader("Content-Type", "application/json");
+    const result =
+      request.url === "/skill"
+        ? skills
+        : request.url === "/provider"
+          ? {
+              all: [{ id: "example", name: "Example", models: {} }],
+              connected: [],
+            }
+          : request.url === "/provider/auth"
+            ? { example: [{ type: "oauth", label: "Sign in" }] }
+            : request.url === "/provider/example/oauth/authorize"
+              ? {
+                  url: "https://example.com/login",
+                  method: "code",
+                  instructions: "Sign in",
+                }
+              : request.url?.startsWith("/session/")
+                ? [
+                    {
+                      parts: [
+                        { type: "file", url: "data:image/png;base64,aW1hZ2U=" },
+                      ],
+                    },
+                  ]
+                : true;
+    response.end(JSON.stringify(result));
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  onTestFinished(
+    () => new Promise<void>((resolve) => server.close(() => resolve())),
+  );
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Missing port");
+  const { process } = await worker();
+  await process.launch({
+    command: globalThis.process.execPath,
+    args: [
+      "-e",
+      `console.log("http://127.0.0.1:${address.port}"); process.stdin.resume();`,
+    ],
+    http: { readyMs: 3000, timeoutMs: 3000 },
+  });
+  const native = new ProtocolProcess();
+  onTestFinished(() => native.close());
+  native.request = process.request.bind(process);
+  native.receive = (request) =>
+    native.response(
+      request,
+      request.method === "initialize"
+        ? {
+            protocolVersion: 1,
+            agentCapabilities: {
+              loadSession: true,
+              mcpCapabilities: { http: true },
+            },
+          }
+        : {},
+    );
+  const session = await opencodeProvider.open({
+    process: native,
+    config: { provider: "opencode", model: null },
+    sessionId: "session-1",
+    instructions: "Role",
+    emit: async () => {},
+  });
+  expect(await session.skills?.()).toEqual([
+    {
+      name: "report",
+      description: "Prepare report",
+      path: "/work/.opencode/skills/report/SKILL.md",
+      source: "opencode",
+    },
+  ]);
+  expect(requests).toEqual([
+    { path: "/skill", method: "GET", authenticated: true },
+  ]);
+  skills = [];
+  expect(await session.skills?.()).toEqual([]);
+  status = 503;
+  await expect(session.skills?.()).rejects.toThrow("HTTP 503");
+  status = 200;
+  expect(await process.request("/session/session-1/message?limit=256")).toEqual(
+    [{ parts: [{ type: "text", text: "[Image retained in native session]" }] }],
+  );
+  const account = await openOpenCodeAccount(native);
+  expect((await account.catalog()).providers).toMatchObject([
+    { id: "example" },
+  ]);
+  expect(await account.login("example", 0)).toMatchObject({ method: "code" });
+  await account.complete("example", 0, "test-only-code");
+  await account.key("example", "test-only-key");
+  await account.key("example", null);
+  expect(requests).toEqual(
+    expect.arrayContaining([
+      {
+        path: "/provider/example/oauth/authorize",
+        method: "POST",
+        authenticated: true,
+      },
+      {
+        path: "/provider/example/oauth/callback",
+        method: "POST",
+        authenticated: true,
+      },
+      { path: "/auth/example", method: "PUT", authenticated: true },
+      { path: "/auth/example", method: "DELETE", authenticated: true },
+    ]),
+  );
+  const count = requests.length;
+  for (const [path, method] of [
+    ["/skill", "POST"],
+    ["/skill/extra", "GET"],
+    ["/provider", "DELETE"],
+    ["/provider/example/extra", "POST"],
+    ["/auth/example", "GET"],
+    ["/session/session-1/message?limit=257", "GET"],
+    ["/session/session-1/message?limit=256", "POST"],
+    ["/provider/../oauth/authorize", "POST"],
+    ["/provider/%2e%2e/oauth/authorize", "POST"],
+    ["http://example.com/skill", "GET"],
+  ] as const) {
+    await expect(process.request(path, method)).rejects.toThrow(
+      "路径或方法不受支持",
+    );
+  }
+  expect(requests).toHaveLength(count);
+});
 
 test("workspace MCP routes tools through the authenticated process channel", async () => {
   const { process, calls } = await worker();

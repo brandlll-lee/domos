@@ -5,6 +5,30 @@ import { stripVTControlCharacters } from "node:util";
 import { historyProjection } from "./native-history.mjs";
 
 const outputLimit = 8000;
+const requests = {
+  skills: ["/skill", "GET"],
+  providers: ["/provider", "GET"],
+  authMethods: ["/provider/auth", "GET"],
+  authorize: ["/provider/{id}/oauth/authorize", "POST"],
+  callback: ["/provider/{id}/oauth/callback", "POST"],
+  saveKey: ["/auth/{id}", "PUT"],
+  removeKey: ["/auth/{id}", "DELETE"],
+  messages: ["/session/{id}/message?limit=256", "GET"],
+};
+const routes = Object.values(requests).map(([path, method]) => ({
+  method,
+  path: new RegExp(
+    `^${path
+      .split("{id}")
+      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("[A-Za-z0-9_%.-]+")}$`,
+  ),
+}));
+
+export function openCodeRequest(name, id = "") {
+  const [path, method] = requests[name];
+  return [path.replace("{id}", encodeURIComponent(id)), method];
+}
 
 export async function openHttpService(emit, limits) {
   const endpoint = Promise.withResolvers();
@@ -68,15 +92,12 @@ export async function openHttpService(emit, limits) {
       try {
         if (
           typeof frame.path !== "string" ||
-          !(
-            /^\/(?:provider(?:\/|$)|auth\/)/.test(frame.path) ||
-            (frame.method === "GET" &&
-              /^\/session\/[A-Za-z0-9_-]+\/message(?:\?limit=(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-6]))?$/.test(
-                frame.path,
-              ))
+          !routes.some(
+            (route) =>
+              route.method === frame.method && route.path.test(frame.path),
           ) ||
           frame.path.includes("..") ||
-          !["GET", "POST", "PUT", "DELETE"].includes(frame.method)
+          /%2e/i.test(frame.path)
         )
           throw new Error("Invalid request");
         message = "OpenCode 本地服务启动等待失败。请重试连接。";

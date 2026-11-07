@@ -391,6 +391,7 @@ test("custom ACP handles permission during session setup and advertises native c
     args: ["--acp"],
   });
   expect(process.spec?.http).toBeUndefined();
+  expect(await session.skills?.()).toBeUndefined();
   expect(customAcpProvider.capabilities.recovery).toBe(false);
 });
 
@@ -1347,7 +1348,64 @@ test("Pi and Codex expose native skill metadata without treating other commands 
   ]);
 });
 
-test("Claude and OpenCode read their native skill catalogs", async () => {
+test.each([piProvider, codexProvider, claudeProvider])(
+  "$id distinguishes an empty skill catalog from a failed read",
+  async (provider) => {
+    const process =
+      provider.id === "pi" ? featureProcess() : protocol().process;
+    onTestFinished(() => process.close());
+    let failed = false;
+    const receive = process.receive;
+    const response = process.response.bind(process);
+    process.response = (request, result) => {
+      if (request.method === "skills/list" && failed)
+        process.frame({
+          jsonrpc: "2.0",
+          id: request.id,
+          error: { code: -32603, message: "Catalog unavailable" },
+        });
+      else response(request, result);
+    };
+    process.receive = (request) => {
+      const control = request as typeof request & {
+        request_id?: string;
+        request?: { subtype: string };
+      };
+      if (control.request?.subtype === "reload_skills")
+        process.frame({
+          type: "control_response",
+          response: {
+            request_id: control.request_id,
+            subtype: failed ? "error" : "success",
+            error: "Catalog unavailable",
+            response: { skills: [] },
+          },
+        });
+      else if (request.type === "get_commands" && failed)
+        process.frame({
+          type: "response",
+          id: request.id,
+          success: false,
+          error: "Catalog unavailable",
+        });
+      else if (provider.id === "codex")
+        response(request, { thread: { id: "catalog" } });
+      else receive(request);
+    };
+    const session = await provider.open({
+      process,
+      config: { provider: provider.id, model: null },
+      sessionId: null,
+      instructions: "Role",
+      emit: async () => {},
+    });
+    expect(await session.skills?.()).toEqual([]);
+    failed = true;
+    await expect(session.skills?.()).rejects.toThrow("Catalog unavailable");
+  },
+);
+
+test("Claude reads its native skill catalog", async () => {
   const claude = protocol();
   claude.process.receive = (request) => {
     const control = request as typeof request & {
@@ -1375,45 +1433,5 @@ test("Claude and OpenCode read their native skill catalogs", async () => {
   });
   expect(await session.skills?.()).toEqual([
     { name: "report", description: "Prepare report", source: "claude" },
-  ]);
-  const code = protocol();
-  code.process.receive = (request) =>
-    code.process.response(
-      request,
-      request.method === "initialize"
-        ? {
-            protocolVersion: 1,
-            agentCapabilities: {
-              loadSession: true,
-              mcpCapabilities: { http: true },
-            },
-          }
-        : {},
-    );
-  code.process.request = async <T>(path: string) => {
-    expect(path).toBe("/skill");
-    return [
-      {
-        name: "report",
-        description: "Prepare report",
-        location: "/work/.opencode/skills/report/SKILL.md",
-        content: "Private skill body",
-      },
-    ] as T;
-  };
-  const native = await opencodeProvider.open({
-    process: code.process,
-    config: { provider: "opencode", model: null },
-    sessionId: "session-1",
-    instructions: "Role",
-    emit: code.emit,
-  });
-  expect(await native.skills?.()).toEqual([
-    {
-      name: "report",
-      description: "Prepare report",
-      path: "/work/.opencode/skills/report/SKILL.md",
-      source: "opencode",
-    },
   ]);
 });
