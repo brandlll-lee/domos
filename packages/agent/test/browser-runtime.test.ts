@@ -68,6 +68,11 @@ async function setup() {
       "get_url",
       "screenshot",
       "eval",
+      "batch",
+      "upload",
+      "download",
+      "hover",
+      "install",
     ].map((name) => ({
       name: `agent_browser_${name}`,
       description: name,
@@ -82,6 +87,10 @@ async function setup() {
           text: { type: "string" },
           key: { type: "string" },
           compact: { type: "boolean" },
+          commands: { type: "array" },
+          bail: { type: "boolean" },
+          paths: { type: "array" },
+          path: { type: "string" },
         },
       },
     })),
@@ -114,34 +123,40 @@ async function setup() {
   return Object.assign(service, { directory });
 }
 
-test("cancellation drains dispatched work and prevents queued work", async () => {
-  const service = await setup();
-  const started = Promise.withResolvers<void>();
-  const done = Promise.withResolvers<ReturnType<typeof success>>();
-  mocks.call.mockImplementationOnce(() => {
-    started.resolve();
-    return done.promise;
-  });
-  const controller = new AbortController();
-  const first = service.call("agent_browser_click", {}, controller.signal);
-  await started.promise;
-  const queued = service.call("agent_browser_click", {}, controller.signal);
-  const rejected = expect(queued).rejects.toThrow();
-  controller.abort();
-  expect(mocks.spawn).not.toHaveBeenCalled();
-  expect(mocks.call.mock.calls[0]?.[2]).not.toHaveProperty("signal");
-  let drained = false;
-  void first.then(() => {
-    drained = true;
-  });
-  await Promise.resolve();
-  expect(drained).toBe(false);
-  done.resolve(success());
-  expect(await first).toMatchObject({ isError: false });
-  await rejected;
-  expect(mocks.call).toHaveBeenCalledTimes(1);
-  await service.settle();
-});
+test.each([
+  { name: "agent_browser_click", args: {} },
+  { name: "agent_browser_batch", args: { commands: [["click", "#ok"]] } },
+])(
+  "cancellation drains dispatched $name and prevents queued work",
+  async ({ name, args }) => {
+    const service = await setup();
+    const started = Promise.withResolvers<void>();
+    const done = Promise.withResolvers<ReturnType<typeof success>>();
+    mocks.call.mockImplementationOnce(() => {
+      started.resolve();
+      return done.promise;
+    });
+    const controller = new AbortController();
+    const first = service.call(name, args, controller.signal);
+    await started.promise;
+    const queued = service.call(name, args, controller.signal);
+    const rejected = expect(queued).rejects.toThrow();
+    controller.abort();
+    expect(mocks.spawn).not.toHaveBeenCalled();
+    expect(mocks.call.mock.calls[0]?.[2]).not.toHaveProperty("signal");
+    let drained = false;
+    void first.then(() => {
+      drained = true;
+    });
+    await Promise.resolve();
+    expect(drained).toBe(false);
+    done.resolve(success());
+    expect(await first).toMatchObject({ isError: false });
+    await rejected;
+    expect(mocks.call).toHaveBeenCalledTimes(1);
+    await service.settle();
+  },
+);
 
 function pageFacts(text = "Ready") {
   return {
@@ -163,7 +178,7 @@ function pageFacts(text = "Ready") {
   };
 }
 
-test("navigation returns fresh refs and facts while preserving native output and timing", async () => {
+test("navigation preserves native output and leaves observation to the Agent", async () => {
   const service = await setup();
   const native = {
     content: [{ type: "text", text: "Navigation accepted" }],
@@ -184,8 +199,7 @@ test("navigation returns fresh refs and facts while preserving native output and
     new AbortController().signal,
   );
   expect(result.structuredContent).toEqual(native.structuredContent);
-  expect(JSON.stringify(result.content)).toContain("@e1 button Ready");
-  expect(JSON.stringify(result.content)).toContain("Fresh page facts");
+  expect(JSON.stringify(result.content)).not.toContain("Fresh page facts");
   const timing = result.content.find((part: { text?: string }) =>
     part.text?.startsWith("Domos browser timing"),
   );
@@ -193,14 +207,9 @@ test("navigation returns fresh refs and facts while preserving native output and
     /queueMs.*commandMs.*observationMs.*metadataMs.*totalMs/,
   );
   const calls = mocks.call.mock.calls.map(([request]) => request);
-  expect(calls.map((call) => call.name)).toEqual([
-    "agent_browser_open",
-    "agent_browser_eval",
-    "agent_browser_snapshot",
-  ]);
+  expect(calls.map((call) => call.name)).toEqual(["agent_browser_open"]);
   expect(calls[0].arguments).not.toHaveProperty("extraArgs");
   expect(calls[0].arguments).not.toHaveProperty("all");
-  expect(calls[1].arguments.timeoutMs).toBeLessThanOrEqual(5000);
 });
 
 test("large page facts leave room for fresh element refs", async () => {
@@ -213,8 +222,8 @@ test("large page facts leave room for fresh element refs", async () => {
         : { content: [{ type: "text", text: "@e1 button Confirm" }] },
   );
   const result = await service.call(
-    "agent_browser_open",
-    { url: "http://fixture/" },
+    "agent_browser_observe",
+    {},
     new AbortController().signal,
   );
   expect(JSON.stringify(result.content)).toContain("@e1 button Confirm");
@@ -234,7 +243,15 @@ test("failed observation preserves successful navigation and never repeats it", 
     new AbortController().signal,
   );
   expect(result.isError).toBe(false);
-  expect(JSON.stringify(result.content)).toContain("observation is incomplete");
+  const observed = await service.call(
+    "agent_browser_observe",
+    {},
+    new AbortController().signal,
+  );
+  expect(observed.isError).toBe(true);
+  expect(JSON.stringify(observed.content)).toContain(
+    "observation is incomplete",
+  );
   expect(
     mocks.call.mock.calls.filter(
       ([call]) => call.name === "agent_browser_open",
@@ -267,73 +284,101 @@ test.each(["", "Loading…", "Service unavailable"])(
   },
 );
 
-test("batches validate all steps before dispatch and observe once at the end", async () => {
+test("native batches preserve command order, options and partial results", async () => {
   const service = await setup();
-  await expect(
-    service.call(
-      "agent_browser_run_steps",
-      {
-        steps: [
-          { action: "click", selector: "#first" },
-          { action: "fill", selector: "#draft" },
+  const native = {
+    ...success(),
+    structuredContent: {
+      response: {
+        success: true,
+        data: [
+          { success: true, data: {} },
+          { success: false, error: "target missing" },
         ],
       },
-      new AbortController().signal,
-    ),
-  ).rejects.toThrow();
-  expect(mocks.call).not.toHaveBeenCalled();
-  mocks.call.mockImplementation(async ({ name }) =>
-    name === "agent_browser_eval" ? pageFacts() : success(),
-  );
-  const result = await service.call(
-    "agent_browser_run_steps",
-    {
-      steps: [
-        { action: "fill", selector: "#draft", text: "Hello" },
-        { action: "press", key: "Enter" },
-      ],
     },
+  };
+  mocks.call.mockResolvedValueOnce(native);
+  const args = {
+    commands: [
+      ["fill", "#draft", "Hello"],
+      ["click", "#confirm"],
+    ],
+    bail: true,
+  };
+  const result = await service.call(
+    "agent_browser_batch",
+    args,
     new AbortController().signal,
   );
-  expect(result.structuredContent.completed).toBe(2);
-  expect(mocks.call.mock.calls.map(([request]) => request.name)).toEqual([
-    "agent_browser_fill",
-    "agent_browser_press",
-    "agent_browser_eval",
-    "agent_browser_snapshot",
-  ]);
+  expect(result.structuredContent).toEqual(native.structuredContent);
+  expect(mocks.call).toHaveBeenCalledTimes(1);
+  expect(mocks.call.mock.calls[0]?.[0]).toMatchObject({
+    name: "agent_browser_batch",
+    arguments: args,
+  });
 });
 
-test.each(["native", "transport"])(
-  "a %s batch failure preserves completed steps and stops later work",
-  async (mode) => {
+test.each([
+  [["click", "#ok"], ["install"]],
+  [
+    ["click", "#ok"],
+    ["open", "https://example.com", "--session", "another-bot"],
+  ],
+  [["batch", "click #ok"]],
+])(
+  "batch validation rejects runtime and maintenance commands before dispatch: %j",
+  async (...commands) => {
     const service = await setup();
-    mocks.call.mockResolvedValueOnce(success());
-    if (mode === "transport")
-      mocks.call.mockRejectedValueOnce(new Error("response lost"));
-    else mocks.call.mockResolvedValueOnce(baseline.lostResponse);
-    const result = await service.call(
-      "agent_browser_run_steps",
-      {
-        steps: [1, 2, 3].map((index) => ({
-          action: "click",
-          selector: `#b${index}`,
-        })),
-      },
-      new AbortController().signal,
-    );
-    expect(result.isError).toBe(true);
-    expect(result.structuredContent).toMatchObject({
-      completed: 1,
-      uncertain: true,
-    });
-    expect(result.structuredContent.results[0]).toEqual(success());
-    expect(mocks.call).toHaveBeenCalledTimes(2);
-    await expect(service.settle()).rejects.toThrow("结果未知");
+    await expect(
+      service.call(
+        "agent_browser_batch",
+        { commands },
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow();
+    expect(mocks.call).not.toHaveBeenCalled();
   },
 );
 
-test("repeated unchanged actions stop until an explicit fresh observation", async () => {
+test("a lost batch response blocks further mutations", async () => {
+  const service = await setup();
+  mocks.call.mockRejectedValueOnce(new Error("response lost"));
+  await expect(
+    service.call(
+      "agent_browser_batch",
+      { commands: [["click", "#ok"]] },
+      new AbortController().signal,
+    ),
+  ).rejects.toThrow();
+  await expect(service.settle()).rejects.toThrow("结果未知");
+  expect(mocks.call).toHaveBeenCalledTimes(1);
+});
+
+test.each(["outcome_unknown", "page_wedged"])(
+  "native batch %s holds further mutations",
+  async (code) => {
+    const service = await setup();
+    mocks.call.mockResolvedValueOnce({
+      isError: true,
+      content: [{ type: "text", text: "Native batch stopped" }],
+      structuredContent: { response: [{ success: false, code }] },
+    });
+    const result = await service.call(
+      "agent_browser_batch",
+      { commands: [["click", "#ok"]] },
+      new AbortController().signal,
+    );
+    expect(result.structuredContent.response[0].code).toBe(code);
+    await expect(service.settle()).rejects.toThrow("结果未知");
+    await expect(
+      service.call("agent_browser_click", {}, new AbortController().signal),
+    ).rejects.toThrow("结果未知");
+    expect(mocks.call).toHaveBeenCalledTimes(1);
+  },
+);
+
+test("the Agent can repeat known actions and choose when to observe", async () => {
   const service = await setup();
   mocks.call.mockImplementation(async ({ name }) =>
     name === "agent_browser_eval" ? pageFacts() : success(),
@@ -344,12 +389,16 @@ test("repeated unchanged actions stop until an explicit fresh observation", asyn
       { selector: "#button" },
       new AbortController().signal,
     );
-  for (let attempt = 0; attempt < 3; attempt++) await click();
-  const count = mocks.call.mock.calls.length;
-  expect((await click()).isError).toBe(true);
-  expect(mocks.call).toHaveBeenCalledTimes(count);
+  for (let attempt = 0; attempt < 4; attempt++)
+    expect((await click()).isError).toBe(false);
+  expect(mocks.call.mock.calls.map(([call]) => call.name)).toEqual(
+    Array(4).fill("agent_browser_click"),
+  );
   await service.call("agent_browser_observe", {}, new AbortController().signal);
-  expect((await click()).isError).toBe(false);
+  expect(mocks.call.mock.calls.slice(4).map(([call]) => call.name)).toEqual([
+    "agent_browser_eval",
+    "agent_browser_snapshot",
+  ]);
 });
 
 test("catalog cleanup does not launch a browser to close it", async () => {
@@ -489,7 +538,7 @@ test.each([
   },
 );
 
-test("failed navigation preserves native failure and observes the actual target once", async () => {
+test("failed navigation preserves native failure for explicit recovery", async () => {
   const service = await setup();
   const failure = {
     isError: true,
@@ -512,7 +561,7 @@ test("failed navigation preserves native failure and observes the actual target 
   );
   expect(result.isError).toBe(true);
   expect(result.structuredContent).toEqual(failure.structuredContent);
-  expect(JSON.stringify(result.content)).toContain("access_denied");
+  expect(JSON.stringify(result.content)).toContain("HTTP ERROR 403");
   expect(
     mocks.call.mock.calls.filter(
       ([call]) => call.name === "agent_browser_open",

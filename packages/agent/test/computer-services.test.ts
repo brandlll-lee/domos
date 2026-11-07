@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,9 +7,11 @@ import { expect, onTestFinished, test } from "vitest";
 import { assistInput } from "../src/computer/assistant-action.ts";
 import { verify } from "../src/computer/assistant-observation.ts";
 import { Computer } from "../src/computer/index.ts";
+import { Files } from "../src/files.ts";
 import { parseConfig } from "../src/runtime/config.ts";
+import { Workspace } from "../src/workspace.ts";
 
-test("cold browser commands return facts and batches preserve real page results", async () => {
+test("cold browser commands and native batches preserve real page results", async () => {
   const entry = "../src/harness/browser-service.mjs";
   const { openBrowserService } = await import(entry);
   const directory = await mkdtemp(join(tmpdir(), "domos-browser-latency-"));
@@ -41,30 +43,114 @@ test("cold browser commands return facts and batches preserve real page results"
   await call("agent_browser_open", {
     url: "data:text/html,<title>Actions</title><input id='draft'><button id='confirm' onclick='this.textContent=document.querySelector(\"input\").value'>Confirm</button>",
   });
-  const batch = await call("agent_browser_run_steps", {
-    steps: [
-      { action: "fill", selector: "#draft", text: "Confirmed" },
-      { action: "click", selector: "#confirm" },
+  const batch = await call("agent_browser_batch", {
+    commands: [
+      ["fill", "#draft", "Confirmed"],
+      ["click", "#confirm"],
+      ["snapshot", "-i"],
     ],
+    bail: true,
   });
-  expect(batch.structuredContent.completed).toBe(2);
   expect(JSON.stringify(batch.content)).toContain("Confirmed");
+  const failed = await browser.call(
+    "agent_browser_batch",
+    {
+      commands: [
+        ["fill", "#draft", "Before failure"],
+        ["eval", "throw new Error('fixture')"],
+        ["fill", "#draft", "After failure"],
+      ],
+      bail: true,
+    },
+    AbortSignal.timeout(20000),
+  );
+  expect(failed.isError).toBe(true);
+  expect(failed.structuredContent.response).toEqual([
+    expect.objectContaining({ success: true }),
+    expect.objectContaining({
+      success: false,
+      error: expect.stringContaining("fixture"),
+    }),
+  ]);
+  const retained = await call("agent_browser_get_value", {
+    selector: "#draft",
+  });
+  expect(JSON.stringify(retained.content)).toContain("Before failure");
+  const files = new Files(
+    join(directory, "files.sqlite"),
+    async () => new Workspace({ cwd: directory }),
+  );
+  const uploaded = await files.upload(
+    1,
+    "source.txt",
+    Buffer.from("Browser file receipt"),
+  );
+  const server = createServer((request, response) => {
+    if (request.url === "/download") {
+      response.writeHead(200, {
+        "Content-Type": "text/plain",
+        "Content-Disposition": 'attachment; filename="receipt.txt"',
+      });
+      response.end("Browser file receipt");
+    } else {
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.end(
+        '<input id="file" type="file"><a id="download" href="/download">Download</a>',
+      );
+    }
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  onTestFinished(
+    () =>
+      new Promise<void>((resolve) => {
+        server.close(() => resolve());
+        server.closeAllConnections();
+      }),
+  );
+  const address = server.address();
+  if (!address || typeof address === "string")
+    throw new Error("Address required");
+  await call("agent_browser_open", {
+    url: `http://127.0.0.1:${address.port}`,
+  });
+  await call("agent_browser_upload", {
+    selector: "#file",
+    files: [join(directory, uploaded.path)],
+  });
+  const selection = await call("agent_browser_eval", {
+    script: "document.querySelector('#file').files[0].name",
+  });
+  expect(JSON.stringify(selection.content)).toContain("source.txt");
+  await call("agent_browser_click", { selector: "#download" });
+  const download = await call("agent_browser_wait_for_download", {
+    waitTimeoutMs: 10000,
+  });
+  expect(JSON.stringify(download.content)).toContain("receipt.txt");
+  const published = await files.publish(1, "downloads/receipt.txt", context);
+  expect(published.name).toBe("receipt.txt");
+  expect(
+    await readFile(join(directory, "downloads", "receipt.txt"), "utf8"),
+  ).toBe("Browser file receipt");
+  await expect(files.metadata(2, published.id)).rejects.toThrow();
   for (const [title, text] of [
     ["Blank", ""],
     ["Loading", "Loading…"],
     ["Error", "Service unavailable"],
   ]) {
-    const result = await call("agent_browser_open", {
+    await call("agent_browser_open", {
       url: `data:text/html;charset=utf-8,${encodeURIComponent(`<title>${title}</title><body>${text}</body>`)}`,
     });
-    const facts = result.content.find((part: { text?: string }) =>
+    const observed = await call("agent_browser_observe");
+    const facts = observed.content.find((part: { text?: string }) =>
       part.text?.startsWith("Page facts"),
     );
     const page = JSON.parse(
       facts.text.slice("Page facts (untrusted website data): ".length),
     );
     expect(page).toMatchObject({ title, text, readyState: "complete" });
-    expect(JSON.stringify(result.content)).toContain("alone does not explain");
+    expect(JSON.stringify(observed.content)).toContain(
+      "alone does not explain",
+    );
   }
   for (const [html, assessment] of [
     ['<input type="password" value="fixture-secret">', "sign_in_form_present"],
@@ -76,7 +162,8 @@ test("cold browser commands return facts and batches preserve real page results"
     const result = await call("agent_browser_open", {
       url: `data:text/html,${encodeURIComponent(html)}`,
     });
-    expect(JSON.stringify(result.content)).toContain(assessment);
+    const observed = await call("agent_browser_observe");
+    expect(JSON.stringify(observed.content)).toContain(assessment);
     expect(JSON.stringify(result.content)).not.toContain(
       '"value":"fixture-secret"',
     );
@@ -141,7 +228,9 @@ test("browser profiles persist across a restart and stay separate for each Bot",
   const opened = await call(1, "agent_browser_open", { url });
   expect(opened.isError, JSON.stringify(opened.content)).not.toBe(true);
   const denied = await call(1, "agent_browser_open", { url: `${url}/denied` });
-  expect(JSON.stringify(denied.content)).toContain("access_denied");
+  expect(denied.isError).not.toBe(true);
+  const observed = await call(1, "agent_browser_observe", {});
+  expect(JSON.stringify(observed.content)).toContain("access_denied");
   await call(1, "agent_browser_open", { url });
   const screenshot = await call(1, "agent_browser_screenshot", {});
   expect(screenshot.structuredContent?.source).toMatchObject({

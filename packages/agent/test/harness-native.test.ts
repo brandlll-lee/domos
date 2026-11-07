@@ -1,9 +1,14 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 import { expect, onTestFinished, test } from "vitest";
+
+const browserEntry = "../src/harness/browser-service.mjs";
+const { openBrowserService } = await import(browserEntry);
+
 import { WorkProcess } from "../src/harness/process.ts";
 import { permissionTool } from "../src/harness/product-tools.ts";
 import { claudePermission } from "../src/harness/providers/claude-approval.ts";
@@ -16,6 +21,37 @@ test
   "%s reads tool images, coordinates and verified results",
   async (id) => {
     const directory = await mkdtemp(join(tmpdir(), "domos-native-smoke-"));
+    const catalogService = await openBrowserService(directory, directory);
+    const browserTools = (await catalogService.catalog()).map(
+      (tool: { name: string }) => ({ ...tool, name: `browser_${tool.name}` }),
+    );
+    await catalogService.close();
+    const receipt = crypto.randomUUID();
+    let submitted = "";
+    const server = createServer((request, response) => {
+      if (request.url?.startsWith("/receipt?"))
+        submitted =
+          new URL(request.url, "http://localhost").searchParams.get("value") ??
+          "";
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.end(
+        '<input id="draft" aria-label="Draft"><button id="save" onclick="fetch(\'/receipt?value=\'+encodeURIComponent(document.querySelector(\'#draft\').value)).then(()=>this.textContent=\'Saved\')">Save</button>',
+      );
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    onTestFinished(
+      () =>
+        new Promise<void>((resolve) => {
+          server.close(() => resolve());
+          server.closeAllConnections();
+        }),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Address required");
+    const browserTask = `Use the browser tools to open http://127.0.0.1:${address.port}, fill Draft with ${receipt} and click Save. Verify the Saved button. Use tool_search to discover deferred tools when needed.`;
     const imageMarker = crypto.randomUUID();
     const marker = crypto.randomUUID();
     const title = `Domos image probe ${crypto.randomUUID()}`;
@@ -40,6 +76,7 @@ test
       ],
       { cwd: directory, home: directory },
       [
+        ...browserTools,
         ...(id === "claude" ? [permissionTool] : []),
         {
           name: "memory_save",
@@ -76,6 +113,13 @@ test
         },
       ],
       async (_callId, name, args) => {
+        if (name.startsWith("browser_agent_browser_"))
+          return worker.computer<ProductResult>({
+            operation: "call",
+            service: "browser",
+            name: name.slice("browser_".length),
+            arguments: args,
+          });
         if (name === "approve")
           return {
             content: [
@@ -83,11 +127,15 @@ test
                 type: "text",
                 text: JSON.stringify(
                   claudePermission(args, {
-                    allow: [
-                      "mcp__domos__computer_probe",
-                      "mcp__domos__memory_save",
-                      "mcp__domos__memory_search",
-                    ].includes(String(args.tool_name)),
+                    allow:
+                      [
+                        "mcp__domos__computer_probe",
+                        "mcp__domos__memory_save",
+                        "mcp__domos__memory_search",
+                      ].includes(String(args.tool_name)) ||
+                      String(args.tool_name).startsWith(
+                        "mcp__domos__browser_agent_browser_",
+                      ),
                   }),
                 ),
               },
@@ -200,24 +248,42 @@ test
             },
           }
         : {}),
-      instructions:
-        "Call computer_probe once. Then call memory_save with the fact 'User prefers Chinese replies', then memory_search with query 'Chinese'. Return the memory receipt marker and the exact text from the image, structured marker, coordinates and verified value. Use only these tools. Do not infer verification from tool success.",
+      instructions: `Call computer_probe once. Then call memory_save with the fact 'User prefers Chinese replies', then memory_search with query 'Chinese'. Return the memory receipt marker and the exact text from the image, structured marker, coordinates and verified value. ${browserTask} Do not infer verification from tool success.`,
       approve: async () => ({ allow: false }),
       emit: async (event) => {
         if (event.type === "message") replies.push(event.text);
         if (event.type === "tool") toolNames.push(event.name);
         if (event.type === "approval")
           await session?.answer(event.approval.id, {
-            allow: /computer_probe|memory_save|memory_search/.test(
-              event.approval.detail,
-            ),
+            allow:
+              /computer_probe|memory_save|memory_search|browser_agent_browser_/.test(
+                event.approval.detail,
+              ),
           });
       },
     });
     await session.ready?.();
     await worker.toolsReady();
+    const started = performance.now();
     await session.prompt(
-      "Read computer_probe, save my Chinese response preference, then search it. Report the memory receipt marker, image text, marker, x, y, coordinate space and verified value.",
+      `Read computer_probe, save my Chinese response preference, then search it. Report the memory receipt marker, image text, marker, x, y, coordinate space and verified value. ${browserTask}`,
+    );
+    expect(submitted).toBe(receipt);
+    await mkdir("test-results", { recursive: true });
+    await writeFile(
+      `test-results/native-browser-${id}.json`,
+      JSON.stringify(
+        {
+          harness: id,
+          elapsedMs: Math.round(performance.now() - started),
+          modelRoundTrips: null,
+          completion: "pass",
+          evidence: "HTTP fixture received the exact form receipt",
+          toolNames,
+        },
+        null,
+        2,
+      ),
     );
     const answer = replies.join("\n");
     expect(calls, answer).toBe(1);

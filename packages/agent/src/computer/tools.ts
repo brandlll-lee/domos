@@ -102,8 +102,6 @@ export class ComputerTools {
         service,
         context,
       )) {
-        if (service === "browser" && tool.name === "agent_browser_wait_ms")
-          continue;
         const exposedName =
           service === "desktop" ? tool.name : `${service}_${tool.name}`;
         if (

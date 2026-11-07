@@ -22,6 +22,17 @@ export async function openCodexClient(
       "stdio://",
       "-c",
       `mcp_servers.domos.url=${JSON.stringify(ready.url)}`,
+      ...(ready.tools?.some((name) => name.startsWith("browser_agent_browser_"))
+        ? [
+            "-c",
+            "features.browser_use=false",
+            "-c",
+            "features.browser_use_external=false",
+          ]
+        : []),
+      ...(ready.tools?.includes("get_window_state")
+        ? ["-c", "features.computer_use=false"]
+        : []),
       ...servers.flatMap(({ name, url }) => [
         "-c",
         `mcp_servers.${name}.url=${JSON.stringify(url)}`,

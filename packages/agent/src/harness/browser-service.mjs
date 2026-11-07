@@ -21,14 +21,14 @@ import { browserCommand } from "./browser-command.mjs";
 import {
   browserAccess,
   browserArguments,
+  browserBatchArguments,
+  browserNativeTools,
   browserObservations,
   browserObserve,
   browserPageScript,
   browserPageState,
   browserRestart,
   browserResult,
-  browserRunSteps,
-  browserSteps,
   browserTool,
 } from "./browser-tools.mjs";
 import { openBrowserView } from "./browser-view.mjs";
@@ -146,7 +146,7 @@ export async function openBrowserService(directory, home) {
       await connection.connect(
         new StdioClientTransport({
           command: launcher,
-          args: ["mcp"],
+          args: ["mcp", "--tools", "all"],
           env,
           cwd: directory,
           stderr: "ignore",
@@ -299,12 +299,12 @@ export async function openBrowserService(directory, home) {
           const page = await client.listTools(cursor ? { cursor } : undefined);
           items.push(
             ...page.tools
-              .filter((tool) => tool.name !== "agent_browser_tools_profiles")
+              .filter((tool) => browserNativeTools.has(tool.name))
               .map(browserTool),
           );
           cursor = page.nextCursor;
         } while (cursor);
-        return [...items, browserRestart, browserObserve, browserRunSteps];
+        return [...items, browserRestart, browserObserve];
       })();
       void catalog.catch(() => {
         catalog = undefined;
@@ -364,7 +364,6 @@ export async function openBrowserService(directory, home) {
     await prepare(AbortSignal.timeout(15000));
     await rm(interruption, { force: true });
     uncertain = false;
-    lastAction = undefined;
   };
   const enqueue = (operation) => {
     const action = pending.then(operation);
@@ -378,7 +377,6 @@ export async function openBrowserService(directory, home) {
     enqueue(async () => {
       signal.throwIfAborted();
       ready();
-      lastAction = undefined;
       await writeFile(interruption, "pending", { mode: 0o600 });
       if (signal.aborted) {
         await rm(interruption, { force: true });
@@ -392,7 +390,6 @@ export async function openBrowserService(directory, home) {
       }
       await rm(interruption, { force: true });
     });
-  let lastAction;
   const execute = async (
     name,
     args,
@@ -405,6 +402,7 @@ export async function openBrowserService(directory, home) {
     const tool = (await tools()).find((item) => item.name === name);
     if (!tool) throw new Error("浏览器工具不可用。未发送动作。");
     browserArguments(tool, args);
+    if (name === "agent_browser_batch") browserBatchArguments(args);
     if (name === browserRestart.name) {
       await restart();
       return {
@@ -446,12 +444,13 @@ export async function openBrowserService(directory, home) {
     } finally {
       timing[phase] += performance.now() - started;
     }
+    const response = result.structuredContent?.response;
+    const responses = Array.isArray(response) ? response : [response];
     if (
-      ["outcome_unknown", "page_wedged"].includes(
-        result.structuredContent?.response?.code,
-      ) ||
-      /^CDP command timed out:/.test(
-        result.structuredContent?.response?.error ?? "",
+      responses.some(
+        (item) =>
+          ["outcome_unknown", "page_wedged"].includes(item?.code) ||
+          /^(CDP command timed out:|page_wedged:)/.test(item?.error ?? ""),
       )
     )
       uncertain = true;
@@ -504,6 +503,10 @@ export async function openBrowserService(directory, home) {
         if (name === "agent_browser_eval") {
           page = browserPageState(result);
           if (page) {
+            parts.push({
+              type: "text",
+              text: browserAccess(page, result, undefined, mode),
+            });
             const facts = JSON.stringify(page);
             parts.push({
               type: "text",
@@ -547,109 +550,12 @@ export async function openBrowserService(directory, home) {
         metadataMs: 0,
       };
       let result;
-      const key = JSON.stringify([name, args]);
-      const changesPage =
-        name === "agent_browser_open" ||
-        [
-          "agent_browser_click",
-          "agent_browser_fill",
-          "agent_browser_type",
-          "agent_browser_press",
-          browserRunSteps.name,
-        ].includes(name);
-      if (changesPage && lastAction?.key === key && lastAction.unchanged >= 2)
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text",
-              text: "Repeated actions left the observed page text and controls unchanged. No further action was sent. Use agent_browser_observe to inspect fresh state, then choose another action or request takeover. This does not prove the earlier actions failed.",
-            },
-          ],
-        };
-      if (name === browserRunSteps.name) {
-        ready();
-        const { steps } = browserSteps.parse(args);
-        const catalog = await tools();
-        for (const { action } of steps)
-          if (!catalog.some((tool) => tool.name === `agent_browser_${action}`))
-            throw new Error(
-              `Browser action ${action} is unavailable. No action was sent.`,
-            );
-        const results = [];
-        let completed = 0;
-        for (const { action, ...arguments_ } of steps) {
-          let step;
-          try {
-            step = await execute(
-              `agent_browser_${action}`,
-              arguments_,
-              signal,
-              timing,
-            );
-          } catch (error) {
-            step = {
-              isError: true,
-              content: [
-                {
-                  type: "text",
-                  text: `Batch stopped: ${error.message}. Preserve completed steps. Do not replay uncertain actions.`,
-                },
-              ],
-            };
-          }
-          results.push(step);
-          if (step.isError || uncertain) break;
-          completed++;
-        }
-        result = {
-          isError: results.some((item) => item.isError),
-          content: results.flatMap((item) => item.content),
-          structuredContent: { completed, results, uncertain },
-        };
-      } else if (name === browserObserve.name) {
+      if (name === browserObserve.name) {
         browserArguments(browserObserve, args);
-        lastAction = undefined;
         const observation = await observe(signal, timing);
         result = { content: observation.parts, isError: !observation.verified };
       } else {
         result = await execute(name, args, signal, timing);
-        if (browserObservations.has(name) || name === browserRestart.name)
-          lastAction = undefined;
-      }
-      if (changesPage && !uncertain && !signal.aborted) {
-        const observation = await observe(signal, timing);
-        result = {
-          ...result,
-          content: [
-            ...result.content,
-            ...observation.parts,
-            ...(name === "agent_browser_open" || result.isError
-              ? [
-                  {
-                    type: "text",
-                    text: browserAccess(
-                      observation.page,
-                      result,
-                      typeof args.url === "string" ? args.url : undefined,
-                      mode,
-                    ),
-                  },
-                ]
-              : []),
-          ],
-        };
-        if (observation.page) {
-          const signature = JSON.stringify(observation.page);
-          lastAction = {
-            key,
-            signature,
-            unchanged:
-              lastAction?.key === key && lastAction.signature === signature
-                ? lastAction.unchanged + 1
-                : 0,
-          };
-        } else lastAction = undefined;
       }
       return browserResult({
         ...result,

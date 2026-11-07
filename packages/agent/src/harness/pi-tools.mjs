@@ -4,12 +4,12 @@ export default function (pi) {
   const { url, servers = [] } = JSON.parse(
     readFileSync(process.env.DOMOS_PI_TOOLS, "utf8"),
   );
-  pi.registerMcpServer("domos", { url, exposure: "direct", timeout: 600 });
+  pi.registerMcpServer("domos", { url, exposure: "deferred", timeout: 600 });
   for (const server of servers)
-    pi.registerMcpServer(server.name, { url: server.url, exposure: "direct" });
-  pi.on("session_start", () => {
-    pi.setActiveTools([...pi.getActiveTools(), "tool_search"]);
-  });
+    pi.registerMcpServer(server.name, {
+      url: server.url,
+      exposure: "deferred",
+    });
   registerPiApprovals(pi);
   registerPiQuestions(pi);
 }

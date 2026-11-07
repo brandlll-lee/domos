@@ -1,4 +1,14 @@
 {
+  "repeatedAction": {
+    "date": "2026-11-07",
+    "browserVersion": "0.39.4",
+    "action": "click",
+    "attempts": 4,
+    "observedTextAndControls": "unchanged",
+    "expectedDispatches": 4,
+    "baselineDispatches": 3,
+    "baselineFourthResult": "Repeated actions left the observed page text and controls unchanged"
+  },
   "lostResponse": {
     "content": [
       {

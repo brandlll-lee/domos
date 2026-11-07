@@ -410,7 +410,7 @@ test("Pi registers the product server with its native MCP lifecycle", async () =
     } as unknown as Parameters<typeof piTools>[0]);
     expect(registerMcpServer).toHaveBeenCalledWith("domos", {
       url: "http://127.0.0.1/mcp",
-      exposure: "direct",
+      exposure: "deferred",
       timeout: 600,
     });
   } finally {
@@ -419,7 +419,7 @@ test("Pi registers the product server with its native MCP lifecycle", async () =
   }
 });
 
-test("Pi declares product tools directly and discovers configured MCP tools", async () => {
+test("Pi discovers product and configured MCP tools through native search", async () => {
   const { process, directory } = await worker();
   const ready = await process.ready;
   const account = join(directory, "pi");
@@ -471,7 +471,8 @@ test("Pi declares product tools directly and discovers configured MCP tools", as
   await process.toolsReady();
   await vi.waitFor(async () => {
     await rpc.request("prompt", { message: "/loadout" });
-    expect(loadout?.active).toContain("mcp__domos__echo");
+    expect(loadout?.active).not.toContain("mcp__domos__echo");
+    expect(loadout?.tools).toContain("mcp__domos__echo");
     expect(loadout?.active).toContain("tool_search");
     expect(loadout?.tools).toContain("mcp__code__echo");
     expect(loadout?.tools).toContain("mcp__search__echo");

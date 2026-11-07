@@ -15,11 +15,11 @@ test("desktop runtime starts its worker and discovers computer tools", async () 
   if (!release.workBuild) throw new Error("Work build context required");
   const work = join(runtime, release.workBuild.context);
   const workBrowser = join(work, "packages/agent/src/harness");
-  const { browserObserve, browserRunSteps } = await import(
+  const { browserObserve, browserNativeTools } = await import(
     pathToFileURL(join(workBrowser, "browser-tools.mjs")).href
   );
   expect(browserObserve.name).toBe("agent_browser_observe");
-  expect(browserRunSteps.name).toBe("agent_browser_run_steps");
+  expect(browserNativeTools.has("agent_browser_batch")).toBe(true);
   for (const name of ["browser-command.mjs"])
     expect(await readFile(join(workBrowser, name), "utf8")).not.toBe("");
   const directory = await mkdtemp(join(tmpdir(), "domos-runtime-"));
@@ -46,7 +46,17 @@ test("desktop runtime starts its worker and discovers computer tools", async () 
       expect.arrayContaining([
         expect.objectContaining({ name: "agent_browser_screenshot" }),
         expect.objectContaining({ name: "agent_browser_observe" }),
-        expect.objectContaining({ name: "agent_browser_run_steps" }),
+        expect.objectContaining({ name: "agent_browser_batch" }),
+        expect.objectContaining({ name: "agent_browser_hover" }),
+        expect.objectContaining({ name: "agent_browser_drag" }),
+        expect.objectContaining({ name: "agent_browser_upload" }),
+        expect.objectContaining({ name: "agent_browser_frame_switch" }),
+        expect.objectContaining({ name: "agent_browser_wait_for_selector" }),
+      ]),
+    );
+    expect(browser).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "agent_browser_install" }),
       ]),
     );
     const desktop = await worker.computer({

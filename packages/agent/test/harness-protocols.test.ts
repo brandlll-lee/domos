@@ -2,6 +2,7 @@ import { expect, onTestFinished, test, vi } from "vitest";
 import { EngineRequestRejected, JsonLines } from "../src/harness/json-lines.ts";
 import { claudeProvider } from "../src/harness/providers/claude.ts";
 import { codexProvider } from "../src/harness/providers/codex.ts";
+import { openCodexClient } from "../src/harness/providers/codex-client.ts";
 import {
   customAcpProvider,
   opencodeProvider,
@@ -10,6 +11,24 @@ import { piProvider } from "../src/harness/providers/pi.ts";
 import type { EngineEvent, EngineSession } from "../src/harness/types.ts";
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
 import { featureProcess } from "./fixtures/feature-process.ts";
+
+test.each([
+  { tools: [] },
+  { tools: ["browser_agent_browser_click", "get_window_state"] },
+])("Codex uses the mounted Domos GUI surface: %j", async ({ tools }) => {
+  const process = new ProtocolProcess();
+  Object.defineProperty(process, "ready", {
+    value: Promise.resolve({ ...(await process.ready), tools }),
+  });
+  process.receive = (request) => process.response(request, {});
+  await openCodexClient(process, { provider: "codex", model: null });
+  expect(process.spec?.args?.includes("features.browser_use=false")).toBe(
+    tools.length > 0,
+  );
+  expect(process.spec?.args?.includes("features.computer_use=false")).toBe(
+    tools.length > 0,
+  );
+});
 
 test.each([null, "/native/session"])(
   "Pi selects its native session (%s)",

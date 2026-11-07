@@ -1,5 +1,3 @@
-import { z } from "zod";
-
 export const browserObservations = new Set([
   "agent_browser_observe",
   "agent_browser_snapshot",
@@ -7,43 +5,18 @@ export const browserObservations = new Set([
   "agent_browser_get_text",
   "agent_browser_get_url",
   "agent_browser_get_title",
+  "agent_browser_get_html",
+  "agent_browser_get_value",
+  "agent_browser_get_attr",
+  "agent_browser_get_count",
+  "agent_browser_get_box",
+  "agent_browser_get_styles",
+  "agent_browser_is_visible",
+  "agent_browser_is_enabled",
+  "agent_browser_is_checked",
+  "agent_browser_dialog_status",
   "agent_browser_tab_list",
 ]);
-
-export const browserSteps = z.strictObject({
-  steps: z
-    .array(
-      z.discriminatedUnion("action", [
-        z.strictObject({
-          action: z.literal("click"),
-          selector: z.string().min(1),
-        }),
-        z.strictObject({
-          action: z.literal("fill"),
-          selector: z.string().min(1),
-          text: z.string().max(10000),
-        }),
-        z.strictObject({
-          action: z.literal("type"),
-          selector: z.string().min(1),
-          text: z.string().max(10000),
-        }),
-        z.strictObject({
-          action: z.literal("press"),
-          key: z.string().min(1).max(64),
-        }),
-      ]),
-    )
-    .min(1)
-    .max(24),
-});
-
-export const browserRunSteps = {
-  name: "agent_browser_run_steps",
-  description:
-    "Run known clicks, fills, typing and keys in order, then observe once. Stop on an error. Use fresh refs. Split the batch when the next step depends on a page transition. Never replay completed or uncertain steps.",
-  inputSchema: z.toJSONSchema(browserSteps),
-};
 
 export const browserObserve = {
   name: "agent_browser_observe",
@@ -145,7 +118,9 @@ export const browserRestart = {
 export function browserTool(tool) {
   const properties = Object.fromEntries(
     Object.entries(tool.inputSchema.properties ?? {}).filter(
-      ([key]) => !runtimeArguments.has(key),
+      ([key]) =>
+        !runtimeArguments.has(key) ||
+        (key === "path" && tool.name === "agent_browser_download"),
     ),
   );
   const inputSchema = {
@@ -169,6 +144,100 @@ export function browserArguments(tool, args) {
   return args;
 }
 
+export function browserBatchArguments(args) {
+  const commands = new Set([
+    "open",
+    "read",
+    "snapshot",
+    "click",
+    "dblclick",
+    "fill",
+    "type",
+    "press",
+    "check",
+    "uncheck",
+    "select",
+    "scroll",
+    "hover",
+    "focus",
+    "drag",
+    "upload",
+    "download",
+    "wait",
+    "screenshot",
+    "eval",
+    "close",
+    "back",
+    "forward",
+    "reload",
+  ]);
+  const groups = {
+    get: new Set([
+      "text",
+      "html",
+      "value",
+      "attr",
+      "count",
+      "box",
+      "styles",
+      "url",
+      "title",
+    ]),
+    is: new Set(["visible", "enabled", "checked"]),
+    tab: new Set(["new", "list", "switch", "close"]),
+    frame: new Set(["main"]),
+    dialog: new Set(["status", "accept", "dismiss"]),
+  };
+  const flags = new Set([
+    ...[...runtimeArguments]
+      .filter((key) => key !== "path")
+      .map(
+        (key) =>
+          `--${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`,
+      ),
+    "--config",
+    "--profile",
+    "--download-path",
+    "--cdp",
+    "--auto-connect",
+    "--executable-path",
+    "--extension",
+    "--browser",
+    "--provider",
+    "--proxy",
+    "--proxy-bypass",
+    "--proxy-username",
+    "--proxy-password",
+    "--args",
+    "--allowed-domains",
+    "--action-policy",
+    "--confirm-actions",
+    "--init-script",
+    "--enable",
+    "--session-name",
+    "--user-agent",
+    "--ignore-https-errors",
+  ]);
+  for (const command of args.commands ?? []) {
+    if (
+      !Array.isArray(command) ||
+      !command.length ||
+      command.some((part) => typeof part !== "string") ||
+      !(
+        commands.has(command[0]) ||
+        groups[command[0]]?.has(command[1]) ||
+        (command[0] === "frame" && !command[1]?.startsWith("-"))
+      ) ||
+      command.some((part) => flags.has(part.split("=")[0]))
+    )
+      throw new Error(
+        "Batch command is outside this Bot's browser tool boundary. No action was sent.",
+      );
+  }
+  if (!args.commands?.length)
+    throw new Error("Batch commands are required. No action was sent.");
+}
+
 export function browserResult(result) {
   // Keep native structured output intact; bound only the text shown to the model.
   let remaining = 32000;
@@ -188,3 +257,59 @@ export function browserResult(result) {
     }),
   };
 }
+export const browserNativeTools = new Set(
+  [
+    "open",
+    "read",
+    "snapshot",
+    "click",
+    "dblclick",
+    "fill",
+    "type",
+    "press",
+    "check",
+    "uncheck",
+    "select",
+    "scroll",
+    "hover",
+    "focus",
+    "drag",
+    "upload",
+    "download",
+    "wait_ms",
+    "wait_for_selector",
+    "wait_for_text",
+    "wait_for_url",
+    "wait_for_load",
+    "wait_for_function",
+    "wait_for_download",
+    "screenshot",
+    "get_text",
+    "get_html",
+    "get_value",
+    "get_attr",
+    "get_count",
+    "get_box",
+    "get_styles",
+    "get_url",
+    "get_title",
+    "is_visible",
+    "is_enabled",
+    "is_checked",
+    "eval",
+    "close",
+    "back",
+    "forward",
+    "reload",
+    "tab_new",
+    "tab_list",
+    "tab_switch",
+    "tab_close",
+    "frame_switch",
+    "frame_main",
+    "dialog_status",
+    "dialog_accept",
+    "dialog_dismiss",
+    "batch",
+  ].map((name) => `agent_browser_${name}`),
+);
