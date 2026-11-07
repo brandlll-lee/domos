@@ -4,6 +4,42 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 import { MessageContent } from "../src/features/chat/message-content.tsx";
 
+test("user links preserve literal text, line breaks and URL punctuation", () => {
+  const text =
+    "**原文**\n  查看 https://example.com/page?q=1&x=2, 或 www.example.org。\n<script>原文</script>";
+  const html = renderToStaticMarkup(
+    createElement(MessageContent, {
+      content: [{ type: "text", key: "a", text }],
+      user: true,
+    }),
+  );
+  expect(html).toContain('href="https://example.com/page?q=1&amp;x=2"');
+  expect(html).toContain('class="message-link"');
+  expect(html).toContain('src="https://example.com/favicon.ico"');
+  expect(html).toContain("**原文**\n  查看 ");
+  expect(html).toContain("&lt;script&gt;原文&lt;/script&gt;");
+  expect(html).not.toContain("<strong>");
+});
+
+test("assistant links share website icons and keep unsafe URLs inert", () => {
+  const html = renderToStaticMarkup(
+    createElement(MessageContent, {
+      content: [
+        {
+          type: "text",
+          key: "a",
+          text: "[来源](https://example.com/article) [危险](javascript:alert%281%29) [地址](https://)",
+        },
+      ],
+    }),
+  );
+  expect(html).toContain('class="message-link"');
+  expect(html).toContain('src="https://example.com/favicon.ico"');
+  expect(html).toContain('target="_blank"');
+  expect(html).toContain('rel="noopener noreferrer"');
+  expect(html).not.toContain('href="javascript:');
+});
+
 test("images precede captions while each group retains its order", () => {
   const content: ChatMessage["content"] = [
     { type: "text", key: "a", text: "First caption" },

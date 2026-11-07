@@ -1,5 +1,8 @@
 .chat-surface {
   container: chat / inline-size;
+  --color-message-link: oklch(
+    from var(--bot-color) var(--color-link-lightness) min(c, 0.12) h
+  );
   --color-user: oklch(
     from var(--bot-color) var(--color-user-lightness)
       min(c, var(--color-user-chroma)) h
@@ -244,9 +247,47 @@ button.file-caption {
 .markdown li > p {
   margin-block: 0.2em;
 }
-.markdown a {
-  color: var(--color-link);
+.message-link {
+  color: var(--color-message-link, var(--color-link));
+  font-weight: var(--weight-medium);
+  text-decoration-line: underline;
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 0.08em;
   text-underline-offset: 0.2em;
+  overflow-wrap: anywhere;
+  border-radius: var(--space-1);
+}
+.message-link:is(:hover, :focus-visible) {
+  background: color-mix(in oklab, currentColor 12%, transparent);
+}
+.message-link:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+.message-bubble[data-side="outgoing"] .message-link {
+  color: var(--color-message-text);
+  text-decoration-color: color-mix(
+    in oklab,
+    var(--bot-color),
+    currentColor 65%
+  );
+}
+.message-link-icon {
+  display: inline-grid;
+  width: 1em;
+  height: 1em;
+  margin-inline-end: var(--space-1);
+  vertical-align: -0.12em;
+  text-indent: 0;
+}
+.message-link-icon > * {
+  grid-area: 1 / 1;
+}
+.message-link-icon > span::before {
+  content: "↗";
+}
+.message-link-icon:has(img:not([hidden])) > span {
+  visibility: hidden;
 }
 .markdown code {
   background: var(--color-hover);
@@ -293,6 +334,13 @@ button.file-caption {
   max-width: 100%;
   height: auto;
   border-radius: var(--radius-control);
+}
+.message-link .message-link-icon img {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border-radius: 0;
+  object-fit: contain;
 }
 .markdown hr {
   border: 0;

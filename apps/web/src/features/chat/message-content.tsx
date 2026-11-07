@@ -1,5 +1,5 @@
 import type { ChatMessage } from "@domos/agent/messages";
-import { MessageMarkdown } from "@domos/ui/markdown";
+import { MessageMarkdown, MessageText } from "@domos/ui/markdown";
 import { chatCopy } from "./copy.ts";
 
 export function MessageContent({
@@ -16,7 +16,7 @@ export function MessageContent({
         case "text":
           return user ? (
             <div className="user-text" key={part.key}>
-              {part.text}
+              <MessageText>{part.text}</MessageText>
             </div>
           ) : (
             <MessageMarkdown key={part.key}>{part.text}</MessageMarkdown>
