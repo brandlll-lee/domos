@@ -21,11 +21,11 @@ import {
   transitionRun,
 } from "../work/routine-state.ts";
 import {
-  handoffBudget,
+  conversationHandoff,
   handoffInstructions,
   requestInstructions,
-} from "./budget.ts";
-import { conversationHandoff, summaryInstructions } from "./handoff.ts";
+  summaryInstructions,
+} from "./handoff.ts";
 import { conversationHistory } from "./history.ts";
 import { EngineInputs } from "./inputs.ts";
 import { EngineRequestRejected } from "./json-lines.ts";
@@ -914,13 +914,12 @@ export class EngineExecution {
         doc,
         await runtime.snapshot(EngineDoc, runtime.conversationId, context),
       );
-      const budget = handoffBudget(doc, instructions, text, tools, images);
       const handoff = await conversationHandoff(
         runtime,
         doc.activeTurn,
         context,
         resumed ? (doc.sessions?.[key]?.through ?? null) : null,
-        budget,
+        engineLimits.historyCharacters,
         doc.summary,
         provider.capabilities.summary && !resumed
           ? (text) =>

@@ -23,12 +23,14 @@ import {
 import { createApp } from "../src/app.ts";
 import type { AppRouter } from "../src/router.ts";
 
-async function fixture() {
+async function fixture(provider: "pi" | "claude" = "pi") {
   const directory = await mkdtemp(join(tmpdir(), "domos-context-"));
   const state = {
     computerId: "local",
     directory: null as string | null,
     tokens: 240 as number | null,
+    window: 32000,
+    postTokens: 2543 as number | undefined,
     compacted: false,
     hold: false,
     reject: false,
@@ -57,6 +59,47 @@ async function fixture() {
           : [];
 
       process.receive = async (request) => {
+        if (provider === "claude") {
+          if (request.type === "control_request") {
+            process.frame({
+              type: "control_response",
+              response: {
+                request_id: (request as unknown as { request_id: string })
+                  .request_id,
+                subtype: "success",
+                response: {},
+              },
+            });
+          } else if (request.type === "user") {
+            if (request.message?.content === "/compact") {
+              process.frame({ type: "system", status: "compacting" });
+              process.frame({
+                type: "system",
+                subtype: "compact_boundary",
+                compact_metadata: {
+                  trigger: "manual",
+                  pre_tokens: 95893,
+                  post_tokens: state.postTokens,
+                },
+              });
+            } else {
+              process.frame({
+                type: "assistant",
+                message: {
+                  id: crypto.randomUUID(),
+                  content: [{ type: "text", text: "Done" }],
+                  usage: { input_tokens: 95893 },
+                },
+              });
+            }
+            process.frame({
+              type: "result",
+              is_error: false,
+              modelUsage: { sonnet: { contextWindow: 200000 } },
+            });
+          }
+          return;
+        }
         if (request.type === "get_available_models" && state.catalogGate) {
           state.catalogRead.resolve();
           await state.catalogGate;
@@ -95,7 +138,7 @@ async function fixture() {
                   ? {
                       contextUsage: {
                         tokens: state.tokens,
-                        contextWindow: 32000,
+                        contextWindow: state.window,
                       },
                     }
                   : request.type === "get_available_models"
@@ -553,6 +596,74 @@ test("context snapshots retain their source, survive reopening and invalidate on
   ).toBeUndefined();
 });
 
+test.each([
+  { tokens: 32000, window: 32000 },
+  { tokens: null, window: 2000 },
+])(
+  "native continuation owns context admission: %j",
+  async ({ tokens, window }) => {
+    const f = await fixture();
+    f.state.tokens = tokens;
+    f.state.window = window;
+    expect(await f.send()).toMatchObject({ status: "done" });
+    expect(await f.send()).toMatchObject({ status: "done" });
+    expect(
+      f.state.workers
+        .flatMap((worker) => worker.requests)
+        .filter((request) => request.type === "prompt"),
+    ).toHaveLength(2);
+  },
+);
+
+test.each([2543, 0, undefined])(
+  "Claude retains native post-compaction tokens: %s",
+  async (tokens) => {
+    const f = await fixture("claude");
+    const botId = f.runtime.conversation.id;
+    f.state.postTokens = tokens;
+    await f.runtime.client.engines.configure({
+      botId,
+      config: { provider: "claude", model: null },
+      revision: 0,
+      requestId: crypto.randomUUID(),
+    });
+    expect(await f.send()).toMatchObject({ status: "done" });
+    const compact = await f.runtime.client.engines.compact({
+      botId,
+      requestId: crypto.randomUUID(),
+    });
+    expect(await f.wait(compact.id)).toMatchObject({ status: "done" });
+    expect(
+      (await f.runtime.client.engines.get({ botId })).runtime,
+    ).toMatchObject({
+      contextTokens: tokens ?? null,
+      context: {
+        source: "claude.compact_metadata",
+        basis: "window",
+        estimated: false,
+      },
+      compactionDetails: { beforeTokens: 95893, afterTokens: tokens ?? null },
+    });
+    const entries = await f.runtime.conversation.entries(
+      { order: "descending" },
+      100,
+      undefined,
+      context,
+    );
+    expect(
+      entries.items.find((entry) => entry.kind === "domos.engine-compaction")
+        ?.data,
+    ).toMatchObject({ beforeTokens: 95893, afterTokens: tokens ?? null });
+    expect(await f.send()).toMatchObject({ status: "done" });
+    expect(
+      (await f.runtime.client.engines.get({ botId })).runtime,
+    ).toMatchObject({
+      contextTokens: 95893,
+      context: { source: "claude.assistant.usage", basis: "last-input" },
+    });
+  },
+);
+
 test("manual compaction deduplicates while busy and keeps the reading unknown until the next response", async () => {
   const f = await fixture();
   const botId = f.runtime.conversation.id;
@@ -742,7 +853,7 @@ test("native automatic compactions retain distinct operation records", async () 
       expect.objectContaining({
         trigger: "auto",
         status: "completed",
-        beforeTokens: 40,
+        beforeTokens: 240,
       }),
       expect.objectContaining({
         trigger: "auto",

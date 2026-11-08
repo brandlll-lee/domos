@@ -36,7 +36,11 @@ type ClaudeFrame = {
   mcp_servers?: { name: string; status: string }[];
   skills?: string[];
   compact_result?: string;
-  compact_metadata?: { trigger?: string; pre_tokens?: number };
+  compact_metadata?: {
+    trigger?: string;
+    pre_tokens?: number;
+    post_tokens?: number;
+  };
   parent_tool_use_id?: string | null;
   tool_use_id?: string;
   tool_name?: string;
@@ -200,13 +204,15 @@ export const claudeProvider: EngineProvider = {
     let compacting = false;
     let contextTokens: number | null = null;
     let contextWindow: number | null = null;
+    let contextSource = "claude.assistant.usage";
     const readContext = () =>
       emit({
         type: "context",
         tokens: contextTokens,
         window: contextWindow,
-        source: "claude.assistant.usage",
-        basis: "last-input",
+        source: contextSource,
+        basis:
+          contextSource === "claude.compact_metadata" ? "window" : "last-input",
         estimated: false,
         model: nativeModel,
       });
@@ -340,7 +346,8 @@ export const claudeProvider: EngineProvider = {
             await emit({ type: "compaction", status: "running" });
           if (frame.type === "system" && frame.subtype === "compact_boundary") {
             compactBoundary = true;
-            contextTokens = null;
+            contextTokens = frame.compact_metadata?.post_tokens ?? null;
+            contextSource = "claude.compact_metadata";
             await emit({
               type: "compaction",
               status: "completed",
@@ -350,6 +357,7 @@ export const claudeProvider: EngineProvider = {
                 ? { trigger: frame.compact_metadata.trigger }
                 : {}),
               beforeTokens: frame.compact_metadata?.pre_tokens,
+              afterTokens: frame.compact_metadata?.post_tokens,
             });
             await readContext();
           }
@@ -379,6 +387,7 @@ export const claudeProvider: EngineProvider = {
               contextWindow = null;
             }
             if (message.usage?.input_tokens !== undefined) {
+              contextSource = "claude.assistant.usage";
               contextTokens =
                 message.usage.input_tokens +
                 (message.usage.cache_read_input_tokens ?? 0) +

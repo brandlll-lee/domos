@@ -185,6 +185,7 @@ export type EngineEvent = {
       status: NonNullable<EngineRuntimeState["compaction"]>;
       trigger?: EngineCompaction["trigger"];
       beforeTokens?: number;
+      afterTokens?: number;
       error?: string;
       nativeId?: string;
       summary?: NativeSummary;

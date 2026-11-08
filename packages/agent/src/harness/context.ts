@@ -116,6 +116,8 @@ export async function projectContext(
       if (event.trigger) state.compactionDetails.trigger = event.trigger;
       if (event.beforeTokens !== undefined)
         state.compactionDetails.beforeTokens = event.beforeTokens;
+      if (event.afterTokens !== undefined)
+        state.compactionDetails.afterTokens = event.afterTokens;
       if (event.status !== "running")
         state.compactionDetails.endedAt = Date.now();
       state.compactionDetails.error = event.error ?? null;
