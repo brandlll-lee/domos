@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { releaseSchema } from "@domos/hosting/install";
 import { expect, test } from "@playwright/test";
+import { JsonLines } from "../../../packages/agent/src/harness/json-lines.ts";
 import { WorkProcess } from "../../../packages/agent/src/harness/process.ts";
 
 test("desktop runtime starts its worker and discovers computer tools", async () => {
@@ -68,6 +69,29 @@ test("desktop runtime starts its worker and discovers computer tools", async () 
         expect.objectContaining({ name: "get_desktop_state" }),
       ]),
     );
+    const cli = fileURLToPath(
+      new URL(
+        "../../../packages/agent/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js",
+        import.meta.url,
+      ),
+    );
+    const rpc = new JsonLines(worker, true);
+    await worker.launch({
+      command: process.execPath,
+      args: [
+        cli,
+        "--mode",
+        "rpc",
+        "--session-dir",
+        join(directory, "sessions"),
+      ],
+      env: {
+        PI_CODING_AGENT_DIR: join(directory, "pi"),
+        DOMOS_PI_MCP_URL: ready.url,
+      },
+    });
+    expect(await rpc.request("get_state")).toHaveProperty("sessionFile");
+    await worker.toolsReady();
   } finally {
     await worker.close();
     await rm(directory, { recursive: true, force: true, maxRetries: 10 });

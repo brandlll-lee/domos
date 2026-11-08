@@ -1,8 +1,9 @@
 import { once } from "node:events";
-import { mkdir, realpath, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { findPackageJSON } from "node:module";
+import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { McpError } from "@modelcontextprotocol/sdk/types.js";
 import spawn from "cross-spawn";
 import {
@@ -240,6 +241,15 @@ async function launch(frame) {
     );
   }
   if (env.DOMOS_PI_MCP_URL) {
+    const entry = frame.args[0]?.endsWith(".js")
+      ? await realpath(frame.args.shift())
+      : await realpath(frame.command);
+    const manifest = findPackageJSON(
+      "@earendil-works/pi-coding-agent",
+      pathToFileURL(entry),
+    );
+    const metadata = JSON.parse(await readFile(manifest, "utf8"));
+    env.DOMOS_PI_SDK = join(dirname(manifest), metadata.main);
     const path = join(process.cwd(), ".domos-tools.json");
     await writeFile(
       path,
@@ -254,13 +264,17 @@ async function launch(frame) {
     );
     env.DOMOS_PI_TOOLS = path;
     frame.args.push(
-      "--no-extensions",
       "--extension",
       "builtin:tool-search",
       "--extension",
       fileURLToPath(new URL("./pi-tools.mjs", import.meta.url)),
       "--extension",
       "builtin:mcp",
+    );
+    frame.command = process.execPath;
+    env.ELECTRON_RUN_AS_NODE = "1";
+    frame.args.unshift(
+      fileURLToPath(new URL("./pi-runtime.mjs", import.meta.url)),
     );
   }
   if (env.DOMOS_PI_LOGIN === "1")

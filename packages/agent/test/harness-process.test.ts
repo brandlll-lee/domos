@@ -552,6 +552,26 @@ test("Pi discovers product and configured MCP tools through native search", asyn
   const ready = await process.ready;
   const account = join(directory, "pi");
   await mkdir(account);
+  const settings = '{"quietStartup":true}';
+  await writeFile(join(account, "settings.json"), settings);
+  await mkdir(join(account, "extensions"));
+  await writeFile(
+    join(account, "extensions", "ordinary.js"),
+    `export default pi => pi.registerCommand("ordinary", { handler: (_args, ctx) => ctx.ui.notify("ordinary-ready", "info") });`,
+  );
+  await writeFile(
+    join(account, "extensions", "mcp-owner.js"),
+    `export default pi => { pi.registerCommand("mcp", { handler: async () => {} }); pi.on("session_start", (_event, ctx) => ctx.ui.notify("replacement-started", "info")); };`,
+  );
+  await writeFile(
+    join(account, "extensions", "servers.js"),
+    `export default pi => pi.registerMcpServer("addon", { url: ${JSON.stringify(ready.url)}, exposure: "deferred" });`,
+  );
+  await mkdir(join(directory, "bot", ".pi", "extensions"), { recursive: true });
+  await writeFile(
+    join(directory, "bot", ".pi", "extensions", "project.js"),
+    `export default pi => pi.on("session_start", (_event, ctx) => ctx.ui.notify("project-started", "info"));`,
+  );
   await writeFile(
     join(account, "mcp.json"),
     JSON.stringify({
@@ -596,6 +616,9 @@ test("Pi discovers product and configured MCP tools through native search", asyn
   });
   const state = await rpc.request<{ sessionFile: string }>("get_state");
   expect(state.sessionFile).toBeTruthy();
+  await rpc.request("prompt", { message: "/ordinary" });
+  expect(warnings).toContain("ordinary-ready");
+  expect(warnings).not.toContain("replacement-started");
   await process.toolsReady();
   await vi.waitFor(async () => {
     await rpc.request("prompt", { message: "/loadout" });
@@ -604,8 +627,46 @@ test("Pi discovers product and configured MCP tools through native search", asyn
     expect(loadout?.active).toContain("tool_search");
     expect(loadout?.tools).toContain("mcp__code__echo");
     expect(loadout?.tools).toContain("mcp__search__echo");
+    expect(loadout?.tools).toContain("mcp__addon__echo");
   });
-  expect(loadout?.tools).not.toContain("codemode");
+  expect(loadout?.tools).toContain("codemode");
+  const switched = await rpc.request<{ cancelled?: boolean }>(
+    "switch_session",
+    {
+      sessionPath: state.sessionFile,
+    },
+  );
+  expect(switched.cancelled).not.toBe(true);
+  await rpc.request("prompt", { message: "/ordinary" });
+  expect(
+    warnings.filter((message) => message === "ordinary-ready"),
+  ).toHaveLength(2);
+  expect(warnings).not.toContain("replacement-started");
+  expect(warnings).not.toContain("project-started");
+  await process.toolsReady();
+  expect(await readFile(join(account, "settings.json"), "utf8")).toBe(settings);
+  const original = await worker();
+  const nativeRpc = new JsonLines(original.process, true);
+  const nativeNotices: string[] = [];
+  nativeRpc.on("frame", (frame) => {
+    if (frame.type === "extension_ui_request" && frame.method === "notify")
+      nativeNotices.push(frame.message);
+  });
+  await original.process.launch({
+    command: globalThis.process.execPath,
+    args: [
+      piCli,
+      "--mode",
+      "rpc",
+      "--session-dir",
+      join(original.directory, "sessions"),
+    ],
+    env: { PI_CODING_AGENT_DIR: account },
+  });
+  await nativeRpc.request("get_state");
+  await vi.waitFor(() =>
+    expect(nativeNotices).toContain("replacement-started"),
+  );
   expect(
     warnings.filter((message) => message.includes("neither is active")),
   ).toEqual([]);

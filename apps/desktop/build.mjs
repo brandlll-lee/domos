@@ -115,6 +115,7 @@ for (const name of [
   "account-environment.mjs",
   "pi-auth.mjs",
   "pi-tools.mjs",
+  "pi-runtime.mjs",
   "http-service.mjs",
   "native-history.mjs",
   "native-mcp.mjs",
