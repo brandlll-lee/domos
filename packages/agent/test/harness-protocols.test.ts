@@ -105,60 +105,6 @@ function protocol() {
   };
 }
 
-test.each([piProvider, claudeProvider])(
-  "$id handoff summaries use a separate text-only native session",
-  async (provider) => {
-    const process =
-      provider.id === "pi" ? featureProcess() : protocol().process;
-    onTestFinished(() => process.close());
-    await provider.open({
-      purpose: "summary",
-      process,
-      config: { provider: provider.id, model: null, approvalMode: "full" },
-      sessionId: null,
-      instructions: "Summarize quoted history.",
-      emit: async () => {},
-      mcp: {
-        servers: [{ name: "saved-tools", url: "http://localhost:1" }],
-        inheritNative: false,
-      },
-    });
-    expect(process.spec?.instructions).toBeUndefined();
-    expect(process.spec?.mcp).toBeUndefined();
-    expect(process.spec?.args).toEqual(
-      expect.arrayContaining(["--system-prompt", "Summarize quoted history."]),
-    );
-    if (provider.id === "pi") {
-      expect(process.spec?.args).toEqual(
-        expect.arrayContaining([
-          "--no-tools",
-          "--no-extensions",
-          "--no-skills",
-          "--no-prompt-templates",
-        ]),
-      );
-      expect(process.spec?.env?.DOMOS_PI_MCP_URL).toBe("");
-      expect(
-        process.requests.some((request) => request.type === "switch_session"),
-      ).toBe(false);
-    } else {
-      expect(process.spec?.args).toEqual(
-        expect.arrayContaining([
-          "--tools",
-          "",
-          "--strict-mcp-config",
-          "--settings",
-          '{"disableAllHooks":true}',
-          "--permission-mode",
-          "default",
-        ]),
-      );
-      expect(process.spec?.args).not.toContain("--resume");
-      expect(process.spec?.args).not.toContain("--permission-prompt-tool");
-    }
-  },
-);
-
 test("Pi exports compaction text with retained chat and the native boundary", async () => {
   const { process, events, emit } = protocol();
   process.receive = (request) => {

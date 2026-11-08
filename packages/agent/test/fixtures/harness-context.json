@@ -3,12 +3,14 @@
   "longMessage": { "prefixBytes": 4500, "tail": "TAIL_FACT" },
   "referenceFact": "The selected source requires metric units.",
   "handoff": {
+    "startupHistoryEntries": 75,
     "constraint": "Do not install dependencies. The evidence is report.csv.",
     "correction": "Cancel deployment. Review only.",
     "unknown": "Upload outcome is unknown. Verify before retrying.",
     "baseline": "A Harness change omitted the early constraint when more than 64 records existed."
   },
   "baseline": {
+    "blockedStartup": "Pi and Claude each sent an extra model request to summarize history before the current user task.",
     "rejectedFirstHandoff": "The next prompt omitted the prior fact.",
     "longMessage": "The history tool could not return text after byte 4000.",
     "selectedMaterial": "History projection omitted the selected source.",

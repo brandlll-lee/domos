@@ -24,7 +24,6 @@ import {
   conversationHandoff,
   handoffInstructions,
   requestInstructions,
-  summaryInstructions,
 } from "./handoff.ts";
 import { conversationHistory } from "./history.ts";
 import { EngineInputs } from "./inputs.ts";
@@ -47,7 +46,6 @@ import { type EngineRuntime, stored } from "./task-types.ts";
 import {
   type EngineAnswer,
   type EngineApproval,
-  type EngineConfig,
   type EngineEvent,
   type EngineProcess,
   type EngineSession,
@@ -61,7 +59,6 @@ type Active = {
   stopping?: Promise<void>;
   inputs?: EngineInputs;
   memoryReview: boolean;
-  summaryProcess?: EngineProcess;
   managed?: Map<
     string,
     {
@@ -100,84 +97,6 @@ export class EngineExecution {
     this.computers = computers;
     this.files = files;
     computers.onIdle = (botId) => this.closeIdle(botId);
-  }
-
-  private async summarize(
-    active: Active,
-    runtime: EngineRuntime,
-    config: EngineConfig,
-    text: string,
-    context: Context,
-    emit: (event: EngineEvent) => Promise<void>,
-  ) {
-    const provider = engineProvider(config.provider);
-    const process = await this.computers.process(
-      runtime.conversationId,
-      [],
-      async () => {
-        throw new Error("交接摘要不能调用工具。");
-      },
-      context,
-    );
-    active.summaryProcess = process;
-    const cancelled = Promise.withResolvers<never>();
-    const abort = () => {
-      cancelled.reject(
-        active.controller.signal.reason ?? new Error("工作已停止。"),
-      );
-      void (process.terminate?.() ?? process.close()).catch(() => {});
-    };
-    const timer = setTimeout(() => {
-      cancelled.reject(new Error("交接摘要生成超时。"));
-      void (process.terminate?.() ?? process.close()).catch(() => {});
-    }, engineLimits.compactionMs);
-    const messages = new Map<string, string>();
-    active.controller.signal.addEventListener("abort", abort, { once: true });
-    const generate = async () => {
-      active.controller.signal.throwIfAborted();
-      const session = await provider.open({
-        purpose: "summary",
-        process,
-        config,
-        sessionId: null,
-        instructions: summaryInstructions,
-        mcp: { servers: [], inheritNative: false },
-        approve: async () => ({ allow: false }),
-        emit: async (event) => {
-          if (active.controller.signal.aborted) return;
-          if (event.type === "text")
-            messages.set(
-              event.id,
-              `${event.replace ? "" : (messages.get(event.id) ?? "")}${event.text}`,
-            );
-          if (event.type === "message") messages.set(event.id, event.text);
-          if (event.type === "usage")
-            await emit({
-              ...event,
-              usage: {
-                ...event.usage,
-                id: `summary:${event.usage.id}`,
-                source: `${event.usage.source}.handoff`,
-              },
-            });
-          if (event.type === "tool")
-            throw new Error("原生摘要会话未关闭工具。");
-        },
-      });
-      await session.prompt(text);
-      active.controller.signal.throwIfAborted();
-      return [...messages.values()].join("\n\n");
-    };
-    try {
-      return await Promise.race([generate(), cancelled.promise]);
-    } finally {
-      clearTimeout(timer);
-      active.controller.signal.removeEventListener("abort", abort);
-      if (active.controller.signal.aborted)
-        void process.close().catch(() => {});
-      else await process.close();
-      if (active.summaryProcess === process) delete active.summaryProcess;
-    }
   }
 
   mcpExtension() {
@@ -957,10 +876,6 @@ export class EngineExecution {
         resumed ? (doc.sessions?.[key]?.through ?? null) : null,
         engineLimits.historyCharacters,
         doc.summary,
-        provider.capabilities.summary && !resumed
-          ? (text) =>
-              this.summarize(active, runtime, doc.config, text, context, emit)
-          : undefined,
       );
       runtime.signal.throwIfAborted();
       active.controller.signal.throwIfAborted();
@@ -968,13 +883,6 @@ export class EngineExecution {
       await runtime.commit(async (tx) => {
         const saved = await tx.doc(EngineDoc, runtime.conversationId);
         if (saved.activeId !== runtime.taskId) throw new Error("工作已停止。");
-        if (handoff.summary)
-          saved.summary = {
-            ...handoff.summary,
-            harness: doc.config.provider,
-            model: doc.config.model,
-            computerId: doc.computerId,
-          };
         saved.dispatch = "sending";
       }, context);
       await emit({
@@ -1095,10 +1003,6 @@ export class EngineExecution {
     active.stopping ??= (
       active.process.terminate?.() ?? active.process.close()
     ).catch(() => {});
-    if (active.summaryProcess)
-      void (
-        active.summaryProcess.terminate?.() ?? active.summaryProcess.close()
-      ).catch(() => {});
     return Promise.resolve();
   }
 

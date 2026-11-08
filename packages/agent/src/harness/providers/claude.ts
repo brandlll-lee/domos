@@ -97,7 +97,6 @@ export const claudeProvider: EngineProvider = {
     approvals: true,
     models: true,
     recovery: true,
-    summary: true,
   },
   async open({
     process,
@@ -107,7 +106,6 @@ export const claudeProvider: EngineProvider = {
     emit,
     env,
     mcp,
-    purpose,
   }: EngineOpen) {
     const ready = await process.ready;
     const id = sessionId ?? randomUUID();
@@ -480,48 +478,29 @@ export const claudeProvider: EngineProvider = {
         "stream-json",
         sessionId ? "--resume" : "--session-id",
         id,
-        ...(purpose === "summary"
-          ? [
-              "--system-prompt",
-              instructions,
-              "--tools",
-              "",
-              "--mcp-config",
-              '{"mcpServers":{}}',
-              "--strict-mcp-config",
-              "--settings",
-              '{"disableAllHooks":true}',
-            ]
-          : [
-              "--append-system-prompt-file",
-              "__DOMOS_PROMPT__",
-              "--append-subagent-system-prompt-file",
-              "__DOMOS_PROMPT__",
-              "--mcp-config",
-              "__DOMOS_MCP__",
-              ...(mcp?.inheritNative !== true ? ["--strict-mcp-config"] : []),
-              "--permission-prompt-tool",
-              "mcp__domos__approve",
-            ]),
+        "--append-system-prompt-file",
+        "__DOMOS_PROMPT__",
+        "--append-subagent-system-prompt-file",
+        "__DOMOS_PROMPT__",
+        "--mcp-config",
+        "__DOMOS_MCP__",
+        ...(mcp?.inheritNative !== true ? ["--strict-mcp-config"] : []),
+        "--permission-prompt-tool",
+        "mcp__domos__approve",
         ...(config.model ? ["--model", config.model] : []),
         ...(config.options?.effort ? ["--effort", config.options.effort] : []),
         "--permission-mode",
-        purpose === "summary"
-          ? "default"
-          : config.approvalMode
-            ? {
-                ask: "default",
-                edits: "acceptEdits",
-                auto: "auto",
-                full: "bypassPermissions",
-              }[config.approvalMode]
-            : (config.options?.permissionMode ?? "default"),
+        config.approvalMode
+          ? {
+              ask: "default",
+              edits: "acceptEdits",
+              auto: "auto",
+              full: "bypassPermissions",
+            }[config.approvalMode]
+          : (config.options?.permissionMode ?? "default"),
       ],
-      instructions: purpose === "summary" ? undefined : instructions,
-      mcp:
-        purpose === "summary"
-          ? undefined
-          : { url: ready.url, servers: mcp?.servers },
+      instructions,
+      mcp: { url: ready.url, servers: mcp?.servers },
       env,
     });
     await emit({ type: "session", id });

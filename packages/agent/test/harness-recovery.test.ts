@@ -35,6 +35,7 @@ import {
 import { migrateRuntime } from "../src/runtime/migrate.ts";
 import { MemoryDoc } from "../src/work/memory.ts";
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
+import scenario from "./fixtures/harness-context.json" with { type: "json" };
 import { codexWork } from "./fixtures/native-work.ts";
 import { runtimeFixture } from "./fixtures/runtime.ts";
 
@@ -318,11 +319,11 @@ test.each(["completed", "running", "sending"] as const)(
   },
 );
 
-test.each(["stop", "failure"])(
-  "handoff summary %s preserves the task boundary",
-  async (mode) => {
+test.each(["pi", "claude"] as const)(
+  "%s dispatches a long history with one native model request",
+  async (provider) => {
     const workers: ProtocolProcess[] = [];
-    const started = Promise.withResolvers<void>();
+    const prompts: string[] = [];
     const runtime = await runtimeFixture({
       initialize: async () => {},
       preflight: async () => {},
@@ -332,18 +333,28 @@ test.each(["stop", "failure"])(
         const worker = new ProtocolProcess();
         workers.push(worker);
         worker.receive = (request) => {
-          if (
-            request.type === "prompt" &&
-            worker.spec?.args.includes("--no-tools")
-          ) {
-            started.resolve();
-            if (mode === "failure")
+          if (provider === "claude") {
+            if (request.type === "control_request")
               worker.frame({
-                type: "response",
-                id: request.id,
-                success: false,
-                error: "quota exhausted",
+                type: "control_response",
+                response: {
+                  request_id: (request as unknown as { request_id: string })
+                    .request_id,
+                  subtype: "success",
+                  response: { models: [] },
+                },
               });
+            else if (request.type === "user") {
+              prompts.push(JSON.stringify(request.message));
+              worker.frame({
+                type: "assistant",
+                message: {
+                  id: crypto.randomUUID(),
+                  content: [{ type: "text", text: "Review completed." }],
+                },
+              });
+              worker.frame({ type: "result", is_error: false });
+            }
             return;
           }
           worker.frame({
@@ -356,17 +367,13 @@ test.each(["stop", "failure"])(
                 : {},
           });
           if (request.type === "prompt") {
+            prompts.push(String(request.message));
             worker.frame({
               type: "message_end",
               message: {
                 role: "assistant",
                 stopReason: "stop",
-                content: [
-                  {
-                    type: "text",
-                    text: "Review only. Check original records.",
-                  },
-                ],
+                content: [{ type: "text", text: "Review completed." }],
               },
             });
             worker.frame({ type: "agent_settled" });
@@ -383,25 +390,24 @@ test.each(["stop", "failure"])(
     if (!engines) throw new Error("Native engines required");
     const botId = runtime.conversation.id;
     await runtime.harness.commit(async (tx) => {
-      for (let index = 0; index < 70; index++)
+      for (
+        let index = 0;
+        index < scenario.handoff.startupHistoryEntries;
+        index++
+      )
         await tx.appendEntry(botId, {
           kind: EngineMessage,
           data: {
             id: `entry-${index}`,
             role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Verify an unknown result before retrying.",
-              },
-            ],
+            content: [{ type: "text", text: `Checked report ${index}.` }],
           },
         });
     }, context);
     await engines.configure(
       botId,
       {
-        config: { provider: "pi", model: null },
+        config: { provider, model: null },
         revision: 0,
         requestId: crypto.randomUUID(),
       },
@@ -409,42 +415,20 @@ test.each(["stop", "failure"])(
     );
     const task = await engines.submit(
       botId,
-      { text: "Review only", requestId: crypto.randomUUID() },
+      {
+        text: "Review the current report",
+        requestId: crypto.randomUUID(),
+      },
       context,
     );
-    await started.promise;
-    if (mode === "stop") {
-      await engines.stop(botId, context);
-      expect(await task.wait(context)).toMatchObject({
-        status: "unanswered",
-        reason: "aborted",
-      });
-      expect(
-        workers
-          .filter((worker) => !worker.spec?.args.includes("--no-tools"))
-          .some((worker) =>
-            worker.requests.some((request) => request.type === "prompt"),
-          ),
-      ).toBe(false);
-      await workers.find((worker) => worker.spec?.args.includes("--no-tools"))
-        ?.closed;
-    } else {
-      await task.wait(context);
-      expect(
-        (await engines.profile(botId, context)).runtime?.notices?.handoff,
-      ).toContain("失败");
-      expect(
-        workers
-          .filter((worker) => !worker.spec?.args.includes("--no-tools"))
-          .some((worker) =>
-            worker.requests.some((request) => request.type === "prompt"),
-          ),
-      ).toBe(true);
-    }
+    expect(await task.wait(context)).toMatchObject({ status: "done" });
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("Review the current report");
+    expect(prompts[0]).toContain("Checked report 74.");
+    expect(workers).toHaveLength(1);
     expect(
-      (await runtime.harness.snapshot(EngineDoc, botId, context))?.summary,
-    ).toBeUndefined();
-    expect((await engines.profile(botId, context)).busy).toBe(false);
+      (await engines.profile(botId, context)).runtime?.notices?.handoff,
+    ).toContain("已交接近期原文");
   },
 );
 
@@ -458,7 +442,6 @@ test("switching from embedded Pi imports recent conversation into the first nati
   let prompt = "";
   let computerId = "shared";
   let project: string | null = null;
-  const summaries: string[] = [];
   const nativeSummary =
     "Goal: use the blue folder. Constraint: do not install dependencies. Evidence: report.csv. Next: review only.";
   const execution = new EngineExecution({
@@ -490,20 +473,15 @@ test("switching from embedded Pi imports recent conversation into the first nati
                   : {},
           });
           if (request.type === "prompt") {
-            const source = (request as unknown as { message: string }).message;
-            const summarizing = worker.spec?.args.includes("--no-tools");
-            if (summarizing) summaries.push(source);
-            else {
-              worker.frame({ type: "compaction_start", reason: "threshold" });
-              worker.frame({
-                type: "compaction_end",
-                result: {
-                  summary: nativeSummary,
-                  firstKeptEntryId: "pi-native-kept",
-                  tokensBefore: 12000,
-                },
-              });
-            }
+            worker.frame({ type: "compaction_start", reason: "threshold" });
+            worker.frame({
+              type: "compaction_end",
+              result: {
+                summary: nativeSummary,
+                firstKeptEntryId: "pi-native-kept",
+                tokensBefore: 12000,
+              },
+            });
             worker.frame({
               type: "message_end",
               message: {
@@ -512,9 +490,7 @@ test("switching from embedded Pi imports recent conversation into the first nati
                 content: [
                   {
                     type: "text",
-                    text: summarizing
-                      ? "Goal: use the blue folder. Constraint: do not install dependencies. Evidence: report.csv. Next: review only."
-                      : "Pi completed the blue folder task",
+                    text: "Pi completed the blue folder task",
                   },
                 ],
               },
@@ -618,7 +594,6 @@ test("switching from embedded Pi imports recent conversation into the first nati
       .at(-1)
       ?.requests.find((request) => request.method === "thread/resume")?.params,
   ).toMatchObject({ threadId: "native", excludeTurns: true });
-  expect(summaries).toHaveLength(0);
   await runtime.harness.commit(async (tx) => {
     await tx.appendEntry(runtime.conversation.id, {
       kind: EngineMessage,
@@ -652,20 +627,9 @@ test("switching from embedded Pi imports recent conversation into the first nati
     });
   }, context);
   const piTurn = await change("pi");
-  expect(summaries.join("\n")).toContain("Do not install dependencies.");
-  const summaryWorker = workers.find((worker) =>
-    worker.spec?.args.includes("--no-tools"),
-  );
-  expect(summaryWorker?.spec?.env?.DOMOS_PI_MCP_URL).toBe("");
-  expect(summaryWorker?.spec?.mcp).toBeUndefined();
   const piPrompt = workers
-    .findLast(
-      (worker) =>
-        worker.spec?.command === "pi" &&
-        !worker.spec.args.includes("--no-tools"),
-    )
+    .findLast((worker) => worker.spec?.command === "pi")
     ?.requests.find((request) => request.type === "prompt");
-  expect(JSON.stringify(piPrompt)).toContain("do not install dependencies");
   expect(JSON.stringify(piPrompt)).toContain("Cancel deployment. Review only.");
   const compacted = (
     await runtime.harness.snapshot(EngineDoc, runtime.conversation.id, context)

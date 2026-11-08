@@ -25,7 +25,6 @@ export const piProvider: EngineProvider = {
     approvals: true,
     models: true,
     recovery: true,
-    summary: true,
   },
   async open({
     process,
@@ -36,7 +35,6 @@ export const piProvider: EngineProvider = {
     approve,
     env,
     mcp,
-    purpose,
   }: EngineOpen) {
     const ready = await process.ready;
     const rpc = new JsonLines(process, true);
@@ -272,26 +270,12 @@ export const piProvider: EngineProvider = {
         "rpc",
         "--session-dir",
         `${ready.home}/pi/sessions`,
-        ...(purpose === "summary"
-          ? [
-              "--no-tools",
-              "--no-extensions",
-              "--no-skills",
-              "--no-prompt-templates",
-              "--system-prompt",
-              instructions,
-            ]
-          : ["--append-system-prompt", "__DOMOS_PROMPT__"]),
+        "--append-system-prompt",
+        "__DOMOS_PROMPT__",
       ],
-      instructions: purpose === "summary" ? undefined : instructions,
-      mcp:
-        purpose === "summary"
-          ? undefined
-          : { url: ready.url, servers: mcp?.servers },
-      env: {
-        ...env,
-        DOMOS_PI_MCP_URL: purpose === "summary" ? "" : ready.url,
-      },
+      instructions,
+      mcp: { url: ready.url, servers: mcp?.servers },
+      env: { ...env, DOMOS_PI_MCP_URL: ready.url },
     });
     if (sessionId) {
       rpc.phase = "恢复会话";

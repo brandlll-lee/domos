@@ -75,7 +75,7 @@ test("conversation_read recovers persisted tool text after reopen within its Bot
   ).rejects.toThrow("不存在");
 });
 
-test("long handoffs retain early constraints and later corrections without changing source history", async () => {
+test("long handoffs deliver recent original messages and retain source history", async () => {
   const runtime = await runtimeFixture();
   const reader = {
     conversationId: runtime.conversation.id,
@@ -105,31 +105,17 @@ test("long handoffs retain early constraints and later corrections without chang
       if (index === 0) first = entry.id;
     }
   }, context);
-  const calls: string[] = [];
-  const result = await conversationHandoff(
-    reader,
-    null,
-    context,
-    null,
-    3000,
-    undefined,
-    async (text) => {
-      calls.push(text);
-      return "Goal: review report.csv. Constraint: do not install dependencies. Deployment was cancelled. Next: review only.";
-    },
-  );
-  expect(calls.join("\n")).toContain("Do not install dependencies.");
-  expect(calls.join("\n")).toContain(scenario.longMessage.tail);
-  expect(result.history).toContain("do not install dependencies");
-  expect(result.history).toContain("Cancel deployment. Review only.");
-  expect(result.summary?.through).toBeGreaterThan(first);
+  const result = await conversationHandoff(reader, null, context, null, 3000);
+  expect(JSON.parse(result.history).excerpt).toBe(true);
+  expect(result.history).toContain(scenario.handoff.correction);
+  expect(result.notice).toContain("已交接近期原文");
   expect(Buffer.byteLength(result.history)).toBeLessThanOrEqual(3000);
   expect(await conversationEntry(reader, first, 0, context)).toContain(
     "Do not install dependencies.",
   );
 });
 
-test("short history and confirmed native receipts do not request summaries", async () => {
+test("short history and confirmed native receipts preserve incremental chat", async () => {
   const runtime = await runtimeFixture();
   const reader = {
     conversationId: runtime.conversation.id,
@@ -156,33 +142,11 @@ test("short history and confirmed native receipts do not request summaries", asy
       },
     });
   }, context);
-  let calls = 0;
-  const summarize = async () => {
-    calls++;
-    return "summary";
-  };
-  const fresh = await conversationHandoff(
-    reader,
-    null,
-    context,
-    null,
-    3000,
-    undefined,
-    summarize,
-  );
+  const fresh = await conversationHandoff(reader, null, context, null, 3000);
   expect(fresh.history).toContain(scenario.handoff.constraint);
-  const resumed = await conversationHandoff(
-    reader,
-    null,
-    context,
-    first,
-    3000,
-    undefined,
-    summarize,
-  );
+  const resumed = await conversationHandoff(reader, null, context, first, 3000);
   expect(resumed.history).not.toContain(scenario.handoff.constraint);
   expect(resumed.history).toContain(scenario.handoff.correction);
-  expect(calls).toBe(0);
 });
 
 test.each([true, false])(
@@ -231,9 +195,6 @@ test.each([true, false])(
       null,
       3000,
       saved,
-      async () => {
-        throw new Error("Summary must be reused");
-      },
     );
     expect(result.notice).not.toContain("失败");
     expect(JSON.parse(result.history)).toMatchObject({
@@ -242,73 +203,56 @@ test.each([true, false])(
     });
     if (newer) expect(result.history).toContain(scenario.handoff.correction);
     expect(result.history).toContain(scenario.handoff.unknown);
-    expect(result.summary).toBeUndefined();
   },
 );
 
-test.each(["unavailable", "oversized"])(
-  "failed summary (%s) preserves original history and quoted file references",
-  async (failure) => {
-    const runtime = await runtimeFixture();
-    const reader = {
-      conversationId: runtime.conversation.id,
-      commit: runtime.harness.commit.bind(runtime.harness),
-    };
-    let first!: EntryId;
-    await reader.commit(async (tx) => {
-      for (let index = 0; index < 70; index++) {
-        const entry = await tx.appendEntry(reader.conversationId, {
-          kind: EngineMessage,
-          data: {
-            id: `old-${index}`,
-            role: "user",
-            content: [{ type: "text", text: scenario.handoff.unknown }],
-            attachments: [
-              {
-                id: "evidence",
-                name: "report.csv",
-                path: "/reports/report.csv",
-                computerId: "source-computer",
-              },
-            ],
-          },
-        });
-        if (index === 0) first = entry.id;
-      }
-    }, context);
-    const original = await conversationHistory(
-      reader,
-      null,
-      context,
-      null,
-      undefined,
-      3000,
-      "omit",
-    );
-    const calls: string[] = [];
-    const result = await conversationHandoff(
-      reader,
-      null,
-      context,
-      null,
-      3000,
-      undefined,
-      async (text) => {
-        calls.push(text);
-        if (failure === "unavailable") throw new Error("quota exhausted");
-        return "x".repeat(3000);
-      },
-    );
-    expect(calls[0]).toContain("source-computer");
-    expect(calls[0]).toContain(scenario.handoff.unknown);
-    expect(result.history).toBe(original);
-    expect(result.summary).toBeUndefined();
-    expect(result.notice).toContain("失败");
-    expect(await conversationEntry(reader, first, 0, context)).toContain(
-      "report.csv",
-    );
-  },
-);
+test("an oversized saved summary preserves recent original history and file references", async () => {
+  const runtime = await runtimeFixture();
+  const reader = {
+    conversationId: runtime.conversation.id,
+    commit: runtime.harness.commit.bind(runtime.harness),
+  };
+  let first!: EntryId;
+  await reader.commit(async (tx) => {
+    for (let index = 0; index < 70; index++) {
+      const entry = await tx.appendEntry(reader.conversationId, {
+        kind: EngineMessage,
+        data: {
+          id: `old-${index}`,
+          role: "user",
+          content: [{ type: "text", text: scenario.handoff.unknown }],
+          attachments: [
+            {
+              id: "evidence",
+              name: "report.csv",
+              path: "/reports/report.csv",
+              computerId: "source-computer",
+            },
+          ],
+        },
+      });
+      if (index === 0) first = entry.id;
+    }
+  }, context);
+  const original = await conversationHistory(
+    reader,
+    null,
+    context,
+    null,
+    undefined,
+    3000,
+    "omit",
+  );
+  const result = await conversationHandoff(reader, null, context, null, 3000, {
+    text: "x".repeat(3000),
+    through: first,
+  });
+  expect(result.history).toBe(original);
+  expect(result.notice).toContain("已交接近期原文");
+  expect(await conversationEntry(reader, first, 0, context)).toContain(
+    "report.csv",
+  );
+});
 
 test("history packets preserve quoted material and UTF-8 pagination within byte limits", async () => {
   const runtime = await runtimeFixture();

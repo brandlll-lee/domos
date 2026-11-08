@@ -241,39 +241,6 @@ export async function conversationHistory(
   return result;
 }
 
-export async function* conversationText(
-  runtime: HistoryReader,
-  context: Context,
-  after: EntryId | null,
-  through: EntryId,
-) {
-  let cursor = after;
-  for (;;) {
-    let entries: readonly EntryRecord[] = [];
-    await runtime.commit(async (tx) => {
-      entries = (
-        await tx.scanEntries(
-          {
-            conversationId: runtime.conversationId,
-            order: "ascending",
-            ...(cursor ? { minEntryId: (cursor + 1) as EntryId } : {}),
-            maxEntryId: through,
-          },
-          engineLimits.historyEntries,
-        )
-      ).items;
-    }, context);
-    for (const entry of entries) {
-      const messages = historyMessages(entry, "omit").filter((message) =>
-        message.text.trim(),
-      );
-      if (messages.length) yield { entryId: entry.id, messages };
-    }
-    if (entries.length < engineLimits.historyEntries) return;
-    cursor = entries.at(-1)?.id ?? null;
-  }
-}
-
 export const history = defineExtension({
   name: "domos-history",
   tools: [

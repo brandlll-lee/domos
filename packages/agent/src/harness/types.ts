@@ -293,7 +293,6 @@ export interface EngineSession {
 }
 
 export type EngineOpen = {
-  purpose?: "summary";
   process: EngineProcess;
   config: EngineConfig;
   sessionId: string | null;
@@ -313,7 +312,6 @@ export interface EngineProvider {
     approvals: boolean;
     models: boolean;
     recovery: boolean;
-    summary?: boolean;
   };
   open(input: EngineOpen): Promise<EngineSession>;
   inspect?(input: Pick<EngineOpen, "process" | "config" | "env">): Promise<{
