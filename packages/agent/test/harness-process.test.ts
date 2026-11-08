@@ -27,7 +27,10 @@ import {
   callProductTool,
   recordToolResult,
 } from "../src/harness/product-tools.ts";
-import { opencodeProvider } from "../src/harness/providers/opencode.ts";
+import {
+  customAcpProvider,
+  opencodeProvider,
+} from "../src/harness/providers/opencode.ts";
 import type { EngineRuntime } from "../src/harness/task-types.ts";
 import type { ProductResult } from "../src/harness/types.ts";
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
@@ -507,6 +510,30 @@ test("workspace MCP routes tools through the authenticated process channel", asy
   } finally {
     await client.close();
   }
+});
+
+test("an ACP stdio agent discovers and calls the work computer's MCP", async () => {
+  const { process, calls } = await worker();
+  const events: string[] = [];
+  const session = await customAcpProvider.open({
+    process,
+    config: {
+      provider: "acp",
+      model: null,
+      command: globalThis.process.execPath,
+      args: [
+        fileURLToPath(new URL("./fixtures/acp-stdio.mjs", import.meta.url)),
+      ],
+    },
+    sessionId: null,
+    instructions: "Role",
+    emit: async (event) => {
+      if (event.type === "text") events.push(event.text);
+    },
+  });
+  await session.prompt("Use the available tool");
+  expect(calls).toEqual(["stdio"]);
+  expect(events.join("")).toContain("stdio");
 });
 
 test("a missing work computer command reports a missing program", async () => {

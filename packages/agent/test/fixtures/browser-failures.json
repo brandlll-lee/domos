@@ -1,4 +1,21 @@
 {
+  "nativeOperations": {
+    "date": "2026-11-09",
+    "browserVersion": "0.41.2",
+    "baselineError": "Batch command is outside this Bot's browser tool boundary. No action was sent.",
+    "tools": [
+      "agent_browser_find",
+      "agent_browser_scroll_into_view",
+      "agent_browser_keyboard_insert_text"
+    ],
+    "commands": [
+      ["find", "role", "button", "click", "--name", "Save"],
+      ["scrollintoview", "#save"],
+      ["keydown", "Shift"],
+      ["keyboard", "inserttext", "Hello"],
+      ["keyup", "Shift"]
+    ]
+  },
   "viewportPreparation": {
     "date": "2026-11-07",
     "browserVersion": "0.39.4",

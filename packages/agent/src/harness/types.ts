@@ -235,6 +235,11 @@ export type ProcessReady = {
   cwd: string;
   home: string;
   tools?: string[];
+  mcpStdio?: {
+    command: string;
+    args: string[];
+    env: { name: string; value: string }[];
+  };
 };
 export interface EngineProcess {
   mcpNotification?: (id: string, notification: Record<string, unknown>) => void;

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
 import { expect, onTestFinished, test } from "vitest";
@@ -60,6 +61,77 @@ test("SDK stdio uses the configured program and explicit environment", async () 
   expect(output.result).toMatchObject({
     content: [{ type: "text", text: "stdio verified" }],
   });
+});
+
+test("stdio forwarding retains MCP results, changes, cancellation and process cleanup", async () => {
+  const upstream = await mcpFixture();
+  const client = new Client({ name: "stdio-agent", version: "1" });
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [
+      fileURLToPath(new URL("../src/harness/mcp-stdio.mjs", import.meta.url)),
+      upstream.url,
+    ],
+    stderr: "pipe",
+  });
+  onTestFinished(async () => {
+    await client.close();
+    await upstream.close();
+  });
+  await client.connect(transport);
+  const pid = transport.pid;
+  if (!pid) throw new Error("Adapter process required");
+  const page = await client.listTools();
+  expect(page.tools.map((tool) => tool.name)).toEqual(["read", "write"]);
+  expect(
+    (await client.listTools({ cursor: page.nextCursor })).tools[0]?.name,
+  ).toBe("query_result");
+  let progress: unknown;
+  expect(
+    await client.callTool({ name: "query_result" }, undefined, {
+      onprogress: (value) => {
+        progress = value;
+      },
+    }),
+  ).toEqual(upstream.result);
+  await expect.poll(() => progress).toMatchObject({ progress: 1, total: 2 });
+  expect((await client.listResources()).resources[0]?.uri).toBe(
+    "fixture://note",
+  );
+  expect(
+    (await client.readResource({ uri: "fixture://note" })).contents[0],
+  ).toMatchObject({ text: "saved note" });
+  expect((await client.listPrompts()).prompts[0]?.name).toBe("summarize");
+  const changed = Promise.withResolvers<void>();
+  client.setNotificationHandler(ToolListChangedNotificationSchema, () =>
+    changed.resolve(),
+  );
+  await upstream.changeTools(["read"]);
+  await changed.promise;
+  expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual([
+    "read",
+  ]);
+  const controller = new AbortController();
+  const waiting = expect(
+    client.callTool({ name: "read", arguments: { wait: true } }, undefined, {
+      signal: controller.signal,
+    }),
+  ).rejects.toThrow();
+  await upstream.started;
+  controller.abort();
+  await waiting;
+  await upstream.cancelled;
+  await client.close();
+  await expect
+    .poll(() => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    })
+    .toBe(false);
 });
 
 test("SDK falls back to an HTTP SSE server and retains tool results", async () => {

@@ -273,32 +273,47 @@ export class McpConnections {
       await this.store(item, { ...secret, oauth: result.oauth });
     } catch (error) {
       signal?.throwIfAborted();
-      const authorization = (error as { code?: string }).code === "MCP_AUTH";
-      await this.harness.commit(async (tx) => {
-        const live = (await tx.doc(McpConnectionsDoc)).items.find(
-          (entry) => entry.id === id,
-        );
-        if (live?.revision !== item.revision) return;
-        live.status = authorization ? "authorization_required" : "failed";
-        live.checkedAt = Date.now();
-        live.error = authorization
-          ? "请登录 MCP 服务。"
-          : "连接失败。请检查程序、地址、网络和授权。";
-      }, context);
+      await this.report(id, item.revision, { error }, context);
       return visible((await this.secret(id, context)).item);
     }
+    if (result?.tools && result.capabilities)
+      await this.report(
+        id,
+        item.revision,
+        { tools: result.tools, capabilities: result.capabilities },
+        context,
+      );
+    return visible((await this.secret(id, context)).item);
+  }
+
+  async report(
+    id: string,
+    revision: number,
+    result:
+      | { tools: ProductTool[]; capabilities: Record<string, unknown> }
+      | { error: unknown },
+    context: Context,
+  ) {
     await this.harness.commit(async (tx) => {
       const live = (await tx.doc(McpConnectionsDoc)).items.find(
         (entry) => entry.id === id,
       );
-      if (live?.revision !== item.revision || !result) return;
-      live.status = "ready";
+      if (live?.revision !== revision) return;
       live.checkedAt = Date.now();
-      delete live.error;
-      live.tools = stored(result.tools);
-      live.capabilities = stored(result.capabilities);
+      if ("error" in result) {
+        const authorization =
+          (result.error as { code?: string })?.code === "MCP_AUTH";
+        live.status = authorization ? "authorization_required" : "failed";
+        live.error = authorization
+          ? "请登录 MCP 服务。"
+          : "连接失败。请检查程序、地址、网络和授权。";
+      } else {
+        live.status = "ready";
+        delete live.error;
+        live.tools = stored(result.tools);
+        live.capabilities = stored(result.capabilities);
+      }
     }, context);
-    return visible((await this.secret(id, context)).item);
   }
 
   async login(

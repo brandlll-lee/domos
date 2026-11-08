@@ -43,6 +43,22 @@ test("cold browser commands and native batches preserve real page results", asyn
   await call("agent_browser_open", {
     url: "data:text/html,<title>Actions</title><input id='draft'><button id='confirm' onclick='this.textContent=document.querySelector(\"input\").value'>Confirm</button>",
   });
+  await call("agent_browser_find", {
+    locator: "role",
+    value: "textbox",
+    action: "fill",
+    text: "Native",
+  });
+  await call("agent_browser_keyboard_insert_text", { text: " input" });
+  await call("agent_browser_scroll_into_view", { selector: "#confirm" });
+  const located = await call("agent_browser_batch", {
+    commands: [
+      ["find", "role", "button", "click", "--name", "Confirm"],
+      ["get", "value", "#draft"],
+    ],
+    bail: true,
+  });
+  expect(JSON.stringify(located.content)).toContain("Native input");
   const batch = await call("agent_browser_batch", {
     commands: [
       ["fill", "#draft", "Confirmed"],

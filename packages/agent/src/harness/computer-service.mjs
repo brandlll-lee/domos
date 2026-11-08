@@ -71,25 +71,8 @@ export function openComputerService(directory, home) {
         return {};
       }
       if (input.operation === "catalog") return desktopTools;
-      if (input.operation === "prepare") {
-        try {
-          const result = await instance.callTool(
-            "get_desktop_state",
-            JSON.stringify({ max_image_dimension: 320 }),
-            { signal },
-          );
-          return {
-            available: !result.isError && result.images.length > 0,
-            error:
-              result.isError || !result.images.length
-                ? result.text ||
-                  "当前图形会话无法提供画面。请登录工作电脑并检查屏幕权限。"
-                : null,
-          };
-        } catch (error) {
-          return { available: false, error: error.message };
-        }
-      }
+      if (input.operation === "prepare")
+        return { available: true, error: null };
       const args = input.arguments ?? {};
       const session = args.session ?? "";
       if (

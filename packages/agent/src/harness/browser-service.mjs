@@ -22,7 +22,6 @@ import {
   browserAccess,
   browserArguments,
   browserBatchArguments,
-  browserNativeTools,
   browserObservations,
   browserObserve,
   browserPageScript,
@@ -30,6 +29,7 @@ import {
   browserRestart,
   browserResult,
   browserTool,
+  browserToolListed,
 } from "./browser-tools.mjs";
 import { openBrowserView } from "./browser-view.mjs";
 
@@ -299,7 +299,7 @@ export async function openBrowserService(directory, home) {
           const page = await client.listTools(cursor ? { cursor } : undefined);
           items.push(
             ...page.tools
-              .filter((tool) => browserNativeTools.has(tool.name))
+              .filter((tool) => browserToolListed(tool.name))
               .map(browserTool),
           );
           cursor = page.nextCursor;

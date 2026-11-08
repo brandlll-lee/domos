@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { releaseSchema } from "@domos/hosting/install";
 import { expect, test } from "@playwright/test";
+import { Client } from "../../../packages/agent/node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js";
+import { StdioClientTransport } from "../../../packages/agent/node_modules/@modelcontextprotocol/sdk/dist/esm/client/stdio.js";
 import { JsonLines } from "../../../packages/agent/src/harness/json-lines.ts";
 import { WorkProcess } from "../../../packages/agent/src/harness/process.ts";
 
@@ -16,11 +18,11 @@ test("desktop runtime starts its worker and discovers computer tools", async () 
   if (!release.workBuild) throw new Error("Work build context required");
   const work = join(runtime, release.workBuild.context);
   const workBrowser = join(work, "packages/agent/src/harness");
-  const { browserObserve, browserNativeTools } = await import(
+  const { browserObserve, browserToolListed } = await import(
     pathToFileURL(join(workBrowser, "browser-tools.mjs")).href
   );
   expect(browserObserve.name).toBe("agent_browser_observe");
-  expect(browserNativeTools.has("agent_browser_batch")).toBe(true);
+  expect(browserToolListed("agent_browser_batch")).toBe(true);
   for (const name of ["browser-command.mjs"])
     expect(await readFile(join(workBrowser, name), "utf8")).not.toBe("");
   const directory = await mkdtemp(join(tmpdir(), "domos-runtime-"));
@@ -39,6 +41,27 @@ test("desktop runtime starts its worker and discovers computer tools", async () 
       cwd: await realpath(join(directory, "workspace")),
       home: await realpath(join(directory, "home")),
     });
+    if (!ready.mcpStdio) throw new Error("MCP stdio entry required");
+    const client = new Client({ name: "desktop-runtime", version: "1.0.0" });
+    try {
+      await client.connect(
+        new StdioClientTransport({
+          command: ready.mcpStdio.command,
+          args: [...ready.mcpStdio.args, ready.url],
+          env: Object.fromEntries(
+            ready.mcpStdio.env.map(({ name, value }) => [name, value]),
+          ),
+          stderr: "pipe",
+        }),
+      );
+      expect((await client.listTools()).tools).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: "query_result" }),
+        ]),
+      );
+    } finally {
+      await client.close();
+    }
     const browser = await worker.computer({
       operation: "catalog",
       service: "browser",

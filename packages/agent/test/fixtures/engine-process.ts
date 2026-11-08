@@ -24,6 +24,7 @@ export class ProtocolProcess implements EngineProcess {
   readonly closed = this.ended.promise;
   readonly requests: Request[] = [];
   spec?: ProcessSpec;
+  mcp?: EngineProcess["mcp"];
   nativeSkills: {
     name: string;
     description?: string;

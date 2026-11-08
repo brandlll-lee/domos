@@ -104,7 +104,6 @@ const runtimeArguments = new Set([
   "webgpu",
   "webmcp",
   "all",
-  "path",
   "screenshotDir",
 ]);
 
@@ -119,8 +118,8 @@ export function browserTool(tool) {
   const properties = Object.fromEntries(
     Object.entries(tool.inputSchema.properties ?? {}).filter(
       ([key]) =>
-        !runtimeArguments.has(key) ||
-        (key === "path" && tool.name === "agent_browser_download"),
+        !runtimeArguments.has(key) &&
+        !(key === "path" && tool.name === "agent_browser_screenshot"),
     ),
   );
   const inputSchema = {
@@ -144,57 +143,45 @@ export function browserArguments(tool, args) {
   return args;
 }
 
+const managedCommands = new Set([
+  "auth",
+  "session",
+  "state",
+  "profiles",
+  "tools",
+  "skills",
+  "plugin",
+  "doctor",
+  "dashboard",
+  "install",
+  "upgrade",
+  "chat",
+  "connect",
+  "stream",
+]);
+
+function managedCommand(command) {
+  return (
+    managedCommands.has(command[0]) ||
+    (command[0] === "get" &&
+      command.slice(1).join("_").replaceAll("-", "_") === "cdp_url") ||
+    (command[0] === "set" && command[1] === "credentials")
+  );
+}
+
+export function browserToolListed(name) {
+  return (
+    name.startsWith("agent_browser_") &&
+    !managedCommand(name.slice("agent_browser_".length).split("_"))
+  );
+}
+
 export function browserBatchArguments(args) {
-  const commands = new Set([
-    "open",
-    "read",
-    "snapshot",
-    "click",
-    "dblclick",
-    "fill",
-    "type",
-    "press",
-    "check",
-    "uncheck",
-    "select",
-    "scroll",
-    "hover",
-    "focus",
-    "drag",
-    "upload",
-    "download",
-    "wait",
-    "screenshot",
-    "eval",
-    "close",
-    "back",
-    "forward",
-    "reload",
-  ]);
-  const groups = {
-    get: new Set([
-      "text",
-      "html",
-      "value",
-      "attr",
-      "count",
-      "box",
-      "styles",
-      "url",
-      "title",
-    ]),
-    is: new Set(["visible", "enabled", "checked"]),
-    tab: new Set(["new", "list", "switch", "close"]),
-    frame: new Set(["main"]),
-    dialog: new Set(["status", "accept", "dismiss"]),
-  };
   const flags = new Set([
-    ...[...runtimeArguments]
-      .filter((key) => key !== "path")
-      .map(
-        (key) =>
-          `--${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`,
-      ),
+    ...[...runtimeArguments].map(
+      (key) =>
+        `--${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`,
+    ),
     "--config",
     "--profile",
     "--download-path",
@@ -223,11 +210,9 @@ export function browserBatchArguments(args) {
       !Array.isArray(command) ||
       !command.length ||
       command.some((part) => typeof part !== "string") ||
-      !(
-        commands.has(command[0]) ||
-        groups[command[0]]?.has(command[1]) ||
-        (command[0] === "frame" && !command[1]?.startsWith("-"))
-      ) ||
+      command[0].startsWith("-") ||
+      command[0] === "batch" ||
+      managedCommand(command) ||
       command.some((part) => flags.has(part.split("=")[0]))
     )
       throw new Error(
@@ -257,59 +242,3 @@ export function browserResult(result) {
     }),
   };
 }
-export const browserNativeTools = new Set(
-  [
-    "open",
-    "read",
-    "snapshot",
-    "click",
-    "dblclick",
-    "fill",
-    "type",
-    "press",
-    "check",
-    "uncheck",
-    "select",
-    "scroll",
-    "hover",
-    "focus",
-    "drag",
-    "upload",
-    "download",
-    "wait_ms",
-    "wait_for_selector",
-    "wait_for_text",
-    "wait_for_url",
-    "wait_for_load",
-    "wait_for_function",
-    "wait_for_download",
-    "screenshot",
-    "get_text",
-    "get_html",
-    "get_value",
-    "get_attr",
-    "get_count",
-    "get_box",
-    "get_styles",
-    "get_url",
-    "get_title",
-    "is_visible",
-    "is_enabled",
-    "is_checked",
-    "eval",
-    "close",
-    "back",
-    "forward",
-    "reload",
-    "tab_new",
-    "tab_list",
-    "tab_switch",
-    "tab_close",
-    "frame_switch",
-    "frame_main",
-    "dialog_status",
-    "dialog_accept",
-    "dialog_dismiss",
-    "batch",
-  ].map((name) => `agent_browser_${name}`),
-);

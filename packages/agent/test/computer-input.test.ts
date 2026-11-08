@@ -5,12 +5,13 @@ import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import { openGateway } from "../src/harness/gateway.mjs";
 import { productCatalog } from "../src/harness/product-tools.ts";
 import type { EngineRuntime } from "../src/harness/task-types.ts";
+import type { ProductTool } from "../src/harness/types.ts";
 
 const { driver, theme } = vi.hoisted(() => ({
   theme: vi.fn(async () => {}),
   driver: {
     callTool: vi.fn(),
-    listTools: vi.fn(async () => ({ tools: [] })),
+    listTools: vi.fn(async () => ({ tools: [] as ProductTool[] })),
   },
 }));
 vi.mock("../src/harness/desktop-driver.mjs", () => ({
@@ -42,6 +43,43 @@ function callDesktop(
 
 afterEach(() => {
   vi.clearAllMocks();
+});
+
+test("desktop discovery does not require a screenshot", async () => {
+  const tools = [
+    {
+      name: "list_windows",
+      description: "List windows",
+      inputSchema: { type: "object" },
+    },
+  ];
+  driver.listTools.mockResolvedValueOnce({ tools });
+  driver.callTool.mockRejectedValueOnce(new Error("Screen permission denied"));
+  const service = openComputerService(".", ".");
+  try {
+    expect(
+      await service.request(
+        { operation: "prepare", service: "desktop" },
+        new AbortController().signal,
+      ),
+    ).toEqual({ available: true, error: null });
+    expect(
+      await service.request(
+        { operation: "catalog", service: "desktop" },
+        new AbortController().signal,
+      ),
+    ).toEqual(tools);
+    expect(driver.callTool).not.toHaveBeenCalled();
+    await expect(callDesktop(service, "get_desktop_state", {})).rejects.toThrow(
+      "Screen permission denied",
+    );
+    driver.callTool.mockResolvedValueOnce({ content: [], isError: false });
+    expect((await callDesktop(service, "list_windows", {})).isError).toBe(
+      false,
+    );
+  } finally {
+    await service.close();
+  }
 });
 
 test("MCP validates native action output and preserves content", async () => {

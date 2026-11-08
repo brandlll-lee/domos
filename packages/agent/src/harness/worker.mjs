@@ -107,6 +107,11 @@ async function configure(frame) {
     cwd: process.cwd(),
     home,
     tools: tools.map((tool) => tool.name),
+    mcpStdio: {
+      command: process.execPath,
+      args: [fileURLToPath(new URL("./mcp-stdio.mjs", import.meta.url))],
+      env: [{ name: "ELECTRON_RUN_AS_NODE", value: "1" }],
+    },
   });
 }
 

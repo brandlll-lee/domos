@@ -301,22 +301,50 @@ test.each([
   );
 });
 
-test("ACP rejects an agent that cannot connect Domos HTTP tools", async () => {
+test("ACP uses stdio when HTTP MCP is unavailable", async () => {
   const { process, emit } = protocol();
-  process.receive = (request) =>
-    process.response(request, { protocolVersion: 1 });
-  await expect(
-    customAcpProvider.open({
-      process,
-      config: { provider: "acp", model: null, command: "agent" },
-      sessionId: null,
-      instructions: "Role",
-      emit,
+  Object.defineProperty(process, "ready", {
+    value: Promise.resolve({
+      ...(await process.ready),
+      mcpStdio: {
+        command: "/work/node",
+        args: ["/work/mcp-stdio.mjs"],
+        env: [],
+      },
     }),
-  ).rejects.toThrow("HTTP MCP");
+  });
+  process.receive = (request) =>
+    process.response(
+      request,
+      request.method === "initialize"
+        ? { protocolVersion: 1 }
+        : { sessionId: "session" },
+    );
+  await customAcpProvider.open({
+    process,
+    config: { provider: "acp", model: null, command: "agent" },
+    sessionId: null,
+    instructions: "Role",
+    mcp: { servers: [{ name: "docs", url: "http://127.0.0.1/docs" }] },
+    emit,
+  });
   expect(
-    process.requests.some((request) => request.method === "session/new"),
-  ).toBe(false);
+    process.requests.find((request) => request.method === "session/new")?.params
+      ?.mcpServers,
+  ).toEqual([
+    {
+      name: "domos",
+      command: "/work/node",
+      args: ["/work/mcp-stdio.mjs", (await process.ready).url],
+      env: [],
+    },
+    {
+      name: "docs",
+      command: "/work/node",
+      args: ["/work/mcp-stdio.mjs", "http://127.0.0.1/docs"],
+      env: [],
+    },
+  ]);
 });
 
 test.each(["ask", "full"] as const)(

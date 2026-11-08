@@ -550,6 +550,7 @@ export class EngineExecution {
       controller: new AbortController(),
     };
     const servers = retained?.live === connection ? retained.servers : [];
+    const mcpNotices: Record<string, string> = {};
     try {
       runtime.signal.throwIfAborted();
       const current = await runtime.snapshot(
@@ -607,43 +608,65 @@ export class EngineExecution {
             item.computerId !== doc.computerId
           )
             throw new Error(`MCP ${item.name} 只能在绑定的工作电脑使用。`);
-          const worker =
-            item.computerId === doc.computerId
-              ? active.process
-              : await this.computers.mcpProcess(
-                  item.computerId,
-                  context,
-                  runtime.conversationId,
-                );
-          if (!worker.mcp) throw new Error("工作电脑需要更新 MCP 支持。");
-          const connection = {
-            generation: item.generation,
-            computerId: item.computerId,
-            worker,
-            tools: [] as import("./types.ts").ProductTool[],
-          };
-          active.managed.set(item.id, connection);
-          if (worker !== active.process)
-            worker.mcpNotification = (id, notification) => {
-              void active.process
-                .mcp?.(
-                  { action: "notify", id, notification },
-                  active.controller.signal,
-                )
-                .catch(() => {});
-            };
-          const connected = await worker.mcp<{
+          let worker: EngineProcess | undefined;
+          let connected: {
             tools: import("./types.ts").ProductTool[];
             capabilities: Record<string, unknown>;
             oauth: Record<string, unknown>;
-          }>(
-            { action: "connect", id: item.id, ...resolved },
-            active.controller.signal,
-          );
+          };
+          try {
+            worker =
+              item.computerId === doc.computerId
+                ? active.process
+                : await this.computers.mcpProcess(
+                    item.computerId,
+                    context,
+                    runtime.conversationId,
+                  );
+            if (!worker.mcp) throw new Error("工作电脑需要更新 MCP 支持。");
+            active.managed.set(item.id, {
+              generation: item.generation,
+              computerId: item.computerId,
+              worker,
+              tools: [],
+            });
+            if (worker !== active.process)
+              worker.mcpNotification = (id, notification) => {
+                void active.process
+                  .mcp?.(
+                    { action: "notify", id, notification },
+                    active.controller.signal,
+                  )
+                  .catch(() => {});
+              };
+            connected = await worker.mcp(
+              { action: "connect", id: item.id, ...resolved },
+              active.controller.signal,
+            );
+          } catch (error) {
+            active.controller.signal.throwIfAborted();
+            active.managed.delete(item.id);
+            if (worker && worker !== active.process) await worker.close();
+            await connections.report(
+              item.id,
+              item.revision,
+              { error },
+              context,
+            );
+            mcpNotices[`mcp:${item.id}`] =
+              `MCP ${item.name} 暂不可用。本轮将继续，无法使用该服务的工具。请检查连接或登录。`;
+            continue;
+          }
+          await connections.report(item.id, item.revision, connected, context);
           const tools = connected.tools.filter(
             (tool) => !resolved.tools || resolved.tools.includes(tool.name),
           );
-          connection.tools = tools;
+          active.managed.set(item.id, {
+            generation: item.generation,
+            computerId: item.computerId,
+            worker,
+            tools,
+          });
           await connections.saveOAuth(
             item.id,
             item.generation,
@@ -780,6 +803,8 @@ export class EngineExecution {
         sessionId: memoryReview ? (snapshot.sessionId ?? null) : doc.sessionId,
         instructions,
       });
+      if (Object.keys(mcpNotices).length)
+        await emit({ type: "runtime", state: { notices: mcpNotices } });
       initialized.resolve(active.session);
       await active.session.ready?.();
       await active.process.toolsReady?.();
@@ -997,6 +1022,7 @@ export class EngineExecution {
         if (
           completed &&
           !memoryReview &&
+          active.managed?.size === managed.length &&
           [...(active.managed?.values() ?? [])].every(
             (mounted) => mounted.worker === active.process,
           ) &&

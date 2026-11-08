@@ -525,19 +525,19 @@ export function acpProvider(
         },
         clientInfo: { name: "domos", version: "1.0.0" },
       });
-      if (!hello.agentCapabilities?.mcpCapabilities?.http)
-        throw new Error("此 Harness 不支持 Domos 所需的 HTTP MCP 工具连接。");
+      const mcpServers = [
+        { name: "domos", url: ready.url },
+        ...(mcp?.servers ?? []),
+      ].map(({ name, url }) => {
+        if (hello.agentCapabilities?.mcpCapabilities?.http)
+          return { type: "http" as const, name, url, headers: [] };
+        if (!ready.mcpStdio)
+          throw new Error("工作电脑需要更新 stdio MCP 支持。");
+        return { ...ready.mcpStdio, name, args: [...ready.mcpStdio.args, url] };
+      });
       const params = {
         cwd: ready.cwd,
-        mcpServers: [
-          { type: "http" as const, name: "domos", url: ready.url, headers: [] },
-          ...(mcp?.servers ?? []).map(({ name, url }) => ({
-            type: "http" as const,
-            name,
-            url,
-            headers: [],
-          })),
-        ],
+        mcpServers,
       };
       if (sessionId && !hello.agentCapabilities?.loadSession)
         throw new Error("OpenCode 当前版本无法恢复这个会话。请开始新会话。");

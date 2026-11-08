@@ -81,7 +81,16 @@ async function setup() {
       "upload",
       "download",
       "hover",
+      "find",
+      "scroll_into_view",
+      "keydown",
+      "keyup",
+      "keyboard_type",
+      "keyboard_insert_text",
       "install",
+      "session_list",
+      "connect",
+      "get_cdp_url",
     ].map((name) => ({
       name: `agent_browser_${name}`,
       description: name,
@@ -328,6 +337,31 @@ test("native batches preserve command order, options and partial results", async
   });
 });
 
+test("native locating, scrolling and keyboard tools share the batch boundary", async () => {
+  const service = await setup();
+  const names = (await service.catalog()).map(
+    (tool: { name: string }) => tool.name,
+  );
+  expect(names).toEqual(
+    expect.arrayContaining(baseline.nativeOperations.tools),
+  );
+  expect(names).not.toContain("agent_browser_install");
+  expect(names).not.toContain("agent_browser_session_list");
+  expect(names).not.toContain("agent_browser_connect");
+  expect(names).not.toContain("agent_browser_get_cdp_url");
+  const commands = baseline.nativeOperations.commands;
+  await service.call("agent_browser_find", {}, new AbortController().signal);
+  await service.call(
+    "agent_browser_batch",
+    { commands },
+    new AbortController().signal,
+  );
+  expect(mocks.call.mock.calls.at(-1)?.[0]).toMatchObject({
+    name: "agent_browser_batch",
+    arguments: { commands },
+  });
+});
+
 test.each([
   [["click", "#ok"], ["install"]],
   [
@@ -335,6 +369,8 @@ test.each([
     ["open", "https://example.com", "--session", "another-bot"],
   ],
   [["batch", "click #ok"]],
+  [["get", "cdp-url"]],
+  [["session", "list"]],
 ])(
   "batch validation rejects runtime and maintenance commands before dispatch: %j",
   async (...commands) => {
@@ -782,6 +818,23 @@ test("runtime parameters are hidden and rejected at execution", async () => {
     },
   });
   expect(tool.inputSchema.required).toEqual(["selector"]);
+  for (const name of ["pdf", "record_start", "cookies_set"]) {
+    const schema = browserTool({
+      name: `agent_browser_${name}`,
+      inputSchema: {
+        properties: { path: { type: "string" } },
+        required: ["path"],
+      },
+    }).inputSchema;
+    expect(schema.properties).toHaveProperty("path");
+    expect(schema.required).toEqual(["path"]);
+  }
+  expect(
+    browserTool({
+      name: "agent_browser_screenshot",
+      inputSchema: { properties: { path: { type: "string" } } },
+    }).inputSchema.properties,
+  ).not.toHaveProperty("path");
 });
 
 test("capture metadata failure retains native action output and bounds text", async () => {
