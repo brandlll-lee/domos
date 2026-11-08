@@ -381,6 +381,11 @@ export class Runtime {
         ...current.runtime,
         controls,
         nativeSkills: controls.skills,
+        notices: {
+          ...current.runtime?.notices,
+          skills: "",
+          ...controls.notices,
+        },
       };
       current.preparedComputerId = computerId;
     }, context);
@@ -697,9 +702,14 @@ export class Runtime {
         throw new WorkError("CONFLICT", "配置已更新。请重新检查连接。");
       doc.prepared = result.authenticated;
       doc.preparedComputerId = computerId;
-      if ("controls" in result && result.controls?.skills) {
+      if ("controls" in result && result.controls) {
         doc.runtime ??= {};
         doc.runtime.nativeSkills = result.controls.skills;
+        doc.runtime.notices = {
+          ...doc.runtime.notices,
+          skills: "",
+          ...result.controls.notices,
+        };
       }
     }, context);
     return result;

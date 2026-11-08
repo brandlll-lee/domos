@@ -1,3 +1,4 @@
+import { readControls } from "../controls.ts";
 import { EngineRequestRejected } from "../json-lines.ts";
 import type {
   EngineAnswer,
@@ -28,7 +29,7 @@ export const codexProvider: EngineProvider = {
     return {
       authenticated: await client.authenticated(),
       models: await client.models(),
-      controls: await client.controls(),
+      controls: await readControls(client),
       vision: await client.vision(),
     };
   },

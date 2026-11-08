@@ -598,7 +598,6 @@ export const claudeProvider: EngineProvider = {
         return {
           compact: true,
           commands: catalog?.commands ?? [],
-          skills: await session.skills?.(),
           options: [
             {
               id: "effort",

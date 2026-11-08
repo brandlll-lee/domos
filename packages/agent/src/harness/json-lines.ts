@@ -14,7 +14,14 @@ type Frame = {
 
 type RequestContext = { method: string; phase: string; startedAt: number };
 
-export class EngineRequestRejected extends Error {}
+export class EngineRequestRejected extends Error {
+  constructor(
+    message: string,
+    readonly code?: number,
+  ) {
+    super(message);
+  }
+}
 
 export class JsonLines extends EventEmitter {
   phase = "初始化";
@@ -62,6 +69,7 @@ export class JsonLines extends EventEmitter {
             pending.reject(
               new EngineRequestRejected(
                 `${this.describe(pending)}：${native?.code === -32601 ? "当前引擎版本不支持此请求" : "引擎拒绝请求"}。原生错误：${typeof frame.error === "string" ? frame.error : (native?.message ?? "未提供")}`,
+                native?.code,
               ),
             );
           } else

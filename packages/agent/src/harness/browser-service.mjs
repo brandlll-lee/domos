@@ -409,6 +409,7 @@ export async function openBrowserService(directory, home) {
       (name === "agent_browser_eval" && phase === "observationMs");
     if (!observation) ready();
     signal.throwIfAborted();
+    if (!client.transport) client = await connect();
     const capturedAt = new Date().toISOString();
     if (!observation) await writeFile(interruption, "pending", { mode: 0o600 });
     if (signal.aborted) {
@@ -427,7 +428,8 @@ export async function openBrowserService(directory, home) {
         undefined,
         { timeout: 125000 },
       );
-    } catch {
+    } catch (error) {
+      if (observation) throw error;
       uncertain = true;
       await writeFile(interruption, "pending", { mode: 0o600 });
       ready();
@@ -437,6 +439,7 @@ export async function openBrowserService(directory, home) {
     const response = result.structuredContent?.response;
     const responses = Array.isArray(response) ? response : [response];
     if (
+      !observation &&
       responses.some(
         (item) =>
           ["outcome_unknown", "page_wedged"].includes(item?.code) ||

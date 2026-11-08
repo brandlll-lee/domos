@@ -1,22 +1,25 @@
 import jmespath from "jmespath";
 import { z } from "zod";
+import { textPage } from "./text-page.mjs";
 
 const budget = 8000;
 
 const queryInput = z.strictObject({
   result: z.string(),
   query: z.string().trim().min(1),
+  offset: z.number().int().nonnegative().optional(),
 });
 
 export const resultQueryTool = {
   name: "query_result",
   description:
-    "Query a held result with JMESPath over the complete value. Use the supplied shape and example. Filter nested arrays and select fields, e.g. apps[?contains(name, 'Music')].{name:name, path:launch_path}. Bound large answers with [0:20]. Read-only; never calls the original tool.",
+    "Query a held result with JMESPath over the complete value. Use the supplied shape and example. Filter nested arrays and select fields, e.g. apps[?contains(name, 'Music')].{name:name, path:launch_path}. Long answers return UTF-8 text pages. Continue with the same result, query and nextOffset as offset. Read-only; never calls the original tool.",
   inputSchema: {
     type: "object",
     properties: {
       result: { type: "string" },
       query: { type: "string" },
+      offset: { type: "integer", minimum: 0 },
     },
     required: ["result", "query"],
     additionalProperties: false,
@@ -86,7 +89,8 @@ export function openToolResults() {
         source = JSON.parse(source);
       } catch {}
     }
-    const handle = `r${++sequence}`;
+    const record = result._meta?.["domos/result"];
+    const handle = `r${++sequence}${record ? `:${record}` : ""}`;
     held.set(handle, source);
     if (held.size > 20) held.delete(held.keys().next().value);
     const content = [];
@@ -139,9 +143,21 @@ export function openToolResults() {
   return {
     project,
     query(input) {
-      const { result, query } = queryInput.parse(input);
-      if (!held.has(result))
-        throw new Error("结果已失效。请读取原始工作记录。");
+      const { result, query, offset } = queryInput.parse(input);
+      if (!held.has(result)) {
+        const record = result.match(/^r\d+:([1-9]\d*)$/)?.[1];
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: record
+                ? `Result cache expired. Read the persisted original with conversation_read ${JSON.stringify({ entryId: Number(record), offset: 0 })}. Continue with nextOffset. Do not repeat the original tool.`
+                : "结果已失效。此结果没有持久化记录定位。",
+            },
+          ],
+        };
+      }
       const source = held.get(result);
       let value;
       try {
@@ -157,9 +173,23 @@ export function openToolResults() {
           ],
         };
       }
-      return project({
-        content: [{ type: "text", text: JSON.stringify(value) ?? "null" }],
-      });
+      const text =
+        typeof value === "string" ? value : (JSON.stringify(value) ?? "null");
+      const paged = offset !== undefined || Buffer.byteLength(text) > budget;
+      return {
+        content: [
+          {
+            type: "text",
+            text: paged
+              ? JSON.stringify({
+                  result,
+                  query,
+                  ...textPage(text, offset ?? 0, budget),
+                })
+              : (JSON.stringify(value) ?? "null"),
+          },
+        ],
+      };
     },
   };
 }

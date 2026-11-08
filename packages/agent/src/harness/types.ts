@@ -36,6 +36,7 @@ export type EngineSkill = {
 };
 export type EngineControls = {
   skills?: EngineSkill[];
+  notices?: Record<string, string>;
   options: {
     id: string;
     label: string;

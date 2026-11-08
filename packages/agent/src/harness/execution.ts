@@ -34,6 +34,7 @@ import {
   callProductTool,
   permissionTool,
   productCatalog,
+  recordToolResult,
 } from "./product-tools.ts";
 import {
   claudeApproval,
@@ -462,17 +463,27 @@ export class EngineExecution {
         if (memoryReview && ++reviewCalls > 12)
           throw new Error("本次回顾已达到工具调用上限。");
         const computerTool = computerTools.find((tool) => tool.name === name);
-        if (computerTool)
-          return this.computer.call(
-            runtime.conversationId,
-            runtime.taskId,
-            callId,
-            computerTool,
-            args,
-            combined,
-            context,
-          );
-        return callProductTool(runtime, callId, name, args, context, combined);
+        const result = computerTool
+          ? await this.computer.call(
+              runtime.conversationId,
+              runtime.taskId,
+              callId,
+              computerTool,
+              args,
+              combined,
+              context,
+            )
+          : await callProductTool(
+              runtime,
+              callId,
+              name,
+              args,
+              context,
+              combined,
+            );
+        return name === "conversation_read"
+          ? result
+          : recordToolResult(runtime, callId, name, result, context);
       }
       if (provider.id !== "claude") throw new Error("确认方式不可用。");
       const id = randomUUID();

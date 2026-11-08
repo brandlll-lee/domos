@@ -34,7 +34,12 @@ export function SkillsPanel({
   onEditorChange: (editor: PanelEditor | null) => void;
 }) {
   const { profile } = useModelSettings(botId);
-  const native = nativeSkills ?? profile?.connection?.controls?.skills;
+  const connection = profile?.connection;
+  const native =
+    nativeSkills ??
+    (connection && "controls" in connection
+      ? connection.controls?.skills
+      : undefined);
   const managed = items.filter(
     (skill) => !native?.some((item) => item.name === skill.name),
   );

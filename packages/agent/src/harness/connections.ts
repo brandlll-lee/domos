@@ -1,5 +1,6 @@
 import type { Context } from "@earendil-works/chord/context";
 import { readClaudeAccount } from "./claude-account.ts";
+import { readControls } from "./controls.ts";
 import type { EngineExecution } from "./execution.ts";
 import { type EngineLoginInput, EngineLogins } from "./logins.ts";
 import type { EngineModelCatalog } from "./model-catalog.ts";
@@ -238,7 +239,7 @@ export class EngineConnections {
         authenticated:
           authenticated ?? (await session.authenticated?.()) ?? false,
         models,
-        controls: await session.controls?.(),
+        controls: await readControls(session),
         vision:
           models.find((model) => model.id === config.model)?.images ??
           (await session.vision?.()) ??
@@ -277,13 +278,7 @@ export class EngineConnections {
           instructions: "Domos configuration check.",
           emit: async () => {},
         });
-        return (
-          (await session.controls?.()) ?? {
-            options: [],
-            commands: [],
-            compact: false,
-          }
-        );
+        return await readControls(session);
       } finally {
         await worker.close();
       }

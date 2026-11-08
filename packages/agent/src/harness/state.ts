@@ -23,6 +23,7 @@ export type HandoffSummary = {
 };
 
 export const EngineMessage = "domos.engine-message";
+export const EngineToolResult = "domos.engine-tool-result";
 
 export const EngineInputDoc = defineDoc<{
   status:

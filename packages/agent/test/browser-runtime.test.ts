@@ -11,11 +11,20 @@ const mocks = vi.hoisted(() => ({
   connect: vi.fn(),
   command: vi.fn(),
   cliError: false,
+  connected: false,
 }));
 vi.mock("@modelcontextprotocol/sdk/client/index.js", () => ({
   Client: class {
-    connect = mocks.connect;
-    close = async () => {};
+    get transport() {
+      return mocks.connected ? {} : undefined;
+    }
+    connect = async (...args: unknown[]) => {
+      await mocks.connect(...args);
+      mocks.connected = true;
+    };
+    close = async () => {
+      mocks.connected = false;
+    };
     callTool = mocks.call;
     listTools = mocks.list;
   },
@@ -603,6 +612,59 @@ test("failed navigation preserves native failure for explicit recovery", async (
     ),
   ).toHaveLength(1);
 });
+
+test.each(["transport", "native"])(
+  "a %s read failure preserves the error and permits the next action",
+  async (mode) => {
+    const service = await setup();
+    if (mode === "transport") {
+      mocks.call.mockImplementationOnce(async () => {
+        mocks.connected = false;
+        throw new Error("Read connection closed");
+      });
+      await expect(
+        service.call("agent_browser_get_url", {}, AbortSignal.timeout(5000)),
+      ).rejects.toThrow("Read connection closed");
+    } else {
+      mocks.call.mockResolvedValueOnce(baseline.lostResponse);
+      expect(
+        (
+          await service.call(
+            "agent_browser_get_url",
+            {},
+            AbortSignal.timeout(5000),
+          )
+        ).structuredContent,
+      ).toEqual(baseline.lostResponse.structuredContent);
+    }
+    await service.settle();
+    await service.call("agent_browser_click", {}, AbortSignal.timeout(5000));
+    expect(mocks.call).toHaveBeenCalledTimes(2);
+    expect(mocks.connect).toHaveBeenCalledTimes(mode === "transport" ? 2 : 1);
+    expect(mocks.spawn).not.toHaveBeenCalled();
+  },
+);
+
+test.each(["agent_browser_eval", "agent_browser_batch"])(
+  "%s retains a barrier when its response is lost",
+  async (name) => {
+    const service = await setup();
+    mocks.call.mockRejectedValueOnce(new Error("Response lost"));
+    await expect(
+      service.call(
+        name,
+        name.endsWith("batch")
+          ? { commands: [["click", "#ok"]] }
+          : { script: "document.body.click()" },
+        AbortSignal.timeout(5000),
+      ),
+    ).rejects.toThrow("结果未知");
+    await expect(
+      service.call("agent_browser_click", {}, AbortSignal.timeout(5000)),
+    ).rejects.toThrow("结果未知");
+    expect(mocks.call).toHaveBeenCalledTimes(1);
+  },
+);
 
 test.each(["native", "transport", "cdp", "page_wedged"])(
   "%s unknown outcome holds mutations and takeover until explicit restart",

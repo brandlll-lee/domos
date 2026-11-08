@@ -23,7 +23,10 @@ import { JsonLines } from "../src/harness/json-lines.ts";
 import { openOpenCodeAccount } from "../src/harness/opencode-account.ts";
 import piTools from "../src/harness/pi-tools.mjs";
 import { WorkProcess } from "../src/harness/process.ts";
-import { callProductTool } from "../src/harness/product-tools.ts";
+import {
+  callProductTool,
+  recordToolResult,
+} from "../src/harness/product-tools.ts";
 import { opencodeProvider } from "../src/harness/providers/opencode.ts";
 import type { EngineRuntime } from "../src/harness/task-types.ts";
 import type { ProductResult } from "../src/harness/types.ts";
@@ -158,6 +161,131 @@ test("a held app catalog can be searched after structural trimming", async () =>
       arguments: { result: "r1", search: "Target Music" },
     }),
   ).rejects.toThrow();
+});
+
+test("query_result pages complete UTF-8 text through the original handle", async () => {
+  const text = `开头🙂${"中文🙂".repeat(2400)}TAIL-9010`;
+  const invoke = vi.fn(async () => ({
+    content: [
+      { type: "text" as const, text: JSON.stringify({ report: text }) },
+    ],
+  }));
+  const gateway = await openGateway(
+    [
+      {
+        name: "report",
+        description: "Report",
+        inputSchema: { type: "object" },
+      },
+    ],
+    invoke,
+  );
+  const client = new Client({ name: "pages", version: "1" });
+  onTestFinished(async () => {
+    await client.close();
+    await gateway.close();
+  });
+  await client.connect(new StreamableHTTPClientTransport(new URL(gateway.url)));
+  await client.callTool({ name: "report" });
+  let offset: number | null = 0;
+  let read = "";
+  while (offset !== null) {
+    const result = await client.callTool({
+      name: "query_result",
+      arguments: { result: "r1", query: "report", offset },
+    });
+    const page = JSON.parse(
+      (result.content as { text: string }[])[0]?.text ?? "",
+    );
+    expect(page).toMatchObject({
+      result: "r1",
+      query: "report",
+      offset,
+      encoding: "utf8",
+      totalBytes: Buffer.byteLength(text),
+    });
+    expect(Buffer.byteLength(page.text)).toBeLessThanOrEqual(8000);
+    expect(page.text).not.toContain("�");
+    read += page.text;
+    offset = page.nextOffset;
+  }
+  expect(read).toBe(text);
+  for (let i = 0; i < 22; i++) {
+    const result = await client.callTool({
+      name: "query_result",
+      arguments: {
+        result: "r1",
+        query: "report",
+        offset: Buffer.byteLength(text) - 9,
+      },
+    });
+    expect(JSON.stringify(result.content)).toContain("TAIL-9010");
+  }
+  expect(invoke).toHaveBeenCalledTimes(1);
+  await expect(
+    client.callTool({
+      name: "query_result",
+      arguments: { result: "r1", query: "report", offset: 1 },
+    }),
+  ).rejects.toThrow("偏移");
+});
+
+test("an expired result points to its persisted tool record", async () => {
+  const locator = 42;
+  const gateway = await openGateway(
+    [
+      {
+        name: "report",
+        description: "Report",
+        inputSchema: { type: "object" },
+      },
+    ],
+    async () => ({
+      content: [{ type: "text", text: "report".repeat(2000) }],
+      _meta: { "domos/result": locator },
+    }),
+  );
+  const client = new Client({ name: "expiry", version: "1" });
+  onTestFinished(async () => {
+    await client.close();
+    await gateway.close();
+  });
+  await client.connect(new StreamableHTTPClientTransport(new URL(gateway.url)));
+  const first = await client.callTool({ name: "report" });
+  const handle = `r1:${locator}`;
+  expect(JSON.stringify(first.content)).toContain(handle);
+  for (let i = 0; i < 20; i++) await client.callTool({ name: "report" });
+  const result = await client.callTool({
+    name: "query_result",
+    arguments: { result: handle, query: "@" },
+  });
+  expect(result.isError).toBe(true);
+  expect(JSON.stringify(result.content)).toContain("conversation_read");
+  expect((result.content as { text: string }[])[0]?.text).toContain(
+    JSON.stringify({ entryId: locator, offset: 0 }),
+  );
+});
+
+test("archive failure preserves the delivered native result", async () => {
+  const runtime = {
+    commit: async () => {
+      throw new Error("Storage unavailable");
+    },
+  } as unknown as EngineRuntime;
+  const native: ProductResult = {
+    content: [{ type: "image", mimeType: "image/png", data: "aW1hZ2U=" }],
+    structuredContent: { executed: true },
+  };
+  const result = await recordToolResult(
+    runtime,
+    "call",
+    "desktop_action",
+    native,
+    BACKGROUND_CONTEXT,
+  );
+  expect(result.content).toContainEqual(native.content[0]);
+  expect(result.structuredContent).toEqual(native.structuredContent);
+  expect(JSON.stringify(result.content)).toContain("archive failed");
 });
 
 async function worker(environment?: Record<string, string>) {

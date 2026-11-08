@@ -114,11 +114,18 @@ export async function openCodexClient(
       : null;
   }
   const skills = async () => {
-    const result = await rpc.request<{
-      data: {
-        skills: (EngineSkill & { scope?: string; enabled?: boolean })[];
-      }[];
-    }>("skills/list", { cwds: [ready.cwd] });
+    const result = await rpc
+      .request<{
+        data: {
+          skills: (EngineSkill & { scope?: string; enabled?: boolean })[];
+        }[];
+      }>("skills/list", { cwds: [ready.cwd] })
+      .catch((error: unknown) => {
+        if (error instanceof EngineRequestRejected && error.code === -32601)
+          return undefined;
+        throw error;
+      });
+    if (!result) return undefined;
     return result.data.flatMap((entry) =>
       entry.skills
         .filter((skill) => skill.enabled !== false)
@@ -142,7 +149,6 @@ export async function openCodexClient(
       );
       return {
         compact: true,
-        skills: await skills(),
         commands: [],
         options: [
           {

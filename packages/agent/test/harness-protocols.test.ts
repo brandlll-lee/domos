@@ -1367,6 +1367,48 @@ test("Pi and Codex expose native skill metadata without treating other commands 
   ]);
 });
 
+test.each([-32601, -32603])(
+  "Codex inspection retains account and models when skills/list returns %s",
+  async (code) => {
+    const process = new ProtocolProcess();
+    onTestFinished(() => process.close());
+    const response = process.response.bind(process);
+    process.response = (request, result) => {
+      if (request.method === "skills/list")
+        process.frame({
+          jsonrpc: "2.0",
+          id: request.id,
+          error: { code, message: "Catalog unavailable" },
+        });
+      else response(request, result);
+    };
+    process.receive = (request) =>
+      response(
+        request,
+        request.method === "account/read"
+          ? { account: { type: "chatgpt" } }
+          : request.method === "model/list"
+            ? { data: [{ id: "native-model", isDefault: true }] }
+            : {},
+      );
+    const result = await codexProvider.inspect?.({
+      process,
+      config: { provider: "codex", model: null },
+    });
+    if (!result) throw new Error("Codex inspection is required");
+    expect(result.authenticated).toBe(true);
+    expect(result.models).toContainEqual(
+      expect.objectContaining({ id: "native-model" }),
+    );
+    expect(result.controls.options.length).toBeGreaterThan(0);
+    expect(result.controls.skills).toBeUndefined();
+    if (code === -32601)
+      expect(result.controls.notices?.skills).toBeUndefined();
+    else
+      expect(result.controls.notices?.skills).toContain("Catalog unavailable");
+  },
+);
+
 test.each([piProvider, codexProvider, claudeProvider])(
   "$id distinguishes an empty skill catalog from a failed read",
   async (provider) => {
@@ -1400,6 +1442,15 @@ test.each([piProvider, codexProvider, claudeProvider])(
             response: { skills: [] },
           },
         });
+      else if (control.request?.subtype === "initialize")
+        process.frame({
+          type: "control_response",
+          response: {
+            request_id: control.request_id,
+            subtype: "success",
+            response: { models: [], commands: [] },
+          },
+        });
       else if (request.type === "get_commands" && failed)
         process.frame({
           type: "response",
@@ -1421,6 +1472,9 @@ test.each([piProvider, codexProvider, claudeProvider])(
     expect(await session.skills?.()).toEqual([]);
     failed = true;
     await expect(session.skills?.()).rejects.toThrow("Catalog unavailable");
+    await expect(session.controls?.()).resolves.toMatchObject({
+      compact: true,
+    });
   },
 );
 

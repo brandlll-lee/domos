@@ -121,6 +121,7 @@ for (const name of [
   "mcp-client.mjs",
   "gateway.mjs",
   "tool-results.mjs",
+  "text-page.mjs",
   "browser-service.mjs",
   "browser-tools.mjs",
   "browser-command.mjs",

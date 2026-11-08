@@ -11,7 +11,12 @@ import {
   type ChatMessage,
   messageText,
 } from "../messages.ts";
-import { EngineMessage, type HandoffSummary } from "./state.ts";
+import {
+  EngineMessage,
+  EngineToolResult,
+  type HandoffSummary,
+} from "./state.ts";
+import { textPage, utf8Prefix } from "./text-page.mjs";
 
 export type HistoryReader = {
   conversationId: import("@earendil-works/pi-durable").ConversationId;
@@ -111,17 +116,6 @@ function historyMessage(
   };
 }
 
-export function utf8Prefix(bytes: Buffer, limit: number) {
-  let end = Math.max(0, Math.min(bytes.length, Math.floor(limit)));
-  while (
-    end > 0 &&
-    end < bytes.length &&
-    (bytes.readUInt8(end) & 0xc0) === 0x80
-  )
-    end--;
-  return bytes.subarray(0, end).toString("utf8");
-}
-
 export async function conversationEntry(
   runtime: HistoryReader,
   entryId: EntryId,
@@ -134,26 +128,15 @@ export async function conversationEntry(
   }, context);
   if (!entry || entry.conversationId !== runtime.conversationId)
     throw new Error("聊天记录不存在。");
-  const bytes = Buffer.from(JSON.stringify(historyMessages(entry)));
-  if (
-    !Number.isSafeInteger(offset) ||
-    offset < 0 ||
-    offset > bytes.length ||
-    (offset < bytes.length && (bytes.readUInt8(offset) & 0xc0) === 0x80)
-  )
-    throw new Error("聊天记录偏移无效。");
-  const text = utf8Prefix(
-    bytes.subarray(offset),
-    engineLimits.historyCharacters / 4,
-  );
-  const next = offset + Buffer.byteLength(text);
   return JSON.stringify({
     entryId,
-    offset,
-    nextOffset: next < bytes.length ? next : null,
-    totalBytes: bytes.length,
-    encoding: "utf8",
-    text,
+    ...textPage(
+      JSON.stringify(
+        entry.kind === EngineToolResult ? entry.data : historyMessages(entry),
+      ),
+      offset,
+      engineLimits.historyCharacters / 4,
+    ),
   });
 }
 
@@ -297,7 +280,7 @@ export const history = defineExtension({
     defineTool({
       name: "conversation_read",
       description:
-        "Read quoted Bot history. Use from as before for older pages. Read entryId with a UTF-8 byte offset to recover omitted details. Files remain on their recorded computer.",
+        "Read quoted Bot history. Use from as before for older pages. Read entryId with a UTF-8 byte offset to recover omitted details or a persisted original tool result. Continue with nextOffset. Files remain on their recorded computer.",
       parameters: Type.Object({
         before: Type.Optional(Type.Integer({ minimum: 1 })),
         entryId: Type.Optional(Type.Integer({ minimum: 1 })),

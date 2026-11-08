@@ -11,7 +11,7 @@ import {
 import { ComputerRequests } from "../computer/runtime.ts";
 import { RoutinesDoc } from "../work/routine-state.ts";
 import { conversationEntry, conversationHistory } from "./history.ts";
-import { EngineDoc, EngineMessage } from "./state.ts";
+import { EngineDoc, EngineMessage, EngineToolResult } from "./state.ts";
 import { type EngineRuntime, stored } from "./task-types.ts";
 import type { ProductResult, ProductTool } from "./types.ts";
 
@@ -41,6 +41,38 @@ export const permissionTool: ProductTool = {
   },
 };
 
+export async function recordToolResult(
+  runtime: EngineRuntime,
+  callId: string,
+  name: string,
+  result: ProductResult,
+  context: Context,
+): Promise<ProductResult> {
+  let entryId!: EntryId;
+  try {
+    await runtime.commit(async (tx) => {
+      entryId = (
+        await tx.appendEntry(runtime.conversationId, {
+          kind: EngineToolResult,
+          data: stored({ taskId: runtime.taskId, callId, name, result }),
+        })
+      ).id;
+    }, context);
+  } catch (error) {
+    return {
+      ...result,
+      content: [
+        ...result.content,
+        {
+          type: "text",
+          text: `Tool result archive failed: ${String(error)}. Preserve this result. Do not repeat the action to recover storage.`,
+        },
+      ],
+    };
+  }
+  return { ...result, _meta: { ...result._meta, "domos/result": entryId } };
+}
+
 export async function productCatalog(
   runtime: EngineRuntime,
   context: Context,
@@ -68,7 +100,7 @@ export async function productCatalog(
     {
       name: "conversation_read",
       description:
-        "Read quoted Bot history. Pass from as before for older pages. Read an entryId with a UTF-8 byte offset to recover omitted text, selected material, and tool details. Continue with nextOffset. Files remain references on their recorded computer.",
+        "Read quoted Bot history. Pass from as before for older pages. Read entryId with a UTF-8 byte offset to recover omitted details or a persisted original tool result. Continue with nextOffset. Files remain references on their recorded computer.",
       inputSchema: {
         type: "object",
         properties: {

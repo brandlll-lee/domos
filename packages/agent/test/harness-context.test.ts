@@ -6,9 +6,74 @@ import {
   conversationEntry,
   conversationHistory,
 } from "../src/harness/history.ts";
+import {
+  callProductTool,
+  recordToolResult,
+} from "../src/harness/product-tools.ts";
 import { EngineMessage } from "../src/harness/state.ts";
+import type { EngineRuntime } from "../src/harness/task-types.ts";
 import scenario from "./fixtures/harness-context.json" with { type: "json" };
 import { runtimeFixture } from "./fixtures/runtime.ts";
+
+test("conversation_read recovers persisted tool text after reopen within its Bot", async () => {
+  const fixture = await runtimeFixture();
+  const text = `${"中文🙂".repeat(3000)}ORIGINAL-TAIL`;
+  const source = {
+    conversationId: fixture.conversation.id,
+    taskId: 1,
+    commit: fixture.harness.commit.bind(fixture.harness),
+  } as EngineRuntime;
+  const result = await recordToolResult(
+    source,
+    "original",
+    "report",
+    { content: [{ type: "text", text }] },
+    context,
+  );
+  const entryId = result._meta?.["domos/result"];
+  const reopened = await fixture.reopen();
+  const reader = {
+    conversationId: fixture.conversation.id,
+    commit: reopened.harness.commit.bind(reopened.harness),
+  } as EngineRuntime;
+  let offset: number | null = 0;
+  let full = "";
+  while (offset !== null) {
+    const response = await callProductTool(
+      reader,
+      "read",
+      "conversation_read",
+      { entryId, offset },
+      context,
+      new AbortController().signal,
+    );
+    const page = JSON.parse((response.content[0] as { text: string }).text);
+    expect(page.text).not.toContain("�");
+    full += page.text;
+    offset = page.nextOffset;
+  }
+  const record = JSON.parse(full);
+  expect(record.result.content[0].text).toBe(text);
+  expect(record).toMatchObject({
+    taskId: 1,
+    callId: "original",
+    name: "report",
+  });
+  const other = await reopened.bots.create(
+    { name: "Other", requestId: crypto.randomUUID() },
+    context,
+  );
+  await expect(
+    callProductTool(
+      { ...reader, conversationId: other.id },
+      "read",
+      "conversation_read",
+      { entryId },
+      context,
+      new AbortController().signal,
+    ),
+  ).rejects.toThrow("不存在");
+});
 
 test("long handoffs retain early constraints and later corrections without changing source history", async () => {
   const runtime = await runtimeFixture();

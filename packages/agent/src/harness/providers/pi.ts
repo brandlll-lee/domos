@@ -388,11 +388,18 @@ export const piProvider: EngineProvider = {
         const levels = await rpc.request<{ levels?: string[] }>(
           "get_available_thinking_levels",
         );
-        const catalog = (await commands()).commands ?? [];
+        let catalog: Command[] | undefined;
+        let notices: Record<string, string> | undefined;
+        try {
+          catalog = (await commands()).commands ?? [];
+        } catch (error) {
+          notices = { skills: `原生技能目录读取失败：${String(error)}` };
+        }
         return {
           compact: true,
-          skills: nativeSkills(catalog),
-          commands: catalog.map((item) => ({
+          ...(catalog ? { skills: nativeSkills(catalog) } : {}),
+          ...(notices ? { notices } : {}),
+          commands: (catalog ?? []).map((item) => ({
             name: item.name,
             description: item.description ?? "",
           })),
