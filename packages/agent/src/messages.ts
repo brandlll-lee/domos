@@ -46,7 +46,7 @@ export type ChatMessage = {
     service: "browser" | "desktop";
     computerId: string;
     revision: number;
-    state: "waiting" | "controlling" | "done" | "expired";
+    state: "waiting" | "controlling" | "done" | "cancelled" | "expired";
     url?: string;
   };
   id: string;
@@ -97,7 +97,9 @@ export function approvalMessage(
                 ? request.takeover.state
                 : state === "answered"
                   ? "done"
-                  : "expired",
+                  : state === "denied"
+                    ? "cancelled"
+                    : "expired",
           },
         }
       : { approval: { request, state, ...(answer ? { answer } : {}) } }),

@@ -102,6 +102,52 @@ async function point(
   };
 }
 
+for (const ending of ["cancel", "cancel-control", "stop"]) {
+  test(`takeover card closes through ${ending}`, async ({ page }) => {
+    test.setTimeout(60000);
+    const api = createORPCClient<RouterClient<AppRouter>>(
+      new RPCLink({ url: `${url}/rpc` }),
+    );
+    await api.computer.service({ botId: 1, service: "browser", enabled: true });
+    const binding = await api.computer.get({ botId: 1 });
+    if (!binding.computerId) throw new Error("Computer required");
+    await api.computer.approval({
+      botId: 1,
+      computerId: binding.computerId,
+      revision: binding.revision,
+      mode: "auto",
+    });
+    await page.goto(url);
+    await page.getByLabel("消息", { exact: true }).fill("让我接管浏览器");
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    const card = page.getByRole("region", { name: "接管请求", exact: true });
+    await expect(card.getByText("需要操作", { exact: true })).toBeVisible({
+      timeout: 30000,
+    });
+    const view = page.getByRole("region", { name: "Domos的电脑", exact: true });
+    if (ending === "cancel-control") {
+      await card.getByRole("button", { name: "接管", exact: true }).click();
+      await expect(view.getByRole("status")).toHaveText("你正在操作");
+    }
+    if (ending === "stop")
+      await page.getByRole("button", { name: "停止生成", exact: true }).click();
+    else await card.getByRole("button", { name: "取消", exact: true }).click();
+    await expect(
+      card.getByText(ending === "stop" ? "已失效" : "已取消", { exact: true }),
+    ).toBeVisible();
+    await expect(card.getByRole("button")).toHaveCount(0);
+    await expect(card.getByRole("img")).toBeHidden();
+    if (ending === "cancel-control")
+      await expect(view.getByRole("status")).not.toHaveText("你正在操作");
+    await card.locator("summary").click();
+    await expect(card.getByRole("img")).toBeVisible();
+    await expect(card.getByRole("link")).toHaveAttribute(
+      "href",
+      `${url}/takeover-fixture`,
+    );
+  });
+}
+
 for (const refresh of [false, true]) {
   test(`takeover card first click opens the browser and resumes after completion (refresh=${refresh})`, async ({
     page,
@@ -112,8 +158,9 @@ for (const refresh of [false, true]) {
       watches++;
       await route.continue();
     });
-    await page.addInitScript(() =>
-      localStorage.setItem("domos:appearance:v1", "dark"),
+    await page.addInitScript(
+      (theme) => localStorage.setItem("domos:appearance:v1", theme),
+      refresh ? "light" : "dark",
     );
     test.setTimeout(60000);
     await page.goto(url);
@@ -136,19 +183,60 @@ for (const refresh of [false, true]) {
       .fill("打开搜索页，然后让我接管修改搜索词");
     await page.getByRole("button", { name: "发送", exact: true }).click();
     const card = page.getByRole("region", { name: "接管请求", exact: true });
-    await expect(card.locator(".takeover-url")).toContainText("127.0.0.1", {
-      timeout: 30000,
-    });
-    await expect(card.getByText("等待接管", { exact: true })).toBeVisible();
+    await expect(card.locator(".takeover-preview-bar")).toContainText(
+      "127.0.0.1",
+      {
+        timeout: 30000,
+      },
+    );
+    await expect(card.getByText("需要操作", { exact: true })).toBeVisible();
     await expect(card.getByRole("img", { name: "消息图片" })).toBeVisible();
     const cardMs = performance.now() - started;
+    const insets = await card.evaluate((node) => {
+      const card = node.getBoundingClientRect();
+      const title = node.querySelector("header")?.getBoundingClientRect();
+      const preview = node
+        .querySelector(".takeover-preview")
+        ?.getBoundingClientRect();
+      if (!title || !preview) throw new Error("Card content required");
+      return {
+        left: title.left - card.left,
+        right: card.right - title.right,
+        aligned: Math.abs(title.left - preview.left),
+      };
+    });
+    expect(insets.left).toBeGreaterThanOrEqual(16);
+    expect(insets.right).toBeGreaterThanOrEqual(16);
+    expect(insets.aligned).toBeLessThanOrEqual(1);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page
+      .getByLabel("Domos的详情", { exact: true })
+      .getByRole("button", { name: "关闭", exact: true })
+      .click();
+    await expect(page.getByLabel("Domos的详情", { exact: true })).toBeHidden();
+    await expect(card).toBeInViewport();
+    await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
+    const narrow = await card.boundingBox();
+    if (!narrow) throw new Error("Card required");
+    expect(narrow.x).toBeGreaterThanOrEqual(0);
+    expect(narrow.x + narrow.width).toBeLessThanOrEqual(390);
+    await page.screenshot({
+      path: info.outputPath("takeover-card-narrow.png"),
+      animations: "disabled",
+    });
+    await page.setViewportSize({ width: 1360, height: 900 });
     if (refresh) await page.reload();
-    await expect(card.getByText("等待接管", { exact: true })).toBeVisible();
+    await expect(card.getByText("需要操作", { exact: true })).toBeVisible();
     await page.screenshot({
       path: info.outputPath("takeover-card-waiting.png"),
     });
     const takeStarted = performance.now();
-    await card.getByRole("button", { name: "接管", exact: true }).click();
+    await card
+      .getByRole("button", {
+        name: refresh ? "打开浏览器接管画面" : "接管",
+        exact: true,
+      })
+      .click();
     await expect(view.getByRole("status")).toHaveText("你正在操作");
     await expect(card.getByText("控制中", { exact: true })).toBeVisible();
     await expect(view.getByRole("alert")).toHaveCount(0);
@@ -206,9 +294,13 @@ for (const refresh of [false, true]) {
       )
       .toBe(true);
     const inputToPaintMs = performance.now() - inputStarted;
-    await card.getByRole("button", { name: "我已完成", exact: true }).click();
+    await card.getByRole("button", { name: "完成并继续", exact: true }).click();
     await expect(card.getByText("已归还", { exact: true })).toBeVisible();
     await expect(card.getByRole("button")).toHaveCount(0);
+    await expect(card.getByRole("img")).toBeHidden();
+    await card.locator("summary").click();
+    await expect(card.getByRole("img")).toBeVisible();
+    await card.locator("summary").click();
     await expect(
       page
         .getByRole("log", { name: "聊天记录" })

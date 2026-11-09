@@ -51,7 +51,7 @@ export function useView(
             if (action.type === "complete") {
               if (!takeoverId) throw new Error("接管请求已失效。");
               await client.engines.answer(
-                { botId, id: takeoverId, allow: true },
+                { botId, id: takeoverId, allow: action.allow ?? true },
                 { signal: controller.signal },
               );
               setControlling(false);
@@ -153,12 +153,13 @@ export function useView(
           botId: number;
           id: string;
           handled: boolean;
+          allow: boolean;
           finish: (ok: boolean) => void;
         }>
       ).detail;
       if (detail.botId !== botId || detail.id !== takeoverId) return;
       detail.handled = true;
-      void send({ type: "complete" }).then(detail.finish);
+      void send({ type: "complete", allow: detail.allow }).then(detail.finish);
     };
     window.addEventListener("domos:takeover-complete", complete);
     return () =>

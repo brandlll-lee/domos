@@ -106,9 +106,7 @@ const MessageRow = memo(function MessageRow({
           <Approval botId={botId} message={message} />
         )
       ) : message.takeover ? (
-        <MessageBubble side="incoming">
-          <TakeoverCard botId={botId} message={message} />
-        </MessageBubble>
+        <TakeoverCard botId={botId} message={message} />
       ) : (
         <MessageBubble side={message.role === "user" ? "outgoing" : "incoming"}>
           <MessageBody>

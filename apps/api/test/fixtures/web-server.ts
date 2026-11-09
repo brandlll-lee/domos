@@ -255,7 +255,8 @@ if (process.argv[4] === "takeover") {
     fauxAssistantMessage(
       fauxToolCall("computer_request_takeover", {
         service: "browser",
-        reason: "请修改搜索词，完成后交还给我。",
+        reason:
+          "请将搜索词改为‘京都天气’。完成后交还控制权，我会读取页面的实际内容并继续任务。你可以随时取消本次接管。",
       }),
       { stopReason: "toolUse" },
     ),

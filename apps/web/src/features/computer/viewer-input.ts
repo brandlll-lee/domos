@@ -1,5 +1,5 @@
 import type { ViewerAction } from "@domos/agent/computer/viewer-types";
-export type ViewerInput = ViewerAction | { type: "complete" };
+export type ViewerInput = ViewerAction | { type: "complete"; allow?: boolean };
 
 export function viewportPoint(
   image: { naturalWidth: number; naturalHeight: number },

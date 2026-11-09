@@ -462,7 +462,10 @@ export class ComputerRuntime {
     const { pending, approval } = await this.request(botId, id, context);
     pending.completing = true;
     try {
-      if (answer.allow && approval.takeover)
+      if (
+        approval.takeover &&
+        (answer.allow || approval.takeover.state === "controlling")
+      )
         await this.computers.views.finishRequest(botId, id, context);
       pending.resolve(answer);
     } catch (error) {

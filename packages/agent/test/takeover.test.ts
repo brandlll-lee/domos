@@ -22,11 +22,20 @@ import { ProtocolProcess } from "./fixtures/engine-process.ts";
 
 test.each([
   ...["pi", "codex", "claude", "opencode", "acp"].flatMap((provider) =>
-    ["complete", "stop"].map((ending) => ({ provider, ending })),
+    ["complete", "stop", "cancel", "cancel-control"].map((ending) => ({
+      provider,
+      ending,
+      service: "browser",
+    })),
   ),
+  ...["complete", "cancel-control"].map((ending) => ({
+    provider: "pi",
+    ending,
+    service: "desktop",
+  })),
 ])(
-  "$provider holds a durable takeover card through $ending",
-  async ({ provider, ending }) => {
+  "$provider holds a durable $service takeover card through $ending",
+  async ({ provider, ending, service }) => {
     const directory = await mkdtemp(join(tmpdir(), "domos-takeover-state-"));
     const models = createModels();
     models.setProvider(fauxProvider().provider);
@@ -100,10 +109,10 @@ test.each([
           const result = await invoke(
             "handoff",
             takeoverTool.name,
-            { service: "browser", reason: "请完成登录" },
+            { service, reason: "请完成登录" },
             new AbortController().signal,
           );
-          expect(result.isError).toBe(ending === "stop");
+          expect(result.isError).toBe(ending !== "complete");
           await options.emit({
             type: "message",
             id: "answer",
@@ -157,7 +166,9 @@ test.each([
     expect(
       (await view()).messages.find((message) => message.takeover)?.takeover
         ?.url,
-    ).toBe("https://fixture.test/requested");
+    ).toBe(
+      service === "browser" ? "https://fixture.test/requested" : undefined,
+    );
     if (ending === "stop") {
       await engines.stop(botId, context);
       await expect
@@ -170,6 +181,27 @@ test.each([
       const entries = await runtime.conversation.viewState(context);
       expect(JSON.stringify(entries.value)).toContain('"state":"expired"');
       expect(JSON.stringify(entries.value)).not.toContain('"state":"done"');
+      return;
+    }
+    if (ending === "cancel" || ending === "cancel-control") {
+      if (ending === "cancel-control") {
+        await engines.takeRequest(botId, id, crypto.randomUUID(), context);
+        await runtime.harness.commit(async (tx) => {
+          const doc = await tx.doc(ComputerRequests, botId);
+          const request = doc.approvals.find((item) => item.id === id);
+          if (request?.takeover) request.takeover.state = "controlling";
+        }, context);
+      }
+      drain.resolve();
+      await engines.answer(botId, id, { allow: false }, context);
+      await completed.promise;
+      expect(finishing).toHaveBeenCalledTimes(
+        ending === "cancel-control" ? 1 : 0,
+      );
+      expect(taken).toBe(false);
+      const entries = await runtime.conversation.viewState(context);
+      expect(JSON.stringify(entries.value)).toContain('"state":"cancelled"');
+      entries.dispose();
       return;
     }
     revision++;
