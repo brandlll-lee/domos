@@ -133,9 +133,6 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.composer-attachments > .material-chips {
-  width: 100%;
-}
 .composer-upload {
   display: flex;
   align-items: center;

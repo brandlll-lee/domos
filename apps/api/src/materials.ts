@@ -13,6 +13,7 @@ export const materialsSchema = {
       z.object({
         id: z.string().min(1).max(128),
         revision: z.number().int().nonnegative(),
+        position: z.number().int().nonnegative().optional(),
       }),
     )
     .max(10)
@@ -24,11 +25,13 @@ export const materialsSchema = {
           id: z.uuid(),
           type: z.literal("text"),
           text: z.string().trim().min(1).max(WORK_TEXT_LENGTH),
+          position: z.number().int().nonnegative().optional(),
         }),
         z.object({
           id: z.uuid(),
           type: z.literal("message"),
           messageId: z.string().min(1).max(128),
+          position: z.number().int().nonnegative().optional(),
         }),
       ]),
     )
@@ -58,7 +61,7 @@ export async function prepareMaterials(
       ...new Map(
         input.skills.map((selection) => [selection.id, selection]),
       ).values(),
-    ].map(({ id, revision }) => {
+    ].map(({ id, revision, position }) => {
       const skill = skills.find(
         (item) => item.id === id && item.enabledBots.includes(input.botId),
       );
@@ -70,7 +73,13 @@ export async function prepareMaterials(
         throw new ORPCError("CONFLICT", {
           message: `技能 ${skill.name} 已更新，请重新选择。`,
         });
-      return { id, revision, name: skill.name, content: skill.content };
+      return {
+        id,
+        revision,
+        name: skill.name,
+        content: skill.content,
+        position,
+      };
     }),
     context: [
       ...new Map(input.context.map((item) => [item.id, item])).values(),

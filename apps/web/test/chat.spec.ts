@@ -191,7 +191,7 @@ async function expectTextContrast(page: import("@playwright/test").Page) {
     };
     return [
       ...document.querySelectorAll<HTMLElement>(
-        ".chat-preview span, .picker-trigger, .message-bubble, .picker-item, .message-composer textarea",
+        ".chat-preview span, .picker-trigger, .message-bubble, .picker-item, .message-composer-editor",
       ),
     ].map((element) => {
       const parents: Element[] = [];
@@ -722,7 +722,7 @@ async function createBot(
   await dialog.getByRole("button", { name: "开始聊天", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByLabel("消息", { exact: true })).toHaveAttribute(
-    "placeholder",
+    "data-placeholder",
     `发送消息给 ${name}…`,
   );
 }
@@ -742,13 +742,13 @@ test("chat suggestions fill the draft and dismissal stays complete on other devi
   await welcome
     .getByRole("button", { name: "帮我完成一项任务", exact: true })
     .click();
-  await expect(input).toHaveValue("帮我完成一项任务。先问我目标和要求。");
+  await expect(input).toHaveText("帮我完成一项任务。先问我目标和要求。");
   await expect(input).toBeFocused();
   await expect(page.getByLabel("你的消息", { exact: true })).toHaveCount(0);
   expect(sends).toBe(0);
   await input.fill("我已有的草稿");
   await welcome.getByRole("button", { name: "分析文件", exact: true }).click();
-  await expect(input).toHaveValue(
+  await expect(input).toHaveText(
     "我已有的草稿\n\n帮我分析一份资料。先问我资料内容和我关心的问题。",
   );
   await page
@@ -776,7 +776,7 @@ test("chat suggestions fill the draft and dismissal stays complete on other devi
     await page.route("**/rpc/bots/completeWelcome", (route) => route.abort());
     await welcome.getByRole("button", { name: "关闭入门提示" }).click();
     await expect(welcome.getByRole("alert")).toContainText("请重试");
-    await expect(input).toHaveValue(/我已有的草稿/);
+    await expect(input).toHaveText(/我已有的草稿/);
     await page.unroute("**/rpc/bots/completeWelcome");
     await welcome.getByRole("button", { name: "关闭入门提示" }).click();
     await expect(welcome).toBeHidden();
@@ -790,7 +790,7 @@ test("chat suggestions fill the draft and dismissal stays complete on other devi
     await page.reload();
     await expect(input).toBeVisible();
     await expect(welcome).toBeHidden();
-    await expect(input).toHaveValue(/我已有的草稿/);
+    await expect(input).toHaveText(/我已有的草稿/);
   } finally {
     await remote.close();
   }
@@ -1129,7 +1129,7 @@ test("contacts keep independent histories, drafts, models, and locations after r
   await expect(send).toBeVisible();
   await input.fill("研究草稿");
   await contacts.getByRole("link", { name: /^Domos/ }).click();
-  await expect(input).toHaveValue("原来的草稿");
+  await expect(input).toHaveText("原来的草稿");
   await expectModel(page, "测试模型一");
   await createBot(page, "写作助手");
   await input.fill("写作问题");
@@ -1138,11 +1138,11 @@ test("contacts keep independent histories, drafts, models, and locations after r
   await expect(send).toBeVisible();
   await input.fill("写作草稿");
   await contacts.getByRole("link", { name: "研究员", exact: true }).click();
-  await expect(input).toHaveValue("研究草稿");
+  await expect(input).toHaveText("研究草稿");
   await expect(page.getByLabel("你的消息")).toContainText("研究问题");
   await expectModel(page, "测试模型二");
   await page.reload();
-  await expect(input).toHaveValue("研究草稿");
+  await expect(input).toHaveText("研究草稿");
   await other.close();
   const port = Number(new URL(url).port);
   await stop();
@@ -1152,7 +1152,7 @@ test("contacts keep independent histories, drafts, models, and locations after r
   await expect(contacts.getByRole("link")).toHaveCount(3);
   await expect(page.getByLabel("研究员 的回复")).toContainText("faux-2");
   await contacts.getByRole("link", { name: "写作助手", exact: true }).click();
-  await expect(input).toHaveValue("写作草稿");
+  await expect(input).toHaveText("写作草稿");
   await expect(page.getByLabel("你的消息")).toContainText("写作问题");
   await page.screenshot({ path: "test-results/bot-contacts.png" });
 });
@@ -1169,13 +1169,13 @@ test("switching contacts keeps the first Bot running while another Bot replies",
   await contacts.getByRole("link", { name: /^Domos/ }).click();
   const input = page.getByLabel("消息", { exact: true });
   const send = page.getByRole("button", { name: "发送", exact: true });
-  await expect(input).toHaveAttribute("placeholder", "发送消息给 Domos…");
+  await expect(input).toHaveAttribute("data-placeholder", "发送消息给 Domos…");
   await control("gate");
   await input.fill("后台任务");
   await send.click();
   await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
   await contacts.getByRole("link", { name: "助手", exact: true }).click();
-  await expect(input).toHaveAttribute("placeholder", "发送消息给 助手…");
+  await expect(input).toHaveAttribute("data-placeholder", "发送消息给 助手…");
   await input.fill("另一个任务");
   await send.click();
   await expect(page.getByLabel("助手 的回复")).toContainText("完整回复。");
@@ -1256,7 +1256,7 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
   ).toHaveAttribute("aria-current", "page");
   await contacts.getByRole("link", { name: "Domos", exact: true }).click();
   await expect(page.getByLabel("消息", { exact: true })).toHaveAttribute(
-    "placeholder",
+    "data-placeholder",
     "发送消息给 Domos…",
   );
   await page.screenshot({ path: "test-results/bot-contacts-mobile.png" });
@@ -1679,7 +1679,7 @@ test("stopping preserves the conversation and resending uses the message menu", 
     .getByRole("button", { name: "消息操作" })
     .click();
   await page.getByRole("menuitem", { name: "重新发送", exact: true }).click();
-  await expect(page.getByLabel("消息", { exact: true })).toHaveValue(
+  await expect(page.getByLabel("消息", { exact: true })).toHaveText(
     "停止这次回答",
   );
 });
@@ -1846,7 +1846,7 @@ test("large histories render a bounded window and retain the earlier reading anc
         Math.abs(((await retained.boundingBox())?.y ?? 0) - (before?.y ?? 0)),
       )
       .toBeLessThan(2);
-    await expect(input).toHaveValue("调宽时保留的草稿");
+    await expect(input).toHaveText("调宽时保留的草稿");
     await expect(
       page.getByRole("button", { name: "返回最新", exact: true }),
     ).toBeVisible();
@@ -1912,7 +1912,8 @@ test("stop and Chinese input work on a narrow screen", async ({ page }) => {
   });
   await expect(page.getByLabel("你的消息")).toHaveCount(0);
   await input.press("Shift+Enter");
-  await expect(input).toHaveValue("中文输入\n");
+  await input.press("x");
+  await expect(input).toHaveText("中文输入\nx");
   await input.press("Enter");
   await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
   await page.getByRole("button", { name: "停止生成" }).click();
@@ -1947,7 +1948,7 @@ test("retrying a send with a lost receipt does not repeat the message", async ({
   await page.reload();
   await expect(page.getByRole("alert")).toContainText("发送未确认");
   await page.getByRole("button", { name: "重试发送", exact: true }).click();
-  await expect(page.getByLabel("消息", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("消息", { exact: true })).toHaveText("");
   await expect(page.getByLabel("你的消息")).toHaveCount(1);
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(1);
 });
@@ -1960,11 +1961,11 @@ test("drafts survive reload and reopening in the same browser", async ({
   const input = page.getByLabel("消息", { exact: true });
   await input.fill("尚未发送的想法");
   await page.reload();
-  await expect(input).toHaveValue("尚未发送的想法");
+  await expect(input).toHaveText("尚未发送的想法");
   await page.close();
   const reopened = await context.newPage();
   await reopened.goto(url);
-  await expect(reopened.getByLabel("消息", { exact: true })).toHaveValue(
+  await expect(reopened.getByLabel("消息", { exact: true })).toHaveText(
     "尚未发送的想法",
   );
   await expect(reopened.getByLabel("你的消息")).toHaveCount(0);
@@ -1981,7 +1982,7 @@ test("drafts stay on their computer when the same address changes hosts", async 
   });
   await page.goto(url);
   const input = page.getByLabel("消息", { exact: true });
-  await expect(input).toHaveValue("原有草稿");
+  await expect(input).toHaveText("原有草稿");
   await input.fill("ASUS 草稿");
   await page.route("**/rpc/computer/node", async (route) => {
     const response = await route.fetch();
@@ -1990,11 +1991,11 @@ test("drafts stay on their computer when the same address changes hosts", async 
     await route.fulfill({ response, json: body });
   });
   await page.reload();
-  await expect(input).toHaveValue("");
+  await expect(input).toHaveText("");
   await input.fill("云电脑草稿");
   await page.unroute("**/rpc/computer/node");
   await page.reload();
-  await expect(input).toHaveValue("ASUS 草稿");
+  await expect(input).toHaveText("ASUS 草稿");
 });
 
 test("editing during a send preserves the next draft", async ({ page }) => {
@@ -2017,9 +2018,9 @@ test("editing during a send preserves the next draft", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "发送", exact: true }),
   ).toBeVisible();
-  await expect(input).toHaveValue("下一条草稿");
+  await expect(input).toHaveText("下一条草稿");
   await page.reload();
-  await expect(input).toHaveValue("下一条草稿");
+  await expect(input).toHaveText("下一条草稿");
 });
 
 test("storage failures keep the draft and prevent an unrecorded send", async ({
@@ -2036,7 +2037,7 @@ test("storage failures keep the draft and prevent an unrecorded send", async ({
   await input.fill("保留在输入框");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("草稿保存失败");
-  await expect(input).toHaveValue("保留在输入框");
+  await expect(input).toHaveText("保留在输入框");
   await expect(page.getByLabel("你的消息")).toHaveCount(0);
 });
 
@@ -2061,7 +2062,7 @@ test("two windows can submit while a reply is active", async ({
     response.url().endsWith("/rpc/send"),
   );
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  await expect(page.getByLabel("消息", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("消息", { exact: true })).toHaveText("");
   await expect(page.getByRole("alert")).toHaveCount(0);
   await submitted;
   await page.unroute("**/rpc/send");
@@ -2264,7 +2265,7 @@ test("composer grows, shrinks, and keeps one focus surface in both themes", asyn
     await expect(input).toHaveCSS("font-size", "14px");
     expect(
       await input.evaluate(
-        (node) => getComputedStyle(node, "::placeholder").fontSize,
+        (node) => getComputedStyle(node, "::before").fontSize,
       ),
     ).toBe("13px");
     await page.screenshot({ path: `test-results/workspace-${theme}.png` });
@@ -2505,22 +2506,10 @@ test("message text remains readable when bundled Chinese fonts cannot load", asy
   await page.screenshot({ path: "test-results/chat-font-fallback.png" });
 });
 
-test("measured text sizing grows with wrapping and resets after clearing", async ({
+test("composer grows with wrapping and resets after clearing", async ({
   page,
 }) => {
-  await page.addInitScript(() => {
-    const supports = CSS.supports.bind(CSS);
-    CSS.supports = ((property: string, value?: string) =>
-      property === "field-sizing"
-        ? false
-        : value === undefined
-          ? supports(property)
-          : supports(property, value)) as typeof CSS.supports;
-  });
   await page.goto(url);
-  await page.addStyleTag({
-    content: ".message-composer textarea { field-sizing: fixed; }",
-  });
   const input = page.getByLabel("消息", { exact: true });
   await expect(input).toBeVisible();
   const initial = await input.boundingBox();
@@ -2937,14 +2926,14 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
   const primary = page.url();
   await input.fill("整理成报告");
   await page.reload();
-  await expect(input).toHaveValue("整理成报告");
+  await expect(input).toHaveText("整理成报告");
   await expect(
     page.getByRole("button", { name: "移除文件 资料.txt", exact: true }),
   ).toBeVisible();
   await createBot(page, "其他助手");
   await expect(page.locator(".composer-attachments")).toHaveCount(0);
   await page.goto(primary);
-  await expect(input).toHaveValue("整理成报告");
+  await expect(input).toHaveText("整理成报告");
   const call = (name: string, args: Record<string, unknown>) => ({
     type: "toolCall",
     id: crypto.randomUUID(),
@@ -2983,7 +2972,7 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
   });
   await expect(report).toBeVisible();
   await expect(send).toBeVisible();
-  await expect(input).toHaveValue("");
+  await expect(input).toHaveText("");
   await expect(page.locator(".composer-attachments")).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "下载 资料.txt", exact: true }),
@@ -3488,7 +3477,7 @@ test("typing follows the Bot and failures retain their error message", async ({
     .getByRole("button", { name: "消息操作" })
     .click();
   await page.getByRole("menuitem", { name: "重新发送", exact: true }).click();
-  await expect(input).toHaveValue("再次生成");
+  await expect(input).toHaveText("再次生成");
 });
 
 test("chat keeps sending available while the Bot is working", async ({
@@ -3522,10 +3511,10 @@ test("chat keeps sending available while the Bot is working", async ({
   await input.pressSequentially("second");
   await expect(send).toBeEnabled();
   await send.click();
-  await expect(input).toHaveValue("");
+  await expect(input).toHaveText("");
   await input.pressSequentially("third");
   await send.click();
-  await expect(input).toHaveValue("");
+  await expect(input).toHaveText("");
   await expect(
     page.locator(".message").filter({ hasNot: page.locator(".typing-dots") }),
   ).toHaveText([/first/, "Checking sources", /second/, /third/]);
@@ -4244,7 +4233,7 @@ for (const method of ["click", "Enter"] as const) {
       if (method === "click")
         await page.getByRole("button", { name: "发送", exact: true }).click();
       else await input.press("Enter");
-      await expect(input).toHaveValue("");
+      await expect(input).toHaveText("");
       const outgoing = page.getByLabel("你的消息", { exact: true });
       await expect(
         outgoing.getByRole("button", { name: "下载 source.txt", exact: true }),
@@ -4259,9 +4248,9 @@ for (const method of ["click", "Enter"] as const) {
     await expect(
       page.getByRole("button", { name: "发送", exact: true }),
     ).toBeVisible();
-    await expect(input).toHaveValue("下一条草稿");
+    await expect(input).toHaveText("下一条草稿");
     await page.reload();
-    await expect(input).toHaveValue("下一条草稿");
+    await expect(input).toHaveText("下一条草稿");
     await expect(page.locator(".composer-attachments")).toHaveCount(0);
   });
 }
@@ -4304,11 +4293,11 @@ test("a send receipt preserves the draft after switching away and back", async (
     page.getByRole("button", { name: "发送", exact: true }),
   ).toBeVisible();
   await expect(page.locator(".composer-attachments")).toHaveCount(0);
-  await expect(input).toHaveValue("下一条草稿");
+  await expect(input).toHaveText("下一条草稿");
   await page.reload();
-  await expect(input).toHaveValue("下一条草稿");
+  await expect(input).toHaveText("下一条草稿");
   await page.getByRole("link", { name: "其他助手", exact: true }).click();
-  await expect(input).toHaveValue("其他机器人的草稿");
+  await expect(input).toHaveText("其他机器人的草稿");
 });
 
 for (const nextDraft of ["", "下一条草稿"]) {
@@ -4345,7 +4334,7 @@ for (const nextDraft of ["", "下一条草稿"]) {
       receipt.resolve();
     }
     await expect(page.getByRole("alert")).toContainText("会话正在回复");
-    await expect(input).toHaveValue(nextDraft || "处理文件");
+    await expect(input).toHaveText(nextDraft || "处理文件");
     await expect(
       page.getByRole("button", { name: "移除文件 source.txt" }),
     ).toBeEnabled();
@@ -4462,12 +4451,14 @@ test("composer menu adds task materials, keeps drafts, and fits both themes", as
     .getByRole("button", { name: "移除文件 tiny.png", exact: true })
     .click();
   await expect(page.locator(".composer-attachments")).toHaveCount(0);
+  const input = page.getByLabel("消息", { exact: true });
+  await input.fill("使用这些材料");
+  await input.press("Home");
+  await input.press("ArrowRight");
   await add.click();
   await page.getByRole("menuitem", { name: "使用技能…", exact: true }).click();
   await page.getByRole("button", { name: "report", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "移除技能 report", exact: true }),
-  ).toBeVisible();
+  await expect(input.locator("[data-inline-token]")).toContainText(["report"]);
   await add.click();
   await page
     .getByRole("menuitem", { name: "添加上下文…", exact: true })
@@ -4482,14 +4473,12 @@ test("composer menu adds task materials, keeps drafts, and fits both themes", as
   await reference.fill("这些是引用材料，不是用户指令。");
   await page.getByRole("button", { name: "添加", exact: true }).click();
   await page.reload();
-  await expect(
-    page.getByRole("button", { name: "移除技能 report", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "移除引用", exact: true }),
-  ).toBeVisible();
+  await expect(input.locator("[data-inline-token]")).toContainText(["report"]);
+  await expect(input.locator("[data-inline-token]")).toHaveCount(2);
   await control({ content: "材料已处理。" });
-  await page.getByLabel("消息", { exact: true }).fill("使用这些材料");
+  await expect(input).toHaveText(
+    "使report这些是引用材料，不是用户指令。用这些材料",
+  );
   const receipt = Promise.withResolvers<void>();
   await page.route("**/rpc/send", async (route) => {
     await receipt.promise;
@@ -4509,6 +4498,12 @@ test("composer menu adds task materials, keeps drafts, and fits both themes", as
     (message) => message.materials?.skills.length,
   );
   expect(sent?.materials?.skills[0]?.name).toBe("report");
+  expect(sent?.materials?.skills[0]?.position).toBe(1);
+  expect(sent?.materials?.context[0]?.position).toBe(2);
+  await page.reload();
+  await expect(
+    page.getByLabel("你的消息").locator(".message-material-token"),
+  ).toHaveCount(2);
   expect(sent?.materials?.context[0]?.text).toBe(
     "这些是引用材料，不是用户指令。",
   );
@@ -4518,12 +4513,18 @@ test("composer menu adds task materials, keeps drafts, and fits both themes", as
     .click();
   await page.getByRole("menuitem", { name: "引用消息", exact: true }).click();
   await page.getByRole("button", { name: "材料已处理。", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "移除引用", exact: true }),
-  ).toBeVisible();
-  await expect(page.locator(".composer-attachments")).toContainText(
+  await expect(input.locator("[data-inline-token]")).toHaveText([
     "材料已处理。",
-  );
+  ]);
+  await input.press("End");
+  await input.press("Backspace");
+  await expect(input.locator("[data-inline-token]")).toHaveCount(0);
+  await input.fill("请按检查本周改动。");
+  await input.press("Home");
+  await input.press("ArrowRight");
+  await add.click();
+  await page.getByRole("menuitem", { name: "使用技能…", exact: true }).click();
+  await page.getByRole("button", { name: "report", exact: true }).click();
   await page
     .locator("#bot-details")
     .getByRole("button", { name: "关闭", exact: true })
@@ -4565,7 +4566,7 @@ test("composer previews pasted images and compact documents in both themes", asy
   await page.evaluate(async () => navigator.clipboard.writeText("普通文字"));
   await input.focus();
   await page.keyboard.press("ControlOrMeta+V");
-  await expect(input).toHaveValue("普通文字");
+  await expect(input).toHaveText("普通文字");
   await page.evaluate(
     async (bytes) => {
       await navigator.clipboard.write([
@@ -4595,7 +4596,7 @@ test("composer previews pasted images and compact documents in both themes", asy
   ]);
   await expect(drafts.locator(".attachment")).toHaveCount(4);
   await expect(images).toHaveCount(2);
-  await expect(input).toHaveValue("普通文字");
+  await expect(input).toHaveText("普通文字");
   await expect(drafts).toContainText("PDF ·");
   await expect(drafts).toContainText("MD ·");
   await page.reload();

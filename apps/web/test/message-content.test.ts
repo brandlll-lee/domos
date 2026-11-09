@@ -1,8 +1,47 @@
+import { materialText } from "@domos/agent/materials";
 import type { ChatMessage } from "@domos/agent/messages";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 import { MessageContent } from "../src/features/chat/message-content.tsx";
+
+test("materials render at their text positions and stay separate from prompt text", () => {
+  const materials = {
+    skills: [
+      {
+        id: "report",
+        revision: 1,
+        name: "项目周报",
+        content: "skill procedure",
+        position: 1,
+      },
+    ],
+    context: [
+      {
+        id: "quote",
+        type: "text" as const,
+        text: "保留现有数据",
+        botId: 1,
+        position: 3,
+      },
+    ],
+  };
+  const html = renderToStaticMarkup(
+    createElement(MessageContent, {
+      content: [{ type: "text", key: "text", text: "请按检查" }],
+      user: true,
+      materials,
+    }),
+  );
+  expect(html).toMatch(/请<span[^>]+class="message-material-token"/);
+  expect(html).toMatch(/项目周报<\/span><\/span>按<span/);
+  expect(html).toMatch(/保留现有数据<\/span><\/span>检查/);
+  expect(html).not.toContain("skill procedure");
+  const prompt = materialText("请按检查", materials);
+  expect(prompt).toContain("skill procedure");
+  expect(prompt).toContain("保留现有数据");
+  expect(prompt).not.toContain('"position"');
+});
 
 test("user links preserve literal text, line breaks and URL punctuation", () => {
   const text =

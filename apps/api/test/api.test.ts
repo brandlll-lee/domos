@@ -1480,12 +1480,13 @@ test("request skills and message references store authoritative snapshots across
     const input = {
       botId,
       text: "Use these",
-      skills: [selection],
+      skills: [{ ...selection, position: 1 }],
       context: [
         {
           id: crypto.randomUUID(),
           type: "message" as const,
           messageId: source?.id ?? "",
+          position: 2,
         },
         { id: crypto.randomUUID(), type: "text" as const, text: "Quoted text" },
       ],
@@ -1509,11 +1510,13 @@ test("request skills and message references store authoritative snapshots across
       messageId: source?.id,
       text: "Original source",
       botId,
+      position: 2,
     });
     expect(sent?.materials?.skills[0]).toMatchObject({
       name: "report",
       revision: enabled.revision,
       content: skill.content,
+      position: 1,
     });
     expect((await runtime.work.skills.list(context))[0]?.enabledBots).toEqual(
       [],
@@ -1528,6 +1531,8 @@ test("request skills and message references store authoritative snapshots across
     );
     expect(sent?.materials?.context).toHaveLength(2);
     expect(sent?.materials?.skills[0]?.name).toBe("report");
+    expect(sent?.materials?.skills[0]?.position).toBe(1);
+    expect(sent?.materials?.context[0]?.position).toBe(2);
   } finally {
     await reopened.harness.close(context);
   }

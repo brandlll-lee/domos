@@ -95,10 +95,9 @@
   min-height: var(--composer-control-size);
   border-radius: var(--radius-round);
 }
-.message-composer textarea {
+.message-composer-editor {
   display: block;
   flex: 1;
-  field-sizing: content;
   min-width: 0;
   min-height: var(--composer-control-size);
   max-height: var(--composer-max-height);
@@ -113,17 +112,47 @@
     0;
   border: 0;
   outline: none;
-  resize: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   overflow-y: auto;
   background: transparent;
   color: var(--color-text);
   font-size: var(--text-composer);
+  font-family: inherit;
   font-weight: var(--weight-regular);
   line-height: var(--leading-body);
 }
-.message-composer textarea::placeholder {
+.message-composer-editor[data-empty="true"]::before {
+  content: attr(data-placeholder);
+  pointer-events: none;
   color: color-mix(in srgb, var(--color-muted) 95%, var(--color-composer));
   font-size: var(--text-label);
+}
+.message-material-token {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-control);
+  background: color-mix(in oklch, var(--color-message-link) 14%, transparent);
+  color: var(--color-message-link);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-control);
+  vertical-align: baseline;
+  user-select: all;
+}
+.message-material-token > svg {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  align-self: center;
+}
+.message-material-token > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .composer-attachments,
 .attachments {

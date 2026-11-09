@@ -13,7 +13,7 @@ import { type ReactNode, type Ref, useRef } from "react";
 import { ComposerMenu } from "./composer-menu.tsx";
 import { chatCopy } from "./copy.ts";
 import { ErrorMessage } from "./error-message.tsx";
-import { MaterialChips } from "./material-chips.tsx";
+import { materialTokens } from "./material-tokens.tsx";
 import { type SendMessage, useComposer } from "./use-composer.ts";
 import type { useDraft } from "./use-draft.ts";
 import { useUploads } from "./use-uploads.ts";
@@ -37,7 +37,7 @@ export function Composer({
   onComputerRequired,
 }: {
   ref: Ref<HTMLElement>;
-  inputRef: Ref<HTMLTextAreaElement>;
+  inputRef: Ref<HTMLDivElement>;
   draft: ReturnType<typeof useDraft>;
   messages: ChatMessage[];
   botName: string;
@@ -54,6 +54,12 @@ export function Composer({
   onComputerRequired?: () => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
+  const editor = useRef<HTMLDivElement>(null);
+  const setEditor = (node: HTMLDivElement | null) => {
+    editor.current = node;
+    if (typeof inputRef === "function") inputRef(node);
+    else if (inputRef) inputRef.current = node;
+  };
   const uploads = useUploads(
     conversationId,
     draft.draft.attachments.length,
@@ -119,9 +125,14 @@ export function Composer({
       />
       {issue && <ErrorMessage>{issue}</ErrorMessage>}
       <MessageComposer
-        ref={inputRef}
+        ref={setEditor}
         value={composer.value}
         onValueChange={composer.change}
+        onCaretChange={composer.moveCaret}
+        tokens={materialTokens(composer.materials).map((token, index) => ({
+          ...token,
+          position: token.position ?? composer.value.length + index,
+        }))}
         onSubmit={() => void composer.submit()}
         onPaste={(event) => {
           const files = Array.from(event.clipboardData.files).filter((file) =>
@@ -148,6 +159,10 @@ export function Composer({
             messages={messages}
             materials={composer.materials}
             onMaterials={composer.setMaterials}
+            insertionPosition={() => composer.caret.current}
+            onInsert={() =>
+              requestAnimationFrame(() => editor.current?.focus())
+            }
             onFiles={(images) => {
               if (!computerReady) {
                 onComputerRequired?.();
@@ -163,15 +178,8 @@ export function Composer({
           />
         }
         attachments={
-          composer.attachments.length ||
-          uploads.items.length ||
-          hasMaterials ? (
+          composer.attachments.length || uploads.items.length ? (
             <>
-              <MaterialChips
-                materials={composer.materials}
-                disabled={composer.pending}
-                onChange={composer.setMaterials}
-              />
               {uploads.items.map((item) => (
                 <div className="composer-upload" key={item.id}>
                   <div className="composer-upload-caption">

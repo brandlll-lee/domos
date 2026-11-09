@@ -249,6 +249,7 @@ a,
 @media (forced-colors: active) {
   :root input:focus,
   :root textarea:focus,
+  :root [contenteditable="true"]:focus,
   .composer-field:focus-within {
     outline: 2px solid Highlight;
   }

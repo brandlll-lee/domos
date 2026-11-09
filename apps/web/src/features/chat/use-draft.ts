@@ -60,12 +60,16 @@ function load(key: string): { draft: Draft; error: string | null } {
           typeof item.id !== "string" ||
           typeof item.revision !== "number" ||
           typeof item.name !== "string" ||
-          typeof item.content !== "string",
+          typeof item.content !== "string" ||
+          (item.position !== undefined &&
+            (!Number.isInteger(item.position) || item.position < 0)),
       ) ||
       materials.context.some(
         (item: InputMaterials["context"][number]) =>
           typeof item.id !== "string" ||
           typeof item.text !== "string" ||
+          (item.position !== undefined &&
+            (!Number.isInteger(item.position) || item.position < 0)) ||
           !["text", "message"].includes(item.type) ||
           (item.type === "message" && typeof item.messageId !== "string"),
       )

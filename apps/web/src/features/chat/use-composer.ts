@@ -17,22 +17,41 @@ export function useComposer(
   send: SendMessage,
 ) {
   const submitting = useRef(false);
+  const caret = useRef(0);
   const pending = draft.draft.pending;
   async function submit() {
     if (!canSubmit || submitting.current) return;
     const original = draft.current.current;
+    const text = original.text.trim();
+    const leading = original.text.length - original.text.trimStart().length;
+    const position = (value: number | undefined) =>
+      value === undefined ? undefined : Math.max(0, value - leading);
     const input = pending ?? {
-      text: draft.current.current.text.trim(),
+      text,
       attachments: draft.current.current.attachments.map((file) => file.id),
-      skills: original.materials.skills.map(({ id, revision }) => ({
-        id,
-        revision,
-      })),
-      context: original.materials.context.map((item) =>
-        item.type === "message"
-          ? { id: item.id, type: item.type, messageId: item.messageId }
-          : { id: item.id, type: item.type, text: item.text },
+      skills: original.materials.skills.map(
+        ({ id, revision, position: at }) => ({
+          id,
+          revision,
+          ...(position(at) === undefined ? {} : { position: position(at) }),
+        }),
       ),
+      context: original.materials.context.map((item) => {
+        const at = position(item.position);
+        return item.type === "message"
+          ? {
+              id: item.id,
+              type: item.type,
+              messageId: item.messageId,
+              ...(at === undefined ? {} : { position: at }),
+            }
+          : {
+              id: item.id,
+              type: item.type,
+              text: item.text,
+              ...(at === undefined ? {} : { position: at }),
+            };
+      }),
       requestId: crypto.randomUUID(),
     };
     if (
@@ -48,11 +67,18 @@ export function useComposer(
     }
     submitting.current = true;
     try {
-      const result = await send(
-        input,
-        draft.current.current.attachments,
-        original.materials,
-      );
+      const result = await send(input, draft.current.current.attachments, {
+        skills: original.materials.skills.map((item) => ({
+          ...item,
+          position: input.skills?.find((skill) => skill.id === item.id)
+            ?.position,
+        })),
+        context: original.materials.context.map((item) => ({
+          ...item,
+          position: input.context?.find((context) => context.id === item.id)
+            ?.position,
+        })),
+      });
       if (result !== "unconfirmed") {
         draft.update({
           pending: null,
@@ -102,7 +128,45 @@ export function useComposer(
           (file) => file.id !== id,
         ),
       }),
-    change: (text: string) => draft.update({ text }),
+    caret,
+    moveCaret: (position: number) => {
+      caret.current = position;
+    },
+    change: (
+      text: string,
+      position: number,
+      positions: { id: string; position: number }[],
+    ) => {
+      caret.current = position;
+      const byId = new Map(positions.map((item) => [item.id, item.position]));
+      draft.update({
+        text,
+        materials: {
+          skills: draft.current.current.materials.skills
+            .filter(
+              (item) =>
+                byId.has(`skill:${item.id}`) ||
+                pending?.skills?.some((skill) => skill.id === item.id),
+            )
+            .map((item) =>
+              byId.has(`skill:${item.id}`)
+                ? { ...item, position: byId.get(`skill:${item.id}`) }
+                : item,
+            ),
+          context: draft.current.current.materials.context
+            .filter(
+              (item) =>
+                byId.has(`context:${item.id}`) ||
+                pending?.context?.some((context) => context.id === item.id),
+            )
+            .map((item) =>
+              byId.has(`context:${item.id}`)
+                ? { ...item, position: byId.get(`context:${item.id}`) }
+                : item,
+            ),
+        },
+      });
+    },
     submit,
     pending: pending !== null,
     error:

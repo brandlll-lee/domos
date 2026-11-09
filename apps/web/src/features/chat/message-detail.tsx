@@ -42,6 +42,7 @@ export function MessageDetail({
   return (
     <MessageContent
       content={(detail ?? message).content}
+      materials={(detail ?? message).materials}
       user={message.role === "user"}
     />
   );

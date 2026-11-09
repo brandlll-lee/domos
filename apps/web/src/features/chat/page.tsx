@@ -77,7 +77,7 @@ function BotChat({
   const computer = useComputer(bot.id, directory);
   const dock = useComposerDock();
   const draft = useDraft(bot.id);
-  const input = useRef<HTMLTextAreaElement>(null);
+  const input = useRef<HTMLDivElement>(null);
   const resend = useCallback(
     (original: ChatMessage) => {
       draft.update({

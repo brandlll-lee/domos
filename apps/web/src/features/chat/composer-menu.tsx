@@ -29,6 +29,8 @@ export function ComposerMenu({
   onFiles,
   materials,
   onMaterials,
+  insertionPosition,
+  onInsert,
 }: {
   botId: number;
   disabled: boolean;
@@ -37,6 +39,8 @@ export function ComposerMenu({
   onFiles: (images: boolean) => void;
   materials: InputMaterials;
   onMaterials: (materials: InputMaterials) => void;
+  insertionPosition: () => number;
+  onInsert: () => void;
 }) {
   const popup = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -53,19 +57,41 @@ export function ComposerMenu({
         )
         ?.focus();
   }, [open, panel]);
+  function insertAt(position: number) {
+    const shift = <T extends { position?: number }>(item: T): T => ({
+      ...item,
+      ...(item.position !== undefined && item.position >= position
+        ? { position: item.position + 1 }
+        : {}),
+    });
+    return {
+      skills: materials.skills.map(shift),
+      context: materials.context.map(shift),
+    };
+  }
   function skill(value: InputMaterials["skills"][number]) {
+    const existing = materials.skills.find((item) => item.id === value.id);
+    const position = existing?.position ?? insertionPosition();
+    const next = existing ? materials : insertAt(position);
     onMaterials({
-      ...materials,
+      ...next,
       skills: [
-        ...materials.skills.filter((item) => item.id !== value.id),
-        value,
+        ...next.skills.filter((item) => item.id !== value.id),
+        { ...value, position },
       ],
     });
     setOpen(false);
+    onInsert();
   }
   function context(value: InputMaterials["context"][number]) {
-    onMaterials({ ...materials, context: [...materials.context, value] });
+    const position = insertionPosition();
+    const next = insertAt(position);
+    onMaterials({
+      ...next,
+      context: [...next.context, { ...value, position }],
+    });
     setOpen(false);
+    onInsert();
   }
   return (
     <Popover.Root
