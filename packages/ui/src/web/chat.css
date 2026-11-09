@@ -133,14 +133,14 @@
   align-items: center;
   gap: var(--space-1);
   max-width: 100%;
-  padding: 0 var(--space-1);
+  padding: calc(var(--space-1) / 2) var(--space-1);
   border-radius: var(--radius-control);
   background: color-mix(in oklch, var(--color-message-link) 14%, transparent);
   color: var(--color-message-link);
-  font-size: var(--text-label);
+  font-size: inherit;
   font-weight: var(--weight-medium);
-  line-height: var(--leading-control);
-  vertical-align: baseline;
+  line-height: inherit;
+  vertical-align: middle;
   user-select: all;
 }
 .message-material-token > svg {

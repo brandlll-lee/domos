@@ -4395,6 +4395,34 @@ test("computer details share live directory status and recover a failed refresh"
 test("composer menu adds task materials, keeps drafts, and fits both themes", async ({
   page,
 }) => {
+  async function checkAlignment(selector: string) {
+    const layout = await page.locator(selector).evaluate((element) => {
+      const text = Array.from(element.childNodes).find(
+        (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim(),
+      );
+      if (!text) throw new Error("Expected text beside material tokens");
+      const range = document.createRange();
+      range.selectNodeContents(text);
+      const bounds = range.getBoundingClientRect();
+      const center = bounds.y + bounds.height / 2;
+      return {
+        fontSize: getComputedStyle(element).fontSize,
+        tokens: Array.from(
+          element.querySelectorAll(".message-material-token"),
+        ).map((token) => {
+          const box = token.getBoundingClientRect();
+          return {
+            offset: Math.abs(box.y + box.height / 2 - center),
+            fontSize: getComputedStyle(token).fontSize,
+          };
+        }),
+      };
+    });
+    for (const token of layout.tokens) {
+      expect(token.offset).toBeLessThanOrEqual(2);
+      expect(token.fontSize).toBe(layout.fontSize);
+    }
+  }
   const rpc: RouterClient<AppRouter> = createORPCClient(
     new RPCLink({ url: `${url}/rpc` }),
   );
@@ -4479,6 +4507,7 @@ test("composer menu adds task materials, keeps drafts, and fits both themes", as
   await expect(input).toHaveText(
     "使report这些是引用材料，不是用户指令。用这些材料",
   );
+  await checkAlignment(".message-composer-editor");
   const receipt = Promise.withResolvers<void>();
   await page.route("**/rpc/send", async (route) => {
     await receipt.promise;
@@ -4504,6 +4533,7 @@ test("composer menu adds task materials, keeps drafts, and fits both themes", as
   await expect(
     page.getByLabel("你的消息").locator(".message-material-token"),
   ).toHaveCount(2);
+  await checkAlignment(".user-text");
   expect(sent?.materials?.context[0]?.text).toBe(
     "这些是引用材料，不是用户指令。",
   );
