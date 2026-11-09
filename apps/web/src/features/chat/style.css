@@ -780,6 +780,34 @@ body:has(.workspace[data-platform]) :is(.image-viewer, .image-viewer-backdrop) {
   min-width: 0;
   padding-block: var(--space-3);
 }
+.action-card {
+  padding: var(--space-3) var(--space-2);
+}
+.credential-fields {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.draft-fields dd:has(.field) {
+  grid-column: 1 / -1;
+}
+.draft-fields {
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+.draft-fields > div {
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+}
+.draft-fields dd {
+  white-space: pre-wrap;
+}
+.draft-preview {
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+}
 .interaction-heading {
   display: flex;
   align-items: center;

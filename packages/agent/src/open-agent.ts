@@ -14,6 +14,7 @@ import type { Computers } from "./computer/catalog.ts";
 import { ComputerRuntime } from "./computer/runtime.ts";
 import { Files } from "./files.ts";
 import { history } from "./harness/history.ts";
+import { interactionExtension } from "./harness/interactions.ts";
 import { EngineDoc } from "./harness/state.ts";
 import { McpConnections } from "./mcp/connections.ts";
 import { messaging } from "./messaging.ts";
@@ -58,6 +59,7 @@ export async function openAgent(
       }),
     );
   if (execution) options.registry.install(execution.mcpExtension());
+  if (execution) options.registry.install(interactionExtension(execution));
   let engines: Runtime | undefined;
   let computerRuntime: ComputerRuntime | undefined;
   let routines: Routines;

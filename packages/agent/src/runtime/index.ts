@@ -13,6 +13,7 @@ import { ComputerRequests } from "../computer/runtime.ts";
 import { ComputersDoc } from "../computer/state.ts";
 import { EngineConnections } from "../harness/connections.ts";
 import type { EngineExecution } from "../harness/execution.ts";
+import { completeCredentials } from "../harness/interactions.ts";
 import { EngineModelCatalog } from "../harness/model-catalog.ts";
 import { engineProvider, providers } from "../harness/providers/index.ts";
 import {
@@ -722,6 +723,15 @@ export class Runtime {
     context: Context,
   ) {
     await this.execution.answer(botId, id, answer, context);
+  }
+
+  credentials(
+    botId: number,
+    id: string,
+    values: Record<string, string>,
+    context: Context,
+  ) {
+    return completeCredentials(this.execution, botId, id, values, context);
   }
 
   takeRequest(botId: number, id: string, view: string, context: Context) {

@@ -113,6 +113,23 @@ export type EngineModel = {
 };
 export type EngineImage = { type: "image"; data: string; mimeType: string };
 export type EngineApproval = {
+  draft?: {
+    body?: string;
+    editable?: boolean;
+    fields?: {
+      id: string;
+      label: string;
+      value: string;
+      editable?: boolean;
+      multiline?: boolean;
+    }[];
+  };
+  credential?: {
+    connectionId: string;
+    revision: number;
+    mode: "oauth" | "secret";
+    fields: { name: string; label: string; prefix?: string }[];
+  };
   requestedAt?: number;
   takeover?: NonNullable<ChatMessage["takeover"]>;
   preview?: EngineImage;

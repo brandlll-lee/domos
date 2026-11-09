@@ -10,8 +10,32 @@ import { ShieldCheckIcon } from "@phosphor-icons/react/dist/csr/ShieldCheck";
 import { useState } from "react";
 import { client } from "../../client.ts";
 import { useWorkAction } from "../bots/details/use-bot-work.ts";
+import { CredentialCard, DraftCard } from "./interaction-card.tsx";
 
 export function Approval({
+  botId,
+  message,
+}: {
+  botId: number;
+  message: ChatMessage;
+}) {
+  const record = message.approval;
+  if (record?.request.credential)
+    return (
+      <CredentialCard
+        botId={botId}
+        record={record}
+        credential={record.request.credential}
+      />
+    );
+  if (record?.request.draft)
+    return (
+      <DraftCard botId={botId} record={record} draft={record.request.draft} />
+    );
+  return <NativeApproval botId={botId} message={message} />;
+}
+
+function NativeApproval({
   botId,
   message,
 }: {

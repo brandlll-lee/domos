@@ -5,7 +5,7 @@ import type { CredentialStore } from "@earendil-works/pi-ai";
 import { defineDoc, type Harness } from "@earendil-works/pi-durable";
 import type { mcpOperation } from "../harness/mcp-client.mjs";
 import { stored } from "../harness/task-types.ts";
-import type { ProductTool } from "../harness/types.ts";
+import type { EngineApproval, ProductTool } from "../harness/types.ts";
 import { requiredText, requireRevision, WorkError } from "../work/state.ts";
 
 import type { McpConfig } from "./config.ts";
@@ -236,6 +236,66 @@ export class McpConnections {
       ...(await this.secret(id, context)).secret,
       tools: grant.tools,
     };
+  }
+
+  async configureCredential(
+    botId: number,
+    request: NonNullable<EngineApproval["credential"]>,
+    values: Record<string, string>,
+    context: Context,
+  ) {
+    const { item, secret } = await this.secret(request.connectionId, context);
+    requireRevision(item.revision, request.revision);
+    await this.resolve(item.id, botId, item.computerId, context);
+    if (request.mode === "oauth") {
+      if (
+        Object.keys(values).length ||
+        item.status !== "ready" ||
+        !secret.oauth
+      )
+        throw new WorkError("BAD_REQUEST", "请先完成浏览器授权。");
+      return;
+    }
+    if (
+      Object.keys(values).length !== request.fields.length ||
+      request.fields.some(
+        (field) =>
+          !Object.hasOwn(values, field.name) ||
+          !values[field.name]?.trim() ||
+          (values[field.name]?.length ?? 0) > 32768,
+      )
+    )
+      throw new WorkError("BAD_REQUEST", "请填写请求中的凭证字段。");
+    const config = structuredClone(secret.config);
+    const target = config.transport === "http" ? config.headers : config.env;
+    for (const field of request.fields) {
+      const value = (field.prefix ?? "") + values[field.name];
+      if (config.transport === "http") {
+        try {
+          new Headers({ [field.name]: value });
+        } catch {
+          throw new WorkError("BAD_REQUEST", "请求头格式无效。");
+        }
+      } else if (/[=\0]/.test(field.name) || value.includes("\0"))
+        throw new WorkError("BAD_REQUEST", "环境变量格式无效。");
+      Object.defineProperty(target, field.name, {
+        value,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+    }
+    await this.save(
+      {
+        id: item.id,
+        revision: item.revision,
+        name: item.name,
+        computerId: item.computerId,
+        enabled: item.enabled,
+        config,
+      },
+      context,
+    );
   }
 
   private async secret(id: string, context: Context) {

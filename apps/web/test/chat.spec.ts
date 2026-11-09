@@ -4717,3 +4717,151 @@ test("file upload retry keeps its identity and cancellation releases the draft",
     page.getByRole("button", { name: "发送", exact: true }),
   ).toBeEnabled();
 });
+
+test("action drafts edit the confirmed version and keep previews across themes and reload", async ({
+  page,
+}, testInfo) => {
+  worker.send({
+    approval: {
+      id: "draft-ui",
+      title: "发送团队更新",
+      detail: "",
+      kind: "question",
+      confirmLabel: "发送",
+      draft: {
+        body: `## 本周进展\n\n${"已完成本周的更新。\n\n".repeat(45)}`,
+        editable: true,
+        fields: [
+          {
+            id: "to",
+            label: "收件人",
+            value: "team@example.com",
+            editable: true,
+          },
+          { id: "subject", label: "主题", value: "团队更新", editable: true },
+        ],
+      },
+    },
+  });
+  await page.goto(url);
+  const card = page.getByRole("region", { name: "发送团队更新", exact: true });
+  await expect(card).toBeVisible();
+  for (const theme of ["浅色", "深色"]) {
+    await chooseAppearance(page, theme);
+    await expect(
+      card.getByRole("button", { name: "发送", exact: true }),
+    ).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`draft-${theme}.png`) });
+  }
+  const details = page.getByRole("complementary", { name: /的详情$/ });
+  if (await details.isVisible())
+    await details.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(details).toBeHidden();
+  await page.setViewportSize({ width: 390, height: 760 });
+  await expect(page.locator(".workspace")).toHaveAttribute(
+    "data-mobile",
+    "true",
+  );
+  const inspector = page.getByRole("dialog", { name: "Bot详情", exact: true });
+  await page.keyboard.press("Escape");
+  await expect(inspector).toBeHidden();
+  const bounds = await card.boundingBox();
+  expect(bounds?.x).toBeGreaterThanOrEqual(0);
+  expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(390);
+  await card.getByRole("button", { name: "修改", exact: true }).click();
+  await card
+    .getByRole("textbox", { name: "收件人", exact: true })
+    .fill("review@example.com");
+  await card
+    .getByRole("textbox", { name: "正文", exact: true })
+    .fill("这是修改后的确认稿。");
+  await card.getByRole("button", { name: "预览", exact: true }).click();
+  await expect(card).toContainText("这是修改后的确认稿。");
+  await card.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(card.getByRole("status")).toHaveText("已确认");
+
+  await page.reload();
+  await expect(card).toContainText("review@example.com");
+  await expect(card).toContainText("这是修改后的确认稿。");
+  await expect(
+    card.getByRole("button", { name: "发送", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("secure credential cards save privately, retry failures and cancel in chat", async ({
+  page,
+}, testInfo) => {
+  const rpc: RouterClient<AppRouter> = createORPCClient(
+    new RPCLink({ url: `${url}/rpc` }),
+  );
+  const bot = (await rpc.bots.list())[0];
+  if (!bot) throw new Error("Bot required");
+  let connection = await rpc.mcp.save({
+    id: crypto.randomUUID(),
+    revision: 0,
+    name: "Notes",
+    computerId: "local",
+    enabled: true,
+    config: { transport: "http", url: "https://example.com/mcp", headers: {} },
+  });
+  connection = await rpc.mcp.grant({
+    id: connection.id,
+    revision: connection.revision,
+    grants: [{ botId: bot.id, tools: null }],
+  });
+  const request = {
+    id: "credential-ui",
+    title: "连接 Notes",
+    detail: "保存这份笔记需要服务授权。",
+    kind: "question",
+    credential: {
+      connectionId: connection.id,
+      revision: connection.revision,
+      mode: "secret",
+      fields: [{ name: "Authorization", label: "API Key", prefix: "Bearer " }],
+    },
+  };
+  worker.send({ approval: request });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.goto(url);
+  const card = page.getByRole("region", { name: "连接 Notes", exact: true });
+  await expect(card).toBeVisible();
+  await card.getByLabel("API Key", { exact: true }).fill("private-ui-value");
+  await expect(card.getByLabel("API Key", { exact: true })).toHaveAttribute(
+    "type",
+    "password",
+  );
+  await page.route("**/rpc/engines/credentials", async (route) => {
+    await route.abort();
+    await page.unroute("**/rpc/engines/credentials");
+  });
+  await card.getByRole("button", { name: "保存并继续", exact: true }).click();
+  await expect(card.getByRole("alert")).toBeVisible();
+  await expect(card.getByLabel("API Key", { exact: true })).toHaveValue(
+    "private-ui-value",
+  );
+  await page.screenshot({
+    path: testInfo.outputPath("credential-dark-narrow.png"),
+  });
+  const answered = once(worker, "message");
+  await card.getByRole("button", { name: "保存并继续", exact: true }).click();
+  expect(JSON.stringify(await answered)).not.toContain("private-ui-value");
+  await expect(card.getByRole("status")).toHaveText("已配置");
+  await expect(card.locator("input")).toHaveCount(0);
+  expect(JSON.stringify(await rpc.get({ botId: bot.id }))).not.toContain(
+    "private-ui-value",
+  );
+  await page.reload();
+  await expect(card.getByRole("status")).toHaveText("已配置");
+  expect(await page.locator("body").textContent()).not.toContain(
+    "private-ui-value",
+  );
+  worker.send({ approval: { ...request, id: "credential-cancel" } });
+  const pending = page.locator('.action-card[data-state="pending"]');
+  await expect(pending).toBeVisible();
+  const cancelled = once(worker, "message");
+  await pending.getByRole("button", { name: "取消", exact: true }).click();
+  expect(JSON.stringify(await cancelled)).toContain('"allow":false');
+  await expect(pending).toHaveCount(0);
+});

@@ -235,6 +235,22 @@ export function engineRouter(bots: Bots, runtime?: Runtime) {
           context,
         ),
       ),
+    credentials: os
+      .input(
+        botTarget.extend({
+          id: z.string().min(1).max(256),
+          values: z.record(z.string().min(1).max(256), z.string().max(32768)),
+        }),
+      )
+      .handler(async ({ input }) => {
+        await (await target(input.botId)).credentials(
+          input.botId,
+          input.id,
+          input.values,
+          context,
+        );
+        return { ok: true };
+      }),
     answer: os
       .input(
         botTarget.extend({

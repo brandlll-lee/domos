@@ -98,7 +98,9 @@ const MessageRow = memo(function MessageRow({
       {message.notice ? (
         <InlineNotice align="center">{message.notice.text}</InlineNotice>
       ) : message.approval ? (
-        message.approval.state === "pending" ? (
+        message.approval.state === "pending" ||
+        message.approval.request.draft ||
+        message.approval.request.credential ? (
           <MessageBubble side="incoming">
             <Approval botId={botId} message={message} />
           </MessageBubble>

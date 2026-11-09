@@ -8,7 +8,7 @@ import type { Computers } from "../computer/catalog.ts";
 import { computerInstructions } from "../computer/instructions.ts";
 import { ComputerRequests, type ComputerRuntime } from "../computer/runtime.ts";
 import type { Files } from "../files.ts";
-import type { McpConnections } from "../mcp/connections.ts";
+import type { McpConnection, McpConnections } from "../mcp/connections.ts";
 import {
   MemoryDoc,
   MemoryReviewDoc,
@@ -117,14 +117,29 @@ export class EngineExecution {
           executionMode: "sequential",
           execute: async (input, api, ctx) => {
             const active = this.active.get(api.conversationId);
-            const mounted = active?.managed?.get(input.id);
             const connections = this.mcp;
-            if (!connections || !active?.approve || !mounted?.worker.mcp)
+            if (!connections || !active?.approve)
               throw new Error("MCP 会话已结束或未授权。");
             const signal = AbortSignal.any([
               ctx.abortSignal ?? active.controller.signal,
               active.controller.signal,
             ]);
+            if (input.method === "tools/list") {
+              const item = (await connections.list(ctx)).find(
+                (item) => item.id === input.id,
+              );
+              if (!item) throw new Error("连接不存在。");
+              if (active.managed?.get(item.id)?.generation !== item.generation)
+                await this.connectManaged(
+                  api.conversationId,
+                  item,
+                  ctx,
+                  signal,
+                );
+            }
+            const mounted = active.managed?.get(input.id);
+            if (!mounted?.worker.mcp)
+              throw new Error("请先读取此连接的 tools/list。");
             const authorize = async () => {
               const current = await connections.resolve(
                 input.id,
@@ -238,6 +253,91 @@ export class EngineExecution {
         }),
       ],
     });
+  }
+
+  private async connectManaged(
+    botId: number,
+    item: McpConnection,
+    context: Context,
+    signal: AbortSignal,
+  ) {
+    const active = this.active.get(botId);
+    const connections = this.mcp;
+    if (!active?.process.mcp || !connections)
+      throw new Error("MCP 会话已结束。");
+    const resolved = await connections.resolve(
+      item.id,
+      botId,
+      item.computerId,
+      context,
+    );
+    const binding = await this.computers.binding(botId, context);
+    if (
+      resolved.config.transport === "stdio" &&
+      item.computerId !== binding.computerId
+    )
+      throw new Error(`MCP ${item.name} 只能在绑定的工作电脑使用。`);
+    const previous = active.managed?.get(item.id);
+    if (previous) {
+      if (previous.worker !== active.process) await previous.worker.close();
+      else
+        await previous.worker.mcp?.(
+          { action: "disconnect", id: item.id },
+          signal,
+        );
+      active.managed?.delete(item.id);
+    }
+    let worker: EngineProcess | undefined;
+    try {
+      worker =
+        item.computerId === binding.computerId
+          ? active.process
+          : await this.computers.mcpProcess(item.computerId, context, botId);
+      if (!worker.mcp) throw new Error("工作电脑需要更新 MCP 支持。");
+      active.managed ??= new Map();
+      active.managed.set(item.id, {
+        generation: item.generation,
+        computerId: item.computerId,
+        worker,
+        tools: [],
+      });
+      if (worker !== active.process)
+        worker.mcpNotification = (id, notification) => {
+          void active.process
+            .mcp?.(
+              { action: "notify", id, notification },
+              active.controller.signal,
+            )
+            .catch(() => {});
+        };
+      const connected = await worker.mcp<{
+        tools: import("./types.ts").ProductTool[];
+        capabilities: Record<string, unknown>;
+        oauth: Record<string, unknown>;
+      }>({ action: "connect", id: item.id, ...resolved }, signal);
+      signal.throwIfAborted();
+      await connections.report(item.id, item.revision, connected, context);
+      await connections.saveOAuth(
+        item.id,
+        item.generation,
+        connected.oauth,
+        context,
+      );
+      const tools = connected.tools.filter(
+        (tool) => !resolved.tools || resolved.tools.includes(tool.name),
+      );
+      active.managed.set(item.id, {
+        generation: item.generation,
+        computerId: item.computerId,
+        worker,
+        tools,
+      });
+      return { tools, capabilities: connected.capabilities };
+    } catch (error) {
+      active.managed?.delete(item.id);
+      if (worker && worker !== active.process) await worker.close();
+      throw error;
+    }
   }
 
   async run(
@@ -516,56 +616,20 @@ export class EngineExecution {
             throw new Error(
               `MCP ${item.name} 与原生来源同名。请为此 Bot 选择原生连接，或先在原生程序停用该连接。`,
             );
-          const resolved = await connections.resolve(
-            item.id,
-            runtime.conversationId,
-            item.computerId,
-            context,
-          );
-          if (
-            resolved.config.transport === "stdio" &&
-            item.computerId !== doc.computerId
-          )
-            throw new Error(`MCP ${item.name} 只能在绑定的工作电脑使用。`);
-          let worker: EngineProcess | undefined;
-          let connected: {
-            tools: import("./types.ts").ProductTool[];
-            capabilities: Record<string, unknown>;
-            oauth: Record<string, unknown>;
-          };
           try {
-            worker =
-              item.computerId === doc.computerId
-                ? active.process
-                : await this.computers.mcpProcess(
-                    item.computerId,
-                    context,
-                    runtime.conversationId,
-                  );
-            if (!worker.mcp) throw new Error("工作电脑需要更新 MCP 支持。");
-            active.managed.set(item.id, {
-              generation: item.generation,
-              computerId: item.computerId,
-              worker,
-              tools: [],
-            });
-            if (worker !== active.process)
-              worker.mcpNotification = (id, notification) => {
-                void active.process
-                  .mcp?.(
-                    { action: "notify", id, notification },
-                    active.controller.signal,
-                  )
-                  .catch(() => {});
-              };
-            connected = await worker.mcp(
-              { action: "connect", id: item.id, ...resolved },
+            const connected = await this.connectManaged(
+              runtime.conversationId,
+              item,
+              context,
               active.controller.signal,
             );
+            const mounted = await active.process.mcp<{ url: string }>(
+              { action: "mount", id: item.id, name: item.name, ...connected },
+              active.controller.signal,
+            );
+            servers.push({ name: `domos_${item.id}`, url: mounted.url });
           } catch (error) {
             active.controller.signal.throwIfAborted();
-            active.managed.delete(item.id);
-            if (worker && worker !== active.process) await worker.close();
             await connections.report(
               item.id,
               item.revision,
@@ -573,36 +637,8 @@ export class EngineExecution {
               context,
             );
             mcpNotices[`mcp:${item.id}`] =
-              `MCP ${item.name} 暂不可用。本轮将继续，无法使用该服务的工具。请检查连接或登录。`;
-            continue;
+              `MCP ${item.name} 暂不可用。本轮将继续。可使用 request_credentials 完成配置，再通过 mcp_call 读取工具。`;
           }
-          await connections.report(item.id, item.revision, connected, context);
-          const tools = connected.tools.filter(
-            (tool) => !resolved.tools || resolved.tools.includes(tool.name),
-          );
-          active.managed.set(item.id, {
-            generation: item.generation,
-            computerId: item.computerId,
-            worker,
-            tools,
-          });
-          await connections.saveOAuth(
-            item.id,
-            item.generation,
-            connected.oauth,
-            context,
-          );
-          const mounted = await active.process.mcp<{ url: string }>(
-            {
-              action: "mount",
-              id: item.id,
-              name: item.name,
-              tools,
-              capabilities: connected.capabilities,
-            },
-            active.controller.signal,
-          );
-          servers.push({ name: `domos_${item.id}`, url: mounted.url });
         }
       }
       if (routineRunId) {

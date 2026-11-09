@@ -458,10 +458,32 @@ export class ComputerRuntime {
     id: string,
     answer: EngineAnswer,
     context: Context,
+    complete?: (request: EngineApproval) => Promise<void>,
   ) {
     const { pending, approval } = await this.request(botId, id, context);
+    if (approval.credential && answer.allow && !complete)
+      throw new Error("请通过安全凭证入口完成配置。");
     pending.completing = true;
     try {
+      if (complete) await complete(approval);
+      if (approval.credential) answer = { allow: answer.allow };
+      if (approval.draft && answer.allow) {
+        const fields = approval.draft.fields ?? [];
+        const allowed = new Set(
+          fields.filter((field) => field.editable).map((field) => field.id),
+        );
+        if (approval.draft.editable) allowed.add("body");
+        if (
+          Object.entries(answer.answers ?? {}).some(
+            ([key, value]) =>
+              !allowed.has(key) ||
+              value.length !== 1 ||
+              (value[0]?.length ?? 0) > 16000,
+          )
+        )
+          throw new Error("草稿字段无效。");
+        answer = { allow: true, answers: answer.answers };
+      }
       if (
         approval.takeover &&
         (answer.allow || approval.takeover.state === "controlling")

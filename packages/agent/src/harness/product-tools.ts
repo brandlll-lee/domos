@@ -19,6 +19,7 @@ const productExtensions = new Set([
   "domos-memory",
   "domos-skills",
   "domos-routines",
+  "domos-interactions",
 ]);
 const ProductCalls = defineDoc<{ delivered: string[] }>({
   kind: "domos.engine-product-calls",
@@ -89,7 +90,8 @@ export async function productCatalog(
         ({ extension, tool }) =>
           names.has(tool.name) &&
           (productExtensions.has(extension.name) ||
-            tool.name === "attach_file"),
+            tool.name === "attach_file" ||
+            tool.name === "mcp_call"),
       )
       .map(({ tool }) => ({
         name: tool.name,
