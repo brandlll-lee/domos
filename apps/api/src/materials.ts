@@ -1,4 +1,5 @@
-import type { InputMaterials } from "@domos/agent/materials";
+import { type InputMaterials, MAX_MATERIALS } from "@domos/agent/materials";
+import type { McpConnections } from "@domos/agent/mcp";
 import { messageText } from "@domos/agent/messages";
 import type { ChatView } from "@domos/agent/view";
 import type { BotWork } from "@domos/agent/work";
@@ -8,15 +9,37 @@ import { ORPCError } from "@orpc/server";
 import { z } from "zod";
 
 export const materialsSchema = {
-  skills: z
+  mcp: z
     .array(
       z.object({
-        id: z.string().min(1).max(128),
-        revision: z.number().int().nonnegative(),
+        id: z.string().min(1),
+        native: z
+          .object({ provider: z.string().min(1), source: z.string() })
+          .optional(),
+        available: z.boolean().optional(),
+        status: z.string().optional(),
         position: z.number().int().nonnegative().optional(),
       }),
     )
-    .max(10)
+    .max(MAX_MATERIALS)
+    .default([]),
+  skills: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        revision: z.number().int().nonnegative().optional(),
+        native: z
+          .object({
+            provider: z.string().min(1),
+            name: z.string().min(1),
+            path: z.string().min(1),
+            source: z.string(),
+          })
+          .optional(),
+        position: z.number().int().nonnegative().optional(),
+      }),
+    )
+    .max(MAX_MATERIALS)
     .default([]),
   context: z
     .array(
@@ -35,7 +58,7 @@ export const materialsSchema = {
         }),
       ]),
     )
-    .max(10)
+    .max(MAX_MATERIALS)
     .default([]),
 };
 
@@ -45,9 +68,11 @@ export async function prepareMaterials(
     requestId: string;
     skills: z.infer<typeof materialsSchema.skills>;
     context: z.infer<typeof materialsSchema.context>;
+    mcp: z.infer<typeof materialsSchema.mcp>;
   },
-  view: ChatView,
+  view: Pick<ChatView, "messages">,
   work: BotWork,
+  connections?: McpConnections,
 ): Promise<InputMaterials> {
   const existing = view.messages.find(
     (message) => message.requestId === input.requestId,
@@ -56,12 +81,66 @@ export async function prepareMaterials(
   const skills = input.skills.length
     ? await work.skills.list(BACKGROUND_CONTEXT)
     : [];
+  const catalog =
+    input.skills.some((skill) => skill.native) ||
+    input.mcp.some((item) => item.native)
+      ? await work.read(input.botId, BACKGROUND_CONTEXT)
+      : undefined;
+  const managed =
+    input.mcp.length && connections
+      ? await connections.list(BACKGROUND_CONTEXT)
+      : [];
   return {
+    ...(input.mcp.length
+      ? {
+          mcp: input.mcp.map((selection) => {
+            if (selection.native) {
+              return {
+                ...selection,
+                name: selection.id,
+                available: Boolean(
+                  selection.available &&
+                    catalog?.nativeSkillsProvider === selection.native.provider,
+                ),
+                status: selection.status ?? "unknown",
+              };
+            }
+            const item = managed.find((item) => item.id === selection.id);
+            return {
+              ...selection,
+              name: item?.name ?? selection.id,
+              available: Boolean(
+                item?.enabled &&
+                  item.grants.some((grant) => grant.botId === input.botId),
+              ),
+              status: item?.status ?? (item ? "configured" : "连接不存在"),
+            };
+          }),
+        }
+      : {}),
     skills: [
       ...new Map(
         input.skills.map((selection) => [selection.id, selection]),
       ).values(),
-    ].map(({ id, revision, position }) => {
+    ].map(({ id, revision, native, position }) => {
+      if (native) {
+        const skill = catalog?.nativeSkills?.find(
+          (item) =>
+            item.name === native.name &&
+            item.path === native.path &&
+            item.source === native.source,
+        );
+        if (!skill || catalog?.nativeSkillsProvider !== native.provider)
+          throw new ORPCError("NOT_FOUND", {
+            message: "原生技能目录已变化，请重新选择。",
+          });
+        return {
+          id,
+          name: skill.name,
+          native,
+          position,
+        };
+      }
       const skill = skills.find(
         (item) => item.id === id && item.enabledBots.includes(input.botId),
       );

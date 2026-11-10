@@ -1,21 +1,28 @@
-import type { InputMaterials } from "@domos/agent/materials";
+import { type InputMaterials, MAX_MATERIALS } from "@domos/agent/materials";
 import type { ChatMessage } from "@domos/agent/messages";
 import { Button } from "@domos/ui/controls";
 import { Popover } from "@domos/ui/popover";
 import { ArrowLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowLeft";
 import { FileIcon } from "@phosphor-icons/react/dist/csr/File";
 import { ImageIcon } from "@phosphor-icons/react/dist/csr/Image";
+import { PlugsIcon } from "@phosphor-icons/react/dist/csr/Plugs";
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { QuotesIcon } from "@phosphor-icons/react/dist/csr/Quotes";
 import { SparkleIcon } from "@phosphor-icons/react/dist/csr/Sparkle";
 import { TextAlignLeftIcon } from "@phosphor-icons/react/dist/csr/TextAlignLeft";
 import { useEffect, useRef, useState } from "react";
-import { MessagePicker, SkillPicker, TextPicker } from "./material-picker.tsx";
+import {
+  McpPicker,
+  MessagePicker,
+  SkillPicker,
+  TextPicker,
+} from "./material-picker.tsx";
 import "./composer-menu.css";
 
 const titles = {
   menu: "添加内容",
   skills: "使用技能",
+  mcp: "引用 MCP",
   context: "添加上下文",
   text: "粘贴文本",
   messages: "引用消息",
@@ -51,7 +58,7 @@ export function ComposerMenu({
         ?.querySelector<HTMLElement>(
           panel === "text"
             ? "textarea"
-            : panel === "skills" || panel === "messages"
+            : panel === "skills" || panel === "mcp" || panel === "messages"
               ? "input"
               : "[role=menuitem]",
         )
@@ -66,6 +73,7 @@ export function ComposerMenu({
     });
     return {
       skills: materials.skills.map(shift),
+      mcp: materials.mcp?.map(shift),
       context: materials.context.map(shift),
     };
   }
@@ -77,6 +85,20 @@ export function ComposerMenu({
       ...next,
       skills: [
         ...next.skills.filter((item) => item.id !== value.id),
+        { ...value, position },
+      ],
+    });
+    setOpen(false);
+    onInsert();
+  }
+  function mcp(value: NonNullable<InputMaterials["mcp"]>[number]) {
+    const existing = materials.mcp?.find((item) => item.id === value.id);
+    const position = existing?.position ?? insertionPosition();
+    const next = existing ? materials : insertAt(position);
+    onMaterials({
+      ...next,
+      mcp: [
+        ...(next.mcp ?? []).filter((item) => item.id !== value.id),
         { ...value, position },
       ],
     });
@@ -211,7 +233,7 @@ export function ComposerMenu({
                       type="button"
                       role="menuitem"
                       className="composer-menu-item"
-                      disabled={materials.skills.length >= 10}
+                      disabled={materials.skills.length >= MAX_MATERIALS}
                       onClick={() => setPanel("skills")}
                     >
                       <SparkleIcon />
@@ -221,11 +243,21 @@ export function ComposerMenu({
                       type="button"
                       role="menuitem"
                       className="composer-menu-item"
-                      disabled={materials.context.length >= 10}
+                      disabled={materials.context.length >= MAX_MATERIALS}
                       onClick={() => setPanel("context")}
                     >
                       <QuotesIcon />
                       添加上下文…
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="composer-menu-item"
+                      disabled={(materials.mcp?.length ?? 0) >= MAX_MATERIALS}
+                      onClick={() => setPanel("mcp")}
+                    >
+                      <PlugsIcon />
+                      引用 MCP…
                     </button>
                   </>
                 ) : (
@@ -253,6 +285,8 @@ export function ComposerMenu({
               </div>
             ) : panel === "skills" ? (
               <SkillPicker botId={botId} onSelect={skill} />
+            ) : panel === "mcp" ? (
+              <McpPicker botId={botId} onSelect={mcp} />
             ) : panel === "text" ? (
               <TextPicker botId={botId} onSelect={context} />
             ) : (

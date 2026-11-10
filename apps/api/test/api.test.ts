@@ -19,10 +19,67 @@ import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterClient } from "@orpc/server";
 import { expect, onTestFinished, test } from "vitest";
+import { EngineDoc } from "../../../packages/agent/src/harness/state.ts";
 import { createApp } from "../src/app.ts";
 import type { AppRouter } from "../src/router.ts";
 
 const context = BACKGROUND_CONTEXT;
+
+test("native skill selections retain their source and follow the active Harness", async () => {
+  const { open, faux } = await setup();
+  const runtime = await open();
+  const botId = runtime.conversation.id;
+  onTestFinished(() => runtime.harness.close(context));
+  const native = {
+    name: "report",
+    path: "/skills/report/SKILL.md",
+    source: "project",
+  };
+  await runtime.harness.commit(async (tx) => {
+    const doc = await tx.doc(EngineDoc, botId);
+    doc.config.provider = "pi";
+    doc.runtime = { nativeSkills: [native] };
+  }, context);
+  expect(await runtime.client.work.get({ botId })).toMatchObject({
+    nativeSkills: [native],
+    nativeSkillsProvider: "pi",
+  });
+  faux.setResponses([fauxAssistantMessage("Selected")]);
+  const skill = {
+    id: native.path,
+    native: { ...native, provider: "pi" },
+    position: 1,
+  };
+  await runtime.client.send({
+    botId,
+    text: "Use this",
+    skills: [skill],
+    requestId: crypto.randomUUID(),
+  });
+  await runtime.conversation.waitForIdle(context);
+  const sent = (await runtime.client.get({ botId })).messages.find(
+    (message) => message.materials?.skills.length,
+  );
+  expect(sent?.materials?.skills[0]).toMatchObject({
+    name: "report",
+    native: skill.native,
+    position: 1,
+  });
+  expect(await runtime.work.skills.list(context)).toEqual([]);
+  await runtime.harness.commit(async (tx) => {
+    const doc = await tx.doc(EngineDoc, botId);
+    doc.config.provider = "codex";
+    doc.runtime = {};
+  }, context);
+  await expect(
+    runtime.client.send({
+      botId,
+      text: "Again",
+      skills: [skill],
+      requestId: crypto.randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: "NOT_FOUND" });
+});
 
 const botInput = (name: string, modelId = "faux-1") => ({
   name,
@@ -1476,6 +1533,23 @@ test("request skills and message references store authoritative snapshots across
         requestId: crypto.randomUUID(),
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    faux.setResponses([
+      (input) => {
+        const received = JSON.stringify(input.messages.at(-1));
+        expect(received).toContain("skill_read");
+        expect(received).not.toContain("Use the saved method.");
+        return fauxAssistantMessage(
+          fauxToolCall("skill_read", { id: skill.id }),
+          { stopReason: "toolUse" },
+        );
+      },
+      (input) => {
+        expect(JSON.stringify(input.messages.at(-1))).toContain(
+          "Use the saved method.",
+        );
+        return fauxAssistantMessage("Used references");
+      },
+    ]);
     requestId = crypto.randomUUID();
     const input = {
       botId,

@@ -156,7 +156,8 @@ export function createRouter(
           !input.text &&
           !input.attachments.length &&
           !input.skills.length &&
-          !input.context.length
+          !input.context.length &&
+          !input.mcp.length
         )
           throw new ORPCError("BAD_REQUEST");
         const attachments = await Promise.all(
@@ -177,7 +178,7 @@ export function createRouter(
           const submit = () =>
             files.exclusive(input.botId, async () => {
               const view =
-                input.skills.length || input.context.length
+                input.skills.length || input.context.length || input.mcp.length
                   ? await (engines
                       ? engines.view(input.botId, BACKGROUND_CONTEXT)
                       : (async () => {
@@ -191,7 +192,7 @@ export function createRouter(
                         })())
                   : null;
               const materials = view
-                ? await prepareMaterials(input, view, work)
+                ? await prepareMaterials(input, view, work, mcp)
                 : undefined;
               for (const file of attachments)
                 await files.metadata(input.botId, file.id);

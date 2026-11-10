@@ -4456,6 +4456,7 @@ test("composer menu adds task materials, keeps drafts, and fits both themes", as
     "添加文件",
     "使用技能…",
     "添加上下文…",
+    "引用 MCP…",
   ]);
   await page.getByRole("menuitem", { name: "添加图片", exact: true }).focus();
   await page.keyboard.press("ArrowDown");
@@ -4895,4 +4896,137 @@ test("secure credential cards save privately, retry failures and cancel in chat"
   await pending.getByRole("button", { name: "取消", exact: true }).click();
   expect(JSON.stringify(await cancelled)).toContain('"allow":false');
   await expect(pending).toHaveCount(0);
+});
+
+test("material pickers show native sources and keep MCP references separate from grants", async ({
+  page,
+}) => {
+  const rpc: RouterClient<AppRouter> = createORPCClient(
+    new RPCLink({ url: `${url}/rpc` }),
+  );
+  const bot = (await rpc.bots.list())[0];
+  if (!bot) throw new Error("Missing Bot");
+  const skill = await rpc.work.skills.save({
+    botId: bot.id,
+    id: crypto.randomUUID(),
+    revision: 0,
+    requestId: crypto.randomUUID(),
+    content: "---\nname: report\ndescription: Report\n---\nOriginal procedure",
+  });
+  await rpc.work.skills.enable({
+    botId: bot.id,
+    id: skill.id,
+    revision: skill.revision,
+    enabled: true,
+    requestId: crypto.randomUUID(),
+  });
+  const connection = await rpc.mcp.save({
+    id: crypto.randomUUID(),
+    revision: 0,
+    name: "Docs",
+    computerId: "pc",
+    enabled: false,
+    config: { transport: "http", url: "https://example.com/mcp", headers: {} },
+  });
+  await page.route("**/rpc/work/get", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    Object.assign(body.json, {
+      nativeSkillsProvider: "pi",
+      nativeSkills: [
+        { name: "report", path: "/skills/report/SKILL.md", source: "project" },
+        { name: "unresolved", source: "user" },
+      ],
+      nativeSkillsNotice: "原生技能目录读取失败：测试提示",
+    });
+    await route.fulfill({ response, json: body });
+  });
+  const nativeReady = Promise.withResolvers<void>();
+  await page.route("**/rpc/mcp/native", async (route) => {
+    await nativeReady.promise;
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      json: {
+        json: { code: "SERVICE_UNAVAILABLE", message: "原生目录暂不可用" },
+      },
+    });
+  });
+  await page.goto(url);
+  const add = page.getByRole("button", { name: "添加内容", exact: true });
+  await add.click();
+  await page.getByRole("menuitem", { name: "使用技能…", exact: true }).click();
+  const native = page.getByRole("button", { name: "report", exact: true });
+  await expect(native).toHaveCount(1);
+  await expect(native).toContainText("pi · project · 只读");
+  await expect(
+    page.getByRole("button", { name: "unresolved", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("status").filter({ hasText: "原生技能目录读取失败" }),
+  ).toBeVisible();
+  await native.click();
+  await page.reload();
+  const input = page.getByLabel("消息", { exact: true });
+  await expect(input.locator("[data-inline-token]")).toHaveText(["report"]);
+  await input.press("End");
+  await input.press("Backspace");
+  await add.click();
+  await page.getByRole("menuitem", { name: "引用 MCP…", exact: true }).click();
+  try {
+    await expect(
+      page.getByRole("button", { name: /Docs.*未授权或已停用/ }),
+    ).toBeVisible();
+  } finally {
+    nativeReady.resolve();
+  }
+  await expect(
+    page.getByRole("status").filter({ hasText: "服务暂时不可用" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /Docs.*未授权或已停用/ }).click();
+  await page.reload();
+  await expect(input.locator("[data-inline-token]")).toHaveText(["Docs"]);
+  await control({ content: "已收到服务引用。" });
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByLabel("Domos 的回复")).toContainText(
+    "已收到服务引用。",
+  );
+  await page.reload();
+  await expect(
+    page.getByLabel("你的消息").locator(".message-material-token"),
+  ).toHaveText(["Docs"]);
+  expect(
+    (await rpc.mcp.list()).find((item) => item.id === connection.id),
+  ).toMatchObject({ enabled: false, grants: [] });
+  await page.unroute("**/rpc/mcp/native");
+  await page.route("**/rpc/mcp/native", (route) =>
+    route.fulfill({
+      json: {
+        json: {
+          provider: "pi",
+          computerId: "pc",
+          inherited: true,
+          inheritance: "native",
+          readonly: true,
+          items: [
+            { name: "Docs", source: "project", enabled: true, status: "ready" },
+          ],
+        },
+      },
+    }),
+  );
+  await add.click();
+  await page.getByRole("menuitem", { name: "引用 MCP…", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: /Docs.*pi.*沿用原生配置/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Docs.*Domos.*未授权或已停用/ }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: test.info().outputPath("material-mcp-sources.png"),
+  });
+  await page.getByRole("button", { name: /Docs.*pi.*沿用原生配置/ }).click();
+  await page.reload();
+  await expect(input.locator("[data-inline-token]")).toHaveText(["Docs"]);
 });

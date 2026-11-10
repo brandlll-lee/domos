@@ -80,7 +80,9 @@ export function Composer({
   );
   const issue = uploads.error ?? error ?? composer.error;
   const hasMaterials = Boolean(
-    composer.materials.skills.length || composer.materials.context.length,
+    composer.materials.skills.length ||
+      composer.materials.context.length ||
+      composer.materials.mcp?.length,
   );
   const stopAction =
     busy &&

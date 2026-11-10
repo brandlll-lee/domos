@@ -15,8 +15,11 @@ export function SkillPicker({
   botId: number;
   onSelect: (skill: InputMaterials["skills"][number]) => void;
 }) {
-  const [skills, setSkills] = useState<InputMaterials["skills"] | null>(null);
+  const [skills, setSkills] = useState<
+    (InputMaterials["skills"][number] & { origin: string })[] | null
+  >(null);
   const [search, setSearch] = useState("");
+  const [notice, setNotice] = useState<string>();
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (error) return;
@@ -24,10 +27,39 @@ export function SkillPicker({
     void client.work
       .get({ botId }, { signal: controller.signal })
       .then((data) => {
-        if (!controller.signal.aborted)
-          setSkills(
-            data.skills.filter((skill) => skill.enabledBots.includes(botId)),
+        if (!controller.signal.aborted) {
+          setNotice(
+            data.nativeSkillsNotice ??
+              (data.nativeSkills === undefined
+                ? "当前尚无原生技能目录。"
+                : undefined),
           );
+          setSkills([
+            ...(data.nativeSkills ?? []).map((skill) => ({
+              id: skill.path ?? skill.name,
+              name: skill.name,
+              origin: `${data.nativeSkillsProvider ?? "原生"} · ${skill.source} · ${skill.path ? "只读" : "未提供读取路径"}`,
+              ...(skill.path && data.nativeSkillsProvider
+                ? {
+                    native: {
+                      ...skill,
+                      path: skill.path,
+                      provider: data.nativeSkillsProvider,
+                    },
+                  }
+                : {}),
+            })),
+            ...data.skills
+              .filter(
+                (skill) =>
+                  skill.enabledBots.includes(botId) &&
+                  !data.nativeSkills?.some(
+                    (native) => native.name === skill.name,
+                  ),
+              )
+              .map((skill) => ({ ...skill, origin: "Domos" })),
+          ]);
+        }
       })
       .catch((cause) => {
         if (!controller.signal.aborted)
@@ -47,6 +79,11 @@ export function SkillPicker({
         value={search}
         onValueChange={setSearch}
       />
+      {notice && (
+        <p className="composer-picker-state" role="status">
+          {notice}
+        </p>
+      )}
       {error ? (
         <div className="composer-picker-state" role="alert">
           {error}
@@ -73,16 +110,20 @@ export function SkillPicker({
               className="composer-picker-row"
               type="button"
               key={skill.id}
+              aria-label={skill.name}
+              disabled={!skill.content && !skill.native}
               onClick={() =>
                 onSelect({
                   id: skill.id,
                   revision: skill.revision,
                   name: skill.name,
                   content: skill.content,
+                  ...(skill.native ? { native: skill.native } : {}),
                 })
               }
             >
-              {skill.name}
+              <span>{skill.name}</span>
+              <small>{skill.origin}</small>
             </button>
           ))}
         </div>
@@ -187,6 +228,110 @@ export function MessagePicker({
           <p className="composer-picker-state">没有可引用的消息</p>
         )}
       </div>
+    </>
+  );
+}
+
+export function McpPicker({
+  botId,
+  onSelect,
+}: {
+  botId: number;
+  onSelect: (item: NonNullable<InputMaterials["mcp"]>[number]) => void;
+}) {
+  const [catalog, setCatalog] = useState<{
+    managed?: InputMaterials["mcp"];
+    native?: InputMaterials["mcp"];
+  }>({});
+  const [search, setSearch] = useState("");
+  const [errors, setErrors] = useState<string[]>([]);
+  useEffect(() => {
+    const controller = new AbortController();
+    const reads = {
+      managed: client.mcp
+        .list(undefined, { signal: controller.signal })
+        .then((items) =>
+          items.map((item) => ({
+            id: item.id,
+            name: item.name,
+            available:
+              item.enabled &&
+              item.grants.some((grant) => grant.botId === botId),
+            status: item.status ?? "configured",
+          })),
+        ),
+      native: client.mcp
+        .native({ botId }, { signal: controller.signal })
+        .then((catalog) =>
+          catalog.items.map((item) => ({
+            id: item.name,
+            name: item.name,
+            native: { provider: catalog.provider, source: item.source },
+            available: item.enabled && catalog.inherited,
+            status: item.status,
+          })),
+        ),
+    };
+    for (const [source, request] of Object.entries(reads)) {
+      void request
+        .then((items) => {
+          if (!controller.signal.aborted)
+            setCatalog((current) => ({ ...current, [source]: items }));
+        })
+        .catch((error) => {
+          if (controller.signal.aborted) return;
+          setCatalog((current) => ({ ...current, [source]: [] }));
+          setErrors((current) => [
+            ...current,
+            `${source === "native" ? "原生 MCP" : "Domos MCP"}：${userError(error, "目录读取失败。恢复连接后可重新打开。")}`,
+          ]);
+        });
+    }
+    return () => controller.abort();
+  }, [botId]);
+  const items = [...(catalog.managed ?? []), ...(catalog.native ?? [])];
+  const loading = catalog.managed === undefined || catalog.native === undefined;
+  const filtered = items.filter((item) =>
+    item.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()),
+  );
+  return (
+    <>
+      <SearchField
+        className="composer-picker-search"
+        aria-label="搜索 MCP"
+        placeholder="搜索 MCP…"
+        value={search}
+        onValueChange={setSearch}
+      />
+      {errors.map((error) => (
+        <p key={error} className="composer-picker-state" role="status">
+          {error}
+        </p>
+      ))}
+      <div className="composer-picker-list">
+        {filtered.map((item) => (
+          <button
+            type="button"
+            className="composer-picker-row"
+            key={`${item.native?.source ?? "domos"}:${item.id}`}
+            onClick={() => onSelect(item)}
+          >
+            <span>{item.name}</span>
+            <small>
+              {item.native
+                ? `${item.native.provider} · ${item.native.source} · ${item.available ? "沿用原生配置" : "未沿用"}`
+                : `Domos · ${item.available ? "已授权" : "未授权或已停用"}`}{" "}
+              · {item.status}
+            </small>
+          </button>
+        ))}
+        {!loading && !filtered.length && (
+          <p className="composer-picker-state">
+            {search ? "没有匹配的 MCP" : "暂无 MCP 连接"}
+          </p>
+        )}
+      </div>
+      {loading && <Loading label="正在读取 MCP" />}
     </>
   );
 }

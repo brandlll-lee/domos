@@ -18,6 +18,7 @@
     scale var(--motion-feedback);
 }
 .composer-menu-popup[data-panel="skills"],
+.composer-menu-popup[data-panel="mcp"],
 .composer-menu-popup[data-panel="text"],
 .composer-menu-popup[data-panel="messages"] {
   width: calc(var(--sidebar-width) + var(--space-12));
@@ -165,4 +166,17 @@
 .message.user .material-chip,
 .message.user .material-chip > svg {
   color: var(--color-text);
+}
+
+.composer-picker-row {
+  flex-wrap: wrap;
+}
+.composer-picker-row small {
+  color: var(--color-muted);
+  font-size: var(--text-label);
+  overflow-wrap: anywhere;
+}
+.composer-picker-row:disabled {
+  color: var(--color-muted);
+  cursor: default;
 }

@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 import { MessageContent } from "../src/features/chat/message-content.tsx";
 
-test("materials render at their text positions and stay separate from prompt text", () => {
+test("materials keep inline order in display and model input", () => {
   const materials = {
     skills: [
       {
@@ -38,9 +38,14 @@ test("materials render at their text positions and stay separate from prompt tex
   expect(html).toMatch(/保留现有数据<\/span><\/span>检查/);
   expect(html).not.toContain("skill procedure");
   const prompt = materialText("请按检查", materials);
-  expect(prompt).toContain("skill procedure");
+  expect(prompt).not.toContain("skill procedure");
+  expect(prompt).toContain("skill_read");
+  expect(prompt).toContain('"id":"report"');
   expect(prompt).toContain("保留现有数据");
   expect(prompt).not.toContain('"position"');
+  expect(prompt).toMatch(
+    /^请<skill>.*<\/skill>按<reference>.*<\/reference>检查$/s,
+  );
 });
 
 test("user links preserve literal text, line breaks and URL punctuation", () => {
@@ -101,4 +106,40 @@ test("images precede captions while each group retains its order", () => {
     html.indexOf("Second caption"),
   );
   expect(content.map((part) => part.key)).toEqual(["a", "b", "c", "d"]);
+});
+
+test("native skills and MCP references carry identities without contents or grants", () => {
+  const prompt = materialText("先后", {
+    skills: [
+      {
+        id: "native-path",
+        revision: 0,
+        name: "report",
+        content: "private procedure",
+        native: {
+          provider: "pi",
+          name: "report",
+          source: "project",
+          path: "/skills/report/SKILL.md",
+        },
+        position: 1,
+      },
+    ],
+    context: [],
+    mcp: [
+      {
+        id: "docs",
+        name: "Docs",
+        available: false,
+        status: "configured",
+        position: 2,
+      },
+    ],
+  });
+  expect(prompt).toMatch(
+    /^先<skill>.*SKILL.md.*<\/skill><mcp>.*Docs.*<\/mcp>后$/s,
+  );
+  expect(prompt).not.toContain("private procedure");
+  expect(prompt).toContain('"available":false');
+  expect(prompt).toContain("does not grant");
 });

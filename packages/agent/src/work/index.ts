@@ -15,14 +15,19 @@ export function botWork(harness: Harness, now = Date.now, files?: Files) {
   const routines = new Routines(harness, now);
   const read = async (botId: number, context: Context) => {
     const items = await memory.list(botId, context);
+    const engine = await harness.snapshot(
+      EngineDoc,
+      botId as ConversationId,
+      context,
+    );
     return {
       memory: items,
       memoryUsage: memoryUsage(items),
       memoryReviewEnabled: await memory.reviewEnabled(botId, context),
       skills: await skills.list(context),
-      nativeSkills: (
-        await harness.snapshot(EngineDoc, botId as ConversationId, context)
-      )?.runtime?.nativeSkills,
+      nativeSkills: engine?.runtime?.nativeSkills,
+      nativeSkillsProvider: engine?.config.provider,
+      nativeSkillsNotice: engine?.runtime?.notices?.skills,
       routines: await routines.list(botId, context),
     };
   };

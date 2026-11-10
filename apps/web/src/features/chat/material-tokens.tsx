@@ -1,9 +1,21 @@
 import type { InputMaterials } from "@domos/agent/materials";
+import { PlugsIcon } from "@phosphor-icons/react/dist/csr/Plugs";
 import { QuotesIcon } from "@phosphor-icons/react/dist/csr/Quotes";
 import { SparkleIcon } from "@phosphor-icons/react/dist/csr/Sparkle";
 
 export function materialTokens(materials?: InputMaterials) {
   return [
+    ...(materials?.mcp?.map((item) => ({
+      id: `mcp:${item.id}`,
+      position: item.position,
+      title: `${item.name} · ${item.native ? item.native.provider : "Domos"}`,
+      content: (
+        <>
+          <PlugsIcon />
+          <span>{item.name}</span>
+        </>
+      ),
+    })) ?? []),
     ...(materials?.skills.map((skill) => ({
       id: `skill:${skill.id}`,
       position: skill.position,

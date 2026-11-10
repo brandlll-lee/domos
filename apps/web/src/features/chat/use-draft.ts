@@ -53,14 +53,29 @@ function load(key: string): { draft: Draft; error: string | null } {
       throw new Error("Invalid attachments");
     const materials = value.materials ?? { skills: [], context: [] };
     if (
+      (materials.mcp !== undefined &&
+        (!Array.isArray(materials.mcp) ||
+          materials.mcp.some(
+            (item: NonNullable<InputMaterials["mcp"]>[number]) =>
+              typeof item.id !== "string" ||
+              typeof item.name !== "string" ||
+              typeof item.available !== "boolean" ||
+              typeof item.status !== "string" ||
+              (item.position !== undefined &&
+                (!Number.isInteger(item.position) || item.position < 0)),
+          ))) ||
       !Array.isArray(materials.skills) ||
       !Array.isArray(materials.context) ||
       materials.skills.some(
         (item: InputMaterials["skills"][number]) =>
           typeof item.id !== "string" ||
-          typeof item.revision !== "number" ||
           typeof item.name !== "string" ||
-          typeof item.content !== "string" ||
+          (item.native
+            ? typeof item.native.provider !== "string" ||
+              typeof item.native.path !== "string" ||
+              typeof item.native.source !== "string"
+            : typeof item.revision !== "number" ||
+              typeof item.content !== "string") ||
           (item.position !== undefined &&
             (!Number.isInteger(item.position) || item.position < 0)),
       ) ||

@@ -8,6 +8,7 @@ import { McpConnections } from "../../../packages/agent/src/mcp/connections.ts";
 import { mcpFixture } from "../../../packages/agent/test/fixtures/mcp.mjs";
 import { context, setup } from "../../../packages/agent/test/fixtures/work.ts";
 import { createApp } from "../src/app.ts";
+import { prepareMaterials } from "../src/materials.ts";
 import type { AppRouter } from "../src/router.ts";
 
 test("MCP RPC preserves null tool scope and validates Bot grants", async () => {
@@ -53,6 +54,54 @@ test("MCP RPC preserves null tool scope and validates Bot grants", async () => {
       enabled: true,
       config: { transport: "http", url: upstream.url, headers: {} },
     });
+    const before = await prepareMaterials(
+      {
+        botId: runtime.conversation.id,
+        requestId: crypto.randomUUID(),
+        skills: [],
+        context: [],
+        mcp: [{ id: item.id, position: 0 }],
+      },
+      { messages: [] },
+      runtime.work,
+      service,
+    );
+    expect(before.mcp).toEqual([
+      {
+        id: item.id,
+        name: "Docs",
+        available: false,
+        status: "configured",
+        position: 0,
+      },
+    ]);
+    expect((await service.list(context))[0]?.grants).toEqual([]);
+    let catalogReads = 0;
+    service.nativeCatalog = async () => {
+      catalogReads++;
+      throw new Error("Native catalog unavailable");
+    };
+    const references = await prepareMaterials(
+      {
+        botId: runtime.conversation.id,
+        requestId: crypto.randomUUID(),
+        skills: [],
+        context: [],
+        mcp: [
+          { id: item.id },
+          { id: "Native Docs", native: { provider: "pi", source: "user" } },
+        ],
+      },
+      { messages: [] },
+      runtime.work,
+      service,
+    );
+    expect(references.mcp).toMatchObject([
+      { id: item.id, available: false },
+      { id: "Native Docs", available: false, status: "unknown" },
+    ]);
+
+    expect(catalogReads).toBe(0);
     expect((await client.mcp.check({ id: item.id })).tools).toHaveLength(3);
     const granted = await client.mcp.grant({
       id: item.id,

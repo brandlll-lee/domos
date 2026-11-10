@@ -14,7 +14,11 @@ export function MaterialChips({ materials }: { materials?: InputMaterials }) {
         <span
           className="material-chip"
           key={skill.id}
-          title={`${skill.name} · v${skill.revision}`}
+          title={
+            skill.native
+              ? `${skill.name} · ${skill.native.provider} · ${skill.native.source}`
+              : `${skill.name} · v${skill.revision}`
+          }
         >
           <SparkleIcon />
           <span>{skill.name}</span>

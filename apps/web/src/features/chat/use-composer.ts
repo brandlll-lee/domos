@@ -30,10 +30,19 @@ export function useComposer(
       text,
       attachments: draft.current.current.attachments.map((file) => file.id),
       skills: original.materials.skills.map(
-        ({ id, revision, position: at }) => ({
+        ({ id, revision, native, position: at }) => ({
           id,
           revision,
+          ...(native ? { native } : {}),
           ...(position(at) === undefined ? {} : { position: position(at) }),
+        }),
+      ),
+      mcp: original.materials.mcp?.map(
+        ({ id, native, available, status, position: at }) => ({
+          id,
+          native,
+          ...(native ? { available, status } : {}),
+          position: position(at),
         }),
       ),
       context: original.materials.context.map((item) => {
@@ -58,7 +67,8 @@ export function useComposer(
       !input.text &&
       !input.attachments?.length &&
       !input.skills?.length &&
-      !input.context?.length
+      !input.context?.length &&
+      !input.mcp?.length
     )
       return;
     if (!draft.update({ pending: input, text: pending ? original.text : "" })) {
@@ -68,6 +78,11 @@ export function useComposer(
     submitting.current = true;
     try {
       const result = await send(input, draft.current.current.attachments, {
+        mcp: original.materials.mcp?.map((item) => ({
+          ...item,
+          position: input.mcp?.find((selected) => selected.id === item.id)
+            ?.position,
+        })),
         skills: original.materials.skills.map((item) => ({
           ...item,
           position: input.skills?.find((skill) => skill.id === item.id)
@@ -85,6 +100,10 @@ export function useComposer(
           ...(result === "accepted"
             ? {
                 materials: {
+                  mcp: draft.current.current.materials.mcp?.filter(
+                    (item) =>
+                      !input.mcp?.some((selected) => selected.id === item.id),
+                  ),
                   skills: draft.current.current.materials.skills.filter(
                     (skill) =>
                       !input.skills?.some((item) => item.id === skill.id),
@@ -111,6 +130,9 @@ export function useComposer(
   return {
     value: draft.draft.text,
     materials: {
+      mcp: draft.draft.materials.mcp?.filter(
+        (item) => !pending?.mcp?.some((selected) => selected.id === item.id),
+      ),
       skills: draft.draft.materials.skills.filter(
         (skill) => !pending?.skills?.some((item) => item.id === skill.id),
       ),
@@ -142,6 +164,17 @@ export function useComposer(
       draft.update({
         text,
         materials: {
+          mcp: draft.current.current.materials.mcp
+            ?.filter(
+              (item) =>
+                byId.has(`mcp:${item.id}`) ||
+                pending?.mcp?.some((selected) => selected.id === item.id),
+            )
+            .map((item) =>
+              byId.has(`mcp:${item.id}`)
+                ? { ...item, position: byId.get(`mcp:${item.id}`) }
+                : item,
+            ),
           skills: draft.current.current.materials.skills
             .filter(
               (item) =>
