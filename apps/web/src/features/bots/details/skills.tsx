@@ -11,7 +11,11 @@ import { useRef, useState } from "react";
 import { client } from "../../../client.ts";
 import { useModelSettings } from "../../models/model-state.ts";
 import type { PanelEditor } from "./types.ts";
-import type { WorkAction, WorkData } from "./use-bot-work.ts";
+import {
+  refreshBotWork,
+  type WorkAction,
+  type WorkData,
+} from "./use-bot-work.ts";
 
 const template =
   "---\nname: my-skill\ndescription: 说明何时使用这个技能\n---\n\n## 步骤\n\n## 验证与交付\n";
@@ -216,6 +220,7 @@ export function SkillsPanel({
                               revision: skill.revision,
                               requestId,
                             }),
+                          refreshBotWork,
                         )
                       }
                     />
@@ -267,6 +272,7 @@ export function SkillsPanel({
                   revision: skill.revision,
                 }),
               () => {
+                refreshBotWork();
                 if (editor?.skill?.id === skill.id) onEditorChange(null);
               },
             );
@@ -323,7 +329,10 @@ function SkillEditor({
           void action.run(
             ["skills.save", input],
             (requestId) => client.work.skills.save({ ...input, requestId }),
-            onDone,
+            () => {
+              refreshBotWork();
+              onDone();
+            },
           );
       }}
     >

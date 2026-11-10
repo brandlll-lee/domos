@@ -4,6 +4,7 @@ import { TextField } from "@domos/ui/field";
 import { MessageMarkdown } from "@domos/ui/markdown";
 import { type ReactNode, useEffect, useState } from "react";
 import { client } from "../../client.ts";
+import { managedConnections } from "../apps/connection-state.ts";
 import { useWorkAction } from "../bots/details/use-bot-work.ts";
 import { MessageBody } from "./message-body.tsx";
 
@@ -225,11 +226,15 @@ export function CredentialCard({
       record.request.id,
       () =>
         client.engines.credentials({ botId, id: record.request.id, values }),
-      () => setValues({}),
+      () => {
+        setValues({});
+        managedConnections.invalidate();
+      },
     );
   const authorize = () =>
     void action.run([record.request.id, "oauth"], async () => {
       const result = await client.mcp.login({ id: credential.connectionId });
+      managedConnections.invalidate();
       setLoginUrl(result.url);
       if (result.url) window.open(result.url, "_blank", "noopener,noreferrer");
       else

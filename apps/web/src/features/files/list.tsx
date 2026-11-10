@@ -3,9 +3,10 @@ import { FileAttachment } from "@domos/ui/attachment";
 import { Button } from "@domos/ui/controls";
 import { SearchField } from "@domos/ui/field";
 import { Loading } from "@domos/ui/loading";
-import { useEffect, useState } from "react";
-import { client } from "../../client.ts";
+import { useRef, useState } from "react";
+import { useReadState } from "../read-state.ts";
 import { useFilePreview } from "./context.tsx";
+import { fileList } from "./file-state.ts";
 import "./style.css";
 
 export function FilesList({
@@ -17,44 +18,19 @@ export function FilesList({
 }) {
   const preview = useFilePreview();
   const [query, setQuery] = useState("");
-  const [offset, setOffset] = useState(0);
-  const [retry, setRetry] = useState(0);
-  const [state, setState] = useState<{
-    items: ConversationFile[];
-    next: number | null;
-    loading: boolean;
-    error: string;
-  }>({ items: [], next: null, loading: true, error: "" });
+  const store = fileList(botId, query);
+  const read = useReadState(store.read);
+  const previous = useRef({ botId, data: read.data });
+  if (read.data || previous.current.botId !== botId)
+    previous.current = { botId, data: read.data };
+  const state = {
+    items: read.data?.items ?? previous.current.data?.items ?? [],
+    next: read.data?.next ?? null,
+    loading: read.loading || (!read.data && !read.error),
+    error: read.error ? "文件列表读取失败。" : "",
+  };
   const [locating, setLocating] = useState(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: Retry starts a fresh query.
-  useEffect(() => {
-    const controller = new AbortController();
-    setState((previous) => ({
-      ...previous,
-      loading: true,
-      error: "",
-    }));
-    void client.files
-      .list({ botId, query, offset }, { signal: controller.signal })
-      .then((page) => {
-        if (!controller.signal.aborted)
-          setState((previous) => ({
-            items: offset ? [...previous.items, ...page.items] : page.items,
-            next: page.next,
-            loading: false,
-            error: "",
-          }));
-      })
-      .catch(() => {
-        if (!controller.signal.aborted)
-          setState((previous) => ({
-            ...previous,
-            loading: false,
-            error: "文件列表读取失败。",
-          }));
-      });
-    return () => controller.abort();
-  }, [botId, query, offset, retry]);
+  const [locateError, setLocateError] = useState("");
   return (
     <div className="file-list">
       <SearchField
@@ -63,7 +39,6 @@ export function FilesList({
         value={query}
         onValueChange={(value) => {
           setQuery(value);
-          setOffset(0);
         }}
       />
       {state.error && (
@@ -72,7 +47,9 @@ export function FilesList({
           <Button
             variant="ghost"
             size="small"
-            onClick={() => setRetry((v) => v + 1)}
+            onClick={() => {
+              void store.read.load(true).catch(() => {});
+            }}
           >
             重试
           </Button>
@@ -83,6 +60,7 @@ export function FilesList({
           {query ? "没有找到文件" : "发送和收到的文件会显示在这里"}
         </p>
       )}
+      {locateError && <p role="alert">{locateError}</p>}
       {state.items.map((item) => (
         <div className="file-list-row" key={item.file.id}>
           <button
@@ -103,13 +81,9 @@ export function FilesList({
             pending={locating}
             onClick={() => {
               setLocating(true);
+              setLocateError("");
               void onShowMessage(item)
-                .catch(() =>
-                  setState((state) => ({
-                    ...state,
-                    error: "无法定位原消息，请重试。",
-                  })),
-                )
+                .catch(() => setLocateError("无法定位原消息，请重试。"))
                 .finally(() => setLocating(false));
             }}
           >
@@ -121,13 +95,7 @@ export function FilesList({
         <Loading label="正在读取文件" inline={state.items.length > 0} />
       )}
       {state.next !== null && !state.loading && (
-        <Button
-          variant="ghost"
-          size="small"
-          onClick={() => {
-            if (state.next !== null) setOffset(state.next);
-          }}
-        >
+        <Button variant="ghost" size="small" onClick={store.more}>
           加载更多
         </Button>
       )}

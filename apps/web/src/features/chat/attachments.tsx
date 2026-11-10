@@ -3,9 +3,9 @@ import { FileAttachment } from "@domos/ui/attachment";
 import { Button } from "@domos/ui/controls";
 import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
 import { useState } from "react";
-import { client } from "../../client.ts";
 import { InlineFile } from "../files/content.tsx";
 import { useFilePreview } from "../files/context.tsx";
+import { fileState } from "../files/file-state.ts";
 import { downloadFile } from "../files/use-file.ts";
 import { chatCopy } from "./copy.ts";
 import { ImageGallery } from "./image-gallery.tsx";
@@ -32,7 +32,8 @@ export function Attachments({
     setDownloading(file.id);
     setError(false);
     try {
-      const blob = await client.files.download({ botId, id: file.id });
+      const store = fileState(botId, file.id);
+      const blob = await store.load(Boolean(store.snapshot().error));
       downloadFile(blob, file.name);
     } catch {
       setError(true);

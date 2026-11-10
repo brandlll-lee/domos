@@ -3,6 +3,7 @@ import { SetupPage, SetupStatus } from "@domos/ui/setup";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { client } from "../../client.ts";
 import { ModelSetup } from "../bots/details/model.tsx";
+import { readModelSettings } from "../models/model-state.ts";
 import type { SettingsAccess } from "../settings/sections.tsx";
 import { Titlebar } from "../shell/titlebar.tsx";
 
@@ -23,7 +24,7 @@ export function Onboarding({
     if (!bot) throw new Error("未找到初始 Bot。请重新连接 Domos。");
     const [binding, engine] = await Promise.all([
       client.computer.get({ botId: bot.id }),
-      client.engines.get({ botId: bot.id }),
+      readModelSettings(bot.id),
     ]);
     const next: Setup = {
       botId: bot.id,

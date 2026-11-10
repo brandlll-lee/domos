@@ -278,7 +278,7 @@ test("first use prepares the default Bot with a computer and model before shared
         .click();
       await expect(create).toBeHidden();
       await expect(second.getByLabel("消息", { exact: true })).toHaveAttribute(
-        "placeholder",
+        "data-placeholder",
         "发送消息给 资料伙伴…",
       );
     } finally {

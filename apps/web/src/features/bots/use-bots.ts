@@ -1,10 +1,20 @@
 import type { Bot, BotPresence } from "@domos/agent/bots";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { client } from "../../client.ts";
+import {
+  clearConnections,
+  invalidateNativeConnections,
+} from "../apps/connection-state.ts";
 import { clearChatState } from "../chat/use-chat.ts";
 import { clearDraftState } from "../chat/use-draft.ts";
 import { clearTranscriptPositions } from "../chat/use-transcript.ts";
-import { clearBotWork } from "./details/use-bot-work.ts";
+import { clearFiles } from "../files/file-state.ts";
+import {
+  clearModelSettings,
+  invalidateModelSettings,
+  receiveModelActivity,
+} from "../models/model-state.ts";
+import { clearBotWork, invalidateBotWork } from "./details/use-bot-work.ts";
 
 function subscribeLocation(listener: () => void) {
   window.addEventListener("hashchange", listener);
@@ -16,6 +26,7 @@ export const selectBot = (bot: Bot) => {
 };
 
 export function useBots() {
+  const bindings = useRef<Record<string, string>>({});
   const [items, setItems] = useState<BotPresence[]>([]);
   const [computers, updateComputers] = useState<
     Awaited<ReturnType<typeof client.computer.list>>
@@ -45,6 +56,24 @@ export function useBots() {
           clearChatState(ids);
           clearDraftState(ids);
           clearBotWork(ids);
+          clearConnections(ids);
+          clearFiles(ids);
+          clearModelSettings(ids);
+          for (const bot of next.items) {
+            receiveModelActivity(bot.id, bot.busy);
+            const binding = next.bindings[String(bot.id)];
+            const key = JSON.stringify([
+              binding?.computerId ?? next.defaultComputerId,
+              binding?.directory,
+            ]);
+            const previous = bindings.current[bot.id];
+            if (previous !== undefined && previous !== key) {
+              invalidateNativeConnections(bot.id);
+              invalidateBotWork(bot.id);
+              invalidateModelSettings(bot.id);
+            }
+            bindings.current[bot.id] = key;
+          }
           clearTranscriptPositions(ids);
           setItems(next.items);
           updateComputers({

@@ -1,26 +1,20 @@
 import type { Attachment } from "@domos/agent/attachments";
-import { useEffect, useState } from "react";
-import { client } from "../../client.ts";
+import { useReadState } from "../read-state.ts";
+import { userError } from "../user-error.ts";
+import { fileState } from "./file-state.ts";
 
 export function useFile(botId: number, file: Attachment) {
-  const [state, setState] = useState<{ blob?: Blob; error?: string }>({});
-  const [retry, setRetry] = useState(0);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: Retry starts a fresh request.
-  useEffect(() => {
-    const controller = new AbortController();
-    setState({});
-    void client.files
-      .download({ botId, id: file.id }, { signal: controller.signal })
-      .then((blob) => {
-        if (!controller.signal.aborted) setState({ blob });
-      })
-      .catch(() => {
-        if (!controller.signal.aborted)
-          setState({ error: "文件读取失败，请重试。" });
-      });
-    return () => controller.abort();
-  }, [botId, file.id, retry]);
-  return { ...state, retry: () => setRetry((value) => value + 1) };
+  const store = fileState(botId, file.id);
+  const state = useReadState(store);
+  return {
+    blob: state.data,
+    error: state.error
+      ? userError(state.error, "文件读取失败，请重试。")
+      : undefined,
+    retry: () => {
+      void store.load(true).catch(() => {});
+    },
+  };
 }
 
 export function downloadFile(blob: Blob, name: string) {

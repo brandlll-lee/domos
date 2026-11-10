@@ -7,8 +7,13 @@ import { Tooltip } from "@domos/ui/popover";
 import { ChatCircleIcon } from "@phosphor-icons/react/dist/csr/ChatCircle";
 import { FolderSimpleIcon } from "@phosphor-icons/react/dist/csr/FolderSimple";
 import { HammerIcon } from "@phosphor-icons/react/dist/csr/Hammer";
-import { type ReactNode, useEffect, useId, useState } from "react";
-import { client } from "../../client.ts";
+import { type ReactNode, useId, useState } from "react";
+import {
+  managedConnections,
+  nativeConnections,
+} from "../apps/connection-state.ts";
+import { useBotWork } from "../bots/details/use-bot-work.ts";
+import { useReadState } from "../read-state.ts";
 import { userError } from "../user-error.ts";
 
 function focusChoice(element: HTMLElement | null) {
@@ -74,64 +79,44 @@ export function SkillPicker({
   botId: number;
   onSelect: (skill: InputMaterials["skills"][number]) => void;
 }) {
-  const [skills, setSkills] = useState<
-    | (InputMaterials["skills"][number] & {
-        origin: string;
-        description?: string;
-        path?: string;
-      })[]
-    | null
-  >(null);
-  const [notice, setNotice] = useState<string>();
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    if (error) return;
-    const controller = new AbortController();
-    void client.work
-      .get({ botId }, { signal: controller.signal })
-      .then((data) => {
-        if (!controller.signal.aborted) {
-          setNotice(
-            data.nativeSkillsNotice ??
-              (data.nativeSkills === undefined
-                ? "当前尚无原生技能目录。"
-                : undefined),
-          );
-          setSkills([
-            ...(data.nativeSkills ?? []).map((skill) => ({
-              id: skill.path ?? skill.name,
-              name: skill.name,
-              description: skill.description,
+  const { data, error, retry } = useBotWork(botId, true, true, false);
+  const notice =
+    data?.nativeSkillsNotice ??
+    (data && data.nativeSkills === undefined
+      ? "当前尚无原生技能目录。"
+      : undefined);
+  const skills = data && [
+    ...(data.nativeSkills ?? []).map((skill) => ({
+      id: skill.path ?? skill.name,
+      name: skill.name,
+      description: skill.description,
+      path: skill.path,
+      content: undefined,
+      revision: undefined,
+      origin: `${data.nativeSkillsProvider ?? "原生"} · ${skill.source} · ${skill.path ? "只读" : "未提供读取路径"}`,
+      ...(skill.path && data.nativeSkillsProvider
+        ? {
+            native: {
+              ...skill,
               path: skill.path,
-              origin: `${data.nativeSkillsProvider ?? "原生"} · ${skill.source} · ${skill.path ? "只读" : "未提供读取路径"}`,
-              ...(skill.path && data.nativeSkillsProvider
-                ? {
-                    native: {
-                      ...skill,
-                      path: skill.path,
-                      provider: data.nativeSkillsProvider,
-                    },
-                  }
-                : {}),
-            })),
-            ...data.skills
-              .filter(
-                (skill) =>
-                  skill.enabledBots.includes(botId) &&
-                  !data.nativeSkills?.some(
-                    (native) => native.name === skill.name,
-                  ),
-              )
-              .map((skill) => ({ ...skill, origin: "Domos" })),
-          ]);
-        }
-      })
-      .catch((cause) => {
-        if (!controller.signal.aborted)
-          setError(userError(cause, "技能加载失败。"));
-      });
-    return () => controller.abort();
-  }, [botId, error]);
+              provider: data.nativeSkillsProvider,
+            },
+          }
+        : {}),
+    })),
+    ...data.skills
+      .filter(
+        (skill) =>
+          skill.enabledBots.includes(botId) &&
+          !data.nativeSkills?.some((native) => native.name === skill.name),
+      )
+      .map((skill) => ({
+        ...skill,
+        origin: "Domos",
+        path: undefined,
+        native: undefined,
+      })),
+  ];
   return (
     <>
       {notice && (
@@ -142,19 +127,14 @@ export function SkillPicker({
       {error ? (
         <div className="composer-picker-state" role="alert">
           {error}
-          <Button
-            variant="ghost"
-            size="small"
-            onClick={() => {
-              setError(null);
-            }}
-          >
+          <Button variant="ghost" size="small" onClick={retry}>
             重试
           </Button>
         </div>
-      ) : !skills ? (
+      ) : null}
+      {!skills && !error ? (
         <Loading label="正在读取技能" />
-      ) : !skills.length ? (
+      ) : !skills ? null : !skills.length ? (
         <p className="composer-picker-state">暂无已启用的技能</p>
       ) : (
         <div className="composer-picker-list" ref={focusChoice}>
@@ -281,57 +261,40 @@ export function McpPicker({
   botId: number;
   onSelect: (item: NonNullable<InputMaterials["mcp"]>[number]) => void;
 }) {
-  const [catalog, setCatalog] = useState<{
-    managed?: InputMaterials["mcp"];
-    native?: InputMaterials["mcp"];
-  }>({});
-  const [errors, setErrors] = useState<string[]>([]);
-  useEffect(() => {
-    const controller = new AbortController();
-    const reads = {
-      managed: client.mcp
-        .list(undefined, { signal: controller.signal })
-        .then((items) =>
-          items.map((item) => ({
-            id: item.id,
-            name: item.name,
-            available:
-              item.enabled &&
-              item.grants.some((grant) => grant.botId === botId),
-            status: item.status ?? "configured",
-          })),
-        ),
-      native: client.mcp
-        .native({ botId }, { signal: controller.signal })
-        .then((catalog) =>
-          catalog.items.map((item) => ({
-            id: item.name,
-            name: item.name,
-            native: { provider: catalog.provider, source: item.source },
-            available: item.enabled && catalog.inherited,
-            status: item.status,
-          })),
-        ),
-    };
-    for (const [source, request] of Object.entries(reads)) {
-      void request
-        .then((items) => {
-          if (!controller.signal.aborted)
-            setCatalog((current) => ({ ...current, [source]: items }));
-        })
-        .catch((error) => {
-          if (controller.signal.aborted) return;
-          setCatalog((current) => ({ ...current, [source]: [] }));
-          setErrors((current) => [
-            ...current,
-            `${source === "native" ? "原生 MCP" : "Domos MCP"}：${userError(error, "目录读取失败。恢复连接后可重新打开。")}`,
-          ]);
-        });
-    }
-    return () => controller.abort();
-  }, [botId]);
-  const items = [...(catalog.managed ?? []), ...(catalog.native ?? [])];
-  const loading = catalog.managed === undefined || catalog.native === undefined;
+  const managed = useReadState(managedConnections);
+  const native = useReadState(nativeConnections(botId));
+  const catalog = native.data;
+  const items: NonNullable<InputMaterials["mcp"]> = [
+    ...(managed.data ?? []).map((item) => ({
+      id: item.id,
+      name: item.name,
+      available:
+        item.enabled && item.grants.some((grant) => grant.botId === botId),
+      status: item.status ?? "configured",
+    })),
+    ...(catalog
+      ? catalog.items.map((item) => ({
+          id: item.name,
+          name: item.name,
+          native: { provider: catalog.provider, source: item.source },
+          available: item.enabled && catalog.inherited,
+          status: item.status,
+        }))
+      : []),
+  ];
+  const errors = [
+    managed.error
+      ? `Domos MCP：${userError(managed.error, "目录读取失败。")}`
+      : "",
+    native.error
+      ? `原生 MCP：${userError(native.error, "目录读取失败。")}`
+      : "",
+  ].filter(Boolean);
+  const loading =
+    managed.loading ||
+    native.loading ||
+    (!managed.data && !managed.error) ||
+    (!native.data && !native.error);
   return (
     <>
       {errors.map((error) => (
@@ -356,11 +319,11 @@ export function McpPicker({
             }
           />
         ))}
-        {!loading && !items.length && (
+        {!loading && !errors.length && !items.length && (
           <p className="composer-picker-state">暂无 MCP 连接</p>
         )}
       </div>
-      {loading && <Loading label="正在读取 MCP" />}
+      {loading && <Loading label="正在读取 MCP" inline={items.length > 0} />}
     </>
   );
 }

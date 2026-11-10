@@ -1,33 +1,24 @@
 import type { EngineId } from "@domos/agent/harness/types";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { client } from "../../client.ts";
+import { createReadState, useReadState } from "../read-state.ts";
 import { userError } from "../user-error.ts";
 
+const visibility = createReadState((signal) =>
+  client.models.visibility(undefined, { signal }),
+);
+window.addEventListener("domos:computer", () => visibility.clear());
+window.addEventListener("domos:pair", () => visibility.clear());
+
 export function useVisibility(enabled: boolean) {
-  const [items, setItems] = useState<
-    Awaited<ReturnType<typeof client.models.visibility>>
-  >([]);
+  const state = useReadState(visibility, enabled);
+  const items = state.data ?? [];
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
-  useEffect(() => {
-    if (!enabled) return;
-    const controller = new AbortController();
-    const load = () =>
-      void client.models
-        .visibility(undefined, { signal: controller.signal })
-        .then(setItems, (cause) => {
-          if (!controller.signal.aborted)
-            setError(userError(cause, "模型可见性读取失败。"));
-        });
-    load();
-    window.addEventListener("domos:models", load);
-    return () => {
-      controller.abort();
-      window.removeEventListener("domos:models", load);
-    };
-  }, [enabled]);
   return {
-    error,
+    error:
+      error ||
+      (state.error ? userError(state.error, "模型可见性读取失败。") : ""),
     pending,
     visible: (harness: EngineId, model: string) =>
       !items.some(
@@ -38,10 +29,9 @@ export function useVisibility(enabled: boolean) {
       setPending(true);
       setError("");
       try {
-        setItems(
+        visibility.receive(
           await client.models.setVisibility({ harness, model, visible }),
         );
-        window.dispatchEvent(new Event("domos:models"));
       } catch (cause) {
         setError(userError(cause, "模型可见性保存失败。"));
       } finally {

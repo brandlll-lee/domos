@@ -20,12 +20,17 @@ import {
   useState,
 } from "react";
 import { client } from "../../client.ts";
+import { useReadState } from "../read-state.ts";
 import { ConnectionEditor, type Draft } from "./connection-editor.tsx";
+import {
+  appCatalog,
+  managedConnections,
+  nativeConnections,
+} from "./connection-state.ts";
 import { appsCopy } from "./copy.ts";
 import "./style.css";
 
 type Connection = Awaited<ReturnType<typeof client.mcp.list>>[number];
-type Native = Awaited<ReturnType<typeof client.mcp.native>>;
 type App = Awaited<ReturnType<typeof client.mcp.catalog>>[number];
 
 const draft = (): Draft => ({
@@ -63,10 +68,13 @@ export function AppsCenter({
   useLayoutEffect(() => {
     if (viewport.current) viewport.current.scrollTop = positions.current[view];
   }, [view]);
-  const [items, setItems] = useState<Connection[]>([]),
-    [catalog, setCatalog] = useState<App[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [reading, setReading] = useState(false);
+  const managed = useReadState(managedConnections, open);
+  const apps = useReadState(appCatalog, open);
+  const items = managed.data ?? [];
+  const catalog = apps.data ?? [];
+  const loaded =
+    view === "apps" ? apps.data !== undefined : managed.data !== undefined;
+  const reading = managed.loading || apps.loading;
   const [selectedId, setSelectedId] = useState<string>();
   const [appInfo, setAppInfo] = useState<App>();
   const [queries, setQueries] = useState({ apps: "", connected: "", mcp: "" });
@@ -78,47 +86,29 @@ export function AppsCenter({
   const [form, setForm] = useState<Draft | null>(null),
     [busy, setBusy] = useState(false),
     [checking, setChecking] = useState<string | null>(null);
-  const [removing, setRemoving] = useState<Connection | null>(null),
-    [native, setNative] = useState<Native | null>(null),
-    [nativeBot, setNativeBot] = useState("");
+  const [removing, setRemoving] = useState<Connection | null>(null);
+  const [nativeBot, setNativeBot] = useState("");
   const [manual, setManual] = useState(false);
-  const [nativeReading, setNativeReading] = useState(false);
-  const [nativeError, setNativeError] = useState<string | null>(null);
-  const nativeSelection = useRef("");
-  const refreshNative = async (id: string) => {
-    if (!id) return;
-    setNativeReading(true);
-    setNativeError(null);
-    try {
-      const result = await client.mcp.native({ botId: Number(id) });
-      if (nativeSelection.current === id) setNative(result);
-    } catch {
-      if (nativeSelection.current === id)
-        setNativeError(appsCopy.nativeReadError);
-    } finally {
-      if (nativeSelection.current === id) setNativeReading(false);
-    }
+  const nativeStore = nativeConnections(Number(nativeBot));
+  const nativeState = useReadState(
+    nativeStore,
+    open && view === "mcp" && !!nativeBot,
+  );
+  const native = nativeState.data;
+  const nativeReading = nativeState.loading;
+  const nativeError = nativeState.error ? appsCopy.nativeReadError : null;
+  const refreshNative = (id: string) => {
+    if (id)
+      void nativeConnections(Number(id))
+        .load(true)
+        .catch(() => {});
   };
   const refresh = useCallback(async () => {
-    setReading(true);
-    try {
-      const [records, apps] = await Promise.all([
-        client.mcp.list(),
-        client.mcp.catalog(),
-      ]);
-      setItems(records);
-      setCatalog(apps);
-      setLoaded(true);
-      setError(null);
-    } catch {
-      setError(appsCopy.readError);
-    } finally {
-      setReading(false);
-    }
+    await Promise.allSettled([
+      managedConnections.load(true),
+      appCatalog.load(true),
+    ]);
   }, []);
-  useEffect(() => {
-    if (open) void refresh();
-  }, [open, refresh]);
   const authorizationPending = items.some((item) => item.authorizationPending);
   useEffect(() => {
     if (!open || !authorizationPending) return;
@@ -131,9 +121,11 @@ export function AppsCenter({
     setError(null);
     try {
       await action();
-      await refresh();
+      managedConnections.invalidate();
+      await managedConnections.load().catch(() => {});
     } catch (cause) {
-      await refresh();
+      managedConnections.invalidate();
+      await managedConnections.load().catch(() => {});
       setError(cause instanceof Error ? cause.message : "操作失败。请重试。");
     } finally {
       setBusy(false);
@@ -325,8 +317,11 @@ export function AppsCenter({
         }
       >
         <div className="apps-center" aria-busy={busy}>
+          {Boolean(managed.error || apps.error) && (
+            <p role="alert">{appsCopy.readError}</p>
+          )}
           {!loaded && reading && <Loading label="正在读取连接" />}
-          {!loaded && error && (
+          {!loaded && Boolean(error || managed.error || apps.error) && (
             <Button variant="secondary" onClick={() => void refresh()}>
               重新读取
             </Button>
@@ -695,7 +690,9 @@ export function AppsCenter({
               {view === "mcp" && !form && !selectedId && (
                 <section className="apps-native">
                   <h3>引擎原生连接</h3>
-                  {nativeReading && <Loading label="正在读取原生连接" />}
+                  {nativeReading && (
+                    <Loading label="正在读取原生连接" inline={!!native} />
+                  )}
                   {nativeError && <p role="alert">{nativeError}</p>}
                   <p className="apps-muted">{appsCopy.nativeHint}</p>
                   <div className="field">
@@ -712,12 +709,7 @@ export function AppsCenter({
                         })),
                       ]}
                       onValueChange={(id) => {
-                        nativeSelection.current = id;
                         setNativeBot(id);
-                        setNative(null);
-                        setNativeError(null);
-                        setNativeReading(false);
-                        void refreshNative(id);
                       }}
                     />
                   </div>
@@ -735,14 +727,13 @@ export function AppsCenter({
                           checked={native.inherited}
                           disabled={busy}
                           onCheckedChange={(enabled) =>
-                            void run(async () =>
-                              setNative(
-                                await client.mcp.native({
-                                  botId: Number(nativeBot),
-                                  enabled,
-                                }),
-                              ),
-                            )
+                            void run(async () => {
+                              const result = await client.mcp.native({
+                                botId: Number(nativeBot),
+                                enabled,
+                              });
+                              nativeStore.receive(result);
+                            })
                           }
                         />
                       )}

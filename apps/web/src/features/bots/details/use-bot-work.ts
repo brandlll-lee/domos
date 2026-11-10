@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { client } from "../../../client.ts";
+import { createReadState, useReadState } from "../../read-state.ts";
 import { userError } from "../../user-error.ts";
 
 export type WorkData = Awaited<ReturnType<typeof client.work.get>>;
@@ -38,10 +39,77 @@ export function useWorkAction() {
   return { busy, error, run, clear: () => setError(null) };
 }
 
-const retained = new Map<
-  number,
-  { data: WorkData | null; profile: Profile | null; draft?: IdentityDraft }
->();
+function createWork(botId: number) {
+  const data = createReadState((signal) =>
+    client.work.get({ botId }, { signal }),
+  );
+  let viewers = 0;
+  let controller: AbortController | undefined;
+  return {
+    data,
+    watch() {
+      viewers++;
+      if (!controller) {
+        controller = new AbortController();
+        const { signal } = controller;
+        void (async () => {
+          const events = await client.work.subscribe(
+            { botId },
+            {
+              signal,
+              context: {
+                retry: Number.POSITIVE_INFINITY,
+                onRetry: () => {
+                  if (!signal.aborted)
+                    data.fail(new Error("详情连接中断，正在重连。"));
+                },
+              },
+            },
+          );
+          for await (const value of events) {
+            if (signal.aborted) return;
+            data.receive(value);
+          }
+        })().catch((error) => {
+          if (!signal.aborted) data.fail(error);
+        });
+      }
+      return () => {
+        if (--viewers === 0) {
+          controller?.abort();
+          controller = undefined;
+        }
+      };
+    },
+    refresh() {
+      if (!viewers) data.invalidate();
+    },
+    dispose() {
+      controller?.abort();
+      data.dispose();
+    },
+    profile: createReadState((signal) =>
+      client.work.profile({ botId }, { signal }),
+    ),
+    draft: undefined as IdentityDraft | undefined,
+  };
+}
+const retained = new Map<number, ReturnType<typeof createWork>>();
+function workFor(botId: number) {
+  let store = retained.get(botId);
+  if (!store) {
+    store = createWork(botId);
+    retained.set(botId, store);
+  }
+  return store;
+}
+export function refreshBotWork() {
+  for (const store of retained.values()) store.refresh();
+}
+export function invalidateBotWork(botId: number) {
+  const store = retained.get(botId);
+  store?.data.clear();
+}
 export function useIdentityDraft(profile: Profile) {
   const [draft, update] = useState<IdentityDraft>(
     () =>
@@ -61,84 +129,40 @@ export function useIdentityDraft(profile: Profile) {
   return { ...draft, change };
 }
 export function clearBotWork(ids?: Set<number>) {
-  for (const id of retained.keys()) if (!ids?.has(id)) retained.delete(id);
+  for (const [id, store] of retained)
+    if (!ids?.has(id)) {
+      store.dispose();
+      store.profile.dispose();
+      retained.delete(id);
+    }
 }
-window.addEventListener("domos:pair", () => retained.clear());
-window.addEventListener("domos:computer", () => retained.clear());
+window.addEventListener("domos:pair", () => clearBotWork());
+window.addEventListener("domos:computer", () => clearBotWork());
 export function useBotWork(
   botId: number,
   active: boolean,
   live: boolean,
   profileActive: boolean,
 ) {
-  const [saved] = useState(
-    () => retained.get(botId) ?? { data: null, profile: null },
-  );
-  retained.set(botId, saved);
-  const [data, setData] = useState<WorkData | null>(saved.data);
-  const [profile, setProfile] = useState<Profile | null>(saved.profile);
-  saved.data = data;
-  saved.profile = profile;
-  const [error, setError] = useState<string | null>(null);
-  const [profileError, setProfileError] = useState<string | null>(null);
+  const store = workFor(botId);
+  const data = useReadState(store.data, active);
+  const profile = useReadState(store.profile, profileActive);
+  const loaded = !!data.data;
   useEffect(() => {
-    if (!profileActive) return;
-    const controller = new AbortController();
-    setProfileError(null);
-    void client.work
-      .profile({ botId }, { signal: controller.signal })
-      .then((value) => {
-        if (!controller.signal.aborted) {
-          setProfile(value);
-          setProfileError(null);
-        }
-      })
-      .catch(() => {
-        if (!controller.signal.aborted)
-          setProfileError("资料加载失败。请关闭后重试。");
-      });
-    return () => controller.abort();
-  }, [botId, profileActive]);
-  useEffect(() => {
-    if (!active) return;
-    const controller = new AbortController();
-    setError(null);
-    void (async () => {
-      try {
-        if (!live) {
-          const value = await client.work.get(
-            { botId },
-            { signal: controller.signal },
-          );
-          if (!controller.signal.aborted) {
-            setData(value);
-          }
-          return;
-        }
-        const events = await client.work.subscribe(
-          { botId },
-          {
-            signal: controller.signal,
-            context: {
-              retry: Number.POSITIVE_INFINITY,
-              onRetry: () => {
-                if (!controller.signal.aborted)
-                  setError("详情连接中断，正在重连。");
-              },
-            },
-          },
-        );
-        for await (const value of events) {
-          if (controller.signal.aborted) return;
-          setData(value);
-          setError(null);
-        }
-      } catch {
-        if (!controller.signal.aborted)
-          setError("详情连接中断。请关闭后重试。");
-      }
-    })();
-    return () => controller.abort();
-  }, [botId, active, live]);
-  return { data, profile, setProfile, error, profileError };
+    if (active && live && loaded) return store.watch();
+  }, [active, live, loaded, store]);
+  return {
+    data: data.data ?? null,
+    profile: profile.data ?? null,
+    setProfile: (value: Profile) => store.profile.receive(value),
+    error: data.error ? userError(data.error, "详情连接中断。请重试。") : null,
+    profileError: profile.error
+      ? userError(profile.error, "资料加载失败。请重试。")
+      : null,
+    retry: () => {
+      void (profileActive ? store.profile : store.data)
+        .load(true)
+        .catch(() => {});
+    },
+  };
 }

@@ -19,7 +19,6 @@ export function ModelSetting({
   connected,
   disabled,
   onBusyChange,
-  onProfile,
   setupProvider,
 }: {
   botId: number;
@@ -27,7 +26,6 @@ export function ModelSetting({
   connected: boolean;
   disabled?: boolean;
   onBusyChange?: (busy: boolean) => void;
-  onProfile?: (profile: Awaited<ReturnType<typeof client.engines.get>>) => void;
 }) {
   const settings = useSettings();
   const visibility = useVisibility(connected);
@@ -90,9 +88,6 @@ export function ModelSetting({
     };
   }, [connected, store, setupProvider]);
   useEffect(() => {
-    if (profile) onProfile?.(profile);
-  }, [profile, onProfile]);
-  useEffect(() => {
     onBusyChange?.(busy || saving);
     return () => onBusyChange?.(false);
   }, [busy, saving, onBusyChange]);
@@ -139,7 +134,7 @@ export function ModelSetting({
   useEffect(() => {
     if (!connected || !loaded || config.provider === "acp") return;
     let current = true;
-    void store.inspect(config, settings.admin, open).then(
+    void store.inspect(config, settings.admin).then(
       () => {},
       (cause) => {
         if (current) setError(cause.message);
@@ -148,7 +143,7 @@ export function ModelSetting({
     return () => {
       current = false;
     };
-  }, [connected, open, loaded, store, config, settings.admin]);
+  }, [connected, loaded, store, config, settings.admin]);
   useEffect(() => {
     if (login?.state !== "waiting") return;
     let current = true;

@@ -7,7 +7,11 @@ import { ActionMenu } from "@domos/ui/menu";
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { useState } from "react";
 import { client } from "../../../client.ts";
-import type { WorkAction, WorkData } from "./use-bot-work.ts";
+import {
+  refreshBotWork,
+  type WorkAction,
+  type WorkData,
+} from "./use-bot-work.ts";
 
 type Entry = WorkData["memory"][number];
 
@@ -145,12 +149,15 @@ export function MemoryDialog({
           const entry = deleting;
           setDeleting(null);
           if (entry)
-            void action.run(["memory.delete", entry.id, entry.revision], () =>
-              client.work.memory.delete({
-                botId,
-                id: entry.id,
-                revision: entry.revision,
-              }),
+            void action.run(
+              ["memory.delete", entry.id, entry.revision],
+              () =>
+                client.work.memory.delete({
+                  botId,
+                  id: entry.id,
+                  revision: entry.revision,
+                }),
+              refreshBotWork,
             );
         }}
       />
@@ -192,7 +199,10 @@ function MemoryEditor({
         void action.run(
           ["memory.save", input],
           (requestId) => client.work.memory.save({ ...input, requestId }),
-          onDone,
+          () => {
+            refreshBotWork();
+            onDone();
+          },
         );
       }}
     >

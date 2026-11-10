@@ -221,6 +221,11 @@ export function BotDetails({
         {error && (
           <p className="alert" role="alert">
             {error}
+            {!action.error && (
+              <Button variant="ghost" size="small" onClick={work.retry}>
+                重试
+              </Button>
+            )}
           </p>
         )}
         {view === "identity" && !work.profile && !work.profileError && (

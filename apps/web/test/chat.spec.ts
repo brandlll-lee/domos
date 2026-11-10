@@ -54,6 +54,15 @@ async function control(
     | string
     | { history: number }
     | { handoff: string }
+    | {
+        nativeSkills: {
+          name: string;
+          description?: string;
+          path?: string;
+          source: "project" | "user";
+        }[];
+        skillsNotice?: string;
+      }
     | { content: unknown; stopReason?: "stop" | "toolUse" }
     | {
         responses: {
@@ -601,6 +610,18 @@ test("file reads recover from failure and cannot cross a Bot switch", async ({
     exact: true,
   });
   await contacts.getByRole("link", { name: /^Domos/ }).click();
+  await page.route("**/rpc/files/download", (route) => route.abort(), {
+    times: 1,
+  });
+  await page
+    .getByRole("button", { name: "预览 长文.txt", exact: true })
+    .click();
+  const panel = page.getByRole("complementary", {
+    name: "文件预览",
+    exact: true,
+  });
+  await expect(panel.getByRole("alert")).toContainText("文件读取失败");
+  await panel.getByRole("button", { name: "关闭", exact: true }).click();
   const release = Promise.withResolvers<void>();
   const requested = Promise.withResolvers<void>();
   await page.route("**/rpc/files/download", async (route) => {
@@ -612,6 +633,7 @@ test("file reads recover from failure and cannot cross a Bot switch", async ({
     await page
       .getByRole("button", { name: "预览 长文.txt", exact: true })
       .click();
+    await panel.getByRole("button", { name: "重试", exact: true }).click();
     await requested.promise;
     await expect(
       page
@@ -636,20 +658,17 @@ test("file reads recover from failure and cannot cross a Bot switch", async ({
     await page.unroute("**/rpc/files/download");
   }
   await contacts.getByRole("link", { name: /^Domos/ }).click();
-  await page.route("**/rpc/files/download", (route) => route.abort(), {
-    times: 1,
+  let repeatedReads = 0;
+  await page.route("**/rpc/files/download", async (route) => {
+    repeatedReads++;
+    await route.continue();
   });
   await page
     .getByRole("button", { name: "预览 长文.txt", exact: true })
     .click();
-  const panel = page.getByRole("complementary", {
-    name: "文件预览",
-    exact: true,
-  });
-  await expect(panel.getByRole("alert")).toContainText("文件读取失败");
-  await panel.getByRole("button", { name: "重试", exact: true }).click();
   await expect(panel).toContainText("仅预览前 200,000 个字符");
   expect(await panel.locator("pre").textContent()).toHaveLength(200_000);
+  expect(repeatedReads).toBe(0);
 });
 
 test("model selection updates immediately and restores a failed save", async ({
@@ -4923,20 +4942,13 @@ test("material menus keep descriptions and long catalogs within the viewport", a
     { length: 20 },
     (_, index) => `project-${index}-review-documentation-and-current-workspace`,
   );
-  await page.route("**/rpc/work/get", async (route) => {
-    const response = await route.fetch();
-    const body = await response.json();
-    Object.assign(body.json, {
-      nativeSkillsProvider: "pi",
-      nativeSkillsNotice: undefined,
-      nativeSkills: names.map((name) => ({
-        name,
-        description: "检查项目文件、测试结果和当前修改。".repeat(12),
-        path: `/project/skills/${name}/SKILL.md`,
-        source: "project",
-      })),
-    });
-    await route.fulfill({ response, json: body });
+  await control({
+    nativeSkills: names.map((name) => ({
+      name,
+      description: "检查项目文件、测试结果和当前修改。".repeat(12),
+      path: `/project/skills/${name}/SKILL.md`,
+      source: "project",
+    })),
   });
   await page.goto(url);
   const add = page.getByRole("button", { name: "添加内容", exact: true });
@@ -5062,18 +5074,12 @@ test("material pickers show native sources and keep MCP references separate from
     enabled: false,
     config: { transport: "http", url: "https://example.com/mcp", headers: {} },
   });
-  await page.route("**/rpc/work/get", async (route) => {
-    const response = await route.fetch();
-    const body = await response.json();
-    Object.assign(body.json, {
-      nativeSkillsProvider: "pi",
-      nativeSkills: [
-        { name: "report", path: "/skills/report/SKILL.md", source: "project" },
-        { name: "unresolved", source: "user" },
-      ],
-      nativeSkillsNotice: "原生技能目录读取失败：测试提示",
-    });
-    await route.fulfill({ response, json: body });
+  await control({
+    nativeSkills: [
+      { name: "report", path: "/skills/report/SKILL.md", source: "project" },
+      { name: "unresolved", source: "user" },
+    ],
+    skillsNotice: "原生技能目录读取失败：测试提示",
   });
   const nativeReady = Promise.withResolvers<void>();
   await page.route("**/rpc/mcp/native", async (route) => {
@@ -5154,6 +5160,7 @@ test("material pickers show native sources and keep MCP references separate from
       },
     }),
   );
+  await page.reload();
   await add.click();
   await page.getByRole("menuitem", { name: "引用 MCP…", exact: true }).click();
   const sources = page.getByRole("button", { name: "Docs", exact: true });
@@ -5172,4 +5179,212 @@ test("material pickers show native sources and keep MCP references separate from
   await sources.last().click();
   await page.reload();
   await expect(input.locator("[data-inline-token]")).toHaveText(["Docs"]);
+});
+
+test("MCP readers share pending and retained catalogs across the composer and connection center", async ({
+  page,
+}) => {
+  let nativeReads = 0;
+  let managedReads = 0;
+  const release = Promise.withResolvers<void>();
+  await page.route("**/rpc/mcp/list", async (route) => {
+    managedReads++;
+    await route.continue();
+  });
+  await page.route("**/rpc/mcp/native", async (route) => {
+    nativeReads++;
+    await release.promise;
+    await route.fulfill({
+      json: {
+        json: {
+          provider: "pi",
+          computerId: "pc",
+          inherited: true,
+          inheritance: "native",
+          readonly: true,
+          items: [
+            {
+              name: "Shared Docs",
+              source: "project",
+              enabled: true,
+              status: "configured",
+            },
+          ],
+        },
+      },
+    });
+  });
+  await page.goto(url);
+  const add = page.getByRole("button", { name: "添加内容", exact: true });
+  const open = async () => {
+    await add.click();
+    await page
+      .getByRole("menuitem", { name: "引用 MCP…", exact: true })
+      .click();
+  };
+  const close = async () => {
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+  };
+  try {
+    await open();
+    await expect.poll(() => nativeReads).toBe(1);
+    await close();
+    await open();
+    await expect(
+      page.getByRole("status", { name: "正在读取 MCP", exact: true }),
+    ).toBeVisible();
+    expect(nativeReads).toBe(1);
+    release.resolve();
+    await expect(
+      page.getByRole("button", { name: "Shared Docs", exact: true }),
+    ).toBeVisible();
+    await close();
+    await open();
+    await expect(
+      page.getByRole("button", { name: "Shared Docs", exact: true }),
+    ).toBeVisible();
+    expect(nativeReads).toBe(1);
+    expect(managedReads).toBe(1);
+    await close();
+    await page.getByRole("button", { name: "连接中心", exact: true }).click();
+    const center = page.getByRole("dialog");
+    await center.getByRole("button", { name: "MCP", exact: true }).click();
+    await center
+      .getByRole("combobox", { name: "选择机器人", exact: true })
+      .click();
+    await page.getByRole("option", { name: "Domos", exact: true }).click();
+    await expect(center.locator(".apps-native-row")).toContainText(
+      "Shared Docs",
+    );
+    expect(nativeReads).toBe(1);
+    expect(managedReads).toBe(1);
+    await center.getByRole("button", { name: "刷新连接", exact: true }).click();
+    await expect(
+      center.getByRole("button", { name: "刷新连接", exact: true }),
+    ).toBeEnabled();
+    expect(nativeReads).toBe(2);
+    expect(managedReads).toBe(2);
+  } finally {
+    release.resolve();
+  }
+});
+
+test("Bot readers retain model and skill data while live skill changes reach the composer", async ({
+  page,
+}) => {
+  const rpc: RouterClient<AppRouter> = createORPCClient(
+    new RPCLink({ url: `${url}/rpc` }),
+  );
+  const bot = (await rpc.bots.list())[0];
+  if (!bot) throw new Error("Bot required");
+  const skill = await rpc.work.skills.save({
+    botId: bot.id,
+    id: crypto.randomUUID(),
+    revision: 0,
+    requestId: crypto.randomUUID(),
+    content:
+      "---\nname: shared-report\ndescription: Report\n---\nRead source files",
+  });
+  await rpc.work.skills.enable({
+    botId: bot.id,
+    id: skill.id,
+    revision: skill.revision,
+    enabled: true,
+    requestId: crypto.randomUUID(),
+  });
+  const enabledSkill = (await rpc.work.get({ botId: bot.id })).skills.find(
+    (item) => item.id === skill.id,
+  );
+  if (!enabledSkill) throw new Error("Skill required");
+  const reads = { work: 0, model: 0, inspect: 0 };
+  page.on("request", (request) => {
+    if (request.url().endsWith("/rpc/work/get")) reads.work++;
+    if (request.url().endsWith("/rpc/engines/get")) reads.model++;
+    if (request.url().endsWith("/rpc/engines/inspect")) reads.inspect++;
+  });
+  await page.goto(url);
+  const details = await openDetails(page);
+  const model = details.getByRole("combobox", { name: "模型", exact: true });
+  await expect(model).toContainText("测试模型一");
+  await model.click();
+  await expect(
+    page.getByRole("option", { name: "Pi · 测试模型二", exact: true }),
+  ).toBeVisible();
+  const initial = { ...reads };
+  await page.keyboard.press("Escape");
+  await details
+    .getByRole("button", { name: "模型与账号", exact: true })
+    .click();
+  await expect(
+    details.getByRole("combobox", { name: "模型", exact: true }),
+  ).toBeVisible();
+  await details.getByRole("button", { name: "返回", exact: true }).click();
+  await details.getByRole("button", { name: "关闭", exact: true }).click();
+  const add = page.getByRole("button", { name: "添加内容", exact: true });
+  const open = async () => {
+    await add.click();
+    await page
+      .getByRole("menuitem", { name: "使用技能…", exact: true })
+      .click();
+  };
+  await open();
+  const choice = page.getByRole("button", {
+    name: "shared-report",
+    exact: true,
+  });
+  await expect(choice).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await open();
+  await expect(choice).toBeVisible();
+  expect(reads).toEqual(initial);
+  expect(reads.model).toBe(1);
+  expect(reads.work).toBe(1);
+  await rpc.work.skills.enable({
+    botId: bot.id,
+    id: skill.id,
+    revision: enabledSkill.revision,
+    enabled: false,
+    requestId: crypto.randomUUID(),
+  });
+  await expect(choice).toHaveCount(0);
+  expect(reads.work).toBe(1);
+});
+
+test("file lists retain pages across opens and update when new attachments arrive", async ({
+  page,
+}) => {
+  const rpc: RouterClient<AppRouter> = createORPCClient(
+    new RPCLink({ url: `${url}/rpc` }),
+  );
+  const bot = (await rpc.bots.list())[0];
+  if (!bot) throw new Error("Bot required");
+  let reads = 0;
+  page.on("request", (request) => {
+    if (request.url().endsWith("/rpc/files/list")) reads++;
+  });
+  await page.goto(url);
+  const details = await openDetails(page);
+  await details.getByRole("button", { name: "文件", exact: true }).click();
+  await expect(details).toContainText("发送和收到的文件会显示在这里");
+  await details.getByRole("button", { name: "返回", exact: true }).click();
+  await details.getByRole("button", { name: "文件", exact: true }).click();
+  await expect(details).toContainText("发送和收到的文件会显示在这里");
+  expect(reads).toBe(1);
+  const file = await rpc.files.upload({
+    botId: bot.id,
+    file: new File(["New evidence"], "new-report.txt"),
+  });
+  await control({ content: "已收到。" });
+  await rpc.send({
+    botId: bot.id,
+    text: "保存附件",
+    attachments: [file.id],
+    requestId: crypto.randomUUID(),
+  });
+  await expect(
+    details.getByRole("button", { name: "预览 new-report.txt", exact: true }),
+  ).toBeVisible();
+  expect(reads).toBe(2);
 });

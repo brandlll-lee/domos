@@ -12,6 +12,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { client } from "../../client.ts";
+import { receiveConversationFiles } from "../files/file-state.ts";
 import { flushModelSettings } from "../models/model-state.ts";
 import { chatCopy } from "./copy.ts";
 import { rejectionMessage } from "./request-error.ts";
@@ -201,6 +202,7 @@ export function useChat(botId: number, onModelRequired?: () => void) {
               ]),
             ).values(),
           ];
+          receiveConversationFiles(botId, next.messages);
           current.current = next;
           pending = next;
           if (document.hidden) {

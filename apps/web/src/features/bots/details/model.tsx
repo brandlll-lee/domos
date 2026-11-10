@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { client } from "../../../client.ts";
 import { ComputerPermission } from "../../computer/permission.tsx";
 import { ModelSetting } from "../../models/model-setting.tsx";
+import { useModelSettings } from "../../models/model-state.ts";
 import { useSettings } from "../../settings/context.ts";
 import { EngineMark } from "../engine-mark.tsx";
 
@@ -21,8 +22,7 @@ export function ModelSetup({
 }) {
   const settings = useSettings();
   const setup = Boolean(onReady);
-  const [profile, setProfile] =
-    useState<Awaited<ReturnType<typeof client.engines.get>>>();
+  const { profile, store } = useModelSettings(botId);
   const [binding, setBinding] =
     useState<Awaited<ReturnType<typeof client.computer.get>>>();
   const [provider, setProvider] = useState<EngineConfig["provider"]>();
@@ -35,18 +35,22 @@ export function ModelSetup({
     },
     [onBusyChange],
   );
-  const refresh = useCallback(async () => {
-    const [binding, profile] = await Promise.all([
-      client.computer.get({ botId }),
-      client.engines.get({ botId }),
-    ]);
-    setBinding(binding);
-    setProfile(profile);
-    if (!setup) setProvider(profile.config.provider);
-  }, [botId, setup]);
+  const refresh = useCallback(
+    async (reload = false) => {
+      const [binding] = await Promise.all([
+        client.computer.get({ botId }),
+        store.load(reload),
+      ]);
+      setBinding(binding);
+    },
+    [botId, store],
+  );
   useEffect(() => {
     void refresh().catch((cause) => setError(cause.message));
   }, [refresh]);
+  useEffect(() => {
+    if (!setup && profile) setProvider(profile.config.provider);
+  }, [setup, profile]);
   if (!binding || !profile)
     return error ? (
       <p role="alert">{error}</p>
@@ -97,7 +101,7 @@ export function ModelSetup({
     return (
       <ComputerPermission
         botId={botId}
-        onReady={refresh}
+        onReady={() => refresh(true)}
         onBusyChange={reportBusy}
         footer={back}
       />
@@ -110,7 +114,6 @@ export function ModelSetup({
         connected
         disabled={profile.busy}
         setupProvider={setup ? provider : undefined}
-        onProfile={setProfile}
         onBusyChange={reportBusy}
       />
       <div className="setup-actions">
