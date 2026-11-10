@@ -2,13 +2,13 @@ import { type InputMaterials, MAX_MATERIALS } from "@domos/agent/materials";
 import type { ChatMessage } from "@domos/agent/messages";
 import { Button } from "@domos/ui/controls";
 import { Popover } from "@domos/ui/popover";
-import { ArrowLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowLeft";
-import { FileIcon } from "@phosphor-icons/react/dist/csr/File";
+import { ChatCircleIcon } from "@phosphor-icons/react/dist/csr/ChatCircle";
+import { FolderSimpleIcon } from "@phosphor-icons/react/dist/csr/FolderSimple";
+import { HammerIcon } from "@phosphor-icons/react/dist/csr/Hammer";
 import { ImageIcon } from "@phosphor-icons/react/dist/csr/Image";
-import { PlugsIcon } from "@phosphor-icons/react/dist/csr/Plugs";
+import { PaperclipIcon } from "@phosphor-icons/react/dist/csr/Paperclip";
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { QuotesIcon } from "@phosphor-icons/react/dist/csr/Quotes";
-import { SparkleIcon } from "@phosphor-icons/react/dist/csr/Sparkle";
 import { TextAlignLeftIcon } from "@phosphor-icons/react/dist/csr/TextAlignLeft";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -21,9 +21,9 @@ import "./composer-menu.css";
 
 const titles = {
   menu: "添加内容",
-  skills: "使用技能",
-  mcp: "引用 MCP",
-  context: "添加上下文",
+  skills: "技能",
+  mcp: "MCP",
+  context: "上下文",
   text: "粘贴文本",
   messages: "引用消息",
 };
@@ -50,19 +50,21 @@ export function ComposerMenu({
   onInsert: () => void;
 }) {
   const popup = useRef<HTMLDivElement>(null);
+  const returnTarget = useRef<string | null>(null);
   const [open, setOpen] = useState(false);
   const [panel, setPanel] = useState<keyof typeof titles>("menu");
   useEffect(() => {
-    if (open)
-      popup.current
-        ?.querySelector<HTMLElement>(
-          panel === "text"
-            ? "textarea"
-            : panel === "skills" || panel === "mcp" || panel === "messages"
-              ? "input"
-              : "[role=menuitem]",
-        )
-        ?.focus();
+    if (open) {
+      const target = returnTarget.current
+        ? `[data-panel-target="${returnTarget.current}"]`
+        : panel === "text"
+          ? "textarea"
+          : "button:not(:disabled)";
+      (
+        popup.current?.querySelector<HTMLElement>(target) ?? popup.current
+      )?.focus();
+      returnTarget.current = null;
+    }
   }, [open, panel]);
   function insertAt(position: number) {
     const shift = <T extends { position?: number }>(item: T): T => ({
@@ -150,57 +152,47 @@ export function ComposerMenu({
             className="composer-menu-popup"
             data-panel={panel}
             aria-label={titles[panel]}
+            onKeyDownCapture={(event) => {
+              if (event.key === "Escape" && panel !== "menu") {
+                event.preventDefault();
+                event.stopPropagation();
+                returnTarget.current = panel;
+                setPanel(
+                  panel === "text" || panel === "messages" ? "context" : "menu",
+                );
+              }
+            }}
+            onKeyDown={(event) => {
+              if (!(event.target instanceof HTMLButtonElement)) return;
+              const elements = [
+                ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                  "button:not(:disabled)",
+                ),
+              ];
+              const index = elements.indexOf(event.target);
+              const target =
+                event.key === "ArrowDown"
+                  ? elements[(index + 1) % elements.length]
+                  : event.key === "ArrowUp"
+                    ? elements[(index - 1 + elements.length) % elements.length]
+                    : event.key === "Home"
+                      ? elements[0]
+                      : event.key === "End"
+                        ? elements.at(-1)
+                        : null;
+              if (target) {
+                event.preventDefault();
+                target.focus();
+              }
+            }}
           >
             {panel !== "menu" && (
               <header className="composer-picker-head">
-                <Button
-                  variant="ghost"
-                  size="icon-small"
-                  aria-label="返回添加菜单"
-                  onClick={() =>
-                    setPanel(
-                      panel === "text" || panel === "messages"
-                        ? "context"
-                        : "menu",
-                    )
-                  }
-                >
-                  <ArrowLeftIcon />
-                </Button>
                 <Popover.Title>{titles[panel]}</Popover.Title>
               </header>
             )}
             {panel === "menu" || panel === "context" ? (
-              <div
-                role="menu"
-                aria-label={titles[panel]}
-                onKeyDown={(event) => {
-                  const elements = [
-                    ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
-                      "button:not(:disabled)",
-                    ),
-                  ];
-                  const index = elements.indexOf(
-                    document.activeElement as HTMLButtonElement,
-                  );
-                  const target =
-                    event.key === "ArrowDown"
-                      ? elements[(index + 1) % elements.length]
-                      : event.key === "ArrowUp"
-                        ? elements[
-                            (index - 1 + elements.length) % elements.length
-                          ]
-                        : event.key === "Home"
-                          ? elements[0]
-                          : event.key === "End"
-                            ? elements.at(-1)
-                            : null;
-                  if (target) {
-                    event.preventDefault();
-                    target.focus();
-                  }
-                }}
-              >
+              <div role="menu" aria-label={titles[panel]}>
                 {panel === "menu" ? (
                   <>
                     <button
@@ -213,7 +205,7 @@ export function ComposerMenu({
                         onFiles(true);
                       }}
                     >
-                      <ImageIcon />
+                      <ImageIcon weight="light" />
                       添加图片
                     </button>
                     <button
@@ -226,17 +218,19 @@ export function ComposerMenu({
                         onFiles(false);
                       }}
                     >
-                      <FileIcon />
+                      <PaperclipIcon weight="light" />
                       添加文件
                     </button>
+                    <hr className="composer-menu-separator" />
                     <button
                       type="button"
                       role="menuitem"
                       className="composer-menu-item"
                       disabled={materials.skills.length >= MAX_MATERIALS}
+                      data-panel-target="skills"
                       onClick={() => setPanel("skills")}
                     >
-                      <SparkleIcon />
+                      <FolderSimpleIcon weight="light" />
                       使用技能…
                     </button>
                     <button
@@ -244,9 +238,10 @@ export function ComposerMenu({
                       role="menuitem"
                       className="composer-menu-item"
                       disabled={materials.context.length >= MAX_MATERIALS}
+                      data-panel-target="context"
                       onClick={() => setPanel("context")}
                     >
-                      <QuotesIcon />
+                      <ChatCircleIcon weight="light" />
                       添加上下文…
                     </button>
                     <button
@@ -254,9 +249,10 @@ export function ComposerMenu({
                       role="menuitem"
                       className="composer-menu-item"
                       disabled={(materials.mcp?.length ?? 0) >= MAX_MATERIALS}
+                      data-panel-target="mcp"
                       onClick={() => setPanel("mcp")}
                     >
-                      <PlugsIcon />
+                      <HammerIcon weight="light" />
                       引用 MCP…
                     </button>
                   </>
@@ -266,18 +262,20 @@ export function ComposerMenu({
                       type="button"
                       role="menuitem"
                       className="composer-menu-item"
+                      data-panel-target="text"
                       onClick={() => setPanel("text")}
                     >
-                      <TextAlignLeftIcon />
+                      <TextAlignLeftIcon weight="light" />
                       粘贴文本
                     </button>
                     <button
                       type="button"
                       role="menuitem"
                       className="composer-menu-item"
+                      data-panel-target="messages"
                       onClick={() => setPanel("messages")}
                     >
-                      <QuotesIcon />
+                      <QuotesIcon weight="light" />
                       引用消息
                     </button>
                   </>

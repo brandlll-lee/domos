@@ -2,11 +2,70 @@ import type { InputMaterials } from "@domos/agent/materials";
 import { type ChatMessage, messageText } from "@domos/agent/messages";
 import { WORK_TEXT_LENGTH } from "@domos/agent/work/limits";
 import { Button } from "@domos/ui/controls";
-import { SearchField } from "@domos/ui/field";
 import { Loading } from "@domos/ui/loading";
-import { useEffect, useState } from "react";
+import { Tooltip } from "@domos/ui/popover";
+import { ChatCircleIcon } from "@phosphor-icons/react/dist/csr/ChatCircle";
+import { FolderSimpleIcon } from "@phosphor-icons/react/dist/csr/FolderSimple";
+import { HammerIcon } from "@phosphor-icons/react/dist/csr/Hammer";
+import { type ReactNode, useEffect, useId, useState } from "react";
 import { client } from "../../client.ts";
 import { userError } from "../user-error.ts";
+
+function focusChoice(element: HTMLElement | null) {
+  if (document.activeElement?.matches(".composer-menu-popup"))
+    (element instanceof HTMLButtonElement
+      ? element
+      : element?.querySelector<HTMLButtonElement>("button:not(:disabled)")
+    )?.focus();
+}
+
+function MaterialChoice({
+  name,
+  icon,
+  detail,
+  disabled,
+  onClick,
+}: {
+  name: string;
+  icon: ReactNode;
+  detail: ReactNode;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  const detailId = useId();
+  return (
+    <Tooltip.Root>
+      <Tooltip.Trigger
+        ref={focusChoice}
+        render={<button type="button" disabled={disabled} />}
+        className="composer-picker-row"
+        aria-label={name}
+        aria-describedby={detailId}
+        onClick={onClick}
+      >
+        {icon}
+        <span>{name}</span>
+      </Tooltip.Trigger>
+      <Tooltip.Portal>
+        <Tooltip.Positioner
+          className="composer-detail-positioner"
+          side="right"
+          align="center"
+          sideOffset={8}
+          collisionPadding={12}
+        >
+          <Tooltip.Popup
+            id={detailId}
+            role="tooltip"
+            className="composer-detail"
+          >
+            {detail}
+          </Tooltip.Popup>
+        </Tooltip.Positioner>
+      </Tooltip.Portal>
+    </Tooltip.Root>
+  );
+}
 
 export function SkillPicker({
   botId,
@@ -16,9 +75,13 @@ export function SkillPicker({
   onSelect: (skill: InputMaterials["skills"][number]) => void;
 }) {
   const [skills, setSkills] = useState<
-    (InputMaterials["skills"][number] & { origin: string })[] | null
+    | (InputMaterials["skills"][number] & {
+        origin: string;
+        description?: string;
+        path?: string;
+      })[]
+    | null
   >(null);
-  const [search, setSearch] = useState("");
   const [notice, setNotice] = useState<string>();
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -38,6 +101,8 @@ export function SkillPicker({
             ...(data.nativeSkills ?? []).map((skill) => ({
               id: skill.path ?? skill.name,
               name: skill.name,
+              description: skill.description,
+              path: skill.path,
               origin: `${data.nativeSkillsProvider ?? "原生"} · ${skill.source} · ${skill.path ? "只读" : "未提供读取路径"}`,
               ...(skill.path && data.nativeSkillsProvider
                 ? {
@@ -67,18 +132,8 @@ export function SkillPicker({
       });
     return () => controller.abort();
   }, [botId, error]);
-  const filtered = skills?.filter((skill) =>
-    skill.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()),
-  );
   return (
     <>
-      <SearchField
-        className="composer-picker-search"
-        aria-label="搜索技能"
-        placeholder="搜索技能…"
-        value={search}
-        onValueChange={setSearch}
-      />
       {notice && (
         <p className="composer-picker-state" role="status">
           {notice}
@@ -99,18 +154,22 @@ export function SkillPicker({
         </div>
       ) : !skills ? (
         <Loading label="正在读取技能" />
-      ) : !filtered?.length ? (
-        <p className="composer-picker-state">
-          {search ? "没有匹配的技能" : "暂无已启用的技能"}
-        </p>
+      ) : !skills.length ? (
+        <p className="composer-picker-state">暂无已启用的技能</p>
       ) : (
-        <div className="composer-picker-list">
-          {filtered.map((skill) => (
-            <button
-              className="composer-picker-row"
-              type="button"
+        <div className="composer-picker-list" ref={focusChoice}>
+          {skills.map((skill) => (
+            <MaterialChoice
               key={skill.id}
-              aria-label={skill.name}
+              name={skill.name}
+              icon={<FolderSimpleIcon weight="light" />}
+              detail={
+                <>
+                  {skill.description && <p>{skill.description}</p>}
+                  <p>{skill.origin}</p>
+                  {skill.path && <p>{skill.path}</p>}
+                </>
+              }
               disabled={!skill.content && !skill.native}
               onClick={() =>
                 onSelect({
@@ -121,10 +180,7 @@ export function SkillPicker({
                   ...(skill.native ? { native: skill.native } : {}),
                 })
               }
-            >
-              <span>{skill.name}</span>
-              <small>{skill.origin}</small>
-            </button>
+            />
           ))}
         </div>
       )}
@@ -177,58 +233,44 @@ export function MessagePicker({
   messages: ChatMessage[];
   onSelect: (context: InputMaterials["context"][number]) => void;
 }) {
-  const [search, setSearch] = useState("");
   const choices = messages
     .filter(
       (message) =>
         (message.role === "user" || message.role === "assistant") &&
         !message.pending &&
         messageText(message).trim() &&
-        messageText(message).length <= WORK_TEXT_LENGTH &&
-        messageText(message)
-          .toLocaleLowerCase()
-          .includes(search.toLocaleLowerCase()),
+        messageText(message).length <= WORK_TEXT_LENGTH,
     )
     .toReversed();
   return (
-    <>
-      <SearchField
-        className="composer-picker-search"
-        aria-label="搜索消息"
-        placeholder="搜索消息…"
-        value={search}
-        onValueChange={setSearch}
-      />
-      <div className="composer-picker-list">
-        {choices.length ? (
-          choices.map((message) => (
-            <button
-              className="composer-picker-row composer-message-choice"
-              type="button"
-              key={message.id}
-              title={messageText(message)}
-              onClick={() =>
-                onSelect({
-                  id: crypto.randomUUID(),
-                  type: "message",
-                  botId,
-                  messageId: message.id,
-                  text: messageText(message),
-                  role: message.role as "user" | "assistant",
-                  ...(message.timestamp
-                    ? { timestamp: message.timestamp }
-                    : {}),
-                })
-              }
-            >
-              {messageText(message)}
-            </button>
-          ))
-        ) : (
-          <p className="composer-picker-state">没有可引用的消息</p>
-        )}
-      </div>
-    </>
+    <div className="composer-picker-list" ref={focusChoice}>
+      {choices.length ? (
+        choices.map((message) => (
+          <button
+            className="composer-picker-row composer-message-choice"
+            type="button"
+            key={message.id}
+            title={messageText(message)}
+            onClick={() =>
+              onSelect({
+                id: crypto.randomUUID(),
+                type: "message",
+                botId,
+                messageId: message.id,
+                text: messageText(message),
+                role: message.role as "user" | "assistant",
+                ...(message.timestamp ? { timestamp: message.timestamp } : {}),
+              })
+            }
+          >
+            <ChatCircleIcon weight="light" />
+            <span>{messageText(message)}</span>
+          </button>
+        ))
+      ) : (
+        <p className="composer-picker-state">没有可引用的消息</p>
+      )}
+    </div>
   );
 }
 
@@ -243,7 +285,6 @@ export function McpPicker({
     managed?: InputMaterials["mcp"];
     native?: InputMaterials["mcp"];
   }>({});
-  const [search, setSearch] = useState("");
   const [errors, setErrors] = useState<string[]>([]);
   useEffect(() => {
     const controller = new AbortController();
@@ -291,44 +332,32 @@ export function McpPicker({
   }, [botId]);
   const items = [...(catalog.managed ?? []), ...(catalog.native ?? [])];
   const loading = catalog.managed === undefined || catalog.native === undefined;
-  const filtered = items.filter((item) =>
-    item.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()),
-  );
   return (
     <>
-      <SearchField
-        className="composer-picker-search"
-        aria-label="搜索 MCP"
-        placeholder="搜索 MCP…"
-        value={search}
-        onValueChange={setSearch}
-      />
       {errors.map((error) => (
         <p key={error} className="composer-picker-state" role="status">
           {error}
         </p>
       ))}
-      <div className="composer-picker-list">
-        {filtered.map((item) => (
-          <button
-            type="button"
-            className="composer-picker-row"
+      <div className="composer-picker-list" ref={focusChoice}>
+        {items.map((item) => (
+          <MaterialChoice
             key={`${item.native?.source ?? "domos"}:${item.id}`}
+            name={item.name}
+            icon={<HammerIcon weight="light" />}
             onClick={() => onSelect(item)}
-          >
-            <span>{item.name}</span>
-            <small>
-              {item.native
-                ? `${item.native.provider} · ${item.native.source} · ${item.available ? "沿用原生配置" : "未沿用"}`
-                : `Domos · ${item.available ? "已授权" : "未授权或已停用"}`}{" "}
-              · {item.status}
-            </small>
-          </button>
+            detail={
+              <p>
+                {item.native
+                  ? `${item.native.provider} · ${item.native.source} · ${item.available ? "沿用原生配置" : "未沿用"}`
+                  : `Domos · ${item.available ? "已授权" : "未授权或已停用"}`}{" "}
+                · {item.status}
+              </p>
+            }
+          />
         ))}
-        {!loading && !filtered.length && (
-          <p className="composer-picker-state">
-            {search ? "没有匹配的 MCP" : "暂无 MCP 连接"}
-          </p>
+        {!loading && !items.length && (
+          <p className="composer-picker-state">暂无 MCP 连接</p>
         )}
       </div>
       {loading && <Loading label="正在读取 MCP" />}

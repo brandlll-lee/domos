@@ -4486,6 +4486,24 @@ test("composer menu adds task materials, keeps drafts, and fits both themes", as
   await input.press("ArrowRight");
   await add.click();
   await page.getByRole("menuitem", { name: "使用技能…", exact: true }).click();
+  await expect(page.locator(".composer-menu-popup input")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "返回添加菜单" })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole("button", { name: "report", exact: true }),
+  ).toBeFocused();
+  await page.getByRole("button", { name: "report", exact: true }).hover();
+  await expect(page.getByRole("tooltip")).toContainText("Write a report");
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("menuitem", { name: "使用技能…", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("button", { name: "report", exact: true }),
+  ).toBeFocused();
+  await expect(page.getByRole("tooltip")).toContainText("Write a report");
   await page.getByRole("button", { name: "report", exact: true }).click();
   await expect(input.locator("[data-inline-token]")).toContainText(["report"]);
   await add.click();
@@ -4898,6 +4916,122 @@ test("secure credential cards save privately, retry failures and cancel in chat"
   await expect(pending).toHaveCount(0);
 });
 
+test("material menus keep descriptions and long catalogs within the viewport", async ({
+  page,
+}, testInfo) => {
+  const names = Array.from(
+    { length: 20 },
+    (_, index) => `project-${index}-review-documentation-and-current-workspace`,
+  );
+  await page.route("**/rpc/work/get", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    Object.assign(body.json, {
+      nativeSkillsProvider: "pi",
+      nativeSkillsNotice: undefined,
+      nativeSkills: names.map((name) => ({
+        name,
+        description: "检查项目文件、测试结果和当前修改。".repeat(12),
+        path: `/project/skills/${name}/SKILL.md`,
+        source: "project",
+      })),
+    });
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto(url);
+  const add = page.getByRole("button", { name: "添加内容", exact: true });
+  await expect(add).toBeEnabled();
+  await page
+    .locator("#bot-details")
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
+  for (const [theme, label] of [
+    ["light", "浅色"],
+    ["dark", "深色"],
+  ] as const) {
+    await page.setViewportSize({ width: 1360, height: 900 });
+    await chooseAppearance(page, label);
+    for (const width of [1360, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await add.click();
+      const popup = page.locator(".composer-menu-popup");
+      await expect(popup).toHaveCSS("opacity", "1");
+      const anchor = await add.boundingBox();
+      const menu = await popup.boundingBox();
+      expect(Math.abs((anchor?.x ?? 0) - (menu?.x ?? 0))).toBeLessThanOrEqual(
+        2,
+      );
+      expect((menu?.y ?? 0) + (menu?.height ?? 0)).toBeLessThan(anchor?.y ?? 0);
+      await page
+        .getByRole("menuitem", { name: "使用技能…", exact: true })
+        .click();
+      await expect(popup.locator("input")).toHaveCount(0);
+      const first = page.getByRole("button", { name: names[0], exact: true });
+      await expect(first).toBeFocused();
+      await first.press("End");
+      await expect(
+        page.getByRole("button", { name: names.at(-1), exact: true }),
+      ).toBeFocused();
+      expect(
+        await page
+          .locator(".composer-picker-list")
+          .evaluate((element) => element.scrollTop),
+      ).toBeGreaterThan(0);
+      await page.keyboard.press("Home");
+      await expect(first).toBeFocused();
+      await page.keyboard.press("ArrowDown");
+      await expect(
+        page.getByRole("button", { name: names[1], exact: true }),
+      ).toBeFocused();
+      await page.keyboard.press("ArrowUp");
+      await first.hover();
+      const detail = page.getByRole("tooltip");
+      await expect(detail).toContainText(
+        `/project/skills/${names[0]}/SKILL.md`,
+      );
+      const bounds = await detail.boundingBox();
+      expect(
+        bounds &&
+          bounds.x >= 0 &&
+          bounds.y >= 0 &&
+          bounds.x + bounds.width <= width &&
+          bounds.y + bounds.height <= 900,
+      ).toBeTruthy();
+      await expect(first.locator("span")).toHaveCSS(
+        "text-overflow",
+        "ellipsis",
+      );
+      await page.screenshot({
+        path: testInfo.outputPath(`skills-${theme}-${width}.png`),
+      });
+      await page.keyboard.press("Escape");
+      await expect(
+        page.getByRole("menuitem", { name: "使用技能…", exact: true }),
+      ).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(add).toBeFocused();
+    }
+  }
+  await add.click();
+  await page
+    .getByRole("menuitem", { name: "添加上下文…", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "粘贴文本", exact: true }).click();
+  await expect(
+    page.getByRole("textbox", { name: "引用文本", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("menuitem", { name: "粘贴文本", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("menuitem", { name: "添加上下文…", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(add).toBeFocused();
+});
+
 test("material pickers show native sources and keep MCP references separate from grants", async ({
   page,
 }) => {
@@ -4958,7 +5092,8 @@ test("material pickers show native sources and keep MCP references separate from
   await page.getByRole("menuitem", { name: "使用技能…", exact: true }).click();
   const native = page.getByRole("button", { name: "report", exact: true });
   await expect(native).toHaveCount(1);
-  await expect(native).toContainText("pi · project · 只读");
+  await native.hover();
+  await expect(page.getByRole("tooltip")).toContainText("pi · project · 只读");
   await expect(
     page.getByRole("button", { name: "unresolved", exact: true }),
   ).toBeDisabled();
@@ -4975,7 +5110,7 @@ test("material pickers show native sources and keep MCP references separate from
   await page.getByRole("menuitem", { name: "引用 MCP…", exact: true }).click();
   try {
     await expect(
-      page.getByRole("button", { name: /Docs.*未授权或已停用/ }),
+      page.getByRole("button", { name: "Docs", exact: true }),
     ).toBeVisible();
   } finally {
     nativeReady.resolve();
@@ -4983,7 +5118,11 @@ test("material pickers show native sources and keep MCP references separate from
   await expect(
     page.getByRole("status").filter({ hasText: "服务暂时不可用" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: /Docs.*未授权或已停用/ }).click();
+  await page.getByRole("button", { name: "Docs", exact: true }).hover();
+  await expect(page.getByRole("tooltip")).toContainText(
+    "Domos · 未授权或已停用",
+  );
+  await page.getByRole("button", { name: "Docs", exact: true }).click();
   await page.reload();
   await expect(input.locator("[data-inline-token]")).toHaveText(["Docs"]);
   await control({ content: "已收到服务引用。" });
@@ -5017,16 +5156,20 @@ test("material pickers show native sources and keep MCP references separate from
   );
   await add.click();
   await page.getByRole("menuitem", { name: "引用 MCP…", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: /Docs.*pi.*沿用原生配置/ }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /Docs.*Domos.*未授权或已停用/ }),
-  ).toBeVisible();
+  const sources = page.getByRole("button", { name: "Docs", exact: true });
+  await expect(sources).toHaveCount(2);
+  await sources.first().hover();
+  await expect(page.getByRole("tooltip")).toContainText(
+    "Domos · 未授权或已停用",
+  );
+  await sources.last().hover();
+  await expect(page.getByRole("tooltip")).toContainText(
+    "pi · project · 沿用原生配置",
+  );
   await page.screenshot({
     path: test.info().outputPath("material-mcp-sources.png"),
   });
-  await page.getByRole("button", { name: /Docs.*pi.*沿用原生配置/ }).click();
+  await sources.last().click();
   await page.reload();
   await expect(input.locator("[data-inline-token]")).toHaveText(["Docs"]);
 });

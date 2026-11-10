@@ -2,7 +2,7 @@
   z-index: 10;
 }
 .composer-menu-popup {
-  width: calc(var(--space-12) * 4);
+  width: var(--sidebar-width);
   max-width: var(--available-width);
   max-height: var(--available-height);
   overflow: auto;
@@ -34,8 +34,8 @@
   align-items: center;
   gap: var(--space-3);
   width: 100%;
-  min-height: var(--control-height);
-  padding: var(--space-2) var(--space-3);
+  min-height: var(--control-small);
+  padding: var(--space-1) var(--space-3);
   border: 0;
   border-radius: var(--radius-control);
   background: transparent;
@@ -46,6 +46,7 @@
   cursor: pointer;
 }
 .composer-menu-item svg,
+.composer-picker-row svg,
 .material-chip > svg {
   width: var(--space-4);
   height: var(--space-4);
@@ -71,11 +72,9 @@
   opacity: 0.5;
 }
 .composer-picker-head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1);
-  font-size: var(--text-body);
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-muted);
+  font-size: var(--text-label);
   font-weight: var(--weight-medium);
 }
 .composer-picker-head h2 {
@@ -94,6 +93,9 @@
   font-size: var(--text-label);
 }
 .composer-message-choice {
+  align-items: start;
+}
+.composer-message-choice span {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -169,14 +171,48 @@
 }
 
 .composer-picker-row {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
-.composer-picker-row small {
-  color: var(--color-muted);
-  font-size: var(--text-label);
-  overflow-wrap: anywhere;
+.composer-picker-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-message-choice > span {
+  white-space: normal;
 }
 .composer-picker-row:disabled {
   color: var(--color-muted);
   cursor: default;
+}
+.composer-menu-separator {
+  margin: var(--space-1) var(--space-3);
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+.composer-detail-positioner {
+  z-index: 10;
+}
+.composer-detail {
+  width: var(--details-width);
+  max-width: min(var(--available-width), calc(100vw - var(--space-6)));
+  max-height: var(--available-height);
+  overflow: auto;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-popup);
+  color: var(--color-text);
+  box-shadow: var(--color-popup-shadow);
+  font-size: var(--text-body);
+  overflow-wrap: anywhere;
+}
+.composer-detail p {
+  margin: 0;
+}
+.composer-detail p + p {
+  margin-top: var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--text-label);
 }
