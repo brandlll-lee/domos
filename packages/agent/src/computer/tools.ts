@@ -35,6 +35,7 @@ export class ComputerTools {
   }
 
   async state(botId: number, context: Context) {
+    botId = await this.computers.owner(botId, context);
     const { target, enabled, id } = await this.computers.serviceTarget(
       botId,
       context,

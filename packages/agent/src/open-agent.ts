@@ -10,8 +10,10 @@ import {
 } from "@earendil-works/pi-durable";
 import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node";
 import { Bots, identity } from "./bots.ts";
+import { Collaboration, collaborationExtension } from "./collaboration.ts";
 import type { Computers } from "./computer/catalog.ts";
 import { ComputerRuntime } from "./computer/runtime.ts";
+import { BotSessions } from "./conversations.ts";
 import { Files } from "./files.ts";
 import { history } from "./harness/history.ts";
 import { interactionExtension } from "./harness/interactions.ts";
@@ -23,6 +25,7 @@ import { migrateRuntime } from "./runtime/migrate.ts";
 import { modelDiagnostics } from "./runtime/model-diagnostics.ts";
 import { modelImages } from "./runtime/model-images.ts";
 import { openStorage } from "./runtime/storage.ts";
+import { Teams } from "./teams.ts";
 import { botWork } from "./work/index.ts";
 import { memory } from "./work/memory.ts";
 import { Routines, routineExtension } from "./work/routines.ts";
@@ -61,6 +64,9 @@ export async function openAgent(
   if (execution) options.registry.install(execution.mcpExtension());
   if (execution) options.registry.install(interactionExtension(execution));
   let engines: Runtime | undefined;
+  let collaboration: Collaboration;
+  if (execution)
+    options.registry.install(collaborationExtension(() => collaboration));
   let computerRuntime: ComputerRuntime | undefined;
   let routines: Routines;
   options.registry.install(
@@ -163,17 +169,23 @@ export async function openAgent(
       computerRuntime.onWaiting = (botId, status) =>
         execution.waiting(botId, status);
       engines = new Runtime(harness, execution);
+      collaboration = new Collaboration(harness, engines, files);
+      engines.collaboration = collaboration;
     }
     for (const bot of await bots.list(context)) {
       await migrateRuntime(harness, bot.id, context);
       await computerRuntime?.prepare(bot.id, context, false);
     }
+    for (const session of (await harness.snapshot(BotSessions, context))
+      ?.items ?? [])
+      await computerRuntime?.prepare(session.id, context, false);
     routines = new Routines(harness, options.now);
     harness.resume();
     return {
       harness,
       conversation,
       bots,
+      teams: new Teams(harness),
       work: botWork(harness, options.now, files),
       files,
       models,

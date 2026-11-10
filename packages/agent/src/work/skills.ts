@@ -8,6 +8,7 @@ import {
   section,
   type Tx,
 } from "@earendil-works/pi-durable";
+import { owningBot } from "../conversations.ts";
 import type { Files } from "../files.ts";
 import { EngineDoc } from "../harness/state.ts";
 import { SKILL_FILE_BYTES } from "./limits.ts";
@@ -251,13 +252,14 @@ export function skillExtension(files?: Files) {
     name: "domos-skills",
     sections: [
       section("skills", async ({ read, conversationId }, context) => {
+        const botId = await owningBot(read, conversationId, context);
         const native =
           (await read.snapshot(EngineDoc, conversationId, context))?.runtime
             ?.nativeSkills ?? [];
         const items =
           (await read.snapshot(SkillsDoc, context))?.items.filter(
             (item) =>
-              item.enabledBots.includes(conversationId) &&
+              item.enabledBots.includes(botId) &&
               !native.some((loaded) => loaded.name === item.name),
           ) ?? [];
         if (!items.length) return undefined;
@@ -277,13 +279,13 @@ export function skillExtension(files?: Files) {
         async execute({ id }, api, context) {
           const skill = enabledSkill(
             (await api.snapshot(SkillsDoc, context))?.items ?? [],
-            api.conversationId,
+            await owningBot(api, api.conversationId, context),
             id,
           );
           const path =
             skill.hash && packages
               ? await packages.materialize(
-                  api.conversationId,
+                  await owningBot(api, api.conversationId, context),
                   skill.hash,
                   context,
                 )
@@ -303,15 +305,16 @@ export function skillExtension(files?: Files) {
         replay: "safe",
         executionMode: "sequential",
         async execute(args, api, context) {
+          const botId = await owningBot(api, api.conversationId, context);
           if (args.id)
             enabledSkill(
               (await api.snapshot(SkillsDoc, context))?.items ?? [],
-              api.conversationId,
+              await owningBot(api, api.conversationId, context),
               args.id,
             );
           return toolResult(
             await api.commit(
-              (tx) =>
+              async (tx) =>
                 saveSkill(
                   tx,
                   {
@@ -319,7 +322,7 @@ export function skillExtension(files?: Files) {
                     id: args.id ?? `skill-${api.taskId}`,
                     requestId: String(api.taskId),
                   },
-                  `bot:${api.conversationId}/tool:${api.callId}`,
+                  `bot:${botId}/tool:${api.callId}`,
                   packages,
                 ),
               context,

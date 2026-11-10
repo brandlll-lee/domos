@@ -7,6 +7,7 @@ import type { Attachment } from "../attachments.ts";
 import type { Computers } from "../computer/catalog.ts";
 import { computerInstructions } from "../computer/instructions.ts";
 import { ComputerRequests, type ComputerRuntime } from "../computer/runtime.ts";
+import { owningBot } from "../conversations.ts";
 import type { Files } from "../files.ts";
 import type { McpConnection, McpConnections } from "../mcp/connections.ts";
 import {
@@ -117,6 +118,7 @@ export class EngineExecution {
           executionMode: "sequential",
           execute: async (input, api, ctx) => {
             const active = this.active.get(api.conversationId);
+            const ownerId = await owningBot(api, api.conversationId, ctx);
             const connections = this.mcp;
             if (!connections || !active?.approve)
               throw new Error("MCP 会话已结束或未授权。");
@@ -143,7 +145,7 @@ export class EngineExecution {
             const authorize = async () => {
               const current = await connections.resolve(
                 input.id,
-                api.conversationId,
+                ownerId,
                 mounted.computerId,
                 ctx,
               );
@@ -267,7 +269,7 @@ export class EngineExecution {
       throw new Error("MCP 会话已结束。");
     const resolved = await connections.resolve(
       item.id,
-      botId,
+      await this.computer.owner(botId, context),
       item.computerId,
       context,
     );
@@ -356,6 +358,7 @@ export class EngineExecution {
       context,
     );
     if (!doc) throw new Error("Bot 的任务配置不存在。");
+    const botId = await owningBot(runtime, runtime.conversationId, context);
     const provider = engineProvider(doc.config.provider);
     const approve = async (
       approval: EngineApproval,
@@ -401,14 +404,12 @@ export class EngineExecution {
         ? (await this.mcp.list(context)).filter(
             (item) =>
               item.enabled &&
-              item.grants.some(
-                (grant) => grant.botId === runtime.conversationId,
-              ),
+              item.grants.some((grant) => grant.botId === botId),
           )
         : [];
     const inherited =
       !memoryReview && this.mcp
-        ? await this.mcp.native(runtime.conversationId, context)
+        ? await this.mcp.native(botId, context)
         : !memoryReview;
     const agent = await runtime.agent(context);
     const env = await runtime.env(context);
@@ -438,7 +439,7 @@ export class EngineExecution {
     );
     if (!snapshot) {
       const memories = await runtime.snapshot(MemoryDoc, context);
-      const text = memoryContext(memories?.items ?? [], runtime.conversationId);
+      const text = memoryContext(memories?.items ?? [], botId);
       await runtime.commit(async (tx) => {
         (await tx.doc(MemorySnapshotDoc, runtime.taskId)).text = text ?? "";
       }, context);
@@ -896,11 +897,7 @@ export class EngineExecution {
         context,
       );
       const images =
-        (await this.files?.images(
-          runtime.conversationId,
-          attachments,
-          context,
-        )) ?? [];
+        (await this.files?.images(botId, attachments, context)) ?? [];
       Object.assign(
         doc,
         await runtime.snapshot(EngineDoc, runtime.conversationId, context),

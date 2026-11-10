@@ -7,7 +7,7 @@ import { PanelHeader } from "@domos/ui/panel";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { Tabs } from "@domos/ui/tabs";
 import { type ReactNode, useState } from "react";
-import type { useChat } from "../../chat/use-chat.ts";
+import { useChat } from "../../chat/use-chat.ts";
 import { WorkPanel } from "../../chat/work.tsx";
 import type { useComputer } from "../../computer/use-computer.ts";
 import { ComputerWorkspace } from "../../computer/workspace.tsx";
@@ -39,6 +39,7 @@ const titles: Record<Exclude<BotPanelView, "root">, string> = {
 
 export function BotDetails({
   bot,
+  sessionBot = bot,
   active,
   view,
   onViewChange,
@@ -56,6 +57,7 @@ export function BotDetails({
   onShowMessage,
 }: {
   bot: Bot;
+  sessionBot?: Bot;
   active: boolean;
   view: BotPanelView;
   onViewChange: (view: BotPanelView) => void;
@@ -195,16 +197,25 @@ export function BotDetails({
           </Tabs.Root>
         </div>
       )}
-      {view === "root" && tab === "work" && active && (
-        <WorkPanel {...chat} botId={bot.id} selectedRun={workRun} />
-      )}
+      {view === "root" &&
+        tab === "work" &&
+        active &&
+        (sessionBot.id === bot.id ? (
+          <WorkPanel {...chat} botId={bot.id} selectedRun={workRun} />
+        ) : (
+          <SessionWork
+            key={sessionBot.id}
+            botId={sessionBot.id}
+            selectedRun={workRun}
+          />
+        ))}
       {view === "root" &&
         (tab === "computer" || tab === "browser") &&
         active && (
           <ComputerWorkspace
             takeoverId={takeoverId}
             key={tab}
-            bot={bot}
+            bot={sessionBot}
             computer={computer}
             admin={canManage}
             service={tab === "browser" ? "browser" : "desktop"}
@@ -282,4 +293,15 @@ export function BotDetails({
       />
     </aside>
   );
+}
+
+function SessionWork({
+  botId,
+  selectedRun,
+}: {
+  botId: number;
+  selectedRun?: string;
+}) {
+  const chat = useChat(botId);
+  return <WorkPanel {...chat} botId={botId} selectedRun={selectedRun} />;
 }

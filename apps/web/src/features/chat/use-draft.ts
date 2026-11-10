@@ -126,21 +126,22 @@ function createDraft(key: string) {
   };
 }
 
-const retained = new Map<number, ReturnType<typeof createDraft>>();
+const retained = new Map<string, ReturnType<typeof createDraft>>();
 export function clearDraftState(ids?: Set<number>) {
-  for (const id of retained.keys()) if (!ids?.has(id)) retained.delete(id);
+  for (const id of retained.keys())
+    if (!ids || (!id.startsWith("team:") && !ids.has(Number(id))))
+      retained.delete(id);
 }
 window.addEventListener("domos:pair", () => clearDraftState());
 window.addEventListener("domos:computer", () => clearDraftState());
 
-export function useDraft(conversationId: number) {
+export function useDraft(conversationId: number | string) {
+  const key = String(conversationId);
   const [store] = useState(() => {
-    let store = retained.get(conversationId);
+    let store = retained.get(key);
     if (!store) {
-      store = createDraft(
-        `domos:composer:v2:${computerScope}:${conversationId}`,
-      );
-      retained.set(conversationId, store);
+      store = createDraft(`domos:composer:v2:${computerScope}:${key}`);
+      retained.set(key, store);
     }
     return store;
   });

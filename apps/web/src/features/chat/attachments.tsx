@@ -61,7 +61,7 @@ export function Attachments({
           <FileAttachment
             name={file.name}
             size={file.size}
-            onOpen={() => preview?.open(file)}
+            onOpen={() => preview?.open(file, botId)}
             action={
               <Button
                 type="button"

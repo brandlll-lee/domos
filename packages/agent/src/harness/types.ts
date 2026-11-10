@@ -347,7 +347,10 @@ export type EngineInput = {
   attachments?: Attachment[];
   whenBusy?: "reject" | "followUp";
   operation?: "compact";
-  source?: "routine";
+  source?: "routine" | "bot";
+  author?: import("../messages.ts").ChatMessage["author"];
+  parent?: import("@earendil-works/pi-durable").TaskId;
+  delegationId?: string;
   routineRunId?: string;
 };
 

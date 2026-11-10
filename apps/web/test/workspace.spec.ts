@@ -16,6 +16,56 @@ let url: string;
 let toolName: string;
 const it = test.extend({ trace: "off" });
 
+test("teams preserve member authors and keep private chats separate", async ({
+  page,
+}, info) => {
+  await page.goto(url);
+  const response = await page.request.post(`${url}/rpc/bots/create`, {
+    data: { json: { name: "Reviewer", requestId: crypto.randomUUID() } },
+  });
+  expect(response.ok()).toBe(true);
+  await page.getByRole("button", { name: "新建团队", exact: true }).click();
+  const dialog = page.getByRole("dialog", {
+    name: "新建 Bot 团队",
+    exact: true,
+  });
+  await dialog.getByLabel("团队名称", { exact: true }).fill("发布小队");
+  await dialog.getByLabel("团队用途", { exact: true }).fill("检查本次发布");
+  await dialog.getByRole("checkbox", { name: "Domos", exact: true }).check();
+  await dialog.getByRole("checkbox", { name: "Reviewer", exact: true }).check();
+  await dialog.getByRole("button", { name: "创建", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Bot详情", exact: true }),
+  ).toHaveText("发布小队");
+  await page
+    .getByRole("textbox", { name: "消息", exact: true })
+    .fill("只在团队讨论发布");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const log = page.getByRole("log", { name: "聊天记录", exact: true });
+  await expect(log).toContainText("已收到");
+  await expect(log.locator(".message-author")).toContainText("Domos");
+  await page
+    .getByRole("textbox", { name: "消息", exact: true })
+    .fill("@Reviewer 请检查发布说明");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(
+    log.locator(".message-author").filter({ hasText: "Reviewer" }),
+  ).toBeVisible();
+  for (const theme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.screenshot({ path: info.outputPath(`team-${theme}.png`) });
+  }
+  await page.reload();
+  await expect(
+    page.getByRole("log", { name: "聊天记录", exact: true }),
+  ).toContainText("只在团队讨论发布");
+  await page.getByRole("link", { name: "Domos", exact: true }).click();
+  await expect(
+    page.getByRole("log", { name: "聊天记录", exact: true }),
+  ).not.toContainText("只在团队讨论发布");
+});
+
 test("message links follow Bot colors and preserve contrast in both themes", async ({
   page,
 }, info) => {

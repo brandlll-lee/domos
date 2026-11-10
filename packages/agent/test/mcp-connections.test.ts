@@ -220,9 +220,12 @@ test("MCP tool calls enforce current grants before and after shared approval", a
   });
   const tool = execution.mcpExtension().tools?.[0];
   if (!tool) throw new Error("MCP tool required");
-  const api = { conversationId: 1, callId: "fixture-call" } as Parameters<
-    typeof tool.execute
-  >[1];
+  const api = {
+    conversationId: 1,
+    callId: "fixture-call",
+    snapshot: (...args: Parameters<typeof runtime.harness.snapshot>) =>
+      runtime.harness.snapshot(...args),
+  } as Parameters<typeof tool.execute>[1];
   const input = {
     id,
     requestId: "fixture-call",

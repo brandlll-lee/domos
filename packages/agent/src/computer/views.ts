@@ -7,6 +7,7 @@ import type { ViewerAction, ViewFrame } from "./viewer-types.ts";
 
 type View = {
   botId: number;
+  ownerId: number;
   service: ComputerService;
   computerId: string;
   target: Computer;
@@ -39,18 +40,19 @@ export class ComputerViews {
     signal: AbortSignal,
     context: Context,
   ) {
+    const ownerId = await this.computers.owner(botId, context);
     const {
       target,
       enabled,
       id: computerId,
     } = await this.computers.serviceTarget(botId, context);
     if (!enabled[service]) throw new Error("请先启用这项电脑服务。");
-    target.services.viewAccess(botId, service);
-    const state = await target.services.prepare(botId, service, context);
+    target.services.viewAccess(ownerId, service);
+    const state = await target.services.prepare(ownerId, service, context);
     if (!state.available) throw new Error(state.error ?? "电脑服务不可用。");
     const id = randomUUID();
     await target.services.viewer(
-      botId,
+      ownerId,
       { operation: "view", service, id, action: "open" },
       signal,
       context,
@@ -58,6 +60,7 @@ export class ComputerViews {
     const controller = new AbortController();
     this.sessions.set(id, {
       botId,
+      ownerId,
       service,
       computerId,
       target,
@@ -102,14 +105,14 @@ export class ComputerViews {
     context: Context,
   ): Promise<ViewFrame> {
     const view = await this.session(botId, id, context);
-    view.target.services.viewAccess(botId, view.service, view.lease);
+    view.target.services.viewAccess(view.ownerId, view.service, view.lease);
     const frame = await view.target.services.viewer<ViewFrame>(
-      botId,
+      view.ownerId,
       { operation: "view", service: view.service, id, action: "next" },
       AbortSignal.any([signal, view.controller.signal]),
       context,
     );
-    view.target.services.viewAccess(botId, view.service, view.lease);
+    view.target.services.viewAccess(view.ownerId, view.service, view.lease);
     return frame;
   }
 
@@ -125,7 +128,7 @@ export class ComputerViews {
       if (!view.lease && !view.taking) {
         view.lease = randomUUID();
         view.taking = view.target.services
-          .takeover(botId, view.service, view.lease)
+          .takeover(view.ownerId, view.service, view.lease)
           .then(() => {})
           .catch((error: unknown) => {
             view.lease = undefined;
@@ -141,7 +144,7 @@ export class ComputerViews {
       await view.taking;
       if (view.lease) {
         await view.target.services.viewer(
-          botId,
+          view.ownerId,
           {
             operation: "view",
             service: view.service,
@@ -152,19 +155,23 @@ export class ComputerViews {
           signal,
           context,
         );
-        await view.target.services.release(botId, view.service, view.lease);
+        await view.target.services.release(
+          view.ownerId,
+          view.service,
+          view.lease,
+        );
       }
       view.lease = undefined;
       if (view.requestId)
         await this.requestControl(botId, view.requestId, false, context);
     } else {
-      view.target.services.viewAccess(botId, view.service, view.lease);
+      view.target.services.viewAccess(view.ownerId, view.service, view.lease);
       if (message.type !== "ack" && view.taking)
         throw new Error("正在交接控制权。请等待。");
       if (message.type !== "ack" && !view.lease)
         throw new Error("请先接管，再操作电脑。");
       await view.target.services.viewer(
-        botId,
+        view.ownerId,
         {
           operation: "view",
           service: view.service,
@@ -186,7 +193,7 @@ export class ComputerViews {
     view.controller.abort();
     try {
       await view.target.services.viewer(
-        view.botId,
+        view.ownerId,
         { operation: "view", service: view.service, id, action: "close" },
         AbortSignal.timeout(35000),
         context,
@@ -195,7 +202,7 @@ export class ComputerViews {
       await view.taking?.catch(() => {});
       if (view.lease)
         await view.target.services.release(
-          view.botId,
+          view.ownerId,
           view.service,
           view.lease,
         );

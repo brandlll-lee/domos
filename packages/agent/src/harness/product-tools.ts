@@ -16,6 +16,7 @@ import { type EngineRuntime, stored } from "./task-types.ts";
 import type { ProductResult, ProductTool } from "./types.ts";
 
 const productExtensions = new Set([
+  "domos-collaboration",
   "domos-memory",
   "domos-skills",
   "domos-routines",

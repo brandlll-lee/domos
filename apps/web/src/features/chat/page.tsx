@@ -1,6 +1,7 @@
 import type { Attachment } from "@domos/agent/attachments";
 import type { Bot, BotPresence } from "@domos/agent/bots";
 import { type ChatMessage, messageText } from "@domos/agent/messages";
+import type { Team } from "@domos/agent/teams";
 import { characterIdentity } from "@domos/ui/characters";
 import { Button } from "@domos/ui/controls";
 import { Loading } from "@domos/ui/loading";
@@ -27,6 +28,7 @@ import { UsageSurface } from "../usage/page.tsx";
 import { Composer } from "./composer.tsx";
 import { ContextRing } from "./context.tsx";
 import { chatCopy } from "./copy.ts";
+import { Delegations } from "./delegations.tsx";
 import { ErrorMessage } from "./error-message.tsx";
 import { ChatHeader } from "./header.tsx";
 import { Messages } from "./messages.tsx";
@@ -49,7 +51,8 @@ export function ChatPage() {
     );
   return (
     <BotChat
-      key={bots.selected.id}
+      key={bots.selectedTeam?.id ?? bots.selected.id}
+      team={bots.selectedTeam}
       bot={bots.selected}
       bots={bots.items}
       directoryError={bots.error}
@@ -60,12 +63,14 @@ export function ChatPage() {
 }
 
 function BotChat({
+  team,
   bot,
   bots,
   directoryError,
   directoryConnected,
   directory,
 }: {
+  team?: Team;
   bot: Bot;
   bots: BotPresence[];
   directoryError: string | null;
@@ -73,10 +78,27 @@ function BotChat({
   directory: ReturnType<typeof useBots>;
 }) {
   const settings = useSettings();
-  const chat = useChat(bot.id, () => settings.open("providers", bot.id));
-  const computer = useComputer(bot.id, directory);
+  const chat = useChat(
+    bot.id,
+    () => settings.open("providers", bot.id),
+    team?.id,
+  );
   const dock = useComposerDock();
-  const draft = useDraft(bot.id);
+  const draft = useDraft(team ? `team:${team.id}` : bot.id);
+  const [sessionId, setSessionId] = useState<number>();
+  const sessionOwner =
+    bots.find(
+      (item) =>
+        item.id ===
+        (chat.view?.messages.find((message) => message.sessionId === sessionId)
+          ?.author?.botId ??
+          chat.view?.delegations?.find((item) => item.session === sessionId)
+            ?.recipient),
+    ) ?? bot;
+  const detailBot = sessionId
+    ? { ...sessionOwner, id: sessionId as Bot["id"] }
+    : bot;
+  const computer = useComputer(sessionOwner.id, directory);
   const input = useRef<HTMLDivElement>(null);
   const resend = useCallback(
     (original: ChatMessage) => {
@@ -110,6 +132,7 @@ function BotChat({
     "settings" | "computer" | "browser" | "work" | "file"
   >("settings");
   const [file, setFile] = useState<Attachment>();
+  const [fileBotId, setFileBotId] = useState(bot.id as number);
   const [inlineFiles, setInlineFiles] = useState(new Set<string>());
   const [fileTarget, setFileTarget] = useState<HTMLElement | null>(null);
   const registerFile = useCallback((id: string, active: boolean) => {
@@ -121,19 +144,28 @@ function BotChat({
     });
   }, []);
   const openFile = useCallback(
-    (file: Attachment) => {
+    (file: Attachment, sourceBotId: number = bot.id) => {
       setFile(file);
+      setFileBotId(sourceBotId);
       setPanel("file");
       setExpanded(false);
       setDetailsOpen(true);
     },
-    [setDetailsOpen],
+    [setDetailsOpen, bot.id],
   );
   useEffect(() => {
     const open = (event: Event) => {
       const detail = (event as CustomEvent<{ botId: number; turnId: string }>)
         .detail;
-      if (detail.botId !== bot.id) return;
+      if (
+        detail.botId !== bot.id &&
+        !chat.view?.messages.some(
+          (message) => message.sessionId === detail.botId,
+        ) &&
+        !chat.view?.delegations?.some((item) => item.session === detail.botId)
+      )
+        return;
+      setSessionId(detail.botId);
       setWorkRun(detail.turnId);
       setDetailPanel("root");
       setPanel("work");
@@ -141,7 +173,7 @@ function BotChat({
     };
     window.addEventListener("domos:work-open", open);
     return () => window.removeEventListener("domos:work-open", open);
-  }, [bot.id, setDetailsOpen]);
+  }, [bot.id, chat.view, setDetailsOpen]);
   const [expanded, setExpanded] = useState(false);
   const [detailPanel, setDetailPanel] = useState<BotPanelView>("root");
   const [takeover, setTakeover] = useState<{
@@ -157,7 +189,14 @@ function BotChat({
           service: "browser" | "desktop";
         }>
       ).detail;
-      if (request.botId !== bot.id) return;
+      if (
+        request.botId !== bot.id &&
+        !chat.view?.messages.some(
+          (message) => message.sessionId === request.botId,
+        )
+      )
+        return;
+      setSessionId(request.botId);
       setTakeover(request);
       setView("chat");
       setDetailPanel("root");
@@ -167,7 +206,7 @@ function BotChat({
     };
     window.addEventListener("domos:takeover-open", open);
     return () => window.removeEventListener("domos:takeover-open", open);
-  }, [bot.id, setDetailsOpen]);
+  }, [bot.id, chat.view, setDetailsOpen]);
   const takeoverId =
     panel === (takeover?.service === "browser" ? "browser" : "computer") &&
     chat.view?.approvals?.some((approval) => approval.id === takeover?.id)
@@ -188,6 +227,7 @@ function BotChat({
       ? chatCopy.errors.reply
       : null);
   const showPanel = (view: BotPanelView) => {
+    setSessionId(undefined);
     setView("chat");
     setPanel("settings");
     setExpanded(false);
@@ -228,6 +268,8 @@ function BotChat({
             compact={compact}
             onExpand={expand}
             bots={bots}
+            teams={directory.teams}
+            onTeamsChange={directory.setTeams}
             selected={bot}
             connected={directoryConnected}
             actions={<CreateBot onCreated={selectBot} />}
@@ -237,7 +279,7 @@ function BotChat({
         inspector={
           panel === "file" && file ? (
             <FilePanel
-              botId={bot.id}
+              botId={fileBotId}
               file={file}
               key={file.id}
               onBack={() => showPanel("files")}
@@ -250,6 +292,7 @@ function BotChat({
               active={detailsOpen}
               workRun={workRun}
               bot={bot}
+              sessionBot={detailBot}
               view={detailPanel}
               onViewChange={setDetailPanel}
               onClose={closePanel}
@@ -335,7 +378,7 @@ function BotChat({
               }
             >
               <ChatHeader
-                bot={bot}
+                bot={team ? { ...bot, name: team.name } : bot}
                 busy={Boolean(chat.view?.busy)}
                 detailsOpen={detailsOpen}
                 provider={chat.view?.engine?.provider}
@@ -350,7 +393,7 @@ function BotChat({
                 busy={Boolean(chat.view?.busy)}
                 processing={chat.processing}
                 retry={chat.view?.busy ? chat.view.runtime?.retry : null}
-                botName={bot.name}
+                botName={team?.name ?? bot.name}
                 createdAt={bot.createdAt}
                 items={items}
                 sentRequest={chat.sentRequest}
@@ -359,6 +402,7 @@ function BotChat({
                 onEarlier={chat.loadEarlier}
                 onResend={resend}
                 welcome={
+                  !team &&
                   !chat.error &&
                   !bot.welcomeComplete &&
                   !chat.view?.messages.length && (
@@ -377,6 +421,9 @@ function BotChat({
                   )
                 }
               />
+              {!!chat.view?.delegations?.length && (
+                <Delegations items={chat.view.delegations} bots={bots} />
+              )}
               {chat.view ? (
                 <Composer
                   ref={dock.ref}
@@ -384,8 +431,8 @@ function BotChat({
                   draft={draft}
                   messages={chat.view.messages}
                   key={chat.view.id}
-                  botName={bot.name}
-                  conversationId={chat.view.id}
+                  botName={team?.name ?? bot.name}
+                  conversationId={team ? bot.id : chat.view.id}
                   connected={chat.connected}
                   busy={chat.view.busy}
                   sending={chat.sending}

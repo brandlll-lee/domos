@@ -452,9 +452,12 @@ test("credential setup reconnects the current MCP task using native transport", 
     const call = execution.mcpExtension().tools?.[0];
     const credential = interactionExtension(execution).tools[1];
     if (!call) throw new Error("MCP tool required");
-    const api = { conversationId: botId, callId: "oauth" } as Parameters<
-      typeof call.execute
-    >[1];
+    const api = {
+      conversationId: botId,
+      callId: "oauth",
+      snapshot: (...args: Parameters<typeof runtime.harness.snapshot>) =>
+        runtime.harness.snapshot(...args),
+    } as Parameters<typeof call.execute>[1];
     const input = { id, requestId: "list", method: "tools/list", params: {} };
     await expect(call.execute(input, api, context)).rejects.toThrow();
     const waiting = credential.execute(

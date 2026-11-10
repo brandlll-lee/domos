@@ -1012,3 +1012,48 @@ button.takeover-preview:focus-visible {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.message-author {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--text-small);
+}
+.team-contact-icon {
+  display: grid;
+  place-items: center;
+  width: var(--control-height);
+  height: var(--control-height);
+  flex-shrink: 0;
+}
+.team-contact-icon svg {
+  width: var(--control-height);
+  height: var(--control-height);
+}
+.team-member-list {
+  display: grid;
+  gap: var(--space-3);
+  border: 0;
+  padding: 0;
+}
+.team-owner-label {
+  display: grid;
+  gap: var(--space-2);
+}
+.delegations {
+  padding: var(--space-2) var(--space-4);
+  max-height: 20vh;
+  overflow: auto;
+}
+.delegation-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.delegation-row > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}

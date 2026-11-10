@@ -424,7 +424,7 @@ async function finish(
       !error &&
       !current.input.operation &&
       current.input.submissionId &&
-      current.input.source !== "routine"
+      !current.input.source
     ) {
       const memoryReview = await tx.doc(
         MemoryReviewDoc,

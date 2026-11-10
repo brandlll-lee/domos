@@ -12,7 +12,12 @@ export type TaskNotice = {
 export type TranscriptItem =
   | TaskNotice
   | { kind: "message"; id: string; message: ChatMessage }
-  | { kind: "attachments"; id: string; files: Attachment[] };
+  | {
+      kind: "attachments";
+      id: string;
+      files: Attachment[];
+      sessionId?: number;
+    };
 
 export function chatTranscript(view: ChatView): TranscriptItem[] {
   const items: TranscriptItem[] = [];
@@ -89,6 +94,8 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
             id: message.id,
             turnId: message.turnId,
             role: "assistant",
+            sessionId: message.sessionId,
+            author: message.author,
             content: [
               {
                 type: "text",
@@ -109,6 +116,7 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
             kind: "attachments",
             id: message.id,
             files,
+            sessionId: message.sessionId,
           });
         attachmentTurn = id;
       }

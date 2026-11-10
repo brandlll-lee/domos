@@ -9,6 +9,7 @@ import {
   section,
   type Tx,
 } from "@earendil-works/pi-durable";
+import { owningBot } from "../conversations.ts";
 import {
   MEMORY_CONTEXT_BYTES,
   MEMORY_PROFILE_BYTES,
@@ -246,7 +247,7 @@ export const memory = defineExtension({
     section("memory", async ({ read, conversationId }, context) =>
       memoryContext(
         (await read.snapshot(MemoryDoc, context))?.items ?? [],
-        conversationId,
+        await owningBot(read, conversationId, context),
       ),
     ),
   ],
@@ -260,7 +261,7 @@ export const memory = defineExtension({
         return toolResult(
           visibleMemory(
             (await api.snapshot(MemoryDoc, context))?.items ?? [],
-            api.conversationId,
+            await owningBot(api, api.conversationId, context),
           ),
         );
       },
@@ -281,6 +282,7 @@ export const memory = defineExtension({
       replay: "safe",
       executionMode: "sequential",
       async execute(args, api, context) {
+        const botId = await owningBot(api, api.conversationId, context);
         return toolResult(
           await api.commit(async (tx) => {
             const previous = args.id
@@ -290,14 +292,14 @@ export const memory = defineExtension({
               : undefined;
             return saveMemory(
               tx,
-              api.conversationId,
+              botId,
               {
                 ...args,
                 id: args.id ?? `memory-${api.taskId}`,
                 shared: args.shared ?? previous?.botId === null,
                 requestId: String(api.taskId),
               },
-              `bot:${api.conversationId}/tool:${api.callId}`,
+              `bot:${botId}/tool:${api.callId}`,
             );
           }, context),
         );
@@ -311,7 +313,7 @@ export const memory = defineExtension({
       async execute({ query }, api, context) {
         const items = visibleMemory(
           (await api.snapshot(MemoryDoc, context))?.items ?? [],
-          api.conversationId,
+          await owningBot(api, api.conversationId, context),
         );
         const words = query.toLocaleLowerCase().split(/\s+/).filter(Boolean);
         return toolResult(
@@ -337,14 +339,15 @@ export const memory = defineExtension({
       replay: "safe",
       executionMode: "sequential",
       async execute(args, api, context) {
+        const botId = await owningBot(api, api.conversationId, context);
         await api.commit(
-          (tx) =>
+          async (tx) =>
             deleteMemory(
               tx,
-              api.conversationId,
+              botId,
               args.id,
               args.revision,
-              `bot:${api.conversationId}/tool:${api.callId}`,
+              `bot:${botId}/tool:${api.callId}`,
             ),
           context,
         );

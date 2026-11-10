@@ -15,6 +15,8 @@
     "./config": "./src/runtime/config.ts",
     "./lease": "./src/runtime/lease.ts",
     "./bots": "./src/bots.ts",
+    "./teams": "./src/teams.ts",
+    "./conversations": "./src/conversations.ts",
     "./files": "./src/files.ts",
     "./attachments": "./src/attachments.ts",
     "./models": "./src/models.ts",

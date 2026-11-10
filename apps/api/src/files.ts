@@ -14,17 +14,20 @@ import { botConversation, botTarget } from "./conversation.ts";
 
 export function fileRouter(bots: Bots, files: Files, computers?: Computers) {
   async function discard(botId: number, id: string) {
-    const conversation = await botConversation(bots, botId);
-    const state = await conversation.viewState(BACKGROUND_CONTEXT);
-    try {
-      if (
-        chatView(state.value).messages.some((message) =>
-          message.attachments?.some((file) => file.id === id),
+    botId = await bots.owner(botId, BACKGROUND_CONTEXT);
+    for (const session of await bots.sessionIds(botId, BACKGROUND_CONTEXT)) {
+      const conversation = await botConversation(bots, session);
+      const state = await conversation.viewState(BACKGROUND_CONTEXT);
+      try {
+        if (
+          chatView(state.value).messages.some((message) =>
+            message.attachments?.some((file) => file.id === id),
+          )
         )
-      )
-        return;
-    } finally {
-      state.dispose();
+          return;
+      } finally {
+        state.dispose();
+      }
     }
     await files.discard(botId, id);
   }
@@ -58,13 +61,14 @@ export function fileRouter(bots: Bots, files: Files, computers?: Computers) {
       )
       .handler(async ({ input, signal }) => {
         await botConversation(bots, input.botId);
+        const owner = await bots.owner(input.botId, BACKGROUND_CONTEXT);
         try {
           const bytes = new Uint8Array(await input.file.arrayBuffer());
           const upload = () =>
-            files.exclusive(input.botId, async () => {
+            files.exclusive(owner, async () => {
               signal?.throwIfAborted();
               const file = await files.upload(
-                input.botId,
+                owner,
                 input.file.name,
                 bytes,
                 BACKGROUND_CONTEXT,
@@ -77,7 +81,7 @@ export function fileRouter(bots: Bots, files: Files, computers?: Computers) {
               return file;
             });
           return await (computers
-            ? computers.transfer(input.botId, upload, BACKGROUND_CONTEXT)
+            ? computers.transfer(owner, upload, BACKGROUND_CONTEXT)
             : upload());
         } catch (error) {
           throw new ORPCError("BAD_REQUEST", {
@@ -92,10 +96,11 @@ export function fileRouter(bots: Bots, files: Files, computers?: Computers) {
       .input(botTarget.extend({ id: z.string().regex(/^[a-f0-9]{64}$/) }))
       .handler(async ({ input }) => {
         await botConversation(bots, input.botId);
+        const owner = await bots.owner(input.botId, BACKGROUND_CONTEXT);
         const cleanup = () =>
-          files.exclusive(input.botId, () => discard(input.botId, input.id));
+          files.exclusive(owner, () => discard(owner, input.id));
         await (computers
-          ? computers.transfer(input.botId, cleanup, BACKGROUND_CONTEXT)
+          ? computers.transfer(owner, cleanup, BACKGROUND_CONTEXT)
           : cleanup());
       }),
     download: os
@@ -103,7 +108,10 @@ export function fileRouter(bots: Bots, files: Files, computers?: Computers) {
       .handler(async ({ input }) => {
         await botConversation(bots, input.botId);
         try {
-          return await files.download(input.botId, input.id);
+          return await files.download(
+            await bots.owner(input.botId, BACKGROUND_CONTEXT),
+            input.id,
+          );
         } catch {
           throw new ORPCError("NOT_FOUND");
         }

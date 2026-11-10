@@ -1,4 +1,5 @@
 import type { Bot, BotPresence } from "@domos/agent/bots";
+import type { Team } from "@domos/agent/teams";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { client } from "../../client.ts";
 import {
@@ -28,6 +29,7 @@ export const selectBot = (bot: Bot) => {
 export function useBots() {
   const bindings = useRef<Record<string, string>>({});
   const [items, setItems] = useState<BotPresence[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [computers, updateComputers] = useState<
     Awaited<ReturnType<typeof client.computer.list>>
   >({ items: [], defaultId: null, bindings: {} });
@@ -37,6 +39,12 @@ export function useBots() {
     subscribeLocation,
     () => window.location.hash,
   );
+  useEffect(() => {
+    void client.teams
+      .list()
+      .then(setTeams)
+      .catch(() => {});
+  }, []);
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
@@ -94,7 +102,20 @@ export function useBots() {
     return () => controller.abort();
   }, []);
   const match = /^#bot\/(\d+)$/.exec(hash);
+  const selectedTeam = teams.find((team) => hash === `#team/${team.id}`);
   const selected =
-    items.find((bot) => bot.id === Number(match?.[1])) ?? items[0];
-  return { items, selected, error, connected, computers, updateComputers };
+    items.find(
+      (bot) => bot.id === (selectedTeam?.owner ?? Number(match?.[1])),
+    ) ?? items[0];
+  return {
+    items,
+    teams,
+    setTeams,
+    selectedTeam,
+    selected,
+    error,
+    connected,
+    computers,
+    updateComputers,
+  };
 }

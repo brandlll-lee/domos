@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { openAgent } from "@domos/agent";
 import { Computers } from "@domos/agent/computer/catalog";
 import { parseConfig } from "@domos/agent/config";
+import { createBotSession } from "@domos/agent/conversations";
 import { Files } from "@domos/agent/files";
 import { messageText } from "@domos/agent/messages";
 import { chatTranscript } from "@domos/agent/transcript";
@@ -19,7 +20,11 @@ import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterClient } from "@orpc/server";
 import { expect, onTestFinished, test } from "vitest";
-import { EngineDoc } from "../../../packages/agent/src/harness/state.ts";
+import {
+  EngineDoc,
+  EngineMessage,
+} from "../../../packages/agent/src/harness/state.ts";
+import { userMessage } from "../../../packages/agent/src/harness/task-types.ts";
 import { createApp } from "../src/app.ts";
 import type { AppRouter } from "../src/router.ts";
 
@@ -1445,6 +1450,28 @@ test("draft cleanup preserves sent snapshots and separates independent uploads",
     });
     expect(second.id).not.toBe(first.id);
     await runtime.client.files.discard({ botId, id: first.id });
+    const teamFile = await runtime.client.files.upload({
+      ...input,
+      requestId: crypto.randomUUID(),
+    });
+    const session = await createBotSession(
+      runtime.harness,
+      botId,
+      { purpose: "team", teamId: "team" },
+      context,
+    );
+    await runtime.harness.commit(async (tx) => {
+      await tx.appendEntry(session, {
+        kind: EngineMessage,
+        data: userMessage("team-file", "Shared", [teamFile], "team-file"),
+      });
+    }, context);
+    await runtime.client.files.discard({ botId, id: teamFile.id });
+    expect(
+      await (
+        await runtime.client.files.download({ botId, id: teamFile.id })
+      ).text(),
+    ).toBe("draft");
     await expect(
       runtime.client.files.download({ botId, id: first.id }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });

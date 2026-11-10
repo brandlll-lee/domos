@@ -15,11 +15,10 @@ type Frame = {
 type RequestContext = { method: string; phase: string; startedAt: number };
 
 export class EngineRequestRejected extends Error {
-  constructor(
-    message: string,
-    readonly code?: number,
-  ) {
+  readonly code?: number;
+  constructor(message: string, code?: number) {
     super(message);
+    this.code = code;
   }
 }
 

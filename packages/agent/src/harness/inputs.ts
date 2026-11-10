@@ -1,5 +1,6 @@
 import type { Context } from "@earendil-works/chord/context";
 import type { TaskId } from "@earendil-works/pi-durable";
+import { owningBot } from "../conversations.ts";
 import type { Files } from "../files.ts";
 import { RoutinesDoc } from "../work/routine-state.ts";
 import { EngineDoc, EngineInputDoc } from "./state.ts";
@@ -76,7 +77,11 @@ export class EngineInputs {
       let result: "accepted" | "refused" | "uncertain" = "uncertain";
       try {
         const images = await this.files?.images(
-          this.runtime.conversationId,
+          await owningBot(
+            this.runtime,
+            this.runtime.conversationId,
+            this.context,
+          ),
           next.input.attachments ?? [],
           this.context,
         );

@@ -118,12 +118,7 @@ test.each([false, true])("screenshot delivery: %s", async (deliver) => {
       process: async (
         _bot: number,
         _tools: unknown,
-        invoke: (
-          id: string,
-          name: string,
-          args: object,
-          signal: AbortSignal,
-        ) => Promise<unknown>,
+        invoke: Parameters<Computers["process"]>[2],
       ) => {
         worker.receive = (request) => {
           if (request.method === "thread/start")
@@ -144,7 +139,10 @@ test.each([false, true])("screenshot delivery: %s", async (deliver) => {
                   {},
                   new AbortController().signal,
                 ),
-              ).toEqual(result);
+              ).toMatchObject({
+                content: result.content,
+                structuredContent: result.structuredContent,
+              });
               await expect(
                 invoke(
                   "capture",
@@ -178,9 +176,9 @@ test.each([false, true])("screenshot delivery: %s", async (deliver) => {
                 ),
               ).rejects.toThrow("结果未知");
               if (deliver) {
-                const file = (
-                  result as { structuredContent: { evidence: Attachment[] } }
-                ).structuredContent.evidence[0];
+                const evidence = result.structuredContent?.evidence;
+                expect(Array.isArray(evidence)).toBe(true);
+                const file = (evidence as Attachment[])[0];
                 await invoke(
                   "deliver",
                   "attach_file",

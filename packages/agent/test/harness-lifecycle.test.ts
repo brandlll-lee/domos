@@ -51,7 +51,7 @@ test.each(["connect", "worker", "cancel"])(
       initialize: async () => {},
       preflight: async () => {},
       computerId: async () => "shared",
-      binding: async () => ({ directory: null }),
+      binding: async () => ({ directory: null, computerId: "shared" }),
       tools: { catalog: async () => [], finish: () => {} },
       process: async () => workerFor(),
       mcpProcess: async () => {

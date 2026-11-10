@@ -158,6 +158,7 @@ test.each(["browser", "desktop"] as const)(
     );
     const target = { services };
     const views = new ComputerViews({
+      owner: async (id: number) => id,
       serviceTarget: async () => ({
         target,
         id: "pc",
@@ -221,6 +222,7 @@ test.each([false, true])(
     );
     const target = { services };
     const views = new ComputerViews({
+      owner: async (id: number) => id,
       serviceTarget: async () => ({
         target,
         id: "pc",
@@ -266,6 +268,7 @@ test("takeover completion requires the matching viewer and closes input before r
   };
   const target = { services };
   const views = new ComputerViews({
+    owner: async (id: number) => id,
     serviceTarget: async () => ({
       target,
       id: "pc",

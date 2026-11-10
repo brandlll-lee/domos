@@ -3,14 +3,17 @@ import {
   AgentDoc,
   type ConversationId,
   type Cursor,
+  configure,
   type EntryId,
   type EntryRecord,
   type Harness,
   LiveDoc,
 } from "@earendil-works/pi-durable";
 import { chatView } from "../chat-view.ts";
+import { DelegationsDoc } from "../collaboration.ts";
 import { ComputerRequests } from "../computer/runtime.ts";
 import { ComputersDoc } from "../computer/state.ts";
+import { BotSessions, owningBot } from "../conversations.ts";
 import { EngineConnections } from "../harness/connections.ts";
 import type { EngineExecution } from "../harness/execution.ts";
 import { completeCredentials } from "../harness/interactions.ts";
@@ -24,7 +27,11 @@ import {
 import { switchSession } from "../harness/sessions.ts";
 import { EngineDoc, EngineInputDoc, EngineMessage } from "../harness/state.ts";
 import { engineTask } from "../harness/task.ts";
-import { type EngineTaskInput, userMessage } from "../harness/task-types.ts";
+import {
+  type EngineTaskInput,
+  stored,
+  userMessage,
+} from "../harness/task-types.ts";
 import type {
   EngineAnswer,
   EngineConfig,
@@ -77,6 +84,7 @@ export function slimChatView(view: import("../chat-view.ts").ChatView) {
 }
 
 export class Runtime {
+  collaboration?: import("../collaboration.ts").Collaboration;
   private readonly stopping = new Set<number>();
   private readonly usageReader: UsageReader;
   private readonly harness: Harness;
@@ -241,6 +249,16 @@ export class Runtime {
     ];
     view.runtime = engine?.runtime;
     view.error = engine?.error;
+    view.delegations = await this.collaboration?.status(
+      botId as ConversationId,
+      undefined,
+      context,
+    );
+    view.busy ||= Boolean(
+      view.delegations?.some(
+        (item) => item.status === "running" || item.status === "queued",
+      ),
+    );
     view.failed ||= Boolean(engine?.error);
     applyRoutineDelivery(
       view,
@@ -305,7 +323,8 @@ export class Runtime {
           change.value.conversationId === botId &&
           change.value.state.status === "terminal") ||
         ((change.type === "document" || change.type === "document.copy") &&
-          change.conversationId === botId),
+          (change.conversationId === botId ||
+            change.record.kind === DelegationsDoc.definition.kind)),
       async () => {
         const view = await this.view(botId, context, page);
         return page ? slimChatView(view) : view;
@@ -481,6 +500,11 @@ export class Runtime {
     await this.harness.commit(async (tx) => {
       const doc = await tx.doc(EngineDoc, botId as ConversationId);
       if (doc.requestId === input.requestId) return;
+      for (const session of (await tx.doc(BotSessions)).items.filter(
+        (item) => item.botId === botId,
+      ))
+        if ((await tx.doc(EngineDoc, session.id)).tasks.length)
+          throw new WorkError("CONFLICT", "请先停止 Bot 的工作。");
       if (
         doc.tasks.length ||
         (await tx.doc(LiveDoc, botId as ConversationId)).run
@@ -549,6 +573,23 @@ export class Runtime {
 
   async submit(botId: number, input: EngineInput, context: Context) {
     const id = botId as ConversationId;
+    const ownerId = await owningBot(this.harness, id, context);
+    if (ownerId !== id) {
+      await this.harness.commit(async (tx) => {
+        const doc = await tx.doc(EngineDoc, id);
+        if (doc.tasks.length) return;
+        const config = stored((await tx.doc(EngineDoc, ownerId)).config);
+        if (JSON.stringify(config) !== JSON.stringify(doc.config)) {
+          switchSession(doc, config, doc.computerId);
+          doc.config = config;
+        }
+        const agent = await tx.doc(AgentDoc, ownerId);
+        await configure(tx, id, {
+          model: agent.model,
+          instructions: agent.instructions,
+        });
+      }, context);
+    }
     await this.cancelMemoryReview(botId, context);
     if (this.connections.busy(botId))
       throw new WorkError("CONFLICT", "请先完成账号连接。");
@@ -564,6 +605,13 @@ export class Runtime {
     const submissionId = await this.harness.commit(async (tx) => {
       const existing = await tx.submissionByRequest(id, input.requestId);
       if (existing) return existing.id;
+      if (
+        input.delegationId &&
+        (await tx.doc(DelegationsDoc)).items.find(
+          (item) => item.id === input.delegationId,
+        )?.cancelled
+      )
+        throw new WorkError("CONFLICT", "协作任务已取消。");
       if (this.stopping.has(botId))
         throw new WorkError("CONFLICT", "正在停止。请稍后发送。");
       const doc = await reconcileEngine(tx, id);
@@ -576,6 +624,18 @@ export class Runtime {
         switchSession(doc, doc.config, computerId);
         doc.runtime = {};
       }
+      const sessions = (await tx.doc(BotSessions)).items
+        .filter((item) => item.botId === ownerId)
+        .map((item) => item.id);
+      const pending = (
+        await Promise.all(
+          [...new Set([ownerId, ...sessions])].map((session) =>
+            tx.doc(EngineDoc, session),
+          ),
+        )
+      ).flatMap((doc) => doc.tasks);
+      const previous =
+        pending.sort((a, b) => Number(a) - Number(b)).at(-1) ?? null;
       const submission = await tx.createSubmission({
         type: "input",
         conversationId: id,
@@ -600,6 +660,9 @@ export class Runtime {
                 input.requestId,
                 input.materials,
               ),
+              ...(input.author
+                ? { role: "assistant", author: input.author }
+                : {}),
               ...(routine
                 ? {
                     routine: {
@@ -622,7 +685,7 @@ export class Runtime {
             ),
           ].join("\n\n"),
           submissionId: submission.id,
-          previous: doc.taskId,
+          previous,
           turnId,
           ...(input.source ? { source: input.source } : {}),
           ...(input.routineRunId ? { routineRunId: input.routineRunId } : {}),
@@ -633,9 +696,11 @@ export class Runtime {
             : {}),
         },
         {
-          ownership: { kind: "conversation" },
+          ownership: input.parent
+            ? { kind: "task", taskId: input.parent }
+            : { kind: "conversation" },
           conversationId: id,
-          background: true,
+          ...(input.parent ? {} : { background: true }),
         },
       );
       doc.taskId = taskId;
@@ -669,6 +734,7 @@ export class Runtime {
   async stop(botId: number, context: Context) {
     this.stopping.add(botId);
     try {
+      await this.collaboration?.stop(botId, context);
       void this.execution.stop(botId);
       const tasks = await this.harness.commit(
         (tx) => stopEngine(tx, botId as ConversationId),

@@ -19,6 +19,9 @@ export type ChatContent =
   | Pick<ToolCall, "type" | "id" | "name" | "arguments">;
 
 export type ChatMessage = {
+  sessionId?: number;
+  author?: { botId: number; name: string; avatar: string };
+  collaboration?: { id: string; recipient: number };
   notice?: { text: string };
   cursor?: string;
   routine?: {

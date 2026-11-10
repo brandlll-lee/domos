@@ -5,6 +5,8 @@ import {
   LiveDoc,
   type Tx,
 } from "@earendil-works/pi-durable";
+import { BotSessions } from "../conversations.ts";
+import { EngineDoc } from "../harness/state.ts";
 import type { ComputerConfig } from "../runtime/config.ts";
 import { WorkError } from "../work/state.ts";
 
@@ -50,6 +52,14 @@ export const ComputersDoc = defineDoc<{
 });
 
 export async function requireIdle(tx: Tx, botId: number) {
+  for (const session of (await tx.doc(BotSessions)).items.filter(
+    (item) => item.botId === botId,
+  ))
+    if ((await tx.doc(EngineDoc, session.id)).tasks.length)
+      throw new WorkError(
+        "CONFLICT",
+        "请先停止 Bot 的工作，再切换或操作电脑。",
+      );
   const id = botId as ConversationId;
   if (
     (await tx.doc(LiveDoc, id)).run ||

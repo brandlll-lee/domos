@@ -25,6 +25,7 @@ import { materialsSchema, prepareMaterials } from "./materials.ts";
 import { mcpRouter } from "./mcp.ts";
 import { modelRouter, requireConfiguredModel } from "./models.ts";
 import { watchValues } from "./subscribe.ts";
+import { teamRouter } from "./teams.ts";
 import { workRouter } from "./work.ts";
 
 export function createRouter(
@@ -38,6 +39,7 @@ export function createRouter(
   mcpCallback?: string,
 ) {
   return {
+    teams: teamRouter(bots, files, work, engines, mcp),
     mcp: mcpRouter(bots, mcp, mcpCallback),
     computer: computerRouter(bots, computer),
     engines: engineRouter(bots, engines),
@@ -160,10 +162,11 @@ export function createRouter(
           !input.mcp.length
         )
           throw new ORPCError("BAD_REQUEST");
+        const ownerId = await bots.owner(input.botId, BACKGROUND_CONTEXT);
         const attachments = await Promise.all(
           input.attachments.map(async (id) => {
             try {
-              return await files.metadata(input.botId, id);
+              return await files.metadata(ownerId, id);
             } catch {
               throw new ORPCError("NOT_FOUND");
             }
@@ -176,7 +179,7 @@ export function createRouter(
               (await conversation.agent(BACKGROUND_CONTEXT)).model,
             );
           const submit = () =>
-            files.exclusive(input.botId, async () => {
+            files.exclusive(ownerId, async () => {
               const view =
                 input.skills.length || input.context.length || input.mcp.length
                   ? await (engines
@@ -195,7 +198,7 @@ export function createRouter(
                 ? await prepareMaterials(input, view, work, mcp)
                 : undefined;
               for (const file of attachments)
-                await files.metadata(input.botId, file.id);
+                await files.metadata(ownerId, file.id);
               const image = attachments.find((file) =>
                 file.mimeType?.startsWith("image/"),
               );
@@ -216,11 +219,7 @@ export function createRouter(
                   });
               }
               try {
-                await files.verify(
-                  input.botId,
-                  attachments,
-                  BACKGROUND_CONTEXT,
-                );
+                await files.verify(ownerId, attachments, BACKGROUND_CONTEXT);
               } catch (error) {
                 throw new ORPCError("BAD_REQUEST", {
                   message:
@@ -263,7 +262,7 @@ export function createRouter(
               );
             });
           const submission = await (computer
-            ? computer.transfer(input.botId, submit, BACKGROUND_CONTEXT)
+            ? computer.transfer(ownerId, submit, BACKGROUND_CONTEXT)
             : submit());
           await bots.completeWelcome(input.botId, BACKGROUND_CONTEXT);
           return { id: submission.id };

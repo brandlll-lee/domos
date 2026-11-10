@@ -15,6 +15,7 @@ import {
   type Tx,
 } from "@earendil-works/pi-durable";
 import { BotDirectory, type Bots } from "../bots.ts";
+import { owningBot } from "../conversations.ts";
 import { EngineDoc } from "../harness/state.ts";
 import type {
   EngineProcess,
@@ -51,6 +52,9 @@ export type ComputerView = ComputerStatus & {
 };
 
 export class Computers {
+  owner(botId: number, context: Context) {
+    return owningBot(this.harness, botId as ConversationId, context);
+  }
   onIdle?: (botId: number) => Promise<void>;
   readonly tools = new ComputerTools(this);
   readonly views = new ComputerViews(
@@ -263,6 +267,7 @@ export class Computers {
     context: Context,
     read: DocumentReader = this.harness,
   ) {
+    botId = await owningBot(read, botId as ConversationId, context);
     const doc = await read.snapshot(ComputersDoc, context);
     const binding = doc?.bindings[String(botId)] ?? {
       computerId: null,
@@ -286,6 +291,7 @@ export class Computers {
     read: DocumentReader = this.harness,
     directory?: string | null,
   ) {
+    botId = await owningBot(read, botId as ConversationId, context);
     const doc = await read.snapshot(ComputersDoc, context);
     const id = doc?.bindings[String(botId)]?.computerId;
     if (!id) throw new WorkError("BAD_REQUEST", "请先为 Bot 分配工作电脑。");
@@ -305,6 +311,7 @@ export class Computers {
   }
 
   async environment(botId: number, context: Context, read: DocumentReader) {
+    botId = await owningBot(read, botId as ConversationId, context);
     const doc = await read.snapshot(ComputersDoc, context);
     const id = doc?.bindings[String(botId)]?.computerId;
     if (!id || !requireComputer(doc?.items ?? [], id).authorized)
@@ -323,6 +330,7 @@ export class Computers {
     ) => Promise<ProductResult>,
     context: Context,
   ): Promise<EngineProcess> {
+    botId = await owningBot(this.harness, botId as ConversationId, context);
     const ready = Promise.withResolvers<EngineProcess>();
     void this.transfer(
       botId,
@@ -376,6 +384,7 @@ export class Computers {
   }
 
   async mcpProcess(computerId: string, context: Context, bot?: number) {
+    if (bot !== undefined) bot = await this.owner(bot, context);
     const doc = await this.harness.snapshot(ComputersDoc, context);
     const item = requireComputer(doc?.items ?? [], computerId);
     if (!item.authorized)
@@ -404,6 +413,7 @@ export class Computers {
   }
 
   async computerId(botId: number, context: Context) {
+    botId = await owningBot(this.harness, botId as ConversationId, context);
     return (
       (await this.harness.snapshot(ComputersDoc, context))?.bindings[
         String(botId)
@@ -412,6 +422,7 @@ export class Computers {
   }
 
   async serviceTarget(botId: number, context: Context) {
+    botId = await this.owner(botId, context);
     await this.workspace(botId, context);
     const doc = await this.harness.snapshot(ComputersDoc, context);
     const binding = doc?.bindings[String(botId)];

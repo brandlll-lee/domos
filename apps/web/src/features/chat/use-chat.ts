@@ -55,41 +55,48 @@ function createChatState() {
     },
   };
 }
-const retained = new Map<number, ReturnType<typeof createChatState>>();
-function chatState(botId: number) {
-  let state = retained.get(botId);
+const retained = new Map<string, ReturnType<typeof createChatState>>();
+function chatState(botId: number, teamId?: string) {
+  const key = teamId ? `team:${teamId}` : String(botId);
+  let state = retained.get(key);
   if (!state) {
     state = createChatState();
-    retained.set(botId, state);
+    retained.set(key, state);
   }
   return state;
 }
 export function clearChatState(ids?: Set<number>) {
-  for (const id of retained.keys()) if (!ids?.has(id)) retained.delete(id);
+  for (const id of retained.keys())
+    if (!ids || (!id.startsWith("team:") && !ids.has(Number(id))))
+      retained.delete(id);
 }
 window.addEventListener("domos:pair", () => clearChatState());
 window.addEventListener("domos:computer", () => clearChatState());
 export function prefetchChat(botId: number) {
-  if (retained.has(botId)) return;
+  if (retained.has(String(botId))) return;
   const store = chatState(botId);
   void client
     .get({ botId })
     .then((view) => {
-      if (retained.get(botId) === store && !store.snapshot().view)
+      if (retained.get(String(botId)) === store && !store.snapshot().view)
         store.update({ view });
     })
     .catch(() => {
       if (
-        retained.get(botId) === store &&
+        retained.get(String(botId)) === store &&
         !store.snapshot().view &&
         !store.observed()
       )
-        retained.delete(botId);
+        retained.delete(String(botId));
     });
 }
 
-export function useChat(botId: number, onModelRequired?: () => void) {
-  const [store] = useState(() => chatState(botId));
+export function useChat(
+  botId: number,
+  onModelRequired?: () => void,
+  teamId?: string,
+) {
+  const [store] = useState(() => chatState(botId, teamId));
   const { view, outgoing, sentRequest, pendingRequest, sending, error } =
     useSyncExternalStore(store.subscribe, store.snapshot);
   const current = useRef<ChatView | null>(view);
@@ -142,18 +149,31 @@ export function useChat(botId: number, onModelRequired?: () => void) {
     document.addEventListener("visibilitychange", visible);
     void (async () => {
       try {
-        const events = await client.changes(
-          { botId },
-          {
-            signal: controller.signal,
-            context: {
-              retry: Number.POSITIVE_INFINITY,
-              onRetry: () => {
-                if (!controller.signal.aborted) setConnected(false);
+        const events = teamId
+          ? await client.teams.changes(
+              { id: teamId },
+              {
+                signal: controller.signal,
+                context: {
+                  retry: Number.POSITIVE_INFINITY,
+                  onRetry: () => {
+                    if (!controller.signal.aborted) setConnected(false);
+                  },
+                },
               },
-            },
-          },
-        );
+            )
+          : await client.changes(
+              { botId },
+              {
+                signal: controller.signal,
+                context: {
+                  retry: Number.POSITIVE_INFINITY,
+                  onRetry: () => {
+                    if (!controller.signal.aborted) setConnected(false);
+                  },
+                },
+              },
+            );
         for await (const event of events) {
           if (controller.signal.aborted) return;
           const previous = current.current;
@@ -224,13 +244,15 @@ export function useChat(botId: number, onModelRequired?: () => void) {
       if (frame !== undefined) cancelAnimationFrame(frame);
       document.removeEventListener("visibilitychange", visible);
     };
-  }, [botId, store, setView, setError]);
+  }, [botId, store, setView, setError, teamId]);
 
   async function loadEarlier() {
     if (!current.current?.before || loadingEarlier) return;
     setLoadingEarlier(true);
     try {
-      const page = await client.get({ botId, before: current.current.before });
+      const page = teamId
+        ? await client.teams.get({ id: teamId, before: current.current.before })
+        : await client.get({ botId, before: current.current.before });
       const view = current.current;
       const known = new Set(view.messages.map((message) => message.id));
       const next = {
@@ -297,7 +319,16 @@ export function useChat(botId: number, onModelRequired?: () => void) {
             cause instanceof Error ? cause.message : "模型配置保存失败。",
         });
       }
-      await client.send({ ...input, botId });
+      if (teamId)
+        await client.teams.send({
+          id: teamId,
+          ...input,
+          attachments: attachments?.map((file) => file.id) ?? [],
+          skills: materials?.skills ?? [],
+          context: materials?.context ?? [],
+          mcp: materials?.mcp ?? [],
+        });
+      else await client.send({ ...input, botId });
       return "accepted" as const;
     } catch (cause) {
       if (store.snapshot().pendingRequest === input.requestId)
@@ -321,7 +352,8 @@ export function useChat(botId: number, onModelRequired?: () => void) {
     setStopping(true);
     setError(null);
     try {
-      await client.stop({ botId });
+      if (teamId) await client.teams.stop({ id: teamId });
+      else await client.stop({ botId });
     } catch {
       setError(chatCopy.errors.stop);
     } finally {

@@ -26,6 +26,7 @@ import {
   textFileType,
 } from "./attachments.ts";
 import { chatView } from "./chat-view.ts";
+import { owningBot } from "./conversations.ts";
 import { WorkError } from "./work/state.ts";
 import { type WorkEnvironment, Workspace } from "./workspace.ts";
 
@@ -364,6 +365,32 @@ export class Files {
     }
   }
 
+  async share(
+    source: number,
+    recipient: number,
+    ids: readonly string[],
+    requestId: string,
+    context: Context,
+  ) {
+    return Promise.all(
+      [...new Set(ids)].map(async (id) => {
+        const file = await this.download(source, id);
+        const hash = createHash("sha256")
+          .update(`${requestId}:${id}`)
+          .digest("hex")
+          .slice(0, 32);
+        const uploadId = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20)}`;
+        return this.upload(
+          recipient,
+          file.name,
+          new Uint8Array(await file.arrayBuffer()),
+          context,
+          uploadId,
+        );
+      }),
+    );
+  }
+
   async publish(botId: number, path: string, context: Context) {
     const workspace = await this.workspace(botId, context);
     const resolved = await workspace.path(path);
@@ -437,11 +464,18 @@ export class Files {
           async execute(args, api, context) {
             let file: Attachment;
             if (args.id !== undefined && args.path === undefined) {
-              file = await files.metadata(api.conversationId, args.id);
-              await files.verify(api.conversationId, [file], context);
+              file = await files.metadata(
+                await owningBot(api, api.conversationId, context),
+                args.id,
+              );
+              await files.verify(
+                await owningBot(api, api.conversationId, context),
+                [file],
+                context,
+              );
             } else if (args.path !== undefined && args.id === undefined) {
               file = await files.publish(
-                api.conversationId,
+                await owningBot(api, api.conversationId, context),
                 args.path,
                 context,
               );

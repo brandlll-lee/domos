@@ -26,6 +26,17 @@ import { RoutineInput } from "./work/routine-state.ts";
 
 export type ChatView = {
   before?: string;
+  delegations?: {
+    id: string;
+    sender: number;
+    recipient: number;
+    session: number;
+    source: number;
+    task: string;
+    status: string;
+    result?: string;
+    error?: string;
+  }[];
   id: number;
   model: ModelRef | null;
   instructions: string;

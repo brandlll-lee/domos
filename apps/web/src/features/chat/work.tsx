@@ -197,7 +197,11 @@ export function WorkPanel(
             {chat.runDetails}
             <ol className="work-timeline" aria-label="执行时间线">
               {current.items.map((item) => (
-                <WorkEntry key={item.id} botId={view.id} item={item} />
+                <WorkEntry
+                  key={item.id}
+                  botId={item.message.sessionId ?? view.id}
+                  item={item}
+                />
               ))}
             </ol>
           </div>

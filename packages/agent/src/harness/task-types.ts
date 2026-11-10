@@ -19,7 +19,7 @@ export type EngineTaskInput = {
   operation?: "compact";
   memoryReview?: boolean;
   reviewThrough?: EntryId;
-  source?: "routine";
+  source?: "routine" | "bot";
   routineRunId?: string;
 };
 export type EngineCheckpoint = { phase: "run" };

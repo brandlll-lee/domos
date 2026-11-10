@@ -20,6 +20,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 import { z } from "zod";
+import { owningBot } from "../conversations.ts";
 import type { Files } from "../files.ts";
 import { computerEvidence } from "../harness/evidence.ts";
 import { EngineDoc } from "../harness/state.ts";
@@ -64,6 +65,9 @@ const ComputerCallDoc = defineDocFamily<
 });
 
 export class ComputerRuntime {
+  owner(id: number, context: Context) {
+    return owningBot(this.harness, id as ConversationId, context);
+  }
   onWaiting?: (
     botId: number,
     status: "running" | "waiting_answer" | "waiting_approval",
@@ -106,6 +110,11 @@ export class ComputerRuntime {
     );
   }
   async prepare(botId: number, context: Context, refresh = true) {
+    const ownerId = await owningBot(
+      this.harness,
+      botId as ConversationId,
+      context,
+    );
     if (
       refresh &&
       (await this.harness.snapshot(LiveDoc, botId as ConversationId, context))
@@ -113,7 +122,7 @@ export class ComputerRuntime {
     )
       return;
     const catalog = refresh
-      ? await this.computers.tools.catalog(botId, context)
+      ? await this.computers.tools.catalog(ownerId, context)
       : ((
           await this.harness.snapshot(
             ComputerRequests,
@@ -230,6 +239,8 @@ export class ComputerRuntime {
     context: Context,
   ): Promise<ProductResult> {
     const owner = `computer:${botId}`;
+    const sessionId = botId;
+    botId = await owningBot(this.harness, botId as ConversationId, context);
     try {
       let result: ProductResult;
       if (tool.name === "computer_request_takeover") {
@@ -259,7 +270,7 @@ export class ComputerRuntime {
           })
           .safeParse(page?.structuredContent).data?.response.data.url;
         const answer = await this.approve(
-          botId,
+          sessionId,
           {
             id,
             title: service === "browser" ? "Browser" : "Computer",
@@ -302,7 +313,7 @@ export class ComputerRuntime {
           async (action, aborted) =>
             (
               await this.approve(
-                botId,
+                sessionId,
                 {
                   id: randomUUID(),
                   title: `电脑操作 · ${action.name}`,
@@ -345,6 +356,11 @@ export class ComputerRuntime {
     signal: AbortSignal,
     context: Context,
   ) {
+    const ownerId = await owningBot(
+      this.harness,
+      botId as ConversationId,
+      context,
+    );
     const mode = (
       await this.harness.snapshot(EngineDoc, botId as ConversationId, context)
     )?.config.approvalMode;
@@ -354,7 +370,7 @@ export class ComputerRuntime {
       (mode === "full" ||
         (!mode &&
           (await this.harness.snapshot(ComputersDoc, context))?.bindings[
-            String(botId)
+            String(ownerId)
           ]?.approvalMode === "auto"))
     )
       return { allow: true };

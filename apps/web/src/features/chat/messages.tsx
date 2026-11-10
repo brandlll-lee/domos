@@ -1,5 +1,6 @@
 import { type ChatMessage, messageText } from "@domos/agent/messages";
 import type { TranscriptItem } from "@domos/agent/transcript";
+import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { Loading } from "@domos/ui/loading";
 import { ActionMenu } from "@domos/ui/menu";
@@ -52,11 +53,17 @@ const MessageRow = memo(function MessageRow({
     return (
       <div className="delivered-files" data-transcript-key={key}>
         <MessageBubble side="incoming">
-          <Attachments botId={botId} files={item.files} inline />
+          <Attachments
+            botId={item.sessionId ?? botId}
+            files={item.files}
+            inline
+          />
         </MessageBubble>
       </div>
     );
   const { message } = item;
+  botId = message.sessionId ?? botId;
+  botName = message.author?.name ?? botName;
   return (
     <article
       className={`message ${message.role}`}
@@ -71,6 +78,12 @@ const MessageRow = memo(function MessageRow({
               : chatCopy.assistantMessage(botName)
       }
     >
+      {message.author && (
+        <div className="message-author">
+          <BotAvatar seed={message.author.avatar} size="small" />
+          <span>{message.author.name}</span>
+        </div>
+      )}
       {message.routine && message.role === "assistant" && (
         <InlineNotice
           className="routine-source"
