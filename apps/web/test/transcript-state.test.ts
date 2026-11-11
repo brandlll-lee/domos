@@ -43,6 +43,26 @@ test("confirmed sends and completed replies retain their visible position and id
   ).toEqual(["first", "progress", "send", "final"]);
   const complete = project(view([first, second, progress, final])).items;
   expect(project(view([first, second, progress, final])).items).toBe(complete);
+  const shared = project(
+    view([
+      first,
+      second,
+      progress,
+      final,
+      {
+        ...second,
+        id: "other-member-copy",
+        turnId: "other-turn",
+        sessionId: 3,
+      },
+    ]),
+  ).items;
+  expect(shared.map((item) => item.id)).toEqual([
+    "first",
+    "progress",
+    "send",
+    "final",
+  ]);
 
   const concurrent = transcriptState();
   const other = message("other", "user", "Other window");

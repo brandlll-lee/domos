@@ -106,6 +106,7 @@ test("native acceptance waits for durable receipt and advances the handoff curso
   await receipt;
   expect(f.doc.dispatch).toBe("accepted");
   expect(f.doc.sessions.pi.through).toBe("entry");
+  expect(f.doc.sessions.pi).toMatchObject({ teamThrough: "entry" });
 });
 
 test("stopped projections cannot update a later turn", async () => {

@@ -28,19 +28,27 @@ export function workTurns(view: ChatView) {
     rows.push(message);
     groups.set(id, rows);
   }
+  for (const item of view.activity ?? [])
+    if (item.waiting && item.executionId && !groups.has(item.executionId))
+      groups.set(item.executionId, []);
   return [...groups]
     .map(([id, messages]) => {
       const run = view.runs?.findLast((item) => item.turnId === id);
-      const active = run
-        ? run.status === "running" || run.status === "stopping"
-        : id === view.activeTurnId;
+      const activity = view.activity?.find((item) => item.executionId === id);
+      const active = activity?.waiting
+        ? true
+        : run
+          ? run.status === "running" || run.status === "stopping"
+          : id === view.activeTurnId;
       const status =
         run?.status ??
-        (active
-          ? "running"
-          : messages.some((m) => m.stopped)
-            ? "stopped"
-            : "recorded");
+        (activity?.waiting && !activity.processing
+          ? "queued"
+          : active
+            ? "running"
+            : messages.some((m) => m.stopped)
+              ? "stopped"
+              : "recorded");
       const results = new Map(
         messages.filter((m) => m.toolCallId).map((m) => [m.toolCallId, m]),
       );
@@ -123,13 +131,17 @@ export function workTurns(view: ChatView) {
         if (view.approvals?.length) title = "正在等待你的确认";
         if (status === "stopping") title = "正在停止，等待引擎确认";
       }
+      title = activity?.waiting ?? title;
       return {
         id,
         run,
         author:
-          run?.author ?? messages.find((message) => message.author)?.author,
+          run?.author ??
+          messages.find((message) => message.author)?.author ??
+          activity?.author,
         sessionId:
           run?.sessionId ??
+          activity?.sessionId ??
           messages.find((message) => message.sessionId)?.sessionId,
         active,
         status,
@@ -155,6 +167,7 @@ const labels: Record<string, string> = {
   failed: "执行失败",
   uncertain: "结果待核对",
   recorded: "历史记录",
+  queued: "等待执行",
   done: "已返回",
 };
 export function workStatus(status: string) {

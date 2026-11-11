@@ -31,6 +31,8 @@ export type ChatView = {
     executionId?: string;
     processing: boolean;
     retry?: string | null;
+    waiting?: string;
+    author?: ChatMessage["author"];
   }[];
   before?: string;
   delegations?: {

@@ -25,6 +25,10 @@ import {
 } from "@earendil-works/pi-durable";
 import { getRequestListener } from "@hono/node-server";
 import {
+  handoffInstructions,
+  requestInstructions,
+} from "../../../../packages/agent/src/harness/handoff.ts";
+import {
   EngineDoc,
   EngineMessage,
 } from "../../../../packages/agent/src/harness/state.ts";
@@ -164,8 +168,13 @@ const answer: FauxResponseFactory = async (input, options, _state, model) => {
           .filter((part) => part.type === "text")
           .map((part) => part.text)
           .join("\n") ?? "");
+  const request = content.startsWith(handoffInstructions)
+    ? content.slice(
+        content.lastIndexOf(requestInstructions) + requestInstructions.length,
+      )
+    : content;
   return fauxAssistantMessage(
-    `已收到：${content}。这是一条用于验证流式显示和会话恢复的完整回复。（${model.id}）`,
+    `已收到：${request}。这是一条用于验证流式显示和会话恢复的完整回复。（${model.id}）`,
   );
 };
 faux.setResponses([answer]);

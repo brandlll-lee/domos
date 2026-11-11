@@ -13,7 +13,7 @@ import { chatView } from "../chat-view.ts";
 import { DelegationsDoc } from "../collaboration.ts";
 import { ComputerRequests } from "../computer/runtime.ts";
 import { ComputersDoc } from "../computer/state.ts";
-import { BotSessions, owningBot } from "../conversations.ts";
+import { BotSession, BotSessions, owningBot } from "../conversations.ts";
 import { EngineConnections } from "../harness/connections.ts";
 import type { EngineExecution } from "../harness/execution.ts";
 import { completeCredentials } from "../harness/interactions.ts";
@@ -41,6 +41,7 @@ import { supportedApprovalModes } from "../harness/types.ts";
 import { type UsageFilter, UsageReader } from "../harness/usage.ts";
 import { materialText } from "../materials.ts";
 import { approvalMessage } from "../messages.ts";
+import { TeamsDoc } from "../teams.ts";
 import { watchCommits } from "../watch.ts";
 import { applyRoutineDelivery } from "../work/routine-delivery.ts";
 import { RoutinesDoc } from "../work/routine-state.ts";
@@ -277,18 +278,47 @@ export class Runtime {
                 this.harness.snapshot(EngineDoc, sessionId, context),
                 this.harness.snapshot(ComputerRequests, sessionId, context),
               ]);
+        let waiting: string | undefined;
+        let queued: string | undefined;
+        if (!state?.activeId && state?.tasks.length) {
+          await this.harness.commit(async (tx) => {
+            for (const id of state.tasks) {
+              const task = await tx.task(id);
+              if (!task || task.state.status === "terminal") continue;
+              queued = (task.input as EngineTaskInput).turnId;
+              const previousId = (task.input as EngineTaskInput).previous;
+              const previous = previousId
+                ? await tx.task(previousId)
+                : undefined;
+              waiting =
+                previous && previous.state.status !== "terminal"
+                  ? previous.conversationId !== sessionId
+                    ? "正在处理另一项任务，完成后继续。"
+                    : "排队中，等待前一项任务完成。"
+                  : "等待执行。";
+              break;
+            }
+          }, context);
+        } else if (state?.activeId && approvals?.approvals.length) {
+          waiting = approvals.approvals.some((item) => item.takeover)
+            ? "等待你完成接管。"
+            : approvals.approvals.some((item) => item.kind === "question")
+              ? "等待你的回答。"
+              : "等待你的确认。";
+        }
         return {
           botId: owner,
           sessionId,
           executionId:
             state?.activeTurn ??
-            (state?.activeId != null ? String(state.activeId) : undefined),
+            (state?.activeId != null ? String(state.activeId) : queued),
           processing: Boolean(
             state?.activeId &&
               state.run?.status !== "stopping" &&
               !approvals?.approvals.length,
           ),
           retry: state?.runtime?.retry,
+          waiting,
         };
       }),
     );
@@ -647,6 +677,14 @@ export class Runtime {
     const submissionId = await this.harness.commit(async (tx) => {
       const existing = await tx.submissionByRequest(id, input.requestId);
       if (existing) return existing.id;
+      const teamId = (await tx.doc(BotSession, id)).teamId;
+      if (
+        teamId &&
+        !(await tx.doc(TeamsDoc)).items.some(
+          (team) => team.id === teamId && team.members.includes(ownerId),
+        )
+      )
+        throw new WorkError("CONFLICT", "Bot 已离开此团队。");
       if (
         input.delegationId &&
         (await tx.doc(DelegationsDoc)).items.find(

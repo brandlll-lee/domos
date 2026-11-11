@@ -30,18 +30,26 @@ export function teamRouter(
     return { teams: new Teams(collaboration.harness), runtime, collaboration };
   };
   const target = z.object({ id: z.uuid() });
+  const teamInput = target.extend({
+    name: z.string().trim().min(1).max(BOT_NAME_LENGTH),
+    purpose: z.string().max(WORK_TEXT_LENGTH),
+    members: z.array(z.number().int().nonnegative()).min(1),
+    owner: z.number().int().nonnegative(),
+  });
   return {
     list: os.handler(() => service().teams.list(context)),
+    subscribe: os.handler(async function* ({ signal }) {
+      yield* service().teams.watchList(
+        signal ? withAbortSignal(signal, context) : context,
+      );
+    }),
     create: os
-      .input(
-        target.extend({
-          name: z.string().trim().min(1).max(BOT_NAME_LENGTH),
-          purpose: z.string().max(WORK_TEXT_LENGTH),
-          members: z.array(z.number().int().nonnegative()).min(1),
-          owner: z.number().int().nonnegative(),
-        }),
-      )
+      .input(teamInput)
       .handler(({ input }) => service().teams.create(input, context)),
+    update: os.input(teamInput).handler(({ input }) => {
+      const { teams, runtime } = service();
+      return teams.update(input, runtime, context);
+    }),
     session: os
       .input(target)
       .handler(({ input }) =>
@@ -109,43 +117,62 @@ export function teamRouter(
             });
           return { ...reference, name: member.name, avatar: member.avatar };
         });
-        const recipient =
-          references.toSorted((a, b) => a.position - b.position)[0]?.botId ??
-          team.owner;
-        const session = await teams.session(team.id, recipient, context);
-        const materials = await prepareMaterials(
-          { ...input, botId: recipient },
-          await teams.view(team.id, runtime, context),
-          work,
-          mcp,
+        const recipients = references.length
+          ? [
+              ...new Set(
+                references
+                  .toSorted((a, b) => a.position - b.position)
+                  .map((reference) => reference.botId),
+              ),
+            ]
+          : [team.owner];
+        const view = await teams.view(team.id, runtime, context);
+        const deliveries = await Promise.all(
+          recipients.map(async (recipient) => {
+            const session = await teams.session(team.id, recipient, context);
+            const materials = await prepareMaterials(
+              { ...input, botId: recipient },
+              view,
+              work,
+              mcp,
+            );
+            materials.bots = references;
+            const attachments = await Promise.all(
+              (input.attachments ?? []).map((id) =>
+                files.metadata(team.owner, id),
+              ),
+            );
+            const shared =
+              recipient === team.owner
+                ? attachments
+                : await files.share(
+                    team.owner,
+                    recipient,
+                    attachments.map((file) => file.id),
+                    input.requestId,
+                    context,
+                  );
+            await files.verify(recipient, shared, context);
+            return { session, materials, shared };
+          }),
         );
-        materials.bots = references;
-        const attachments = await Promise.all(
-          (input.attachments ?? []).map((id) => files.metadata(team.owner, id)),
-        );
-        const shared =
-          recipient === team.owner
-            ? attachments
-            : await files.share(
-                team.owner,
-                recipient,
-                attachments.map((file) => file.id),
-                input.requestId,
-                context,
-              );
-        await files.verify(recipient, shared, context);
-        const submission = await runtime.submit(
-          session,
-          {
-            text: `Team purpose: ${team.purpose}\n\n${materialText(input.text, materials)}`,
-            displayText: input.text,
-            requestId: input.requestId,
-            attachments: shared,
-            materials,
-          },
-          context,
-        );
-        return { id: submission.id };
+        const submissions = [];
+        for (const { session, materials, shared } of deliveries) {
+          submissions.push(
+            await runtime.submit(
+              session,
+              {
+                text: `Team purpose: ${team.purpose}\n\n${materialText(input.text, materials)}`,
+                displayText: input.text,
+                requestId: input.requestId,
+                attachments: shared,
+                materials,
+              },
+              context,
+            ),
+          );
+        }
+        return { id: submissions[0]?.id };
       }),
     stop: os.input(target).handler(async ({ input }) => {
       const { teams, runtime } = service();

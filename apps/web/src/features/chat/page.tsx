@@ -310,6 +310,12 @@ function BotChat({
               active={detailsOpen}
               team={team}
               members={members ?? []}
+              bots={bots}
+              onSaved={(saved) =>
+                directory.setTeams((current) =>
+                  current.map((item) => (item.id === saved.id ? saved : item)),
+                )
+              }
               chat={chat}
               tab={panel === "work" ? "work" : "team"}
               onTabChange={(tab) => {

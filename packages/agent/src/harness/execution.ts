@@ -909,6 +909,7 @@ export class EngineExecution {
         resumed ? (doc.sessions?.[key]?.through ?? null) : null,
         engineLimits.historyCharacters,
         doc.summary,
+        resumed ? (doc.sessions?.[key]?.teamThrough ?? null) : null,
       );
       runtime.signal.throwIfAborted();
       active.controller.signal.throwIfAborted();

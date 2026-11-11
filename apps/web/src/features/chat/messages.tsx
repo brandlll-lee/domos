@@ -195,7 +195,9 @@ export const Messages = memo(function Messages({
     !deferred.ready || deferred.sentRequest !== sentRequest
       ? received
       : deferred;
-  const working = shown.activity?.filter((item) => item.processing);
+  const working = shown.activity?.filter(
+    (item) => item.processing || item.waiting,
+  );
   const typing =
     shown.ready &&
     (working ? working.length > 0 : shown.processing || Boolean(shown.retry));
@@ -311,7 +313,7 @@ export const Messages = memo(function Messages({
                           : undefined
                       }
                       label={`${member?.name ?? "成员"} ${chatCopy.botWorking}`}
-                      status={item.retry}
+                      status={item.waiting ?? item.retry}
                     />
                   );
                 })

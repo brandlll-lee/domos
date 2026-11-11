@@ -6,6 +6,8 @@ import {
   type EntryId,
   type EntryRecord,
 } from "@earendil-works/pi-durable";
+import { BotDirectory } from "../bots.ts";
+import { BotSession, BotSessions } from "../conversations.ts";
 import {
   type ChatContent,
   type ChatMessage,
@@ -35,6 +37,7 @@ type HistoryMessage = {
   status: string;
   tool?: string;
   toolCallId?: string;
+  author?: ChatMessage["author"];
 };
 
 function historyMessages(
@@ -67,6 +70,7 @@ function historyMessage(
         | "stopped"
         | "toolName"
         | "toolCallId"
+        | "author"
       >
     > & {
       content: string | readonly ChatContent[];
@@ -111,6 +115,7 @@ function historyMessage(
     role: message.role,
     text,
     status,
+    ...(message.author ? { author: message.author } : {}),
     ...(message.toolName ? { tool: message.toolName } : {}),
     ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
   };
@@ -123,16 +128,49 @@ export async function conversationEntry(
   context: Context,
 ) {
   let entry: EntryRecord | undefined;
+  let shared = false;
+  let author: ChatMessage["author"];
   await runtime.commit(async (tx) => {
     entry = await tx.entry(entryId);
+    const teamId = (await tx.doc(BotSession, runtime.conversationId)).teamId;
+    shared = Boolean(
+      teamId &&
+        entry?.kind === EngineMessage &&
+        !(entry.data as unknown as ChatMessage).hidden &&
+        ["user", "assistant"].includes(
+          (entry.data as unknown as ChatMessage).role,
+        ) &&
+        (await tx.doc(BotSessions)).items.some(
+          (item) => item.id === entry?.conversationId && item.teamId === teamId,
+        ),
+    );
+    if (shared) {
+      const session = (await tx.doc(BotSessions)).items.find(
+        (item) => item.id === entry?.conversationId,
+      );
+      const bot = (await tx.doc(BotDirectory)).items.find(
+        (bot) => bot.id === session?.botId,
+      );
+      if (bot) author = { botId: bot.id, name: bot.name, avatar: bot.avatar };
+    }
   }, context);
-  if (!entry || entry.conversationId !== runtime.conversationId)
+  if (!entry || (entry.conversationId !== runtime.conversationId && !shared))
     throw new Error("聊天记录不存在。");
   return JSON.stringify({
     entryId,
     ...textPage(
       JSON.stringify(
-        entry.kind === EngineToolResult ? entry.data : historyMessages(entry),
+        entry.kind === EngineToolResult
+          ? entry.data
+          : historyMessages(
+              entry,
+              entry.conversationId === runtime.conversationId ? "full" : "omit",
+            ).map((message) => ({
+              ...message,
+              ...(message.role === "assistant" && !message.author && author
+                ? { author }
+                : {}),
+            })),
       ),
       offset,
       engineLimits.historyCharacters / 4,
@@ -149,8 +187,10 @@ export async function conversationHistory(
   budget: number = engineLimits.historyCharacters,
   tools: "full" | "summary" | "omit" = "full",
   summary?: HandoffSummary,
+  teamThrough?: EntryId | null,
 ) {
   let entries: readonly EntryRecord[] = [];
+  const authors = new Map<number, NonNullable<ChatMessage["author"]>>();
   let bounded = before !== undefined;
   await runtime.commit(async (tx) => {
     const maxEntryId = before;
@@ -165,6 +205,72 @@ export async function conversationHistory(
         engineLimits.historyEntries,
       )
     ).items;
+    const teamId =
+      teamThrough !== undefined
+        ? (await tx.doc(BotSession, runtime.conversationId)).teamId
+        : undefined;
+    if (teamId) {
+      const sessions = (await tx.doc(BotSessions)).items.filter(
+        (item) => item.teamId === teamId,
+      );
+      const bots = (await tx.doc(BotDirectory)).items;
+      const shared: EntryRecord[] = [];
+      for (const session of sessions) {
+        const bot = bots.find((bot) => bot.id === session.botId);
+        if (bot)
+          authors.set(session.id, {
+            botId: bot.id,
+            name: bot.name,
+            avatar: bot.avatar,
+          });
+        if (session.id === runtime.conversationId) continue;
+        const page = await tx.scanEntries(
+          { conversationId: session.id, order: "descending", maxEntryId },
+          engineLimits.historyEntries,
+        );
+        shared.push(
+          ...page.items.filter(
+            (entry) =>
+              entry.kind === EngineMessage &&
+              ["user", "assistant"].includes(
+                (entry.data as unknown as ChatMessage).role,
+              ) &&
+              !(entry.data as unknown as ChatMessage).hidden,
+          ),
+        );
+      }
+      const current = entries.find(
+        (entry) =>
+          entry.kind === EngineMessage &&
+          (entry.data as unknown as ChatMessage).id === turnId,
+      );
+      const requestId = (current?.data as unknown as ChatMessage | undefined)
+        ?.requestId;
+      entries = [
+        ...entries,
+        ...shared.filter(
+          (entry) =>
+            (!current || entry.id < current.id) &&
+            (!requestId ||
+              (entry.data as unknown as ChatMessage).requestId !== requestId),
+        ),
+      ].sort((a, b) => b.id - a.id);
+      const requests = new Set<string>();
+      entries = entries
+        .filter((entry) => {
+          const message = entry.data as unknown as ChatMessage;
+          if (
+            entry.kind !== EngineMessage ||
+            message.role !== "user" ||
+            !message.requestId
+          )
+            return true;
+          if (requests.has(message.requestId)) return false;
+          requests.add(message.requestId);
+          return true;
+        })
+        .slice(0, engineLimits.historyEntries);
+    }
   }, context);
   const current = entries.findIndex(
     (entry) =>
@@ -175,10 +281,28 @@ export async function conversationHistory(
     throw new Error("当前消息的上下文边界无法确认。");
   const previous = entries
     .slice(current + 1)
-    .filter((entry) => entry.id > (through ?? summary?.through ?? 0));
+    .filter(
+      (entry) =>
+        entry.id >
+        (entry.conversationId === runtime.conversationId
+          ? (through ?? summary?.through ?? 0)
+          : (teamThrough ?? 0)),
+    );
   const messages = previous
     .toReversed()
-    .flatMap((entry) => historyMessages(entry, tools))
+    .flatMap((entry) =>
+      historyMessages(
+        entry,
+        entry.conversationId === runtime.conversationId ? tools : "omit",
+      ).map((message) => ({
+        ...message,
+        ...(message.role === "assistant" &&
+        !message.author &&
+        authors.has(entry.conversationId)
+          ? { author: authors.get(entry.conversationId) }
+          : {}),
+      })),
+    )
     .filter((message) => message.text.trim());
   if (tools === "summary") {
     let remaining = 20;
@@ -276,6 +400,10 @@ export const history = defineExtension({
                 args.before === undefined
                   ? undefined
                   : ((args.before - 1) as EntryId),
+                undefined,
+                "full",
+                undefined,
+                null,
               );
         return { output: [{ type: "text", text: text || "{}" }] };
       },

@@ -40,10 +40,22 @@ export function useBots() {
     () => window.location.hash,
   );
   useEffect(() => {
-    void client.teams
-      .list()
-      .then(setTeams)
-      .catch(() => {});
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const events = await client.teams.subscribe(undefined, {
+          signal: controller.signal,
+          context: { retry: Number.POSITIVE_INFINITY },
+        });
+        for await (const next of events) {
+          if (controller.signal.aborted) return;
+          setTeams(next);
+        }
+      } catch {
+        if (!controller.signal.aborted) setError("团队加载失败。请刷新重试。");
+      }
+    })();
+    return () => controller.abort();
   }, []);
   useEffect(() => {
     const controller = new AbortController();

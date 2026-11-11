@@ -1,8 +1,10 @@
 import type { Context } from "@earendil-works/chord/context";
 import type { TaskId } from "@earendil-works/pi-durable";
-import { owningBot } from "../conversations.ts";
+import { BotSession, owningBot } from "../conversations.ts";
 import type { Files } from "../files.ts";
 import { RoutinesDoc } from "../work/routine-state.ts";
+import { handoffInstructions, requestInstructions } from "./handoff.ts";
+import { conversationHistory } from "./history.ts";
 import { EngineDoc, EngineInputDoc } from "./state.ts";
 import type { EngineRuntime, EngineTaskInput } from "./task-types.ts";
 import type { EngineSession } from "./types.ts";
@@ -85,8 +87,40 @@ export class EngineInputs {
           next.input.attachments ?? [],
           this.context,
         );
+        const doc = await this.runtime.snapshot(
+          EngineDoc,
+          this.runtime.conversationId,
+          this.context,
+        );
+        const teamId = (
+          await this.runtime.snapshot(
+            BotSession,
+            this.runtime.conversationId,
+            this.context,
+          )
+        )?.teamId;
+        const history = teamId
+          ? await conversationHistory(
+              this.runtime,
+              next.input.turnId,
+              this.context,
+              next.input.entryId ?? null,
+              undefined,
+              undefined,
+              "omit",
+              undefined,
+              doc?.sessionKey
+                ? (doc.sessions?.[doc.sessionKey]?.teamThrough ?? null)
+                : null,
+            )
+          : "";
         result =
-          (await this.session.steer?.(next.input.text, images)) ?? "refused";
+          (await this.session.steer?.(
+            history
+              ? `${handoffInstructions}${history}${requestInstructions}${next.input.text}`
+              : next.input.text,
+            images,
+          )) ?? "refused";
       } catch {}
       await this.runtime.commit(async (tx) => {
         const input = await tx.doc(EngineInputDoc, current.id);
@@ -94,6 +128,11 @@ export class EngineInputs {
         input.status = result === "refused" ? "deferred" : result;
         if (result === "accepted") {
           const doc = await tx.doc(EngineDoc, this.runtime.conversationId);
+          const session = doc.sessionKey
+            ? doc.sessions?.[doc.sessionKey]
+            : undefined;
+          if (session && current.input.entryId)
+            session.teamThrough = current.input.entryId;
           if (doc.run)
             doc.run.inputTurns = [
               ...(doc.run.inputTurns ?? []),

@@ -397,7 +397,11 @@ async function finish(
       answer
     ) {
       doc.sessions ??= {};
-      doc.sessions[doc.sessionKey] = { id: doc.sessionId, through: answer };
+      doc.sessions[doc.sessionKey] = {
+        ...doc.sessions[doc.sessionKey],
+        id: doc.sessionId,
+        through: answer,
+      };
     }
     if (current.input.submissionId)
       tx.settleSubmission(

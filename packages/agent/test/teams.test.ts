@@ -1,15 +1,309 @@
 import assert from "node:assert/strict";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
+import type { EntryId } from "@earendil-works/pi-durable";
 import { expect, onTestFinished, test } from "vitest";
 import { DelegationsDoc } from "../src/collaboration.ts";
 import type { Computers } from "../src/computer/catalog.ts";
 import { ComputerRequests } from "../src/computer/runtime.ts";
 import { BotSession } from "../src/conversations.ts";
+import {
+  conversationEntry,
+  conversationHistory,
+} from "../src/harness/history.ts";
 import { EngineDoc, EngineMessage } from "../src/harness/state.ts";
 import { Teams } from "../src/teams.ts";
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
 import { featureProcess } from "./fixtures/feature-process.ts";
 import { runtimeFixture } from "./fixtures/runtime.ts";
+
+test("native team turns and additional input receive only unseen peer history", async () => {
+  const workers: ProtocolProcess[] = [];
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let member = 0;
+  let memberTurns = 0;
+  const computers = {
+    initialize: async () => {},
+    attach: async () => {},
+    preflight: async () => {},
+    computerId: async () => "shared",
+    binding: async () => ({ directory: null }),
+    tools: { catalog: async () => [], finish: () => {} },
+    process: async (id: number) => {
+      const worker = featureProcess(async () => {
+        if (id === member && memberTurns++ === 0) {
+          entered.resolve();
+          await release.promise;
+        }
+        return id === member ? "Reviewed" : "Keep existing data";
+      });
+      workers.push(worker);
+      return worker;
+    },
+  } as unknown as Computers;
+  const fixture = await runtimeFixture(computers);
+  const { harness, bots, conversation, engines } = fixture;
+  assert(engines);
+  onTestFinished(async () => {
+    release.resolve();
+    await Promise.all(workers.map((worker) => worker.close()));
+  });
+  const peer = await bots.create(
+    { name: "Reviewer", requestId: "native-peer" },
+    context,
+  );
+  const teams = new Teams(harness);
+  await teams.create(
+    {
+      id: "native",
+      name: "Release",
+      purpose: "Check",
+      owner: conversation.id,
+      members: [conversation.id, peer.id],
+    },
+    context,
+  );
+  const owner = await teams.session("native", undefined, context);
+  member = await teams.session("native", peer.id, context);
+  await (
+    await engines.submit(
+      owner,
+      { text: "Prepare release", requestId: "owner" },
+      context,
+    )
+  ).wait(context);
+  const first = await engines.submit(
+    member,
+    { text: "Review release", requestId: "member" },
+    context,
+  );
+  await entered.promise;
+  const worker = workers.at(-1);
+  assert(worker);
+  const prompt = JSON.stringify(
+    worker.requests.find((request) => request.type === "prompt"),
+  );
+  expect(prompt).toContain("Keep existing data");
+  expect(prompt).toContain("Domos");
+  await harness.commit(async (tx) => {
+    await tx.appendEntry(owner, {
+      kind: EngineMessage,
+      data: {
+        id: "late-owner",
+        role: "assistant",
+        content: [{ type: "text", text: "Check rollback too" }],
+      },
+    });
+  }, context);
+  const additional = await engines.submit(
+    member,
+    { text: "Include rollback", requestId: "additional" },
+    context,
+  );
+  await expect
+    .poll(() => worker.requests.some((request) => request.type === "steer"))
+    .toBe(true);
+  const steer = JSON.stringify(
+    worker.requests.find((request) => request.type === "steer"),
+  );
+  expect(steer).toContain("Check rollback too");
+  expect(steer).not.toContain("Keep existing data");
+  release.resolve();
+  await first.wait(context);
+  await additional.wait(context);
+  const resumed = (await fixture.reopen()).engines;
+  assert(resumed);
+  await (
+    await resumed.submit(
+      member,
+      { text: "Finish", requestId: "finish" },
+      context,
+    )
+  ).wait(context);
+  const last = JSON.stringify(
+    workers
+      .flatMap((worker) => worker.requests)
+      .filter((request) => request.type === "prompt")
+      .at(-1),
+  );
+  expect(last).not.toContain("Keep existing data");
+  expect(last).not.toContain("Check rollback too");
+  expect(last).toContain("Finish");
+});
+
+test("team handoffs include peer messages, retain authors and exclude private history", async () => {
+  const { harness, bots, conversation } = await runtimeFixture();
+  const peer = await bots.create(
+    { name: "Reviewer", requestId: "peer" },
+    context,
+  );
+  const teams = new Teams(harness);
+  await teams.create(
+    {
+      id: "context",
+      name: "Review",
+      purpose: "Check",
+      members: [conversation.id, peer.id],
+      owner: conversation.id,
+    },
+    context,
+  );
+  const owner = await teams.session("context", undefined, context);
+  const member = await teams.session("context", peer.id, context);
+  const reader = {
+    conversationId: member,
+    commit: harness.commit.bind(harness),
+  };
+  const append = (id: typeof owner, key: string, role: string, text: string) =>
+    harness.commit(
+      async (tx) =>
+        (
+          await tx.appendEntry(id, {
+            kind: EngineMessage,
+            data: { id: key, role, content: [{ type: "text", text }] },
+          })
+        ).id,
+      context,
+    );
+  const secret = await append(
+    conversation.id,
+    "private",
+    "assistant",
+    "Private secret",
+  );
+  const first = await append(
+    owner,
+    "owner-answer",
+    "assistant",
+    "Keep existing data",
+  );
+  const turn = await append(member, "review", "user", "Check release");
+  const packet = JSON.parse(
+    await conversationHistory(
+      reader,
+      "review",
+      context,
+      null,
+      undefined,
+      undefined,
+      "omit",
+      undefined,
+      null,
+    ),
+  );
+  expect(packet.messages).toEqual([
+    expect.objectContaining({
+      text: "Keep existing data",
+      author: expect.objectContaining({ name: "Domos" }),
+    }),
+  ]);
+  expect(await conversationEntry(reader, first, 0, context)).toContain(
+    "Keep existing data",
+  );
+  expect(await conversationEntry(reader, first, 0, context)).toContain("Domos");
+  await expect(conversationEntry(reader, secret, 0, context)).rejects.toThrow(
+    "不存在",
+  );
+  await append(owner, "owner-followup", "assistant", "Check rollback too");
+  await append(member, "review-next", "user", "Continue");
+  const delta = await conversationHistory(
+    reader,
+    "review-next",
+    context,
+    turn as EntryId,
+    undefined,
+    undefined,
+    "omit",
+    undefined,
+    turn as EntryId,
+  );
+  expect(delta).toContain("Check rollback too");
+  expect(delta).not.toContain("Keep existing data");
+  expect(delta).not.toContain("Private secret");
+  await teams.create(
+    {
+      id: "other",
+      name: "Other team",
+      purpose: "Other",
+      members: [conversation.id, peer.id],
+      owner: conversation.id,
+    },
+    context,
+  );
+  const other = await teams.session("other", undefined, context);
+  const otherEntry = await append(
+    other,
+    "other",
+    "assistant",
+    "Other team's data",
+  );
+  await expect(
+    conversationEntry(reader, otherEntry, 0, context),
+  ).rejects.toThrow("不存在");
+  const tool = await append(owner, "tool", "toolResult", "Peer tool record");
+  await expect(conversationEntry(reader, tool, 0, context)).rejects.toThrow(
+    "不存在",
+  );
+});
+
+test("team edits preserve history and stop only removed members' team work", async () => {
+  const { harness, bots, conversation, engines } = await runtimeFixture({
+    initialize: async () => {},
+    attach: async () => {},
+  } as unknown as Computers);
+  assert(engines);
+  const peer = await bots.create(
+    { name: "Reviewer", requestId: "peer" },
+    context,
+  );
+  const teams = new Teams(harness);
+  const input = {
+    id: "edit",
+    name: "Review",
+    purpose: "Check",
+    members: [conversation.id, peer.id],
+    owner: conversation.id,
+  };
+  await teams.create(input, context);
+  const member = await teams.session(input.id, peer.id, context);
+  await harness.commit(async (tx) => {
+    await tx.appendEntry(member, {
+      kind: EngineMessage,
+      data: {
+        id: "answer",
+        role: "assistant",
+        content: [{ type: "text", text: "Retained review" }],
+      },
+    });
+  }, context);
+  const stopped: number[] = [];
+  const stop = engines.stop.bind(engines);
+  engines.stop = async (id, ctx) => {
+    stopped.push(id);
+    await stop(id, ctx);
+  };
+  const changed = await teams.update(
+    { ...input, name: "Release", purpose: "Ship", members: [conversation.id] },
+    engines,
+    context,
+  );
+  expect(changed.name).toBe("Release");
+  expect(stopped).toEqual([member]);
+  expect(stopped).not.toContain(peer.id);
+  expect(
+    (await teams.view(input.id, engines, context)).messages,
+  ).toContainEqual(
+    expect.objectContaining({
+      author: expect.objectContaining({ botId: peer.id }),
+    }),
+  );
+  await expect(teams.session(input.id, peer.id, context)).rejects.toThrow(
+    "团队",
+  );
+  await expect(
+    teams.update({ ...changed, owner: peer.id }, engines, context),
+  ).rejects.toThrow();
+});
 
 test("team activity keeps execution identities, waits and private work separate", async () => {
   const { harness, bots, conversation, engines } = await runtimeFixture({
@@ -69,6 +363,39 @@ test("team activity keeps execution identities, waits and private work separate"
       ?.filter((item) => item.processing)
       .map((item) => item.botId),
   ).toEqual([conversation.id]);
+  expect(
+    (await teams.view("activity", engines, context)).activity,
+  ).toContainEqual(
+    expect.objectContaining({ sessionId: member, waiting: "等待你的确认。" }),
+  );
+  await harness.commit(async (tx) => {
+    const requests = await tx.doc(ComputerRequests, member);
+    const approval = requests.approvals[0];
+    assert(approval);
+    approval.kind = "question";
+  }, context);
+  expect(
+    (await teams.view("activity", engines, context)).activity,
+  ).toContainEqual(
+    expect.objectContaining({ sessionId: member, waiting: "等待你的回答。" }),
+  );
+  await harness.commit(async (tx) => {
+    const requests = await tx.doc(ComputerRequests, member);
+    const approval = requests.approvals[0];
+    assert(approval);
+    approval.takeover = {
+      id: approval.id,
+      service: "browser",
+      computerId: "shared",
+      revision: 1,
+      state: "waiting",
+    };
+  }, context);
+  expect(
+    (await teams.view("activity", engines, context)).activity,
+  ).toContainEqual(
+    expect.objectContaining({ sessionId: member, waiting: "等待你完成接管。" }),
+  );
   await active(owner, null);
   expect(
     (await teams.view("activity", engines, context)).activity?.some(
@@ -111,93 +438,102 @@ test("teams retain members, owner and separate member conversations", async () =
   ).rejects.toThrow();
 });
 
-test("stopping a team cancels its pending peer work and preserves private work", async () => {
-  const workers: ReturnType<typeof featureProcess>[] = [];
-  const started = Promise.withResolvers<void>();
-  const release = Promise.withResolvers<void>();
-  let ownerSession = 0;
-  let peerId = 0;
-  const computers = {
-    initialize: async () => {},
-    attach: async () => {},
-    preflight: async () => {},
-    computerId: async () => "shared",
-    binding: async () => ({ directory: null }),
-    tools: { catalog: async () => [], finish: () => {} },
-    process: async (
-      id: number,
-      _tools: unknown,
-      invoke: Parameters<Computers["process"]>[2],
-    ) => {
-      const worker = featureProcess(async () => {
-        if (id === ownerSession) {
-          const result = await invoke(
-            "send",
-            "bot_send",
-            { botId: peerId, task: "Review" },
-            new AbortController().signal,
-          );
-          expect(result.isError).not.toBe(true);
-          return "Sent";
-        }
-        started.resolve();
-        await release.promise;
-        return "Done";
-      });
-      workers.push(worker);
-      return worker;
-    },
-  } as unknown as Computers;
-  const fixture = await runtimeFixture(computers);
-  const { harness, bots, conversation, engines } = fixture;
-  assert(engines?.collaboration);
-  const collaboration = engines.collaboration;
-  peerId = (
-    await bots.create({ name: "Peer", requestId: "team-peer" }, context)
-  ).id;
-  const teams = new Teams(harness);
-  const team = {
-    id: "team",
-    name: "Team",
-    purpose: "Review",
-    members: [conversation.id, peerId],
-    owner: conversation.id,
-  };
-  await teams.create(team, context);
-  ownerSession = await teams.session(team.id, undefined, context);
-  onTestFinished(async () => {
-    release.resolve();
-    await Promise.all(workers.map((worker) => worker.close()));
-  });
-  const privateTask = await engines.submit(
-    peerId,
-    { text: "Private task", requestId: "private" },
-    context,
-  );
-  await started.promise;
-  await (
-    await engines.submit(
-      ownerSession,
-      { text: "Review", requestId: "team-review" },
+test.each(["stop", "remove"])(
+  "%s cancels pending team work and preserves private work",
+  async (action) => {
+    const workers: ReturnType<typeof featureProcess>[] = [];
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let ownerSession = 0;
+    let peerId = 0;
+    const computers = {
+      initialize: async () => {},
+      attach: async () => {},
+      preflight: async () => {},
+      computerId: async () => "shared",
+      binding: async () => ({ directory: null }),
+      tools: { catalog: async () => [], finish: () => {} },
+      process: async (
+        id: number,
+        _tools: unknown,
+        invoke: Parameters<Computers["process"]>[2],
+      ) => {
+        const worker = featureProcess(async () => {
+          if (id === ownerSession) {
+            const result = await invoke(
+              "send",
+              "bot_send",
+              { botId: peerId, task: "Review" },
+              new AbortController().signal,
+            );
+            expect(result.isError).not.toBe(true);
+            return "Sent";
+          }
+          started.resolve();
+          await release.promise;
+          return "Done";
+        });
+        workers.push(worker);
+        return worker;
+      },
+    } as unknown as Computers;
+    const fixture = await runtimeFixture(computers);
+    const { harness, bots, conversation, engines } = fixture;
+    assert(engines?.collaboration);
+    const collaboration = engines.collaboration;
+    peerId = (
+      await bots.create({ name: "Peer", requestId: "team-peer" }, context)
+    ).id;
+    const teams = new Teams(harness);
+    const team = {
+      id: "team",
+      name: "Team",
+      purpose: "Review",
+      members: [conversation.id, peerId],
+      owner: conversation.id,
+    };
+    await teams.create(team, context);
+    ownerSession = await teams.session(team.id, undefined, context);
+    onTestFinished(async () => {
+      release.resolve();
+      await Promise.all(workers.map((worker) => worker.close()));
+    });
+    const privateTask = await engines.submit(
+      peerId,
+      { text: "Private task", requestId: "private" },
       context,
-    )
-  ).wait(context);
-  await started.promise;
-  const item = (await harness.snapshot(DelegationsDoc, context))?.items[0];
-  assert(item);
-  await teams.stop(team.id, engines, context);
-  expect((await engines.view(peerId, context)).busy).toBe(true);
-  release.resolve();
-  expect(await privateTask.wait(context)).toMatchObject({ status: "done" });
-  expect(await collaboration.record(item.id, context)).toMatchObject({
-    cancelled: true,
-  });
-  expect(
-    (await engines.view(ownerSession, context)).messages.some(
-      (message) => message.requestId === `delegation-result:${item.id}`,
-    ),
-  ).toBe(false);
-});
+    );
+    await started.promise;
+    await (
+      await engines.submit(
+        ownerSession,
+        { text: "Review", requestId: "team-review" },
+        context,
+      )
+    ).wait(context);
+    await started.promise;
+    const item = (await harness.snapshot(DelegationsDoc, context))?.items[0];
+    assert(item);
+    if (action === "remove")
+      await teams.update(
+        { ...team, members: [conversation.id] },
+        engines,
+        context,
+      );
+    else await teams.stop(team.id, engines, context);
+    expect((await engines.view(peerId, context)).busy).toBe(true);
+    release.resolve();
+    expect(await privateTask.wait(context)).toMatchObject({ status: "done" });
+    expect(await collaboration.record(item.id, context)).toMatchObject({
+      cancelled: true,
+    });
+    expect(
+      (await engines.view(ownerSession, context)).messages.some(
+        (message) => message.requestId === `delegation-result:${item.id}`,
+      ),
+    ).toBe(false);
+  },
+);
 
 test("native Bot delegation returns asynchronously and keeps private history separate", async () => {
   const workers: ProtocolProcess[] = [];
@@ -577,6 +913,14 @@ test("Pi delegates to Codex, queues behind private work and recovers a completed
   expect(
     await engines.collaboration.status(item.source, item.id, context),
   ).toMatchObject([{ status: "queued" }]);
+  expect((await engines.view(rootId, context)).activity).toContainEqual(
+    expect.objectContaining({
+      botId: peerId,
+      sessionId: item.session,
+      processing: false,
+      waiting: "正在处理另一项任务，完成后继续。",
+    }),
+  );
   privateRelease.resolve();
   await privateTask.wait(context);
   await peerStarted.promise;

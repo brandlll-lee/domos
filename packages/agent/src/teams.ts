@@ -36,11 +36,25 @@ export class Teams {
   async list(context: Context) {
     return (await this.harness.snapshot(TeamsDoc, context))?.items ?? [];
   }
+  watchList(context: Context) {
+    return watchCommits(
+      this.harness,
+      (change) =>
+        (change.type === "document" || change.type === "document.copy") &&
+        change.record.kind === TeamsDoc.definition.kind,
+      () => this.list(context),
+      context,
+    );
+  }
   async create(input: Team, context: Context) {
+    return this.save(input, context, false);
+  }
+  private async save(input: Team, context: Context, update: boolean) {
     return this.harness.commit(async (tx) => {
       const doc = await tx.doc(TeamsDoc);
       const existing = doc.items.find((item) => item.id === input.id);
-      if (existing) return existing;
+      if (existing && !update) return existing;
+      if (!existing && update) throw new WorkError("NOT_FOUND", "团队不存在。");
       const bots = await tx.doc(BotDirectory);
       const members = [...new Set(input.members)];
       if (
@@ -59,9 +73,22 @@ export class Teams {
       };
       if (team.purpose.length > WORK_TEXT_LENGTH)
         throw new WorkError("BAD_REQUEST", "团队用途过长。");
-      doc.items.push(team);
+      if (existing) Object.assign(existing, team);
+      else doc.items.push(team);
       return team;
     }, context);
+  }
+  async update(input: Team, runtime: Runtime, context: Context) {
+    const team = await this.save(input, context, true);
+    const removed =
+      (await this.harness.snapshot(BotSessions, context))?.items
+        .filter(
+          (item) =>
+            item.teamId === team.id && !team.members.includes(item.botId),
+        )
+        .map((item) => item.botId) ?? [];
+    await this.stop(team.id, runtime, context, removed);
+    return team;
   }
   async session(id: string, botId: number | undefined, context: Context) {
     const team = (await this.list(context)).find((item) => item.id === id);
@@ -76,10 +103,16 @@ export class Teams {
       context,
     );
   }
-  async stop(id: string, runtime: Runtime, context: Context) {
+  async stop(
+    id: string,
+    runtime: Runtime,
+    context: Context,
+    members?: number[],
+  ) {
     const sessions =
       (await this.harness.snapshot(BotSessions, context))?.items.filter(
-        (item) => item.teamId === id,
+        (item) =>
+          item.teamId === id && (!members || members.includes(item.botId)),
       ) ?? [];
     const sessionIds = new Set(sessions.map((item) => item.id));
     for (const item of (await this.harness.snapshot(DelegationsDoc, context))
@@ -127,6 +160,7 @@ export class Teams {
       }),
     );
     const base = views.find((view) => view.id === session)!;
+    const requests = new Set<string>();
     const messages = views
       .flatMap((view) => view.messages)
       .sort((a, b) => {
@@ -136,6 +170,12 @@ export class Teams {
           entry(a.cursor) - entry(b.cursor) ||
           (a.timestamp ?? 0) - (b.timestamp ?? 0)
         );
+      })
+      .filter((message) => {
+        if (message.role !== "user" || !message.requestId) return true;
+        if (requests.has(message.requestId)) return false;
+        requests.add(message.requestId);
+        return true;
       });
     const page = messages.slice(-200);
     return {
@@ -151,7 +191,24 @@ export class Teams {
         ...new Map(
           views
             .flatMap((view) => view.activity ?? [])
-            .map((item) => [item.sessionId, item]),
+            .map((item) => {
+              const bot = bots.find((bot) => bot.id === item.botId);
+              return [
+                item.sessionId,
+                {
+                  ...item,
+                  ...(bot
+                    ? {
+                        author: {
+                          botId: bot.id,
+                          name: bot.name,
+                          avatar: bot.avatar,
+                        },
+                      }
+                    : {}),
+                },
+              ] as const;
+            }),
         ).values(),
       ],
       delegations: views.flatMap((view) => view.delegations ?? []),

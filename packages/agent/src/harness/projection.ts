@@ -270,8 +270,10 @@ export class EngineProjection {
                 !current.input.operation &&
                 current.input.entryId &&
                 session
-              )
+              ) {
                 session.through = current.input.entryId;
+                session.teamThrough = current.input.entryId;
+              }
             }
           }
         }

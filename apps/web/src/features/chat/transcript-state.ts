@@ -13,6 +13,7 @@ export function transcriptState() {
           ? { ...original, id: original.message.requestId }
           : original;
       const key = `${item.kind}:${item.id}`;
+      if (next.has(key)) continue;
       const value = JSON.stringify(item);
       const previous = retained.get(key);
       const row = previous?.value === value ? previous.item : item;

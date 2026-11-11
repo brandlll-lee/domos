@@ -117,6 +117,7 @@ export function WorkPanel(
                           : turn.active
                             ? !connected ||
                               stopping ||
+                              turn.status === "queued" ||
                               turn.status === "stopping" ||
                               view?.approvals?.length
                               ? "waiting"
@@ -178,7 +179,10 @@ export function WorkPanel(
             </Button>
           )}
           {!!view?.delegations?.length && (
-            <WorkDelegations items={view.delegations} />
+            <WorkDelegations
+              items={view.delegations}
+              activity={view.activity}
+            />
           )}
         </ScrollArea>
       )}

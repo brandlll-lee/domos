@@ -122,6 +122,48 @@ test("teams preserve member authors and keep private chats separate", async ({
     name: peer.name,
     avatar: peer.avatar,
   });
+  await expect
+    .poll(async () => {
+      const response = await page.request.post(`${url}/rpc/teams/get`, {
+        data: { json: { id: teamId } },
+      });
+      const current = (await response.json()).json;
+      return current.runs.filter(
+        (run: { author?: { botId: number } }) => run.author?.botId === peer.id,
+      ).length;
+    })
+    .toBe(1);
+  expect(
+    view.messages.filter(
+      (message: { requestId?: string }) => message.requestId === sent.requestId,
+    ),
+  ).toHaveLength(1);
+  expect(
+    view.runs.filter(
+      (run: { author?: { name: string } }) => run.author?.name === "Domos",
+    ),
+  ).toHaveLength(2);
+  const replay = await page.request.post(`${url}/rpc/teams/send`, {
+    data: {
+      json: {
+        id: teamId,
+        text: sent.content[0].text,
+        requestId: sent.requestId,
+        bots: sent.materials.bots.map(
+          ({
+            id,
+            botId,
+            position,
+          }: {
+            id: string;
+            botId: number;
+            position: number;
+          }) => ({ id, botId, position }),
+        ),
+      },
+    },
+  });
+  expect(replay.ok()).toBe(true);
   const answer = view.messages
     .filter((message: { role: string }) => message.role === "assistant")
     .at(-1);
@@ -156,8 +198,18 @@ test("teams preserve member authors and keep private chats separate", async ({
   ).toBeVisible();
   await expect(details.getByText("运行模型", { exact: true })).toHaveCount(0);
   await details.getByRole("button", { name: "团队用途", exact: false }).click();
-  await expect(details).toContainText("检查本次发布");
-  await details.getByRole("button", { name: "返回", exact: true }).click();
+  const edit = page.getByRole("dialog", { name: "编辑团队", exact: true });
+  await expect(edit.getByLabel("团队用途", { exact: true })).toHaveValue(
+    "检查本次发布",
+  );
+  await edit.getByLabel("团队用途", { exact: true }).fill("检查本次发布与回退");
+  await edit.getByLabel("团队名称", { exact: true }).fill("发布检查小队");
+  await edit.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(edit).toBeHidden();
+  await expect(details).toContainText("检查本次发布与回退");
+  await expect(
+    page.getByRole("button", { name: "团队详情", exact: true }),
+  ).toHaveText("发布检查小队");
   await details.getByRole("button", { name: "成员 2", exact: false }).click();
   await details.getByRole("button", { name: "Reviewer", exact: true }).click();
   await expect(details).toHaveAttribute("aria-label", "Reviewer的详情");
@@ -237,6 +289,21 @@ test("teams preserve member authors and keep private chats separate", async ({
   await expect(
     page.getByRole("log", { name: "聊天记录", exact: true }),
   ).toContainText("只在团队讨论发布");
+  await page.getByRole("button", { name: "团队详情", exact: true }).click();
+  await page.getByRole("tab", { name: "团队", exact: true }).click();
+  await details
+    .getByRole("button", { name: "默认负责人", exact: false })
+    .click();
+  await edit.getByRole("checkbox", { name: "Domos", exact: true }).uncheck();
+  await expect(edit).toContainText("历史消息会保留");
+  await edit.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(edit).toBeHidden();
+  await expect(
+    page.locator(".chat-identity .team-avatar .bot-avatar"),
+  ).toHaveCount(1);
+  await expect(
+    log.locator(".message-author").filter({ hasText: "Domos" }).first(),
+  ).toBeVisible();
   await page.getByRole("link", { name: "Domos", exact: true }).click();
   await expect(
     page.getByRole("log", { name: "聊天记录", exact: true }),

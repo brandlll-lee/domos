@@ -1029,11 +1029,6 @@ button.takeover-preview:focus-visible {
   justify-items: center;
   gap: var(--space-3);
 }
-.team-purpose {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
 .team-form {
   display: grid;
   gap: var(--space-6);

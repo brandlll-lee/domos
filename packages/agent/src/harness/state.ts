@@ -47,7 +47,10 @@ export type EngineState = {
   revision: number;
   requestId: string;
   sessionId: string | null;
-  sessions?: Record<string, { id: string; through: EntryId | null }>;
+  sessions?: Record<
+    string,
+    { id: string; through: EntryId | null; teamThrough?: EntryId }
+  >;
   sessionKey?: string;
   summary?: HandoffSummary;
   computerId: string | null;

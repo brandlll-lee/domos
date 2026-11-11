@@ -14,6 +14,7 @@ export async function conversationHandoff(
   through: EntryId | null,
   budget: number,
   saved?: HandoffSummary,
+  teamThrough?: EntryId | null,
 ) {
   const read = (summary?: HandoffSummary) =>
     conversationHistory(
@@ -25,6 +26,7 @@ export async function conversationHandoff(
       budget,
       "omit",
       summary,
+      teamThrough,
     );
   const original = await read();
   if (through || !original) return { history: original };

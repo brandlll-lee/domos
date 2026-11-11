@@ -14,8 +14,10 @@ const labels: Record<string, string> = {
 };
 export function WorkDelegations({
   items,
+  activity,
 }: {
   items: NonNullable<ChatView["delegations"]>;
+  activity?: ChatView["activity"];
 }) {
   const { items: bots } = useBots();
   const [pending, setPending] = useState<string>();
@@ -28,7 +30,10 @@ export function WorkDelegations({
           <InlineNotice>
             {bots.find((bot) => bot.id === item.sender)?.name} →{" "}
             {bots.find((bot) => bot.id === item.recipient)?.name} ·{" "}
-            {labels[item.status] ?? item.status}
+            {activity?.find((active) => active.sessionId === item.session)
+              ?.waiting ??
+              labels[item.status] ??
+              item.status}
           </InlineNotice>
           <p>{item.task}</p>
           {item.result && <p>{item.result}</p>}

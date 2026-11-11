@@ -1,15 +1,16 @@
 import type { BotPresence } from "@domos/agent/bots";
 import type { Team } from "@domos/agent/teams";
 import { BotAvatar } from "@domos/ui/avatar";
+import { Button } from "@domos/ui/controls";
 import { PanelGroup, PanelHeader, PanelRow } from "@domos/ui/panel";
 import { ScrollArea } from "@domos/ui/scroll-area";
-import { SettingRow } from "@domos/ui/setting-row";
 import { Tabs } from "@domos/ui/tabs";
 import { FileTextIcon } from "@phosphor-icons/react/dist/csr/FileText";
 import { UsersIcon } from "@phosphor-icons/react/dist/csr/Users";
 import { WrenchIcon } from "@phosphor-icons/react/dist/csr/Wrench";
 import { useState } from "react";
 import { TeamAvatar } from "./bot-reference.tsx";
+import { TeamDialog } from "./team-dialog.tsx";
 import type { useChat } from "./use-chat.ts";
 import { WorkPanel } from "./work.tsx";
 
@@ -23,6 +24,8 @@ export function TeamDetails({
   onClose,
   workRun,
   active,
+  bots,
+  onSaved,
 }: {
   team: Team;
   members: BotPresence[];
@@ -33,8 +36,11 @@ export function TeamDetails({
   onClose: () => void;
   workRun?: string;
   active: boolean;
+  bots: BotPresence[];
+  onSaved: (team: Team) => void;
 }) {
-  const [page, setPage] = useState<"root" | "members" | "purpose">("root");
+  const [page, setPage] = useState<"root" | "members">("root");
+  const [editing, setEditing] = useState(false);
   const owner = members.find((member) => member.id === team.owner);
   return (
     <aside
@@ -43,13 +49,7 @@ export function TeamDetails({
       aria-label={`${team.name}的详情`}
     >
       <PanelHeader
-        title={
-          page === "members"
-            ? "成员"
-            : page === "purpose"
-              ? "团队用途"
-              : team.name
-        }
+        title={page === "members" ? "成员" : team.name}
         onBack={page !== "root" ? () => setPage("root") : undefined}
         onClose={onClose}
       />
@@ -87,16 +87,22 @@ export function TeamDetails({
           {page === "root" ? (
             <PanelGroup title="团队设置">
               <PanelRow
+                icon={<FileTextIcon />}
+                title="团队名称"
+                value={team.name}
+                onClick={() => setEditing(true)}
+              />
+              <PanelRow
                 icon={<UsersIcon />}
                 title="默认负责人"
                 value={owner?.name}
-                onClick={() => owner && onMember(owner)}
+                onClick={() => setEditing(true)}
               />
               <PanelRow
                 icon={<FileTextIcon />}
                 title="团队用途"
                 value={team.purpose || "未填写"}
-                onClick={() => setPage("purpose")}
+                onClick={() => setEditing(true)}
               />
               <PanelRow
                 icon={<UsersIcon />}
@@ -110,26 +116,34 @@ export function TeamDetails({
                 onClick={() => onTabChange("work")}
               />
             </PanelGroup>
-          ) : page === "purpose" ? (
-            <div className="panel-card">
-              <SettingRow title="团队用途">
-                <p className="team-purpose">{team.purpose || "未填写"}</p>
-              </SettingRow>
-            </div>
           ) : (
-            <PanelGroup title="成员">
-              {members.map((member) => (
-                <PanelRow
-                  key={member.id}
-                  icon={<BotAvatar seed={member.avatar} size="small" />}
-                  title={member.name}
-                  value={member.id === team.owner ? "默认负责人" : undefined}
-                  onClick={() => onMember(member)}
-                />
-              ))}
-            </PanelGroup>
+            <>
+              <Button variant="ghost" onClick={() => setEditing(true)}>
+                编辑成员
+              </Button>
+              <PanelGroup title="成员">
+                {members.map((member) => (
+                  <PanelRow
+                    key={member.id}
+                    icon={<BotAvatar seed={member.avatar} size="small" />}
+                    title={member.name}
+                    value={member.id === team.owner ? "默认负责人" : undefined}
+                    onClick={() => onMember(member)}
+                  />
+                ))}
+              </PanelGroup>
+            </>
           )}
         </ScrollArea>
+      )}
+      {editing && (
+        <TeamDialog
+          team={team}
+          bots={bots}
+          open
+          onOpenChange={setEditing}
+          onSaved={onSaved}
+        />
       )}
     </aside>
   );
