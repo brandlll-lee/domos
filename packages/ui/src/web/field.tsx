@@ -1,6 +1,11 @@
 import { Checkbox as BaseCheckbox } from "@base-ui/react/checkbox";
 import { Field } from "@base-ui/react/field";
-import { type ComponentProps, type RefObject, useRef } from "react";
+import {
+  type ComponentProps,
+  type ReactNode,
+  type RefObject,
+  useRef,
+} from "react";
 import { Button } from "./controls.tsx";
 
 export function SearchField({
@@ -53,6 +58,7 @@ export function SearchField({
 
 export function TextField({
   label,
+  labelClassName = "",
   value,
   onValueChange,
   multiline = false,
@@ -63,6 +69,7 @@ export function TextField({
   ...props
 }: {
   label: string;
+  labelClassName?: string;
   value: string;
   onValueChange: (value: string) => void;
   multiline?: boolean;
@@ -84,7 +91,9 @@ export function TextField({
 >) {
   return (
     <Field.Root className="field" invalid={Boolean(error) || undefined}>
-      <Field.Label className="field-label">{label}</Field.Label>
+      <Field.Label className={`field-label ${labelClassName}`}>
+        {label}
+      </Field.Label>
       <Field.Control
         className="field-control"
         value={value}
@@ -114,7 +123,7 @@ export function Checkbox({
   onCheckedChange,
   disabled,
 }: {
-  label: string;
+  label: ReactNode;
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   disabled?: boolean;

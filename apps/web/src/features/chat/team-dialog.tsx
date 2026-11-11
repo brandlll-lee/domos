@@ -87,12 +87,16 @@ export function TeamDialog({
       <div className="team-form">
         <TextField
           label="团队名称"
+          labelClassName="sr-only"
+          placeholder="团队名称"
           value={name}
           onValueChange={setName}
           maxLength={BOT_NAME_LENGTH}
         />
         <TextField
           label="团队用途"
+          labelClassName="sr-only"
+          placeholder="这个团队要做什么？（选填）"
           value={purpose}
           onValueChange={setPurpose}
           multiline
@@ -102,9 +106,13 @@ export function TeamDialog({
           <legend>成员</legend>
           {bots.map((bot) => (
             <div className="team-member" key={bot.id}>
-              <BotAvatar seed={bot.avatar} size="small" />
               <Checkbox
-                label={bot.name}
+                label={
+                  <span className="team-member-identity">
+                    <BotAvatar seed={bot.avatar} size="small" />
+                    <span>{bot.name}</span>
+                  </span>
+                }
                 checked={members.includes(bot.id)}
                 onCheckedChange={(checked) => {
                   setMembers((current) =>

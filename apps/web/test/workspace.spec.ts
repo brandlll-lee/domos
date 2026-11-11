@@ -105,6 +105,10 @@ test("teams preserve member authors and keep private chats separate", async ({
   page,
 }, info) => {
   await page.goto(url);
+  await page
+    .locator("#bot-details")
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
   const response = await page.request.post(`${url}/rpc/bots/create`, {
     data: { json: { name: "Reviewer", requestId: crypto.randomUUID() } },
   });
@@ -116,16 +120,73 @@ test("teams preserve member authors and keep private chats separate", async ({
     exact: true,
   });
   const initialFrame = await dialog.boundingBox();
+  await expect(
+    dialog.getByRole("textbox", { name: "团队名称", exact: true }),
+  ).toHaveAttribute("placeholder", "团队名称");
+  await expect(
+    dialog.getByRole("textbox", { name: "团队用途", exact: true }),
+  ).toHaveAttribute("placeholder", "这个团队要做什么？（选填）");
   await dialog.getByLabel("团队名称", { exact: true }).fill("发布小队");
   await dialog.getByLabel("团队用途", { exact: true }).fill("检查本次发布");
-  await dialog.getByRole("checkbox", { name: "Domos", exact: true }).check();
+  const domosChoice = dialog
+    .locator(".team-member")
+    .filter({ hasText: "Domos" });
+  await domosChoice.locator(".bot-avatar").click();
+  await expect(
+    dialog.getByRole("checkbox", { name: "Domos", exact: true }),
+  ).toBeChecked();
   await dialog.getByRole("checkbox", { name: "Reviewer", exact: true }).check();
+  const reviewerChoice = dialog
+    .locator(".team-member")
+    .filter({ hasText: "Reviewer" });
+  await reviewerChoice
+    .getByRole("button", { name: "设为负责人", exact: true })
+    .click();
+  await expect(
+    dialog.getByRole("checkbox", { name: "Reviewer", exact: true }),
+  ).toBeChecked();
+  await expect(
+    reviewerChoice.getByRole("button", { name: "默认负责人", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await domosChoice
+    .getByRole("button", { name: "设为负责人", exact: true })
+    .click();
+  const choiceFrame = await domosChoice.boundingBox();
+  const checkboxFrame = await domosChoice.getByRole("checkbox").boundingBox();
+  const avatarFrame = await domosChoice.locator(".bot-avatar").boundingBox();
+  expect(checkboxFrame?.x).toBeGreaterThan(
+    (choiceFrame?.x ?? 0) + (choiceFrame?.width ?? 0) / 2,
+  );
+  expect(checkboxFrame?.x).toBeGreaterThan(avatarFrame?.x ?? 0);
   const frame = await dialog.boundingBox();
   await expect(
     dialog.getByRole("button", { name: "默认负责人", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   expect(frame?.height).toBe(initialFrame?.height);
   expect(frame?.height).toBeGreaterThan(400);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await dialog
+    .getByLabel("团队用途", { exact: true })
+    .fill("检查发布内容，保留现有数据。\n".repeat(12));
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await expect
+      .poll(() =>
+        dialog.evaluate((node) => node.scrollWidth <= node.clientWidth),
+      )
+      .toBe(true);
+    await expect(
+      dialog.getByRole("button", { name: "创建", exact: true }),
+    ).toBeInViewport();
+    await expect(
+      dialog.getByRole("checkbox", { name: "Domos", exact: true }),
+    ).toBeInViewport();
+    await page.screenshot({
+      path: info.outputPath(`team-dialog-${theme}-narrow.png`),
+    });
+  }
+  await dialog.getByLabel("团队用途", { exact: true }).fill("检查本次发布");
+  await page.setViewportSize({ width: 1360, height: 900 });
   await dialog.getByRole("button", { name: "创建", exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(
