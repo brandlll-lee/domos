@@ -268,8 +268,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--message-gap);
-  width: 100%;
-  margin-inline: auto;
 }
 .conversation-time {
   display: block;
@@ -756,7 +754,14 @@ body:has(.workspace[data-platform]) :is(.image-viewer, .image-viewer-backdrop) {
   }
 }
 .composer-area > .message-error {
-  margin: 0 0 var(--space-3);
+  margin-block: 0 var(--space-3);
+}
+.messages,
+.composer-area > form,
+.composer-area > .message-error {
+  width: 100%;
+  max-width: var(--chat-content-max-width);
+  margin-inline: auto;
 }
 @media (max-width: 44rem) {
   .chat-header {
@@ -765,9 +770,6 @@ body:has(.workspace[data-platform]) :is(.image-viewer, .image-viewer-backdrop) {
   .composer-area {
     padding-bottom: max(var(--space-3), env(safe-area-inset-bottom));
   }
-}
-.composer-area > form {
-  margin-inline: auto;
 }
 .approval-detail {
   margin: 0;

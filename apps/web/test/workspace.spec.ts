@@ -2098,6 +2098,130 @@ test("workspace empty states stay centered at every panel width", async ({
   }
 });
 
+test("chat content shares a centered width and fills narrow panes", async ({
+  page,
+}, info) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto(url);
+  await page
+    .locator("#bot-details")
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
+  const geometry = () =>
+    page.evaluate(() => {
+      const messages = document.querySelector<HTMLElement>(".messages");
+      const composer = document.querySelector<HTMLElement>(
+        ".composer-area > form",
+      );
+      const transcript = document.querySelector<HTMLElement>(".transcript");
+      if (!messages || !composer || !transcript)
+        throw new Error("Chat layout missing");
+      const box = transcript.getBoundingClientRect();
+      const gutter = Number.parseFloat(
+        getComputedStyle(transcript).paddingLeft,
+      );
+      const cap =
+        60 *
+        Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+      const width = Math.min(cap, box.width - gutter * 2);
+      return {
+        actual: messages.getBoundingClientRect().width,
+        composer: composer.getBoundingClientRect().width,
+        x: messages.getBoundingClientRect().x,
+        composerX: composer.getBoundingClientRect().x,
+        expected: width,
+        expectedX: box.x + (box.width - width) / 2,
+        scrollWidth: transcript.scrollWidth,
+        viewportWidth: transcript.clientWidth,
+      };
+    });
+  for (const width of [1600, 1920, 768, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect
+      .poll(async () => {
+        const bounds = await geometry();
+        return Math.abs(bounds.actual - bounds.expected);
+      })
+      .toBeLessThan(1);
+    const bounds = await geometry();
+    expect(bounds.composer).toBeCloseTo(bounds.actual, 0);
+    expect(bounds.composerX).toBeCloseTo(bounds.x, 0);
+    expect(bounds.x).toBeCloseTo(bounds.expectedX, 0);
+    expect(bounds.scrollWidth).toBeLessThanOrEqual(bounds.viewportWidth);
+  }
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  await expect
+    .poll(async () => {
+      const bounds = await geometry();
+      return Math.abs(bounds.actual - bounds.expected);
+    })
+    .toBeLessThan(1);
+  const scripted = once(worker, "message");
+  worker.send({
+    content:
+      "| 项目 | 说明 |\n| --- | --- |\n| 宽表格 | " +
+      "完整的长文本内容".repeat(40) +
+      " |",
+  });
+  await scripted;
+  await page
+    .getByRole("textbox", { name: "消息", exact: true })
+    .fill("检查长表格布局");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.locator(".message table")).toBeVisible();
+  await page.route("**/rpc/send", (route) => route.abort());
+  await page
+    .getByRole("textbox", { name: "消息", exact: true })
+    .fill("检查发送错误的对齐");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const issue = page.locator(".composer-area > .message-error");
+  await expect(issue).toBeVisible();
+  await page
+    .locator("#bot-details")
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
+  await expect
+    .poll(async () =>
+      Math.abs(
+        ((await issue.boundingBox())?.width ?? 0) - (await geometry()).expected,
+      ),
+    )
+    .toBeLessThan(1);
+  expect((await issue.boundingBox())?.x).toBeCloseTo((await geometry()).x, 0);
+  worker.send({
+    approval: {
+      id: "column-takeover",
+      title: "完成网页验证",
+      kind: "permission",
+      detail: "请完成网页验证后继续。",
+      takeover: {
+        id: "column-takeover",
+        service: "browser",
+        computerId: "fixture",
+        revision: 1,
+        state: "waiting",
+        url: "https://example.com",
+      },
+    },
+  });
+  await expect(page.locator(".takeover-card")).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 900 });
+  const narrow = await geometry();
+  expect(narrow.scrollWidth).toBeLessThanOrEqual(narrow.viewportWidth);
+  expect(
+    (await page.locator(".takeover-card").boundingBox())?.width,
+  ).toBeLessThanOrEqual(narrow.actual);
+  await page.setViewportSize({ width: 1600, height: 900 });
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.screenshot({
+      path: info.outputPath(`chat-column-${theme}.png`),
+    });
+  }
+});
+
 test("computer connection failures keep a direct retry", async ({ page }) => {
   await page.route("**/rpc/computer/services", (route) =>
     route.abort("failed"),
@@ -2277,12 +2401,27 @@ it("chat reflows within the frame budget and retains its position", async ({
   const input = page.getByRole("textbox", { name: "消息", exact: true });
   await input.fill("调整窗口时保留的草稿");
   for (const width of [1400, 1200, 1600]) {
-    const before = (await page.locator(".messages").boundingBox())?.width;
     await page.setViewportSize({ width, height: 900 });
     await expect
-      .poll(async () => (await page.locator(".messages").boundingBox())?.width)
-      .not.toBe(before);
-    await expect(input).toHaveValue("调整窗口时保留的草稿");
+      .poll(() =>
+        page.locator(".messages").evaluate((element) => {
+          const transcript = document.querySelector(".transcript");
+          if (!transcript) throw new Error("Transcript missing");
+          const available =
+            transcript.clientWidth -
+            2 * Number.parseFloat(getComputedStyle(transcript).paddingLeft);
+          const cap =
+            60 *
+            Number.parseFloat(
+              getComputedStyle(document.documentElement).fontSize,
+            );
+          return Math.abs(
+            element.getBoundingClientRect().width - Math.min(cap, available),
+          );
+        }),
+      )
+      .toBeLessThan(1);
+    await expect(input).toHaveText("调整窗口时保留的草稿");
     await expect
       .poll(() =>
         page
