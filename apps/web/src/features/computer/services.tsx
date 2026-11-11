@@ -1,49 +1,79 @@
 import { Button, Switch } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
+import { PanelGroup } from "@domos/ui/panel";
 import { SettingRow } from "@domos/ui/setting-row";
 import { useState } from "react";
 import { ComputerDecision } from "./decision.tsx";
-import { serviceLabels, useComputerServices } from "./use-services.ts";
+import { useComputerServices } from "./use-services.ts";
 
 export function ComputerServices({
   botId,
   admin,
+  configuring,
+  onConfigure,
 }: {
   botId: number;
   admin: boolean;
+  configuring: boolean;
+  onConfigure: () => void;
 }) {
   const { state, busy, error, configure, changeMode, reload } =
-    useComputerServices(botId);
+    useComputerServices(botId, !configuring);
   const [mode, setMode] = useState<"headless" | "headed">();
   return (
-    <section className="detail-stack" aria-label="浏览器和桌面">
-      <div className="detail-form-head">
-        <h3 className="panel-group-title">允许的操作</h3>
-      </div>
-      {state?.browser.enabled && (
-        <SettingRow
-          title="浏览器模式"
-          description={
-            state.browser.mode === "headed"
-              ? "有界面 · Agent 专用浏览器"
-              : state.browser.mode === "headless"
-                ? "无界面 · Agent 专用浏览器"
-                : "模式待确认"
-          }
-        >
-          <Button
-            variant="secondary"
-            size="small"
-            disabled={!admin || Boolean(busy) || !state.browser.mode}
-            onClick={() =>
-              setMode(state.browser.mode === "headed" ? "headless" : "headed")
-            }
+    <>
+      {!configuring && (
+        <PanelGroup title="电脑权限">
+          <SettingRow
+            title="浏览器"
+            description={state?.browser.enabled ? "已允许" : "未允许"}
           >
-            {state.browser.mode === "headed"
-              ? "切换为无界面"
-              : "尝试有界面模式"}
-          </Button>
-        </SettingRow>
+            <Switch
+              label="允许浏览器"
+              checked={state?.browser.enabled ?? false}
+              disabled={!admin || Boolean(busy) || !state}
+              onCheckedChange={(enabled) => void configure("browser", enabled)}
+            />
+          </SettingRow>
+          {state?.browser.enabled && (
+            <SettingRow
+              title="浏览器模式"
+              description={
+                state.browser.mode === "headed"
+                  ? "有界面 · Agent 专用浏览器"
+                  : state.browser.mode === "headless"
+                    ? "无界面 · Agent 专用浏览器"
+                    : "模式待确认"
+              }
+            >
+              <Button
+                variant="secondary"
+                size="small"
+                disabled={!admin || Boolean(busy) || !state.browser.mode}
+                onClick={() =>
+                  setMode(
+                    state.browser.mode === "headed" ? "headless" : "headed",
+                  )
+                }
+              >
+                {state.browser.mode === "headed"
+                  ? "切换为无界面"
+                  : "尝试有界面模式"}
+              </Button>
+            </SettingRow>
+          )}
+          <SettingRow
+            title="桌面"
+            description={state?.desktop.enabled ? "已允许" : "未允许"}
+          >
+            <Switch
+              label="允许桌面"
+              checked={state?.desktop.enabled ?? false}
+              disabled={!admin || Boolean(busy) || !state}
+              onCheckedChange={(enabled) => void configure("desktop", enabled)}
+            />
+          </SettingRow>
+        </PanelGroup>
       )}
       <Dialog
         open={Boolean(mode)}
@@ -78,33 +108,22 @@ export function ComputerServices({
       >
         {error && <p role="alert">{error}</p>}
       </Dialog>
-      <div className="panel-card">
-        {(["browser", "desktop"] as const).map((service) => (
-          <SettingRow
-            key={service}
-            title={serviceLabels[service]}
-            description={state?.[service].enabled ? "已允许" : "未允许"}
-          >
-            <Switch
-              label={`允许${serviceLabels[service]}`}
-              checked={state?.[service].enabled ?? false}
-              disabled={!admin || Boolean(busy) || !state}
-              onCheckedChange={(enabled) => void configure(service, enabled)}
-            />
-          </SettingRow>
-        ))}
-      </div>
-      <ComputerDecision botId={botId} admin={admin} />
-      {error && (
+      <ComputerDecision
+        botId={botId}
+        admin={admin}
+        configuring={configuring}
+        onConfigure={onConfigure}
+      />
+      {!configuring && error && (
         <p role="alert" className="alert">
           {error}
         </p>
       )}
-      {error && !state && (
+      {!configuring && error && !state && (
         <Button variant="secondary" size="small" onClick={reload}>
           重新连接
         </Button>
       )}
-    </section>
+    </>
   );
 }

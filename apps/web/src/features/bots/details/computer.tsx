@@ -1,5 +1,6 @@
 import { Button } from "@domos/ui/controls";
 import { Disclosure } from "@domos/ui/disclosure";
+import { PanelGroup } from "@domos/ui/panel";
 import { ChoicePicker } from "@domos/ui/picker";
 import { SettingRow } from "@domos/ui/setting-row";
 import { useRef, useState } from "react";
@@ -13,9 +14,13 @@ import { useSettings } from "../../settings/context.ts";
 export function ComputerSettings({
   computer,
   botId,
+  configuring,
+  onConfigure,
 }: {
   computer: ReturnType<typeof useComputer>;
   botId: number;
+  configuring: boolean;
+  onConfigure: () => void;
 }) {
   const { status, busy, error, setup, refresh, assign, choices, directory } =
     computer;
@@ -25,26 +30,30 @@ export function ComputerSettings({
   const request = useRef(crypto.randomUUID());
   return (
     <section
-      className="detail-page"
-      aria-label="工作目录与权限"
+      className="panel-page"
+      aria-label={configuring ? "Jev 辅助操作" : "工作目录与权限"}
       aria-busy={busy || preparing}
     >
       {status?.authorized ? (
         <>
-          <div className="panel-card">
-            <SettingRow
-              title="工作目录"
-              description={directory ?? "个人目录 · 自动保存文件"}
-            >
-              {settings.admin && (
-                <ProjectDirectory botId={botId} onSaved={refresh} />
-              )}
-            </SettingRow>
-          </div>
+          {!configuring && (
+            <PanelGroup title="工作目录">
+              <SettingRow
+                title={directory ? "项目目录" : "个人目录"}
+                description={directory ?? "文件自动保存在此目录。"}
+              >
+                {settings.admin && (
+                  <ProjectDirectory botId={botId} onSaved={refresh} />
+                )}
+              </SettingRow>
+            </PanelGroup>
+          )}
           <ComputerServices
             key={status.id}
             botId={botId}
             admin={settings.admin}
+            configuring={configuring}
+            onConfigure={onConfigure}
           />
         </>
       ) : settings.admin ? (
@@ -62,11 +71,11 @@ export function ComputerSettings({
           {error || prepareError}
         </p>
       )}
-      {settings.admin && (
-        <Disclosure label="高级设置">
-          <div className="settings-group">
+      {settings.admin && !configuring && (
+        <PanelGroup title="执行环境">
+          <Disclosure label={status?.name ?? "选择环境"}>
             <SettingRow
-              title="执行环境"
+              title="运行位置"
               description="更换环境不会搬迁文件或登录状态。"
             >
               <ChoicePicker
@@ -83,7 +92,7 @@ export function ComputerSettings({
               />
             </SettingRow>
             {setup?.canIsolate && (
-              <div className="form-actions">
+              <SettingRow title="隔离容器" description="准备独立的工作环境。">
                 <Button
                   variant="secondary"
                   size="small"
@@ -116,9 +125,9 @@ export function ComputerSettings({
                 >
                   准备隔离容器
                 </Button>
-              </div>
+              </SettingRow>
             )}
-            <div className="form-actions">
+            <SettingRow title="电脑设置" description="管理此电脑的授权和环境。">
               <Button
                 variant="ghost"
                 size="small"
@@ -126,9 +135,9 @@ export function ComputerSettings({
               >
                 电脑设置
               </Button>
-            </div>
-          </div>
-        </Disclosure>
+            </SettingRow>
+          </Disclosure>
+        </PanelGroup>
       )}
     </section>
   );

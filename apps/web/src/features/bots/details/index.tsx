@@ -31,6 +31,7 @@ const titles: Record<Exclude<BotPanelView, "root">, string> = {
   engine: "模型与账号",
   advanced: "高级设置",
   computer: "工作目录与权限",
+  assistance: "Jev 辅助操作",
   skills: "技能",
   routines: "定时",
   prompt: "提示词",
@@ -118,8 +119,15 @@ export function BotDetails({
       />
     );
   else if (view === "engine") content = <ModelSetup botId={bot.id} />;
-  else if (view === "computer")
-    content = <ComputerSettings computer={computer} botId={bot.id} />;
+  else if (view === "computer" || view === "assistance")
+    content = (
+      <ComputerSettings
+        computer={computer}
+        botId={bot.id}
+        configuring={view === "assistance"}
+        onConfigure={() => navigate("assistance")}
+      />
+    );
   else if (view === "skills")
     content = work.data ? (
       <SkillsPanel
@@ -164,7 +172,10 @@ export function BotDetails({
         onBack={
           view === "root"
             ? onBack
-            : () => (editor ? setSelection(null) : navigate("root"))
+            : () =>
+                editor
+                  ? setSelection(null)
+                  : navigate(view === "assistance" ? "computer" : "root")
         }
         onClose={onClose}
       />

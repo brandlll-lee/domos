@@ -1689,6 +1689,153 @@ test("local container setup submits the selected browser network policy", async 
   await expect(dialog.getByRole("alert")).toBeVisible();
 });
 
+test("computer settings separate daily access from Jev credentials", async ({
+  page,
+}, info) => {
+  let assistant = {
+    computerId: "process",
+    revision: 0,
+    enabled: false,
+    provider: "typesafe",
+    configured: { typesafe: false, openrouter: false },
+    available: true,
+  };
+  let services = {
+    browser: { enabled: true, available: true, mode: "headless" },
+    desktop: { enabled: true, available: true },
+  };
+  let modeChanges = 0;
+  let serviceReads = 0;
+  let connectionFails = true;
+  await page.route("**/rpc/computer/assistant", (route) =>
+    route.fulfill({ json: { json: assistant } }),
+  );
+  await page.route("**/rpc/computer/assistantConfigure", (route) => {
+    const input = route.request().postDataJSON().json;
+    assistant = { ...assistant, ...input, revision: assistant.revision + 1 };
+    return route.fulfill({ json: { json: assistant } });
+  });
+  await page.route("**/rpc/computer/assistantKey", (route) => {
+    const input = route.request().postDataJSON().json;
+    assistant.configured[input.provider as "typesafe" | "openrouter"] = Boolean(
+      input.key,
+    );
+    return route.fulfill({ json: { json: assistant } });
+  });
+  await page.route("**/rpc/computer/assistantTest", (route) =>
+    connectionFails
+      ? route.abort()
+      : route.fulfill({ json: { json: { milliseconds: 42 } } }),
+  );
+  await page.route("**/rpc/computer/services", (route) => {
+    serviceReads++;
+    return route.fulfill({ json: { json: services } });
+  });
+  await page.route("**/rpc/computer/browserMode", (route) => {
+    expect(route.request().postDataJSON().json).toMatchObject({
+      mode: "headed",
+      confirmRestart: true,
+    });
+    modeChanges++;
+    services = {
+      ...services,
+      browser: { ...services.browser, mode: "headed" },
+    };
+    return route.fulfill({ json: { json: services } });
+  });
+  await page.goto(url);
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  const details = page.locator("#bot-details");
+  await details
+    .getByRole("button", { name: "工作目录与权限", exact: true })
+    .click();
+  for (const name of ["工作目录", "电脑权限", "辅助操作", "执行环境"])
+    await expect(
+      details.getByRole("region", { name, exact: true }),
+    ).toBeVisible();
+  await expect(details.getByRole("textbox")).toHaveCount(0);
+  await expect(
+    details.getByRole("combobox", { name: "执行环境" }),
+  ).toBeHidden();
+  const browser = details.getByRole("group", { name: "浏览器", exact: true });
+  const mode = details.getByRole("group", { name: "浏览器模式", exact: true });
+  expect((await browser.boundingBox())?.y).toBeLessThan(
+    (await mode.boundingBox())?.y ?? 0,
+  );
+  await mode.getByRole("button", { name: "尝试有界面模式" }).click();
+  const confirm = page.getByRole("dialog", { name: "重启并切换浏览器？" });
+  await confirm.getByRole("button", { name: "取消", exact: true }).click();
+  expect(modeChanges).toBe(0);
+  await mode.getByRole("button", { name: "尝试有界面模式" }).click();
+  await confirm.getByRole("button", { name: "确认重启", exact: true }).click();
+  await expect(mode).toContainText("有界面");
+  expect(modeChanges).toBe(1);
+  const enabled = details.getByRole("switch", { name: "启用辅助决策" });
+  await expect(enabled).toBeDisabled();
+  await details.getByRole("button", { name: "配置", exact: true }).click();
+  await expect(details.locator(".panel-header h2")).toHaveText("Jev 辅助操作");
+  expect(serviceReads).toBe(1);
+  await expect(details.getByRole("button", { name: "更改目录" })).toHaveCount(
+    0,
+  );
+  const source = details.getByRole("radio", {
+    name: "OpenRouter",
+    exact: true,
+  });
+  await source.click();
+  await expect(source).toBeChecked();
+  const key = details.getByLabel("OpenRouter API 密钥", { exact: true });
+  await key.fill("ui-test-key");
+  await details.getByRole("button", { name: "保存密钥", exact: true }).click();
+  await expect(key).toHaveValue("");
+  await expect(details.getByRole("status")).toContainText("已配置");
+  await details.getByRole("button", { name: "测试连接", exact: true }).click();
+  await expect(details.getByRole("alert")).toBeVisible();
+  connectionFails = false;
+  await details.getByRole("button", { name: "测试连接", exact: true }).click();
+  await expect(details.getByRole("status").last()).toContainText("已连接");
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect
+      .poll(() =>
+        details.evaluate((node) => node.scrollWidth <= node.clientWidth),
+      )
+      .toBe(true);
+    await details.screenshot({
+      path: info.outputPath(`jev-${colorScheme}.png`),
+    });
+  }
+  await details.getByRole("button", { name: "返回", exact: true }).click();
+  await expect(details.locator(".panel-header h2")).toHaveText(
+    "工作目录与权限",
+  );
+  await expect(enabled).toBeEnabled();
+  await enabled.click();
+  await expect(enabled).toBeChecked();
+  await expect(details.getByRole("region", { name: "辅助操作" })).toContainText(
+    "已启用",
+  );
+  await details.getByRole("button", { name: "配置", exact: true }).click();
+  await details.getByRole("button", { name: "移除密钥", exact: true }).click();
+  await expect(details.getByRole("status")).toContainText("未配置");
+  await expect(
+    details.getByRole("button", { name: "测试连接", exact: true }),
+  ).toBeDisabled();
+  await details.getByRole("button", { name: "返回", exact: true }).click();
+  await expect(enabled).toBeEnabled();
+  await enabled.click();
+  await expect(enabled).not.toBeChecked();
+  await expect(enabled).toBeDisabled();
+  await details
+    .getByRole("region", { name: "执行环境", exact: true })
+    .locator("summary")
+    .click();
+  await expect(
+    details.getByRole("combobox", { name: "执行环境" }),
+  ).toBeVisible();
+});
+
 test("settings rows keep content insets across Bot, computer and settings views", async ({
   page,
 }, info) => {
@@ -1702,10 +1849,12 @@ test("settings rows keep content insets across Bot, computer and settings views"
   await details
     .getByRole("button", { name: "工作目录与权限", exact: true })
     .click();
-  const directoryRow = details.getByRole("group", {
-    name: "工作目录",
-    exact: true,
-  });
+  const directoryRow = details
+    .getByRole("region", {
+      name: "工作目录",
+      exact: true,
+    })
+    .getByRole("group");
   await expect(directoryRow).toBeVisible();
   await expect(directoryRow).toHaveCSS("padding-left", "12px");
   await expect(directoryRow).toHaveCSS("padding-right", "12px");
@@ -1767,13 +1916,22 @@ test("settings rows keep content insets across Bot, computer and settings views"
         await settings.getByRole("tab", { name, exact: true }).click();
         const rows = settings.locator(".setting-row:visible");
         await expect(rows.first()).toBeVisible();
-        for (const row of await rows.all()) {
-          await expect(row).toHaveCSS("padding-left", "12px");
-          await expect(row).toHaveCSS("padding-right", "12px");
-          expect(
-            await row.evaluate((node) => node.scrollWidth <= node.clientWidth),
-          ).toBe(true);
-        }
+        await expect
+          .poll(() =>
+            rows.evaluateAll(
+              (nodes) =>
+                nodes.length > 0 &&
+                nodes.every((node) => {
+                  const style = getComputedStyle(node);
+                  return (
+                    style.paddingLeft === "12px" &&
+                    style.paddingRight === "12px" &&
+                    node.scrollWidth <= node.clientWidth
+                  );
+                }),
+            ),
+          )
+          .toBe(true);
         await settings.screenshot({
           path: info.outputPath(`${name}-${colorScheme}-${width}.png`),
         });
@@ -3265,7 +3423,10 @@ test("empty chats retain their creation time and compact controls across layouts
   await expect(
     details.getByRole("button", { name: "更改目录", exact: true }),
   ).toBeVisible();
-  await details.locator("summary", { hasText: "高级设置" }).click();
+  await details
+    .getByRole("region", { name: "执行环境", exact: true })
+    .locator("summary")
+    .click();
   await expect(
     details.getByRole("combobox", { name: "执行环境", exact: true }),
   ).toBeVisible();
@@ -3515,7 +3676,10 @@ test("control geometry and interaction states stay consistent", async ({
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   await page.getByRole("tab", { name: "Computer", exact: true }).click();
   await page.getByRole("button", { name: "电脑设置", exact: true }).click();
-  await details.locator("summary", { hasText: "高级设置" }).click();
+  await details
+    .getByRole("region", { name: "执行环境", exact: true })
+    .locator("summary")
+    .click();
   const select = details.getByRole("combobox", {
     name: "执行环境",
     exact: true,

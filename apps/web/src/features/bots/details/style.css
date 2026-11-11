@@ -186,14 +186,6 @@
   line-height: var(--leading-body);
   text-align: center;
 }
-.detail-form-head {
-  display: grid;
-  gap: var(--space-1);
-}
-.detail-form-head h3 {
-  font-size: var(--text-label);
-  font-weight: var(--weight-semibold);
-}
 .item-list {
   display: grid;
   padding: 0;

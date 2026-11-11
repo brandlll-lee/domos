@@ -4,6 +4,7 @@ export type BotPanelView =
   | "engine"
   | "advanced"
   | "computer"
+  | "assistance"
   | "skills"
   | "routines"
   | "prompt"
