@@ -1,3 +1,4 @@
+import type { Bot } from "@domos/agent/bots";
 import { BotAvatar } from "@domos/ui/avatar";
 import { characterIdentity } from "@domos/ui/characters";
 import type { CSSProperties } from "react";
@@ -5,6 +6,37 @@ import { createContext } from "react";
 export const TeamMembers = createContext<
   { id: number; name: string; avatar: string }[]
 >([]);
+export function BotPicker({
+  bots,
+  query = "",
+  onSelect,
+}: {
+  bots: Bot[];
+  query?: string;
+  onSelect: (bot: Bot) => void;
+}) {
+  const matches = bots.filter((bot) =>
+    bot.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
+  );
+  return (
+    <div className="composer-picker-list">
+      {matches.length ? (
+        matches.map((bot) => (
+          <button
+            key={bot.id}
+            type="button"
+            className="composer-picker-row"
+            onClick={() => onSelect(bot)}
+          >
+            <BotReference bot={{ ...bot, botId: bot.id }} />
+          </button>
+        ))
+      ) : (
+        <p className="composer-picker-state">没有可选 Bot。</p>
+      )}
+    </div>
+  );
+}
 export function BotReference({
   bot,
 }: {

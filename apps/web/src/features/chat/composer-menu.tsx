@@ -1,3 +1,4 @@
+import type { Bot } from "@domos/agent/bots";
 import { type InputMaterials, MAX_MATERIALS } from "@domos/agent/materials";
 import type { ChatMessage } from "@domos/agent/messages";
 import { Button } from "@domos/ui/controls";
@@ -10,6 +11,7 @@ import { PaperclipIcon } from "@phosphor-icons/react/dist/csr/Paperclip";
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { QuotesIcon } from "@phosphor-icons/react/dist/csr/Quotes";
 import { TextAlignLeftIcon } from "@phosphor-icons/react/dist/csr/TextAlignLeft";
+import { UsersIcon } from "@phosphor-icons/react/dist/csr/Users";
 import { useEffect, useRef, useState } from "react";
 import {
   McpPicker,
@@ -18,6 +20,7 @@ import {
   TextPicker,
 } from "./material-picker.tsx";
 import "./composer-menu.css";
+import { BotPicker } from "./bot-reference.tsx";
 
 const titles = {
   menu: "添加内容",
@@ -26,6 +29,7 @@ const titles = {
   context: "上下文",
   text: "粘贴文本",
   messages: "引用消息",
+  bots: "选择 Bot",
 };
 
 export function ComposerMenu({
@@ -38,6 +42,8 @@ export function ComposerMenu({
   onMaterials,
   insertionPosition,
   onInsert,
+  members,
+  onBot,
 }: {
   botId: number;
   disabled: boolean;
@@ -48,6 +54,8 @@ export function ComposerMenu({
   onMaterials: (materials: InputMaterials) => void;
   insertionPosition: () => number;
   onInsert: () => void;
+  members: Bot[];
+  onBot: (bot: Bot) => void;
 }) {
   const popup = useRef<HTMLDivElement>(null);
   const returnTarget = useRef<string | null>(null);
@@ -227,6 +235,16 @@ export function ComposerMenu({
                       type="button"
                       role="menuitem"
                       className="composer-menu-item"
+                      data-panel-target="bots"
+                      onClick={() => setPanel("bots")}
+                    >
+                      <UsersIcon weight="light" />
+                      选择 Bot…
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="composer-menu-item"
                       disabled={materials.skills.length >= MAX_MATERIALS}
                       data-panel-target="skills"
                       onClick={() => setPanel("skills")}
@@ -282,6 +300,14 @@ export function ComposerMenu({
                   </>
                 )}
               </div>
+            ) : panel === "bots" ? (
+              <BotPicker
+                bots={members}
+                onSelect={(bot) => {
+                  setOpen(false);
+                  onBot(bot);
+                }}
+              />
             ) : panel === "skills" ? (
               <SkillPicker botId={botId} onSelect={skill} />
             ) : panel === "mcp" ? (

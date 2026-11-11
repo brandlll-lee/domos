@@ -94,6 +94,45 @@ const botInput = (name: string, modelId = "faux-1") => ({
   avatar: crypto.randomUUID(),
 });
 
+test("private Bot references reach the current Bot and preserve peer identity", async () => {
+  const { open, faux } = await setup();
+  const runtime = await open();
+  onTestFinished(() => runtime.harness.close(context));
+  const botId = runtime.conversation.id;
+  const peer = await runtime.client.bots.create(botInput("Reviewer"));
+  const reference = { id: crypto.randomUUID(), botId: peer.id, position: 0 };
+  faux.setResponses([
+    (input) => {
+      expect(JSON.stringify(input.messages.at(-1))).toContain(
+        `<bot>${JSON.stringify({ botId: peer.id, name: peer.name, avatar: peer.avatar })}</bot>`,
+      );
+      return fauxAssistantMessage("Reference received");
+    },
+  ]);
+  await runtime.client.send({
+    botId,
+    text: "",
+    bots: [reference],
+    requestId: crypto.randomUUID(),
+  });
+  await runtime.conversation.waitForIdle(context);
+  const sent = (await runtime.client.get({ botId })).messages.find(
+    (message) => message.role === "user",
+  );
+  expect(sent?.materials?.bots).toEqual([
+    { ...reference, name: peer.name, avatar: peer.avatar },
+  ]);
+  expect((await runtime.client.get({ botId: peer.id })).messages).toEqual([]);
+  await expect(
+    runtime.client.send({
+      botId,
+      text: "请检查",
+      bots: [{ ...reference, botId: Number.MAX_SAFE_INTEGER }],
+      requestId: crypto.randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+});
+
 test("file search returns published history, pages unique files and excludes staged uploads", async () => {
   const { open, faux } = await setup();
   const runtime = await open();

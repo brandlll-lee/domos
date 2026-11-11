@@ -1,3 +1,4 @@
+import type { Bot } from "@domos/agent/bots";
 import { type InputMaterials, MAX_MATERIALS } from "@domos/agent/materials";
 import type { McpConnections } from "@domos/agent/mcp";
 import { messageText } from "@domos/agent/messages";
@@ -71,6 +72,18 @@ export const materialsSchema = {
     .max(MAX_MATERIALS)
     .default([]),
 };
+
+export function botReferences(
+  selections: z.infer<typeof materialsSchema.bots>,
+  bots: Pick<Bot, "id" | "name" | "avatar">[],
+) {
+  return selections.map((selection) => {
+    const bot = bots.find((bot) => bot.id === selection.botId);
+    if (!bot)
+      throw new ORPCError("BAD_REQUEST", { message: "引用的 Bot 不可用。" });
+    return { ...selection, name: bot.name, avatar: bot.avatar };
+  });
+}
 
 export async function prepareMaterials(
   input: {

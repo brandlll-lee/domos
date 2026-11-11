@@ -81,6 +81,8 @@ function BotChat({
   const members = team
     ? bots.filter((member) => team.members.includes(member.id))
     : undefined;
+  const referenceBots =
+    members ?? bots.filter((member) => member.id !== bot.id);
   const settings = useSettings();
   const chat = useChat(
     bot.id,
@@ -411,7 +413,7 @@ function BotChat({
         {view === "usage" ? (
           <UsageSurface />
         ) : (
-          <TeamMembers value={members ?? []}>
+          <TeamMembers value={referenceBots}>
             <button
               className="skip-link"
               type="button"
@@ -491,7 +493,7 @@ function BotChat({
                   draft={draft}
                   messages={chat.view.messages}
                   key={chat.view.id}
-                  members={members}
+                  members={referenceBots}
                   botName={team?.name ?? bot.name}
                   conversationId={team ? bot.id : chat.view.id}
                   connected={chat.connected}

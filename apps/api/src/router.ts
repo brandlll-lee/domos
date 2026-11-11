@@ -21,7 +21,11 @@ import { botConversation, botTarget } from "./conversation.ts";
 import { watchDirectory } from "./directory.ts";
 import { engineRouter } from "./engines.ts";
 import { fileRouter } from "./files.ts";
-import { materialsSchema, prepareMaterials } from "./materials.ts";
+import {
+  botReferences,
+  materialsSchema,
+  prepareMaterials,
+} from "./materials.ts";
 import { mcpRouter } from "./mcp.ts";
 import { modelRouter, requireConfiguredModel } from "./models.ts";
 import { watchValues } from "./subscribe.ts";
@@ -159,7 +163,8 @@ export function createRouter(
           !input.attachments.length &&
           !input.skills.length &&
           !input.context.length &&
-          !input.mcp.length
+          !input.mcp.length &&
+          !input.bots.length
         )
           throw new ORPCError("BAD_REQUEST");
         const ownerId = await bots.owner(input.botId, BACKGROUND_CONTEXT);
@@ -181,7 +186,10 @@ export function createRouter(
           const submit = () =>
             files.exclusive(ownerId, async () => {
               const view =
-                input.skills.length || input.context.length || input.mcp.length
+                input.skills.length ||
+                input.context.length ||
+                input.mcp.length ||
+                input.bots.length
                   ? await (engines
                       ? engines.view(input.botId, BACKGROUND_CONTEXT)
                       : (async () => {
@@ -197,6 +205,11 @@ export function createRouter(
               const materials = view
                 ? await prepareMaterials(input, view, work, mcp)
                 : undefined;
+              if (materials && input.bots.length)
+                materials.bots = botReferences(
+                  input.bots,
+                  await bots.list(BACKGROUND_CONTEXT),
+                );
               for (const file of attachments)
                 await files.metadata(ownerId, file.id);
               const image = attachments.find((file) =>

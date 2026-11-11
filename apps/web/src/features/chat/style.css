@@ -1108,6 +1108,3 @@ button.takeover-preview:focus-visible {
   max-height: var(--dialog-max-height);
   overflow: auto;
 }
-.bot-mention-menu .button {
-  justify-content: flex-start;
-}

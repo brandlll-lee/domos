@@ -16,6 +16,91 @@ let url: string;
 let toolName: string;
 const it = test.extend({ trace: "off" });
 
+test("private chats insert peer Bot references through mentions and the shared menu", async ({
+  page,
+}, info) => {
+  await page.goto(url);
+  const response = await page.request.post(`${url}/rpc/bots/create`, {
+    data: { json: { name: "Reviewer", requestId: crypto.randomUUID() } },
+  });
+  expect(response.ok()).toBe(true);
+  const peer = (await response.json()).json;
+  const botId = (
+    await (await page.request.post(`${url}/rpc/bots/list`)).json()
+  ).json.find((bot: { name: string }) => bot.name === "Domos").id;
+  const input = page.getByRole("textbox", { name: "消息", exact: true });
+  await expect(
+    page.getByRole("button", { name: "Bot详情", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".chat-identity .team-avatar")).toHaveCount(0);
+  await input.pressSequentially("请让 @Rev");
+  const picker = page.getByRole("dialog", { name: "选择 Bot", exact: true });
+  await expect(
+    picker.getByRole("button", { name: "Reviewer", exact: true }),
+  ).toBeVisible();
+  await input.press("Enter");
+  await input.pressSequentially("检查发布");
+  await input.press("Home");
+  const add = page.getByRole("button", { name: "添加内容", exact: true });
+  await add.click();
+  await page.getByRole("menuitem", { name: "选择 Bot…", exact: true }).click();
+  await expect(
+    picker.getByRole("button", { name: "Reviewer", exact: true }),
+  ).toBeFocused();
+  await expect(
+    picker.getByRole("button", { name: "Domos", exact: true }),
+  ).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("menuitem", { name: "选择 Bot…", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await expect(input.locator('[data-inline-token^="bot:"]')).toHaveCount(2);
+  await expect(input).toBeFocused();
+  await input.pressSequentially("请问");
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.screenshot({
+      path: info.outputPath(`private-bot-references-${theme}.png`),
+    });
+  }
+  await page.reload();
+  await expect(input.locator('[data-inline-token^="bot:"]')).toHaveCount(2);
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const log = page.getByRole("log", { name: "聊天记录", exact: true });
+  await expect(log.locator(".message.user .bot-reference")).toHaveCount(2);
+  await expect(log.locator(".typing-row")).toHaveCount(0);
+  const view = (
+    await (
+      await page.request.post(`${url}/rpc/get`, {
+        data: { json: { botId } },
+      })
+    ).json()
+  ).json;
+  const sent = view.messages.find(
+    (message: { role: string }) => message.role === "user",
+  );
+  expect(
+    sent.materials.bots
+      .map((bot: { position: number }) => bot.position)
+      .sort((a: number, b: number) => a - b),
+  ).toEqual([0, 6]);
+  expect(
+    sent.materials.bots.every(
+      (bot: { botId: number }) => bot.botId === peer.id,
+    ),
+  ).toBe(true);
+  const peerView = (
+    await (
+      await page.request.post(`${url}/rpc/get`, {
+        data: { json: { botId: peer.id } },
+      })
+    ).json()
+  ).json;
+  expect(peerView.messages).toEqual([]);
+});
+
 test("teams preserve member authors and keep private chats separate", async ({
   page,
 }, info) => {
@@ -72,8 +157,12 @@ test("teams preserve member authors and keep private chats separate", async ({
     .getByRole("button", { name: "Reviewer", exact: true })
     .click();
   await input.press("End");
-  await input.pressSequentially("@Domos");
-  await input.press("Enter");
+  await page.getByRole("button", { name: "添加内容", exact: true }).click();
+  await page.getByRole("menuitem", { name: "选择 Bot…", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "选择 Bot", exact: true })
+    .getByRole("button", { name: "Domos", exact: true })
+    .click();
   await input.pressSequentially("@Rev");
   await input.press("Enter");
   await page

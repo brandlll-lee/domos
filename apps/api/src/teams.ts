@@ -15,7 +15,11 @@ import {
 import { ORPCError, os } from "@orpc/server";
 import { z } from "zod";
 import { botConversation } from "./conversation.ts";
-import { materialsSchema, prepareMaterials } from "./materials.ts";
+import {
+  botReferences,
+  materialsSchema,
+  prepareMaterials,
+} from "./materials.ts";
 
 export function teamRouter(
   bots: Bots,
@@ -109,14 +113,7 @@ export function teamRouter(
         const members = (await bots.list(context)).filter((bot) =>
           team.members.includes(bot.id),
         );
-        const references = input.bots.map((reference) => {
-          const member = members.find((bot) => bot.id === reference.botId);
-          if (!member)
-            throw new ORPCError("BAD_REQUEST", {
-              message: "引用的 Bot 不在团队中。",
-            });
-          return { ...reference, name: member.name, avatar: member.avatar };
-        });
+        const references = botReferences(input.bots, members);
         const recipients = references.length
           ? [
               ...new Set(

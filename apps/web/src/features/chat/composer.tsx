@@ -12,7 +12,7 @@ import { FileTextIcon } from "@phosphor-icons/react/dist/csr/FileText";
 import { StopIcon } from "@phosphor-icons/react/dist/csr/Stop";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { type ReactNode, type Ref, useRef, useState } from "react";
-import { BotReference } from "./bot-reference.tsx";
+import { BotPicker } from "./bot-reference.tsx";
 import { ComposerMenu } from "./composer-menu.tsx";
 import { chatCopy } from "./copy.ts";
 import { ErrorMessage } from "./error-message.tsx";
@@ -27,7 +27,7 @@ export function Composer({
   draft,
   messages,
   botName,
-  members,
+  members = [],
   conversationId,
   connected,
   busy,
@@ -123,6 +123,48 @@ export function Composer({
           stopping ||
           uploads.items.length > 0,
       };
+  function selectBot(bot: Bot) {
+    const start = mention?.start ?? composer.caret.current;
+    const end = mention?.end ?? start;
+    const current = draft.current.current;
+    const all = materialTokens(current.materials)
+      .filter((token) => token.position !== undefined)
+      .toSorted((a, b) => (a.position ?? 0) - (b.position ?? 0));
+    const shift = <T extends { position?: number }>(item: T) => ({
+      ...item,
+      ...(item.position !== undefined && item.position >= end
+        ? {
+            position: item.position - (end - start) + 1,
+          }
+        : {}),
+    });
+    const textOffset = (position: number) =>
+      position - all.filter((token) => (token.position ?? 0) < position).length;
+    draft.update({
+      text:
+        current.text.slice(0, textOffset(start)) +
+        current.text.slice(textOffset(end)),
+      materials: {
+        skills: current.materials.skills.map(shift),
+        context: current.materials.context.map(shift),
+        mcp: current.materials.mcp?.map(shift),
+        bots: [
+          ...(current.materials.bots ?? []).map(shift),
+          {
+            id: crypto.randomUUID(),
+            botId: bot.id,
+            name: bot.name,
+            avatar: bot.avatar,
+            position: start,
+          },
+        ],
+      },
+    });
+
+    composer.moveCaret(start + 1);
+    setMention(undefined);
+    requestAnimationFrame(() => editor.current?.focus());
+  }
   return (
     <footer ref={ref} className="composer-area">
       {status}
@@ -176,69 +218,11 @@ export function Composer({
                 }
               }}
             >
-              {members
-                ?.filter((bot) =>
-                  bot.name
-                    .toLocaleLowerCase()
-                    .includes(mention?.query.toLocaleLowerCase() ?? ""),
-                )
-                .map((bot) => (
-                  <Button
-                    key={bot.id}
-                    variant="ghost"
-                    onClick={() => {
-                      if (!mention) return;
-                      const current = draft.current.current;
-                      const all = materialTokens(current.materials)
-                        .filter((token) => token.position !== undefined)
-                        .toSorted(
-                          (a, b) => (a.position ?? 0) - (b.position ?? 0),
-                        );
-                      const shift = <T extends { position?: number }>(
-                        item: T,
-                      ) => ({
-                        ...item,
-                        ...(item.position !== undefined &&
-                        item.position >= mention.end
-                          ? {
-                              position:
-                                item.position -
-                                (mention.end - mention.start) +
-                                1,
-                            }
-                          : {}),
-                      });
-                      const textOffset = (position: number) =>
-                        position -
-                        all.filter((token) => (token.position ?? 0) < position)
-                          .length;
-                      draft.update({
-                        text:
-                          current.text.slice(0, textOffset(mention.start)) +
-                          current.text.slice(textOffset(mention.end)),
-                        materials: {
-                          skills: current.materials.skills.map(shift),
-                          context: current.materials.context.map(shift),
-                          mcp: current.materials.mcp?.map(shift),
-                          bots: [
-                            ...(current.materials.bots ?? []).map(shift),
-                            {
-                              id: crypto.randomUUID(),
-                              botId: bot.id,
-                              name: bot.name,
-                              avatar: bot.avatar,
-                              position: mention.start,
-                            },
-                          ],
-                        },
-                      });
-                      setMention(undefined);
-                      requestAnimationFrame(() => editor.current?.focus());
-                    }}
-                  >
-                    <BotReference bot={{ ...bot, botId: bot.id }} />
-                  </Button>
-                ))}
+              <BotPicker
+                bots={members}
+                query={mention?.query}
+                onSelect={selectBot}
+              />
             </Popover.Popup>
           </Popover.Positioner>
         </Popover.Portal>
@@ -307,6 +291,8 @@ export function Composer({
         leading={
           <ComposerMenu
             botId={conversationId}
+            members={members}
+            onBot={selectBot}
             disabled={!connected || composer.pending}
             filesDisabled={
               uploads.busy || composer.attachments.length >= MAX_ATTACHMENTS
