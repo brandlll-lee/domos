@@ -1,7 +1,9 @@
+import { createHash } from "node:crypto";
 import {
   link,
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   rm,
   symlink,
@@ -9,7 +11,11 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { Readable } from "node:stream";
+import {
+  BACKGROUND_CONTEXT,
+  withAbortSignal,
+} from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import {
   fauxAssistantMessage,
@@ -18,7 +24,9 @@ import {
 } from "@earendil-works/pi-ai/providers/faux";
 import { createRegistry } from "@earendil-works/pi-durable";
 import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node";
+import { strToU8, zipSync } from "fflate";
 import { expect, onTestFinished, test } from "vitest";
+import * as XLSX from "xlsx";
 import { MAX_FILE_BYTES } from "../src/attachments.ts";
 import { chatView } from "../src/chat-view.ts";
 import { Files } from "../src/files.ts";
@@ -98,10 +106,10 @@ test("file limits apply to uploaded, generated, and published files", async () =
   expect((await workspace.writeFile("large.txt", bytes, context)).ok).toBe(
     false,
   );
-  await expect(files.upload(1, "large.txt", bytes)).rejects.toThrow("10 MiB");
+  await expect(files.upload(1, "large.txt", bytes)).rejects.toThrow("100 MiB");
   await writeFile(join(workspace.cwd, "large.txt"), bytes);
   await expect(files.publish(1, "large.txt", context)).rejects.toThrow(
-    "10 MiB",
+    "100 MiB",
   );
   await expect(files.upload(1, "bad:stream", new Uint8Array())).rejects.toThrow(
     "文件名无效",
@@ -195,3 +203,99 @@ test("image reads resize to model limits, preserve originals, and retain decode 
     await runtime.harness.close(context);
   }
 });
+
+test("streamed files keep bytes, allow binary publication, enforce message totals, and clean cancelled uploads", async () => {
+  const { files, workspace } = await setup();
+  const chunk = Buffer.alloc(512 * 1024, 43);
+  async function* chunks(count: number) {
+    for (let i = 0; i < count; i++) yield chunk;
+  }
+  const file = await files.uploadStream(
+    1,
+    "large.bin",
+    chunks(MAX_FILE_BYTES / chunk.length),
+  );
+  expect(file.size).toBe(MAX_FILE_BYTES);
+  expect((await workspace.readTextFile(file.path, context)).ok).toBe(false);
+  const published = await files.publish(1, file.path, context);
+  const hash = createHash("sha256");
+  const { body } = await files.stream(1, published.id);
+  for await (const bytes of Readable.fromWeb(
+    body as import("node:stream/web").ReadableStream<Uint8Array>,
+  ))
+    hash.update(bytes);
+  const expected = createHash("sha256");
+  for (let i = 0; i < MAX_FILE_BYTES / chunk.length; i++)
+    expected.update(chunk);
+  expect(hash.digest("hex")).toBe(expected.digest("hex"));
+  await expect(files.verify(1, [file, file, file], context)).rejects.toThrow(
+    "250 MiB",
+  );
+  await files.verify(1, [file, file], context);
+  const controller = new AbortController();
+  async function* interrupted() {
+    yield chunk;
+    controller.abort();
+    yield chunk;
+  }
+  await expect(
+    files.uploadStream(
+      1,
+      "cancelled.bin",
+      interrupted(),
+      withAbortSignal(controller.signal, context),
+    ),
+  ).rejects.toThrow();
+  expect(await readdir(join(files.root, ".incoming"))).toEqual([]);
+  const shared = await files.share(1, 2, [file.id], "stream-share", context);
+  expect(shared[0]?.size).toBe(file.size);
+}, 30_000);
+
+test("spreadsheet preview selects sheets, retains formatted cached values, and rejects expanded ZIPs", async () => {
+  const { files } = await setup();
+  const book = XLSX.utils.book_new();
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ["名称", "比例", "日期", "公式缓存"],
+    ["中文", 0.25, 45292, 42],
+  ]);
+  sheet.B2!.z = "0%";
+  sheet.C2!.z = "yyyy-mm-dd";
+  sheet.D2!.f = "SUM(40,2)";
+  XLSX.utils.book_append_sheet(book, sheet, "汇总");
+  XLSX.utils.book_append_sheet(
+    book,
+    XLSX.utils.aoa_to_sheet([["第二张表"]]),
+    "明细",
+  );
+  const file = await files.upload(
+    1,
+    "数据.xlsx",
+    XLSX.write(book, { type: "buffer", bookType: "xlsx" }),
+  );
+  const path = join(files.directory(1, file.id), "content");
+  const result = await files.previews.read(file, path, undefined);
+  expect(result.kind).toBe("xlsx");
+  if (result.kind !== "xlsx") throw new Error("Expected spreadsheet");
+  expect(result.sheets).toEqual(["汇总", "明细"]);
+  expect(result.rows[1]).toEqual(["中文", "25%", "2024-01-01", "42"]);
+  const next = await files.previews.read(file, path, "明细");
+  expect(next.kind === "xlsx" && next.rows[0]).toEqual(["第二张表"]);
+  await expect(files.previews.read(file, path, "missing")).rejects.toThrow(
+    "工作表不存在",
+  );
+  const bomb = await files.upload(
+    1,
+    "expanded.xlsx",
+    zipSync({
+      "xl/worksheets/sheet1.xml": new Uint8Array(129 * 1024 * 1024),
+      "[Content_Types].xml": strToU8("<Types/>"),
+    }),
+  );
+  await expect(
+    files.previews.read(
+      { ...bomb, mimeType: file.mimeType },
+      join(files.directory(1, bomb.id), "content"),
+      undefined,
+    ),
+  ).rejects.toThrow("解压后超过预览预算");
+}, 30_000);

@@ -1,3 +1,6 @@
+import { createReadStream } from "node:fs";
+import { join } from "node:path";
+import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { MAX_FILE_BYTES } from "@domos/agent/attachments";
 import type { Bots } from "@domos/agent/bots";
@@ -6,12 +9,17 @@ import type { Files } from "@domos/agent/files";
 import type { McpConnections } from "@domos/agent/mcp";
 import type { Runtime } from "@domos/agent/runtime";
 import type { BotWork } from "@domos/agent/work";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import {
+  BACKGROUND_CONTEXT,
+  withAbortSignal,
+} from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai/models";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { z } from "zod";
+import { botConversation } from "./conversation.ts";
 import { createRouter } from "./router.ts";
 
 export function createApp(
@@ -64,6 +72,94 @@ export function createApp(
       return c.text("授权失败或已取消。请返回 Domos 重试。", 400);
     }
   });
+  app.put("/files/:botId/upload", async (c) => {
+    const input = z
+      .object({
+        botId: z.coerce.number().int().nonnegative(),
+        name: z.string().min(1).max(255),
+        requestId: z.uuid(),
+      })
+      .safeParse({
+        botId: c.req.param("botId"),
+        name: c.req.query("name"),
+        requestId: c.req.query("requestId"),
+      });
+    if (!input.success || !c.req.raw.body) return c.text("上传参数无效。", 400);
+    await botConversation(bots, input.data.botId);
+    if (Number(c.req.header("Content-Length")) > MAX_FILE_BYTES)
+      return c.text("文件大小超过 100 MiB。", 413);
+    const context = withAbortSignal(c.req.raw.signal, BACKGROUND_CONTEXT);
+    const owner = await bots.owner(input.data.botId, context);
+    try {
+      const upload = () =>
+        files.exclusive(owner, () =>
+          files.uploadStream(
+            owner,
+            input.data.name,
+            Readable.fromWeb(
+              c.req.raw
+                .body as import("node:stream/web").ReadableStream<Uint8Array>,
+            ),
+            context,
+            input.data.requestId,
+          ),
+        );
+      const file = await (computer
+        ? computer.transfer(owner, upload, context)
+        : upload());
+      if (context.abortSignal?.aborted) {
+        await files.discard(owner, file.id);
+        context.abortSignal?.throwIfAborted();
+      }
+      return c.json(file);
+    } catch (error) {
+      return c.text(
+        error instanceof Error ? error.message : "文件上传失败。",
+        400,
+      );
+    }
+  });
+  app.get("/files/:botId/:id/preview", async (c) => {
+    const botId = Number(c.req.param("botId"));
+    if (
+      !Number.isSafeInteger(botId) ||
+      !(await bots.conversation(botId, BACKGROUND_CONTEXT))
+    )
+      return c.notFound();
+    c.header("Cache-Control", "private, no-store");
+    try {
+      const owner = await bots.owner(botId, BACKGROUND_CONTEXT);
+      const file = await files.metadata(owner, c.req.param("id"));
+      const result = await files.previews.read(
+        file,
+        join(files.directory(owner, file.id), "content"),
+        c.req.query("sheet"),
+        c.req.raw.signal,
+      );
+      if (result.kind === "pdf") {
+        if (c.req.query("format") === "pdf")
+          return new Response(
+            Readable.toWeb(
+              createReadStream(result.path),
+            ) as ReadableStream<Uint8Array>,
+            {
+              headers: {
+                "Content-Type": "application/pdf",
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+              },
+            },
+          );
+        return c.json({ kind: "pdf", notice: result.notice });
+      }
+      return c.json(result);
+    } catch (error) {
+      return c.text(
+        error instanceof Error ? error.message : "无法生成预览。",
+        422,
+      );
+    }
+  });
   app.get("/files/:botId/:id", async (c) => {
     const botId = Number(c.req.param("botId"));
     if (
@@ -72,16 +168,58 @@ export function createApp(
     )
       return c.notFound();
     try {
-      const file = await files.download(botId, c.req.param("id"));
-      if (!file.type.startsWith("image/")) return c.notFound();
-      return new Response(file, {
-        headers: {
-          "Content-Type": file.type,
-          "Content-Disposition": "inline",
-          "X-Content-Type-Options": "nosniff",
-          "Cache-Control": "private, max-age=31536000, immutable",
-        },
-      });
+      const owner = await bots.owner(botId, BACKGROUND_CONTEXT);
+      const file = await files.metadata(owner, c.req.param("id"));
+      const download = c.req.query("download") === "1";
+      if (
+        !download &&
+        !/^(image\/(?!svg)|audio\/|video\/|application\/pdf$)/.test(
+          file.mimeType ?? "",
+        )
+      )
+        return c.notFound();
+      const headers: Record<string, string> = {
+        "Content-Type": file.mimeType ?? "application/octet-stream",
+        "Content-Disposition": download
+          ? `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`
+          : "inline",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "sandbox",
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "private, max-age=31536000, immutable",
+      };
+      let range: { start: number; end: number } | undefined;
+      const requested = c.req.header("Range");
+      if (requested) {
+        const match = /^bytes=(\d*)-(\d*)$/.exec(requested);
+        const start = match?.[1]
+          ? Number(match[1])
+          : Math.max(0, file.size - Number(match?.[2]));
+        const end =
+          match?.[1] && match[2]
+            ? Math.min(Number(match[2]), file.size - 1)
+            : file.size - 1;
+        if (
+          !match ||
+          (!match[1] && !match[2]) ||
+          !Number.isSafeInteger(start) ||
+          !Number.isSafeInteger(end) ||
+          start < 0 ||
+          start > end ||
+          start >= file.size
+        )
+          return new Response(null, {
+            status: 416,
+            headers: { ...headers, "Content-Range": `bytes */${file.size}` },
+          });
+        range = { start, end };
+        headers["Content-Range"] = `bytes ${start}-${end}/${file.size}`;
+      }
+      headers["Content-Length"] = String(
+        range ? range.end - range.start + 1 : file.size,
+      );
+      const { body } = await files.stream(owner, file.id, range);
+      return new Response(body, { status: range ? 206 : 200, headers });
     } catch {
       return c.notFound();
     }

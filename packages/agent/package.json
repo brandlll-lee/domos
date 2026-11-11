@@ -32,7 +32,8 @@
     "./materials": "./src/materials.ts",
     "./mcp": "./src/mcp/connections.ts",
     "./mcp/config": "./src/mcp/config.ts",
-    "./mcp/catalog": "./src/mcp/catalog.ts"
+    "./mcp/catalog": "./src/mcp/catalog.ts",
+    "./file-preview-worker": "./src/file-preview-worker.mjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.9.0",
@@ -56,6 +57,7 @@
     "remark-parse": "11.0.0",
     "undici": "8.10.2",
     "unified": "11.0.5",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "yaml": "2.9.0",
     "zod": "4.6.7"
   },

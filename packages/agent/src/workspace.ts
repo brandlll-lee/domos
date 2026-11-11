@@ -9,7 +9,7 @@ import {
   type Result,
 } from "@earendil-works/pi-durable/env";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
-import { MAX_FILE_BYTES } from "./attachments.ts";
+import { MAX_TEXT_FILE_BYTES } from "./attachments.ts";
 
 export type WorkEnvironment = ExecutionEnv & {
   path(input: string): Promise<string>;
@@ -44,8 +44,6 @@ export class Workspace extends NodeExecutionEnv {
           "permission_denied",
           "Linked paths are outside the workspace capability",
         );
-      if (info?.isFile() && info.size > MAX_FILE_BYTES)
-        throw new FileError("invalid", "File exceeds 10 MiB");
     }
     return path;
   }
@@ -78,7 +76,13 @@ export class Workspace extends NodeExecutionEnv {
   }
 
   override readTextFile(path: string, context: Context) {
-    return this.access(path, (value) => super.readTextFile(value, context));
+    return this.access<string>(path, async (value) => {
+      const info = await super.fileInfo(value, context);
+      if (!info.ok) return err(info.error);
+      if (info.value.size > MAX_TEXT_FILE_BYTES)
+        return err(new FileError("invalid", "Text exceeds 10 MiB"));
+      return super.readTextFile(value, context);
+    });
   }
 
   override openBinaryReader(
@@ -96,7 +100,7 @@ export class Workspace extends NodeExecutionEnv {
     content: string | Uint8Array,
     context: Context,
   ): Promise<Result<void, FileError>> {
-    if (Buffer.byteLength(content) > MAX_FILE_BYTES)
+    if (Buffer.byteLength(content) > MAX_TEXT_FILE_BYTES)
       return Promise.resolve(
         err(new FileError("invalid", "File exceeds 10 MiB")),
       );

@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 import { MAX_FILE_BYTES } from "@domos/agent/attachments";
 import type { Bots } from "@domos/agent/bots";
 import type { Computers } from "@domos/agent/computer/catalog";
@@ -63,15 +64,18 @@ export function fileRouter(bots: Bots, files: Files, computers?: Computers) {
         await botConversation(bots, input.botId);
         const owner = await bots.owner(input.botId, BACKGROUND_CONTEXT);
         try {
-          const bytes = new Uint8Array(await input.file.arrayBuffer());
           const upload = () =>
             files.exclusive(owner, async () => {
               signal?.throwIfAborted();
-              const file = await files.upload(
+              const file = await files.uploadStream(
                 owner,
                 input.file.name,
-                bytes,
-                BACKGROUND_CONTEXT,
+                Readable.fromWeb(
+                  input.file.stream() as import("node:stream/web").ReadableStream<Uint8Array>,
+                ),
+                signal
+                  ? withAbortSignal(signal, BACKGROUND_CONTEXT)
+                  : BACKGROUND_CONTEXT,
                 input.requestId,
               );
               if (signal?.aborted) {

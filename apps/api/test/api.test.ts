@@ -948,7 +948,7 @@ test("file routes reject invalid targets, oversized uploads, and empty submissio
     await expect(
       runtime.client.files.upload({
         botId,
-        file: new File([new Uint8Array(10 * 1024 * 1024 + 1)], "large.txt"),
+        file: new File([new Uint8Array(100 * 1024 * 1024 + 1)], "large.txt"),
       }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(
@@ -1746,4 +1746,55 @@ test("local HTML entry points use fresh resources after an update", async () => 
       expect(await response.text()).toContain(`/assets/${version}.js`);
     }
   }
+});
+
+test("raw uploads and range downloads preserve bytes and Bot ownership", async () => {
+  const { open } = await setup();
+  const runtime = await open();
+  onTestFinished(() => runtime.harness.close(context));
+  const botId = runtime.conversation.id;
+  const bytes = Buffer.from("0123456789");
+  const uploaded = await runtime.app.request(
+    `/files/${botId}/upload?name=test.bin&requestId=${crypto.randomUUID()}`,
+    { method: "PUT", body: bytes },
+  );
+  expect(uploaded.status).toBe(200);
+  const file = (await uploaded.json()) as { id: string };
+  const url = `/files/${botId}/${file.id}?download=1`;
+  for (const [range, body, contentRange] of [
+    ["bytes=2-5", "2345", "bytes 2-5/10"],
+    ["bytes=-3", "789", "bytes 7-9/10"],
+    ["bytes=7-", "789", "bytes 7-9/10"],
+  ]) {
+    const response = await runtime.app.request(url, {
+      headers: { Range: range! },
+    });
+    expect(response.status).toBe(206);
+    expect(response.headers.get("Content-Range")).toBe(contentRange);
+    expect(await response.text()).toBe(body);
+  }
+  expect(
+    (await runtime.app.request(url, { headers: { Range: "bytes=99-" } }))
+      .status,
+  ).toBe(416);
+  expect(
+    (await runtime.app.request(url, { headers: { Range: "bytes=0-1,3-4" } }))
+      .status,
+  ).toBe(416);
+  expect(
+    (await runtime.app.request(`/files/${botId + 1}/${file.id}?download=1`))
+      .status,
+  ).toBe(404);
+  expect(
+    (
+      await runtime.app.request(
+        `/files/${botId}/upload?name=test.bin&requestId=${crypto.randomUUID()}`,
+        {
+          method: "PUT",
+          headers: { "Content-Length": String(100 * 1024 * 1024 + 1) },
+          body: "x",
+        },
+      )
+    ).status,
+  ).toBe(413);
 });

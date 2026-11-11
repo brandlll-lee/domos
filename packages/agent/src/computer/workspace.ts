@@ -8,7 +8,7 @@ import {
   type Result,
 } from "@earendil-works/pi-durable/env";
 import { RemoteExecutionEnv } from "@earendil-works/pi-env";
-import { MAX_FILE_BYTES } from "../attachments.ts";
+import { MAX_TEXT_FILE_BYTES } from "../attachments.ts";
 import { sandboxHome } from "./docker.ts";
 
 export class SandboxWorkspace extends RemoteExecutionEnv {
@@ -48,8 +48,6 @@ export class SandboxWorkspace extends RemoteExecutionEnv {
           "permission_denied",
           "Linked paths cannot be published or edited",
         );
-      if (info.value.kind === "file" && info.value.size > MAX_FILE_BYTES)
-        throw new FileError("invalid", "File exceeds 10 MiB");
     }
     return path;
   }
@@ -81,9 +79,13 @@ export class SandboxWorkspace extends RemoteExecutionEnv {
   }
 
   override readTextFile(path: string, context: Context) {
-    return this.access(path, context, (value) =>
-      super.readTextFile(value, context),
-    );
+    return this.access<string>(path, context, async (value) => {
+      const info = await super.fileInfo(value, context);
+      if (!info.ok) return err(info.error);
+      if (info.value.size > MAX_TEXT_FILE_BYTES)
+        return err(new FileError("invalid", "Text exceeds 10 MiB"));
+      return super.readTextFile(value, context);
+    });
   }
 
   override openBinaryReader(
@@ -101,7 +103,7 @@ export class SandboxWorkspace extends RemoteExecutionEnv {
     content: string | Uint8Array,
     context: Context,
   ): Promise<Result<void, FileError>> {
-    if (Buffer.byteLength(content) > MAX_FILE_BYTES)
+    if (Buffer.byteLength(content) > MAX_TEXT_FILE_BYTES)
       return Promise.resolve(
         err(new FileError("invalid", "File exceeds 10 MiB")),
       );

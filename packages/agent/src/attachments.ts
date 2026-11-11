@@ -1,4 +1,7 @@
-export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+export const MAX_FILE_BYTES = 100 * 1024 * 1024;
+export const MAX_MESSAGE_FILE_BYTES = 250 * 1024 * 1024;
+export const MAX_TEXT_FILE_BYTES = 10 * 1024 * 1024;
+export const FILE_CHUNK_BYTES = 512 * 1024;
 export const MAX_ATTACHMENTS = 10;
 export type EvidenceSource = {
   tool: string;
@@ -26,6 +29,10 @@ export type FilePreviewKind =
   | "text"
   | "csv"
   | "html"
+  | "xlsx"
+  | "office"
+  | "audio"
+  | "video"
   | "download";
 
 const textTypes: Record<string, string> = {
@@ -78,6 +85,21 @@ export function filePreviewKind(
   const mime = file.mimeType?.split(";")[0];
   if (mime?.startsWith("image/") && mime !== "image/svg+xml") return "image";
   if (mime === "application/pdf") return "pdf";
+  if (mime?.startsWith("audio/")) return "audio";
+  if (mime?.startsWith("video/")) return "video";
+  if (
+    mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  )
+    return "xlsx";
+  if (
+    [
+      "application/msword",
+      "application/vnd.ms-powerpoint",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ].includes(mime ?? "")
+  )
+    return "office";
   if (mime === "text/html") return "html";
   if (mime === "text/markdown") return "markdown";
   if (mime === "text/csv") return "csv";
