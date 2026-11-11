@@ -1,6 +1,6 @@
 import { fork } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -217,10 +217,32 @@ test("native setup starts and resumes with Docker unavailable", async ({
         mimeType: "text/plain",
         buffer: Buffer.from("Desktop upload"),
       },
+      {
+        name: "data.xlsx",
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        buffer: await readFile(
+          new URL(
+            "../../../packages/agent/test/fixtures/office/data.xlsx",
+            import.meta.url,
+          ),
+        ),
+      },
+      {
+        name: "report.docx",
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        buffer: await readFile(
+          new URL(
+            "../../../packages/agent/test/fixtures/office/report.docx",
+            import.meta.url,
+          ),
+        ),
+      },
     ]);
     await expect(
       resumed.locator(".composer-attachments .attachment"),
-    ).toHaveCount(2);
+    ).toHaveCount(4);
     await expect(resumed.locator(".attachment-image img")).toBeVisible();
     await expect
       .poll(() =>
@@ -234,6 +256,33 @@ test("native setup starts and resumes with Docker unavailable", async ({
         .locator(".composer-attachments")
         .getByRole("button", { name: "重试", exact: true }),
     ).toHaveCount(0);
+    const previews = await resumed.evaluate(async () => {
+      const draftKey = Object.keys(localStorage).find((key) =>
+        key.startsWith("domos:composer:v2:"),
+      );
+      const files = JSON.parse(localStorage.getItem(draftKey ?? "") ?? "{}")
+        .attachments as { id: string; name: string }[];
+      const bots = await fetch("/rpc/bots/list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ json: {} }),
+      });
+      const botId = (await bots.json()).json[0].id as number;
+      const results = [];
+      for (const name of ["data.xlsx", "report.docx"]) {
+        const file = files.find((file) => file.name === name);
+        if (!file) throw new Error("Native attachment missing");
+        const response = await fetch(`/files/${botId}/${file.id}/preview`);
+        if (!response.ok) throw new Error(await response.text());
+        results.push(await response.json());
+      }
+      return results;
+    });
+    expect(previews[0]).toMatchObject({
+      kind: "xlsx",
+      sheets: ["汇总", "明细"],
+    });
+    expect(previews[1]).toMatchObject({ kind: "pdf" });
     await captureWindow(
       desktop,
       resumed,

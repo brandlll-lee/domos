@@ -3,8 +3,17 @@ import { Loading } from "@domos/ui/loading";
 import { useEffect, useRef, useState } from "react";
 import "pdfjs-dist/web/pdf_viewer.css";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { fileSummary } from "./file-state.ts";
 
-export default function PdfPreview({ blob }: { blob: Blob }) {
+export default function PdfPreview({
+  source,
+  botId,
+  fileId,
+}: {
+  source: string;
+  botId?: number;
+  fileId?: string;
+}) {
   const container = useRef<HTMLDivElement>(null);
   const viewer = useRef<
     import("pdfjs-dist/web/pdf_viewer.mjs").PDFViewer | null
@@ -29,7 +38,9 @@ export default function PdfPreview({ blob }: { blob: Blob }) {
       });
       viewer.current = instance;
       const task = pdfjs.getDocument({
-        data: new Uint8Array(await blob.arrayBuffer()),
+        url: source,
+        disableAutoFetch: true,
+        disableStream: true,
         cMapUrl: "/pdf/cmaps/",
         cMapPacked: true,
         standardFontDataUrl: "/pdf/standard_fonts/",
@@ -51,8 +62,43 @@ export default function PdfPreview({ blob }: { blob: Blob }) {
       bus.on("pagechanging", (event: { pageNumber: number }) => {
         if (active) setState((state) => ({ ...state, page: event.pageNumber }));
       });
+      bus.on(
+        "pagerendered",
+        (event: {
+          pageNumber: number;
+          source: { canvas?: HTMLCanvasElement };
+        }) => {
+          if (
+            !active ||
+            event.pageNumber !== 1 ||
+            botId === undefined ||
+            !fileId ||
+            !event.source.canvas
+          )
+            return;
+          const store = fileSummary(botId, fileId);
+          if (store.snapshot().data?.thumbnail) return;
+          const original = event.source.canvas;
+          const thumbnail = window.document.createElement("canvas");
+          thumbnail.width = 320;
+          thumbnail.height = Math.round(
+            (original.height * thumbnail.width) / original.width,
+          );
+          thumbnail
+            .getContext("2d")
+            ?.drawImage(original, 0, 0, thumbnail.width, thumbnail.height);
+          store.receive({
+            ...store.snapshot().data,
+            thumbnail: thumbnail.toDataURL("image/webp", 0.7),
+          });
+        },
+      );
       const document = await task.promise;
       if (!active) return;
+      if (botId !== undefined && fileId) {
+        const store = fileSummary(botId, fileId);
+        store.receive({ ...store.snapshot().data, pages: document.numPages });
+      }
       setState({ page: 1, total: document.numPages, error: "" });
       instance.setDocument(document);
     })().catch(() => {
@@ -67,7 +113,7 @@ export default function PdfPreview({ blob }: { blob: Blob }) {
       active = false;
       destroy();
     };
-  }, [blob]);
+  }, [source, botId, fileId]);
   return (
     <div className="file-pdf">
       {state.error ? (

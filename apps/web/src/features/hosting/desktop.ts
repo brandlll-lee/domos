@@ -24,6 +24,11 @@ declare global {
       menu(scope?: "environment"): Promise<Result>;
       prepare(): Promise<Result<{ image: string; proxyImage?: string }>>;
       state(): Promise<Result<DesktopState>>;
+      file(input: {
+        action: "open" | "reveal" | "save";
+        botId: number;
+        id: string;
+      }): Promise<Result<{ cancelled: boolean; localCopy?: boolean }>>;
       maintain(
         action: "backup" | "restore",
         password: string,

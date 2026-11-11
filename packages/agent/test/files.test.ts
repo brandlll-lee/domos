@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { once } from "node:events";
+import { existsSync, type ReadStream } from "node:fs";
 import {
   link,
   mkdir,
@@ -25,9 +27,9 @@ import {
 import { createRegistry } from "@earendil-works/pi-durable";
 import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node";
 import { strToU8, zipSync } from "fflate";
-import { expect, onTestFinished, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import * as XLSX from "xlsx";
-import { MAX_FILE_BYTES } from "../src/attachments.ts";
+import { FILE_CHUNK_BYTES, MAX_FILE_BYTES } from "../src/attachments.ts";
 import { chatView } from "../src/chat-view.ts";
 import { Files } from "../src/files.ts";
 import { openAgent } from "../src/open-agent.ts";
@@ -42,6 +44,7 @@ test("text attachments retain useful MIME types and binary data stays binary", a
     ["report.csv", 'name,value\n"one,two",001', "text/csv"],
     ["index.html", "<!doctype html><p>你好</p>", "text/html"],
     ["main.ts", "const value = 1;", "text/plain"],
+    ["长文.txt", "长内容".repeat(80_000), "text/plain"],
   ] as const) {
     const file = await files.upload(1, name, new TextEncoder().encode(text));
     expect(file.mimeType).toBe(mimeType);
@@ -232,6 +235,23 @@ test("streamed files keep bytes, allow binary publication, enforce message total
     "250 MiB",
   );
   await files.verify(1, [file, file], context);
+  const half = await files.uploadStream(
+    1,
+    "half.bin",
+    chunks(MAX_FILE_BYTES / chunk.length / 2),
+  );
+  await files.verify(1, [file, file, half], context);
+  async function* plusOne() {
+    yield* chunks(MAX_FILE_BYTES / chunk.length / 2);
+    yield new Uint8Array([1]);
+  }
+  const excess = await files.uploadStream(1, "excess.bin", plusOne());
+  await expect(files.verify(1, [file, file, excess], context)).rejects.toThrow(
+    "250 MiB",
+  );
+  await expect(files.verify(1, Array(11).fill(half), context)).rejects.toThrow(
+    "10",
+  );
   const controller = new AbortController();
   async function* interrupted() {
     yield chunk;
@@ -258,9 +278,9 @@ test("spreadsheet preview selects sheets, retains formatted cached values, and r
     ["名称", "比例", "日期", "公式缓存"],
     ["中文", 0.25, 45292, 42],
   ]);
-  sheet.B2!.z = "0%";
-  sheet.C2!.z = "yyyy-mm-dd";
-  sheet.D2!.f = "SUM(40,2)";
+  sheet.B2 = { ...sheet.B2, z: "0%" };
+  sheet.C2 = { ...sheet.C2, z: "yyyy-mm-dd" };
+  sheet.D2 = { ...sheet.D2, f: "SUM(40,2)" };
   XLSX.utils.book_append_sheet(book, sheet, "汇总");
   XLSX.utils.book_append_sheet(
     book,
@@ -273,11 +293,22 @@ test("spreadsheet preview selects sheets, retains formatted cached values, and r
     XLSX.write(book, { type: "buffer", bookType: "xlsx" }),
   );
   const path = join(files.directory(1, file.id), "content");
-  const result = await files.previews.read(file, path, undefined);
+  const controller = new AbortController();
+  const cancelled = files.previews.read(
+    file,
+    path,
+    undefined,
+    controller.signal,
+  );
+  const reading = files.previews.read(file, path, undefined);
+  controller.abort();
+  await expect(cancelled).rejects.toThrow();
+  const result = await reading;
   expect(result.kind).toBe("xlsx");
   if (result.kind !== "xlsx") throw new Error("Expected spreadsheet");
   expect(result.sheets).toEqual(["汇总", "明细"]);
   expect(result.rows[1]).toEqual(["中文", "25%", "2024-01-01", "42"]);
+  expect(await files.previews.read(file, path, undefined)).toEqual(result);
   const next = await files.previews.read(file, path, "明细");
   expect(next.kind === "xlsx" && next.rows[0]).toEqual(["第二张表"]);
   await expect(files.previews.read(file, path, "missing")).rejects.toThrow(
@@ -299,3 +330,55 @@ test("spreadsheet preview selects sheets, retains formatted cached values, and r
     ),
   ).rejects.toThrow("解压后超过预览预算");
 }, 30_000);
+
+test.runIf(
+  process.platform === "win32" &&
+    existsSync("C:/Program Files/LibreOffice/program/soffice.com"),
+)(
+  "Office snapshots convert into cached PDF previews and retain original bytes",
+  async () => {
+    const { files } = await setup();
+    for (const name of [
+      "report.docx",
+      "report.doc",
+      "slides.pptx",
+      "slides.ppt",
+    ]) {
+      const bytes = await readFile(
+        new URL(`./fixtures/office/${name}`, import.meta.url),
+      );
+      const file = await files.upload(1, name, bytes);
+      const source = join(files.directory(1, file.id), "content");
+      const result = await files.previews.read(file, source, undefined);
+      expect(result.kind).toBe("pdf");
+      if (result.kind !== "pdf") throw new Error("PDF preview missing");
+      expect((await readFile(result.path)).subarray(0, 5).toString()).toBe(
+        "%PDF-",
+      );
+      expect(await files.previews.read(file, source, undefined)).toEqual(
+        result,
+      );
+      expect(await readFile(source)).toEqual(bytes);
+    }
+  },
+  60_000,
+);
+
+test("file downloads pause disk reads while the client does not read", async () => {
+  const { files } = await setup();
+  const chunk = Buffer.alloc(FILE_CHUNK_BYTES);
+  async function* chunks() {
+    for (let index = 0; index < 32; index++) yield chunk;
+  }
+  const file = await files.uploadStream(1, "data.bin", chunks());
+  const adapter = vi.spyOn(Readable, "toWeb");
+  const { body } = await files.stream(1, file.id);
+  const source = adapter.mock.calls[0]?.[0] as ReadStream;
+  adapter.mockRestore();
+  try {
+    await once(source, "pause");
+    expect(source.bytesRead).toBeLessThanOrEqual(FILE_CHUNK_BYTES * 3);
+  } finally {
+    await body.cancel();
+  }
+});

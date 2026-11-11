@@ -36,6 +36,8 @@ import { FilePreviews } from "./file-previews.ts";
 import { WorkError } from "./work/state.ts";
 import { type WorkEnvironment, Workspace } from "./workspace.ts";
 
+export type { OfficePreview, SpreadsheetPreview } from "./file-previews.ts";
+
 export type ConversationFile = {
   file: Attachment;
   messageId: string;
@@ -231,7 +233,7 @@ export class Files {
       }
       const mimeType =
         (await fileTypeFromFile(staged.path).catch(() => undefined))?.mime ??
-        textFileType(path, bytes) ??
+        textFileType(path, bytes, bytes.length === staged.size) ??
         "application/octet-stream";
       const file: Attachment = {
         id,
@@ -430,7 +432,7 @@ export class Files {
       }
       file.mimeType =
         (await fileTypeFromFile(path).catch(() => undefined))?.mime ??
-        textFileType(file.name, bytes) ??
+        textFileType(file.name, bytes, bytes.length === file.size) ??
         "application/octet-stream";
       await writeFile(
         join(this.directory(botId, id), "metadata.json"),

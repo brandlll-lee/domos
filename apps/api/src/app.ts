@@ -1,4 +1,5 @@
 import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
@@ -129,7 +130,10 @@ export function createApp(
     c.header("Cache-Control", "private, no-store");
     try {
       const owner = await bots.owner(botId, BACKGROUND_CONTEXT);
-      const file = await files.metadata(owner, c.req.param("id"));
+      const file = await files
+        .metadata(owner, c.req.param("id"))
+        .catch(() => null);
+      if (!file) return c.notFound();
       const result = await files.previews.read(
         file,
         join(files.directory(owner, file.id), "content"),
@@ -138,17 +142,15 @@ export function createApp(
       );
       if (result.kind === "pdf") {
         if (c.req.query("format") === "pdf")
-          return new Response(
-            Readable.toWeb(
-              createReadStream(result.path),
-            ) as ReadableStream<Uint8Array>,
+          return streamResponse(
+            result.path,
+            (await stat(result.path)).size,
             {
-              headers: {
-                "Content-Type": "application/pdf",
-                "Cache-Control": "private, no-store",
-                "X-Content-Type-Options": "nosniff",
-              },
+              "Content-Type": "application/pdf",
+              "Cache-Control": "private, no-store",
+              "X-Content-Type-Options": "nosniff",
             },
+            c.req.header("Range"),
           );
         return c.json({ kind: "pdf", notice: result.notice });
       }
@@ -188,38 +190,12 @@ export function createApp(
         "Accept-Ranges": "bytes",
         "Cache-Control": "private, max-age=31536000, immutable",
       };
-      let range: { start: number; end: number } | undefined;
-      const requested = c.req.header("Range");
-      if (requested) {
-        const match = /^bytes=(\d*)-(\d*)$/.exec(requested);
-        const start = match?.[1]
-          ? Number(match[1])
-          : Math.max(0, file.size - Number(match?.[2]));
-        const end =
-          match?.[1] && match[2]
-            ? Math.min(Number(match[2]), file.size - 1)
-            : file.size - 1;
-        if (
-          !match ||
-          (!match[1] && !match[2]) ||
-          !Number.isSafeInteger(start) ||
-          !Number.isSafeInteger(end) ||
-          start < 0 ||
-          start > end ||
-          start >= file.size
-        )
-          return new Response(null, {
-            status: 416,
-            headers: { ...headers, "Content-Range": `bytes */${file.size}` },
-          });
-        range = { start, end };
-        headers["Content-Range"] = `bytes ${start}-${end}/${file.size}`;
-      }
-      headers["Content-Length"] = String(
-        range ? range.end - range.start + 1 : file.size,
+      return streamResponse(
+        join(files.directory(owner, file.id), "content"),
+        file.size,
+        headers,
+        c.req.header("Range"),
       );
-      const { body } = await files.stream(owner, file.id, range);
-      return new Response(body, { status: range ? 206 : 200, headers });
     } catch {
       return c.notFound();
     }
@@ -235,4 +211,44 @@ export function createApp(
   );
   app.onError(() => new Response("服务暂时不可用。", { status: 500 }));
   return app;
+}
+
+function streamResponse(
+  path: string,
+  size: number,
+  headers: Record<string, string>,
+  requested?: string,
+) {
+  headers["Accept-Ranges"] = "bytes";
+  let range: { start: number; end: number } | undefined;
+  if (requested) {
+    const match = /^bytes=(\d*)-(\d*)$/.exec(requested);
+    const start = match?.[1]
+      ? Number(match[1])
+      : Math.max(0, size - Number(match?.[2]));
+    const end =
+      match?.[1] && match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
+    if (
+      !match ||
+      (!match[1] && !match[2]) ||
+      !Number.isSafeInteger(start) ||
+      !Number.isSafeInteger(end) ||
+      start < 0 ||
+      start > end ||
+      start >= size
+    )
+      return new Response(null, {
+        status: 416,
+        headers: { ...headers, "Content-Range": `bytes */${size}` },
+      });
+    range = { start, end };
+    headers["Content-Range"] = `bytes ${start}-${end}/${size}`;
+  }
+  headers["Content-Length"] = String(
+    range ? range.end - range.start + 1 : size,
+  );
+  const body = Readable.toWeb(
+    createReadStream(path, range),
+  ) as ReadableStream<Uint8Array>;
+  return new Response(body, { status: range ? 206 : 200, headers });
 }

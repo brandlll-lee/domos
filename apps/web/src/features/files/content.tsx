@@ -9,24 +9,32 @@ import { useFile } from "./use-file.ts";
 
 const PdfPreview = lazy(() => import("./pdf.tsx"));
 const CsvPreview = lazy(() => import("./csv.tsx"));
+const XlsxPreview = lazy(() => import("./xlsx.tsx"));
+const OfficePreview = lazy(() => import("./office.tsx"));
+const MediaPreview = lazy(() => import("./media.tsx"));
 
 export function FileContent({
   file,
   blob,
   inline = false,
+  botId,
 }: {
   file: Attachment;
-  blob: Blob;
+  blob?: Blob;
   inline?: boolean;
+  botId?: number;
 }) {
   const preview = useFilePreview();
-  const kind = filePreviewKind({ ...file, mimeType: blob.type });
+  const kind = filePreviewKind({
+    ...file,
+    mimeType: blob?.type ?? file.mimeType,
+  });
   const [text, setText] = useState<string>();
   const [error, setError] = useState(false);
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     let active = true;
-    if (["text", "markdown", "html"].includes(kind)) {
+    if (blob && ["text", "markdown", "html"].includes(kind)) {
       void blob
         .arrayBuffer()
         .then((bytes) => {
@@ -44,12 +52,29 @@ export function FileContent({
     };
   }, [blob, kind]);
   if (error) return <p role="alert">无法读取文件内容。你仍可下载原文件。</p>;
+  if ((kind === "xlsx" || kind === "office") && botId === undefined)
+    return <p className="file-empty">此预览需要打开文件所属 Bot。</p>;
   if (kind === "download")
     return <p className="file-empty">此格式暂不支持预览，请下载后查看。</p>;
   return (
     <Suspense fallback={<Loading label="正在打开文件" />}>
-      {kind === "pdf" && <PdfPreview blob={blob} />}
-      {kind === "csv" && <CsvPreview blob={blob} />}
+      {kind === "pdf" && botId !== undefined && (
+        <PdfPreview
+          source={`/files/${botId}/${file.id}`}
+          botId={botId}
+          fileId={file.id}
+        />
+      )}
+      {kind === "csv" && blob && <CsvPreview blob={blob} />}
+      {kind === "xlsx" && botId !== undefined && (
+        <XlsxPreview botId={botId} file={file} />
+      )}
+      {kind === "office" && botId !== undefined && (
+        <OfficePreview botId={botId} file={file} />
+      )}
+      {(kind === "audio" || kind === "video") && botId !== undefined && (
+        <MediaPreview botId={botId} file={file} kind={kind} />
+      )}
       {["text", "markdown", "html"].includes(kind) && text === undefined && (
         <Loading label="正在读取内容" />
       )}
@@ -112,7 +137,13 @@ export function InlineFile({
   return (
     <div className="inline-file">
       {data.blob && (
-        <FileContent key={file.id} file={file} blob={data.blob} inline />
+        <FileContent
+          key={file.id}
+          file={file}
+          blob={data.blob}
+          inline
+          botId={botId}
+        />
       )}
       {data.error && (
         <p role="alert">

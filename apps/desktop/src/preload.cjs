@@ -7,4 +7,5 @@ contextBridge.exposeInMainWorld("domosDesktop", {
   state: () => ipcRenderer.invoke("desktop:state"),
   maintain: (action, password) =>
     ipcRenderer.invoke("desktop:maintain", { action, password }),
+  file: (input) => ipcRenderer.invoke("desktop:file", input),
 });

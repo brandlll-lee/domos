@@ -1,15 +1,18 @@
 import { execFile, fork, spawn } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   access,
+  copyFile,
   mkdir,
+  mkdtemp,
   readdir,
   readFile,
   rename,
   rm,
   stat,
+  writeFile,
 } from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import type { Attachment } from "./attachments.ts";
@@ -42,29 +45,44 @@ export class FilePreviews {
   }
 
   private async converter() {
-    const program =
+    const candidates =
       process.platform === "win32"
-        ? "C:/Program Files/LibreOffice/program/soffice.exe"
+        ? [
+            "soffice.com",
+            ...(process.env.ProgramFiles
+              ? [
+                  join(
+                    process.env.ProgramFiles,
+                    "LibreOffice/program/soffice.com",
+                  ),
+                ]
+              : []),
+          ]
         : process.platform === "darwin"
-          ? "/Applications/LibreOffice.app/Contents/MacOS/soffice"
-          : "libreoffice";
-    let version: string;
-    try {
-      version = (
-        await promisify(execFile)(program, ["--version"], {
-          windowsHide: true,
-          timeout: PREVIEW_TIMEOUT_MS,
-        })
-      ).stdout.trim();
-    } catch {
+          ? ["soffice", "/Applications/LibreOffice.app/Contents/MacOS/soffice"]
+          : ["libreoffice", "soffice"];
+    let program: string | undefined;
+    let version: string | undefined;
+    for (const candidate of candidates) {
+      try {
+        version = (
+          await promisify(execFile)(candidate, ["--version"], {
+            windowsHide: true,
+            timeout: PREVIEW_TIMEOUT_MS,
+          })
+        ).stdout.trim();
+        program = candidate;
+        break;
+      } catch {}
+    }
+    if (!program)
       throw new Error(
         "请在这台 Domos 服务电脑上安装 LibreOffice，再重试预览。原文件仍可下载和系统打开。",
       );
-    }
     const directories =
       process.platform === "win32"
         ? [
-            "C:/Windows/Fonts",
+            join(process.env.SystemRoot ?? "C:/Windows", "Fonts"),
             join(homedir(), "AppData/Local/Microsoft/Windows/Fonts"),
           ]
         : process.platform === "darwin"
@@ -79,10 +97,26 @@ export class FilePreviews {
               join(homedir(), ".local/share/fonts"),
             ];
     const fonts = await Promise.all(
-      directories.map(async (path) => [
-        path,
-        (await stat(path).catch(() => null))?.mtimeMs,
-      ]),
+      directories.map(async (path) => {
+        const entries = await readdir(path, {
+          recursive: true,
+          withFileTypes: true,
+        }).catch(() => []);
+        return Promise.all(
+          entries
+            .filter((entry) => entry.isFile())
+            .sort((a, b) =>
+              join(a.parentPath, a.name).localeCompare(
+                join(b.parentPath, b.name),
+              ),
+            )
+            .map(async (entry) => {
+              const file = join(entry.parentPath, entry.name);
+              const info = await stat(file).catch(() => null);
+              return [file, info?.mtimeMs, info?.size];
+            }),
+        );
+      }),
     );
     return { program, version: `${version}:${JSON.stringify(fonts)}` };
   }
@@ -98,6 +132,16 @@ export class FilePreviews {
     if (kind !== "xlsx" && kind !== "office")
       throw new Error("此文件不需要转换预览。");
     const converter = kind === "office" ? await this.converter() : undefined;
+    const implementation = createHash("sha256")
+      .update(
+        await readFile(
+          new URL(import.meta.resolve("@domos/agent/file-preview-worker")),
+        ),
+      )
+      .update(
+        await readFile(new URL("./package.json", import.meta.resolve("xlsx"))),
+      )
+      .digest("hex");
     const key = createHash("sha256")
       .update(
         JSON.stringify([
@@ -105,7 +149,7 @@ export class FilePreviews {
           kind,
           sheet,
           converter?.version,
-          "sheetjs-0.20.3-preview-1",
+          implementation,
         ]),
       )
       .digest("hex");
@@ -123,7 +167,9 @@ export class FilePreviews {
         )))
     )
       return result;
+    signal?.throwIfAborted();
     let pending = this.pending.get(key);
+    if (pending?.controller.signal.aborted) pending = undefined;
     if (!pending) {
       const controller = new AbortController();
       const promise = this.queue
@@ -131,8 +177,7 @@ export class FilePreviews {
         .then(async () => {
           controller.signal.throwIfAborted();
           await mkdir(directory, { recursive: true });
-          const temporary = join(directory, randomUUID());
-          await mkdir(temporary);
+          const temporary = await mkdtemp(join(tmpdir(), "domos-preview-"));
           try {
             const generated = await this.run(
               {
@@ -146,15 +191,11 @@ export class FilePreviews {
               controller.signal,
             );
             if (generated.kind === "pdf") {
-              await rename(generated.path, join(directory, "preview.pdf"));
+              await copyFile(generated.path, join(directory, "preview.pdf"));
               generated.path = join(directory, "preview.pdf");
             }
-            const { writeFile } = await import("node:fs/promises");
-            await writeFile(
-              join(temporary, "result.json"),
-              JSON.stringify(generated),
-            );
-            await rename(join(temporary, "result.json"), cached);
+            await writeFile(`${cached}.tmp`, JSON.stringify(generated));
+            await rename(`${cached}.tmp`, cached);
             await this.clean(directory);
             return generated;
           } finally {
@@ -164,7 +205,12 @@ export class FilePreviews {
       pending = { promise, controller, readers: 0 };
       this.pending.set(key, pending);
       this.queue = promise;
-      void promise.finally(() => this.pending.delete(key)).catch(() => {});
+      void promise
+        .finally(() => {
+          if (this.pending.get(key)?.promise === promise)
+            this.pending.delete(key);
+        })
+        .catch(() => {});
     }
     const current = pending;
     current.readers++;
@@ -197,7 +243,7 @@ export class FilePreviews {
         [],
         {
           execArgv: ["--max-old-space-size=256"],
-          env: { ...process.env },
+          env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
           stdio: ["ignore", "ignore", "ignore", "ipc"],
           detached: process.platform !== "win32",
         },
@@ -208,10 +254,17 @@ export class FilePreviews {
         error ??= new Error("预览已取消或超时。你仍可下载原文件。");
         if (!child.pid || child.exitCode !== null) return;
         if (process.platform === "win32")
-          spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
-            windowsHide: true,
-            stdio: "ignore",
-          }).on("error", () => child.kill());
+          spawn(
+            join(
+              process.env.SystemRoot ?? "C:/Windows",
+              "System32/taskkill.exe",
+            ),
+            ["/PID", String(child.pid), "/T", "/F"],
+            {
+              windowsHide: true,
+              stdio: "ignore",
+            },
+          ).on("error", () => child.kill());
         else {
           try {
             process.kill(-child.pid, "SIGKILL");
@@ -263,8 +316,7 @@ export class FilePreviews {
     );
     items.sort((a, b) => b.time - a.time);
     let bytes = 0;
-    for (let index = 0; index < items.length; index++) {
-      const item = items[index]!;
+    for (const [index, item] of items.entries()) {
       bytes += item.size;
       if (
         item.path !== retain &&

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createReadStream } from "node:fs";
-import { copyFile, mkdir, readFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Unzip, UnzipInflate } from "fflate";
@@ -79,7 +79,10 @@ async function preview(input) {
   }
   const profile = join(input.output, "profile");
   await mkdir(join(profile, "user"), { recursive: true });
-  await mkdir(join(profile, "user"), { recursive: true });
+  await writeFile(
+    join(profile, "user/registrymodifications.xcu"),
+    `<?xml version="1.0"?><oor:items xmlns:oor="http://openoffice.org/2001/registry"><item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop><prop oor:name="DisableMacrosExecution" oor:op="fuse"><value>true</value></prop><prop oor:name="BlockUntrustedRefererLinks" oor:op="fuse"><value>true</value></prop></item><item oor:path="/org.openoffice.Office.Writer/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>2</value></prop></item></oor:items>`,
+  );
   const source = join(input.output, `source.${input.extension}`);
   await copyFile(input.path, source);
   await new Promise((resolve, reject) => {
@@ -97,13 +100,12 @@ async function preview(input) {
         input.output,
         source,
       ],
-      { windowsHide: true, stdio: "ignore" },
+      { windowsHide: true, stdio: ["ignore", "ignore", "pipe"] },
     );
     let detail = "";
     child.stderr?.on("data", (bytes) => {
       detail = (detail + bytes.toString()).slice(-2000);
     });
-    child.stdout?.resume();
     child.once("error", reject);
     child.once("close", (code) =>
       code === 0

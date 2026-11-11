@@ -17,6 +17,7 @@ import { themes, windowOverlay } from "@domos/ui/tokens";
 import { app, type BrowserWindow, dialog, ipcMain, Menu, Tray } from "electron";
 import { z } from "zod";
 import { ConnectionSetup } from "./connection.ts";
+import { desktopFile } from "./files.ts";
 import { LocalHost } from "./host.ts";
 import { applicationIcon } from "./icons.ts";
 import { maintain } from "./maintenance.ts";
@@ -271,6 +272,15 @@ async function main() {
         await new Promise<void>((resolve) =>
           menu.popup({ window: current, callback: resolve }),
         );
+    },
+    false,
+  );
+  handle(
+    "desktop:file",
+    async (input) => {
+      const instance = instances.find((item) => item.id === selected);
+      if (!current || !instance) throw new Error("窗口不可用。");
+      return desktopFile(current, instance.url, input);
     },
     false,
   );

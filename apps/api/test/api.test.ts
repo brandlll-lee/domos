@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openAgent } from "@domos/agent";
@@ -1765,9 +1765,9 @@ test("raw uploads and range downloads preserve bytes and Bot ownership", async (
     ["bytes=2-5", "2345", "bytes 2-5/10"],
     ["bytes=-3", "789", "bytes 7-9/10"],
     ["bytes=7-", "789", "bytes 7-9/10"],
-  ]) {
+  ] as const) {
     const response = await runtime.app.request(url, {
-      headers: { Range: range! },
+      headers: { Range: range },
     });
     expect(response.status).toBe(206);
     expect(response.headers.get("Content-Range")).toBe(contentRange);
@@ -1797,4 +1797,45 @@ test("raw uploads and range downloads preserve bytes and Bot ownership", async (
       )
     ).status,
   ).toBe(413);
+});
+
+test("spreadsheet previews retain the file owner boundary", async () => {
+  const { open } = await setup();
+  const runtime = await open();
+  onTestFinished(() => runtime.harness.close(context));
+  const botId = runtime.conversation.id;
+  const file = await runtime.client.files.upload({
+    botId,
+    file: new File(
+      [
+        await readFile(
+          new URL(
+            "../../../packages/agent/test/fixtures/office/data.xlsx",
+            import.meta.url,
+          ),
+        ),
+      ],
+      "data.xlsx",
+    ),
+  });
+  const preview = await runtime.app.request(
+    `/files/${botId}/${file.id}/preview?sheet=${encodeURIComponent("明细")}`,
+  );
+  expect(preview.status).toBe(200);
+  expect(await preview.json()).toMatchObject({
+    kind: "xlsx",
+    sheet: "明细",
+    rows: [["第二张表"]],
+  });
+  const other = await runtime.client.bots.create(botInput("Other"));
+  expect(
+    (await runtime.app.request(`/files/${other.id}/${file.id}/preview`)).status,
+  ).toBe(404);
+  expect(
+    (
+      await runtime.app.request(
+        `/files/${botId}/${file.id}/preview?sheet=missing`,
+      )
+    ).status,
+  ).toBe(422);
 });

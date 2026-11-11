@@ -1,11 +1,23 @@
 import type { Attachment } from "@domos/agent/attachments";
+import { useEffect } from "react";
 import { useReadState } from "../read-state.ts";
 import { userError } from "../user-error.ts";
-import { fileState } from "./file-state.ts";
+import { fileState, previewState } from "./file-state.ts";
 
-export function useFile(botId: number, file: Attachment) {
+export function useDocumentPreview(
+  botId: number,
+  file: Attachment,
+  sheet?: string,
+) {
+  const store = previewState(botId, file.id, sheet);
+  useEffect(() => store.retain(), [store]);
+  const state = useReadState(store.read);
+  return { ...state, retry: () => void store.read.load(true).catch(() => {}) };
+}
+
+export function useFile(botId: number, file: Attachment, active = true) {
   const store = fileState(botId, file.id);
-  const state = useReadState(store);
+  const state = useReadState(store, active);
   return {
     blob: state.data,
     error: state.error

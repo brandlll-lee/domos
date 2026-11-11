@@ -8,6 +8,9 @@ export function FileAttachment({
   icon,
   type,
   onOpen,
+  footer,
+  thumbnail,
+  details,
 }: {
   name: string;
   size: number;
@@ -16,6 +19,9 @@ export function FileAttachment({
   icon?: ReactNode;
   type?: string;
   onOpen?: () => void;
+  footer?: ReactNode;
+  thumbnail?: string;
+  details?: string;
 }) {
   const [failed, setFailed] = useState(false);
   if (preview && !failed)
@@ -40,7 +46,17 @@ export function FileAttachment({
         : `${(size / (1024 * 1024)).toFixed(1)} MB`;
   const Caption = onOpen ? "button" : "div";
   return (
-    <div className="attachment">
+    <div className={footer ? "attachment file-card" : "attachment"}>
+      {thumbnail && (
+        <button
+          type="button"
+          className="file-card-thumbnail"
+          onClick={onOpen}
+          aria-label={`查看 ${name} 的预览`}
+        >
+          <img src={thumbnail} alt="文件首页预览" />
+        </button>
+      )}
       <div className="file-attachment">
         {icon ? (
           <span className="file-type-icon" data-type={type} aria-hidden="true">
@@ -62,10 +78,12 @@ export function FileAttachment({
           <span>
             {type && `${type} · `}
             {units}
+            {details && ` · ${details}`}
           </span>
         </Caption>
         {action}
       </div>
+      {footer && <div className="file-card-actions">{footer}</div>}
     </div>
   );
 }

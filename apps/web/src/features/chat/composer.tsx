@@ -71,18 +71,15 @@ export function Composer({
     if (typeof inputRef === "function") inputRef(node);
     else if (inputRef) inputRef.current = node;
   };
-  const uploads = useUploads(
-    conversationId,
-    draft.draft.attachments.length,
-    (file) =>
-      draft.update({
-        attachments: [
-          ...draft.current.current.attachments.filter(
-            (item) => item.id !== file.id,
-          ),
-          file,
-        ],
-      }),
+  const uploads = useUploads(conversationId, draft.draft.attachments, (file) =>
+    draft.update({
+      attachments: [
+        ...draft.current.current.attachments.filter(
+          (item) => item.id !== file.id,
+        ),
+        file,
+      ],
+    }),
   );
   const composer = useComposer(
     draft,

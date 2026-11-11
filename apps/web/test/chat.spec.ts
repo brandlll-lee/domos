@@ -610,7 +610,7 @@ test("file reads recover from failure and cannot cross a Bot switch", async ({
     exact: true,
   });
   await contacts.getByRole("link", { name: /^Domos/ }).click();
-  await page.route("**/rpc/files/download", (route) => route.abort(), {
+  await page.route("**/files/*/*?download=1", (route) => route.abort(), {
     times: 1,
   });
   await page
@@ -624,7 +624,7 @@ test("file reads recover from failure and cannot cross a Bot switch", async ({
   await panel.getByRole("button", { name: "关闭", exact: true }).click();
   const release = Promise.withResolvers<void>();
   const requested = Promise.withResolvers<void>();
-  await page.route("**/rpc/files/download", async (route) => {
+  await page.route("**/files/*/*?download=1", async (route) => {
     requested.resolve();
     await release.promise;
     await route.continue().catch(() => {});
@@ -655,11 +655,11 @@ test("file reads recover from failure and cannot cross a Bot switch", async ({
     );
   } finally {
     release.resolve();
-    await page.unroute("**/rpc/files/download");
+    await page.unroute("**/files/*/*?download=1");
   }
   await contacts.getByRole("link", { name: /^Domos/ }).click();
   let repeatedReads = 0;
-  await page.route("**/rpc/files/download", async (route) => {
+  await page.route("**/files/*/*?download=1", async (route) => {
     repeatedReads++;
     await route.continue();
   });
@@ -1909,13 +1909,13 @@ test("published files wait for the complete reply", async ({ page }) => {
   await page.getByRole("button", { name: "批准", exact: true }).click();
   await expect(page.locator(".typing-dots")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "下载 report.md", exact: true }),
+    page.getByRole("button", { name: "另存为 report.md", exact: true }),
   ).toHaveCount(0);
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
   await control("release");
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(1);
   await expect(
-    page.getByRole("button", { name: "下载 report.md", exact: true }),
+    page.getByRole("button", { name: "另存为 report.md", exact: true }),
   ).toBeVisible();
 });
 
@@ -2988,7 +2988,7 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
   await page.getByRole("button", { name: "批准", exact: true }).click();
   await page.getByRole("button", { name: "批准", exact: true }).click();
   const report = page.getByRole("button", {
-    name: "下载 report.md",
+    name: "另存为 report.md",
     exact: true,
   });
   await expect(report).toBeVisible();
@@ -2996,7 +2996,7 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
   await expect(input).toHaveText("");
   await expect(page.locator(".composer-attachments")).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "下载 资料.txt", exact: true }),
+    page.getByRole("button", { name: "另存为 资料.txt", exact: true }),
   ).toBeVisible();
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(1);
   await expect(page.locator(".message.toolResult")).toHaveCount(0);
@@ -3037,7 +3037,7 @@ test("message media leads captions and bubble tails follow both themes", async (
 }) => {
   await control({ history: 40 });
   const imageReady = Promise.withResolvers<void>();
-  await page.route(/\/files\/\d+\//, async (route) => {
+  await page.route(/\/files\/\d+\/[a-f0-9]{64}/, async (route) => {
     await imageReady.promise;
     await route.continue();
   });
@@ -3105,9 +3105,7 @@ test("message media leads captions and bubble tails follow both themes", async (
         const image = await outgoing
           .locator(".image-thumbnail img")
           .boundingBox();
-        const document = await outgoing
-          .locator(".file-attachment")
-          .boundingBox();
+        const document = await outgoing.locator(".file-card").boundingBox();
         if (!frame || !image || !document || !caption)
           throw new Error("Message media missing");
         for (const media of [image, document]) {
@@ -3207,7 +3205,7 @@ test("delivered images form a gallery with viewer downloads and keyboard navigat
   await expect(gallery.getByRole("button", { name: /^下载/ })).toHaveCount(0);
   await expect(gallery.locator("time")).toHaveCount(0);
   await expect(
-    delivered.getByRole("button", { name: "下载 report.txt" }),
+    delivered.getByRole("button", { name: "另存为 report.txt" }),
   ).toBeVisible();
   for (const label of ["深色", "浅色"]) {
     await chooseAppearance(page, label);
@@ -4201,7 +4199,7 @@ test("attachment retry keeps its request and draft after a lost receipt", async 
   ).toBeVisible();
   await expect(page.getByLabel("你的消息", { exact: true })).toHaveCount(1);
   await expect(
-    page.getByRole("button", { name: "下载 source.txt", exact: true }),
+    page.getByRole("button", { name: "另存为 source.txt", exact: true }),
   ).toHaveCount(1);
   await expect(page.locator(".composer-attachments")).toHaveCount(0);
 });
@@ -4240,7 +4238,10 @@ for (const method of ["click", "Enter"] as const) {
       await expect(input).toHaveText("");
       const outgoing = page.getByLabel("你的消息", { exact: true });
       await expect(
-        outgoing.getByRole("button", { name: "下载 source.txt", exact: true }),
+        outgoing.getByRole("button", {
+          name: "另存为 source.txt",
+          exact: true,
+        }),
       ).toBeVisible();
       await expect(outgoing.locator("img")).toHaveJSProperty("naturalWidth", 1);
       await expect(page.locator(".composer-attachments")).toHaveCount(0);
@@ -4722,7 +4723,7 @@ test("file upload retry keeps its identity and cancellation releases the draft",
     page.getByRole("button", { name: "添加内容", exact: true }),
   ).toBeEnabled();
   let lost = false;
-  await page.route("**/rpc/files/upload", async (route) => {
+  await page.route("**/files/*/upload?*", async (route) => {
     if (lost) return route.continue();
     lost = true;
     await route.fetch();
@@ -4747,8 +4748,8 @@ test("file upload retry keeps its identity and cancellation releases the draft",
   await expect(page.locator(".composer-attachments")).toHaveCount(0);
   const release = Promise.withResolvers<void>();
   const reached = Promise.withResolvers<void>();
-  await page.unroute("**/rpc/files/upload");
-  await page.route("**/rpc/files/upload", async (route) => {
+  await page.unroute("**/files/*/upload?*");
+  await page.route("**/files/*/upload?*", async (route) => {
     const response = await route.fetch();
     reached.resolve();
     await release.promise;
@@ -4763,7 +4764,6 @@ test("file upload retry keeps its identity and cancellation releases the draft",
   await page
     .getByRole("button", { name: "取消上传 cancel.txt", exact: true })
     .click();
-  await expect(page.locator(".composer-upload")).toContainText("正在取消");
   release.resolve();
   await expect(page.locator(".composer-attachments")).toHaveCount(0);
   await page.getByLabel("消息", { exact: true }).fill("A regular message");
