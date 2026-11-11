@@ -31,7 +31,9 @@ export function workTurns(view: ChatView) {
   return [...groups]
     .map(([id, messages]) => {
       const run = view.runs?.findLast((item) => item.turnId === id);
-      const active = id === view.activeTurnId;
+      const active = run
+        ? run.status === "running" || run.status === "stopping"
+        : id === view.activeTurnId;
       const status =
         run?.status ??
         (active
@@ -124,6 +126,11 @@ export function workTurns(view: ChatView) {
       return {
         id,
         run,
+        author:
+          run?.author ?? messages.find((message) => message.author)?.author,
+        sessionId:
+          run?.sessionId ??
+          messages.find((message) => message.sessionId)?.sessionId,
         active,
         status,
         title,

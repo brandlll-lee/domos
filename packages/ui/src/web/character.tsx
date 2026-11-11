@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId } from "react";
 import bunny from "../../assets/characters/bunny.webp";
 import capsule from "../../assets/characters/capsule.webp";
 import cat from "../../assets/characters/cat.webp";
@@ -101,7 +101,6 @@ export function Character({
   const id = useId();
   const face = characterFaces[shape] ?? { x: 50, y: 46.4, scale: 1 };
   const texture = textures[shape];
-  const [loaded, setLoaded] = useState("");
   return (
     <svg
       className="character"
@@ -109,7 +108,6 @@ export function Character({
       aria-hidden="true"
       data-state={state}
       data-shape={shape}
-      opacity={loaded === texture ? 1 : 0}
     >
       <defs>
         <filter id={`${id}-tint`} colorInterpolationFilters="sRGB">
@@ -157,7 +155,6 @@ export function Character({
         <g className="character-body">
           <image
             href={texture}
-            onLoad={() => setLoaded(texture)}
             width="100"
             height="100"
             filter={`url(#${id}-tint)`}

@@ -1,7 +1,8 @@
 import type { InputMaterials } from "@domos/agent/materials";
 import type { ChatMessage } from "@domos/agent/messages";
 import { MessageMarkdown, MessageText } from "@domos/ui/markdown";
-import { Fragment } from "react";
+import { Fragment, useContext } from "react";
+import { BotReference, TeamMembers } from "./bot-reference.tsx";
 import { chatCopy } from "./copy.ts";
 import { materialTokens } from "./material-tokens.tsx";
 
@@ -14,6 +15,7 @@ export function MessageContent({
   user?: boolean;
   materials?: InputMaterials;
 }) {
+  const members = useContext(TeamMembers);
   const tokens = materialTokens(materials)
     .flatMap((token) =>
       token.position === undefined
@@ -65,7 +67,16 @@ export function MessageContent({
               <MessageText>{part.text.slice(offset)}</MessageText>
             </div>
           ) : (
-            <MessageMarkdown key={part.key}>{part.text}</MessageMarkdown>
+            <MessageMarkdown
+              key={part.key}
+              references={members.map((bot) => ({
+                id: String(bot.id),
+                label: bot.name,
+                content: <BotReference bot={{ ...bot, botId: bot.id }} />,
+              }))}
+            >
+              {part.text}
+            </MessageMarkdown>
           );
         }
         case "image":

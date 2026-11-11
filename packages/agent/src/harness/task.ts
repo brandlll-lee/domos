@@ -1,5 +1,7 @@
 import type { Context } from "@earendil-works/chord/context";
 import { defineTask, type EntryId } from "@earendil-works/pi-durable";
+import { BotDirectory } from "../bots.ts";
+import { BotSession } from "../conversations.ts";
 import { MemoryReviewDoc } from "../work/memory.ts";
 import { RoutinesDoc, transitionRun } from "../work/routine-state.ts";
 import { finishCompactions, projectContext } from "./context.ts";
@@ -118,7 +120,23 @@ export function engineTask(execution: EngineExecution) {
           if (doc.activeId !== task.id) {
             doc.activeId = task.id;
             doc.activeTurn = task.input.turnId;
+            const owner =
+              (await tx.doc(BotSession, runtime.conversationId)).botId ??
+              runtime.conversationId;
+            const bot = (await tx.doc(BotDirectory)).items.find(
+              (bot) => bot.id === owner,
+            );
             doc.run = {
+              sessionId: runtime.conversationId,
+              ...(bot
+                ? {
+                    author: {
+                      botId: bot.id,
+                      name: bot.name,
+                      avatar: bot.avatar,
+                    },
+                  }
+                : {}),
               turnId: task.input.turnId,
               provider: doc.config.provider,
               model: doc.config.model,

@@ -2,9 +2,16 @@ import type { InputMaterials } from "@domos/agent/materials";
 import { PlugsIcon } from "@phosphor-icons/react/dist/csr/Plugs";
 import { QuotesIcon } from "@phosphor-icons/react/dist/csr/Quotes";
 import { SparkleIcon } from "@phosphor-icons/react/dist/csr/Sparkle";
+import { BotReference } from "./bot-reference.tsx";
 
 export function materialTokens(materials?: InputMaterials) {
   return [
+    ...(materials?.bots?.map((bot) => ({
+      id: `bot:${bot.id}`,
+      position: bot.position,
+      title: bot.name,
+      content: <BotReference bot={bot} />,
+    })) ?? []),
     ...(materials?.mcp?.map((item) => ({
       id: `mcp:${item.id}`,
       position: item.position,

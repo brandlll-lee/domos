@@ -679,7 +679,9 @@ export class Runtime {
         this.task,
         {
           text: [
-            materialText(input.text, input.materials),
+            input.displayText !== undefined
+              ? input.text
+              : materialText(input.text, input.materials),
             ...(input.attachments ?? []).map(
               (file) => `Uploaded file: ${file.path}`,
             ),

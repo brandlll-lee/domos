@@ -237,3 +237,30 @@
 .work-entry[data-parent] > :not(time) {
   margin-inline-start: var(--space-4);
 }
+
+.work-mark:has(.bot-avatar) {
+  border: 0;
+}
+.work-mark .bot-avatar {
+  width: 100%;
+  height: 100%;
+}
+.work-harness-badge {
+  position: absolute;
+  right: calc(-1 * var(--space-1));
+  bottom: calc(-1 * var(--space-1));
+  display: grid;
+  place-items: center;
+  width: var(--space-4);
+  height: var(--space-4);
+  border-radius: 50%;
+  background: var(--color-canvas);
+}
+.work-harness-badge svg {
+  width: var(--space-3);
+  height: var(--space-3);
+}
+.work-mark:has(.bot-avatar)[data-state]::after {
+  right: auto;
+  left: calc(-1 * var(--space-1));
+}

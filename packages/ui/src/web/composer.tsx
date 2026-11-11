@@ -1,5 +1,6 @@
 import {
   type ClipboardEventHandler,
+  type KeyboardEventHandler,
   type ReactNode,
   type Ref,
   useId,
@@ -103,6 +104,7 @@ export function MessageComposer({
   tokens = [],
   onSubmit,
   onPaste,
+  onKeyDown,
   label,
   placeholder,
   action,
@@ -120,6 +122,7 @@ export function MessageComposer({
   tokens?: ComposerToken[];
   onSubmit: () => void;
   onPaste?: ClipboardEventHandler<HTMLDivElement>;
+  onKeyDown?: KeyboardEventHandler<HTMLDivElement>;
   label: string;
   placeholder: string;
   action: ReactNode;
@@ -223,6 +226,8 @@ export function MessageComposer({
             );
           }}
           onKeyDown={(event) => {
+            onKeyDown?.(event);
+            if (event.defaultPrevented) return;
             const selection = window.getSelection();
             if (
               selection?.isCollapsed &&

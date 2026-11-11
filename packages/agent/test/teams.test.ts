@@ -223,6 +223,20 @@ test("native Bot delegation returns asynchronously and keeps private history sep
   expect(
     (await harness.snapshot(EngineDoc, item.session, context))?.sessionId,
   ).toBeTruthy();
+  const profile = await bots.profile(peerId, context);
+  const author = { botId: peerId, name: profile.name, avatar: profile.avatar };
+  expect((await engines.view(item.session, context)).runs?.[0]).toMatchObject({
+    sessionId: item.session,
+    author,
+  });
+  await bots.update(
+    peerId,
+    { ...profile, name: "Renamed reviewer", requestId: "rename-reviewer" },
+    context,
+  );
+  expect((await engines.view(item.session, context)).runs?.[0]?.author).toEqual(
+    author,
+  );
   await collaboration.finish(item.id, item.result, undefined, context);
   expect((await harness.snapshot(DelegationsDoc, context))?.items).toHaveLength(
     1,

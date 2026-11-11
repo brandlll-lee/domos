@@ -1,6 +1,7 @@
 export const MAX_MATERIALS = 10;
 
 export type MaterialSelection = {
+  bots?: { id: string; botId: number; position: number }[];
   mcp?: {
     id: string;
     native?: { provider: string; source: string };
@@ -21,6 +22,13 @@ export type MaterialSelection = {
 };
 
 export type InputMaterials = {
+  bots?: {
+    id: string;
+    botId: number;
+    name: string;
+    avatar: string;
+    position: number;
+  }[];
   mcp?: (NonNullable<MaterialSelection["mcp"]>[number] & {
     name: string;
     available: boolean;
@@ -45,6 +53,10 @@ export type InputMaterials = {
 
 export function materialText(text: string, materials?: InputMaterials) {
   const items = [
+    ...(materials?.bots?.map(({ position, id, ...bot }) => ({
+      position,
+      text: `<bot>${JSON.stringify(bot)}</bot>`,
+    })) ?? []),
     ...(materials?.skills.map(({ id, name, revision, native, position }) => ({
       position,
       text: `<skill>${JSON.stringify(

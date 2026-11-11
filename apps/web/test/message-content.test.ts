@@ -3,6 +3,7 @@ import type { ChatMessage } from "@domos/agent/messages";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
+import { TeamMembers } from "../src/features/chat/bot-reference.tsx";
 import { MessageContent } from "../src/features/chat/message-content.tsx";
 
 test("materials keep inline order in display and model input", () => {
@@ -142,4 +143,54 @@ test("native skills and MCP references carry identities without contents or gran
   expect(prompt).not.toContain("private procedure");
   expect(prompt).toContain('"available":false');
   expect(prompt).toContain("does not grant");
+});
+
+test("Bot references preserve identity and inline position", () => {
+  const materials = {
+    skills: [],
+    context: [],
+    bots: [
+      {
+        id: "member",
+        botId: 7,
+        name: "Reviewer",
+        avatar: "reviewer",
+        position: 1,
+      },
+    ],
+  };
+  const html = renderToStaticMarkup(
+    createElement(MessageContent, {
+      content: [{ type: "text", key: "text", text: "请检查" }],
+      user: true,
+      materials,
+    }),
+  );
+  expect(html).toContain("Reviewer");
+  expect(html).toContain('data-bot-id="7"');
+  expect(materialText("请检查", materials)).toMatch(
+    /^请<bot>.*"botId":7.*<\/bot>检查$/,
+  );
+});
+
+test("assistant Bot mentions preserve Markdown and leave code and links literal", () => {
+  const html = renderToStaticMarkup(
+    createElement(
+      TeamMembers,
+      { value: [{ id: 7, name: "Reviewer", avatar: "reviewer" }] },
+      createElement(MessageContent, {
+        content: [
+          {
+            type: "text",
+            key: "text",
+            text: "**交给 @Reviewer**，再检查 `@Reviewer` 与 [@Reviewer](https://example.com)，邮箱 user@Reviewer。",
+          },
+        ],
+      }),
+    ),
+  );
+  expect(html.match(/data-bot-id="7"/g)).toHaveLength(1);
+  expect(html).toContain("<strong>");
+  expect(html).toContain("<code>@Reviewer</code>");
+  expect(html).toContain('href="https://example.com"');
 });

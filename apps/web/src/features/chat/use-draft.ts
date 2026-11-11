@@ -53,6 +53,17 @@ function load(key: string): { draft: Draft; error: string | null } {
       throw new Error("Invalid attachments");
     const materials = value.materials ?? { skills: [], context: [] };
     if (
+      (materials.bots !== undefined &&
+        (!Array.isArray(materials.bots) ||
+          materials.bots.some(
+            (item: NonNullable<InputMaterials["bots"]>[number]) =>
+              typeof item.id !== "string" ||
+              !Number.isInteger(item.botId) ||
+              typeof item.name !== "string" ||
+              typeof item.avatar !== "string" ||
+              !Number.isInteger(item.position) ||
+              item.position < 0,
+          ))) ||
       (materials.mcp !== undefined &&
         (!Array.isArray(materials.mcp) ||
           materials.mcp.some(

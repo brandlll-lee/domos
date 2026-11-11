@@ -160,6 +160,8 @@ export type EngineAnswer = {
   optionId?: string;
 };
 export type EngineRun = {
+  author?: import("../messages.ts").ChatMessage["author"];
+  sessionId?: number;
   turnId: string;
   provider: EngineId;
   model: string | null;

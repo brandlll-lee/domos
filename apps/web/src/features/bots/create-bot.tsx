@@ -5,34 +5,34 @@ import { characterSeed } from "@domos/ui/characters";
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
 import { TextField } from "@domos/ui/field";
-import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { useEffect, useRef, useState } from "react";
 import { client } from "../../client.ts";
 import { rejectionMessage } from "../chat/request-error.ts";
 import { AvatarEditor } from "./avatar-editor.tsx";
 import { ModelSetup } from "./details/model.tsx";
 
-export function CreateBot({ onCreated }: { onCreated: (bot: Bot) => void }) {
-  const [open, setOpen] = useState(false);
+export function CreateBot({
+  finalFocus,
+  onCreated,
+  open,
+  onOpenChange,
+}: {
+  finalFocus: () => HTMLElement | null;
+  onCreated: (bot: Bot) => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const setOpen = onOpenChange;
   const [saving, setSaving] = useState(false);
   return (
     <Dialog
+      finalFocus={finalFocus}
       open={open}
       onOpenChange={(value) => {
         if (!saving) setOpen(value);
       }}
       title="新建 Bot"
       description="取个名字，再选择模型。"
-      trigger={
-        <Button
-          variant="ghost"
-          size="icon-small"
-          aria-label="新建 Bot"
-          title="新建 Bot"
-        >
-          <PlusIcon />
-        </Button>
-      }
     >
       {open && (
         <BotForm

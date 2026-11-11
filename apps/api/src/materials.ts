@@ -9,6 +9,16 @@ import { ORPCError } from "@orpc/server";
 import { z } from "zod";
 
 export const materialsSchema = {
+  bots: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        botId: z.number().int().nonnegative(),
+        position: z.number().int().nonnegative(),
+      }),
+    )
+    .max(MAX_MATERIALS)
+    .default([]),
   mcp: z
     .array(
       z.object({

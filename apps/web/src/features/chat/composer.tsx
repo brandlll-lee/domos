@@ -1,15 +1,18 @@
 import { MAX_ATTACHMENTS } from "@domos/agent/attachments";
+import type { Bot } from "@domos/agent/bots";
 import type { ChatMessage } from "@domos/agent/messages";
 import { FileAttachment } from "@domos/ui/attachment";
 import { MessageComposer } from "@domos/ui/composer";
 import { Button } from "@domos/ui/controls";
+import { Popover } from "@domos/ui/popover";
 import { ArrowUpIcon } from "@phosphor-icons/react/dist/csr/ArrowUp";
 import { FileMdIcon } from "@phosphor-icons/react/dist/csr/FileMd";
 import { FilePdfIcon } from "@phosphor-icons/react/dist/csr/FilePdf";
 import { FileTextIcon } from "@phosphor-icons/react/dist/csr/FileText";
 import { StopIcon } from "@phosphor-icons/react/dist/csr/Stop";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
-import { type ReactNode, type Ref, useRef } from "react";
+import { type ReactNode, type Ref, useRef, useState } from "react";
+import { BotReference } from "./bot-reference.tsx";
 import { ComposerMenu } from "./composer-menu.tsx";
 import { chatCopy } from "./copy.ts";
 import { ErrorMessage } from "./error-message.tsx";
@@ -24,6 +27,7 @@ export function Composer({
   draft,
   messages,
   botName,
+  members,
   conversationId,
   connected,
   busy,
@@ -41,6 +45,7 @@ export function Composer({
   draft: ReturnType<typeof useDraft>;
   messages: ChatMessage[];
   botName: string;
+  members?: Bot[];
   conversationId: number;
   connected: boolean;
   busy: boolean;
@@ -53,8 +58,14 @@ export function Composer({
   computerReady?: boolean;
   onComputerRequired?: () => void;
 }) {
+  const [mention, setMention] = useState<{
+    start: number;
+    end: number;
+    query: string;
+  }>();
   const input = useRef<HTMLInputElement>(null);
   const editor = useRef<HTMLDivElement>(null);
+  const mentionMenu = useRef<HTMLDivElement>(null);
   const setEditor = (node: HTMLDivElement | null) => {
     editor.current = node;
     if (typeof inputRef === "function") inputRef(node);
@@ -82,7 +93,8 @@ export function Composer({
   const hasMaterials = Boolean(
     composer.materials.skills.length ||
       composer.materials.context.length ||
-      composer.materials.mcp?.length,
+      composer.materials.mcp?.length ||
+      composer.materials.bots?.length,
   );
   const stopAction =
     busy &&
@@ -126,11 +138,152 @@ export function Composer({
         }}
       />
       {issue && <ErrorMessage>{issue}</ErrorMessage>}
+      <Popover.Root
+        open={Boolean(mention && members?.length)}
+        onOpenChange={(open) => {
+          if (!open) setMention(undefined);
+        }}
+      >
+        <Popover.Portal>
+          <Popover.Positioner
+            anchor={editor}
+            side="top"
+            align="start"
+            sideOffset={8}
+          >
+            <Popover.Popup
+              ref={mentionMenu}
+              initialFocus={false}
+              finalFocus={false}
+              className="composer-menu-popup bot-mention-menu"
+              aria-label="选择 Bot"
+              onKeyDown={(event) => {
+                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                  event.preventDefault();
+                  const buttons = [
+                    ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                      "button",
+                    ),
+                  ];
+                  const at = buttons.indexOf(
+                    document.activeElement as HTMLButtonElement,
+                  );
+                  buttons[
+                    (at +
+                      (event.key === "ArrowDown" ? 1 : buttons.length - 1)) %
+                      buttons.length
+                  ]?.focus();
+                }
+              }}
+            >
+              {members
+                ?.filter((bot) =>
+                  bot.name
+                    .toLocaleLowerCase()
+                    .includes(mention?.query.toLocaleLowerCase() ?? ""),
+                )
+                .map((bot) => (
+                  <Button
+                    key={bot.id}
+                    variant="ghost"
+                    onClick={() => {
+                      if (!mention) return;
+                      const current = draft.current.current;
+                      const all = materialTokens(current.materials)
+                        .filter((token) => token.position !== undefined)
+                        .toSorted(
+                          (a, b) => (a.position ?? 0) - (b.position ?? 0),
+                        );
+                      const shift = <T extends { position?: number }>(
+                        item: T,
+                      ) => ({
+                        ...item,
+                        ...(item.position !== undefined &&
+                        item.position >= mention.end
+                          ? {
+                              position:
+                                item.position -
+                                (mention.end - mention.start) +
+                                1,
+                            }
+                          : {}),
+                      });
+                      const textOffset = (position: number) =>
+                        position -
+                        all.filter((token) => (token.position ?? 0) < position)
+                          .length;
+                      draft.update({
+                        text:
+                          current.text.slice(0, textOffset(mention.start)) +
+                          current.text.slice(textOffset(mention.end)),
+                        materials: {
+                          skills: current.materials.skills.map(shift),
+                          context: current.materials.context.map(shift),
+                          mcp: current.materials.mcp?.map(shift),
+                          bots: [
+                            ...(current.materials.bots ?? []).map(shift),
+                            {
+                              id: crypto.randomUUID(),
+                              botId: bot.id,
+                              name: bot.name,
+                              avatar: bot.avatar,
+                              position: mention.start,
+                            },
+                          ],
+                        },
+                      });
+                      setMention(undefined);
+                      requestAnimationFrame(() => editor.current?.focus());
+                    }}
+                  >
+                    <BotReference bot={{ ...bot, botId: bot.id }} />
+                  </Button>
+                ))}
+            </Popover.Popup>
+          </Popover.Positioner>
+        </Popover.Portal>
+      </Popover.Root>
       <MessageComposer
         ref={setEditor}
         value={composer.value}
-        onValueChange={composer.change}
+        onValueChange={(text, caret, positions) => {
+          composer.change(text, caret, positions);
+          const offset =
+            caret - positions.filter((token) => token.position < caret).length;
+          const match = /(?:^|\s)@([^\s@]*)$/.exec(text.slice(0, offset));
+          setMention(
+            members?.length && match
+              ? {
+                  start: caret - (match[1] ?? "").length - 1,
+                  end: caret,
+                  query: match[1] ?? "",
+                }
+              : undefined,
+          );
+        }}
         onCaretChange={composer.moveCaret}
+        onKeyDown={(event) => {
+          if (!mention) return;
+          if (event.key === "Escape") {
+            event.preventDefault();
+            setMention(undefined);
+          } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            const buttons =
+              mentionMenu.current?.querySelectorAll<HTMLButtonElement>(
+                "button",
+              );
+            (event.key === "ArrowDown"
+              ? buttons?.[0]
+              : buttons?.[buttons.length - 1]
+            )?.focus();
+          } else if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+            event.preventDefault();
+            mentionMenu.current
+              ?.querySelector<HTMLButtonElement>("button")
+              ?.click();
+          }
+        }}
         tokens={materialTokens(composer.materials).map((token, index) => ({
           ...token,
           position: token.position ?? composer.value.length + index,

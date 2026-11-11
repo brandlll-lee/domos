@@ -1,6 +1,6 @@
-import type { Paragraph, Root } from "mdast";
+import type { Paragraph, Root, RootContent } from "mdast";
 import { gfmAutolinkLiteralFromMarkdown } from "mdast-util-gfm-autolink-literal";
-import { type ComponentProps, memo } from "react";
+import { type ComponentProps, memo, type ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -88,12 +88,79 @@ export const MessageText = memo(function MessageText({
 
 export const MessageMarkdown = memo(function MessageMarkdown({
   children,
+  references = [],
 }: {
   children: string;
+  references?: { id: string; label: string; content: ReactNode }[];
 }) {
+  const referenceLinks = new Map(
+    references.map((item) => [`#bot/${item.id}`, item.content]),
+  );
+  const mentions = () => (tree: Root) => {
+    const walk = (parent: { children: RootContent[] }) => {
+      parent.children = parent.children.flatMap((node) => {
+        if (node.type === "text") {
+          const parts: RootContent[] = [];
+          let offset = 0;
+          const labels = [...references].sort(
+            (a, b) => b.label.length - a.label.length,
+          );
+          while (offset < node.value.length) {
+            const at = node.value.indexOf("@", offset);
+            if (at < 0) {
+              parts.push({ type: "text", value: node.value.slice(offset) });
+              break;
+            }
+            if (at > offset)
+              parts.push({ type: "text", value: node.value.slice(offset, at) });
+            const ref = labels.find(
+              (item) =>
+                (at === 0 ||
+                  /[\s(（“"，。:：;；!?！？]/u.test(
+                    node.value[at - 1] ?? "",
+                  )) &&
+                node.value.startsWith(item.label, at + 1) &&
+                (!node.value[at + 1 + item.label.length] ||
+                  /[\s.,，。:：;；!?！？]/u.test(
+                    node.value[at + 1 + item.label.length] ?? "",
+                  )),
+            );
+            if (ref) {
+              parts.push({
+                type: "link",
+                url: `#bot/${ref.id}`,
+                children: [{ type: "text", value: `@${ref.label}` }],
+              });
+              offset = at + ref.label.length + 1;
+            } else {
+              parts.push({ type: "text", value: "@" });
+              offset = at + 1;
+            }
+          }
+          return parts;
+        }
+        if (
+          "children" in node &&
+          node.type !== "link" &&
+          node.type !== "linkReference"
+        )
+          walk(node as { children: RootContent[] });
+        return [node];
+      });
+    };
+    walk(tree);
+  };
   return (
     <div className="markdown">
-      <Markdown remarkPlugins={plugins} skipHtml components={components}>
+      <Markdown
+        remarkPlugins={references.length ? [...plugins, mentions] : plugins}
+        skipHtml
+        components={{
+          ...components,
+          a: (props) =>
+            referenceLinks.get(props.href ?? "") ?? <MessageLink {...props} />,
+        }}
+      >
         {children}
       </Markdown>
     </div>

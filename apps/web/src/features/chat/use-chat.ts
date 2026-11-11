@@ -327,6 +327,7 @@ export function useChat(
           skills: materials?.skills ?? [],
           context: materials?.context ?? [],
           mcp: materials?.mcp ?? [],
+          bots: materials?.bots ?? [],
         });
       else await client.send({ ...input, botId });
       return "accepted" as const;
@@ -347,12 +348,13 @@ export function useChat(
     }
   }
 
-  async function stop() {
+  async function stop(sessionId?: number) {
     store.update({ pendingRequest: undefined });
     setStopping(true);
     setError(null);
     try {
-      if (teamId) await client.teams.stop({ id: teamId });
+      if (sessionId !== undefined) await client.stop({ botId: sessionId });
+      else if (teamId) await client.teams.stop({ id: teamId });
       else await client.stop({ botId });
     } catch {
       setError(chatCopy.errors.stop);

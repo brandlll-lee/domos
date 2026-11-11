@@ -1,4 +1,5 @@
 import type { EngineRun } from "@domos/agent/harness/types";
+import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
 import { ScrollArea } from "@domos/ui/scroll-area";
@@ -122,14 +123,24 @@ export function WorkPanel(
                             : undefined
                       }
                     >
-                      {turn.run ? (
-                        <EngineMark provider={turn.run.provider} />
-                      ) : (
-                        <WrenchIcon />
+                      {turn.author && (
+                        <BotAvatar seed={turn.author.avatar} size="small" />
                       )}
+                      <span
+                        className={
+                          turn.author ? "work-harness-badge" : undefined
+                        }
+                      >
+                        {turn.run ? (
+                          <EngineMark provider={turn.run.provider} />
+                        ) : (
+                          <WrenchIcon />
+                        )}
+                      </span>
                     </span>
                     <span className="work-label">
                       <span title={modelName(turn.run)}>
+                        {turn.author ? `${turn.author.name} · ` : ""}
                         {modelName(turn.run)}
                       </span>
                       <span className="work-activity" title={turn.title}>
@@ -147,7 +158,7 @@ export function WorkPanel(
                       aria-label="停止执行"
                       disabled={!connected}
                       pending={stopping || turn.status === "stopping"}
-                      onClick={() => void stop()}
+                      onClick={() => void stop(turn.sessionId)}
                     >
                       <StopIcon />
                     </Button>

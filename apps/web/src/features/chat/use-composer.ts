@@ -29,6 +29,11 @@ export function useComposer(
     const input = pending ?? {
       text,
       attachments: draft.current.current.attachments.map((file) => file.id),
+      bots: original.materials.bots?.map(({ id, botId, position: at }) => ({
+        id,
+        botId,
+        position: position(at) ?? 0,
+      })),
       skills: original.materials.skills.map(
         ({ id, revision, native, position: at }) => ({
           id,
@@ -68,7 +73,8 @@ export function useComposer(
       !input.attachments?.length &&
       !input.skills?.length &&
       !input.context?.length &&
-      !input.mcp?.length
+      !input.mcp?.length &&
+      !input.bots?.length
     )
       return;
     if (!draft.update({ pending: input, text: pending ? original.text : "" })) {
@@ -78,6 +84,12 @@ export function useComposer(
     submitting.current = true;
     try {
       const result = await send(input, draft.current.current.attachments, {
+        bots: original.materials.bots?.map((item) => ({
+          ...item,
+          position:
+            input.bots?.find((selected) => selected.id === item.id)?.position ??
+            item.position,
+        })),
         mcp: original.materials.mcp?.map((item) => ({
           ...item,
           position: input.mcp?.find((selected) => selected.id === item.id)
@@ -100,6 +112,10 @@ export function useComposer(
           ...(result === "accepted"
             ? {
                 materials: {
+                  bots: draft.current.current.materials.bots?.filter(
+                    (item) =>
+                      !input.bots?.some((selected) => selected.id === item.id),
+                  ),
                   mcp: draft.current.current.materials.mcp?.filter(
                     (item) =>
                       !input.mcp?.some((selected) => selected.id === item.id),
@@ -130,6 +146,9 @@ export function useComposer(
   return {
     value: draft.draft.text,
     materials: {
+      bots: draft.draft.materials.bots?.filter(
+        (item) => !pending?.bots?.some((selected) => selected.id === item.id),
+      ),
       mcp: draft.draft.materials.mcp?.filter(
         (item) => !pending?.mcp?.some((selected) => selected.id === item.id),
       ),
@@ -164,6 +183,16 @@ export function useComposer(
       draft.update({
         text,
         materials: {
+          bots: draft.current.current.materials.bots
+            ?.filter(
+              (item) =>
+                byId.has(`bot:${item.id}`) ||
+                pending?.bots?.some((selected) => selected.id === item.id),
+            )
+            .map((item) => ({
+              ...item,
+              position: byId.get(`bot:${item.id}`) ?? item.position,
+            })),
           mcp: draft.current.current.materials.mcp
             ?.filter(
               (item) =>

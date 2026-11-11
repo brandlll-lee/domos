@@ -110,6 +110,10 @@ export class Teams {
         const bot = bots.find((bot) => bot.id === item.botId)!;
         return {
           ...view,
+          runs: view.runs?.map((run) => ({
+            ...run,
+            sessionId: item.id,
+          })),
           messages: view.messages.map((message) => ({
             ...message,
             sessionId: item.id,

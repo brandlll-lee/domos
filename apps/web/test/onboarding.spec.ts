@@ -252,8 +252,9 @@ test("first use prepares the default Bot with a computer and model before shared
       await expect(second.getByRole("log", { name: "聊天记录" })).toContainText(
         "模型已回复。",
       );
+      await second.getByRole("button", { name: "新建", exact: true }).click();
       await second
-        .getByRole("button", { name: "新建 Bot", exact: true })
+        .getByRole("menuitem", { name: "新建 Bot", exact: true })
         .click();
       const create = second.getByRole("dialog", {
         name: "新建 Bot",

@@ -24,15 +24,23 @@ test("teams preserve member authors and keep private chats separate", async ({
     data: { json: { name: "Reviewer", requestId: crypto.randomUUID() } },
   });
   expect(response.ok()).toBe(true);
-  await page.getByRole("button", { name: "新建团队", exact: true }).click();
+  await page.getByRole("button", { name: "新建", exact: true }).click();
+  await page.getByRole("menuitem", { name: "新建团队", exact: true }).click();
   const dialog = page.getByRole("dialog", {
     name: "新建 Bot 团队",
     exact: true,
   });
+  const initialFrame = await dialog.boundingBox();
   await dialog.getByLabel("团队名称", { exact: true }).fill("发布小队");
   await dialog.getByLabel("团队用途", { exact: true }).fill("检查本次发布");
   await dialog.getByRole("checkbox", { name: "Domos", exact: true }).check();
   await dialog.getByRole("checkbox", { name: "Reviewer", exact: true }).check();
+  const frame = await dialog.boundingBox();
+  await expect(
+    dialog.getByRole("button", { name: "默认负责人", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  expect(frame?.height).toBe(initialFrame?.height);
+  expect(frame?.height).toBeGreaterThan(400);
   await dialog.getByRole("button", { name: "创建", exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(
@@ -45,16 +53,139 @@ test("teams preserve member authors and keep private chats separate", async ({
   const log = page.getByRole("log", { name: "聊天记录", exact: true });
   await expect(log).toContainText("已收到");
   await expect(log.locator(".message-author")).toContainText("Domos");
+  const input = page.getByRole("textbox", { name: "消息", exact: true });
+  await input.pressSequentially("@Rev");
+  await expect(input).toBeFocused();
+  await expect(
+    page
+      .getByRole("dialog", { name: "选择 Bot", exact: true })
+      .getByRole("button"),
+  ).toHaveCount(1);
+  await input.press("ArrowDown");
+  await expect(
+    page
+      .getByRole("dialog", { name: "选择 Bot", exact: true })
+      .getByRole("button", { name: "Reviewer", exact: true }),
+  ).toBeFocused();
+  await page
+    .getByRole("dialog", { name: "选择 Bot", exact: true })
+    .getByRole("button", { name: "Reviewer", exact: true })
+    .click();
+  await input.press("End");
+  await input.pressSequentially("@Domos");
+  await input.press("Enter");
+  await input.pressSequentially("@Rev");
+  await input.press("Enter");
   await page
     .getByRole("textbox", { name: "消息", exact: true })
-    .fill("@Reviewer 请检查发布说明");
+    .pressSequentially("请检查发布说明");
+  await expect(page.locator('[data-inline-token^="bot:"]')).toHaveCount(3);
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(
     log.locator(".message-author").filter({ hasText: "Reviewer" }),
   ).toBeVisible();
+  await expect
+    .poll(() =>
+      log
+        .locator(".bot-reference .character")
+        .evaluateAll((elements) =>
+          elements.every(
+            (element) => getComputedStyle(element).opacity === "1",
+          ),
+        ),
+    )
+    .toBe(true);
+  const peer = (await response.json()).json;
+  const teamId = page.url().split("#team/")[1];
+  const viewResponse = await page.request.post(`${url}/rpc/teams/get`, {
+    data: { json: { id: teamId } },
+  });
+  const view = (await viewResponse.json()).json;
+  const sent = view.messages.find(
+    (message: { role: string; materials?: { bots?: unknown[] } }) =>
+      message.role === "user" && message.materials?.bots?.length,
+  );
+  expect(
+    sent.materials.bots.map((bot: { position: number }) => bot.position),
+  ).toEqual([0, 1, 2]);
+  expect(
+    sent.materials.bots.map((bot: { botId: number }) => bot.botId),
+  ).toEqual([
+    peer.id,
+    view.runs.find(
+      (run: { author?: { name: string } }) => run.author?.name === "Domos",
+    ).author.botId,
+    peer.id,
+  ]);
+  expect(sent.materials.bots[0]).toMatchObject({
+    name: peer.name,
+    avatar: peer.avatar,
+  });
+  const answer = view.messages
+    .filter((message: { role: string }) => message.role === "assistant")
+    .at(-1);
+  expect(JSON.stringify(answer.content).match(/<bot>/g)).toHaveLength(3);
+  expect(
+    view.runs.find(
+      (run: { author?: { botId: number } }) => run.author?.botId === peer.id,
+    ).sessionId,
+  ).toBe(sent.sessionId);
+  const outsider = (
+    await (
+      await page.request.post(`${url}/rpc/bots/create`, {
+        data: { json: { name: "Outsider", requestId: crypto.randomUUID() } },
+      })
+    ).json()
+  ).json;
+  const rejected = await page.request.post(`${url}/rpc/teams/send`, {
+    data: {
+      json: {
+        id: teamId,
+        text: "检查",
+        requestId: crypto.randomUUID(),
+        bots: [{ id: "outside", botId: outsider.id, position: 0 }],
+      },
+    },
+  });
+  expect(rejected.status()).toBe(400);
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  await page.getByRole("tab", { name: "Work", exact: true }).click();
+  await expect(
+    page
+      .locator(".work-row")
+      .filter({ hasText: "Reviewer" })
+      .locator(".bot-avatar"),
+  ).toBeVisible();
+  await expect(
+    page.locator(".chat-identity .team-avatar .bot-avatar"),
+  ).toHaveCount(2);
   for (const theme of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await page.screenshot({ path: info.outputPath(`team-${theme}.png`) });
+  }
+  const gated = once(worker, "message");
+  worker.send("gate");
+  await gated;
+  try {
+    await input.fill("@Reviewer");
+    await page
+      .getByRole("dialog", { name: "选择 Bot", exact: true })
+      .getByRole("button", { name: "Reviewer", exact: true })
+      .click();
+    await input.pressSequentially("停止这次审查");
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    const active = page
+      .locator(".work-row[data-active]")
+      .filter({ hasText: "Reviewer" });
+    await expect(active).toBeVisible();
+    const request = page.waitForRequest("**/rpc/stop");
+    await active.getByRole("button", { name: "停止执行", exact: true }).click();
+    expect((await request).postDataJSON().json.botId).toBe(sent.sessionId);
+    await expect(active).toHaveCount(0);
+  } finally {
+    const released = once(worker, "message");
+    worker.send("release");
+    await released;
   }
   await page.reload();
   await expect(
@@ -2346,7 +2477,7 @@ test("contacts snap to an icon column and restore their width without losing cha
     sidebar.getByRole("link", { name: "Domos", exact: true }),
   ).toHaveAttribute("title", "Domos");
   await expect(
-    sidebar.getByRole("button", { name: "新建 Bot", exact: true }),
+    sidebar.getByRole("button", { name: "新建", exact: true }),
   ).toBeVisible();
   await expect(
     sidebar.getByRole("button", { name: "用户菜单", exact: true }),
@@ -2759,7 +2890,8 @@ test("contact rows keep their density and searchable previews across selections"
   page,
 }) => {
   await page.goto(url);
-  await page.getByRole("button", { name: "新建 Bot", exact: true }).click();
+  await page.getByRole("button", { name: "新建", exact: true }).click();
+  await page.getByRole("menuitem", { name: "新建 Bot", exact: true }).click();
   let create = page.getByRole("dialog", { name: "新建 Bot", exact: true });
   await create
     .getByRole("textbox", { name: "名字", exact: true })
@@ -2789,7 +2921,8 @@ test("contact rows keep their density and searchable previews across selections"
     .fill("整理研究资料");
   await details.getByRole("button", { name: "保存身份", exact: true }).click();
   await details.getByRole("button", { name: "关闭", exact: true }).click();
-  await page.getByRole("button", { name: "新建 Bot", exact: true }).click();
+  await page.getByRole("button", { name: "新建", exact: true }).click();
+  await page.getByRole("menuitem", { name: "新建 Bot", exact: true }).click();
   create = page.getByRole("dialog", { name: "新建 Bot", exact: true });
   const longName = "负责跨语言内容审校与排版的 Editorial Assistant";
   await create
@@ -3795,7 +3928,8 @@ test("returning to a Bot shows retained messages and draft while its stream is d
   await expect
     .poll(() => transcript.evaluate((element) => element.scrollTop))
     .toBe(top);
-  await page.getByRole("button", { name: "新建 Bot", exact: true }).click();
+  await page.getByRole("button", { name: "新建", exact: true }).click();
+  await page.getByRole("menuitem", { name: "新建 Bot", exact: true }).click();
   const create = page.getByRole("dialog", { name: "新建 Bot", exact: true });
   await create.getByRole("textbox", { name: "名字", exact: true }).fill("乙");
   await create.getByRole("button", { name: "创建", exact: true }).click();

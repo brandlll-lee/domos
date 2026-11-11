@@ -718,12 +718,11 @@ async function createBot(
 ) {
   await expect(page.locator(".sidebar-toolbar")).toBeAttached();
   if (
-    !(await page
-      .getByRole("button", { name: "新建 Bot", exact: true })
-      .isVisible())
+    !(await page.getByRole("button", { name: "新建", exact: true }).isVisible())
   )
     await page.getByRole("button", { name: "联系人", exact: true }).click();
-  await page.getByRole("button", { name: "新建 Bot", exact: true }).click();
+  await page.getByRole("button", { name: "新建", exact: true }).click();
+  await page.getByRole("menuitem", { name: "新建 Bot", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "新建 Bot", exact: true });
   await dialog.getByLabel("名字", { exact: true }).fill(name);
   await expect(dialog.getByRole("textbox")).toHaveCount(1);
@@ -1211,9 +1210,10 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
   page,
 }) => {
   await page.goto(url);
-  const trigger = page.getByRole("button", { name: "新建 Bot", exact: true });
+  const trigger = page.getByRole("button", { name: "新建", exact: true });
   await trigger.focus();
   await page.keyboard.press("Enter");
+  await page.getByRole("menuitem", { name: "新建 Bot", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "新建 Bot", exact: true });
   const name = dialog.getByLabel("名字", { exact: true });
   await expect(
@@ -1225,6 +1225,7 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
   for (const theme of ["浅色", "深色"]) {
     await chooseAppearance(page, theme);
     await trigger.click();
+    await page.getByRole("menuitem", { name: "新建 Bot", exact: true }).click();
     await name.fill("设计助手");
     await expect(
       dialog.getByRole("textbox", { name: "名字", exact: true }),
@@ -1250,6 +1251,7 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
     } else await route.continue();
   });
   await trigger.click();
+  await page.getByRole("menuitem", { name: "新建 Bot", exact: true }).click();
   await name.fill("设计助手");
   const create = dialog.getByRole("button", { name: "创建", exact: true });
   await expect(create).toBeEnabled();
@@ -4084,27 +4086,10 @@ test("native questions use the shared card and native replies persist", async ({
 test("Bot identity stays consistent and image previews work in drafts and history", async ({
   page,
 }) => {
-  const texture = Promise.withResolvers<void>();
-  await page.route("**/*.webp", async (route) => {
-    await texture.promise;
-    await route.continue();
-  });
-  try {
-    await page.goto(url, { waitUntil: "domcontentloaded" });
-    await expect(page.locator(".contact-row .character").first()).toHaveCSS(
-      "opacity",
-      "0",
-    );
-  } finally {
-    texture.resolve();
-  }
-  await expect(page.locator(".contact-row .character").first()).toHaveCSS(
-    "opacity",
-    "1",
-  );
-  await page.unroute("**/*.webp");
+  await page.goto(url);
   await chooseAppearance(page, "浅色");
-  await page.getByRole("button", { name: "新建 Bot", exact: true }).click();
+  await page.getByRole("button", { name: "新建", exact: true }).click();
+  await page.getByRole("menuitem", { name: "新建 Bot", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "新建 Bot", exact: true });
   const avatar = dialog.locator(".avatar-editor > .bot-avatar");
   const initial = await avatar.getAttribute("data-seed");
@@ -4116,7 +4101,7 @@ test("Bot identity stays consistent and image previews work in drafts and histor
     });
     await shape.click();
     await expect(shape).toHaveAttribute("aria-pressed", "true");
-    await expect(avatar.locator(".character")).toHaveAttribute("opacity", "1");
+    await expect(avatar.locator(".character")).toHaveCSS("opacity", "1");
   }
   await expect(avatar).not.toHaveAttribute("data-seed", initial ?? "");
   await page.keyboard.press("Escape");

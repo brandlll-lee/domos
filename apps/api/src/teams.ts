@@ -1,6 +1,7 @@
 import { MAX_ATTACHMENTS } from "@domos/agent/attachments";
 import type { Bots } from "@domos/agent/bots";
 import type { Files } from "@domos/agent/files";
+import { materialText } from "@domos/agent/materials";
 import type { McpConnections } from "@domos/agent/mcp";
 import type { Runtime } from "@domos/agent/runtime";
 import { slimChatView } from "@domos/agent/runtime";
@@ -88,7 +89,8 @@ export function teamRouter(
           !input.attachments.length &&
           !input.skills.length &&
           !input.context.length &&
-          !input.mcp.length
+          !input.mcp.length &&
+          !input.bots.length
         )
           throw new ORPCError("BAD_REQUEST");
         const { teams, runtime } = service();
@@ -99,12 +101,17 @@ export function teamRouter(
         const members = (await bots.list(context)).filter((bot) =>
           team.members.includes(bot.id),
         );
+        const references = input.bots.map((reference) => {
+          const member = members.find((bot) => bot.id === reference.botId);
+          if (!member)
+            throw new ORPCError("BAD_REQUEST", {
+              message: "引用的 Bot 不在团队中。",
+            });
+          return { ...reference, name: member.name, avatar: member.avatar };
+        });
         const recipient =
-          members.find(
-            (bot) =>
-              input.text.startsWith(`@${bot.name} `) ||
-              input.text.startsWith(`@${bot.name}\n`),
-          )?.id ?? team.owner;
+          references.toSorted((a, b) => a.position - b.position)[0]?.botId ??
+          team.owner;
         const session = await teams.session(team.id, recipient, context);
         const materials = await prepareMaterials(
           { ...input, botId: recipient },
@@ -112,6 +119,7 @@ export function teamRouter(
           work,
           mcp,
         );
+        materials.bots = references;
         const attachments = await Promise.all(
           (input.attachments ?? []).map((id) => files.metadata(team.owner, id)),
         );
@@ -129,7 +137,7 @@ export function teamRouter(
         const submission = await runtime.submit(
           session,
           {
-            text: `Team purpose: ${team.purpose}\n\n${input.text}`,
+            text: `Team purpose: ${team.purpose}\n\n${materialText(input.text, materials)}`,
             displayText: input.text,
             requestId: input.requestId,
             attachments: shared,

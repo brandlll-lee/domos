@@ -16,7 +16,6 @@ import {
   useState,
 } from "react";
 import { AppsCenter } from "../apps/center.tsx";
-import { CreateBot } from "../bots/create-bot.tsx";
 import { BotDetails, type BotPanelView } from "../bots/details/index.tsx";
 import { selectBot, useBots } from "../bots/use-bots.ts";
 import { useComputer } from "../computer/use-computer.ts";
@@ -25,6 +24,7 @@ import { FilePanel } from "../files/panel.tsx";
 import { useSettings } from "../settings/context.ts";
 import { Workspace } from "../shell/workspace.tsx";
 import { UsageSurface } from "../usage/page.tsx";
+import { TeamMembers } from "./bot-reference.tsx";
 import { Composer } from "./composer.tsx";
 import { ContextRing } from "./context.tsx";
 import { chatCopy } from "./copy.ts";
@@ -77,6 +77,9 @@ function BotChat({
   directoryConnected: boolean;
   directory: ReturnType<typeof useBots>;
 }) {
+  const members = team
+    ? bots.filter((member) => team.members.includes(member.id))
+    : undefined;
   const settings = useSettings();
   const chat = useChat(
     bot.id,
@@ -272,7 +275,7 @@ function BotChat({
             onTeamsChange={directory.setTeams}
             selected={bot}
             connected={directoryConnected}
-            actions={<CreateBot onCreated={selectBot} />}
+            onBotCreated={selectBot}
             onSelect={() => setView("chat")}
           />
         )}
@@ -355,7 +358,7 @@ function BotChat({
         {view === "usage" ? (
           <UsageSurface />
         ) : (
-          <>
+          <TeamMembers value={members ?? []}>
             <button
               className="skip-link"
               type="button"
@@ -378,6 +381,7 @@ function BotChat({
               }
             >
               <ChatHeader
+                members={members}
                 bot={team ? { ...bot, name: team.name } : bot}
                 busy={Boolean(chat.view?.busy)}
                 detailsOpen={detailsOpen}
@@ -431,6 +435,7 @@ function BotChat({
                   draft={draft}
                   messages={chat.view.messages}
                   key={chat.view.id}
+                  members={members}
                   botName={team?.name ?? bot.name}
                   conversationId={team ? bot.id : chat.view.id}
                   connected={chat.connected}
@@ -472,7 +477,7 @@ function BotChat({
                 )
               )}
             </main>
-          </>
+          </TeamMembers>
         )}
       </Workspace>
     </FilePreviewContext>

@@ -2,15 +2,18 @@ import type { Bot } from "@domos/agent/bots";
 import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { EngineMark } from "../bots/engine-mark.tsx";
+import { TeamAvatar } from "./bot-reference.tsx";
 
 export function ChatHeader({
   bot,
+  members,
   busy,
   detailsOpen,
   provider,
   onDetails,
 }: {
   bot: Bot;
+  members?: Bot[];
   busy: boolean;
   detailsOpen: boolean;
   provider?: string;
@@ -29,12 +32,16 @@ export function ChatHeader({
         onClick={onDetails}
       >
         <span className="chat-identity-icons" aria-hidden="true">
-          <BotAvatar
-            seed={bot.avatar}
-            size="small"
-            state={busy ? "running" : "idle"}
-          />
-          {provider && <EngineMark provider={provider} />}
+          {members ? (
+            <TeamAvatar members={members} />
+          ) : (
+            <BotAvatar
+              seed={bot.avatar}
+              size="small"
+              state={busy ? "running" : "idle"}
+            />
+          )}
+          {!members && provider && <EngineMark provider={provider} />}
         </span>
         <span className="chat-identity-name">{bot.name}</span>
       </Button>

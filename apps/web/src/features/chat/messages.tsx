@@ -1,6 +1,5 @@
 import { type ChatMessage, messageText } from "@domos/agent/messages";
 import type { TranscriptItem } from "@domos/agent/transcript";
-import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { Loading } from "@domos/ui/loading";
 import { ActionMenu } from "@domos/ui/menu";
@@ -17,6 +16,7 @@ import {
 } from "react";
 import { Approval } from "./approvals.tsx";
 import { Attachments } from "./attachments.tsx";
+import { BotReference } from "./bot-reference.tsx";
 import { chatCopy } from "./copy.ts";
 import { ErrorMessage } from "./error-message.tsx";
 import { timeBreak } from "./format.ts";
@@ -80,8 +80,7 @@ const MessageRow = memo(function MessageRow({
     >
       {message.author && (
         <div className="message-author">
-          <BotAvatar seed={message.author.avatar} size="small" />
-          <span>{message.author.name}</span>
+          <BotReference bot={message.author} />
         </div>
       )}
       {message.routine && message.role === "assistant" && (

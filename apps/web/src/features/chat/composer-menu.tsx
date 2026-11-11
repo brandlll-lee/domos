@@ -74,6 +74,7 @@ export function ComposerMenu({
         : {}),
     });
     return {
+      bots: materials.bots?.map(shift),
       skills: materials.skills.map(shift),
       mcp: materials.mcp?.map(shift),
       context: materials.context.map(shift),
