@@ -17,6 +17,7 @@ import {
 import { EngineMark } from "../bots/engine-mark.tsx";
 import { useModelSettings } from "../models/model-state.ts";
 import type { useChat } from "./use-chat.ts";
+import { WorkDelegations } from "./work-delegations.tsx";
 import { WorkEntry } from "./work-entry.tsx";
 import { workTime, workTurns } from "./work-state.ts";
 import "./work.css";
@@ -175,6 +176,9 @@ export function WorkPanel(
             >
               更早的工作记录
             </Button>
+          )}
+          {!!view?.delegations?.length && (
+            <WorkDelegations items={view.delegations} />
           )}
         </ScrollArea>
       )}

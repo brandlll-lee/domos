@@ -264,3 +264,18 @@
   right: auto;
   left: calc(-1 * var(--space-1));
 }
+.work-delegations {
+  display: grid;
+  gap: var(--space-3);
+}
+.work-delegation {
+  padding: var(--space-3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.work-delegation > p {
+  width: 100%;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

@@ -3,12 +3,79 @@ import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { expect, onTestFinished, test } from "vitest";
 import { DelegationsDoc } from "../src/collaboration.ts";
 import type { Computers } from "../src/computer/catalog.ts";
+import { ComputerRequests } from "../src/computer/runtime.ts";
 import { BotSession } from "../src/conversations.ts";
 import { EngineDoc, EngineMessage } from "../src/harness/state.ts";
 import { Teams } from "../src/teams.ts";
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
 import { featureProcess } from "./fixtures/feature-process.ts";
 import { runtimeFixture } from "./fixtures/runtime.ts";
+
+test("team activity keeps execution identities, waits and private work separate", async () => {
+  const { harness, bots, conversation, engines } = await runtimeFixture({
+    initialize: async () => {},
+    attach: async () => {},
+  } as unknown as Computers);
+  assert(engines);
+  const peer = await bots.create(
+    { name: "Reviewer", requestId: "reviewer" },
+    context,
+  );
+  const teams = new Teams(harness);
+  await teams.create(
+    {
+      id: "activity",
+      name: "Release",
+      purpose: "Review",
+      members: [conversation.id, peer.id],
+      owner: conversation.id,
+    },
+    context,
+  );
+  const owner = await teams.session("activity", undefined, context);
+  const member = await teams.session("activity", peer.id, context);
+  const active = async (id: typeof owner, turn: string | null) =>
+    harness.commit(async (tx) => {
+      const doc = await tx.doc(EngineDoc, id);
+      doc.activeId = turn as typeof doc.activeId;
+      doc.activeTurn = turn;
+    }, context);
+  await active(peer.id, "private");
+  await active(owner, "owner-turn");
+  await active(member, "member-turn");
+  const activity = (await teams.view("activity", engines, context)).activity;
+  expect(activity?.filter((item) => item.processing)).toEqual([
+    expect.objectContaining({
+      botId: conversation.id,
+      sessionId: owner,
+      executionId: "owner-turn",
+    }),
+    expect.objectContaining({
+      botId: peer.id,
+      sessionId: member,
+      executionId: "member-turn",
+    }),
+  ]);
+  await harness.commit(async (tx) => {
+    (await tx.doc(ComputerRequests, member)).approvals.push({
+      id: "permission",
+      title: "Approve",
+      kind: "permission",
+      detail: "Review permission",
+    });
+  }, context);
+  expect(
+    (await teams.view("activity", engines, context)).activity
+      ?.filter((item) => item.processing)
+      .map((item) => item.botId),
+  ).toEqual([conversation.id]);
+  await active(owner, null);
+  expect(
+    (await teams.view("activity", engines, context)).activity?.some(
+      (item) => item.processing,
+    ),
+  ).toBe(false);
+});
 
 test("teams retain members, owner and separate member conversations", async () => {
   const { harness, bots, conversation } = await runtimeFixture();
@@ -317,8 +384,20 @@ test.each(["cancel", "notify", "failure"])(
     const item = (await harness.snapshot(DelegationsDoc, context))?.items[0];
     assert(item);
     expect((await engines.view(rootId, context)).busy).toBe(true);
+    expect(
+      (await engines.view(rootId, context)).activity?.filter(
+        (item) => item.processing,
+      ),
+    ).toEqual([
+      expect.objectContaining({ botId: peerId, sessionId: item.session }),
+    ]);
     if (mode === "cancel") {
       await engines.stop(rootId, context);
+      expect(
+        (await engines.view(rootId, context)).activity?.some(
+          (item) => item.processing,
+        ),
+      ).toBe(false);
       release.resolve();
       await collaboration.finish(item.id, "Late result", undefined, context);
       expect(await collaboration.record(item.id, context)).toMatchObject({

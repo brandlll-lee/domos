@@ -25,6 +25,13 @@ import { modelFailure } from "./runtime/model-diagnostics.ts";
 import { RoutineInput } from "./work/routine-state.ts";
 
 export type ChatView = {
+  activity?: {
+    botId: number;
+    sessionId: number;
+    executionId?: string;
+    processing: boolean;
+    retry?: string | null;
+  }[];
   before?: string;
   delegations?: {
     id: string;

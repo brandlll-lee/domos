@@ -26,7 +26,7 @@ export function ChatHeader({
         variant="ghost"
         size="small"
         className="chat-identity"
-        aria-label="Bot详情"
+        aria-label={members ? "团队详情" : "Bot详情"}
         aria-expanded={detailsOpen}
         aria-controls={detailsOpen ? "bot-details" : undefined}
         onClick={onDetails}

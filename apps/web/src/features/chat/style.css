@@ -445,6 +445,9 @@
 }
 .typing-row {
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
   align-self: flex-start;
   max-width: var(--message-max-width);
 }
@@ -1019,22 +1022,14 @@ button.takeover-preview:focus-visible {
   color: var(--color-muted);
   font-size: var(--text-small);
 }
-.delegations {
-  padding: var(--space-2) var(--space-4);
-  max-height: 20vh;
-  overflow: auto;
+.team-identity {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
 }
-.delegation-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-.delegation-row > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
+.team-purpose {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .team-form {
@@ -1075,6 +1070,10 @@ button.takeover-preview:focus-visible {
   width: var(--control-height);
   height: var(--control-height);
   overflow: hidden;
+}
+.team-identity .team-avatar {
+  width: var(--avatar-large);
+  height: var(--avatar-large);
 }
 .team-avatar > span {
   min-width: 0;

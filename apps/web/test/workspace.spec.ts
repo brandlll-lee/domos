@@ -44,7 +44,7 @@ test("teams preserve member authors and keep private chats separate", async ({
   await dialog.getByRole("button", { name: "创建", exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(
-    page.getByRole("button", { name: "Bot详情", exact: true }),
+    page.getByRole("button", { name: "团队详情", exact: true }),
   ).toHaveText("发布小队");
   await page
     .getByRole("textbox", { name: "消息", exact: true })
@@ -82,8 +82,9 @@ test("teams preserve member authors and keep private chats separate", async ({
   await expect(page.locator('[data-inline-token^="bot:"]')).toHaveCount(3);
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(
-    log.locator(".message-author").filter({ hasText: "Reviewer" }),
+    log.locator(".message .message-author").filter({ hasText: "Reviewer" }),
   ).toBeVisible();
+  await expect(log.locator(".typing-row")).toHaveCount(0);
   await expect
     .poll(() =>
       log
@@ -148,7 +149,22 @@ test("teams preserve member authors and keep private chats separate", async ({
     },
   });
   expect(rejected.status()).toBe(400);
-  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  await page.getByRole("button", { name: "团队详情", exact: true }).click();
+  const details = page.locator("#bot-details");
+  await expect(
+    details.getByRole("heading", { name: "发布小队", exact: true }).last(),
+  ).toBeVisible();
+  await expect(details.getByText("运行模型", { exact: true })).toHaveCount(0);
+  await details.getByRole("button", { name: "团队用途", exact: false }).click();
+  await expect(details).toContainText("检查本次发布");
+  await details.getByRole("button", { name: "返回", exact: true }).click();
+  await details.getByRole("button", { name: "成员 2", exact: false }).click();
+  await details.getByRole("button", { name: "Reviewer", exact: true }).click();
+  await expect(details).toHaveAttribute("aria-label", "Reviewer的详情");
+  await expect(
+    details.getByRole("tab", { name: "Computer", exact: true }),
+  ).toBeVisible();
+  await details.getByRole("button", { name: "返回", exact: true }).click();
   await page.getByRole("tab", { name: "Work", exact: true }).click();
   await expect(
     page
@@ -178,10 +194,40 @@ test("teams preserve member authors and keep private chats separate", async ({
       .locator(".work-row[data-active]")
       .filter({ hasText: "Reviewer" });
     await expect(active).toBeVisible();
+    await expect(log.locator(".typing-row")).toContainText("Reviewer");
+    await expect(log.locator(".typing-row")).toHaveCount(1);
+    const secondGate = once(worker, "message");
+    worker.send("gate");
+    await secondGate;
+    await input.fill("同时核对另一份发布资料");
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    await expect(log.locator(".typing-row")).toHaveCount(2);
+    await expect(
+      log.locator(".typing-row").filter({ hasText: "Domos" }),
+    ).toBeVisible();
+    await page.reload();
+    await expect(log.locator(".typing-row")).toHaveCount(2);
+    await page.getByRole("button", { name: "团队详情", exact: true }).click();
+    await page.getByRole("tab", { name: "Work", exact: true }).click();
+    await expect(
+      page.locator("#conversation > section[aria-label='协作任务']"),
+    ).toHaveCount(0);
+    const composerFrame = await page.locator(".composer-area").boundingBox();
     const request = page.waitForRequest("**/rpc/stop");
     await active.getByRole("button", { name: "停止执行", exact: true }).click();
     expect((await request).postDataJSON().json.botId).toBe(sent.sessionId);
     await expect(active).toHaveCount(0);
+    await expect(log.locator(".typing-row")).toHaveCount(1);
+    await expect(log.locator(".typing-row")).toContainText("Domos");
+    await page
+      .locator(".work-row[data-active]")
+      .filter({ hasText: "Domos" })
+      .getByRole("button", { name: "停止执行", exact: true })
+      .click();
+    await expect(log.locator(".typing-row")).toHaveCount(0);
+    expect((await page.locator(".composer-area").boundingBox())?.y).toBe(
+      composerFrame?.y,
+    );
   } finally {
     const released = once(worker, "message");
     worker.send("release");
@@ -3402,7 +3448,7 @@ test("Work follows a native turn, opens its record and preserves it after stop a
   );
   worker.send("release");
   await once(worker, "message");
-  await expect(card).toContainText("执行已结束");
+  await expect(card).toContainText("执行已结束", { timeout: info.timeout });
   await expect(
     dialog.locator("summary").filter({ hasText: toolName }),
   ).toHaveCount(1);

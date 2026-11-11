@@ -254,6 +254,44 @@ export class Runtime {
       undefined,
       context,
     );
+    const delegations =
+      (await this.harness.snapshot(DelegationsDoc, context))?.items ?? [];
+    const sessions = new Map([
+      [
+        botId as ConversationId,
+        await owningBot(this.harness, botId as ConversationId, context),
+      ],
+    ]);
+    for (const [session] of sessions) {
+      for (const item of delegations) {
+        if (item.source === session && !item.cancelled && !item.endedAt)
+          sessions.set(item.session, item.recipient as ConversationId);
+      }
+    }
+    view.activity = await Promise.all(
+      [...sessions].map(async ([sessionId, owner]) => {
+        const [state, approvals] =
+          sessionId === botId
+            ? [engine, requests]
+            : await Promise.all([
+                this.harness.snapshot(EngineDoc, sessionId, context),
+                this.harness.snapshot(ComputerRequests, sessionId, context),
+              ]);
+        return {
+          botId: owner,
+          sessionId,
+          executionId:
+            state?.activeTurn ??
+            (state?.activeId != null ? String(state.activeId) : undefined),
+          processing: Boolean(
+            state?.activeId &&
+              state.run?.status !== "stopping" &&
+              !approvals?.approvals.length,
+          ),
+          retry: state?.runtime?.retry,
+        };
+      }),
+    );
     view.busy ||= Boolean(
       view.delegations?.some(
         (item) => item.status === "running" || item.status === "queued",
@@ -315,6 +353,7 @@ export class Runtime {
   }
 
   watch(botId: number, context: Context, page?: { limit: number }) {
+    let sessions = new Set([botId]);
     return watchCommits(
       this.harness,
       (change) =>
@@ -323,10 +362,13 @@ export class Runtime {
           change.value.conversationId === botId &&
           change.value.state.status === "terminal") ||
         ((change.type === "document" || change.type === "document.copy") &&
-          (change.conversationId === botId ||
+          (sessions.has(change.conversationId as number) ||
             change.record.kind === DelegationsDoc.definition.kind)),
       async () => {
         const view = await this.view(botId, context, page);
+        sessions = new Set(
+          view.activity?.map((item) => item.sessionId) ?? [botId],
+        );
         return page ? slimChatView(view) : view;
       },
       context,

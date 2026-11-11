@@ -1,9 +1,9 @@
-import type { BotPresence } from "@domos/agent/bots";
 import type { ChatView } from "@domos/agent/view";
 import { Button } from "@domos/ui/controls";
 import { InlineNotice } from "@domos/ui/message";
 import { useState } from "react";
 import { client } from "../../client.ts";
+import { useBots } from "../bots/use-bots.ts";
 
 const labels: Record<string, string> = {
   queued: "等待执行",
@@ -12,28 +12,27 @@ const labels: Record<string, string> = {
   failed: "执行失败",
   cancelled: "已取消",
 };
-export function Delegations({
+export function WorkDelegations({
   items,
-  bots,
 }: {
   items: NonNullable<ChatView["delegations"]>;
-  bots: BotPresence[];
 }) {
+  const { items: bots } = useBots();
   const [pending, setPending] = useState<string>();
   const [error, setError] = useState<string>();
   if (!items.length) return null;
   return (
-    <section className="delegations" aria-label="协作任务">
+    <section className="work-delegations" aria-label="协作任务">
       {items.map((item) => (
-        <div className="delegation-row" key={item.id}>
+        <div className="panel-card work-delegation" key={item.id}>
           <InlineNotice>
             {bots.find((bot) => bot.id === item.sender)?.name} →{" "}
             {bots.find((bot) => bot.id === item.recipient)?.name} ·{" "}
             {labels[item.status] ?? item.status}
           </InlineNotice>
-          <span>{item.task}</span>
-          {item.result && <span>{item.result}</span>}
-          {item.error && <span role="alert">{item.error}</span>}
+          <p>{item.task}</p>
+          {item.result && <p>{item.result}</p>}
+          {item.error && <p role="alert">{item.error}</p>}
           <Button
             variant="ghost"
             size="small"

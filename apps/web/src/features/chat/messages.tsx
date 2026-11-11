@@ -1,5 +1,7 @@
+import type { BotPresence } from "@domos/agent/bots";
 import { type ChatMessage, messageText } from "@domos/agent/messages";
 import type { TranscriptItem } from "@domos/agent/transcript";
+import type { ChatView } from "@domos/agent/view";
 import { Button } from "@domos/ui/controls";
 import { Loading } from "@domos/ui/loading";
 import { ActionMenu } from "@domos/ui/menu";
@@ -154,6 +156,8 @@ export const Messages = memo(function Messages({
   ready,
   busy,
   processing,
+  activity,
+  bots,
   retry,
   botName,
   createdAt,
@@ -169,6 +173,8 @@ export const Messages = memo(function Messages({
   ready: boolean;
   busy: boolean;
   processing: boolean;
+  activity?: ChatView["activity"];
+  bots?: BotPresence[];
   retry?: string | null;
   botName: string;
   createdAt?: number;
@@ -181,15 +187,18 @@ export const Messages = memo(function Messages({
   onEarlier?: () => Promise<void>;
 }) {
   const received = useMemo(
-    () => ({ items, ready, processing, retry, sentRequest }),
-    [items, ready, processing, retry, sentRequest],
+    () => ({ items, ready, processing, activity, retry, sentRequest }),
+    [items, ready, processing, activity, retry, sentRequest],
   );
   const deferred = useDeferredValue(received);
   const shown =
     !deferred.ready || deferred.sentRequest !== sentRequest
       ? received
       : deferred;
-  const typing = shown.ready && (shown.processing || Boolean(shown.retry));
+  const working = shown.activity?.filter((item) => item.processing);
+  const typing =
+    shown.ready &&
+    (working ? working.length > 0 : shown.processing || Boolean(shown.retry));
   const transcript = useTranscript(
     shown.items,
     shown.ready,
@@ -286,10 +295,32 @@ export const Messages = memo(function Messages({
             })}
           {typing && transcript.atLatest && (
             <ViewTransition {...motion}>
-              <TypingDots
-                label={chatCopy.typing(botName)}
-                status={shown.retry}
-              />
+              {working ? (
+                working.map((item) => {
+                  const member = bots?.find((bot) => bot.id === item.botId);
+                  return (
+                    <TypingDots
+                      key={`${item.sessionId}:${item.executionId}`}
+                      author={
+                        member
+                          ? {
+                              botId: member.id,
+                              name: member.name,
+                              avatar: member.avatar,
+                            }
+                          : undefined
+                      }
+                      label={`${member?.name ?? "成员"} ${chatCopy.botWorking}`}
+                      status={item.retry}
+                    />
+                  );
+                })
+              ) : (
+                <TypingDots
+                  label={chatCopy.typing(botName)}
+                  status={shown.retry}
+                />
+              )}
             </ViewTransition>
           )}
           <p className="sr-only" role="status">

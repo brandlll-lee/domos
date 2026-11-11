@@ -8,6 +8,7 @@ import { Loading } from "@domos/ui/loading";
 import { layout } from "@domos/ui/tokens";
 import {
   addTransitionType,
+  type ComponentProps,
   type CSSProperties,
   startTransition,
   useCallback,
@@ -28,12 +29,12 @@ import { TeamMembers } from "./bot-reference.tsx";
 import { Composer } from "./composer.tsx";
 import { ContextRing } from "./context.tsx";
 import { chatCopy } from "./copy.ts";
-import { Delegations } from "./delegations.tsx";
 import { ErrorMessage } from "./error-message.tsx";
 import { ChatHeader } from "./header.tsx";
 import { Messages } from "./messages.tsx";
 import { RuntimeStatus } from "./runtime.tsx";
 import { Sidebar } from "./sidebar.tsx";
+import { TeamDetails } from "./team-details.tsx";
 import { useChat } from "./use-chat.ts";
 import { useComposerDock } from "./use-composer-dock.ts";
 import { useDraft } from "./use-draft.ts";
@@ -89,7 +90,9 @@ function BotChat({
   const dock = useComposerDock();
   const draft = useDraft(team ? `team:${team.id}` : bot.id);
   const [sessionId, setSessionId] = useState<number>();
+  const [member, setMember] = useState<BotPresence>();
   const sessionOwner =
+    member ??
     bots.find(
       (item) =>
         item.id ===
@@ -97,10 +100,11 @@ function BotChat({
           ?.author?.botId ??
           chat.view?.delegations?.find((item) => item.session === sessionId)
             ?.recipient),
-    ) ?? bot;
+    ) ??
+    bot;
   const detailBot = sessionId
     ? { ...sessionOwner, id: sessionId as Bot["id"] }
-    : bot;
+    : sessionOwner;
   const computer = useComputer(sessionOwner.id, directory);
   const input = useRef<HTMLDivElement>(null);
   const resend = useCallback(
@@ -169,6 +173,7 @@ function BotChat({
       )
         return;
       setSessionId(detail.botId);
+      setMember(undefined);
       setWorkRun(detail.turnId);
       setDetailPanel("root");
       setPanel("work");
@@ -200,6 +205,7 @@ function BotChat({
       )
         return;
       setSessionId(request.botId);
+      setMember(undefined);
       setTakeover(request);
       setView("chat");
       setDetailPanel("root");
@@ -230,6 +236,7 @@ function BotChat({
       ? chatCopy.errors.reply
       : null);
   const showPanel = (view: BotPanelView) => {
+    setMember(undefined);
     setSessionId(undefined);
     setView("chat");
     setPanel("settings");
@@ -260,7 +267,13 @@ function BotChat({
           else closePanel();
         }}
         expanded={panel !== "settings" && expanded}
-        inspectorTitle={panel === "file" ? "文件预览" : "Bot详情"}
+        inspectorTitle={
+          panel === "file"
+            ? "文件预览"
+            : team && !member
+              ? "团队详情"
+              : "Bot详情"
+        }
         onUsage={() => {
           setView(view === "usage" ? "chat" : "usage");
           closePanel();
@@ -289,12 +302,46 @@ function BotChat({
               onClose={closePanel}
               onTarget={setFileTarget}
             />
+          ) : team &&
+            !member &&
+            !sessionId &&
+            (panel === "settings" || panel === "work") ? (
+            <TeamDetails
+              active={detailsOpen}
+              team={team}
+              members={members ?? []}
+              chat={chat}
+              tab={panel === "work" ? "work" : "team"}
+              onTabChange={(tab) => {
+                setSessionId(undefined);
+                setPanel(tab === "work" ? "work" : "settings");
+              }}
+              onMember={(bot) => {
+                setMember(bot);
+                setSessionId(undefined);
+                setDetailPanel("root");
+                setPanel("settings");
+              }}
+              onClose={closePanel}
+              workRun={workRun}
+            />
           ) : (
-            <BotDetails
+            <MemberDetails
+              member={member}
+              onBack={
+                team
+                  ? () => {
+                      setMember(undefined);
+                      setSessionId(undefined);
+                      setPanel("settings");
+                      setDetailPanel("root");
+                    }
+                  : undefined
+              }
               takeoverId={takeoverId}
               active={detailsOpen}
               workRun={workRun}
-              bot={bot}
+              bot={sessionOwner}
               sessionBot={detailBot}
               view={detailPanel}
               onViewChange={setDetailPanel}
@@ -396,6 +443,12 @@ function BotChat({
                 ready={Boolean(chat.view) || Boolean(chat.error)}
                 busy={Boolean(chat.view?.busy)}
                 processing={chat.processing}
+                activity={
+                  team || chat.view?.delegations?.length
+                    ? chat.view?.activity
+                    : undefined
+                }
+                bots={bots}
                 retry={chat.view?.busy ? chat.view.runtime?.retry : null}
                 botName={team?.name ?? bot.name}
                 createdAt={bot.createdAt}
@@ -425,9 +478,6 @@ function BotChat({
                   )
                 }
               />
-              {!!chat.view?.delegations?.length && (
-                <Delegations items={chat.view.delegations} bots={bots} />
-              )}
               {chat.view ? (
                 <Composer
                   ref={dock.ref}
@@ -481,5 +531,38 @@ function BotChat({
         )}
       </Workspace>
     </FilePreviewContext>
+  );
+}
+
+function MemberDetails({
+  member,
+  ...props
+}: ComponentProps<typeof BotDetails> & { member?: BotPresence }) {
+  return member ? (
+    <MemberBotDetails key={member.id} {...props} />
+  ) : (
+    <BotDetails {...props} />
+  );
+}
+
+function MemberBotDetails(props: ComponentProps<typeof BotDetails>) {
+  const chat = useChat(props.bot.id);
+  return (
+    <BotDetails
+      {...props}
+      chat={{
+        ...chat,
+        model: chat.view?.model ?? null,
+        busy: Boolean(chat.view?.busy),
+      }}
+      context={
+        <ContextRing
+          botId={props.bot.id}
+          state={chat.view?.runtime}
+          provider={chat.view?.engine?.provider}
+          busy={Boolean(chat.view?.busy)}
+        />
+      }
+    />
   );
 }

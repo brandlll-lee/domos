@@ -147,6 +147,13 @@ export class Teams {
           : undefined,
       busy: views.some((view) => view.busy),
       processing: views.some((view) => view.processing),
+      activity: [
+        ...new Map(
+          views
+            .flatMap((view) => view.activity ?? [])
+            .map((item) => [item.sessionId, item]),
+        ).values(),
+      ],
       delegations: views.flatMap((view) => view.delegations ?? []),
       approvals: views.flatMap((view) => view.approvals ?? []),
       runs: views.flatMap((view) => view.runs ?? []),

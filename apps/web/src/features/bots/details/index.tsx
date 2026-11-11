@@ -44,6 +44,7 @@ export function BotDetails({
   view,
   onViewChange,
   onClose,
+  onBack,
   computer,
   chat,
   context,
@@ -62,6 +63,7 @@ export function BotDetails({
   view: BotPanelView;
   onViewChange: (view: BotPanelView) => void;
   onClose: () => void;
+  onBack?: () => void;
   computer: ReturnType<typeof useComputer>;
   chat: ReturnType<typeof useChat> & {
     model: ChatView["model"];
@@ -161,7 +163,7 @@ export function BotDetails({
         title={title}
         onBack={
           view === "root"
-            ? undefined
+            ? onBack
             : () => (editor ? setSelection(null) : navigate("root"))
         }
         onClose={onClose}
