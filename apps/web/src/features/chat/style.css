@@ -1232,3 +1232,10 @@ button.takeover-preview:focus-visible {
   max-height: var(--dialog-max-height);
   overflow: auto;
 }
+
+.history-error {
+  color: var(--color-muted);
+  text-align: center;
+  font-size: var(--text-small);
+  margin: 0;
+}

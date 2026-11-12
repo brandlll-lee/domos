@@ -25,6 +25,8 @@ import {
   type Attachment,
   type EvidenceSource,
   FILE_CHUNK_BYTES,
+  type FileCategory,
+  fileCategory,
   MAX_ATTACHMENTS,
   MAX_FILE_BYTES,
   MAX_MESSAGE_FILE_BYTES,
@@ -50,6 +52,7 @@ export async function conversationFiles(
   offset: number,
   limit: number,
   context: Context,
+  category: FileCategory = "all",
 ) {
   const items: ConversationFile[] = [];
   const seen = new Set<string>();
@@ -79,6 +82,7 @@ export async function conversationFiles(
       for (const file of message.attachments ?? []) {
         if (seen.has(file.id)) continue;
         seen.add(file.id);
+        if (category !== "all" && fileCategory(file) !== category) continue;
         if (!file.name.toLocaleLowerCase().includes(search)) continue;
         if (matched++ < offset) continue;
         if (items.length === limit) return { items, next: offset + limit };

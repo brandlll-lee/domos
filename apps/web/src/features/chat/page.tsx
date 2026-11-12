@@ -464,6 +464,7 @@ function BotChat({
                 sentRequest={chat.sentRequest}
                 hasMore={Boolean(chat.view?.before)}
                 loadingEarlier={chat.loadingEarlier}
+                earlierError={chat.earlierError}
                 onEarlier={chat.loadEarlier}
                 onResend={resend}
                 welcome={

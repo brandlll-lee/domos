@@ -334,8 +334,13 @@ export function useTranscript(
       schedule();
     },
     async loadEarlier(load?: () => Promise<void>) {
-      const first = content.current?.querySelector<HTMLElement>(
-        "[data-transcript-key]",
+      const bounds = viewport.current?.getBoundingClientRect();
+      const first = Array.from(
+        content.current?.querySelectorAll<HTMLElement>(
+          "[data-transcript-key]",
+        ) ?? [],
+      ).find(
+        (node) => node.getBoundingClientRect().bottom > (bounds?.top ?? 0),
       );
       if (first?.dataset.transcriptKey)
         anchor.current = {
@@ -345,8 +350,8 @@ export function useTranscript(
       following.current = false;
       reply.current = null;
       if (load) {
-        await load();
         setRange({ start, end });
+        await load();
         return;
       }
       setRange({

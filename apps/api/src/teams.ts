@@ -68,10 +68,15 @@ export function teamRouter(
             .optional(),
         }),
       )
-      .handler(async ({ input }) => {
+      .handler(async ({ input, signal }) => {
         const { teams, runtime } = service();
         return slimChatView(
-          await teams.view(input.id, runtime, context, input.before),
+          await teams.view(
+            input.id,
+            runtime,
+            signal ? withAbortSignal(signal, context) : context,
+            input.before,
+          ),
         );
       }),
     changes: os.input(target).handler(async function* ({ input, signal }) {

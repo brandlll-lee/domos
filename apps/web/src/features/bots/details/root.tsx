@@ -85,7 +85,7 @@ export function RootPanel({
       <PanelGroup title="能力">
         <PanelRow
           icon={<FilesIcon />}
-          title="文件"
+          title="文件与媒体"
           onClick={() => onNavigate("files")}
         />
         <PanelRow

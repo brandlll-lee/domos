@@ -35,7 +35,7 @@ const titles: Record<Exclude<BotPanelView, "root">, string> = {
   skills: "技能",
   routines: "定时",
   prompt: "提示词",
-  files: "文件",
+  files: "文件与媒体",
 };
 
 export function BotDetails({

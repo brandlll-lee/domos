@@ -98,3 +98,11 @@ export function filePreviewKind(
   if (mime?.startsWith("text/") || mime === "application/json") return "text";
   return "download";
 }
+
+export const fileCategories = ["all", "files", "media", "audio"] as const;
+export type FileCategory = (typeof fileCategories)[number];
+export function fileCategory(file: Pick<Attachment, "mimeType">): FileCategory {
+  if (/^(image|video)\//.test(file.mimeType ?? "")) return "media";
+  if (file.mimeType?.startsWith("audio/")) return "audio";
+  return "files";
+}

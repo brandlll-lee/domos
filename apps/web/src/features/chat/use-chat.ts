@@ -116,6 +116,8 @@ export function useChat(
   const [connected, setConnected] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const [earlierError, setEarlierError] = useState<string>();
+  const earlierRequest = useRef<AbortController | null>(null);
   const [project] = useState(transcriptState);
   const { items } = useMemo(
     () => (view ? project(view, outgoing) : { items: outgoing }),
@@ -241,19 +243,30 @@ export function useChat(
     return () => {
       if (current.current) store.update({ view: current.current });
       controller.abort();
+      earlierRequest.current?.abort();
       if (frame !== undefined) cancelAnimationFrame(frame);
       document.removeEventListener("visibilitychange", visible);
     };
   }, [botId, store, setView, setError, teamId]);
 
   async function loadEarlier() {
-    if (!current.current?.before || loadingEarlier) return;
+    const before = current.current?.before;
+    if (!before || earlierRequest.current) return;
+    const controller = new AbortController();
+    earlierRequest.current = controller;
+    const signal = AbortSignal.any([
+      controller.signal,
+      AbortSignal.timeout(30_000),
+    ]);
     setLoadingEarlier(true);
+    setEarlierError(undefined);
     try {
       const page = teamId
-        ? await client.teams.get({ id: teamId, before: current.current.before })
-        : await client.get({ botId, before: current.current.before });
+        ? await client.teams.get({ id: teamId, before }, { signal })
+        : await client.get({ botId, before }, { signal });
+      signal.throwIfAborted();
       const view = current.current;
+      if (!view || view.before !== before) return;
       const known = new Set(view.messages.map((message) => message.id));
       const next = {
         ...view,
@@ -274,9 +287,17 @@ export function useChat(
       current.current = next;
       setView(next);
     } catch {
-      setError(chatCopy.errors.connect);
+      if (!controller.signal.aborted)
+        setEarlierError(
+          signal.aborted
+            ? "历史消息读取超时，请重试。"
+            : "历史消息读取失败，请重试。",
+        );
     } finally {
-      setLoadingEarlier(false);
+      if (earlierRequest.current === controller) {
+        earlierRequest.current = null;
+        if (!controller.signal.aborted) setLoadingEarlier(false);
+      }
     }
   }
 
@@ -396,5 +417,6 @@ export function useChat(
     stop,
     loadEarlier,
     loadingEarlier,
+    earlierError,
   };
 }

@@ -1,5 +1,5 @@
 import { Readable } from "node:stream";
-import { MAX_FILE_BYTES } from "@domos/agent/attachments";
+import { fileCategories, MAX_FILE_BYTES } from "@domos/agent/attachments";
 import type { Bots } from "@domos/agent/bots";
 import type { Computers } from "@domos/agent/computer/catalog";
 import { conversationFiles, type Files } from "@domos/agent/files";
@@ -37,6 +37,7 @@ export function fileRouter(bots: Bots, files: Files, computers?: Computers) {
       .input(
         botTarget.extend({
           query: z.string().max(200).default(""),
+          category: z.enum(fileCategories).default("all"),
           offset: z.number().int().nonnegative().default(0),
           limit: z.number().int().min(1).max(100).default(50),
         }),
@@ -51,6 +52,7 @@ export function fileRouter(bots: Bots, files: Files, computers?: Computers) {
           signal
             ? withAbortSignal(signal, BACKGROUND_CONTEXT)
             : BACKGROUND_CONTEXT,
+          input.category,
         );
       }),
     upload: os

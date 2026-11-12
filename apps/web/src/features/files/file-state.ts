@@ -1,4 +1,4 @@
-import type { Attachment } from "@domos/agent/attachments";
+import type { Attachment, FileCategory } from "@domos/agent/attachments";
 import type { SpreadsheetPreview } from "@domos/agent/files";
 import type { ChatMessage } from "@domos/agent/messages";
 import { client } from "../../client.ts";
@@ -122,12 +122,12 @@ export function fileState(botId: number, id: string) {
   }
   return store;
 }
-function createList(botId: number, query: string) {
+function createList(botId: number, query: string, category: FileCategory) {
   let offset = 0;
   const read = createReadState<Awaited<ReturnType<typeof client.files.list>>>(
     async (signal): Promise<Awaited<ReturnType<typeof client.files.list>>> => {
       const page = await client.files.list(
-        { botId, query, offset },
+        { botId, query, category, offset },
         { signal },
       );
       return {
@@ -152,16 +152,21 @@ function createList(botId: number, query: string) {
     },
   };
 }
-export function fileList(botId: number, query: string) {
+export function fileList(
+  botId: number,
+  query: string,
+  category: FileCategory = "all",
+) {
   let items = lists.get(botId);
   if (!items) {
     items = new Map();
     lists.set(botId, items);
   }
-  let store = items.get(query);
+  const key = JSON.stringify([category, query]);
+  let store = items.get(key);
   if (!store) {
-    store = createList(botId, query);
-    items.set(query, store);
+    store = createList(botId, query, category);
+    items.set(key, store);
   }
   return store;
 }

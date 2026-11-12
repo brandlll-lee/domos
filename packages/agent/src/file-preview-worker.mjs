@@ -38,6 +38,26 @@ async function inspectZip(path) {
 }
 
 async function preview(input) {
+  if (input.kind === "image") {
+    const { createNodePhotonImages } = await import(
+      "@earendil-works/pi-durable/images/node"
+    );
+    const images = await createNodePhotonImages({ worker: false });
+    const image = await images.prepare(
+      await readFile(input.path),
+      input.mimeType,
+      {
+        maxWidth: 160,
+        maxHeight: 160,
+        maxBytes: 48 * 1024,
+      },
+    );
+    if (!image) throw new Error("无法生成图片缩略图。");
+    return {
+      kind: "image",
+      thumbnail: `data:${image.mimeType};base64,${image.data}`,
+    };
+  }
   await inspectZip(input.path);
   const bytes = await readFile(input.path);
   const catalog = XLSX.read(bytes, { bookSheets: true });

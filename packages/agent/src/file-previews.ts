@@ -25,11 +25,13 @@ export type SpreadsheetPreview = {
   columnLimit: number;
 };
 
+type FilePreview = SpreadsheetPreview | { kind: "image"; thumbnail: string };
+
 export class FilePreviews {
   private readonly pending = new Map<
     string,
     {
-      promise: Promise<SpreadsheetPreview>;
+      promise: Promise<FilePreview>;
       controller: AbortController;
       readers: number;
     }
@@ -46,10 +48,10 @@ export class FilePreviews {
     path: string,
     sheet: string | undefined,
     signal?: AbortSignal,
-  ): Promise<SpreadsheetPreview> {
+  ): Promise<FilePreview> {
     signal?.throwIfAborted();
     const kind = filePreviewKind(file);
-    if (kind !== "xlsx")
+    if (kind !== "xlsx" && kind !== "image")
       throw new Error("此格式暂不支持预览，请下载后使用本机应用打开。");
     const implementation = createHash("sha256")
       .update(
@@ -67,7 +69,7 @@ export class FilePreviews {
     const directory = join(this.root, "previews", key);
     const cached = join(directory, "result.json");
     const result = await readFile(cached, "utf8")
-      .then((value) => JSON.parse(value) as SpreadsheetPreview)
+      .then((value) => JSON.parse(value) as FilePreview)
       .catch(() => null);
     if (result) return result;
     signal?.throwIfAborted();
@@ -80,7 +82,10 @@ export class FilePreviews {
         .then(async () => {
           controller.signal.throwIfAborted();
           await mkdir(directory, { recursive: true });
-          const generated = await this.run({ path, sheet }, controller.signal);
+          const generated = await this.run(
+            { path, sheet, kind, mimeType: file.mimeType },
+            controller.signal,
+          );
           await writeFile(`${cached}.tmp`, JSON.stringify(generated));
           await rename(`${cached}.tmp`, cached);
           await this.clean(directory);
@@ -120,7 +125,7 @@ export class FilePreviews {
   private run(
     input: Record<string, unknown>,
     signal: AbortSignal,
-  ): Promise<SpreadsheetPreview> {
+  ): Promise<FilePreview> {
     return new Promise((resolve, reject) => {
       const child = fork(
         new URL(import.meta.resolve("@domos/agent/file-preview-worker")),
@@ -131,7 +136,7 @@ export class FilePreviews {
           stdio: ["ignore", "ignore", "ignore", "ipc"],
         },
       );
-      let result: SpreadsheetPreview | undefined;
+      let result: FilePreview | undefined;
       let error: Error | undefined;
       const stop = () => {
         error ??= new Error("预览已取消或超时。你仍可下载原文件。");
@@ -145,7 +150,7 @@ export class FilePreviews {
       });
       child.on(
         "message",
-        (message: { result?: SpreadsheetPreview; error?: string }) => {
+        (message: { result?: FilePreview; error?: string }) => {
           result = message.result;
           if (message.error) error = new Error(message.error);
         },

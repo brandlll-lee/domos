@@ -326,10 +326,12 @@ test("spreadsheet preview selects sheets, retains formatted cached values, and r
   await expect(cancelled).rejects.toThrow();
   const result = await reading;
   expect(result.kind).toBe("xlsx");
+  if (result.kind !== "xlsx") throw new Error("Spreadsheet required");
   expect(result.sheets).toEqual(["汇总", "明细"]);
   expect(result.rows[1]).toEqual(["中文", "25%", "2024-01-01", "42"]);
   expect(await files.previews.read(file, path, undefined)).toEqual(result);
   const next = await files.previews.read(file, path, "明细");
+  if (next.kind !== "xlsx") throw new Error("Spreadsheet required");
   expect(next.rows[0]).toEqual(["第二张表"]);
   await expect(files.previews.read(file, path, "missing")).rejects.toThrow(
     "工作表不存在",

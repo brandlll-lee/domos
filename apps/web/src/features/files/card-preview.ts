@@ -10,6 +10,13 @@ export async function readCardPreview(
 ): Promise<FileSummary> {
   signal.throwIfAborted();
   const kind = filePreviewKind(file);
+  if (kind === "image") {
+    const response = await fetch(`/files/${botId}/${file.id}/preview`, {
+      signal,
+    });
+    if (!response.ok) throw new Error("无法读取图片缩略图。");
+    return response.json();
+  }
   if (kind === "pdf") {
     const pdfjs = await import("pdfjs-dist");
     signal.throwIfAborted();

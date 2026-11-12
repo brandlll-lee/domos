@@ -299,6 +299,29 @@ test("files preview documents, search old history and return to the source", asy
     new File(["const greeting = '你好';"], "代码.ts"),
     new File(["%PDF-1.7\ninvalid"], "损坏.pdf"),
     new File([new Uint8Array([0, 255, 0])], "文件.bin"),
+    new File([png(320, 240)], "照片.png"),
+    new File(
+      [
+        await readFile(
+          new URL(
+            "../../../packages/agent/test/fixtures/media/audio.mp3",
+            import.meta.url,
+          ),
+        ),
+      ],
+      "语音.mp3",
+    ),
+    new File(
+      [
+        await readFile(
+          new URL(
+            "../../../packages/agent/test/fixtures/media/video.mp4",
+            import.meta.url,
+          ),
+        ),
+      ],
+      "录像.mp4",
+    ),
   ];
   const attachments = [];
   for (const file of documents)
@@ -356,7 +379,7 @@ test("files preview documents, search old history and return to the source", asy
   });
   await page
     .locator("#bot-details")
-    .getByRole("button", { name: "文件", exact: true })
+    .getByRole("button", { name: "文件与媒体", exact: true })
     .click();
   const loading = page.getByRole("status", {
     name: "正在读取文件",
@@ -367,7 +390,9 @@ test("files preview documents, search old history and return to the source", asy
     await expect(loading.locator(".loading-spinner")).toBeVisible();
     const bounds = await loading.boundingBox();
     const content = await page.locator(".detail-scroll").boundingBox();
-    const search = await page.locator(".file-list .search-field").boundingBox();
+    const search = await page
+      .getByRole("tablist", { name: "文件分类" })
+      .boundingBox();
     if (!bounds || !content || !search)
       throw new Error("Loading area required");
     expect(
@@ -399,6 +424,68 @@ test("files preview documents, search old history and return to the source", asy
   }
   await expect(loading).toBeHidden();
   await page.unroute("**/rpc/files/list");
+  const list = page.locator(".file-list");
+  let categoryReads = 0;
+  page.on("request", (request) => {
+    if (request.url().endsWith("/rpc/files/list")) categoryReads++;
+  });
+  await expect(list.locator(".file-list-row")).toHaveCount(8);
+  await list.getByRole("tab", { name: "图片与视频", exact: true }).click();
+  await expect(list.locator(".file-list-row")).toHaveCount(2);
+  await expect(list.locator(".file-list-thumbnail img")).toHaveCount(2);
+  await expect
+    .poll(() =>
+      list
+        .locator(".file-list-thumbnail img")
+        .first()
+        .evaluate(
+          (image: HTMLImageElement) =>
+            image.complete &&
+            image.naturalWidth > 0 &&
+            image.naturalWidth <= 160 &&
+            image.naturalHeight <= 160,
+        ),
+    )
+    .toBe(true);
+  await expect(list.locator("video,audio")).toHaveCount(0);
+  await list.getByRole("tab", { name: "音频", exact: true }).click();
+  await expect(list.locator(".file-list-row")).toHaveCount(1);
+  await expect(list).toContainText("语音.mp3");
+  await list.getByRole("tab", { name: "文件", exact: true }).click();
+  await expect(list.locator(".file-list-row")).toHaveCount(5);
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await page.evaluate(async () => {
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+    });
+    await page.screenshot({ path: `tmp/file-ui/file-list-${colorScheme}.png` });
+    await list.getByRole("tab", { name: "图片与视频", exact: true }).click();
+    await page.screenshot({
+      path: `tmp/file-ui/file-media-${colorScheme}.png`,
+    });
+    await list.getByRole("tab", { name: "音频", exact: true }).click();
+    await page.screenshot({
+      path: `tmp/file-ui/file-audio-${colorScheme}.png`,
+    });
+    await list.getByRole("tab", { name: "文件", exact: true }).click();
+  }
+  await list
+    .getByRole("button", { name: "更多文件操作 说明.md", exact: true })
+    .click();
+  await page.screenshot({ path: "tmp/file-ui/file-list-menu.png" });
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    list.getByRole("tab", { name: "图片与视频", exact: true }),
+  ).toBeInViewport();
+  expect(
+    await list.evaluate((node) => node.scrollWidth <= node.clientWidth),
+  ).toBe(true);
+  await page.screenshot({ path: "tmp/file-ui/file-list-narrow.png" });
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await list.getByRole("tab", { name: "全部", exact: true }).click();
+  expect(categoryReads).toBe(3);
   const filtering = Promise.withResolvers<void>();
   await page.route("**/rpc/files/list", async (route) => {
     await filtering.promise;
@@ -419,7 +506,13 @@ test("files preview documents, search old history and return to the source", asy
   }
   await expect(loading).toBeHidden();
   await expect(page.locator(".file-list-row")).toHaveCount(1);
-  await page.getByRole("button", { name: "在聊天中查看", exact: true }).click();
+  await page
+    .locator(".file-list")
+    .getByRole("button", { name: "更多文件操作 说明.md", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "在聊天中查看", exact: true })
+    .click();
   await expect(
     page.getByRole("button", { name: "预览 说明.md", exact: true }),
   ).toBeInViewport();
@@ -694,11 +787,9 @@ test("file reads recover from failure and cannot cross a Bot switch", async ({
     await page.getByRole("button", { name: "Bot详情", exact: true }).click();
     await page
       .locator("#bot-details")
-      .getByRole("button", { name: "文件", exact: true })
+      .getByRole("button", { name: "文件与媒体", exact: true })
       .click();
-    await expect(page.locator(".file-list")).toContainText(
-      "发送和收到的文件会显示在这里",
-    );
+    await expect(page.locator(".file-list")).toContainText("此分类暂无附件");
   } finally {
     release.resolve();
     await page.unroute("**/files/*/*?download=1");
@@ -1494,7 +1585,7 @@ test("working contacts retain green status across switches, concurrent work, rel
   await expect(page.locator(".sidebar .avatar-status")).toHaveCount(0);
 });
 
-test("chat gutters stay full width while bubbles follow the available panel", async ({
+test("chat gutters align within the content limit while panels resize", async ({
   page,
 }) => {
   test.setTimeout(60_000);
@@ -1536,7 +1627,16 @@ test("chat gutters stay full width while bubbles follow the available panel", as
         throw new Error("Chat layout missing");
       expect(messages.x).toBeCloseTo(composer.x, 0);
       expect(messages.width).toBeCloseTo(composer.width, 0);
-      expect(messages.width).toBeGreaterThanOrEqual(panel.width * 0.9);
+      expect(messages.width).toBeGreaterThanOrEqual(
+        Math.min(
+          panel.width * 0.9,
+          await page
+            .locator(".messages")
+            .evaluate((node) =>
+              Number.parseFloat(getComputedStyle(node).maxWidth),
+            ),
+        ),
+      );
       expect(bubble.x).toBeGreaterThanOrEqual(messages.x);
       expect(bubble.x + bubble.width).toBeLessThanOrEqual(
         messages.x + messages.width + 1,
@@ -1620,9 +1720,16 @@ test("chat gutters stay full width while bubbles follow the available panel", as
           parseFloat(getComputedStyle(document.documentElement).zoom)
         );
       });
+      const limit = await page
+        .locator(".messages")
+        .evaluate(
+          (node) =>
+            Number.parseFloat(getComputedStyle(node).maxWidth) *
+            Number.parseFloat(getComputedStyle(document.documentElement).zoom),
+        );
       expect(
         (await page.locator(".messages").boundingBox())?.width,
-      ).toBeCloseTo(transcript, 0);
+      ).toBeCloseTo(Math.min(transcript, limit), 0);
       expect(chat.x + chat.width).toBeLessThanOrEqual(panel.x + 1);
       expect(
         await page
@@ -1791,12 +1898,19 @@ test("long replies start at the top and background messages preserve a reader's 
     page.getByRole("button", { name: "返回最新", exact: true }),
   ).toBeVisible();
   await control({ content: "已完成。" });
-  const sender = await page.context().newPage();
-  await sender.goto(url);
-  await sender.getByLabel("消息", { exact: true }).fill("下一项任务");
-  await sender.getByRole("button", { name: "发送", exact: true }).click();
-  await expect(sender.getByLabel("Domos 的回复").last()).toHaveText("已完成。");
-  await sender.close();
+  const rpc: RouterClient<AppRouter> = createORPCClient(
+    new RPCLink({ url: `${url}/rpc` }),
+  );
+  const bot = (await rpc.bots.list())[0];
+  if (!bot) throw new Error("Bot required");
+  await rpc.send({
+    botId: bot.id,
+    text: "下一项任务",
+    requestId: crypto.randomUUID(),
+  });
+  await expect
+    .poll(async () => (await rpc.get({ botId: bot.id })).busy)
+    .toBe(false);
   await expect
     .poll(() => page.locator(".transcript").evaluate((node) => node.scrollTop))
     .toBe(50);
@@ -1896,8 +2010,52 @@ test("large histories render a bounded window and retain the earlier reading anc
   const first = page.getByLabel("你的消息", { exact: true }).first();
   const key = await first.getAttribute("data-transcript-key");
   const before = await first.boundingBox();
+  await page.evaluate(() => {
+    Reflect.set(window, "historyAnimations", []);
+    const original = document.startViewTransition.bind(document);
+    document.startViewTransition = (...args) => {
+      (Reflect.get(window, "historyAnimations") as number[]).push(1);
+      return original(...args);
+    };
+  });
+  async function sampleAnchor() {
+    await page.evaluate(() => {
+      const viewport = document.querySelector(".transcript");
+      if (!viewport) throw new Error("Transcript required");
+      const bounds = viewport.getBoundingClientRect();
+      const node = [
+        ...document.querySelectorAll<HTMLElement>("[data-transcript-key]"),
+      ].find((item) => item.getBoundingClientRect().bottom > bounds.top);
+      if (!node) throw new Error("Visible message required");
+      const top = node.getBoundingClientRect().top;
+      const samples: number[] = [];
+      Reflect.set(window, "anchorSamples", samples);
+      Reflect.set(window, "samplingAnchor", true);
+      const sample = () => {
+        samples.push(
+          node.isConnected
+            ? Math.abs(node.getBoundingClientRect().top - top)
+            : Infinity,
+        );
+        if (Reflect.get(window, "samplingAnchor"))
+          requestAnimationFrame(() => setTimeout(sample, 0));
+      };
+      requestAnimationFrame(() => setTimeout(sample, 0));
+    });
+  }
+  async function checkAnchor() {
+    const samples = await page.evaluate(async () => {
+      await new Promise(requestAnimationFrame);
+      Reflect.set(window, "samplingAnchor", false);
+      return Reflect.get(window, "anchorSamples") as number[];
+    });
+    expect(samples.length).toBeGreaterThan(1);
+    expect(Math.max(...samples)).toBeLessThan(2);
+  }
+  await sampleAnchor();
   await older.click();
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(100);
+  await checkAnchor();
   const retained = page.locator(`[data-transcript-key="${key}"]`);
   await expect
     .poll(async () =>
@@ -1919,14 +2077,175 @@ test("large histories render a bounded window and retain the earlier reading anc
     ).toBeVisible();
   }
   await older.scrollIntoViewIfNeeded();
+  let pageReads = 0;
+  const pending = Promise.withResolvers<void>();
+  await page.route("**/rpc/get", async (route) => {
+    pageReads++;
+    await pending.promise;
+    await route.continue();
+  });
+  await sampleAnchor();
   await older.click();
+  await expect(older).toBeDisabled();
+  await older.evaluate((button: HTMLButtonElement) => button.click());
+  await expect.poll(() => pageReads).toBe(1);
+  const rpc: RouterClient<AppRouter> = createORPCClient(
+    new RPCLink({ url: `${url}/rpc` }),
+  );
+  const bot = (await rpc.bots.list())[0];
+  if (!bot) throw new Error("Bot required");
+  await control({ content: "补页期间的新回复" });
+  await rpc.send({
+    botId: bot.id,
+    text: "后台新任务",
+    requestId: crypto.randomUUID(),
+  });
+  await expect
+    .poll(async () => (await rpc.get({ botId: bot.id })).busy)
+    .toBe(false);
+  pending.resolve();
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(120);
-  await page.getByRole("button", { name: "返回最新", exact: true }).click();
+  await checkAnchor();
+  await page.unroute("**/rpc/get");
+  const imageReady = Promise.withResolvers<void>();
+  await page.route("**/history-image.png", async (route) => {
+    await imageReady.promise;
+    await route.fulfill({ contentType: "image/png", body: png(320, 240) });
+  });
+  await sampleAnchor();
+  await page
+    .locator("[data-transcript-key]")
+    .first()
+    .evaluate((node) => {
+      const image = new Image();
+      image.src = "/history-image.png";
+      image.dataset.testImage = "delayed";
+      node.append(image);
+    });
+  imageReady.resolve();
+  await page
+    .locator('[data-test-image="delayed"]')
+    .evaluate(async (image: HTMLImageElement) => {
+      await image.decode();
+    });
+  await checkAnchor();
+  await page.screenshot({ path: "tmp/file-ui/history-expanded.png" });
+  expect(
+    await page.evaluate(() => Reflect.get(window, "historyAnimations")),
+  ).toEqual([]);
+  await page.getByRole("button", { name: "有新消息", exact: true }).click();
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(60);
   await expect(page.getByLabel("Domos 的回复").last()).toContainText(
-    "报告 240",
+    "补页期间的新回复",
   );
   await page.screenshot({ path: "test-results/chat-history-window.png" });
+});
+
+test("history failures and timeouts release the request for an explicit retry", async ({
+  page,
+}) => {
+  await control({ history: 240 });
+  await page.goto(url);
+  const earlier = page.getByRole("button", {
+    name: "查看更早的消息",
+    exact: true,
+  });
+  await earlier.scrollIntoViewIfNeeded();
+  await earlier.click();
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(100);
+  let reads = 0;
+  await page.route("**/rpc/get", async (route) => {
+    reads++;
+    if (reads === 1) await route.abort();
+    else await route.continue();
+  });
+  await earlier.scrollIntoViewIfNeeded();
+  await earlier.click();
+  await expect(page.getByRole("alert")).toHaveText(
+    "历史消息读取失败，请重试。",
+  );
+  expect(reads).toBe(1);
+  await page.screenshot({ path: "tmp/file-ui/history-failed.png" });
+  await page
+    .getByRole("button", { name: "重试读取历史消息", exact: true })
+    .click();
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(120);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(reads).toBe(2);
+  await page.unroute("**/rpc/get");
+  await earlier.scrollIntoViewIfNeeded();
+  await earlier.click();
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(100);
+  await earlier.scrollIntoViewIfNeeded();
+  await page.evaluate(() => {
+    const timeout = AbortSignal.timeout.bind(AbortSignal);
+    AbortSignal.timeout = (milliseconds) => {
+      Reflect.set(window, "historyDeadline", milliseconds);
+      return timeout(100);
+    };
+  });
+  const held = Promise.withResolvers<void>();
+  await page.route("**/rpc/get", async (route) => {
+    await held.promise;
+    await route.abort();
+  });
+  await earlier.click();
+  await expect(page.getByRole("alert")).toHaveText(
+    "历史消息读取超时，请重试。",
+  );
+  expect(
+    await page.evaluate(() => Reflect.get(window, "historyDeadline")),
+  ).toBe(30_000);
+  await expect(
+    page.getByRole("button", { name: "重试读取历史消息", exact: true }),
+  ).toBeEnabled();
+  held.resolve();
+});
+
+test("changing chats cancels an earlier-page read and keeps the new chat isolated", async ({
+  page,
+}) => {
+  await control({ history: 240 });
+  const rpc: RouterClient<AppRouter> = createORPCClient(
+    new RPCLink({ url: `${url}/rpc` }),
+  );
+  await rpc.bots.create({ name: "研究员", requestId: crypto.randomUUID() });
+  await page.goto(url);
+  const contacts = page.getByRole("navigation", {
+    name: "联系人",
+    exact: true,
+  });
+  await contacts.getByRole("link", { name: /^Domos/ }).click();
+  const earlier = page.getByRole("button", {
+    name: "查看更早的消息",
+    exact: true,
+  });
+  await earlier.scrollIntoViewIfNeeded();
+  await earlier.click();
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(100);
+  const release = Promise.withResolvers<void>();
+  let reads = 0;
+  await page.route("**/rpc/get", async (route) => {
+    reads++;
+    await release.promise;
+    await route.continue();
+  });
+  await earlier.scrollIntoViewIfNeeded();
+  await earlier.click();
+  await expect.poll(() => reads).toBe(1);
+  const cancelled = page.waitForEvent("requestfailed", (request) =>
+    request.url().endsWith("/rpc/get"),
+  );
+  await contacts.getByRole("link", { name: /^研究员/ }).click();
+  await cancelled;
+  release.resolve();
+  await expect(
+    page.getByRole("textbox", { name: "消息", exact: true }),
+  ).toBeEnabled();
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "查看更早的消息", exact: true }),
+  ).toHaveCount(0);
 });
 
 test("published files wait for the complete reply", async ({ page }) => {
@@ -5808,11 +6127,15 @@ test("file lists retain pages across opens and update when new attachments arriv
   });
   await page.goto(url);
   const details = await openDetails(page);
-  await details.getByRole("button", { name: "文件", exact: true }).click();
-  await expect(details).toContainText("发送和收到的文件会显示在这里");
+  await details
+    .getByRole("button", { name: "文件与媒体", exact: true })
+    .click();
+  await expect(details).toContainText("此分类暂无附件");
   await details.getByRole("button", { name: "返回", exact: true }).click();
-  await details.getByRole("button", { name: "文件", exact: true }).click();
-  await expect(details).toContainText("发送和收到的文件会显示在这里");
+  await details
+    .getByRole("button", { name: "文件与媒体", exact: true })
+    .click();
+  await expect(details).toContainText("此分类暂无附件");
   expect(reads).toBe(1);
   const file = await rpc.files.upload({
     botId: bot.id,

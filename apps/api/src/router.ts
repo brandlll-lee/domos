@@ -96,16 +96,19 @@ export function createRouter(
             .optional(),
         }),
       )
-      .handler(async ({ input }) => {
+      .handler(async ({ input, signal }) => {
         const conversation = await botConversation(bots, input.botId);
+        const context = signal
+          ? withAbortSignal(signal, BACKGROUND_CONTEXT)
+          : BACKGROUND_CONTEXT;
         if (engines)
           return slimChatView(
-            await engines.view(input.botId, BACKGROUND_CONTEXT, {
+            await engines.view(input.botId, context, {
               limit: 200,
               before: input.before,
             }),
           );
-        const view = await conversation.viewState(BACKGROUND_CONTEXT);
+        const view = await conversation.viewState(context);
         try {
           return chatView(view.value);
         } finally {

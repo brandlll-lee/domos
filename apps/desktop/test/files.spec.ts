@@ -146,6 +146,16 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
     const pdfCard = page.locator(".message-attachment").filter({
       has: page.getByRole("button", { name: "预览 阅读.pdf", exact: true }),
     });
+    await desktop.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows().find(
+        (item) => !item.isDestroyed(),
+      );
+      window?.restore();
+      window?.show();
+      window?.focus();
+    });
+    await page.bringToFront();
+    await expect(page.locator("body")).toBeVisible();
     await pdfCard.scrollIntoViewIfNeeded();
     await expect(pdfCard.locator(".file-card-thumbnail img")).toBeVisible();
     await expect(pdfCard).toContainText("2 页");
@@ -598,7 +608,11 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
       .fill("说明");
     await expect(page.locator(".file-list-row")).toHaveCount(1);
     await page
-      .getByRole("button", { name: "在聊天中查看", exact: true })
+      .locator(".file-list")
+      .getByRole("button", { name: "更多文件操作 说明.md", exact: true })
+      .click();
+    await page
+      .getByRole("menuitem", { name: "在聊天中查看", exact: true })
       .click();
     await expect(
       page

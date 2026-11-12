@@ -191,12 +191,124 @@ test("file search returns published history, pages unique files and excludes sta
     expect(secondPage.items[0]?.file.id).toBe(second.id);
     expect(secondPage.next).toBeNull();
     expect(
+      (await runtime.client.files.list({ botId, category: "media" })).items,
+    ).toEqual([]);
+    expect(
+      (await runtime.client.files.list({ botId, category: "audio" })).items,
+    ).toEqual([]);
+    expect(
+      (
+        await runtime.client.files.list({
+          botId,
+          category: "files",
+          offset: 1,
+          limit: 1,
+        })
+      ).items[0]?.file.id,
+    ).toBe(second.id);
+    expect(
       (await runtime.client.files.list({ botId, query: "草稿" })).items,
     ).toEqual([]);
+    const { png } = await import(
+      "../../../packages/agent/test/fixtures/png.ts"
+    );
+    const image = await runtime.client.files.upload({
+      botId,
+      file: new File([png(320, 240)], "照片.png"),
+    });
+    const audio = await runtime.client.files.upload({
+      botId,
+      file: new File(
+        [
+          await readFile(
+            new URL(
+              "../../../packages/agent/test/fixtures/media/audio.mp3",
+              import.meta.url,
+            ),
+          ),
+        ],
+        "语音.mp3",
+      ),
+    });
+    const video = await runtime.client.files.upload({
+      botId,
+      file: new File(
+        [
+          await readFile(
+            new URL(
+              "../../../packages/agent/test/fixtures/media/video.mp4",
+              import.meta.url,
+            ),
+          ),
+        ],
+        "录像.mp4",
+      ),
+    });
+    faux.setResponses([fauxAssistantMessage("Media received")]);
+    await runtime.client.send({
+      botId,
+      text: "media",
+      requestId: crypto.randomUUID(),
+      attachments: [image.id, audio.id, video.id],
+    });
+    await runtime.conversation.waitForIdle(context);
+    const media = await runtime.client.files.list({
+      botId,
+      category: "media",
+      limit: 1,
+    });
+    expect(media.items.map((item) => item.file.id)).toEqual([image.id]);
+    expect(media.next).toBe(1);
+    expect(
+      (
+        await runtime.client.files.list({
+          botId,
+          category: "media",
+          offset: 1,
+          limit: 1,
+        })
+      ).items.map((item) => item.file.id),
+    ).toEqual([video.id]);
+    expect(
+      (await runtime.client.files.list({ botId, category: "audio" })).items.map(
+        (item) => item.file.id,
+      ),
+    ).toEqual([audio.id]);
+    expect(
+      (
+        await runtime.client.files.list({
+          botId,
+          category: "files",
+          query: "照片",
+        })
+      ).items,
+    ).toEqual([]);
+    expect(
+      (
+        await runtime.client.files.list({
+          botId,
+          category: "files",
+          limit: 1,
+          offset: 1,
+        })
+      ).items[0]?.file.id,
+    ).toBe(second.id);
+    const thumbnail = await runtime.app.request(
+      `/files/${botId}/${image.id}/preview`,
+    );
+    expect(thumbnail.status).toBe(200);
+    expect(await thumbnail.json()).toMatchObject({
+      kind: "image",
+      thumbnail: expect.stringMatching(/^data:image\//),
+    });
     const other = await runtime.client.bots.create(botInput("Other"));
     expect(
       (await runtime.client.files.list({ botId: other.id })).items,
     ).toEqual([]);
+    expect(
+      (await runtime.app.request(`/files/${other.id}/${image.id}/preview`))
+        .status,
+    ).toBe(404);
     await expect(
       runtime.client.files.list({ botId: 99999999 }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });

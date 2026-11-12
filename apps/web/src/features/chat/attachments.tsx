@@ -7,18 +7,13 @@ import {
 import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { ActionMenu } from "@domos/ui/menu";
-import { FileDocIcon } from "@phosphor-icons/react/dist/csr/FileDoc";
-import { FileMdIcon } from "@phosphor-icons/react/dist/csr/FileMd";
-import { FilePdfIcon } from "@phosphor-icons/react/dist/csr/FilePdf";
-import { FilePptIcon } from "@phosphor-icons/react/dist/csr/FilePpt";
-import { FileTextIcon } from "@phosphor-icons/react/dist/csr/FileText";
-import { FileXlsIcon } from "@phosphor-icons/react/dist/csr/FileXls";
 import { UserIcon } from "@phosphor-icons/react/dist/csr/User";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import { fileAction, fileUrl } from "../files/actions.ts";
 import { InlineFile } from "../files/content.tsx";
 import { useFilePreview } from "../files/context.tsx";
-import { fileSummary } from "../files/file-state.ts";
+import { fileIcon } from "../files/file-icon.ts";
+import { useFileSummary } from "../files/use-file-summary.ts";
 import { chatCopy } from "./copy.ts";
 import { ImageGallery } from "./image-gallery.tsx";
 
@@ -98,21 +93,8 @@ function AttachmentCard({
   onOpen: () => void;
   author?: "user" | { name: string; avatar: string };
 }) {
-  const store = fileSummary(botId, file);
-  const summary = useSyncExternalStore(store.subscribe, store.snapshot).data;
-  const element = useRef<HTMLDivElement>(null);
+  const { element, summary } = useFileSummary(botId, file);
   const kind = filePreviewKind(file);
-  useEffect(() => {
-    if (!element.current || !["pdf", "audio", "video"].includes(kind)) return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        observer.disconnect();
-        void store.load().catch(() => {});
-      }
-    });
-    observer.observe(element.current);
-    return () => observer.disconnect();
-  }, [kind, store]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
   async function action(value: "save" | "open" | "reveal") {
@@ -126,18 +108,7 @@ function AttachmentCard({
       setPending(false);
     }
   }
-  const Icon =
-    kind === "pdf"
-      ? FilePdfIcon
-      : kind === "markdown"
-        ? FileMdIcon
-        : kind === "xlsx" || kind === "csv"
-          ? FileXlsIcon
-          : /\.(docx?|pptx?)$/i.test(file.name)
-            ? /\.pptx?$/i.test(file.name)
-              ? FilePptIcon
-              : FileDocIcon
-            : FileTextIcon;
+  const Icon = fileIcon(file);
   const details = summary?.pages
     ? `${summary.pages} 页`
     : summary?.sheets

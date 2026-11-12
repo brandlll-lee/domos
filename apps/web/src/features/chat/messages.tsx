@@ -204,6 +204,7 @@ export const Messages = memo(function Messages({
   sentRequest,
   hasMore,
   loadingEarlier,
+  earlierError,
   onEarlier,
 }: {
   botId: number;
@@ -221,6 +222,7 @@ export const Messages = memo(function Messages({
   sentRequest?: string;
   hasMore?: boolean;
   loadingEarlier?: boolean;
+  earlierError?: string;
   onEarlier?: () => Promise<void>;
 }) {
   const received = useMemo(
@@ -229,7 +231,10 @@ export const Messages = memo(function Messages({
   );
   const deferred = useDeferredValue(received);
   const shown =
-    !deferred.ready || deferred.sentRequest !== sentRequest
+    !deferred.ready ||
+    deferred.sentRequest !== sentRequest ||
+    (items.length > deferred.items.length &&
+      items[0]?.id !== deferred.items[0]?.id)
       ? received
       : deferred;
   const working = shown.activity?.filter(
@@ -246,7 +251,7 @@ export const Messages = memo(function Messages({
     botId,
   );
   const motion =
-    !transcript.initialized || document.hidden
+    !transcript.initialized || !transcript.atBottom || document.hidden
       ? { default: "none" }
       : { enter: "chat-enter", update: "chat-layout", exit: "chat-exit" };
   const separators = new Map<string, { at: number; label: string }>();
@@ -305,8 +310,13 @@ export const Messages = memo(function Messages({
                 )
               }
             >
-              {chatCopy.earlier}
+              {earlierError ? "重试读取历史消息" : chatCopy.earlier}
             </Button>
+          )}
+          {earlierError && (
+            <p className="history-error" role="alert">
+              {earlierError}
+            </p>
           )}
           {shown.ready &&
             transcript.visible.map((item) => {
