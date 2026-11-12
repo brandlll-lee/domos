@@ -712,8 +712,9 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
     await expect(
       imageViewer.locator(".image-viewer-canvas img"),
     ).toHaveJSProperty("naturalWidth", 2048);
+    await expect(imageViewer).toHaveCSS("scale", "1");
     const frame = await imageViewer.boundingBox();
-    expect(frame?.y).toBeGreaterThan(0);
+    expect(frame?.y).toBe(0);
     for (const colorScheme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme });
       await expect(page.locator("html")).toHaveAttribute(

@@ -558,7 +558,7 @@
   position: fixed;
   inset: 0;
   z-index: 2;
-  background: var(--color-selection);
+  background: color-mix(in srgb, var(--color-selection) 88%, transparent);
   transition: opacity var(--motion-feedback);
 }
 .image-viewer-backdrop:is([data-starting-style], [data-ending-style]) {
@@ -573,9 +573,18 @@
   padding: var(--space-4);
   color: var(--color-text);
   outline: none;
+  -webkit-app-region: no-drag;
+  scale: 1;
+  transition:
+    opacity var(--motion-message-in) var(--ease-message-in),
+    scale var(--motion-message-in) var(--ease-message-in);
 }
-body:has(.workspace[data-platform]) :is(.image-viewer, .image-viewer-backdrop) {
-  top: var(--titlebar-height);
+.image-viewer:is([data-starting-style], [data-ending-style]) {
+  opacity: 0;
+  scale: 0.98;
+}
+.image-viewer[data-ending-style] {
+  transition-duration: var(--motion-feedback);
 }
 .image-viewer-header,
 .image-viewer-toolbar {
@@ -597,6 +606,19 @@ body:has(.workspace[data-platform]) :is(.image-viewer, .image-viewer-backdrop) {
   justify-content: space-between;
   min-width: 0;
   padding-bottom: var(--space-4);
+}
+body:has(.workspace:is([data-platform="win32"], [data-platform="linux"]))
+  .image-viewer-header {
+  padding-inline-end: max(
+    var(--window-controls-width),
+    var(--window-inset-end, 0px)
+  );
+}
+body:has(.workspace[data-platform="darwin"]) .image-viewer-header {
+  padding-inline-start: max(
+    var(--mac-controls-width),
+    var(--window-inset-start, 0px)
+  );
 }
 .image-viewer-info {
   min-width: 0;
@@ -632,9 +654,9 @@ body:has(.workspace[data-platform]) :is(.image-viewer, .image-viewer-backdrop) {
   place-items: center;
   width: 100%;
   height: 100%;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: contain;
+}
+.image-viewer-canvas > * {
+  grid-area: 1 / 1;
 }
 .image-viewer-canvas[data-zoomed="true"] {
   width: max(100cqw, var(--image-frame-width));
@@ -645,6 +667,8 @@ body:has(.workspace[data-platform]) :is(.image-viewer, .image-viewer-backdrop) {
   height: 100cqh;
   object-fit: scale-down;
   rotate: var(--image-rotation);
+  opacity: 0;
+  transition: opacity var(--motion-feedback);
 }
 .image-viewer-thumbnails img {
   display: block;
@@ -652,6 +676,9 @@ body:has(.workspace[data-platform]) :is(.image-viewer, .image-viewer-backdrop) {
   height: 100%;
   border-radius: inherit;
   object-fit: cover;
+}
+.image-viewer-canvas[data-ready="true"] img {
+  opacity: 1;
 }
 .image-viewer-canvas[data-turned="true"] img {
   width: 100cqh;
@@ -725,7 +752,9 @@ body:has(.workspace[data-platform]) :is(.image-viewer, .image-viewer-backdrop) {
   outline-offset: 2px;
 }
 @media (prefers-reduced-motion: reduce) {
-  .image-viewer-backdrop {
+  .image-viewer-backdrop,
+  .image-viewer,
+  .image-viewer-canvas img {
     transition: none;
   }
 }

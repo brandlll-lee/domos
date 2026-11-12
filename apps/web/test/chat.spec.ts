@@ -3396,6 +3396,7 @@ test("delivered images form a gallery with viewer downloads and keyboard navigat
     viewer.getByRole("img", { name: "wide.png", exact: true }),
   ).toBeVisible();
   const viewport = page.viewportSize();
+  await expect(viewer).toHaveCSS("scale", "1");
   const frame = await viewer.boundingBox();
   expect(frame).toMatchObject({
     x: 0,
@@ -3416,6 +3417,17 @@ test("delivered images form a gallery with viewer downloads and keyboard navigat
   await expect(
     viewer.getByRole("img", { name: "portrait.png", exact: true }),
   ).toBeVisible();
+  await expect(viewer.locator(".image-viewer-canvas")).toHaveAttribute(
+    "data-ready",
+    "true",
+  );
+  await thumbnails
+    .getByRole("button", { name: "查看图片 portrait.png", exact: true })
+    .click();
+  await expect(viewer.locator(".image-viewer-canvas")).toHaveAttribute(
+    "data-ready",
+    "true",
+  );
   await viewer.getByRole("button", { name: "旋转图片", exact: true }).click();
   await expect(viewer.locator(".image-viewer-canvas img")).toHaveCSS(
     "rotate",
@@ -3498,6 +3510,11 @@ test("delivered images form a gallery with viewer downloads and keyboard navigat
         "交付图片和报告",
       );
       await expect(viewer).toBeVisible();
+      await expect(viewer).toHaveCSS("scale", "1");
+      await expect(viewer.locator(".image-viewer-canvas img")).toHaveCSS(
+        "opacity",
+        "1",
+      );
       const close = await viewer
         .getByRole("button", { name: "关闭弹窗", exact: true })
         .boundingBox();
@@ -3637,19 +3654,47 @@ test("image viewer follows the live theme, displays original pixels and releases
   const thumbnail = page
     .getByLabel("你的消息", { exact: true })
     .getByRole("button", { name: `查看图片 ${name}`, exact: true });
+  await page.evaluate(() => {
+    const decode = HTMLImageElement.prototype.decode;
+    HTMLImageElement.prototype.decode = function () {
+      if (!this.closest(".image-viewer")) return decode.call(this);
+      HTMLImageElement.prototype.decode = decode;
+      return new Promise<void>((resolve, reject) => {
+        this.addEventListener(
+          "decode-image",
+          () => void decode.call(this).then(resolve, reject),
+          { once: true },
+        );
+      });
+    };
+  });
   await thumbnail.click();
   const viewer = page.getByRole("dialog", { name, exact: true });
   const image = viewer.locator(".image-viewer-canvas img");
   await expect(image).toHaveJSProperty("naturalWidth", 4096);
+  await expect(image).toHaveCSS("opacity", "0");
+  await expect(
+    viewer.getByRole("status", { name: "正在加载图片…" }),
+  ).toBeVisible();
+  await expect(viewer.locator(".image-viewer-canvas")).toHaveCSS(
+    "background-image",
+    "none",
+  );
+  await image.dispatchEvent("decode-image");
+  await expect(image).toHaveCSS("opacity", "1");
+  await expect(viewer.getByRole("status")).toHaveCount(0);
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
     await expect(page.locator("html")).toHaveAttribute(
       "data-theme",
       colorScheme,
     );
-    await expect(page.locator(".image-viewer-backdrop")).toHaveCSS(
+    const backdrop = page.locator(".image-viewer-backdrop");
+    await expect(backdrop).toHaveCSS(
       "background-color",
-      colorScheme === "light" ? "rgb(245, 245, 247)" : "rgb(21, 21, 23)",
+      colorScheme === "light"
+        ? "color(srgb 0.960784 0.960784 0.968627 / 0.88)"
+        : "color(srgb 0.0823529 0.0823529 0.0901961 / 0.88)",
     );
     await expect(viewer).toHaveCSS(
       "color",
@@ -3699,12 +3744,39 @@ test("image viewer follows the live theme, displays original pixels and releases
   await page.keyboard.press("Escape");
   await expect(viewer).toHaveCount(0);
   await expect(thumbnail).toBeFocused();
-  await thumbnail.click();
-  await page.keyboard.press("Escape");
+  const interrupted = await thumbnail.evaluate(
+    async (button: HTMLButtonElement) => {
+      button.click();
+      return new Promise<{ before: number; after: number; retained: boolean }>(
+        (resolve) => {
+          const frame = () => {
+            const popup = document.querySelector<HTMLElement>(".image-viewer");
+            const before = popup ? Number(getComputedStyle(popup).opacity) : 0;
+            if (!popup || before <= 0) return void requestAnimationFrame(frame);
+            popup.dispatchEvent(
+              new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+            );
+            requestAnimationFrame(() => {
+              resolve({
+                before,
+                after: Number(getComputedStyle(popup).opacity),
+                retained: Boolean(popup.querySelector("img")),
+              });
+            });
+          };
+          requestAnimationFrame(frame);
+        },
+      );
+    },
+  );
+  expect(interrupted.before).toBeLessThan(1);
+  expect(interrupted.after).toBeLessThanOrEqual(interrupted.before + 0.01);
+  expect(interrupted.retained).toBe(true);
   await expect(viewer).toHaveCount(0);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await thumbnail.click();
-  await expect(image).toBeVisible();
+  await expect(image).toHaveCSS("opacity", "1");
+  expect(await viewer.evaluate((node) => node.getAnimations().length)).toBe(0);
   expect(await image.evaluate((node) => node.getAnimations().length)).toBe(0);
   await page.keyboard.press("Escape");
   await expect(viewer).toHaveCount(0);
@@ -3729,10 +3801,11 @@ test("image viewer follows the live theme, displays original pixels and releases
             const image = document.querySelector<HTMLImageElement>(
               ".image-viewer-canvas img",
             );
-            if (image?.complete && image.naturalWidth && !ready)
+            if (image?.parentElement?.dataset.ready === "true" && !ready)
               ready = performance.now() - start;
-            const running = image
-              ?.getAnimations()
+            const running = document
+              .querySelector(".image-viewer")
+              ?.getAnimations({ subtree: true })
               .some((animation) => animation.playState === "running");
             if (running) animatedFrames++;
             if (ready && now - start >= ready + duration && !running) resolve();

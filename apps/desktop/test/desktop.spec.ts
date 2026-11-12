@@ -451,7 +451,7 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     await resize.press("End");
     expect((await environment.boundingBox())?.x).toBe(left);
     const plus = await page
-      .getByRole("button", { name: "新建 Bot", exact: true })
+      .getByRole("button", { name: "新建", exact: true })
       .boundingBox();
     const environmentBox = await environment.boundingBox();
     expect(environmentBox && plus && plus.y < environmentBox.y).toBe(true);
@@ -477,7 +477,9 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
         }),
     );
     await environment.click();
-    await page.getByRole("menuitem", { name: "切换电脑", exact: true }).click();
+    await page
+      .getByRole("menuitem", { name: "切换电脑", exact: true })
+      .press("Enter");
     await menuShown;
     await desktop.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()?.items[0]?.submenu?.closePopup(),
@@ -597,8 +599,32 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
       .click();
     const viewer = reopened.getByRole("dialog", { name: "photo.png" });
     await expect(viewer).toBeVisible();
+    await expect(viewer).toHaveCSS("scale", "1");
     const frame = await viewer.boundingBox();
-    expect(frame?.y).toBe(48);
+    const viewport = await reopened.evaluate(() => ({
+      width: innerWidth,
+      height: innerHeight,
+    }));
+    const bounds = {
+      x: 0,
+      y: 0,
+      width: expect.closeTo(viewport.width, 0),
+      height: expect.closeTo(viewport.height, 0),
+    };
+    expect(frame).toEqual(bounds);
+    expect(
+      await reopened.locator(".image-viewer-backdrop").boundingBox(),
+    ).toEqual(bounds);
+    const close = await viewer
+      .getByRole("button", { name: "关闭弹窗", exact: true })
+      .boundingBox();
+    if (process.platform === "darwin") {
+      expect(close?.x).toBeGreaterThan(80);
+    } else {
+      expect(close && close.x + close.width).toBeLessThanOrEqual(
+        viewport.width - 144,
+      );
+    }
     await captureWindow(
       desktop,
       reopened,
