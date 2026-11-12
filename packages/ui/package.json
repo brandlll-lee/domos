@@ -8,6 +8,7 @@
     "./toast": "./src/web/toast.ts",
     "./setting-row": "./src/web/setting-row.tsx",
     "./avatar": "./src/web/avatar.tsx",
+    "./status-dot": "./src/web/status-dot.tsx",
     "./characters": "./src/characters.ts",
     "./tokens": "./src/tokens.ts",
     "./controls": "./src/web/controls.tsx",

@@ -3,6 +3,7 @@ import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
 import { ScrollArea } from "@domos/ui/scroll-area";
+import { StatusDot } from "@domos/ui/status-dot";
 import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
 import { StopIcon } from "@phosphor-icons/react/dist/csr/Stop";
 import { WrenchIcon } from "@phosphor-icons/react/dist/csr/Wrench";
@@ -97,76 +98,76 @@ export function WorkPanel(
           )}
           {turns.length > 0 && (
             <div className="work-list">
-              {turns.map((turn) => (
-                <article
-                  className="work-row"
-                  key={turn.id}
-                  data-active={turn.active || undefined}
-                >
-                  <Button
-                    variant="ghost"
-                    className="work-open"
-                    aria-label={`查看工作记录：${turn.request || turn.title}`}
-                    onClick={openRun(turn.id)}
+              {turns.map((turn) => {
+                const status =
+                  turn.status === "failed"
+                    ? ({ tone: "negative", label: "执行失败" } as const)
+                    : turn.active
+                      ? !connected ||
+                        stopping ||
+                        turn.status === "queued" ||
+                        turn.status === "stopping" ||
+                        view?.approvals?.length
+                        ? ({ tone: "warning", label: "等待处理" } as const)
+                        : ({ tone: "positive", label: "正在工作" } as const)
+                      : undefined;
+                return (
+                  <article
+                    className="work-row"
+                    key={turn.id}
+                    data-active={turn.active || undefined}
                   >
-                    <span
-                      className="work-mark"
-                      data-state={
-                        turn.status === "failed"
-                          ? "failed"
-                          : turn.active
-                            ? !connected ||
-                              stopping ||
-                              turn.status === "queued" ||
-                              turn.status === "stopping" ||
-                              view?.approvals?.length
-                              ? "waiting"
-                              : "running"
-                            : undefined
-                      }
-                    >
-                      {turn.author && (
-                        <BotAvatar seed={turn.author.avatar} size="small" />
-                      )}
-                      <span
-                        className={
-                          turn.author ? "work-harness-badge" : undefined
-                        }
-                      >
-                        {turn.run ? (
-                          <EngineMark provider={turn.run.provider} />
-                        ) : (
-                          <WrenchIcon />
-                        )}
-                      </span>
-                    </span>
-                    <span className="work-label">
-                      <span title={modelName(turn.run)}>
-                        {turn.author ? `${turn.author.name} · ` : ""}
-                        {modelName(turn.run)}
-                      </span>
-                      <span className="work-activity" title={turn.title}>
-                        {turn.title}
-                      </span>
-                    </span>
-                    <time>{elapsed(turn, turn.active)}</time>
-                    <CaretRightIcon className="work-chevron" />
-                  </Button>
-                  {turn.active && (
                     <Button
                       variant="ghost"
-                      size="icon-small"
-                      className="work-stop"
-                      aria-label="停止执行"
-                      disabled={!connected}
-                      pending={stopping || turn.status === "stopping"}
-                      onClick={() => void stop(turn.sessionId)}
+                      className="work-open"
+                      aria-label={`查看工作记录：${turn.request || turn.title}`}
+                      onClick={openRun(turn.id)}
                     >
-                      <StopIcon />
+                      <span className="work-mark">
+                        {turn.author && (
+                          <BotAvatar seed={turn.author.avatar} size="small" />
+                        )}
+                        <span
+                          className={
+                            turn.author ? "work-harness-badge" : undefined
+                          }
+                        >
+                          {turn.run ? (
+                            <EngineMark provider={turn.run.provider} />
+                          ) : (
+                            <WrenchIcon />
+                          )}
+                        </span>
+                        {status && <StatusDot {...status} />}
+                      </span>
+                      <span className="work-label">
+                        <span title={modelName(turn.run)}>
+                          {turn.author ? `${turn.author.name} · ` : ""}
+                          {modelName(turn.run)}
+                        </span>
+                        <span className="work-activity" title={turn.title}>
+                          {turn.title}
+                        </span>
+                      </span>
+                      <time>{elapsed(turn, turn.active)}</time>
+                      <CaretRightIcon className="work-chevron" />
                     </Button>
-                  )}
-                </article>
-              ))}
+                    {turn.active && (
+                      <Button
+                        variant="ghost"
+                        size="icon-small"
+                        className="work-stop"
+                        aria-label="停止执行"
+                        disabled={!connected}
+                        pending={stopping || turn.status === "stopping"}
+                        onClick={() => void stop(turn.sessionId)}
+                      >
+                        <StopIcon />
+                      </Button>
+                    )}
+                  </article>
+                );
+              })}
             </div>
           )}
           {view?.before && (

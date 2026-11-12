@@ -74,12 +74,9 @@
   flex-shrink: 0;
 }
 .composer-action {
-  --color-primary: var(--color-text);
-  --color-on-primary: var(--color-canvas);
-  --color-primary-hover: color-mix(
-    in srgb,
-    var(--color-text) 86%,
-    var(--color-canvas)
+  --bot-action: oklch(
+    from var(--bot-color, var(--color-working))
+      var(--color-bot-action-lightness) var(--color-bot-action-chroma) h
   );
 }
 .composer-leading .button[data-size="icon"] {
@@ -94,6 +91,16 @@
   width: var(--composer-control-size);
   min-height: var(--composer-control-size);
   border-radius: var(--radius-round);
+  background: var(--bot-action);
+  color: var(--color-on-bot-action);
+}
+.composer-action .button[data-action="voice"]:disabled {
+  opacity: 1;
+}
+@media (hover: hover) and (pointer: fine) {
+  .composer-action .button:not(:disabled):hover {
+    background: color-mix(in srgb, var(--bot-action) 88%, black);
+  }
 }
 .message-composer-editor {
   display: block;

@@ -130,7 +130,10 @@
   border-bottom: 0;
 }
 .ai-service-mark {
+  --status-dot-surface: var(--color-surface);
+  position: relative;
   display: flex;
+  width: var(--space-6);
   margin-inline-start: var(--space-3);
 }
 .ai-service-mark svg {

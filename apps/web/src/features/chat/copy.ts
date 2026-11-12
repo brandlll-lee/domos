@@ -10,6 +10,7 @@ export const chatCopy = {
   message: "消息",
   placeholder: (name: string) => `发送消息给 ${name}…`,
   send: "发送",
+  voice: "语音输入（暂未开放）",
   sending: "发送中…",
   retry: "重试发送",
   messageActions: "消息操作",

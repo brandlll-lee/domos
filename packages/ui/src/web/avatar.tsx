@@ -2,6 +2,7 @@ import { memo, useEffect, useRef } from "react";
 import { brandCharacter, characterIdentity } from "../characters.ts";
 import { Character } from "./character.tsx";
 import { animateCharacter } from "./character-motion.ts";
+import { StatusDot } from "./status-dot.tsx";
 
 type Motion = "idle" | "running";
 
@@ -41,7 +42,7 @@ export const BotAvatar = memo(function BotAvatar({
         />
       </span>
       {state === "running" && statusLabel && (
-        <span className="avatar-status" role="img" aria-label={statusLabel} />
+        <StatusDot tone="positive" label={statusLabel} />
       )}
     </span>
   );

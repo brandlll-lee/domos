@@ -52,6 +52,7 @@
   color: var(--color-text);
 }
 .work-mark {
+  --status-dot-surface: var(--color-canvas);
   position: relative;
   display: grid;
   place-items: center;
@@ -64,23 +65,6 @@
   width: 18px;
   height: 18px;
   fill: currentColor;
-}
-.work-mark[data-state]::after {
-  content: "";
-  position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 7px;
-  height: 7px;
-  border: 2px solid var(--color-canvas);
-  border-radius: 50%;
-  background: var(--color-working);
-}
-.work-mark[data-state="waiting"]::after {
-  background: var(--color-waiting);
-}
-.work-mark[data-state="failed"]::after {
-  background: var(--color-danger-icon);
 }
 .work-stop {
   position: absolute;
@@ -140,14 +124,14 @@
   background: var(--color-muted);
 }
 .work-entry[data-state="done"]::before {
-  background: var(--color-working);
+  background: var(--color-status-positive);
 }
 .work-entry[data-state="failed"]::before,
 .work-entry[data-state="uncertain"]::before {
-  background: var(--color-danger-icon);
+  background: var(--color-status-negative);
 }
 .work-entry[data-state="running"]::before {
-  background: var(--color-waiting);
+  background: var(--color-status-warning);
 }
 .work-entry > time,
 .work-exit,
@@ -260,7 +244,7 @@
   width: var(--space-3);
   height: var(--space-3);
 }
-.work-mark:has(.bot-avatar)[data-state]::after {
+.work-mark:has(.bot-avatar) > .status-dot {
   right: auto;
   left: calc(-1 * var(--space-1));
 }

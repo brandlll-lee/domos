@@ -7,6 +7,7 @@ import { InlineNotice } from "@domos/ui/message";
 import { PanelGroup } from "@domos/ui/panel";
 import { ChoicePicker } from "@domos/ui/picker";
 import { SettingRow } from "@domos/ui/setting-row";
+import { StatusDot, type StatusTone } from "@domos/ui/status-dot";
 import { ArrowLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowLeft";
 import { useEffect, useState } from "react";
 import { client } from "../../client.ts";
@@ -199,38 +200,36 @@ function Services({ botId, admin }: { botId: number; admin: boolean }) {
             const connection = store.connection(config);
             const failure = store.inspectionError(config);
             const loading = store.inspecting(config);
-            const label = !enabled ? (
-              "等待工作电脑授权"
-            ) : failure ? (
-              "读取失败"
-            ) : loading ? (
-              <Loading label="正在检查连接" inline />
-            ) : connection ? (
-              !connection.ready ? (
-                "未安装"
-              ) : connection.authenticated ? (
-                "可用"
-              ) : (
-                "待登录"
-              )
-            ) : item.id === "acp" ? (
-              "待配置"
-            ) : (
-              <Loading label="正在检查连接" inline />
-            );
+            const status: { label: string; tone: StatusTone } | undefined =
+              !enabled
+                ? { label: "等待工作电脑授权", tone: "warning" }
+                : loading
+                  ? undefined
+                  : failure
+                    ? { label: "读取失败", tone: "negative" }
+                    : connection
+                      ? !connection.ready
+                        ? { label: "未安装", tone: "negative" }
+                        : connection.authenticated
+                          ? { label: "可用", tone: "positive" }
+                          : { label: "待登录", tone: "warning" }
+                      : item.id === "acp"
+                        ? { label: "待配置", tone: "warning" }
+                        : undefined;
             return (
               <div className="ai-service-row" key={item.id}>
                 <span className="ai-service-mark">
                   <EngineMark provider={item.id} />
+                  {status && <StatusDot {...status} />}
                 </span>
                 <SettingRow
                   title={item.name}
                   description={
                     <span
-                      role={typeof label === "string" ? "status" : undefined}
+                      role={status ? "status" : undefined}
                       title={failure || connection?.message}
                     >
-                      {label}
+                      {status?.label ?? <Loading label="正在检查连接" inline />}
                     </span>
                   }
                 >

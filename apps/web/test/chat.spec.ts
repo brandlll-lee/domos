@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { characterIdentity } from "@domos/ui/characters";
+import { characterColors, characterIdentity } from "@domos/ui/characters";
 import { layout } from "@domos/ui/tokens";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
@@ -1380,7 +1380,7 @@ test("workspace separates Bot controls and global settings", async ({
 
 test("contacts keep independent histories, drafts, models, and locations after restart", async ({
   page,
-  context,
+  browser,
 }) => {
   await page.goto(url);
   const input = page.getByLabel("消息", { exact: true });
@@ -1389,9 +1389,11 @@ test("contacts keep independent histories, drafts, models, and locations after r
   await input.fill("原来的对话");
   await send.click();
   await expect(page.getByLabel("Domos 的回复")).toContainText("完整回复。");
-  await expect(send).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),
+  ).toBeVisible();
   await input.fill("原来的草稿");
-  const other = await context.newPage();
+  const other = await browser.newPage();
   await other.goto(url);
   await createBot(page, "研究员", "测试模型二");
   const researchUrl = page.url();
@@ -1404,10 +1406,13 @@ test("contacts keep independent histories, drafts, models, and locations after r
       .getByRole("navigation", { name: "联系人", exact: true })
       .getByRole("link", { name: "研究员" }),
   ).toBeVisible();
+  await other.close();
   await input.fill("研究问题");
   await send.click();
   await expect(page.getByLabel("研究员 的回复")).toContainText("faux-2");
-  await expect(send).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),
+  ).toBeVisible();
   await input.fill("研究草稿");
   await contacts.getByRole("link", { name: /^Domos/ }).click();
   await expect(input).toHaveText("原来的草稿");
@@ -1416,7 +1421,9 @@ test("contacts keep independent histories, drafts, models, and locations after r
   await input.fill("写作问题");
   await send.click();
   await expect(page.getByLabel("写作助手 的回复")).toContainText("faux-1");
-  await expect(send).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),
+  ).toBeVisible();
   await input.fill("写作草稿");
   await contacts.getByRole("link", { name: "研究员", exact: true }).click();
   await expect(input).toHaveText("研究草稿");
@@ -1460,12 +1467,16 @@ test("switching contacts keeps the first Bot running while another Bot replies",
   await input.fill("另一个任务");
   await send.click();
   await expect(page.getByLabel("助手 的回复")).toContainText("完整回复。");
-  await expect(send).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),
+  ).toBeVisible();
   await contacts.getByRole("link", { name: /^Domos/ }).click();
   await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
   await control("release");
   await expect(page.getByLabel("Domos 的回复")).toContainText("后台任务");
-  await expect(send).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),
+  ).toBeVisible();
   await expect(page.getByLabel("你的消息")).toContainText("后台任务");
 });
 
@@ -1602,7 +1613,7 @@ test("send, reload, disconnect, reconnect and restart preserve the conversation"
   await page.goto(url);
   await expect(page.getByLabel("Domos 的回复")).toContainText("完整回复。");
   await expect(
-    page.getByRole("button", { name: "发送", exact: true }),
+    page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),
   ).toBeVisible();
   const contactTime = page.locator('.contact-row[aria-current="page"] time');
   await expect(contactTime).toHaveText(/^\d{2}:\d{2}$/);
@@ -1640,7 +1651,7 @@ test("a killed server retains uncertain work and permits an explicit retry", asy
   await control("wait-model");
   const port = Number(new URL(url).port);
   await stop();
-  await expect(contact.locator(".avatar-status")).toHaveCount(0);
+  await expect(contact.locator(".status-dot")).toHaveCount(0);
   await expect(
     page.getByRole("status").filter({ hasText: "正在重连" }),
   ).toBeAttached();
@@ -1651,11 +1662,110 @@ test("a killed server retains uncertain work and permits an explicit retry", asy
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
   await expect(page.getByLabel("你的消息")).toHaveCount(1);
   await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
-  await expect(contact.locator(".avatar-status")).toHaveCount(0);
+  await expect(contact.locator(".status-dot")).toHaveCount(0);
   await page.getByLabel("消息", { exact: true }).fill("重试恢复未完成任务");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.getByLabel("Domos 的回复")).toContainText("完整回复。");
   await expect(page.getByLabel("你的消息")).toHaveCount(2);
+});
+
+test("composer shares Bot colors across voice, send, attachments and stop in both themes", async ({
+  page,
+}, info) => {
+  await page.goto(url);
+  const input = page.getByLabel("消息", { exact: true });
+  const action = page.locator(".composer-action button");
+  await expect(action).toHaveAttribute("data-action", "voice");
+  await expect(action).toBeDisabled();
+  await expect(action).toHaveAccessibleName("语音输入（暂未开放）");
+  const bounds = await action.boundingBox();
+  let background = "";
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await expect(action).toHaveCSS("opacity", "1");
+    await expect(action).toHaveCSS("color", "rgb(255, 255, 255)");
+    const color = await action.evaluate(
+      (node) => getComputedStyle(node).backgroundColor,
+    );
+    if (background) expect(color).toBe(background);
+    background = color;
+    const contrast = await action.evaluate(
+      (node, colors) => {
+        const owner = node.parentElement as HTMLElement;
+        const previous = owner.style.getPropertyValue("--bot-color");
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 1;
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("Canvas required for color measurement");
+        try {
+          return colors.map(({ color }) => {
+            owner.style.setProperty("--bot-color", color);
+            context.fillStyle = getComputedStyle(node).backgroundColor;
+            context.fillRect(0, 0, 1, 1);
+            const [r = 0, g = 0, b = 0] = [
+              ...context.getImageData(0, 0, 1, 1).data,
+            ]
+              .slice(0, 3)
+              .map((value) => {
+                const channel = value / 255;
+                return channel <= 0.04045
+                  ? channel / 12.92
+                  : ((channel + 0.055) / 1.055) ** 2.4;
+              });
+            return 1.05 / (r * 0.2126 + g * 0.7152 + b * 0.0722 + 0.05);
+          });
+        } finally {
+          if (previous) owner.style.setProperty("--bot-color", previous);
+          else owner.style.removeProperty("--bot-color");
+        }
+      },
+      [...characterColors],
+    );
+    for (const ratio of contrast) expect(ratio).toBeGreaterThanOrEqual(3);
+    await page
+      .locator(".message-composer")
+      .screenshot({ path: info.outputPath(`composer-voice-${theme}.png`) });
+    await input.fill("发送内容");
+    await expect(action).toHaveAttribute("data-action", "send");
+    await expect(action).toBeEnabled();
+    await expect(action).toHaveCSS("color", "rgb(255, 255, 255)");
+    expect((await action.boundingBox())?.width).toBe(bounds?.width);
+    await page
+      .locator(".message-composer")
+      .screenshot({ path: info.outputPath(`composer-send-${theme}.png`) });
+    await input.fill("   ");
+    await expect(action).toHaveAttribute("data-action", "voice");
+  }
+  await attachFiles(page, {
+    name: "资料.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("附件"),
+  });
+  await expect(action).toHaveAttribute("data-action", "send");
+  await expect(action).toBeEnabled();
+  await page
+    .getByRole("button", { name: "移除文件 资料.txt", exact: true })
+    .click();
+  await expect(action).toHaveAttribute("data-action", "voice");
+  await control("gate");
+  await input.fill("检查按钮状态");
+  await action.click();
+  await expect(action).toHaveAttribute("data-action", "stop");
+  await expect(action).toBeEnabled();
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await expect(action).toHaveCSS("color", "rgb(255, 255, 255)");
+    await page
+      .locator(".message-composer")
+      .screenshot({ path: info.outputPath(`composer-stop-${theme}.png`) });
+  }
+  await input.fill("补充材料");
+  await expect(action).toHaveAttribute("data-action", "send");
+  await input.fill("");
+  await expect(action).toHaveAttribute("data-action", "stop");
+  await action.click();
+  await expect(action).toHaveAttribute("data-action", "voice");
+  await expect(action).toBeDisabled();
 });
 
 test("working contacts retain green status across switches, concurrent work, reload, and stop", async ({
@@ -1673,20 +1783,22 @@ test("working contacts retain green status across switches, concurrent work, rel
   const second = page
     .getByRole("navigation", { name: "联系人", exact: true })
     .getByRole("link", { name: "第二位助手" });
-  await expect(first.locator(".avatar-status")).toBeVisible();
-  await expect(second.locator(".avatar-status")).toHaveCount(0);
+  await expect(first.locator(".status-dot")).toBeVisible();
+  await expect(second.locator(".status-dot")).toHaveCount(0);
   await control("gate");
   await input.fill("另一个任务");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  await expect(page.locator(".sidebar .avatar-status")).toHaveCount(2);
+  await expect(page.locator(".sidebar .status-dot")).toHaveCount(2);
   await page.reload();
-  await expect(page.locator(".sidebar .avatar-status")).toHaveCount(2);
+  await expect(page.locator(".sidebar .status-dot")).toHaveCount(2);
   for (const [theme, label] of [
     ["light", "浅色"],
     ["dark", "深色"],
   ] as const) {
     await chooseAppearance(page, label);
-    const dot = first.locator(".avatar-status");
+    const dot = first.locator(".status-dot");
+    await expect(dot).toHaveAttribute("data-tone", "positive");
+    await expect(dot).toHaveCSS("background-color", "rgb(37, 216, 132)");
     const offset = await dot.evaluate((element) => {
       const frame = element.closest(".bot-avatar")?.getBoundingClientRect();
       if (!frame) throw new Error("Working avatar missing");
@@ -1704,11 +1816,11 @@ test("working contacts retain green status across switches, concurrent work, rel
     });
   }
   await control("release");
-  await expect(second.locator(".avatar-status")).toHaveCount(0);
-  await expect(first.locator(".avatar-status")).toBeVisible();
+  await expect(second.locator(".status-dot")).toHaveCount(0);
+  await expect(first.locator(".status-dot")).toBeVisible();
   await first.click();
   await page.getByRole("button", { name: "停止生成", exact: true }).click();
-  await expect(page.locator(".sidebar .avatar-status")).toHaveCount(0);
+  await expect(page.locator(".sidebar .status-dot")).toHaveCount(0);
 });
 
 test("chat gutters align within the content limit while panels resize", async ({
@@ -2430,7 +2542,7 @@ test("stop and Chinese input work on a narrow screen", async ({ page }) => {
   await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
   await page.getByRole("button", { name: "停止生成" }).click();
   await expect(
-    page.getByRole("button", { name: "发送", exact: true }),
+    page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),
   ).toBeVisible();
   await page.reload();
   await expect(page.getByLabel("你的消息")).toHaveCount(1);
@@ -2590,7 +2702,7 @@ test("two windows can submit while a reply is active", async ({
     /追加的消息/,
   ]);
   await expect(
-    page.getByRole("button", { name: "发送", exact: true }),
+    page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),
   ).toBeVisible();
   await other.close();
 });
@@ -2832,7 +2944,7 @@ test("structured messages keep Markdown and private tool results across reloads"
   await expect(response.getByRole("table")).toBeVisible();
   await expect(response.locator("pre code")).toHaveText("const ready = true;");
   await expect(
-    page.getByRole("button", { name: "发送", exact: true }),
+    page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),
   ).toBeVisible();
   await expect(page.getByText("核对已有资料。", { exact: true })).toHaveCount(
     0,
@@ -2845,7 +2957,7 @@ test("structured messages keep Markdown and private tool results across reloads"
     response.getByRole("link", { name: "危险链接" }),
   ).not.toHaveAttribute("href", /^javascript:/);
   await expect(
-    page.getByRole("button", { name: "发送", exact: true }),
+    page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),
   ).toBeVisible();
   await control("gate-tool");
   const callId = crypto.randomUUID();
@@ -2865,7 +2977,7 @@ test("structured messages keep Markdown and private tool results across reloads"
   await expect(page.locator(".typing-dots")).toBeVisible();
   await control("release");
   await expect(
-    page.getByRole("button", { name: "发送", exact: true }),
+    page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),
   ).toBeVisible();
   await expect(page.locator(".task-notice")).toHaveCount(0);
   await expect(
@@ -3208,7 +3320,9 @@ test("latest bubbles stay above the composer after typing, resizing, and reloadi
   await page.goto(url);
   const input = page.getByLabel("消息", { exact: true });
   const send = page.getByRole("button", { name: "发送", exact: true });
-  await expect(send).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),
+  ).toBeDisabled();
   for (let turn = 0; turn < 2; turn++) {
     await control({
       content: Array.from(
@@ -3223,7 +3337,9 @@ test("latest bubbles stay above the composer after typing, resizing, and reloadi
     await expect(replies.last()).toContainText(
       "第 8 项：核对源码，统一消息布局。",
     );
-    await expect(send).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),
+    ).toBeVisible();
   }
   const last = page.getByLabel("Domos 的回复").last();
   const expectLatest = async () => {
@@ -3483,7 +3599,9 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
     exact: true,
   });
   await expect(report).toBeVisible();
-  await expect(send).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),
+  ).toBeVisible();
   await expect(input).toHaveText("");
   await expect(page.locator(".composer-attachments")).toHaveCount(0);
   await expect(
@@ -4369,7 +4487,9 @@ test("typing follows the Bot and failures retain their error message", async ({
   await stop();
   await start(port);
   await page.reload();
-  await expect(send).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),
+  ).toBeVisible();
   await expect(failure).toHaveCount(1);
   await expect(failure).toHaveText(errorText);
   await page
@@ -4907,7 +5027,7 @@ test("native questions use the shared card and native replies persist", async ({
     page.locator('.interaction-card[data-state="pending"]'),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "发送", exact: true }),
+    page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),
   ).toBeVisible();
   const port = Number(new URL(url).port);
   await stop();
@@ -4948,7 +5068,7 @@ test("native questions use the shared card and native replies persist", async ({
     .getByRole("button", { name: "取消", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "发送", exact: true }),
+    page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),
   ).toBeVisible();
   const latest = page.getByRole("button", { name: /^(返回最新|有新消息)$/ });
   await expect(
@@ -5097,7 +5217,7 @@ test("attachment retry keeps its request and draft after a lost receipt", async 
   await expect(page.locator(".composer-attachments")).toHaveCount(0);
   await retry.click();
   await expect(
-    page.getByRole("button", { name: "发送", exact: true }),
+    page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),
   ).toBeVisible();
   await expect(page.getByLabel("你的消息", { exact: true })).toHaveCount(1);
   await expect(
@@ -5361,6 +5481,7 @@ test("composer menu adds task materials, keeps drafts, and fits both themes", as
   await expect(page.getByRole("menuitem")).toHaveText([
     "添加图片",
     "添加文件",
+    "选择 Bot…",
     "使用技能…",
     "添加上下文…",
     "引用 MCP…",

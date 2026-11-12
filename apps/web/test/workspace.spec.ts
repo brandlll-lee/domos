@@ -2644,7 +2644,7 @@ it("chat reflows within the frame budget and retains its position", async ({
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.locator(".message table").last()).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "发送", exact: true }),
+    page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   await expect
@@ -3706,7 +3706,7 @@ test("control geometry and interaction states stay consistent", async ({
   await expect(nav).toHaveAttribute("aria-orientation", "vertical");
   const appearance = settings.getByRole("tab", { name: "通用", exact: true });
   const computer = settings.getByRole("tab", {
-    name: "Providers",
+    name: "AI 服务",
     exact: true,
   });
   const active = await appearance.evaluate(
@@ -3900,10 +3900,20 @@ test("Work follows a native turn, opens its record and preserves it after stop a
   await expect(
     card.getByRole("button", { name: "停止执行", exact: true }),
   ).toBeVisible();
-  await expect(card.locator(".work-mark")).toHaveAttribute(
-    "data-state",
-    "running",
+  await expect(card.locator(".status-dot")).toHaveAttribute(
+    "data-tone",
+    "positive",
   );
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await expect(card.locator(".status-dot")).toHaveCSS(
+      "background-color",
+      "rgb(37, 216, 132)",
+    );
+    await page.screenshot({
+      path: info.outputPath(`work-active-${theme}.png`),
+    });
+  }
   expect((await card.boundingBox())?.height).toBe(60);
   const background = await card
     .locator(".work-open")
@@ -3925,7 +3935,7 @@ test("Work follows a native turn, opens its record and preserves it after stop a
   await card.getByRole("button", { name: "停止执行", exact: true }).click();
   await expect(card).toContainText("已停止");
   await expect(dialog).not.toBeVisible();
-  await expect(card.locator(".work-mark")).not.toHaveAttribute("data-state");
+  await expect(card.locator(".status-dot")).toHaveCount(0);
   await page.reload();
   await page.getByRole("tab", { name: "Work", exact: true }).click();
   await expect(card).toContainText("已停止");
@@ -4666,6 +4676,7 @@ test("AI services share connection reads and keep Bot model selection separate",
   const reads = new Map<string, number>();
   const mutations: string[] = [];
   let claudeReady = false;
+  const inspection = Promise.withResolvers<void>();
   page.on("request", (request) => {
     if (/\/rpc\/engines\/(configure|select)$/.test(request.url()))
       mutations.push(request.url());
@@ -4673,6 +4684,8 @@ test("AI services share connection reads and keep Bot model selection separate",
   await page.route("**/rpc/engines/inspect", async (route) => {
     const provider = route.request().postDataJSON().json.config.provider;
     reads.set(provider, (reads.get(provider) ?? 0) + 1);
+    if (provider === "opencode" && reads.get(provider) === 1)
+      await inspection.promise;
     if (provider === "claude" && !claudeReady) return route.abort("failed");
     await route.fulfill({
       json: {
@@ -4723,19 +4736,55 @@ test("AI services share connection reads and keep Bot model selection separate",
   await expect(
     settings.getByRole("group", { name: "工作目录", exact: true }),
   ).toBeVisible();
-  for (const [name, status] of [
-    ["Codex", "未安装"],
-    ["Claude Code", "读取失败"],
-    ["OpenCode", "待登录"],
-    ["Pi", "可用"],
+  const checking = settings.locator(".ai-service-row").filter({
+    has: page.getByRole("group", { name: "OpenCode", exact: true }),
+  });
+  await expect(checking.getByRole("status")).toHaveAccessibleName(
+    "正在检查连接",
+  );
+  await expect(checking.locator(".status-dot")).toHaveCount(0);
+  inspection.resolve();
+  for (const [name, status, tone] of [
+    ["Codex", "未安装", "negative"],
+    ["Claude Code", "读取失败", "negative"],
+    ["OpenCode", "待登录", "warning"],
+    ["Pi", "可用", "positive"],
   ] as const) {
     const row = settings.getByRole("group", { name, exact: true });
     await expect(row.getByRole("status")).toHaveText(status);
     await expect(row.locator(".button")).toHaveCount(1);
+    const badge = settings
+      .locator(".ai-service-row")
+      .filter({ has: page.getByRole("group", { name, exact: true }) })
+      .locator(".status-dot");
+    await expect(badge).toHaveAttribute("data-tone", tone);
+    await expect(badge).toHaveAccessibleName(status);
   }
   const snapshot = Object.fromEntries(reads);
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
+    for (const [tone, color] of [
+      ["positive", "rgb(37, 216, 132)"],
+      ["warning", "rgb(255, 190, 50)"],
+      ["negative", "rgb(255, 82, 101)"],
+    ] as const) {
+      const badge = settings
+        .locator(`.status-dot[data-tone="${tone}"]`)
+        .first();
+      await expect(badge).toHaveCSS("background-color", color);
+      const aligned = await badge.evaluate((node) => {
+        const icon = node.parentElement
+          ?.querySelector("svg")
+          ?.getBoundingClientRect();
+        const dot = node.getBoundingClientRect();
+        return Boolean(
+          icon &&
+            Math.abs(dot.right - icon.right) < 1 &&
+            Math.abs(dot.bottom - icon.bottom) < 1,
+        );
+      });
+      expect(aligned).toBe(true);
+    }
     for (const width of [1360, 390]) {
       await page.setViewportSize({ width, height: 900 });
       await expect

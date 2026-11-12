@@ -9,6 +9,7 @@ import { ArrowUpIcon } from "@phosphor-icons/react/dist/csr/ArrowUp";
 import { FileMdIcon } from "@phosphor-icons/react/dist/csr/FileMd";
 import { FilePdfIcon } from "@phosphor-icons/react/dist/csr/FilePdf";
 import { FileTextIcon } from "@phosphor-icons/react/dist/csr/FileText";
+import { MicrophoneIcon } from "@phosphor-icons/react/dist/csr/Microphone";
 import { StopIcon } from "@phosphor-icons/react/dist/csr/Stop";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { type ReactNode, type Ref, useRef, useState } from "react";
@@ -93,28 +94,30 @@ export function Composer({
       composer.materials.mcp?.length ||
       composer.materials.bots?.length,
   );
-  const stopAction =
-    busy &&
-    !composer.value.trim() &&
-    !composer.attachments.length &&
-    !composer.pending &&
-    !hasMaterials;
+  const hasContent = Boolean(
+    composer.value.trim() ||
+      composer.attachments.length ||
+      composer.pending ||
+      hasMaterials,
+  );
+  const kind = hasContent ? "send" : busy ? "stop" : "voice";
+  const stopAction = kind === "stop";
   const action = stopAction
     ? {
         label: stopping ? chatCopy.stopping : chatCopy.stop,
         disabled: stopping || !connected,
       }
     : {
-        label: sending
-          ? chatCopy.sending
-          : composer.pending
-            ? chatCopy.retry
-            : chatCopy.send,
+        label:
+          kind === "voice"
+            ? chatCopy.voice
+            : sending
+              ? chatCopy.sending
+              : composer.pending
+                ? chatCopy.retry
+                : chatCopy.send,
         disabled:
-          (!composer.value.trim() &&
-            !composer.pending &&
-            !composer.attachments.length &&
-            !hasMaterials) ||
+          !hasContent ||
           !connected ||
           sending ||
           stopping ||
@@ -400,12 +403,19 @@ export function Composer({
           <Button
             type={stopAction ? "button" : "submit"}
             size="icon"
+            data-action={kind}
             title={action.label}
             aria-label={action.label}
             disabled={action.disabled}
             onClick={stopAction ? () => void onStop() : undefined}
           >
-            {stopAction ? <StopIcon weight="fill" /> : <ArrowUpIcon />}
+            {stopAction ? (
+              <StopIcon weight="fill" />
+            ) : kind === "voice" ? (
+              <MicrophoneIcon weight="fill" />
+            ) : (
+              <ArrowUpIcon />
+            )}
           </Button>
         }
       />
