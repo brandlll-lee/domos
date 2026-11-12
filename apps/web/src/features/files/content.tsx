@@ -62,7 +62,7 @@ export function FileContent({
         <PdfPreview
           source={`/files/${botId}/${file.id}`}
           botId={botId}
-          fileId={file.id}
+          file={file}
         />
       )}
       {kind === "csv" && blob && <CsvPreview blob={blob} />}

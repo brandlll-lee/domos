@@ -31,7 +31,7 @@ export default function OfficePreview({
       <PdfPreview
         source={`/files/${botId}/${file.id}/preview?format=pdf`}
         botId={botId}
-        fileId={file.id}
+        file={file}
       />
     </div>
   );

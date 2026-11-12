@@ -34,7 +34,7 @@ export default function MediaPreview({
     onLoadedMetadata: () => {
       const duration = player.current?.duration;
       if (duration !== undefined && Number.isFinite(duration)) {
-        const store = fileSummary(botId, file.id);
+        const store = fileSummary(botId, file);
         store.receive({ ...store.snapshot().data, duration });
       }
     },

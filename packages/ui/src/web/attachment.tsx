@@ -1,5 +1,68 @@
 import { type ReactNode, useState } from "react";
 
+export function MediaAttachment({
+  name,
+  kind,
+  thumbnail,
+  duration,
+  onOpen,
+  action,
+}: {
+  name: string;
+  kind: "audio" | "video";
+  thumbnail?: string;
+  duration?: number;
+  onOpen: () => void;
+  action: ReactNode;
+}) {
+  const time =
+    duration !== undefined && Number.isFinite(duration)
+      ? `${Math.floor(duration / 60)}:${String(Math.floor(duration % 60)).padStart(2, "0")}`
+      : undefined;
+  return (
+    <div className={`media-attachment media-attachment-${kind}`}>
+      <button
+        type="button"
+        className="media-attachment-preview"
+        onClick={onOpen}
+        aria-label={`预览 ${name}`}
+      >
+        {kind === "video" && thumbnail && (
+          <img src={thumbnail} alt={`${name} 视频封面`} />
+        )}
+        {kind === "audio" && (
+          <svg
+            className="media-attachment-icon"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path
+              d="M9 17V5l12-2v12M9 9l12-2"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            />
+            <ellipse cx="6" cy="17" rx="3" ry="2" fill="currentColor" />
+            <ellipse cx="18" cy="15" rx="3" ry="2" fill="currentColor" />
+          </svg>
+        )}
+        <span className="media-attachment-play" aria-hidden="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m9 5 11 7-11 7Z" fill="currentColor" />
+          </svg>
+        </span>
+        {(kind === "audio" || !thumbnail) && (
+          <span className="media-attachment-name" title={name}>
+            {name}
+          </span>
+        )}
+        {time && <span className="media-attachment-duration">{time}</span>}
+      </button>
+      <div className="media-attachment-menu">{action}</div>
+    </div>
+  );
+}
+
 export function FileAttachment({
   name,
   size,

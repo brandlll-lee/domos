@@ -125,7 +125,48 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
       content: "文件已保存。可以直接查看表格、阅读文档，或播放音视频。",
     });
     await scripted;
+    const automaticConversions: string[] = [];
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname.endsWith("/preview"))
+        automaticConversions.push(request.url());
+    });
     await page.getByRole("button", { name: "发送", exact: true }).click();
+    const pdfCard = page.locator(".message-attachment").filter({
+      has: page.getByRole("button", { name: "预览 阅读.pdf", exact: true }),
+    });
+    await pdfCard.scrollIntoViewIfNeeded();
+    await expect(pdfCard.locator(".file-card-thumbnail img")).toBeVisible();
+    await expect(pdfCard).toContainText("2 页");
+    for (const name of ["audio.mp3", "video.mp4", "video.mov"]) {
+      const card = page.locator(".media-attachment").filter({
+        has: page.getByRole("button", { name: `预览 ${name}`, exact: true }),
+      });
+      await card.scrollIntoViewIfNeeded();
+      await expect(card.locator(".media-attachment-duration")).toHaveText(
+        "0:03",
+      );
+      await expect(card.locator(".file-card-actions")).toHaveCount(0);
+      if (name !== "audio.mp3") {
+        await expect(card.locator("img")).toBeVisible();
+        expect(
+          await card
+            .locator("img")
+            .evaluate((image: HTMLImageElement) => image.naturalWidth),
+        ).toBeGreaterThan(0);
+      }
+      for (const theme of ["light", "dark"] as const) {
+        await page.emulateMedia({ colorScheme: theme });
+        await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+        await card.screenshot({
+          path: testInfo.outputPath(`message-${name}-${theme}.png`),
+        });
+      }
+    }
+    await expect(
+      page.locator(".attachments video, .attachments audio"),
+    ).toHaveCount(0);
+    expect(automaticConversions).toEqual([]);
+    await page.emulateMedia({ colorScheme: "light" });
     const panel = page.getByRole("complementary", {
       name: "文件预览",
       exact: true,

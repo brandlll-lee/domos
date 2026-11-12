@@ -253,6 +253,110 @@ button.file-caption {
 .file-card-actions > .button {
   flex: 1;
 }
+.file-card-actions > .button + .button {
+  border-left: 1px solid var(--color-divider);
+  border-radius: 0;
+}
+.media-attachment {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+.media-attachment-preview {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.media-attachment-video {
+  background: var(--color-viewer);
+  color: var(--color-viewer-text);
+}
+.media-attachment-video .media-attachment-preview {
+  aspect-ratio: 16 / 9;
+  justify-content: center;
+  padding: 0;
+}
+.media-attachment-video img {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.media-attachment-play {
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: var(--space-10);
+  height: var(--space-10);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-round);
+}
+.media-attachment-video .media-attachment-play {
+  background: var(--color-viewer-control);
+}
+.media-attachment-play svg,
+.media-attachment-icon {
+  width: var(--space-6);
+  height: var(--space-6);
+  flex-shrink: 0;
+}
+.media-attachment-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-label);
+}
+.media-attachment-duration {
+  font-size: var(--text-small);
+  font-variant-numeric: tabular-nums;
+}
+.media-attachment-video
+  :is(.media-attachment-name, .media-attachment-duration) {
+  position: absolute;
+  bottom: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-control);
+  background: var(--color-viewer-control);
+}
+.media-attachment-video .media-attachment-name {
+  left: var(--space-2);
+  max-width: 70%;
+}
+.media-attachment-video .media-attachment-duration {
+  right: var(--space-2);
+}
+.media-attachment-menu {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+}
+.media-attachment-video .action-menu-trigger {
+  background: var(--color-viewer-control);
+  color: var(--color-viewer-text);
+}
+.media-attachment-audio .media-attachment-preview {
+  padding-right: var(--space-10);
+}
+.media-attachment-audio .media-attachment-duration {
+  margin-left: auto;
+  color: var(--color-muted);
+}
+.media-attachment-audio .media-attachment-icon {
+  color: var(--color-muted);
+}
 .file-card-thumbnail {
   display: block;
   width: 100%;

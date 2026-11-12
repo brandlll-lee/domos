@@ -1,3 +1,4 @@
+import type { Attachment } from "@domos/agent/attachments";
 import type { OfficePreview, SpreadsheetPreview } from "@domos/agent/files";
 import type { ChatMessage } from "@domos/agent/messages";
 import { client } from "../../client.ts";
@@ -16,16 +17,29 @@ const summaries = new Map<
   string,
   ReturnType<typeof createReadState<FileSummary>>
 >();
-export function fileSummary(botId: number, id: string) {
-  const key = JSON.stringify([botId, id]);
+let summaryQueue: Promise<unknown> = Promise.resolve();
+export function fileSummary(botId: number, file: Attachment) {
+  const key = JSON.stringify([botId, file.id]);
   let store = summaries.get(key);
   if (!store) {
-    store = createReadState<FileSummary>(async () => ({}));
-    store.receive({});
+    store = createReadState<FileSummary>((signal) => {
+      const pending = summaryQueue
+        .catch(() => {})
+        .then(async () => {
+          signal.throwIfAborted();
+          const { readCardPreview } = await import("./card-preview.ts");
+          return readCardPreview(botId, file, signal);
+        });
+      summaryQueue = pending;
+      return pending;
+    });
     summaries.set(key, store);
     if (summaries.size > MAX_CACHED_FILES) {
       const oldest = summaries.keys().next().value;
-      if (oldest) summaries.delete(oldest);
+      if (oldest) {
+        summaries.get(oldest)?.dispose();
+        summaries.delete(oldest);
+      }
     }
   }
   return store;
@@ -168,6 +182,7 @@ export function receiveConversationFiles(
   }
 }
 export function clearFiles(ids?: Set<number>) {
+  for (const store of summaries.values()) store.dispose();
   summaries.clear();
   for (const [key, store] of previews)
     if (!ids?.has(store.botId)) {

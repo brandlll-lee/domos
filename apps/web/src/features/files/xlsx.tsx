@@ -16,10 +16,10 @@ export default function XlsxPreview({
   const data = state.data?.kind === "xlsx" ? state.data : undefined;
   useEffect(() => {
     if (data) {
-      const store = fileSummary(botId, file.id);
+      const store = fileSummary(botId, file);
       store.receive({ ...store.snapshot().data, sheets: data.sheets.length });
     }
-  }, [botId, file.id, data]);
+  }, [botId, file, data]);
   if (!data && state.error)
     return (
       <p role="alert">

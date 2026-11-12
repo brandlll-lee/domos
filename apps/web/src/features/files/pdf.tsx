@@ -1,3 +1,4 @@
+import type { Attachment } from "@domos/agent/attachments";
 import { Button } from "@domos/ui/controls";
 import { Loading } from "@domos/ui/loading";
 import { useEffect, useRef, useState } from "react";
@@ -8,11 +9,11 @@ import { fileSummary } from "./file-state.ts";
 export default function PdfPreview({
   source,
   botId,
-  fileId,
+  file,
 }: {
   source: string;
   botId?: number;
-  fileId?: string;
+  file?: Attachment;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const viewer = useRef<
@@ -72,11 +73,11 @@ export default function PdfPreview({
             !active ||
             event.pageNumber !== 1 ||
             botId === undefined ||
-            !fileId ||
+            !file ||
             !event.source.canvas
           )
             return;
-          const store = fileSummary(botId, fileId);
+          const store = fileSummary(botId, file);
           if (store.snapshot().data?.thumbnail) return;
           const original = event.source.canvas;
           const thumbnail = window.document.createElement("canvas");
@@ -95,8 +96,8 @@ export default function PdfPreview({
       );
       const document = await task.promise;
       if (!active) return;
-      if (botId !== undefined && fileId) {
-        const store = fileSummary(botId, fileId);
+      if (botId !== undefined && file) {
+        const store = fileSummary(botId, file);
         store.receive({ ...store.snapshot().data, pages: document.numPages });
       }
       setState({ page: 1, total: document.numPages, error: "" });
@@ -113,7 +114,7 @@ export default function PdfPreview({
       active = false;
       destroy();
     };
-  }, [source, botId, fileId]);
+  }, [source, botId, file]);
   return (
     <div className="file-pdf">
       {state.error ? (

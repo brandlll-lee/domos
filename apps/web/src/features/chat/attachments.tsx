@@ -1,11 +1,14 @@
 import { type Attachment, filePreviewKind } from "@domos/agent/attachments";
-import { FileAttachment } from "@domos/ui/attachment";
+import { FileAttachment, MediaAttachment } from "@domos/ui/attachment";
 import { Button } from "@domos/ui/controls";
 import { ActionMenu } from "@domos/ui/menu";
+import { FileDocIcon } from "@phosphor-icons/react/dist/csr/FileDoc";
 import { FileMdIcon } from "@phosphor-icons/react/dist/csr/FileMd";
 import { FilePdfIcon } from "@phosphor-icons/react/dist/csr/FilePdf";
+import { FilePptIcon } from "@phosphor-icons/react/dist/csr/FilePpt";
 import { FileTextIcon } from "@phosphor-icons/react/dist/csr/FileText";
-import { useState, useSyncExternalStore } from "react";
+import { FileXlsIcon } from "@phosphor-icons/react/dist/csr/FileXls";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { fileAction } from "../files/actions.ts";
 import { InlineFile } from "../files/content.tsx";
 import { useFilePreview } from "../files/context.tsx";
@@ -59,7 +62,7 @@ export function Attachments({
           {inline && file.display === "inline" && (
             <InlineFile botId={botId} file={file} />
           )}
-          <DocumentCard
+          <AttachmentCard
             botId={botId}
             file={file}
             onOpen={() => preview?.open(file, botId)}
@@ -75,7 +78,7 @@ export function Attachments({
   );
 }
 
-function DocumentCard({
+function AttachmentCard({
   botId,
   file,
   onOpen,
@@ -84,8 +87,21 @@ function DocumentCard({
   file: Attachment;
   onOpen: () => void;
 }) {
-  const store = fileSummary(botId, file.id);
+  const store = fileSummary(botId, file);
   const summary = useSyncExternalStore(store.subscribe, store.snapshot).data;
+  const element = useRef<HTMLDivElement>(null);
+  const kind = filePreviewKind(file);
+  useEffect(() => {
+    if (!element.current || !["pdf", "audio", "video"].includes(kind)) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        observer.disconnect();
+        void store.load().catch(() => {});
+      }
+    });
+    observer.observe(element.current);
+    return () => observer.disconnect();
+  }, [kind, store]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
   async function action(value: "save" | "open" | "reveal") {
@@ -99,67 +115,86 @@ function DocumentCard({
       setPending(false);
     }
   }
-  const kind = filePreviewKind(file);
   const Icon =
     kind === "pdf"
       ? FilePdfIcon
       : kind === "markdown"
         ? FileMdIcon
-        : FileTextIcon;
-  const duration = summary?.duration;
+        : kind === "xlsx" || kind === "csv"
+          ? FileXlsIcon
+          : kind === "office"
+            ? /\.pptx?$/i.test(file.name)
+              ? FilePptIcon
+              : FileDocIcon
+            : FileTextIcon;
   const details = summary?.pages
     ? `${summary.pages} ${kind === "office" && /\.pptx?$/i.test(file.name) ? "张幻灯片" : "页"}`
     : summary?.sheets
       ? `${summary.sheets} 个工作表`
-      : duration !== undefined
-        ? `${Math.floor(duration / 60)}:${String(Math.floor(duration % 60)).padStart(2, "0")}`
-        : undefined;
+      : undefined;
+  const menu = (
+    <ActionMenu
+      label={`更多文件操作 ${file.name}`}
+      disabled={pending}
+      items={[
+        ...(["audio", "video"].includes(kind)
+          ? [{ label: "另存为…", onSelect: () => void action("save") }]
+          : []),
+        ...(window.domosDesktop
+          ? [
+              {
+                label: "系统打开本地副本",
+                onSelect: () => void action("open"),
+              },
+              {
+                label: "显示本地副本位置",
+                onSelect: () => void action("reveal"),
+              },
+            ]
+          : []),
+      ]}
+    />
+  );
   return (
-    <>
-      <FileAttachment
-        name={file.name}
-        size={file.size}
-        icon={<Icon weight="duotone" />}
-        type={file.name.split(".").at(-1)?.toUpperCase()}
-        details={details}
-        thumbnail={summary?.thumbnail}
-        onOpen={onOpen}
-        action={
-          window.domosDesktop && (
-            <ActionMenu
-              label={`更多文件操作 ${file.name}`}
-              disabled={pending}
-              items={[
-                {
-                  label: "系统打开本地副本",
-                  onSelect: () => void action("open"),
-                },
-                {
-                  label: "显示本地副本位置",
-                  onSelect: () => void action("reveal"),
-                },
-              ]}
-            />
-          )
-        }
-        footer={
-          <>
-            <Button variant="ghost" size="small" onClick={onOpen}>
-              查看
-            </Button>
-            <Button
-              variant="ghost"
-              size="small"
-              pending={pending}
-              aria-label={`另存为 ${file.name}`}
-              onClick={() => void action("save")}
-            >
-              另存为…
-            </Button>
-          </>
-        }
-      />
+    <div ref={element} className="message-attachment">
+      {kind === "video" || kind === "audio" ? (
+        <MediaAttachment
+          name={file.name}
+          kind={kind}
+          thumbnail={summary?.thumbnail}
+          duration={summary?.duration}
+          onOpen={onOpen}
+          action={menu}
+        />
+      ) : (
+        <FileAttachment
+          name={file.name}
+          size={file.size}
+          icon={<Icon weight="duotone" />}
+          type={file.name.split(".").at(-1)?.toUpperCase()}
+          details={details}
+          thumbnail={summary?.thumbnail}
+          onOpen={onOpen}
+          action={window.domosDesktop ? menu : undefined}
+          footer={
+            <>
+              <Button variant="ghost" size="small" onClick={onOpen}>
+                查看
+              </Button>
+              <Button
+                variant="ghost"
+                size="small"
+                pending={pending}
+                aria-label={`另存为 ${file.name}`}
+                onClick={() => void action("save")}
+              >
+                另存为…
+              </Button>
+            </>
+          }
+        />
+      )}
       {error && <p role="alert">{error}</p>}
-    </>
+    </div>
   );
 }
