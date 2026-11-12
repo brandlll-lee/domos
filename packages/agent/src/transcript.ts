@@ -17,6 +17,7 @@ export type TranscriptItem =
       id: string;
       files: Attachment[];
       sessionId?: number;
+      author?: ChatMessage["author"];
     };
 
 export function chatTranscript(view: ChatView): TranscriptItem[] {
@@ -117,6 +118,7 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
             id: message.id,
             files,
             sessionId: message.sessionId,
+            ...(message.author ? { author: message.author } : {}),
           });
         attachmentTurn = id;
       }

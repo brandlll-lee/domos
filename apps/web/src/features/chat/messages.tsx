@@ -23,7 +23,9 @@ import { chatCopy } from "./copy.ts";
 import { ErrorMessage } from "./error-message.tsx";
 import { timeBreak } from "./format.ts";
 import { MaterialChips } from "./material-chips.tsx";
+import { materialTokens } from "./material-tokens.tsx";
 import { MessageBody } from "./message-body.tsx";
+import { MessageContent } from "./message-content.tsx";
 import { MessageDetail } from "./message-detail.tsx";
 import { TakeoverCard } from "./takeover-card.tsx";
 import { TypingDots } from "./typing-dots.tsx";
@@ -33,11 +35,13 @@ const MessageRow = memo(function MessageRow({
   item,
   botId,
   botName,
+  bots,
   onResend,
 }: {
   item: TranscriptItem;
   botId: number;
   botName: string;
+  bots?: BotPresence[];
   onResend: (message: ChatMessage) => void;
 }) {
   const key = `${item.kind}:${item.id}`;
@@ -54,13 +58,14 @@ const MessageRow = memo(function MessageRow({
   if (item.kind === "attachments")
     return (
       <div className="delivered-files" data-transcript-key={key}>
-        <MessageBubble side="incoming">
+        <div className="attachment-message">
           <Attachments
             botId={item.sessionId ?? botId}
             files={item.files}
             inline
+            author={item.author ?? bots?.find((bot) => bot.id === botId)}
           />
-        </MessageBubble>
+        </div>
       </div>
     );
   const { message } = item;
@@ -124,20 +129,52 @@ const MessageRow = memo(function MessageRow({
       ) : message.takeover ? (
         <TakeoverCard botId={botId} message={message} />
       ) : (
-        <MessageBubble side={message.role === "user" ? "outgoing" : "incoming"}>
-          <MessageBody>
-            {!!message.attachments?.length && (
+        <MessageDetail botId={botId} message={message}>
+          {(resolved) => {
+            const files = !!resolved.attachments?.length;
+            const standalone =
+              (files ||
+                resolved.content.some((part) => part.type === "image")) &&
+              !messageText(resolved).trim() &&
+              !materialTokens(resolved.materials).length;
+            const attachments = files && (
               <Attachments
                 botId={botId}
-                files={message.attachments}
-                caption={messageText(message)}
-                inline={message.role === "assistant"}
+                files={resolved.attachments ?? []}
+                caption={messageText(resolved)}
+                inline={resolved.role === "assistant"}
+                author={
+                  resolved.role === "user"
+                    ? "user"
+                    : (resolved.author ?? bots?.find((bot) => bot.id === botId))
+                }
               />
-            )}
-            <MaterialChips materials={message.materials} />
-            <MessageDetail botId={botId} message={message} />
-          </MessageBody>
-        </MessageBubble>
+            );
+            const content = (
+              <MessageContent
+                content={resolved.content}
+                materials={resolved.materials}
+                user={resolved.role === "user"}
+              />
+            );
+            return standalone ? (
+              <div className="attachment-message">
+                {attachments}
+                {content}
+              </div>
+            ) : (
+              <MessageBubble
+                side={resolved.role === "user" ? "outgoing" : "incoming"}
+              >
+                {attachments}
+                <MessageBody>
+                  <MaterialChips materials={resolved.materials} />
+                  {content}
+                </MessageBody>
+              </MessageBubble>
+            );
+          }}
+        </MessageDetail>
       )}
       {message.role === "user" && (
         <ActionMenu
@@ -289,6 +326,7 @@ export const Messages = memo(function Messages({
                       item={item}
                       botId={botId}
                       botName={botName}
+                      bots={bots}
                       onResend={onResend}
                     />
                   </ViewTransition>

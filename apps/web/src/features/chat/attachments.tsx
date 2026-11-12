@@ -1,5 +1,10 @@
 import { type Attachment, filePreviewKind } from "@domos/agent/attachments";
-import { FileAttachment, MediaAttachment } from "@domos/ui/attachment";
+import {
+  AudioAttachment,
+  FileAttachment,
+  VideoAttachment,
+} from "@domos/ui/attachment";
+import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { ActionMenu } from "@domos/ui/menu";
 import { FileDocIcon } from "@phosphor-icons/react/dist/csr/FileDoc";
@@ -8,8 +13,9 @@ import { FilePdfIcon } from "@phosphor-icons/react/dist/csr/FilePdf";
 import { FilePptIcon } from "@phosphor-icons/react/dist/csr/FilePpt";
 import { FileTextIcon } from "@phosphor-icons/react/dist/csr/FileText";
 import { FileXlsIcon } from "@phosphor-icons/react/dist/csr/FileXls";
+import { UserIcon } from "@phosphor-icons/react/dist/csr/User";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { fileAction } from "../files/actions.ts";
+import { fileAction, fileUrl } from "../files/actions.ts";
 import { InlineFile } from "../files/content.tsx";
 import { useFilePreview } from "../files/context.tsx";
 import { fileSummary } from "../files/file-state.ts";
@@ -21,11 +27,13 @@ export function Attachments({
   files,
   caption,
   inline = false,
+  author,
 }: {
   botId: number;
   files: Attachment[];
   caption?: string;
   inline?: boolean;
+  author?: "user" | { name: string; avatar: string };
 }) {
   const [error, setError] = useState(false);
   const preview = useFilePreview();
@@ -65,6 +73,7 @@ export function Attachments({
           <AttachmentCard
             botId={botId}
             file={file}
+            author={author}
             onOpen={() => preview?.open(file, botId)}
           />
         </div>
@@ -82,10 +91,12 @@ function AttachmentCard({
   botId,
   file,
   onOpen,
+  author,
 }: {
   botId: number;
   file: Attachment;
   onOpen: () => void;
+  author?: "user" | { name: string; avatar: string };
 }) {
   const store = fileSummary(botId, file);
   const summary = useSyncExternalStore(store.subscribe, store.snapshot).data;
@@ -137,6 +148,7 @@ function AttachmentCard({
       label={`更多文件操作 ${file.name}`}
       disabled={pending}
       items={[
+        ...(kind === "audio" ? [{ label: "查看详情", onSelect: onOpen }] : []),
         ...(["audio", "video"].includes(kind)
           ? [{ label: "另存为…", onSelect: () => void action("save") }]
           : []),
@@ -157,10 +169,27 @@ function AttachmentCard({
   );
   return (
     <div ref={element} className="message-attachment">
-      {kind === "video" || kind === "audio" ? (
-        <MediaAttachment
+      {kind === "audio" ? (
+        <AudioAttachment
           name={file.name}
-          kind={kind}
+          src={fileUrl(botId, file.id)}
+          duration={summary?.duration}
+          avatar={
+            author === "user" ? (
+              <UserIcon aria-label="你" />
+            ) : (
+              author && (
+                <span title={author.name}>
+                  <BotAvatar seed={author.avatar} />
+                </span>
+              )
+            )
+          }
+          action={menu}
+        />
+      ) : kind === "video" ? (
+        <VideoAttachment
+          name={file.name}
           thumbnail={summary?.thumbnail}
           duration={summary?.duration}
           onOpen={onOpen}

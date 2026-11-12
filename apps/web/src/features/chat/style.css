@@ -304,6 +304,11 @@
   width: var(--message-media-width);
   padding: var(--space-1);
 }
+.attachment-message {
+  width: var(--message-media-width);
+  max-width: var(--message-max-width);
+  min-width: 0;
+}
 .message-bubble:has(.attachments, .message-image) .message-body {
   border-start-start-radius: calc(var(--radius-message) - var(--space-1));
   border-start-end-radius: calc(var(--radius-message) - var(--space-1));
@@ -316,7 +321,7 @@
   background: color-mix(in srgb, currentColor 6%, transparent);
   border-color: transparent;
 }
-.message-body .attachments:not(:last-child),
+.message-bubble > .attachments:not(:last-child),
 .message-body .message-image:not(:last-child),
 .message-body .material-chips:not(:last-child) {
   margin-bottom: var(--space-2);

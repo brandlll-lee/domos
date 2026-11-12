@@ -3032,6 +3032,134 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
   );
 });
 
+test("attachment-only messages show cards directly for users and Bots", async ({
+  page,
+}) => {
+  await page.goto(url);
+  await attachFiles(page, [
+    { name: "photo.png", mimeType: "image/png", buffer: png(320, 180) },
+    {
+      name: "report.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("Report"),
+    },
+  ]);
+  await expect(page.locator(".composer-attachments .attachment")).toHaveCount(
+    2,
+  );
+  const files = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((key) =>
+      key.startsWith("domos:composer:v2:"),
+    );
+    return JSON.parse(localStorage.getItem(key ?? "") ?? "{}").attachments as {
+      path: string;
+    }[];
+  });
+  await control({
+    responses: [
+      {
+        content: files.map((file) => ({
+          type: "toolCall",
+          id: crypto.randomUUID(),
+          name: "attach_file",
+          arguments: { path: file.path },
+        })),
+        stopReason: "toolUse",
+      },
+      { content: "资料已交付。" },
+    ],
+  });
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const outgoing = page.getByLabel("你的消息").last();
+  const delivered = page.locator(".delivered-files");
+  await expect(delivered).toHaveCount(1);
+  for (const row of [outgoing, delivered]) {
+    await expect(row.locator(".message-bubble")).toHaveCount(0);
+    await expect(
+      row.getByRole("button", { name: "查看图片 photo.png", exact: true }),
+    ).toBeVisible();
+    await expect(
+      row.getByRole("button", { name: "预览 report.txt", exact: true }),
+    ).toBeVisible();
+    await expect(
+      row.getByRole("button", { name: /展开|收起/, exact: true }),
+    ).toHaveCount(0);
+  }
+  for (const [theme, label] of [
+    ["light", "浅色"],
+    ["dark", "深色"],
+  ] as const) {
+    await chooseAppearance(page, label);
+    await delivered.screenshot({
+      path: `test-results/standalone-files-${theme}.png`,
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(
+      await page
+        .locator(".transcript")
+        .evaluate((node) => node.scrollWidth <= node.clientWidth),
+    ).toBe(true);
+    await page.setViewportSize({ width: 1360, height: 900 });
+  }
+});
+
+test("audio decode failures preserve the file download action", async ({
+  page,
+}) => {
+  await control({ content: "已收到音频。" });
+  await page.goto(url);
+  const audio = await readFile(
+    new URL(
+      "../../../packages/agent/test/fixtures/media/audio.mp3",
+      import.meta.url,
+    ),
+  );
+  await attachFiles(page, [
+    {
+      name: "broken.mp3",
+      mimeType: "audio/mpeg",
+      buffer: audio,
+    },
+  ]);
+  await expect(page.locator(".composer-attachments .attachment")).toHaveCount(
+    1,
+  );
+  await page.route(/\/files\/\d+\/[a-f0-9]{64}$/, (route) =>
+    route.fulfill({ contentType: "audio/mpeg", body: "invalid audio" }),
+  );
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const card = page.getByRole("group", {
+    name: "音频 broken.mp3",
+    exact: true,
+  });
+  await card
+    .getByRole("button", { name: "播放 broken.mp3", exact: true })
+    .click();
+  await expect(card.getByRole("alert")).toContainText("音频无法播放");
+  await expect(
+    page.getByLabel("你的消息").last().locator(".message-bubble"),
+  ).toHaveCount(0);
+  await card
+    .getByRole("button", { name: "更多文件操作 broken.mp3", exact: true })
+    .click();
+  const downloaded = page.waitForEvent("download");
+  await page.getByRole("menuitem", { name: "另存为…", exact: true }).click();
+  const download = await downloaded;
+  expect(await readFile(await download.path())).toEqual(audio);
+  await page.unroute(/\/files\/\d+\/[a-f0-9]{64}$/);
+  await card
+    .getByRole("button", { name: "播放 broken.mp3", exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      card
+        .locator("audio")
+        .evaluate((media: HTMLAudioElement) => media.currentTime),
+    )
+    .toBeGreaterThan(0.2);
+  await expect(card.getByRole("alert")).toHaveCount(0);
+});
+
 test("message media leads captions and bubble tails follow both themes", async ({
   page,
 }) => {

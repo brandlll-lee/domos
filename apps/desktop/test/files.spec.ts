@@ -117,6 +117,17 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
     await expect(page.locator(".composer-attachments .attachment")).toHaveCount(
       10,
     );
+    const sharedAudio = await page.evaluate(() => {
+      const key = Object.keys(localStorage).find((key) =>
+        key.startsWith("domos:composer:v2:"),
+      );
+      return (
+        JSON.parse(localStorage.getItem(key ?? "") ?? "{}").attachments as {
+          name: string;
+          path: string;
+        }[]
+      ).find((file) => file.name === "audio.mp3");
+    });
     await page
       .getByRole("textbox", { name: "消息", exact: true })
       .fill("桌面验收");
@@ -138,9 +149,15 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
     await expect(pdfCard.locator(".file-card-thumbnail img")).toBeVisible();
     await expect(pdfCard).toContainText("2 页");
     for (const name of ["audio.mp3", "video.mp4", "video.mov"]) {
-      const card = page.locator(".media-attachment").filter({
-        has: page.getByRole("button", { name: `预览 ${name}`, exact: true }),
-      });
+      const card =
+        name === "audio.mp3"
+          ? page.getByRole("group", { name: `音频 ${name}`, exact: true })
+          : page.locator(".media-attachment").filter({
+              has: page.getByRole("button", {
+                name: `预览 ${name}`,
+                exact: true,
+              }),
+            });
       await card.scrollIntoViewIfNeeded();
       await expect(card.locator(".media-attachment-duration")).toHaveText(
         "0:03",
@@ -153,18 +170,61 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
             .locator("img")
             .evaluate((image: HTMLImageElement) => image.naturalWidth),
         ).toBeGreaterThan(0);
+      } else {
+        await expect(card.locator("audio")).not.toHaveAttribute("src");
+        await card
+          .getByRole("button", { name: "播放 audio.mp3", exact: true })
+          .click();
+        await expect
+          .poll(() =>
+            card
+              .locator("audio")
+              .evaluate((media: HTMLAudioElement) => media.currentTime),
+          )
+          .toBeGreaterThan(0.2);
+        await expect
+          .poll(() =>
+            card
+              .locator(".audio-waveform g rect")
+              .evaluateAll((bars) =>
+                Math.max(
+                  ...bars.map((bar) => Number(bar.getAttribute("height"))),
+                ),
+              ),
+          )
+          .toBeGreaterThan(2);
+        await card
+          .getByRole("button", { name: "暂停 audio.mp3", exact: true })
+          .click();
+        const seek = card.getByRole("slider", {
+          name: "播放进度 audio.mp3",
+          exact: true,
+        });
+        await seek.focus();
+        await seek.press("End");
+        await seek.press("ArrowLeft");
+        await expect
+          .poll(() =>
+            card
+              .locator("audio")
+              .evaluate((media: HTMLAudioElement) => media.currentTime),
+          )
+          .toBeGreaterThan(1);
       }
       for (const theme of ["light", "dark"] as const) {
         await page.emulateMedia({ colorScheme: theme });
         await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+        await page.evaluate(() =>
+          (document.activeElement as HTMLElement)?.blur(),
+        );
         await card.screenshot({
           path: testInfo.outputPath(`message-${name}-${theme}.png`),
         });
       }
     }
     await expect(
-      page.locator(".attachments video, .attachments audio"),
-    ).toHaveCount(0);
+      page.locator(".attachments video, .attachments audio[src]"),
+    ).toHaveCount(1);
     expect(automaticConversions).toEqual([]);
     await page.emulateMedia({ colorScheme: "light" });
     const panel = page.getByRole("complementary", {
@@ -310,9 +370,18 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
         );
       }
       const openedAt = performance.now();
-      await page
-        .getByRole("button", { name: `预览 ${name}`, exact: true })
-        .click();
+      if (name === "audio.mp3") {
+        await page
+          .getByRole("button", { name: "更多文件操作 audio.mp3", exact: true })
+          .click();
+        await page
+          .getByRole("menuitem", { name: "查看详情", exact: true })
+          .click();
+      } else {
+        await page
+          .getByRole("button", { name: `预览 ${name}`, exact: true })
+          .click();
+      }
       if (releasePreview) {
         await expect(
           panel.getByRole("status", { name: "正在生成文档预览" }),
@@ -550,6 +619,91 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
         .getByRole("log", { name: "聊天记录", exact: true })
         .getByRole("button", { name: "预览 说明.md", exact: true }),
     ).toBeInViewport();
+    await desktop.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.setSize(1360, 900),
+    );
+    const delivery = once(worker, "message");
+    worker.send({
+      responses: [
+        {
+          content: [
+            {
+              type: "toolCall",
+              id: crypto.randomUUID(),
+              name: "attach_file",
+              arguments: { path: sharedAudio?.path },
+            },
+          ],
+          stopReason: "toolUse",
+        },
+        { content: "这是音频，点击即可试听。" },
+      ],
+    });
+    await delivery;
+    await page
+      .getByRole("textbox", { name: "消息", exact: true })
+      .fill("请回传音频");
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    const receivedAudio = page
+      .locator(".delivered-files")
+      .getByRole("group", { name: "音频 audio.mp3", exact: true });
+    await expect(receivedAudio.locator(".bot-avatar")).toBeVisible();
+    await expect(page.locator(".delivered-files .message-bubble")).toHaveCount(
+      0,
+    );
+    for (const theme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: theme });
+      await receivedAudio.scrollIntoViewIfNeeded();
+      await receivedAudio
+        .getByRole("button", { name: "播放 audio.mp3", exact: true })
+        .click();
+      await expect
+        .poll(() =>
+          receivedAudio
+            .locator("audio")
+            .evaluate((media: HTMLAudioElement) => media.currentTime),
+        )
+        .toBeGreaterThan(1);
+      await receivedAudio
+        .getByRole("button", { name: "暂停 audio.mp3", exact: true })
+        .click();
+      await page.evaluate(() =>
+        (document.activeElement as HTMLElement)?.blur(),
+      );
+      await receivedAudio.screenshot({
+        path: testInfo.outputPath(`message-audio-incoming-${theme}.png`),
+      });
+    }
+    await desktop.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.setSize(480, 720),
+    );
+    await expect(page.locator(".workspace")).toHaveAttribute("data-mobile");
+    await expect(page.locator(".panel-backdrop:visible")).toHaveCount(0);
+    await receivedAudio.scrollIntoViewIfNeeded();
+    expect(
+      await page
+        .locator(".transcript")
+        .evaluate((node) => node.scrollWidth <= node.clientWidth),
+    ).toBe(true);
+    await receivedAudio.screenshot({
+      path: testInfo.outputPath("message-audio-narrow.png"),
+    });
+    await desktop.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.setSize(1360, 900),
+    );
+    await receivedAudio
+      .getByRole("button", { name: "播放 audio.mp3", exact: true })
+      .click();
+    const activeAudio = await receivedAudio.locator("audio").elementHandle();
+    await page.getByRole("button", { name: "用户菜单", exact: true }).click();
+    await page.getByRole("menuitem", { name: "用量", exact: true }).click();
+    await expect(receivedAudio).toHaveCount(0);
+    expect(
+      await activeAudio?.evaluate((media: HTMLAudioElement) => ({
+        paused: media.paused,
+        src: media.getAttribute("src"),
+      })),
+    ).toEqual({ paused: true, src: null });
   } finally {
     await desktop.close();
     const exited = once(worker, "exit");

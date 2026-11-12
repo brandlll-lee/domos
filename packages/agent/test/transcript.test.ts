@@ -222,6 +222,7 @@ test("complete product messages and questions arrive immediately", () => {
 });
 
 test("adjacent delivered files form one gallery within their turn", () => {
+  const author = { botId: 7, name: "Reviewer", avatar: "reviewer" };
   const first = { id: "first", name: "first.png", path: "first.png", size: 12 };
   const second = {
     id: "second",
@@ -230,7 +231,7 @@ test("adjacent delivered files form one gallery within their turn", () => {
     size: 12,
   };
   const messages = [
-    message("toolResult", "turn", [], { attachments: [first] }),
+    message("toolResult", "turn", [], { attachments: [first], author }),
     message("toolResult", "turn", [], { attachments: [second] }),
     message("assistant", "turn", [{ type: "text", text: "Images ready" }]),
     message("toolResult", "next", [], { attachments: [first] }),
@@ -238,7 +239,12 @@ test("adjacent delivered files form one gallery within their turn", () => {
   ];
   const original = structuredClone(messages);
   expect(chatTranscript(view(messages))).toMatchObject([
-    { kind: "attachments", id: messages[0]?.id, files: [first, second] },
+    {
+      kind: "attachments",
+      id: messages[0]?.id,
+      files: [first, second],
+      author,
+    },
     { kind: "message" },
     { kind: "attachments", files: [first] },
     { kind: "attachments", files: [second] },
