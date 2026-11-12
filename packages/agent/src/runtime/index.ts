@@ -9,7 +9,7 @@ import {
   type Harness,
   LiveDoc,
 } from "@earendil-works/pi-durable";
-import { chatView } from "../chat-view.ts";
+import { type ChatPage, chatView } from "../chat-view.ts";
 import { DelegationsDoc } from "../collaboration.ts";
 import { ComputerRequests } from "../computer/runtime.ts";
 import { ComputersDoc } from "../computer/state.ts";
@@ -161,7 +161,7 @@ export class Runtime {
   async view(
     botId: number,
     context: Context,
-    page?: { before?: string; limit: number },
+    page?: ChatPage & { limit: number },
   ) {
     const conversation = await this.harness.conversation(
       botId as ConversationId,
@@ -178,23 +178,50 @@ export class Runtime {
       this.harness.snapshot(LiveDoc, botId as ConversationId, context),
     ]);
     const entries: EntryRecord[] = [];
-    const [beforeEntry = 0, beforeIndex = 0] =
-      page?.before?.split(":").map(Number) ?? [];
+    const position = page?.around ?? page?.after ?? page?.before;
+    const [entryId = 0, messageIndex = 0] =
+      position?.split(":").map(Number) ?? [];
     let cursor: Cursor | undefined;
-    do {
-      const batch = await conversation.entries(
-        {
-          order: page ? "descending" : "ascending",
-          ...(beforeEntry ? { maxEntryId: beforeEntry as EntryId } : {}),
-        },
-        page?.limit ?? 500,
-        cursor,
-        context,
+    let newer: Cursor | undefined;
+    if (page?.around) {
+      const [before, after] = await Promise.all([
+        conversation.entries(
+          { order: "descending", maxEntryId: entryId as EntryId },
+          page.limit + 1,
+          undefined,
+          context,
+        ),
+        conversation.entries(
+          { order: "ascending", minEntryId: entryId as EntryId },
+          page.limit + 1,
+          undefined,
+          context,
+        ),
+      ]);
+      entries.push(
+        ...new Map(
+          [...before.items, ...after.items].map((entry) => [entry.id, entry]),
+        ).values(),
       );
-      entries.push(...batch.items);
-      cursor = batch.next;
-    } while (!page && cursor);
-    if (page) entries.reverse();
+      entries.sort((a, b) => a.id - b.id);
+      cursor = before.next;
+      newer = after.next;
+    } else
+      do {
+        const batch = await conversation.entries(
+          {
+            order: !page || page.after ? "ascending" : "descending",
+            ...(page?.before ? { maxEntryId: entryId as EntryId } : {}),
+            ...(page?.after ? { minEntryId: entryId as EntryId } : {}),
+          },
+          page ? page.limit + (page.after ? 1 : 0) : 500,
+          cursor,
+          context,
+        );
+        entries.push(...batch.items);
+        cursor = batch.next;
+      } while (!page && cursor);
+    if (page && !page.around && !page.after) entries.reverse();
     const requests = await this.harness.snapshot(
       ComputerRequests,
       botId as ConversationId,
@@ -212,20 +239,46 @@ export class Runtime {
       requests?.approvals ?? [],
     );
     if (page) {
-      const messages = view.messages.filter((message) => {
-        if (!beforeEntry || !message.cursor) return true;
-        const [entry = 0, index = 0] = message.cursor.split(":").map(Number);
-        return (
-          entry < beforeEntry || (entry === beforeEntry && index < beforeIndex)
+      const relative = (message: import("../messages.ts").ChatMessage) => {
+        const [entry = 0, index = 0] =
+          message.cursor?.split(":").map(Number) ?? [];
+        return entry - entryId || index - messageIndex;
+      };
+      const messages = view.messages.filter(
+        (message) => !position || message.cursor,
+      );
+      if (page.around) {
+        const older = messages.filter((message) => relative(message) < 0);
+        const later = messages.filter((message) => relative(message) >= 0);
+        const half = Math.floor(page.limit / 2);
+        view.messages = [
+          ...older.slice(-half),
+          ...later.slice(0, page.limit - half),
+        ];
+        if (cursor || older.length > half)
+          view.before = view.messages[0]?.cursor;
+        if (newer || later.length > page.limit - half)
+          view.after = view.messages.at(-1)?.cursor;
+      } else if (page.after) {
+        const later = messages.filter((message) => relative(message) > 0);
+        view.messages = later.slice(0, page.limit);
+        if (cursor || later.length > page.limit)
+          view.after =
+            view.messages.at(-1)?.cursor ?? `${entries.at(-1)?.id}:0`;
+      } else {
+        const older = messages.filter(
+          (message) => !position || relative(message) < 0,
         );
-      });
-      view.messages = messages.slice(-page.limit);
-      if (cursor || messages.length > page.limit)
-        view.before = view.messages[0]?.cursor ?? `${entries[0]?.id}:0`;
+        view.messages = older.slice(-page.limit);
+        if (cursor || older.length > page.limit)
+          view.before = view.messages[0]?.cursor ?? `${entries[0]?.id}:0`;
+      }
     }
     const saved = new Set(view.messages.map((message) => message.id));
     view.messages.push(
-      ...(engine?.drafts ?? []).filter((message) => !saved.has(message.id)),
+      ...(!position ? (engine?.drafts ?? []) : []).filter(
+        (message) => !saved.has(message.id),
+      ),
     );
     view.busy ||= Boolean(engine?.tasks.length);
     view.processing = Boolean(engine?.activeId && !requests?.approvals.length);

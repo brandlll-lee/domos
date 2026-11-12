@@ -18,6 +18,7 @@ const items = new Map<
     bounds: readonly [number, number, number, number];
     intensity: number;
     visible: boolean;
+    box?: DOMRect;
     springs: Record<
       "x" | "y" | "tilt" | "hop" | "squish" | "greeting",
       ReturnType<typeof spring>
@@ -72,6 +73,7 @@ function start() {
   let hovered: HTMLElement | null = null;
   let frame = 0;
   let last = 0;
+  let measure = true;
   const itemAt = (event: Event) =>
     [...items.entries()].find(
       ([, item]) =>
@@ -137,6 +139,7 @@ function start() {
     if (event.key === " " || event.key === "Enter") press(event);
   };
   wake = () => {
+    measure = true;
     if (!frame && !document.hidden) frame = requestAnimationFrame(tick);
   };
   const tick = (now: number) => {
@@ -146,11 +149,13 @@ function start() {
     let moving = false;
     const measured = [...items.entries()]
       .filter(([, item]) => item.visible)
-      .map(([element, item]) => ({
-        element,
-        item,
-        box: element.getBoundingClientRect(),
-      }));
+      .map(([element, item]) => {
+        const box =
+          measure || !item.box ? element.getBoundingClientRect() : item.box;
+        item.box = box;
+        return { element, item, box };
+      });
+    measure = false;
     for (const { element, item, box } of measured) {
       const { springs, gaze, gesture, intensity } = item;
       const { x, y, tilt, hop, squish, greeting } = springs;
@@ -242,7 +247,7 @@ function start() {
         ) ||
         elapsed < 0.29;
     }
-    if (moving && !reduced.matches) wake();
+    if (moving && !reduced.matches) frame = requestAnimationFrame(tick);
     else last = 0;
   };
   observer = new IntersectionObserver((entries) => {

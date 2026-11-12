@@ -17,7 +17,12 @@ import { ConversationBusy } from "@earendil-works/pi-durable";
 import { ORPCError, os } from "@orpc/server";
 import { z } from "zod";
 import { computerRouter } from "./computer.ts";
-import { botConversation, botTarget } from "./conversation.ts";
+import {
+  botConversation,
+  botTarget,
+  chatPage,
+  singleChatPage,
+} from "./conversation.ts";
 import { watchDirectory } from "./directory.ts";
 import { engineRouter } from "./engines.ts";
 import { fileRouter } from "./files.ts";
@@ -88,14 +93,7 @@ export function createRouter(
     },
     models: modelRouter(bots, models, engines),
     get: os
-      .input(
-        botTarget.extend({
-          before: z
-            .string()
-            .regex(/^\d+:\d+$/)
-            .optional(),
-        }),
-      )
+      .input(botTarget.extend(chatPage.shape).refine(singleChatPage))
       .handler(async ({ input, signal }) => {
         const conversation = await botConversation(bots, input.botId);
         const context = signal
@@ -106,6 +104,8 @@ export function createRouter(
             await engines.view(input.botId, context, {
               limit: 200,
               before: input.before,
+              after: input.after,
+              around: input.around,
             }),
           );
         const view = await conversation.viewState(context);

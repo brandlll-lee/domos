@@ -57,6 +57,22 @@ test("plush identities load, animate and survive profile changes", async ({
         ),
       )
       .toBeGreaterThan(0.1);
+    const reads = await contactAvatar.evaluate(async (node) => {
+      const measure = node.getBoundingClientRect.bind(node);
+      let reads = 0;
+      node.getBoundingClientRect = () => {
+        reads++;
+        return measure();
+      };
+      try {
+        for (let frame = 0; frame < 12; frame++)
+          await new Promise(requestAnimationFrame);
+        return reads;
+      } finally {
+        delete (node as Partial<HTMLElement>).getBoundingClientRect;
+      }
+    });
+    expect(reads).toBeLessThanOrEqual(1);
     await contactAvatar.hover({
       position: { x: frame.width * 0.8, y: frame.height * 0.6 },
     });

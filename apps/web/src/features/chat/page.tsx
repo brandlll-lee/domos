@@ -13,6 +13,7 @@ import {
   startTransition,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -78,11 +79,17 @@ function BotChat({
   directoryConnected: boolean;
   directory: ReturnType<typeof useBots>;
 }) {
-  const members = team
-    ? bots.filter((member) => team.members.includes(member.id))
-    : undefined;
-  const referenceBots =
-    members ?? bots.filter((member) => member.id !== bot.id);
+  const members = useMemo(
+    () =>
+      team
+        ? bots.filter((member) => team.members.includes(member.id))
+        : undefined,
+    [bots, team],
+  );
+  const referenceBots = useMemo(
+    () => members ?? bots.filter((member) => member.id !== bot.id),
+    [members, bots, bot.id],
+  );
   const settings = useSettings();
   const chat = useChat(
     bot.id,
@@ -250,16 +257,19 @@ function BotChat({
     setDetailsOpen(false);
     setExpanded(false);
   };
+  const selectedFile = panel === "file" && detailsOpen ? file?.id : undefined;
+  const filePreview = useMemo(
+    () => ({
+      open: openFile,
+      selected: selectedFile,
+      inline: inlineFiles,
+      register: registerFile,
+      target: fileTarget,
+    }),
+    [openFile, selectedFile, inlineFiles, registerFile, fileTarget],
+  );
   return (
-    <FilePreviewContext
-      value={{
-        open: openFile,
-        selected: panel === "file" && detailsOpen ? file?.id : undefined,
-        inline: inlineFiles,
-        register: registerFile,
-        target: fileTarget,
-      }}
-    >
+    <FilePreviewContext value={filePreview}>
       <Workspace
         onApps={() => setAppsOpen(true)}
         detailsOpen={detailsOpen}
@@ -370,23 +380,12 @@ function BotChat({
               }
               canManage={settings.admin}
               onShowMessage={async (item) => {
-                await chat.revealMessage(item.messageId);
+                if (!(await chat.revealMessage(item))) return;
                 if (
                   window.innerWidth <
                   layout.sidebar.min + layout.chatMin + layout.inspector.min
                 )
                   closePanel();
-                requestAnimationFrame(() =>
-                  window.dispatchEvent(
-                    new CustomEvent("domos:message-reveal", {
-                      detail: {
-                        botId: bot.id,
-                        messageId: item.messageId,
-                        fileId: item.file.id,
-                      },
-                    }),
-                  ),
-                );
               }}
               tab={panel === "settings" || panel === "file" ? "bot" : panel}
               onTabChange={(tab) => {
@@ -462,7 +461,14 @@ function BotChat({
                 createdAt={bot.createdAt}
                 items={items}
                 sentRequest={chat.sentRequest}
-                hasMore={Boolean(chat.view?.before)}
+                target={chat.target}
+                readingHistory={chat.readingHistory}
+                onLatest={chat.showLatest}
+                hasMore={chat.hasMore}
+                hasNewer={chat.hasNewer}
+                loadingNewer={chat.loadingNewer}
+                newerError={chat.newerError}
+                onNewer={chat.loadNewer}
                 loadingEarlier={chat.loadingEarlier}
                 earlierError={chat.earlierError}
                 onEarlier={chat.loadEarlier}

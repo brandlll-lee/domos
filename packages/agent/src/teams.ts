@@ -5,7 +5,7 @@ import {
   type Harness,
 } from "@earendil-works/pi-durable";
 import { BotDirectory } from "./bots.ts";
-import type { ChatView } from "./chat-view.ts";
+import type { ChatPage, ChatView } from "./chat-view.ts";
 import { DelegationsDoc } from "./collaboration.ts";
 import { BotSessions, createBotSession } from "./conversations.ts";
 import type { Runtime } from "./runtime/index.ts";
@@ -125,7 +125,7 @@ export class Teams {
     id: string,
     runtime: Runtime,
     context: Context,
-    before?: string,
+    paging: ChatPage = {},
   ): Promise<ChatView> {
     const session = await this.session(id, undefined, context);
     const bots =
@@ -138,7 +138,7 @@ export class Teams {
       sessions.map(async (item) => {
         const view = await runtime.view(item.id, context, {
           limit: 200,
-          before,
+          ...paging,
         });
         const bot = bots.find((bot) => bot.id === item.botId)!;
         return {
@@ -177,13 +177,35 @@ export class Teams {
         requests.add(message.requestId);
         return true;
       });
-    const page = messages.slice(-200);
+    const [targetEntry = 0, targetIndex = 0] =
+      paging.around?.split(":").map(Number) ?? [];
+    const at = paging.around
+      ? messages.findIndex((message) => {
+          const [entry = 0, index = 0] =
+            message.cursor?.split(":").map(Number) ?? [];
+          return (
+            entry > targetEntry ||
+            (entry === targetEntry && index >= targetIndex)
+          );
+        })
+      : -1;
+    const page = paging.around
+      ? messages.slice(Math.max(0, at - 100), Math.max(0, at) + 100)
+      : paging.after
+        ? messages.slice(0, 200)
+        : messages.slice(-200);
     return {
       ...base,
       messages: page,
       before:
-        messages.length > page.length || views.some((view) => view.before)
+        (!paging.after && messages[0] !== page[0]) ||
+        views.some((view) => view.before)
           ? page[0]?.cursor
+          : undefined,
+      after:
+        ((paging.after || paging.around) && messages.at(-1) !== page.at(-1)) ||
+        views.some((view) => view.after)
+          ? page.at(-1)?.cursor
           : undefined,
       busy: views.some((view) => view.busy),
       processing: views.some((view) => view.processing),

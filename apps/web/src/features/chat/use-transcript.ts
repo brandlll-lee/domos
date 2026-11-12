@@ -1,3 +1,4 @@
+import type { ConversationFile } from "@domos/agent/files";
 import type { TranscriptItem } from "@domos/agent/transcript";
 import {
   useCallback,
@@ -32,6 +33,7 @@ export function useTranscript(
   sentRequest?: string,
   typing = false,
   botId?: number,
+  target?: Pick<ConversationFile, "messageId" | "file">,
 ) {
   const viewport = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -66,6 +68,8 @@ export function useTranscript(
   const reading = useRef<{ node: HTMLElement; top: number } | null>(null);
   const reply = useRef<string | null>(null);
   const requested = useRef<string | null>(null);
+  const revealed = useRef<typeof target>(undefined);
+  const expanding = useRef(false);
   const [range, setRange] = useState<{ start: number; end: number } | null>(
     restored.current?.range ?? null,
   );
@@ -82,39 +86,57 @@ export function useTranscript(
     });
   }, []);
 
-  useEffect(() => {
-    const reveal = (event: Event) => {
-      const request = (
-        event as CustomEvent<{
-          botId: number;
-          messageId: string;
-          fileId: string;
-        }>
-      ).detail;
-      if (request.botId !== botId) return;
-      const index = items.findIndex(
+  useLayoutEffect(() => {
+    if (target && revealed.current !== target) {
+      let index = items.findIndex(
         (item) =>
-          item.id === request.messageId ||
-          (item.kind === "message" && item.message.id === request.messageId) ||
-          (item.kind === "attachments" &&
-            item.files.some((file) => file.id === request.fileId)),
+          item.id === target.messageId ||
+          (item.kind === "message" && item.message.id === target.messageId),
       );
+      if (index < 0)
+        index = items.findIndex(
+          (item) =>
+            item.kind === "attachments" &&
+            item.files.some((file) => file.id === target.file.id),
+        );
       const item = items[index];
       if (!item) return;
+      revealed.current = target;
       requested.current = keyOf(item);
       following.current = false;
       reply.current = null;
+      reading.current = null;
+      anchor.current = null;
+      scrolling.current = false;
       setRange({
         start: Math.max(0, index - 20),
         end: Math.min(items.length, index + pageSize),
       });
-      schedule();
-    };
-    window.addEventListener("domos:message-reveal", reveal);
-    return () => window.removeEventListener("domos:message-reveal", reveal);
-  }, [items, botId, schedule]);
-
-  useLayoutEffect(() => {
+      return;
+    }
+    if (expanding.current && previous.current.items !== items) {
+      expanding.current = false;
+      previous.current = { ...previous.current, items };
+      setRange({
+        start: Math.max(0, end - pageSize),
+        end: Math.min(items.length, end + pageSize),
+      });
+      return;
+    }
+    if (!target && revealed.current) {
+      revealed.current = undefined;
+      following.current = true;
+      jumping.current = true;
+      animate.current = false;
+      scrolling.current = false;
+      requested.current = null;
+      anchor.current = null;
+      reading.current = null;
+      if (range) {
+        setRange(null);
+        return;
+      }
+    }
     const first = previous.current.items[0];
     const prepended = first
       ? items.findIndex((item) => keyOf(item) === keyOf(first))
@@ -184,7 +206,10 @@ export function useTranscript(
         ? nodes.get(requested.current)
         : undefined;
       if (requestedNode) {
-        const node = requestedNode;
+        const node =
+          requestedNode.querySelector<HTMLElement>(
+            `[data-file-id="${CSS.escape(revealed.current?.file.id ?? "")}"]`,
+          ) ?? requestedNode;
         target += node.getBoundingClientRect().top - bounds.top - top;
         reading.current = { node, top: bounds.top + top };
         requested.current = null;
@@ -279,7 +304,7 @@ export function useTranscript(
       };
     };
     measure.current();
-  }, [items, ready, range, start, end, sentRequest, typing, botId]);
+  }, [items, ready, range, start, end, sentRequest, typing, botId, target]);
 
   useEffect(() => {
     const element = viewport.current;
@@ -358,6 +383,23 @@ export function useTranscript(
         start: Math.max(0, start - pageSize),
         end: Math.min(items.length, start + pageSize),
       });
+    },
+    async loadNewer(load?: () => Promise<void>) {
+      following.current = false;
+      if (reading.current?.node.dataset.transcriptKey)
+        anchor.current = {
+          key: reading.current.node.dataset.transcriptKey,
+          top: reading.current.top,
+        };
+      if (load) {
+        expanding.current = true;
+        setRange({ start, end });
+        await load();
+      } else
+        setRange({
+          start: Math.max(0, end - pageSize),
+          end: Math.min(items.length, end + pageSize),
+        });
     },
   };
 }

@@ -1,4 +1,5 @@
 import type { Attachment } from "@domos/agent/attachments";
+import type { ConversationFile } from "@domos/agent/files";
 import type { InputMaterials, MaterialSelection } from "@domos/agent/materials";
 import type { TranscriptItem } from "@domos/agent/transcript";
 import type { ChatView } from "@domos/agent/view";
@@ -31,6 +32,8 @@ type RetainedChat = {
   pendingRequest?: string;
   sending: boolean;
   error: string | null;
+  history?: ChatView;
+  target?: Pick<ConversationFile, "messageId" | "file">;
 };
 function createChatState() {
   let state: RetainedChat = {
@@ -97,8 +100,16 @@ export function useChat(
   teamId?: string,
 ) {
   const [store] = useState(() => chatState(botId, teamId));
-  const { view, outgoing, sentRequest, pendingRequest, sending, error } =
-    useSyncExternalStore(store.subscribe, store.snapshot);
+  const {
+    view,
+    outgoing,
+    sentRequest,
+    pendingRequest,
+    sending,
+    error,
+    history,
+    target,
+  } = useSyncExternalStore(store.subscribe, store.snapshot);
   const current = useRef<ChatView | null>(view);
   current.current ??= view;
   const setView = useCallback(
@@ -117,11 +128,19 @@ export function useChat(
   const [stopping, setStopping] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [earlierError, setEarlierError] = useState<string>();
+  const [loadingNewer, setLoadingNewer] = useState(false);
+  const [newerError, setNewerError] = useState<string>();
   const earlierRequest = useRef<AbortController | null>(null);
+  const revealRequest = useRef<AbortController | null>(null);
   const [project] = useState(transcriptState);
+  const displayed = history ?? view;
+  const displayedOutgoing = history ? undefined : outgoing;
   const { items } = useMemo(
-    () => (view ? project(view, outgoing) : { items: outgoing }),
-    [view, outgoing, project],
+    () =>
+      displayed
+        ? project(displayed, displayedOutgoing)
+        : { items: displayedOutgoing ?? [] },
+    [displayed, displayedOutgoing, project],
   );
 
   useEffect(() => {
@@ -244,68 +263,103 @@ export function useChat(
       if (current.current) store.update({ view: current.current });
       controller.abort();
       earlierRequest.current?.abort();
+      revealRequest.current?.abort();
       if (frame !== undefined) cancelAnimationFrame(frame);
       document.removeEventListener("visibilitychange", visible);
     };
   }, [botId, store, setView, setError, teamId]);
 
-  async function loadEarlier() {
-    const before = current.current?.before;
-    if (!before || earlierRequest.current) return;
-    const controller = new AbortController();
-    earlierRequest.current = controller;
-    const signal = AbortSignal.any([
-      controller.signal,
-      AbortSignal.timeout(30_000),
-    ]);
-    setLoadingEarlier(true);
-    setEarlierError(undefined);
-    try {
-      const page = teamId
-        ? await client.teams.get({ id: teamId, before }, { signal })
-        : await client.get({ botId, before }, { signal });
-      signal.throwIfAborted();
-      const view = current.current;
-      if (!view || view.before !== before) return;
-      const known = new Set(view.messages.map((message) => message.id));
-      const next = {
-        ...view,
-        before: page.before,
-        runs: [
-          ...new Map(
-            [...(page.runs ?? []), ...(view.runs ?? [])].map((run) => [
-              run.turnId,
-              run,
-            ]),
-          ).values(),
-        ],
-        messages: [
-          ...page.messages.filter((message) => !known.has(message.id)),
-          ...view.messages,
-        ],
-      };
-      current.current = next;
-      setView(next);
-    } catch {
-      if (!controller.signal.aborted)
-        setEarlierError(
-          signal.aborted
-            ? "历史消息读取超时，请重试。"
-            : "历史消息读取失败，请重试。",
-        );
-    } finally {
-      if (earlierRequest.current === controller) {
-        earlierRequest.current = null;
-        if (!controller.signal.aborted) setLoadingEarlier(false);
+  const loadPage = useCallback(
+    async (direction: "before" | "after") => {
+      const history = store.snapshot().history;
+      const cursor = (history ?? current.current)?.[direction];
+      if (!cursor || earlierRequest.current) return;
+      const controller = new AbortController();
+      earlierRequest.current = controller;
+      const signal = AbortSignal.any([
+        controller.signal,
+        AbortSignal.timeout(30_000),
+      ]);
+      const setLoading =
+        direction === "before" ? setLoadingEarlier : setLoadingNewer;
+      const setReadError =
+        direction === "before" ? setEarlierError : setNewerError;
+      setLoading(true);
+      setReadError(undefined);
+      try {
+        const page = teamId
+          ? await client.teams.get(
+              { id: teamId, [direction]: cursor },
+              { signal },
+            )
+          : await client.get({ botId, [direction]: cursor }, { signal });
+        signal.throwIfAborted();
+        if (store.snapshot().history !== history) return;
+        const view = history ?? current.current;
+        if (!view || view[direction] !== cursor) return;
+        const known = new Set(view.messages.map((message) => message.id));
+        const next = {
+          ...view,
+          [direction]: page[direction],
+          runs: [
+            ...new Map(
+              [...(page.runs ?? []), ...(view.runs ?? [])].map((run) => [
+                run.turnId,
+                run,
+              ]),
+            ).values(),
+          ],
+          messages:
+            direction === "before"
+              ? [
+                  ...page.messages.filter((message) => !known.has(message.id)),
+                  ...view.messages,
+                ]
+              : [
+                  ...view.messages,
+                  ...page.messages.filter((message) => !known.has(message.id)),
+                ],
+        };
+        if (history) store.update({ history: next });
+        else {
+          current.current = next;
+          setView(next);
+        }
+      } catch {
+        if (!controller.signal.aborted)
+          setReadError(
+            signal.aborted
+              ? "历史消息读取超时，请重试。"
+              : "历史消息读取失败，请重试。",
+          );
+      } finally {
+        if (earlierRequest.current === controller) {
+          earlierRequest.current = null;
+          if (!controller.signal.aborted) setLoading(false);
+        }
       }
-    }
-  }
+    },
+    [botId, teamId, store, setView],
+  );
+  const loadEarlier = useCallback(() => loadPage("before"), [loadPage]);
+  const loadNewer = useCallback(() => loadPage("after"), [loadPage]);
+  const showLatest = useCallback(() => {
+    revealRequest.current?.abort();
+    earlierRequest.current?.abort();
+    earlierRequest.current = null;
+    setLoadingEarlier(false);
+    setLoadingNewer(false);
+    setEarlierError(undefined);
+    setNewerError(undefined);
+    store.update({ history: undefined, target: undefined });
+  }, [store]);
 
   async function send(
     input: SendInput,
     attachments?: Attachment[],
     materials?: InputMaterials,
   ) {
+    showLatest();
     setSentRequest(input.requestId);
     store.update({ pendingRequest: input.requestId });
     setSending(true);
@@ -385,20 +439,61 @@ export function useChat(
   }
 
   return {
-    async revealMessage(id: string) {
-      while (
-        current.current &&
-        !current.current.messages.some((message) => message.id === id)
-      ) {
-        const before = current.current.before;
-        if (!before) throw new Error("原消息不存在。");
-        await loadEarlier();
-        if (current.current.before === before)
-          throw new Error("原消息读取失败。");
+    async revealMessage(item: ConversationFile) {
+      revealRequest.current?.abort();
+      const loaded = store.snapshot().history ?? current.current;
+      if (loaded?.messages.some((message) => message.id === item.messageId)) {
+        store.update({ target: { ...item } });
+        return true;
+      }
+      if (!item.cursor) throw new Error("原消息位置不可用，请刷新文件列表。");
+      const controller = new AbortController();
+      revealRequest.current = controller;
+      const signal = AbortSignal.any([
+        controller.signal,
+        AbortSignal.timeout(30_000),
+      ]);
+      try {
+        const page = teamId
+          ? await client.teams.get(
+              { id: teamId, around: item.cursor },
+              { signal },
+            )
+          : await client.get({ botId, around: item.cursor }, { signal });
+        signal.throwIfAborted();
+        if (!page.messages.some((message) => message.id === item.messageId))
+          throw new Error("原消息不存在。");
+        earlierRequest.current?.abort();
+        earlierRequest.current = null;
+        setLoadingEarlier(false);
+        setLoadingNewer(false);
+        setEarlierError(undefined);
+        setNewerError(undefined);
+        store.update({ history: page, target: { ...item } });
+        return true;
+      } catch (cause) {
+        if (controller.signal.aborted) return false;
+        throw new Error(
+          signal.aborted
+            ? "原消息读取超时，请重试。"
+            : cause instanceof Error
+              ? cause.message
+              : "原消息读取失败，请重试。",
+        );
+      } finally {
+        if (revealRequest.current === controller) revealRequest.current = null;
       }
     },
     view,
     items,
+    target,
+    readingHistory: Boolean(history),
+    hasMore: Boolean((history ?? view)?.before),
+    hasNewer: Boolean(history?.after),
+    showLatest,
+    loadNewer,
+    loadingNewer,
+    newerError,
     sentRequest,
     connected,
     error,

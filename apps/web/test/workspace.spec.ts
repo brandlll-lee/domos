@@ -3081,7 +3081,7 @@ test("contacts snap to an icon column and restore their width without losing cha
   }
   await page.reload();
   await expect(workspace).toHaveAttribute("data-sidebar-compact", "true");
-  await expect(input).toHaveValue("收起侧栏仍保留的草稿");
+  await expect(input).toHaveText("收起侧栏仍保留的草稿");
   await sidebar
     .getByRole("button", { name: "搜索联系人", exact: true })
     .click();
@@ -3181,7 +3181,7 @@ test("contacts snap to an icon column and restore their width without losing cha
   await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 1600, height: 960 });
   await expect(workspace).toHaveAttribute("data-sidebar-compact", "true");
-  await expect(input).toHaveValue("收起侧栏仍保留的草稿");
+  await expect(input).toHaveText("收起侧栏仍保留的草稿");
 });
 
 test("panels resize live, persist only on release, and retain drafts across layouts", async ({
@@ -3246,7 +3246,7 @@ test("panels resize live, persist only on release, and retain drafts across layo
   const inspector = page.getByRole("dialog", { name: "Bot详情", exact: true });
   await expect(inspector).toHaveAttribute("aria-modal", "true");
   await page.keyboard.press("Escape");
-  await expect(input).toHaveValue("保留消息草稿");
+  await expect(input).toHaveText("保留消息草稿");
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   await details.getByRole("button", { name: "编辑", exact: true }).click();
   await expect(name).toHaveValue("尚未保存的名字");
@@ -3254,7 +3254,7 @@ test("panels resize live, persist only on release, and retain drafts across layo
   await page.setViewportSize({ width: 1360, height: 900 });
   await page.reload();
   await expect(left).toHaveAttribute("aria-valuenow", String(before + 40));
-  await expect(input).toHaveValue("保留消息草稿");
+  await expect(input).toHaveText("保留消息草稿");
 });
 
 test("settings stay readable in both themes and compact layouts", async ({
@@ -3864,7 +3864,7 @@ test("panel transitions preserve the transcript and draft through rapid toggles 
   expect(frames.every((frame) => frame.visible > 0 && frame.gap <= 2)).toBe(
     true,
   );
-  await expect(input).toHaveValue("保留这份草稿");
+  await expect(input).toHaveText("保留这份草稿");
   await expect(page.locator(".message")).toHaveCount(120);
   await writeFile(
     info.outputPath("panel-frames.json"),
@@ -3882,7 +3882,7 @@ test("panel transitions preserve the transcript and draft through rapid toggles 
     await page.screenshot({ path: info.outputPath(`panel-${width}.png`) });
     await panel.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(panel).toBeHidden();
-    await expect(input).toHaveValue("保留这份草稿");
+    await expect(input).toHaveText("保留这份草稿");
   }
 });
 

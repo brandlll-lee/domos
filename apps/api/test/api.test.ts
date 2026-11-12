@@ -178,6 +178,7 @@ test("file search returns published history, pages unique files and excludes sta
     expect(page.items[0]).toMatchObject({
       file: { id: file.id, name: "报告.md" },
       messageId: expect.any(String),
+      cursor: expect.stringMatching(/^\d+:\d+$/),
     });
     expect(page.next).toBeNull();
     const firstPage = await runtime.client.files.list({ botId, limit: 1 });

@@ -43,6 +43,7 @@ export type { SpreadsheetPreview } from "./file-previews.ts";
 export type ConversationFile = {
   file: Attachment;
   messageId: string;
+  cursor?: string;
   timestamp?: number;
 };
 
@@ -89,6 +90,7 @@ export async function conversationFiles(
         items.push({
           file,
           messageId: message.id,
+          cursor: message.cursor,
           timestamp: message.timestamp,
         });
       }

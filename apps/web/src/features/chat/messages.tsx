@@ -1,4 +1,5 @@
 import type { BotPresence } from "@domos/agent/bots";
+import type { ConversationFile } from "@domos/agent/files";
 import { type ChatMessage, messageText } from "@domos/agent/messages";
 import type { TranscriptItem } from "@domos/agent/transcript";
 import type { ChatView } from "@domos/agent/view";
@@ -206,6 +207,13 @@ export const Messages = memo(function Messages({
   loadingEarlier,
   earlierError,
   onEarlier,
+  target,
+  readingHistory,
+  onLatest,
+  hasNewer,
+  loadingNewer,
+  newerError,
+  onNewer,
 }: {
   botId: number;
   ready: boolean;
@@ -224,15 +232,33 @@ export const Messages = memo(function Messages({
   loadingEarlier?: boolean;
   earlierError?: string;
   onEarlier?: () => Promise<void>;
+  target?: Pick<ConversationFile, "messageId" | "file">;
+  readingHistory?: boolean;
+  onLatest?: () => void;
+  hasNewer?: boolean;
+  loadingNewer?: boolean;
+  newerError?: string;
+  onNewer?: () => Promise<void>;
 }) {
   const received = useMemo(
-    () => ({ items, ready, processing, activity, retry, sentRequest }),
-    [items, ready, processing, activity, retry, sentRequest],
+    () => ({
+      items,
+      ready,
+      processing,
+      activity,
+      retry,
+      sentRequest,
+      readingHistory,
+    }),
+    [items, ready, processing, activity, retry, sentRequest, readingHistory],
   );
   const deferred = useDeferredValue(received);
   const shown =
     !deferred.ready ||
     deferred.sentRequest !== sentRequest ||
+    deferred.readingHistory !== readingHistory ||
+    target ||
+    readingHistory ||
     (items.length > deferred.items.length &&
       items[0]?.id !== deferred.items[0]?.id)
       ? received
@@ -247,23 +273,27 @@ export const Messages = memo(function Messages({
     shown.items,
     shown.ready,
     shown.sentRequest,
-    typing,
+    typing && !readingHistory,
     botId,
+    target,
   );
   const motion =
     !transcript.initialized || !transcript.atBottom || document.hidden
       ? { default: "none" }
       : { enter: "chat-enter", update: "chat-layout", exit: "chat-exit" };
-  const separators = new Map<string, { at: number; label: string }>();
-  let previousAt: number | undefined;
-  for (const item of shown.items) {
-    if (item.kind !== "message") continue;
-    const at = item.message.timestamp;
-    const label = timeBreak(previousAt, at);
-    if (label !== null && at !== undefined)
-      separators.set(`${item.kind}:${item.id}`, { at, label });
-    if (at !== undefined && Number.isFinite(at)) previousAt = at;
-  }
+  const separators = useMemo(() => {
+    const separators = new Map<string, { at: number; label: string }>();
+    let previousAt: number | undefined;
+    for (const item of shown.items) {
+      if (item.kind !== "message") continue;
+      const at = item.message.timestamp;
+      const label = timeBreak(previousAt, at);
+      if (label !== null && at !== undefined)
+        separators.set(`${item.kind}:${item.id}`, { at, label });
+      if (at !== undefined && Number.isFinite(at)) previousAt = at;
+    }
+    return separators;
+  }, [shown.items]);
   return (
     <div className="transcript-pane">
       <ScrollArea
@@ -343,7 +373,27 @@ export const Messages = memo(function Messages({
                 </Fragment>
               );
             })}
-          {typing && transcript.atLatest && (
+          {(!transcript.atLatest || hasNewer) && (
+            <Button
+              className="history-page"
+              variant="ghost"
+              size="small"
+              pending={loadingNewer}
+              onClick={() =>
+                void transcript.loadNewer(
+                  transcript.atLatest ? onNewer : undefined,
+                )
+              }
+            >
+              {newerError ? "重试读取历史消息" : "查看较新的消息"}
+            </Button>
+          )}
+          {newerError && (
+            <p className="history-error" role="alert">
+              {newerError}
+            </p>
+          )}
+          {typing && !readingHistory && transcript.atLatest && (
             <ViewTransition {...motion}>
               {working ? (
                 working.map((item) => {
@@ -378,7 +428,7 @@ export const Messages = memo(function Messages({
           </p>
         </div>
       </ScrollArea>
-      {!transcript.atBottom && (
+      {(!transcript.atBottom || readingHistory) && (
         <Button
           type="button"
           variant="secondary"
@@ -386,7 +436,7 @@ export const Messages = memo(function Messages({
           className="return-latest"
           aria-label={transcript.unread ? chatCopy.newMessage : chatCopy.latest}
           title={chatCopy.latest}
-          onClick={transcript.jumpToLatest}
+          onClick={readingHistory ? onLatest : transcript.jumpToLatest}
         >
           <CaretDownIcon />
         </Button>

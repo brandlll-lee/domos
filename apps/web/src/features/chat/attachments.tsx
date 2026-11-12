@@ -61,7 +61,7 @@ export function Attachments({
         />
       )}
       {documents.map((file) => (
-        <div key={file.id}>
+        <div key={file.id} data-file-id={file.id}>
           {inline && file.display === "inline" && (
             <InlineFile botId={botId} file={file} />
           )}

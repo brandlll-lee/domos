@@ -369,7 +369,7 @@ test("files preview documents, search old history and return to the source", asy
     }
     await panel.getByRole("button", { name: "关闭", exact: true }).click();
   }
-  await control({ history: 240 });
+  await control({ history: 2400 });
   await page.reload();
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   const reading = Promise.withResolvers<void>();
@@ -510,12 +510,138 @@ test("files preview documents, search old history and return to the source", asy
     .locator(".file-list")
     .getByRole("button", { name: "更多文件操作 说明.md", exact: true })
     .click();
+  const reveal = Promise.withResolvers<void>();
+  let historyReads = 0;
+  await page.route("**/rpc/get", async (route) => {
+    historyReads++;
+    await reveal.promise;
+    await route.continue();
+  });
+  const lastMessage = await page
+    .locator("[data-transcript-key]")
+    .last()
+    .getAttribute("data-transcript-key");
+  const beforeJump = await page
+    .locator(".transcript")
+    .evaluate((node) => node.scrollTop);
+  await page.evaluate(() => {
+    const windows: string[] = [];
+    const frames: { at: number; key: string | null }[] = [];
+    Reflect.set(window, "revealWindows", windows);
+    Reflect.set(window, "revealFrames", frames);
+    Reflect.set(window, "revealing", true);
+    const record = () => {
+      const first = document
+        .querySelector("[data-transcript-key]")
+        ?.getAttribute("data-transcript-key");
+      if (first && windows.at(-1) !== first) windows.push(first);
+    };
+    record();
+    const frame = (at: number) => {
+      frames.push({
+        at,
+        key:
+          document
+            .querySelector("[data-transcript-key]")
+            ?.getAttribute("data-transcript-key") ?? null,
+      });
+      if (Reflect.get(window, "revealing")) requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+    const observer = new MutationObserver(record);
+    const messages = document.querySelector(".messages");
+    if (!messages) throw new Error("Messages required");
+    observer.observe(messages, { childList: true });
+    Reflect.set(window, "revealObserver", observer);
+  });
   await page
     .getByRole("menuitem", { name: "在聊天中查看", exact: true })
     .click();
+  await expect.poll(() => historyReads).toBe(1);
+  expect(
+    await page
+      .locator("[data-transcript-key]")
+      .last()
+      .getAttribute("data-transcript-key"),
+  ).toBe(lastMessage);
+  expect(
+    await page.locator(".transcript").evaluate((node) => node.scrollTop),
+  ).toBe(beforeJump);
+  reveal.resolve();
   await expect(
-    page.getByRole("button", { name: "预览 说明.md", exact: true }),
+    page
+      .locator(".messages")
+      .getByRole("button", { name: "预览 说明.md", exact: true }),
   ).toBeInViewport();
+  expect(historyReads).toBe(1);
+  const windows = await page.evaluate(() => {
+    (Reflect.get(window, "revealObserver") as MutationObserver).disconnect();
+    return Reflect.get(window, "revealWindows") as string[];
+  });
+  expect(windows.length).toBeLessThanOrEqual(2);
+  const frames = await page.evaluate(async () => {
+    await new Promise(requestAnimationFrame);
+    Reflect.set(window, "revealing", false);
+    return Reflect.get(window, "revealFrames") as {
+      at: number;
+      key: string | null;
+    }[];
+  });
+  expect(frames.every((frame) => windows.includes(frame.key ?? ""))).toBe(true);
+  await writeFile(
+    "tmp/file-ui/history-location-performance.json",
+    JSON.stringify({ historyReads, windows, frames }, null, 2),
+  );
+  expect(
+    await page.locator("[data-transcript-key]").count(),
+  ).toBeLessThanOrEqual(200);
+  await page.unroute("**/rpc/get");
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await page.screenshot({
+      path: `tmp/file-ui/file-source-${colorScheme}.png`,
+      animations: "disabled",
+    });
+  }
+  const input = page.getByLabel("消息", { exact: true });
+  await input.fill("定位后保留的草稿");
+  const firstKey = await page
+    .locator("[data-transcript-key]")
+    .first()
+    .getAttribute("data-transcript-key");
+  for (let index = 0; index < 3; index++) {
+    await page
+      .locator("#bot-details")
+      .getByRole("button", { name: "关闭", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+    expect(
+      await page
+        .locator("[data-transcript-key]")
+        .first()
+        .getAttribute("data-transcript-key"),
+    ).toBe(firstKey);
+    await expect(input).toHaveText("定位后保留的草稿");
+    expect(
+      await page
+        .locator(".workspace-content")
+        .evaluate((node) => getComputedStyle(node).viewTransitionName),
+    ).toBe("none");
+  }
+  await page
+    .getByRole("button", { name: "查看较新的消息", exact: true })
+    .scrollIntoViewIfNeeded();
+  await page
+    .getByRole("button", { name: "查看较新的消息", exact: true })
+    .click();
+  await expect(
+    page.getByLabel("你的消息", { exact: true }).last(),
+  ).toContainText("历史任务");
+  await page.getByRole("button", { name: "返回最新", exact: true }).click();
+  await expect(
+    page.getByLabel("你的消息", { exact: true }).last(),
+  ).toContainText("历史任务 2400");
+  await expect(input).toHaveText("定位后保留的草稿");
 });
 
 test("interactive HTML keeps its state when expanded and cannot access the host or network", async ({

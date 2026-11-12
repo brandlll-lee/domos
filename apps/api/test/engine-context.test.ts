@@ -349,6 +349,7 @@ test("chat pages bound history, retain full results on demand and stream changed
   });
   expect(full?.native?.aggregatedOutput).toBe("native".repeat(200_000));
   const ids = page.messages.map((message) => message.id);
+  const target = page.messages.find((message) => message.id === "message-130");
   while (page.before) {
     page = await f.runtime.client.get({ botId, before: page.before });
     expect(page.messages.length).toBeLessThanOrEqual(200);
@@ -358,6 +359,23 @@ test("chat pages bound history, retain full results on demand and stream changed
     ...Array.from({ length: 260 }, (_, index) => `message-${index}`),
     "result",
   ]);
+  const nearby = await f.runtime.client.get({ botId, around: target?.cursor });
+  expect(nearby.messages).toHaveLength(200);
+  expect(nearby.messages[0]?.id).toBe("message-30");
+  expect(nearby.messages.at(-1)?.id).toBe("message-229");
+  const newer = await f.runtime.client.get({ botId, after: nearby.after });
+  expect(newer.messages.map((message) => message.id)).toEqual([
+    ...Array.from({ length: 30 }, (_, index) => `message-${230 + index}`),
+    "result",
+  ]);
+  expect(newer.after).toBeUndefined();
+  const older = await f.runtime.client.get({ botId, before: nearby.before });
+  expect(older.messages.map((message) => message.id)).toEqual(
+    Array.from({ length: 30 }, (_, index) => `message-${index}`),
+  );
+  await expect(
+    f.runtime.client.get({ botId, before: nearby.before, after: nearby.after }),
+  ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   const controller = new AbortController();
   const stream = await f.runtime.client.changes(
     { botId },

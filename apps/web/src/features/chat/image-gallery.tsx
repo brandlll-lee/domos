@@ -107,6 +107,7 @@ export function ImageGallery({
             key={item.id}
             type="button"
             className="image-thumbnail"
+            data-file-id={item.id}
             aria-label={`${chatCopy.viewImage} ${item.name}`}
             onClick={(event) => {
               trigger.current = event.currentTarget;

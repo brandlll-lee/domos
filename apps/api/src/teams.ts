@@ -14,7 +14,7 @@ import {
 } from "@earendil-works/chord/context";
 import { ORPCError, os } from "@orpc/server";
 import { z } from "zod";
-import { botConversation } from "./conversation.ts";
+import { botConversation, chatPage, singleChatPage } from "./conversation.ts";
 import {
   botReferences,
   materialsSchema,
@@ -60,14 +60,7 @@ export function teamRouter(
         service().teams.session(input.id, undefined, context),
       ),
     get: os
-      .input(
-        target.extend({
-          before: z
-            .string()
-            .regex(/^\d+:\d+$/)
-            .optional(),
-        }),
-      )
+      .input(target.extend(chatPage.shape).refine(singleChatPage))
       .handler(async ({ input, signal }) => {
         const { teams, runtime } = service();
         return slimChatView(
@@ -75,7 +68,7 @@ export function teamRouter(
             input.id,
             runtime,
             signal ? withAbortSignal(signal, context) : context,
-            input.before,
+            input,
           ),
         );
       }),

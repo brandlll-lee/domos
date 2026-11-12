@@ -154,20 +154,9 @@ export function Workspace({
           <ListIcon />
         </Button>
       )}
-      <ViewTransition
-        update={
-          dragging || sizing.snapping
-            ? "none"
-            : { default: "none", "panel-layout": "panel-layout" }
-        }
-      >
-        <div
-          className="workspace-content"
-          data-resizing={dragging || undefined}
-        >
-          {children}
-        </div>
-      </ViewTransition>
+      <div className="workspace-content" data-resizing={dragging || undefined}>
+        {children}
+      </div>
       {panels.map(({ side, title, modal, open, change, content }) => (
         <PanelDialog.Root
           key={side}

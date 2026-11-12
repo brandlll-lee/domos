@@ -24,6 +24,8 @@ import {
 import { modelFailure } from "./runtime/model-diagnostics.ts";
 import { RoutineInput } from "./work/routine-state.ts";
 
+export type ChatPage = { before?: string; after?: string; around?: string };
+
 export type ChatView = {
   activity?: {
     botId: number;
@@ -35,6 +37,7 @@ export type ChatView = {
     author?: ChatMessage["author"];
   }[];
   before?: string;
+  after?: string;
   delegations?: {
     id: string;
     sender: number;

@@ -246,6 +246,72 @@ test("team handoffs include peer messages, retain authors and exclude private hi
   );
 });
 
+test("team history centers on a saved message and pages across native member sessions", async () => {
+  const { harness, bots, conversation, engines } = await runtimeFixture({
+    initialize: async () => {},
+    attach: async () => {},
+  } as unknown as Computers);
+  assert(engines);
+  const peer = await bots.create(
+    { name: "Reviewer", requestId: "history-peer" },
+    context,
+  );
+  const teams = new Teams(harness);
+  await teams.create(
+    {
+      id: "history",
+      name: "Review",
+      purpose: "Check",
+      members: [conversation.id, peer.id],
+      owner: conversation.id,
+    },
+    context,
+  );
+  const owner = await teams.session("history", undefined, context);
+  const member = await teams.session("history", peer.id, context);
+  let target = "";
+  await harness.commit(async (tx) => {
+    for (let index = 0; index < 260; index++) {
+      const entry = await tx.appendEntry(index % 2 ? member : owner, {
+        kind: EngineMessage,
+        data: {
+          id: `row-${index}`,
+          role: "assistant",
+          stopped: false,
+          content: [{ type: "text", text: String(index) }],
+        },
+      });
+      if (index === 130) target = `${entry.id}:0`;
+    }
+    await tx.appendEntry(conversation.id, {
+      kind: EngineMessage,
+      data: { id: "private", role: "user", content: [] },
+    });
+  }, context);
+  const page = await teams.view("history", engines, context, {
+    around: target,
+  });
+  expect(page.messages.map((message) => message.id)).toEqual(
+    Array.from({ length: 200 }, (_, index) => `row-${30 + index}`),
+  );
+  expect(
+    new Set(page.messages.map((message) => message.author?.botId)),
+  ).toEqual(new Set([conversation.id, peer.id]));
+  const later = await teams.view("history", engines, context, {
+    after: page.after,
+  });
+  expect(later.messages.map((message) => message.id)).toEqual(
+    Array.from({ length: 30 }, (_, index) => `row-${230 + index}`),
+  );
+  expect(later.after).toBeUndefined();
+  const earlier = await teams.view("history", engines, context, {
+    before: page.before,
+  });
+  expect(earlier.messages.map((message) => message.id)).toEqual(
+    Array.from({ length: 30 }, (_, index) => `row-${index}`),
+  );
+});
+
 test("team edits preserve history and stop only removed members' team work", async () => {
   const { harness, bots, conversation, engines } = await runtimeFixture({
     initialize: async () => {},
