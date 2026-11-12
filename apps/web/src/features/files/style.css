@@ -11,7 +11,7 @@
   min-height: 0;
   overflow: auto;
 }
-.file-panel-content:is([data-kind="pdf"], [data-kind="office"]) {
+.file-panel-content[data-kind="pdf"] {
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -182,16 +182,6 @@ video.file-media {
   min-height: var(--attachment-preview-size);
   background: var(--color-frame);
   border-radius: var(--radius-control);
-}
-.file-office {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-.file-office .file-pdf {
-  flex: 1;
-  min-height: 0;
 }
 .file-sheet-tabs {
   display: flex;

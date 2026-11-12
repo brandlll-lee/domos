@@ -1,5 +1,5 @@
 import type { Attachment } from "@domos/agent/attachments";
-import type { OfficePreview, SpreadsheetPreview } from "@domos/agent/files";
+import type { SpreadsheetPreview } from "@domos/agent/files";
 import type { ChatMessage } from "@domos/agent/messages";
 import { client } from "../../client.ts";
 import { createReadState } from "../read-state.ts";
@@ -74,15 +74,13 @@ function createFile(botId: number, id: string) {
 function createPreview(botId: number, id: string, sheet?: string) {
   const query =
     sheet === undefined ? "" : `?sheet=${encodeURIComponent(sheet)}`;
-  const read = createReadState<SpreadsheetPreview | OfficePreview>(
-    async (signal) => {
-      const response = await fetch(`/files/${botId}/${id}/preview${query}`, {
-        signal,
-      });
-      if (!response.ok) throw new Error(await response.text());
-      return response.json();
-    },
-  );
+  const read = createReadState<SpreadsheetPreview>(async (signal) => {
+    const response = await fetch(`/files/${botId}/${id}/preview${query}`, {
+      signal,
+    });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  });
   let readers = 0;
   return {
     read,

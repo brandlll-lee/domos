@@ -1,8 +1,5 @@
-import { spawn } from "node:child_process";
 import { createReadStream } from "node:fs";
-import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { readFile } from "node:fs/promises";
 import { Unzip, UnzipInflate } from "fflate";
 import * as XLSX from "xlsx";
 
@@ -42,90 +39,38 @@ async function inspectZip(path) {
 
 async function preview(input) {
   await inspectZip(input.path);
-  if (input.kind === "xlsx") {
-    const bytes = await readFile(input.path);
-    const catalog = XLSX.read(bytes, { bookSheets: true });
-    const sheet = input.sheet ?? catalog.SheetNames[0];
-    if (!catalog.SheetNames.includes(sheet)) throw new Error("工作表不存在。");
-    const book = XLSX.read(bytes, {
-      sheets: sheet,
-      sheetRows: PREVIEW_ROWS,
-      dense: true,
-      cellFormula: false,
-      cellHTML: false,
-    });
-    const cells = book.Sheets[sheet];
-    const range = cells["!ref"]
-      ? XLSX.utils.decode_range(cells["!ref"])
-      : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } };
-    range.s = { r: 0, c: 0 };
-    range.e.r = Math.min(range.e.r, PREVIEW_ROWS - 1);
-    range.e.c = Math.min(range.e.c, PREVIEW_COLUMNS - 1);
-    const rows = XLSX.utils.sheet_to_json(cells, {
-      header: 1,
-      raw: false,
-      defval: "",
-      blankrows: true,
-      range,
-    });
-    return {
-      kind: "xlsx",
-      sheets: catalog.SheetNames,
-      sheet,
-      rows,
-      rowLimit: PREVIEW_ROWS,
-      columnLimit: PREVIEW_COLUMNS,
-    };
-  }
-  const profile = join(input.output, "profile");
-  await mkdir(join(profile, "user"), { recursive: true });
-  await writeFile(
-    join(profile, "user/registrymodifications.xcu"),
-    `<?xml version="1.0"?><oor:items xmlns:oor="http://openoffice.org/2001/registry"><item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop><prop oor:name="DisableMacrosExecution" oor:op="fuse"><value>true</value></prop><prop oor:name="BlockUntrustedRefererLinks" oor:op="fuse"><value>true</value></prop></item><item oor:path="/org.openoffice.Office.Writer/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>2</value></prop></item></oor:items>`,
-  );
-  const source = join(input.output, `source.${input.extension}`);
-  await copyFile(input.path, source);
-  await new Promise((resolve, reject) => {
-    const child = spawn(
-      input.converter,
-      [
-        `-env:UserInstallation=${pathToFileURL(profile).href}`,
-        "--headless",
-        "--norestore",
-        "--nodefault",
-        "--nolockcheck",
-        "--convert-to",
-        "pdf",
-        "--outdir",
-        input.output,
-        source,
-      ],
-      { windowsHide: true, stdio: ["ignore", "ignore", "pipe"] },
-    );
-    let detail = "";
-    child.stderr?.on("data", (bytes) => {
-      detail = (detail + bytes.toString()).slice(-2000);
-    });
-    child.once("error", reject);
-    child.once("close", (code) =>
-      code === 0
-        ? resolve()
-        : reject(
-            new Error(
-              `Office 转换失败（${code}）。${detail.trim()} 请用系统应用打开原文件。`,
-            ),
-          ),
-    );
+  const bytes = await readFile(input.path);
+  const catalog = XLSX.read(bytes, { bookSheets: true });
+  const sheet = input.sheet ?? catalog.SheetNames[0];
+  if (!catalog.SheetNames.includes(sheet)) throw new Error("工作表不存在。");
+  const book = XLSX.read(bytes, {
+    sheets: sheet,
+    sheetRows: PREVIEW_ROWS,
+    dense: true,
+    cellFormula: false,
+    cellHTML: false,
   });
-  const pdf = join(
-    input.output,
-    `${basename(source, `.${input.extension}`)}.pdf`,
-  );
-  if (!(await stat(pdf)).size) throw new Error("转换没有生成有效预览。");
+  const cells = book.Sheets[sheet];
+  const range = cells["!ref"]
+    ? XLSX.utils.decode_range(cells["!ref"])
+    : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } };
+  range.s = { r: 0, c: 0 };
+  range.e.r = Math.min(range.e.r, PREVIEW_ROWS - 1);
+  range.e.c = Math.min(range.e.c, PREVIEW_COLUMNS - 1);
+  const rows = XLSX.utils.sheet_to_json(cells, {
+    header: 1,
+    raw: false,
+    defval: "",
+    blankrows: true,
+    range,
+  });
   return {
-    kind: "pdf",
-    path: pdf,
-    notice: "静态预览由 LibreOffice 转换。排版可能与原文件不同。",
+    kind: "xlsx",
+    sheets: catalog.SheetNames,
+    sheet,
+    rows,
+    rowLimit: PREVIEW_ROWS,
+    columnLimit: PREVIEW_COLUMNS,
   };
 }
 

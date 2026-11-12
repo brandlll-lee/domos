@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { existsSync, type ReadStream } from "node:fs";
+import type { ReadStream } from "node:fs";
 import {
   link,
   mkdir,
@@ -29,13 +29,34 @@ import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node";
 import { strToU8, zipSync } from "fflate";
 import { expect, onTestFinished, test, vi } from "vitest";
 import * as XLSX from "xlsx";
-import { FILE_CHUNK_BYTES, MAX_FILE_BYTES } from "../src/attachments.ts";
+import {
+  FILE_CHUNK_BYTES,
+  filePreviewKind,
+  MAX_FILE_BYTES,
+} from "../src/attachments.ts";
 import { chatView } from "../src/chat-view.ts";
 import { Files } from "../src/files.ts";
 import { openAgent } from "../src/open-agent.ts";
 import { png } from "./fixtures/png.ts";
 
 const context = BACKGROUND_CONTEXT;
+
+test.each([
+  ["report.doc", "application/msword"],
+  [
+    "report.docx",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ],
+  ["slides.ppt", "application/vnd.ms-powerpoint"],
+  [
+    "slides.pptx",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ],
+  ["report.doc", "application/x-cfb"],
+  ["slides.ppt", "application/x-cfb"],
+])("%s uses the file download fallback", (name, mimeType) => {
+  expect(filePreviewKind({ name, mimeType })).toBe("download");
+});
 
 test("text attachments retain useful MIME types and binary data stays binary", async () => {
   const { files } = await setup();
@@ -305,12 +326,11 @@ test("spreadsheet preview selects sheets, retains formatted cached values, and r
   await expect(cancelled).rejects.toThrow();
   const result = await reading;
   expect(result.kind).toBe("xlsx");
-  if (result.kind !== "xlsx") throw new Error("Expected spreadsheet");
   expect(result.sheets).toEqual(["汇总", "明细"]);
   expect(result.rows[1]).toEqual(["中文", "25%", "2024-01-01", "42"]);
   expect(await files.previews.read(file, path, undefined)).toEqual(result);
   const next = await files.previews.read(file, path, "明细");
-  expect(next.kind === "xlsx" && next.rows[0]).toEqual(["第二张表"]);
+  expect(next.rows[0]).toEqual(["第二张表"]);
   await expect(files.previews.read(file, path, "missing")).rejects.toThrow(
     "工作表不存在",
   );
@@ -330,39 +350,6 @@ test("spreadsheet preview selects sheets, retains formatted cached values, and r
     ),
   ).rejects.toThrow("解压后超过预览预算");
 }, 30_000);
-
-test.runIf(
-  process.platform === "win32" &&
-    existsSync("C:/Program Files/LibreOffice/program/soffice.com"),
-)(
-  "Office snapshots convert into cached PDF previews and retain original bytes",
-  async () => {
-    const { files } = await setup();
-    for (const name of [
-      "report.docx",
-      "report.doc",
-      "slides.pptx",
-      "slides.ppt",
-    ]) {
-      const bytes = await readFile(
-        new URL(`./fixtures/office/${name}`, import.meta.url),
-      );
-      const file = await files.upload(1, name, bytes);
-      const source = join(files.directory(1, file.id), "content");
-      const result = await files.previews.read(file, source, undefined);
-      expect(result.kind).toBe("pdf");
-      if (result.kind !== "pdf") throw new Error("PDF preview missing");
-      expect((await readFile(result.path)).subarray(0, 5).toString()).toBe(
-        "%PDF-",
-      );
-      expect(await files.previews.read(file, source, undefined)).toEqual(
-        result,
-      );
-      expect(await readFile(source)).toEqual(bytes);
-    }
-  },
-  60_000,
-);
 
 test("file downloads pause disk reads while the client does not read", async () => {
   const { files } = await setup();

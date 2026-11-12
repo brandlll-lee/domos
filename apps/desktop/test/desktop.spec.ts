@@ -272,9 +272,15 @@ test("native setup starts and resumes with Docker unavailable", async ({
       for (const name of ["data.xlsx", "report.docx"]) {
         const file = files.find((file) => file.name === name);
         if (!file) throw new Error("Native attachment missing");
-        const response = await fetch(`/files/${botId}/${file.id}/preview`);
+        const response = await fetch(
+          `/files/${botId}/${file.id}${name === "data.xlsx" ? "/preview" : "?download=1"}`,
+        );
         if (!response.ok) throw new Error(await response.text());
-        results.push(await response.json());
+        results.push(
+          name === "data.xlsx"
+            ? await response.json()
+            : { size: (await response.arrayBuffer()).byteLength },
+        );
       }
       return results;
     });
@@ -282,7 +288,16 @@ test("native setup starts and resumes with Docker unavailable", async ({
       kind: "xlsx",
       sheets: ["汇总", "明细"],
     });
-    expect(previews[1]).toMatchObject({ kind: "pdf" });
+    expect(previews[1]).toEqual({
+      size: (
+        await readFile(
+          new URL(
+            "../../../packages/agent/test/fixtures/office/report.docx",
+            import.meta.url,
+          ),
+        )
+      ).length,
+    });
     await captureWindow(
       desktop,
       resumed,

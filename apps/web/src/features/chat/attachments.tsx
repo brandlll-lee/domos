@@ -133,13 +133,13 @@ function AttachmentCard({
         ? FileMdIcon
         : kind === "xlsx" || kind === "csv"
           ? FileXlsIcon
-          : kind === "office"
+          : /\.(docx?|pptx?)$/i.test(file.name)
             ? /\.pptx?$/i.test(file.name)
               ? FilePptIcon
               : FileDocIcon
             : FileTextIcon;
   const details = summary?.pages
-    ? `${summary.pages} ${kind === "office" && /\.pptx?$/i.test(file.name) ? "张幻灯片" : "页"}`
+    ? `${summary.pages} 页`
     : summary?.sheets
       ? `${summary.sheets} 个工作表`
       : undefined;

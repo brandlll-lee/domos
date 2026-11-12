@@ -1,5 +1,4 @@
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
@@ -140,20 +139,6 @@ export function createApp(
         c.req.query("sheet"),
         c.req.raw.signal,
       );
-      if (result.kind === "pdf") {
-        if (c.req.query("format") === "pdf")
-          return streamResponse(
-            result.path,
-            (await stat(result.path)).size,
-            {
-              "Content-Type": "application/pdf",
-              "Cache-Control": "private, no-store",
-              "X-Content-Type-Options": "nosniff",
-            },
-            c.req.header("Range"),
-          );
-        return c.json({ kind: "pdf", notice: result.notice });
-      }
       return c.json(result);
     } catch (error) {
       return c.text(

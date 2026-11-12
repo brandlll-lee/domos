@@ -36,7 +36,7 @@ import { FilePreviews } from "./file-previews.ts";
 import { WorkError } from "./work/state.ts";
 import { type WorkEnvironment, Workspace } from "./workspace.ts";
 
-export type { OfficePreview, SpreadsheetPreview } from "./file-previews.ts";
+export type { SpreadsheetPreview } from "./file-previews.ts";
 
 export type ConversationFile = {
   file: Attachment;

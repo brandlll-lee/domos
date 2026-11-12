@@ -1,10 +1,7 @@
-import { execFile, fork, spawn } from "node:child_process";
+import { fork } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
-  access,
-  copyFile,
   mkdir,
-  mkdtemp,
   readdir,
   readFile,
   rename,
@@ -12,9 +9,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { promisify } from "node:util";
 import type { Attachment } from "./attachments.ts";
 import { filePreviewKind } from "./attachments.ts";
 
@@ -29,13 +24,15 @@ export type SpreadsheetPreview = {
   rowLimit: number;
   columnLimit: number;
 };
-export type OfficePreview = { kind: "pdf"; notice: string };
-type Result = SpreadsheetPreview | (OfficePreview & { path: string });
 
 export class FilePreviews {
   private readonly pending = new Map<
     string,
-    { promise: Promise<Result>; controller: AbortController; readers: number }
+    {
+      promise: Promise<SpreadsheetPreview>;
+      controller: AbortController;
+      readers: number;
+    }
   >();
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -44,94 +41,16 @@ export class FilePreviews {
     this.root = root;
   }
 
-  private async converter() {
-    const candidates =
-      process.platform === "win32"
-        ? [
-            "soffice.com",
-            ...(process.env.ProgramFiles
-              ? [
-                  join(
-                    process.env.ProgramFiles,
-                    "LibreOffice/program/soffice.com",
-                  ),
-                ]
-              : []),
-          ]
-        : process.platform === "darwin"
-          ? ["soffice", "/Applications/LibreOffice.app/Contents/MacOS/soffice"]
-          : ["libreoffice", "soffice"];
-    let program: string | undefined;
-    let version: string | undefined;
-    for (const candidate of candidates) {
-      try {
-        version = (
-          await promisify(execFile)(candidate, ["--version"], {
-            windowsHide: true,
-            timeout: PREVIEW_TIMEOUT_MS,
-          })
-        ).stdout.trim();
-        program = candidate;
-        break;
-      } catch {}
-    }
-    if (!program)
-      throw new Error(
-        "请在这台 Domos 服务电脑上安装 LibreOffice，再重试预览。原文件仍可下载和系统打开。",
-      );
-    const directories =
-      process.platform === "win32"
-        ? [
-            join(process.env.SystemRoot ?? "C:/Windows", "Fonts"),
-            join(homedir(), "AppData/Local/Microsoft/Windows/Fonts"),
-          ]
-        : process.platform === "darwin"
-          ? [
-              "/System/Library/Fonts",
-              "/Library/Fonts",
-              join(homedir(), "Library/Fonts"),
-            ]
-          : [
-              "/usr/share/fonts",
-              "/usr/local/share/fonts",
-              join(homedir(), ".local/share/fonts"),
-            ];
-    const fonts = await Promise.all(
-      directories.map(async (path) => {
-        const entries = await readdir(path, {
-          recursive: true,
-          withFileTypes: true,
-        }).catch(() => []);
-        return Promise.all(
-          entries
-            .filter((entry) => entry.isFile())
-            .sort((a, b) =>
-              join(a.parentPath, a.name).localeCompare(
-                join(b.parentPath, b.name),
-              ),
-            )
-            .map(async (entry) => {
-              const file = join(entry.parentPath, entry.name);
-              const info = await stat(file).catch(() => null);
-              return [file, info?.mtimeMs, info?.size];
-            }),
-        );
-      }),
-    );
-    return { program, version: `${version}:${JSON.stringify(fonts)}` };
-  }
-
   async read(
     file: Attachment,
     path: string,
     sheet: string | undefined,
     signal?: AbortSignal,
-  ): Promise<Result> {
+  ): Promise<SpreadsheetPreview> {
     signal?.throwIfAborted();
     const kind = filePreviewKind(file);
-    if (kind !== "xlsx" && kind !== "office")
-      throw new Error("此文件不需要转换预览。");
-    const converter = kind === "office" ? await this.converter() : undefined;
+    if (kind !== "xlsx")
+      throw new Error("此格式暂不支持预览，请下载后使用本机应用打开。");
     const implementation = createHash("sha256")
       .update(
         await readFile(
@@ -143,30 +62,14 @@ export class FilePreviews {
       )
       .digest("hex");
     const key = createHash("sha256")
-      .update(
-        JSON.stringify([
-          file.id,
-          kind,
-          sheet,
-          converter?.version,
-          implementation,
-        ]),
-      )
+      .update(JSON.stringify([file.id, kind, sheet, implementation]))
       .digest("hex");
     const directory = join(this.root, "previews", key);
     const cached = join(directory, "result.json");
     const result = await readFile(cached, "utf8")
-      .then((value) => JSON.parse(value) as Result)
+      .then((value) => JSON.parse(value) as SpreadsheetPreview)
       .catch(() => null);
-    if (
-      result &&
-      (result.kind !== "pdf" ||
-        (await access(result.path).then(
-          () => true,
-          () => false,
-        )))
-    )
-      return result;
+    if (result) return result;
     signal?.throwIfAborted();
     let pending = this.pending.get(key);
     if (pending?.controller.signal.aborted) pending = undefined;
@@ -177,30 +80,11 @@ export class FilePreviews {
         .then(async () => {
           controller.signal.throwIfAborted();
           await mkdir(directory, { recursive: true });
-          const temporary = await mkdtemp(join(tmpdir(), "domos-preview-"));
-          try {
-            const generated = await this.run(
-              {
-                path,
-                kind,
-                sheet,
-                output: temporary,
-                converter: converter?.program,
-                extension: file.name.split(".").at(-1)?.toLowerCase(),
-              },
-              controller.signal,
-            );
-            if (generated.kind === "pdf") {
-              await copyFile(generated.path, join(directory, "preview.pdf"));
-              generated.path = join(directory, "preview.pdf");
-            }
-            await writeFile(`${cached}.tmp`, JSON.stringify(generated));
-            await rename(`${cached}.tmp`, cached);
-            await this.clean(directory);
-            return generated;
-          } finally {
-            await rm(temporary, { recursive: true, force: true });
-          }
+          const generated = await this.run({ path, sheet }, controller.signal);
+          await writeFile(`${cached}.tmp`, JSON.stringify(generated));
+          await rename(`${cached}.tmp`, cached);
+          await this.clean(directory);
+          return generated;
         });
       pending = { promise, controller, readers: 0 };
       this.pending.set(key, pending);
@@ -236,7 +120,7 @@ export class FilePreviews {
   private run(
     input: Record<string, unknown>,
     signal: AbortSignal,
-  ): Promise<Result> {
+  ): Promise<SpreadsheetPreview> {
     return new Promise((resolve, reject) => {
       const child = fork(
         new URL(import.meta.resolve("@domos/agent/file-preview-worker")),
@@ -245,43 +129,27 @@ export class FilePreviews {
           execArgv: ["--max-old-space-size=256"],
           env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
           stdio: ["ignore", "ignore", "ignore", "ipc"],
-          detached: process.platform !== "win32",
         },
       );
-      let result: Result | undefined;
+      let result: SpreadsheetPreview | undefined;
       let error: Error | undefined;
       const stop = () => {
         error ??= new Error("预览已取消或超时。你仍可下载原文件。");
         if (!child.pid || child.exitCode !== null) return;
-        if (process.platform === "win32")
-          spawn(
-            join(
-              process.env.SystemRoot ?? "C:/Windows",
-              "System32/taskkill.exe",
-            ),
-            ["/PID", String(child.pid), "/T", "/F"],
-            {
-              windowsHide: true,
-              stdio: "ignore",
-            },
-          ).on("error", () => child.kill());
-        else {
-          try {
-            process.kill(-child.pid, "SIGKILL");
-          } catch {
-            child.kill();
-          }
-        }
+        child.kill();
       };
       const timer = setTimeout(stop, PREVIEW_TIMEOUT_MS);
       signal.addEventListener("abort", stop, { once: true });
       child.once("error", (cause) => {
         error = cause;
       });
-      child.on("message", (message: { result?: Result; error?: string }) => {
-        result = message.result;
-        if (message.error) error = new Error(message.error);
-      });
+      child.on(
+        "message",
+        (message: { result?: SpreadsheetPreview; error?: string }) => {
+          result = message.result;
+          if (message.error) error = new Error(message.error);
+        },
+      );
       child.once("close", () => {
         clearTimeout(timer);
         signal.removeEventListener("abort", stop);

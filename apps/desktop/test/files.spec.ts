@@ -137,10 +137,10 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
       content: "文件已保存。可以直接查看表格、阅读文档，或播放音视频。",
     });
     await scripted;
-    const automaticConversions: string[] = [];
+    const previewRequests: string[] = [];
     page.on("request", (request) => {
       if (new URL(request.url()).pathname.endsWith("/preview"))
-        automaticConversions.push(request.url());
+        previewRequests.push(request.url());
     });
     await page.getByRole("button", { name: "发送", exact: true }).click();
     const pdfCard = page.locator(".message-attachment").filter({
@@ -226,7 +226,7 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
     await expect(
       page.locator(".attachments video, .attachments audio[src]"),
     ).toHaveCount(1);
-    expect(automaticConversions).toEqual([]);
+    expect(previewRequests).toEqual([]);
     await page.emulateMedia({ colorScheme: "light" });
     const panel = page.getByRole("complementary", {
       name: "文件预览",
@@ -368,20 +368,7 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
       "video.mp4",
       "video.mov",
     ]) {
-      let releasePreview: (() => void) | undefined;
-      if (name === "report.docx") {
-        const gate = new Promise<void>((resolve) => {
-          releasePreview = resolve;
-        });
-        await page.route(
-          "**/files/*/*/preview",
-          async (route) => {
-            await gate;
-            await route.continue();
-          },
-          { times: 1 },
-        );
-      }
+      const reads = previewRequests.length;
       const openedAt = performance.now();
       if (name === "audio.mp3") {
         await page
@@ -395,15 +382,6 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
           .getByRole("button", { name: `预览 ${name}`, exact: true })
           .click();
       }
-      if (releasePreview) {
-        await expect(
-          panel.getByRole("status", { name: "正在生成文档预览" }),
-        ).toBeVisible();
-        await page.screenshot({
-          path: testInfo.outputPath("file-converting.png"),
-        });
-        releasePreview();
-      }
       if (name.endsWith("xlsx")) {
         await expect(
           panel.getByRole("cell", { name: "123.45", exact: true }),
@@ -411,16 +389,53 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
         await panel.getByRole("button", { name: "明细", exact: true }).click();
         await expect(panel).toContainText("第二张表");
       } else if (/\.(docx|pptx)$/.test(name)) {
-        await expect(panel.locator("canvas").first()).toBeVisible({
-          timeout: 30_000,
-        });
-        await expect(panel).toContainText("LibreOffice");
         await expect(panel).toContainText(
-          name === "report.docx" ? "Domos Word preview" : "Domos slide 1",
+          "此格式暂不支持预览，请下载后使用本机应用打开。",
         );
-        await expect(panel).toContainText(
-          name === "report.docx" ? "中文预览" : "中文幻灯片预览",
+        expect(previewRequests).toHaveLength(reads);
+        const target = join(directory, name);
+        await desktop.evaluate(({ dialog, shell }, path) => {
+          dialog.showSaveDialog = async () => ({
+            canceled: false,
+            filePath: path,
+          });
+          shell.openPath = async (local) => {
+            Reflect.get(globalThis, "fileActionPaths").push(local);
+            return "";
+          };
+        }, target);
+        await panel
+          .getByRole("button", { name: "下载文件", exact: true })
+          .click();
+        const original = (await fixture("office", name, "")).buffer;
+        await expect
+          .poll(() =>
+            readFile(target).then(
+              (bytes) => bytes.equals(original),
+              () => false,
+            ),
+          )
+          .toBe(true);
+        await panel
+          .getByRole("button", { name: "文件操作", exact: true })
+          .click();
+        const operations = await desktop.evaluate(
+          () => Reflect.get(globalThis, "fileActionPaths").length as number,
         );
+        await page
+          .getByRole("menuitem", { name: "系统打开本地副本", exact: true })
+          .click();
+        await expect
+          .poll(() =>
+            desktop.evaluate(
+              () => Reflect.get(globalThis, "fileActionPaths").length,
+            ),
+          )
+          .toBe(operations + 1);
+        const local = await desktop.evaluate(
+          () => Reflect.get(globalThis, "fileActionPaths").at(-1) as string,
+        );
+        expect(await readFile(local)).toEqual(original);
       } else {
         const media = panel.locator("audio, video");
         await expect
@@ -497,48 +512,6 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
       .first()
       .screenshot({ path: testInfo.outputPath("file-message-cards-dark.png") });
     await page.emulateMedia({ colorScheme: "light" });
-    await page.route(
-      "**/files/*/*/preview",
-      (route) =>
-        route.fulfill({
-          status: 422,
-          body: "文档转换失败。你仍可下载原文件。",
-        }),
-      { times: 1 },
-    );
-    await page.getByRole("button", { name: "添加内容", exact: true }).click();
-    const conversion = page.waitForEvent("filechooser");
-    await page.getByRole("menuitem", { name: "添加文件", exact: true }).click();
-    await (await conversion).setFiles([
-      {
-        ...(await fixture(
-          "office",
-          "report.docx",
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        )),
-        name: "conversion.docx",
-      },
-    ]);
-    await expect(page.locator(".composer-attachments .attachment")).toHaveCount(
-      1,
-    );
-    await page
-      .getByRole("textbox", { name: "消息", exact: true })
-      .fill("查看新文档");
-    await page.getByRole("button", { name: "发送", exact: true }).click();
-    await page
-      .getByRole("button", { name: "预览 conversion.docx", exact: true })
-      .click();
-    await expect(panel.getByRole("alert")).toContainText("文档转换失败");
-    await page.screenshot({
-      path: testInfo.outputPath("file-conversion-error.png"),
-    });
-    await panel.getByRole("button", { name: "重试", exact: true }).click();
-    await expect(panel.locator("canvas").first()).toBeVisible({
-      timeout: 30_000,
-    });
-    await expect(panel).toContainText("Domos Word preview");
-    await panel.getByRole("button", { name: "关闭", exact: true }).click();
     const sorted = seekTimes.toSorted((a, b) => a - b);
     measurements.mediaEvents = mediaEvents;
     measurements.seek = {

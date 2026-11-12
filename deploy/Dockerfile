@@ -14,7 +14,7 @@ RUN pnpm install --frozen-lockfile --ignore-scripts && pnpm build
 
 FROM ${NODE_IMAGE}
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends openssh-client ca-certificates libreoffice-writer libreoffice-impress fonts-noto-cjk && rm -rf /var/lib/apt/lists/* && npm install --global pnpm@10.20.0
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-client ca-certificates && rm -rf /var/lib/apt/lists/* && npm install --global pnpm@10.20.0
 COPY --from=docker /usr/local/bin/docker /usr/local/bin/docker
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml domos.config.json ./
 COPY patches ./patches

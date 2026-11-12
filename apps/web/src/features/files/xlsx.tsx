@@ -3,7 +3,7 @@ import { Button } from "@domos/ui/controls";
 import { Loading } from "@domos/ui/loading";
 import { useEffect, useState } from "react";
 import { fileSummary } from "./file-state.ts";
-import { useDocumentPreview } from "./use-file.ts";
+import { useSpreadsheetPreview } from "./use-file.ts";
 export default function XlsxPreview({
   botId,
   file,
@@ -12,8 +12,8 @@ export default function XlsxPreview({
   file: Attachment;
 }) {
   const [sheet, setSheet] = useState<string>();
-  const state = useDocumentPreview(botId, file, sheet);
-  const data = state.data?.kind === "xlsx" ? state.data : undefined;
+  const state = useSpreadsheetPreview(botId, file, sheet);
+  const data = state.data;
   useEffect(() => {
     if (data) {
       const store = fileSummary(botId, file);

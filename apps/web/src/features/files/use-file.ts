@@ -4,7 +4,7 @@ import { useReadState } from "../read-state.ts";
 import { userError } from "../user-error.ts";
 import { fileState, previewState } from "./file-state.ts";
 
-export function useDocumentPreview(
+export function useSpreadsheetPreview(
   botId: number,
   file: Attachment,
   sheet?: string,

@@ -1839,3 +1839,43 @@ test("spreadsheet previews retain the file owner boundary", async () => {
     ).status,
   ).toBe(422);
 });
+
+test("document attachments retain authorized downloads and report the preview fallback", async () => {
+  const { open } = await setup();
+  const runtime = await open();
+  onTestFinished(() => runtime.harness.close(context));
+  const botId = runtime.conversation.id;
+  const other = await runtime.client.bots.create(botInput("Other"));
+  for (const name of ["report.docx", "slides.pptx"]) {
+    const bytes = await readFile(
+      new URL(
+        `../../../packages/agent/test/fixtures/office/${name}`,
+        import.meta.url,
+      ),
+    );
+    const file = await runtime.client.files.upload({
+      botId,
+      file: new File([bytes], name),
+    });
+    const preview = await runtime.app.request(
+      `/files/${botId}/${file.id}/preview`,
+    );
+    expect(preview.status).toBe(422);
+    expect(await preview.text()).toBe(
+      "此格式暂不支持预览，请下载后使用本机应用打开。",
+    );
+    const download = await runtime.app.request(
+      `/files/${botId}/${file.id}?download=1`,
+    );
+    expect(download.status).toBe(200);
+    expect(Buffer.from(await download.arrayBuffer())).toEqual(bytes);
+    expect(
+      (await runtime.app.request(`/files/${other.id}/${file.id}?download=1`))
+        .status,
+    ).toBe(404);
+    expect(
+      (await runtime.app.request(`/files/${other.id}/${file.id}/preview`))
+        .status,
+    ).toBe(404);
+  }
+});

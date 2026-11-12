@@ -30,7 +30,6 @@ export type FilePreviewKind =
   | "csv"
   | "html"
   | "xlsx"
-  | "office"
   | "audio"
   | "video"
   | "download";
@@ -93,16 +92,6 @@ export function filePreviewKind(
     mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   )
     return "xlsx";
-  if (
-    (mime === "application/x-cfb" && /\.(doc|ppt)$/i.test(file.name)) ||
-    [
-      "application/msword",
-      "application/vnd.ms-powerpoint",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    ].includes(mime ?? "")
-  )
-    return "office";
   if (mime === "text/html") return "html";
   if (mime === "text/markdown") return "markdown";
   if (mime === "text/csv") return "csv";

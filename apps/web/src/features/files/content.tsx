@@ -10,7 +10,6 @@ import { useFile } from "./use-file.ts";
 const PdfPreview = lazy(() => import("./pdf.tsx"));
 const CsvPreview = lazy(() => import("./csv.tsx"));
 const XlsxPreview = lazy(() => import("./xlsx.tsx"));
-const OfficePreview = lazy(() => import("./office.tsx"));
 const MediaPreview = lazy(() => import("./media.tsx"));
 
 export function FileContent({
@@ -52,10 +51,14 @@ export function FileContent({
     };
   }, [blob, kind]);
   if (error) return <p role="alert">无法读取文件内容。你仍可下载原文件。</p>;
-  if ((kind === "xlsx" || kind === "office") && botId === undefined)
+  if (kind === "xlsx" && botId === undefined)
     return <p className="file-empty">此预览需要打开文件所属 Bot。</p>;
   if (kind === "download")
-    return <p className="file-empty">此格式暂不支持预览，请下载后查看。</p>;
+    return (
+      <p className="file-empty">
+        此格式暂不支持预览，请下载后使用本机应用打开。
+      </p>
+    );
   return (
     <Suspense fallback={<Loading label="正在打开文件" />}>
       {kind === "pdf" && botId !== undefined && (
@@ -68,9 +71,6 @@ export function FileContent({
       {kind === "csv" && blob && <CsvPreview blob={blob} />}
       {kind === "xlsx" && botId !== undefined && (
         <XlsxPreview botId={botId} file={file} />
-      )}
-      {kind === "office" && botId !== undefined && (
-        <OfficePreview botId={botId} file={file} />
       )}
       {(kind === "audio" || kind === "video") && botId !== undefined && (
         <MediaPreview botId={botId} file={file} kind={kind} />
