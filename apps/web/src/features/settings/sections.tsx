@@ -1,11 +1,10 @@
-import { CpuIcon } from "@phosphor-icons/react/dist/csr/Cpu";
 import { DesktopIcon } from "@phosphor-icons/react/dist/csr/Desktop";
 import { GearIcon } from "@phosphor-icons/react/dist/csr/Gear";
+import { SparkleIcon } from "@phosphor-icons/react/dist/csr/Sparkle";
 import type { ReactNode } from "react";
 import { ComputerSettings } from "../computer/settings.tsx";
+import { AISettings } from "./ai.tsx";
 import { GeneralSettings } from "./general.tsx";
-import { ModelSettings } from "./models.tsx";
-import { ProviderSettings } from "./providers.tsx";
 
 export type SettingsAccess = {
   admin: boolean;
@@ -24,25 +23,13 @@ export const sections = {
     icon: GearIcon,
     render: (props: SectionProps) => <GeneralSettings {...props} />,
   },
-  providers: {
+  ai: {
     primary: true,
-    label: "Providers",
-    description: "管理 Harness 和模型提供方的连接。",
-    icon: CpuIcon,
-    render: ({ admin, botId }: SectionProps) =>
-      admin ? (
-        <ProviderSettings botId={botId} />
-      ) : (
-        <p className="detail-note">请让管理员连接模型账号。</p>
-      ),
-  },
-  models: {
-    primary: true,
-    label: "Models",
-    description: "管理可用模型在聊天选择器中的可见性。",
-    icon: CpuIcon,
+    label: "AI 服务",
+    description: "管理服务连接和可用模型。",
+    icon: SparkleIcon,
     render: ({ admin, botId }: SectionProps) => (
-      <ModelSettings botId={botId} admin={admin} />
+      <AISettings botId={botId} admin={admin} />
     ),
   },
   computers: {

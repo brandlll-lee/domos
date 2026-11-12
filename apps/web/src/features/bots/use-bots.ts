@@ -15,6 +15,10 @@ import {
   invalidateModelSettings,
   receiveModelActivity,
 } from "../models/model-state.ts";
+import {
+  clearConnectionContexts,
+  invalidateConnectionContext,
+} from "../settings/use-connection-context.ts";
 import { clearBotWork, invalidateBotWork } from "./details/use-bot-work.ts";
 
 function subscribeLocation(listener: () => void) {
@@ -79,6 +83,7 @@ export function useBots() {
           clearConnections(ids);
           clearFiles(ids);
           clearModelSettings(ids);
+          clearConnectionContexts(ids);
           for (const bot of next.items) {
             receiveModelActivity(bot.id, bot.busy);
             const binding = next.bindings[String(bot.id)];
@@ -91,6 +96,7 @@ export function useBots() {
               invalidateNativeConnections(bot.id);
               invalidateBotWork(bot.id);
               invalidateModelSettings(bot.id);
+              invalidateConnectionContext(bot.id);
             }
             bindings.current[bot.id] = key;
           }

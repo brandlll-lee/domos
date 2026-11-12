@@ -91,11 +91,7 @@ function BotChat({
     [members, bots, bot.id],
   );
   const settings = useSettings();
-  const chat = useChat(
-    bot.id,
-    () => settings.open("providers", bot.id),
-    team?.id,
-  );
+  const chat = useChat(bot.id, () => settings.open("ai", bot.id), team?.id);
   const dock = useComposerDock();
   const draft = useDraft(team ? `team:${team.id}` : bot.id);
   const [sessionId, setSessionId] = useState<number>();

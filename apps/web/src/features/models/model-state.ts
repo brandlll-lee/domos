@@ -17,10 +17,19 @@ function createSettings(botId: number) {
     profile?: Profile;
     selected?: EngineConfig;
     connections: Record<string, Connection>;
+    inspectionErrors: Record<string, string>;
+    inspecting: Record<string, boolean>;
     choices: Partial<Record<EngineConfig["provider"], EngineConfig>>;
     saving: boolean;
     error: string;
-  } = { connections: {}, choices: {}, saving: false, error: "" };
+  } = {
+    connections: {},
+    inspectionErrors: {},
+    inspecting: {},
+    choices: {},
+    saving: false,
+    error: "",
+  };
   let generation = 0;
   let busy: boolean | undefined;
   let confirmed: Profile | undefined;
@@ -75,9 +84,14 @@ function createSettings(botId: number) {
     },
     snapshot: () => state,
     connection: (config: EngineConfig) => state.connections[keyOf(config)],
+    inspectionError: (config: EngineConfig) =>
+      state.inspectionErrors[keyOf(config)],
+    inspecting: (config: EngineConfig) =>
+      Boolean(state.inspecting[keyOf(config)]),
     remember(config: EngineConfig, connection: Connection) {
       update({
         connections: { ...state.connections, [keyOf(config)]: connection },
+        inspectionErrors: { ...state.inspectionErrors, [keyOf(config)]: "" },
       });
     },
     load(refresh = false) {
@@ -98,6 +112,8 @@ function createSettings(botId: number) {
       const key = keyOf(config);
       const pending = inspections.get(key);
       if (pending) return pending;
+      if (!refresh && state.inspectionErrors[key])
+        return Promise.reject(new Error(state.inspectionErrors[key]));
       if (!refresh && state.connections[key])
         return Promise.resolve(state.connections[key]);
       if (refresh) {
@@ -105,6 +121,10 @@ function createSettings(botId: number) {
         invalidateBotWork(botId);
       }
       const current = generation;
+      update({
+        inspecting: { ...state.inspecting, [key]: true },
+        inspectionErrors: { ...state.inspectionErrors, [key]: "" },
+      });
       const request = (
         admin
           ? client.engines.inspect({ botId, config, refresh })
@@ -117,8 +137,21 @@ function createSettings(botId: number) {
             });
           return connection;
         })
+        .catch((cause: unknown) => {
+          if (current === generation)
+            update({
+              inspectionErrors: {
+                ...state.inspectionErrors,
+                [key]:
+                  cause instanceof Error ? cause.message : "连接读取失败。",
+              },
+            });
+          throw cause;
+        })
         .finally(() => {
           if (inspections.get(key) === request) inspections.delete(key);
+          if (current === generation)
+            update({ inspecting: { ...state.inspecting, [key]: false } });
         });
       inspections.set(key, request);
       return request;
@@ -132,6 +165,8 @@ function createSettings(botId: number) {
         profile: undefined,
         selected: undefined,
         connections: {},
+        inspectionErrors: {},
+        inspecting: {},
         choices: {},
       });
     },

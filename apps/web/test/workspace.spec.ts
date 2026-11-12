@@ -1912,7 +1912,7 @@ test("settings rows keep content insets across Bot, computer and settings views"
       await settings.screenshot({
         path: info.outputPath(`settings-${colorScheme}-${width}.png`),
       });
-      for (const name of ["Providers", "Models"]) {
+      for (const name of ["AI 服务"]) {
         await settings.getByRole("tab", { name, exact: true }).click();
         const rows = settings.locator(".setting-row:visible");
         await expect(rows.first()).toBeVisible();
@@ -3289,15 +3289,16 @@ test("settings stay readable in both themes and compact layouts", async ({
     });
   }
   const search = settings.getByRole("searchbox", { name: "搜索设置" });
-  await settings.getByRole("tab", { name: "Models", exact: true }).click();
-  const models = settings.locator(".model-catalog .disclosure").first();
-  await expect(models).toHaveAttribute("open", "");
+  await settings.getByRole("tab", { name: "AI 服务", exact: true }).click();
+  await settings.getByRole("button", { name: "管理 Pi", exact: true }).click();
+  const models = settings.locator(".model-catalog");
+  await expect(models).not.toHaveAttribute("open");
   await models.locator("summary").focus();
   await models.locator("summary").press("Enter");
-  await expect(models).not.toHaveAttribute("open");
-  await models.locator("summary").press("Space");
   await expect(models).toHaveAttribute("open", "");
   await expect(models.getByRole("switch").first()).toBeVisible();
+  await models.locator("summary").press("Space");
+  await expect(models).not.toHaveAttribute("open");
   await settings.getByRole("tab", { name: "通用", exact: true }).click();
   await search.fill("主题");
   await expect(
@@ -3353,7 +3354,7 @@ test("settings stay readable in both themes and compact layouts", async ({
   for (const width of [320, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 800 });
     await expect(
-      settings.getByRole("tab", { name: "Providers", exact: true }),
+      settings.getByRole("tab", { name: "AI 服务", exact: true }),
     ).toBeInViewport();
     expect(
       await page.evaluate(
@@ -3368,7 +3369,7 @@ test("settings stay readable in both themes and compact layouts", async ({
   await expect(
     page.getByRole("button", { name: "用户菜单", exact: true }),
   ).toBeFocused();
-  await expect(input).toHaveValue("返回后继续编辑");
+  await expect(input).toHaveText("返回后继续编辑");
   await expect(page.locator("#bot-details")).toBeVisible();
   await trigger.click();
   await page.getByRole("menuitem", { name: "设置", exact: true }).click();
@@ -3720,7 +3721,7 @@ test("control geometry and interaction states stay consistent", async ({
   await appearance.focus();
   await appearance.press("ArrowRight");
   await expect(
-    settings.getByRole("tab", { name: "Providers", exact: true }),
+    settings.getByRole("tab", { name: "AI 服务", exact: true }),
   ).toBeFocused();
 });
 
@@ -4657,4 +4658,196 @@ test("sidebar footer keeps two entries and opens the account menu above them", a
   await expect(
     page.getByRole("dialog", { name: "连接中心", exact: true }),
   ).toBeVisible();
+});
+
+test("AI services share connection reads and keep Bot model selection separate", async ({
+  page,
+}, info) => {
+  const reads = new Map<string, number>();
+  const mutations: string[] = [];
+  let claudeReady = false;
+  page.on("request", (request) => {
+    if (/\/rpc\/engines\/(configure|select)$/.test(request.url()))
+      mutations.push(request.url());
+  });
+  await page.route("**/rpc/engines/inspect", async (route) => {
+    const provider = route.request().postDataJSON().json.config.provider;
+    reads.set(provider, (reads.get(provider) ?? 0) + 1);
+    if (provider === "claude" && !claudeReady) return route.abort("failed");
+    await route.fulfill({
+      json: {
+        json: {
+          ready: provider !== "codex",
+          authenticated: provider === "pi" || provider === "claude",
+          path: provider === "codex" ? null : `C:/tools/${provider}`,
+          version: provider === "codex" ? null : "1.0.0",
+          message: provider === "codex" ? "尚未安装" : "连接状态已读取",
+          models:
+            provider === "pi"
+              ? [
+                  { id: "faux/faux-1", name: "测试模型一" },
+                  { id: "faux/faux-2", name: "测试模型二" },
+                ]
+              : [],
+          ...(provider === "opencode"
+            ? {
+                accounts: {
+                  providers: [
+                    {
+                      id: "test",
+                      name: "测试提供方",
+                      methods: [{ type: "api", label: "API key" }],
+                    },
+                  ],
+                },
+              }
+            : {}),
+        },
+      },
+    });
+  });
+  await page.goto(url);
+  await page.getByRole("button", { name: "用户菜单", exact: true }).click();
+  await page.getByRole("menuitem", { name: "设置", exact: true }).click();
+  const settings = page.getByRole("main", { name: "设置", exact: true });
+  await settings.getByRole("tab", { name: "AI 服务", exact: true }).click();
+  await expect(
+    settings.getByRole("tab", { name: "Providers", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    settings.getByRole("tab", { name: "Models", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    settings.getByRole("group", { name: "工作电脑", exact: true }),
+  ).toContainText("此电脑");
+  await expect(
+    settings.getByRole("group", { name: "工作目录", exact: true }),
+  ).toBeVisible();
+  for (const [name, status] of [
+    ["Codex", "未安装"],
+    ["Claude Code", "读取失败"],
+    ["OpenCode", "待登录"],
+    ["Pi", "可用"],
+  ] as const) {
+    const row = settings.getByRole("group", { name, exact: true });
+    await expect(row.getByRole("status")).toHaveText(status);
+    await expect(row.locator(".button")).toHaveCount(1);
+  }
+  const snapshot = Object.fromEntries(reads);
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    for (const width of [1360, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect
+        .poll(() =>
+          settings.evaluate((node) => node.scrollWidth <= node.clientWidth),
+        )
+        .toBe(true);
+      await settings.screenshot({
+        path: info.outputPath(`ai-services-${colorScheme}-${width}.png`),
+      });
+    }
+  }
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await settings.getByRole("button", { name: "管理 Pi", exact: true }).click();
+  await expect(
+    settings.getByRole("combobox", { name: "模型", exact: true }),
+  ).toHaveCount(0);
+  const models = settings.locator(".model-catalog");
+  await models.locator("summary").click();
+  const visible = models.getByRole("switch", {
+    name: "Pi · 测试模型二",
+    exact: true,
+  });
+  await visible.click();
+  await expect(visible).toBeEnabled();
+  await expect(visible).not.toBeChecked();
+  await models
+    .getByRole("searchbox", { name: "搜索模型", exact: true })
+    .fill("一");
+  await expect(models.getByRole("switch")).toHaveCount(1);
+  await expect(
+    settings.getByRole("group", { name: "版本", exact: true }),
+  ).toBeHidden();
+  await settings.getByText("高级配置", { exact: true }).click();
+  await expect(
+    settings.getByRole("group", { name: "版本", exact: true }),
+  ).toContainText(/\d+\.\d+\.\d+/);
+  await settings.screenshot({ path: info.outputPath("ai-service-detail.png") });
+  await settings
+    .getByRole("button", { name: "返回 AI 服务", exact: true })
+    .click();
+  await settings.getByRole("button", { name: "返回对话", exact: true }).click();
+  await page.getByRole("button", { name: "用户菜单", exact: true }).click();
+  await page.getByRole("menuitem", { name: "设置", exact: true }).click();
+  await settings.getByRole("tab", { name: "AI 服务", exact: true }).click();
+  await expect(
+    settings
+      .getByRole("group", { name: "Claude Code", exact: true })
+      .getByRole("status"),
+  ).toHaveText("读取失败");
+  expect(Object.fromEntries(reads)).toEqual(snapshot);
+  claudeReady = true;
+  await settings.getByRole("button", { name: "重新检查", exact: true }).click();
+  await expect(
+    settings
+      .getByRole("group", { name: "Claude Code", exact: true })
+      .getByRole("status"),
+  ).toHaveText("可用");
+  expect(reads.get("claude")).toBe(2);
+  await page.route("**/rpc/engines/login", (route) =>
+    route.fulfill({ json: { json: { state: "waiting", prompt: "登录代码" } } }),
+  );
+  await page.route("**/rpc/engines/loginState", (route) =>
+    route.fulfill({ json: { json: { state: "waiting", prompt: "登录代码" } } }),
+  );
+  let cancelled = false;
+  await page.route("**/rpc/engines/cancelLogin", (route) => {
+    cancelled = true;
+    return route.fulfill({ json: { json: null } });
+  });
+  await settings
+    .getByRole("button", { name: "设置 OpenCode", exact: true })
+    .click();
+  await settings
+    .getByRole("combobox", { name: "模型提供方", exact: true })
+    .click();
+  await page.getByRole("option", { name: "测试提供方", exact: true }).click();
+  await settings.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(settings.getByText("等待登录…", { exact: true })).toBeVisible();
+  await expect(
+    settings.getByRole("button", { name: "返回 AI 服务", exact: true }),
+  ).toBeDisabled();
+  await settings.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(
+    settings.getByRole("button", { name: "返回 AI 服务", exact: true }),
+  ).toBeEnabled();
+  expect(cancelled).toBe(true);
+  await settings
+    .getByRole("button", { name: "返回 AI 服务", exact: true })
+    .click();
+  const binding = (
+    await (
+      await page.request.post(`${url}/rpc/computer/get`, {
+        data: { json: { botId: 1 } },
+      })
+    ).json()
+  ).json;
+  const project = join(directory, "AI project");
+  await mkdir(project);
+  const changed = await page.request.post(`${url}/rpc/computer/directory`, {
+    data: {
+      json: {
+        botId: 1,
+        directory: project,
+        revision: binding.revision,
+        requestId: crypto.randomUUID(),
+      },
+    },
+  });
+  expect(changed.ok()).toBe(true);
+  await expect(
+    settings.getByRole("group", { name: "工作目录", exact: true }),
+  ).toContainText(project);
+  expect(mutations).toEqual([]);
 });

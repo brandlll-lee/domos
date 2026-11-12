@@ -20,9 +20,11 @@ export function ModelSetting({
   disabled,
   onBusyChange,
   setupProvider,
+  connectionOnly = false,
 }: {
   botId: number;
   setupProvider?: string;
+  connectionOnly?: boolean;
   connected: boolean;
   disabled?: boolean;
   onBusyChange?: (busy: boolean) => void;
@@ -37,10 +39,13 @@ export function ModelSetting({
     error: saveError,
   } = useModelSettings(botId);
   const [config, setConfig] = useState<EngineConfig>(
-    (setupProvider ? { provider: setupProvider, model: null } : selected) ?? {
-      provider: "pi",
-      model: null,
-    },
+    () =>
+      (setupProvider
+        ? (store.snapshot().choices[setupProvider] ?? {
+            provider: setupProvider,
+            model: null,
+          })
+        : selected) ?? { provider: "pi", model: null },
   );
   const connection = store.connection(config);
   const setConnection = (
@@ -88,9 +93,9 @@ export function ModelSetting({
     };
   }, [connected, store, setupProvider]);
   useEffect(() => {
-    onBusyChange?.(busy || saving);
+    onBusyChange?.(busy || saving || login?.state === "waiting");
     return () => onBusyChange?.(false);
-  }, [busy, saving, onBusyChange]);
+  }, [busy, saving, login?.state, onBusyChange]);
   async function run(label: string, action: () => Promise<unknown>) {
     setBusyAction(label);
     setError("");
@@ -225,7 +230,7 @@ export function ModelSetting({
         connection?.path) && (
         <Disclosure
           label="高级配置"
-          open={config.provider === "acp" ? true : undefined}
+          open={config.provider === "acp" && !connectionOnly ? true : undefined}
         >
           {config.provider === "acp" && (
             <>
@@ -302,7 +307,8 @@ export function ModelSetting({
         </>
       )}
       <div className="dialog-actions">
-        {(!setupProvider ||
+        {(connectionOnly ||
+          !setupProvider ||
           config.provider === "acp" ||
           error ||
           (connection?.ready &&
@@ -325,6 +331,7 @@ export function ModelSetting({
                   });
                   setConfig(installed.config);
                   setConnection(installed.connection);
+                  store.remember(installed.config, installed.connection);
                 },
               )}
             {(!setupProvider ||
@@ -349,7 +356,8 @@ export function ModelSetting({
               )}
           </>
         )}
-        {connection?.authenticated &&
+        {!connectionOnly &&
+          connection?.authenticated &&
           !connection.models.length &&
           action("使用默认模型", () => save({ ...config, model: null }))}
       </div>
@@ -405,13 +413,15 @@ export function ModelSetting({
     ).filter((model) => visibility.visible(config.provider, model.id));
     return (
       <div className="setup-connection">
-        <div className="setup-provider-name">
-          <EngineMark provider={config.provider} />
-          {providers.find((item) => item.id === config.provider)?.name}
-        </div>
+        {!connectionOnly && (
+          <div className="setup-provider-name">
+            <EngineMark provider={config.provider} />
+            {providers.find((item) => item.id === config.provider)?.name}
+          </div>
+        )}
         {!connection && !error && <Loading label="正在检查连接" inline />}
         {login?.state === "waiting" && <p role="status">等待登录…</p>}
-        {models.length > 0 && (
+        {!connectionOnly && models.length > 0 && (
           <SearchPicker
             label="模型"
             searchLabel="搜索模型"
@@ -428,7 +438,10 @@ export function ModelSetting({
             }
           />
         )}
-        {connection?.authenticated && models.length > 0 && !login ? (
+        {!connectionOnly &&
+        connection?.authenticated &&
+        models.length > 0 &&
+        !login ? (
           <Disclosure label="连接设置">{configuration}</Disclosure>
         ) : (
           configuration
