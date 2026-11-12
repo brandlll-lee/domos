@@ -2,6 +2,8 @@ import type { Attachment } from "@domos/agent/attachments";
 import { filePreviewKind } from "@domos/agent/attachments";
 import { Button } from "@domos/ui/controls";
 import { Loading } from "@domos/ui/loading";
+import { ActionMenu } from "@domos/ui/menu";
+import { InlineNotice } from "@domos/ui/message";
 import { PanelHeader } from "@domos/ui/panel";
 import { ArrowSquareOutIcon } from "@phosphor-icons/react/dist/csr/ArrowSquareOut";
 import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
@@ -28,7 +30,7 @@ export function FilePanel({
   onTarget: (target: HTMLElement | null) => void;
 }) {
   const kind = filePreviewKind(file);
-  const buffered = ["text", "markdown", "csv", "html", "image"].includes(kind);
+  const buffered = ["text", "markdown", "csv", "html"].includes(kind);
   const data = useFile(botId, file, buffered);
   const [error, setError] = useState<string>();
   const [pending, setPending] = useState(false);
@@ -63,34 +65,32 @@ export function FilePanel({
               <DownloadSimpleIcon />
             </Button>
             {window.domosDesktop && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="icon-small"
-                  aria-label="系统打开"
-                  title="系统打开本地副本"
-                  disabled={pending}
-                  onClick={() => void action("open")}
-                >
-                  <ArrowSquareOutIcon />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-small"
-                  aria-label="文件位置"
-                  title="显示本地副本"
-                  disabled={pending}
-                  onClick={() => void action("reveal")}
-                >
-                  <FolderOpenIcon />
-                </Button>
-              </>
+              <ActionMenu
+                label="文件操作"
+                disabled={pending}
+                items={[
+                  {
+                    label: "系统打开本地副本",
+                    icon: <ArrowSquareOutIcon />,
+                    onSelect: () => void action("open"),
+                  },
+                  {
+                    label: "显示本地副本位置",
+                    icon: <FolderOpenIcon />,
+                    onSelect: () => void action("reveal"),
+                  },
+                ]}
+              />
             )}
           </>
         }
       />
-      <div className="file-panel-content">
-        {error && <p role="alert">{error}</p>}
+      {error && (
+        <div className="file-preview-notice" role="alert">
+          <InlineNotice>{error}</InlineNotice>
+        </div>
+      )}
+      <div className="file-panel-content" data-kind={kind}>
         {inline ? (
           <div className="file-inline-target" ref={onTarget} />
         ) : kind === "image" ? (
@@ -111,12 +111,14 @@ export function FilePanel({
           )
         )}
         {!inline && data.error && (
-          <p role="alert">
-            {data.error}
-            <Button variant="ghost" size="small" onClick={data.retry}>
-              重试
-            </Button>
-          </p>
+          <div className="file-preview-notice" role="alert">
+            <InlineNotice>
+              {data.error}
+              <Button variant="ghost" size="small" onClick={data.retry}>
+                重试
+              </Button>
+            </InlineNotice>
+          </div>
         )}
         {!inline && buffered && !data.blob && !data.error && (
           <Loading label="正在打开文件" />

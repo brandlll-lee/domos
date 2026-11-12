@@ -1,6 +1,9 @@
 import type { Attachment } from "@domos/agent/attachments";
 import { Button } from "@domos/ui/controls";
 import { Loading } from "@domos/ui/loading";
+import { InlineNotice } from "@domos/ui/message";
+import { CaretLeftIcon } from "@phosphor-icons/react/dist/csr/CaretLeft";
+import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
 import { useEffect, useRef, useState } from "react";
 import "pdfjs-dist/web/pdf_viewer.css";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -20,6 +23,7 @@ export default function PdfPreview({
     import("pdfjs-dist/web/pdf_viewer.mjs").PDFViewer | null
   >(null);
   const [state, setState] = useState({ page: 1, total: 0, error: "" });
+  const [scale, setScale] = useState(1);
   useEffect(() => {
     let active = true;
     let destroy = () => {};
@@ -38,6 +42,19 @@ export default function PdfPreview({
         annotationMode: 0,
       });
       viewer.current = instance;
+      let width = container.current.clientWidth;
+      let frame = 0;
+      const resize = new ResizeObserver(() => {
+        const next = container.current?.clientWidth;
+        if (next === width) return;
+        width = next ?? 0;
+        cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(() => {
+          if (instance.currentScaleValue === "page-width")
+            instance.currentScaleValue = "page-width";
+        });
+      });
+      resize.observe(container.current);
       const task = pdfjs.getDocument({
         url: source,
         disableAutoFetch: true,
@@ -48,6 +65,8 @@ export default function PdfPreview({
         wasmUrl: "/pdf/wasm/",
       });
       destroy = () => {
+        resize.disconnect();
+        cancelAnimationFrame(frame);
         instance.setDocument(null);
         instance.cleanup();
         void task.destroy();
@@ -62,6 +81,9 @@ export default function PdfPreview({
       });
       bus.on("pagechanging", (event: { pageNumber: number }) => {
         if (active) setState((state) => ({ ...state, page: event.pageNumber }));
+      });
+      bus.on("scalechanging", (event: { scale: number }) => {
+        if (active) setScale(event.scale);
       });
       bus.on(
         "pagerendered",
@@ -118,53 +140,80 @@ export default function PdfPreview({
   return (
     <div className="file-pdf">
       {state.error ? (
-        <p role="alert">{state.error}</p>
+        <div className="file-preview-notice" role="alert">
+          <InlineNotice>{state.error}</InlineNotice>
+        </div>
       ) : (
         <>
           <div className="file-toolbar" role="toolbar" aria-label="PDF 工具">
-            <Button
-              variant="ghost"
-              size="small"
-              disabled={state.page <= 1}
-              onClick={() => {
-                if (viewer.current) viewer.current.currentPageNumber--;
-              }}
-            >
-              上一页
-            </Button>
-            <span aria-live="polite">
-              {state.total ? (
-                `${state.page} / ${state.total}`
-              ) : (
-                <Loading label="正在读取 PDF" inline />
-              )}
-            </span>
-            <Button
-              variant="ghost"
-              size="small"
-              disabled={state.page >= state.total}
-              onClick={() => {
-                if (viewer.current) viewer.current.currentPageNumber++;
-              }}
-            >
-              下一页
-            </Button>
-            <Button
-              variant="ghost"
-              size="small"
-              aria-label="缩小"
-              onClick={() => viewer.current?.decreaseScale()}
-            >
-              −
-            </Button>
-            <Button
-              variant="ghost"
-              size="small"
-              aria-label="放大"
-              onClick={() => viewer.current?.increaseScale()}
-            >
-              +
-            </Button>
+            <fieldset className="file-toolbar-group" aria-label="翻页">
+              <Button
+                variant="ghost"
+                size="icon-small"
+                aria-label="上一页"
+                title="上一页"
+                disabled={state.page <= 1}
+                onClick={() => {
+                  if (viewer.current) viewer.current.currentPageNumber--;
+                }}
+              >
+                <CaretLeftIcon />
+              </Button>
+              <span aria-live="polite">
+                {state.total ? (
+                  `${state.page} / ${state.total}`
+                ) : (
+                  <Loading label="正在读取 PDF" inline />
+                )}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon-small"
+                aria-label="下一页"
+                title="下一页"
+                disabled={state.page >= state.total}
+                onClick={() => {
+                  if (viewer.current) viewer.current.currentPageNumber++;
+                }}
+              >
+                <CaretRightIcon />
+              </Button>
+            </fieldset>
+            <fieldset className="file-toolbar-group" aria-label="缩放">
+              <Button
+                variant="ghost"
+                size="icon-small"
+                aria-label="缩小"
+                title="缩小"
+                disabled={!state.total}
+                onClick={() => viewer.current?.decreaseScale()}
+              >
+                −
+              </Button>
+              <Button
+                variant="ghost"
+                size="small"
+                aria-label="适应宽度"
+                title="适应宽度"
+                disabled={!state.total}
+                onClick={() => {
+                  if (viewer.current)
+                    viewer.current.currentScaleValue = "page-width";
+                }}
+              >
+                {Math.round(scale * 100)}%
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-small"
+                aria-label="放大"
+                title="放大"
+                disabled={!state.total}
+                onClick={() => viewer.current?.increaseScale()}
+              >
+                +
+              </Button>
+            </fieldset>
           </div>
           <div className="file-pdf-body">
             <div className="file-pdf-scroll" ref={container}>

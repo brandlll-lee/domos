@@ -3,6 +3,7 @@ import { Button } from "@domos/ui/controls";
 import { PanelDialog } from "@domos/ui/dialog";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { ArrowClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
+import { ArrowsInSimpleIcon } from "@phosphor-icons/react/dist/csr/ArrowsInSimple";
 import { CaretLeftIcon } from "@phosphor-icons/react/dist/csr/CaretLeft";
 import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
 import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
@@ -31,11 +32,22 @@ export function ImageGallery({
   const file = selected === null ? undefined : files[selected];
   const [rotation, setRotation] = useState(0);
   const [zoomed, setZoomed] = useState(false);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const [poster, setPoster] = useState<string>();
+  const gallery = useRef<HTMLFieldSetElement>(null);
+  const fullImage = useRef<HTMLImageElement>(null);
+  const origin = useRef<DOMRect | null>(null);
+  const animation = useRef<Animation | null>(null);
+  const closing = useRef(false);
   const activeThumbnail = useRef<HTMLButtonElement>(null);
   function select(index: number) {
+    if (closing.current) return;
     setSelected(index);
     setRotation(0);
     setZoomed(false);
+    setSize({ width: 0, height: 0 });
+    setPoster(undefined);
+    origin.current = null;
   }
   function move(offset: number) {
     select(((selected ?? 0) + offset + files.length) % files.length);
@@ -47,6 +59,64 @@ export function ImageGallery({
       inline: "center",
     });
   }, [selected]);
+  useEffect(() => () => animation.current?.cancel(), []);
+  function animateImage(target: DOMRect | null, close: boolean) {
+    const element = fullImage.current;
+    if (
+      !element?.naturalWidth ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    )
+      return;
+    animation.current?.cancel();
+    const bounds = element.getBoundingClientRect();
+    const fit = Math.min(
+      bounds.width / element.naturalWidth,
+      bounds.height / element.naturalHeight,
+      1,
+    );
+    const transform =
+      target && target.bottom > 0 && target.top < innerHeight
+        ? `translate(${target.x + target.width / 2 - bounds.x - bounds.width / 2}px, ${target.y + target.height / 2 - bounds.y - bounds.height / 2}px) scale(${Math.min(target.width / (element.naturalWidth * fit), target.height / (element.naturalHeight * fit))})`
+        : "scale(0.98)";
+    const styles = getComputedStyle(element);
+    const frames = [
+      { transform, opacity: 0 },
+      { transform: "none", opacity: 1 },
+    ];
+    animation.current = element.animate(close ? frames.reverse() : frames, {
+      duration: Number.parseFloat(
+        styles.getPropertyValue(
+          close ? "--motion-feedback" : "--motion-message-in",
+        ),
+      ),
+      easing: styles.getPropertyValue("--ease-message-in").trim(),
+      fill: close ? "forwards" : "none",
+    });
+    return animation.current;
+  }
+  function close() {
+    if (closing.current) return;
+    const thumbnail =
+      gallery.current?.querySelectorAll("button")[selected ?? 0];
+    const transition = animateImage(
+      thumbnail?.getBoundingClientRect() ?? null,
+      true,
+    );
+    if (!transition) {
+      setPoster(undefined);
+      setSelected(null);
+      return;
+    }
+    closing.current = true;
+    void transition.finished
+      .then(() => {
+        closing.current = false;
+        animation.current = null;
+        setPoster(undefined);
+        setSelected(null);
+      })
+      .catch(() => {});
+  }
   const alert = error && (
     <p role="alert" className="alert">
       {error}
@@ -60,7 +130,38 @@ export function ImageGallery({
         src={`/files/${botId}/${file.id}`}
         alt={file.name}
         loading={lazy ? "lazy" : "eager"}
-        onError={() => setFailed((current) => new Set(current).add(file.id))}
+        decoding="async"
+        ref={lazy ? undefined : fullImage}
+        onLoad={
+          lazy
+            ? undefined
+            : async (event) => {
+                const element = event.currentTarget;
+                try {
+                  await element.decode();
+                } catch {
+                  if (fullImage.current === element) {
+                    setFailed((current) => new Set(current).add(file.id));
+                    setPoster(undefined);
+                  }
+                  return;
+                }
+                if (fullImage.current !== element) return;
+                setSize({
+                  width: element.naturalWidth,
+                  height: element.naturalHeight,
+                });
+                setPoster(undefined);
+                if (origin.current && !closing.current) {
+                  animateImage(origin.current, false);
+                  origin.current = null;
+                }
+              }
+        }
+        onError={() => {
+          setFailed((current) => new Set(current).add(file.id));
+          if (!lazy) setPoster(undefined);
+        }}
       />
     );
   }
@@ -68,6 +169,7 @@ export function ImageGallery({
     <>
       <fieldset
         className="image-gallery"
+        ref={gallery}
         aria-label={chatCopy.gallery}
         data-count={files.length}
       >
@@ -80,6 +182,28 @@ export function ImageGallery({
             onClick={(event) => {
               trigger.current = event.currentTarget;
               select(index);
+              const image = event.currentTarget.querySelector("img");
+              origin.current = event.currentTarget.getBoundingClientRect();
+              if (image?.naturalWidth) {
+                const canvas = document.createElement("canvas");
+                const scale = Math.min(
+                  320 / image.naturalWidth,
+                  320 / image.naturalHeight,
+                  1,
+                );
+                canvas.width = Math.max(
+                  1,
+                  Math.round(image.naturalWidth * scale),
+                );
+                canvas.height = Math.max(
+                  1,
+                  Math.round(image.naturalHeight * scale),
+                );
+                canvas
+                  .getContext("2d")
+                  ?.drawImage(image, 0, 0, canvas.width, canvas.height);
+                setPoster(canvas.toDataURL("image/webp", 0.7));
+              }
             }}
           >
             {image(item, true)}
@@ -90,7 +214,7 @@ export function ImageGallery({
       <PanelDialog.Root
         open={Boolean(file)}
         onOpenChange={(open) => {
-          if (!open) setSelected(null);
+          if (!open) close();
         }}
       >
         <PanelDialog.Portal>
@@ -115,46 +239,13 @@ export function ImageGallery({
                       {(selected ?? 0) + 1} / {files.length}
                     </span>
                   </div>
-                  <div className="image-viewer-toolbar">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`${chatCopy.download} ${file.name}`}
-                      title={chatCopy.download}
-                      disabled={downloading}
-                      onClick={() => onDownload(file)}
-                    >
-                      <DownloadSimpleIcon />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="旋转图片"
-                      title="旋转图片"
-                      disabled={failed.has(file.id)}
-                      onClick={() => setRotation((angle) => (angle + 90) % 360)}
-                    >
-                      <ArrowClockwiseIcon />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="放大图片"
-                      aria-pressed={zoomed}
-                      title={zoomed ? "适应窗口" : "放大图片"}
-                      disabled={failed.has(file.id)}
-                      onClick={() => setZoomed((value) => !value)}
-                    >
-                      <MagnifyingGlassPlusIcon />
-                    </Button>
-                    <PanelDialog.Close
-                      aria-label="关闭弹窗"
-                      title="关闭"
-                      render={<Button variant="ghost" size="icon" />}
-                    >
-                      <XIcon />
-                    </PanelDialog.Close>
-                  </div>
+                  <PanelDialog.Close
+                    aria-label="关闭弹窗"
+                    title="关闭"
+                    render={<Button variant="ghost" size="icon" />}
+                  >
+                    <XIcon />
+                  </PanelDialog.Close>
                 </header>
                 <div className="image-viewer-main">
                   {files.length > 1 && (
@@ -176,6 +267,13 @@ export function ImageGallery({
                       style={
                         {
                           "--image-rotation": `${rotation}deg`,
+                          "--image-width": `${size.width}px`,
+                          "--image-height": `${size.height}px`,
+                          "--image-frame-width": `${rotation % 180 ? size.height : size.width}px`,
+                          "--image-frame-height": `${rotation % 180 ? size.width : size.height}px`,
+                          backgroundImage: poster
+                            ? `url(${poster})`
+                            : undefined,
                         } as CSSProperties
                       }
                     >
@@ -195,6 +293,54 @@ export function ImageGallery({
                   )}
                 </div>
                 <footer className="image-viewer-footer">
+                  <div
+                    className="image-viewer-toolbar"
+                    role="toolbar"
+                    aria-label="图片工具"
+                  >
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="适应窗口"
+                      title="适应窗口"
+                      aria-pressed={!zoomed}
+                      disabled={failed.has(file.id)}
+                      onClick={() => setZoomed(false)}
+                    >
+                      <ArrowsInSimpleIcon />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="原始尺寸"
+                      title="原始尺寸"
+                      aria-pressed={zoomed}
+                      disabled={failed.has(file.id)}
+                      onClick={() => setZoomed(true)}
+                    >
+                      <MagnifyingGlassPlusIcon />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="旋转图片"
+                      title="旋转图片"
+                      disabled={failed.has(file.id)}
+                      onClick={() => setRotation((angle) => (angle + 90) % 360)}
+                    >
+                      <ArrowClockwiseIcon />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`${chatCopy.download} ${file.name}`}
+                      title={chatCopy.download}
+                      disabled={downloading}
+                      onClick={() => onDownload(file)}
+                    >
+                      <DownloadSimpleIcon />
+                    </Button>
+                  </div>
                   {caption && <p className="image-viewer-caption">{caption}</p>}
                   {file.source && (
                     <p className="image-details">

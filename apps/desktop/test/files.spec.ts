@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 import { pdf } from "../../../packages/agent/test/fixtures/pdf.ts";
+import { png } from "../../../packages/agent/test/fixtures/png.ts";
 
 test("desktop uploads, previews, searches and downloads saved files", async ({
   playwright,
@@ -303,7 +304,13 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
           };
         });
         await panel
-          .getByRole("button", { name: "系统打开", exact: true })
+          .getByRole("button", { name: "文件操作", exact: true })
+          .click();
+        await page.screenshot({
+          path: testInfo.outputPath("file-actions-menu.png"),
+        });
+        await page
+          .getByRole("menuitem", { name: "系统打开本地副本", exact: true })
           .click();
         await expect
           .poll(() =>
@@ -317,7 +324,10 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
         );
         expect(await readFile(local)).toEqual(pdf());
         await panel
-          .getByRole("button", { name: "文件位置", exact: true })
+          .getByRole("button", { name: "文件操作", exact: true })
+          .click();
+        await page
+          .getByRole("menuitem", { name: "显示本地副本位置", exact: true })
           .click();
         await expect
           .poll(() =>
@@ -330,7 +340,10 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
           shell.openPath = async () => "没有关联应用";
         });
         await panel
-          .getByRole("button", { name: "系统打开", exact: true })
+          .getByRole("button", { name: "文件操作", exact: true })
+          .click();
+        await page
+          .getByRole("menuitem", { name: "系统打开本地副本", exact: true })
           .click();
         await expect(panel.getByRole("alert")).toContainText("没有关联应用");
         await page.screenshot({
@@ -704,6 +717,51 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
         src: media.getAttribute("src"),
       })),
     ).toEqual({ paused: true, src: null });
+    await page.getByRole("button", { name: "用户菜单", exact: true }).click();
+    await page.getByRole("menuitem", { name: "用量", exact: true }).click();
+    await page.getByRole("button", { name: "添加内容", exact: true }).click();
+    const imageChooser = page.waitForEvent("filechooser");
+    await page.getByRole("menuitem", { name: "添加文件", exact: true }).click();
+    await (await imageChooser).setFiles({
+      name: "desktop-image.png",
+      mimeType: "image/png",
+      buffer: png(2048, 1536),
+    });
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    const imageThumbnail = page
+      .getByLabel("你的消息", { exact: true })
+      .getByRole("button", { name: "查看图片 desktop-image.png", exact: true });
+    await imageThumbnail.click();
+    const imageViewer = page.getByRole("dialog", {
+      name: "desktop-image.png",
+      exact: true,
+    });
+    await expect(
+      imageViewer.locator(".image-viewer-canvas img"),
+    ).toHaveJSProperty("naturalWidth", 2048);
+    const frame = await imageViewer.boundingBox();
+    expect(frame?.y).toBeGreaterThan(0);
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await expect(page.locator("html")).toHaveAttribute(
+        "data-theme",
+        colorScheme,
+      );
+      await page.screenshot({
+        path: testInfo.outputPath(`desktop-image-${colorScheme}.png`),
+        animations: "disabled",
+      });
+    }
+    await imageViewer
+      .getByRole("button", { name: "原始尺寸", exact: true })
+      .click();
+    await expect(imageViewer.locator(".image-viewer-canvas img")).toHaveCSS(
+      "width",
+      "2048px",
+    );
+    await page.keyboard.press("Escape");
+    await expect(imageViewer).toHaveCount(0);
+    await expect(imageThumbnail).toBeFocused();
   } finally {
     await desktop.close();
     const exited = once(worker, "exit");

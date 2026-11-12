@@ -1,6 +1,6 @@
 import { type ChildProcess, fork } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -510,6 +510,7 @@ fetch('https://example.invalid/leak').catch(()=>{});
   await expect(
     expanded.getByRole("textbox", { name: "金额", exact: true }),
   ).toHaveValue("123");
+  await page.evaluate(() => document.activeViewTransition?.finished);
   await panel.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(
     inline.getByRole("textbox", { name: "金额", exact: true }),
@@ -551,6 +552,43 @@ test("PDF preview renders selectable pages in both themes and a narrow panel", a
     "PDF page one",
   );
   await expect(panel.locator("canvas").first()).toBeVisible();
+  await expect(
+    panel.getByRole("button", { name: "适应宽度", exact: true }),
+  ).toBeVisible();
+  await expect(panel.locator(".file-panel-content")).toHaveCSS(
+    "overflow-y",
+    "hidden",
+  );
+  const paper = await panel.locator(".pdfViewer .page").first().boundingBox();
+  const readingArea = await panel.locator(".file-pdf-scroll").boundingBox();
+  expect(paper && readingArea && paper.x > readingArea.x + 8).toBe(true);
+  expect(
+    paper &&
+      readingArea &&
+      Math.abs(
+        paper.x + paper.width / 2 - readingArea.x - readingArea.width / 2,
+      ) < 2,
+  ).toBe(true);
+  const resize = page.getByRole("separator", { name: "调整详情宽度" });
+  const handle = await resize.boundingBox();
+  if (!handle) throw new Error("File resize handle required");
+  await page.mouse.move(
+    handle.x + handle.width / 2,
+    handle.y + handle.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(handle.x - 150, handle.y + handle.height / 2, {
+    steps: 8,
+  });
+  await page.mouse.up();
+  await panel.getByRole("button", { name: "适应宽度", exact: true }).click();
+  await expect
+    .poll(() =>
+      panel
+        .locator(".file-pdf-scroll")
+        .evaluate((node) => node.scrollWidth <= node.clientWidth),
+    )
+    .toBe(true);
   await panel.getByRole("button", { name: "下一页", exact: true }).click();
   await expect(panel.getByRole("toolbar")).toContainText("2 / 2");
   await expect(panel.locator(".textLayer").last()).toContainText(
@@ -576,6 +614,14 @@ test("PDF preview renders selectable pages in both themes and a narrow panel", a
       (element) => element.scrollWidth <= element.clientWidth,
     ),
   ).toBe(true);
+  await panel.getByRole("button", { name: "适应宽度", exact: true }).click();
+  await expect
+    .poll(() =>
+      panel
+        .locator(".file-pdf-scroll")
+        .evaluate((node) => node.scrollWidth <= node.clientWidth),
+    )
+    .toBe(true);
   await page.screenshot({
     path: testInfo.outputPath("files-pdf-dark-narrow.png"),
   });
@@ -3389,10 +3435,18 @@ test("delivered images form a gallery with viewer downloads and keyboard navigat
       stage &&
       Math.abs(rotated.y + rotated.height / 2 - stage.y - stage.height / 2) < 1,
   ).toBe(true);
-  await viewer.getByRole("button", { name: "放大图片", exact: true }).click();
+  await viewer.getByRole("button", { name: "原始尺寸", exact: true }).click();
   await expect(
-    viewer.getByRole("button", { name: "放大图片", exact: true }),
+    viewer.getByRole("button", { name: "原始尺寸", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
+  await expect(viewer.locator(".image-viewer-canvas img")).toHaveCSS(
+    "width",
+    "360px",
+  );
+  await expect(viewer.locator(".image-viewer-canvas img")).toHaveCSS(
+    "height",
+    "720px",
+  );
   await page.keyboard.press("ArrowRight");
   await expect(
     viewer.getByRole("img", { name: "wide.png", exact: true }),
@@ -3402,7 +3456,7 @@ test("delivered images form a gallery with viewer downloads and keyboard navigat
     "0deg",
   );
   await expect(
-    viewer.getByRole("button", { name: "放大图片", exact: true }),
+    viewer.getByRole("button", { name: "原始尺寸", exact: true }),
   ).toHaveAttribute("aria-pressed", "false");
   await page.keyboard.press("ArrowRight");
   await expect(
@@ -3534,6 +3588,208 @@ test("image thumbnails scroll horizontally and keep the selected image in view",
       thumbBox.x + thumbBox.width <= trackBox.x + trackBox.width,
   ).toBe(true);
   await page.screenshot({ path: "test-results/image-viewer-strip-mobile.png" });
+});
+
+test("image viewer follows the live theme, displays original pixels and releases transitions", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto(url);
+  await chooseAppearance(page, "跟随系统");
+  await page
+    .locator("#bot-details")
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
+  const name = "长文件名-原始图片-4096乘3072-验收.png";
+  const fixture = await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 4096;
+    canvas.height = 3072;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Canvas required");
+    context.scale(4, 4);
+    context.fillStyle = "#f5f2eb";
+    context.fillRect(0, 0, 1024, 768);
+    context.fillStyle = "#263b38";
+    context.fillRect(64, 64, 896, 220);
+    context.fillStyle = "#ffffff";
+    context.font = "52px sans-serif";
+    context.fillText("Domos / File preview", 104, 154);
+    context.font = "24px sans-serif";
+    context.fillText("4096 × 3072 · Original image", 104, 214);
+    for (const [index, color] of ["#b6c9b6", "#dfbb94", "#9baebc"].entries()) {
+      context.fillStyle = color;
+      context.fillRect(64 + index * 306, 320, 284, 300);
+    }
+    context.fillStyle = "#263b38";
+    context.font = "24px sans-serif";
+    context.fillText("Fit to window / Original pixels / Rotate", 64, 690);
+    return canvas.toDataURL("image/png").split(",")[1];
+  });
+  await attachFiles(page, {
+    name,
+    mimeType: "image/png",
+    buffer: Buffer.from(fixture ?? "", "base64"),
+  });
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const thumbnail = page
+    .getByLabel("你的消息", { exact: true })
+    .getByRole("button", { name: `查看图片 ${name}`, exact: true });
+  await thumbnail.click();
+  const viewer = page.getByRole("dialog", { name, exact: true });
+  const image = viewer.locator(".image-viewer-canvas img");
+  await expect(image).toHaveJSProperty("naturalWidth", 4096);
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-theme",
+      colorScheme,
+    );
+    await expect(page.locator(".image-viewer-backdrop")).toHaveCSS(
+      "background-color",
+      colorScheme === "light" ? "rgb(245, 245, 247)" : "rgb(21, 21, 23)",
+    );
+    await expect(viewer).toHaveCSS(
+      "color",
+      colorScheme === "light" ? "rgb(32, 33, 35)" : "rgb(239, 239, 240)",
+    );
+    await expect(image).toHaveCSS("filter", "none");
+    await expect(
+      viewer.getByRole("navigation", { name: "图片缩略图" }),
+    ).toHaveCount(0);
+    const toolbar = await viewer
+      .getByRole("toolbar", { name: "图片工具" })
+      .boundingBox();
+    const stage = await viewer.locator(".image-viewer-stage").boundingBox();
+    expect(toolbar && stage && toolbar.y >= stage.y + stage.height).toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath(`image-single-${colorScheme}.png`),
+      animations: "disabled",
+    });
+  }
+  await viewer.getByRole("button", { name: "原始尺寸", exact: true }).click();
+  await expect(image).toHaveCSS("width", "4096px");
+  await expect(image).toHaveCSS("height", "3072px");
+  expect(
+    await viewer
+      .locator(".image-viewer-stage")
+      .evaluate(
+        (node) =>
+          node.scrollWidth > node.clientWidth &&
+          node.scrollHeight > node.clientHeight,
+      ),
+  ).toBe(true);
+  await viewer.getByRole("button", { name: "适应窗口", exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 760 });
+  expect(
+    await viewer
+      .locator(".image-viewer-stage")
+      .evaluate(
+        (node) =>
+          node.scrollWidth <= node.clientWidth &&
+          node.scrollHeight <= node.clientHeight,
+      ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("image-single-narrow.png"),
+    animations: "disabled",
+  });
+  await page.keyboard.press("Escape");
+  await expect(viewer).toHaveCount(0);
+  await expect(thumbnail).toBeFocused();
+  await thumbnail.click();
+  await page.keyboard.press("Escape");
+  await expect(viewer).toHaveCount(0);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await thumbnail.click();
+  await expect(image).toBeVisible();
+  expect(await image.evaluate((node) => node.getAnimations().length)).toBe(0);
+  await page.keyboard.press("Escape");
+  await expect(viewer).toHaveCount(0);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const measurements = [];
+  for (let run = 0; run < 5; run++) {
+    const measurement = await thumbnail.evaluate(
+      async (button: HTMLButtonElement) => {
+        const start = performance.now();
+        const frames: number[] = [];
+        const duration = Number.parseFloat(
+          getComputedStyle(button).getPropertyValue("--motion-message-in"),
+        );
+        let previous = start;
+        let ready = 0;
+        let animatedFrames = 0;
+        button.click();
+        await new Promise<void>((resolve) => {
+          const frame = (now: number) => {
+            frames.push(now - previous);
+            previous = now;
+            const image = document.querySelector<HTMLImageElement>(
+              ".image-viewer-canvas img",
+            );
+            if (image?.complete && image.naturalWidth && !ready)
+              ready = performance.now() - start;
+            const running = image
+              ?.getAnimations()
+              .some((animation) => animation.playState === "running");
+            if (running) animatedFrames++;
+            if (ready && now - start >= ready + duration && !running) resolve();
+            else requestAnimationFrame(frame);
+          };
+          requestAnimationFrame(frame);
+        });
+        return { ready, frames, animatedFrames };
+      },
+    );
+    measurements.push(measurement);
+    expect(measurement.ready).toBeLessThan(1000);
+    expect(measurement.animatedFrames).toBeGreaterThan(0);
+    await page.keyboard.press("Escape");
+    await expect(viewer).toHaveCount(0);
+    await expect(thumbnail).toBeFocused();
+  }
+  const frames = measurements
+    .flatMap((measurement) => measurement.frames)
+    .sort((a, b) => a - b);
+  const p95 = frames[Math.floor(frames.length * 0.95)] ?? 0;
+  expect(p95).toBeLessThan(100);
+  const performancePath = testInfo.outputPath("image-viewer-performance.json");
+  await writeFile(
+    performancePath,
+    JSON.stringify(
+      {
+        image: "4096x3072",
+        browser: "Chromium",
+        viewport: page.viewportSize(),
+        measurements,
+        frameIntervalP95: p95,
+      },
+      null,
+      2,
+    ),
+  );
+  await testInfo.attach("image-viewer-performance", {
+    path: performancePath,
+    contentType: "application/json",
+  });
+  await page.route("**/files/*/*", (route) => route.abort());
+  await page.reload();
+  await thumbnail.click();
+  await expect(
+    viewer.getByText("图片暂时无法加载，可下载原图。", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    viewer.getByRole("button", { name: "原始尺寸", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    viewer.getByRole("button", { name: `下载 ${name}`, exact: true }),
+  ).toBeEnabled();
+  await page.screenshot({ path: testInfo.outputPath("image-unavailable.png") });
+  await page.keyboard.press("Escape");
+  await expect(viewer).toHaveCount(0);
+  expect(errors).toEqual([]);
 });
 
 test("typing follows the Bot and failures retain their error message", async ({
