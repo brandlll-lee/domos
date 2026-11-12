@@ -5,8 +5,10 @@ import type {
   RpcSessionState,
   SessionEntry,
 } from "@earendil-works/pi-coding-agent";
+import { z } from "zod";
 import { thinkingControl } from "../../models.ts";
 import { EngineRequestRejected, JsonLines } from "../json-lines.ts";
+import { mcpCatalog, unsupportedMcp } from "../mcp-catalog.ts";
 import type {
   EngineEvent,
   EngineOpen,
@@ -25,6 +27,18 @@ export const piProvider: EngineProvider = {
     approvals: true,
     models: true,
     recovery: true,
+  },
+  async mcp(input) {
+    const session = await piProvider.open({
+      ...input,
+      config: { ...input.config, model: null, options: {} },
+      sessionId: null,
+      instructions: "Domos MCP directory read.",
+      emit: async () => {},
+    });
+    if (!session.mcp) return unsupportedMcp();
+    const catalog = await session.mcp();
+    return { ...catalog, scope: "configuration" };
   },
   async open({
     process,
@@ -366,6 +380,23 @@ export const piProvider: EngineProvider = {
     rpc.phase = "执行";
     return {
       id: state.sessionFile,
+      async mcp(signal) {
+        if (!process.mcp) throw new Error("工作电脑需要更新 MCP 支持。");
+        const result = z
+          .object({
+            items: z.array(
+              z.object({
+                name: z.string().min(1),
+                source: z.string(),
+                enabled: z.boolean(),
+                status: z.string(),
+              }),
+            ),
+            errors: z.array(z.object({ message: z.string() })),
+          })
+          .parse(await process.mcp({ action: "pi_catalog" }, signal));
+        return mcpCatalog(result.items, "session", result.errors);
+      },
       skills: async () => nativeSkills((await commands()).commands ?? []),
       async controls() {
         const state = await rpc.request<RpcSessionState>("get_state");

@@ -7,6 +7,7 @@ import { historyProjection } from "./native-history.mjs";
 const outputLimit = 8000;
 const requests = {
   skills: ["/skill", "GET"],
+  mcp: ["/mcp", "GET"],
   providers: ["/provider", "GET"],
   authMethods: ["/provider/auth", "GET"],
   authorize: ["/provider/{id}/oauth/authorize", "POST"],
@@ -87,8 +88,9 @@ export async function openHttpService(emit, limits) {
         endpoint.resolve(address);
       }
     },
-    async request(frame) {
+    async request(frame, signal) {
       let message = "OpenCode 本地接口路径或方法不受支持。";
+      let code;
       try {
         if (
           typeof frame.path !== "string" ||
@@ -113,12 +115,16 @@ export async function openHttpService(emit, limits) {
             frame.body === undefined ? undefined : JSON.stringify(frame.body),
           signal: AbortSignal.any([
             abort.signal,
+            ...(signal ? [signal] : []),
             AbortSignal.timeout(limits.timeoutMs),
           ]),
           redirect: "error",
         });
         message = `OpenCode 本地接口请求失败（HTTP ${response.status}）。`;
-        if (!response.ok) throw new Error("Request rejected");
+        if (!response.ok) {
+          code = response.status;
+          throw new Error("Request rejected");
+        }
         message = "OpenCode 本地接口返回了无效响应。";
         const chunks = [];
         let bytes = 0;
@@ -142,6 +148,7 @@ export async function openHttpService(emit, limits) {
         emit({
           type: "http",
           id: frame.id,
+          code,
           error:
             error?.name === "TimeoutError"
               ? "OpenCode 本地接口请求超时。请重试连接。"

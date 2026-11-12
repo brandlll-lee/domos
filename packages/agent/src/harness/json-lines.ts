@@ -108,14 +108,28 @@ export class JsonLines extends EventEmitter {
     method: string,
     params: object = {},
     timeout = engineLimits.handshakeMs as number,
+    signal?: AbortSignal,
   ) {
+    signal?.throwIfAborted();
     const id = ++this.sequence;
     const context = { method, phase: this.phase, startedAt: Date.now() };
     return new Promise<T>((resolve, reject) => {
+      const abort = () => {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        signal?.removeEventListener("abort", abort);
+        reject(signal?.reason);
+      };
+      const complete =
+        <V>(callback: (value: V) => void) =>
+        (value: V) => {
+          signal?.removeEventListener("abort", abort);
+          callback(value);
+        };
       const timer = timeout
         ? setTimeout(() => {
             this.pending.delete(id);
-            reject(
+            complete(reject)(
               new Error(
                 `${this.describe(context)}：RPC 超时，未收到原生响应。`,
               ),
@@ -125,16 +139,17 @@ export class JsonLines extends EventEmitter {
       timer?.unref();
       this.pending.set(id, {
         ...context,
-        resolve: (value) => resolve(value as T),
-        reject,
+        resolve: complete((value: unknown) => resolve(value as T)),
+        reject: complete(reject),
         timer,
       });
+      signal?.addEventListener("abort", abort, { once: true });
       void this.send(
         this.pi ? { id, type: method, ...params } : { id, method, params },
       ).catch((error) => {
         clearTimeout(timer);
         this.pending.delete(id);
-        reject(
+        complete(reject)(
           new Error(`${this.describe(context)}：${error.message}`, {
             cause: error,
           }),

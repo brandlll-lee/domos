@@ -13,146 +13,183 @@ import { ProtocolProcess } from "./fixtures/engine-process.ts";
 import { featureProcess } from "./fixtures/feature-process.ts";
 import { runtimeFixture } from "./fixtures/runtime.ts";
 
-test.each(["connect", "worker", "cancel"])(
-  "managed MCP %s failure preserves task control",
-  async (failure) => {
-    const workers: ProtocolProcess[] = [];
-    const calls: Record<string, unknown>[] = [];
-    let unavailable = true;
-    const connecting = Promise.withResolvers<void>();
-    const workerFor = () => {
-      const worker = featureProcess(async () => "Code task complete");
-      worker.mcp = async <T>(
-        input: Record<string, unknown>,
-        signal?: AbortSignal,
-      ) => {
-        calls.push(input);
-        if (input.action === "native") return { items: [] } as T;
-        if (input.action === "connect") {
-          if (input.id === "offline" && unavailable) {
-            if (failure === "cancel") {
-              connecting.resolve();
-              await new Promise<void>((_resolve, reject) => {
-                signal?.addEventListener("abort", () => reject(signal.reason), {
-                  once: true,
-                });
+test.each([
+  "connect",
+  "worker",
+  "cancel",
+  "catalog",
+  "configuration-conflict",
+  "session-conflict",
+])("managed MCP %s failure preserves task control", async (failure) => {
+  const workers: ProtocolProcess[] = [];
+  const calls: Record<string, unknown>[] = [];
+  let unavailable = true;
+  const connecting = Promise.withResolvers<void>();
+  let catalogs = 0;
+  const workerFor = () => {
+    const worker = featureProcess(async () => "Code task complete");
+    worker.mcp = async <T>(
+      input: Record<string, unknown>,
+      signal?: AbortSignal,
+    ) => {
+      calls.push(input);
+      if (input.action === "pi_catalog") {
+        catalogs++;
+        return {
+          items:
+            failure === "configuration-conflict" ||
+            (failure === "session-conflict" && catalogs > 1)
+              ? [
+                  {
+                    name: "ONLINE",
+                    source: "extension.ts",
+                    enabled: true,
+                    status: "unknown",
+                  },
+                ]
+              : [],
+          errors:
+            failure === "catalog"
+              ? [{ message: "Project MCP read failed" }]
+              : [],
+        } as T;
+      }
+      if (input.action === "connect") {
+        if (input.id === "offline" && unavailable) {
+          if (failure === "cancel") {
+            connecting.resolve();
+            await new Promise<void>((_resolve, reject) => {
+              signal?.addEventListener("abort", () => reject(signal.reason), {
+                once: true,
               });
-            }
-            throw new Error("Service unavailable");
+            });
           }
-          return { tools: [], capabilities: { tools: {} }, oauth: {} } as T;
+          throw new Error("Service unavailable");
         }
-        return { url: `http://127.0.0.1/mcp/${input.id}` } as T;
-      };
-      workers.push(worker);
-      return worker;
+        return { tools: [], capabilities: { tools: {} }, oauth: {} } as T;
+      }
+      return { url: `http://127.0.0.1/mcp/${input.id}` } as T;
     };
-    const computers = {
-      initialize: async () => {},
-      preflight: async () => {},
-      computerId: async () => "shared",
-      binding: async () => ({ directory: null, computerId: "shared" }),
-      tools: { catalog: async () => [], finish: () => {} },
-      process: async () => workerFor(),
-      mcpProcess: async () => {
-        if (unavailable) throw new Error("Computer unavailable");
-        return workerFor();
+    workers.push(worker);
+    return worker;
+  };
+  const computers = {
+    initialize: async () => {},
+    preflight: async () => {},
+    computerId: async () => "shared",
+    binding: async () => ({ directory: null, computerId: "shared" }),
+    tools: { catalog: async () => [], finish: () => {} },
+    process: async () => workerFor(),
+    mcpProcess: async () => {
+      if (unavailable) throw new Error("Computer unavailable");
+      return workerFor();
+    },
+  } as unknown as Computers;
+  const runtime = await runtimeFixture(computers);
+  const engines = runtime.engines;
+  if (!engines) throw new Error("Native engines required");
+  onTestFinished(async () => {
+    await Promise.all(workers.map((worker) => worker.close()));
+  });
+  const botId = runtime.conversation.id;
+  const items = ["offline", "online"].map((id) => ({
+    id,
+    name: id,
+    computerId: id === "offline" && failure === "worker" ? "remote" : "shared",
+    enabled: true,
+    revision: 1,
+    generation: 1,
+    grants: [{ botId, tools: null }],
+    transport: "http" as const,
+  }));
+  vi.spyOn(runtime.mcp, "list").mockResolvedValue(items);
+  vi.spyOn(runtime.mcp, "native").mockResolvedValue(true);
+  vi.spyOn(runtime.mcp, "resolve").mockImplementation(async (id) => {
+    const connection = items.find((item) => item.id === id);
+    if (!connection) throw new Error("Connection required");
+    return {
+      connection,
+      tools: null,
+      config: {
+        transport: "http",
+        url: `http://127.0.0.1/${id}`,
+        headers: {},
       },
-    } as unknown as Computers;
-    const runtime = await runtimeFixture(computers);
-    const engines = runtime.engines;
-    if (!engines) throw new Error("Native engines required");
-    onTestFinished(async () => {
-      await Promise.all(workers.map((worker) => worker.close()));
-    });
-    const botId = runtime.conversation.id;
-    const items = ["offline", "online"].map((id) => ({
-      id,
-      name: id,
-      computerId:
-        id === "offline" && failure === "worker" ? "remote" : "shared",
-      enabled: true,
-      revision: 1,
-      generation: 1,
-      grants: [{ botId, tools: null }],
-      transport: "http" as const,
-    }));
-    vi.spyOn(runtime.mcp, "list").mockResolvedValue(items);
-    vi.spyOn(runtime.mcp, "native").mockResolvedValue(true);
-    vi.spyOn(runtime.mcp, "resolve").mockImplementation(async (id) => {
-      const connection = items.find((item) => item.id === id);
-      if (!connection) throw new Error("Connection required");
-      return {
-        connection,
-        tools: null,
-        config: {
-          transport: "http",
-          url: `http://127.0.0.1/${id}`,
-          headers: {},
-        },
-      };
-    });
-    vi.spyOn(runtime.mcp, "saveOAuth").mockResolvedValue();
-    const report = vi.spyOn(runtime.mcp, "report").mockResolvedValue();
-    await engines.configure(
-      botId,
-      {
-        config: { provider: "pi", model: null },
-        revision: 0,
-        requestId: crypto.randomUUID(),
-      },
-      context,
+    };
+  });
+  vi.spyOn(runtime.mcp, "saveOAuth").mockResolvedValue();
+  const report = vi.spyOn(runtime.mcp, "report").mockResolvedValue();
+  await engines.configure(
+    botId,
+    {
+      config: { provider: "pi", model: null },
+      revision: 0,
+      requestId: crypto.randomUUID(),
+    },
+    context,
+  );
+  const task = await engines.submit(
+    botId,
+    { text: "Change code", requestId: crypto.randomUUID() },
+    context,
+  );
+  if (failure === "cancel") {
+    await connecting.promise;
+    await engines.stop(botId, context);
+    expect(await task.wait(context)).toMatchObject({ status: "unanswered" });
+    expect(report).not.toHaveBeenCalled();
+    expect(calls.some((call) => call.action === "mount")).toBe(false);
+    return;
+  }
+  if (failure.endsWith("conflict")) {
+    expect(await task.wait(context)).toMatchObject({ status: "unanswered" });
+    expect((await engines.view(botId, context)).error).toContain("同名");
+    expect(calls.filter((call) => call.action === "mount")).toHaveLength(
+      failure === "session-conflict" ? 1 : 0,
     );
-    const task = await engines.submit(
-      botId,
-      { text: "Change code", requestId: crypto.randomUUID() },
-      context,
-    );
-    if (failure === "cancel") {
-      await connecting.promise;
-      await engines.stop(botId, context);
-      expect(await task.wait(context)).toMatchObject({ status: "unanswered" });
-      expect(report).not.toHaveBeenCalled();
-      expect(calls.some((call) => call.action === "mount")).toBe(false);
-      return;
-    }
-    expect(await task.wait(context)).toMatchObject({ status: "done" });
+    return;
+  }
+  expect(await task.wait(context)).toMatchObject({ status: "done" });
+  if (failure === "catalog") {
+    expect(calls.some((call) => call.action === "mount")).toBe(false);
     expect(
-      calls.filter((call) => call.action === "mount").map((call) => call.id),
-    ).toEqual(["online"]);
-    expect(report).toHaveBeenCalledWith(
-      "offline",
-      1,
-      { error: expect.any(Error) },
-      context,
-    );
-    expect((await engines.view(botId, context)).runtime?.notices).toMatchObject(
-      {
-        "mcp:offline": expect.stringContaining("offline"),
-      },
-    );
-    await expect
-      .poll(async () => (await engines.profile(botId, context)).busy)
-      .toBe(false);
-    unavailable = false;
-    calls.length = 0;
-    const next = await engines.submit(
-      botId,
-      { text: "Continue coding", requestId: crypto.randomUUID() },
-      context,
-    );
-    expect(await next.wait(context)).toMatchObject({ status: "done" });
-    expect(
-      calls.filter((call) => call.action === "mount").map((call) => call.id),
-    ).toEqual(["offline", "online"]);
-    expect(report).toHaveBeenCalledWith(
-      "offline",
-      1,
-      expect.objectContaining({ capabilities: { tools: {} } }),
-      context,
-    );
-  },
-);
+      (await engines.view(botId, context)).runtime?.notices?.["mcp:online"],
+    ).toContain("未完整读取");
+    return;
+  }
+  expect(
+    calls.filter((call) => call.action === "mount").map((call) => call.id),
+  ).toEqual(["online"]);
+  expect(report).toHaveBeenCalledWith(
+    "offline",
+    1,
+    { error: expect.any(Error) },
+    context,
+  );
+  expect((await engines.view(botId, context)).runtime?.notices).toMatchObject({
+    "mcp:offline": expect.stringContaining("offline"),
+  });
+  await expect
+    .poll(async () => (await engines.profile(botId, context)).busy)
+    .toBe(false);
+  unavailable = false;
+  calls.length = 0;
+  const next = await engines.submit(
+    botId,
+    { text: "Continue coding", requestId: crypto.randomUUID() },
+    context,
+  );
+  expect(await next.wait(context)).toMatchObject({ status: "done" });
+  expect(
+    calls.filter((call) => call.action === "mount").map((call) => call.id),
+  ).toEqual(["offline", "online"]);
+  expect(report).toHaveBeenCalledWith(
+    "offline",
+    1,
+    expect.objectContaining({ capabilities: { tools: {} } }),
+    context,
+  );
+});
 
 test.each(["pi", "claude"] as const)(
   "%s reuses its session and binds product tools to each new task",

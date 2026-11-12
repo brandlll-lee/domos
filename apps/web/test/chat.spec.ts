@@ -6040,6 +6040,10 @@ test("material pickers show native sources and keep MCP references separate from
           inherited: true,
           inheritance: "native",
           readonly: true,
+          status: "complete",
+          scope: "configuration",
+          errors: [],
+          observedAt: 1,
           items: [
             { name: "Docs", source: "project", enabled: true, status: "ready" },
           ],
@@ -6089,6 +6093,10 @@ test("MCP readers share pending and retained catalogs across the composer and co
           inherited: true,
           inheritance: "native",
           readonly: true,
+          status: "complete",
+          scope: "configuration",
+          errors: [],
+          observedAt: 1,
           items: [
             {
               name: "Shared Docs",
@@ -6155,6 +6163,81 @@ test("MCP readers share pending and retained catalogs across the composer and co
   } finally {
     release.resolve();
   }
+});
+
+test("native MCP reads keep partial, failed, unsupported and complete empty states distinct", async ({
+  page,
+}) => {
+  let state = "partial";
+  await page.route("**/rpc/mcp/native", (route) =>
+    route.fulfill({
+      json: {
+        json: {
+          provider: "opencode",
+          computerId: "pc",
+          inherited: true,
+          inheritance: "native",
+          readonly: true,
+          scope: "session",
+          sessionId: "private",
+          observedAt: 1,
+          status: state,
+          errors:
+            state === "partial" || state === "failed"
+              ? [{ message: "Project catalog unavailable", code: 503 }]
+              : [],
+          items:
+            state === "partial"
+              ? [
+                  {
+                    name: "plugin:docs:search",
+                    source: "project",
+                    enabled: null,
+                    status: "unknown",
+                  },
+                ]
+              : [],
+        },
+      },
+    }),
+  );
+  await page.goto(url);
+  await page.getByRole("button", { name: "添加内容", exact: true }).click();
+  await page.getByRole("menuitem", { name: "引用 MCP…", exact: true }).click();
+  await expect(page.getByText("当前私聊会话", { exact: true })).toBeVisible();
+  const service = page.getByRole("button", {
+    name: "plugin:docs:search",
+    exact: true,
+  });
+  await expect(service).toBeVisible();
+  await service.hover();
+  await expect(page.getByRole("tooltip")).toContainText(
+    "启用状态未知 · 连接状态未知",
+  );
+  await expect(page.getByRole("tooltip")).toContainText("沿用原生配置");
+  const refresh = page.getByRole("button", {
+    name: "刷新原生连接",
+    exact: true,
+  });
+  for (const [next, label] of [
+    ["failed", "原生目录读取失败"],
+    ["unsupported", "此 Harness 尚未提供目录接口"],
+    ["complete", "暂无 MCP 连接"],
+  ] as const) {
+    state = next;
+    await refresh.click();
+    await expect(service).toHaveCount(0);
+    await expect(
+      page.getByText(label, { exact: next === "complete" }),
+    ).toBeVisible();
+    if (next !== "complete")
+      await expect(
+        page.getByText("暂无 MCP 连接", { exact: true }),
+      ).toHaveCount(0);
+  }
+  await page.screenshot({
+    path: test.info().outputPath("native-mcp-empty.png"),
+  });
 });
 
 test("Bot readers retain model and skill data while live skill changes reach the composer", async ({

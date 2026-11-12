@@ -1,6 +1,7 @@
 export function openCodeRequest(
   name:
     | "skills"
+    | "mcp"
     | "providers"
     | "authMethods"
     | "authorize"

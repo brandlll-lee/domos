@@ -1,4 +1,6 @@
+import { z } from "zod";
 import { EngineRequestRejected, JsonLines } from "../json-lines.ts";
+import { mcpCatalog, mcpEntries, mcpReadError } from "../mcp-catalog.ts";
 import type {
   EngineConfig,
   EngineControls,
@@ -137,7 +139,64 @@ export async function openCodexClient(
         })),
     );
   };
+  const mcp = async (threadId?: string, signal?: AbortSignal) => {
+    const items: import("../types.ts").EngineMcpCatalog["items"] = [];
+    const cursors = new Set<string>();
+    const errors: import("../types.ts").EngineMcpCatalog["errors"] = [];
+    let cursor: string | null = null;
+    try {
+      do {
+        const page = z
+          .object({
+            data: z.array(z.unknown()),
+            nextCursor: z.string().nullable().optional(),
+          })
+          .parse(
+            await rpc.request(
+              "mcpServerStatus/list",
+              {
+                ...(threadId ? { threadId } : {}),
+                limit: 100,
+                ...(cursor ? { cursor } : {}),
+              },
+              undefined,
+              signal,
+            ),
+          );
+        const parsed = mcpEntries(
+          z.object({
+            name: z.string().min(1),
+            authStatus: z.string().optional(),
+            status: z.string().optional(),
+          }),
+          page.data,
+        );
+        errors.push(...parsed.errors);
+        items.push(
+          ...parsed.items.map((item) => ({
+            name: item.name,
+            source: "codex",
+            enabled: null,
+            status: item.status ?? "unknown",
+            authStatus: item.authStatus,
+          })),
+        );
+        cursor = page.nextCursor ?? null;
+        if (cursor && cursors.has(cursor))
+          throw new Error("Codex MCP 目录分页游标重复。");
+        if (cursor) cursors.add(cursor);
+      } while (cursor);
+      return mcpCatalog(items, "session", errors);
+    } catch (error) {
+      signal?.throwIfAborted();
+      const failed = mcpReadError(error, "session");
+      return items.length
+        ? mcpCatalog(items, "session", [...errors, ...failed.errors])
+        : failed;
+    }
+  };
   return {
+    mcp,
     skills,
     rpc,
     modes,

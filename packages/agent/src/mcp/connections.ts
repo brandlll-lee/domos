@@ -5,7 +5,11 @@ import type { CredentialStore } from "@earendil-works/pi-ai";
 import { defineDoc, type Harness } from "@earendil-works/pi-durable";
 import type { mcpOperation } from "../harness/mcp-client.mjs";
 import { stored } from "../harness/task-types.ts";
-import type { EngineApproval, ProductTool } from "../harness/types.ts";
+import type {
+  EngineApproval,
+  EngineMcpCatalog,
+  ProductTool,
+} from "../harness/types.ts";
 import { requiredText, requireRevision, WorkError } from "../work/state.ts";
 
 import type { McpConfig } from "./config.ts";
@@ -69,14 +73,16 @@ export class McpConnections {
   nativeCatalog?: (
     botId: number,
     context: Context,
-  ) => Promise<{
-    provider: string;
-    computerId: string;
-    items: { name: string; source: string; enabled: boolean; status: string }[];
-    inheritance: string;
-    readonly: boolean;
-    inherited: boolean;
-  }>;
+    signal?: AbortSignal,
+  ) => Promise<
+    EngineMcpCatalog & {
+      provider: string;
+      computerId: string;
+      inheritance: string;
+      readonly: boolean;
+      inherited: boolean;
+    }
+  >;
   constructor(harness: Harness, credentials?: CredentialStore) {
     this.harness = harness;
     this.credentials = credentials;

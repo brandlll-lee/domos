@@ -38,13 +38,13 @@ export function mcpRouter(
           enabled: z.boolean().optional(),
         }),
       )
-      .handler(({ input }) =>
+      .handler(({ input, signal }) =>
         access(async (service) => {
           await botConversation(bots, input.botId);
           if (!service.nativeCatalog)
             throw new ORPCError("SERVICE_UNAVAILABLE");
           const catalog = await service
-            .nativeCatalog(input.botId, BACKGROUND_CONTEXT)
+            .nativeCatalog(input.botId, BACKGROUND_CONTEXT, signal)
             .catch((error: unknown) => {
               throw new ORPCError("BAD_REQUEST", {
                 message:

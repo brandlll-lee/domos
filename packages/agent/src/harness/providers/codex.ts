@@ -1,5 +1,7 @@
+import { z } from "zod";
 import { readControls } from "../controls.ts";
 import { EngineRequestRejected } from "../json-lines.ts";
+import { mcpCatalog, mcpCommand, mcpEntries } from "../mcp-catalog.ts";
 import type {
   EngineAnswer,
   EngineApproval,
@@ -24,6 +26,31 @@ export const codexProvider: EngineProvider = {
   package: "@openai/codex@0.163.0",
   login: ["login", "--device-auth"],
   capabilities: { approvals: true, models: true, recovery: true },
+  async mcp({ process, config }) {
+    const result = mcpEntries(
+      z.object({
+        name: z.string().min(1),
+        enabled: z.boolean(),
+        auth_status: z.string().optional(),
+      }),
+      await mcpCommand(process, config.command ?? "codex", [
+        "mcp",
+        "list",
+        "--json",
+      ]),
+    );
+    return mcpCatalog(
+      result.items.map((item) => ({
+        name: item.name,
+        source: "codex 用户/项目配置",
+        enabled: item.enabled,
+        status: "unknown",
+        authStatus: item.auth_status,
+      })),
+      "configuration",
+      result.errors,
+    );
+  },
   async inspect({ process, config, env }) {
     const client = await openCodexClient(process, config, env);
     return {
@@ -294,6 +321,7 @@ export const codexProvider: EngineProvider = {
     });
     const session: EngineSession = {
       id,
+      mcp: (signal) => client.mcp(id, signal),
       async ready() {
         if (!ready.tools?.length) return;
         await process.toolsReady?.();

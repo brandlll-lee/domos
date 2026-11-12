@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import type { ModelInfo } from "@anthropic-ai/claude-agent-sdk";
+import { z } from "zod";
 import { JsonLines } from "../json-lines.ts";
+import { mcpCatalog, mcpEntries, unsupportedMcp } from "../mcp-catalog.ts";
 import {
   type EngineControls,
   type EngineImage,
@@ -97,6 +99,18 @@ export const claudeProvider: EngineProvider = {
     approvals: true,
     models: true,
     recovery: true,
+  },
+  async mcp(input) {
+    const session = await claudeProvider.open({
+      ...input,
+      sessionId: null,
+      instructions: "Domos MCP directory read.",
+      mcp: { servers: [], inheritNative: true },
+      emit: async () => {},
+    });
+    if (!session.mcp) return unsupportedMcp();
+    const catalog = await session.mcp();
+    return { ...catalog, scope: "configuration" };
   },
   async open({
     process,
@@ -513,7 +527,8 @@ export const claudeProvider: EngineProvider = {
     let initialization:
       | Promise<NonNullable<ClaudeFrame["response"]>["response"]>
       | undefined;
-    async function control(subtype: string) {
+    async function control(subtype: string, signal?: AbortSignal) {
+      signal?.throwIfAborted();
       const requestId = randomUUID();
       const result =
         Promise.withResolvers<
@@ -525,12 +540,20 @@ export const claudeProvider: EngineProvider = {
       }, engineLimits.handshakeMs);
       timer.unref();
       controls.set(requestId, { ...result, timer });
-      await rpc.send({
-        type: "control_request",
-        request_id: requestId,
-        request: { subtype },
-      });
-      return result.promise;
+      const abort = () => result.reject(signal?.reason);
+      signal?.addEventListener("abort", abort, { once: true });
+      try {
+        await rpc.send({
+          type: "control_request",
+          request_id: requestId,
+          request: { subtype },
+        });
+        return await result.promise;
+      } finally {
+        clearTimeout(timer);
+        controls.delete(requestId);
+        signal?.removeEventListener("abort", abort);
+      }
     }
     function initialize() {
       initialization ??= control("initialize");
@@ -538,6 +561,39 @@ export const claudeProvider: EngineProvider = {
     }
     const session = {
       id,
+      async mcp(signal?: AbortSignal) {
+        await initialize();
+        const raw = z
+          .object({ mcpServers: z.array(z.unknown()) })
+          .parse(await control("mcp_status", signal));
+        const result = mcpEntries(
+          z.object({
+            name: z.string().min(1),
+            status: z.string(),
+            scope: z.string().optional(),
+            error: z.string().optional(),
+          }),
+          raw.mcpServers,
+        );
+        return mcpCatalog(
+          result.items.map((item) => ({
+            name: item.name,
+            source: item.scope ?? "claude",
+            enabled:
+              item.status === "disabled"
+                ? false
+                : ["connected", "pending", "failed", "needs-auth"].includes(
+                      item.status,
+                    )
+                  ? true
+                  : null,
+            status: item.status,
+            error: item.error,
+          })),
+          "session",
+          result.errors,
+        );
+      },
       async ready() {
         if (!ready.tools?.length) return;
         await initialize();

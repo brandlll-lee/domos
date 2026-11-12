@@ -343,6 +343,9 @@ test("OpenCode reads native skills through the authenticated work-process bridge
     },
   ];
   let status = 200;
+  let holdMcp = false;
+  const mcpStarted = Promise.withResolvers<void>();
+  const mcpCancelled = Promise.withResolvers<void>();
   const server = createServer((request, response) => {
     requests.push({
       path: request.url ?? "",
@@ -352,31 +355,41 @@ test("OpenCode reads native skills through the authenticated work-process bridge
     });
     response.statusCode = status;
     response.setHeader("Content-Type", "application/json");
+    if (request.url === "/mcp" && holdMcp) {
+      response.once("close", () => mcpCancelled.resolve());
+      mcpStarted.resolve();
+      return;
+    }
     const result =
-      request.url === "/skill"
-        ? skills
-        : request.url === "/provider"
-          ? {
-              all: [{ id: "example", name: "Example", models: {} }],
-              connected: [],
-            }
-          : request.url === "/provider/auth"
-            ? { example: [{ type: "oauth", label: "Sign in" }] }
-            : request.url === "/provider/example/oauth/authorize"
-              ? {
-                  url: "https://example.com/login",
-                  method: "code",
-                  instructions: "Sign in",
-                }
-              : request.url?.startsWith("/session/")
-                ? [
-                    {
-                      parts: [
-                        { type: "file", url: "data:image/png;base64,aW1hZ2U=" },
-                      ],
-                    },
-                  ]
-                : true;
+      request.url === "/mcp"
+        ? { docs: { status: "connected" } }
+        : request.url === "/skill"
+          ? skills
+          : request.url === "/provider"
+            ? {
+                all: [{ id: "example", name: "Example", models: {} }],
+                connected: [],
+              }
+            : request.url === "/provider/auth"
+              ? { example: [{ type: "oauth", label: "Sign in" }] }
+              : request.url === "/provider/example/oauth/authorize"
+                ? {
+                    url: "https://example.com/login",
+                    method: "code",
+                    instructions: "Sign in",
+                  }
+                : request.url?.startsWith("/session/")
+                  ? [
+                      {
+                        parts: [
+                          {
+                            type: "file",
+                            url: "data:image/png;base64,aW1hZ2U=",
+                          },
+                        ],
+                      },
+                    ]
+                  : true;
     response.end(JSON.stringify(result));
   });
   server.listen(0, "127.0.0.1");
@@ -431,9 +444,33 @@ test("OpenCode reads native skills through the authenticated work-process bridge
   ]);
   skills = [];
   expect(await session.skills?.()).toEqual([]);
+  expect(await session.mcp?.()).toMatchObject({
+    status: "complete",
+    scope: "session",
+    items: [{ name: "docs", status: "connected", enabled: true }],
+  });
+  status = 404;
+  await expect(session.mcp?.()).rejects.toMatchObject({ code: 404 });
   status = 503;
   await expect(session.skills?.()).rejects.toThrow("HTTP 503");
   status = 200;
+  holdMcp = true;
+  const cancelledRead = new AbortController();
+  const pendingMcp = process.request(
+    "/mcp",
+    "GET",
+    undefined,
+    cancelledRead.signal,
+  );
+  const rejectedMcp = expect(pendingMcp).rejects.toThrow(
+    "Cancelled catalog read",
+  );
+  await mcpStarted.promise;
+  cancelledRead.abort(new Error("Cancelled catalog read"));
+  await rejectedMcp;
+  await mcpCancelled.promise;
+  holdMcp = false;
+  expect(await session.mcp?.()).toMatchObject({ status: "complete" });
   expect(await process.request("/session/session-1/message?limit=256")).toEqual(
     [{ parts: [{ type: "text", text: "[Image retained in native session]" }] }],
   );
@@ -464,6 +501,7 @@ test("OpenCode reads native skills through the authenticated work-process bridge
   const count = requests.length;
   for (const [path, method] of [
     ["/skill", "POST"],
+    ["/mcp", "POST"],
     ["/skill/extra", "GET"],
     ["/provider", "DELETE"],
     ["/provider/example/extra", "POST"],
@@ -643,6 +681,30 @@ test("Pi discovers product and configured MCP tools through native search", asyn
   });
   const state = await rpc.request<{ sessionFile: string }>("get_state");
   expect(state.sessionFile).toBeTruthy();
+  const catalog = await process.mcp<{
+    items: { name: string; enabled: boolean; status: string; source: string }[];
+    errors: unknown[];
+  }>({ action: "pi_catalog" });
+  expect(catalog.errors).toEqual([]);
+  expect(catalog.items).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        name: "code",
+        enabled: true,
+        status: "unknown",
+      }),
+      expect.objectContaining({
+        name: "search",
+        enabled: true,
+        status: "unknown",
+      }),
+      expect.objectContaining({
+        name: "addon",
+        source: expect.stringContaining("servers.js"),
+        status: "unknown",
+      }),
+    ]),
+  );
   await rpc.request("prompt", { message: "/ordinary" });
   expect(warnings).toContain("ordinary-ready");
   expect(warnings).not.toContain("replacement-started");

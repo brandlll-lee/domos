@@ -34,6 +34,21 @@ export type EngineSkill = {
   path?: string;
   source: string;
 };
+export type EngineMcpCatalog = {
+  items: {
+    name: string;
+    source: string;
+    enabled: boolean | null;
+    status: string;
+    authStatus?: string;
+    error?: string;
+  }[];
+  status: "complete" | "partial" | "failed" | "unsupported";
+  scope: "configuration" | "session";
+  errors: { message: string; code?: string | number }[];
+  observedAt: number;
+  sessionId?: string;
+};
 export type EngineControls = {
   skills?: EngineSkill[];
   notices?: Record<string, string>;
@@ -279,6 +294,7 @@ export interface EngineProcess {
     path: string,
     method?: string,
     body?: unknown,
+    signal?: AbortSignal,
   ): Promise<T>;
   checkpoint?(provider: EngineId, sessionId: string): Promise<string | null>;
   account?(provider: EngineId): Promise<string>;
@@ -297,6 +313,7 @@ export interface EngineSession {
   models(): Promise<EngineModel[]>;
   controls?(): Promise<EngineControls>;
   skills?(): Promise<EngineSkill[] | undefined>;
+  mcp?(signal?: AbortSignal): Promise<EngineMcpCatalog>;
   compact?(): Promise<void>;
   authenticated?(): Promise<boolean>;
   vision?(): Promise<boolean | null>;
@@ -333,6 +350,9 @@ export interface EngineProvider {
     recovery: boolean;
   };
   open(input: EngineOpen): Promise<EngineSession>;
+  mcp?(
+    input: Pick<EngineOpen, "process" | "config">,
+  ): Promise<EngineMcpCatalog>;
   inspect?(input: Pick<EngineOpen, "process" | "config" | "env">): Promise<{
     authenticated: boolean;
     models: EngineModel[];

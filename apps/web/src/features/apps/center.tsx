@@ -27,7 +27,7 @@ import {
   managedConnections,
   nativeConnections,
 } from "./connection-state.ts";
-import { appsCopy } from "./copy.ts";
+import { appsCopy, nativeMcpNotice, nativeMcpStatus } from "./copy.ts";
 import "./style.css";
 
 type Connection = Awaited<ReturnType<typeof client.mcp.list>>[number];
@@ -721,6 +721,14 @@ export function AppsCenter({
                           ?.name ?? native.computerId}{" "}
                         · 只读
                       </p>
+                      <p className="apps-muted">
+                        {native.scope === "session"
+                          ? "当前私聊会话"
+                          : "工作目录配置；不代表本轮已连接"}
+                      </p>
+                      {nativeMcpNotice(native) && (
+                        <p role="status">{nativeMcpNotice(native)}</p>
+                      )}
                       {native.inheritance === "selectable" && (
                         <Checkbox
                           label="在下一轮沿用原生连接"
@@ -744,16 +752,11 @@ export function AppsCenter({
                         .map((item) => (
                           <div className="apps-native-row" key={item.name}>
                             <strong>{item.name}</strong>
-                            <span>
-                              {item.enabled && native.inherited
-                                ? "允许沿用原生配置"
-                                : "已停用或不沿用"}{" "}
-                              · {item.status}
-                            </span>
+                            <span>{nativeMcpStatus(item)}</span>
                             <small>{item.source}</small>
                           </div>
                         ))}
-                      {!native.items.length && (
+                      {native.status === "complete" && !native.items.length && (
                         <p className="apps-muted">未发现原生 MCP。</p>
                       )}
                     </>

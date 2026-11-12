@@ -206,8 +206,13 @@ export class WorkProcess implements EngineProcess {
     this.error.end();
   }
 
-  request<T = unknown>(path: string, method = "GET", body?: unknown) {
-    return this.exchange<T>({ type: "http", path, method, body });
+  request<T = unknown>(
+    path: string,
+    method = "GET",
+    body?: unknown,
+    signal?: AbortSignal,
+  ) {
+    return this.exchange<T>({ type: "http", path, method, body }, signal, true);
   }
 
   resolve(command: string) {
@@ -297,9 +302,11 @@ export class WorkProcess implements EngineProcess {
       const abort = () => {
         void this.send({
           type:
-            "type" in frame && frame.type === "mcp"
-              ? "mcp_cancel"
-              : "computer_cancel",
+            "type" in frame && frame.type === "http"
+              ? "http_cancel"
+              : "type" in frame && frame.type === "mcp"
+                ? "mcp_cancel"
+                : "computer_cancel",
           id,
         }).catch(() => {});
         if (observation) {
@@ -315,9 +322,11 @@ export class WorkProcess implements EngineProcess {
         () => {
           void this.send({
             type:
-              "type" in frame && frame.type === "mcp"
-                ? "mcp_cancel"
-                : "computer_cancel",
+              "type" in frame && frame.type === "http"
+                ? "http_cancel"
+                : "type" in frame && frame.type === "mcp"
+                  ? "mcp_cancel"
+                  : "computer_cancel",
             id,
           }).catch(() => {});
           if (action && !observation) return;

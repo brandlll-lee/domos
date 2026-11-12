@@ -12,6 +12,7 @@ import {
   managedConnections,
   nativeConnections,
 } from "../apps/connection-state.ts";
+import { nativeMcpNotice, nativeMcpStatus } from "../apps/copy.ts";
 import { useBotWork } from "../bots/details/use-bot-work.ts";
 import { useReadState } from "../read-state.ts";
 import { userError } from "../user-error.ts";
@@ -277,12 +278,13 @@ export function McpPicker({
           id: item.name,
           name: item.name,
           native: { provider: catalog.provider, source: item.source },
-          available: item.enabled && catalog.inherited,
-          status: item.status,
+          available: item.enabled === true && catalog.inherited,
+          status: nativeMcpStatus(item),
         }))
       : []),
   ];
   const errors = [
+    catalog ? nativeMcpNotice(catalog) : "",
     managed.error
       ? `Domos MCP：${userError(managed.error, "目录读取失败。")}`
       : "",
@@ -297,6 +299,13 @@ export function McpPicker({
     (!native.data && !native.error);
   return (
     <>
+      {catalog && (
+        <p className="composer-picker-state">
+          {catalog.scope === "session"
+            ? "当前私聊会话"
+            : "工作目录配置；不代表本轮已连接"}
+        </p>
+      )}
       {errors.map((error) => (
         <p key={error} className="composer-picker-state" role="status">
           {error}
@@ -312,18 +321,32 @@ export function McpPicker({
             detail={
               <p>
                 {item.native
-                  ? `${item.native.provider} · ${item.native.source} · ${item.available ? "沿用原生配置" : "未沿用"}`
+                  ? `${item.native.provider} · ${item.native.source} · ${catalog?.inherited ? "沿用原生配置" : "未沿用"}`
                   : `Domos · ${item.available ? "已授权" : "未授权或已停用"}`}{" "}
                 · {item.status}
               </p>
             }
           />
         ))}
-        {!loading && !errors.length && !items.length && (
-          <p className="composer-picker-state">暂无 MCP 连接</p>
-        )}
+        {!loading &&
+          !errors.length &&
+          catalog?.status === "complete" &&
+          !items.length && (
+            <p className="composer-picker-state">暂无 MCP 连接</p>
+          )}
       </div>
       {loading && <Loading label="正在读取 MCP" inline={items.length > 0} />}
+      <Button
+        variant="ghost"
+        disabled={native.loading}
+        onClick={() =>
+          void nativeConnections(botId)
+            .load(true)
+            .catch(() => {})
+        }
+      >
+        刷新原生连接
+      </Button>
     </>
   );
 }

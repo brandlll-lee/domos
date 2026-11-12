@@ -133,7 +133,7 @@ export async function openAgent(
     if (execution && computerRuntime && computers) {
       mcp.runner = (computerId, input, signal) =>
         computers.mcp(computerId, input, context, signal);
-      mcp.nativeCatalog = async (botId, ctx) => {
+      mcp.nativeCatalog = async (botId, ctx, signal) => {
         const doc = await harness.snapshot(
           EngineDoc,
           botId as import("@earendil-works/pi-durable").ConversationId,
@@ -141,26 +141,19 @@ export async function openAgent(
         );
         if (!doc?.computerId)
           throw new Error("请先选择 Bot 的工作电脑和 Harness。");
-        const catalog = await computers.mcp<{
-          items: {
-            name: string;
-            source: string;
-            enabled: boolean;
-            status: string;
-          }[];
-          inheritance: string;
-          readonly: boolean;
-        }>(
-          doc.computerId,
-          { action: "native", config: doc.config },
-          ctx,
-          undefined,
+        const catalog = await execution.nativeCatalog(
           botId,
+          doc.config,
+          ctx,
+          signal,
         );
         return {
           ...catalog,
           provider: doc.config.provider,
           computerId: doc.computerId,
+          inheritance:
+            doc.config.provider === "claude" ? "selectable" : "native",
+          readonly: true,
           inherited: await mcp.native(botId, ctx),
         };
       };

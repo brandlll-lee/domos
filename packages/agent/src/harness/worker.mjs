@@ -16,7 +16,6 @@ import { openGateway } from "./gateway.mjs";
 import { openHttpService } from "./http-service.mjs";
 import { closeMcpClients, mcpOperation } from "./mcp-client.mjs";
 import { nativeCheckpoint, nativeHistory } from "./native-history.mjs";
-import { nativeMcp } from "./native-mcp.mjs";
 
 delete process.env.ELECTRON_RUN_AS_NODE;
 const accountEnv = { ...process.env };
@@ -34,6 +33,7 @@ let computer;
 let tools;
 const gateways = new Map();
 const mcpProgress = new Map();
+const piCatalogs = new Map();
 const emit = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 
 async function close(force = false) {
@@ -48,6 +48,9 @@ async function close(force = false) {
     for (const item of pending.values())
       item.reject(new Error("Connection closed"));
     pending.clear();
+    for (const request of piCatalogs.values())
+      request.reject(new Error("Connection closed"));
+    piCatalogs.clear();
     for (const operation of operations.values()) operation.abort();
     const mcpClosed = Promise.all([
       ...[...gateways.values()].map((gateway) => gateway.close()),
@@ -132,6 +135,32 @@ function invoke(callId, name, args, signal) {
 }
 
 async function manageMcp(input, signal, onprogress) {
+  if (input.action === "pi_catalog") {
+    if (!child?.connected)
+      throw Object.assign(new Error("此进程未提供 Pi MCP 目录。"), {
+        code: -32601,
+      });
+    signal.throwIfAborted();
+    const id = ++sequence;
+    const result = Promise.withResolvers();
+    const abort = () => result.reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    const timer = setTimeout(
+      () => result.reject(new Error("Pi MCP 目录读取超时。")),
+      30000,
+    );
+    piCatalogs.set(id, result);
+    try {
+      child.send({ type: "mcp_catalog", id }, (error) => {
+        if (error) result.reject(error);
+      });
+      return await result.promise;
+    } finally {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", abort);
+      piCatalogs.delete(id);
+    }
+  }
   if (input.action === "progress") {
     await mcpProgress.get(input.requestId)?.(input.progress);
     return {};
@@ -140,8 +169,6 @@ async function manageMcp(input, signal, onprogress) {
     await gateways.get(input.id)?.notify(input.notification);
     return {};
   }
-  if (input.action === "native")
-    return nativeMcp(input.config, home, accountEnv, process.cwd());
   if (input.action === "mount") {
     if (gateways.has(input.id)) throw new Error("MCP 已挂载。");
     const request = async (callId, method, params, signal, progress) => {
@@ -293,7 +320,14 @@ async function launch(frame) {
     env,
     windowsHide: true,
     detached: process.platform !== "win32",
-    stdio: ["pipe", "pipe", "pipe"],
+    stdio: env.DOMOS_PI_MCP_URL
+      ? ["pipe", "pipe", "pipe", "ipc"]
+      : ["pipe", "pipe", "pipe"],
+  });
+  child.on("message", (message) => {
+    const request = piCatalogs.get(message?.id);
+    if (message?.error) request?.reject(new Error(message.error));
+    else request?.resolve(message?.result);
   });
   child.stdin.on("error", () => {});
   child.stdout.setEncoding("utf8").on("data", (data) => {
@@ -350,7 +384,13 @@ lines.on("line", (line) => {
         );
       } else if (frame.type === "http") {
         if (!http) throw new Error("Service unavailable");
-        void http.request(frame);
+        const controller = new AbortController();
+        operations.set(frame.id, controller);
+        void http
+          .request(frame, controller.signal)
+          .finally(() => operations.delete(frame.id));
+      } else if (frame.type === "http_cancel") {
+        operations.get(frame.id)?.abort();
       } else if (["history", "checkpoint", "account"].includes(frame.type)) {
         void (
           frame.type === "history"
@@ -382,11 +422,12 @@ lines.on("line", (line) => {
                 error?.constructor?.name === "UnauthorizedError" ||
                 error?.code === 401
                   ? "MCP_AUTH"
-                  : error instanceof McpError
+                  : error instanceof McpError ||
+                      frame.input.action === "pi_catalog"
                     ? error.code
                     : undefined,
               error:
-                frame.input.action === "native" || error instanceof McpError
+                frame.input.action === "pi_catalog" || error instanceof McpError
                   ? error.message
                   : "MCP 连接未完成。请检查配置和授权。",
             }),

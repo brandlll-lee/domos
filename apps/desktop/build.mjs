@@ -118,7 +118,6 @@ for (const name of [
   "pi-runtime.mjs",
   "http-service.mjs",
   "native-history.mjs",
-  "native-mcp.mjs",
   "mcp-client.mjs",
   "mcp-stdio.mjs",
   "gateway.mjs",

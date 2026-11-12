@@ -7,8 +7,10 @@ import {
   type ToolCall,
   type ToolCallUpdate,
 } from "@agentclientprotocol/sdk";
-import type { z } from "zod";
+import { z } from "zod";
 import { openCodeRequest } from "../http-service.mjs";
+import { mcpCatalog, mcpEntries } from "../mcp-catalog.ts";
+import { openOpenCodeAccount } from "../opencode-account.ts";
 import {
   type EngineAnswer,
   type EngineApproval,
@@ -20,6 +22,47 @@ import {
   engineLimits,
 } from "../types.ts";
 import { formContent, formQuestions } from "./question-form.ts";
+
+async function readOpenCodeMcp(
+  process: EngineOpen["process"],
+  scope: "configuration" | "session",
+  signal?: AbortSignal,
+) {
+  const result = z
+    .record(z.string(), z.unknown())
+    .parse(await process.request(...openCodeRequest("mcp"), undefined, signal));
+  const parsed = mcpEntries(
+    z.object({
+      name: z.string().min(1),
+      status: z.string(),
+      error: z.string().optional(),
+    }),
+    Object.entries(result).map(([name, value]) =>
+      typeof value === "object" && value ? { ...value, name } : { name },
+    ),
+  );
+  return mcpCatalog(
+    parsed.items.map((item) => ({
+      name: item.name,
+      source: "opencode",
+      enabled:
+        item.status === "disabled"
+          ? false
+          : [
+                "connected",
+                "failed",
+                "needs_auth",
+                "needs_client_registration",
+              ].includes(item.status)
+            ? true
+            : null,
+      status: item.status,
+      error: item.error,
+    })),
+    scope,
+    parsed.errors,
+  );
+}
 
 type NativeMessage = {
   info: {
@@ -86,6 +129,17 @@ export function acpProvider(
       models: true,
       recovery: descriptor.id === "opencode",
     },
+    ...(descriptor.id === "opencode"
+      ? {
+          async mcp({
+            process,
+            config,
+          }: Pick<EngineOpen, "process" | "config">) {
+            await openOpenCodeAccount(process, {}, config.command);
+            return readOpenCodeMcp(process, "configuration");
+          },
+        }
+      : {}),
     async open({
       process,
       config,
@@ -690,6 +744,12 @@ export function acpProvider(
       };
       const session: EngineSession = {
         id,
+        ...(openCode
+          ? {
+              mcp: (signal?: AbortSignal) =>
+                readOpenCodeMcp(process, "session", signal),
+            }
+          : {}),
         async skills() {
           if (descriptor.id !== "opencode") return undefined;
           const items = await process.request<

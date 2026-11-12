@@ -3,6 +3,9 @@ import { pathToFileURL } from "node:url";
 
 const sdkUrl = pathToFileURL(process.env.DOMOS_PI_SDK);
 const sdk = await import(sdkUrl.href);
+const { loadMcpConfig } = await import(
+  new URL("./extensions/mcp/config.js", sdkUrl).href
+);
 const { resolveProjectTrusted } = await import(
   new URL("./core/project-trust.js", sdkUrl).href
 );
@@ -35,12 +38,32 @@ for (let i = 0; i < args.length; i++) {
 const agentDir = sdk.getAgentDir();
 const trustStore = new sdk.ProjectTrustStore(agentDir);
 const excluded = new Set();
+let readMcpCatalog;
+process.on("message", (message) => {
+  if (message?.type !== "mcp_catalog") return;
+  try {
+    process.send?.({ id: message.id, result: readMcpCatalog() });
+  } catch {
+    process.send?.({ id: message.id, error: "Pi MCP 目录读取失败。" });
+  }
+});
 const createRuntime = async ({
   cwd,
   sessionManager,
   sessionStartEvent,
   projectTrustContext,
 }) => {
+  let configured = { servers: [], errors: [] };
+  const mcp = sdk.createMcpExtension({
+    loadConfig(ctx) {
+      configured = loadMcpConfig({
+        agentDir,
+        cwd: ctx.cwd,
+        projectTrusted: ctx.isProjectTrusted(),
+      });
+      return configured;
+    },
+  });
   const files = new FileSettingsStorage(cwd, agentDir);
   const settingsManager = sdk.SettingsManager.fromStorage(
     {
@@ -92,7 +115,38 @@ const createRuntime = async ({
       additionalExtensionPaths: extensions,
       appendSystemPrompt: instructions ? [instructions] : undefined,
       extensionFactories: [
-        { name: "mcp", builtin: true, factory: sdk.createMcpExtension() },
+        { name: "mcp", builtin: true, factory: mcp },
+        {
+          name: "domos-mcp-catalog",
+          builtin: true,
+          factory(pi) {
+            readMcpCatalog = () => {
+              const entries = [...configured.servers];
+              for (const item of pi.getMcpServers()) {
+                const namespace = (name) => name.replaceAll("-", "_");
+                if (
+                  !entries.some(
+                    (entry) => namespace(entry.name) === namespace(item.name),
+                  )
+                )
+                  entries.push({
+                    name: item.name,
+                    config: item.config,
+                    source: item.extensionPath,
+                  });
+              }
+              return {
+                items: entries.map(({ name, source, config }) => ({
+                  name,
+                  source,
+                  enabled: config.enabled !== false,
+                  status: "unknown",
+                })),
+                errors: configured.errors.map((message) => ({ message })),
+              };
+            };
+          },
+        },
         {
           name: "tool-search",
           builtin: true,

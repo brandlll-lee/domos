@@ -4448,6 +4448,10 @@ test("connection pages distinguish first read, empty search and refreshed native
           provider: "pi",
           computerId: "local",
           readonly: true,
+          status: "complete",
+          scope: "configuration",
+          errors: [],
+          observedAt: 1,
           inheritance: "selectable",
           inherited: false,
           items: [
@@ -4465,7 +4469,9 @@ test("connection pages distinguish first read, empty search and refreshed native
   await page.goto(url);
   await page.getByRole("button", { name: "连接中心", exact: true }).click();
   const dialog = page.locator(".apps-dialog");
-  await expect(dialog.getByRole("status")).toHaveText("正在读取连接…");
+  await expect(
+    dialog.getByRole("status", { name: "正在读取连接", exact: true }),
+  ).toBeVisible();
   gate.resolve();
   await expect(dialog.getByText("Context7", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "MCP", exact: true }).click();

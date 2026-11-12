@@ -1,0 +1,46 @@
+{
+  "codex": [
+    {
+      "name": "docs",
+      "enabled": true,
+      "auth_status": "unsupported",
+      "transport": { "type": "stdio" }
+    },
+    { "name": "paused", "enabled": false, "auth_status": "not_logged_in" }
+  ],
+  "claude": {
+    "mcpServers": [
+      {
+        "name": "plugin:notes:search",
+        "status": "pending",
+        "scope": "project"
+      },
+      { "name": "docs", "status": "connected", "scope": "user" },
+      { "name": "paused", "status": "disabled" },
+      { "name": "domos", "status": "connected" }
+    ]
+  },
+  "pi": {
+    "items": [
+      {
+        "name": "docs",
+        "enabled": true,
+        "source": "global",
+        "status": "unknown"
+      },
+      {
+        "name": "extension-notes",
+        "enabled": true,
+        "source": "notes.ts",
+        "status": "unknown"
+      }
+    ],
+    "errors": [{ "message": "Project MCP entry is invalid" }]
+  },
+  "opencode": {
+    "docs": { "status": "connected" },
+    "paused": { "status": "disabled" },
+    "notes": { "status": "needs_auth" },
+    "offline": { "status": "failed", "error": "Service unavailable" }
+  }
+}

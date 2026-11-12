@@ -31,6 +31,11 @@ import { EngineInputs } from "./inputs.ts";
 import { EngineRequestRejected } from "./json-lines.ts";
 import { LiveSession, type TurnHandlers } from "./live-session.ts";
 import {
+  mcpReadError,
+  readConfiguredMcp,
+  unsupportedMcp,
+} from "./mcp-catalog.ts";
+import {
   callProductTool,
   permissionTool,
   productCatalog,
@@ -47,7 +52,9 @@ import { type EngineRuntime, stored } from "./task-types.ts";
 import {
   type EngineAnswer,
   type EngineApproval,
+  type EngineConfig,
   type EngineEvent,
+  type EngineMcpCatalog,
   type EngineProcess,
   type EngineSession,
   engineLimits,
@@ -98,6 +105,85 @@ export class EngineExecution {
     this.computers = computers;
     this.files = files;
     computers.onIdle = (botId) => this.closeIdle(botId);
+  }
+
+  async nativeCatalog(
+    botId: number,
+    config: EngineConfig,
+    context: Context,
+    signal?: AbortSignal,
+    configuration = false,
+  ): Promise<EngineMcpCatalog> {
+    signal = signal ?? context.abortSignal;
+    signal?.throwIfAborted();
+    const deadline = AbortSignal.any([
+      ...(signal ? [signal] : []),
+      AbortSignal.timeout(engineLimits.handshakeMs),
+    ]);
+    const active = this.active.get(botId);
+    const retained = this.idle.get(botId);
+    const session = active
+      ? active.session
+      : retained?.live.closed
+        ? undefined
+        : retained?.live.session;
+    if (!configuration && session) {
+      if (!session.mcp)
+        return { ...unsupportedMcp(), scope: "session", sessionId: session.id };
+      const cancelled = Promise.withResolvers<never>();
+      const abort = () => cancelled.reject(deadline.reason);
+      deadline.addEventListener("abort", abort, { once: true });
+      try {
+        const catalog = await Promise.race([
+          session.mcp(deadline),
+          cancelled.promise,
+        ]);
+        deadline.throwIfAborted();
+        const mounted = active?.managed ?? retained?.managed;
+        return {
+          ...catalog,
+          sessionId: session.id,
+          items: catalog.items.filter(
+            (item) =>
+              ![...(mounted?.keys() ?? [])].some(
+                (id) => item.name === `domos_${id}`,
+              ),
+          ),
+        };
+      } catch (error) {
+        signal?.throwIfAborted();
+        return { ...mcpReadError(error, "session"), sessionId: session.id };
+      } finally {
+        deadline.removeEventListener("abort", abort);
+      }
+    }
+    const provider = engineProvider(config.provider);
+    if (!provider.mcp) return unsupportedMcp();
+    let worker: EngineProcess | undefined;
+    const cancel = () => {
+      void worker?.close();
+    };
+    deadline.addEventListener("abort", cancel, { once: true });
+    try {
+      worker = await this.computers.process(
+        botId,
+        [],
+        async () => {
+          throw new Error("目录读取不调用工具。");
+        },
+        context,
+      );
+      deadline.throwIfAborted();
+      const catalog = await readConfiguredMcp(provider, worker, config);
+      deadline.throwIfAborted();
+      return catalog;
+    } catch (error) {
+      signal?.throwIfAborted();
+      return mcpReadError(error, "configuration");
+    } finally {
+      deadline.removeEventListener("abort", cancel);
+      await worker?.close();
+    }
   }
 
   mcpExtension() {
@@ -602,15 +688,21 @@ export class EngineExecution {
         const connections = this.mcp;
         if (!connections) throw new Error("连接服务不可用。");
         if (!active.process.mcp) throw new Error("工作电脑需要更新 MCP 支持。");
-        const native = await active.process.mcp<{
-          items: { name: string; enabled: boolean }[];
-        }>({ action: "native", config: doc.config }, active.controller.signal);
+        const native = inherited
+          ? await this.nativeCatalog(
+              runtime.conversationId,
+              doc.config,
+              context,
+              active.controller.signal,
+              true,
+            )
+          : null;
         for (const item of managed) {
           if (
             (provider.id !== "claude" || inherited) &&
-            native.items.some(
+            native?.items.some(
               (entry) =>
-                entry.enabled &&
+                entry.enabled !== false &&
                 entry.name.toLowerCase() === item.name.toLowerCase(),
             )
           )
@@ -618,6 +710,8 @@ export class EngineExecution {
               `MCP ${item.name} 与原生来源同名。请为此 Bot 选择原生连接，或先在原生程序停用该连接。`,
             );
           try {
+            if (native && native.status !== "complete")
+              throw new Error("原生 MCP 目录未完整读取，无法核对同名连接。");
             const connected = await this.connectManaged(
               runtime.conversationId,
               item,
@@ -638,7 +732,9 @@ export class EngineExecution {
               context,
             );
             mcpNotices[`mcp:${item.id}`] =
-              `MCP ${item.name} 暂不可用。本轮将继续。可使用 request_credentials 完成配置，再通过 mcp_call 读取工具。`;
+              native && native.status !== "complete"
+                ? `MCP ${item.name} 本轮未加载。原生目录未完整读取，无法核对同名连接。请刷新原生目录后重试。本轮将继续。`
+                : `MCP ${item.name} 暂不可用。本轮将继续。可使用 request_credentials 完成配置，再通过 mcp_call 读取工具。`;
           }
         }
       }
@@ -759,6 +855,30 @@ export class EngineExecution {
         sessionId: memoryReview ? (snapshot.sessionId ?? null) : doc.sessionId,
         instructions,
       });
+      if (active.managed?.size && inherited) {
+        const native = await this.nativeCatalog(
+          runtime.conversationId,
+          doc.config,
+          context,
+          active.controller.signal,
+        );
+        for (const item of managed) {
+          if (
+            active.managed.has(item.id) &&
+            native.items.some(
+              (entry) =>
+                entry.enabled !== false &&
+                entry.name.toLowerCase() === item.name.toLowerCase(),
+            )
+          )
+            throw new Error(
+              `MCP ${item.name} 与当前会话的原生来源同名。请先选择连接来源。`,
+            );
+        }
+        if (native.status !== "complete")
+          mcpNotices["mcp:catalog"] =
+            "当前会话的原生 MCP 目录未完整读取。已保留启动前的配置检查结果。";
+      }
       if (Object.keys(mcpNotices).length)
         await emit({ type: "runtime", state: { notices: mcpNotices } });
       initialized.resolve(active.session);
