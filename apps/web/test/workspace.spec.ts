@@ -4403,6 +4403,225 @@ test("shared question and approval cards persist answers and terminal states", a
   }
 });
 
+test("question replies align and completed questions remain readable", async ({
+  page,
+}, info) => {
+  worker.send({
+    approval: {
+      id: "reading-question",
+      kind: "question",
+      title: "一起了解你的性格倾向",
+      detail: "先从一个日常场景开始。没有标准答案。",
+      questions: [
+        {
+          id: "day",
+          title: "忙碌一周后，你更想怎么过？",
+          options: [
+            {
+              id: "friends",
+              label: "找朋友见面或出去玩",
+              description: "和人在一起会让我更有精神。",
+            },
+            {
+              id: "alone",
+              label: "自己待着，做喜欢的事",
+              description: "独处会让我恢复精力。",
+            },
+            {
+              id: "both",
+              label: "两种都喜欢",
+              description: "主要看心情和跟谁在一起。",
+            },
+          ],
+        },
+      ],
+    },
+  });
+  await page.goto(url);
+  const card = page.getByRole("region", {
+    name: "一起了解你的性格倾向",
+    exact: true,
+  });
+  await expect(card).toBeVisible();
+  const details = page.getByRole("complementary", { name: /的详情$/ });
+  if (await details.isVisible())
+    await details.getByRole("button", { name: "关闭", exact: true }).click();
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    for (const width of [1360, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const rows = await card
+        .locator(".question-reply")
+        .evaluateAll((elements) =>
+          elements.map((el) => {
+            const icon = el.querySelector("svg")?.getBoundingClientRect();
+            const copy = el
+              .querySelector(".question-reply-copy")
+              ?.getBoundingClientRect();
+            return {
+              icon: icon?.left,
+              copy: copy?.left,
+              align: getComputedStyle(el).textAlign,
+            };
+          }),
+        );
+      expect(new Set(rows.map((row) => row.icon)).size).toBe(1);
+      expect(new Set(rows.map((row) => row.copy)).size).toBe(1);
+      expect(rows.every((row) => row.align === "left")).toBe(true);
+      await page.screenshot({
+        path: info.outputPath(`question-aligned-${colorScheme}-${width}.png`),
+      });
+    }
+  }
+  await card.getByRole("button", { name: /自己待着/ }).click();
+  await expect(card.getByRole("status")).toHaveText("已回答");
+  await card.getByRole("button", { name: "查看完整问题", exact: true }).click();
+  const dialog = page.getByRole("dialog", {
+    name: "一起了解你的性格倾向",
+    exact: true,
+  });
+  await expect(
+    dialog.getByText("一起了解你的性格倾向", { exact: true }),
+  ).toHaveCount(1);
+  await expect(dialog.locator(".question-reply[data-selected]")).toContainText(
+    "自己待着",
+  );
+  for (const row of await dialog.locator(".question-reply").all())
+    await expect(row).toHaveCSS("opacity", "1");
+  await expect(dialog.locator(".question-reply.button")).toHaveCount(0);
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await page.screenshot({
+      path: info.outputPath(`question-readable-${colorScheme}.png`),
+    });
+  }
+});
+
+test("late history updates and reconnect snapshots retain the reading anchor", async ({
+  page,
+}, info) => {
+  const receipt = once(worker, "message");
+  worker.send({ history: 50 });
+  await receipt;
+  const botId = (await (await page.request.post(`${url}/rpc/bots/list`)).json())
+    .json[0].id;
+  const snapshot = (
+    await (
+      await page.request.post(`${url}/rpc/get`, { data: { json: { botId } } })
+    ).json()
+  ).json;
+  const replies = snapshot.messages.filter(
+    (message: { role: string }) => message.role === "assistant",
+  );
+  const late = [replies[2], replies[10]];
+  const initial = {
+    ...snapshot,
+    messages: snapshot.messages.filter(
+      (message: { id: string }) => !late.some((item) => item.id === message.id),
+    ),
+  };
+  await page.addInitScript((initial) => {
+    const fetch = window.fetch.bind(window);
+    window.fetch = async (...args) => {
+      const input = args[0];
+      const url = input instanceof Request ? input.url : String(input);
+      if (!url.endsWith("/rpc/changes")) return fetch(...args);
+      const stream = new ReadableStream({
+        start(controller) {
+          const deliver = (event: unknown) =>
+            controller.enqueue(
+              new TextEncoder().encode(
+                `event: message\ndata: ${JSON.stringify({ json: event })}\n\n`,
+              ),
+            );
+          Reflect.set(window, "deliverChatUpdate", deliver);
+          deliver({ type: "snapshot", view: initial });
+        },
+      });
+      return new Response(stream, {
+        headers: { "content-type": "text/event-stream" },
+      });
+    };
+  }, initial);
+  await page.goto(url);
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(48);
+  const transcript = page.locator(".transcript");
+  await transcript.evaluate((el) => {
+    el.scrollTop = el.scrollHeight / 2;
+  });
+  await expect(
+    page.getByRole("button", { name: "返回最新", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    const viewport = document.querySelector(".transcript");
+    if (!viewport) throw new Error("Transcript required");
+    const top = viewport.getBoundingClientRect().top;
+    const node = [
+      ...document.querySelectorAll<HTMLElement>("[data-transcript-key]"),
+    ].find((el) => el.getBoundingClientRect().bottom > top);
+    if (!node) throw new Error("Reading anchor required");
+    const start = node.getBoundingClientRect().top;
+    const samples: number[] = [];
+    Reflect.set(window, "orderAnchorSamples", samples);
+    Reflect.set(window, "sampleOrderAnchor", true);
+    const sample = () => {
+      samples.push(
+        node.isConnected
+          ? Math.abs(node.getBoundingClientRect().top - start)
+          : Infinity,
+      );
+      if (Reflect.get(window, "sampleOrderAnchor"))
+        requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+  await page.evaluate(
+    (message) =>
+      Reflect.get(
+        window,
+        "deliverChatUpdate",
+      )({ type: "update", state: {}, messages: [message], removed: [] }),
+    late[0],
+  );
+  await expect(page.locator(`[data-message-id="${late[0].id}"]`)).toHaveCount(
+    1,
+  );
+  await page.evaluate(
+    (view) =>
+      Reflect.get(window, "deliverChatUpdate")({ type: "snapshot", view }),
+    snapshot,
+  );
+  await expect(page.locator(`[data-message-id="${late[1].id}"]`)).toHaveCount(
+    1,
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (Reflect.get(window, "orderAnchorSamples") as number[]).length,
+      ),
+    )
+    .toBeGreaterThan(2);
+  const samples = await page.evaluate(() => {
+    Reflect.set(window, "sampleOrderAnchor", false);
+    return Reflect.get(window, "orderAnchorSamples") as number[];
+  });
+  expect(Math.max(...samples)).toBeLessThan(2);
+  const ids = await page
+    .locator("[data-message-id]")
+    .evaluateAll((elements) =>
+      elements.map((el) => el.getAttribute("data-message-id")),
+    );
+  expect(ids).toEqual(
+    snapshot.messages
+      .map((message: { id: string }) => message.id)
+      .filter((id: string) => ids.includes(id)),
+  );
+  await info.attach("late-history-anchor", {
+    body: JSON.stringify({ samples, maxShift: Math.max(...samples) }),
+    contentType: "application/json",
+  });
+});
+
 test("rich questions keep media separate from replies and restore selected actions", async ({
   page,
 }, info) => {
@@ -4475,7 +4694,7 @@ test("rich questions keep media separate from replies and restore selected actio
       kind: "question",
       title: "你更喜欢哪种呈现？",
       detail: "可以先查看、播放和比较，再告诉我你的选择。",
-      footer: "选择只表达你的意图。后续操作仍需按权限执行。",
+      footer: "附件包含各方案的参考材料。",
       attachments: [files[3]],
       questions: [
         {
@@ -4508,6 +4727,14 @@ test("rich questions keep media separate from replies and restore selected actio
   });
   await expect(card).toBeVisible();
   await expect(card.locator(".question-candidate")).toHaveCount(4);
+  await expect(card.locator(".question-utilities")).toContainText("自己填写");
+  await expect(card.locator(".question-utilities")).toContainText(
+    "显示更多选项",
+  );
+  for (const row of await card.locator(".question-reply").all()) {
+    await expect(row.locator(":scope > svg").first()).toBeVisible();
+    await expect(row).toHaveCSS("text-align", "left");
+  }
   await expect(card.locator("audio")).not.toHaveAttribute("src");
   await expect(card.locator("video")).toHaveCount(0);
   await card.locator(".image-thumbnail").click();
@@ -4615,11 +4842,19 @@ test("rich questions keep media separate from replies and restore selected actio
     exact: true,
   });
   await expect(
-    dialog.getByRole("button", { name: "选择这一版", exact: true }).first(),
-  ).toHaveAttribute("aria-pressed", "true");
+    dialog.getByText("你更喜欢哪种呈现？", { exact: true }),
+  ).toHaveCount(1);
+  await expect(dialog.locator(".question-reply[data-selected]")).toHaveText(
+    "选择这一版",
+  );
+  await expect(dialog.locator(".question-reply[data-selected]")).toHaveCSS(
+    "opacity",
+    "1",
+  );
   await expect(
-    dialog.getByRole("button", { name: "选择这一版", exact: true }).first(),
-  ).toBeDisabled();
+    dialog.getByRole("button", { name: "选择这一版", exact: true }),
+  ).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath("rich-question-read.png") });
 });
 
 test("skill packages preview changes and restore resources across reload", async ({

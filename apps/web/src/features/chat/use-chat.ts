@@ -19,7 +19,7 @@ import { chatCopy } from "./copy.ts";
 import type { MessageTarget } from "./message-target.ts";
 import { readingPosition } from "./reading-position.ts";
 import { rejectionMessage } from "./request-error.ts";
-import { transcriptState } from "./transcript-state.ts";
+import { mergeChatMessages, transcriptState } from "./transcript-state.ts";
 
 export type SendInput = MaterialSelection & {
   text: string;
@@ -253,24 +253,17 @@ export function useChat(
             next = {
               ...event.view,
               ...(earlier.length ? { before: previous?.before } : {}),
-              messages: [...earlier, ...event.view.messages],
+              messages: mergeChatMessages(earlier, event.view.messages),
             };
           } else if (previous) {
-            const changed = new Map(
-              event.messages.map((message) => [message.id, message]),
-            );
-            const known = new Set(
-              previous.messages.map((message) => message.id),
-            );
             next = {
               ...previous,
               ...event.state,
-              messages: [
-                ...previous.messages
-                  .filter((message) => !event.removed.includes(message.id))
-                  .map((message) => changed.get(message.id) ?? message),
-                ...event.messages.filter((message) => !known.has(message.id)),
-              ],
+              messages: mergeChatMessages(
+                previous.messages,
+                event.messages,
+                event.removed,
+              ),
             };
           } else continue;
           next.runs = [
@@ -335,7 +328,6 @@ export function useChat(
         if (store.snapshot().history !== history) return;
         const view = history ?? current.current;
         if (!view || view[direction] !== cursor) return;
-        const known = new Set(view.messages.map((message) => message.id));
         const next = {
           ...view,
           [direction]: page[direction],
@@ -347,16 +339,7 @@ export function useChat(
               ]),
             ).values(),
           ],
-          messages:
-            direction === "before"
-              ? [
-                  ...page.messages.filter((message) => !known.has(message.id)),
-                  ...view.messages,
-                ]
-              : [
-                  ...view.messages,
-                  ...page.messages.filter((message) => !known.has(message.id)),
-                ],
+          messages: mergeChatMessages(page.messages, view.messages),
         };
         if (history) store.update({ history: next });
         else {

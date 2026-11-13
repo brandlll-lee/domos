@@ -5045,9 +5045,13 @@ test("native questions use the shared card and native replies persist", async ({
     name: "你要哪种结果？",
     exact: true,
   });
-  await expect(
-    answered.getByRole("button", { name: "简短", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
+  await expect(answered.locator(".question-reply[data-selected]")).toHaveText(
+    "简短",
+  );
+  await expect(answered.locator(".question-reply[data-selected]")).toHaveCSS(
+    "opacity",
+    "1",
+  );
   await page.keyboard.press("Escape");
   await control({
     responses: [

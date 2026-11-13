@@ -1,5 +1,30 @@
+import type { ChatMessage } from "@domos/agent/messages";
 import { chatTranscript, type TranscriptItem } from "@domos/agent/transcript";
 import type { ChatView } from "@domos/agent/view";
+
+export function mergeChatMessages(
+  previous: ChatMessage[],
+  changed: ChatMessage[],
+  removed: string[] = [],
+): ChatMessage[] {
+  const messages = new Map(previous.map((message) => [message.id, message]));
+  for (const id of removed) messages.delete(id);
+  for (const message of changed) messages.set(message.id, message);
+  return [...messages.values()]
+    .map((message) => ({
+      message,
+      position: message.cursor?.split(":").map(Number),
+    }))
+    .sort((a, b) => {
+      if (!a.position) return b.position ? 1 : 0;
+      if (!b.position) return -1;
+      return (
+        (a.position[0] ?? 0) - (b.position[0] ?? 0) ||
+        (a.position[1] ?? 0) - (b.position[1] ?? 0)
+      );
+    })
+    .map(({ message }) => message);
+}
 
 function sameFields(previous: object, next: object): boolean {
   const a = Object.entries(previous);
@@ -47,32 +72,12 @@ export function transcriptState() {
       next.set(key, item);
       history.push(item);
     }
-    let ordered = items.flatMap((item) => {
-      const row = next.get(`${item.kind}:${item.id}`);
-      return row ? [row] : [];
-    });
-    ordered.push(
-      ...history.filter((item) => !retained.has(`${item.kind}:${item.id}`)),
-    );
-    const users = history.filter(
-      (item) => item.kind === "message" && item.message.role === "user",
-    );
-    let userIndex = 0;
-    if (
-      ordered.some(
-        (item) =>
-          item.kind === "message" &&
-          item.message.role === "user" &&
-          item !== users[userIndex++],
-      )
-    )
-      ordered = history;
     retained = next;
     if (
-      ordered.length !== items.length ||
-      ordered.some((item, index) => item !== items[index])
+      history.length !== items.length ||
+      history.some((item, index) => item !== items[index])
     )
-      items = ordered;
+      items = history;
     return { items };
   };
 }

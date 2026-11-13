@@ -162,15 +162,28 @@ export function useTranscript(
         return;
       }
     }
-    const first = previous.current.items[0];
-    const prepended = first
-      ? items.findIndex((item) => keyOf(item) === keyOf(first))
+    const leading = previous.current.items[0];
+    const prepended = leading
+      ? items.findIndex((item) => keyOf(item) === keyOf(leading))
       : 0;
     if (range && prepended > 0) {
       previous.current = { ...previous.current, items };
       setRange({
         start: Math.max(0, range.start + prepended - pageSize),
         end: range.start + prepended + pageSize,
+      });
+      return;
+    }
+    const first = range ? previous.current.items[range.start] : undefined;
+    const position = first
+      ? items.findIndex((item) => keyOf(item) === keyOf(first))
+      : -1;
+    if (range && position >= 0 && position !== range.start) {
+      const shift = position - range.start;
+      previous.current = { ...previous.current, items };
+      setRange({
+        start: Math.max(0, range.start + shift),
+        end: Math.min(items.length, range.end + shift),
       });
       return;
     }
@@ -203,9 +216,10 @@ export function useTranscript(
       )
         return;
       const old = previous.current;
+      const lastSeen = items.findLastIndex((item) => seen.has(keyOf(item)));
       const added =
         old.ready && old.items !== items
-          ? items.filter((item) => incoming(item) && !seen.has(keyOf(item)))
+          ? items.slice(lastSeen + 1).filter((item) => incoming(item))
           : [];
       const style = getComputedStyle(element);
       const top = Number.parseFloat(style.paddingTop);
@@ -406,10 +420,14 @@ export function useTranscript(
     element?.addEventListener("wheel", interrupt, { passive: true });
     element?.addEventListener("touchstart", interrupt, { passive: true });
     const observer = new ResizeObserver(() => measure.current());
+    const list = content.current;
+    const loaded = () => measure.current();
+    list?.addEventListener("load", loaded, true);
     if (viewport.current) observer.observe(viewport.current);
     if (content.current) observer.observe(content.current);
     return () => {
       observer.disconnect();
+      list?.removeEventListener("load", loaded, true);
       element?.removeEventListener("scrollend", complete);
       element?.removeEventListener("wheel", interrupt);
       element?.removeEventListener("touchstart", interrupt);

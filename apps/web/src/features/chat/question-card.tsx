@@ -4,12 +4,58 @@ import type { ChatMessage } from "@domos/agent/messages";
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
 import { TextField } from "@domos/ui/field";
+import { ArrowUUpLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowUUpLeft";
 import { CheckCircleIcon } from "@phosphor-icons/react/dist/csr/CheckCircle";
 import { CircleIcon } from "@phosphor-icons/react/dist/csr/Circle";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { client } from "../../client.ts";
 import { useWorkAction } from "../bots/details/use-bot-work.ts";
 import { Attachments } from "./attachments.tsx";
+
+function QuestionReply({
+  children,
+  selected,
+  multiple,
+  disabled,
+  onClick,
+}: {
+  children: ReactNode;
+  selected: boolean;
+  multiple?: boolean;
+  disabled?: boolean;
+  onClick?: () => void;
+}) {
+  const content = (
+    <>
+      <ArrowUUpLeftIcon aria-hidden />
+      <span className="question-reply-copy">{children}</span>
+      {(multiple || (!onClick && selected)) &&
+        (selected ? (
+          <CheckCircleIcon
+            aria-hidden={!!onClick}
+            aria-label={onClick ? undefined : "已选择"}
+          />
+        ) : (
+          <CircleIcon aria-hidden />
+        ))}
+    </>
+  );
+  return onClick ? (
+    <Button
+      variant="ghost"
+      className="question-reply"
+      disabled={disabled}
+      aria-pressed={selected}
+      onClick={onClick}
+    >
+      {content}
+    </Button>
+  ) : (
+    <div className="question-reply" data-selected={selected || undefined}>
+      {content}
+    </div>
+  );
+}
 
 export function QuestionCard({
   botId,
@@ -99,7 +145,13 @@ export function QuestionCard({
     <div className="question-content">
       {materials(request.attachments)}
       <header className="question-heading">
-        <strong>{request.title}</strong>
+        {pending ? (
+          <strong>{request.title}</strong>
+        ) : (
+          <span className="question-footnote" role="status">
+            {status}
+          </span>
+        )}
         {request.detail && <p>{request.detail}</p>}
       </header>
       {questions.map((question) => {
@@ -107,7 +159,7 @@ export function QuestionCard({
         const cards = options.some(
           (option) => option.attachments?.length || option.actions?.length,
         );
-        const count = visible[question.id] ?? 4;
+        const count = visible[question.id] ?? (pending ? 4 : options.length);
         const choices = questionChoices(question);
         const values = selected[question.id] ?? [];
         return (
@@ -150,27 +202,22 @@ export function QuestionCard({
                       )}
                       <div className="question-choice-actions">
                         {actions.map((choice) => (
-                          <Button
+                          <QuestionReply
                             key={choice.id}
-                            variant="ghost"
-                            className="question-reply"
                             disabled={disabled}
-                            aria-pressed={values.includes(choice.id)}
-                            onClick={() => choose(question, choice.id)}
+                            selected={values.includes(choice.id)}
+                            multiple={question.multiple}
+                            onClick={
+                              pending
+                                ? () => choose(question, choice.id)
+                                : undefined
+                            }
                           >
-                            {question.multiple &&
-                              (values.includes(choice.id) ? (
-                                <CheckCircleIcon aria-hidden />
-                              ) : (
-                                <CircleIcon aria-hidden />
-                              ))}
-                            <span>
-                              {choice.label}
-                              {!cards && option.description && (
-                                <small>{option.description}</small>
-                              )}
-                            </span>
-                          </Button>
+                            {choice.label}
+                            {!cards && option.description && (
+                              <small>{option.description}</small>
+                            )}
+                          </QuestionReply>
                         ))}
                       </div>
                     </div>
@@ -178,43 +225,51 @@ export function QuestionCard({
                 })}
               </div>
             )}
-            {options.length > count && (
-              <Button
-                variant="ghost"
-                size="small"
-                onClick={() =>
-                  setVisible((current) => ({
-                    ...current,
-                    [question.id]: count + 4,
-                  }))
-                }
-              >
-                显示更多选项（{options.length - count}）
-              </Button>
-            )}
-            {pending &&
-              question.allowOther &&
-              !!options.length &&
-              !custom[question.id] && (
-                <Button
-                  variant="ghost"
-                  className="question-reply question-custom"
-                  disabled={disabled}
-                  onClick={() => {
-                    setCustom((current) => ({
-                      ...current,
-                      [question.id]: true,
-                    }));
-                    if (!question.multiple)
-                      setAnswers((current) => ({
+            {(options.length > count ||
+              (pending &&
+                question.allowOther &&
+                !!options.length &&
+                !custom[question.id])) && (
+              <div className="question-utilities">
+                {options.length > count && (
+                  <Button
+                    variant="ghost"
+                    size="small"
+                    onClick={() =>
+                      setVisible((current) => ({
                         ...current,
-                        [question.id]: [],
-                      }));
-                  }}
-                >
-                  自己填写
-                </Button>
-              )}
+                        [question.id]: count + 4,
+                      }))
+                    }
+                  >
+                    显示更多选项（{options.length - count}）
+                  </Button>
+                )}
+                {pending &&
+                  question.allowOther &&
+                  !!options.length &&
+                  !custom[question.id] && (
+                    <Button
+                      variant="ghost"
+                      size="small"
+                      disabled={disabled}
+                      onClick={() => {
+                        setCustom((current) => ({
+                          ...current,
+                          [question.id]: true,
+                        }));
+                        if (!question.multiple)
+                          setAnswers((current) => ({
+                            ...current,
+                            [question.id]: [],
+                          }));
+                      }}
+                    >
+                      自己填写
+                    </Button>
+                  )}
+              </div>
+            )}
             {pending && (!options.length || custom[question.id]) && (
               <TextField
                 label="你的回答"
@@ -241,6 +296,19 @@ export function QuestionCard({
                 }
               />
             )}
+            {!pending &&
+              (values.some(
+                (value) => !choices.some((choice) => choice.id === value),
+              ) ||
+                record.answer?.text) && (
+                <p className="question-written-answer">
+                  {values
+                    .filter(
+                      (value) => !choices.some((choice) => choice.id === value),
+                    )
+                    .join("、") || record.answer?.text}
+                </p>
+              )}
           </section>
         );
       })}
@@ -341,7 +409,8 @@ export function QuestionCard({
           </div>
           <Button
             variant="ghost"
-            className="question-reply"
+            size="small"
+            className="question-review"
             onClick={() => setOpen(true)}
           >
             查看完整问题
@@ -352,9 +421,6 @@ export function QuestionCard({
             title={request.title}
             className="decision-dialog"
           >
-            <p className="interaction-result" role="status">
-              {status}
-            </p>
             {body}
           </Dialog>
         </>
