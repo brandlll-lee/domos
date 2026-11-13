@@ -4622,6 +4622,265 @@ test("late history updates and reconnect snapshots retain the reading anchor", a
   });
 });
 
+test("successive question updates keep earlier text in place through history and reconnect", async ({
+  page,
+}, info) => {
+  const botId = (await (await page.request.post(`${url}/rpc/bots/list`)).json())
+    .json[0].id;
+  const snapshot = (
+    await (
+      await page.request.post(`${url}/rpc/get`, { data: { json: { botId } } })
+    ).json()
+  ).json;
+  const time = Date.now();
+  const text = {
+    id: "sequence-text",
+    role: "assistant",
+    turnId: "sequence-turn",
+    receivedAt: time,
+    timestamp: time + 1,
+    stopped: false,
+    content: [
+      {
+        type: "text",
+        text: "先查看这些方案，再告诉我你的选择。",
+        key: "sequence-text",
+      },
+    ],
+  };
+  const cards = [1, 2, 3].map((index) => ({
+    id: `sequence-question-${index}`,
+    role: "assistant",
+    turnId: "sequence-turn",
+    timestamp: time + index * 100,
+    stopped: false,
+    pending: true,
+    content: [],
+    approval: {
+      state: "pending",
+      request: {
+        id: `question-${index}`,
+        kind: "question",
+        title: `选择方案 ${index}`,
+        detail: "",
+        requestedAt: time + index * 100,
+        options: [{ id: "a", label: "第一项" }],
+      },
+    },
+  }));
+  const initial = { ...snapshot, messages: [text], busy: true };
+  await page.addInitScript((initial) => {
+    const fetch = window.fetch.bind(window);
+    window.fetch = async (...args) => {
+      const input = args[0];
+      const address = input instanceof Request ? input.url : String(input);
+      if (!address.endsWith("/rpc/changes")) return fetch(...args);
+      const stream = new ReadableStream({
+        start(controller) {
+          const deliver = (event: unknown) =>
+            controller.enqueue(
+              new TextEncoder().encode(
+                `event: message\ndata: ${JSON.stringify({ json: event })}\n\n`,
+              ),
+            );
+          Reflect.set(window, "deliverQuestionSequence", deliver);
+          deliver({
+            type: "snapshot",
+            view:
+              JSON.parse(
+                sessionStorage.getItem("questionSequence") ?? "null",
+              ) ?? initial,
+          });
+        },
+      });
+      return new Response(stream, {
+        headers: { "content-type": "text/event-stream" },
+      });
+    };
+  }, initial);
+  await page.goto(url);
+  const row = page.locator('[data-message-id="sequence-text"]');
+  await expect(row).toBeVisible();
+  await row.evaluate((element) =>
+    Reflect.set(window, "sequenceTextNode", element),
+  );
+  await page.evaluate(() => {
+    const samples: string[][] = [];
+    Reflect.set(window, "sequenceSamples", samples);
+    Reflect.set(window, "sampleSequence", true);
+    const sample = () => {
+      samples.push(
+        [...document.querySelectorAll("[data-message-id]")].map(
+          (element) => element.getAttribute("data-message-id") ?? "",
+        ),
+      );
+      if (Reflect.get(window, "sampleSequence")) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+  const expected = [text.id];
+  const stored = [];
+  for (const [index, card] of cards.entries()) {
+    expected.push(card.id);
+    await page.evaluate(
+      (message) =>
+        Reflect.get(
+          window,
+          "deliverQuestionSequence",
+        )({ type: "update", state: {}, messages: [message], removed: [] }),
+      card,
+    );
+    await expect
+      .poll(() =>
+        page
+          .locator("[data-message-id]")
+          .evaluateAll((elements) =>
+            elements.map((element) => element.getAttribute("data-message-id")),
+          ),
+      )
+      .toEqual(expected);
+    const settled = {
+      ...card,
+      pending: false,
+      cursor: `${index + 1}:0`,
+      approval: {
+        ...card.approval,
+        state: ["answered", "denied", "expired"][index],
+      },
+    };
+    stored.push(settled);
+    await page.evaluate(
+      (message) =>
+        Reflect.get(
+          window,
+          "deliverQuestionSequence",
+        )({ type: "update", state: {}, messages: [message], removed: [] }),
+      settled,
+    );
+    await expect
+      .poll(() =>
+        page
+          .locator("[data-message-id]")
+          .evaluateAll((elements) =>
+            elements.map((element) => element.getAttribute("data-message-id")),
+          ),
+      )
+      .toEqual(expected);
+    expect(
+      await row.evaluate(
+        (element) => element === Reflect.get(window, "sequenceTextNode"),
+      ),
+    ).toBe(true);
+  }
+  const history = {
+    ...snapshot,
+    messages: [...stored, { ...text, cursor: "100:0", timestamp: time + 1000 }],
+    busy: false,
+  };
+  await page.evaluate((view) => {
+    sessionStorage.setItem("questionSequence", JSON.stringify(view));
+    Reflect.get(window, "deliverQuestionSequence")({ type: "snapshot", view });
+  }, history);
+  await expect
+    .poll(() =>
+      page
+        .locator("[data-message-id]")
+        .evaluateAll((elements) =>
+          elements.map((element) => element.getAttribute("data-message-id")),
+        ),
+    )
+    .toEqual(expected);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (Reflect.get(window, "sequenceSamples") as string[][]).length,
+      ),
+    )
+    .toBeGreaterThan(2);
+  const samples = await page.evaluate(() => {
+    Reflect.set(window, "sampleSequence", false);
+    return Reflect.get(window, "sequenceSamples") as string[][];
+  });
+  for (const ids of samples)
+    expect(ids).toEqual(expected.filter((id) => ids.includes(id)));
+  await info.attach("question-sequence-frames", {
+    body: JSON.stringify(samples),
+    contentType: "application/json",
+  });
+  await page.reload();
+  await expect
+    .poll(() =>
+      page
+        .locator("[data-message-id]")
+        .evaluateAll((elements) =>
+          elements.map((element) => element.getAttribute("data-message-id")),
+        ),
+    )
+    .toEqual(expected);
+});
+
+test("candidate grids show every option and adapt to their available width", async ({
+  page,
+}) => {
+  await page.goto(url);
+  for (const count of [1, 2, 3, 4]) {
+    const title = `比较 ${count} 个方案`;
+    worker.send({
+      approval: {
+        id: `grid-${count}`,
+        kind: "question",
+        title,
+        detail: "",
+        questions: [
+          {
+            id: "q",
+            title,
+            options: Array.from({ length: count }, (_, index) => ({
+              id: `option-${index}`,
+              label: `方案 ${index + 1}`,
+              actions: [{ id: `choose-${index}`, label: "选择这一项" }],
+            })),
+          },
+        ],
+      },
+    });
+    const card = page.getByRole("region", { name: title, exact: true });
+    await expect(card.locator(".question-candidate")).toHaveCount(count);
+    for (const width of [1360, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      if (width === 390) {
+        const inspector = page.getByRole("complementary", { name: /的详情$/ });
+        if (await inspector.isVisible())
+          await inspector
+            .getByRole("button", { name: "关闭", exact: true })
+            .click();
+      }
+      for (const colorScheme of ["light", "dark"] as const) {
+        await page.emulateMedia({ colorScheme });
+        await expect
+          .poll(() =>
+            card.locator(".question-candidates").evaluate(
+              (element) =>
+                getComputedStyle(element)
+                  .gridTemplateColumns.split(" ")
+                  .filter((width) => Number.parseFloat(width) > 0).length,
+            ),
+          )
+          .toBe(width === 390 ? 1 : Math.min(2, count));
+        expect(
+          await card
+            .locator(".question-candidates")
+            .evaluate(
+              (element) => element.scrollWidth <= element.clientWidth + 1,
+            ),
+        ).toBe(true);
+      }
+    }
+    await card.getByRole("button", { name: "取消", exact: true }).click();
+    await expect(card.getByRole("status")).toHaveText("已取消");
+  }
+});
+
 test("rich questions keep media separate from replies and restore selected actions", async ({
   page,
 }, info) => {
@@ -4726,10 +4985,10 @@ test("rich questions keep media separate from replies and restore selected actio
     exact: true,
   });
   await expect(card).toBeVisible();
-  await expect(card.locator(".question-candidate")).toHaveCount(4);
+  await expect(card.locator(".question-candidate")).toHaveCount(5);
   await expect(card.locator(".question-utilities")).toContainText("自己填写");
-  await expect(card.locator(".question-utilities")).toContainText(
-    "显示更多选项",
+  await expect(card.getByRole("button", { name: /显示更多选项/ })).toHaveCount(
+    0,
   );
   for (const row of await card.locator(".question-reply").all()) {
     await expect(row.locator(":scope > svg").first()).toBeVisible();
@@ -4763,10 +5022,18 @@ test("rich questions keep media separate from replies and restore selected actio
   await expect(page.locator(".attention-toast")).toHaveCount(0, {
     timeout: 10000,
   });
-  const strip = card.locator(".question-candidates");
-  await strip.evaluate((element) => {
-    element.scrollLeft = 0;
-  });
+  const grid = card.locator(".question-candidates");
+  const layout = () =>
+    grid.evaluate((element) => ({
+      overflow: element.scrollWidth - element.clientWidth,
+      columns: getComputedStyle(element).gridTemplateColumns.split(" ").length,
+      rows: [...element.children].map((child) =>
+        Math.round(child.getBoundingClientRect().top),
+      ),
+    }));
+  await expect.poll(async () => (await layout()).columns).toBe(2);
+  expect((await layout()).overflow).toBeLessThanOrEqual(1);
+  expect(new Set((await layout()).rows).size).toBe(3);
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
     await card.scrollIntoViewIfNeeded();
@@ -4776,26 +5043,18 @@ test("rich questions keep media separate from replies and restore selected actio
     });
   }
   await page.setViewportSize({ width: 390, height: 900 });
-  expect(
-    await strip.evaluate(
-      (element) => element.scrollWidth > element.clientWidth,
-    ),
-  ).toBe(true);
+  await expect.poll(async () => (await layout()).columns).toBe(1);
+  expect((await layout()).overflow).toBeLessThanOrEqual(1);
+  expect(new Set((await layout()).rows).size).toBe(5);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await strip.evaluate((element) => {
-    element.scrollLeft = 0;
-  });
   await page.screenshot({
     path: info.outputPath("rich-question-narrow.png"),
     animations: "disabled",
   });
-  await card
-    .getByRole("button", { name: "显示更多选项（1）", exact: true })
-    .click();
   await expect(card.locator(".question-candidate")).toHaveCount(5);
   await page.setViewportSize({ width: 1360, height: 900 });
   const choose = card

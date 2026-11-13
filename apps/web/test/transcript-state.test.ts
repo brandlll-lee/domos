@@ -139,3 +139,62 @@ test("late historical replies follow saved cursors through updates and reconnect
     ),
   ).toEqual(["old-user", "old-reply", "today", "reply"]);
 });
+
+test("question answers and stored text retain the live transcript identity and order", () => {
+  const project = transcriptState();
+  const progress: ChatMessage = {
+    id: "progress",
+    role: "assistant",
+    turnId: "turn",
+    receivedAt: 10,
+    timestamp: 15,
+    stopped: false,
+    content: [{ type: "text", text: "Compare these options", key: "text" }],
+  };
+  const cards: ChatMessage[] = [20, 30, 40].map((timestamp, index) => ({
+    id: `question-${index}`,
+    role: "assistant",
+    stopped: false,
+    content: [],
+    timestamp,
+    approval: {
+      state: "pending",
+      request: {
+        id: `q-${index}`,
+        kind: "question",
+        title: "Choose",
+        detail: "",
+        requestedAt: timestamp,
+      },
+    },
+  }));
+  const view = (messages: ChatMessage[]) =>
+    ({ messages, busy: true, failed: false }) as ChatView;
+  let messages = [progress];
+  const first = project(view(messages)).items[0];
+  for (const card of cards) {
+    if (!card.approval) throw new Error("Question required");
+    messages = mergeChatMessages(messages, [card]);
+    expect(project(view(messages)).items.map((item) => item.id)).toEqual([
+      progress.id,
+      ...cards.slice(0, cards.indexOf(card) + 1).map((item) => item.id),
+    ]);
+    messages = mergeChatMessages(messages, [
+      {
+        ...card,
+        cursor: `${cards.indexOf(card) + 1}:0`,
+        approval: { ...card.approval, state: "answered" },
+      },
+    ]);
+    expect(project(view(messages)).items[0]).toBe(first);
+  }
+  const stored = { ...progress, timestamp: 100, cursor: "100:0" };
+  messages = mergeChatMessages(messages, [stored]);
+  const expected = [progress.id, ...cards.map((card) => card.id)];
+  expect(project(view(messages)).items.map((item) => item.id)).toEqual(
+    expected,
+  );
+  expect(project(view([...messages])).items.map((item) => item.id)).toEqual(
+    expected,
+  );
+});

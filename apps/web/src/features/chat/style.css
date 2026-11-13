@@ -1069,23 +1069,20 @@ body:has(.workspace[data-platform="darwin"]) .image-viewer-header {
   margin: 0 var(--space-3) var(--space-2);
 }
 .question-candidates {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
   align-items: stretch;
   gap: var(--space-3);
   min-width: 0;
-  overflow-x: auto;
-  scroll-snap-type: x proximity;
   padding-inline: var(--question-inset);
 }
 .question-candidate {
   display: flex;
   flex-direction: column;
-  flex: 0 0 min(84%, var(--message-media-width));
   min-width: 0;
   overflow: clip;
   border: 1px solid var(--color-edge);
   border-radius: var(--radius-control);
-  scroll-snap-align: center;
 }
 .question-candidate .question-choice-actions {
   margin-top: auto;

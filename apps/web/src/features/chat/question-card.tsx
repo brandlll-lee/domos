@@ -159,7 +159,9 @@ export function QuestionCard({
         const cards = options.some(
           (option) => option.attachments?.length || option.actions?.length,
         );
-        const count = visible[question.id] ?? (pending ? 4 : options.length);
+        const count = cards
+          ? options.length
+          : (visible[question.id] ?? (pending ? 4 : options.length));
         const choices = questionChoices(question);
         const values = selected[question.id] ?? [];
         return (

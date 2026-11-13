@@ -316,6 +316,107 @@ test("saved questions keep their receipt order between progress and final text",
   ).toEqual([progress.id, card.id, final.id]);
 });
 
+test("successive questions retain the first text position after the turn is stored", () => {
+  const progress = message(
+    "assistant",
+    "turn",
+    [{ type: "text", text: "I will show four landscapes." }],
+    { receivedAt: 10, timestamp: 14, cursor: "13701:0" },
+  );
+  const questions = [20, 30].map((timestamp, index) =>
+    message("assistant", "turn", [], {
+      timestamp,
+      cursor: `${13619 + index}:0`,
+      approval: {
+        request: {
+          id: `question-${index}`,
+          kind: "question",
+          title: "Choose a landscape",
+          detail: "",
+          requestedAt: timestamp,
+        },
+        state: "pending",
+      },
+    }),
+  );
+  const final = message("assistant", "turn", [{ type: "text", text: "Done" }], {
+    receivedAt: 40,
+    timestamp: 50,
+  });
+  const expected = [progress.id, ...questions.map((question) => question.id)];
+  for (const state of ["pending", "answered", "denied", "expired"] as const) {
+    const cards = questions.map((question) => {
+      if (!question.approval) throw new Error("Question required");
+      return {
+        ...question,
+        approval: { ...question.approval, state },
+        pending: state === "pending",
+        stopped: state === "expired",
+      };
+    });
+    expect(
+      chatTranscript(view([progress, ...cards], { busy: true })).map(
+        (item) => item.id,
+      ),
+    ).toEqual(expected);
+    expect(
+      chatTranscript(view([...cards, progress, final])).map((item) => item.id),
+    ).toEqual([...expected, final.id]);
+  }
+});
+
+test("text deliveries and attachments use the same receipt order as questions", () => {
+  const files = message("toolResult", "turn", [], {
+    receivedAt: 10,
+    timestamp: 10,
+    delivery: { text: "Reference material" },
+    attachments: [
+      { id: "file", name: "reference.pdf", size: 12, path: "reference.pdf" },
+    ],
+  });
+  const card = message("assistant", "turn", [], {
+    timestamp: 20,
+    approval: {
+      request: { id: "q", kind: "question", title: "Choose", detail: "" },
+      state: "answered",
+    },
+  });
+  expect(
+    chatTranscript(view([card, files])).map((item) => [item.kind, item.id]),
+  ).toEqual([
+    ["message", files.id],
+    ["attachments", files.id],
+    ["message", card.id],
+  ]);
+});
+
+test("equal and missing receipt times keep their existing record order", () => {
+  const untimed = message("assistant", "turn", [
+    { type: "text", text: "Earlier" },
+  ]);
+  const first = message(
+    "assistant",
+    "turn",
+    [{ type: "text", text: "First" }],
+    { receivedAt: 10 },
+  );
+  const second = message(
+    "assistant",
+    "turn",
+    [{ type: "text", text: "Second" }],
+    { receivedAt: 10 },
+  );
+  const following = message("assistant", "turn", [
+    { type: "text", text: "Following" },
+  ]);
+  const messages = [untimed, first, second, following];
+  const original = structuredClone(messages);
+  expect(chatTranscript(view(messages)).map((item) => item.id)).toEqual(
+    messages.map((message) => message.id),
+  );
+  expect(messages).toEqual(original);
+});
+
 test("repeated file receipts appear once per turn", () => {
   const file = { id: "same", name: "report.txt", path: "report.txt", size: 1 };
   expect(

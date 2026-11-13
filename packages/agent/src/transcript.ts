@@ -22,14 +22,23 @@ export type TranscriptItem =
     };
 
 export function chatTranscript(view: ChatView): TranscriptItem[] {
+  let receivedAt = Number.NEGATIVE_INFINITY;
+  const messages = view.messages
+    .map((message) => {
+      // Untimed records stay with the preceding timed record.
+      receivedAt = message.receivedAt ?? message.timestamp ?? receivedAt;
+      return { message, receivedAt };
+    })
+    .sort((a, b) => a.receivedAt - b.receivedAt)
+    .map(({ message }) => message);
   const items: TranscriptItem[] = [];
   const notices = new Map<string, TaskNotice>();
   const interrupted = new Set<string>();
   const ends = new Map<string, number>();
-  const lastTurn = view.messages.findLast(
+  const lastTurn = messages.findLast(
     (message) => message.role === "user",
   )?.turnId;
-  view.messages.forEach((message, index) => {
+  messages.forEach((message, index) => {
     if (message.hidden || (message.role === "user" && message.routine)) return;
     const id = message.turnId ?? message.id;
     ends.set(id, index);
@@ -47,9 +56,8 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
   if (view.failed && !view.busy && lastTurn && !interrupted.has(lastTurn)) {
     const error = view.error ?? notices.get(lastTurn)?.error;
     notices.set(lastTurn, {
-      sessionId: view.messages.findLast(
-        (message) => message.turnId === lastTurn,
-      )?.sessionId,
+      sessionId: messages.findLast((message) => message.turnId === lastTurn)
+        ?.sessionId,
       kind: "notice",
       id: lastTurn,
       status: "failed",
@@ -59,7 +67,7 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
   let attachmentTurn: string | undefined;
   const delivered = new Set<string>();
   const attached = new Set(
-    view.messages.flatMap((message) =>
+    messages.flatMap((message) =>
       message.role === "assistant" && !message.pending && !message.stopped
         ? (message.attachments ?? []).map(
             (file) => `${message.turnId ?? message.id}:${file.id}`,
@@ -78,7 +86,7 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
       delivered.add(key);
       return true;
     });
-  view.messages.forEach((message, index) => {
+  messages.forEach((message, index) => {
     if (message.hidden || (message.role === "user" && message.routine)) return;
     const id = message.turnId ?? message.id;
     const held =
@@ -156,21 +164,5 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
     const notice = notices.get(id);
     if (notice && index === ends.get(id)) items.push(notice);
   });
-  for (const card of items.filter(
-    (item) =>
-      item.kind === "message" &&
-      (item.message.approval || item.message.takeover),
-  )) {
-    if (card.kind !== "message" || card.message.timestamp === undefined)
-      continue;
-    const at = card.message.timestamp;
-    items.splice(items.indexOf(card), 1);
-    const index = items.findIndex(
-      (item) =>
-        item.kind === "message" &&
-        (item.message.receivedAt ?? item.message.timestamp ?? 0) > at,
-    );
-    items.splice(index < 0 ? items.length : index, 0, card);
-  }
   return items;
 }
