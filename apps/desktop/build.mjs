@@ -98,7 +98,8 @@ await writeFile(
   join(dist, "setup-theme.css"),
   `:root{${variables(metrics)}${variables(themes.light, "color-")}}@media(prefers-color-scheme:dark){:root{${variables(themes.dark, "color-")}}}`,
 );
-await cp(join(root, "packages/ui/assets/icon.png"), join(dist, "icon.png"));
+for (const name of ["icon.png", "icon.ico"])
+  await cp(join(root, "packages/ui/assets", name), join(dist, name));
 await cp(join(root, "apps/web/dist"), join(runtime, "web"), {
   recursive: true,
 });

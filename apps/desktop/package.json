@@ -45,6 +45,10 @@
     ],
     "extraResources": [
       {
+        "from": "../../packages/ui/assets/icon.ico",
+        "to": "icon.ico"
+      },
+      {
         "from": ".",
         "to": ".",
         "filter": [

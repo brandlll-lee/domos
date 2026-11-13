@@ -19,7 +19,7 @@ import { z } from "zod";
 import { ConnectionSetup } from "./connection.ts";
 import { desktopFile } from "./files.ts";
 import { LocalHost } from "./host.ts";
-import { applicationIcon } from "./icons.ts";
+import { applicationIcon, applicationId } from "./icons.ts";
 import { maintain } from "./maintenance.ts";
 import { notificationSchema, notify } from "./notifications.ts";
 import { createWindow, prepareInstance, workspaceSource } from "./windows.ts";
@@ -233,7 +233,7 @@ async function main() {
     app.quit();
     return;
   }
-  if (process.platform === "win32") app.setAppUserModelId("app.domos.desktop");
+  if (process.platform === "win32") app.setAppUserModelId(applicationId);
   await app.whenReady();
   app.dock?.setIcon(applicationIcon);
   const resource = fileURLToPath(new URL(".", import.meta.url));

@@ -2,13 +2,18 @@ import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { themes, windowOverlay } from "@domos/ui/tokens";
 import {
+  app,
   BrowserWindow,
   ipcMain,
   nativeTheme,
   shell,
   WebContentsView,
 } from "electron";
-import { applicationIcon } from "./icons.ts";
+import {
+  applicationIcon,
+  applicationIconPath,
+  applicationId,
+} from "./icons.ts";
 
 const sources = new Map<number, string>();
 export function workspaceSource(
@@ -207,7 +212,7 @@ export async function prepareInstance(
 export function createWindow(preload: string, partition?: string, show = true) {
   const window = new BrowserWindow({
     title: "Domos",
-    show,
+    show: false,
     icon: applicationIcon,
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "hidden",
     autoHideMenuBar: true,
@@ -234,9 +239,19 @@ export function createWindow(preload: string, partition?: string, show = true) {
       preload: fileURLToPath(new URL(preload, import.meta.url)),
     },
   });
+  if (process.platform === "win32")
+    window.setAppDetails({
+      appId: applicationId,
+      appIconPath: applicationIconPath,
+      relaunchCommand: app.isPackaged
+        ? `"${process.execPath}"`
+        : `"${process.execPath}" "${app.getAppPath()}"`,
+      relaunchDisplayName: "Domos",
+    });
   window.webContents.session.setPermissionRequestHandler(
     (_webContents, _permission, callback) => callback(false),
   );
   window.webContents.session.setPermissionCheckHandler(() => false);
+  if (show) window.show();
   return window;
 }

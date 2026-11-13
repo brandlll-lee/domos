@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -88,6 +88,38 @@ $icon.Dispose()
     expect(identity.difference).toBeLessThan(25);
     expect(identity.target.toLowerCase()).toBe(executablePath.toLowerCase());
     expect(identity.id).toBe("app.domos.desktop");
+    const handle = await desktop.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]
+        ?.getNativeWindowHandle()
+        .readBigUInt64LE()
+        .toString(),
+    );
+    if (!handle) throw new Error("Native window required");
+    const properties = await promisify(execFile)(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        resolve("apps/desktop/test/fixtures/window-identity.ps1"),
+        "-Window",
+        handle,
+      ],
+      { windowsHide: true },
+    );
+    const taskbar = JSON.parse(properties.stdout);
+    expect(taskbar.appId).toBe("app.domos.desktop");
+    const iconPath = resolve(
+      "apps/desktop/release/win-unpacked/resources/icon.ico",
+    );
+    expect(taskbar.icon).toBe(`${iconPath},0`);
+    expect(await readFile(iconPath)).toEqual(
+      await readFile(resolve("packages/ui/assets/icon.ico")),
+    );
+    expect(taskbar.command.toLowerCase()).toBe(
+      `"${executablePath.toLowerCase()}"`,
+    );
+    expect(taskbar.name).toBe("Domos");
   } finally {
     await desktop.close();
     await rm(directory, { recursive: true, force: true });
