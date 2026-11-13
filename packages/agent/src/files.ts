@@ -35,6 +35,7 @@ import {
 import { chatView } from "./chat-view.ts";
 import { owningBot } from "./conversations.ts";
 import { FilePreviews } from "./file-previews.ts";
+import { LinkPreviews } from "./link-previews.ts";
 import { WorkError } from "./work/state.ts";
 import { type WorkEnvironment, Workspace } from "./workspace.ts";
 
@@ -105,6 +106,7 @@ export const FileInput = "domos.file-input";
 export class Files {
   readonly root: string;
   readonly previews: FilePreviews;
+  readonly links: LinkPreviews;
   private readonly operations = new Map<number, Promise<unknown>>();
   private readonly target?: (
     botId: number,
@@ -133,6 +135,7 @@ export class Files {
   ) {
     this.root = resolve(`${database}.files`);
     this.previews = new FilePreviews(this.root);
+    this.links = new LinkPreviews(this.root, this.previews);
     this.environment = environment;
     this.target = target;
     this.attachmentComputerId = attachmentComputerId;

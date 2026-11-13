@@ -3,6 +3,7 @@ import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-durable";
 import { type Attachment, MAX_ATTACHMENTS } from "../attachments.ts";
 import { owningBot } from "../conversations.ts";
+import { linkUrl } from "../link-previews.ts";
 import { toolResult } from "../work/state.ts";
 import type { EngineExecution } from "./execution.ts";
 import { questionChoices } from "./questions.ts";
@@ -282,6 +283,29 @@ export function interactionExtension(execution: EngineExecution) {
               })),
             })),
           });
+        },
+      }),
+      defineTool({
+        name: "send_link_card",
+        description:
+          "Send a standalone link card to the user. Supply an HTTPS URL, your own button label and body, and optional title and footer. Domos reads the website preview separately. This sends a message immediately; it does not wait for an answer or open the page. Only the user's click opens the link. Use it for a clear next step on a website. Do not repeat the card as a text message.",
+        parameters: Type.Object({
+          url: Type.String({ minLength: 1, maxLength: 4096 }),
+          label: Type.String({ minLength: 1, maxLength: 64 }),
+          body: Type.String({ minLength: 1, maxLength: 16000 }),
+          title: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
+          footer: Type.Optional(Type.String({ minLength: 1, maxLength: 2000 })),
+        }),
+        replay: "safe",
+        executionMode: "sequential",
+        async execute(input) {
+          linkUrl(input.url);
+          if (![input.label, input.body].every((value) => value.trim()))
+            throw new Error("请提供按钮文案和正文。");
+          return {
+            output: [{ type: "text" as const, text: "Link card sent." }],
+            details: { link: input },
+          };
         },
       }),
     ] as const,

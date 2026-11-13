@@ -232,10 +232,14 @@ export async function callProductTool(
     | {
         attachment?: unknown;
         notice?: import("../messages.ts").ChatMessage["notice"];
+        link?: import("../messages.ts").LinkCard;
       }
     | undefined;
   if (details && "content" in details) return details as ProductResult;
-  if (details?.attachment || (details?.notice && !result.isError)) {
+  if (
+    !result.isError &&
+    (details?.attachment || details?.notice || details?.link)
+  ) {
     await runtime.commit(async (tx) => {
       const doc = await tx.doc(ProductCalls, runtime.taskId);
       if (doc.delivered.includes(key)) return;
@@ -261,7 +265,7 @@ export async function callProductTool(
           id: `product:${id}`,
           turnId: (await tx.doc(EngineDoc, runtime.conversationId)).activeTurn,
           hidden: run?.delivery === "conditional",
-          role: "toolResult",
+          role: details.link ? "assistant" : "toolResult",
           content: [],
           stopped: false,
           timestamp: Date.now(),
@@ -273,6 +277,7 @@ export async function callProductTool(
             ? { notice: details.notice }
             : {}),
           ...(details.attachment ? { attachments: [details.attachment] } : {}),
+          ...(details.link ? { link: details.link } : {}),
         }),
       });
     }, context);

@@ -20,7 +20,7 @@ import { engineProvider } from "../src/harness/providers/index.ts";
 import { EngineDoc } from "../src/harness/state.ts";
 import type { ProductResult } from "../src/harness/types.ts";
 import { McpConnections } from "../src/mcp/connections.ts";
-import { approvalMessage } from "../src/messages.ts";
+import { approvalMessage, messageText } from "../src/messages.ts";
 import { openAgent } from "../src/open-agent.ts";
 import { engineTask, Runtime } from "../src/runtime/index.ts";
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
@@ -440,6 +440,7 @@ test.each(["pi", "codex", "claude", "opencode", "acp"])(
           "review_draft",
           "request_credentials",
           "ask_question",
+          "send_link_card",
           "mcp_call",
         ].every((name) => tools.some((tool) => tool.name === name));
         invoke = callback;
@@ -464,6 +465,25 @@ test.each(["pi", "codex", "claude", "opencode", "acp"])(
         id: provider,
         prompt: async () => {
           await options.emit({ type: "accepted", id: "turn" });
+          const link = {
+            url: "https://example.com/report",
+            label: "打开本次报告",
+            body: "报告已准备好。",
+            title: "检查结果",
+            footer: "保留原始资料。",
+          };
+          await invoke(
+            "link",
+            "send_link_card",
+            link,
+            new AbortController().signal,
+          );
+          await invoke(
+            "link",
+            "send_link_card",
+            link,
+            new AbortController().signal,
+          );
           received.resolve(
             await invoke(
               "draft",
@@ -538,6 +558,19 @@ test.each(["pi", "codex", "claude", "opencode", "acp"])(
         )
         .toBe(1);
       expect(discovered).toBe(true);
+      const links = (await engines.view(botId, context)).messages.filter(
+        (message) => message.link,
+      );
+      expect(links).toHaveLength(1);
+      expect(links[0]).toMatchObject({
+        role: "assistant",
+        link: { url: "https://example.com/report", label: "打开本次报告" },
+        toolStatus: "done",
+      });
+      expect(links[0] && messageText(links[0])).toContain("打开本次报告");
+      expect(
+        (await runtime.bots.chats.search("本次报告", undefined, context)).items,
+      ).toHaveLength(1);
       await engines.answer(
         botId,
         "draft:draft",
@@ -570,6 +603,18 @@ test.each(["pi", "codex", "claude", "opencode", "acp"])(
           (item) => item.approval,
         )?.approval?.state,
       ).toBe("answered");
+      const persisted = await runtime.conversation.entries(
+        {},
+        100,
+        undefined,
+        context,
+      );
+      expect(
+        persisted.items.filter(
+          (entry) => (entry.data as { link?: unknown })?.link,
+        ),
+      ).toHaveLength(1);
+      expect(links[0]?.id).toMatch(/^product:/);
     } finally {
       await execution.stop(botId);
       await runtime.harness.close(context);

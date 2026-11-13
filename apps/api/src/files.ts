@@ -33,6 +33,28 @@ export function fileRouter(bots: Bots, files: Files, computers?: Computers) {
     await files.discard(botId, id);
   }
   return {
+    linkPreview: os
+      .input(
+        botTarget.extend({
+          url: z
+            .url()
+            .max(4096)
+            .refine((value) => {
+              const url = new URL(value);
+              return (
+                url.protocol === "https:" && !url.username && !url.password
+              );
+            }),
+        }),
+      )
+      .handler(async ({ input, signal }) => {
+        await botConversation(bots, input.botId);
+        return files.links.read(
+          await bots.owner(input.botId, BACKGROUND_CONTEXT),
+          input.url,
+          signal,
+        );
+      }),
     list: os
       .input(
         botTarget.extend({

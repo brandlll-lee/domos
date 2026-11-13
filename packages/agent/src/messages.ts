@@ -12,6 +12,14 @@ import type { InputMaterials } from "./materials.ts";
 
 export type MessageDelivery = { text: string; kind?: "update" | "question" };
 
+export type LinkCard = {
+  url: string;
+  label: string;
+  body: string;
+  title?: string;
+  footer?: string;
+};
+
 export type ChatContent =
   | Pick<TextContent, "type" | "text">
   | Pick<ThinkingContent, "type" | "thinking">
@@ -19,6 +27,7 @@ export type ChatContent =
   | Pick<ToolCall, "type" | "id" | "name" | "arguments">;
 
 export type ChatMessage = {
+  link?: LinkCard;
   sessionId?: number;
   author?: { botId: number; name: string; avatar: string };
   collaboration?: { id: string; recipient: number };
@@ -124,7 +133,17 @@ export function approvalMessage(
 
 export function messageText(message: {
   content: string | readonly ChatContent[];
+  link?: LinkCard;
 }) {
+  if (message.link)
+    return [
+      message.link.title,
+      message.link.body,
+      message.link.label,
+      message.link.url,
+    ]
+      .filter(Boolean)
+      .join("\n");
   return typeof message.content === "string"
     ? message.content
     : message.content

@@ -38,6 +38,45 @@ function view(
   };
 }
 
+test("link cards retain their authored content and position during active work", () => {
+  const card = message("assistant", "turn", [], {
+    id: "link",
+    timestamp: 200,
+    cursor: "9:0",
+    link: {
+      url: "https://example.com/report",
+      label: "查看结果",
+      body: "结果已保存。",
+    },
+    author: { botId: 2, name: "Reviewer", avatar: "reviewer" },
+  });
+  const before = message(
+    "assistant",
+    "turn",
+    [{ type: "text", text: "准备好了。" }],
+    { timestamp: 100, cursor: "10:0" },
+  );
+  const after = message(
+    "assistant",
+    "turn",
+    [{ type: "text", text: "我会继续检查。" }],
+    { timestamp: 300, cursor: "11:0" },
+  );
+  const state = view([card, before, after], {
+    busy: true,
+    activeTurnId: "turn",
+  });
+  const items = chatTranscript(state);
+  expect(items.map((item) => item.id)).toEqual([before.id, card.id, after.id]);
+  expect(items[1]).toMatchObject({
+    kind: "message",
+    message: { link: card.link, author: card.author },
+  });
+  expect(chatTranscript({ ...state, busy: false, activeTurnId: null })).toEqual(
+    items,
+  );
+});
+
 test("complete replies arrive during work while partial text and tools stay private", () => {
   const messages = [
     message("user", "turn", [{ type: "text", text: "Prepare a report" }]),

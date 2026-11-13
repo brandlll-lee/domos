@@ -25,6 +25,7 @@ import { BotReference } from "./bot-reference.tsx";
 import { chatCopy } from "./copy.ts";
 import { ErrorMessage } from "./error-message.tsx";
 import { timeBreak } from "./format.ts";
+import { LinkCard } from "./link-card.tsx";
 import { MaterialChips } from "./material-chips.tsx";
 import { materialTokens } from "./material-tokens.tsx";
 import { MessageBody } from "./message-body.tsx";
@@ -136,7 +137,9 @@ const MessageRow = memo(function MessageRow({
         </InlineNotice>
       )}
 
-      {message.notice ? (
+      {message.link ? (
+        <LinkCard botId={botId} link={message.link} />
+      ) : message.notice ? (
         <InlineNotice align="center">{message.notice.text}</InlineNotice>
       ) : message.approval ? (
         (message.approval.state === "pending" &&

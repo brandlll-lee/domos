@@ -47,8 +47,8 @@ async function preview(input) {
       await readFile(input.path),
       input.mimeType,
       {
-        maxWidth: 160,
-        maxHeight: 160,
+        maxWidth: input.width ?? 160,
+        maxHeight: input.width ?? 160,
         maxBytes: 48 * 1024,
       },
     );

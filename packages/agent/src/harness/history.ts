@@ -71,6 +71,7 @@ function historyMessage(
         | "toolName"
         | "toolCallId"
         | "author"
+        | "link"
       >
     > & {
       content: string | readonly ChatContent[];

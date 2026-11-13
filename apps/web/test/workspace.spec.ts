@@ -4819,6 +4819,164 @@ test("successive question updates keep earlier text in place through history and
     .toEqual(expected);
 });
 
+test("link cards show custom actions, lazy previews and stable history", async ({
+  page,
+}, info) => {
+  const botId = (await (await page.request.post(`${url}/rpc/bots/list`)).json())
+    .json[0].id;
+  const snapshot = (
+    await (
+      await page.request.post(`${url}/rpc/get`, { data: { json: { botId } } })
+    ).json()
+  ).json;
+  const time = Date.now();
+  const links = Array.from({ length: 10 }, (_, index) => ({
+    id: `cta-${index}`,
+    cursor: `${index + 100}:0`,
+    role: "assistant",
+    timestamp: time + index,
+    stopped: false,
+    content: [],
+    link: {
+      url: `https://example.com/${index}`,
+      label: ["查看完整报告", "打开在线演示", "选择预约时间"][index % 3],
+      body: "内容已整理好，你可以按需查看。",
+      ...(index === 0
+        ? { title: "本周报告", footer: "包含最新检查结果。" }
+        : {}),
+    },
+  }));
+  const initial = { ...snapshot, messages: links, busy: false };
+  await page.route("**/rpc/get", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ json: initial }),
+    }),
+  );
+  await page.addInitScript((initial) => {
+    const original = window.fetch.bind(window);
+    window.fetch = async (...args) => {
+      const input = args[0];
+      const address = input instanceof Request ? input.url : String(input);
+      if (!address.endsWith("/rpc/changes")) return original(...args);
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode(
+                `event: message\ndata: ${JSON.stringify({ json: { type: "snapshot", view: initial } })}\n\n`,
+              ),
+            );
+          },
+        }),
+        { headers: { "content-type": "text/event-stream" } },
+      );
+    };
+  }, initial);
+  const cover = `data:image/svg+xml;base64,${Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="640" height="360" fill="#b6d9c8"/><text x="52" y="190" font-size="42" fill="#28644e">Domos · Report</text></svg>').toString("base64")}`;
+  let reads = 0;
+  let releaseCover = () => {};
+  const coverReady = new Promise<void>((resolve) => {
+    releaseCover = resolve;
+  });
+  await page.route("**/rpc/files/linkPreview", async (route) => {
+    reads++;
+    const requested = route.request().postDataJSON().json.url;
+    if (requested.endsWith("/0")) await coverReady;
+    if (requested.endsWith("/2")) {
+      await route.fulfill({ status: 503, body: "Preview unavailable" });
+      return;
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        json: requested.endsWith("/0")
+          ? { title: "Website fallback", thumbnail: cover }
+          : { title: "在线演示" },
+      }),
+    });
+  });
+  let opened = 0;
+  await page.route("https://example.com/**", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<title>Requested destination</title>Opened",
+    }),
+  );
+  page.on("popup", () => opened++);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto(url);
+  const card = page.locator('[data-message-id="cta-0"] .link-card');
+  await expect.poll(() => reads).toBeGreaterThan(0);
+  expect(reads).toBeLessThan(links.length);
+  await card.scrollIntoViewIfNeeded();
+  await expect(card).toBeVisible();
+  const readingTop = (await card.boundingBox())?.y ?? 0;
+  releaseCover();
+  await expect(card.locator(".link-card-cover")).toBeVisible();
+  await expect
+    .poll(async () =>
+      Math.abs(((await card.boundingBox())?.y ?? 0) - readingTop),
+    )
+    .toBeLessThan(2);
+  await expect(page.locator(".link-card")).toHaveCount(links.length);
+  await expect(card.getByText("本周报告", { exact: true })).toBeVisible();
+  await expect(card.getByText("Website fallback", { exact: true })).toHaveCount(
+    0,
+  );
+  expect(
+    await card.evaluate((el) => el.closest(".message-bubble") !== null),
+  ).toBe(false);
+  expect(await card.locator(".link-card-action > svg").count()).toBe(1);
+  await expect(
+    page.locator('[data-message-id="cta-1"] .link-card-cover'),
+  ).toHaveCount(0);
+  await expect(
+    page.locator('[data-message-id="cta-2"] .link-card-action'),
+  ).toHaveText("选择预约时间");
+  expect(opened).toBe(0);
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    for (const width of [1360, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const inspector = page.getByRole("complementary", { name: /的详情$/ });
+      if (width === 390 && (await inspector.isVisible()))
+        await inspector
+          .getByRole("button", { name: "关闭", exact: true })
+          .click();
+      await card.scrollIntoViewIfNeeded();
+      expect(
+        await card.evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
+      ).toBe(true);
+      await page.screenshot({
+        path: info.outputPath(`link-card-${colorScheme}-${width}.png`),
+      });
+    }
+  }
+  await card.locator(".link-card-action").focus();
+  const popup = page.waitForEvent("popup");
+  await page.keyboard.press("Enter");
+  const destination = await popup;
+  await expect(destination).toHaveURL("https://example.com/0");
+  await destination.close();
+  expect(opened).toBe(1);
+  const before = reads;
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await page.reload();
+  await expect(page.locator(".link-card")).toHaveCount(links.length);
+  await card.scrollIntoViewIfNeeded();
+  await expect(card.locator(".link-card-cover")).toBeVisible();
+  expect(
+    await page
+      .locator("[data-message-id]")
+      .evaluateAll((elements) =>
+        elements.map((el) => el.getAttribute("data-message-id")),
+      ),
+  ).toEqual(links.map((link) => link.id));
+  expect(reads).toBeGreaterThan(before);
+  expect(opened).toBe(1);
+});
+
 test("candidate grids show every option and adapt to their available width", async ({
   page,
 }) => {

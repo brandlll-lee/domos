@@ -923,7 +923,8 @@ body:has(.workspace[data-platform="darwin"]) .image-viewer-header {
 .interaction-heading strong {
   font-weight: var(--weight-medium);
 }
-.question-card {
+.question-card,
+.link-card {
   width: min(100%, var(--message-media-width));
   min-width: 0;
   overflow: clip;
@@ -935,6 +936,49 @@ body:has(.workspace[data-platform="darwin"]) .image-viewer-header {
 }
 .question-card:has(.question-candidates) {
   width: min(100%, var(--settings-content-width));
+}
+.link-card-cover {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+.link-card-copy {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.link-card-copy strong {
+  font-weight: var(--weight-medium);
+}
+.link-card-copy p {
+  margin: 0;
+}
+.link-card-copy small {
+  color: var(--color-muted);
+  font-size: var(--text-label);
+}
+.link-card-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-divider);
+  color: var(--color-message-link, var(--color-link));
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.link-card-action:hover {
+  background: var(--color-selection);
+}
+.link-card-action svg {
+  width: var(--space-4);
+  height: var(--space-4);
+  flex-shrink: 0;
 }
 .question-content,
 .question-field {

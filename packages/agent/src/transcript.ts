@@ -94,7 +94,7 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
     if (message.role === "user")
       items.push({ kind: "message", id: message.id, message });
     else if (message.role === "toolResult") {
-      if (message.notice && !message.isError)
+      if ((message.notice || message.link) && !message.isError)
         items.push({
           kind: "message",
           id: message.id,
@@ -139,6 +139,7 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
       !message.parentId &&
       (message.takeover ||
         message.approval ||
+        message.link ||
         (!message.pending &&
           !message.stopped &&
           message.stopReason !== "error"))
@@ -152,6 +153,7 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
       if (
         message.approval ||
         message.takeover ||
+        message.link ||
         content.length ||
         attachments?.length
       )

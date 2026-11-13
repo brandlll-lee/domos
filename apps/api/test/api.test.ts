@@ -432,6 +432,37 @@ async function setup(staticDir?: string) {
   return { faux, open, models };
 }
 
+test("link preview reads keep Bot scope and reject invalid destinations", async () => {
+  const { open } = await setup();
+  const runtime = await open();
+  try {
+    const botId = runtime.conversation.id;
+    expect(
+      await runtime.client.files.linkPreview({
+        botId,
+        url: "https://127.0.0.1/private",
+      }),
+    ).toEqual({});
+    await expect(
+      runtime.client.files.linkPreview({ botId, url: "javascript:alert(1)" }),
+    ).rejects.toThrow();
+    await expect(
+      runtime.client.files.linkPreview({
+        botId,
+        url: "https://user:pass@example.com",
+      }),
+    ).rejects.toThrow();
+    await expect(
+      runtime.client.files.linkPreview({
+        botId: 999999,
+        url: "https://example.com",
+      }),
+    ).rejects.toThrow();
+  } finally {
+    await runtime.harness.close(context);
+  }
+});
+
 test("chat accepts consecutive inputs while a reply is running", async () => {
   const { open, faux } = await setup();
   const runtime = await open();

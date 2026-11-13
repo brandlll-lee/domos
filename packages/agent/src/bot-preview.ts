@@ -31,6 +31,8 @@ function entryPreview(entry: EntryRecord) {
       message.stopReason === "error"
     )
       return;
+    if (message.link && !message.isError)
+      return { text: messageText(message), timestamp: message.timestamp };
     if (
       (message.delivery ||
         (message.role === "toolResult" && message.attachments?.length)) &&
@@ -79,15 +81,18 @@ function entryPreview(entry: EntryRecord) {
       const details = message.details as {
         delivery?: MessageDelivery;
         attachment?: unknown;
+        link?: ChatMessage["link"];
       };
       const diagnostics = (entry.data as { diagnostics?: { code: string }[] })
         ?.diagnostics;
       if (
-        (details?.delivery || details?.attachment) &&
+        (details?.delivery || details?.attachment || details?.link) &&
         !diagnostics?.some((item) => item.code === "aborted")
       )
         return {
-          text: previewText(details.delivery?.text ?? ""),
+          text: details.link
+            ? messageText({ content: [], link: details.link })
+            : previewText(details.delivery?.text ?? ""),
           timestamp: message.timestamp,
         };
     }

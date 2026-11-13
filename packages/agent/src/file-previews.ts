@@ -48,6 +48,7 @@ export class FilePreviews {
     path: string,
     sheet: string | undefined,
     signal?: AbortSignal,
+    width = 160,
   ): Promise<FilePreview> {
     signal?.throwIfAborted();
     const kind = filePreviewKind(file);
@@ -64,7 +65,7 @@ export class FilePreviews {
       )
       .digest("hex");
     const key = createHash("sha256")
-      .update(JSON.stringify([file.id, kind, sheet, implementation]))
+      .update(JSON.stringify([file.id, kind, sheet, implementation, width]))
       .digest("hex");
     const directory = join(this.root, "previews", key);
     const cached = join(directory, "result.json");
@@ -83,7 +84,7 @@ export class FilePreviews {
           controller.signal.throwIfAborted();
           await mkdir(directory, { recursive: true });
           const generated = await this.run(
-            { path, sheet, kind, mimeType: file.mimeType },
+            { path, sheet, kind, mimeType: file.mimeType, width },
             controller.signal,
           );
           await writeFile(`${cached}.tmp`, JSON.stringify(generated));
