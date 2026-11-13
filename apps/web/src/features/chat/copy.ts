@@ -1,6 +1,6 @@
 export const chatCopy = {
   conversations: "联系人",
-  search: "搜索联系人",
+  search: "搜索联系人和聊天记录",
   searchEmpty: "没有找到联系人",
   skip: "跳到对话",
   connected: "已连接",

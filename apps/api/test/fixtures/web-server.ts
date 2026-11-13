@@ -434,11 +434,19 @@ process.on("message", async (message) => {
     const bot = (await bots.list(BACKGROUND_CONTEXT))[0];
     if (!bot) throw new Error("Bot required");
     await harness.commit(async (tx) => {
+      const session =
+        "sessionId" in message && typeof message.sessionId === "number"
+          ? (message.sessionId as import("@earendil-works/pi-durable").ConversationId)
+          : bot.id;
       for (const record of message.records as ChatMessage[])
-        await tx.appendEntry(bot.id, {
+        await tx.appendEntry(session, {
           kind: EngineMessage,
           data: stored(record),
         });
+      if ("run" in message)
+        (await tx.doc(EngineDoc, session)).run = stored(
+          message.run as import("@domos/agent/harness/types").EngineRun,
+        );
     }, BACKGROUND_CONTEXT);
     process.send?.({ type: "seeded" });
   } else if (

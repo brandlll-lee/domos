@@ -3,6 +3,7 @@ import type { ChatView } from "./chat-view.ts";
 import type { ChatMessage } from "./messages.ts";
 
 export type TaskNotice = {
+  sessionId?: number;
   kind: "notice";
   id: string;
   status: "failed";
@@ -36,6 +37,7 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
     if (message.stopped) interrupted.add(id);
     if (message.stopReason === "error")
       notices.set(id, {
+        sessionId: message.sessionId,
         kind: "notice",
         id,
         status: "failed",
@@ -45,6 +47,9 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
   if (view.failed && !view.busy && lastTurn && !interrupted.has(lastTurn)) {
     const error = view.error ?? notices.get(lastTurn)?.error;
     notices.set(lastTurn, {
+      sessionId: view.messages.findLast(
+        (message) => message.turnId === lastTurn,
+      )?.sessionId,
       kind: "notice",
       id: lastTurn,
       status: "failed",

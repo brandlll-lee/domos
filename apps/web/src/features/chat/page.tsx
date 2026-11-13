@@ -27,6 +27,7 @@ import { useSettings } from "../settings/context.ts";
 import { Workspace } from "../shell/workspace.tsx";
 import { saveWorkspaceView, workspaceView } from "../shell/workspace-state.ts";
 import { UsageSurface } from "../usage/page.tsx";
+import { ChatAttentionProvider, consumeChatTarget } from "./attention.tsx";
 import { TeamMembers } from "./bot-reference.tsx";
 import { Composer } from "./composer.tsx";
 import { ContextRing } from "./context.tsx";
@@ -40,10 +41,12 @@ import { TeamDetails } from "./team-details.tsx";
 import { useChat } from "./use-chat.ts";
 import { useComposerDock } from "./use-composer-dock.ts";
 import { useDraft } from "./use-draft.ts";
+import { useHistorySearch } from "./use-history-search.ts";
 import { ChatWelcome } from "./welcome.tsx";
 
 export function ChatPage() {
   const bots = useBots();
+  const search = useHistorySearch();
   if (!bots.selected)
     return bots.error ? (
       <p className="working" role="alert">
@@ -53,15 +56,18 @@ export function ChatPage() {
       <Loading label="正在读取联系人" />
     );
   return (
-    <BotChat
-      key={bots.selectedTeam?.id ?? bots.selected.id}
-      team={bots.selectedTeam}
-      bot={bots.selected}
-      bots={bots.items}
-      directoryError={bots.error}
-      directoryConnected={bots.connected}
-      directory={bots}
-    />
+    <ChatAttentionProvider>
+      <BotChat
+        key={bots.selectedTeam?.id ?? bots.selected.id}
+        team={bots.selectedTeam}
+        bot={bots.selected}
+        bots={bots.items}
+        directoryError={bots.error}
+        directoryConnected={bots.connected}
+        directory={bots}
+        search={search}
+      />
+    </ChatAttentionProvider>
   );
 }
 
@@ -72,6 +78,7 @@ function BotChat({
   directoryError,
   directoryConnected,
   directory,
+  search,
 }: {
   team?: Team;
   bot: Bot;
@@ -79,6 +86,7 @@ function BotChat({
   directoryError: string | null;
   directoryConnected: boolean;
   directory: ReturnType<typeof useBots>;
+  search: ReturnType<typeof useHistorySearch>;
 }) {
   const members = useMemo(
     () =>
@@ -95,6 +103,10 @@ function BotChat({
   const chatKey = team ? `team:${team.id}` : String(bot.id);
   const [savedPanel] = useState(() => workspaceView().panels[chatKey]);
   const chat = useChat(bot.id, () => settings.open("ai", bot.id), team?.id);
+  const [navigationError, setNavigationError] = useState("");
+  const navigation = useRef(chat);
+  navigation.current = chat;
+  const navigationReady = Boolean(chat.view) && !chat.restoring;
   const dock = useComposerDock();
   const draft = useDraft(team ? `team:${team.id}` : bot.id);
   const [sessionId, setSessionId] = useState<number>();
@@ -198,6 +210,35 @@ function BotChat({
     savedPanel?.detail ?? "root",
   );
   useEffect(() => {
+    if (!navigationReady) return;
+    const open = () => {
+      const target = consumeChatTarget(
+        team ? `team/${team.id}` : `bot/${bot.id}`,
+      );
+      if (!target) return;
+      setView("chat");
+      setNavigationError("");
+      if (
+        target.turnId &&
+        (!target.cursor || target.messageId.startsWith("failure:"))
+      ) {
+        setSessionId(target.sessionId);
+        setMember(undefined);
+        setWorkRun(target.turnId);
+        setDetailPanel("root");
+        setPanel("work");
+        setDetailsOpen(true);
+      } else {
+        void navigation.current
+          .revealMessage(target)
+          .catch((cause: Error) => setNavigationError(cause.message));
+      }
+    };
+    open();
+    window.addEventListener("domos:chat-open", open);
+    return () => window.removeEventListener("domos:chat-open", open);
+  }, [bot.id, team, navigationReady, setDetailsOpen]);
+  useEffect(() => {
     const save = () =>
       saveWorkspaceView({
         panels: {
@@ -262,7 +303,7 @@ function BotChat({
       ? chatCopy.reconnecting
       : chatCopy.connecting;
   const error =
-    chat.error ??
+    (navigationError || chat.error) ??
     directoryError ??
     (!items.some(
       (item) => item.kind === "notice" && item.status === "failed",
@@ -324,6 +365,7 @@ function BotChat({
             teams={directory.teams}
             onTeamsChange={directory.setTeams}
             selected={bot}
+            searchState={search}
             connected={directoryConnected}
             onBotCreated={selectBot}
             onSelect={() => setView("chat")}
@@ -491,6 +533,7 @@ function BotChat({
                 sentRequest={chat.sentRequest}
                 target={chat.target}
                 readingHistory={chat.readingHistory}
+                obscured={settings.showing || appsOpen || view !== "chat"}
                 onLatest={chat.showLatest}
                 hasMore={chat.hasMore}
                 hasNewer={chat.hasNewer}

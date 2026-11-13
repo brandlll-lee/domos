@@ -27,7 +27,14 @@
 }
 .sidebar[data-compact] .sidebar-toolbar {
   flex-direction: column;
-  height: calc(2 * var(--control-height) + var(--space-2) + 2 * var(--space-4));
+  height: calc(
+    3 *
+    var(--control-height) +
+    2 *
+    var(--space-2) +
+    2 *
+    var(--space-4)
+  );
   padding-block: var(--space-4);
 }
 .sidebar nav {
@@ -105,6 +112,29 @@
 }
 .sidebar-empty {
   margin: var(--space-3);
+}
+.sidebar-section {
+  padding: var(--space-3) var(--space-3) var(--space-1);
+  margin: 0;
+  font-size: var(--text-caption);
+  color: var(--color-muted);
+}
+.search-result {
+  align-items: start;
+  text-align: left;
+  height: auto;
+}
+.search-result .chat-preview {
+  row-gap: var(--space-1);
+}
+.search-result .search-author {
+  color: var(--color-text);
+}
+.search-result .search-snippet {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 .sidebar[data-compact] .scroll-viewport {
   padding-inline-end: 0;
@@ -1184,19 +1214,20 @@ button.takeover-preview:focus-visible {
   color: var(--color-text);
 }
 .team-avatar {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(var(--team-columns), minmax(0, 1fr));
   align-content: center;
   flex-shrink: 0;
   width: var(--control-height);
   height: var(--control-height);
-  overflow: hidden;
+  overflow: visible;
 }
 .team-identity .team-avatar {
   width: var(--avatar-large);
   height: var(--avatar-large);
 }
-.team-avatar > span {
+.team-avatar > span:not(.unread-badge) {
   min-width: 0;
   min-height: 0;
   display: grid;

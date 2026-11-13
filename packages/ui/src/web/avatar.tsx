@@ -3,6 +3,7 @@ import { brandCharacter, characterIdentity } from "../characters.ts";
 import { Character } from "./character.tsx";
 import { animateCharacter } from "./character-motion.ts";
 import { StatusDot } from "./status-dot.tsx";
+import { UnreadBadge } from "./unread-badge.tsx";
 
 type Motion = "idle" | "running";
 
@@ -13,6 +14,7 @@ export const BotAvatar = memo(function BotAvatar({
   size = "medium",
   statusLabel,
   interactive = false,
+  unread = 0,
 }: {
   seed: string;
   color?: string;
@@ -20,6 +22,7 @@ export const BotAvatar = memo(function BotAvatar({
   size?: "small" | "medium" | "panel" | "large";
   statusLabel?: string;
   interactive?: boolean;
+  unread?: number;
 }) {
   const identity = characterIdentity(seed);
   const root = useRef<HTMLSpanElement>(null);
@@ -44,6 +47,7 @@ export const BotAvatar = memo(function BotAvatar({
       {state === "running" && statusLabel && (
         <StatusDot tone="positive" label={statusLabel} />
       )}
+      <UnreadBadge count={unread} />
     </span>
   );
 });

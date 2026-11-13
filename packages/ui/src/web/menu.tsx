@@ -65,6 +65,7 @@ export function ActionMenu({
             {items.map((item) => (
               <Menu.Item
                 key={item.label}
+                aria-label={item.label}
                 className="action-menu-item"
                 data-tone={item.tone}
                 data-separator={item.separator || undefined}

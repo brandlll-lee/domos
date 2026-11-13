@@ -371,6 +371,10 @@ test("files preview documents, search old history and return to the source", asy
   }
   await control({ history: 2400 });
   await page.reload();
+  await page.getByRole("button", { name: /^(返回最新|有新消息)$/ }).click();
+  await expect(
+    page.getByRole("button", { name: "预览 说明.md", exact: true }),
+  ).toHaveCount(0);
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   const reading = Promise.withResolvers<void>();
   await page.route("**/rpc/files/list", async (route) => {
@@ -637,7 +641,7 @@ test("files preview documents, search old history and return to the source", asy
   await expect(
     page.getByLabel("你的消息", { exact: true }).last(),
   ).toContainText("历史任务");
-  await page.getByRole("button", { name: "返回最新", exact: true }).click();
+  await page.getByRole("button", { name: /^(返回最新|有新消息)$/ }).click();
   await expect(
     page.getByLabel("你的消息", { exact: true }).last(),
   ).toContainText("历史任务 2400");
@@ -3239,7 +3243,7 @@ test("IM bubbles, sidebar search, and popup surfaces share both themes", async (
   );
   expect(received.width).toBeLessThanOrEqual(720);
   expect(sent.x + sent.width).toBeCloseTo(column.x + column.width, 0);
-  const search = page.getByRole("searchbox", { name: "搜索联系人" });
+  const search = page.getByRole("searchbox", { name: "搜索联系人和聊天记录" });
   await search.fill(crypto.randomUUID());
   await expect(page.getByText("没有找到联系人", { exact: true })).toBeVisible();
   const navigation = page.getByRole("navigation", {

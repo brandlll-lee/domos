@@ -21,6 +21,7 @@ import { desktopFile } from "./files.ts";
 import { LocalHost } from "./host.ts";
 import { applicationIcon } from "./icons.ts";
 import { maintain } from "./maintenance.ts";
+import { notificationSchema, notify } from "./notifications.ts";
 import { createWindow, prepareInstance, workspaceSource } from "./windows.ts";
 
 let quitting = false;
@@ -37,6 +38,8 @@ let connection: ConnectionSetup;
 let active: Awaited<ReturnType<typeof prepareInstance>> | undefined;
 let switching: AbortController | undefined;
 let transition: Promise<void> = Promise.resolve();
+let unread: Record<string, number> = {};
+let attentionSave: Promise<unknown> = Promise.resolve();
 
 async function save(nextInstances = instances, nextSelected = selected) {
   await writeConfiguration(join(app.getPath("userData"), "instances.json"), {
@@ -223,6 +226,10 @@ async function main() {
     app.quit();
     return;
   }
+  if (process.platform === "win32")
+    app.setAppUserModelId(
+      app.isPackaged ? "app.domos.desktop" : process.execPath,
+    );
   await app.whenReady();
   app.dock?.setIcon(applicationIcon);
   const resource = fileURLToPath(new URL(".", import.meta.url));
@@ -241,6 +248,20 @@ async function main() {
     release.serviceBuild.context = join(runtime, release.serviceBuild.context);
   hostingDirectory = join(app.getPath("userData"), "hosting");
   containerDirectory = join(app.getPath("userData"), "container");
+  try {
+    unread = z
+      .record(z.uuid(), z.number().int().nonnegative())
+      .parse(
+        JSON.parse(
+          await readFile(
+            join(app.getPath("userData"), "attention.json"),
+            "utf8",
+          ),
+        ),
+      );
+  } catch {
+    unread = {};
+  }
   try {
     const stored = z
       .object({
@@ -377,13 +398,67 @@ async function main() {
   handle(
     "desktop:state",
     async () => ({
-      instances: instances.map(({ id, name, mode }) => ({ id, name, mode })),
+      instances: instances.map(({ id, name, mode }) => ({
+        id,
+        name,
+        mode,
+        unread: unread[id] ?? 0,
+      })),
       selected,
       running: host.running || stack.running,
       mode: instances.find((item) => item.id === selected)?.mode,
       runtime:
         instances.find((item) => item.id === selected)?.runtime ?? "native",
     }),
+    false,
+  );
+  handle(
+    "desktop:unread",
+    async (input) => {
+      const count = z
+        .number()
+        .int()
+        .nonnegative()
+        .max(1_000_000_000)
+        .parse(input);
+      if (!selected) throw new Error("工作区不可用。");
+      unread[selected] = count;
+      app.setBadgeCount(
+        Object.entries(unread)
+          .filter(([id]) => instances.some((item) => item.id === id))
+          .reduce((sum, [, count]) => sum + count, 0),
+      );
+      attentionSave = attentionSave
+        .catch(() => {})
+        .then(() =>
+          writeConfiguration(
+            join(app.getPath("userData"), "attention.json"),
+            unread,
+          ),
+        );
+      await attentionSave;
+    },
+    false,
+  );
+  handle(
+    "desktop:notify",
+    async (input) => {
+      const value = notificationSchema.parse(input);
+      const instance = instances.find((item) => item.id === selected);
+      if (!instance) throw new Error("工作区不可用。");
+      if (current?.isFocused() && current.isVisible() && !current.isMinimized())
+        return { shown: false };
+      return notify(instance.id, value, () => {
+        void (async () => {
+          const saved = instances.find((item) => item.id === instance.id);
+          if (!saved) throw new Error("电脑连接已移除。");
+          await connect(saved);
+          current?.show();
+          current?.focus();
+          active?.view.webContents.send("desktop:chat-target", value);
+        })().catch(failure);
+      });
+    },
     false,
   );
   handle(

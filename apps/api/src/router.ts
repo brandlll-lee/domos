@@ -48,6 +48,66 @@ export function createRouter(
   mcpCallback?: string,
 ) {
   return {
+    chats: {
+      search: os
+        .input(
+          z.object({
+            query: z.string().trim().min(1).max(200),
+            before: z.number().int().positive().optional(),
+          }),
+        )
+        .handler(({ input, signal }) =>
+          bots.chats.search(
+            input.query,
+            input.before,
+            signal
+              ? withAbortSignal(signal, BACKGROUND_CONTEXT)
+              : BACKGROUND_CONTEXT,
+          ),
+        ),
+      receipts: os
+        .input(
+          z.object({
+            chat: z
+              .string()
+              .regex(/^(bot\/\d+|team\/[\w-]+)$/)
+              .max(100),
+            messages: z
+              .array(
+                z.object({
+                  sessionId: z.number().int().nonnegative(),
+                  messageId: z.string().min(1).max(256),
+                }),
+              )
+              .max(240),
+          }),
+        )
+        .handler(({ input, signal }) =>
+          bots.chats.receipts(
+            input.chat,
+            input.messages,
+            signal
+              ? withAbortSignal(signal, BACKGROUND_CONTEXT)
+              : BACKGROUND_CONTEXT,
+          ),
+        ),
+      attention: os
+        .input(
+          z.object({
+            read: z
+              .record(z.string().max(100), z.number().int().nonnegative())
+              .refine((value) => Object.keys(value).length <= 2000),
+          }),
+        )
+        .handler(async function* ({ input, signal }) {
+          yield* bots.chats.watch(
+            input.read,
+            signal
+              ? withAbortSignal(signal, BACKGROUND_CONTEXT)
+              : BACKGROUND_CONTEXT,
+          );
+        }),
+    },
     teams: teamRouter(bots, files, work, engines, mcp),
     mcp: mcpRouter(bots, mcp, mcpCallback),
     computer: computerRouter(bots, computer),

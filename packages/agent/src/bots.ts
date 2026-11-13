@@ -12,6 +12,7 @@ import {
   section,
 } from "@earendil-works/pi-durable";
 import { botPreview } from "./bot-preview.ts";
+import { ChatDirectory } from "./chat-directory.ts";
 import type { Computers } from "./computer/catalog.ts";
 import { BotSession, BotSessions, owningBot } from "./conversations.ts";
 import { EngineDoc } from "./harness/state.ts";
@@ -66,12 +67,14 @@ const ModelVisibility = defineDoc<{
 });
 
 export class Bots {
+  readonly chats: ChatDirectory;
   private readonly harness: Harness;
   private readonly computers?: Computers;
 
-  constructor(harness: Harness, computers?: Computers) {
+  constructor(harness: Harness, computers?: Computers, database = ":memory:") {
     this.harness = harness;
     this.computers = computers;
+    this.chats = new ChatDirectory(harness, database);
   }
   owner(id: number, context: Context) {
     return owningBot(this.harness, id as ConversationId, context);

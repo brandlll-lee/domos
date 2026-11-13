@@ -8,6 +8,7 @@ export type DesktopState = {
     id: string;
     name: string;
     mode: "local" | "existing";
+    unread?: number;
   }[];
   selected?: string;
   mode?: "local" | "existing";
@@ -23,6 +24,14 @@ declare global {
       menu(scope?: "environment"): Promise<Result>;
       prepare(): Promise<Result<{ image: string; proxyImage?: string }>>;
       state(): Promise<Result<DesktopState>>;
+      unread(count: number): Promise<Result>;
+      notify(
+        input: import("@domos/agent/chat-directory").ChatTarget & {
+          sequence: number;
+          title: string;
+          body: string;
+        },
+      ): Promise<Result<{ shown: boolean }>>;
       connection(
         input:
           | { action: "select" | "remove"; id: string }

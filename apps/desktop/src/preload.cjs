@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld("domosDesktop", {
   menu: (scope) => ipcRenderer.invoke("desktop:menu", scope),
   prepare: () => ipcRenderer.invoke("desktop:prepare"),
   state: () => ipcRenderer.invoke("desktop:state"),
+  unread: (count) => ipcRenderer.invoke("desktop:unread", count),
+  notify: (input) => ipcRenderer.invoke("desktop:notify", input),
   connection: (input) => ipcRenderer.invoke("desktop:connection", input),
   connected: () =>
     new Promise((resolve) => {
@@ -16,6 +18,11 @@ contextBridge.exposeInMainWorld("domosDesktop", {
   maintain: (action, password) =>
     ipcRenderer.invoke("desktop:maintain", { action, password }),
   file: (input) => ipcRenderer.invoke("desktop:file", input),
+});
+ipcRenderer.on("desktop:chat-target", (_event, target) => {
+  window.dispatchEvent(
+    new CustomEvent("domos:chat-target", { detail: target }),
+  );
 });
 ipcRenderer.on("desktop:leave", () => {
   window.dispatchEvent(new Event("domos:workspace-save"));

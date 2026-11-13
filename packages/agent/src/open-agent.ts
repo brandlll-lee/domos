@@ -117,7 +117,7 @@ export async function openAgent(
   const harness = await Harness.open(storage, { ...options, models }, context);
   try {
     const conversation = await harness.root(context, { agent });
-    const bots = new Bots(harness, options.computers);
+    const bots = new Bots(harness, options.computers, database);
     const mcp = new McpConnections(harness, options.credentials);
     await bots.initialize(conversation.id, context);
     await options.computers?.initialize(

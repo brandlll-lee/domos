@@ -1,6 +1,7 @@
 import type { Bot } from "@domos/agent/bots";
 import { BotAvatar } from "@domos/ui/avatar";
 import { characterIdentity } from "@domos/ui/characters";
+import { UnreadBadge } from "@domos/ui/unread-badge";
 import type { CSSProperties } from "react";
 import { createContext } from "react";
 export const TeamMembers = createContext<
@@ -57,8 +58,10 @@ export function BotReference({
 }
 export function TeamAvatar({
   members,
+  unread = 0,
 }: {
   members: { id: number; name: string; avatar: string }[];
+  unread?: number;
 }) {
   return (
     <span
@@ -76,6 +79,7 @@ export function TeamAvatar({
           <BotAvatar seed={bot.avatar} size="small" />
         </span>
       ))}
+      <UnreadBadge count={unread} />
     </span>
   );
 }

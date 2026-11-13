@@ -1,4 +1,3 @@
-import type { ConversationFile } from "@domos/agent/files";
 import type { TranscriptItem } from "@domos/agent/transcript";
 import {
   useCallback,
@@ -7,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import type { MessageTarget } from "./message-target.ts";
 import { readingPosition, saveReadingPosition } from "./reading-position.ts";
 
 const positions = new Map<
@@ -36,7 +36,7 @@ export function useTranscript(
   sentRequest?: string,
   typing = false,
   botId?: number,
-  target?: Pick<ConversationFile, "messageId" | "file">,
+  target?: MessageTarget,
   chatKey = String(botId),
 ) {
   const viewport = useRef<HTMLDivElement>(null);
@@ -112,14 +112,17 @@ export function useTranscript(
     if (target && revealed.current !== target) {
       let index = items.findIndex(
         (item) =>
-          item.id === target.messageId ||
-          (item.kind === "message" && item.message.id === target.messageId),
+          item.id === target.messageId &&
+          (target.sessionId === undefined ||
+            (item.kind === "message"
+              ? (item.message.sessionId ?? botId)
+              : (item.sessionId ?? botId)) === target.sessionId),
       );
       if (index < 0)
         index = items.findIndex(
           (item) =>
             item.kind === "attachments" &&
-            item.files.some((file) => file.id === target.file.id),
+            item.files.some((file) => file.id === target.file?.id),
         );
       const item = items[index];
       if (!item) return;
@@ -230,7 +233,7 @@ export function useTranscript(
       if (requestedNode) {
         const node =
           requestedNode.querySelector<HTMLElement>(
-            `[data-file-id="${CSS.escape(revealed.current?.file.id ?? "")}"]`,
+            `[data-file-id="${CSS.escape(revealed.current?.file?.id ?? "")}"]`,
           ) ?? requestedNode;
         target += node.getBoundingClientRect().top - bounds.top - top;
         reading.current = { node, top: bounds.top + top };

@@ -3,6 +3,7 @@ import { Dialog } from "@domos/ui/dialog";
 import { ActionMenu } from "@domos/ui/menu";
 import { InlineNotice } from "@domos/ui/message";
 import { SettingRow } from "@domos/ui/setting-row";
+import { UnreadBadge } from "@domos/ui/unread-badge";
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
 import { MonitorIcon } from "@phosphor-icons/react/dist/csr/Monitor";
@@ -19,18 +20,22 @@ export function EnvironmentSwitcher() {
   const operation = useRef(0);
   useEffect(() => {
     let active = true;
-    void desktop
-      ?.state()
-      .then((result) => {
-        if (!active) return;
-        if (result.ok && result.value) setState(result.value);
-        else setError(result.error ?? "无法读取电脑连接。");
-      })
-      .catch(() => {
-        if (active) setError("无法读取电脑连接。");
-      });
+    const refresh = () =>
+      void desktop
+        ?.state()
+        .then((result) => {
+          if (!active) return;
+          if (result.ok && result.value) setState(result.value);
+          else setError(result.error ?? "无法读取电脑连接。");
+        })
+        .catch(() => {
+          if (active) setError("无法读取电脑连接。");
+        });
+    refresh();
+    window.addEventListener("domos:unread", refresh);
     return () => {
       active = false;
+      window.removeEventListener("domos:unread", refresh);
     };
   }, []);
   if (!desktop) return null;
@@ -83,6 +88,11 @@ export function EnvironmentSwitcher() {
           >
             <MonitorIcon aria-hidden="true" />
             <span>{label}</span>
+            <UnreadBadge
+              count={(state?.instances ?? [])
+                .filter((item) => item.id !== state?.selected)
+                .reduce((sum, item) => sum + (item.unread ?? 0), 0)}
+            />
             <CaretDownIcon aria-hidden="true" />
           </Button>
         }
@@ -92,7 +102,13 @@ export function EnvironmentSwitcher() {
               item.mode === "local" && item.name === "这台电脑"
                 ? "本机"
                 : item.name,
-            icon: item.id === state?.selected ? <CheckIcon /> : <MonitorIcon />,
+            icon: item.unread ? (
+              <UnreadBadge count={item.unread} />
+            ) : item.id === state?.selected ? (
+              <CheckIcon />
+            ) : (
+              <MonitorIcon />
+            ),
             disabled: item.id === state?.selected,
             onSelect: () =>
               void run({ action: "select", id: item.id }, item.name),

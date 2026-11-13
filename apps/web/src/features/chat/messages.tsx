@@ -1,5 +1,4 @@
 import type { BotPresence } from "@domos/agent/bots";
-import type { ConversationFile } from "@domos/agent/files";
 import { type ChatMessage, messageText } from "@domos/agent/messages";
 import type { TranscriptItem } from "@domos/agent/transcript";
 import type { ChatView } from "@domos/agent/view";
@@ -14,11 +13,14 @@ import {
   memo,
   type ReactNode,
   useDeferredValue,
+  useEffect,
   useMemo,
+  useRef,
   ViewTransition,
 } from "react";
 import { Approval } from "./approvals.tsx";
 import { Attachments } from "./attachments.tsx";
+import { useAttention } from "./attention.tsx";
 import { BotReference } from "./bot-reference.tsx";
 import { chatCopy } from "./copy.ts";
 import { ErrorMessage } from "./error-message.tsx";
@@ -28,6 +30,7 @@ import { materialTokens } from "./material-tokens.tsx";
 import { MessageBody } from "./message-body.tsx";
 import { MessageContent } from "./message-content.tsx";
 import { MessageDetail } from "./message-detail.tsx";
+import type { MessageTarget } from "./message-target.ts";
 import { TakeoverCard } from "./takeover-card.tsx";
 import { TypingDots } from "./typing-dots.tsx";
 import { useTranscript } from "./use-transcript.ts";
@@ -52,13 +55,22 @@ const MessageRow = memo(function MessageRow({
         className="task-notice"
         data-state={item.status}
         data-transcript-key={key}
+        data-message-id={`failure:${item.id}`}
+        data-session-id={item.sessionId ?? botId}
+        data-incoming="true"
       >
         <ErrorMessage>{item.error ?? chatCopy.taskFailed}</ErrorMessage>
       </div>
     );
   if (item.kind === "attachments")
     return (
-      <div className="delivered-files" data-transcript-key={key}>
+      <div
+        className="delivered-files"
+        data-transcript-key={key}
+        data-message-id={item.id}
+        data-session-id={item.sessionId ?? botId}
+        data-incoming="true"
+      >
         <div className="attachment-message">
           <Attachments
             botId={item.sessionId ?? botId}
@@ -76,6 +88,15 @@ const MessageRow = memo(function MessageRow({
     <article
       className={`message ${message.role}`}
       data-transcript-key={key}
+      data-message-id={message.id}
+      data-session-id={botId}
+      data-incoming={
+        (message.role === "assistant" && message.cursor) ||
+        message.approval ||
+        message.takeover
+          ? "true"
+          : undefined
+      }
       aria-label={
         message.role === "user"
           ? chatCopy.userMessage
@@ -215,6 +236,7 @@ export const Messages = memo(function Messages({
   loadingNewer,
   newerError,
   onNewer,
+  obscured = false,
 }: {
   botId: number;
   chatKey?: string;
@@ -234,7 +256,8 @@ export const Messages = memo(function Messages({
   loadingEarlier?: boolean;
   earlierError?: string;
   onEarlier?: () => Promise<void>;
-  target?: Pick<ConversationFile, "messageId" | "file">;
+  target?: MessageTarget;
+  obscured?: boolean;
   readingHistory?: boolean;
   onLatest?: () => void;
   hasNewer?: boolean;
@@ -280,6 +303,107 @@ export const Messages = memo(function Messages({
     target,
     chatKey,
   );
+  const attention = useAttention();
+  const read = useRef(attention?.read);
+  read.current = attention?.read;
+  const readRevision = attention?.revision;
+  const viewport = transcript.viewport;
+  useEffect(() => {
+    const root = viewport.current;
+    if (!root || !ready || obscured || readRevision === undefined) return;
+    const visible = new Map<
+      Element,
+      { sessionId: number; messageId: string }
+    >();
+    const seen = new Set<string>();
+    let timer: number | undefined;
+    const collect = () => {
+      clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        if (
+          document.hidden ||
+          !document.hasFocus() ||
+          document.querySelector('[role="dialog"][aria-modal="true"]')
+        )
+          return;
+        const messages = [...visible.values()].filter(
+          (item) => !seen.has(`${item.sessionId}:${item.messageId}`),
+        );
+        for (const item of messages)
+          seen.add(`${item.sessionId}:${item.messageId}`);
+        if (messages.length)
+          void read
+            .current?.(
+              chatKey?.startsWith("team:")
+                ? `team/${chatKey.slice(5)}`
+                : `bot/${botId}`,
+              messages,
+            )
+            .then((saved) => {
+              if (!saved)
+                for (const item of messages)
+                  seen.delete(`${item.sessionId}:${item.messageId}`);
+            });
+      }, 500);
+    };
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const node = entry.target as HTMLElement;
+          if (
+            entry.isIntersecting &&
+            entry.intersectionRatio >=
+              Math.min(
+                0.5,
+                (root.clientHeight /
+                  Math.max(1, entry.boundingClientRect.height)) *
+                  0.5,
+              )
+          )
+            visible.set(node, {
+              sessionId: Number(node.dataset.sessionId),
+              messageId: node.dataset.messageId ?? "",
+            });
+          else visible.delete(node);
+        }
+        collect();
+      },
+      { root, threshold: [0, 0.1, 0.25, 0.5, 1] },
+    );
+    const watched = new Set<Element>();
+    const observe = () => {
+      for (const node of watched)
+        if (!root.contains(node)) {
+          observer.unobserve(node);
+          watched.delete(node);
+          visible.delete(node);
+        }
+      for (const node of root.querySelectorAll<HTMLElement>(
+        '[data-incoming="true"]',
+      ))
+        if (!watched.has(node)) {
+          watched.add(node);
+          observer.observe(node);
+        }
+    };
+    observe();
+    const changes = new MutationObserver(observe);
+    changes.observe(root, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-incoming"],
+    });
+    window.addEventListener("focus", collect);
+    document.addEventListener("visibilitychange", collect);
+    return () => {
+      observer.disconnect();
+      changes.disconnect();
+      clearTimeout(timer);
+      window.removeEventListener("focus", collect);
+      document.removeEventListener("visibilitychange", collect);
+    };
+  }, [ready, obscured, viewport, botId, chatKey, readRevision]);
   const motion =
     !transcript.initialized || !transcript.atBottom || document.hidden
       ? { default: "none" }

@@ -1,6 +1,6 @@
 import type { Attachment } from "@domos/agent/attachments";
-import type { ConversationFile } from "@domos/agent/files";
 import type { InputMaterials, MaterialSelection } from "@domos/agent/materials";
+import type { ChatMessage } from "@domos/agent/messages";
 import type { TranscriptItem } from "@domos/agent/transcript";
 import type { ChatView } from "@domos/agent/view";
 import { ORPCError } from "@orpc/client";
@@ -16,6 +16,7 @@ import { client } from "../../client.ts";
 import { receiveConversationFiles } from "../files/file-state.ts";
 import { flushModelSettings } from "../models/model-state.ts";
 import { chatCopy } from "./copy.ts";
+import type { MessageTarget } from "./message-target.ts";
 import { readingPosition } from "./reading-position.ts";
 import { rejectionMessage } from "./request-error.ts";
 import { transcriptState } from "./transcript-state.ts";
@@ -34,7 +35,7 @@ type RetainedChat = {
   sending: boolean;
   error: string | null;
   history?: ChatView;
-  target?: Pick<ConversationFile, "messageId" | "file">;
+  target?: MessageTarget;
 };
 function createChatState() {
   let state: RetainedChat = {
@@ -476,14 +477,18 @@ export function useChat(
   }
 
   return {
-    async revealMessage(item: ConversationFile) {
+    async revealMessage(item: MessageTarget) {
       revealRequest.current?.abort();
       const loaded = store.snapshot().history ?? current.current;
-      if (loaded?.messages.some((message) => message.id === item.messageId)) {
+      const matches = (message: ChatMessage) =>
+        message.id === item.messageId &&
+        (item.sessionId === undefined ||
+          (message.sessionId ?? botId) === item.sessionId);
+      if (loaded?.messages.some(matches)) {
         store.update({ target: { ...item } });
         return true;
       }
-      if (!item.cursor) throw new Error("原消息位置不可用，请刷新文件列表。");
+      if (!item.cursor) throw new Error("原消息位置不可用，请刷新后重试。");
       const controller = new AbortController();
       revealRequest.current = controller;
       const signal = AbortSignal.any([
@@ -498,8 +503,7 @@ export function useChat(
             )
           : await client.get({ botId, around: item.cursor }, { signal });
         signal.throwIfAborted();
-        if (!page.messages.some((message) => message.id === item.messageId))
-          throw new Error("原消息不存在。");
+        if (!page.messages.some(matches)) throw new Error("原消息不存在。");
         earlierRequest.current?.abort();
         earlierRequest.current = null;
         setLoadingEarlier(false);

@@ -3042,7 +3042,7 @@ test("contacts snap to an icon column and restore their width without losing cha
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     const contact = sidebar.locator('.contact-row[aria-current="page"]');
     const searchButton = sidebar.getByRole("button", {
-      name: "搜索联系人",
+      name: "搜索联系人和聊天记录",
       exact: true,
     });
     const contactBox = await contact.boundingBox();
@@ -3077,7 +3077,7 @@ test("contacts snap to an icon column and restore their width without losing cha
   await expect(workspace).toHaveAttribute("data-sidebar-compact", "true");
   await expect(input).toHaveText("收起侧栏仍保留的草稿");
   await sidebar
-    .getByRole("button", { name: "搜索联系人", exact: true })
+    .getByRole("button", { name: "搜索联系人和聊天记录", exact: true })
     .click();
   const search = sidebar.getByRole("searchbox");
   await expect(search).toBeFocused();
@@ -3514,7 +3514,7 @@ test("contact rows keep their density and searchable previews across selections"
   ).toBe(true);
   expect(geometry[0]?.height).toBe(54);
   expect(geometry[0]?.nameWeight).toBe("500");
-  const search = page.getByRole("searchbox", { name: "搜索联系人" });
+  const search = page.getByRole("searchbox", { name: "搜索联系人和聊天记录" });
   await search.fill("开始对话");
   await expect(contacts.getByRole("link")).toHaveCount(2);
   await search.fill("整理研究资料");
