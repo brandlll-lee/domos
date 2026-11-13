@@ -1,10 +1,11 @@
-import { fork } from "node:child_process";
+import { execFile, fork } from "node:child_process";
 import { once } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import {
   type ElectronApplication,
   expect,
@@ -69,6 +70,30 @@ test("native setup starts and resumes with Docker unavailable", async ({
     await expect(
       setup.getByRole("heading", { name: "认识一下 Domos" }),
     ).toBeVisible();
+    if (process.platform === "win32") {
+      const handle = await desktop.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]
+          ?.getNativeWindowHandle()
+          .readBigUInt64LE()
+          .toString(),
+      );
+      if (!handle) throw new Error("Native window required");
+      const { stdout } = await promisify(execFile)(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-File",
+          fileURLToPath(
+            new URL("./fixtures/window-identity.ps1", import.meta.url),
+          ),
+          "-Window",
+          handle,
+        ],
+        { windowsHide: true },
+      );
+      expect(JSON.parse(stdout).appId).toBe("app.domos.desktop.development");
+    }
     await expect(
       setup.getByRole("group", { name: "Domos 角色" }).getByRole("button"),
     ).toHaveCount(7);
