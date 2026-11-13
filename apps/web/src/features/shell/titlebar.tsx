@@ -1,7 +1,6 @@
 import { Button } from "@domos/ui/controls";
 import { DotsThreeIcon } from "@phosphor-icons/react/dist/csr/DotsThree";
 import { useEffect } from "react";
-import { EnvironmentSwitcher } from "./environment-switcher.tsx";
 import "./style.css";
 
 type ControlsOverlay = {
@@ -60,9 +59,7 @@ export function Titlebar({ embedded = false }: { embedded?: boolean }) {
   if (embedded) return null;
   return (
     <header className="app-titlebar" data-platform={desktop?.platform}>
-      <div className="titlebar-actions">
-        <EnvironmentSwitcher />
-      </div>
+      <div className="titlebar-actions" />
       {desktop && (
         <Button
           variant="ghost"

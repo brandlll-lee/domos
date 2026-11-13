@@ -21,7 +21,7 @@ import { desktopFile } from "./files.ts";
 import { LocalHost } from "./host.ts";
 import { applicationIcon } from "./icons.ts";
 import { maintain } from "./maintenance.ts";
-import { openInstance } from "./windows.ts";
+import { createWindow, prepareInstance, workspaceSource } from "./windows.ts";
 
 let quitting = false;
 let current: BrowserWindow | undefined;
@@ -34,15 +34,17 @@ let containerDirectory: string;
 let tray: Tray;
 let busy = false;
 let connection: ConnectionSetup;
+let active: Awaited<ReturnType<typeof prepareInstance>> | undefined;
+let switching: AbortController | undefined;
+let transition: Promise<void> = Promise.resolve();
 
-async function save() {
+async function save(nextInstances = instances, nextSelected = selected) {
   await writeConfiguration(join(app.getPath("userData"), "instances.json"), {
-    instances,
-    selected,
+    instances: nextInstances,
+    selected: nextSelected,
     hostingDirectory,
     containerDirectory,
   });
-  updateMenu();
 }
 
 function updateMenu() {
@@ -72,7 +74,7 @@ function updateMenu() {
 function failure(error: unknown) {
   const message =
     error instanceof Error ? error.message : "连接未完成。请重试。";
-  if (!current) {
+  if (!active) {
     connection.open(message);
     return;
   }
@@ -82,11 +84,41 @@ function failure(error: unknown) {
   });
 }
 
-async function connect(
+function connect(
   instance: Instance,
   progress: (value: InstallProgress) => void = () => {},
   signal = new AbortController().signal,
 ) {
+  if (busy) return Promise.reject(new Error("请等待当前操作结束。"));
+  switching?.abort(new Error("已选择另一台电脑。"));
+  const controller = new AbortController();
+  switching = controller;
+  const pending = transition
+    .catch(() => {})
+    .then(() =>
+      openWorkspace(
+        instance,
+        progress,
+        AbortSignal.any([
+          signal,
+          controller.signal,
+          AbortSignal.timeout(300_000),
+        ]),
+      ),
+    );
+  transition = pending;
+  return pending.finally(() => {
+    if (switching === controller) switching = undefined;
+  });
+}
+
+async function openWorkspace(
+  instance: Instance,
+  progress: (value: InstallProgress) => void,
+  signal: AbortSignal,
+) {
+  signal.throwIfAborted();
+  if (active && selected === instance.id) return;
   let session: { token: string; expires: number } | undefined;
   let url = instance.url;
   if (instance.mode === "local") {
@@ -95,16 +127,63 @@ async function connect(
     session = await target.pair();
   } else await probeInstance(url, signal);
   signal.throwIfAborted();
-  const next = await openInstance(url, session);
-  const previous = current;
-  current = next;
-  next.on("closed", () => {
-    if (current === next) current = undefined;
-  });
-  previous?.close();
-  selected = instance.id;
-  instance.url = url;
-  await save();
+  if (!current) {
+    current = createWindow("./preload.cjs", undefined, false);
+    current.on("closed", () => {
+      switching?.abort(new Error("窗口已关闭。"));
+      active?.dispose();
+      active = undefined;
+      current = undefined;
+    });
+  }
+  const window = current;
+  const next = await prepareInstance(window, url, session, signal, () =>
+    connection.hide(),
+  );
+  try {
+    const saved = { ...instance, url };
+    const nextInstances = instances.some((item) => item.id === instance.id)
+      ? instances.map((item) => (item.id === instance.id ? saved : item))
+      : [...instances, saved];
+    signal.throwIfAborted();
+    await save(nextInstances, instance.id);
+    if (signal.aborted) {
+      await save();
+      signal.throwIfAborted();
+    }
+    const previous = active;
+    active = next;
+    instances = nextInstances;
+    selected = instance.id;
+    updateMenu();
+    if (previous) {
+      const contents = previous.view.webContents;
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(done, 1000);
+        function done() {
+          clearTimeout(timer);
+          ipcMain.removeListener("desktop:left", left);
+          resolve();
+        }
+        function left(event: Electron.IpcMainEvent) {
+          if (
+            event.sender === contents &&
+            event.senderFrame === contents.mainFrame
+          )
+            done();
+        }
+        ipcMain.on("desktop:left", left);
+        contents.send("desktop:leave");
+      });
+    }
+    next.show();
+    next.view.webContents.send("desktop:activated");
+    previous?.dispose();
+  } catch (error) {
+    next.dispose();
+    if (active) window.focus();
+    throw error;
+  }
 }
 
 async function local(
@@ -125,7 +204,6 @@ async function local(
       runtime,
       url: "http://127.0.0.1",
     };
-    instances.push(instance);
   }
   await connect(instance, progress, signal);
 }
@@ -136,7 +214,6 @@ async function remote(url: string, name: string, signal: AbortSignal) {
   let instance = instances.find((item) => item.url === origin);
   if (!instance) {
     instance = { id: crypto.randomUUID(), name, mode: "existing", url: origin };
-    instances.push(instance);
   }
   await connect(instance, undefined, signal);
 }
@@ -221,11 +298,15 @@ async function main() {
   ) =>
     ipcMain.handle(name, async (event, input) => {
       const instance = instances.find((item) => item.id === selected);
+      if (name === "desktop:appearance" && workspaceSource(event)) {
+        await run(input);
+        return { ok: true };
+      }
       if (
         !instance ||
         !current ||
-        event.sender !== current.webContents ||
-        event.senderFrame !== current.webContents.mainFrame ||
+        event.sender !== active?.view.webContents ||
+        event.senderFrame !== active.view.webContents.mainFrame ||
         new URL(event.senderFrame.url).origin !== new URL(instance.url).origin
       )
         throw new Error("请求来源无效。");
@@ -234,7 +315,7 @@ async function main() {
         instance.mode !== "local"
       )
         return { ok: false, error: "请先打开本机 Domos，再管理本机托管。" };
-      if (exclusive && busy)
+      if (exclusive && (busy || switching))
         return { ok: false, error: "请等待当前操作结束。" };
       if (exclusive) busy = true;
       try {
@@ -280,7 +361,12 @@ async function main() {
     async (input) => {
       const instance = instances.find((item) => item.id === selected);
       if (!current || !instance) throw new Error("窗口不可用。");
-      return desktopFile(current, instance.url, input);
+      return desktopFile(
+        current,
+        instance.url,
+        input,
+        active?.view.webContents,
+      );
     },
     false,
   );
@@ -288,14 +374,67 @@ async function main() {
     await prepareWorkImages(release, () => {});
     return { image: release.workImage, proxyImage: release.proxyImage };
   });
-  handle("desktop:state", async () => ({
-    instances,
-    selected,
-    running: host.running || stack.running,
-    mode: instances.find((item) => item.id === selected)?.mode,
-    runtime:
-      instances.find((item) => item.id === selected)?.runtime ?? "native",
-  }));
+  handle(
+    "desktop:state",
+    async () => ({
+      instances: instances.map(({ id, name, mode }) => ({ id, name, mode })),
+      selected,
+      running: host.running || stack.running,
+      mode: instances.find((item) => item.id === selected)?.mode,
+      runtime:
+        instances.find((item) => item.id === selected)?.runtime ?? "native",
+    }),
+    false,
+  );
+  handle(
+    "desktop:connection",
+    async (input) => {
+      const value = z
+        .discriminatedUnion("action", [
+          z.object({ action: z.literal("select"), id: z.uuid() }),
+          z.object({ action: z.literal("remove"), id: z.uuid() }),
+          z.object({ action: z.literal("add") }),
+          z.object({ action: z.literal("cancel") }),
+        ])
+        .parse(input);
+      if (value.action === "add") return connection.open("", false, true);
+      if (value.action === "cancel")
+        return switching?.abort(new Error("连接已取消。"));
+      const instance = instances.find((item) => item.id === value.id);
+      if (!instance) throw new Error("连接不存在。请刷新后重试。");
+      if (value.action === "select") return connect(instance);
+      if (instance.id === selected) throw new Error("请先切换到其他电脑。");
+      if (instance.mode === "local") throw new Error("本机连接需要保留。");
+      if (switching || busy) throw new Error("请等待当前操作结束。");
+      if (!current) throw new Error("窗口不可用。");
+      busy = true;
+      try {
+        const confirmed = await dialog.showMessageBox(current, {
+          type: "question",
+          message: `移除“${instance.name}”的连接？`,
+          detail: "这不会删除该电脑上的 Bot、聊天或文件。",
+          buttons: ["取消", "移除连接"],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true,
+        });
+        if (confirmed.response !== 1) return;
+        const nextInstances = instances.filter(
+          (item) => item.id !== instance.id,
+        );
+        await save(nextInstances);
+        instances = nextInstances;
+        updateMenu();
+      } finally {
+        busy = false;
+      }
+    },
+    false,
+  );
+  ipcMain.on("desktop:connected", (event) => {
+    if (event.sender === active?.view.webContents && workspaceSource(event))
+      event.sender.send("desktop:activated");
+  });
   handle("desktop:maintain", async (input) => {
     const container =
       instances.find((item) => item.id === selected)?.runtime === "docker";

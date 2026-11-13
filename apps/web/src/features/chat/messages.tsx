@@ -191,6 +191,7 @@ const MessageRow = memo(function MessageRow({
 
 export const Messages = memo(function Messages({
   botId,
+  chatKey,
   ready,
   busy,
   processing,
@@ -216,6 +217,7 @@ export const Messages = memo(function Messages({
   onNewer,
 }: {
   botId: number;
+  chatKey?: string;
   ready: boolean;
   busy: boolean;
   processing: boolean;
@@ -276,6 +278,7 @@ export const Messages = memo(function Messages({
     typing && !readingHistory,
     botId,
     target,
+    chatKey,
   );
   const motion =
     !transcript.initialized || !transcript.atBottom || document.hidden

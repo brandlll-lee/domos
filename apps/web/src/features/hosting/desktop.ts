@@ -8,7 +8,6 @@ export type DesktopState = {
     id: string;
     name: string;
     mode: "local" | "existing";
-    url: string;
   }[];
   selected?: string;
   mode?: "local" | "existing";
@@ -24,6 +23,14 @@ declare global {
       menu(scope?: "environment"): Promise<Result>;
       prepare(): Promise<Result<{ image: string; proxyImage?: string }>>;
       state(): Promise<Result<DesktopState>>;
+      connection(
+        input:
+          | { action: "select" | "remove"; id: string }
+          | { action: "add" | "cancel" },
+      ): Promise<Result>;
+      connected(): Promise<void>;
+      pairing(): void;
+      cancelConnection(): void;
       file(input: {
         action: "open" | "reveal" | "save";
         botId: number;

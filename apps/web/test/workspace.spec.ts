@@ -607,7 +607,7 @@ test("Apps manages a real MCP connection and Bot grants across reloads and theme
   const upstream = await mcpFixture();
   try {
     await page.goto(url);
-    await page.getByRole("button", { name: "连接中心", exact: true }).click();
+    await page.getByRole("button", { name: "应用连接", exact: true }).click();
     const dialog = page.locator(".apps-dialog");
     await expect(
       dialog.getByText("Microsoft Learn", { exact: true }),
@@ -715,7 +715,7 @@ test("Apps manages a real MCP connection and Bot grants across reloads and theme
       await dialog.screenshot({ path: info.outputPath(`apps-${theme}.png`) });
     }
     await page.reload();
-    await page.getByRole("button", { name: "连接中心", exact: true }).click();
+    await page.getByRole("button", { name: "应用连接", exact: true }).click();
     await dialog.getByRole("button", { name: /^已添加/ }).click();
     await dialog
       .getByRole("button", { name: /^查看 (Local Docs|OAuth Docs)$/ })
@@ -769,7 +769,7 @@ test("Apps completes and cancels browser OAuth with stored state", async ({
   const upstream = await mcpFixture({ oauth: true });
   try {
     await page.goto(url);
-    await page.getByRole("button", { name: "连接中心", exact: true }).click();
+    await page.getByRole("button", { name: "应用连接", exact: true }).click();
     const dialog = page.locator(".apps-dialog");
     await dialog.getByRole("button", { name: "MCP", exact: true }).click();
     await dialog.getByRole("button", { name: "添加 MCP", exact: true }).click();
@@ -817,7 +817,7 @@ test("Apps completes and cancels browser OAuth with stored state", async ({
     ).toBeVisible();
     await cancelled.close();
     await page.reload();
-    await page.getByRole("button", { name: "连接中心", exact: true }).click();
+    await page.getByRole("button", { name: "应用连接", exact: true }).click();
     await dialog.getByRole("button", { name: /^已添加/ }).click();
     await dialog
       .getByRole("button", { name: /^查看 (Local Docs|OAuth Docs)$/ })
@@ -931,7 +931,7 @@ test("three columns keep the identity capsule and navigation clear at each width
   if (!composer) throw new Error("Composer missing");
   expect(composer.y + composer.height).toBeGreaterThan(930);
   await expect(
-    footer.getByRole("button", { name: "连接中心", exact: true }),
+    footer.getByRole("button", { name: "应用连接", exact: true }),
   ).toBeVisible();
   await expect(
     footer.getByRole("button", { name: "用户菜单", exact: true }),
@@ -1061,7 +1061,7 @@ test("chat input stays active while a panel closes", async ({ page }) => {
 for (const dialogName of [
   "设置",
   "工作记录",
-  "连接中心",
+  "应用连接",
   "添加容器环境",
 ] as const) {
   test(`background replies stay behind ${dialogName} during transition frames`, async ({
@@ -1098,8 +1098,8 @@ for (const dialogName of [
           .getByRole("button", { name: "添加容器环境", exact: true })
           .click();
       }
-    } else if (dialogName === "连接中心") {
-      await page.getByRole("button", { name: "连接中心", exact: true }).click();
+    } else if (dialogName === "应用连接") {
+      await page.getByRole("button", { name: "应用连接", exact: true }).click();
     } else {
       await page.locator(".work-row .work-open").first().click();
     }
@@ -1549,10 +1549,7 @@ test("computer ownership, project directories and access stay distinct", async (
   await page.getByRole("button", { name: "用户菜单", exact: true }).click();
   await page.getByRole("menuitem", { name: "设置", exact: true }).click();
   const settings = page.getByRole("main", { name: "设置", exact: true });
-  await settings
-    .getByRole("group", { name: "电脑", exact: true })
-    .getByRole("button", { name: "打开", exact: true })
-    .click();
+  await settings.getByRole("tab", { name: "当前电脑", exact: true }).click();
   await expect(
     settings.getByRole("combobox", { name: "新机器人使用" }),
   ).toHaveCount(0);
@@ -1621,10 +1618,7 @@ test("local container setup submits the selected browser network policy", async 
   await page.getByRole("button", { name: "用户菜单", exact: true }).click();
   await page.getByRole("menuitem", { name: "设置", exact: true }).click();
   const settings = page.getByRole("main", { name: "设置", exact: true });
-  await settings
-    .getByRole("group", { name: "电脑", exact: true })
-    .getByRole("button", { name: "打开", exact: true })
-    .click();
+  await settings.getByRole("tab", { name: "当前电脑", exact: true }).click();
   await settings.locator(".settings-group > .disclosure > summary").click();
   await settings
     .getByRole("button", { name: "添加容器环境", exact: true })
@@ -3305,7 +3299,7 @@ test("settings stay readable in both themes and compact layouts", async ({
     settings.getByRole("tab", { name: "通用", exact: true }),
   ).toBeVisible();
   await expect(
-    settings.getByRole("tab", { name: "电脑", exact: true }),
+    settings.getByRole("tab", { name: "当前电脑", exact: true }),
   ).toHaveCount(0);
   await search.fill("不存在的设置");
   await expect(settings.getByRole("status")).toHaveText("没有匹配的设置");
@@ -3315,13 +3309,10 @@ test("settings stay readable in both themes and compact layouts", async ({
   await search.fill("访问");
   await search.press("Enter");
   await expect(
-    settings.getByRole("tab", { name: "通用", exact: true }),
+    settings.getByRole("tab", { name: "当前电脑", exact: true }),
   ).toBeFocused();
   await expect(search).toHaveValue("");
-  await settings
-    .getByRole("group", { name: "电脑", exact: true })
-    .getByRole("button", { name: "打开", exact: true })
-    .click();
+  await settings.getByRole("tab", { name: "当前电脑", exact: true }).click();
   await settings.locator(".settings-group > .disclosure > summary").click();
   await settings
     .getByRole("button", { name: "添加容器环境", exact: true })
@@ -3337,10 +3328,7 @@ test("settings stay readable in both themes and compact layouts", async ({
   await add.getByLabel("环境名称", { exact: true }).fill("尚未添加");
   await add.getByRole("button", { name: "取消", exact: true }).click();
   await settings.getByRole("tab", { name: "通用", exact: true }).click();
-  await settings
-    .getByRole("group", { name: "电脑", exact: true })
-    .getByRole("button", { name: "打开", exact: true })
-    .click();
+  await settings.getByRole("tab", { name: "当前电脑", exact: true }).click();
 
   await settings
     .getByRole("button", { name: "添加容器环境", exact: true })
@@ -4478,7 +4466,7 @@ test("connection pages distinguish first read, empty search and refreshed native
     });
   });
   await page.goto(url);
-  await page.getByRole("button", { name: "连接中心", exact: true }).click();
+  await page.getByRole("button", { name: "应用连接", exact: true }).click();
   const dialog = page.locator(".apps-dialog");
   await expect(
     dialog.getByRole("status", { name: "正在读取连接", exact: true }),
@@ -4543,7 +4531,7 @@ test("returning to a Bot shows retained messages and draft while its stream is d
     await expect(page.getByText("正在加载对话…", { exact: true })).toHaveCount(
       0,
     );
-    await expect(page.getByLabel("消息", { exact: true })).toHaveValue(
+    await expect(page.getByLabel("消息", { exact: true })).toHaveText(
       "甲的草稿",
     );
     await expect
@@ -4636,7 +4624,7 @@ test("sidebar footer keeps two entries and opens the account menu above them", a
   await expect(footer.getByRole("button")).toHaveCount(2);
   const account = footer.getByRole("button", { name: "用户菜单", exact: true });
   const connections = footer.getByRole("button", {
-    name: "连接中心",
+    name: "应用连接",
     exact: true,
   });
   for (const theme of ["dark", "light"] as const) {
@@ -4666,7 +4654,7 @@ test("sidebar footer keeps two entries and opens the account menu above them", a
   ).toBeVisible();
   await connections.click();
   await expect(
-    page.getByRole("dialog", { name: "连接中心", exact: true }),
+    page.getByRole("dialog", { name: "应用连接", exact: true }),
   ).toBeVisible();
 });
 

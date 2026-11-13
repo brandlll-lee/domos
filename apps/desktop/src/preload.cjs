@@ -5,7 +5,20 @@ contextBridge.exposeInMainWorld("domosDesktop", {
   menu: (scope) => ipcRenderer.invoke("desktop:menu", scope),
   prepare: () => ipcRenderer.invoke("desktop:prepare"),
   state: () => ipcRenderer.invoke("desktop:state"),
+  connection: (input) => ipcRenderer.invoke("desktop:connection", input),
+  connected: () =>
+    new Promise((resolve) => {
+      ipcRenderer.once("desktop:activated", () => resolve());
+      ipcRenderer.send("desktop:connected");
+    }),
+  pairing: () => ipcRenderer.send("desktop:pairing"),
+  cancelConnection: () => ipcRenderer.send("desktop:cancel"),
   maintain: (action, password) =>
     ipcRenderer.invoke("desktop:maintain", { action, password }),
   file: (input) => ipcRenderer.invoke("desktop:file", input),
+});
+ipcRenderer.on("desktop:leave", () => {
+  window.dispatchEvent(new Event("domos:workspace-save"));
+  window.dispatchEvent(new Event("domos:workspace-leave"));
+  setTimeout(() => ipcRenderer.send("desktop:left"), 0);
 });

@@ -202,7 +202,7 @@ export function AppsCenter({
               : "添加连接"
             : selectedId
               ? "连接详情"
-              : "连接中心"
+              : "应用连接"
         }
         className="apps-dialog"
         viewportRef={viewport}

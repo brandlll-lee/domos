@@ -19,6 +19,7 @@ import {
   clearConnectionContexts,
   invalidateConnectionContext,
 } from "../settings/use-connection-context.ts";
+import { saveWorkspaceView, workspaceView } from "../shell/workspace-state.ts";
 import { clearBotWork, invalidateBotWork } from "./details/use-bot-work.ts";
 
 function subscribeLocation(listener: () => void) {
@@ -41,8 +42,12 @@ export function useBots() {
   const [error, setError] = useState<string | null>(null);
   const hash = useSyncExternalStore(
     subscribeLocation,
-    () => window.location.hash,
+    () => window.location.hash || workspaceView().contact || "",
   );
+  useEffect(() => {
+    if (/^#(?:bot\/\d+|team\/.+)$/.test(hash))
+      saveWorkspaceView({ contact: hash });
+  }, [hash]);
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {

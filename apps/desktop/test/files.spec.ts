@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 import { pdf } from "../../../packages/agent/test/fixtures/pdf.ts";
 import { png } from "../../../packages/agent/test/fixtures/png.ts";
+import { workspacePage } from "./pages.ts";
 
 test("desktop uploads, previews, searches and downloads saved files", async ({
   playwright,
@@ -52,9 +53,9 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
       .getByRole("button", { name: "连接另一台电脑", exact: true })
       .click();
     await setup.getByLabel("Domos 地址").fill(`http://127.0.0.1:${ready.port}`);
-    const opened = desktop.waitForEvent("window");
+
     await setup.getByRole("button", { name: "连接", exact: true }).click();
-    const page = await opened;
+    const page = await workspacePage(desktop);
     await page.getByLabel("配对码", { exact: true }).fill(ready.pairing);
     await page.getByRole("button", { name: "连接", exact: true }).click();
     await expect(

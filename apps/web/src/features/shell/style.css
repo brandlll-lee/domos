@@ -39,18 +39,22 @@
 .environment-switcher {
   position: relative;
   min-width: 0;
+  flex-shrink: 0;
+  padding: var(--space-3) var(--space-3) 0;
+  -webkit-app-region: drag;
 }
 .environment-switcher .environment-trigger {
+  width: 100%;
   min-width: 0;
   max-width: 100%;
-  gap: 6px;
-  min-height: 28px;
-  padding: 3px 6px;
-  border-radius: 6px;
+  justify-content: flex-start;
+  gap: var(--space-2);
   color: var(--color-text);
-  font-size: 12.5px;
+  font-size: var(--text-body);
 }
 .environment-trigger span {
+  flex: 1;
+  text-align: start;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -75,6 +79,27 @@
   background: var(--color-surface);
   color: var(--color-danger);
   font-size: var(--text-caption);
+}
+.environment-progress {
+  display: flex;
+  align-items: center;
+  font-size: var(--text-caption);
+}
+.workspace[data-sidebar-compact] .environment-trigger {
+  width: var(--control-height);
+  justify-content: center;
+  padding-inline: 0;
+}
+.workspace[data-sidebar-compact] .environment-switcher {
+  align-self: center;
+}
+.workspace[data-sidebar-compact]
+  .environment-trigger
+  :is(span, svg:last-child) {
+  display: none;
+}
+.workspace[data-platform="darwin"] .environment-switcher {
+  padding-block-start: var(--titlebar-height);
 }
 .workspace {
   position: relative;

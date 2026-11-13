@@ -184,6 +184,9 @@ importers:
       react-dom:
         specifier: 19.3.1
         version: 19.3.1(patch_hash=8a9bc73dc1232059e92e305b7f1f75aae5c01297c6043dadf5e62e6212e94408)(react@19.3.1)
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
     devDependencies:
       '@domos/agent':
         specifier: workspace:*

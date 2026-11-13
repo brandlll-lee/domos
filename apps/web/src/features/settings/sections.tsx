@@ -3,6 +3,7 @@ import { GearIcon } from "@phosphor-icons/react/dist/csr/Gear";
 import { SparkleIcon } from "@phosphor-icons/react/dist/csr/Sparkle";
 import type { ReactNode } from "react";
 import { ComputerSettings } from "../computer/settings.tsx";
+import { Devices } from "../hosting/devices.tsx";
 import { AISettings } from "./ai.tsx";
 import { GeneralSettings } from "./general.tsx";
 
@@ -17,14 +18,12 @@ type SectionProps = SettingsAccess & {
 
 export const sections = {
   general: {
-    primary: true,
     label: "通用",
-    description: "主题、设备访问与数据管理。",
+    description: "主题与数据管理。",
     icon: GearIcon,
     render: (props: SectionProps) => <GeneralSettings {...props} />,
   },
   ai: {
-    primary: true,
     label: "AI 服务",
     description: "管理服务连接和可用模型。",
     icon: SparkleIcon,
@@ -33,16 +32,19 @@ export const sections = {
     ),
   },
   computers: {
-    primary: false,
-    label: "电脑",
-    description: "",
+    label: "当前电脑",
+    description: "名称、设备访问与电脑权限。",
     icon: DesktopIcon,
-    render: ({ admin }: SectionProps) => <ComputerSettings admin={admin} />,
+    render: ({ admin, deviceId }: SectionProps) => (
+      <div className="settings-sections">
+        <ComputerSettings admin={admin} />
+        {admin && deviceId && <Devices current={deviceId} />}
+      </div>
+    ),
   },
 } satisfies Record<
   string,
   {
-    primary: boolean;
     label: string;
     description: string;
     icon: typeof GearIcon;

@@ -2,6 +2,7 @@ import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
 import { SetupPage, SetupStatus } from "@domos/ui/setup";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 import { client, selectComputer } from "../../client.ts";
 import { Onboarding } from "../onboarding/root.tsx";
 import { SettingsRoot } from "../settings/root.tsx";
@@ -13,7 +14,7 @@ type Session = { device: { id: string; scope: string } };
 
 export function HostingRoot({ children }: { children: ReactNode }) {
   const [state, setState] = useState<
-    "loading" | "pair" | "ready" | "standalone"
+    "loading" | "pair" | "ready" | "standalone" | "suspended"
   >("loading");
   const [computerId, setComputerId] = useState("");
   const [session, setSession] = useState<Session>();
@@ -34,6 +35,7 @@ export function HostingRoot({ children }: { children: ReactNode }) {
     const response = await fetch("/hosting/session");
     if (response.status === 401) {
       setState("pair");
+      window.domosDesktop?.pairing();
       return;
     }
     if (!response.ok) throw new Error("无法读取设备状态。");
@@ -42,6 +44,7 @@ export function HostingRoot({ children }: { children: ReactNode }) {
     selectComputer(node.id);
     setComputerId(node.id);
     setSession(value);
+    await window.domosDesktop?.connected();
     setState("ready");
   }, []);
   useEffect(() => {
@@ -51,8 +54,14 @@ export function HostingRoot({ children }: { children: ReactNode }) {
       setState("pair");
     };
     window.addEventListener("domos:pair", unauthorized);
-    return () => window.removeEventListener("domos:pair", unauthorized);
+    const leave = () => flushSync(() => setState("suspended"));
+    window.addEventListener("domos:workspace-leave", leave);
+    return () => {
+      window.removeEventListener("domos:pair", unauthorized);
+      window.removeEventListener("domos:workspace-leave", leave);
+    };
   }, [refresh]);
+  if (state === "suspended") return null;
   if (state === "ready" || state === "standalone")
     return (
       <SettingsRoot
@@ -124,6 +133,14 @@ export function HostingRoot({ children }: { children: ReactNode }) {
               </p>
             )}
             <div className="setup-actions">
+              {window.domosDesktop && (
+                <Button
+                  variant="secondary"
+                  onClick={() => window.domosDesktop?.cancelConnection()}
+                >
+                  取消
+                </Button>
+              )}
               <Button type="submit" pending={busy}>
                 {busy ? "正在连接…" : "连接"}
               </Button>

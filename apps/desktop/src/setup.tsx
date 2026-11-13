@@ -26,6 +26,7 @@ declare global {
         selected?: Instance;
         error: string;
         prepare: boolean;
+        remote: boolean;
       }>;
       submit: (
         input: Input,
@@ -75,6 +76,7 @@ function Welcome() {
         setConnections(
           state.instances.filter((item) => item.mode === "existing"),
         );
+        setRemote(state.remote);
         if (state.selected?.mode === "local")
           setRuntime(state.selected.runtime ?? "native");
         if (state.selected?.mode === "existing") {

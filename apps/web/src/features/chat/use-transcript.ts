@@ -7,9 +7,10 @@ import {
   useRef,
   useState,
 } from "react";
+import { readingPosition, saveReadingPosition } from "./reading-position.ts";
 
 const positions = new Map<
-  number,
+  string,
   {
     top: number;
     following: boolean;
@@ -17,7 +18,9 @@ const positions = new Map<
   }
 >();
 export function clearTranscriptPositions(ids?: Set<number>) {
-  for (const id of positions.keys()) if (!ids?.has(id)) positions.delete(id);
+  for (const id of positions.keys())
+    if (!ids || (!id.startsWith("team:") && !ids.has(Number(id))))
+      positions.delete(id);
 }
 window.addEventListener("domos:pair", () => positions.clear());
 window.addEventListener("domos:computer", () => positions.clear());
@@ -34,13 +37,20 @@ export function useTranscript(
   typing = false,
   botId?: number,
   target?: Pick<ConversationFile, "messageId" | "file">,
+  chatKey = String(botId),
 ) {
   const viewport = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const restored = useRef(
-    botId === undefined ? undefined : positions.get(botId),
+    botId === undefined ? undefined : positions.get(chatKey),
   );
-  const following = useRef(restored.current?.following ?? true);
+  const [saved] = useState(() =>
+    restored.current ? undefined : readingPosition(chatKey),
+  );
+  const restoreAnchor = useRef(saved && !saved.following ? saved : undefined);
+  const following = useRef(
+    restored.current?.following ?? saved?.following ?? true,
+  );
   const frame = useRef<number | undefined>(undefined);
   const measure = useRef(() => {});
   const previous = useRef<{
@@ -87,6 +97,18 @@ export function useTranscript(
   }, []);
 
   useLayoutEffect(() => {
+    if (ready && !previous.current.ready && restoreAnchor.current && !range) {
+      const index = items.findIndex(
+        (item) => keyOf(item) === restoreAnchor.current?.key,
+      );
+      if (index >= 0) {
+        setRange({
+          start: Math.max(0, index - 20),
+          end: Math.min(items.length, index + 100),
+        });
+        return;
+      }
+    }
     if (target && revealed.current !== target) {
       let index = items.findIndex(
         (item) =>
@@ -215,11 +237,21 @@ export function useTranscript(
         requested.current = null;
         animate.current = false;
       } else if (!old.ready || jumping.current) {
+        const saved = restoreAnchor.current;
+        const savedNode = saved ? nodes.get(saved.key) : undefined;
         target =
-          restored.current && !restored.current.following
-            ? restored.current.top
-            : element.scrollHeight;
-        const wasFollowing = restored.current?.following ?? true;
+          savedNode && saved
+            ? element.scrollTop +
+              savedNode.getBoundingClientRect().top -
+              bounds.top -
+              saved.offset
+            : restored.current && !restored.current.following
+              ? restored.current.top
+              : element.scrollHeight;
+        const wasFollowing = savedNode
+          ? false
+          : (restored.current?.following ?? true);
+        restoreAnchor.current = undefined;
         restored.current = undefined;
         following.current = wasFollowing;
         reply.current = null;
@@ -275,7 +307,7 @@ export function useTranscript(
       if (target !== element.scrollTop) element.scrollTop = target;
       ownedTop.current = element.scrollTop;
       if (botId !== undefined)
-        positions.set(botId, {
+        positions.set(chatKey, {
           top: element.scrollTop,
           following: following.current,
           range,
@@ -304,7 +336,52 @@ export function useTranscript(
       };
     };
     measure.current();
-  }, [items, ready, range, start, end, sentRequest, typing, botId, target]);
+  }, [
+    items,
+    ready,
+    range,
+    start,
+    end,
+    sentRequest,
+    typing,
+    botId,
+    target,
+    chatKey,
+  ]);
+
+  useEffect(() => {
+    const save = () => {
+      const element = viewport.current;
+      if (!element || !ready) return;
+      const bounds = element.getBoundingClientRect();
+      const messages = items.filter(
+        (item) => item.kind === "message" && item.message.cursor,
+      );
+      const item = messages.find((item) => {
+        const node = content.current?.querySelector<HTMLElement>(
+          `[data-transcript-key="${CSS.escape(keyOf(item))}"]`,
+        );
+        return node && node.getBoundingClientRect().bottom > bounds.top;
+      });
+      if (item?.kind !== "message" || !item.message.cursor) return;
+      const node = content.current?.querySelector<HTMLElement>(
+        `[data-transcript-key="${CSS.escape(keyOf(item))}"]`,
+      );
+      if (node)
+        saveReadingPosition(chatKey, {
+          key: keyOf(item),
+          cursor: item.message.cursor,
+          offset: node.getBoundingClientRect().top - bounds.top,
+          following: following.current,
+        });
+    };
+    window.addEventListener("domos:workspace-save", save);
+    window.addEventListener("pagehide", save);
+    return () => {
+      window.removeEventListener("domos:workspace-save", save);
+      window.removeEventListener("pagehide", save);
+    };
+  }, [items, ready, chatKey]);
 
   useEffect(() => {
     const element = viewport.current;

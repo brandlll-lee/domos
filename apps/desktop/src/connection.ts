@@ -11,6 +11,7 @@ export class ConnectionSetup {
   private busy = false;
   private error = "";
   private prepare = false;
+  private remote = false;
   private readonly url = new URL("./setup.html", import.meta.url);
 
   constructor(
@@ -32,6 +33,7 @@ export class ConnectionSetup {
         selected: this.options.selected(),
         error: this.error,
         prepare: this.prepare,
+        remote: this.remote,
       };
     });
     ipcMain.handle("setup:submit", async (event, value) => {
@@ -69,6 +71,10 @@ export class ConnectionSetup {
         window?.close();
         return { ok: true };
       } catch (error) {
+        if (window && !window.isDestroyed()) {
+          window.show();
+          window.focus();
+        }
         return {
           ok: false,
           cancelled: controller.signal.aborted,
@@ -102,9 +108,14 @@ export class ConnectionSetup {
       throw new Error("请求来源无效。");
   }
 
-  open(error = "", prepare = false) {
+  hide() {
+    this.window?.hide();
+  }
+
+  open(error = "", prepare = false, remote = false) {
     this.error = error;
     this.prepare = prepare;
+    this.remote = remote;
     if (this.window) {
       this.window.show();
       this.window.focus();

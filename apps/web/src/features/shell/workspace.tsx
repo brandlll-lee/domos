@@ -6,7 +6,6 @@ import { ChartBarIcon } from "@phosphor-icons/react/dist/csr/ChartBar";
 import { DotsThreeIcon } from "@phosphor-icons/react/dist/csr/DotsThree";
 import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
 import { ListIcon } from "@phosphor-icons/react/dist/csr/List";
-import { MonitorIcon } from "@phosphor-icons/react/dist/csr/Monitor";
 import { StorefrontIcon } from "@phosphor-icons/react/dist/csr/Storefront";
 import { UserIcon } from "@phosphor-icons/react/dist/csr/User";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
@@ -21,6 +20,7 @@ import {
   ViewTransition,
 } from "react";
 import { flushSync } from "react-dom";
+import { EnvironmentSwitcher } from "./environment-switcher.tsx";
 import { useWorkspaceLayout } from "./layout.ts";
 import { ResizeHandle } from "./resize-handle.tsx";
 import { Titlebar } from "./titlebar.tsx";
@@ -89,10 +89,10 @@ export function Workspace({
     window.addEventListener("hashchange", close);
     return () => window.removeEventListener("hashchange", close);
   }, []);
-  const desktopMenu = async (scope?: "environment") => {
+  const desktopMenu = async () => {
     setMenuError("");
     try {
-      const result = await window.domosDesktop?.menu(scope);
+      const result = await window.domosDesktop?.menu();
       if (!result?.ok) setMenuError("无法打开桌面菜单");
     } catch {
       setMenuError("无法打开桌面菜单");
@@ -239,6 +239,7 @@ export function Workspace({
                       <XIcon />
                     </PanelDialog.Close>
                   )}
+                  {side === "sidebar" && <EnvironmentSwitcher />}
                   {content}
                   {side === "sidebar" && (
                     <footer className="sidebar-footer">
@@ -276,13 +277,6 @@ export function Workspace({
                           ...(window.domosDesktop
                             ? [
                                 {
-                                  label: "切换电脑",
-                                  icon: <MonitorIcon />,
-                                  separator: true,
-                                  onSelect: () =>
-                                    void desktopMenu("environment"),
-                                },
-                                {
                                   label: "桌面操作",
                                   icon: <DotsThreeIcon />,
                                   onSelect: () => void desktopMenu(),
@@ -295,12 +289,12 @@ export function Workspace({
                         variant="secondary"
                         size="small"
                         className="apps-trigger"
-                        aria-label="连接中心"
-                        title="连接中心"
+                        aria-label="应用连接"
+                        title="应用连接"
                         onClick={onApps}
                       >
                         <StorefrontIcon aria-hidden="true" />
-                        <span>连接中心</span>
+                        <span>应用连接</span>
                       </Button>
                       {menuError && (
                         <p className="sidebar-menu-error" role="alert">

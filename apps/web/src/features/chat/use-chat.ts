@@ -16,6 +16,7 @@ import { client } from "../../client.ts";
 import { receiveConversationFiles } from "../files/file-state.ts";
 import { flushModelSettings } from "../models/model-state.ts";
 import { chatCopy } from "./copy.ts";
+import { readingPosition } from "./reading-position.ts";
 import { rejectionMessage } from "./request-error.ts";
 import { transcriptState } from "./transcript-state.ts";
 
@@ -77,6 +78,8 @@ window.addEventListener("domos:pair", () => clearChatState());
 window.addEventListener("domos:computer", () => clearChatState());
 export function prefetchChat(botId: number) {
   if (retained.has(String(botId))) return;
+  const position = readingPosition(String(botId));
+  if (position && !position.following) return;
   const store = chatState(botId);
   void client
     .get({ botId })
@@ -100,6 +103,14 @@ export function useChat(
   teamId?: string,
 ) {
   const [store] = useState(() => chatState(botId, teamId));
+  const [restore] = useState(() =>
+    store.snapshot().view
+      ? undefined
+      : readingPosition(teamId ? `team:${teamId}` : String(botId)),
+  );
+  const [restoring, setRestoring] = useState(
+    Boolean(restore && !restore.following),
+  );
   const {
     view,
     outgoing,
@@ -142,6 +153,32 @@ export function useChat(
         : { items: displayedOutgoing ?? [] },
     [displayed, displayedOutgoing, project],
   );
+
+  useEffect(() => {
+    if (!restore || restore.following) return;
+    const controller = new AbortController();
+    const signal = AbortSignal.any([
+      controller.signal,
+      AbortSignal.timeout(30_000),
+    ]);
+    void (async () => {
+      try {
+        const page = teamId
+          ? await client.teams.get(
+              { id: teamId, around: restore.cursor },
+              { signal },
+            )
+          : await client.get({ botId, around: restore.cursor }, { signal });
+        signal.throwIfAborted();
+        store.update({ history: page });
+      } catch {
+        if (!controller.signal.aborted) setError("阅读位置恢复失败，请重试。");
+      } finally {
+        if (!controller.signal.aborted) setRestoring(false);
+      }
+    })();
+    return () => controller.abort();
+  }, [restore, botId, teamId, store, setError]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -485,6 +522,7 @@ export function useChat(
       }
     },
     view,
+    restoring,
     items,
     target,
     readingHistory: Boolean(history),

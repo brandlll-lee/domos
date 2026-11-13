@@ -5,13 +5,20 @@ import { basename, dirname, join } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { MAX_FILE_BYTES } from "@domos/agent/attachments";
-import { app, type BrowserWindow, dialog, shell } from "electron";
+import {
+  app,
+  type BrowserWindow,
+  dialog,
+  shell,
+  type WebContents,
+} from "electron";
 import { z } from "zod";
 
 export async function desktopFile(
   window: BrowserWindow,
   origin: string,
   input: unknown,
+  contents: WebContents = window.webContents,
 ) {
   const value = z
     .object({
@@ -27,7 +34,7 @@ export async function desktopFile(
   let response: Response | undefined;
   let temporary: string | undefined;
   try {
-    response = await window.webContents.session.fetch(url.href, {
+    response = await contents.session.fetch(url.href, {
       signal: controller.signal,
       credentials: "include",
     });

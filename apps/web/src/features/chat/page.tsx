@@ -25,6 +25,7 @@ import { FilePreviewContext } from "../files/context.tsx";
 import { FilePanel } from "../files/panel.tsx";
 import { useSettings } from "../settings/context.ts";
 import { Workspace } from "../shell/workspace.tsx";
+import { saveWorkspaceView, workspaceView } from "../shell/workspace-state.ts";
 import { UsageSurface } from "../usage/page.tsx";
 import { TeamMembers } from "./bot-reference.tsx";
 import { Composer } from "./composer.tsx";
@@ -91,6 +92,8 @@ function BotChat({
     [members, bots, bot.id],
   );
   const settings = useSettings();
+  const chatKey = team ? `team:${team.id}` : String(bot.id);
+  const [savedPanel] = useState(() => workspaceView().panels[chatKey]);
   const chat = useChat(bot.id, () => settings.open("ai", bot.id), team?.id);
   const dock = useComposerDock();
   const draft = useDraft(team ? `team:${team.id}` : bot.id);
@@ -128,8 +131,9 @@ function BotChat({
   const [appsOpen, setAppsOpen] = useState(false);
   const [detailsOpen, updateDetailsOpen] = useState(
     () =>
+      savedPanel?.open ??
       window.innerWidth >=
-      layout.sidebar.min + layout.chatMin + layout.inspector.min,
+        layout.sidebar.min + layout.chatMin + layout.inspector.min,
   );
   const setDetailsOpen = useCallback(
     (open: boolean) =>
@@ -142,9 +146,11 @@ function BotChat({
   const [workRun, setWorkRun] = useState<string>();
   const [panel, setPanel] = useState<
     "settings" | "computer" | "browser" | "work" | "file"
-  >("settings");
-  const [file, setFile] = useState<Attachment>();
-  const [fileBotId, setFileBotId] = useState(bot.id as number);
+  >(savedPanel?.tab ?? "settings");
+  const [file, setFile] = useState<Attachment | undefined>(savedPanel?.file);
+  const [fileBotId, setFileBotId] = useState(
+    savedPanel?.fileBotId ?? (bot.id as number),
+  );
   const [inlineFiles, setInlineFiles] = useState(new Set<string>());
   const [fileTarget, setFileTarget] = useState<HTMLElement | null>(null);
   const registerFile = useCallback((id: string, active: boolean) => {
@@ -188,7 +194,30 @@ function BotChat({
     return () => window.removeEventListener("domos:work-open", open);
   }, [bot.id, chat.view, setDetailsOpen]);
   const [expanded, setExpanded] = useState(false);
-  const [detailPanel, setDetailPanel] = useState<BotPanelView>("root");
+  const [detailPanel, setDetailPanel] = useState<BotPanelView>(
+    savedPanel?.detail ?? "root",
+  );
+  useEffect(() => {
+    const save = () =>
+      saveWorkspaceView({
+        panels: {
+          [chatKey]: {
+            open: detailsOpen,
+            tab: panel,
+            detail: detailPanel,
+            file,
+            fileBotId,
+          },
+        },
+      });
+    window.addEventListener("domos:workspace-save", save);
+    window.addEventListener("pagehide", save);
+    return () => {
+      save();
+      window.removeEventListener("domos:workspace-save", save);
+      window.removeEventListener("pagehide", save);
+    };
+  }, [chatKey, detailsOpen, panel, detailPanel, file, fileBotId]);
   const [takeover, setTakeover] = useState<{
     id: string;
     service: "browser" | "desktop";
@@ -443,7 +472,10 @@ function BotChat({
               </span>
               <Messages
                 botId={bot.id}
-                ready={Boolean(chat.view) || Boolean(chat.error)}
+                chatKey={chatKey}
+                ready={
+                  (Boolean(chat.view) || Boolean(chat.error)) && !chat.restoring
+                }
                 busy={Boolean(chat.view?.busy)}
                 processing={chat.processing}
                 activity={

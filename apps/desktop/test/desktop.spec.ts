@@ -11,6 +11,7 @@ import {
   type Page,
   test,
 } from "@playwright/test";
+import { workspacePage } from "./pages.ts";
 
 async function captureWindow(
   desktop: ElectronApplication,
@@ -25,7 +26,14 @@ async function captureWindow(
   );
   const png = await desktop.evaluate(async ({ BrowserWindow }, url) => {
     const window = BrowserWindow.getAllWindows().find(
-      (window) => window.webContents.getURL() === url,
+      (window) =>
+        window.webContents.getURL() === url ||
+        window.contentView.children.some(
+          (view) =>
+            "webContents" in view &&
+            (view.webContents as import("electron").WebContents).getURL() ===
+              url,
+        ),
     );
     if (!window) throw new Error("Window not found");
     return (await window.capturePage()).toPNG().toString("base64");
@@ -126,18 +134,28 @@ test("native setup starts and resumes with Docker unavailable", async ({
     await setup
       .getByRole("menuitem", { name: "直接运行", exact: true })
       .click();
-    const opened = desktop.waitForEvent("window");
+
     await setup.getByRole("button", { name: "重试", exact: true }).click();
-    const page = await opened;
+    const page = await workspacePage(desktop);
     await expect(
       page.getByRole("heading", { name: "连接你的 AI" }),
     ).toBeVisible();
     await desktop.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows().find((window) =>
-        window.webContents.getURL().startsWith("http"),
+        window.contentView.children.some(
+          (view) =>
+            "webContents" in view &&
+            (view.webContents as import("electron").WebContents)
+              .getURL()
+              .startsWith("http"),
+        ),
       );
       window?.setSize(640, 680);
-      window?.webContents.setZoomFactor(1.25);
+      for (const view of window?.contentView.children ?? [])
+        if ("webContents" in view)
+          (view.webContents as import("electron").WebContents).setZoomFactor(
+            1.25,
+          );
     });
     await expect.poll(() => page.evaluate(() => innerWidth)).toBeLessThan(600);
     expect(
@@ -160,9 +178,7 @@ test("native setup starts and resumes with Docker unavailable", async ({
     const origin = new URL(page.url()).origin;
     await desktop.close();
     desktop = await playwright._electron.launch({ executablePath, args, env });
-    const resumed = await desktop.waitForEvent("window", {
-      predicate: (window) => window.url().startsWith(origin),
-    });
+    const resumed = await workspacePage(desktop, origin);
     await expect(
       resumed.getByRole("heading", { name: "连接你的 AI" }),
     ).toBeVisible();
@@ -361,9 +377,9 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     await expect(setup.getByLabel("Domos 地址")).toHaveValue(
       `http://127.0.0.1:${ready.port}`,
     );
-    const opened = desktop.waitForEvent("window");
+
     await setup.getByRole("button", { name: "连接", exact: true }).click();
-    const page = await opened;
+    const page = await workspacePage(desktop);
     await expect(
       page.getByRole("heading", { name: "连接这个 Domos" }),
     ).toBeVisible();
@@ -469,22 +485,14 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
         );
       })
       .toBeLessThan(1);
-    const menuShown = desktop.evaluate(
-      ({ Menu }) =>
-        new Promise<void>((resolve) => {
-          const menu = Menu.getApplicationMenu()?.items[0]?.submenu;
-          menu?.once("menu-will-show", () => resolve());
-        }),
-    );
-    await environment.click();
-    await page
-      .getByRole("menuitem", { name: "切换电脑", exact: true })
-      .press("Enter");
-    await menuShown;
-    await desktop.evaluate(({ Menu }) =>
-      Menu.getApplicationMenu()?.items[0]?.submenu?.closePopup(),
-    );
-    await expect(environment).toHaveAttribute("aria-expanded", "false");
+    const computerMenu = page.getByRole("button", { name: /^切换电脑：/ });
+    await computerMenu.focus();
+    await computerMenu.press("Enter");
+    await expect(
+      page.getByRole("menuitem", { name: "连接其他电脑…", exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(computerMenu).toBeFocused();
     for (const theme of ["dark", "light"] as const) {
       await page.emulateMedia({ colorScheme: theme });
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
@@ -513,8 +521,8 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     const settings = page.getByRole("main", { name: "设置", exact: true });
     await expect(settings.getByRole("tab")).toHaveText([
       "通用",
-      "Providers",
-      "Models",
+      "AI 服务",
+      "当前电脑",
     ]);
     for (const label of ["深色", "浅色"]) {
       await settings
@@ -539,9 +547,12 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
       ),
     );
     expect(nativeMenu).toContain("连接其他电脑…");
-    await desktop.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(2),
-    );
+    await desktop.evaluate(({ BrowserWindow }) => {
+      for (const view of BrowserWindow.getAllWindows()[0]?.contentView
+        .children ?? [])
+        if ("webContents" in view)
+          (view.webContents as import("electron").WebContents).setZoomFactor(2);
+    });
     await expect(settings.getByRole("tablist")).toHaveAttribute(
       "data-orientation",
       "horizontal",
@@ -558,14 +569,20 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     );
     await desktop.close();
     desktop = await playwright._electron.launch({ executablePath, args, env });
-    const reopened = await desktop.firstWindow();
+    const reopened = await workspacePage(desktop);
+    await desktop.evaluate(({ webContents }, url) => {
+      webContents
+        .getAllWebContents()
+        .find((contents) => contents.getURL() === url)
+        ?.setZoomFactor(1);
+    }, reopened.url());
+    await expect(
+      reopened.getByRole("dialog", { name: "Bot详情", exact: true }),
+    ).toBeHidden();
     await expect(
       reopened.getByRole("button", { name: "Bot详情" }),
     ).toBeVisible();
     expect(reopened.url()).toBe(`http://127.0.0.1:${ready.port}/`);
-    await desktop.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(1),
-    );
     await reopened
       .getByRole("button", { name: "用户菜单", exact: true })
       .click();

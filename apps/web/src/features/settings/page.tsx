@@ -38,7 +38,6 @@ export function SettingsPage({
   const needle = query.trim().toLocaleLowerCase();
   const matches = (Object.keys(sections) as SettingsSection[]).filter((id) => {
     const item = sections[id];
-    if (!item.primary && (section !== id || !access.admin)) return false;
     return `${item.label} ${item.description}`
       .toLocaleLowerCase()
       .includes(needle);
