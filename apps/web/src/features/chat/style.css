@@ -920,52 +920,145 @@ body:has(.workspace[data-platform="darwin"]) .image-viewer-header {
   flex-shrink: 0;
   color: var(--color-muted);
 }
-.interaction-heading strong,
-.question-field > strong {
+.interaction-heading strong {
   font-weight: var(--weight-medium);
 }
-.question-field,
-.question-options {
+.question-card {
+  width: min(100%, var(--message-media-width));
+  min-width: 0;
+  overflow: clip;
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-message);
+}
+.question-card:has(.question-candidates) {
+  width: min(100%, var(--settings-content-width));
+}
+.question-content,
+.question-field {
+  display: grid;
+  min-width: 0;
+}
+.question-heading,
+.question-summary,
+.question-candidate-copy {
   display: grid;
   gap: var(--space-2);
   min-width: 0;
-}
-.question-option {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) 0;
-  border: 0;
-  background: transparent;
-  color: var(--color-text);
-  text-align: left;
-  cursor: pointer;
+  padding: var(--space-3) var(--space-4);
   overflow-wrap: anywhere;
 }
-.question-option:disabled {
-  cursor: default;
+.question-heading strong,
+.question-field > strong,
+.question-candidate-copy strong,
+.question-summary > strong {
+  font-weight: var(--weight-medium);
 }
-.question-option small {
-  display: block;
-  color: var(--color-muted);
+.question-heading p,
+.question-candidate-copy p,
+.question-answer p,
+.question-footnote {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
-.option-letter {
-  display: grid;
-  place-items: center;
-  flex: 0 0 28px;
-  height: 28px;
-  border: 1px solid var(--color-edge);
-  border-radius: var(--radius-control);
+.question-footnote,
+.question-candidate-copy p,
+.question-reply small {
   color: var(--color-muted);
   font-size: var(--text-label);
 }
-.question-option[aria-pressed="true"] .option-letter {
-  border-color: var(--color-text);
-  color: var(--color-text);
+.question-content > .question-footnote,
+.question-field > strong,
+.question-field > .field,
+.question-content > .alert {
+  margin: var(--space-2) var(--space-4);
 }
-.question-option:focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
+.question-replies,
+.question-choice-actions {
+  display: grid;
+  min-width: 0;
+}
+.question-reply.button {
+  width: 100%;
+  height: auto;
+  min-height: var(--control-height);
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  border-top: 1px solid var(--color-edge);
+  border-radius: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.question-reply small {
+  display: block;
+  margin-top: var(--space-1);
+}
+.question-reply[aria-pressed="true"] {
+  background: var(--color-selection);
+  color: var(--color-message-link, var(--color-link));
+}
+.question-reply svg {
+  flex-shrink: 0;
+  width: var(--space-4);
+  height: var(--space-4);
+}
+.question-reply:has(small) {
+  justify-content: flex-start;
+  text-align: left;
+}
+.question-controls {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--color-edge);
+}
+.question-candidates {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-3);
+  min-width: 0;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding: 0 var(--space-4) var(--space-3);
+}
+.question-candidate {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 min(84%, var(--message-media-width));
+  min-width: 0;
+  overflow: clip;
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius-control);
+  scroll-snap-align: center;
+}
+.question-candidate .question-choice-actions {
+  margin-top: auto;
+}
+.question-media {
+  min-width: 0;
+  overflow: clip;
+}
+.question-media .attachments {
+  margin: 0;
+}
+.question-media .image-gallery,
+.question-media .image-thumbnail,
+.question-media .file-attachment,
+.question-media .media-attachment {
+  max-width: 100%;
+  width: 100%;
+  border-radius: 0;
+}
+.question-answer .question-media {
+  margin-top: var(--space-2);
+  border-radius: var(--radius-control);
 }
 .interaction-actions {
   display: flex;

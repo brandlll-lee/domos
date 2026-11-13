@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Attachment } from "@domos/agent/attachments";
 import { characterColors } from "@domos/ui/characters";
 import { expect, type Page, test } from "@playwright/test";
 import { mcpFixture } from "../../../packages/agent/test/fixtures/mcp.mjs";
@@ -4298,6 +4299,16 @@ test("shared question and approval cards persist answers and terminal states", a
     });
     const card = page.getByRole("region", { name: title, exact: true });
     await expect(card).toBeVisible();
+    if (mode === "custom") {
+      expect((await card.boundingBox())?.height).toBeLessThan(300);
+      for (const colorScheme of ["light", "dark"] as const) {
+        await page.emulateMedia({ colorScheme });
+        await card.screenshot({
+          path: info.outputPath(`question-text-${colorScheme}.png`),
+          animations: "disabled",
+        });
+      }
+    }
     await page.reload();
     const reply = new Promise<{
       type: string;
@@ -4314,9 +4325,7 @@ test("shared question and approval cards persist answers and terminal states", a
       worker.on("message", receive);
     });
     if (mode === "custom") {
-      await card
-        .getByRole("button", { name: "自定义回答", exact: true })
-        .click();
+      await card.getByRole("button", { name: "自己填写", exact: true }).click();
       await expect(
         card.getByRole("button", { name: "发送回答", exact: true }),
       ).toBeDisabled();
@@ -4325,8 +4334,15 @@ test("shared question and approval cards persist answers and terminal states", a
         .fill("我自己选择");
       await card.getByRole("button", { name: "发送回答", exact: true }).click();
     } else if (mode === "multiple") {
-      await card.getByRole("button", { name: "A 第一项", exact: true }).click();
-      await card.getByRole("button", { name: "B 第二项", exact: true }).click();
+      await card.getByRole("button", { name: "自己填写", exact: true }).click();
+      await card
+        .getByRole("textbox", { name: "你的回答", exact: true })
+        .fill("附加建议");
+      await card.getByRole("button", { name: "第一项", exact: true }).click();
+      await card.getByRole("button", { name: "第二项", exact: true }).click();
+      await expect(
+        card.getByRole("textbox", { name: "你的回答", exact: true }),
+      ).toHaveValue("附加建议");
       await expect(card).toHaveAttribute("data-state", "pending");
       await card.getByRole("button", { name: "发送回答", exact: true }).click();
     } else if (mode === "expire") worker.send("release");
@@ -4342,7 +4358,7 @@ test("shared question and approval cards persist answers and terminal states", a
     if (mode === "custom")
       expect(result.answer.answers).toEqual({ q: ["我自己选择"] });
     if (mode === "multiple")
-      expect(result.answer.answers).toEqual({ q: ["a", "b"] });
+      expect(result.answer.answers).toEqual({ q: ["附加建议", "a", "b"] });
     const expected =
       mode === "expire"
         ? "已失效"
@@ -4385,6 +4401,225 @@ test("shared question and approval cards persist answers and terminal states", a
       path: info.outputPath(`interactions-${width}.png`),
     });
   }
+});
+
+test("rich questions keep media separate from replies and restore selected actions", async ({
+  page,
+}, info) => {
+  test.setTimeout(60_000);
+  await page.goto(url);
+  const botId = (await (await page.request.post(`${url}/rpc/bots/list`)).json())
+    .json[0].id;
+  const image = Buffer.from(
+    await page.evaluate(() => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 600;
+      canvas.height = 320;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Canvas required");
+      context.fillStyle = "#b6d9c8";
+      context.fillRect(0, 0, 600, 320);
+      context.fillStyle = "#28644e";
+      context.font = "36px sans-serif";
+      context.fillText("Domos · 方案预览", 50, 175);
+      return canvas.toDataURL("image/png").split(",")[1] ?? "";
+    }),
+    "base64",
+  );
+  const files: Attachment[] = [];
+  for (const [name, data] of [
+    ["方案.png", image],
+    [
+      "演示.mp4",
+      await readFile(
+        new URL(
+          "../../../packages/agent/test/fixtures/media/video.mp4",
+          import.meta.url,
+        ),
+      ),
+    ],
+    [
+      "配音.mp3",
+      await readFile(
+        new URL(
+          "../../../packages/agent/test/fixtures/media/audio.mp3",
+          import.meta.url,
+        ),
+      ),
+    ],
+    ["方案说明.md", Buffer.from("# 设计说明\n比较方案后再选择。")],
+  ] as const) {
+    const response = await page.request.put(
+      `${url}/files/${botId}/upload?name=${encodeURIComponent(name)}&requestId=${crypto.randomUUID()}`,
+      { data },
+    );
+    expect(response.ok()).toBe(true);
+    files.push(await response.json());
+  }
+  let attempts = 0;
+  let fail = true;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/rpc/engines/answer", async (route) => {
+    attempts++;
+    if (fail)
+      return route.fulfill({ status: 500, json: { message: "提交失败" } });
+    await gate;
+    await route.continue();
+  });
+  worker.send({
+    approval: {
+      id: "rich-question",
+      kind: "question",
+      title: "你更喜欢哪种呈现？",
+      detail: "可以先查看、播放和比较，再告诉我你的选择。",
+      footer: "选择只表达你的意图。后续操作仍需按权限执行。",
+      attachments: [files[3]],
+      questions: [
+        {
+          id: "presentation",
+          title: "你更喜欢哪种呈现？",
+          allowOther: true,
+          options: Array.from({ length: 5 }, (_, index) => ({
+            id: `candidate-${index}`,
+            label: [
+              "静态图片",
+              "视频演示",
+              "音频解说",
+              "文字说明",
+              "另一种方案",
+            ][index],
+            description: "先了解内容，再决定下一步。",
+            attachments: index < 4 ? [files[index]] : undefined,
+            actions: [
+              { id: `learn-${index}`, label: "了解更多" },
+              { id: `select-${index}`, label: "选择这一版" },
+            ],
+          })),
+        },
+      ],
+    },
+  });
+  const card = page.getByRole("region", {
+    name: "你更喜欢哪种呈现？",
+    exact: true,
+  });
+  await expect(card).toBeVisible();
+  await expect(card.locator(".question-candidate")).toHaveCount(4);
+  await expect(card.locator("audio")).not.toHaveAttribute("src");
+  await expect(card.locator("video")).toHaveCount(0);
+  await card.locator(".image-thumbnail").click();
+  await expect(
+    page.getByRole("dialog", { name: "方案.png", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  expect(attempts).toBe(0);
+  await card
+    .getByRole("button", { name: "预览 演示.mp4", exact: true })
+    .click();
+  await expect(page.locator("video")).toBeVisible();
+  expect(
+    await page
+      .locator("video")
+      .evaluate((video: HTMLVideoElement) => video.paused),
+  ).toBe(true);
+  expect(attempts).toBe(0);
+  await page
+    .getByRole("complementary", { name: "文件预览", exact: true })
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
+  await expect(
+    page.getByRole("complementary", { name: "文件预览", exact: true }),
+  ).not.toBeVisible();
+  await expect(page.locator(".attention-toast")).toHaveCount(0, {
+    timeout: 10000,
+  });
+  const strip = card.locator(".question-candidates");
+  await strip.evaluate((element) => {
+    element.scrollLeft = 0;
+  });
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await card.scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: info.outputPath(`rich-question-${colorScheme}.png`),
+      animations: "disabled",
+    });
+  }
+  await page.setViewportSize({ width: 390, height: 900 });
+  expect(
+    await strip.evaluate(
+      (element) => element.scrollWidth > element.clientWidth,
+    ),
+  ).toBe(true);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await strip.evaluate((element) => {
+    element.scrollLeft = 0;
+  });
+  await page.screenshot({
+    path: info.outputPath("rich-question-narrow.png"),
+    animations: "disabled",
+  });
+  await card
+    .getByRole("button", { name: "显示更多选项（1）", exact: true })
+    .click();
+  await expect(card.locator(".question-candidate")).toHaveCount(5);
+  await page.setViewportSize({ width: 1360, height: 900 });
+  const choose = card
+    .getByRole("button", { name: "选择这一版", exact: true })
+    .first();
+  await choose.click();
+  await expect(card.getByRole("alert")).toBeVisible();
+  await expect(card).toHaveAttribute("data-state", "pending");
+  fail = false;
+  const reply = new Promise<{ answer: { answers: Record<string, string[]> } }>(
+    (resolve) => {
+      const receive = (value: {
+        type: string;
+        answer: { answers: Record<string, string[]> };
+      }) => {
+        if (value.type !== "answered") return;
+        worker.off("message", receive);
+        resolve(value);
+      };
+      worker.on("message", receive);
+    },
+  );
+  await choose.focus();
+  await page.keyboard.press("Enter");
+  await expect(choose).toBeDisabled();
+  await page.keyboard.press("Enter");
+  expect(attempts).toBe(2);
+  release();
+  expect((await reply).answer.answers).toEqual({ presentation: ["select-0"] });
+  await expect(card.getByRole("status")).toHaveText("已回答");
+  await expect(card).toContainText("你选择了：静态图片 · 选择这一版");
+  await expect(card.locator(".question-candidate")).toHaveCount(0);
+  await page.reload();
+  await expect(card).toContainText("你选择了：静态图片 · 选择这一版");
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await page.screenshot({
+      path: info.outputPath(`rich-question-answered-${colorScheme}.png`),
+    });
+  }
+  await card.getByRole("button", { name: "查看完整问题", exact: true }).click();
+  const dialog = page.getByRole("dialog", {
+    name: "你更喜欢哪种呈现？",
+    exact: true,
+  });
+  await expect(
+    dialog.getByRole("button", { name: "选择这一版", exact: true }).first(),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    dialog.getByRole("button", { name: "选择这一版", exact: true }).first(),
+  ).toBeDisabled();
 });
 
 test("skill packages preview changes and restore resources across reload", async ({

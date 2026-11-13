@@ -23,6 +23,7 @@
     "./models": "./src/models.ts",
     "./runtime": "./src/runtime/index.ts",
     "./harness/types": "./src/harness/types.ts",
+    "./harness/questions": "./src/harness/questions.ts",
     "./messages": "./src/messages.ts",
     "./stop": "./src/stop-chat.ts",
     "./transcript": "./src/transcript.ts",

@@ -77,6 +77,18 @@ export function approvalMessage(
   state: NonNullable<ChatMessage["approval"]>["state"],
   answer?: EngineAnswer,
 ): ChatMessage {
+  const attachments = [
+    ...new Map(
+      [
+        ...(request.attachments ?? []),
+        ...(request.questions ?? []).flatMap((question) =>
+          (question.options ?? []).flatMap(
+            (option) => option.attachments ?? [],
+          ),
+        ),
+      ].map((file) => [file.id, file]),
+    ).values(),
+  ];
   return {
     id: `approval:${request.id}:${request.requestedAt ?? 0}`,
     role: "assistant",
@@ -89,6 +101,7 @@ export function approvalMessage(
         ]
       : [],
     timestamp: request.requestedAt,
+    ...(attachments.length ? { attachments } : {}),
     pending: state === "pending",
     stopped: state === "expired",
     ...(request.takeover

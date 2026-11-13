@@ -6,6 +6,7 @@ import type { Credential } from "@earendil-works/pi-ai";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { fauxProvider } from "@earendil-works/pi-ai/providers/faux";
 import { createRegistry, defineExtension } from "@earendil-works/pi-durable";
+import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 import { expect, test, vi } from "vitest";
 import type { Computers } from "../src/computer/catalog.ts";
 import { ComputerRequests, ComputerRuntime } from "../src/computer/runtime.ts";
@@ -19,11 +20,163 @@ import { engineProvider } from "../src/harness/providers/index.ts";
 import { EngineDoc } from "../src/harness/state.ts";
 import type { ProductResult } from "../src/harness/types.ts";
 import { McpConnections } from "../src/mcp/connections.ts";
+import { approvalMessage } from "../src/messages.ts";
 import { openAgent } from "../src/open-agent.ts";
 import { engineTask, Runtime } from "../src/runtime/index.ts";
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
 import { mcpFixture } from "./fixtures/mcp.mjs";
 import { context, setup } from "./fixtures/work.ts";
+
+test("media questions retain authorized file references and validate answers", async () => {
+  const fixture = await setup();
+  const runtime = await fixture.open();
+  const execution = new EngineExecution({} as Computers, runtime.files);
+  execution.computer = new ComputerRuntime(
+    runtime.harness,
+    createRegistry(),
+    {} as Computers,
+    runtime.files,
+  );
+  const tool = interactionExtension(execution).tools[2];
+  const botId = runtime.conversation.id;
+  const api = {
+    conversationId: botId,
+    callId: "media",
+    snapshot: runtime.harness.snapshot.bind(runtime.harness),
+  } as Parameters<typeof tool.execute>[1];
+  const file = await runtime.files.upload(
+    botId,
+    "report.md",
+    Buffer.from("# Report"),
+  );
+  const input = {
+    title: "选择方案",
+    body: "请先查看材料",
+    footer: "也可以自己填写",
+    attachments: [file.id],
+    questions: [
+      {
+        id: "plan",
+        title: "选择方案",
+        options: [
+          {
+            id: "plan-a",
+            label: "方案 A",
+            attachments: [file.id],
+            actions: [
+              { id: "learn-a", label: "了解更多" },
+              { id: "choose-a", label: "选择此项" },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const state = () =>
+    runtime.harness.snapshot(ComputerRequests, botId, context);
+  try {
+    const validate = new AjvJsonSchemaValidator().getValidator(tool.parameters);
+    expect(validate(input).valid).toBe(true);
+    expect(
+      validate({ ...input, questions: Array(7).fill(input.questions[0]) })
+        .valid,
+    ).toBe(false);
+    expect(
+      validate({
+        ...input,
+        questions: [
+          {
+            ...input.questions[0],
+            options: Array(21).fill(input.questions[0]?.options[0]),
+          },
+        ],
+      }).valid,
+    ).toBe(false);
+    await expect(
+      tool.execute(
+        { ...input, questions: [...input.questions, ...input.questions] },
+        api,
+        context,
+      ),
+    ).rejects.toThrow("问题标识重复");
+    await expect(
+      tool.execute({ ...input, attachments: ["f".repeat(64)] }, api, context),
+    ).rejects.toThrow();
+    const result = tool.execute(input, api, context);
+    await expect.poll(async () => (await state())?.approvals.length).toBe(1);
+    const request = (await state())?.approvals[0];
+    expect(request?.attachments?.[0]?.id).toBe(file.id);
+    expect(request?.questions?.[0]?.options?.[0]?.attachments?.[0]?.id).toBe(
+      file.id,
+    );
+    expect(
+      request && approvalMessage(request, "pending").attachments,
+    ).toHaveLength(1);
+    const invalidAnswers: Record<string, string[]>[] = [
+      { plan: ["unknown"] },
+      { plan: ["learn-a", "choose-a"] },
+      { plan: ["choose-a", "choose-a"] },
+      { plan: [" "] },
+      { plan: ["x".repeat(16001)] },
+      { other: ["choose-a"] },
+      {},
+    ];
+    for (const answers of invalidAnswers)
+      await expect(
+        execution.computer.answer(
+          botId,
+          "question:media",
+          { allow: true, answers },
+          context,
+        ),
+      ).rejects.toThrow();
+    await expect(
+      execution.computer.answer(
+        botId + 1,
+        "question:media",
+        { allow: true, answers: { plan: ["choose-a"] } },
+        context,
+      ),
+    ).rejects.toThrow();
+    const attempts = await Promise.allSettled(
+      [1, 2].map(() =>
+        execution.computer.answer(
+          botId,
+          "question:media",
+          { allow: true, answers: { plan: ["choose-a"] } },
+          context,
+        ),
+      ),
+    );
+    expect(
+      attempts.filter((attempt) => attempt.status === "fulfilled"),
+    ).toHaveLength(1);
+    const answer = JSON.stringify(await result);
+    expect(answer).toContain("choose-a");
+    expect(answer).toContain("方案 A · 选择此项");
+    expect(answer).not.toContain("learn-a");
+    await expect(
+      tool.execute(
+        { ...input, attachments: [file.id] },
+        { ...api, conversationId: (botId + 1) as typeof botId },
+        context,
+      ),
+    ).rejects.toThrow();
+    const controller = new AbortController();
+    const cancelled = tool.execute(
+      { ...input, attachments: [] },
+      { ...api, callId: "cancel-question" },
+      withAbortSignal(controller.signal, context),
+    );
+    await expect
+      .poll(async () => (await state())?.approvals[0]?.id)
+      .toBe("question:cancel-question");
+    controller.abort();
+    expect(JSON.stringify(await cancelled)).toContain("cancelled");
+  } finally {
+    await runtime.harness.close(context);
+  }
+});
 
 test("draft confirmation returns the edited version and records cancellation", async () => {
   const fixture = await setup();
@@ -261,7 +414,7 @@ test.each(["http", "stdio"])(
 );
 
 test.each(["pi", "codex", "claude", "opencode", "acp"])(
-  "%s discovers the shared draft tool and receives its confirmed revision",
+  "%s discovers shared interactions and receives draft and question answers",
   async (provider) => {
     const directory = await mkdtemp(join(tmpdir(), "domos-interactions-"));
     const models = createModels();
@@ -283,9 +436,12 @@ test.each(["pi", "codex", "claude", "opencode", "acp"])(
         tools: { name: string }[],
         callback: typeof invoke,
       ) => {
-        discovered = ["review_draft", "request_credentials", "mcp_call"].every(
-          (name) => tools.some((tool) => tool.name === name),
-        );
+        discovered = [
+          "review_draft",
+          "request_credentials",
+          "ask_question",
+          "mcp_call",
+        ].every((name) => tools.some((tool) => tool.name === name));
         invoke = callback;
         return new ProtocolProcess();
       },
@@ -301,6 +457,7 @@ test.each(["pi", "codex", "claude", "opencode", "acp"])(
     registry.install(execution.mcpExtension());
     registry.install(interactionExtension(execution));
     const received = Promise.withResolvers<ProductResult>();
+    const questionResult = Promise.withResolvers<ProductResult>();
     const opened = vi
       .spyOn(engineProvider(provider), "open")
       .mockImplementation(async (options) => ({
@@ -316,6 +473,26 @@ test.each(["pi", "codex", "claude", "opencode", "acp"])(
                 confirmLabel: "发布",
                 body: "原稿",
                 editable: true,
+              },
+              new AbortController().signal,
+            ),
+          );
+          questionResult.resolve(
+            await invoke(
+              "question",
+              "ask_question",
+              {
+                title: "选择发布渠道",
+                questions: [
+                  {
+                    id: "channel",
+                    title: "选择发布渠道",
+                    options: [
+                      { id: "web", label: "网页" },
+                      { id: "desktop", label: "桌面" },
+                    ],
+                  },
+                ],
               },
               new AbortController().signal,
             ),
@@ -368,6 +545,23 @@ test.each(["pi", "codex", "claude", "opencode", "acp"])(
         context,
       );
       expect(JSON.stringify(await received.promise)).toContain("确认稿");
+      await expect
+        .poll(
+          async () =>
+            (await runtime.harness.snapshot(ComputerRequests, botId, context))
+              ?.approvals[0]?.id,
+        )
+        .toBe("question:question");
+      await engines.answer(
+        botId,
+        "question:question",
+        {
+          allow: true,
+          answers: { channel: ["desktop"] },
+        },
+        context,
+      );
+      expect(JSON.stringify(await questionResult.promise)).toContain("桌面");
       await expect
         .poll(async () => (await engines.view(botId, context)).busy)
         .toBe(false);

@@ -1,8 +1,52 @@
 import type { Context } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-durable";
+import { type Attachment, MAX_ATTACHMENTS } from "../attachments.ts";
+import { owningBot } from "../conversations.ts";
 import { toolResult } from "../work/state.ts";
 import type { EngineExecution } from "./execution.ts";
+import { questionChoices } from "./questions.ts";
+import type { EngineApproval } from "./types.ts";
+
+const id = () => Type.String({ minLength: 1, maxLength: 256 });
+const attachments = () =>
+  Type.Optional(
+    Type.Array(id(), { maxItems: MAX_ATTACHMENTS, uniqueItems: true }),
+  );
+
+const questionParameters = Type.Object({
+  title: id(),
+  body: Type.Optional(Type.String({ maxLength: 16000 })),
+  footer: Type.Optional(Type.String({ maxLength: 2000 })),
+  attachments: attachments(),
+  questions: Type.Array(
+    Type.Object({
+      id: id(),
+      title: id(),
+      options: Type.Optional(
+        Type.Array(
+          Type.Object({
+            id: id(),
+            label: id(),
+            description: Type.Optional(Type.String({ maxLength: 2000 })),
+            attachments: attachments(),
+            actions: Type.Optional(
+              Type.Array(Type.Object({ id: id(), label: id() }), {
+                minItems: 1,
+                maxItems: 3,
+              }),
+            ),
+          }),
+          { minItems: 1, maxItems: 20 },
+        ),
+      ),
+      multiple: Type.Optional(Type.Boolean()),
+      allowOther: Type.Optional(Type.Boolean()),
+      required: Type.Optional(Type.Boolean()),
+    }),
+    { minItems: 1, maxItems: 6 },
+  ),
+});
 
 export function interactionExtension(execution: EngineExecution) {
   return {
@@ -156,6 +200,87 @@ export function interactionExtension(execution: EngineExecution) {
           return toolResult({
             connectionId: connection.id,
             status: answer.allow ? "configured" : "cancelled",
+          });
+        },
+      }),
+      defineTool({
+        name: "ask_question",
+        description:
+          "Ask the user a question and wait for their answer. Use this shared question card for text or media comparisons. Attachments are saved file IDs from attach_file or user uploads, never URLs or inline data. Each option can have attachments and up to three reply actions with unique IDs. Without actions, selecting an option returns its ID. With actions, it returns the action ID. Media preview never selects an answer. Use multiple for multiple answers and allowOther for a custom answer. The answer expresses user intent, not permission to execute an operation. Use native messages for updates and results.",
+        parameters: questionParameters,
+        replay: "safe",
+        executionMode: "sequential",
+        async execute(input, api, context) {
+          if (
+            new Set(input.questions.map((question) => question.id)).size !==
+            input.questions.length
+          )
+            throw new Error("问题标识重复。");
+          for (const question of input.questions) {
+            const ids = (question.options ?? []).flatMap((option) => [
+              option.id,
+              ...(option.actions ?? []).map((action) => action.id),
+            ]);
+            if (new Set(ids).size !== ids.length)
+              throw new Error("选项或操作标识重复。");
+          }
+          const ids = [
+            ...new Set([
+              ...(input.attachments ?? []),
+              ...input.questions.flatMap((question) =>
+                (question.options ?? []).flatMap(
+                  (option) => option.attachments ?? [],
+                ),
+              ),
+            ]),
+          ];
+          if (ids.length > MAX_ATTACHMENTS)
+            throw new Error(`最多添加 ${MAX_ATTACHMENTS} 个文件。`);
+          const saved = new Map<string, Attachment>();
+          if (ids.length) {
+            if (!execution.files) throw new Error("文件服务不可用。");
+            const botId = await owningBot(api, api.conversationId, context);
+            for (const id of ids) {
+              context.abortSignal?.throwIfAborted();
+              saved.set(id, await execution.files.metadata(botId, id));
+            }
+            await execution.files.verify(botId, [...saved.values()], context);
+          }
+          const files = (ids?: string[]) =>
+            ids?.map((id) => saved.get(id) as Attachment);
+          const request: EngineApproval = {
+            id: `question:${api.callId}`,
+            kind: "question",
+            title: input.title,
+            detail: input.body ?? "",
+            footer: input.footer,
+            attachments: files(input.attachments),
+            questions: input.questions.map((question) => ({
+              ...question,
+              options: question.options?.map((option) => ({
+                ...option,
+                attachments: files(option.attachments),
+              })),
+            })),
+          };
+          const answer = await execution.computer.approve(
+            api.conversationId,
+            request,
+            context.abortSignal ?? new AbortController().signal,
+            context,
+          );
+          if (!answer.allow) return toolResult({ status: "cancelled" });
+          return toolResult({
+            status: "answered",
+            answers: request.questions?.map((question) => ({
+              id: question.id,
+              values: (answer.answers?.[question.id] ?? []).map((id) => ({
+                id,
+                label:
+                  questionChoices(question).find((choice) => choice.id === id)
+                    ?.label ?? id,
+              })),
+            })),
           });
         },
       }),

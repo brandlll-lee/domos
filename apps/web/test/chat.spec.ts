@@ -5015,7 +5015,7 @@ test("native questions use the shared card and native replies persist", async ({
   await expect(page.locator(".composer-area .interaction-card")).toHaveCount(0);
   await expect(choice.getByRole("combobox")).toHaveCount(0);
   await page.reload();
-  await choice.getByRole("button", { name: "A 简短", exact: true }).click();
+  await choice.getByRole("button", { name: "简短", exact: true }).click();
   await expect(choice.getByRole("status")).toHaveText("已回答");
   await page
     .getByRole("region", { name: "说明用途", exact: true })
@@ -5046,7 +5046,7 @@ test("native questions use the shared card and native replies persist", async ({
     exact: true,
   });
   await expect(
-    answered.getByRole("button", { name: "A 简短", exact: true }),
+    answered.getByRole("button", { name: "简短", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   await page.keyboard.press("Escape");
   await control({

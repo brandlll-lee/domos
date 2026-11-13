@@ -23,6 +23,7 @@ import { z } from "zod";
 import { owningBot } from "../conversations.ts";
 import type { Files } from "../files.ts";
 import { computerEvidence } from "../harness/evidence.ts";
+import { validateQuestionAnswer } from "../harness/questions.ts";
 import { EngineDoc } from "../harness/state.ts";
 import type {
   EngineAnswer,
@@ -477,6 +478,8 @@ export class ComputerRuntime {
     complete?: (request: EngineApproval) => Promise<void>,
   ) {
     const { pending, approval } = await this.request(botId, id, context);
+    if (pending.completing) throw new Error("这次确认正在提交。");
+    validateQuestionAnswer(approval, answer);
     if (approval.credential && answer.allow && !complete)
       throw new Error("请通过安全凭证入口完成配置。");
     pending.completing = true;

@@ -156,6 +156,8 @@ export type EngineApproval = {
   id: string;
   title: string;
   detail: string;
+  footer?: string;
+  attachments?: Attachment[];
   fields?: { label: string; value: string }[];
   confirmLabel?: string;
   kind: "permission" | "question";
@@ -164,7 +166,13 @@ export type EngineApproval = {
   questions?: {
     id: string;
     title: string;
-    options?: { id: string; label: string; description?: string }[];
+    options?: {
+      id: string;
+      label: string;
+      description?: string;
+      attachments?: Attachment[];
+      actions?: { id: string; label: string }[];
+    }[];
     multiple?: boolean;
     allowOther?: boolean;
     value?: string | string[];
