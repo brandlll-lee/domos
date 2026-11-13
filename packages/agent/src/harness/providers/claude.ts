@@ -11,6 +11,7 @@ import {
   type EngineProvider,
   engineLimits,
 } from "../types.ts";
+import { CumulativeCost } from "../usage-cost.ts";
 import { textContent } from "./pi.ts";
 
 type ClaudePart = {
@@ -212,6 +213,8 @@ export const claudeProvider: EngineProvider = {
           });
       }
     };
+    const cost = new CumulativeCost(Boolean(sessionId));
+    const costCounter = randomUUID();
     let running = false;
     let compacting = false;
     let contextTokens: number | null = null;
@@ -437,8 +440,10 @@ export const claudeProvider: EngineProvider = {
                   output: frame.usage.output_tokens ?? null,
                   cacheRead: frame.usage.cache_read_input_tokens ?? null,
                   cacheWrite: frame.usage.cache_creation_input_tokens ?? null,
-                  costUsd: frame.total_cost_usd ?? null,
-                  costScope: "session",
+                  costUsd: cost.read(frame.uuid, frame.total_cost_usd),
+                  costBasis: "reported",
+                  costCumulative: frame.total_cost_usd,
+                  costCounter,
                 },
               });
               contextWindow =

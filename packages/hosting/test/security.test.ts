@@ -107,3 +107,32 @@ test("instance addresses preserve a single secure origin", () => {
   expect(() => serverOrigin("http://192.168.1.2:4310")).toThrow("HTTPS");
   expect(() => serverOrigin("https://user:pass@example.test")).toThrow();
 });
+
+test("device pages retain current authorization and distinct same-name devices", async () => {
+  const { store } = await fixture();
+  let now = Date.now();
+  const sessions = new Sessions(store, () => now);
+  const grants = Array.from({ length: 24 }, () => {
+    now += sessionPolicy.attemptWindowMs;
+    return sessions.exchange(sessions.pairing("admin").code, "Domos 桌面");
+  });
+  const current = grants[0];
+  if (!current) throw new Error("Current grant required");
+  const first = sessions.page(current.device.id);
+  const second = sessions.page(current.device.id, 2);
+  const third = sessions.page(current.device.id, 3);
+  expect(first.items[0]?.id).toBe(current.device.id);
+  expect(first.items).toHaveLength(10);
+  expect(second.items).toHaveLength(10);
+  expect(third.items).toHaveLength(4);
+  expect(
+    new Set(
+      [...first.items, ...second.items, ...third.items].map((item) => item.id),
+    ).size,
+  ).toBe(24);
+  const revoked = second.items[0];
+  if (!revoked) throw new Error("Device required");
+  sessions.revoke(revoked.id);
+  expect(sessions.page(current.device.id).total).toBe(23);
+  expect(sessions.authenticate(current.token)?.id).toBe(current.device.id);
+});

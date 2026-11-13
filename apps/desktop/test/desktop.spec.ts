@@ -176,9 +176,24 @@ test("native setup starts and resumes with Docker unavailable", async ({
       testInfo.outputPath("computer-setup-zoom.png"),
     );
     const origin = new URL(page.url()).origin;
+    const authorized = () =>
+      page.evaluate(async () => {
+        const result = await (await fetch("/hosting/devices")).json();
+        return { total: result.total, id: result.items[0].id };
+      });
+    const firstGrant = await authorized();
+    expect(firstGrant.total).toBe(1);
+
     await desktop.close();
     desktop = await playwright._electron.launch({ executablePath, args, env });
     const resumed = await workspacePage(desktop, origin);
+    expect(
+      await resumed.evaluate(async () => {
+        const result = await (await fetch("/hosting/devices")).json();
+        return { total: result.total, id: result.items[0].id };
+      }),
+    ).toEqual(firstGrant);
+
     await expect(
       resumed.getByRole("heading", { name: "连接你的 AI" }),
     ).toBeVisible();

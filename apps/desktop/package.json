@@ -62,7 +62,8 @@
     "win": {
       "target": [
         "nsis"
-      ]
+      ],
+      "icon": "../../packages/ui/assets/icon.ico"
     },
     "linux": {
       "target": [
@@ -72,7 +73,8 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Domos"
     }
   }
 }

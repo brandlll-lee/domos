@@ -161,7 +161,7 @@ export async function openAgent(
       execution.computer = computerRuntime;
       computerRuntime.onWaiting = (botId, status) =>
         execution.waiting(botId, status);
-      engines = new Runtime(harness, execution);
+      engines = new Runtime(harness, execution, database);
       collaboration = new Collaboration(harness, engines, files);
       engines.collaboration = collaboration;
     }

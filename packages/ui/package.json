@@ -31,7 +31,8 @@
     "./markdown": "./src/web/markdown.tsx",
     "./theme": "./src/web/theme.tsx",
     "./style.css": "./src/web/style.css",
-    "./popover": "./src/web/popover.ts"
+    "./popover": "./src/web/popover.ts",
+    "./pagination": "./src/web/pagination.tsx"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",

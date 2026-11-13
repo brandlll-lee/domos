@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -122,12 +122,12 @@ async function openWorkspace(
 ) {
   signal.throwIfAborted();
   if (active && selected === instance.id) return;
-  let session: { token: string; expires: number } | undefined;
+  let session: (() => Promise<{ token: string; expires: number }>) | undefined;
   let url = instance.url;
   if (instance.mode === "local") {
     const target = instance.runtime === "docker" ? stack : host;
     url = (await target.start(progress, signal)).origin;
-    session = await target.pair();
+    session = () => target.pair();
   } else await probeInstance(url, signal);
   signal.throwIfAborted();
   if (!current) {
@@ -222,14 +222,18 @@ async function remote(url: string, name: string, signal: AbortSignal) {
 }
 
 async function main() {
+  if (app.isPackaged) {
+    const profile =
+      app.commandLine.getSwitchValue("user-data-dir") ||
+      join(app.getPath("appData"), "@domos", "desktop");
+    await mkdir(profile, { recursive: true });
+    app.setPath("userData", profile);
+  }
   if (!app.requestSingleInstanceLock()) {
     app.quit();
     return;
   }
-  if (process.platform === "win32")
-    app.setAppUserModelId(
-      app.isPackaged ? "app.domos.desktop" : process.execPath,
-    );
+  if (process.platform === "win32") app.setAppUserModelId("app.domos.desktop");
   await app.whenReady();
   app.dock?.setIcon(applicationIcon);
   const resource = fileURLToPath(new URL(".", import.meta.url));

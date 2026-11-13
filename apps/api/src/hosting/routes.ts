@@ -84,7 +84,16 @@ export function hostingApp(options: {
     return c.json({ ok: true });
   });
   app.use("/hosting/*", administrator);
-  app.get("/hosting/devices", (c) => c.json(sessions.list()));
+  app.get("/hosting/devices", (c) => {
+    const parsed = z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(1_000_000)
+      .safeParse(c.req.query("page") ?? 1);
+    if (!parsed.success) return c.json({ error: "页码无效。" }, 400);
+    return c.json(sessions.page(c.get("device").id, parsed.data));
+  });
   app.post("/hosting/pairing", async (c) => {
     const { scope } = z
       .object({ scope: z.enum(["admin", "client"]) })

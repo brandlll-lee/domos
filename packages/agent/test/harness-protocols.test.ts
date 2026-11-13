@@ -9,6 +9,7 @@ import {
 } from "../src/harness/providers/opencode.ts";
 import { piProvider } from "../src/harness/providers/pi.ts";
 import type { EngineEvent, EngineSession } from "../src/harness/types.ts";
+import { priceUsage } from "../src/harness/usage-cost.ts";
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
 import { featureProcess } from "./fixtures/feature-process.ts";
 
@@ -1482,3 +1483,111 @@ test("Claude reads its native skill catalog", async () => {
     { name: "report", description: "Prepare report", source: "claude" },
   ]);
 });
+
+test.each([null, "retained-session"])(
+  "Claude projects cumulative money as turn deltas (%s)",
+  async (sessionId) => {
+    const { process, events, emit } = protocol();
+    const session = await claudeProvider.open({
+      process,
+      config: { provider: "claude", model: null },
+      sessionId,
+      instructions: "Role",
+      emit,
+    });
+    for (const [uuid, total] of [
+      ["a", 2],
+      ["b", 5],
+      ["c", 1],
+    ] as const) {
+      const started = Promise.withResolvers<void>();
+      process.receive = (request) => {
+        if (request.type === "user") started.resolve();
+      };
+      const turn = session.prompt("Work");
+      await started.promise;
+      const frame = {
+        type: "result",
+        uuid,
+        total_cost_usd: total,
+        usage: {
+          input_tokens: 10,
+          output_tokens: 2,
+          cache_read_input_tokens: 0,
+          cache_creation_input_tokens: 0,
+        },
+      };
+      process.frame(frame);
+      await turn;
+    }
+    const usage = events
+      .filter((event) => event.type === "usage")
+      .map((event) => event.usage);
+    expect(usage.map((row) => row.costUsd)).toEqual([
+      sessionId ? null : 2,
+      3,
+      1,
+    ]);
+    expect(usage.map((row) => row.costCumulative)).toEqual([2, 5, 1]);
+    expect(new Set(usage.map((row) => row.costCounter)).size).toBe(1);
+  },
+);
+
+test.each([undefined, 10])(
+  "Codex retains native cache-write counts and their protocol default (%s)",
+  async (cacheWriteInputTokens) => {
+    const { process, events, emit } = protocol();
+    process.receive = (request) => {
+      process.response(
+        request,
+        request.method === "thread/start"
+          ? {
+              thread: { id: "thread" },
+              modelProvider: "openai",
+              model: "gpt-6.1-terra",
+            }
+          : request.method === "turn/start"
+            ? { turn: { id: "turn" } }
+            : {},
+      );
+      if (request.method === "turn/start") {
+        process.frame({
+          method: "thread/tokenUsage/updated",
+          params: {
+            threadId: "thread",
+            turnId: "turn",
+            tokenUsage: {
+              total: {
+                inputTokens: 1000,
+                cachedInputTokens: 200,
+                outputTokens: 100,
+                ...(cacheWriteInputTokens === undefined
+                  ? {}
+                  : { cacheWriteInputTokens }),
+              },
+            },
+          },
+        });
+        process.frame({
+          method: "turn/completed",
+          params: {
+            threadId: "thread",
+            turn: { id: "turn", status: "completed" },
+          },
+        });
+      }
+    };
+    const session = await codexProvider.open({
+      process,
+      config: { provider: "codex", model: null },
+      sessionId: null,
+      instructions: "Role",
+      emit,
+    });
+    await session.prompt("Work");
+    const event = events.find((event) => event.type === "usage");
+    if (event?.type !== "usage") throw new Error("Usage required");
+    expect(event.usage.cacheWrite).toBe(cacheWriteInputTokens ?? 0);
+    expect(priceUsage(event.usage, "codex").costBasis).toBe("estimated");
+  },
+);

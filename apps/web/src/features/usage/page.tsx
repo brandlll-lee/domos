@@ -3,7 +3,6 @@ import { Button } from "@domos/ui/controls";
 import { ChoicePicker } from "@domos/ui/picker";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { ArrowClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
-import { ChartBarIcon } from "@phosphor-icons/react/dist/csr/ChartBar";
 import { useEffect, useMemo, useState } from "react";
 import { client } from "../../client.ts";
 import { userError } from "../user-error.ts";
@@ -20,10 +19,8 @@ import {
   money,
   type UsagePeriod,
   type UsageRecord,
-  usageGroups,
+  type UsageSummary,
   usagePeriodRange,
-  usageTotals,
-  usageValue,
 } from "./data.ts";
 import { Breakdown, Records } from "./tables.tsx";
 import "./style.css";
@@ -78,6 +75,10 @@ export function UsageSurface() {
   const [provider, setProvider] = useState("");
   const [botId, setBotId] = useState("");
   const [model, setModel] = useState("");
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [summary, setSummary] = useState<UsageSummary>();
   const [rows, setRows] = useState<UsageRecord[]>([]);
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,53 +92,108 @@ export function UsageSurface() {
     () => ({ ...usagePeriodRange(period), attempt: reload }),
     [period, reload],
   );
+  const filter = useMemo(
+    () => ({
+      from: Date.parse(`${range.from}T00:00:00Z`),
+      to: Date.parse(`${range.to}T23:59:59.999Z`),
+      harness: harness || undefined,
+      provider: provider || undefined,
+      model: model || undefined,
+      botId: botId ? Number(botId) : undefined,
+      query: query.trim() || undefined,
+    }),
+    [range, harness, provider, model, botId, query],
+  );
   useEffect(() => {
-    let current = true;
+    void client.bots
+      .list()
+      .then(setBots)
+      .catch((cause) => setError(userError(cause, "Bot 读取失败。")));
+  }, []);
+  useEffect(() => {
+    const controller = new AbortController();
     const started = performance.now();
     setLoading(true);
     setError("");
-    void Promise.all([
-      client.engines.usage({
-        from: Date.parse(`${range.from}T00:00:00Z`),
-        to: Date.parse(`${range.to}T23:59:59.999Z`),
-      }),
-      client.bots.list(),
-    ])
-      .then(([rows, bots]) => {
-        if (!current) return;
-        setRows(rows);
-        setBots(bots);
-        setElapsed(Math.round(performance.now() - started));
+    void client.engines
+      .usageSummary(
+        { ...filter, dimension, metric, limit: Number(limit) },
+        {
+          signal: AbortSignal.any([
+            controller.signal,
+            AbortSignal.timeout(30_000),
+          ]),
+        },
+      )
+      .then((value) => {
+        if (!controller.signal.aborted) {
+          setSummary(value);
+          setElapsed(Math.round(performance.now() - started));
+        }
       })
       .catch((cause) => {
-        if (current) setError(userError(cause, "用量读取失败。请重试。"));
+        if (!controller.signal.aborted)
+          setError(userError(cause, "用量读取失败。请重试。"));
       })
       .finally(() => {
-        if (current) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       });
-    return () => {
-      current = false;
-    };
-  }, [range]);
-  const visible = useMemo(
-    () =>
-      rows.filter(
-        (row) =>
-          (!harness || row.harness === harness) &&
-          (!provider || row.provider === provider) &&
-          (!model || row.model === model) &&
-          (!botId || String(row.botId) === botId),
-      ),
-    [rows, harness, provider, model, botId],
-  );
+    return () => controller.abort();
+  }, [filter, dimension, metric, limit]);
+  const [reading, setReading] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    setReading(true);
+    void client.engines
+      .usage(
+        { ...filter, page },
+        {
+          signal: AbortSignal.any([
+            controller.signal,
+            AbortSignal.timeout(30_000),
+          ]),
+        },
+      )
+      .then((value) => {
+        if (!controller.signal.aborted) {
+          setRows(value.items);
+          setTotal(value.total);
+          setPage(value.page);
+        }
+      })
+      .catch((cause) => {
+        if (!controller.signal.aborted)
+          setError(userError(cause, "明细读取失败。请重试。"));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setReading(false);
+      });
+    return () => controller.abort();
+  }, [filter, page]);
   const names = new Map(bots.map((bot) => [bot.id, bot.name]));
-  const days = dailyUsage(visible, range.from, range.to);
-  const groups = usageGroups(visible, dimension, metric, names, Number(limit));
-  const totals = usageTotals(visible);
-  const daily = days.map((day) => ({
-    day: day.day,
-    cost: usageValue(day.rows, "cost"),
+  const groups = (summary?.groups ?? []).map((group, index) => ({
+    ...group,
+    label:
+      group.key === "other"
+        ? "其他"
+        : dimension === "bot"
+          ? (names.get(Number(group.key)) ?? `Bot ${group.key}`)
+          : dimension === "harness"
+            ? (harnesses.find((item) => item.value === group.key)?.label ??
+              group.key)
+            : group.key,
+    color:
+      group.key === "other"
+        ? "var(--color-chart-other)"
+        : `var(--color-chart-${(index % 5) + 1})`,
   }));
+  const days = summary ? dailyUsage(summary, groups, range.from, range.to) : [];
+  const totals = summary?.totals;
+  const daily = summary?.days ?? [];
+  const change = (set: (value: string) => void) => (value: string) => {
+    set(value);
+    setPage(1);
+  };
   const peak = daily.reduce(
     (best, item) =>
       item.cost !== null && (best.cost === null || item.cost > best.cost)
@@ -155,6 +211,7 @@ export function UsageSurface() {
     setProvider("");
     setBotId("");
     setModel("");
+    setPage(1);
   };
   const options = (values: (string | null)[], all: string) => [
     { value: "", label: all },
@@ -168,7 +225,7 @@ export function UsageSurface() {
         <header className="usage-head">
           <div className="usage-head-text">
             <h1>用量</h1>
-            <p>按 Provider、Harness、Bot 与模型查看引擎原生用量与成本。</p>
+            <p>查看任务用量、引擎报告与价格估算。</p>
           </div>
           <div className="usage-head-actions">
             <span className="usage-timezone">UTC</span>
@@ -176,7 +233,10 @@ export function UsageSurface() {
               label="日期范围"
               size="small"
               value={period}
-              onValueChange={(value) => setPeriod(value as UsagePeriod)}
+              onValueChange={(value) => {
+                setPeriod(value as UsagePeriod);
+                setPage(1);
+              }}
               items={periods}
             />
             <Button
@@ -195,22 +255,22 @@ export function UsageSurface() {
           <Filter
             label="Harness"
             value={harness}
-            onChange={setHarness}
+            onChange={change(setHarness)}
             items={[{ value: "", label: "Harness" }, ...harnesses]}
           />
           <Filter
             label="Provider"
             value={provider}
-            onChange={setProvider}
+            onChange={change(setProvider)}
             items={options(
-              rows.map((row) => row.provider),
+              (summary?.options ?? []).map((row) => row.provider),
               "Provider",
             )}
           />
           <Filter
             label="Bot"
             value={botId}
-            onChange={setBotId}
+            onChange={change(setBotId)}
             items={[
               { value: "", label: "Bot" },
               ...bots.map((bot) => ({
@@ -222,9 +282,9 @@ export function UsageSurface() {
           <Filter
             label="用量模型"
             value={model}
-            onChange={setModel}
+            onChange={change(setModel)}
             items={options(
-              rows.map((row) => row.model),
+              (summary?.options ?? []).map((row) => row.model),
               "模型",
             )}
           />
@@ -241,7 +301,7 @@ export function UsageSurface() {
               重试
             </Button>
           </div>
-        ) : loading ? (
+        ) : !summary && loading ? (
           <div
             className="usage-loading"
             role="status"
@@ -255,23 +315,18 @@ export function UsageSurface() {
             </div>
             <div className="usage-skeleton usage-skeleton-chart" />
           </div>
-        ) : !visible.length ? (
-          <div className="usage-empty" role="status">
-            <ChartBarIcon size={26} weight="thin" aria-hidden="true" />
-            <h2>此范围还没有用量记录。</h2>
-            <p>任务完成后，引擎提供的用量会显示在这里。</p>
-          </div>
-        ) : (
+        ) : totals ? (
           <>
             <section className="usage-hero" aria-label="用量总览">
               <div className="usage-hero-main">
-                <span className="usage-hero-kicker">已报告任务成本</span>
+                <span className="usage-hero-kicker">已知任务成本</span>
                 <strong className="usage-hero-value">
                   {money(totals.cost)}
                 </strong>
                 <p className="usage-hero-meta">
                   USD · {periods.find((item) => item.value === period)?.label} ·{" "}
-                  {totals.tasks} 个任务 · {totals.records} 条记录
+                  {totals.tasks} 个任务 · {totals.records} 条记录 ·{" "}
+                  {totals.unpriced} 条成本未提供
                 </p>
               </div>
               <dl className="usage-facts">
@@ -363,17 +418,29 @@ export function UsageSurface() {
                 groups={groups}
                 metric={metric}
                 dimension={dimension}
+                total={totals[metric]}
               />
             </section>
             <section className="usage-section" aria-label="用量明细">
               <header className="usage-section-head">
                 <h2>全部记录</h2>
+                {totals.records === 0 && (
+                  <span role="status">此范围还没有用量记录。</span>
+                )}
                 <span className="usage-section-meta">
-                  {new Set(visible.map((row) => row.taskId)).size} 个任务 ·{" "}
-                  {visible.length} 条
+                  {totals.tasks} 个任务 · {totals.records} 条
                 </span>
               </header>
-              <Records rows={visible} names={names} />
+              <Records
+                rows={rows}
+                names={names}
+                query={query}
+                onQuery={change(setQuery)}
+                page={page}
+                total={total}
+                onPage={setPage}
+                loading={reading}
+              />
             </section>
             <footer className="usage-footer">
               <span>
@@ -381,15 +448,16 @@ export function UsageSurface() {
                 ms 读取
               </span>
               <span>
-                {totals.unpriced} 条成本未提供 · {totals.snapshots} 条会话累计
+                {totals.unpriced} 条成本未提供 · {totals.estimated} 条价格估算 ·{" "}
+                {totals.snapshots} 条会话累计
               </span>
             </footer>
             <p className="usage-note">
-              仅显示引擎返回的数据 · UTC ·
-              USD。任务成本不含会话累计快照；输入与缓存保留原生口径。
+              UTC · USD。估算为标准 API
+              等值，不代表订阅扣款。原生零值不代表免费。会话累计快照不计入任务总额。
             </p>
           </>
-        )}
+        ) : null}
       </main>
     </ScrollArea>
   );

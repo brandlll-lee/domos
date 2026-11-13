@@ -40,6 +40,25 @@ export class Sessions {
       .all(this.now()) as Device[];
   }
 
+  page(current: string, requested = 1) {
+    const now = this.now();
+    const total = Number(
+      this.store.db
+        .prepare("SELECT COUNT(*) total FROM devices WHERE expires>?")
+        .get(now)?.total ?? 0,
+    );
+    const page = Math.min(
+      Math.max(1, requested),
+      Math.max(1, Math.ceil(total / 10)),
+    );
+    const items = this.store.db
+      .prepare(
+        "SELECT id,label,scope,created,expires FROM devices WHERE expires>? ORDER BY (id=?) DESC,created DESC,id LIMIT 10 OFFSET ?",
+      )
+      .all(now, current, (page - 1) * 10) as Device[];
+    return { items, total, page, pageSize: 10 };
+  }
+
   pairing(scope: Scope) {
     const code = randomBytes(15).toString("base64url");
     const expires = this.now() + sessionPolicy.pairingMs;

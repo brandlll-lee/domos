@@ -32,6 +32,7 @@ export type CodexFrame = {
         inputTokens?: number;
         outputTokens?: number;
         cachedInputTokens?: number;
+        cacheWriteInputTokens?: number;
       };
       last?: { inputTokens?: number };
       modelContextWindow?: number;

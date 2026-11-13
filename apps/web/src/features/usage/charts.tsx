@@ -1,4 +1,4 @@
-import { type CSSProperties, useMemo, useState } from "react";
+import { type CSSProperties, useState } from "react";
 import {
   dayLabel,
   formatAxis,
@@ -6,36 +6,18 @@ import {
   type Metric,
   metricUnit,
   type UsageGroup,
-  type UsageRecord,
-  usageValue,
 } from "./data.ts";
 
 export function DailyChart({
-  days,
+  days: bars,
   groups,
   metric,
 }: {
-  days: { day: string; rows: UsageRecord[] }[];
+  days: { day: string; values: (number | null)[]; total: number }[];
   groups: UsageGroup[];
   metric: Metric;
 }) {
   const [hovered, setHovered] = useState<number | null>(null);
-  const bars = useMemo(() => {
-    const series = groups.map((group) => new Set(group.rows));
-    return days.map((day) => {
-      const values = series.map((set) =>
-        usageValue(
-          day.rows.filter((row) => set.has(row)),
-          metric,
-        ),
-      );
-      return {
-        day: day.day,
-        values,
-        total: values.reduce<number>((sum, value) => sum + (value ?? 0), 0),
-      };
-    });
-  }, [days, groups, metric]);
   const max = Math.max(...bars.map((bar) => bar.total), 0);
   const decimals = max >= 100 ? 0 : max >= 0.1 ? 2 : 4;
   const ticks = [1, 2 / 3, 1 / 3];
@@ -47,7 +29,14 @@ export function DailyChart({
     last,
   ]);
   const active = hovered === null ? null : bars[hovered];
-  if (!max) return <p className="usage-muted">该指标未提供原生数据。</p>;
+  if (!max)
+    return (
+      <p className="usage-muted">
+        {bars.some((bar) => bar.values.some((value) => value !== null))
+          ? "该指标为零。"
+          : "该指标未提供数据。"}
+      </p>
+    );
   const pick = (element: HTMLElement, clientX: number) => {
     const rect = element.getBoundingClientRect();
     const ratio = (clientX - rect.left) / rect.width;

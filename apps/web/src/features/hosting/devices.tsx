@@ -1,4 +1,6 @@
 import { Button } from "@domos/ui/controls";
+import { Loading } from "@domos/ui/loading";
+import { Pagination } from "@domos/ui/pagination";
 import { ChoicePicker } from "@domos/ui/picker";
 import { SettingRow } from "@domos/ui/setting-row";
 import { useCallback, useEffect, useState } from "react";
@@ -13,17 +15,44 @@ type Device = {
 };
 
 export function Devices({ current }: { current: string }) {
-  const [items, setItems] = useState<Device[]>([]);
+  const [result, setResult] = useState<{
+    items: Device[];
+    total: number;
+    page: number;
+    pageSize: number;
+  }>();
+  const [page, setPage] = useState(1);
   const [pairing, setPairing] = useState<{ code: string; expires: number }>();
   const [scope, setScope] = useState("client");
+  const [reading, setReading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const refresh = useCallback(
-    () => hostingRequest<Device[]>("devices").then(setItems),
-    [],
+    async (signal?: AbortSignal) => {
+      setReading(true);
+      try {
+        const value = await hostingRequest<{
+          items: Device[];
+          total: number;
+          page: number;
+          pageSize: number;
+        }>(`devices?page=${page}`, undefined, "GET", signal);
+        if (!signal?.aborted) {
+          setResult(value);
+          setPage(value.page);
+        }
+      } finally {
+        if (!signal?.aborted) setReading(false);
+      }
+    },
+    [page],
   );
   useEffect(() => {
-    void refresh().catch((error) => setError(error.message));
+    const controller = new AbortController();
+    void refresh(controller.signal).catch((error) => {
+      if (!controller.signal.aborted) setError(error.message);
+    });
+    return () => controller.abort();
   }, [refresh]);
   const run = async (action: () => Promise<unknown>) => {
     setBusy(true);
@@ -40,7 +69,7 @@ export function Devices({ current }: { current: string }) {
     <section
       className="settings-sections"
       aria-label="访问设备"
-      aria-busy={busy}
+      aria-busy={busy || reading}
     >
       <section className="settings-group">
         <h3>连接其他设备</h3>
@@ -87,11 +116,12 @@ export function Devices({ current }: { current: string }) {
       </section>
       <section className="settings-group">
         <h3>已授权访问</h3>
+        {!result && reading && <Loading label="正在读取授权" />}
         <div className="settings-card">
-          {items.map((item) => (
+          {result?.items.map((item) => (
             <SettingRow
               title={item.label}
-              description={item.scope === "admin" ? "管理员" : "使用 Bot"}
+              description={`${item.scope === "admin" ? "管理员" : "使用 Bot"} · 创建 ${new Date(item.created).toLocaleDateString()} · 有效至 ${new Date(item.expires).toLocaleDateString()}`}
               key={item.id}
             >
               {item.id === current ? (
@@ -119,6 +149,16 @@ export function Devices({ current }: { current: string }) {
             </SettingRow>
           ))}
         </div>
+        {result && (
+          <Pagination
+            label="授权翻页"
+            page={result.page}
+            pageSize={10}
+            total={result.total}
+            onPage={setPage}
+            disabled={busy || reading}
+          />
+        )}
       </section>
       {error && <p role="alert">{error}</p>}
     </section>

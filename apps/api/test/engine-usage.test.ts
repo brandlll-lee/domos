@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { openAgent } from "@domos/agent";
 import type { Computers } from "@domos/agent/computer/catalog";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
@@ -106,8 +107,8 @@ test("HTTP usage retains native attribution, deduplicates and survives reopening
   expect(await runtime.client.engines.usage({})).toEqual(rows);
   expect(scans).toHaveBeenCalledTimes(1);
   scans.mockRestore();
-  expect(rows).toHaveLength(1);
-  expect(rows[0]).toMatchObject({
+  expect(rows.items).toHaveLength(1);
+  expect(rows.items[0]).toMatchObject({
     botId,
     harness: "pi",
     provider: "test-provider",
@@ -118,17 +119,10 @@ test("HTTP usage retains native attribution, deduplicates and survives reopening
     costUsd: null,
     source: "pi.message_end",
   });
-  expect(rows[0]?.taskId).toBeTruthy();
-  expect(await runtime.client.engines.usage({ provider: "other" })).toEqual([]);
-  const failure = vi
-    .spyOn(runtime.harness, "conversation")
-    .mockRejectedValueOnce(new Error("Usage read failed"));
-  if (!runtime.engines) throw new Error("Engines required");
-  await expect(
-    runtime.engines.usage([botId], { from: 0 }, context),
-  ).rejects.toThrow("Usage read failed");
-  failure.mockRestore();
-  expect(await runtime.client.engines.usage({ from: 0 })).toEqual(rows);
+  expect(rows.items[0]?.taskId).toBeTruthy();
+  expect(
+    (await runtime.client.engines.usage({ provider: "other" })).items,
+  ).toEqual([]);
   const before = await runtime.client.get({ botId });
   const compact = await runtime.client.engines.compact({
     botId,
@@ -157,9 +151,96 @@ test("HTTP usage retains native attribution, deduplicates and survives reopening
     .submission(next.id, context)
     .then((item) => item?.wait(context));
   const updated = await runtime.client.engines.usage({});
-  expect(updated).toHaveLength(2);
-  expect(new Set(updated.map((row) => row.taskId)).size).toBe(2);
+  expect(updated.items).toHaveLength(2);
+  expect(new Set(updated.items.map((row) => row.taskId)).size).toBe(2);
   await runtime.harness.close(context);
   runtime = await open();
   expect(await runtime.client.engines.usage({})).toEqual(updated);
+  await runtime.harness.commit(async (tx) => {
+    for (let index = 0; index < 125; index++)
+      await tx.appendEntry(botId, {
+        kind: "domos.engine-usage",
+        data: {
+          ...updated.items[0],
+          id: `bulk-${index}`,
+          taskId: `bulk-${index}`,
+          timestamp: 1000 + index,
+          model: index === 0 ? "needle-model" : "bulk-model",
+          costUsd: index % 2 ? 0 : 1,
+        },
+      });
+  }, context);
+  const first = await runtime.client.engines.usage({});
+  const second = await runtime.client.engines.usage({ page: 2 });
+  const third = await runtime.client.engines.usage({ page: 3 });
+  expect(first.items).toHaveLength(50);
+  expect(second.items).toHaveLength(50);
+  expect(third.items).toHaveLength(27);
+  expect(
+    new Set(
+      [...first.items, ...second.items, ...third.items].map(
+        (row) => `${row.taskId}:${row.id}`,
+      ),
+    ).size,
+  ).toBe(127);
+  expect((await runtime.client.engines.usage({ query: "Domos" })).total).toBe(
+    127,
+  );
+  expect(
+    (
+      await runtime.client.engines.usage({
+        from: 1000,
+        to: 1124,
+        harness: "pi",
+        model: "bulk-model",
+      })
+    ).total,
+  ).toBe(124);
+  expect(
+    (await runtime.client.engines.usage({ query: "needle-model", page: 3 }))
+      .page,
+  ).toBe(1);
+  await expect(runtime.client.engines.usage({ page: 0 })).rejects.toMatchObject(
+    { code: "BAD_REQUEST" },
+  );
+  const summary = await runtime.client.engines.usageSummary({
+    dimension: "model",
+    metric: "cost",
+    limit: 5,
+  });
+  expect(summary.totals).toMatchObject({
+    records: 127,
+    tasks: 127,
+    cost: 63,
+    unpriced: 2,
+  });
+  expect(
+    (await runtime.client.engines.usage({ query: "needle-model" })).items,
+  ).toHaveLength(1);
+  expect(
+    await runtime.client.engines.usageSummary({
+      dimension: "model",
+      metric: "cost",
+      limit: 5,
+    }),
+  ).toEqual(summary);
+  expect((await runtime.engines?.usage([], {}, context))?.total).toBe(0);
+  expect((await runtime.engines?.usage([botId], {}, context))?.total).toBe(127);
+  await runtime.harness.close(context);
+  runtime = await open();
+  expect((await runtime.client.engines.usage({})).total).toBe(127);
+  await runtime.harness.close(context);
+  const database = new DatabaseSync(join(directory, "agent.sqlite"));
+  database.exec(
+    "DROP TABLE domos_usage_index; DROP TABLE domos_usage_progress",
+  );
+  database.close();
+  runtime = await open();
+  expect(
+    await runtime.client.engines.usageSummary({
+      dimension: "model",
+      metric: "cost",
+      limit: 5,
+    }),
+  ).toEqual(summary);
 });

@@ -240,7 +240,10 @@ export const codexProvider: EngineProvider = {
                       ? null
                       : usage.total.cachedInputTokens -
                         (baseline?.cachedInputTokens ?? 0),
-                  cacheWrite: null,
+                  // The native schema defaults an omitted cache-write counter to zero.
+                  cacheWrite:
+                    (usage.total.cacheWriteInputTokens ?? 0) -
+                    (baseline?.cacheWriteInputTokens ?? 0),
                   costUsd: null,
                 },
               });

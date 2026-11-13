@@ -2,7 +2,10 @@ import type { Bots } from "@domos/agent/bots";
 import { approvalModes } from "@domos/agent/harness/types";
 import { engineCatalog, type Runtime } from "@domos/agent/runtime";
 import { WorkError } from "@domos/agent/work";
-import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
+import {
+  BACKGROUND_CONTEXT as context,
+  withAbortSignal,
+} from "@earendil-works/chord/context";
 import { ORPCError, os } from "@orpc/server";
 import { z } from "zod";
 import { botConversation, botTarget } from "./conversation.ts";
@@ -37,11 +40,41 @@ const config = z
   })
   .strict();
 
+const usageFilter = z.object({
+  botId: z.number().int().nonnegative().optional(),
+  harness: z.string().min(1).max(128).optional(),
+  provider: z.string().max(256).optional(),
+  model: z.string().max(256).optional(),
+  from: z.number().nonnegative().optional(),
+  to: z.number().nonnegative().optional(),
+  query: z.string().trim().max(200).optional(),
+});
+
 export function engineRouter(bots: Bots, runtime?: Runtime) {
   async function target(botId: number) {
     await botConversation(bots, botId);
     if (!runtime) throw new ORPCError("NOT_IMPLEMENTED");
     return runtime;
+  }
+  async function usageScope(
+    input: z.infer<typeof usageFilter>,
+    signal?: AbortSignal,
+  ) {
+    const scoped = signal ? withAbortSignal(signal, context) : context;
+    const available = await bots.list(scoped);
+    const query = input.query?.toLocaleLowerCase();
+    return {
+      botIds: available.map((bot) => bot.id),
+      context: scoped,
+      filter: {
+        ...input,
+        searchBots: query
+          ? available
+              .filter((bot) => bot.name.toLocaleLowerCase().includes(query))
+              .map((bot) => bot.id)
+          : [],
+      },
+    };
   }
   return {
     catalog: os.handler(() => engineCatalog()),
@@ -207,24 +240,37 @@ export function engineRouter(bots: Bots, runtime?: Runtime) {
       }),
     usage: os
       .input(
-        z.object({
-          botId: z.number().int().nonnegative().optional(),
-          harness: z.string().min(1).max(128).optional(),
-          provider: z.string().max(256).optional(),
-          model: z.string().max(256).optional(),
-          from: z.number().nonnegative().optional(),
-          to: z.number().nonnegative().optional(),
+        usageFilter.extend({
+          page: z.number().int().min(1).max(1_000_000).optional(),
         }),
       )
-      .handler(async ({ input }) =>
-        runtime
-          ? runtime.usage(
-              (await bots.list(context)).map((bot) => bot.id),
-              input,
-              context,
-            )
-          : [],
-      ),
+      .handler(async ({ input, signal }) => {
+        const scope = await usageScope(input, signal);
+        return runtime
+          ? runtime.usage(scope.botIds, scope.filter, scope.context)
+          : { items: [], total: 0, page: 1, pageSize: 50 };
+      }),
+    usageSummary: os
+      .input(
+        usageFilter.extend({
+          dimension: z.enum(["model", "provider", "harness", "bot"]),
+          metric: z.enum(["cost", "tasks", "input", "output"]),
+          limit: z.number().int().min(1).max(20),
+        }),
+      )
+      .handler(async ({ input, signal }) => {
+        if (!runtime)
+          throw new ORPCError("NOT_FOUND", { message: "用量服务不可用。" });
+        const scope = await usageScope(input, signal);
+        return runtime.usageSummary(
+          scope.botIds,
+          scope.filter,
+          input.dimension,
+          input.metric,
+          input.limit,
+          scope.context,
+        );
+      }),
     takeRequest: os
       .input(botTarget.extend({ id: z.uuid(), view: z.uuid() }))
       .handler(async ({ input }) =>

@@ -38,7 +38,12 @@ import type {
   EngineInput,
 } from "../harness/types.ts";
 import { supportedApprovalModes } from "../harness/types.ts";
-import { type UsageFilter, UsageReader } from "../harness/usage.ts";
+import {
+  type UsageDimension,
+  type UsageFilter,
+  type UsageMetric,
+  UsageReader,
+} from "../harness/usage.ts";
 import { materialText } from "../materials.ts";
 import { approvalMessage } from "../messages.ts";
 import { TeamsDoc } from "../teams.ts";
@@ -92,7 +97,11 @@ export class Runtime {
   readonly execution: EngineExecution;
   readonly task;
   readonly connections;
-  constructor(harness: Harness, execution: EngineExecution) {
+  constructor(
+    harness: Harness,
+    execution: EngineExecution,
+    database = ":memory:",
+  ) {
     this.harness = harness;
     this.execution = execution;
     this.task = engineTask(execution);
@@ -100,7 +109,7 @@ export class Runtime {
       execution,
       new EngineModelCatalog(harness),
     );
-    this.usageReader = new UsageReader(harness);
+    this.usageReader = new UsageReader(harness, database);
   }
 
   async profile(botId: number, context: Context) {
@@ -156,6 +165,24 @@ export class Runtime {
 
   usage(botIds: number[], filter: UsageFilter, context: Context) {
     return this.usageReader.read(botIds, filter, context);
+  }
+
+  usageSummary(
+    botIds: number[],
+    filter: UsageFilter,
+    dimension: UsageDimension,
+    metric: UsageMetric,
+    limit: number,
+    context: Context,
+  ) {
+    return this.usageReader.summary(
+      botIds,
+      filter,
+      dimension,
+      metric,
+      limit,
+      context,
+    );
   }
 
   async view(

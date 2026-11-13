@@ -98,6 +98,11 @@ export type EngineUsage = {
   cacheWrite: number | null;
   costUsd: number | null;
   costScope?: "session";
+  costBasis?: "reported" | "estimated";
+  costSource?: string;
+  costVersion?: string;
+  costCumulative?: number;
+  costCounter?: string;
 };
 export type EngineRuntimeState = {
   processing?: boolean;
