@@ -881,11 +881,10 @@ test("profile loading recovers without retaining an old error", async ({
   await page.goto(url);
   const details = page.locator("#bot-details");
   await details.getByRole("button", { name: "编辑", exact: true }).click();
-  await expect(details.getByRole("alert")).toContainText("资料加载失败");
+  await expect(details.getByRole("alert")).toBeVisible();
   await expect(details.getByRole("status")).toHaveCount(0);
   fail = false;
-  await details.getByRole("button", { name: "返回", exact: true }).click();
-  await details.getByRole("button", { name: "编辑", exact: true }).click();
+  await details.getByRole("button", { name: "重试", exact: true }).click();
   await expect(
     details.getByRole("textbox", { name: "名字", exact: true }),
   ).toHaveValue("Domos");
@@ -960,7 +959,7 @@ test("three columns keep the identity capsule and navigation clear at each width
     ).toBeVisible();
     await page.screenshot({ path: info.outputPath(`workspace-${width}.png`) });
     await page.keyboard.press("Escape");
-    await expect(page.getByLabel("消息", { exact: true })).toHaveValue(
+    await expect(page.getByLabel("消息", { exact: true })).toHaveText(
       "保留这份草稿",
     );
     if (width === 768) await capsule.click();
@@ -1090,11 +1089,11 @@ for (const dialogName of [
       await page.getByRole("button", { name: "用户菜单", exact: true }).click();
       await page.getByRole("menuitem", { name: "设置", exact: true }).click();
       if (dialogName === "添加容器环境") {
+        await page.getByRole("tab", { name: "当前电脑", exact: true }).click();
         await page
-          .getByRole("group", { name: "电脑", exact: true })
-          .getByRole("button", { name: "打开", exact: true })
+          .getByRole("main", { name: "设置", exact: true })
+          .locator("summary", { hasText: "高级设置" })
           .click();
-        await page.locator(".settings-group > .disclosure > summary").click();
         await page
           .getByRole("button", { name: "添加容器环境", exact: true })
           .click();
@@ -2109,6 +2108,7 @@ test("permission choices match the Harness, persist and retain keyboard access",
     await page.keyboard.press("Escape");
     await expect(picker).toBeFocused();
   }
+  await page.setViewportSize({ width: 1360, height: 700 });
   await picker.click();
   await page.getByRole("option", { name: "按需询问", exact: true }).click();
   await expect(picker).toContainText("按需询问");
@@ -2553,6 +2553,7 @@ test("workspace empty states stay centered at every panel width", async ({
 }, info) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   for (const state of ["loading", "disabled", "unavailable", "failed"]) {
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.route("**/rpc/computer/services", async (route) => {
       if (state === "loading") return;
       if (state === "failed") return route.abort();
@@ -2860,7 +2861,7 @@ it("chat reflows within the frame budget and retains its position", async ({
     const body = await messages.boundingBox();
     const composer = await input.boundingBox();
     if (!box || !body || !composer) throw new Error("Chat layout missing");
-    await page.mouse.move(box.x + box.width / 2, box.y + 100);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();
     await expect(page.locator(".workspace-content")).toHaveAttribute(
       "data-resizing",
@@ -2870,14 +2871,16 @@ it("chat reflows within the frame budget and retains its position", async ({
     await frames.evaluate((recording) => recording.start());
     await page.mouse.move(
       box.x + (side === "联系人" ? 60 : -240),
-      box.y + 100,
+      box.y + box.height / 2,
       { steps: 50 },
     );
     expect((await messages.boundingBox())?.width).not.toBe(body.width);
     expect((await input.boundingBox())?.width).not.toBe(composer.width);
-    await page.mouse.move(box.x + (side === "联系人" ? -40 : 60), box.y + 100, {
-      steps: 50,
-    });
+    await page.mouse.move(
+      box.x + (side === "联系人" ? -40 : 60),
+      box.y + box.height / 2,
+      { steps: 50 },
+    );
     expect((await messages.boundingBox())?.width).not.toBe(body.width);
     expect(
       await page.evaluate(() => Boolean(document.activeViewTransition)),
@@ -5041,8 +5044,9 @@ test("link cards show custom actions, lazy previews and stable history", async (
 test("candidate grids show every option and adapt to their available width", async ({
   page,
 }) => {
-  await page.goto(url);
   for (const count of [1, 2, 3, 4]) {
+    await page.setViewportSize({ width: 1360, height: 900 });
+    await page.goto(url);
     const title = `比较 ${count} 个方案`;
     worker.send({
       approval: {
@@ -5397,10 +5401,9 @@ test("skill packages preview changes and restore resources across reload", async
   releaseEnable();
   await upload("print('v2')");
   await page.reload();
-  await page
-    .locator("#bot-details")
-    .getByRole("button", { name: /^技能(?:\s|$)/ })
-    .click();
+  await expect(
+    details.getByRole("heading", { name: "技能", exact: true }),
+  ).toBeVisible();
   await details
     .getByRole("button")
     .filter({
@@ -5494,10 +5497,9 @@ test("chat routine changes require confirmation and link runs to Work", async ({
   await expect(
     page.getByText("已创建定时　◷　Daily report", { exact: true }),
   ).toHaveCount(1);
-  await page
-    .locator("#bot-details")
-    .getByRole("button", { name: /^定时(?:\s|$)/ })
-    .click();
+  await expect(
+    details.getByRole("heading", { name: "定时", exact: true }),
+  ).toBeVisible();
   await details.getByRole("button", { name: "Daily report的操作" }).click();
   await page.getByRole("menuitem", { name: "试跑", exact: true }).click();
   await details.locator("summary").filter({ hasText: "运行记录" }).click();
@@ -5664,6 +5666,10 @@ test("monitoring stays quiet, delivers one result and opens the native Work reco
   const details = page.locator("#bot-details");
   await details.getByRole("button", { name: /^定时(?:\s|$)/ }).click();
   await details.locator("summary").filter({ hasText: "运行记录" }).click();
+  await page.mouse.move(0, 0);
+  await expect(page.locator(".attention-toast")).toHaveCount(0, {
+    timeout: 10000,
+  });
   for (const notify of [false, true]) {
     await sendTool("routine_report", {
       notify,

@@ -119,10 +119,13 @@ export function useTranscript(
               : (item.sessionId ?? botId)) === target.sessionId),
       );
       if (index < 0)
-        index = items.findIndex(
-          (item) =>
-            item.kind === "attachments" &&
-            item.files.some((file) => file.id === target.file?.id),
+        index = items.findIndex((item) =>
+          (item.kind === "attachments"
+            ? item.files
+            : item.kind === "message"
+              ? item.message.attachments
+              : undefined
+          )?.some((file) => file.id === target.file?.id),
         );
       const item = items[index];
       if (!item) return;

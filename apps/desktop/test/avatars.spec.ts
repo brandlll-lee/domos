@@ -31,7 +31,7 @@ test("welcome characters keep their layout while they follow and greet", async (
     const buttons = team.getByRole("button");
     await expect(buttons).toHaveCount(7);
     for (const svg of await team.locator("svg").all())
-      await expect(svg).toHaveAttribute("opacity", "1");
+      await expect(svg).toHaveCSS("opacity", "1");
     const viewport = page.locator(".setup-page .scroll-viewport");
     await expect(viewport).toHaveCount(1);
     await expect(viewport).toHaveCSS("scrollbar-width", "none");

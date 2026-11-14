@@ -124,15 +124,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: pnpm exec playwright install chromium --only-shell
-      - run: pnpm exec playwright test --config apps/desktop/playwright.config.ts desktop.spec.ts files.spec.ts runtime.spec.ts workspaces.spec.ts notifications.spec.ts
+      - run: pnpm exec playwright test --config apps/desktop/playwright.config.ts desktop.spec.ts files.spec.ts runtime.spec.ts workspaces.spec.ts notifications.spec.ts avatars.spec.ts
+      - run: pnpm --filter @domos/desktop exec electron-builder --win nsis --config.win.signExecutable=false
+      - run: node --test apps/desktop/test/package.test.mjs
+      - run: pnpm exec playwright test --config apps/desktop/playwright.config.ts identity.spec.ts --output=test-results/desktop/identity
       - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: desktop-e2e
           path: test-results/desktop/
           if-no-files-found: ignore
-      - run: pnpm --filter @domos/desktop exec electron-builder --win nsis --config.win.signAndEditExecutable=false
-      - run: node --test apps/desktop/test/package.test.mjs
       - uses: actions/upload-artifact@v6
         with:
           name: domos-windows-test

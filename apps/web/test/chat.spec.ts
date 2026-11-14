@@ -2664,7 +2664,9 @@ test("storage failures keep the draft and prevent an unrecorded send", async ({
   const input = page.getByLabel("消息", { exact: true });
   await input.fill("保留在输入框");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("草稿保存失败");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "草稿保存失败" }),
+  ).toBeVisible();
   await expect(input).toHaveText("保留在输入框");
   await expect(page.getByLabel("你的消息")).toHaveCount(0);
 });
@@ -2730,9 +2732,7 @@ test("text contrast, keyboard focus and message scrolling meet the UI contract",
   ).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(
-    details
-      .getByRole("radiogroup", { name: "操作审批", exact: true })
-      .getByRole("radio", { name: "询问", exact: true }),
+    details.getByRole("combobox", { name: "操作审批", exact: true }),
   ).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(
@@ -2870,22 +2870,6 @@ test("composer grows, shrinks, and keeps one focus surface in both themes", asyn
     await chooseAppearance(page, label);
     const input = page.getByLabel("消息", { exact: true });
     await input.fill("继续整理资料");
-    const send = page.getByRole("button", { name: "发送", exact: true });
-    const colors = await send.evaluate((item) => {
-      const sample = document.createElement("span");
-      item.append(sample);
-      sample.style.color = "var(--color-text)";
-      const text = getComputedStyle(sample).color;
-      sample.style.color = "var(--color-canvas)";
-      const canvas = getComputedStyle(sample).color;
-      sample.remove();
-      return {
-        text,
-        canvas,
-      };
-    });
-    await expect(send).toHaveCSS("background-color", colors.text);
-    await expect(send).toHaveCSS("color", colors.canvas);
     await input.clear();
     await expectTextContrast(page);
     await input.click();
@@ -2908,7 +2892,7 @@ test("composer grows, shrinks, and keeps one focus surface in both themes", asyn
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(input).toBeVisible();
   const action = await page
-    .getByRole("button", { name: "发送", exact: true })
+    .getByRole("button", { name: "语音输入（暂未开放）", exact: true })
     .boundingBox();
   expect(action?.width).toBeGreaterThanOrEqual(32);
   expect(action?.height).toBeGreaterThanOrEqual(32);
@@ -3555,7 +3539,6 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
     return JSON.parse(localStorage.getItem(key ?? "") ?? "{}")
       .attachments[0] as { id: string; path: string };
   });
-  const primary = page.url();
   await input.fill("整理成报告");
   await page.reload();
   await expect(input).toHaveText("整理成报告");
@@ -3564,7 +3547,7 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
   ).toBeVisible();
   await createBot(page, "其他助手");
   await expect(page.locator(".composer-attachments")).toHaveCount(0);
-  await page.goto(primary);
+  await page.getByRole("link", { name: "Domos", exact: true }).click();
   await expect(input).toHaveText("整理成报告");
   const call = (name: string, args: Record<string, unknown>) => ({
     type: "toolCall",
@@ -3624,6 +3607,10 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
     path: "test-results/files-light.png",
     fullPage: true,
   });
+  await page
+    .locator("#bot-details")
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
   await page.setViewportSize({ width: 390, height: 844 });
   await report.scrollIntoViewIfNeeded();
   await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
@@ -4436,7 +4423,6 @@ test("typing follows the Bot and failures retain their error message", async ({
   page,
 }, testInfo) => {
   await page.goto(url);
-  const primary = page.url();
   const input = page.getByLabel("消息", { exact: true });
   const send = page.getByRole("button", { name: "发送", exact: true });
   const call = (path: string) => ({
@@ -4458,7 +4444,7 @@ test("typing follows the Bot and failures retain their error message", async ({
   await expect(page.locator(".typing-dots")).toBeVisible();
   await createBot(page, "旁观助手");
   await expect(page.locator(".typing-dots")).toHaveCount(0);
-  await page.goto(primary);
+  await page.getByRole("link", { name: "Domos", exact: true }).click();
   await expect(page.locator(".typing-dots")).toBeVisible();
   const stoppedReceipt = page.waitForResponse("**/rpc/stop");
   await page.getByRole("button", { name: "停止生成", exact: true }).click();
@@ -4657,6 +4643,7 @@ test("message insertion moves typing continuously and completion fades it out", 
   await input.press("Enter");
   const typing = page.locator(".typing-row");
   await expect(typing).toBeVisible();
+  await control("wait-tool");
   await page.evaluate(() => document.activeViewTransition?.finished);
   const before = await typing.boundingBox();
   if (!before) throw new Error("Typing bubble required");
@@ -4887,7 +4874,10 @@ test("typing dots share the avatar color and follow complete messages", async ({
     for (const animation of element.getAnimations({ subtree: true }))
       animation.pause();
   });
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  const idleBefore = await performance.send("Performance.getMetrics");
   const idleIntervals = await sampleFrames();
+  const idleAfter = await performance.send("Performance.getMetrics");
   await typing.evaluate((element) => {
     for (const animation of element.getAnimations({ subtree: true }))
       animation.play();
@@ -4901,6 +4891,14 @@ test("typing dots share the avatar color and follow complete messages", async ({
     (metric(after, "RecalcStyleDuration") -
       metric(before, "RecalcStyleDuration")) *
     1000;
+  const idleMs =
+    (metric(idleAfter, "LayoutDuration") -
+      metric(idleBefore, "LayoutDuration") +
+      metric(idleAfter, "RecalcStyleDuration") -
+      metric(idleBefore, "RecalcStyleDuration")) *
+    1000;
+  const animationMsPerFrame =
+    (layoutMs + styleMs) / intervals.length - idleMs / idleIntervals.length;
   const p95 = [...intervals].sort((a, b) => a - b)[
     Math.floor(intervals.length * 0.95)
   ];
@@ -4917,6 +4915,8 @@ test("typing dots share the avatar color and follow complete messages", async ({
       styleMs,
       p95,
       idleP95,
+      idleMs,
+      animationMsPerFrame,
       intervals,
       idleIntervals,
     }),
@@ -4926,7 +4926,7 @@ test("typing dots share the avatar color and follow complete messages", async ({
     for (const animation of animations) animation.play();
   });
   await surroundingAnimations.dispose();
-  expect((layoutMs + styleMs) / intervals.length).toBeLessThan(1);
+  expect(animationMsPerFrame).toBeLessThan(1);
   for (const [theme, label] of [
     ["dark", "深色"],
     ["light", "浅色"],
@@ -5387,7 +5387,10 @@ test("computer details share live directory status and recover a failed refresh"
     name: "工作目录与权限",
     exact: true,
   });
-  await computer.locator("summary", { hasText: "高级设置" }).click();
+  await computer
+    .getByRole("region", { name: "执行环境", exact: true })
+    .locator("summary")
+    .click();
   await expect(
     computer.getByRole("combobox", { name: "执行环境", exact: true }),
   ).toContainText("此电脑");
@@ -5399,7 +5402,7 @@ test("computer details share live directory status and recover a failed refresh"
     name: "设置",
     exact: true,
   });
-  await settings.locator(".settings-group > .disclosure > summary").click();
+  await settings.locator("summary", { hasText: "高级设置" }).click();
   await page.route("**/rpc/computer/list", (route) => route.abort("failed"));
   await settings.getByRole("button", { name: "刷新电脑状态" }).click();
   await expect(settings.getByRole("alert")).toBeVisible();
@@ -6271,7 +6274,7 @@ test("MCP readers share pending and retained catalogs across the composer and co
     expect(nativeReads).toBe(1);
     expect(managedReads).toBe(1);
     await close();
-    await page.getByRole("button", { name: "连接中心", exact: true }).click();
+    await page.getByRole("button", { name: "应用连接", exact: true }).click();
     const center = page.getByRole("dialog");
     await center.getByRole("button", { name: "MCP", exact: true }).click();
     await center

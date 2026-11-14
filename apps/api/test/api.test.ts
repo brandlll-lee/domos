@@ -442,7 +442,7 @@ test("link preview reads keep Bot scope and reject invalid destinations", async 
         botId,
         url: "https://127.0.0.1/private",
       }),
-    ).toEqual({});
+    ).toEqual({ status: "blocked", error: "预览地址被安全规则拦截。" });
     await expect(
       runtime.client.files.linkPreview({ botId, url: "javascript:alert(1)" }),
     ).rejects.toThrow();

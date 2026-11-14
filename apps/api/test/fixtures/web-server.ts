@@ -102,6 +102,7 @@ models.setProvider({
 let gate: ReturnType<typeof Promise.withResolvers<void>> | undefined;
 const modelStarted = Promise.withResolvers<void>();
 let toolGate: ReturnType<typeof Promise.withResolvers<void>> | undefined;
+let toolStarted = Promise.withResolvers<void>();
 const toolName = `tool_${crypto.randomUUID().replaceAll("-", "")}`;
 const registry = createRegistry();
 const files = new Files(database);
@@ -211,6 +212,7 @@ const computers = new Proxy(computer, {
                 fail: Type.Optional(Type.Boolean()),
               }),
               execute: async (_id, args) => {
+                toolStarted.resolve();
                 if (toolGate) await toolGate.promise;
                 if ((args as { fail?: boolean }).fail)
                   throw new Error((args as { text: string }).text);
@@ -519,8 +521,12 @@ process.on("message", async (message) => {
     process.send?.({ type: "scripted" });
   } else if (message === "gate-tool") {
     toolGate = Promise.withResolvers<void>();
+    toolStarted = Promise.withResolvers<void>();
     release = toolGate.resolve;
     process.send?.({ type: "gated" });
+  } else if (message === "wait-tool") {
+    await toolStarted.promise;
+    process.send?.({ type: "executing" });
   } else if (message === "gate") {
     gate = Promise.withResolvers<void>();
     release = gate.resolve;
