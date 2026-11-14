@@ -34,7 +34,7 @@ export function ComputerWorkspace({
   takeoverId?: string;
 }) {
   const status = computer.status;
-  const { state, busy, error, configure, reload } = useComputerServices(
+  const { state, busy, error, configure } = useComputerServices(
     bot.id,
     Boolean(status?.authorized),
   );
@@ -84,11 +84,6 @@ export function ComputerWorkspace({
                 <p>{item.error}</p>
               </Disclosure>
             )}
-            {error && (
-              <p role="alert" className="alert">
-                {error}
-              </p>
-            )}
             {status && !status.authorized && (
               <p>{computerLabels.state[status.state]}</p>
             )}
@@ -115,11 +110,6 @@ export function ComputerWorkspace({
               )
             )}
             {state && !admin && <p>请联系管理员启用{label}。</p>}
-            {error && !state && (
-              <Button size="small" variant="secondary" onClick={reload}>
-                重新连接
-              </Button>
-            )}
           </div>
         )}
         {!(status?.authorized && item?.enabled && item.available) && (

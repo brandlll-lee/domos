@@ -140,7 +140,9 @@ test("first use prepares the default Bot with a computer and model before shared
     await setup.getByLabel("程序路径", { exact: true }).fill("custom-agent");
     await setup.getByLabel("启动参数", { exact: true }).fill("invalid");
     await setup.getByRole("button", { name: "检查连接", exact: true }).click();
-    await expect(setup.getByRole("alert")).toContainText("JSON 字符串数组");
+    await expect(page.locator(".attention-toast[data-error]")).toContainText(
+      "JSON 字符串数组",
+    );
     await expect(setup.getByLabel("程序路径", { exact: true })).toHaveValue(
       "custom-agent",
     );
@@ -179,7 +181,11 @@ test("first use prepares the default Bot with a computer and model before shared
     } finally {
       installing.resolve();
     }
-    await expect(setup.getByRole("alert")).toBeVisible();
+    await expect(
+      page
+        .locator(".attention-toast[data-error]")
+        .filter({ hasText: "Failed to fetch" }),
+    ).toBeVisible();
     await expect(setup.locator(".setup-provider-name")).toHaveText("Codex");
     await capture(page, testInfo, "download-failure");
     connection.ready = true;

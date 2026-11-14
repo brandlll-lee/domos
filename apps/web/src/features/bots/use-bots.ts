@@ -9,12 +9,14 @@ import {
 import { clearChatState } from "../chat/use-chat.ts";
 import { clearDraftState } from "../chat/use-draft.ts";
 import { clearTranscriptPositions } from "../chat/use-transcript.ts";
+import { receiveConnection, useConnection } from "../connection.ts";
 import { clearFiles } from "../files/file-state.ts";
 import {
   clearModelSettings,
   invalidateModelSettings,
   receiveModelActivity,
 } from "../models/model-state.ts";
+import { useErrorNotice } from "../notices.tsx";
 import {
   clearConnectionContexts,
   invalidateConnectionContext,
@@ -32,6 +34,7 @@ export const selectBot = (bot: Bot) => {
 };
 
 export function useBots() {
+  const connection = useConnection();
   const bindings = useRef<Record<string, string>>({});
   const [items, setItems] = useState<BotPresence[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -75,7 +78,10 @@ export function useBots() {
           context: {
             retry: Number.POSITIVE_INFINITY,
             onRetry: () => {
-              if (!controller.signal.aborted) setConnected(false);
+              if (!controller.signal.aborted) {
+                setConnected(false);
+                receiveConnection({ connected: false });
+              }
             },
           },
         });
@@ -113,17 +119,22 @@ export function useBots() {
             bindings: next.bindings,
           });
           setConnected(true);
+          receiveConnection({ connected: true });
           setError(null);
         }
       } catch {
         if (!controller.signal.aborted)
           setError("联系人加载失败。请刷新重试。");
       } finally {
-        if (!controller.signal.aborted) setConnected(false);
+        if (!controller.signal.aborted) {
+          setConnected(false);
+          receiveConnection({ connected: false });
+        }
       }
     })();
     return () => controller.abort();
   }, []);
+  useErrorNotice(error);
   const match = /^#bot\/(\d+)$/.exec(hash);
   const selectedTeam = teams.find((team) => hash === `#team/${team.id}`);
   const selected =
@@ -137,7 +148,8 @@ export function useBots() {
     selectedTeam,
     selected,
     error,
-    connected,
+    connected:
+      connected && (!connection.service || connection.service === "ready"),
     computers,
     updateComputers,
   };

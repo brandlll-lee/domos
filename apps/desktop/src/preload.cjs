@@ -24,6 +24,9 @@ ipcRenderer.on("desktop:chat-target", (_event, target) => {
     new CustomEvent("domos:chat-target", { detail: target }),
   );
 });
+ipcRenderer.on("desktop:service", (_event, state) => {
+  window.dispatchEvent(new CustomEvent("domos:service", { detail: state }));
+});
 ipcRenderer.on("desktop:leave", () => {
   window.dispatchEvent(new Event("domos:workspace-save"));
   window.dispatchEvent(new Event("domos:workspace-leave"));

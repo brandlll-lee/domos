@@ -12,6 +12,7 @@ import { WorkPanel } from "../../chat/work.tsx";
 import type { useComputer } from "../../computer/use-computer.ts";
 import { ComputerWorkspace } from "../../computer/workspace.tsx";
 import { FilesList } from "../../files/list.tsx";
+import { useErrorNotice } from "../../notices.tsx";
 import { ComputerSettings } from "./computer.tsx";
 import { BotIdentity, IdentityEditor } from "./identity.tsx";
 import { MemoryDialog } from "./memory.tsx";
@@ -97,6 +98,7 @@ export function BotDetails({
   const error =
     action.error ??
     (view === "identity" ? work.profileError : workActive ? work.error : null);
+  useErrorNotice(error, action.error ? undefined : work.retry);
   const [selection, setSelection] = useState<PanelEditor | null>(null);
   const editor = selection?.view === view ? selection : null;
   const navigate = (next: BotPanelView) => {
@@ -242,16 +244,6 @@ export function BotDetails({
         className="detail-scroll"
         viewportClassName="detail-content"
       >
-        {error && (
-          <p className="alert" role="alert">
-            {error}
-            {!action.error && (
-              <Button variant="ghost" size="small" onClick={work.retry}>
-                重试
-              </Button>
-            )}
-          </p>
-        )}
         {view === "identity" && !work.profile && !work.profileError && (
           <Loading label="正在读取资料" />
         )}

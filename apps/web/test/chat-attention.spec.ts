@@ -28,6 +28,66 @@ const message = (index: number, text = `查找报告 ${index}`) => ({
   timestamp: Date.now() + index,
   content: [{ type: "text", key: String(index), text }],
 });
+
+test("connection loss uses one shared notice and keeps the chat and draft", async ({
+  page,
+}, info) => {
+  await page.goto(url);
+  const input = page.getByRole("textbox", { name: "消息", exact: true });
+  await expect(input).toBeVisible();
+  await input.fill("断线时保留草稿");
+  const original = page.url();
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  await page.getByRole("tab", { name: "Work", exact: true }).click();
+  await page.context().setOffline(true);
+  const disconnected = once(worker, "message");
+  worker.send("disconnect-clients");
+  await disconnected;
+  const notice = page.locator(".attention-toast[data-error]");
+  await expect(notice).toHaveCount(1);
+  await expect(notice).toContainText("与工作电脑的连接已中断");
+  await expect(
+    page
+      .locator(".sidebar-empty[role=status]")
+      .filter({ hasText: "正在连接…" }),
+  ).toHaveCount(0);
+  await expect(
+    page.locator(".detail-note").filter({ hasText: "连接中断" }),
+  ).toHaveCount(0);
+  await expect(input).toHaveText("断线时保留草稿");
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.screenshot({
+      path: info.outputPath(`connection-notice-${theme}.png`),
+      animations: "disabled",
+    });
+  }
+  await page.context().setOffline(false);
+  await expect(notice).toHaveCount(0);
+  await expect(input).toHaveText("断线时保留草稿");
+  expect(page.url()).toBe(original);
+});
+
+test("read failures use the branded warning and retry clears it", async ({
+  page,
+}) => {
+  let fail = true;
+  await page.route("**/rpc/chats/receipts", (route) =>
+    fail
+      ? route.fulfill({ status: 503, body: "Unavailable" })
+      : route.continue(),
+  );
+  await seed({ records: [message(1, "等待确认已读的消息")] });
+  await page.goto(url);
+  const warning = page.locator(".attention-toast[data-error]");
+  await expect(warning).toContainText("已读位置未能保存");
+  await expect(page.locator(".sidebar .sidebar-empty[role=alert]")).toHaveCount(
+    0,
+  );
+  fail = false;
+  await warning.getByRole("button", { name: "重试", exact: true }).click();
+  await expect(warning).toHaveCount(0);
+});
 test.beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), "domos-attention-"));
   worker = fork(

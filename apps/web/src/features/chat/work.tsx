@@ -88,11 +88,6 @@ export function WorkPanel(
           className="detail-scroll"
           viewportClassName="detail-content"
         >
-          {!connected && (
-            <p role="status" className="detail-note">
-              连接中断，显示最后收到的状态。
-            </p>
-          )}
           {view && !turns.length && (
             <p className="detail-note">开始对话后，这里会显示每轮工作记录。</p>
           )}
@@ -146,10 +141,12 @@ export function WorkPanel(
                           {modelName(turn.run)}
                         </span>
                         <span className="work-activity" title={turn.title}>
-                          {turn.title}
+                          {turn.active && !connected
+                            ? "状态待更新"
+                            : turn.title}
                         </span>
                       </span>
-                      <time>{elapsed(turn, turn.active)}</time>
+                      <time>{elapsed(turn, turn.active && connected)}</time>
                       <CaretRightIcon className="work-chevron" />
                     </Button>
                     {turn.active && (

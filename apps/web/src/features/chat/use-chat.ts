@@ -13,6 +13,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { client } from "../../client.ts";
+import { useConnection } from "../connection.ts";
 import { receiveConversationFiles } from "../files/file-state.ts";
 import { flushModelSettings } from "../models/model-state.ts";
 import { chatCopy } from "./copy.ts";
@@ -136,6 +137,7 @@ export function useChat(
   const setSentRequest = (sentRequest: string) => store.update({ sentRequest });
   const setOutgoing = (update: (items: TranscriptItem[]) => TranscriptItem[]) =>
     store.update({ outgoing: update(store.snapshot().outgoing) });
+  const connection = useConnection();
   const [connected, setConnected] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
@@ -437,7 +439,7 @@ export function useChat(
         setOutgoing((current) =>
           current.filter((item) => item.id !== input.requestId),
         );
-      setError(message ?? chatCopy.errors.unconfirmed);
+      setError(message ?? null);
       return message ? ("rejected" as const) : ("unconfirmed" as const);
     } finally {
       setSending(false);
@@ -520,7 +522,8 @@ export function useChat(
     loadingNewer,
     newerError,
     sentRequest,
-    connected,
+    connected:
+      connected && (!connection.service || connection.service === "ready"),
     error,
     sending,
     processing:

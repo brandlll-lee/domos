@@ -18,7 +18,7 @@ import { app, type BrowserWindow, dialog, ipcMain, Menu, Tray } from "electron";
 import { z } from "zod";
 import { ConnectionSetup } from "./connection.ts";
 import { desktopFile } from "./files.ts";
-import { LocalHost } from "./host.ts";
+import { LocalHost, type ServiceState } from "./host.ts";
 import { applicationIcon, applicationId } from "./icons.ts";
 import { maintain } from "./maintenance.ts";
 import { notificationSchema, notify } from "./notifications.ts";
@@ -40,6 +40,13 @@ let switching: AbortController | undefined;
 let transition: Promise<void> = Promise.resolve();
 let unread: Record<string, number> = {};
 let attentionSave: Promise<unknown> = Promise.resolve();
+
+function serviceState(state: ServiceState = host.state) {
+  const instance = instances.find((item) => item.id === selected);
+  if (instance?.mode === "local" && (instance.runtime ?? "native") === "native")
+    if (active && !active.view.webContents.isDestroyed())
+      active.view.webContents.send("desktop:service", state);
+}
 
 async function save(nextInstances = instances, nextSelected = selected) {
   await writeConfiguration(join(app.getPath("userData"), "instances.json"), {
@@ -121,7 +128,14 @@ async function openWorkspace(
   signal: AbortSignal,
 ) {
   signal.throwIfAborted();
-  if (active && selected === instance.id) return;
+  if (active && selected === instance.id) {
+    if (
+      instance.mode === "local" &&
+      (instance.runtime ?? "native") === "native"
+    )
+      await host.start(progress, signal);
+    return;
+  }
   let session: (() => Promise<{ token: string; expires: number }>) | undefined;
   let url = instance.url;
   if (instance.mode === "local") {
@@ -158,6 +172,8 @@ async function openWorkspace(
     active = next;
     instances = nextInstances;
     selected = instance.id;
+    host.recoveryEnabled =
+      instance.mode === "local" && (instance.runtime ?? "native") === "native";
     updateMenu();
     if (previous) {
       const contents = previous.view.webContents;
@@ -181,6 +197,7 @@ async function openWorkspace(
     }
     next.show();
     next.view.webContents.send("desktop:activated");
+    serviceState();
     previous?.dispose();
   } catch (error) {
     next.dispose();
@@ -293,7 +310,7 @@ async function main() {
         message: "连接配置无法读取。请重新连接。",
       });
   }
-  host = new LocalHost(hostingDirectory, release, runtime);
+  host = new LocalHost(hostingDirectory, release, runtime, serviceState);
   stack = new LocalStack(containerDirectory, release);
   connection = new ConnectionSetup({
     instances: () => instances,
@@ -413,6 +430,14 @@ async function main() {
       mode: instances.find((item) => item.id === selected)?.mode,
       runtime:
         instances.find((item) => item.id === selected)?.runtime ?? "native",
+      service: instances.some(
+        (item) =>
+          item.id === selected &&
+          item.mode === "local" &&
+          (item.runtime ?? "native") === "native",
+      )
+        ? host.state
+        : undefined,
     }),
     false,
   );
@@ -474,11 +499,28 @@ async function main() {
           z.object({ action: z.literal("remove"), id: z.uuid() }),
           z.object({ action: z.literal("add") }),
           z.object({ action: z.literal("cancel") }),
+          z.object({ action: z.literal("recover") }),
         ])
         .parse(input);
       if (value.action === "add") return connection.open("", false, true);
       if (value.action === "cancel")
         return switching?.abort(new Error("连接已取消。"));
+      if (value.action === "recover") {
+        const current = instances.find((item) => item.id === selected);
+        if (
+          current?.mode !== "local" ||
+          (current.runtime ?? "native") !== "native"
+        )
+          throw new Error("当前工作区不使用本机服务。");
+        if (busy || switching) throw new Error("请等待当前操作结束。");
+        busy = true;
+        try {
+          await host.start(() => {}, AbortSignal.timeout(90_000));
+        } finally {
+          busy = false;
+        }
+        return;
+      }
       const instance = instances.find((item) => item.id === value.id);
       if (!instance) throw new Error("连接不存在。请刷新后重试。");
       if (value.action === "select") return connect(instance);
@@ -524,7 +566,7 @@ async function main() {
         stack = new LocalStack(containerDirectory, release);
       } else {
         hostingDirectory = result.directory;
-        host = new LocalHost(hostingDirectory, release, runtime);
+        host = new LocalHost(hostingDirectory, release, runtime, serviceState);
       }
       await save();
     }
@@ -541,7 +583,7 @@ async function main() {
     event.preventDefault();
     quitting = true;
     tray.destroy();
-    void Promise.all([host.stop(), stack.stop()]).finally(() => app.quit());
+    void Promise.allSettled([host.stop(), stack.stop()]).then(() => app.quit());
   });
   const saved = instances.find((item) => item.id === selected);
   if (saved?.mode === "local") connection.open("", true);

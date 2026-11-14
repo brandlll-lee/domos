@@ -555,6 +555,9 @@ process.on("message", async (message) => {
     );
     if (result.isError) throw new Error(JSON.stringify(result.content));
     process.send?.({ type: "takeover-page-opened" });
+  } else if (message === "disconnect-clients") {
+    server.closeAllConnections();
+    process.send?.({ type: "clients-disconnected" });
   } else if (message === "disconnect-computer") {
     await computer.close(BACKGROUND_CONTEXT);
     process.send?.({ type: "computer-disconnected" });

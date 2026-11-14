@@ -970,7 +970,7 @@ test("model selection updates immediately and restores a failed save", async ({
     await page
       .getByRole("option", { name: "Pi · 测试模型一", exact: true })
       .click();
-    await expect(details.getByRole("alert")).toBeVisible();
+    await expect(page.locator(".attention-toast[data-error]")).toBeVisible();
     await expect(picker).toContainText("测试模型二");
     expect(requests).toBe(2);
   } finally {
@@ -2571,10 +2571,11 @@ test("retrying a send with a lost receipt does not repeat the message", async ({
   });
   await page.getByLabel("消息", { exact: true }).fill("同一条请求");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("发送未确认");
+  const warning = page.getByRole("alert").filter({ hasText: "发送未确认" });
+  await expect(warning).toBeVisible();
   await expect(page.getByLabel("Domos 的回复")).toContainText("完整回复。");
   await page.reload();
-  await expect(page.getByRole("alert")).toContainText("发送未确认");
+  await expect(warning).toBeVisible();
   await page.getByRole("button", { name: "重试发送", exact: true }).click();
   await expect(page.getByLabel("消息", { exact: true })).toHaveText("");
   await expect(page.getByLabel("你的消息")).toHaveCount(1);
@@ -5405,10 +5406,10 @@ test("computer details share live directory status and recover a failed refresh"
   await settings.locator("summary", { hasText: "高级设置" }).click();
   await page.route("**/rpc/computer/list", (route) => route.abort("failed"));
   await settings.getByRole("button", { name: "刷新电脑状态" }).click();
-  await expect(settings.getByRole("alert")).toBeVisible();
+  await expect(page.locator(".attention-toast[data-error]")).toBeVisible();
   await page.unroute("**/rpc/computer/list");
   await settings.getByRole("button", { name: "刷新电脑状态" }).click();
-  await expect(settings.getByRole("alert")).toHaveCount(0);
+  await expect(page.locator(".attention-toast[data-error]")).toHaveCount(0);
   await settings.getByRole("button", { name: "返回对话", exact: true }).click();
   await page.screenshot({ path: "test-results/computer-light.png" });
   await chooseAppearance(page, "深色");

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../client.ts";
 import type { useBots } from "../bots/use-bots.ts";
+import { useErrorNotice } from "../notices.tsx";
 import { userError } from "../user-error.ts";
 
 export function useComputer(
@@ -22,6 +23,7 @@ export function useComputer(
     ]);
     directory.updateComputers(catalog);
     setSetup(location);
+    setError(null);
   }, [directory.updateComputers]);
   useEffect(() => {
     void refresh().catch((cause) =>
@@ -47,6 +49,7 @@ export function useComputer(
     revision: binding?.revision ?? 0,
     requestId: crypto.randomUUID(),
   });
+  useErrorNotice(error, refresh);
   return {
     status,
     directory: binding?.directory ?? null,

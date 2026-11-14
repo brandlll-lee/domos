@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../client.ts";
+import { useErrorNotice } from "../notices.tsx";
 import { userError } from "../user-error.ts";
 
 export type ComputerService = "browser" | "desktop";
@@ -47,6 +48,7 @@ export function useComputerServices(botId: number, active = true) {
       setBusy(undefined);
     }
   }
+  useErrorNotice(error, () => load());
   return {
     state,
     busy,

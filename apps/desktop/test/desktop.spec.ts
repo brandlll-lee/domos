@@ -45,6 +45,7 @@ async function captureWindow(
 test("native setup starts and resumes with Docker unavailable", async ({
   playwright,
 }, testInfo) => {
+  test.setTimeout(120_000);
   const directory = await mkdtemp(join(tmpdir(), "domos-native-"));
   const executablePath = createRequire(
     new URL("../package.json", import.meta.url),
@@ -252,6 +253,83 @@ test("native setup starts and resumes with Docker unavailable", async ({
     await expect(
       resumed.getByRole("button", { name: "添加内容", exact: true }),
     ).toBeEnabled();
+    const draft = resumed.getByRole("textbox", { name: "消息", exact: true });
+    await draft.fill("服务恢复后保留这份草稿");
+    const identity = await resumed.evaluate(() => window.location.href);
+    const service = () =>
+      resumed.evaluate(
+        async () => (await window.domosDesktop?.state())?.value?.service,
+      );
+    const terminate = () =>
+      desktop.evaluate(({ app }) => {
+        const process = app
+          .getAppMetrics()
+          .find((item) => item.name === "Domos server.mjs");
+        if (!process) throw new Error("Domos service required");
+        globalThis.process.kill(process.pid);
+        return process.pid;
+      });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const previous = await terminate();
+      if (attempt < 2) {
+        await expect
+          .poll(() =>
+            desktop.evaluate(({ app }, previous) => {
+              const current = app
+                .getAppMetrics()
+                .find((item) => item.name === "Domos server.mjs");
+              return Boolean(current && current.pid !== previous);
+            }, previous),
+          )
+          .toBe(true);
+        await expect.poll(service).toBe("ready");
+        await expect(
+          resumed.getByRole("button", { name: "添加内容", exact: true }),
+        ).toBeEnabled();
+      } else await expect.poll(service).toBe("failed");
+    }
+    await expect(resumed.locator(".attention-toast[data-error]")).toHaveCount(
+      1,
+    );
+    await expect(resumed.locator(".attention-toast")).toContainText(
+      "本机服务已停止",
+    );
+    await expect(
+      resumed
+        .locator('.sidebar-empty[role="status"]')
+        .filter({ hasText: "正在连接…" }),
+    ).toHaveCount(0);
+    await expect(draft).toHaveText("服务恢复后保留这份草稿");
+    expect(resumed.url()).toBe(identity);
+    expect(
+      await resumed.locator(".attention-toast").evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        return bounds.left >= 0 && bounds.right <= innerWidth;
+      }),
+    ).toBe(true);
+    for (const theme of ["light", "dark"] as const) {
+      await resumed.emulateMedia({ colorScheme: theme });
+      await resumed.screenshot({
+        path: testInfo.outputPath(`service-stopped-${theme}.png`),
+        fullPage: true,
+        scale: "css",
+        animations: "disabled",
+      });
+    }
+    await resumed
+      .getByRole("button", { name: "恢复服务", exact: true })
+      .click();
+    await expect.poll(service).toBe("ready");
+    await expect(resumed.locator(".attention-toast[data-error]")).toHaveCount(
+      0,
+    );
+    await expect(draft).toHaveText("服务恢复后保留这份草稿");
+    expect(
+      await resumed.evaluate(
+        async () => (await (await fetch("/hosting/devices")).json()).total,
+      ),
+    ).toBe(1);
+    await draft.fill("");
     await resumed
       .getByRole("button", { name: "添加内容", exact: true })
       .click();
@@ -576,10 +654,9 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
         ?.match(/[a-f0-9]{2}/gi)
         ?.slice(0, 3)
         .map((part) => Number.parseInt(part, 16));
-      await expect(page.locator(".sidebar")).toHaveCSS(
-        "background-color",
-        `rgb(${rgb?.join(", ")})`,
-      );
+      await expect(
+        page.locator('.workspace-panel[data-side="sidebar"]'),
+      ).toHaveCSS("background-color", `rgb(${rgb?.join(", ")})`);
     }
     const nativeMenu = await desktop.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()?.items[0]?.submenu?.items.map(

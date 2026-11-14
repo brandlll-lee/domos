@@ -13,10 +13,10 @@ import { MicrophoneIcon } from "@phosphor-icons/react/dist/csr/Microphone";
 import { StopIcon } from "@phosphor-icons/react/dist/csr/Stop";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { type ReactNode, type Ref, useRef, useState } from "react";
+import { useErrorNotice } from "../notices.tsx";
 import { BotPicker } from "./bot-reference.tsx";
 import { ComposerMenu } from "./composer-menu.tsx";
 import { chatCopy } from "./copy.ts";
-import { ErrorMessage } from "./error-message.tsx";
 import { materialTokens } from "./material-tokens.tsx";
 import { type SendMessage, useComposer } from "./use-composer.ts";
 import type { useDraft } from "./use-draft.ts";
@@ -34,7 +34,6 @@ export function Composer({
   busy,
   sending,
   stopping,
-  error,
   onSend,
   onStop,
   status,
@@ -52,7 +51,6 @@ export function Composer({
   busy: boolean;
   sending: boolean;
   stopping: boolean;
-  error: string | null;
   onSend: SendMessage;
   onStop: () => Promise<void>;
   status?: ReactNode;
@@ -87,7 +85,7 @@ export function Composer({
     connected && !stopping && !sending && !uploads.items.length,
     onSend,
   );
-  const issue = uploads.error ?? error ?? composer.error;
+  useErrorNotice(uploads.error ?? composer.error);
   const hasMaterials = Boolean(
     composer.materials.skills.length ||
       composer.materials.context.length ||
@@ -179,7 +177,6 @@ export function Composer({
           event.target.value = "";
         }}
       />
-      {issue && <ErrorMessage>{issue}</ErrorMessage>}
       <Popover.Root
         open={Boolean(mention && members?.length)}
         onOpenChange={(open) => {

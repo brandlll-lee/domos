@@ -1,8 +1,5 @@
-import type { ChatAttention, ChatTarget } from "@domos/agent/chat-directory";
-import { BotAvatar } from "@domos/ui/avatar";
-import { Button } from "@domos/ui/controls";
+import type { ChatTarget } from "@domos/agent/chat-directory";
 import { Toast } from "@domos/ui/toast";
-import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import {
   createContext,
   type ReactNode,
@@ -13,7 +10,7 @@ import {
 } from "react";
 import { z } from "zod";
 import { client, computerScope } from "../../client.ts";
-import "./attention.css";
+import { type Notice, useErrorNotice } from "../notices.tsx";
 
 const schema = z.object({
   read: z.record(z.string(), z.number().int().nonnegative()).default({}),
@@ -53,7 +50,6 @@ window.addEventListener("domos:computer", () => {
 type AttentionState = {
   counts: Record<string, number>;
   preferences: Preferences;
-  error: string;
   revision: number;
   refresh: () => void;
   mute: (chat?: string) => void;
@@ -67,34 +63,21 @@ export function useAttention() {
   return useContext(AttentionContext);
 }
 export function ChatAttentionProvider({ children }: { children: ReactNode }) {
-  return (
-    <Toast.Provider limit={3} timeout={7000}>
-      <Attention>{children}</Attention>
-    </Toast.Provider>
-  );
+  return <Attention>{children}</Attention>;
 }
 function Attention({ children }: { children: ReactNode }) {
   const [preferences, setPreferences] = useState(saved);
   const current = useRef(preferences);
   const [counts, setCounts] = useState(preferences.counts);
   const [hydrated, setHydrated] = useState(false);
-  const [computer, setComputer] = useState("");
   const [error, setError] = useState("");
   const [revision, refresh] = useState(0);
-  const toast = Toast.useToastManager<ChatAttention>();
+  const toast = Toast.useToastManager<Notice>();
   const manager = useRef(toast);
   manager.current = toast;
   const active = useRef(true);
   useEffect(() => {
     active.current = true;
-    void window.domosDesktop?.state().then((result) => {
-      if (active.current)
-        setComputer(
-          result.value?.instances.find(
-            (item) => item.id === result.value?.selected,
-          )?.name ?? "",
-        );
-    });
     return () => {
       active.current = false;
     };
@@ -170,7 +153,7 @@ function Attention({ children }: { children: ReactNode }) {
               id: `${computerScope}:${event.sequence}`,
               title: event.name,
               description: event.text,
-              data: event,
+              data: { attention: event },
               priority: event.kind === "complete" ? "low" : "high",
             });
           }
@@ -181,18 +164,21 @@ function Attention({ children }: { children: ReactNode }) {
     })();
     return () => controller.abort();
   }, [readSignature]);
+  useErrorNotice(error, () => refresh((value) => value + 1));
   const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
   useEffect(() => {
     if (!hydrated) return;
-    void window.domosDesktop?.unread(total).then((result) => {
-      if (result?.ok) window.dispatchEvent(new Event("domos:unread"));
-    });
+    void window.domosDesktop
+      ?.unread(total)
+      .then((result) => {
+        if (result?.ok) window.dispatchEvent(new Event("domos:unread"));
+      })
+      .catch(() => setError("桌面未读数未能保存。"));
   }, [total, hydrated]);
   const readPending = useRef<Promise<unknown>>(Promise.resolve());
   const value: AttentionState = {
     counts,
     preferences,
-    error,
     revision,
     refresh: () => refresh((value) => value + 1),
     mute(chat) {
@@ -236,48 +222,5 @@ function Attention({ children }: { children: ReactNode }) {
       return pending;
     },
   };
-  return (
-    <AttentionContext value={value}>
-      {children}
-      <Toast.Portal>
-        <Toast.Viewport className="attention-viewport">
-          {toast.toasts.map((item) => (
-            <Toast.Root key={item.id} toast={item} className="attention-toast">
-              <Button
-                variant="ghost"
-                className="attention-body"
-                type="button"
-                onClick={() => {
-                  if (item.data) openChatTarget(item.data);
-                  toast.close(item.id);
-                }}
-              >
-                <BotAvatar seed={item.data?.avatar ?? "domos"} />
-                <span>
-                  <Toast.Title className="attention-title" />
-                  <Toast.Description className="attention-description" />
-                  <span className="attention-context">
-                    {[item.data?.chatName, computer]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </span>
-                </span>
-              </Button>
-              <Toast.Close
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-small"
-                    aria-label="关闭提醒"
-                  />
-                }
-              >
-                <XIcon />
-              </Toast.Close>
-            </Toast.Root>
-          ))}
-        </Toast.Viewport>
-      </Toast.Portal>
-    </AttentionContext>
-  );
+  return <AttentionContext value={value}>{children}</AttentionContext>;
 }

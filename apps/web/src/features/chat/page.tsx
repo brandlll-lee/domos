@@ -3,7 +3,6 @@ import type { Bot, BotPresence } from "@domos/agent/bots";
 import { type ChatMessage, messageText } from "@domos/agent/messages";
 import type { Team } from "@domos/agent/teams";
 import { characterIdentity } from "@domos/ui/characters";
-import { Button } from "@domos/ui/controls";
 import { Loading } from "@domos/ui/loading";
 import { layout } from "@domos/ui/tokens";
 import {
@@ -23,6 +22,7 @@ import { selectBot, useBots } from "../bots/use-bots.ts";
 import { useComputer } from "../computer/use-computer.ts";
 import { FilePreviewContext } from "../files/context.tsx";
 import { FilePanel } from "../files/panel.tsx";
+import { useErrorNotice } from "../notices.tsx";
 import { useSettings } from "../settings/context.ts";
 import { Workspace } from "../shell/workspace.tsx";
 import { saveWorkspaceView, workspaceView } from "../shell/workspace-state.ts";
@@ -32,7 +32,6 @@ import { TeamMembers } from "./bot-reference.tsx";
 import { Composer } from "./composer.tsx";
 import { ContextRing } from "./context.tsx";
 import { chatCopy } from "./copy.ts";
-import { ErrorMessage } from "./error-message.tsx";
 import { ChatHeader } from "./header.tsx";
 import { Messages } from "./messages.tsx";
 import { RuntimeStatus } from "./runtime.tsx";
@@ -48,13 +47,7 @@ export function ChatPage() {
   const bots = useBots();
   const search = useHistorySearch();
   if (!bots.selected)
-    return bots.error ? (
-      <p className="working" role="alert">
-        {bots.error}
-      </p>
-    ) : (
-      <Loading label="正在读取联系人" />
-    );
+    return bots.error ? null : <Loading label="正在读取联系人" />;
   return (
     <ChatAttentionProvider>
       <BotChat
@@ -310,6 +303,7 @@ function BotChat({
     ) && chat.view?.failed
       ? chatCopy.errors.reply
       : null);
+  useErrorNotice(error);
   const showPanel = (view: BotPanelView) => {
     setMember(undefined);
     setSessionId(undefined);
@@ -504,7 +498,7 @@ function BotChat({
               <ChatHeader
                 members={members}
                 bot={team ? { ...bot, name: team.name } : bot}
-                busy={Boolean(chat.view?.busy)}
+                busy={chat.connected && Boolean(chat.view?.busy)}
                 detailsOpen={detailsOpen}
                 provider={chat.view?.engine?.provider}
                 onDetails={() => showPanel("root")}
@@ -518,10 +512,10 @@ function BotChat({
                 ready={
                   (Boolean(chat.view) || Boolean(chat.error)) && !chat.restoring
                 }
-                busy={Boolean(chat.view?.busy)}
-                processing={chat.processing}
+                busy={chat.connected && Boolean(chat.view?.busy)}
+                processing={chat.connected && chat.processing}
                 activity={
-                  team || chat.view?.delegations?.length
+                  chat.connected && (team || chat.view?.delegations?.length)
                     ? chat.view?.activity
                     : undefined
                 }
@@ -575,10 +569,9 @@ function BotChat({
                   botName={team?.name ?? bot.name}
                   conversationId={team ? bot.id : chat.view.id}
                   connected={chat.connected}
-                  busy={chat.view.busy}
+                  busy={chat.connected && chat.view.busy}
                   sending={chat.sending}
                   stopping={chat.stopping}
-                  error={error}
                   onSend={chat.send}
                   onStop={chat.stop}
                   computerReady={Boolean(
@@ -593,25 +586,15 @@ function BotChat({
                     setDetailsOpen(true);
                   }}
                   status={
-                    <RuntimeStatus
-                      state={chat.view.runtime}
-                      onDraft={(text) => draft.update({ text })}
-                    />
+                    chat.connected && (
+                      <RuntimeStatus
+                        state={chat.view.runtime}
+                        onDraft={(text) => draft.update({ text })}
+                      />
+                    )
                   }
                 />
-              ) : (
-                error && (
-                  <div>
-                    <ErrorMessage>{error}</ErrorMessage>
-                    <Button
-                      variant="secondary"
-                      onClick={() => window.location.reload()}
-                    >
-                      重新连接
-                    </Button>
-                  </div>
-                )
-              )}
+              ) : null}
             </main>
           </TeamMembers>
         )}

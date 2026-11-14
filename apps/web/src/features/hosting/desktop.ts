@@ -14,6 +14,7 @@ export type DesktopState = {
   mode?: "local" | "existing";
   runtime?: "native" | "docker";
   running: boolean;
+  service?: "starting" | "ready" | "recovering" | "stopped" | "failed";
 };
 
 declare global {
@@ -35,7 +36,7 @@ declare global {
       connection(
         input:
           | { action: "select" | "remove"; id: string }
-          | { action: "add" | "cancel" },
+          | { action: "add" | "cancel" | "recover" },
       ): Promise<Result>;
       connected(): Promise<void>;
       pairing(): void;

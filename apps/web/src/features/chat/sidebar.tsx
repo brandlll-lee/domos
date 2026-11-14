@@ -189,7 +189,9 @@ export function Sidebar({
                       {contactTime(bot.lastMessageAt, now)}
                     </time>
                   )}
-                  <span>{contactPreview(bot)}</span>
+                  <span>
+                    {contactPreview(connected ? bot : { ...bot, busy: false })}
+                  </span>
                 </div>
               </PanelDialog.Close>
             ))
@@ -307,19 +309,6 @@ export function Sidebar({
           selectTeam(team);
         }}
       />
-      {!connected && (
-        <p className="sidebar-empty" role="status">
-          正在连接…
-        </p>
-      )}
-      {attention?.error && (
-        <p className="sidebar-empty" role="alert">
-          {attention.error}
-          <Button variant="ghost" size="small" onClick={attention.refresh}>
-            重试
-          </Button>
-        </p>
-      )}
     </aside>
   );
 }

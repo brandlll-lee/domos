@@ -17,8 +17,10 @@ export function ComputerServices({
   configuring: boolean;
   onConfigure: () => void;
 }) {
-  const { state, busy, error, configure, changeMode, reload } =
-    useComputerServices(botId, !configuring);
+  const { state, busy, configure, changeMode } = useComputerServices(
+    botId,
+    !configuring,
+  );
   const [mode, setMode] = useState<"headless" | "headed">();
   return (
     <>
@@ -106,7 +108,7 @@ export function ComputerServices({
           </div>
         }
       >
-        {error && <p role="alert">{error}</p>}
+        {null}
       </Dialog>
       <ComputerDecision
         botId={botId}
@@ -114,16 +116,6 @@ export function ComputerServices({
         configuring={configuring}
         onConfigure={onConfigure}
       />
-      {!configuring && error && (
-        <p role="alert" className="alert">
-          {error}
-        </p>
-      )}
-      {!configuring && error && !state && (
-        <Button variant="secondary" size="small" onClick={reload}>
-          重新连接
-        </Button>
-      )}
     </>
   );
 }

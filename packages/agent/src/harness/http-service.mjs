@@ -123,6 +123,7 @@ export async function openHttpService(emit, limits) {
         message = `OpenCode 本地接口请求失败（HTTP ${response.status}）。`;
         if (!response.ok) {
           code = response.status;
+          await response.body?.cancel();
           throw new Error("Request rejected");
         }
         message = "OpenCode 本地接口返回了无效响应。";

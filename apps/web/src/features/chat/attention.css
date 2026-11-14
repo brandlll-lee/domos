@@ -31,6 +31,9 @@
 .attention-toast[data-limited] {
   display: none;
 }
+.attention-toast[data-error] {
+  border-color: var(--color-danger);
+}
 .attention-body {
   display: flex;
   align-items: start;
@@ -51,6 +54,9 @@
   margin: 0;
   font-size: var(--text-label);
   font-weight: var(--weight-medium);
+}
+.attention-toast[data-error] .attention-title {
+  color: var(--color-danger);
 }
 .attention-description {
   margin: 0;

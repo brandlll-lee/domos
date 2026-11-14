@@ -5,6 +5,7 @@ import { SettingRow } from "@domos/ui/setting-row";
 import { ArrowClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../client.ts";
+import { useErrorNotice } from "../notices.tsx";
 import { AddComputer } from "./add.tsx";
 import { ComputerAccess, ComputerRecord } from "./record.tsx";
 
@@ -50,6 +51,9 @@ export function ComputerSettings({ admin }: { admin: boolean }) {
     }
   }
   const owner = catalog?.items.find((item) => item.kind === "process");
+  useErrorNotice(error, async () => {
+    await run(refresh);
+  });
   const containers =
     catalog?.items.filter((item) => item.kind !== "process") ?? [];
   return (
@@ -138,11 +142,6 @@ export function ComputerSettings({ admin }: { admin: boolean }) {
           )}
         </div>
       </Disclosure>
-      {error && (
-        <p className="alert" role="alert">
-          {error}
-        </p>
-      )}
     </section>
   );
 }

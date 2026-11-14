@@ -68,18 +68,6 @@
   width: 11px;
   height: 11px;
 }
-.environment-error {
-  position: absolute;
-  top: 100%;
-  inset-inline-start: 0;
-  z-index: 5;
-  margin: var(--space-1) 0;
-  padding: var(--space-2);
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
-  color: var(--color-danger);
-  font-size: var(--text-caption);
-}
 .environment-progress {
   display: flex;
   align-items: center;

@@ -9,6 +9,7 @@ import { SettingRow } from "@domos/ui/setting-row";
 import { useEffect, useState } from "react";
 import { client } from "../../client.ts";
 import { EngineMark } from "../bots/engine-mark.tsx";
+import { useErrorNotice } from "../notices.tsx";
 import { useSettings } from "../settings/context.ts";
 import { Effort } from "./effort.tsx";
 import { useModelSettings } from "./model-state.ts";
@@ -72,6 +73,7 @@ export function ModelSetting({
   const [busyAction, setBusyAction] = useState("");
   const busy = Boolean(busyAction);
   const [error, setError] = useState("");
+  useErrorNotice(error || saveError);
   useEffect(() => {
     if (!connected) return;
     let current = true;
@@ -446,26 +448,12 @@ export function ModelSetting({
         ) : (
           configuration
         )}
-        {(error || saveError) && (
-          <p className="alert" role="alert">
-            {error || saveError}
-          </p>
-        )}
         {saving && <Loading label="正在保存模型" inline />}
       </div>
     );
   }
   return (
-    <SettingRow
-      title="运行模型"
-      notice={
-        (error || saveError) && !open ? (
-          <p className="alert" role="alert">
-            {error || saveError}
-          </p>
-        ) : undefined
-      }
-    >
+    <SettingRow title="运行模型">
       <ModelSelector
         open={open}
         onOpenChange={setOpen}

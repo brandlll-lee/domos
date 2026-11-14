@@ -10,6 +10,7 @@ import { MonitorIcon } from "@phosphor-icons/react/dist/csr/Monitor";
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { useEffect, useRef, useState } from "react";
 import type { DesktopState } from "../hosting/desktop.ts";
+import { useErrorNotice } from "../notices.tsx";
 
 export function EnvironmentSwitcher() {
   const desktop = window.domosDesktop;
@@ -18,6 +19,7 @@ export function EnvironmentSwitcher() {
   const [pending, setPending] = useState("");
   const [error, setError] = useState("");
   const operation = useRef(0);
+  useErrorNotice(error);
   useEffect(() => {
     let active = true;
     const refresh = () =>
@@ -133,11 +135,6 @@ export function EnvironmentSwitcher() {
           >
             取消
           </Button>
-        </div>
-      )}
-      {error && (
-        <div className="environment-error" role="alert">
-          <InlineNotice>{error}</InlineNotice>
         </div>
       )}
       <Dialog

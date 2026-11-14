@@ -863,7 +863,10 @@ test("detail pages load their own data and isolate profile errors", async ({
   await expect(details.getByRole("status")).toHaveCount(0);
   await details.getByRole("button", { name: "返回", exact: true }).click();
   await details.getByRole("button", { name: /^技能/ }).click();
-  await expect(details.getByRole("alert")).toContainText("详情连接中断");
+  await expect(page.locator(".attention-toast[data-error]")).toContainText(
+    "详情连接中断",
+  );
+  await expect(details.getByRole("alert")).toHaveCount(0);
   await details.getByRole("button", { name: "返回", exact: true }).click();
   await details.getByRole("button", { name: "编辑", exact: true }).click();
   await expect(name).toHaveValue("保留资料草稿");
@@ -881,14 +884,18 @@ test("profile loading recovers without retaining an old error", async ({
   await page.goto(url);
   const details = page.locator("#bot-details");
   await details.getByRole("button", { name: "编辑", exact: true }).click();
-  await expect(details.getByRole("alert")).toBeVisible();
+  await expect(page.locator(".attention-toast[data-error]")).toBeVisible();
   await expect(details.getByRole("status")).toHaveCount(0);
   fail = false;
-  await details.getByRole("button", { name: "重试", exact: true }).click();
+  await page
+    .locator(".attention-toast[data-error]")
+    .getByRole("button", { name: "重试", exact: true })
+    .click();
   await expect(
     details.getByRole("textbox", { name: "名字", exact: true }),
   ).toHaveValue("Domos");
   await expect(details.getByRole("alert")).toHaveCount(0);
+  await expect(page.locator(".attention-toast[data-error]")).toHaveCount(0);
 });
 
 test("three columns keep the identity capsule and navigation clear at each width", async ({

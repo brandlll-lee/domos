@@ -1,7 +1,10 @@
+import { once } from "node:events";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, expect, test, vi } from "vitest";
+import { Readable } from "node:stream";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import type { FilePreviews } from "../src/file-previews.ts";
 
 const mocks = vi.hoisted(() => ({
@@ -53,12 +56,7 @@ function response(
   return {
     statusCode,
     headers: { "content-type": type, ...headers },
-    body: Object.assign(
-      (async function* () {
-        yield Buffer.from(body);
-      })(),
-      { destroy: vi.fn() },
-    ),
+    body: Readable.from([Buffer.from(body)]),
   };
 }
 async function fixture() {
@@ -281,13 +279,12 @@ test("HTTP covers upgrade to HTTPS and failed previews can recover immediately",
 
 test("page reads finish at the head boundary and release the response", async () => {
   const { previews } = await fixture();
-  const body = Object.assign(
+  const body = Readable.from(
     (async function* () {
       yield Buffer.from("<head><title>Ready</title></he");
       yield Buffer.from("ad><body>");
       throw new Error("The rest of the page is not needed");
     })(),
-    { destroy: vi.fn() },
   );
   mocks.request.mockResolvedValue({
     statusCode: 200,
@@ -298,7 +295,7 @@ test("page reads finish at the head boundary and release the response", async ()
     status: "empty",
     title: "Ready",
   });
-  expect(body.destroy).toHaveBeenCalledOnce();
+  expect(body.destroyed).toBe(true);
 });
 
 test("cancellation stops the last reader and does not publish a cached failure", async () => {
@@ -327,4 +324,96 @@ test("cancellation stops the last reader and does not publish a cached failure",
   expect(await previews.read(1, "https://example.com/cancel")).toMatchObject({
     title: "Recovered",
   });
+});
+
+test("real HTTP response failures release streams and leave the service responsive", async () => {
+  const { request } = await vi.importActual<typeof import("undici")>("undici");
+  let mode = "denied";
+  let accepted = Promise.withResolvers<void>();
+  const server = createServer((req, res) => {
+    if (req.url === "/health") {
+      res.end("ready");
+      return;
+    }
+    accepted.resolve();
+    if (mode === "denied") {
+      res.writeHead(403);
+      res.end("denied");
+    } else if (mode === "redirect") {
+      res.writeHead(302, { location: "https://127.0.0.1/secret" });
+      res.end("redirect");
+    } else if (mode === "type") {
+      res.writeHead(200, { "content-type": "application/octet-stream" });
+      res.end("file");
+    } else if (mode === "limit") {
+      res.writeHead(200, { "content-type": "text/html" });
+      res.end("x".repeat(512 * 1024 + 1));
+    } else if (mode === "disconnect") {
+      res.writeHead(200, { "content-type": "text/html" });
+      res.write("<head>");
+      setImmediate(() => res.destroy());
+    } else if (mode === "head") {
+      res.writeHead(200, { "content-type": "text/html" });
+      res.write("<head><title>Ready</title></head>");
+    } else {
+      res.writeHead(200, { "content-type": "text/html" });
+      res.write("<head>");
+    }
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  onTestFinished(
+    () =>
+      new Promise<void>((resolve) => {
+        server.closeAllConnections();
+        server.close(() => resolve());
+      }),
+  );
+  const address = server.address();
+  if (!address || typeof address === "string")
+    throw new Error("Server required");
+  const origin = `http://127.0.0.1:${address.port}`;
+  mocks.request.mockImplementation((_url, options) =>
+    request(origin, { ...options, dispatcher: undefined, bodyTimeout: 40 }),
+  );
+  const { previews } = await fixture();
+  for (mode of [
+    "denied",
+    "redirect",
+    "type",
+    "limit",
+    "disconnect",
+    "timeout",
+    "head",
+    "cancel",
+  ]) {
+    accepted = Promise.withResolvers<void>();
+    const controller = new AbortController();
+    const result = previews.read(
+      1,
+      `https://example.com/${mode}`,
+      controller.signal,
+    );
+    if (mode === "cancel") {
+      const assertion = expect(result).rejects.toThrow();
+      await accepted.promise;
+      controller.abort();
+      await assertion;
+    } else
+      expect((await result).status).toBe(
+        mode === "head" ? "empty" : mode === "redirect" ? "blocked" : "failed",
+      );
+    expect(await (await fetch(`${origin}/health`)).text()).toBe("ready");
+  }
+  mode = "denied";
+  mocks.lookup.mockImplementation((_host, _options, callback) =>
+    callback(null, [{ address: "198.18.0.7", family: 4 }]),
+  );
+  const resolved = await new Promise<unknown[]>((resolve) => {
+    mocks.connect?.lookup("example.com", { all: true }, (...args) =>
+      resolve(args),
+    );
+  });
+  expect(resolved[0]).toBeInstanceOf(Error);
+  expect(await (await fetch(`${origin}/health`)).text()).toBe("ready");
 });

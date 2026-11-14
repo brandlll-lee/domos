@@ -130,6 +130,8 @@ Pi Durable 1.4.0 stores Bot tasks. Native Harness processes own model loops. Dom
 ## Data and local processes
 
 - Windows development and packaged builds use separate stable App IDs. Verify the registered application target as well as the window icon.
+- LocalHost owns native service readiness, exit and recovery. Publish service state through the validated desktop bridge. Limit automatic recovery to two attempts and two restarts per minute. Stop, maintenance and inactive workspace selection disable automatic recovery. Reuse the data lease and native task recovery; service restart does not resubmit tasks. Keep bounded diagnostic files with process identity, exit codes, error types and code locations. Exclude dialogue, credentials and tool payloads.
+- Show connection and read failures through the shared application Toast owner. Keep one workspace connection notice. Preserve content and drafts while disconnected. Hide stale live activity until subscriptions return. Keep task failures in their saved records and field validation beside its input.
 - Preserve user data and existing public contracts. Keep authentication, authorization, IPC validation, Electron sandboxing, and context isolation at their boundaries.
 - Restart only identified Domos processes. Check PID, executable path, and ownership before stopping them. Do not kill all Electron processes or an entire tree that may contain user applications.
 - Use a small test window for desktop checks when possible. Use the user's requested application only within the authorized task.

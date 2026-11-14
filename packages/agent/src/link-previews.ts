@@ -11,6 +11,7 @@ import {
 } from "node:fs/promises";
 import { BlockList, isIP } from "node:net";
 import { join } from "node:path";
+import { finished } from "node:stream/promises";
 import { Agent, request } from "undici";
 import type { FilePreviews } from "./file-previews.ts";
 
@@ -135,7 +136,9 @@ async function publicDns(hostname: string) {
       throw new PreviewBlocked("预览地址不可访问。");
     return addresses;
   } finally {
+    const closed = finished(response.body, { cleanup: true });
     response.body.destroy();
+    await closed.catch(() => {});
   }
 }
 
@@ -231,7 +234,9 @@ async function readPublic(
         url,
       };
     } finally {
+      const closed = finished(response.body, { cleanup: true });
       response.body.destroy();
+      await closed.catch(() => {});
     }
   }
   throw new Error("预览重定向过多。");
