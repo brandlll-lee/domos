@@ -142,6 +142,8 @@ Checked against installed packages and current official documentation on 2026-10
 
 ## Managed MCP connections
 
+Product-use rules live in `product-guidance.mjs`. The active product catalog selects these rules. All native providers receive them in task instructions. The product MCP gateway also returns them in its initialize response. Managed MCP gateways retain their own boundary. Rules distinguish delivery, user intent, authorization and verified completion. Native session keys include the catalog schemas and the selected rules. A capability change uses the existing bounded history handoff. An uncertain native dispatch still requires recovery before more execution.
+
 Domos stores managed connection metadata in McpConnectionsDoc. The existing encrypted credential store holds configuration and OAuth data. Several Bots can reference one connection. Each call checks the current Bot grant and tool range before and after approval.
 
 The existing worker opens the official MCP SDK client on the selected computer. stdio requires the Bot work computer. HTTP uses its saved access computer. The same location handles checks, OAuth exchange and tool calls. Native Harness MCP configurations remain read-only. Domos does not copy native credentials. A source-name conflict stops dispatch and asks the user to choose a source.

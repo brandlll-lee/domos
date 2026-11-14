@@ -15,6 +15,7 @@ import {
   SubscribeRequestSchema,
   UnsubscribeRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { productInstructions } from "./product-guidance.mjs";
 import { openToolResults, resultQueryTool } from "./tool-results.mjs";
 
 export async function openGateway(tools, invoke, options) {
@@ -51,6 +52,7 @@ export async function openGateway(tools, invoke, options) {
         const mcp = new Server(
           { name: options?.name ?? "domos", version: "1.0.0" },
           {
+            ...(!options ? { instructions: productInstructions(tools) } : {}),
             capabilities: options
               ? {
                   ...(options.capabilities.tools

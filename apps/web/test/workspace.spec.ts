@@ -4875,6 +4875,7 @@ test("link cards show custom actions, lazy previews and stable history", async (
   }, initial);
   const cover = `data:image/svg+xml;base64,${Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="640" height="360" fill="#b6d9c8"/><text x="52" y="190" font-size="42" fill="#28644e">Domos · Report</text></svg>').toString("base64")}`;
   let reads = 0;
+  let failedReads = 0;
   let releaseCover = () => {};
   const coverReady = new Promise<void>((resolve) => {
     releaseCover = resolve;
@@ -4883,16 +4884,22 @@ test("link cards show custom actions, lazy previews and stable history", async (
     reads++;
     const requested = route.request().postDataJSON().json.url;
     if (requested.endsWith("/0")) await coverReady;
-    if (requested.endsWith("/2")) {
-      await route.fulfill({ status: 503, body: "Preview unavailable" });
+    if (requested.endsWith("/2") && failedReads++ === 0) {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          json: { status: "failed", error: "暂时无法读取网页预览。" },
+        }),
+      });
       return;
     }
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        json: requested.endsWith("/0")
-          ? { title: "Website fallback", thumbnail: cover }
-          : { title: "在线演示" },
+        json:
+          requested.endsWith("/0") || requested.endsWith("/2")
+            ? { status: "ready", title: "Website fallback", thumbnail: cover }
+            : { status: "empty", title: "在线演示" },
       }),
     });
   });
@@ -4935,6 +4942,17 @@ test("link cards show custom actions, lazy previews and stable history", async (
     page.locator('[data-message-id="cta-2"] .link-card-action'),
   ).toHaveText("选择预约时间");
   expect(opened).toBe(0);
+  const failed = page.locator('[data-message-id="cta-2"] .link-card');
+  await failed.scrollIntoViewIfNeeded();
+  await expect(
+    failed.getByText("暂时无法读取网页预览。", { exact: true }),
+  ).toBeVisible();
+  await failed.getByRole("button", { name: "重试", exact: true }).click();
+  await expect(failed.locator(".link-card-cover")).toBeVisible();
+  await expect(
+    failed.getByRole("button", { name: "重试", exact: true }),
+  ).toHaveCount(0);
+  expect(failedReads).toBe(2);
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
     for (const width of [1360, 390]) {

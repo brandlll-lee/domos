@@ -7,6 +7,7 @@ export function sessionKey(
   config: EngineConfig,
   account: string,
   directory?: string | null,
+  capabilities?: string,
 ) {
   return JSON.stringify([
     computerId,
@@ -16,6 +17,15 @@ export function sessionKey(
     createHash("sha256").update(account).digest("hex"),
     ...(directory ? [directory] : []),
     ...(config.approvalMode ? [{ approvalMode: config.approvalMode }] : []),
+    ...(capabilities
+      ? [
+          {
+            capabilities: createHash("sha256")
+              .update(capabilities)
+              .digest("hex"),
+          },
+        ]
+      : []),
   ]);
 }
 

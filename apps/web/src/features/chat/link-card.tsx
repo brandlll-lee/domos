@@ -1,4 +1,6 @@
 import type { LinkCard as LinkContent } from "@domos/agent/messages";
+import { Button } from "@domos/ui/controls";
+import { InlineNotice } from "@domos/ui/message";
 import { ArrowSquareOutIcon } from "@phosphor-icons/react/dist/csr/ArrowSquareOut";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { client } from "../../client.ts";
@@ -48,10 +50,12 @@ export function LinkCard({
       }
     }
   }
-  const preview = useSyncExternalStore(
-    store.read.subscribe,
-    store.read.snapshot,
-  ).data;
+  const state = useSyncExternalStore(store.read.subscribe, store.read.snapshot);
+  const preview = state.data;
+  const failed =
+    !!state.error ||
+    preview?.status === "failed" ||
+    preview?.status === "blocked";
   const element = useRef<HTMLElement>(null);
   const valid = !!target;
   useEffect(() => {
@@ -100,6 +104,20 @@ export function LinkCard({
         {link.footer && <small>{link.footer}</small>}
         {target && (
           <small className="link-card-domain">{target.hostname}</small>
+        )}
+        {failed && (
+          <InlineNotice>
+            <span>{preview?.error ?? "暂时无法读取网页预览。"}</span>
+            <Button
+              size="small"
+              pending={state.loading}
+              onClick={() => {
+                void store.read.load(true).catch(() => {});
+              }}
+            >
+              重试
+            </Button>
+          </InlineNotice>
         )}
       </div>
       <a

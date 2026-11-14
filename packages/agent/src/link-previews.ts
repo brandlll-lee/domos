@@ -15,10 +15,24 @@ import { Agent, request } from "undici";
 import type { FilePreviews } from "./file-previews.ts";
 
 export type LinkPreview = {
+  status: "ready" | "empty" | "failed" | "blocked";
+  error?: string;
   title?: string;
   description?: string;
   thumbnail?: string;
 };
+
+class PreviewBlocked extends Error {}
+
+function failure(error: unknown): LinkPreview {
+  const blocked =
+    error instanceof PreviewBlocked ||
+    (error instanceof Error && error.cause instanceof PreviewBlocked);
+  return {
+    status: blocked ? "blocked" : "failed",
+    error: blocked ? "预览地址被安全规则拦截。" : "暂时无法读取网页预览。",
+  };
+}
 
 export function linkUrl(value: string) {
   const url = new URL(value);
@@ -61,6 +75,72 @@ export function publicAddress(address: string) {
         !blocked.check(address, "ipv6");
 }
 
+const resolver = new Agent({
+  connect: {
+    timeout: 5000,
+    // Pin the resolver so synthetic system DNS cannot redirect this request.
+    lookup(_hostname, options, callback) {
+      if (options.all) callback(null, [{ address: "1.1.1.1", family: 4 }]);
+      else callback(null, "1.1.1.1", 4);
+    },
+  },
+});
+
+async function readBytes(
+  body: AsyncIterable<Buffer>,
+  limit: number,
+  head = false,
+) {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  let tail = "";
+  for await (const chunk of body) {
+    size += chunk.length;
+    if (size > limit) throw new Error("预览超过大小限制。");
+    chunks.push(Buffer.from(chunk));
+    if (head) {
+      const text = tail + chunk.toString("utf8");
+      if (/<\/head\s*>/i.test(text)) break;
+      tail = text.slice(-32);
+    }
+  }
+  return Buffer.concat(chunks);
+}
+
+async function publicDns(hostname: string) {
+  const url = new URL("https://cloudflare-dns.com/dns-query");
+  url.searchParams.set("name", hostname);
+  url.searchParams.set("type", "A");
+  const response = await request(url, {
+    dispatcher: resolver,
+    signal: AbortSignal.timeout(5000),
+    headersTimeout: 5000,
+    bodyTimeout: 5000,
+    headers: { accept: "application/dns-json" },
+  });
+  try {
+    if (response.statusCode !== 200) throw new Error("域名解析失败。");
+    const result = JSON.parse(
+      (await readBytes(response.body, 64 * 1024)).toString("utf8"),
+    ) as {
+      Status: number;
+      Answer?: { type: number; data: string }[];
+    };
+    const addresses = (result.Answer ?? [])
+      .filter((answer) => answer.type === 1)
+      .map((answer) => ({ address: answer.data, family: 4 }));
+    if (result.Status !== 0 || !addresses.length)
+      throw new Error("域名解析失败。");
+    if (addresses.some(({ address }) => !publicAddress(address)))
+      throw new PreviewBlocked("预览地址不可访问。");
+    return addresses;
+  } finally {
+    response.body.destroy();
+  }
+}
+
+const synthetic = new BlockList();
+synthetic.addSubnet("198.18.0.0", 15, "ipv4");
 const dispatcher = new Agent({
   connections: 2,
   connect: {
@@ -68,12 +148,28 @@ const dispatcher = new Agent({
     lookup(hostname, options, callback) {
       lookup(hostname, { all: true }, (error, addresses) => {
         if (error) return callback(error, [], undefined);
-        const first = addresses[0];
-        if (!first || addresses.some(({ address }) => !publicAddress(address)))
-          return callback(new Error("预览地址不可访问。"), [], undefined);
-        // Return the checked addresses to the socket without a second DNS read.
-        if (options.all) callback(null, addresses);
-        else callback(null, first.address, first.family);
+        const resolved =
+          !isIP(hostname) &&
+          addresses.length &&
+          addresses.every(
+            ({ address }) =>
+              isIP(address) === 4 && synthetic.check(address, "ipv4"),
+          )
+            ? publicDns(hostname)
+            : Promise.resolve(addresses);
+        void resolved
+          .then((checked) => {
+            const first = checked[0];
+            if (
+              !first ||
+              checked.some(({ address }) => !publicAddress(address))
+            )
+              throw new PreviewBlocked("预览地址不可访问。");
+            // Return the checked addresses to the socket without a second DNS read.
+            if (options.all) callback(null, checked);
+            else callback(null, first.address, first.family);
+          })
+          .catch((error) => callback(error, [], undefined));
       });
     },
   },
@@ -93,7 +189,7 @@ async function readPublic(
       (isIP(hostname) && !publicAddress(hostname)) ||
       (url.port && url.port !== "443")
     )
-      throw new Error("预览地址不可访问。");
+      throw new PreviewBlocked("预览地址不可访问。");
     const response = await request(url, {
       dispatcher,
       signal,
@@ -127,16 +223,13 @@ async function readPublic(
           : !["text/html", "application/xhtml+xml"].includes(type))
       )
         throw new Error("无法读取网页预览。");
-      if (Number(response.headers["content-length"]) > limit)
+      if (image && Number(response.headers["content-length"]) > limit)
         throw new Error("预览超过大小限制。");
-      const chunks: Buffer[] = [];
-      let size = 0;
-      for await (const chunk of response.body) {
-        size += chunk.length;
-        if (size > limit) throw new Error("预览超过大小限制。");
-        chunks.push(Buffer.from(chunk));
-      }
-      return { bytes: Buffer.concat(chunks), type, url };
+      return {
+        bytes: await readBytes(response.body, limit, !image),
+        type,
+        url,
+      };
     } finally {
       response.body.destroy();
     }
@@ -196,7 +289,11 @@ export function linkMetadata(html: string, url: string) {
   let image: string | undefined;
   try {
     const value = metadata.get("og:image") ?? metadata.get("twitter:image");
-    if (value) image = linkUrl(new URL(value, url).href).href;
+    if (value) {
+      const target = new URL(value, url);
+      if (target.protocol === "http:") target.protocol = "https:";
+      image = linkUrl(target.href).href;
+    }
   } catch {}
   return {
     title:
@@ -237,7 +334,7 @@ export class LinkPreviews {
   ): Promise<LinkPreview> {
     const url = linkUrl(value).href;
     const key = createHash("sha256")
-      .update(JSON.stringify([botId, url, 1]))
+      .update(JSON.stringify([botId, url, 2]))
       .digest("hex");
     const directory = join(this.root, "link-previews");
     const path = join(directory, `${key}.json`);
@@ -260,11 +357,13 @@ export class LinkPreviews {
             controller.signal,
             AbortSignal.timeout(10000),
           ]);
-          const preview = await this.generate(url, bounded).catch(() => {
+          const preview = await this.generate(url, bounded).catch((error) => {
             controller.signal.throwIfAborted();
-            return {};
+            return failure(error);
           });
           controller.signal.throwIfAborted();
+          if (preview.status === "failed" || preview.status === "blocked")
+            return preview;
           await mkdir(directory, { recursive: true });
           const temporary = `${path}.${randomUUID()}.tmp`;
           try {
@@ -328,7 +427,7 @@ export class LinkPreviews {
       page.bytes.toString("utf8"),
       page.url.href,
     );
-    if (!image) return metadata;
+    if (!image) return { ...metadata, status: "empty" };
     const directory = join(this.root, ".incoming", randomUUID());
     try {
       const cover = await readPublic(image, 5 * 1024 * 1024, signal, true);
@@ -351,11 +450,13 @@ export class LinkPreviews {
       );
       return {
         ...metadata,
-        ...(result.kind === "image" ? { thumbnail: result.thumbnail } : {}),
+        ...(result.kind === "image"
+          ? { status: "ready", thumbnail: result.thumbnail }
+          : { status: "failed", error: "无法生成网页封面。" }),
       };
-    } catch {
+    } catch (error) {
       signal.throwIfAborted();
-      return metadata;
+      return { ...metadata, ...failure(error) };
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

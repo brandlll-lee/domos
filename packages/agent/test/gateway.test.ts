@@ -4,6 +4,27 @@ import { expect, onTestFinished, test } from "vitest";
 import { openGateway } from "../src/harness/gateway.mjs";
 import type { ProductResult } from "../src/harness/types.ts";
 
+test("MCP initialization exposes only available product guidance", async () => {
+  const gateway = await openGateway(
+    [
+      {
+        name: "ask_question",
+        description: "Ask",
+        inputSchema: { type: "object" },
+      },
+    ],
+    async () => ({ content: [] }),
+  );
+  const client = new Client({ name: "test", version: "1" });
+  onTestFinished(async () => {
+    await client.close();
+    await gateway.close();
+  });
+  await client.connect(new StreamableHTTPClientTransport(new URL(gateway.url)));
+  expect(client.getInstructions()).toContain("use ask_question rather than");
+  expect(client.getInstructions()).not.toContain("send_link_card");
+});
+
 test("MCP callers receive the original screenshot and structured result", async () => {
   const result: ProductResult = {
     content: [

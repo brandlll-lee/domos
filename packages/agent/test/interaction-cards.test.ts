@@ -461,72 +461,78 @@ test.each(["pi", "codex", "claude", "opencode", "acp"])(
     const questionResult = Promise.withResolvers<ProductResult>();
     const opened = vi
       .spyOn(engineProvider(provider), "open")
-      .mockImplementation(async (options) => ({
-        id: provider,
-        prompt: async () => {
-          await options.emit({ type: "accepted", id: "turn" });
-          const link = {
-            url: "https://example.com/report",
-            label: "打开本次报告",
-            body: "报告已准备好。",
-            title: "检查结果",
-            footer: "保留原始资料。",
-          };
-          await invoke(
-            "link",
-            "send_link_card",
-            link,
-            new AbortController().signal,
-          );
-          await invoke(
-            "link",
-            "send_link_card",
-            link,
-            new AbortController().signal,
-          );
-          received.resolve(
+      .mockImplementation(async (options) => {
+        expect(options.instructions).toContain("use ask_question rather than");
+        expect(options.instructions).toContain("use send_link_card with");
+        expect(options.instructions).toContain("Use review_draft");
+        expect(options.instructions).toContain("Use request_credentials");
+        return {
+          id: provider,
+          prompt: async () => {
+            await options.emit({ type: "accepted", id: "turn" });
+            const link = {
+              url: "https://example.com/report",
+              label: "打开本次报告",
+              body: "报告已准备好。",
+              title: "检查结果",
+              footer: "保留原始资料。",
+            };
             await invoke(
-              "draft",
-              "review_draft",
-              {
-                title: "发布更新",
-                confirmLabel: "发布",
-                body: "原稿",
-                editable: true,
-              },
+              "link",
+              "send_link_card",
+              link,
               new AbortController().signal,
-            ),
-          );
-          questionResult.resolve(
+            );
             await invoke(
-              "question",
-              "ask_question",
-              {
-                title: "选择发布渠道",
-                questions: [
-                  {
-                    id: "channel",
-                    title: "选择发布渠道",
-                    options: [
-                      { id: "web", label: "网页" },
-                      { id: "desktop", label: "桌面" },
-                    ],
-                  },
-                ],
-              },
+              "link",
+              "send_link_card",
+              link,
               new AbortController().signal,
-            ),
-          );
-          await options.emit({
-            type: "message",
-            id: "reply",
-            text: "已收到确认稿。",
-          });
-        },
-        answer: async () => {},
-        interrupt: async () => {},
-        models: async () => [],
-      }));
+            );
+            received.resolve(
+              await invoke(
+                "draft",
+                "review_draft",
+                {
+                  title: "发布更新",
+                  confirmLabel: "发布",
+                  body: "原稿",
+                  editable: true,
+                },
+                new AbortController().signal,
+              ),
+            );
+            questionResult.resolve(
+              await invoke(
+                "question",
+                "ask_question",
+                {
+                  title: "选择发布渠道",
+                  questions: [
+                    {
+                      id: "channel",
+                      title: "选择发布渠道",
+                      options: [
+                        { id: "web", label: "网页" },
+                        { id: "desktop", label: "桌面" },
+                      ],
+                    },
+                  ],
+                },
+                new AbortController().signal,
+              ),
+            );
+            await options.emit({
+              type: "message",
+              id: "reply",
+              text: "已收到确认稿。",
+            });
+          },
+          answer: async () => {},
+          interrupt: async () => {},
+          models: async () => [],
+        };
+      });
     const runtime = await openAgent(
       join(directory, "data.sqlite"),
       { registry, models },

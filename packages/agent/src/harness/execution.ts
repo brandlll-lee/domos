@@ -35,6 +35,7 @@ import {
   readConfiguredMcp,
   unsupportedMcp,
 } from "./mcp-catalog.ts";
+import { productInstructions } from "./product-guidance.mjs";
 import {
   callProductTool,
   permissionTool,
@@ -537,7 +538,8 @@ export class EngineExecution {
       : [
           agent.instructions,
           ...Object.values(sections),
-          "Use your native tools for commands and files in this Bot's work directory. Publish deliverable files with attach_file. Bots sharing this computer share OS permissions and accessible files.",
+          "Use your native tools for commands and files in this Bot's work directory. Bots sharing this computer share OS permissions and accessible files.",
+          productInstructions(tools),
           computerInstructions(computerTools),
         ]
           .filter(Boolean)
@@ -791,6 +793,7 @@ export class EngineExecution {
           : account,
         (await this.computers.binding(runtime.conversationId, context))
           .directory,
+        JSON.stringify([productInstructions(tools), tools]),
       );
       if (
         !memoryReview &&
@@ -798,7 +801,7 @@ export class EngineExecution {
         doc.sessionKey &&
         doc.sessionKey !== key
       )
-        throw new Error("账号配置已变化。原任务执行结果未确认，请先检查结果。");
+        throw new Error("会话配置已变化。原任务执行结果未确认，请先检查结果。");
       if (!memoryReview) {
         await runtime.commit(async (tx) => {
           selectSession(await tx.doc(EngineDoc, runtime.conversationId), key);

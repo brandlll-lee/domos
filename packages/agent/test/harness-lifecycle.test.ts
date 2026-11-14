@@ -7,6 +7,8 @@ import { fauxProvider } from "@earendil-works/pi-ai/providers/faux";
 import { createRegistry } from "@earendil-works/pi-durable";
 import { expect, onTestFinished, test, vi } from "vitest";
 import type { Computers } from "../src/computer/catalog.ts";
+import * as productTools from "../src/harness/product-tools.ts";
+import { EngineDoc } from "../src/harness/state.ts";
 import { engineLimits } from "../src/harness/types.ts";
 import { openAgent } from "../src/open-agent.ts";
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
@@ -273,12 +275,34 @@ test.each(["pi", "claude"] as const)(
     await send("Second request");
     expect(workers).toHaveLength(1);
     expect(reads[1]).toContain("Second request");
+    const previous = await runtime.harness.snapshot(EngineDoc, botId, context);
+    const catalog = productTools.productCatalog;
+    const changed = vi
+      .spyOn(productTools, "productCatalog")
+      .mockImplementation(async (...args) =>
+        (await catalog(...args)).map((tool) =>
+          tool.name === "ask_question"
+            ? {
+                ...tool,
+                description: `${tool.description} Updated choice guidance.`,
+              }
+            : tool,
+        ),
+      );
+    onTestFinished(() => changed.mockRestore());
+    await send("Updated capabilities request");
+    expect(workers).toHaveLength(2);
+    const current = await runtime.harness.snapshot(EngineDoc, botId, context);
+    expect(current?.sessionKey).not.toBe(previous?.sessionKey);
+    expect(current?.sessions?.[previous?.sessionKey ?? ""]?.id).toBe(
+      previous?.sessionId,
+    );
     directory = "/new-project";
     await send("New project request");
-    expect(workers).toHaveLength(2);
+    expect(workers).toHaveLength(3);
     expect(workers[0]?.output.writableEnded).toBe(true);
     await computers.onIdle?.(botId);
-    expect(workers[1]?.output.writableEnded).toBe(true);
+    expect(workers[2]?.output.writableEnded).toBe(true);
   },
 );
 

@@ -124,13 +124,13 @@ test("socket DNS uses only the checked addresses, including fallback addresses",
     ]),
   );
   connect.lookup("example.com", { all: true }, callback);
-  expect(callback.mock.calls[0]?.[0]).toBeInstanceOf(Error);
+  await expect.poll(() => callback.mock.calls[0]?.[0]).toBeInstanceOf(Error);
   callback.mockClear();
   mocks.lookup.mockImplementation((_host, _options, done) =>
     done(null, [{ address: "8.8.8.8", family: 4 }]),
   );
   connect.lookup("example.com", { all: false }, callback);
-  expect(callback).toHaveBeenCalledWith(null, "8.8.8.8", 4);
+  await expect.poll(() => callback.mock.calls[0]).toEqual([null, "8.8.8.8", 4]);
   expect(mocks.lookup).toHaveBeenCalledTimes(2);
 });
 
@@ -184,12 +184,16 @@ test("previews share pending reads, retain metadata and cache the bounded Files 
 
 test("private targets and redirects cannot fetch a preview", async () => {
   const { previews } = await fixture();
-  expect(await previews.read(1, "https://127.0.0.1/secret")).toEqual({});
+  expect(await previews.read(1, "https://127.0.0.1/secret")).toMatchObject({
+    status: "blocked",
+  });
   expect(mocks.request).not.toHaveBeenCalled();
   mocks.request.mockResolvedValue(
     response("", "text/html", 302, { location: "https://[::1]/secret" }),
   );
-  expect(await previews.read(1, "https://example.com/redirect")).toEqual({});
+  expect(await previews.read(1, "https://example.com/redirect")).toMatchObject({
+    status: "blocked",
+  });
   expect(mocks.request).toHaveBeenCalledTimes(1);
   expect(mocks.request.mock.calls[0]?.[1].headers).not.toHaveProperty("cookie");
   expect(mocks.request.mock.calls[0]?.[1].headers).not.toHaveProperty(
@@ -200,17 +204,101 @@ test("private targets and redirects cannot fetch a preview", async () => {
 test("oversize pages stop at the byte budget and blocked images retain page text", async () => {
   const { previews, read } = await fixture();
   mocks.request.mockResolvedValue(response("x".repeat(512 * 1024 + 1)));
-  expect(await previews.read(1, "https://example.com/large")).toEqual({});
+  expect(await previews.read(1, "https://example.com/large")).toMatchObject({
+    status: "failed",
+  });
   mocks.request.mockResolvedValue(
     response(
       '<meta property="og:title" content="Good title"><meta property="og:image" content="https://10.0.0.1/picture">',
     ),
   );
-  expect(await previews.read(1, "https://example.com/safe")).toEqual({
+  expect(await previews.read(1, "https://example.com/safe")).toMatchObject({
     title: "Good title",
-    description: undefined,
+    status: "blocked",
   });
   expect(read).not.toHaveBeenCalled();
+});
+
+test("synthetic DNS resolves through pinned HTTPS and still rejects private answers", async () => {
+  const connect = mocks.connect;
+  if (!connect) throw new Error("Preview connector required");
+  mocks.lookup.mockImplementation((_host, _options, done) =>
+    done(null, [{ address: "198.18.1.130", family: 4 }]),
+  );
+  mocks.request.mockResolvedValue(
+    response(
+      JSON.stringify({ Status: 0, Answer: [{ type: 1, data: "8.8.8.8" }] }),
+      "application/dns-json",
+    ),
+  );
+  const callback = vi.fn();
+  connect.lookup("example.com", { all: false }, callback);
+  await expect.poll(() => callback.mock.calls[0]).toEqual([null, "8.8.8.8", 4]);
+  expect(String(mocks.request.mock.calls[0]?.[0])).toBe(
+    "https://cloudflare-dns.com/dns-query?name=example.com&type=A",
+  );
+  mocks.request.mockResolvedValue(
+    response(
+      JSON.stringify({ Status: 0, Answer: [{ type: 1, data: "127.0.0.1" }] }),
+    ),
+  );
+  callback.mockClear();
+  connect.lookup("example.com", { all: true }, callback);
+  await expect.poll(() => callback.mock.calls[0]?.[0]).toBeInstanceOf(Error);
+  mocks.request.mockClear();
+  callback.mockClear();
+  connect.lookup("198.18.1.130", { all: false }, callback);
+  await expect.poll(() => callback.mock.calls[0]?.[0]).toBeInstanceOf(Error);
+  expect(mocks.request).not.toHaveBeenCalled();
+});
+
+test("HTTP covers upgrade to HTTPS and failed previews can recover immediately", async () => {
+  const { previews } = await fixture();
+  mocks.request.mockRejectedValue(new Error("offline"));
+  expect(await previews.read(1, "https://example.com")).toMatchObject({
+    status: "failed",
+  });
+  mocks.request.mockImplementation(async (url: URL) =>
+    url.pathname === "/cover.png"
+      ? response("image", "image/png")
+      : response(
+          '<meta property="og:image" content="http://example.com/cover.png">',
+        ),
+  );
+  expect(await previews.read(1, "https://example.com")).toMatchObject({
+    status: "ready",
+    thumbnail: expect.any(String),
+  });
+  expect(String(mocks.request.mock.calls.at(-1)?.[0])).toBe(
+    "https://example.com/cover.png",
+  );
+  mocks.request.mockResolvedValue(response("<title>Text page</title>"));
+  expect(await previews.read(1, "https://example.com/text")).toMatchObject({
+    status: "empty",
+    title: "Text page",
+  });
+});
+
+test("page reads finish at the head boundary and release the response", async () => {
+  const { previews } = await fixture();
+  const body = Object.assign(
+    (async function* () {
+      yield Buffer.from("<head><title>Ready</title></he");
+      yield Buffer.from("ad><body>");
+      throw new Error("The rest of the page is not needed");
+    })(),
+    { destroy: vi.fn() },
+  );
+  mocks.request.mockResolvedValue({
+    statusCode: 200,
+    headers: { "content-type": "text/html", "content-length": "2000000" },
+    body,
+  });
+  expect(await previews.read(1, "https://example.com/head")).toMatchObject({
+    status: "empty",
+    title: "Ready",
+  });
+  expect(body.destroy).toHaveBeenCalledOnce();
 });
 
 test("cancellation stops the last reader and does not publish a cached failure", async () => {
