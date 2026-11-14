@@ -1,16 +1,38 @@
 <div align="center">
 
-<img src="docs/assets/domos-hero.jpg" width="100%" alt="Domos — Your personal AI teammates. Anywhere. Desktop chat and Bot settings." />
+<img src="docs/assets/domos-logo.png" width="112" height="112" alt="Domos" />
+
+# Domos
+
+### Your Private AI Team, Ready Everywhere.
+
+Bring your own agents and subscriptions (BYOA & BYOS). Turn native agents like Codex, Claude Code, and Pi into your own Bots.<br>Work together as naturally as chatting in a group, with any model you choose.<br>Run locally. Connect and take control remotely, from any device, wherever you are.
 
 **English** · [简体中文](README.zh-CN.md)
 
 **[Quick Start](#quick-start)** · **[Features](#features)** · **[Engines](#choose-an-engine)** · **[Self-Hosting](#self-hosting-and-other-devices)** · **[Development](#development)**
 
+<br>
+
+<img src="docs/assets/domos-desktop.webp" width="100%" alt="Domos in dark mode: contacts, link cards in chat, and the browser takeover panel." />
+
 </div>
 
-**Domos is a self-hosted personal AI assistant project that gives you AI teammates for long-term collaboration.** It offers web and desktop apps with support for Codex, Claude Code, Pi, OpenCode, and other engines. Choose your models and work environments. Run it on a local computer or remote server.
+## Your Private AI Team, Ready Everywhere.
 
-Each teammate has its own identity, memory, and skills. Keep the conversation going, and let it use your computer, work with files, browse the web, or complete scheduled tasks.
+Bring your own agent engines and subscription accounts (BYOA & BYOS). Turn Codex, Claude Code, Pi, and OpenCode into your own Bots. Each has its own identity, memory, skills, and responsibilities, working for you.
+
+### Chat Like Friends. Work Like a Team.
+
+Leave the constant switching between terminal windows behind. Chat with a single Bot or bring your Bots together in a team group chat whenever you need. Assign tasks, discuss ideas, and review results in a familiar chat interface.
+
+### Your Engine. Your Models. Your Choice.
+
+100% native engines, with the subscription accounts you already use. Any model. No vendor lock-in.
+
+### Your Computer Does the Work. You Connect from Anywhere.
+
+Deploy Domos on your own computer or server. Wherever you are, connect from your desktop or phone. Send a message to check progress, and take control of the computer with one click when you need to.
 
 ## Quick Start
 
