@@ -4,7 +4,7 @@
 
 # Domos
 
-### Your Private AI Team, Ready Everywhere.
+### Your Private AI Teammates, Ready Everywhere.
 
 Bring your own agents and subscriptions (BYOA & BYOS). Turn native agents like Codex, Claude Code, and Pi into your own Bots.<br>Work together as naturally as chatting in a group, with any model you choose.<br>Run locally. Connect and take control remotely, from any device, wherever you are.
 
@@ -18,21 +18,13 @@ Bring your own agents and subscriptions (BYOA & BYOS). Turn native agents like C
 
 </div>
 
-## Your Private AI Team, Ready Everywhere.
+## Your Private AI Teammates, Ready Everywhere.
 
 Bring your own agent engines and subscription accounts (BYOA & BYOS). Turn Codex, Claude Code, Pi, and OpenCode into your own Bots. Each has its own identity, memory, skills, and responsibilities, working for you.
 
-### Chat Like Friends. Work Like a Team.
-
-Leave the constant switching between terminal windows behind. Chat with a single Bot or bring your Bots together in a team group chat whenever you need. Assign tasks, discuss ideas, and review results in a familiar chat interface.
-
-### Your Engine. Your Models. Your Choice.
-
-100% native engines, with the subscription accounts you already use. Any model. No vendor lock-in.
-
-### Your Computer Does the Work. You Connect from Anywhere.
-
-Deploy Domos on your own computer or server. Wherever you are, connect from your desktop or phone. Send a message to check progress, and take control of the computer with one click when you need to.
+- **Chat Like Friends. Work Like a Team.** Leave the constant switching between terminal windows behind. Chat with a single Bot or bring your Bots together in a team group chat whenever you need. Assign tasks, discuss ideas, and review results in a familiar chat interface.
+- **Your Engine. Your Models. Your Choice.** 100% native engines, with the subscription accounts you already use. Any model. No vendor lock-in.
+- **Your Computer Does the Work. You Connect from Anywhere.** Deploy Domos on your own computer or server. Wherever you are, connect from your desktop or phone. Send a message to check progress, and take control of the computer with one click when you need to.
 
 ## Quick Start
 

@@ -3,7 +3,6 @@
   flex-direction: column;
   min-width: 0;
   padding: 0 var(--space-3) var(--space-3);
-  background: var(--color-sidebar);
 }
 .sidebar-toolbar {
   display: flex;
