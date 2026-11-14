@@ -1,8 +1,7 @@
 import type { LinkCard as LinkContent } from "@domos/agent/messages";
-import { Button } from "@domos/ui/controls";
-import { InlineNotice } from "@domos/ui/message";
 import { ArrowSquareOutIcon } from "@phosphor-icons/react/dist/csr/ArrowSquareOut";
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { GlobeIcon } from "@phosphor-icons/react/dist/csr/Globe";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { client } from "../../client.ts";
 import { createReadState } from "../read-state.ts";
 
@@ -52,10 +51,10 @@ export function LinkCard({
   }
   const state = useSyncExternalStore(store.read.subscribe, store.read.snapshot);
   const preview = state.data;
-  const failed =
-    !!state.error ||
-    preview?.status === "failed" ||
-    preview?.status === "blocked";
+  const thumbnail = preview?.thumbnail?.startsWith("data:image/")
+    ? preview.thumbnail
+    : undefined;
+  const [loaded, setLoaded] = useState<string>();
   const element = useRef<HTMLElement>(null);
   const valid = !!target;
   useEffect(() => {
@@ -88,14 +87,21 @@ export function LinkCard({
       className="link-card"
       aria-label={link.title ?? preview?.title ?? link.label}
     >
-      {preview?.thumbnail?.startsWith("data:image/") && (
-        <img
-          className="link-card-cover"
-          src={preview.thumbnail}
-          alt=""
-          loading="lazy"
-        />
-      )}
+      <div className="link-card-cover" aria-hidden="true">
+        {(!thumbnail || loaded !== thumbnail) && <GlobeIcon weight="light" />}
+        {thumbnail && (
+          <img
+            className="link-card-image"
+            src={thumbnail}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            data-loaded={loaded === thumbnail || undefined}
+            onLoad={() => setLoaded(thumbnail)}
+            onError={() => setLoaded(undefined)}
+          />
+        )}
+      </div>
       <div className="link-card-copy">
         {(link.title || preview?.title) && (
           <strong>{link.title ?? preview?.title}</strong>
@@ -104,20 +110,6 @@ export function LinkCard({
         {link.footer && <small>{link.footer}</small>}
         {target && (
           <small className="link-card-domain">{target.hostname}</small>
-        )}
-        {failed && (
-          <InlineNotice>
-            <span>{preview?.error ?? "暂时无法读取网页预览。"}</span>
-            <Button
-              size="small"
-              pending={state.loading}
-              onClick={() => {
-                void store.read.load(true).catch(() => {});
-              }}
-            >
-              重试
-            </Button>
-          </InlineNotice>
         )}
       </div>
       <a

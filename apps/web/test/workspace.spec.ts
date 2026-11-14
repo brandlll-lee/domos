@@ -4884,7 +4884,8 @@ test("link cards show custom actions, lazy previews and stable history", async (
     reads++;
     const requested = route.request().postDataJSON().json.url;
     if (requested.endsWith("/0")) await coverReady;
-    if (requested.endsWith("/2") && failedReads++ === 0) {
+    if (requested.endsWith("/2")) {
+      failedReads++;
       await route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({
@@ -4893,13 +4894,26 @@ test("link cards show custom actions, lazy previews and stable history", async (
       });
       return;
     }
+    if (requested.endsWith("/3") || requested.endsWith("/4")) {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          json: requested.endsWith("/3")
+            ? { status: "blocked", error: "预览地址被安全规则拦截。" }
+            : {
+                status: "ready",
+                thumbnail: "data:image/png;base64,aW52YWxpZA==",
+              },
+        }),
+      });
+      return;
+    }
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        json:
-          requested.endsWith("/0") || requested.endsWith("/2")
-            ? { status: "ready", title: "Website fallback", thumbnail: cover }
-            : { status: "empty", title: "在线演示" },
+        json: requested.endsWith("/0")
+          ? { status: "ready", title: "Website fallback", thumbnail: cover }
+          : { status: "empty", title: "在线演示" },
       }),
     });
   });
@@ -4918,9 +4932,22 @@ test("link cards show custom actions, lazy previews and stable history", async (
   expect(reads).toBeLessThan(links.length);
   await card.scrollIntoViewIfNeeded();
   await expect(card).toBeVisible();
+  await expect(card.locator(".link-card-cover > svg")).toBeVisible();
+  await expect(card.locator(".link-card-cover > img")).toHaveCount(0);
+  const coverHeight =
+    (await card.locator(".link-card-cover").boundingBox())?.height ?? 0;
   const readingTop = (await card.boundingBox())?.y ?? 0;
   releaseCover();
-  await expect(card.locator(".link-card-cover")).toBeVisible();
+  await expect(card.locator(".link-card-cover > img")).toHaveAttribute(
+    "data-loaded",
+    "true",
+  );
+  expect(
+    Math.abs(
+      ((await card.locator(".link-card-cover").boundingBox())?.height ?? 0) -
+        coverHeight,
+    ),
+  ).toBeLessThan(1);
   await expect
     .poll(async () =>
       Math.abs(((await card.boundingBox())?.y ?? 0) - readingTop),
@@ -4937,22 +4964,35 @@ test("link cards show custom actions, lazy previews and stable history", async (
   expect(await card.locator(".link-card-action > svg").count()).toBe(1);
   await expect(
     page.locator('[data-message-id="cta-1"] .link-card-cover'),
-  ).toHaveCount(0);
+  ).toBeVisible();
   await expect(
     page.locator('[data-message-id="cta-2"] .link-card-action'),
   ).toHaveText("选择预约时间");
   expect(opened).toBe(0);
   const failed = page.locator('[data-message-id="cta-2"] .link-card');
   await failed.scrollIntoViewIfNeeded();
-  await expect(
-    failed.getByText("暂时无法读取网页预览。", { exact: true }),
-  ).toBeVisible();
-  await failed.getByRole("button", { name: "重试", exact: true }).click();
   await expect(failed.locator(".link-card-cover")).toBeVisible();
-  await expect(
-    failed.getByRole("button", { name: "重试", exact: true }),
-  ).toHaveCount(0);
-  expect(failedReads).toBe(2);
+  await expect.poll(() => failedReads).toBe(1);
+  for (const index of [2, 3, 4]) {
+    const fallback = page.locator(
+      `[data-message-id="cta-${index}"] .link-card`,
+    );
+    await fallback.scrollIntoViewIfNeeded();
+    await expect(fallback.locator(".link-card-cover > svg")).toBeVisible();
+    await expect(fallback.getByRole("button")).toHaveCount(0);
+    await expect(fallback.getByText(/无法读取|安全规则/)).toHaveCount(0);
+    await expect(
+      fallback.locator(".link-card-cover > img[data-loaded]"),
+    ).toHaveCount(0);
+    if (index === 4)
+      await expect
+        .poll(() =>
+          fallback
+            .locator("img")
+            .evaluate((image: HTMLImageElement) => image.complete),
+        )
+        .toBe(true);
+  }
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
     for (const width of [1360, 390]) {
@@ -4983,7 +5023,10 @@ test("link cards show custom actions, lazy previews and stable history", async (
   await page.reload();
   await expect(page.locator(".link-card")).toHaveCount(links.length);
   await card.scrollIntoViewIfNeeded();
-  await expect(card.locator(".link-card-cover")).toBeVisible();
+  await expect(card.locator(".link-card-cover > img")).toHaveAttribute(
+    "data-loaded",
+    "true",
+  );
   expect(
     await page
       .locator("[data-message-id]")
