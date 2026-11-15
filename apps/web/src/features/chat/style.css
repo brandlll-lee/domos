@@ -1164,10 +1164,36 @@ body:has(.workspace[data-platform="darwin"]) .image-viewer-header {
 }
 .question-reply[aria-pressed="true"],
 .question-reply[data-selected] {
-  border-style: solid;
   border-color: currentColor;
-  background: var(--color-selection);
+  background: color-mix(
+    in srgb,
+    var(--color-message-link, var(--color-link)) 6%,
+    transparent
+  );
   color: var(--color-message-link, var(--color-link));
+}
+@media (hover: hover) and (pointer: fine) {
+  .question-reply.button:not(:disabled, [aria-pressed="true"]):hover {
+    background: color-mix(in srgb, var(--color-text) 3%, transparent);
+    border-color: color-mix(in srgb, var(--color-text) 25%, var(--color-edge));
+  }
+  .question-reply.button[aria-pressed="true"]:not(:disabled):hover {
+    color: var(--color-message-link, var(--color-link));
+    background: color-mix(
+      in srgb,
+      var(--color-message-link, var(--color-link)) 6%,
+      transparent
+    );
+  }
+  .question-candidate:has(.question-reply.button:not(:disabled):hover):not(
+    :has([aria-pressed="true"], [data-selected])
+  ) {
+    background: color-mix(in srgb, var(--color-text) 3%, transparent);
+    border-color: color-mix(in srgb, var(--color-text) 25%, var(--color-edge));
+  }
+}
+.question-reply.button:active:not(:disabled) {
+  transform: none;
 }
 .question-reply svg {
   flex-shrink: 0;
@@ -1243,7 +1269,11 @@ body:has(.workspace[data-platform="darwin"]) .image-viewer-header {
   .question-reply[data-selected],
   .question-reply[aria-pressed="true"]
 ) {
-  background: var(--color-selection);
+  background: color-mix(
+    in srgb,
+    var(--color-message-link, var(--color-link)) 6%,
+    transparent
+  );
   border-color: var(--color-message-link, var(--color-link));
 }
 .question-candidate-copy {
@@ -1252,7 +1282,11 @@ body:has(.workspace[data-platform="darwin"]) .image-viewer-header {
 .question-candidate .question-reply {
   height: 100%;
   border: 0;
+  background: transparent;
   text-align: center;
+}
+.question-candidate .question-reply.button:not(:disabled):hover {
+  background: transparent;
 }
 .question-card[data-state="answered"] .question-reply:not([data-selected]) {
   color: var(--color-muted);
@@ -1264,10 +1298,10 @@ body:has(.workspace[data-platform="darwin"]) .image-viewer-header {
   padding: var(--space-2);
   margin-bottom: var(--space-2);
   border: 0;
-  border-left: 2px solid currentColor;
+  border-left: 2px solid color-mix(in srgb, var(--color-text) 25%, transparent);
   border-radius: var(--radius-control);
-  color: var(--color-muted);
-  background: var(--color-selection);
+  color: color-mix(in srgb, var(--color-text) 88%, var(--color-user));
+  background: color-mix(in srgb, var(--color-user) 94%, var(--color-text));
   text-align: left;
   width: 100%;
 }

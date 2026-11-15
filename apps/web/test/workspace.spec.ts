@@ -4620,6 +4620,17 @@ test("question replies align and completed questions remain readable", async ({
       expect(rows.every((row) => row.border === "dashed")).toBe(true);
       expect(new Set(rows.map((row) => row.copy)).size).toBe(1);
       expect(rows.every((row) => row.align === "left")).toBe(true);
+      const option = card.getByRole("button", { name: /自己待着/ });
+      await page.mouse.move(1, 1);
+      const resting = await option.boundingBox();
+      await option.hover();
+      await expect(option).toHaveCSS("border-style", "dashed");
+      await expect(option).not.toHaveCSS(
+        "background-color",
+        "rgba(0, 0, 0, 0)",
+      );
+      expect(await option.boundingBox()).toEqual(resting);
+      await page.mouse.move(1, 1);
       await page.screenshot({
         path: info.outputPath(`question-aligned-${colorScheme}-${width}.png`),
       });
@@ -4628,6 +4639,10 @@ test("question replies align and completed questions remain readable", async ({
   await card.getByRole("button", { name: /自己待着/ }).click();
   await expect(card).toHaveAttribute("data-state", "answered");
   await expect(card.locator(".question-reply")).toHaveCount(3);
+  await expect(card.locator(".question-reply[data-selected]")).toHaveCSS(
+    "border-style",
+    "dashed",
+  );
   await expect(card.locator(".question-reply[data-selected]")).toContainText(
     "自己待着",
   );
@@ -4644,6 +4659,29 @@ test("question replies align and completed questions remain readable", async ({
   );
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
+    const distance = await quote.evaluate((element) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 1;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Canvas required");
+      const pixel = (color: string) => {
+        context.clearRect(0, 0, 1, 1);
+        context.fillStyle = color;
+        context.fillRect(0, 0, 1, 1);
+        return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
+      };
+      const bubble = element.closest(".message-bubble");
+      if (!bubble) throw new Error("Reply bubble required");
+      const background = pixel(getComputedStyle(bubble).backgroundColor);
+      const quote = pixel(getComputedStyle(element).backgroundColor);
+      return Math.max(
+        ...background.map((channel, index) =>
+          Math.abs(channel - (quote[index] ?? 0)),
+        ),
+      );
+    });
+    expect(distance).toBeGreaterThan(0);
+    expect(distance).toBeLessThan(20);
     await page.screenshot({
       path: info.outputPath(`question-readable-${colorScheme}.png`),
     });
