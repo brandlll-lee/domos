@@ -1,4 +1,4 @@
-import { useId, useMemo } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import bunny from "../../assets/characters/bunny.webp";
 import capsule from "../../assets/characters/capsule.webp";
 import cat from "../../assets/characters/cat.webp";
@@ -18,6 +18,12 @@ import sprout from "../../assets/characters/sprout.webp";
 import star from "../../assets/characters/star.webp";
 import triangle from "../../assets/characters/triangle.webp";
 import { type CharacterShape, characterFaces } from "../characters.ts";
+import {
+  type CharacterWork,
+  WorkBurst,
+  WorkComputer,
+  WorkHeadset,
+} from "./character-work.tsx";
 
 const textures = {
   cat,
@@ -101,14 +107,27 @@ export function Character({
   shape,
   color,
   state,
+  work,
   viewBox = "0 0 100 100",
 }: {
   shape: CharacterShape;
   color: string;
   state: "idle" | "running";
+  work?: CharacterWork;
   viewBox?: string;
 }) {
   const id = useId();
+  const previous = useRef(work?.id);
+  const [entering, setEntering] = useState(false);
+  useEffect(() => {
+    if (!work?.id) {
+      setEntering(false);
+      return;
+    }
+    if (previous.current === work.id) return;
+    previous.current = work.id;
+    setEntering(!matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }, [work?.id]);
   const face = characterFaces[shape] ?? { x: 50, y: 46.4, scale: 1 };
   const texture = textures[shape];
   const [red, green, blue] = useMemo(() => tint(color), [color]);
@@ -119,6 +138,12 @@ export function Character({
       aria-hidden="true"
       data-state={state}
       data-shape={shape}
+      data-work={work?.id ? (work.working ? "working" : "waiting") : undefined}
+      data-entering={entering || undefined}
+      onAnimationEnd={(event) => {
+        if (event.animationName === "character-work-arrival")
+          setEntering(false);
+      }}
     >
       <defs>
         <filter id={`${id}-tint`} colorInterpolationFilters="sRGB">
@@ -161,32 +186,43 @@ export function Character({
           </clipPath>
         ))}
       </defs>
-      <g className="character-pose">
-        <g className="character-body">
-          <image
-            href={texture}
-            x={-bodyPadding}
-            y={-bodyPadding}
-            width={100 + bodyPadding * 2}
-            height={100 + bodyPadding * 2}
-            filter={`url(#${id}-tint)`}
-          />
-          <g
-            transform={`translate(${face.x} ${face.y}) scale(${face.scale}) translate(-50 -46.4)`}
-          >
-            <g className="character-face">
-              {[37.4, 62.6].map((cx, index) => (
-                <Eye
-                  key={cx}
-                  cx={cx}
-                  clip={`${id}-${index}`}
-                  shadow={`${id}-shadow`}
-                />
-              ))}
+      <g className="character-work-arrival">
+        <g className="character-pose">
+          <g className="character-body">
+            <image
+              href={texture}
+              x={-bodyPadding}
+              y={-bodyPadding}
+              width={100 + bodyPadding * 2}
+              height={100 + bodyPadding * 2}
+              filter={`url(#${id}-tint)`}
+            />
+            <g
+              transform={`translate(${face.x} ${face.y}) scale(${face.scale}) translate(-50 -46.4)`}
+            >
+              <g className="character-face">
+                {[37.4, 62.6].map((cx, index) => (
+                  <Eye
+                    key={cx}
+                    cx={cx}
+                    clip={`${id}-${index}`}
+                    shadow={`${id}-shadow`}
+                  />
+                ))}
+              </g>
+              {work && <WorkHeadset />}
             </g>
           </g>
         </g>
+        {work && (
+          <g
+            transform={`translate(${face.x} ${face.y}) scale(${face.scale}) translate(-50 -46.4)`}
+          >
+            <WorkComputer id={id} />
+          </g>
+        )}
       </g>
+      {work && <WorkBurst color={color} />}
     </svg>
   );
 }

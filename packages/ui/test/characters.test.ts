@@ -4,6 +4,7 @@ import { expect, test } from "vitest";
 import {
   type CharacterShape,
   characterColors,
+  characterFaces,
   characterIdentity,
   characterNames,
   characterSeed,
@@ -93,4 +94,31 @@ test("saved shape numbers retain their identities as the catalog grows", () => {
     shape: "bunny",
     color: "#f69dd1",
   });
+});
+
+test("every character mounts the same working equipment at its existing face anchor", () => {
+  for (const shape of [
+    "cat",
+    ...Object.keys(characterNames),
+  ] as CharacterShape[]) {
+    const face = characterFaces[shape] ?? { x: 50, y: 46.4, scale: 1 };
+    const render = (working: boolean) =>
+      renderToStaticMarkup(
+        createElement(Character, {
+          shape,
+          color: "#91df74",
+          state: "running",
+          work: { id: "execution", working },
+        }),
+      );
+    const html = render(true);
+    expect(html).toContain('data-work="working"');
+    expect(html).toContain(
+      `translate(${face.x} ${face.y}) scale(${face.scale}) translate(-50 -46.4)`,
+    );
+    expect(html.match(/class="character-work-headset"/g)).toHaveLength(1);
+    expect(html.match(/class="character-work-computer"/g)).toHaveLength(1);
+    expect(html.match(/class="character-eyelid"/g)).toHaveLength(2);
+    expect(render(false)).toContain('data-work="waiting"');
+  }
 });
