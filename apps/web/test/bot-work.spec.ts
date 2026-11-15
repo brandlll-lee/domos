@@ -1,0 +1,660 @@
+import { once } from "node:events";
+import { createRequire } from "node:module";
+import { createORPCClient } from "@orpc/client";
+import { RPCLink } from "@orpc/client/fetch";
+import type { RouterClient } from "@orpc/server";
+import { expect } from "@playwright/test";
+import { codexWork } from "../../../packages/agent/test/fixtures/native-work.ts";
+import type { AppRouter } from "../../api/src/router.ts";
+import { openDetails } from "./fixtures/chat-ui.ts";
+import { test } from "./fixtures/service.ts";
+
+test("Bot readers retain model and skill data while live skill changes reach the composer", async ({
+  service,
+  page,
+}) => {
+  const rpc: RouterClient<AppRouter> = createORPCClient(
+    new RPCLink({ url: `${service.url}/rpc` }),
+  );
+  const bot = (await rpc.bots.list())[0];
+  if (!bot) throw new Error("Bot required");
+  const skill = await rpc.work.skills.save({
+    botId: bot.id,
+    id: crypto.randomUUID(),
+    revision: 0,
+    requestId: crypto.randomUUID(),
+    content:
+      "---\nname: shared-report\ndescription: Report\n---\nRead source files",
+  });
+  await rpc.work.skills.enable({
+    botId: bot.id,
+    id: skill.id,
+    revision: skill.revision,
+    enabled: true,
+    requestId: crypto.randomUUID(),
+  });
+  const enabledSkill = (await rpc.work.get({ botId: bot.id })).skills.find(
+    (item) => item.id === skill.id,
+  );
+  if (!enabledSkill) throw new Error("Skill required");
+  const reads = { work: 0, model: 0, inspect: 0 };
+  page.on("request", (request) => {
+    if (request.url().endsWith("/rpc/work/get")) reads.work++;
+    if (request.url().endsWith("/rpc/engines/get")) reads.model++;
+    if (request.url().endsWith("/rpc/engines/inspect")) reads.inspect++;
+  });
+  await page.goto(service.url);
+  const details = await openDetails(page);
+  const model = details.getByRole("combobox", { name: "模型", exact: true });
+  await expect(model).toContainText("测试模型一");
+  await model.click();
+  await expect(
+    page.getByRole("option", { name: "Pi · 测试模型二", exact: true }),
+  ).toBeVisible();
+  const initial = { ...reads };
+  await page.keyboard.press("Escape");
+  await details
+    .getByRole("button", { name: "模型与账号", exact: true })
+    .click();
+  await expect(
+    details.getByRole("combobox", { name: "模型", exact: true }),
+  ).toBeVisible();
+  await details.getByRole("button", { name: "返回", exact: true }).click();
+  await details.getByRole("button", { name: "关闭", exact: true }).click();
+  const add = page.getByRole("button", { name: "添加内容", exact: true });
+  const open = async () => {
+    await add.click();
+    await page
+      .getByRole("menuitem", { name: "使用技能…", exact: true })
+      .click();
+  };
+  await open();
+  const choice = page.getByRole("button", {
+    name: "shared-report",
+    exact: true,
+  });
+  await expect(choice).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await open();
+  await expect(choice).toBeVisible();
+  expect(reads).toEqual(initial);
+  expect(reads.model).toBe(1);
+  expect(reads.work).toBe(1);
+  await rpc.work.skills.enable({
+    botId: bot.id,
+    id: skill.id,
+    revision: enabledSkill.revision,
+    enabled: false,
+    requestId: crypto.randomUUID(),
+  });
+  await expect(choice).toHaveCount(0);
+  expect(reads.work).toBe(1);
+});
+
+test("routine forms share quiet pointer focus and keep actions outside scrolling", async ({
+  service,
+  page,
+}, info) => {
+  await page.goto(service.url);
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  const details = page.locator("#bot-details");
+  await details.getByRole("button", { name: /^定时(?:\s|$)/ }).click();
+  await details
+    .getByRole("button", { name: "新建定时任务", exact: true })
+    .click();
+  const name = details.getByRole("textbox", { name: "任务名称", exact: true });
+  await expect(name).toBeVisible();
+  for (const theme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await name.click();
+    await expect(name).toHaveCSS("outline-style", "none");
+    await name.press("Shift+Tab");
+    await page.keyboard.press("Tab");
+    await expect(name).toBeFocused();
+    await expect(name).toHaveCSS("outline-style", "solid");
+    await name.click();
+    expect(
+      await name.evaluate((el) => getComputedStyle(el).borderColor),
+    ).not.toBe(
+      await name.evaluate((el) => {
+        const probe = document.createElement("span");
+        probe.style.color = "var(--color-focus)";
+        el.appendChild(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      }),
+    );
+    await expect(details.locator("select")).toHaveCount(0);
+    const footer = details.locator(".detail-footer");
+    await expect(footer).toBeVisible();
+    expect(
+      await footer.evaluate((el) => Boolean(el.closest(".scroll-viewport"))),
+    ).toBe(false);
+    await details
+      .getByRole("combobox", { name: "交付方式", exact: true })
+      .click();
+    await page
+      .getByRole("option", { name: "满足条件才通知", exact: true })
+      .click();
+    await expect(
+      details.getByRole("textbox", { name: "通知条件", exact: true }),
+    ).toBeVisible();
+    for (const width of [1360, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect
+        .poll(() => details.evaluate((el) => el.scrollWidth <= el.clientWidth))
+        .toBe(true);
+      const before = await footer.boundingBox();
+      await details.locator(".detail-content").evaluate((el) => {
+        el.scrollTop = el.scrollHeight;
+      });
+      expect(await footer.boundingBox()).toEqual(before);
+      await details.screenshot({
+        path: info.outputPath(`routine-form-${theme}-${width}.png`),
+      });
+    }
+    await page.setViewportSize({ width: 1360, height: 900 });
+  }
+});
+
+test("Work follows a native turn, opens its record and preserves it after stop and reload", async ({
+  service,
+  page,
+}, info) => {
+  service.worker.send("gate");
+  await once(service.worker, "message");
+  await page.goto(service.url);
+  await page.getByRole("tab", { name: "Work", exact: true }).click();
+  await page.getByLabel("消息", { exact: true }).fill("检查 Work 工作记录");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const card = page.locator(".work-row").first();
+  await expect(
+    card.getByRole("button", { name: "停止执行", exact: true }),
+  ).toBeVisible();
+  await expect(card.locator(".status-dot")).toHaveAttribute(
+    "data-tone",
+    "positive",
+  );
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await expect(card.locator(".status-dot")).toHaveCSS(
+      "background-color",
+      "rgb(37, 216, 132)",
+    );
+    await page.screenshot({
+      path: info.outputPath(`work-active-${theme}.png`),
+    });
+  }
+  expect((await card.boundingBox())?.height).toBe(60);
+  const background = await card
+    .locator(".work-open")
+    .evaluate((el) => getComputedStyle(el).backgroundColor);
+  await card.locator(".work-open").hover();
+  await expect
+    .poll(() =>
+      card
+        .locator(".work-open")
+        .evaluate((el) => getComputedStyle(el).backgroundColor),
+    )
+    .toBe(background);
+  await page.screenshot({ path: info.outputPath("work-running.png") });
+  await card.locator(".work-open").click();
+  const dialog = page.getByRole("dialog", { name: "工作记录", exact: true });
+  await expect(dialog).toContainText("检查 Work 工作记录");
+  await page.keyboard.press("Escape");
+  await expect(card.locator(".work-open")).toBeFocused();
+  await card.getByRole("button", { name: "停止执行", exact: true }).click();
+  await expect(card).toContainText("已停止");
+  await expect(dialog).not.toBeVisible();
+  await expect(card.locator(".status-dot")).toHaveCount(0);
+  await page.reload();
+  await page.getByRole("tab", { name: "Work", exact: true }).click();
+  await expect(card).toContainText("已停止");
+  for (const theme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await card.locator(".work-open").click();
+    await expect(dialog).toHaveCSS(
+      "background-color",
+      theme === "dark" ? "rgb(15, 15, 16)" : "rgb(250, 250, 250)",
+    );
+    await page.screenshot({
+      path: info.outputPath(`work-dialog-${theme}.png`),
+    });
+    await page.keyboard.press("Escape");
+    await page.screenshot({ path: info.outputPath(`work-${theme}.png`) });
+  }
+  await card.locator(".work-open").click();
+  await expect(dialog).toContainText("已停止");
+  await page.keyboard.press("Escape");
+  service.worker.send({
+    content: [
+      { type: "thinking", thinking: "核对原生记录。" },
+      {
+        type: "toolCall",
+        id: "work-tool",
+        name: service.toolName,
+        arguments: { text: "原生工具回执" },
+      },
+    ],
+    stopReason: "toolUse",
+  });
+  await once(service.worker, "message");
+  service.worker.send("gate-tool");
+  await once(service.worker, "message");
+  await page.getByLabel("消息", { exact: true }).fill("检查原生工具");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(card).toContainText("正在使用工具");
+  await card.locator(".work-open").click();
+  await expect(dialog.locator(".work-entry[data-state=running]")).toHaveCount(
+    1,
+  );
+  service.worker.send("release");
+  await once(service.worker, "message");
+  await expect(card).toContainText("执行已结束", { timeout: info.timeout });
+  await expect(
+    dialog.locator("summary").filter({ hasText: service.toolName }),
+  ).toHaveCount(1);
+  await expect(dialog.locator(".work-entry[data-state=running]")).toHaveCount(
+    0,
+  );
+  await expect(dialog.locator(".work-entry").last()).toContainText("已收到");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".work-row")).toHaveCount(2);
+  await expect(card).toHaveCSS("border-width", "1px");
+  await expect(page.locator(".work-list")).toHaveCSS("border-width", "0px");
+  const cards = await page.locator(".work-row").all();
+  const first = await cards[0]?.boundingBox();
+  const second = await cards[1]?.boundingBox();
+  if (!first || !second) throw new Error("Work cards missing");
+  expect(second.y - first.y - first.height).toBe(8);
+  await card.locator(".work-open").click();
+  await dialog.locator("summary").filter({ hasText: "原生思考" }).click();
+  await expect(dialog).toContainText("核对原生记录。");
+  await dialog.locator("summary").filter({ hasText: service.toolName }).click();
+  await expect(
+    dialog.locator(".work-operation-body").filter({ hasText: "原生工具回执" }),
+  ).toBeVisible();
+  await expect(dialog.getByRole("list", { name: "执行时间线" })).toBeVisible();
+  await expect(dialog.locator(".work-entry[data-state=done]")).toHaveCount(1);
+  await expect(
+    dialog.locator("summary").filter({ hasText: /^回复/ }),
+  ).toHaveCount(0);
+  await expect(dialog).not.toContainText("Harness 未提供思考内容");
+  await expect(dialog.locator(".work-entry time").first()).toHaveAttribute(
+    "datetime",
+    /T/,
+  );
+  await expect(dialog).toContainText("原生工具回执");
+  for (const theme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await expect(dialog.locator(".work-entry").first()).toHaveCSS(
+      "border-left-width",
+      "1px",
+    );
+    await page.screenshot({
+      path: info.outputPath(`work-timeline-${theme}.png`),
+    });
+  }
+  const recordCount = await dialog.locator(".work-entry").count();
+  await page.keyboard.press("Escape");
+  await page.reload();
+  await page.getByRole("tab", { name: "Work", exact: true }).click();
+  await card.locator(".work-open").click();
+  await expect(dialog.locator(".work-entry")).toHaveCount(recordCount);
+  await dialog.locator("summary").filter({ hasText: service.toolName }).click();
+  await expect(dialog).toContainText("原生工具回执");
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect((await card.boundingBox())?.height).toBe(60);
+  const label = card.locator(".work-label");
+  await expect(label).toHaveCSS("min-width", "0px");
+  await expect(label.locator("span").first()).toHaveCSS(
+    "text-overflow",
+    "ellipsis",
+  );
+  await page.screenshot({ path: info.outputPath("work-narrow.png") });
+});
+
+test("Work renders native search, file and terminal details in both themes", async ({
+  service,
+  page,
+}, info) => {
+  const turnId = "native-work";
+  service.worker.send({
+    records: [
+      {
+        id: "native-request",
+        turnId,
+        role: "user",
+        content: [
+          { type: "text", key: "request", text: "检查搜索、文件和命令" },
+        ],
+        stopped: false,
+      },
+      ...codexWork
+        .filter((item) => item.type !== "agentMessage")
+        .flatMap((item) => [
+          {
+            id: `native:${item.id}`,
+            turnId,
+            role: "assistant",
+            content: [
+              {
+                type: "toolCall",
+                key: item.id,
+                id: item.id,
+                name: item.type,
+                arguments: {
+                  ...(item.command ? { command: item.command } : {}),
+                  ...(item.query ? { query: item.query } : {}),
+                },
+              },
+            ],
+            stopped: false,
+          },
+          {
+            id: `native:${item.id}:result`,
+            turnId,
+            role: "toolResult",
+            toolCallId: item.id,
+            content: [],
+            native: item,
+            toolStatus: "done",
+            stopped: false,
+          },
+        ]),
+    ],
+  });
+  await once(service.worker, "message");
+  await page.goto(service.url);
+  await page.getByRole("tab", { name: "Work", exact: true }).click();
+  await page.locator(".work-open").first().click();
+  const dialog = page.getByRole("dialog", { name: "工作记录", exact: true });
+  const entries = dialog.locator(".work-entry");
+  await expect(entries).toHaveCount(4);
+  await expect(dialog.locator(".work-terminal")).toContainText(
+    "node --version",
+  );
+  await expect(dialog.locator(".work-terminal")).toContainText("v24.16.0");
+  await expect(
+    dialog.locator(".work-terminal-line").first().locator("span"),
+  ).toHaveText("IN");
+  await expect(
+    dialog.locator(".work-terminal-line").nth(1).locator("span"),
+  ).toHaveText("OUT");
+  await expect(dialog).toContainText("退出码 0");
+  await dialog.locator("summary").filter({ hasText: "webSearch" }).click();
+  await expect(dialog).toContainText("example assets source");
+  await dialog.locator("summary").filter({ hasText: "fileChange" }).click();
+  await expect(dialog.locator(".work-file")).toContainText("note.md");
+  await expect(dialog.locator(".work-file")).toContainText("+confirmed");
+  await expect(entries.locator(":scope > time")).toHaveCount(0);
+  for (const theme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    const line = await entries.first().evaluate((el) => {
+      const entry = getComputedStyle(el);
+      const dot = getComputedStyle(el, "::before");
+      return {
+        line: entry.borderLeftWidth,
+        dot: dot.width,
+        position: dot.left,
+      };
+    });
+    expect(line).toEqual({ line: "1px", dot: "7px", position: "-4px" });
+    await page.screenshot({
+      path: info.outputPath(`work-native-${theme}.png`),
+    });
+  }
+});
+
+test("skill packages preview changes and restore resources across reload", async ({
+  service,
+  page,
+}, info) => {
+  const { zipSync, strToU8 } = createRequire(
+    new URL("../../../packages/agent/package.json", import.meta.url),
+  )("fflate");
+  const content =
+    "---\nname: weekly-report\ndescription: Prepare a weekly report\n---\nRead references/guide.md. Run scripts/report.py.";
+  const bundle = (script: string) =>
+    Buffer.from(
+      zipSync({
+        "weekly-report/SKILL.md": strToU8(content),
+        "weekly-report/references/guide.md": strToU8("Report guide"),
+        "weekly-report/scripts/report.py": strToU8(script),
+      }),
+    );
+  await page.goto(service.url);
+  const details = page.locator("#bot-details");
+  await details.getByRole("button", { name: /^技能(?:\s|$)/ }).click();
+  const upload = async (script: string) => {
+    await expect(details.getByLabel("导入技能包")).toBeEnabled();
+    await details.getByLabel("导入技能包").setInputFiles({
+      name: "weekly-report.zip",
+      mimeType: "application/zip",
+      buffer: bundle(script),
+    });
+    await expect(
+      details
+        .getByLabel("编辑 SKILL.md")
+        .or(details.getByLabel("新建 SKILL.md")),
+    ).toHaveValue(content);
+    await details
+      .getByRole("button", { name: "保存技能", exact: true })
+      .click();
+    await expect(
+      details.getByRole("region", { name: "技能差异" }),
+    ).toContainText("scripts/report.py");
+    await details
+      .getByRole("button", { name: "保存技能", exact: true })
+      .click();
+    await expect(
+      details.getByRole("heading", { name: "weekly-report", exact: true }),
+    ).toBeVisible();
+  };
+  await upload("print('v1')");
+  let releaseEnable!: () => void;
+  const enabling = page.waitForRequest("**/rpc/work/skills/enable");
+  const enableGate = new Promise<void>((resolve) => {
+    releaseEnable = resolve;
+  });
+  await page.route("**/rpc/work/skills/enable", async (route) => {
+    await enableGate;
+    await route.continue();
+  });
+  await details
+    .getByRole("switch", { name: "为此 Bot 启用 weekly-report" })
+    .click();
+  await enabling;
+  await expect(details.getByLabel("导入技能包")).toBeDisabled();
+  releaseEnable();
+  await upload("print('v2')");
+  await page.reload();
+  await expect(
+    details.getByRole("heading", { name: "技能", exact: true }),
+  ).toBeVisible();
+  await details
+    .getByRole("button")
+    .filter({
+      has: page.getByRole("heading", { name: "weekly-report", exact: true }),
+    })
+    .click();
+  await details.getByText("版本历史", { exact: true }).click();
+  await details.getByRole("button", { name: /^预览 v1/ }).click();
+  const diff = details.getByRole("region", { name: "技能差异" });
+  await diff.getByText("修改 · scripts/report.py", { exact: true }).click();
+  await expect(diff).toContainText("print('v1')");
+  await expect(diff).toContainText("print('v2')");
+  await details.screenshot({
+    path: info.outputPath("skill-version-preview.png"),
+  });
+  await details.getByRole("button", { name: "保存技能", exact: true }).click();
+  await expect(details.getByText("user · v3", { exact: true })).toBeVisible();
+  await expect(
+    details.getByRole("switch", { name: "为此 Bot 启用 weekly-report" }),
+  ).toBeChecked();
+});
+
+test("chat routine changes require confirmation and link runs to Work", async ({
+  service,
+  page,
+}, info) => {
+  test.setTimeout(60_000);
+  await page.goto(service.url);
+  const details = page.locator("#bot-details");
+  const sendTool = async (name: string, args: Record<string, unknown>) => {
+    const ready = once(service.worker, "message");
+    service.worker.send({
+      content: [
+        { type: "toolCall", id: crypto.randomUUID(), name, arguments: args },
+      ],
+      stopReason: "toolUse",
+    });
+    await ready;
+    await page.getByLabel("消息", { exact: true }).fill(name);
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+  };
+  await sendTool("routine_create", {
+    title: "Daily report",
+    instructions: "Read the daily report",
+    schedule: {
+      type: "cron",
+      expression: "0 8 * * *",
+      timeZone: "Asia/Shanghai",
+    },
+    executionMs: 60_000,
+  });
+  const create = page.getByRole("region", {
+    name: "创建定时：Daily report",
+    exact: true,
+  });
+  await expect(create).toBeVisible();
+  await expect(create).toContainText("每天 08:00");
+  await expect(create).not.toContainText('"schedule"');
+  expect(
+    await create
+      .locator(".approval-detail")
+      .evaluate((node) => getComputedStyle(node).overflowY),
+  ).toBe("visible");
+  for (const theme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await create.screenshot({
+      path: info.outputPath(`routine-approval-${theme}.png`),
+    });
+  }
+  await details.getByRole("button", { name: /^定时(?:\s|$)/ }).click();
+  await expect(
+    details.getByText("暂无定时任务", { exact: true }),
+  ).toBeVisible();
+  await create.getByRole("button", { name: "创建任务", exact: true }).click();
+  await expect(
+    details.getByRole("switch", { name: "启用 Daily report" }),
+  ).toBeChecked();
+  await expect(create.getByRole("status")).toHaveText("已批准");
+  await expect(
+    page.getByText("已创建定时　◷　Daily report", { exact: true }),
+  ).toBeVisible();
+  await expect(create.locator(".interaction-card")).toHaveCount(0);
+  await create.getByRole("button").click();
+  const approvalDetails = page.getByRole("dialog", {
+    name: "创建定时：Daily report",
+    exact: true,
+  });
+  await expect(approvalDetails).toContainText("每天 08:00");
+  await page.keyboard.press("Escape");
+  await page.reload();
+  await expect(create.getByRole("status")).toHaveText("已批准");
+  await expect(
+    page.getByText("已创建定时　◷　Daily report", { exact: true }),
+  ).toHaveCount(1);
+  await expect(
+    details.getByRole("heading", { name: "定时", exact: true }),
+  ).toBeVisible();
+  await details.getByRole("button", { name: "Daily report的操作" }).click();
+  await page.getByRole("menuitem", { name: "试跑", exact: true }).click();
+  await details.locator("summary").filter({ hasText: "运行记录" }).click();
+  await expect(details.locator(".run-list")).toContainText("已完成");
+  await expect(details.locator(".run-list")).not.toContainText("等人");
+  await details
+    .getByRole("button", { name: "查看工作记录：Daily report", exact: true })
+    .click();
+  const record = page.getByRole("dialog", { name: "工作记录", exact: true });
+  await expect(record).toContainText("试跑：Daily report");
+  await expect(record).toContainText("Read the daily report");
+  await expect(record).toContainText("等人");
+  await expect(record).toContainText("计划时间");
+  await page.screenshot({ path: info.outputPath("routine-work-record.png") });
+});
+
+test("monitoring stays quiet, delivers one result and opens the native Work record", async ({
+  service,
+  page,
+}, info) => {
+  test.setTimeout(60_000);
+  await page.goto(service.url);
+  const sendTool = async (name: string, args: object) => {
+    const ready = once(service.worker, "message");
+    service.worker.send({
+      content: [
+        { type: "toolCall", id: crypto.randomUUID(), name, arguments: args },
+      ],
+      stopReason: "toolUse",
+    });
+    await ready;
+  };
+  await sendTool("routine_create", {
+    title: "版本监控",
+    instructions: "Check releases",
+    schedule: { type: "cron", expression: "0 * * * *", timeZone: "UTC" },
+    delivery: "conditional",
+    condition: "新版本时通知",
+  });
+  await page.getByLabel("消息", { exact: true }).fill("监控版本");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const approval = page.getByRole("region", { name: "创建定时：版本监控" });
+  await approval.getByRole("button", { name: "创建任务", exact: true }).click();
+  await expect(approval.getByRole("status")).toHaveText("已批准");
+  const details = page.locator("#bot-details");
+  await details.getByRole("button", { name: /^定时(?:\s|$)/ }).click();
+  await details.locator("summary").filter({ hasText: "运行记录" }).click();
+  await page.mouse.move(0, 0);
+  await expect(page.locator(".attention-toast")).toHaveCount(0, {
+    timeout: 10000,
+  });
+  for (const notify of [false, true]) {
+    await sendTool("routine_report", {
+      notify,
+      text: notify ? "发布了新版本 v2" : "",
+      summary: notify ? "v2" : "v1",
+      ...(notify ? { key: "release/v2" } : {}),
+    });
+    await details.getByRole("button", { name: "版本监控的操作" }).click();
+    await page.getByRole("menuitem", { name: "试跑", exact: true }).click();
+    await expect(details.locator(".run-list")).toContainText(
+      notify ? "已交付" : "静默完成",
+      { timeout: 20_000 },
+    );
+    await expect(page.getByLabel("你的消息")).toHaveCount(1);
+    await expect(page.locator(".typing-dots")).toHaveCount(0);
+  }
+  await expect(page.locator(".routine-source")).toHaveCount(1);
+  await expect(
+    page
+      .getByRole("log", { name: "聊天记录" })
+      .getByText("发布了新版本 v2", { exact: true }),
+  ).toBeVisible();
+  await page.locator(".routine-source").getByRole("button").click();
+  const record = page.getByRole("dialog", { name: "工作记录", exact: true });
+  await expect(record).toBeVisible();
+  await expect(record).toContainText("routine_report");
+  await record.getByRole("button", { name: "关闭弹窗" }).click();
+  for (const theme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.screenshot({ path: info.outputPath(`monitor-${theme}.png`) });
+  }
+  await page.reload();
+  await expect(page.locator(".routine-source")).toHaveCount(1);
+  await expect(page.getByLabel("你的消息")).toHaveCount(1);
+});

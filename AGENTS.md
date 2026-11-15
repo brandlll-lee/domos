@@ -109,6 +109,7 @@ Pi Durable 1.4.0 stores Bot tasks. Native Harness processes own model loops. Dom
 ## Verification
 
 - Use the scripts in `package.json` as the command source. Run focused tests for the changed behavior first, then the checks required by affected consumers and CI.
+- Group web and API tests by feature ownership. Extend the relevant suite. Web suites share the per-test service fixture in `apps/web/test/fixtures/service.ts`; API suites share `apps/api/test/fixtures/api.ts`. Keep feature assertions in their suites and preserve isolated data and service cleanup.
 - Run `pnpm typecheck` and `pnpm lint` for code changes. Fix new errors and report retained warnings.
 - For Harness or Computer Use changes, read [docs/computer-evals.md](docs/computer-evals.md) before changing behavior. Save the relevant failure or baseline first. Run the regression after the change.
 - Add new confirmed failure cases to the small, sanitized eval set. Report completion evidence, coverage, elapsed time, and model round trips when available. Without eval evidence, do not claim a Harness performance or success-rate improvement.
