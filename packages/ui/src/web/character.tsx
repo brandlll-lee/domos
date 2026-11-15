@@ -17,11 +17,7 @@ import soft from "../../assets/characters/soft.webp";
 import sprout from "../../assets/characters/sprout.webp";
 import star from "../../assets/characters/star.webp";
 import triangle from "../../assets/characters/triangle.webp";
-import {
-  type CharacterShape,
-  characterBaseColor,
-  characterFaces,
-} from "../characters.ts";
+import { type CharacterShape, characterFaces } from "../characters.ts";
 
 const textures = {
   cat,
@@ -45,11 +41,10 @@ const channels = (color: string) =>
   [1, 3, 5].map((index) => Number.parseInt(color.slice(index, index + 2), 16));
 
 function tint(color: string) {
-  const base = channels(characterBaseColor);
-  const [r, g, b] = channels(color).map(
-    (value, index) => value / (base[index] ?? 1),
-  );
-  return `${r} 0 0 0 0 0 ${g} 0 0 0 0 0 ${b} 0 0 0 0 0 1 0`;
+  return channels(color).map((channel) => {
+    const mid = channel / 255;
+    return [0, mid * 0.32, mid * 0.7, mid, mid + (1 - mid) * 0.55, 1].join(" ");
+  });
 }
 
 function Eye({
@@ -101,6 +96,7 @@ export function Character({
   const id = useId();
   const face = characterFaces[shape] ?? { x: 50, y: 46.4, scale: 1 };
   const texture = textures[shape];
+  const [red, green, blue] = tint(color);
   return (
     <svg
       className="character"
@@ -111,11 +107,10 @@ export function Character({
     >
       <defs>
         <filter id={`${id}-tint`} colorInterpolationFilters="sRGB">
-          <feColorMatrix type="matrix" values={tint(color)} />
           <feComponentTransfer>
-            <feFuncR type="gamma" exponent=".86" />
-            <feFuncG type="gamma" exponent=".86" />
-            <feFuncB type="gamma" exponent=".86" />
+            <feFuncR type="table" tableValues={red} />
+            <feFuncG type="table" tableValues={green} />
+            <feFuncB type="table" tableValues={blue} />
           </feComponentTransfer>
         </filter>
         <filter

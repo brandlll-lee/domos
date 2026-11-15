@@ -43,7 +43,7 @@ test("connection loss uses one shared notice and keeps the chat and draft", asyn
   const disconnected = once(worker, "message");
   worker.send("disconnect-clients");
   await disconnected;
-  const notice = page.locator(".attention-toast[data-error]");
+  const notice = page.locator('.attention-toast[data-tone="info"]');
   await expect(notice).toHaveCount(1);
   await expect(notice).toContainText("与工作电脑的连接已中断");
   await expect(
@@ -58,8 +58,14 @@ test("connection loss uses one shared notice and keeps the chat and draft", asyn
   for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-    await expect(notice).toHaveCSS("background-color", "rgb(180, 35, 50)");
-    await expect(notice).toHaveCSS("color", "rgb(255, 255, 255)");
+    await expect(notice).toHaveCSS(
+      "background-color",
+      theme === "dark" ? "rgb(20, 20, 22)" : "rgb(255, 255, 255)",
+    );
+    await expect(notice).toHaveCSS(
+      "color",
+      theme === "dark" ? "rgb(239, 239, 240)" : "rgb(32, 33, 35)",
+    );
     await expect(notice.locator(".bot-avatar")).toHaveCount(0);
     await expect(notice.locator(".attention-symbol")).toBeVisible();
     await page.screenshot({
@@ -130,11 +136,16 @@ test("read failures use the branded warning and retry clears it", async ({
   await expect(warning).toHaveCSS("opacity", "1");
   await expect(warning.locator(".attention-action")).toHaveCSS(
     "color",
-    "rgb(255, 255, 255)",
+    "rgb(32, 33, 35)",
   );
   await expect(warning.locator(".attention-close")).toHaveCSS(
     "color",
-    "rgb(255, 255, 255)",
+    "rgb(32, 33, 35)",
+  );
+  await expect(warning).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(warning.locator(".attention-symbol")).toHaveCSS(
+    "color",
+    "rgb(200, 50, 61)",
   );
   await page.screenshot({
     path: info.outputPath("error-notice-narrow.png"),

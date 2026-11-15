@@ -4,7 +4,7 @@ import io
 import sys
 from pathlib import Path
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
 SIZE = 2048
 SCALE = SIZE / 100
@@ -98,5 +98,8 @@ config = json.load(sys.stdin)
 base = np.array([int(config['color'][i:i + 2], 16) for i in (1, 3, 5)])
 for outline in config['outlines']:
     output = Path(sys.argv[1]) / f"{outline['name']}.webp"
-    render(outline['points'], base, outline['mask']).save(output, quality=95, method=6)
+    image = render(outline['points'], base, outline['mask'])
+    material = ImageOps.grayscale(image).filter(ImageFilter.UnsharpMask(radius=1.2, percent=35, threshold=2))
+    material = Image.merge('RGBA', (material, material, material, image.getchannel('A')))
+    material.save(output, lossless=True, method=6)
     print(f"{output.name}: {output.stat().st_size}", flush=True)

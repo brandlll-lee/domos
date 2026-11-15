@@ -19,7 +19,7 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-panel);
   background: var(--color-popup);
-  box-shadow: var(--color-popup-shadow);
+  box-shadow: 0 2px 8px color-mix(in srgb, #000 12%, transparent);
   color: var(--color-text);
   max-height: calc(100dvh - 2 * var(--space-6));
   overflow-y: auto;
@@ -35,16 +35,6 @@
 }
 .attention-toast[data-limited] {
   display: none;
-}
-.attention-toast[data-tone="error"] {
-  background: var(--color-notice-error);
-  border-color: transparent;
-  color: var(--color-on-notice-error);
-}
-.attention-toast[data-tone="warning"] {
-  background: var(--color-notice-warning);
-  border-color: transparent;
-  color: var(--color-on-notice-warning);
 }
 .attention-body,
 .attention-toast .button.attention-body {
@@ -75,6 +65,12 @@
   height: var(--space-6);
   margin: var(--space-1);
 }
+.attention-toast[data-tone="error"] .attention-symbol {
+  color: var(--color-danger-icon);
+}
+.attention-toast[data-tone="warning"] .attention-symbol {
+  color: var(--color-waiting);
+}
 .attention-title {
   margin: 0;
   font-size: var(--text-label);
@@ -82,6 +78,7 @@
   line-height: var(--leading-body);
 }
 .attention-description {
+  color: var(--color-muted);
   margin: 0;
   font-size: var(--text-label);
   font-weight: var(--weight-regular);
@@ -99,6 +96,9 @@
   grid-column: 2;
   justify-self: start;
 }
+.attention-toast .button.attention-action {
+  padding-inline: 0;
+}
 .attention-toast .button.attention-action,
 .attention-toast .button.attention-close {
   color: inherit;
@@ -106,10 +106,6 @@
 .attention-toast .button.attention-action:hover,
 .attention-toast .button.attention-close:hover {
   background: color-mix(in srgb, currentColor 12%, transparent);
-}
-.attention-toast[data-tone="error"],
-.attention-toast[data-tone="warning"] {
-  --color-focus: currentColor;
 }
 @media (prefers-reduced-motion: reduce) {
   .attention-toast {

@@ -111,24 +111,52 @@ test("plush identities load, animate and survive profile changes", async ({
         }),
       );
     });
+    const material = await avatar
+      .locator(".character-body > image")
+      .evaluate(async (node) => {
+        const image = new Image();
+        image.src = node.getAttribute("href") ?? "";
+        await image.decode();
+        const canvas = document.createElement("canvas");
+        canvas.width = image.width;
+        canvas.height = image.height;
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("Canvas required");
+        context.drawImage(image, 0, 0);
+        const { data } = context.getImageData(0, 0, image.width, image.height);
+        let low = 255;
+        let high = 0;
+        for (let index = 0; index < data.length; index += 4) {
+          if (data[index + 3] !== 255) continue;
+          if (
+            data[index] !== data[index + 1] ||
+            data[index] !== data[index + 2]
+          )
+            return false;
+          low = Math.min(low, data[index] ?? 0);
+          high = Math.max(high, data[index] ?? 0);
+        }
+        return high - low > 60;
+      });
+    expect(material).toBe(true);
     const filters = await page
       .locator(".character [id]")
       .evaluateAll((items) => items.map((item) => item.id));
     expect(new Set(filters).size).toBe(filters.length);
     const avatarTint = await avatar
-      .locator("feColorMatrix")
-      .getAttribute("values");
+      .locator("feFuncR")
+      .getAttribute("tableValues");
     await page.emulateMedia({ colorScheme: "dark" });
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-    await expect(avatar.locator("feColorMatrix")).toHaveAttribute(
-      "values",
+    await expect(avatar.locator("feFuncR")).toHaveAttribute(
+      "tableValues",
       avatarTint ?? "",
     );
     await page.screenshot({ path: testInfo.outputPath("identities-dark.png") });
     await page.emulateMedia({ colorScheme: "light" });
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-    await expect(avatar.locator("feColorMatrix")).toHaveAttribute(
-      "values",
+    await expect(avatar.locator("feFuncR")).toHaveAttribute(
+      "tableValues",
       avatarTint ?? "",
     );
     await page.screenshot({
@@ -262,7 +290,7 @@ test("plush identities load, animate and survive profile changes", async ({
     const identity = await header
       .locator(".character")
       .getAttribute("data-shape");
-    const tint = await header.locator("feColorMatrix").getAttribute("values");
+    const tint = await header.locator("feFuncR").getAttribute("tableValues");
     await page.reload();
     await expect(header).toHaveAttribute("data-seed", next ?? "");
     await expect(bubble).toHaveCSS("background-color", themedBubble);
@@ -271,8 +299,8 @@ test("plush identities load, animate and survive profile changes", async ({
       "data-shape",
       identity ?? "",
     );
-    await expect(header.locator("feColorMatrix")).toHaveAttribute(
-      "values",
+    await expect(header.locator("feFuncR")).toHaveAttribute(
+      "tableValues",
       tint ?? "",
     );
     const icon = await page.locator('link[rel="icon"]').getAttribute("href");

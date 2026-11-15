@@ -120,7 +120,7 @@ function Notices({ children }: { children: ReactNode }) {
     const options = {
       id,
       title: recover ? "本机服务已停止" : "正在连接工作电脑",
-      type: "error",
+      type: recover ? "error" : "info",
       timeout: 0,
       description:
         service === "recovering"
