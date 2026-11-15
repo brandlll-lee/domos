@@ -1,5 +1,6 @@
 import type { ChatMessage } from "@domos/agent/messages";
 import type { ChatView } from "@domos/agent/view";
+import { executionActivity } from "./activity-state.ts";
 
 export type WorkItem = {
   id: string;
@@ -122,16 +123,19 @@ export function workTurns(view: ChatView) {
         }
         return rows;
       });
-      const running = items.filter((item) => item.status === "running");
       let title = workStatus(status);
       if (active) {
-        title = running.at(-1)?.label ?? "正在等待原生引擎";
-        if (running.length > 1) title += ` · ${running.length} 项进行中`;
-        if (view.runtime?.compaction === "running") title = "正在压缩上下文";
-        if (view.approvals?.length) title = "正在等待你的确认";
-        if (status === "stopping") title = "正在停止，等待引擎确认";
+        title = executionActivity(
+          view,
+          {
+            turnId: id,
+            sessionId: run?.sessionId ?? activity?.sessionId,
+            inputTurns: run?.inputTurns,
+            status: status === "stopping" ? "stopping" : "running",
+          },
+          messages,
+        ).label;
       }
-      title = activity?.waiting ?? title;
       return {
         id,
         run,

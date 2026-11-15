@@ -16,6 +16,7 @@ import { client } from "../../client.ts";
 import { useConnection } from "../connection.ts";
 import { receiveConversationFiles } from "../files/file-state.ts";
 import { flushModelSettings } from "../models/model-state.ts";
+import { chatActivity } from "./activity-state.ts";
 import { chatCopy } from "./copy.ts";
 import type { MessageTarget } from "./message-target.ts";
 import { readingPosition } from "./reading-position.ts";
@@ -461,7 +462,12 @@ export function useChat(
     }
   }
 
+  const activity = useMemo(() => chatActivity(view), [view]);
   return {
+    activity:
+      connected && (!connection.service || connection.service === "ready")
+        ? activity
+        : [],
     async revealMessage(item: MessageTarget) {
       revealRequest.current?.abort();
       const loaded = store.snapshot().history ?? current.current;

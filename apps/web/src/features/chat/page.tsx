@@ -498,7 +498,9 @@ function BotChat({
               <ChatHeader
                 members={members}
                 bot={team ? { ...bot, name: team.name } : bot}
-                busy={chat.connected && Boolean(chat.view?.busy)}
+                busy={chat.activity.length > 0}
+                activity={chat.activity}
+                stopping={chat.stopping}
                 detailsOpen={detailsOpen}
                 provider={chat.view?.engine?.provider}
                 onDetails={() => showPanel("root")}

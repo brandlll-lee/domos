@@ -154,7 +154,7 @@
   transition-delay: 0s, 0s, 0s, var(--motion-feedback);
 }
 .conversation {
-  --chat-header-height: 6.5rem;
+  --chat-header-height: 7.75rem;
   position: relative;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
@@ -207,9 +207,10 @@
 }
 .chat-identity-label {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-1);
+  gap: 0;
   min-width: calc(var(--avatar-panel) + var(--space-2));
   max-width: min(100%, 12rem);
   margin-top: -0.625rem;
@@ -219,6 +220,31 @@
   background: var(--color-popup);
   box-shadow: 0 2px 6px #0000001a;
   transition: background-color var(--motion-feedback);
+}
+.chat-identity-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  width: 100%;
+  min-width: 0;
+}
+.chat-identity[data-active] .chat-identity-label {
+  width: 8.5rem;
+  margin-top: -0.125rem;
+}
+.chat-identity-status {
+  max-width: 100%;
+  color: var(--color-muted);
+  font-size: var(--text-small);
+  font-weight: var(--weight-regular);
+  line-height: 1rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.chat-identity-status:empty {
+  display: none;
 }
 .chat-identity-label .engine-mark {
   width: var(--text-small);

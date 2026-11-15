@@ -4,6 +4,7 @@ import { characterIdentity } from "@domos/ui/characters";
 import { UnreadBadge } from "@domos/ui/unread-badge";
 import type { CSSProperties } from "react";
 import { createContext } from "react";
+import type { WorkActivity } from "./activity-state.ts";
 export const TeamMembers = createContext<
   { id: number; name: string; avatar: string }[]
 >([]);
@@ -59,9 +60,13 @@ export function BotReference({
 export function TeamAvatar({
   members,
   unread = 0,
+  activity,
+  stopping = false,
 }: {
   members: { id: number; name: string; avatar: string }[];
   unread?: number;
+  activity?: WorkActivity[];
+  stopping?: boolean;
 }) {
   return (
     <span
@@ -74,11 +79,29 @@ export function TeamAvatar({
         } as CSSProperties
       }
     >
-      {members.map((bot) => (
-        <span key={bot.id} title={bot.name}>
-          <BotAvatar seed={bot.avatar} size="small" />
-        </span>
-      ))}
+      {members.map((bot) => {
+        const current = activity?.filter(
+          (item) => (item.botId ?? item.author?.botId) === bot.id,
+        );
+        return (
+          <span key={bot.id} title={bot.name}>
+            <BotAvatar
+              seed={bot.avatar}
+              size="small"
+              work={
+                activity
+                  ? {
+                      id: current?.[0]?.id,
+                      working:
+                        !stopping &&
+                        Boolean(current?.some((item) => item.working)),
+                    }
+                  : undefined
+              }
+            />
+          </span>
+        );
+      })}
       <UnreadBadge count={unread} />
     </span>
   );

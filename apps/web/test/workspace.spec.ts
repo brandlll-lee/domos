@@ -6,7 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Attachment } from "@domos/agent/attachments";
-import { characterColors } from "@domos/ui/characters";
+import {
+  characterColors,
+  characterNames,
+  characterSeed,
+} from "@domos/ui/characters";
 import { expect, type Page, test } from "@playwright/test";
 import { mcpFixture } from "../../../packages/agent/test/fixtures/mcp.mjs";
 import { codexWork } from "../../../packages/agent/test/fixtures/native-work.ts";
@@ -6262,4 +6266,438 @@ test("authorized devices use compact pages and retain the current device", async
   await expect(
     navigation.getByRole("button", { name: "下一页" }),
   ).toBeDisabled();
+});
+
+test("working identity follows live activity and shares equipment across every shape", async ({
+  page,
+}, info) => {
+  test.setTimeout(90_000);
+  const rpc = async (method: string, json: object = {}) => {
+    const response = await page.request.post(`${url}/rpc/${method}`, {
+      data: { json },
+    });
+    expect(response.ok()).toBe(true);
+    return (await response.json()).json;
+  };
+  const bot = (await rpc("bots/list"))[0];
+  const snapshot = await rpc("get", { botId: bot.id });
+  await page.addInitScript((initial) => {
+    const fetch = window.fetch.bind(window);
+    Reflect.set(window, "activityArrivals", 0);
+    document.addEventListener("animationstart", (event) => {
+      if ((event as AnimationEvent).animationName === "character-work-arrival")
+        Reflect.set(
+          window,
+          "activityArrivals",
+          Reflect.get(window, "activityArrivals") + 1,
+        );
+    });
+    window.fetch = async (...args) => {
+      const input = args[0];
+      const address = input instanceof Request ? input.url : String(input);
+      if (!address.endsWith("/rpc/changes")) return fetch(...args);
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            const deliver = (event: unknown) =>
+              controller.enqueue(
+                new TextEncoder().encode(
+                  `event: message\ndata: ${JSON.stringify({ json: event })}\n\n`,
+                ),
+              );
+            Reflect.set(window, "deliverWorkActivity", deliver);
+            Reflect.set(window, "disconnectWorkActivity", () =>
+              controller.error(new TypeError("Connection lost")),
+            );
+            const view = Reflect.get(window, "workActivityView") ?? initial;
+            deliver({ type: "snapshot", view });
+          },
+        }),
+        { headers: { "content-type": "text/event-stream" } },
+      );
+    };
+  }, snapshot);
+  await page.goto(url);
+  const header = page.locator(".chat-identity");
+  const character = header.locator(".character");
+  const status = header.locator(".chat-identity-status");
+  await expect(header).toBeVisible();
+  await expect(status).toBeEmpty();
+  const top = await page.locator(".chat-header").boundingBox();
+  const run = {
+    turnId: "work",
+    sessionId: snapshot.id,
+    status: "running",
+    provider: "codex",
+    model: "test",
+    startedAt: Date.now(),
+  };
+  const tool = {
+    id: "read",
+    turnId: "work",
+    role: "assistant",
+    stopped: false,
+    content: [
+      {
+        type: "toolCall",
+        id: "read",
+        name: "Read",
+        arguments: { path: "private-path" },
+        key: "read",
+      },
+    ],
+  };
+  const state = {
+    ...snapshot,
+    busy: true,
+    processing: true,
+    activeTurnId: "work",
+    runs: [run],
+    activity: [
+      {
+        botId: bot.id,
+        sessionId: snapshot.id,
+        executionId: "work",
+        processing: true,
+      },
+    ],
+    messages: [tool],
+  };
+  const deliver = async () =>
+    page.evaluate((view) => {
+      Reflect.set(window, "workActivityView", view);
+      Reflect.get(window, "deliverWorkActivity")({ type: "snapshot", view });
+    }, state);
+  await deliver();
+  await expect(status).toHaveText("正在读取文件");
+  await expect(character).toHaveAttribute("data-work", "working");
+  await expect
+    .poll(() => page.evaluate(() => Reflect.get(window, "activityArrivals")))
+    .toBe(1);
+  await expect(character).not.toHaveAttribute("data-entering");
+  await page.getByRole("tab", { name: "Work", exact: true }).click();
+  await expect(page.locator(".work-row").first()).toContainText("正在读取文件");
+  const result = {
+    id: "result",
+    turnId: "work",
+    role: "toolResult",
+    toolCallId: "read",
+    toolStatus: "done",
+    stopped: false,
+    content: [],
+  };
+  await page.evaluate(
+    (message) =>
+      Reflect.get(
+        window,
+        "deliverWorkActivity",
+      )({ type: "update", state: {}, messages: [message], removed: [] }),
+    result,
+  );
+  await expect(status).toHaveText("正在工作");
+  const reply = {
+    id: "reply",
+    turnId: "work",
+    role: "assistant",
+    stopped: false,
+    pending: true,
+    content: [{ type: "text", key: "reply", text: "正在整理结果。" }],
+  };
+  await page.evaluate(
+    (message) =>
+      Reflect.get(
+        window,
+        "deliverWorkActivity",
+      )({ type: "update", state: {}, messages: [message], removed: [] }),
+    reply,
+  );
+  await expect(status).toHaveText("正在回复");
+  const labelWidth = (
+    await header.locator(".chat-identity-label").boundingBox()
+  )?.width;
+  for (const [waiting, label] of [
+    ["等待你的回答。", "等你回答"],
+    ["等待你的确认。", "等你确认"],
+    ["等待你完成接管。", "等你完成接管"],
+  ]) {
+    await page.evaluate(
+      (waiting) =>
+        Reflect.get(
+          window,
+          "deliverWorkActivity",
+        )({
+          type: "update",
+          state: {
+            activity: [
+              {
+                botId: 1,
+                sessionId: 1,
+                executionId: "work",
+                processing: false,
+                waiting,
+              },
+            ],
+          },
+          messages: [],
+          removed: [],
+        }),
+      waiting,
+    );
+    await expect(status).toHaveText(label ?? "");
+    await expect(character).toHaveAttribute("data-work", "waiting");
+    await expect(character.locator(".character-computer-motion")).toHaveCSS(
+      "animation-name",
+      "none",
+    );
+    expect(
+      (await header.locator(".chat-identity-label").boundingBox())?.width,
+    ).toBe(labelWidth);
+  }
+  await page.evaluate(
+    (run) =>
+      Reflect.get(
+        window,
+        "deliverWorkActivity",
+      )({
+        type: "update",
+        state: { runs: [{ ...run, status: "stopping" }] },
+        messages: [],
+        removed: [],
+      }),
+    run,
+  );
+  await expect(status).toHaveText("正在停止");
+  expect(await page.locator(".chat-header").boundingBox()).toEqual(top);
+  await page.evaluate(() => Reflect.get(window, "disconnectWorkActivity")());
+  await expect(status).toBeEmpty();
+  await expect(character).not.toHaveAttribute("data-work");
+  await expect(status).toHaveText("正在读取文件");
+  expect(
+    await page.evaluate(() => Reflect.get(window, "activityArrivals")),
+  ).toBe(1);
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await header.screenshot({
+      path: info.outputPath(`working-identity-${theme}.png`),
+    });
+  }
+  state.busy = false;
+  state.runs = [{ ...run, status: "failed" }];
+  await deliver();
+  await expect(status).toBeEmpty();
+  await expect(character).not.toHaveAttribute("data-work");
+  state.busy = true;
+  state.activeTurnId = "next";
+  state.runs = [{ ...run, turnId: "next" }];
+  state.activity = [
+    {
+      ...state.activity[0],
+      botId: bot.id,
+      sessionId: snapshot.id,
+      executionId: "next",
+      processing: true,
+    },
+  ];
+  state.messages = [];
+  await deliver();
+  await expect(status).toHaveText("正在工作");
+  await expect
+    .poll(() => page.evaluate(() => Reflect.get(window, "activityArrivals")))
+    .toBe(2);
+  await expect(character).not.toHaveAttribute("data-entering");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  for (const shape of Object.keys(
+    characterNames,
+  ) as (keyof typeof characterNames)[]) {
+    const sample = await rpc("bots/create", {
+      name: `材质检查 ${shape}`,
+      avatar: characterSeed(shape, "#91df74"),
+      requestId: crypto.randomUUID(),
+    });
+    await page.getByRole("link", { name: sample.name, exact: false }).click();
+    await expect(character).toHaveAttribute("data-shape", shape);
+    await expect(character).toHaveAttribute("data-work", "working");
+    await expect(character.locator(".character-work-headset")).toHaveCSS(
+      "opacity",
+      "1",
+    );
+    await expect(character.locator(".character-work-computer")).toHaveCSS(
+      "opacity",
+      "1",
+    );
+    await expect(character.locator(".character-body")).toHaveCSS(
+      "animation-name",
+      "none",
+    );
+    const geometry = await header.evaluate((element) => {
+      const computer = element
+        .querySelector(".character-computer-motion")
+        ?.getBoundingClientRect();
+      const text = element
+        .querySelector(".chat-identity-title")
+        ?.getBoundingClientRect();
+      if (!computer || !text) throw new Error("Working identity required");
+      return { laptopBottom: computer.bottom, textTop: text.top };
+    });
+    expect(geometry.laptopBottom).toBeLessThanOrEqual(geometry.textTop + 1);
+    await header.screenshot({
+      path: info.outputPath(`working-shape-${shape}.png`),
+    });
+  }
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.keyboard.press("Escape");
+  await expect(header).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    390,
+  );
+  await header.click();
+  await expect(
+    page.getByRole("dialog", { name: "Bot详情", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(header).toBeFocused();
+  await header.press("Enter");
+  await expect(
+    page.getByRole("dialog", { name: "Bot详情", exact: true }),
+  ).toBeVisible();
+});
+
+test("team identity names the active member and counts parallel members", async ({
+  page,
+}, info) => {
+  const rpc = async (method: string, json: object = {}) =>
+    (
+      await (
+        await page.request.post(`${url}/rpc/${method}`, { data: { json } })
+      ).json()
+    ).json;
+  const owner = (await rpc("bots/list"))[0];
+  const reviewer = await rpc("bots/create", {
+    name: "Reviewer",
+    requestId: crypto.randomUUID(),
+  });
+  const teamId = crypto.randomUUID();
+  await rpc("teams/create", {
+    id: teamId,
+    name: "发布小队",
+    purpose: "检查发布",
+    owner: owner.id,
+    members: [owner.id, reviewer.id],
+  });
+  const snapshot = await rpc("teams/get", { id: teamId });
+  await page.addInitScript((initial) => {
+    const fetch = window.fetch.bind(window);
+    window.fetch = async (...args) => {
+      const input = args[0];
+      const address = input instanceof Request ? input.url : String(input);
+      if (!address.endsWith("/rpc/teams/changes")) return fetch(...args);
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            const deliver = (view: unknown) =>
+              controller.enqueue(
+                new TextEncoder().encode(
+                  `event: message\ndata: ${JSON.stringify({ json: { type: "snapshot", view } })}\n\n`,
+                ),
+              );
+            Reflect.set(window, "deliverTeamActivity", deliver);
+            deliver(initial);
+          },
+        }),
+        { headers: { "content-type": "text/event-stream" } },
+      );
+    };
+  }, snapshot);
+  await page.goto(url);
+  await page.getByRole("link", { name: "发布小队", exact: false }).click();
+  const header = page.locator(".chat-identity");
+  const status = header.locator(".chat-identity-status");
+  await expect(status).toBeEmpty();
+  const state = {
+    ...snapshot,
+    busy: true,
+    activity: [
+      {
+        botId: reviewer.id,
+        sessionId: 101,
+        executionId: "review",
+        processing: true,
+        author: {
+          botId: reviewer.id,
+          name: reviewer.name,
+          avatar: reviewer.avatar,
+        },
+      },
+    ],
+    runs: [],
+    messages: [
+      {
+        id: "call",
+        turnId: "review",
+        sessionId: 101,
+        role: "assistant",
+        stopped: false,
+        content: [
+          {
+            type: "toolCall",
+            id: "read",
+            key: "read",
+            name: "read",
+            arguments: {},
+          },
+        ],
+      },
+    ],
+  };
+  const deliver = () =>
+    page.evaluate(
+      (state) => Reflect.get(window, "deliverTeamActivity")(state),
+      state,
+    );
+  await deliver();
+  await expect(status).toHaveText("Reviewer 正在读取文件");
+  await expect(header.locator('.character[data-work="working"]')).toHaveCount(
+    1,
+  );
+  state.activity.push({
+    botId: owner.id,
+    sessionId: 102,
+    executionId: "write",
+    processing: true,
+    author: { botId: owner.id, name: owner.name, avatar: owner.avatar },
+  });
+  await deliver();
+  await expect(status).toHaveText("2 位成员正在工作");
+  await expect(header.locator('.character[data-work="working"]')).toHaveCount(
+    2,
+  );
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await header.screenshot({
+      path: info.outputPath(`team-working-${theme}.png`),
+    });
+  }
+  state.activity = [
+    { ...state.activity[0], waiting: "等待你的回答。", processing: false },
+    state.activity[1],
+  ];
+  await deliver();
+  await expect(status).toHaveText("Reviewer 等你回答");
+  await expect(header.locator('.character[data-work="working"]')).toHaveCount(
+    1,
+  );
+  state.activity = state.activity.slice(0, 1);
+  await deliver();
+  await expect(status).toHaveText("Reviewer 等你回答");
+  await expect(header.locator('.character[data-work="working"]')).toHaveCount(
+    0,
+  );
+  await expect(header.locator('.character[data-work="waiting"]')).toHaveCount(
+    1,
+  );
+  state.busy = false;
+  state.activity = [];
+  await deliver();
+  await expect(status).toBeEmpty();
+  await expect(header.locator(".character[data-work]")).toHaveCount(0);
 });
