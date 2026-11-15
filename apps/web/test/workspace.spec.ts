@@ -385,7 +385,7 @@ test("teams preserve member authors and keep private chats separate", async ({
     await page.emulateMedia({ colorScheme: theme });
     await expect(page.locator(".chat-identity-avatar")).toHaveCSS(
       "background-color",
-      "rgb(255, 255, 255)",
+      "rgba(0, 0, 0, 0)",
     );
     await page.screenshot({ path: info.outputPath(`team-${theme}.png`) });
   }
@@ -937,7 +937,19 @@ test("three columns keep the two-line identity and navigation clear at each widt
   const mark = capsule.locator(".engine-mark");
   const logo = await mark.boundingBox();
   if (!logo || !avatar) throw new Error("Identity icons missing");
-  expect(logo.y).toBeGreaterThan(avatar.y + avatar.height);
+  const label = capsule.locator(".chat-identity-label");
+  const nameplate = await label.boundingBox();
+  if (!nameplate) throw new Error("Identity nameplate missing");
+  expect(logo.y).toBeGreaterThan(nameplate.y);
+  expect(avatar.y + avatar.height - nameplate.y).toBe(10);
+  expect(nameplate.height).toBe(30);
+  await expect(capsule.locator(".chat-identity-avatar")).toHaveCSS(
+    "z-index",
+    "1",
+  );
+  await expect(label).toHaveCSS("border-radius", "8px");
+  await expect(label).not.toHaveCSS("box-shadow", "none");
+
   await expect(capsule.locator(".chat-identity-avatar")).toHaveCSS(
     "width",
     "56px",
@@ -969,11 +981,11 @@ test("three columns keep the two-line identity and navigation clear at each widt
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     await expect(capsule.locator(".chat-identity-avatar")).toHaveCSS(
       "background-color",
-      "rgb(255, 255, 255)",
+      "rgba(0, 0, 0, 0)",
     );
     await expect(capsule.locator(".chat-identity-label")).toHaveCSS(
       "background-color",
-      theme === "dark" ? "rgb(20, 20, 22)" : "rgb(250, 250, 250)",
+      theme === "dark" ? "rgb(20, 20, 22)" : "rgb(255, 255, 255)",
     );
     await expect(capsule).toHaveCSS("border-width", "0px");
     await expect(capsule).toHaveCSS("box-shadow", "none");
@@ -984,6 +996,9 @@ test("three columns keep the two-line identity and navigation clear at each widt
   }
   await details.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(details).toBeHidden();
+  await capsule.locator(".chat-identity-label").click();
+  await expect(details).toBeVisible();
+  await details.getByRole("button", { name: "关闭", exact: true }).click();
   await capsule.focus();
   await page.keyboard.press("Enter");
   await expect(details).toBeVisible();
@@ -1047,7 +1062,7 @@ test("identity labels retain long names and inline marks for each Harness", asyn
       await page.emulateMedia({ colorScheme: theme });
       await expect(identity.locator(".chat-identity-avatar")).toHaveCSS(
         "background-color",
-        "rgb(255, 255, 255)",
+        "rgba(0, 0, 0, 0)",
       );
       const boxes = await label.evaluate((node) => {
         const logo = node
@@ -1057,15 +1072,24 @@ test("identity labels retain long names and inline marks for each Harness", asyn
           .querySelector(".chat-identity-name")
           ?.getBoundingClientRect();
         if (!logo || !text) throw new Error("Identity label missing");
+        const frame = node.getBoundingClientRect();
         return {
           gap: text.x - logo.right,
           alignment: Math.abs(
             logo.y + logo.height / 2 - text.y - text.height / 2,
           ),
+          vertical: Math.abs(
+            text.y + text.height / 2 - frame.y - frame.height / 2,
+          ),
+          horizontal: Math.abs(
+            (logo.x + text.right) / 2 - frame.x - frame.width / 2,
+          ),
         };
       });
       expect(boxes.gap).toBe(4);
       expect(boxes.alignment).toBeLessThan(1);
+      expect(boxes.vertical).toBeLessThan(1);
+      expect(boxes.horizontal).toBeLessThan(1);
       await identity.screenshot({
         path: info.outputPath(`identity-${provider}-${theme}.png`),
       });
