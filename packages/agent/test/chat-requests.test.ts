@@ -7,7 +7,7 @@ import type { EngineApproval } from "../src/harness/types.ts";
 import { runtimeFixture } from "./fixtures/runtime.ts";
 
 for (const ending of ["answer", "deny", "expire", "restart"] as const) {
-  test(`request records survive ${ending} and restore from storage`, async () => {
+  test(`permission records survive ${ending} and restore from storage`, async () => {
     const fixture = await runtimeFixture();
     const { harness, conversation } = fixture;
     const boundary = new ComputerRuntime(
@@ -17,18 +17,10 @@ for (const ending of ["answer", "deny", "expire", "restart"] as const) {
       fixture.files,
     );
     const request: EngineApproval = {
-      id: "question",
-      kind: "question",
-      title: "Choose",
+      id: "permission",
+      kind: "permission",
+      title: "Allow operation",
       detail: "",
-      questions: [
-        {
-          id: "choice",
-          title: "Choose",
-          options: [{ id: "one", label: "One" }],
-          allowOther: true,
-        },
-      ],
     };
     const result = boundary.approve(
       conversation.id,
@@ -69,7 +61,7 @@ for (const ending of ["answer", "deny", "expire", "restart"] as const) {
       await boundary.answer(
         conversation.id,
         request.id,
-        { allow: ending === "answer", answers: { choice: ["Custom answer"] } },
+        { allow: ending === "answer" },
         context,
       );
     await result;
@@ -87,9 +79,6 @@ for (const ending of ["answer", "deny", "expire", "restart"] as const) {
           ? "denied"
           : "expired",
     );
-    if (ending === "answer")
-      expect(card?.approval?.answer?.answers).toEqual({
-        choice: ["Custom answer"],
-      });
+    if (ending === "answer") expect(card?.approval?.answer?.allow).toBe(true);
   });
 }

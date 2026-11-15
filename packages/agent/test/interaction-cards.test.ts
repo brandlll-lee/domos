@@ -46,6 +46,7 @@ test("media questions retain authorized file references and validate answers", a
   const botId = runtime.conversation.id;
   const api = {
     conversationId: botId,
+    taskId: 123,
     callId: "media",
     snapshot: runtime.harness.snapshot.bind(runtime.harness),
   } as Parameters<typeof tool.execute>[1];
@@ -112,7 +113,7 @@ test("media questions retain authorized file references and validate answers", a
     const saved = await runtime.harness.snapshot(
       QuestionDoc,
       botId,
-      "question:media",
+      "question:123:media",
       context,
     );
     expect(saved?.request?.attachments?.[0]?.id).toBe(file.id);
@@ -761,14 +762,18 @@ test.each(["pi", "codex", "claude", "opencode", "acp"])(
         context,
       );
       expect(JSON.stringify(await received.promise)).toContain("确认稿");
-      expect(JSON.stringify(await questionResult.promise)).toContain("sent");
+      const questionReply = await questionResult.promise;
+      expect(JSON.stringify(questionReply)).toContain("sent");
+      const content = questionReply.content[0];
+      if (content?.type !== "text") throw new Error("题卡回执缺少文本。");
+      const { questionId } = JSON.parse(content.text) as { questionId: string };
       await expect
         .poll(async () => (await engines.view(botId, context)).busy)
         .toBe(false);
       const question = await runtime.harness.snapshot(
         QuestionDoc,
         botId,
-        "question:question",
+        questionId,
         context,
       );
       expect(question?.request?.questions).toHaveLength(1);
@@ -801,7 +806,7 @@ test.each(["pi", "codex", "claude", "opencode", "acp"])(
           await runtime.harness.snapshot(
             QuestionDoc,
             botId,
-            "question:question",
+            questionId,
             context,
           )
         )?.answer,
@@ -810,14 +815,14 @@ test.each(["pi", "codex", "claude", "opencode", "acp"])(
       await expect(
         engines.answer(
           botId,
-          "question:question",
+          questionId,
           { allow: true, answers: { channel: ["unknown"] } },
           context,
         ),
       ).rejects.toThrow();
       await Promise.all([
-        engines.answer(botId, "question:question", answer, context),
-        engines.answer(botId, "question:question", answer, context),
+        engines.answer(botId, questionId, answer, context),
+        engines.answer(botId, questionId, answer, context),
       ]);
       await expect.poll(() => turns).toBe(2);
       await expect
@@ -826,7 +831,7 @@ test.each(["pi", "codex", "claude", "opencode", "acp"])(
       const view = await engines.view(botId, context);
       expect(
         view.messages.find(
-          (message) => message.approval?.request.id === "question:question",
+          (message) => message.approval?.request.id === questionId,
         )?.approval?.state,
       ).toBe("answered");
       expect(view.messages.filter((message) => message.reply)).toHaveLength(1);

@@ -251,7 +251,7 @@ export function interactionExtension(execution: EngineExecution) {
           const files = (ids?: string[]) =>
             ids?.map((id) => saved.get(id) as Attachment);
           const request: EngineApproval = {
-            id: `question:${api.callId}`,
+            id: `question:${api.taskId}:${api.callId}`,
             kind: "question",
             title: input.title,
             detail: input.body ?? "",
@@ -270,7 +270,17 @@ export function interactionExtension(execution: EngineExecution) {
             request,
             context,
           );
-          return toolResult({ status: "sent", questionId: published.id });
+          return toolResult({
+            status: published.answer
+              ? published.answer.allow
+                ? "answered"
+                : "cancelled"
+              : "sent",
+            questionId: published.request.id,
+            ...(published.answer?.answers
+              ? { answers: published.answer.answers }
+              : {}),
+          });
         },
       }),
       defineTool({

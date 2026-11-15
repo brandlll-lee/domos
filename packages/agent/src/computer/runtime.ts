@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type { JsonRepresentation } from "@earendil-works/chord";
 import {
   BACKGROUND_CONTEXT,
@@ -387,12 +388,17 @@ export class ComputerRuntime {
         request.id,
         null,
       );
-      if (!doc.request) {
-        const published = {
+      const published: EngineApproval = JSON.parse(
+        JSON.stringify({
           ...request,
-          requestedAt: request.requestedAt ?? Date.now(),
-        };
-        doc.request = JSON.parse(JSON.stringify(published));
+          requestedAt:
+            doc.request?.requestedAt ?? request.requestedAt ?? Date.now(),
+        }),
+      );
+      if (doc.request && !isDeepStrictEqual(doc.request, published))
+        throw new Error("问题请求标识重复。");
+      if (!doc.request) {
+        doc.request = published;
         const entry = await tx.appendEntry(botId as ConversationId, {
           kind: "domos.engine-message",
           data: JSON.parse(
@@ -401,7 +407,9 @@ export class ComputerRuntime {
         });
         doc.cursor = `${entry.id}:0`;
       }
-      return JSON.parse(JSON.stringify(doc.request)) as EngineApproval;
+      return JSON.parse(
+        JSON.stringify({ request: doc.request, answer: doc.answer }),
+      ) as { request: EngineApproval; answer?: EngineAnswer };
     }, context);
   }
   questionWaiting(botId: number, id: string) {
@@ -439,14 +447,9 @@ export class ComputerRuntime {
     }
     const question = ordinaryQuestion(approval);
     if (question) {
-      approval = await this.publishQuestion(botId, approval, context);
-      const saved = await this.harness.snapshot(
-        QuestionDoc,
-        botId as ConversationId,
-        approval.id,
-        context,
-      );
-      if (saved?.answer) return saved.answer;
+      const published = await this.publishQuestion(botId, approval, context);
+      approval = published.request;
+      if (published.answer) return published.answer;
     }
     const ownerId = await owningBot(
       this.harness,
