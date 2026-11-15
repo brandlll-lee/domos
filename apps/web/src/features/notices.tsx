@@ -2,6 +2,9 @@ import type { ChatAttention } from "@domos/agent/chat-directory";
 import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { Toast } from "@domos/ui/toast";
+import { InfoIcon } from "@phosphor-icons/react/dist/csr/Info";
+import { WarningIcon } from "@phosphor-icons/react/dist/csr/Warning";
+import { WarningCircleIcon } from "@phosphor-icons/react/dist/csr/WarningCircle";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { openChatTarget } from "./chat/attention.tsx";
@@ -93,8 +96,7 @@ function Notices({ children }: { children: ReactNode }) {
       if (unavailableRef.current) return;
       const options = {
         id,
-        title: "Domos",
-        description: message,
+        title: message,
         type: "error",
         data: { action, label },
       };
@@ -117,7 +119,7 @@ function Notices({ children }: { children: ReactNode }) {
     const recover = service === "failed" || service === "stopped";
     const options = {
       id,
-      title: "Domos",
+      title: recover ? "本机服务已停止" : "正在连接工作电脑",
       type: "error",
       timeout: 0,
       description:
@@ -151,35 +153,35 @@ function Notices({ children }: { children: ReactNode }) {
       <Toast.Portal>
         <Toast.Viewport className="attention-viewport">
           {toast.toasts.map((item) => {
+            const context = item.data?.attention
+              ? [item.data.attention.chatName, computer]
+                  .filter((value) => value && value !== item.title)
+                  .join(" · ")
+              : "";
             const content = (
               <>
-                <BotAvatar seed={item.data?.attention?.avatar ?? "domos"} />
-                <span>
+                {item.data?.attention ? (
+                  <BotAvatar seed={item.data.attention.avatar} />
+                ) : item.type === "error" ? (
+                  <WarningCircleIcon
+                    className="attention-symbol"
+                    aria-hidden="true"
+                  />
+                ) : item.type === "warning" ? (
+                  <WarningIcon
+                    className="attention-symbol"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <InfoIcon className="attention-symbol" aria-hidden="true" />
+                )}
+                <span className="attention-copy">
                   <Toast.Title className="attention-title" />
-                  <Toast.Description className="attention-description" />
-                  {item.data?.attention && (
-                    <span className="attention-context">
-                      {[item.data.attention.chatName, computer]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </span>
+                  {item.description && (
+                    <Toast.Description className="attention-description" />
                   )}
-                  {item.data?.action && (
-                    <Button
-                      variant="ghost"
-                      size="small"
-                      onClick={() => {
-                        void Promise.resolve()
-                          .then(item.data?.action)
-                          .catch(() =>
-                            manager.current.update(item.id, {
-                              description: "操作未完成，请重试。",
-                            }),
-                          );
-                      }}
-                    >
-                      {item.data.label}
-                    </Button>
+                  {context && (
+                    <span className="attention-context">{context}</span>
                   )}
                 </span>
               </>
@@ -190,6 +192,7 @@ function Notices({ children }: { children: ReactNode }) {
                 toast={item}
                 className="attention-toast"
                 data-error={item.type === "error" || undefined}
+                data-tone={item.type}
                 role={item.type === "error" ? "alert" : undefined}
               >
                 {item.data?.attention ? (
@@ -207,11 +210,30 @@ function Notices({ children }: { children: ReactNode }) {
                 ) : (
                   <div className="attention-body">{content}</div>
                 )}
+                {item.data?.action && (
+                  <Button
+                    variant="ghost"
+                    size="small"
+                    className="attention-action"
+                    onClick={() => {
+                      void Promise.resolve()
+                        .then(item.data?.action)
+                        .catch(() =>
+                          manager.current.update(item.id, {
+                            description: "操作未完成，请重试。",
+                          }),
+                        );
+                    }}
+                  >
+                    {item.data.label}
+                  </Button>
+                )}
                 <Toast.Close
                   render={
                     <Button
                       variant="ghost"
                       size="icon-small"
+                      className="attention-close"
                       aria-label="关闭提醒"
                     />
                   }

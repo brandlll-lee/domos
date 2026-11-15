@@ -5848,6 +5848,34 @@ test("AI services share connection reads and keep Bot model selection separate",
   const snapshot = Object.fromEntries(reads);
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-theme",
+      colorScheme,
+    );
+    for (const provider of ["pi", "opencode"]) {
+      const mark = settings.locator(
+        `.engine-mark[data-provider="${provider}"]`,
+      );
+      const paint = await mark.evaluate((node) => ({
+        fill: getComputedStyle(node).fill,
+        color: getComputedStyle(node).color,
+      }));
+      expect(paint.fill).toBe(paint.color);
+      expect(paint.fill).toBe(
+        colorScheme === "dark" ? "rgb(239, 239, 240)" : "rgb(32, 33, 35)",
+      );
+    }
+    for (const provider of ["codex", "claude"]) {
+      const mark = settings.locator(
+        `img.engine-mark[data-provider="${provider}"]`,
+      );
+      await expect
+        .poll(() =>
+          mark.evaluate((node) => (node as HTMLImageElement).naturalWidth),
+        )
+        .toBeGreaterThan(0);
+      await expect(mark).toHaveCSS("width", "24px");
+    }
     for (const [tone, color] of [
       ["positive", "rgb(37, 216, 132)"],
       ["warning", "rgb(255, 190, 50)"],
@@ -5859,7 +5887,7 @@ test("AI services share connection reads and keep Bot model selection separate",
       await expect(badge).toHaveCSS("background-color", color);
       const aligned = await badge.evaluate((node) => {
         const icon = node.parentElement
-          ?.querySelector("svg")
+          ?.querySelector(".engine-mark")
           ?.getBoundingClientRect();
         const dot = node.getBoundingClientRect();
         return Boolean(

@@ -10,14 +10,19 @@
   pointer-events: none;
 }
 .attention-toast {
-  display: flex;
+  display: grid;
+  grid-template-columns: var(--space-8) minmax(0, 1fr) var(--control-small);
   align-items: start;
-  padding: var(--space-3);
+  column-gap: var(--space-3);
+  row-gap: var(--space-2);
+  padding: var(--space-4);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-panel);
   background: var(--color-popup);
   box-shadow: var(--color-popup-shadow);
   color: var(--color-text);
+  max-height: calc(100dvh - 2 * var(--space-6));
+  overflow-y: auto;
   pointer-events: auto;
   transition:
     opacity var(--motion-message-in),
@@ -31,45 +36,80 @@
 .attention-toast[data-limited] {
   display: none;
 }
-.attention-toast[data-error] {
-  border-color: var(--color-danger);
+.attention-toast[data-tone="error"] {
+  background: var(--color-notice-error);
+  border-color: transparent;
+  color: var(--color-on-notice-error);
 }
-.attention-body {
-  display: flex;
+.attention-toast[data-tone="warning"] {
+  background: var(--color-notice-warning);
+  border-color: transparent;
+  color: var(--color-on-notice-warning);
+}
+.attention-body,
+.attention-toast .button.attention-body {
+  display: grid;
+  grid-template-columns: var(--space-8) minmax(0, 1fr);
+  grid-column: 1 / 3;
+  grid-row: 1;
   align-items: start;
   gap: var(--space-3);
-  flex: 1;
   min-width: 0;
-  padding: var(--space-2);
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   text-align: left;
   height: auto;
   white-space: normal;
+  color: inherit;
 }
-.attention-body > span:last-child {
+.attention-copy {
   display: grid;
   min-width: 0;
   gap: var(--space-1);
+  overflow-wrap: anywhere;
+}
+.attention-symbol {
+  width: var(--space-6);
+  height: var(--space-6);
+  margin: var(--space-1);
 }
 .attention-title {
   margin: 0;
   font-size: var(--text-label);
   font-weight: var(--weight-medium);
-}
-.attention-toast[data-error] .attention-title {
-  color: var(--color-danger);
+  line-height: var(--leading-body);
 }
 .attention-description {
   margin: 0;
   font-size: var(--text-label);
+  font-weight: var(--weight-regular);
   line-height: var(--leading-body);
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 .attention-context {
   font-size: var(--text-caption);
   color: var(--color-muted);
+}
+.attention-close {
+  grid-column: 3;
+  grid-row: 1;
+}
+.attention-action {
+  grid-column: 2;
+  justify-self: start;
+}
+.attention-toast .button.attention-action,
+.attention-toast .button.attention-close {
+  color: inherit;
+}
+.attention-toast .button.attention-action:hover,
+.attention-toast .button.attention-close:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.attention-toast[data-tone="error"],
+.attention-toast[data-tone="warning"] {
+  --color-focus: currentColor;
 }
 @media (prefers-reduced-motion: reduce) {
   .attention-toast {

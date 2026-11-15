@@ -57,6 +57,11 @@ test("connection loss uses one shared notice and keeps the chat and draft", asyn
   await expect(input).toHaveText("断线时保留草稿");
   for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await expect(notice).toHaveCSS("background-color", "rgb(180, 35, 50)");
+    await expect(notice).toHaveCSS("color", "rgb(255, 255, 255)");
+    await expect(notice.locator(".bot-avatar")).toHaveCount(0);
+    await expect(notice.locator(".attention-symbol")).toBeVisible();
     await page.screenshot({
       path: info.outputPath(`connection-notice-${theme}.png`),
       animations: "disabled",
@@ -70,7 +75,7 @@ test("connection loss uses one shared notice and keeps the chat and draft", asyn
 
 test("read failures use the branded warning and retry clears it", async ({
   page,
-}) => {
+}, info) => {
   let fail = true;
   await page.route("**/rpc/chats/receipts", (route) =>
     fail
@@ -87,6 +92,54 @@ test("read failures use the branded warning and retry clears it", async ({
   fail = false;
   await warning.getByRole("button", { name: "重试", exact: true }).click();
   await expect(warning).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const errorText = "工作电脑无法保存当前设置。".repeat(12);
+  await page.evaluate((message) => {
+    window.dispatchEvent(
+      new CustomEvent("domos:error", {
+        detail: {
+          id: "settings-save",
+          message,
+          label: "重试",
+          action: () => {},
+        },
+      }),
+    );
+  }, errorText);
+  await expect(warning).toContainText(errorText);
+  const title = warning.locator(".attention-title");
+  await expect(title).toHaveCSS("-webkit-line-clamp", "none");
+  const aligned = await warning.evaluate((node) => {
+    const title = node
+      .querySelector(".attention-title")
+      ?.getBoundingClientRect();
+    const action = node
+      .querySelector(".attention-action")
+      ?.getBoundingClientRect();
+    return Boolean(
+      title &&
+        action &&
+        Math.abs(title.x - action.x) < 1 &&
+        action.y >= title.bottom,
+    );
+  });
+  expect(aligned).toBe(true);
+  expect(
+    await warning.evaluate((node) => node.scrollWidth <= node.clientWidth),
+  ).toBe(true);
+  await expect(warning).toHaveCSS("opacity", "1");
+  await expect(warning.locator(".attention-action")).toHaveCSS(
+    "color",
+    "rgb(255, 255, 255)",
+  );
+  await expect(warning.locator(".attention-close")).toHaveCSS(
+    "color",
+    "rgb(255, 255, 255)",
+  );
+  await page.screenshot({
+    path: info.outputPath("error-notice-narrow.png"),
+    animations: "disabled",
+  });
 });
 test.beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), "domos-attention-"));
@@ -265,6 +318,12 @@ test("attention identifies the assistant, opens its message and respects mute", 
   await expect(page.locator(".attention-toast")).toHaveCSS("opacity", "1");
   for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await expect(page.locator(".attention-title")).toHaveCSS(
+      "color",
+      theme === "dark" ? "rgb(239, 239, 240)" : "rgb(32, 33, 35)",
+    );
+    await expect(page.locator(".attention-context")).toHaveCount(0);
     await page.screenshot({
       path: info.outputPath(`attention-${theme}.png`),
       animations: "disabled",

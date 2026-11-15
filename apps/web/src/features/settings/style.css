@@ -136,7 +136,7 @@
   width: var(--space-6);
   margin-inline-start: var(--space-3);
 }
-.ai-service-mark svg {
+.ai-service-mark .engine-mark {
   width: var(--space-6);
   height: var(--space-6);
 }

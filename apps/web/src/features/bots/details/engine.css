@@ -33,12 +33,6 @@
   min-height: var(--control-height);
   padding: var(--space-3);
 }
-.engine-mark {
-  flex-shrink: 0;
-  width: var(--space-5);
-  height: var(--space-5);
-  fill: currentColor;
-}
 .engine-connection {
   display: flex;
   flex-wrap: wrap;

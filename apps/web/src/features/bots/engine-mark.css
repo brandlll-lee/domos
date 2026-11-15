@@ -1,0 +1,10 @@
+.engine-mark {
+  flex-shrink: 0;
+  width: var(--space-5);
+  height: var(--space-5);
+  object-fit: contain;
+  fill: currentColor;
+}
+.engine-mark[data-provider="codex"] {
+  padding: 1px;
+}

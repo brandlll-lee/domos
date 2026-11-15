@@ -206,7 +206,6 @@
   padding: var(--space-1);
   border-radius: var(--radius-round);
   background: var(--color-control-hover);
-  fill: currentColor;
 }
 .chat-identity-name {
   overflow: hidden;
@@ -265,7 +264,6 @@
   position: relative;
   width: 0.8125rem;
   height: 0.8125rem;
-  fill: currentColor;
 }
 .context-window-footer {
   display: grid;

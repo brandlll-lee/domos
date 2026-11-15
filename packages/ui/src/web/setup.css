@@ -171,7 +171,6 @@
   width: var(--avatar-small);
   height: var(--avatar-small);
   margin-right: var(--space-3);
-  fill: currentColor;
 }
 .setup-provider > svg:last-child {
   margin-left: auto;
@@ -206,7 +205,6 @@
 .setup-provider-name .engine-mark {
   width: var(--avatar-small);
   height: var(--avatar-small);
-  fill: currentColor;
 }
 .setup-connection .model-selector-connection {
   display: grid;

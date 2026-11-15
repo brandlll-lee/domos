@@ -86,3 +86,9 @@ Source: https://github.com/DominikScholz/open-bot-avatar
 SheetJS Community Edition
 Licensed under the Apache License, Version 2.0. See licenses/sheetjs.txt.
 Source: https://git.sheetjs.com/sheetjs/sheetjs
+
+magpie Harness icons
+Copyright (c) 2026 yetone
+Licensed under the MIT License. See licenses/magpie.txt.
+Source: https://github.com/yetone/magpie/tree/45185710e4bb4c1d3fbff4a0c5c134dcf6054f88/internal/gui/assets/icons
+Assets: codex-color.svg and claudecode-color.svg.
