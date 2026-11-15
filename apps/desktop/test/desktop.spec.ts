@@ -571,6 +571,7 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
       .locator("#bot-details")
       .getByRole("button", { name: "关闭", exact: true })
       .click();
+    await expect(page.locator("#bot-details")).toBeHidden();
     const environment = page.getByRole("button", {
       name: "用户菜单",
       exact: true,

@@ -205,6 +205,9 @@ test("teams preserve member authors and keep private chats separate", async ({
     .getByRole("dialog", { name: "选择 Bot", exact: true })
     .getByRole("button", { name: "Reviewer", exact: true })
     .click();
+  await expect(
+    page.getByRole("dialog", { name: "选择 Bot", exact: true }),
+  ).toBeHidden();
   await input.press("End");
   await page.getByRole("button", { name: "添加内容", exact: true }).click();
   await page.getByRole("menuitem", { name: "选择 Bot…", exact: true }).click();
@@ -212,6 +215,9 @@ test("teams preserve member authors and keep private chats separate", async ({
     .getByRole("dialog", { name: "选择 Bot", exact: true })
     .getByRole("button", { name: "Domos", exact: true })
     .click();
+  await expect(
+    page.getByRole("dialog", { name: "选择 Bot", exact: true }),
+  ).toBeHidden();
   await input.pressSequentially("@Rev");
   await input.press("Enter");
   await page
@@ -506,6 +512,9 @@ test("team identity names the active member and counts parallel members", async 
   }, snapshot);
   await page.goto(service.url);
   await page.getByRole("link", { name: "发布小队", exact: false }).click();
+  await page.waitForFunction(
+    () => typeof Reflect.get(window, "deliverTeamActivity") === "function",
+  );
   const header = page.locator(".chat-identity");
   const status = header.locator(".chat-identity-status");
   await expect(status).toBeEmpty();

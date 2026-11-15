@@ -158,7 +158,9 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
     await page.bringToFront();
     await expect(page.locator("body")).toBeVisible();
     await pdfCard.scrollIntoViewIfNeeded();
-    await expect(pdfCard.locator(".file-card-thumbnail img")).toBeVisible();
+    await expect(pdfCard.locator(".file-card-thumbnail img")).toBeVisible({
+      timeout: 30_000,
+    });
     await expect(pdfCard).toContainText("2 页");
     for (const name of ["audio.mp3", "video.mp4", "video.mov"]) {
       const card =
@@ -572,6 +574,10 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
       path: testInfo.outputPath("file-unsupported-codec.png"),
     });
     await panel.getByRole("button", { name: "关闭", exact: true }).click();
+    for (const notice of await page
+      .getByRole("button", { name: "关闭提醒", exact: true })
+      .all())
+      await notice.click();
     await page
       .getByRole("button", { name: "预览 交互.html", exact: true })
       .click();

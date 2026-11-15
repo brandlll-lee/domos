@@ -228,8 +228,10 @@ test("a send receipt preserves the draft after switching away and back", async (
       page.getByRole("button", { name: "发送中…", exact: true }),
     ).toBeVisible();
     await page.getByRole("link", { name: "其他助手", exact: true }).click();
+    await expect(page.locator(".chat-identity-label")).toHaveText("其他助手");
     await input.fill("其他机器人的草稿");
     await page.getByRole("link", { name: "Domos", exact: true }).click();
+    await expect(page.locator(".chat-identity-label")).toHaveText("Domos");
     await input.fill("下一条草稿");
     await expect(page.getByRole("alert")).toHaveCount(0);
   } finally {

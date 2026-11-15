@@ -538,6 +538,7 @@ test("late history updates and reconnect snapshots retain the reading anchor", a
   }, initial);
   await page.goto(service.url);
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(48);
+  await expect(page.getByLabel("Domos 的回复").last()).toBeInViewport();
   const transcript = page.locator(".transcript");
   await transcript.evaluate((el) => {
     el.scrollTop = el.scrollHeight / 2;

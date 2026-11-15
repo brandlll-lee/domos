@@ -73,8 +73,6 @@ async function point(
   name: "draft" | "hover" | "confirm",
   fraction = 0.5,
 ) {
-  const rect = await image.boundingBox();
-  if (!rect) throw new Error("Page image missing");
   await expect
     .poll(() =>
       image.evaluate(
@@ -82,6 +80,8 @@ async function point(
       ),
     )
     .toBe(true);
+  const rect = await image.boundingBox();
+  if (!rect) throw new Error("Page image missing");
   const size = await image.evaluate((node: HTMLImageElement) => ({
     width: node.naturalWidth,
     height: node.naturalHeight,
@@ -371,6 +371,12 @@ for (const refresh of [false, true]) {
       expect(state.height).toBeGreaterThan(0);
       const at = await point(image, state, "draft");
       await page.mouse.click(at.x, at.y);
+      await expect
+        .poll(
+          async () =>
+            (await (await request.get(`${url}/takeover-state`)).json()).focused,
+        )
+        .toBe("draft");
       const keyboard = view.getByRole("textbox", { name: "网页键盘输入" });
       await keyboard.press(
         `${process.platform === "darwin" ? "Meta" : "Control"}+a`,

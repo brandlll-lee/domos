@@ -5,7 +5,10 @@ import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
+import {
+  ProgressNotificationSchema,
+  ToolListChangedNotificationSchema,
+} from "@modelcontextprotocol/sdk/types.js";
 import { expect, onTestFinished, test } from "vitest";
 import { closeMcpClients, mcpOperation } from "../src/harness/mcp-client.mjs";
 import { WorkProcess } from "../src/harness/process.ts";
@@ -87,14 +90,22 @@ test("stdio forwarding retains MCP results, changes, cancellation and process cl
     (await client.listTools({ cursor: page.nextCursor })).tools[0]?.name,
   ).toBe("query_result");
   let progress: unknown;
+  client.setNotificationHandler(ProgressNotificationSchema, ({ params }) => {
+    progress = params;
+  });
   expect(
-    await client.callTool({ name: "query_result" }, undefined, {
-      onprogress: (value) => {
-        progress = value;
-      },
+    await client.callTool({
+      name: "query_result",
+      _meta: { progressToken: "stdio-query" },
     }),
   ).toEqual(upstream.result);
-  await expect.poll(() => progress).toMatchObject({ progress: 1, total: 2 });
+  await expect
+    .poll(() => progress)
+    .toMatchObject({
+      progressToken: "stdio-query",
+      progress: 1,
+      total: 2,
+    });
   expect((await client.listResources()).resources[0]?.uri).toBe(
     "fixture://note",
   );

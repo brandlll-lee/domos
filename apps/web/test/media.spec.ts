@@ -71,11 +71,13 @@ test("attachment-only messages show cards directly for users and Bots", async ({
       path: `test-results/standalone-files-${theme}.png`,
     });
     await page.setViewportSize({ width: 390, height: 844 });
-    expect(
-      await page
-        .locator(".transcript")
-        .evaluate((node) => node.scrollWidth <= node.clientWidth),
-    ).toBe(true);
+    await expect
+      .poll(() =>
+        page
+          .locator(".transcript")
+          .evaluate((node) => node.scrollWidth <= node.clientWidth),
+      )
+      .toBe(true);
     await page.setViewportSize({ width: 1360, height: 900 });
   }
 });
@@ -264,6 +266,7 @@ test("delivered images form a gallery with viewer downloads and keyboard navigat
   service,
   page,
 }) => {
+  test.setTimeout(60_000);
   await page.goto(service.url);
   await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   const images = [

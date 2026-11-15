@@ -728,6 +728,10 @@ test("chat content shares a centered width and fills narrow panes", async ({
   });
   await expect(page.locator(".takeover-card")).toBeVisible();
   await page.setViewportSize({ width: 390, height: 900 });
+  await expect(page.locator(".workspace")).toHaveAttribute(
+    "data-mobile",
+    "true",
+  );
   const narrow = await geometry();
   expect(narrow.scrollWidth).toBeLessThanOrEqual(narrow.viewportWidth);
   expect(

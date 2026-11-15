@@ -157,6 +157,7 @@ test("composer grows, shrinks, and keeps one focus surface in both themes", asyn
     const input = page.getByLabel("消息", { exact: true });
     await input.fill("继续整理资料");
     await input.clear();
+    await expect(input).toHaveAttribute("data-empty", "true");
     await expectTextContrast(page);
     await input.click();
     await expect(input).toHaveCSS("outline-style", "none");
