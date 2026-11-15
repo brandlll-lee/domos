@@ -229,23 +229,24 @@ test("large histories render a bounded window and retain the earlier reading anc
       const top = node.getBoundingClientRect().top;
       const samples: number[] = [];
       Reflect.set(window, "anchorSamples", samples);
-      Reflect.set(window, "samplingAnchor", true);
       const sample = () => {
         samples.push(
           node.isConnected
             ? Math.abs(node.getBoundingClientRect().top - top)
             : Infinity,
         );
-        if (Reflect.get(window, "samplingAnchor"))
-          requestAnimationFrame(() => setTimeout(sample, 0));
       };
-      requestAnimationFrame(() => setTimeout(sample, 0));
+      const observer = new ResizeObserver(sample);
+      const messages = viewport.querySelector(".messages");
+      if (!messages) throw new Error("Messages required");
+      observer.observe(messages);
+      Reflect.set(window, "anchorObserver", observer);
     });
   }
   async function checkAnchor() {
     const samples = await page.evaluate(async () => {
       await new Promise(requestAnimationFrame);
-      Reflect.set(window, "samplingAnchor", false);
+      (Reflect.get(window, "anchorObserver") as ResizeObserver).disconnect();
       return Reflect.get(window, "anchorSamples") as number[];
     });
     expect(samples.length).toBeGreaterThan(1);

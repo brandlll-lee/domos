@@ -186,30 +186,36 @@ test("Claude questions return distinct answers and use the Bot skill and memory 
     requestId: crypto.randomUUID(),
   });
   await expect
-    .poll(async () => (await client.get({ botId })).approvals?.[0]?.kind)
-    .toBe("question");
-  const approval = (await client.get({ botId })).approvals?.[0];
+    .poll(async () => (await client.get({ botId })).approvals?.length)
+    .toBe(2);
+  const approvals = (await client.get({ botId })).approvals ?? [];
   expect(operation).toMatchObject({
     behavior: "allow",
     updatedInput: { command: "pwd" },
   });
-  if (!approval) throw new Error("Native question was not received");
+
   expect((await client.engines.get({ botId })).config.provider).toBe("claude");
-  expect(approval?.questions).toMatchObject([
-    { id: "Target?", multiple: false },
-    { id: "Regions?", multiple: true },
+  expect(approvals.map((approval) => approval.questions)).toMatchObject([
+    [{ id: "Target?", multiple: false }],
+    [{ id: "Regions?", multiple: true }],
   ]);
+  expect(new Set(approvals.map((approval) => approval.id)).size).toBe(2);
   await runtime.harness.commit(async (tx) => {
     const binding = (await tx.doc(ComputersDoc)).bindings[String(botId)];
     if (binding) binding.approvalMode = "ask";
     (await tx.doc(EngineDoc, botId)).config.approvalMode = "ask";
   }, context);
-  await client.engines.answer({
-    botId,
-    id: approval.id,
-    allow: true,
-    answers: { "Target?": ["Preview"], "Regions?": ["EU", "US"] },
-  });
+  for (const approval of approvals) {
+    await client.engines.answer({
+      botId,
+      id: approval.id,
+      allow: true,
+      answers:
+        approval.questions?.[0]?.id === "Target?"
+          ? { "Target?": ["Preview"] }
+          : { "Regions?": ["EU", "US"] },
+    });
+  }
   await expect
     .poll(async () => (await client.get({ botId })).approvals?.[0]?.kind)
     .toBe("permission");

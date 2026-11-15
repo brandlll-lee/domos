@@ -373,7 +373,7 @@ for (const refresh of [false, true]) {
       await page.mouse.click(at.x, at.y);
       const keyboard = view.getByRole("textbox", { name: "网页键盘输入" });
       await keyboard.press(
-        `${process.platform === "darwin" ? "Meta" : "Control"}+A`,
+        `${process.platform === "darwin" ? "Meta" : "Control"}+a`,
       );
       await keyboard.pressSequentially("mode-switch");
       await expect

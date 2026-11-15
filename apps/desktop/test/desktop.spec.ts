@@ -288,12 +288,11 @@ test("native setup starts and resumes with Docker unavailable", async ({
         ).toBeEnabled();
       } else await expect.poll(service).toBe("failed");
     }
-    await expect(resumed.locator(".attention-toast[data-error]")).toHaveCount(
-      1,
-    );
-    await expect(resumed.locator(".attention-toast")).toContainText(
-      "本机服务已停止",
-    );
+    const stoppedNotice = resumed.getByRole("alert", {
+      name: "本机服务已停止",
+      exact: true,
+    });
+    await expect(stoppedNotice).toHaveCount(1);
     await expect(
       resumed
         .locator('.sidebar-empty[role="status"]')
@@ -302,7 +301,7 @@ test("native setup starts and resumes with Docker unavailable", async ({
     await expect(draft).toHaveText("服务恢复后保留这份草稿");
     expect(resumed.url()).toBe(identity);
     expect(
-      await resumed.locator(".attention-toast").evaluate((element) => {
+      await stoppedNotice.evaluate((element) => {
         const bounds = element.getBoundingClientRect();
         return bounds.left >= 0 && bounds.right <= innerWidth;
       }),
@@ -320,9 +319,7 @@ test("native setup starts and resumes with Docker unavailable", async ({
       .getByRole("button", { name: "恢复服务", exact: true })
       .click();
     await expect.poll(service).toBe("ready");
-    await expect(resumed.locator(".attention-toast[data-error]")).toHaveCount(
-      0,
-    );
+    await expect(stoppedNotice).toHaveCount(0);
     await expect(draft).toHaveText("服务恢复后保留这份草稿");
     expect(
       await resumed.evaluate(
@@ -614,9 +611,9 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     for (const theme of ["dark", "light"] as const) {
       await page.emulateMedia({ colorScheme: theme });
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-      await expect(page.locator(".chat-identity")).toHaveCSS(
+      await expect(page.locator(".chat-identity-label")).toHaveCSS(
         "background-color",
-        theme === "dark" ? "rgb(20, 20, 22)" : "rgb(250, 250, 250)",
+        theme === "dark" ? "rgb(20, 20, 22)" : "rgb(255, 255, 255)",
       );
       await captureWindow(
         desktop,

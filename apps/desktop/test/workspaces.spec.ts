@@ -107,7 +107,9 @@ test("workspaces switch in one window and preserve identity, authorization and r
       true,
     );
     await choose(pageA, "离线电脑");
-    await expect(pageA.getByRole("alert")).toBeVisible();
+    await expect(
+      pageA.getByRole("alert", { name: "fetch failed", exact: true }),
+    ).toBeVisible();
     expect(await selected()).toBe(ids[0]);
     await expect(
       pageA.getByRole("textbox", { name: "消息", exact: true }),
@@ -258,7 +260,9 @@ test("workspaces switch in one window and preserve identity, authorization and r
     await requested.promise;
     await choose(pageA, "离线电脑");
     delayed.resolve();
-    await expect(pageA.getByRole("alert")).toBeVisible();
+    await expect(
+      pageA.getByRole("alert", { name: "fetch failed", exact: true }),
+    ).toBeVisible();
     expect(await selected()).toBe(ids[0]);
     await desktop.context().unroute(`${b.origin}/hosting/session`);
     const before = await selected();
@@ -266,7 +270,9 @@ test("workspaces switch in one window and preserve identity, authorization and r
     await rename(config, `${config}.saved`);
     await mkdir(config);
     await choose(pageA, "电脑 B");
-    await expect(pageA.getByRole("alert")).toBeVisible();
+    await expect(
+      pageA.getByRole("alert").filter({ hasText: "instances.json" }),
+    ).toBeVisible();
     await expect(
       pageA.getByRole("textbox", { name: "消息", exact: true }),
     ).toHaveText("A 的草稿");

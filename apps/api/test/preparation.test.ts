@@ -1,4 +1,11 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { openChat } from "@domos/agent/chat";
@@ -117,8 +124,8 @@ test("project selection preserves personal files and uses the same directory aft
   await computer.authorize("process", true, context);
   const personal = (await computer.workspace(bot.id, context)).cwd;
   await writeFile(join(personal, "note.txt"), "personal");
-  const project = join(personal, "project");
-  await mkdir(project);
+  await mkdir(join(personal, "project"));
+  const project = await realpath(join(personal, "project"));
   await writeFile(join(project, "source.txt"), "project");
   const input = {
     botId: bot.id,
@@ -127,7 +134,9 @@ test("project selection preserves personal files and uses the same directory aft
     requestId: crypto.randomUUID(),
   };
   const listing = await computer.directories(bot.id, personal, context);
-  expect(listing.items).toEqual([{ name: "project", path: project }]);
+  expect(listing.items).toEqual([
+    { name: "project", path: join(personal, "project") },
+  ]);
   await computer.directory(input, context);
   expect(await computer.directory(input, context)).toMatchObject({
     revision: 1,

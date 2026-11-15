@@ -685,7 +685,18 @@ test("chat content shares a centered width and fills narrow panes", async ({
     .fill("检查长表格布局");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.locator(".message table")).toBeVisible();
-  await page.route("**/rpc/send", (route) => route.abort());
+  await page.route("**/rpc/send", (route) =>
+    route.fulfill({
+      status: 400,
+      contentType: "application/json",
+      body: JSON.stringify({
+        defined: false,
+        code: "BAD_REQUEST",
+        status: 400,
+        message: "发送失败",
+      }),
+    }),
+  );
   await page
     .getByRole("textbox", { name: "消息", exact: true })
     .fill("检查发送错误的对齐");

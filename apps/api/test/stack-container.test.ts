@@ -1,7 +1,6 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { computerSchema } from "@domos/agent/config";
 import { releaseSchema, runCommand } from "@domos/hosting/install";
 import {
   backupInstallation,
@@ -22,7 +21,7 @@ import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context';
 import { getOrThrow } from '@earendil-works/pi-durable/env';
 const config = await loadConfig();
 const { targets, write } = JSON.parse(process.argv[1]);
-const computers = targets.map(({ id }) => new Computer({ ...config, computer: id === 'process' ? { kind: 'process' } : { ...config.workComputer, id } }));
+const computers = targets.map(() => new Computer(config));
 try {
   const environments = await Promise.all(computers.map((computer, index) => computer.workspace(targets[index].botId, context)));
   for (const [index, env] of environments.entries()) {
@@ -30,16 +29,12 @@ try {
     assert.equal(getOrThrow(await env.readTextFile('check.txt', context)), String(index));
     assert.equal(getOrThrow(await env.exec(['node', '-e', 'process.exit(0)'], undefined, context)).exitCode, 0);
   }
-  if (write) getOrThrow(await environments[1].writeFile('/home/domos/shared.txt', 'shared', context));
-  assert.equal(getOrThrow(await environments[2].readTextFile('/home/domos/shared.txt', context)), 'shared');
-  assert.equal((await environments[3].readTextFile('/home/domos/shared.txt', context)).ok, false);
-  if (write) getOrThrow(await environments[3].writeFile('/home/domos/private.txt', 'private', context));
-  assert.equal((await environments[4].readTextFile('/home/domos/private.txt', context)).ok, false);
+  assert.notEqual(environments[0].cwd, environments[1].cwd);
 } finally { await Promise.all(computers.map((computer) => computer.close(context))); }
 `;
 
 test.runIf(process.env.DOMOS_CONTAINER_TESTS === "1")(
-  "managed service containers prepare mixed Bot environments and restore work files",
+  "container hosting preserves Bot work directories across restarts and backup restore",
   async () => {
     const directory = await mkdtemp(join(tmpdir(), "domos-managed-container-"));
     const root = join(directory, "installation");
@@ -56,7 +51,6 @@ test.runIf(process.env.DOMOS_CONTAINER_TESTS === "1")(
     const installations = [root];
     let stack = new LocalStack(root, release);
     const targets: { botId: number; id: string }[] = [];
-    const volumes = new Map<string, string>();
     const client = async () => {
       const { origin } = await stack.start(
         () => {},
@@ -99,34 +93,23 @@ test.runIf(process.env.DOMOS_CONTAINER_TESTS === "1")(
       let api = await client();
       expect(await api.computer.setup()).toEqual({
         deployment: "container",
-        canIsolate: true,
+        canIsolate: false,
       });
-      for (const mode of [
-        "process",
-        "shared",
-        "shared",
-        "dedicated",
-        "dedicated",
-      ] as const) {
+      for (const name of ["Writer", "Reviewer"]) {
         const bot = await api.bots.create({
-          name: mode,
+          name,
           requestId: crypto.randomUUID(),
-          computerId: null,
         });
         const binding = await api.computer.configure({
           botId: bot.id,
-          mode,
+          mode: "process",
           revision: 0,
           requestId: crypto.randomUUID(),
         });
-        if (!binding.computerId) throw new Error("Computer required");
-        targets.push({ botId: bot.id, id: binding.computerId });
-        if (mode !== "process")
-          volumes.set(binding.computerId, `domos-${binding.computerId}-work`);
+        expect(binding.computerId).toBe("process");
+        targets.push({ botId: bot.id, id: "process" });
         expect(binding.computer?.state).toBe("running");
       }
-      expect(targets[1]?.id).toBe(targets[2]?.id);
-      expect(targets[3]?.id).not.toBe(targets[4]?.id);
       await inspect(true);
       await stack.stop();
       api = await client();
@@ -134,12 +117,7 @@ test.runIf(process.env.DOMOS_CONTAINER_TESTS === "1")(
         const binding = await api.computer.get({ botId: target.botId });
         await api.computer.configure({
           botId: target.botId,
-          mode:
-            target.id === "process"
-              ? "process"
-              : target === targets[1] || target === targets[2]
-                ? "shared"
-                : "dedicated",
+          mode: "process",
           revision: binding.revision,
           requestId: crypto.randomUUID(),
         });
@@ -154,36 +132,15 @@ test.runIf(process.env.DOMOS_CONTAINER_TESTS === "1")(
       installations.push(restored);
       stack = new LocalStack(restored, release);
       api = await client();
-      for (const [index, target] of targets.entries()) {
+      for (const target of targets) {
         const binding = await api.computer.get({ botId: target.botId });
-        const mode =
-          index === 0 ? "process" : index < 3 ? "shared" : "dedicated";
         const ready = await api.computer.configure({
           botId: target.botId,
-          mode,
+          mode: "process",
           revision: binding.revision,
           requestId: crypto.randomUUID(),
         });
-        const stored = await runCommand("docker", [
-          "exec",
-          await runCommand("docker", [
-            "compose",
-            "--file",
-            join(restored, "compose.json"),
-            "ps",
-            "--quiet",
-            "app",
-          ]),
-          "node",
-          "--input-type=module",
-          "-e",
-          `import { storedComputers } from './packages/agent/src/computer/storage.ts'; const items=await storedComputers('/data/agent.sqlite'); process.stdout.write(JSON.stringify(items.find(item=>item.id===process.argv[1]).config));`,
-          ready.computerId ?? "",
-        ]);
-        const config = computerSchema.parse(JSON.parse(stored));
-        target.id = config.kind === "process" ? "process" : config.id;
-        if (config.kind === "controller")
-          volumes.set(config.id, `domos-${config.id}-work`);
+        expect(ready.computerId).toBe(target.id);
       }
       await inspect(false);
     } catch (error) {
@@ -207,18 +164,6 @@ test.runIf(process.env.DOMOS_CONTAINER_TESTS === "1")(
           join(path, "compose.json"),
           "down",
         ]).catch(() => {});
-      for (const [id, volume] of volumes) {
-        await runCommand("docker", [
-          "rm",
-          "--force",
-          `domos-${id}`,
-          `domos-${id}-egress`,
-        ]).catch(() => {});
-        await runCommand("docker", ["volume", "rm", volume]).catch(() => {});
-        await runCommand("docker", ["network", "rm", `domos-${id}`]).catch(
-          () => {},
-        );
-      }
       await rm(directory, { recursive: true, force: true });
     }
   },

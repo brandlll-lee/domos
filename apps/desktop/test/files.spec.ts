@@ -561,6 +561,9 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
     await page
       .getByRole("button", { name: "预览 prores.mov", exact: true })
       .click();
+    await panel
+      .locator("video")
+      .evaluate((video: HTMLVideoElement) => video.play().catch(() => {}));
     await expect(panel.getByRole("alert")).toContainText("编码无法");
     await expect(
       panel.getByRole("button", { name: "下载文件", exact: true }),
