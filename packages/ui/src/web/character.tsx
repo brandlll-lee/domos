@@ -37,6 +37,7 @@ const textures = {
   triangle,
   capsule,
 };
+const bodyPadding = (48 / 1024) * 100;
 const channels = (color: string) =>
   [1, 3, 5].map((index) => Number.parseInt(color.slice(index, index + 2), 16));
 
@@ -164,8 +165,10 @@ export function Character({
         <g className="character-body">
           <image
             href={texture}
-            width="100"
-            height="100"
+            x={-bodyPadding}
+            y={-bodyPadding}
+            width={100 + bodyPadding * 2}
+            height={100 + bodyPadding * 2}
             filter={`url(#${id}-tint)`}
           />
           <g

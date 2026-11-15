@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 import {
+  type CharacterShape,
   characterColors,
   characterIdentity,
   characterNames,
@@ -46,6 +47,23 @@ test("saved identities retain their shape and color", () => {
     shape: "star",
     color: "#f5c85a",
   });
+});
+
+test("plush padding retains the body coordinate frame and independent eyes", () => {
+  for (const shape of [
+    "cat",
+    ...Object.keys(characterNames),
+  ] as CharacterShape[]) {
+    const html = renderToStaticMarkup(
+      createElement(Character, { shape, color: "#91df74", state: "idle" }),
+    );
+    expect(html).toContain(
+      'x="-4.6875" y="-4.6875" width="109.375" height="109.375"',
+    );
+    expect(html).toContain('class="character-face"');
+    expect(html.match(/class="character-eyelid"/g)).toHaveLength(2);
+    expect(html).toContain('class="character-pupils"');
+  }
 });
 
 test("all fifteen shapes and eighteen colors can be selected independently", () => {

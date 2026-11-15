@@ -253,7 +253,7 @@ test("plush identities load, animate and survive profile changes", async ({
       });
     expect(bodies).toHaveLength(15);
     for (const body of bodies) {
-      expect(body.size).toEqual([1024, 1024]);
+      expect(body.size).toEqual([1120, 1120]);
       expect(body.neutral).toBe(true);
       expect(Math.abs(body.median / 255 - 0.55)).toBeLessThan(2 / 255);
     }
