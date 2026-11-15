@@ -6323,6 +6323,8 @@ test("working identity follows live activity and shares equipment across every s
   const status = header.locator(".chat-identity-status");
   await expect(header).toBeVisible();
   await expect(status).toBeEmpty();
+  const idleWidth = (await header.locator(".chat-identity-label").boundingBox())
+    ?.width;
   const top = await page.locator(".chat-header").boundingBox();
   const run = {
     turnId: "work",
@@ -6370,6 +6372,10 @@ test("working identity follows live activity and shares equipment across every s
     }, state);
   await deliver();
   await expect(status).toHaveText("正在读取文件");
+  expect(
+    (await header.locator(".chat-identity-label").boundingBox())?.width,
+  ).toBe(idleWidth);
+  await expect(status).toHaveCSS("font-size", "11px");
   await expect(character).toHaveAttribute("data-work", "working");
   await expect
     .poll(() => page.evaluate(() => Reflect.get(window, "activityArrivals")))
@@ -6485,6 +6491,9 @@ test("working identity follows live activity and shares equipment across every s
   state.runs = [{ ...run, status: "failed" }];
   await deliver();
   await expect(status).toBeEmpty();
+  expect(
+    (await header.locator(".chat-identity-label").boundingBox())?.width,
+  ).toBe(idleWidth);
   await expect(character).not.toHaveAttribute("data-work");
   state.busy = true;
   state.activeTurnId = "next";
@@ -6562,6 +6571,254 @@ test("working identity follows live activity and shares equipment across every s
   ).toBeVisible();
 });
 
+test("chat identity stays painted above live message transitions and the top fade", async ({
+  page,
+}, info) => {
+  test.setTimeout(60_000);
+  const botId = (await (await page.request.post(`${url}/rpc/bots/list`)).json())
+    .json[0].id;
+  const snapshot = (
+    await (
+      await page.request.post(`${url}/rpc/get`, { data: { json: { botId } } })
+    ).json()
+  ).json;
+  const time = Date.now();
+  const message = {
+    id: "long-reply",
+    turnId: "work",
+    role: "assistant",
+    receivedAt: time,
+    timestamp: time,
+    stopped: false,
+    content: [
+      {
+        type: "text",
+        key: "reply",
+        text: Array.from(
+          { length: 35 },
+          (_, index) => `第 ${index + 1} 段：检查消息经过顶部身份区时的显示。`,
+        ).join("\n\n"),
+      },
+    ],
+  };
+  await page.addInitScript(
+    (initial) => {
+      const fetch = window.fetch.bind(window);
+      window.fetch = async (...args) => {
+        const input = args[0];
+        const address = input instanceof Request ? input.url : String(input);
+        if (!address.endsWith("/rpc/changes")) return fetch(...args);
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              const deliver = (event: unknown) =>
+                controller.enqueue(
+                  new TextEncoder().encode(
+                    `event: message\ndata: ${JSON.stringify({ json: event })}\n\n`,
+                  ),
+                );
+              Reflect.set(window, "deliverIdentityMessage", deliver);
+              deliver({ type: "snapshot", view: initial });
+            },
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      };
+    },
+    {
+      ...snapshot,
+      busy: true,
+      processing: true,
+      activeTurnId: "work",
+      runs: [
+        {
+          turnId: "work",
+          sessionId: snapshot.id,
+          status: "running",
+          provider: "codex",
+          model: "test",
+          startedAt: time,
+        },
+      ],
+      messages: [message],
+    },
+  );
+  await page.goto(url);
+  const header = page.locator(".chat-identity");
+  await expect(header.locator(".character")).toHaveAttribute(
+    "data-work",
+    "working",
+  );
+  await expect(header.locator(".character")).not.toHaveAttribute(
+    "data-entering",
+  );
+  await page.getByRole("button", { name: "展开", exact: true }).first().click();
+  await page.locator(".typing-row").scrollIntoViewIfNeeded();
+  await page.evaluate(() => document.activeViewTransition?.finished);
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    const session = await page.context().newCDPSession(page);
+    await session.send("Emulation.setEmulatedMedia", {
+      features: [
+        { name: "prefers-color-scheme", value: colorScheme },
+        { name: "prefers-reduced-transparency", value: "no-preference" },
+      ],
+    });
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-theme",
+      colorScheme,
+    );
+    await header.evaluate((node) =>
+      Promise.all(
+        node
+          .getAnimations({ subtree: true })
+          .filter((animation) => animation instanceof CSSTransition)
+          .map((animation) => animation.finished),
+      ),
+    );
+    await expect(page.locator(".chat-header-fade")).toHaveCSS(
+      "backdrop-filter",
+      "blur(8px)",
+    );
+    const area = await header.locator(".chat-identity-title").boundingBox();
+    if (!area) throw new Error("Identity title required");
+    const reference = (await page.screenshot()).toString("base64");
+    const captures: string[] = [];
+    session.on("Page.screencastFrame", (event) => {
+      captures.push(event.data);
+      void session.send("Page.screencastFrameAck", {
+        sessionId: event.sessionId,
+      });
+    });
+    await session.send("Page.startScreencast", {
+      format: "png",
+      everyNthFrame: 1,
+    });
+    try {
+      for (const update of [
+        {
+          ...message,
+          id: `reply-${colorScheme}`,
+          receivedAt: time + 1,
+          content: [{ type: "text", key: "new", text: "正在核对结果。" }],
+        },
+        {
+          ...message,
+          content: [
+            {
+              ...message.content[0],
+              text: `${message.content.at(0)?.text}\n\n补充结果。`,
+            },
+          ],
+        },
+        {
+          ...message,
+          id: `question-${colorScheme}`,
+          receivedAt: time + 2,
+          content: [],
+          approval: {
+            state: "pending",
+            request: {
+              id: `question-${colorScheme}`,
+              kind: "question",
+              title: "选择下一步",
+              detail: "",
+              requestedAt: time + 2,
+              options: [{ id: "continue", label: "继续" }],
+            },
+          },
+        },
+      ]) {
+        await page.evaluate(
+          (message) =>
+            Reflect.get(
+              window,
+              "deliverIdentityMessage",
+            )({
+              type: "update",
+              state: {},
+              messages: [message],
+              removed: [],
+            }),
+          update,
+        );
+        await page.waitForFunction(() =>
+          Boolean(document.activeViewTransition),
+        );
+        await page.evaluate(() => document.activeViewTransition?.finished);
+      }
+      await page.screenshot({
+        path: info.outputPath(`chat-edge-fade-${colorScheme}.png`),
+      });
+    } finally {
+      await session.send("Page.stopScreencast");
+      await session.detach();
+    }
+    expect(captures.length).toBeGreaterThan(2);
+    const differences = await page.evaluate(
+      async ({ reference, captures, area }) => {
+        const pixels = async (data: string) => {
+          const image = new Image();
+          image.src = `data:image/png;base64,${data}`;
+          await image.decode();
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.floor(area.width);
+          canvas.height = Math.floor(area.height);
+          const context = canvas.getContext("2d");
+          if (!context) throw new Error("Canvas required");
+          context.drawImage(image, -Math.floor(area.x), -Math.floor(area.y));
+          return context.getImageData(0, 0, canvas.width, canvas.height).data;
+        };
+        const baseline = await pixels(reference);
+        return Promise.all(
+          captures.map(async (capture) => {
+            const frame = await pixels(capture);
+            return (
+              frame.reduce((sum, value, index) => {
+                const original = baseline[index];
+                if (original === undefined)
+                  throw new Error("Frame size changed");
+                return sum + Math.abs(value - original);
+              }, 0) / frame.length
+            );
+          }),
+        );
+      },
+      { reference, captures, area },
+    );
+    const worst = Math.max(...differences);
+    await info.attach(`identity-frames-${colorScheme}.json`, {
+      body: JSON.stringify({ frames: captures.length, differences }),
+      contentType: "application/json",
+    });
+    await info.attach(`identity-paint-${colorScheme}.png`, {
+      body: Buffer.from(
+        captures.at(differences.indexOf(worst)) ?? "",
+        "base64",
+      ),
+      contentType: "image/png",
+    });
+    expect(worst).toBeLessThan(5);
+    await expect(header.locator(".character")).not.toHaveAttribute(
+      "data-entering",
+    );
+  }
+  const fade = await page.locator(".chat-header-fade").evaluate((node) => {
+    const style = getComputedStyle(node);
+    return {
+      mask: style.maskImage,
+      blur: style.backdropFilter,
+      pointer: style.pointerEvents,
+      reduced:
+        matchMedia("(prefers-reduced-transparency: reduce)").matches ||
+        matchMedia("(forced-colors: active)").matches,
+    };
+  });
+  expect(fade.mask).toContain("linear-gradient");
+  expect(fade.blur).toBe(fade.reduced ? "none" : "blur(8px)");
+  expect(fade.pointer).toBe("none");
+});
+
 test("team identity names the active member and counts parallel members", async ({
   page,
 }, info) => {
@@ -6613,6 +6870,8 @@ test("team identity names the active member and counts parallel members", async 
   const header = page.locator(".chat-identity");
   const status = header.locator(".chat-identity-status");
   await expect(status).toBeEmpty();
+  const width = (await header.locator(".chat-identity-label").boundingBox())
+    ?.width;
   const state = {
     ...snapshot,
     busy: true,
@@ -6656,6 +6915,13 @@ test("team identity names the active member and counts parallel members", async 
     );
   await deliver();
   await expect(status).toHaveText("Reviewer 正在读取文件");
+  expect(
+    (await header.locator(".chat-identity-label").boundingBox())?.width,
+  ).toBe(width);
+  await expect(status).toHaveAttribute("title", "Reviewer 正在读取文件");
+  expect(
+    await status.evaluate((node) => node.scrollWidth > node.clientWidth),
+  ).toBe(true);
   await expect(header.locator('.character[data-work="working"]')).toHaveCount(
     1,
   );

@@ -46,6 +46,7 @@ export function ChatHeader({
       : `${members && name ? `${name} ` : ""}${current?.label ?? "正在工作"}`;
   return (
     <header className="chat-header">
+      <div className="chat-header-fade" aria-hidden="true" />
       <Button
         id="details-trigger"
         variant="ghost"
