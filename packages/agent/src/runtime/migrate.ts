@@ -6,7 +6,11 @@ import {
   type Harness,
   type SubmissionId,
 } from "@earendil-works/pi-durable";
-import { ComputerRequests } from "../computer/runtime.ts";
+import {
+  ComputerRequests,
+  ordinaryQuestion,
+  QuestionDoc,
+} from "../computer/runtime.ts";
 import { EngineDoc, EngineMessage } from "../harness/state.ts";
 import { approvalMessage } from "../messages.ts";
 import { stopChat } from "../stop-chat.ts";
@@ -33,6 +37,20 @@ export async function migrateRuntime(
     await harness.commit(async (tx) => {
       for (const approval of (await tx.doc(ComputerRequests, botId))
         .approvals) {
+        if (ordinaryQuestion(approval)) {
+          const saved = await tx.doc(QuestionDoc, botId, approval.id, null);
+          if (!saved.request) {
+            saved.request = approval;
+            const entry = await tx.appendEntry(botId, {
+              kind: EngineMessage,
+              data: JSON.parse(
+                JSON.stringify(approvalMessage(approval, "pending")),
+              ),
+            });
+            saved.cursor = `${entry.id}:0`;
+          }
+          continue;
+        }
         await tx.appendEntry(botId, {
           kind: EngineMessage,
           data: JSON.parse(

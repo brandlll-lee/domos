@@ -13,7 +13,7 @@ import type {
 } from "@earendil-works/pi-durable";
 import { BotDirectory } from "./bots.ts";
 import { chatView } from "./chat-view.ts";
-import { ComputerRequests } from "./computer/runtime.ts";
+import { ComputerRequests, ordinaryQuestion } from "./computer/runtime.ts";
 import { BotSessions } from "./conversations.ts";
 import { EngineDoc } from "./harness/state.ts";
 import type { EngineRun } from "./harness/types.ts";
@@ -289,7 +289,10 @@ export class ChatDirectory {
                 : item.files.map((file) => file.name).join(" ");
             if (
               !text.trim() ||
-              message.pending ||
+              (message.pending &&
+                !(
+                  message.approval && ordinaryQuestion(message.approval.request)
+                )) ||
               message.stopped ||
               message.parentId
             )
@@ -313,6 +316,22 @@ export class ChatDirectory {
               message.receivedAt ?? message.timestamp ?? 0,
               Number(message.role !== "user"),
             );
+            if (
+              message.approval &&
+              ordinaryQuestion(message.approval.request) &&
+              message.approval.state === "pending"
+            )
+              event.run(
+                identity,
+                chat,
+                bot.id,
+                session,
+                message.id,
+                message.cursor ?? null,
+                message.turnId ?? null,
+                `需要你的回答：${message.approval.request.title}`.slice(0, 160),
+                "question",
+              );
             if (row)
               db.prepare(
                 "INSERT INTO domos_chat_search(rowid,text) VALUES (?,?)",

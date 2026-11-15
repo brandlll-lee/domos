@@ -17,7 +17,22 @@ export function validateQuestionAnswer(
   request: EngineApproval,
   answer: EngineAnswer,
 ) {
-  if (!answer.allow || !request.questions?.length || request.draft) return;
+  if (
+    !answer.allow ||
+    request.kind !== "question" ||
+    request.draft ||
+    request.credential
+  )
+    return;
+  if (!request.questions?.length) {
+    if (
+      request.options?.length
+        ? !request.options.some((option) => option.id === answer.optionId)
+        : !answer.text?.trim() || answer.text.length > 16000
+    )
+      throw new Error("请提供有效的回答。");
+    return;
+  }
   const answers = answer.answers ?? {};
   if (
     Object.keys(answers).some(

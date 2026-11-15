@@ -27,6 +27,12 @@ export type ChatContent =
   | Pick<ToolCall, "type" | "id" | "name" | "arguments">;
 
 export type ChatMessage = {
+  reply?: {
+    id: string;
+    title: string;
+    cursor?: string;
+    attachments?: Attachment[];
+  };
   link?: LinkCard;
   sessionId?: number;
   author?: { botId: number; name: string; avatar: string };
@@ -134,7 +140,23 @@ export function approvalMessage(
 export function messageText(message: {
   content: string | readonly ChatContent[];
   link?: LinkCard;
+  approval?: ChatMessage["approval"];
 }) {
+  if (message.approval?.request.kind === "question") {
+    const request = message.approval.request;
+    return [
+      ...new Set([
+        request.title,
+        request.detail,
+        ...(request.questions ?? []).flatMap((question) => [
+          question.title,
+          ...(question.options ?? []).map((option) => option.label),
+        ]),
+      ]),
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
   if (message.link)
     return [
       message.link.title,

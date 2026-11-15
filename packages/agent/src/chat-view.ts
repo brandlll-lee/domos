@@ -8,6 +8,7 @@ import {
   type ModelRef,
 } from "@earendil-works/pi-durable";
 import type { Attachment } from "./attachments.ts";
+import { ordinaryQuestion } from "./computer/runtime.ts";
 import { FileInput } from "./files.ts";
 import { EngineMessage } from "./harness/state.ts";
 import type {
@@ -244,6 +245,11 @@ export function chatView(
     ? project(live.generation.message, "draft")
     : null;
   for (const approval of approvals) {
+    if (
+      ordinaryQuestion(approval) &&
+      messages.some((message) => message.approval?.request.id === approval.id)
+    )
+      continue;
     messages.push({ ...approvalMessage(approval, "pending"), turnId });
   }
   return {

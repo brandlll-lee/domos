@@ -18,9 +18,10 @@ import {
   useRef,
   ViewTransition,
 } from "react";
+import { fileUrl } from "../files/actions.ts";
 import { Approval } from "./approvals.tsx";
 import { Attachments } from "./attachments.tsx";
-import { useAttention } from "./attention.tsx";
+import { openChatTarget, useAttention } from "./attention.tsx";
 import { BotReference } from "./bot-reference.tsx";
 import { chatCopy } from "./copy.ts";
 import { ErrorMessage } from "./error-message.tsx";
@@ -194,6 +195,33 @@ const MessageRow = memo(function MessageRow({
               >
                 {attachments}
                 <MessageBody>
+                  {resolved.reply && (
+                    <button
+                      type="button"
+                      className="message-reply"
+                      aria-label={`回复「${resolved.reply.title}」`}
+                      onClick={() =>
+                        openChatTarget({
+                          chat: window.location.hash.slice(1) || `bot/${botId}`,
+                          botId,
+                          sessionId: botId,
+                          messageId: resolved.reply?.id ?? "",
+                          cursor: resolved.reply?.cursor,
+                        })
+                      }
+                    >
+                      <span>↪ {resolved.reply.title}</span>
+                      {resolved.reply.attachments?.[0] && (
+                        <img
+                          className="message-reply-image"
+                          src={fileUrl(botId, resolved.reply.attachments[0].id)}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      )}
+                    </button>
+                  )}
                   <MaterialChips materials={resolved.materials} />
                   {content}
                 </MessageBody>

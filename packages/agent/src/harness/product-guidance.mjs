@@ -4,7 +4,7 @@ export function productInstructions(tools) {
   const rules = [
     [
       "ask_question",
-      "When the user needs to choose among concrete options, use ask_question rather than a numbered text question. Use media comparisons when useful. Ask only for information you cannot obtain or reasonably infer. An answer is user intent, not permission for unrelated actions.",
+      "When the user needs to choose among concrete options, use ask_question rather than a numbered text question. Each call contains exactly one question. Sending returns immediately, not an answer. The card has no answer deadline. Wait for an explicit referenced reply before using a choice. Do not repeat an unanswered question. Use media comparisons when useful. Ask only for information you cannot obtain or reasonably infer. An answer is user intent, not permission for unrelated actions.",
     ],
     [
       "send_link_card",

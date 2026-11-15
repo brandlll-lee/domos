@@ -375,6 +375,7 @@ export interface EngineProvider {
 }
 
 export type EngineInput = {
+  questionAnswer?: { id: string; answer: EngineAnswer };
   text: string;
   displayText?: string;
   materials?: InputMaterials;

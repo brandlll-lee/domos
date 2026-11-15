@@ -72,6 +72,8 @@ function historyMessage(
         | "toolCallId"
         | "author"
         | "link"
+        | "approval"
+        | "reply"
       >
     > & {
       content: string | readonly ChatContent[];
@@ -96,6 +98,9 @@ function historyMessage(
       ? []
       : message.content.filter((part) => part.type === "toolCall");
   const text = [
+    message.reply
+      ? `Reply to question [${message.reply.id}]: ${message.reply.title}`
+      : "",
     messageText(message),
     message.error ? `Historical error: ${message.error}` : "",
     message.stopped

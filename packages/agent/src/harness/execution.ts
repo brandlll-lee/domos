@@ -681,6 +681,7 @@ export class EngineExecution {
     runtime.signal.addEventListener("abort", interrupted, { once: true });
     let receiving = true;
     const initialized = Promise.withResolvers<EngineSession | null>();
+    const closedApprovals = new Set<string>();
     let completed = false;
     try {
       active.managed =
@@ -817,14 +818,25 @@ export class EngineExecution {
         approve: (approval) => approve(approval, active.controller.signal),
         emit: async (event) => {
           if (!receiving || active.controller.signal.aborted) return;
-          if (event.type === "approval_closed")
+          if (event.type === "approval_closed") {
+            closedApprovals.add(event.id);
             this.computer.expire(runtime.conversationId, event.id);
+          }
           if (event.type === "approval") {
             void approve(event.approval, active.controller.signal)
-              .then(async (answer) =>
-                (await initialized.promise)?.answer(event.approval.id, answer),
-              )
-              .catch(() => this.stop(runtime.conversationId));
+              .then(async (answer) => {
+                const session = await initialized.promise;
+                if (
+                  receiving &&
+                  !active.controller.signal.aborted &&
+                  !closedApprovals.has(event.approval.id)
+                )
+                  await session?.answer(event.approval.id, answer);
+              })
+              .catch(() => {
+                if (this.active.get(runtime.conversationId) === active)
+                  return this.stop(runtime.conversationId);
+              });
             return;
           }
           if (memoryReview) {

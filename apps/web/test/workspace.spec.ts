@@ -4512,6 +4512,13 @@ test("shared question and approval cards persist answers and terminal states", a
           : mode === "approve"
             ? "已批准"
             : "已回答";
+    if (mode === "custom" || mode === "multiple") {
+      await expect(card).toHaveAttribute("data-state", "answered");
+      await expect(card.locator(".question-reply")).toHaveCount(2);
+      await page.reload();
+      await expect(card).toHaveAttribute("data-state", "answered");
+      continue;
+    }
     await expect(card.getByRole("status")).toHaveText(expected);
     await expect(card.locator(".interaction-card")).toHaveCount(0);
     await card.getByRole("button").click();
@@ -4599,18 +4606,18 @@ test("question replies align and completed questions remain readable", async ({
         .locator(".question-reply")
         .evaluateAll((elements) =>
           elements.map((el) => {
-            const icon = el.querySelector("svg")?.getBoundingClientRect();
+            const border = getComputedStyle(el).borderStyle;
             const copy = el
               .querySelector(".question-reply-copy")
               ?.getBoundingClientRect();
             return {
-              icon: icon?.left,
+              border,
               copy: copy?.left,
               align: getComputedStyle(el).textAlign,
             };
           }),
         );
-      expect(new Set(rows.map((row) => row.icon)).size).toBe(1);
+      expect(rows.every((row) => row.border === "dashed")).toBe(true);
       expect(new Set(rows.map((row) => row.copy)).size).toBe(1);
       expect(rows.every((row) => row.align === "left")).toBe(true);
       await page.screenshot({
@@ -4619,21 +4626,22 @@ test("question replies align and completed questions remain readable", async ({
     }
   }
   await card.getByRole("button", { name: /自己待着/ }).click();
-  await expect(card.getByRole("status")).toHaveText("已回答");
-  await card.getByRole("button", { name: "查看完整问题", exact: true }).click();
-  const dialog = page.getByRole("dialog", {
-    name: "一起了解你的性格倾向",
-    exact: true,
-  });
-  await expect(
-    dialog.getByText("一起了解你的性格倾向", { exact: true }),
-  ).toHaveCount(1);
-  await expect(dialog.locator(".question-reply[data-selected]")).toContainText(
+  await expect(card).toHaveAttribute("data-state", "answered");
+  await expect(card.locator(".question-reply")).toHaveCount(3);
+  await expect(card.locator(".question-reply[data-selected]")).toContainText(
     "自己待着",
   );
-  for (const row of await dialog.locator(".question-reply").all())
-    await expect(row).toHaveCSS("opacity", "1");
-  await expect(dialog.locator(".question-reply.button")).toHaveCount(0);
+  await expect(
+    card.getByRole("button", { name: "查看完整问题", exact: true }),
+  ).toHaveCount(0);
+  const quote = page.getByRole("button", { name: /回复.*忙碌一周后/ });
+  await expect(quote).toBeVisible();
+  await quote.click();
+  await expect(card).toBeInViewport();
+  await page.reload();
+  await expect(card.locator(".question-reply[data-selected]")).toContainText(
+    "自己待着",
+  );
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
     await page.screenshot({
@@ -5336,10 +5344,13 @@ test("rich questions keep media separate from replies and restore selected actio
             ][index],
             description: "先了解内容，再决定下一步。",
             attachments: index < 4 ? [files[index]] : undefined,
-            actions: [
-              { id: `learn-${index}`, label: "了解更多" },
-              { id: `select-${index}`, label: "选择这一版" },
-            ],
+            actions:
+              index === 0
+                ? [
+                    { id: `learn-${index}`, label: "了解更多" },
+                    { id: `select-${index}`, label: "选择这一版" },
+                  ]
+                : undefined,
           })),
         },
       ],
@@ -5355,17 +5366,19 @@ test("rich questions keep media separate from replies and restore selected actio
   await expect(card.getByRole("button", { name: /显示更多选项/ })).toHaveCount(
     0,
   );
-  for (const row of await card.locator(".question-reply").all()) {
-    await expect(row.locator(":scope > svg").first()).toBeVisible();
-    await expect(row).toHaveCSS("text-align", "left");
-  }
-  await expect(card.locator("audio")).not.toHaveAttribute("src");
+  for (const row of await card.locator(".question-reply").all())
+    await expect(row).toHaveCSS("text-align", "center");
+  await expect(card.locator("audio")).toHaveCount(0);
   await expect(card.locator("video")).toHaveCount(0);
-  await card.locator(".image-thumbnail").click();
-  await expect(
-    page.getByRole("dialog", { name: "方案.png", exact: true }),
-  ).toBeVisible();
-  await page.keyboard.press("Escape");
+  await card
+    .getByRole("button", { name: "预览 方案.png", exact: true })
+    .click();
+  const filePreview = page.getByRole("complementary", {
+    name: "文件预览",
+    exact: true,
+  });
+  await expect(filePreview).toBeVisible();
+  await filePreview.getByRole("button", { name: "关闭", exact: true }).click();
   expect(attempts).toBe(0);
   await card
     .getByRole("button", { name: "预览 演示.mp4", exact: true })
@@ -5449,36 +5462,27 @@ test("rich questions keep media separate from replies and restore selected actio
   expect(attempts).toBe(2);
   release();
   expect((await reply).answer.answers).toEqual({ presentation: ["select-0"] });
-  await expect(card.getByRole("status")).toHaveText("已回答");
-  await expect(card).toContainText("你选择了：静态图片 · 选择这一版");
-  await expect(card.locator(".question-candidate")).toHaveCount(0);
+  await expect(card).toHaveAttribute("data-state", "answered");
+  await expect(card.locator(".question-candidate")).toHaveCount(5);
+  await expect(card.locator(".question-reply[data-selected]")).toContainText(
+    "选择这一版",
+  );
+  const latest = page.getByRole("button", { name: "返回最新", exact: true });
+  if (await latest.isVisible()) await latest.click();
+  await expect(page.locator(".message-reply")).toContainText(
+    "你更喜欢哪种呈现？",
+  );
   await page.reload();
-  await expect(card).toContainText("你选择了：静态图片 · 选择这一版");
+  await expect(card.locator(".question-reply[data-selected]")).toContainText(
+    "选择这一版",
+  );
+  await expect(card.locator(".question-candidate")).toHaveCount(5);
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
     await page.screenshot({
       path: info.outputPath(`rich-question-answered-${colorScheme}.png`),
     });
   }
-  await card.getByRole("button", { name: "查看完整问题", exact: true }).click();
-  const dialog = page.getByRole("dialog", {
-    name: "你更喜欢哪种呈现？",
-    exact: true,
-  });
-  await expect(
-    dialog.getByText("你更喜欢哪种呈现？", { exact: true }),
-  ).toHaveCount(1);
-  await expect(dialog.locator(".question-reply[data-selected]")).toHaveText(
-    "选择这一版",
-  );
-  await expect(dialog.locator(".question-reply[data-selected]")).toHaveCSS(
-    "opacity",
-    "1",
-  );
-  await expect(
-    dialog.getByRole("button", { name: "选择这一版", exact: true }),
-  ).toHaveCount(0);
-  await page.screenshot({ path: info.outputPath("rich-question-read.png") });
 });
 
 test("skill packages preview changes and restore resources across reload", async ({

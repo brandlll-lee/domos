@@ -49,6 +49,28 @@ export const ComputerRequests = defineDoc<{
   initial: () => ({ approvals: [] }),
 });
 
+export const QuestionDoc = defineDocFamily<
+  { request: EngineApproval | null; answer?: EngineAnswer; cursor?: string },
+  null
+>({
+  kind: "domos.question",
+  version: 1,
+  scope: "conversation",
+  history: "latest",
+  fork: "initial",
+  family: true,
+  checkpointWhen: () => false,
+  initial: () => ({ request: null }),
+});
+export function ordinaryQuestion(request: EngineApproval) {
+  return (
+    request.kind === "question" &&
+    !request.draft &&
+    !request.credential &&
+    !request.takeover
+  );
+}
+
 const ComputerCallDoc = defineDocFamily<
   {
     name: string;
@@ -81,6 +103,8 @@ export class ComputerRuntime {
       resolve: (answer: EngineAnswer) => void;
       expire: () => void;
       completing: boolean;
+      active: boolean;
+      signal: AbortSignal;
     }
   >();
   private readonly harness: Harness;
@@ -351,12 +375,79 @@ export class ComputerRuntime {
     }
   }
 
+  async publishQuestion(
+    botId: number,
+    request: EngineApproval,
+    context: Context,
+  ) {
+    return this.harness.commit(async (tx) => {
+      const doc = await tx.doc(
+        QuestionDoc,
+        botId as ConversationId,
+        request.id,
+        null,
+      );
+      if (!doc.request) {
+        const published = {
+          ...request,
+          requestedAt: request.requestedAt ?? Date.now(),
+        };
+        doc.request = JSON.parse(JSON.stringify(published));
+        const entry = await tx.appendEntry(botId as ConversationId, {
+          kind: "domos.engine-message",
+          data: JSON.parse(
+            JSON.stringify(approvalMessage(published, "pending")),
+          ),
+        });
+        doc.cursor = `${entry.id}:0`;
+      }
+      return JSON.parse(JSON.stringify(doc.request)) as EngineApproval;
+    }, context);
+  }
+  questionWaiting(botId: number, id: string) {
+    const pending = this.pending.get(id);
+    return pending?.botId === botId && pending.active ? pending : undefined;
+  }
+
   async approve(
     botId: number,
     approval: EngineApproval,
     signal: AbortSignal,
     context: Context,
   ) {
+    const questions = approval.questions ?? [];
+    if (ordinaryQuestion(approval) && questions.length > 1) {
+      const answers: EngineAnswer[] = await Promise.all(
+        questions.map((question, index) =>
+          this.approve(
+            botId,
+            {
+              ...approval,
+              id: `${approval.id}:q:${index}`,
+              title: question.title,
+              questions: [question],
+            },
+            signal,
+            context,
+          ),
+        ),
+      );
+      return {
+        allow: answers.every((answer) => answer.allow),
+        answers: Object.assign({}, ...answers.map((answer) => answer.answers)),
+      } as EngineAnswer;
+    }
+    const question = ordinaryQuestion(approval);
+    if (question) {
+      approval = await this.publishQuestion(botId, approval, context);
+      const saved = await this.harness.snapshot(
+        QuestionDoc,
+        botId as ConversationId,
+        approval.id,
+        context,
+      );
+      if (saved?.answer) return saved.answer;
+    }
     const ownerId = await owningBot(
       this.harness,
       botId as ConversationId,
@@ -376,11 +467,14 @@ export class ComputerRuntime {
     )
       return { allow: true };
     signal.throwIfAborted();
-    approval = { ...approval, requestedAt: Date.now() };
+    approval = { ...approval, requestedAt: approval.requestedAt ?? Date.now() };
     const answer = Promise.withResolvers<EngineAnswer>();
     let expired = false;
     const abort = () => {
+      if (question && this.pending.get(approval.id)?.completing) return;
       expired = true;
+      const pending = this.pending.get(approval.id);
+      if (pending) pending.active = false;
       answer.resolve({ allow: false });
     };
     this.pending.set(approval.id, {
@@ -388,6 +482,8 @@ export class ComputerRuntime {
       resolve: answer.resolve,
       expire: abort,
       completing: false,
+      active: true,
+      signal,
     });
     signal.addEventListener("abort", abort, { once: true });
     const timer = approval.takeover ? undefined : setTimeout(abort, 600_000);
@@ -416,7 +512,7 @@ export class ComputerRuntime {
           (item) => item.id === approval.id,
         );
         doc.approvals = doc.approvals.filter((item) => item.id !== approval.id);
-        if (registered)
+        if (registered && !question)
           await tx.appendEntry(botId as ConversationId, {
             kind: "domos.engine-message",
             data: JSON.parse(
@@ -466,8 +562,13 @@ export class ComputerRuntime {
   }
 
   expire(botId: number, id: string) {
-    const request = this.pending.get(id);
-    if (request?.botId === botId && !request.completing) request.expire();
+    for (const [key, request] of this.pending)
+      if (
+        request.botId === botId &&
+        !request.completing &&
+        (key === id || key.startsWith(`${id}:q:`))
+      )
+        request.expire();
   }
 
   async answer(
@@ -508,6 +609,12 @@ export class ComputerRuntime {
         (answer.allow || approval.takeover.state === "controlling")
       )
         await this.computers.views.finishRequest(botId, id, context);
+      if (ordinaryQuestion(approval))
+        await this.harness.commit(async (tx) => {
+          (
+            await tx.doc(QuestionDoc, botId as ConversationId, id, null)
+          ).answer = JSON.parse(JSON.stringify(answer));
+        }, context);
       pending.resolve(answer);
     } catch (error) {
       pending.completing = false;

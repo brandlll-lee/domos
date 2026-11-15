@@ -6,7 +6,6 @@ import { owningBot } from "../conversations.ts";
 import { linkUrl } from "../link-previews.ts";
 import { toolResult } from "../work/state.ts";
 import type { EngineExecution } from "./execution.ts";
-import { questionChoices } from "./questions.ts";
 import type { EngineApproval } from "./types.ts";
 
 const id = () => Type.String({ minLength: 1, maxLength: 256 });
@@ -45,7 +44,7 @@ const questionParameters = Type.Object({
       allowOther: Type.Optional(Type.Boolean()),
       required: Type.Optional(Type.Boolean()),
     }),
-    { minItems: 1, maxItems: 6 },
+    { minItems: 1, maxItems: 1 },
   ),
 });
 
@@ -207,11 +206,13 @@ export function interactionExtension(execution: EngineExecution) {
       defineTool({
         name: "ask_question",
         description:
-          "Ask the user a question and wait for their answer. Use this shared question card for text or media comparisons. Attachments are saved file IDs from attach_file or user uploads, never URLs or inline data. Each option can have attachments and up to three reply actions with unique IDs. Without actions, selecting an option returns its ID. With actions, it returns the action ID. Media preview never selects an answer. Use multiple for multiple answers and allowOther for a custom answer. The answer expresses user intent, not permission to execute an operation. Use native messages for updates and results.",
+          "Send exactly one persistent question. Return after sending; the user may answer later as a referenced chat message. Sent does not mean answered. Do not infer an answer. Use this shared question card for text or media comparisons. Attachments are saved file IDs from attach_file or user uploads, never URLs or inline data. Each option can have attachments and up to three reply actions with unique IDs. Without actions, selecting an option returns its ID. With actions, it returns the action ID. Media preview never selects an answer. Use multiple for multiple answers and allowOther for a custom answer. The answer expresses user intent, not permission to execute an operation. Use native messages for updates and results.",
         parameters: questionParameters,
         replay: "safe",
         executionMode: "sequential",
         async execute(input, api, context) {
+          if (input.questions.length !== 1)
+            throw new Error("每次只能发送一个问题。");
           if (
             new Set(input.questions.map((question) => question.id)).size !==
             input.questions.length
@@ -264,25 +265,12 @@ export function interactionExtension(execution: EngineExecution) {
               })),
             })),
           };
-          const answer = await execution.computer.approve(
+          const published = await execution.computer.publishQuestion(
             api.conversationId,
             request,
-            context.abortSignal ?? new AbortController().signal,
             context,
           );
-          if (!answer.allow) return toolResult({ status: "cancelled" });
-          return toolResult({
-            status: "answered",
-            answers: request.questions?.map((question) => ({
-              id: question.id,
-              values: (answer.answers?.[question.id] ?? []).map((id) => ({
-                id,
-                label:
-                  questionChoices(question).find((choice) => choice.id === id)
-                    ?.label ?? id,
-              })),
-            })),
-          });
+          return toolResult({ status: "sent", questionId: published.id });
         },
       }),
       defineTool({

@@ -11,7 +11,12 @@ import {
 } from "@earendil-works/pi-durable";
 import { type ChatPage, chatView } from "../chat-view.ts";
 import { DelegationsDoc } from "../collaboration.ts";
-import { ComputerRequests } from "../computer/runtime.ts";
+import {
+  ComputerRequests,
+  type ComputerRuntime,
+  ordinaryQuestion,
+  QuestionDoc,
+} from "../computer/runtime.ts";
 import { ComputersDoc } from "../computer/state.ts";
 import { BotSession, BotSessions, owningBot } from "../conversations.ts";
 import { EngineConnections } from "../harness/connections.ts";
@@ -19,6 +24,10 @@ import type { EngineExecution } from "../harness/execution.ts";
 import { completeCredentials } from "../harness/interactions.ts";
 import { EngineModelCatalog } from "../harness/model-catalog.ts";
 import { engineProvider, providers } from "../harness/providers/index.ts";
+import {
+  questionChoices,
+  validateQuestionAnswer,
+} from "../harness/questions.ts";
 import {
   readEngine,
   reconcileEngine,
@@ -87,6 +96,37 @@ export function slimChatView(view: import("../chat-view.ts").ChatView) {
     messages: view.messages.map(slim),
     draft: view.draft ? slim(view.draft) : null,
   };
+}
+
+async function questionMessage(
+  harness: Harness,
+  botId: number,
+  message: import("../messages.ts").ChatMessage,
+  context: Context,
+) {
+  if (!message.approval || !ordinaryQuestion(message.approval.request))
+    return message;
+  const saved = await harness.snapshot(
+    QuestionDoc,
+    botId as ConversationId,
+    message.approval.request.id,
+    context,
+  );
+  return saved?.request
+    ? {
+        ...message,
+        ...approvalMessage(
+          saved.request,
+          saved.answer
+            ? saved.answer.allow
+              ? "answered"
+              : "denied"
+            : "pending",
+          saved.answer,
+        ),
+        cursor: saved.cursor ?? message.cursor,
+      }
+    : message;
 }
 
 export class Runtime {
@@ -264,6 +304,11 @@ export class Runtime {
         },
       },
       requests?.approvals ?? [],
+    );
+    view.messages = await Promise.all(
+      view.messages.map((message) =>
+        questionMessage(this.harness, botId, message, context),
+      ),
     );
     if (page) {
       const relative = (message: import("../messages.ts").ChatMessage) => {
@@ -455,11 +500,14 @@ export class Runtime {
       undefined,
       context,
     );
-    return (
-      chatView({ conversation, entries: batch.items, docs: {} }).messages.find(
-        (message) => message.id === id,
-      ) ?? null
-    );
+    const message = chatView({
+      conversation,
+      entries: batch.items,
+      docs: {},
+    }).messages.find((message) => message.id === id);
+    return message
+      ? questionMessage(this.harness, botId, message, context)
+      : null;
   }
 
   watch(botId: number, context: Context, page?: { limit: number }) {
@@ -754,9 +802,18 @@ export class Runtime {
     );
     if (!computerId)
       throw new WorkError("BAD_REQUEST", "请选择这个 Bot 的工作电脑。");
-    const submissionId = await this.harness.commit(async (tx) => {
+    let waiting: ReturnType<ComputerRuntime["questionWaiting"]>;
+    const admission = this.harness.commit(async (tx) => {
       const existing = await tx.submissionByRequest(id, input.requestId);
       if (existing) return existing.id;
+      const question = input.questionAnswer
+        ? await tx.doc(QuestionDoc, id, input.questionAnswer.id, null)
+        : undefined;
+      if (question && input.questionAnswer) {
+        if (!question.request) throw new WorkError("NOT_FOUND", "问题不存在。");
+        if (question.answer) throw new WorkError("CONFLICT", "问题已经回答。");
+        validateQuestionAnswer(question.request, input.questionAnswer.answer);
+      }
       const teamId = (await tx.doc(BotSession, id)).teamId;
       if (
         teamId &&
@@ -820,6 +877,22 @@ export class Runtime {
                 input.requestId,
                 input.materials,
               ),
+              ...(question?.request
+                ? {
+                    reply: {
+                      id: approvalMessage(question.request, "pending").id,
+                      title:
+                        question.request.questions?.[0]?.title ??
+                        question.request.title,
+                      cursor: question.cursor,
+                      attachments: approvalMessage(question.request, "pending")
+                        .attachments?.filter((file) =>
+                          file.mimeType?.startsWith("image/"),
+                        )
+                        .slice(0, 1),
+                    },
+                  }
+                : {}),
               ...(input.author
                 ? { role: "assistant", author: input.author }
                 : {}),
@@ -835,6 +908,26 @@ export class Runtime {
             },
       });
       tx.placeSubmission(submission.id, entry.id);
+      if (question && input.questionAnswer) {
+        question.answer = JSON.parse(
+          JSON.stringify(input.questionAnswer.answer),
+        );
+        waiting = this.execution.computer.questionWaiting(
+          botId,
+          input.questionAnswer.id,
+        );
+        if (waiting) {
+          waiting.completing = true;
+          if (!doc.activeId) {
+            tx.settleSubmission(submission.id, {
+              status: "done",
+              answer: entry.id,
+            });
+            return submission.id;
+          }
+        }
+      }
+
       const taskId = await tx.createTask(
         this.task,
         {
@@ -847,7 +940,7 @@ export class Runtime {
             ),
           ].join("\n\n"),
           submissionId: submission.id,
-          previous,
+          previous: waiting ? doc.activeId : previous,
           turnId,
           ...(input.source ? { source: input.source } : {}),
           ...(input.routineRunId ? { routineRunId: input.routineRunId } : {}),
@@ -867,10 +960,23 @@ export class Runtime {
       );
       doc.taskId = taskId;
       doc.tasks.push(taskId);
-      if (input.whenBusy === "followUp")
-        (await tx.doc(EngineInputDoc, taskId)).status = "deferred";
+      const delivery = await tx.doc(EngineInputDoc, taskId);
+      if (waiting) {
+        delivery.status = "accepted";
+        delivery.owner = doc.activeId;
+        if (doc.run)
+          doc.run.inputTurns = [...(doc.run.inputTurns ?? []), turnId];
+      } else if (input.whenBusy === "followUp") delivery.status = "deferred";
       return submission.id;
     }, context);
+    const submissionId = await admission.catch((error) => {
+      if (waiting) {
+        waiting.completing = false;
+        if (waiting.signal.aborted) waiting.expire();
+      }
+      throw error;
+    });
+    if (input.questionAnswer) waiting?.resolve(input.questionAnswer.answer);
     this.execution.deliver(botId);
     const submission = await this.harness.submission(submissionId, context);
     if (!submission) throw new Error("任务记录不存在。");
@@ -950,7 +1056,50 @@ export class Runtime {
     answer: EngineAnswer,
     context: Context,
   ) {
-    await this.execution.answer(botId, id, answer, context);
+    const question = await this.harness.snapshot(
+      QuestionDoc,
+      botId as ConversationId,
+      id,
+      context,
+    );
+    if (!question?.request)
+      return this.execution.answer(botId, id, answer, context);
+    const request = question.request;
+    validateQuestionAnswer(request, answer);
+    const text = answer.allow
+      ? (
+          request.questions ?? [
+            { id: request.id, title: request.title, options: request.options },
+          ]
+        )
+          .map((q) => {
+            const choices = questionChoices(q);
+            return (
+              answer.answers?.[q.id] ??
+              (answer.optionId
+                ? [answer.optionId]
+                : answer.text
+                  ? [answer.text]
+                  : [])
+            )
+              .map(
+                (id) => choices.find((choice) => choice.id === id)?.label ?? id,
+              )
+              .join("、");
+          })
+          .join("\n")
+      : "暂不回答";
+    return this.submit(
+      botId,
+      {
+        requestId: `question-answer:${id}`,
+        text: `Reply to question [${id}]: ${request.questions?.[0]?.title ?? request.title}\n${text}`,
+        displayText: text,
+        whenBusy: "followUp",
+        questionAnswer: { id, answer },
+      },
+      context,
+    );
   }
 
   credentials(

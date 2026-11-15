@@ -2,14 +2,15 @@ import { questionChoices } from "@domos/agent/harness/questions";
 import type { EngineAnswer, EngineApproval } from "@domos/agent/harness/types";
 import type { ChatMessage } from "@domos/agent/messages";
 import { Button } from "@domos/ui/controls";
-import { Dialog } from "@domos/ui/dialog";
 import { TextField } from "@domos/ui/field";
-import { ArrowUUpLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowUUpLeft";
 import { CheckCircleIcon } from "@phosphor-icons/react/dist/csr/CheckCircle";
 import { CircleIcon } from "@phosphor-icons/react/dist/csr/Circle";
 import { type ReactNode, useState } from "react";
 import { client } from "../../client.ts";
 import { useWorkAction } from "../bots/details/use-bot-work.ts";
+import { fileUrl } from "../files/actions.ts";
+import { useFilePreview } from "../files/context.tsx";
+import { fileIcon } from "../files/file-icon.ts";
 import { Attachments } from "./attachments.tsx";
 
 function QuestionReply({
@@ -27,7 +28,6 @@ function QuestionReply({
 }) {
   const content = (
     <>
-      <ArrowUUpLeftIcon aria-hidden />
       <span className="question-reply-copy">{children}</span>
       {(multiple || (!onClick && selected)) &&
         (selected ? (
@@ -64,6 +64,7 @@ export function QuestionCard({
   botId: number;
   record: NonNullable<ChatMessage["approval"]>;
 }) {
+  const preview = useFilePreview();
   const request = record.request;
   const pending = record.state === "pending";
   const questions: NonNullable<EngineApproval["questions"]> = request.questions
@@ -89,8 +90,6 @@ export function QuestionCard({
     ),
   );
   const [custom, setCustom] = useState<Record<string, boolean>>({});
-  const [visible, setVisible] = useState<Record<string, number>>({});
-  const [open, setOpen] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const action = useWorkAction();
   const disabled = !pending || action.busy || submitted;
@@ -145,9 +144,8 @@ export function QuestionCard({
     <div className="question-content">
       {materials(request.attachments)}
       <header className="question-heading">
-        {pending ? (
-          <strong>{request.title}</strong>
-        ) : (
+        <strong>{request.title}</strong>
+        {!pending && record.state !== "answered" && (
           <span className="question-footnote" role="status">
             {status}
           </span>
@@ -159,9 +157,6 @@ export function QuestionCard({
         const cards = options.some(
           (option) => option.attachments?.length || option.actions?.length,
         );
-        const count = cards
-          ? options.length
-          : (visible[question.id] ?? (pending ? 4 : options.length));
         const choices = questionChoices(question);
         const values = selected[question.id] ?? [];
         return (
@@ -179,13 +174,13 @@ export function QuestionCard({
               <div
                 className={cards ? "question-candidates" : "question-replies"}
               >
-                {options.slice(0, count).map((option) => {
+                {options.map((option) => {
                   const actions = option.actions?.length
                     ? option.actions
                     : [
                         {
                           id: option.id,
-                          label: cards ? "选择这一项" : option.label,
+                          label: option.label,
                         },
                       ];
                   return (
@@ -195,8 +190,34 @@ export function QuestionCard({
                       }
                       key={option.id}
                     >
-                      {materials(option.attachments)}
-                      {cards && (
+                      {!!option.attachments?.length && (
+                        <div className="question-preview">
+                          {option.attachments.map((file) => {
+                            const Icon = fileIcon(file);
+                            return (
+                              <button
+                                type="button"
+                                key={file.id}
+                                aria-label={`预览 ${file.name}`}
+                                onClick={() => preview?.open(file, botId)}
+                              >
+                                {file.mimeType?.startsWith("image/") ? (
+                                  <img
+                                    className="question-preview-image"
+                                    src={fileUrl(botId, file.id)}
+                                    alt={file.name}
+                                    loading="lazy"
+                                    decoding="async"
+                                  />
+                                ) : (
+                                  <Icon aria-hidden />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {!!option.actions?.length && (
                         <div className="question-candidate-copy">
                           <strong>{option.label}</strong>
                           {option.description && <p>{option.description}</p>}
@@ -216,7 +237,7 @@ export function QuestionCard({
                             }
                           >
                             {choice.label}
-                            {!cards && option.description && (
+                            {!option.actions?.length && option.description && (
                               <small>{option.description}</small>
                             )}
                           </QuestionReply>
@@ -227,51 +248,31 @@ export function QuestionCard({
                 })}
               </div>
             )}
-            {(options.length > count ||
-              (pending &&
-                question.allowOther &&
-                !!options.length &&
-                !custom[question.id])) && (
-              <div className="question-utilities">
-                {options.length > count && (
+            {pending &&
+              question.allowOther &&
+              !!options.length &&
+              !custom[question.id] && (
+                <div className="question-utilities">
                   <Button
                     variant="ghost"
                     size="small"
-                    onClick={() =>
-                      setVisible((current) => ({
+                    disabled={disabled}
+                    onClick={() => {
+                      setCustom((current) => ({
                         ...current,
-                        [question.id]: count + 4,
-                      }))
-                    }
-                  >
-                    显示更多选项（{options.length - count}）
-                  </Button>
-                )}
-                {pending &&
-                  question.allowOther &&
-                  !!options.length &&
-                  !custom[question.id] && (
-                    <Button
-                      variant="ghost"
-                      size="small"
-                      disabled={disabled}
-                      onClick={() => {
-                        setCustom((current) => ({
+                        [question.id]: true,
+                      }));
+                      if (!question.multiple)
+                        setAnswers((current) => ({
                           ...current,
-                          [question.id]: true,
+                          [question.id]: [],
                         }));
-                        if (!question.multiple)
-                          setAnswers((current) => ({
-                            ...current,
-                            [question.id]: [],
-                          }));
-                      }}
-                    >
-                      自己填写
-                    </Button>
-                  )}
-              </div>
-            )}
+                    }}
+                  >
+                    自己填写
+                  </Button>
+                </div>
+              )}
             {pending && (!options.length || custom[question.id]) && (
               <TextField
                 label="你的回答"
@@ -365,68 +366,7 @@ export function QuestionCard({
       data-state={record.state}
       aria-busy={action.busy || undefined}
     >
-      {pending ? (
-        body
-      ) : (
-        <>
-          <div className="question-summary">
-            <strong>{request.title}</strong>
-            <span className="question-footnote" role="status">
-              {status}
-            </span>
-            {record.state === "answered" &&
-              questions.map((question) => {
-                const values = selected[question.id] ?? [];
-                const choices = questionChoices(question);
-                return (
-                  <div className="question-answer" key={question.id}>
-                    <p>
-                      你选择了：
-                      {values
-                        .map(
-                          (id) =>
-                            choices.find((choice) => choice.id === id)?.label ??
-                            id,
-                        )
-                        .join("、") ||
-                        record.answer?.text ||
-                        "已确认"}
-                    </p>
-                    {question.options
-                      ?.filter(
-                        (option) =>
-                          values.includes(option.id) ||
-                          option.actions?.some((action) =>
-                            values.includes(action.id),
-                          ),
-                      )
-                      .map((option) => (
-                        <div key={option.id}>
-                          {materials(option.attachments)}
-                        </div>
-                      ))}
-                  </div>
-                );
-              })}
-          </div>
-          <Button
-            variant="ghost"
-            size="small"
-            className="question-review"
-            onClick={() => setOpen(true)}
-          >
-            查看完整问题
-          </Button>
-          <Dialog
-            open={open}
-            onOpenChange={setOpen}
-            title={request.title}
-            className="decision-dialog"
-          >
-            {body}
-          </Dialog>
-        </>
-      )}
+      {body}
     </section>
   );
 }
