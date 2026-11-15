@@ -3,15 +3,8 @@ name: Checks
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - AGENTS.md
-      - README*.md
-      - docs/**/*.md
+    tags: ["v*"]
   pull_request:
-    paths-ignore:
-      - AGENTS.md
-      - README*.md
-      - docs/**/*.md
   workflow_dispatch:
 
 permissions:
@@ -24,18 +17,45 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    outputs:
+      code: ${{ steps.scope.outputs.code }}
+      native: ${{ steps.scope.outputs.native }}
+      input: ${{ steps.scope.outputs.input }}
+      package: ${{ steps.scope.outputs.package }}
+      sandbox: ${{ steps.scope.outputs.sandbox }}
+      full: ${{ steps.scope.outputs.full }}
+      web_os: ${{ steps.scope.outputs.web_os }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v7.1.0
         with:
           node-version-file: .node-version
+      - id: scope
+        run: node .github/ci.mjs
+      - run: node --test .github/ci.test.mjs
       - uses: pnpm/action-setup@v6.1.0
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm typecheck
+        if: steps.scope.outputs.code == 'true'
+      - if: steps.scope.outputs.code == 'true'
+        run: pnpm install --frozen-lockfile
+      - if: steps.scope.outputs.code == 'true'
+        run: pnpm lint
+      - if: steps.scope.outputs.code == 'true'
+        run: pnpm typecheck
+      - name: Verify platform-independent regressions
+        if: steps.scope.outputs.code == 'true'
+        run: pnpm test:ci unit --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: unit
+          path: test-results/
+          if-no-files-found: ignore
   native:
     needs: check
+    if: needs.check.outputs.native == 'true'
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     strategy:
@@ -55,15 +75,13 @@ jobs:
         if: runner.os == 'Linux'
         run: echo "AGENT_BROWSER_EXECUTABLE_PATH=/opt/google/chrome/chrome" >> "$GITHUB_ENV"
       - name: Verify Harness process and recovery contracts
-        run: pnpm test packages/agent/test/harness-process.test.ts packages/agent/test/harness-protocols.test.ts packages/agent/test/harness-context.test.ts packages/agent/test/harness-recovery.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/harness.xml
+        run: pnpm test:ci native --reporter=default --reporter=junit --outputFile.junit=test-results/harness.xml
       - name: Verify browser services on Linux
-        if: runner.os == 'Linux'
-        run: xvfb-run -a pnpm test packages/agent/test/computer-services.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/browser.xml
+        if: needs.check.outputs.input == 'true' && runner.os == 'Linux'
+        run: xvfb-run -a pnpm test:ci browser --reporter=default --reporter=junit --outputFile.junit=test-results/browser.xml
       - name: Verify browser services
-        if: runner.os != 'Linux'
-        run: pnpm test packages/agent/test/computer-services.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/browser.xml
-      - name: Verify application regressions
-        run: pnpm test --exclude=apps/web/test/viewer-input.test.ts --exclude=packages/agent/test/desktop-view.test.ts --exclude=packages/agent/test/computer-input.test.ts --exclude=packages/agent/test/browser-runtime.test.ts --exclude=packages/agent/test/browser-command.test.ts --exclude=packages/agent/test/takeover.test.ts --exclude=packages/agent/test/computer-control.test.ts --exclude=packages/agent/test/harness-process.test.ts --exclude=packages/agent/test/harness-protocols.test.ts --exclude=packages/agent/test/harness-context.test.ts --exclude=packages/agent/test/harness-recovery.test.ts --exclude=packages/agent/test/computer-services.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml
+        if: needs.check.outputs.input == 'true' && runner.os != 'Linux'
+        run: pnpm test:ci browser --reporter=default --reporter=junit --outputFile.junit=test-results/browser.xml
       - uses: actions/upload-artifact@v6
         if: always()
         with:
@@ -72,12 +90,13 @@ jobs:
           if-no-files-found: ignore
   web:
     needs: check
+    if: needs.check.outputs.code == 'true'
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: ${{ fromJSON(needs.check.outputs.web_os) }}
         shard: [1, 2]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -108,9 +127,13 @@ jobs:
           if-no-files-found: ignore
   computer-input:
     needs: check
+    if: needs.check.outputs.input == 'true'
     uses: ./.github/workflows/computer-input.yml
+    with:
+      web-full: ${{ needs.check.outputs.full == 'true' }}
   desktop:
     needs: check
+    if: needs.check.outputs.code == 'true'
     timeout-minutes: 15
     runs-on: windows-latest
     steps:
@@ -124,10 +147,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: pnpm exec playwright install chromium --only-shell
-      - run: pnpm exec playwright test --config apps/desktop/playwright.config.ts desktop.spec.ts files.spec.ts runtime.spec.ts workspaces.spec.ts notifications.spec.ts avatars.spec.ts
-      - run: pnpm --filter @domos/desktop exec electron-builder --win nsis --config.win.signExecutable=false
-      - run: node --test apps/desktop/test/package.test.mjs
-      - run: pnpm exec playwright test --config apps/desktop/playwright.config.ts identity.spec.ts --output=test-results/desktop/identity
+      - name: Verify desktop smoke
+        if: needs.check.outputs.package != 'true'
+        run: pnpm exec playwright test --config apps/desktop/playwright.config.ts desktop.spec.ts runtime.spec.ts
+      - name: Verify full desktop workflows
+        if: needs.check.outputs.package == 'true'
+        run: pnpm exec playwright test --config apps/desktop/playwright.config.ts desktop.spec.ts files.spec.ts runtime.spec.ts workspaces.spec.ts notifications.spec.ts avatars.spec.ts
+      - if: needs.check.outputs.package == 'true'
+        run: pnpm --filter @domos/desktop exec electron-builder --win nsis --config.win.signExecutable=false
+      - if: needs.check.outputs.package == 'true'
+        run: node --test apps/desktop/test/package.test.mjs
+      - if: needs.check.outputs.package == 'true'
+        run: pnpm exec playwright test --config apps/desktop/playwright.config.ts identity.spec.ts --output=test-results/desktop/identity
       - uses: actions/upload-artifact@v6
         if: always()
         with:
@@ -135,11 +166,13 @@ jobs:
           path: test-results/desktop/
           if-no-files-found: ignore
       - uses: actions/upload-artifact@v6
+        if: needs.check.outputs.package == 'true'
         with:
           name: domos-windows-test
           path: apps/desktop/release/*.exe
   sandbox:
     needs: check
+    if: needs.check.outputs.sandbox == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
@@ -266,3 +299,17 @@ jobs:
           docker top domos-app-test -eo pid,stat,comm 2>/dev/null || true
           docker logs --tail 30 domos-app-test 2>/dev/null || true
           docker logs --tail 30 domos-app-ssh 2>/dev/null || true
+  result:
+    if: always()
+    needs: [check, native, web, computer-input, desktop, sandbox]
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Report selected checks
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: node .github/ci.mjs result

@@ -15,9 +15,10 @@
     "build": "pnpm --filter @domos/web build",
     "test:e2e": "pnpm build && playwright test",
     "test": "vitest run",
+    "test:ci": "node .github/ci.mjs test",
     "eval:computer": "node apps/cli/src/eval-computer.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check apps packages package.json domos.config.json tsconfig.json biome.json vitest.config.ts playwright.config.ts"
+    "lint": "biome check .github apps packages package.json domos.config.json tsconfig.json biome.json vitest.config.ts playwright.config.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
