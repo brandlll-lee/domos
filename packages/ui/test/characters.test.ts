@@ -1,3 +1,5 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 import {
   characterColors,
@@ -5,6 +7,31 @@ import {
   characterNames,
   characterSeed,
 } from "../src/characters.ts";
+import { Character } from "../src/web/character.tsx";
+
+test("plush shading retains the Bot color at the calibrated material midpoint", () => {
+  for (const { color } of characterColors) {
+    const html = renderToStaticMarkup(
+      createElement(Character, { shape: "cloud", color, state: "idle" }),
+    );
+    const tables = [...html.matchAll(/tableValues="([^"]+)"/g)].map((match) =>
+      (match[1] ?? "").split(" ").map(Number),
+    );
+    expect(tables).toHaveLength(3);
+    tables.forEach((table, channel) => {
+      expect(table).toHaveLength(256);
+      const ink =
+        Number.parseInt(color.slice(1 + channel * 2, 3 + channel * 2), 16) /
+        255;
+      expect(Math.abs((table[140] ?? 0) - ink)).toBeLessThan(1 / 255);
+      expect(table[0]).toBe(0);
+      table.forEach((value, index) => {
+        expect(value).toBeGreaterThanOrEqual(table[index - 1] ?? 0);
+        expect(value).toBeLessThanOrEqual(1);
+      });
+    });
+  }
+});
 
 test("saved identities retain their shape and color", () => {
   expect(characterIdentity("00000000-0000-4000-8000-000000000001")).toEqual({

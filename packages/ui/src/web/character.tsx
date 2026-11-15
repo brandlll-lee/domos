@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, useMemo } from "react";
 import bunny from "../../assets/characters/bunny.webp";
 import capsule from "../../assets/characters/capsule.webp";
 import cat from "../../assets/characters/cat.webp";
@@ -40,10 +40,24 @@ const textures = {
 const channels = (color: string) =>
   [1, 3, 5].map((index) => Number.parseInt(color.slice(index, index + 2), 16));
 
+const linear = (value: number) =>
+  value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+const srgb = (value: number) =>
+  value <= 0.0031308 ? value * 12.92 : 1.055 * value ** (1 / 2.4) - 0.055;
+
 function tint(color: string) {
   return channels(color).map((channel) => {
-    const mid = channel / 255;
-    return [0, mid * 0.32, mid * 0.7, mid, mid + (1 - mid) * 0.55, 1].join(" ");
+    const ink = linear(channel / 255);
+    return Array.from({ length: 256 }, (_, index) => {
+      const gray = index / 255;
+      // Neutral bodies have a 0.55 median; linear light retains fiber shading.
+      const shade = (linear(gray) / linear(0.55)) ** 0.6;
+      const sheen = 0.08 * Math.max(0, (gray - 0.55) / 0.45) ** 2;
+      const value = Math.min(1, ink * shade);
+      return (
+        Math.round(255 * srgb(value + (1 - value) * sheen)) / 255
+      ).toFixed(6);
+    }).join(" ");
   });
 }
 
@@ -96,7 +110,7 @@ export function Character({
   const id = useId();
   const face = characterFaces[shape] ?? { x: 50, y: 46.4, scale: 1 };
   const texture = textures[shape];
-  const [red, green, blue] = tint(color);
+  const [red, green, blue] = useMemo(() => tint(color), [color]);
   return (
     <svg
       className="character"

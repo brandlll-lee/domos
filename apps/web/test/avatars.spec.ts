@@ -10,6 +10,7 @@ import { expect, test } from "@playwright/test";
 test("plush identities load, animate and survive profile changes", async ({
   page,
 }, testInfo) => {
+  test.setTimeout(60_000);
   const directory = await mkdtemp(join(tmpdir(), "domos-avatars-"));
   const worker = fork(
     fileURLToPath(
@@ -211,6 +212,51 @@ test("plush identities load, animate and survive profile changes", async ({
     await expect(picker.getByRole("button", { name: /^颜色：/ })).toHaveCount(
       18,
     );
+    const bodies = await picker
+      .locator(".character-body > image")
+      .evaluateAll(async (nodes) => {
+        const sources = new Set(nodes.map((node) => node.getAttribute("href")));
+        return Promise.all(
+          [...sources].map(async (source) => {
+            const image = new Image();
+            image.src = source ?? "";
+            await image.decode();
+            const canvas = document.createElement("canvas");
+            canvas.width = image.width;
+            canvas.height = image.height;
+            const context = canvas.getContext("2d");
+            if (!context) throw new Error("Canvas required");
+            context.drawImage(image, 0, 0);
+            const { data } = context.getImageData(
+              0,
+              0,
+              image.width,
+              image.height,
+            );
+            const levels: number[] = [];
+            let neutral = true;
+            for (let index = 0; index < data.length; index += 4) {
+              if ((data[index + 3] ?? 0) <= 250) continue;
+              neutral &&=
+                data[index] === data[index + 1] &&
+                data[index] === data[index + 2];
+              levels.push(data[index] ?? 0);
+            }
+            levels.sort((a, b) => a - b);
+            return {
+              size: [image.width, image.height],
+              neutral,
+              median: levels[Math.floor(levels.length / 2)] ?? 0,
+            };
+          }),
+        );
+      });
+    expect(bodies).toHaveLength(15);
+    for (const body of bodies) {
+      expect(body.size).toEqual([1024, 1024]);
+      expect(body.neutral).toBe(true);
+      expect(Math.abs(body.median / 255 - 0.55)).toBeLessThan(2 / 255);
+    }
     await checkAvatarSizes();
     await picker.getByRole("button", { name: "换个形象", exact: true }).click();
     await picker

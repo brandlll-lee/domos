@@ -72,7 +72,6 @@ const seedColors = [
   "#9dabb8",
 ] as const;
 
-export const characterBaseColor = "#b3df32";
 export const brandCharacter = {
   color: "#c6f33c",
   shape: "cat",
