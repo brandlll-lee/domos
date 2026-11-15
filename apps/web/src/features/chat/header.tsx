@@ -31,19 +31,19 @@ export function ChatHeader({
         aria-controls={detailsOpen ? "bot-details" : undefined}
         onClick={onDetails}
       >
-        <span className="chat-identity-icons" aria-hidden="true">
+        <span className="chat-identity-avatar" aria-hidden="true">
           {members ? (
             <TeamAvatar members={members} />
           ) : (
-            <BotAvatar
-              seed={bot.avatar}
-              size="small"
-              state={busy ? "running" : "idle"}
-            />
+            <BotAvatar seed={bot.avatar} state={busy ? "running" : "idle"} />
           )}
-          {!members && provider && <EngineMark provider={provider} />}
         </span>
-        <span className="chat-identity-name">{bot.name}</span>
+        <span className="chat-identity-label">
+          {!members && provider && <EngineMark provider={provider} />}
+          <span className="chat-identity-name" title={bot.name}>
+            {bot.name}
+          </span>
+        </span>
       </Button>
     </header>
   );

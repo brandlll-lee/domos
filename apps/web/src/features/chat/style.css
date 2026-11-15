@@ -154,6 +154,7 @@
   transition-delay: 0s, 0s, 0s, var(--motion-feedback);
 }
 .conversation {
+  --chat-header-height: 7rem;
   position: relative;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
@@ -174,37 +175,54 @@
 }
 .chat-header .chat-identity {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1);
   min-width: 0;
   max-width: 100%;
   min-height: var(--control-height);
-  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2);
-  border: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent);
+  padding: 0;
+  border: 0;
   border-radius: var(--radius-round);
-  background: var(--color-surface);
-  box-shadow: 0 1px 3px #0000000f;
+  background: transparent;
   color: var(--color-text);
-  font-size: var(--text-label);
+  font-size: var(--text-body);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-control);
   pointer-events: auto;
 }
-.chat-identity-icons {
-  display: flex;
-  align-items: center;
+.chat-identity-avatar {
+  display: grid;
+  place-items: center;
   flex-shrink: 0;
-  isolation: isolate;
-}
-.chat-identity-icons .bot-avatar {
-  z-index: 1;
-}
-.chat-identity-icons .engine-mark {
-  width: var(--space-6);
-  height: var(--space-6);
-  margin-inline-start: calc(-1 * var(--space-2));
-  padding: var(--space-1);
+  width: var(--avatar-panel);
+  height: var(--avatar-panel);
   border-radius: var(--radius-round);
+  background: #fff;
+}
+.chat-identity-avatar > :is(.bot-avatar, .team-avatar) {
+  width: calc(var(--avatar-panel) - var(--space-3));
+  height: calc(var(--avatar-panel) - var(--space-3));
+}
+.chat-identity-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: min(100%, 12rem);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-round);
+  background: var(--color-surface);
+  transition: background-color var(--motion-feedback);
+}
+.chat-identity-label .engine-mark {
+  width: var(--text-small);
+  height: var(--text-small);
+}
+.chat-header .chat-identity[data-variant="ghost"]:not(:disabled):hover {
+  background: transparent;
+}
+.chat-identity:hover .chat-identity-label {
   background: var(--color-control-hover);
 }
 .chat-identity-name {

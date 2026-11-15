@@ -378,8 +378,15 @@ test("teams preserve member authors and keep private chats separate", async ({
   await expect(
     page.locator(".chat-identity .team-avatar .bot-avatar"),
   ).toHaveCount(2);
+  await expect(page.locator(".chat-identity-label .engine-mark")).toHaveCount(
+    0,
+  );
   for (const theme of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: theme });
+    await expect(page.locator(".chat-identity-avatar")).toHaveCSS(
+      "background-color",
+      "rgb(255, 255, 255)",
+    );
     await page.screenshot({ path: info.outputPath(`team-${theme}.png`) });
   }
   const gated = once(worker, "message");
@@ -898,7 +905,7 @@ test("profile loading recovers without retaining an old error", async ({
   await expect(page.locator(".attention-toast[data-error]")).toHaveCount(0);
 });
 
-test("three columns keep the identity capsule and navigation clear at each width", async ({
+test("three columns keep the two-line identity and navigation clear at each width", async ({
   page,
 }, info) => {
   await page.setViewportSize({ width: 1600, height: 960 });
@@ -930,7 +937,20 @@ test("three columns keep the identity capsule and navigation clear at each width
   const mark = capsule.locator(".engine-mark");
   const logo = await mark.boundingBox();
   if (!logo || !avatar) throw new Error("Identity icons missing");
-  expect(logo.x).toBeLessThan(avatar.x + avatar.width);
+  expect(logo.y).toBeGreaterThan(avatar.y + avatar.height);
+  await expect(capsule.locator(".chat-identity-avatar")).toHaveCSS(
+    "width",
+    "56px",
+  );
+  await expect(capsule.locator(".chat-identity-avatar")).toHaveCSS(
+    "height",
+    "56px",
+  );
+  await expect(mark).toHaveCSS("width", "12px");
+  await expect(capsule.locator(".chat-identity-name")).toHaveCSS(
+    "font-size",
+    "14px",
+  );
   await expect(mark).toHaveAttribute("data-provider", "pi");
   await expect(capsule.locator(".character")).toHaveCount(1);
   const footer = page.locator(".sidebar-footer");
@@ -947,17 +967,25 @@ test("three columns keep the identity capsule and navigation clear at each width
   for (const theme of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-    await expect(capsule).toHaveCSS(
+    await expect(capsule.locator(".chat-identity-avatar")).toHaveCSS(
+      "background-color",
+      "rgb(255, 255, 255)",
+    );
+    await expect(capsule.locator(".chat-identity-label")).toHaveCSS(
       "background-color",
       theme === "dark" ? "rgb(20, 20, 22)" : "rgb(250, 250, 250)",
     );
-    await expect(capsule).toHaveCSS("border-width", "1px");
-    await expect(capsule).not.toHaveCSS("box-shadow", "none");
+    await expect(capsule).toHaveCSS("border-width", "0px");
+    await expect(capsule).toHaveCSS("box-shadow", "none");
+    await capsule.hover();
+    await expect(capsule).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await page.mouse.move(0, 0);
     await page.screenshot({ path: info.outputPath(`workspace-${theme}.png`) });
   }
   await details.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(details).toBeHidden();
-  await capsule.click();
+  await capsule.focus();
+  await page.keyboard.press("Enter");
   await expect(details).toBeVisible();
   for (const width of [768, 390]) {
     await page.setViewportSize({ width, height: 900 });
@@ -977,6 +1005,85 @@ test("three columns keep the identity capsule and navigation clear at each width
   ).toBeVisible();
   await page.getByRole("link", { name: "Domos", exact: true }).click();
   await expect(page.getByLabel("消息", { exact: true })).toBeVisible();
+});
+
+test("identity labels retain long names and inline marks for each Harness", async ({
+  page,
+}, info) => {
+  test.setTimeout(60_000);
+  const rpc = async (method: string, json: object) => {
+    const response = await page.request.post(`${url}/rpc/${method}`, {
+      data: { json },
+    });
+    expect(response.ok()).toBe(true);
+    return (await response.json()).json;
+  };
+  const name = "研究与交付助手 Research and Delivery Companion";
+  const bot = await rpc("bots/create", {
+    name,
+    requestId: crypto.randomUUID(),
+  });
+  await page.goto(url);
+  await page.getByRole("link", { name, exact: false }).click();
+  for (const provider of ["pi", "codex", "claude", "opencode"]) {
+    const profile = await rpc("engines/get", { botId: bot.id });
+    await rpc("engines/configure", {
+      botId: bot.id,
+      config: { provider, model: null },
+      revision: profile.revision,
+      requestId: crypto.randomUUID(),
+    });
+    await page.reload();
+    const identity = page.locator(".chat-identity");
+    const label = identity.locator(".chat-identity-label");
+    const mark = label.locator(".engine-mark");
+    await expect(mark).toHaveAttribute("data-provider", provider);
+    await expect(mark).toHaveCSS("width", "12px");
+    await expect(identity.locator(".chat-identity-name")).toHaveAttribute(
+      "title",
+      name,
+    );
+    for (const theme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: theme });
+      await expect(identity.locator(".chat-identity-avatar")).toHaveCSS(
+        "background-color",
+        "rgb(255, 255, 255)",
+      );
+      const boxes = await label.evaluate((node) => {
+        const logo = node
+          .querySelector(".engine-mark")
+          ?.getBoundingClientRect();
+        const text = node
+          .querySelector(".chat-identity-name")
+          ?.getBoundingClientRect();
+        if (!logo || !text) throw new Error("Identity label missing");
+        return {
+          gap: text.x - logo.right,
+          alignment: Math.abs(
+            logo.y + logo.height / 2 - text.y - text.height / 2,
+          ),
+        };
+      });
+      expect(boxes.gap).toBe(4);
+      expect(boxes.alignment).toBeLessThan(1);
+      await identity.screenshot({
+        path: info.outputPath(`identity-${provider}-${theme}.png`),
+      });
+    }
+  }
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.keyboard.press("Escape");
+  const identity = page.locator(".chat-identity");
+  await expect(identity).toBeInViewport();
+  expect(
+    await identity
+      .locator(".chat-identity-name")
+      .evaluate((node) => node.scrollWidth > node.clientWidth),
+  ).toBe(true);
+  await identity.locator(".chat-identity-avatar").click();
+  await expect(
+    page.getByRole("dialog", { name: "Bot详情", exact: true }),
+  ).toBeVisible();
 });
 
 test("centered dialogs share stable geometry and Harness marks", async ({
