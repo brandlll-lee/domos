@@ -53,6 +53,43 @@ export function workRouter(bots: Bots, work: BotWork, engines?: Runtime) {
       .handler(({ input }) =>
         access(input.botId, () => bots.profile(input.botId, context)),
       ),
+    identity: os
+      .input(
+        botTarget.extend({
+          name: z.string().trim().min(1).max(BOT_NAME_LENGTH).optional(),
+          avatarFileId: z
+            .string()
+            .regex(/^[a-f0-9]{64}$/)
+            .optional(),
+          coverFileId: z
+            .string()
+            .regex(/^[a-f0-9]{64}$/)
+            .optional(),
+          resetAvatar: z.boolean().optional(),
+          headset: z
+            .object({
+              x: z.number().min(0).max(100),
+              y: z.number().min(0).max(100),
+              scale: z.number().min(0.1).max(2),
+            })
+            .optional(),
+          computer: z
+            .object({
+              x: z.number().min(0).max(100),
+              y: z.number().min(0).max(100),
+              scale: z.number().min(0.1).max(2),
+            })
+            .optional(),
+          revision,
+          requestId,
+        }),
+      )
+      .handler(({ input }) =>
+        access(input.botId, () => {
+          const { botId, requestId, ...change } = input;
+          return bots.updateIdentity(botId, change, requestId, context);
+        }),
+      ),
     update: os
       .input(
         botTarget.extend({

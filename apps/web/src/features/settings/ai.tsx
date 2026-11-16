@@ -16,6 +16,7 @@ import { ModelSetting } from "../models/model-setting.tsx";
 import { useModelSettings } from "../models/model-state.ts";
 import { useVisibility } from "../models/use-visibility.ts";
 import { userError } from "../user-error.ts";
+import { ImageServiceSettings } from "./image-service.tsx";
 import { useConnectionContext } from "./use-connection-context.ts";
 
 export function AISettings({
@@ -246,6 +247,9 @@ function Services({ botId, admin }: { botId: number; admin: boolean }) {
             );
           })}
         </PanelGroup>
+      )}
+      {!active && (
+        <ImageServiceSettings botId={botId} admin={admin} enabled={enabled} />
       )}
       {!admin && <InlineNotice>账号和程序由管理员配置。</InlineNotice>}
     </div>

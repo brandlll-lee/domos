@@ -149,6 +149,8 @@ export function hostingApp(options: {
   });
   const protectedApp = new Hono<HostingEnv>();
   protectedApp.use("*", authenticate(sessions));
+  for (const action of ["save", "test", "preview"])
+    protectedApp.use(`/images/${action}`, administrator);
   protectedApp.use("/mcp/*", administrator);
   protectedApp.use("/computer/manage", administrator);
   protectedApp.use("/models/setVisibility", administrator);

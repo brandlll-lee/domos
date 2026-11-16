@@ -18,6 +18,7 @@ import { Files } from "./files.ts";
 import { history } from "./harness/history.ts";
 import { interactionExtension } from "./harness/interactions.ts";
 import { EngineDoc } from "./harness/state.ts";
+import { ImageServices, imageExtension } from "./image-services.ts";
 import { McpConnections } from "./mcp/connections.ts";
 import { messaging } from "./messaging.ts";
 import { EngineExecution, engineTask, Runtime } from "./runtime/index.ts";
@@ -51,6 +52,15 @@ export async function openAgent(
   options.registry.install(memory);
   options.registry.install(skillExtension(files));
   const computers = options.computers;
+  let images: ImageServices;
+  let bots: Bots;
+  if (computers)
+    options.registry.install(
+      imageExtension(
+        () => images,
+        () => bots,
+      ),
+    );
   const execution = computers
     ? new EngineExecution(computers, files)
     : undefined;
@@ -117,7 +127,17 @@ export async function openAgent(
   const harness = await Harness.open(storage, { ...options, models }, context);
   try {
     const conversation = await harness.root(context, { agent });
-    const bots = new Bots(harness, options.computers, database);
+    bots = new Bots(harness, options.computers, database);
+    bots.files = files;
+    if (computers) {
+      images = new ImageServices(
+        harness,
+        computers,
+        files,
+        options.credentials,
+      );
+      bots.images = images;
+    }
     const mcp = new McpConnections(harness, options.credentials);
     await bots.initialize(conversation.id, context);
     await options.computers?.initialize(

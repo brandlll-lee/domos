@@ -21,6 +21,7 @@ const productExtensions = new Set([
   "domos-skills",
   "domos-routines",
   "domos-interactions",
+  "domos-images",
 ]);
 const ProductCalls = defineDoc<{ delivered: string[] }>({
   kind: "domos.engine-product-calls",
@@ -231,14 +232,20 @@ export async function callProductTool(
   const details = result.details as
     | {
         attachment?: unknown;
+        attachments?: import("../attachments.ts").Attachment[];
         notice?: import("../messages.ts").ChatMessage["notice"];
         link?: import("../messages.ts").LinkCard;
       }
     | undefined;
   if (details && "content" in details) return details as ProductResult;
+  const attachments =
+    details?.attachments ??
+    (details?.attachment
+      ? [details.attachment as import("../attachments.ts").Attachment]
+      : []);
   if (
     !result.isError &&
-    (details?.attachment || details?.notice || details?.link)
+    (attachments.length || details?.notice || details?.link)
   ) {
     await runtime.commit(async (tx) => {
       const doc = await tx.doc(ProductCalls, runtime.taskId);
@@ -250,13 +257,13 @@ export async function callProductTool(
       const run = runId
         ? (await tx.doc(RoutinesDoc)).runs.find((run) => run.id === runId)
         : undefined;
-      if (run && details.attachment)
+      if (run && attachments.length)
         run.files = [
           ...new Map(
-            [
-              ...(run.files ?? []),
-              details.attachment as import("../attachments.ts").Attachment,
-            ].map((file) => [file.id, file]),
+            [...(run.files ?? []), ...attachments].map((file) => [
+              file.id,
+              file,
+            ]),
           ).values(),
         ];
       await tx.appendEntry(runtime.conversationId, {
@@ -265,7 +272,7 @@ export async function callProductTool(
           id: `product:${id}`,
           turnId: (await tx.doc(EngineDoc, runtime.conversationId)).activeTurn,
           hidden: run?.delivery === "conditional",
-          role: details.link ? "assistant" : "toolResult",
+          role: details?.link ? "assistant" : "toolResult",
           content: [],
           stopped: false,
           timestamp: Date.now(),
@@ -273,11 +280,11 @@ export async function callProductTool(
           toolName: name,
           toolStatus: "done",
           isError: false,
-          ...(details.notice && !result.isError
+          ...(details?.notice && !result.isError
             ? { notice: details.notice }
             : {}),
-          ...(details.attachment ? { attachments: [details.attachment] } : {}),
-          ...(details.link ? { link: details.link } : {}),
+          ...(attachments.length ? { attachments } : {}),
+          ...(details?.link ? { link: details.link } : {}),
         }),
       });
     }, context);

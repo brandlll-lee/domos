@@ -1,10 +1,18 @@
-import { memo, useEffect, useRef } from "react";
-import { brandCharacter, characterIdentity } from "../characters.ts";
+import { createContext, memo, useContext, useEffect, useRef } from "react";
+import {
+  brandCharacter,
+  type CharacterMedia,
+  characterIdentity,
+} from "../characters.ts";
 import { Character } from "./character.tsx";
 import { animateCharacter } from "./character-motion.ts";
 import type { CharacterWork } from "./character-work.tsx";
 import { StatusDot } from "./status-dot.tsx";
 import { UnreadBadge } from "./unread-badge.tsx";
+
+export const AvatarMediaContext = createContext<Record<string, CharacterMedia>>(
+  {},
+);
 
 type Motion = "idle" | "running";
 
@@ -17,6 +25,7 @@ export const BotAvatar = memo(function BotAvatar({
   interactive = false,
   unread = 0,
   work,
+  media,
 }: {
   seed: string;
   color?: string;
@@ -26,7 +35,10 @@ export const BotAvatar = memo(function BotAvatar({
   interactive?: boolean;
   unread?: number;
   work?: CharacterWork;
+  media?: CharacterMedia;
 }) {
+  const catalog = useContext(AvatarMediaContext);
+  const source = media ?? catalog[seed];
   const identity = characterIdentity(seed);
   const workingAvatar = work !== undefined;
   const root = useRef<HTMLSpanElement>(null);
@@ -43,6 +55,8 @@ export const BotAvatar = memo(function BotAvatar({
     <span ref={root} className="bot-avatar" data-size={size} data-seed={seed}>
       <span className="character-gesture">
         <Character
+          media={source}
+          animateMedia={workingAvatar || size === "panel" || size === "large"}
           shape={identity.shape}
           color={color ?? identity.color}
           state={state}

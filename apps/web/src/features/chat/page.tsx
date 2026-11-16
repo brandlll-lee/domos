@@ -2,6 +2,7 @@ import type { Attachment } from "@domos/agent/attachments";
 import type { Bot, BotPresence } from "@domos/agent/bots";
 import { type ChatMessage, messageText } from "@domos/agent/messages";
 import type { Team } from "@domos/agent/teams";
+import { AvatarMediaContext } from "@domos/ui/avatar";
 import { characterIdentity } from "@domos/ui/characters";
 import { Loading } from "@domos/ui/loading";
 import { layout } from "@domos/ui/tokens";
@@ -49,18 +50,26 @@ export function ChatPage() {
   if (!bots.selected)
     return bots.error ? null : <Loading label="正在读取联系人" />;
   return (
-    <ChatAttentionProvider>
-      <BotChat
-        key={bots.selectedTeam?.id ?? bots.selected.id}
-        team={bots.selectedTeam}
-        bot={bots.selected}
-        bots={bots.items}
-        directoryError={bots.error}
-        directoryConnected={bots.connected}
-        directory={bots}
-        search={search}
-      />
-    </ChatAttentionProvider>
+    <AvatarMediaContext
+      value={Object.fromEntries(
+        bots.items.flatMap((bot) =>
+          bot.avatarMedia ? [[bot.avatar, bot.avatarMedia]] : [],
+        ),
+      )}
+    >
+      <ChatAttentionProvider>
+        <BotChat
+          key={bots.selectedTeam?.id ?? bots.selected.id}
+          team={bots.selectedTeam}
+          bot={bots.selected}
+          bots={bots.items}
+          directoryError={bots.error}
+          directoryConnected={bots.connected}
+          directory={bots}
+          search={search}
+        />
+      </ChatAttentionProvider>
+    </AvatarMediaContext>
   );
 }
 

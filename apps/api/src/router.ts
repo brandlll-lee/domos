@@ -26,6 +26,7 @@ import {
 import { watchDirectory } from "./directory.ts";
 import { engineRouter } from "./engines.ts";
 import { fileRouter } from "./files.ts";
+import { imageRouter } from "./images.ts";
 import {
   botReferences,
   materialsSchema,
@@ -109,6 +110,7 @@ export function createRouter(
         }),
     },
     teams: teamRouter(bots, files, work, engines, mcp),
+    images: imageRouter(bots),
     mcp: mcpRouter(bots, mcp, mcpCallback),
     computer: computerRouter(bots, computer),
     engines: engineRouter(bots, engines),

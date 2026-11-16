@@ -6,6 +6,7 @@ import { TextField } from "@domos/ui/field";
 import { PencilSimpleIcon } from "@phosphor-icons/react/dist/csr/PencilSimple";
 import { client } from "../../../client.ts";
 import { AvatarEditor } from "../avatar-editor.tsx";
+import { AvatarEquipment } from "./avatar-equipment.tsx";
 import {
   type Profile,
   useIdentityDraft,
@@ -69,6 +70,7 @@ export function IdentityEditor({
           maxLength={WORK_TEXT_LENGTH}
           placeholder="例如：帮我整理资料、准备每周工作计划。"
         />
+        <AvatarEquipment profile={profile} action={action} onSaved={onSaved} />
         {dirty && (
           <div className="form-actions">
             <Button

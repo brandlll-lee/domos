@@ -18,6 +18,10 @@ import {
 } from "../models/model-state.ts";
 import { useErrorNotice } from "../notices.tsx";
 import {
+  clearImageSettings,
+  invalidateImageSettings,
+} from "../settings/image-state.ts";
+import {
   clearConnectionContexts,
   invalidateConnectionContext,
 } from "../settings/use-connection-context.ts";
@@ -94,6 +98,7 @@ export function useBots() {
           clearConnections(ids);
           clearFiles(ids);
           clearModelSettings(ids);
+          clearImageSettings(ids);
           clearConnectionContexts(ids);
           for (const bot of next.items) {
             receiveModelActivity(bot.id, bot.busy);
@@ -107,6 +112,7 @@ export function useBots() {
               invalidateNativeConnections(bot.id);
               invalidateBotWork(bot.id);
               invalidateModelSettings(bot.id);
+              invalidateImageSettings(bot.id);
               invalidateConnectionContext(bot.id);
             }
             bindings.current[bot.id] = key;

@@ -553,8 +553,13 @@ export class Files {
     );
   }
 
-  async publish(botId: number, path: string, context: Context) {
-    const workspace = await this.workspace(botId, context);
+  async publish(
+    botId: number,
+    path: string,
+    context: Context,
+    directory?: string,
+  ) {
+    const workspace = await this.workspace(botId, context, directory);
     const resolved = await workspace.path(path);
     const reader = await workspace.openBinaryReader(
       resolved,

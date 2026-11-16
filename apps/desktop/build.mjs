@@ -60,6 +60,7 @@ const external = [
   "hono/*",
   "undici",
   "zod",
+  "sharp",
 ];
 for (const [entry, output] of [
   ["apps/api/src/main.ts", "server.mjs"],
@@ -113,6 +114,8 @@ await mkdir(join(runtime, "work/packages/agent/src/harness"), {
 });
 for (const name of [
   "worker.mjs",
+  "image-service.mjs",
+  "image-processing.mjs",
   "account-environment.mjs",
   "pi-auth.mjs",
   "pi-tools.mjs",

@@ -1,3 +1,10 @@
+Sharp 0.34.5
+Copyright 2013 Lovell Fuller and contributors
+Licensed under Apache-2.0. See licenses/sharp.txt.
+Source: https://github.com/lovell/sharp
+Native libvips is LGPL-2.1-or-later: https://github.com/libvips/libvips
+Sharp prebuilt dependency sources and notices: https://github.com/lovell/sharp-libvips
+
 Rakazo
 Copyright 2026 Rakazo contributors
 Licensed under the Apache License, Version 2.0. See licenses/rakazo.txt.

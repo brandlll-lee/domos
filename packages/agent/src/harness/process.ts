@@ -334,7 +334,14 @@ export class WorkProcess implements EngineProcess {
           clean();
           reject(new Error("工作电脑请求已超时。请检查连接和操作结果。"));
         },
-        observation ? engineLimits.observationMs : engineLimits.executionMs,
+        "type" in frame &&
+          frame.type === "mcp" &&
+          "input" in frame &&
+          (frame.input as Record<string, unknown>).action === "image_generate"
+          ? 10 * 60_000
+          : observation
+            ? engineLimits.observationMs
+            : engineLimits.executionMs,
       );
       timer.unref();
       this.requests.set(id, {

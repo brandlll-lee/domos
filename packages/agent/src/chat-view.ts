@@ -196,11 +196,17 @@ export function chatView(
           entry.byTaskId === live?.run?.taskId)
       )
         return;
-      const attachment =
+      const attachmentDetails =
         message.role === "toolResult"
-          ? (message.details as { attachment?: Attachment } | undefined)
-              ?.attachment
+          ? (message.details as
+              | { attachment?: Attachment; attachments?: Attachment[] }
+              | undefined)
           : undefined;
+      const attachments =
+        attachmentDetails?.attachments ??
+        (attachmentDetails?.attachment
+          ? [attachmentDetails.attachment]
+          : undefined);
       const delivery =
         message.role === "toolResult" && !message.isError && !stopped
           ? (message.details as { delivery?: MessageDelivery } | undefined)
@@ -220,7 +226,7 @@ export function chatView(
       const projected = project(
         message,
         `${entry.id}:${index}`,
-        input?.attachments ?? (attachment ? [attachment] : undefined),
+        input?.attachments ?? attachments,
         input?.text,
         stopped,
         diagnostics,

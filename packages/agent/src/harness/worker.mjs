@@ -14,6 +14,7 @@ import {
 import { openComputerService } from "./computer-service.mjs";
 import { openGateway } from "./gateway.mjs";
 import { openHttpService } from "./http-service.mjs";
+import { imageOperation } from "./image-service.mjs";
 import { closeMcpClients, mcpOperation } from "./mcp-client.mjs";
 import { nativeCheckpoint, nativeHistory } from "./native-history.mjs";
 
@@ -135,6 +136,8 @@ function invoke(callId, name, args, signal) {
 }
 
 async function manageMcp(input, signal, onprogress) {
+  if (input.action === "image_generate" || input.action === "image_test")
+    return imageOperation(input, home, signal);
   if (input.action === "pi_catalog") {
     if (!child?.connected)
       throw Object.assign(new Error("此进程未提供 Pi MCP 目录。"), {
@@ -427,7 +430,10 @@ lines.on("line", (line) => {
                     ? error.code
                     : undefined,
               error:
-                frame.input.action === "pi_catalog" || error instanceof McpError
+                frame.input.action === "pi_catalog" ||
+                frame.input.action === "image_generate" ||
+                frame.input.action === "image_test" ||
+                error instanceof McpError
                   ? error.message
                   : "MCP 连接未完成。请检查配置和授权。",
             }),

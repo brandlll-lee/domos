@@ -81,12 +81,16 @@ function entryPreview(entry: EntryRecord) {
       const details = message.details as {
         delivery?: MessageDelivery;
         attachment?: unknown;
+        attachments?: unknown[];
         link?: ChatMessage["link"];
       };
       const diagnostics = (entry.data as { diagnostics?: { code: string }[] })
         ?.diagnostics;
       if (
-        (details?.delivery || details?.attachment || details?.link) &&
+        (details?.delivery ||
+          details?.attachment ||
+          details?.attachments?.length ||
+          details?.link) &&
         !diagnostics?.some((item) => item.code === "aborted")
       )
         return {

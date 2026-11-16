@@ -17,7 +17,11 @@ import soft from "../../assets/characters/soft.webp";
 import sprout from "../../assets/characters/sprout.webp";
 import star from "../../assets/characters/star.webp";
 import triangle from "../../assets/characters/triangle.webp";
-import { type CharacterShape, characterFaces } from "../characters.ts";
+import {
+  type CharacterMedia,
+  type CharacterShape,
+  characterFaces,
+} from "../characters.ts";
 import {
   type CharacterWork,
   WorkBurst,
@@ -108,15 +112,43 @@ export function Character({
   color,
   state,
   work,
+  media,
+  animateMedia = false,
   viewBox = "0 0 100 100",
 }: {
   shape: CharacterShape;
   color: string;
   state: "idle" | "running";
   work?: CharacterWork;
+  media?: CharacterMedia;
+  animateMedia?: boolean;
   viewBox?: string;
 }) {
   const id = useId();
+  const root = useRef<SVGSVGElement>(null);
+  const [playing, setPlaying] = useState(false);
+  useEffect(() => {
+    if (!media || !animateMedia || !root.current) {
+      setPlaying(false);
+      return;
+    }
+    let visible = false;
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () =>
+      setPlaying(visible && !document.hidden && !reduced.matches);
+    const observer = new IntersectionObserver(([entry]) => {
+      visible = Boolean(entry?.isIntersecting);
+      update();
+    });
+    observer.observe(root.current);
+    document.addEventListener("visibilitychange", update);
+    reduced.addEventListener("change", update);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", update);
+      reduced.removeEventListener("change", update);
+    };
+  }, [media, animateMedia]);
   const previous = useRef(work?.id);
   const [entering, setEntering] = useState(false);
   useEffect(() => {
@@ -128,11 +160,14 @@ export function Character({
     previous.current = work.id;
     setEntering(!matchMedia("(prefers-reduced-motion: reduce)").matches);
   }, [work?.id]);
-  const face = characterFaces[shape] ?? { x: 50, y: 46.4, scale: 1 };
+  const face = media?.headset ??
+    characterFaces[shape] ?? { x: 50, y: 46.4, scale: 1 };
+  const computer = media?.computer ?? face;
   const texture = textures[shape];
   const [red, green, blue] = useMemo(() => tint(color), [color]);
   return (
     <svg
+      ref={root}
       className="character"
       viewBox={viewBox}
       aria-hidden="true"
@@ -189,34 +224,51 @@ export function Character({
       <g className="character-work-arrival">
         <g className="character-pose">
           <g className="character-body">
-            <image
-              href={texture}
-              x={-bodyPadding}
-              y={-bodyPadding}
-              width={100 + bodyPadding * 2}
-              height={100 + bodyPadding * 2}
-              filter={`url(#${id}-tint)`}
-            />
+            {media ? (
+              <image
+                href={
+                  playing && (!work?.id || work.working)
+                    ? media.src
+                    : media.cover
+                }
+                x="0"
+                y="0"
+                width="100"
+                height="100"
+                preserveAspectRatio="xMidYMid meet"
+              />
+            ) : (
+              <image
+                href={texture}
+                x={-bodyPadding}
+                y={-bodyPadding}
+                width={100 + bodyPadding * 2}
+                height={100 + bodyPadding * 2}
+                filter={`url(#${id}-tint)`}
+              />
+            )}
             <g
               transform={`translate(${face.x} ${face.y}) scale(${face.scale}) translate(-50 -46.4)`}
             >
-              <g className="character-face">
-                {[37.4, 62.6].map((cx, index) => (
-                  <Eye
-                    key={cx}
-                    cx={cx}
-                    clip={`${id}-${index}`}
-                    shadow={`${id}-shadow`}
-                  />
-                ))}
-              </g>
+              {!media && (
+                <g className="character-face">
+                  {[37.4, 62.6].map((cx, index) => (
+                    <Eye
+                      key={cx}
+                      cx={cx}
+                      clip={`${id}-${index}`}
+                      shadow={`${id}-shadow`}
+                    />
+                  ))}
+                </g>
+              )}
               {work && <WorkHeadset />}
             </g>
           </g>
         </g>
         {work && (
           <g
-            transform={`translate(${face.x} ${face.y}) scale(${face.scale}) translate(-50 -46.4)`}
+            transform={`translate(${computer.x} ${computer.y}) scale(${computer.scale}) translate(-50 -46.4)`}
           >
             <WorkComputer id={id} />
           </g>
