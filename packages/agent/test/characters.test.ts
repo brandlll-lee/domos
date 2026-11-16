@@ -1,6 +1,6 @@
 import { characterIdentity, characterSeed } from "@domos/ui/characters";
 import sharp from "sharp";
-import { expect, onTestFinished, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import { Characters } from "../src/characters.ts";
 import type { Computers } from "../src/computer/catalog.ts";
 import { ComputersDoc } from "../src/computer/state.ts";
@@ -8,7 +8,7 @@ import { context, setup } from "./fixtures/work.ts";
 
 test("characters survive source cleanup, reuse across Bots and keep theme changes separate", async () => {
   const fixture = await setup();
-  const runtime = await fixture.open();
+  let runtime = await fixture.open();
   onTestFinished(() => runtime.harness.close(context));
   const source = runtime.conversation.id;
   const yellow = await sharp({
@@ -28,6 +28,43 @@ test("characters survive source cleanup, reuse across Bots and keep theme change
   if (!assetId) throw new Error("asset missing");
   const assets = await runtime.bots.characters.list(source, context);
   expect(assets).toHaveLength(1);
+  const pendingInput = {
+    name: "Retry creation",
+    avatarAssetId: assetId,
+    requestId: crypto.randomUUID(),
+  };
+  const apply = vi
+    .spyOn(Characters.prototype, "apply")
+    .mockRejectedValueOnce(new Error("transfer interrupted"));
+  await expect(runtime.bots.create(pendingInput, context)).rejects.toThrow(
+    "transfer interrupted",
+  );
+  expect(
+    (await runtime.bots.list(context)).some(
+      (bot) => bot.name === pendingInput.name,
+    ),
+  ).toBe(false);
+  apply.mockRestore();
+  await runtime.harness.close(context);
+  runtime = await fixture.open();
+  expect(
+    (await runtime.bots.list(context)).some(
+      (bot) => bot.name === pendingInput.name,
+    ),
+  ).toBe(false);
+  const recovered = await runtime.bots.create(pendingInput, context);
+  expect(recovered.avatarAssetId).toBe(assetId);
+  expect((await runtime.bots.create(pendingInput, context)).id).toBe(
+    recovered.id,
+  );
+  expect(
+    (await runtime.bots.list(context)).filter(
+      (bot) => bot.name === pendingInput.name,
+    ),
+  ).toHaveLength(1);
+  await expect(
+    runtime.bots.create({ ...pendingInput, name: "changed" }, context),
+  ).rejects.toThrow("内容已改变");
   const second = await runtime.bots.create(
     {
       name: "Second",

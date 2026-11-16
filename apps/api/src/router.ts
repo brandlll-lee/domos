@@ -117,6 +117,13 @@ export function createRouter(
     work: workRouter(bots, work, engines),
     files: fileRouter(bots, files, computer),
     bots: {
+      retryCharacterMigration: os
+        .input(botTarget)
+        .handler(async ({ input }) => {
+          await botConversation(bots, input.botId);
+          await bots.migrateCharacters(BACKGROUND_CONTEXT, input.botId);
+          return bots.profile(input.botId, BACKGROUND_CONTEXT);
+        }),
       characters: os
         .input(z.object({ botId: z.number().int().positive().optional() }))
         .handler(({ input }) =>

@@ -143,13 +143,15 @@ async function operation(input, home, signal) {
   const outputDirectory = join(process.cwd(), ".domos-generated", id);
   await mkdir(outputDirectory, { recursive: true, mode: 0o700 });
   const fingerprint = createHash("sha256")
-    .update(JSON.stringify(params))
+    .update(JSON.stringify({ params, baseUrl: base, directory: process.cwd() }))
     .digest("hex");
   const manifest = join(directory, "result.json");
   try {
     const saved = JSON.parse(await readFile(manifest, "utf8"));
     if (saved.fingerprint !== fingerprint)
-      throw new Error("请求标识已用于其他生图内容。");
+      throw new Error(
+        "请求标识或原工作目录、服务地址不一致。请恢复原上下文读取保留结果；不会重新收费生成。",
+      );
     return saved;
   } catch (error) {
     if (error.code !== "ENOENT") throw error;

@@ -10,6 +10,7 @@
     "baseline": "A Harness change omitted the early constraint when more than 64 records existed."
   },
   "baseline": {
+    "uploadedReference": "A photo-edit turn received only a path. It guessed the path content digest as a Files ID, failed before any provider call, then delivered the original as if it were an output.",
     "blockedStartup": "Pi and Claude each sent an extra model request to summarize history before the current user task.",
     "rejectedFirstHandoff": "The next prompt omitted the prior fact.",
     "longMessage": "The history tool could not return text after byte 4000.",

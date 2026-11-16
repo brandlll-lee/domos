@@ -27,6 +27,7 @@ import {
   FILE_CHUNK_BYTES,
   type FileCategory,
   fileCategory,
+  fileReference,
   MAX_ATTACHMENTS,
   MAX_FILE_BYTES,
   MAX_MESSAGE_FILE_BYTES,
@@ -36,7 +37,7 @@ import { chatView } from "./chat-view.ts";
 import { owningBot } from "./conversations.ts";
 import { FilePreviews } from "./file-previews.ts";
 import { LinkPreviews } from "./link-previews.ts";
-import { WorkError } from "./work/state.ts";
+import { toolResult, WorkError } from "./work/state.ts";
 import { type WorkEnvironment, Workspace } from "./workspace.ts";
 
 export type { SpreadsheetPreview } from "./file-previews.ts";
@@ -246,6 +247,7 @@ export class Files {
         "application/octet-stream";
       const file: Attachment = {
         id,
+        ownerBotId: botId,
         name: basename(path),
         size: staged.size,
         path,
@@ -398,7 +400,7 @@ export class Files {
 
   async discard(botId: number, id: string) {
     const file = (await this.metadata(botId, id).catch((error) => {
-      if (error.code === "ENOENT") return null;
+      if (error.code === "ENOENT" || error.code === "NOT_FOUND") return null;
       throw error;
     })) as (Attachment & { uploadId?: string }) | null;
     if (!file?.uploadId) return;
@@ -427,9 +429,26 @@ export class Files {
   }
 
   async metadata(botId: number, id: string): Promise<Attachment> {
-    const file: Attachment = JSON.parse(
-      await readFile(join(this.directory(botId, id), "metadata.json"), "utf8"),
-    );
+    let file: Attachment;
+    try {
+      file = JSON.parse(
+        await readFile(
+          join(this.directory(botId, id), "metadata.json"),
+          "utf8",
+        ),
+      );
+    } catch (error) {
+      if (
+        !/^[a-f0-9]{64}$/.test(id) ||
+        (error as NodeJS.ErrnoException).code === "ENOENT"
+      )
+        throw new WorkError(
+          "NOT_FOUND",
+          `文件引用无效：${id}。请使用当前上传说明或 attach_file 返回的 fileId；可用 conversation_read 查回原始引用。不要使用路径中的摘要或角色库 ID。文件也可能属于另一 Bot 或已被清理。`,
+        );
+      throw error;
+    }
+    file.ownerBotId = botId;
     if (!file.mimeType || file.mimeType === "application/octet-stream") {
       const path = join(this.directory(botId, id), "content");
       const handle = await open(path, "r");
@@ -511,13 +530,19 @@ export class Files {
     if (!computerId) throw new Error("请先为 Bot 分配电脑，再处理附件。");
     const attachmentComputerId = await this.attachmentComputerId?.(context);
     if (
-      attachments.some(
+      saved.some(
         (file) => (file.computerId ?? attachmentComputerId) !== computerId,
       )
     )
       throw new Error("附件属于另一台电脑。请在当前电脑上重新上传。");
     for (const file of attachments) {
       const source = await this.metadata(botId, file.id);
+      file.ownerBotId = botId;
+      file.computerId = source.computerId;
+      file.directory = source.directory;
+      file.name = source.name;
+      file.size = source.size;
+      file.mimeType = source.mimeType;
       const directory =
         source.directory ?? (await this.workspace(botId, context, null)).cwd;
       file.path = (directory.startsWith("/") ? posix : win32).resolve(
@@ -671,12 +696,14 @@ export class Files {
               file = { ...file, display: args.display };
             }
             return {
-              output: [
-                {
-                  type: "text",
-                  text: `Attached ${file.name} (${file.size} bytes)`,
-                },
-              ],
+              ...toolResult({
+                status: "delivered",
+                file: fileReference(
+                  file,
+                  await owningBot(api, api.conversationId, context),
+                ),
+                note: "Delivery confirms this file was sent, not that it satisfies the user task.",
+              }),
               details: { attachment: file },
             };
           },

@@ -132,7 +132,7 @@ test("native team turns and additional input receive only unseen peer history", 
 });
 
 test("team handoffs include peer messages, retain authors and exclude private history", async () => {
-  const { harness, bots, conversation } = await runtimeFixture();
+  const { harness, bots, files, conversation } = await runtimeFixture();
   const peer = await bots.create(
     { name: "Reviewer", requestId: "peer" },
     context,
@@ -240,6 +240,55 @@ test("team handoffs include peer messages, retain authors and exclude private hi
   await expect(
     conversationEntry(reader, otherEntry, 0, context),
   ).rejects.toThrow("不存在");
+  const material = await files.upload(
+    conversation.id,
+    "team.txt",
+    Buffer.from("team source"),
+    context,
+  );
+  await harness.commit(async (tx) => {
+    await tx.appendEntry(owner, {
+      kind: EngineMessage,
+      data: {
+        id: "team-material",
+        role: "assistant",
+        content: [{ type: "text", text: "Selected material" }],
+        attachments: [material],
+      },
+    });
+  }, context);
+  const quoted = JSON.parse(
+    await conversationHistory(
+      reader,
+      null,
+      context,
+      null,
+      undefined,
+      undefined,
+      "omit",
+      undefined,
+      null,
+    ),
+  );
+  expect(
+    quoted.messages.find((message: { files?: unknown[] }) => message.files)
+      ?.files[0],
+  ).toMatchObject({ fileId: material.id, ownerBotId: conversation.id });
+  await expect(files.metadata(peer.id, material.id)).rejects.toThrow(
+    "文件引用无效",
+  );
+  const shared = await files.share(
+    conversation.id,
+    peer.id,
+    [material.id],
+    "explicit-team-share",
+    context,
+  );
+  expect(shared[0]?.ownerBotId).toBe(peer.id);
+  if (!shared[0]) throw new Error("Missing shared material");
+  expect(await (await files.download(peer.id, shared[0].id)).text()).toBe(
+    "team source",
+  );
   const tool = await append(owner, "tool", "toolResult", "Peer tool record");
   await expect(conversationEntry(reader, tool, 0, context)).rejects.toThrow(
     "不存在",

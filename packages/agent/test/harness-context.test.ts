@@ -15,6 +15,46 @@ import type { EngineRuntime } from "../src/harness/task-types.ts";
 import scenario from "./fixtures/harness-context.json" with { type: "json" };
 import { runtimeFixture } from "./fixtures/runtime.ts";
 
+test("long quoted messages retain file IDs independently of text excerpts", async () => {
+  const runtime = await runtimeFixture();
+  const id = runtime.conversation.id;
+  const file = await runtime.files.upload(
+    id,
+    "note.txt",
+    Buffer.from("source"),
+    context,
+  );
+  await runtime.harness.commit(async (tx) => {
+    await tx.appendEntry(id, {
+      kind: EngineMessage,
+      data: {
+        id: "long-upload",
+        role: "user",
+        content: [{ type: "text", text: "中文".repeat(10000) }],
+        attachments: [file],
+      },
+    });
+  }, context);
+  const packet = JSON.parse(
+    await conversationHistory(
+      {
+        conversationId: id,
+        commit: runtime.harness.commit.bind(runtime.harness),
+      },
+      null,
+      context,
+      null,
+    ),
+  );
+  expect(packet.messages[0].excerpt).toBe(true);
+  expect(packet.messages[0].files[0]).toMatchObject({
+    kind: "file",
+    fileId: file.id,
+    ownerBotId: id,
+  });
+  expect(Buffer.byteLength(JSON.stringify(packet))).toBeLessThanOrEqual(16000);
+});
+
 test("conversation_read recovers persisted tool text after reopen within its Bot", async () => {
   const fixture = await runtimeFixture();
   const text = `${"中文🙂".repeat(3000)}ORIGINAL-TAIL`;

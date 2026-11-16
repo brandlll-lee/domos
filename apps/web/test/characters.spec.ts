@@ -9,6 +9,40 @@ const sharp = createRequire(
   new URL("../../../packages/agent/package.json", import.meta.url),
 )("sharp");
 
+test("character retention failure stays visible and explicit retry clears it", async ({
+  page,
+  service,
+}) => {
+  let inject = true;
+  await page.route("**/rpc/work/profile", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    if (inject)
+      body.json.avatarMigrationError =
+        "角色尚未收录，现有头像已保留。文件引用无效。";
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto(service.url);
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  const details = page.locator("#bot-details");
+  await details.getByRole("button", { name: "编辑", exact: true }).click();
+  await expect(
+    details.getByText("角色尚未收录，现有头像已保留。文件引用无效。", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  inject = false;
+  await details
+    .getByRole("button", { name: "重试收录角色", exact: true })
+    .click();
+  await expect(
+    details.getByRole("button", { name: "重试收录角色", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    details.getByRole("textbox", { name: "名字", exact: true }),
+  ).toHaveValue("Domos");
+});
+
 test("saved characters keep their pixels, share across Bots and transform only on identity changes", async ({
   page,
   service,

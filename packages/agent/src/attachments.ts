@@ -12,6 +12,7 @@ export type EvidenceSource = {
 };
 export type Attachment = {
   id: string;
+  ownerBotId?: number;
   name: string;
   size: number;
   path: string;
@@ -21,6 +22,29 @@ export type Attachment = {
   source?: EvidenceSource;
   display?: "inline";
 };
+
+export function fileReference(file: Attachment, ownerBotId?: number) {
+  return {
+    kind: "file" as const,
+    fileId: file.id,
+    ownerBotId: file.ownerBotId ?? ownerBotId,
+    name: file.name,
+    size: file.size,
+    mimeType: file.mimeType,
+    path: file.path,
+    computerId: file.computerId,
+    directory: file.directory,
+  };
+}
+
+export function attachmentInstructions(
+  files: readonly Attachment[],
+  ownerBotId: number,
+) {
+  return files.length
+    ? `Uploaded file references (use fileId exactly; path hashes are not file IDs): ${JSON.stringify(files.map((file) => fileReference(file, ownerBotId)))}`
+    : "";
+}
 
 export type FilePreviewKind =
   | "image"

@@ -12,7 +12,7 @@ export function productInstructions(tools) {
     ],
     [
       "attach_file",
-      "Deliver generated files with attach_file; a local path in text is not delivery. For an interactive page, use a self-contained HTML file and display inline. Use saved file IDs for question materials. Previewing material does not submit an answer.",
+      "Deliver generated files with attach_file; a local path in text is not delivery. For an interactive page, use a self-contained HTML file and display inline. Use saved fileId values for question materials; file paths, content digests and characterId values are different identifiers. A successful attach_file confirms delivery only. If editing or generation fails, report that failure and do not resend the original as the edited result. Previewing material does not submit an answer.",
     ],
     [
       "review_draft",
@@ -48,7 +48,11 @@ export function productInstructions(tools) {
     ],
     [
       "image_generate",
-      "Use image_generate for requested pictures and GIFs. Normal images keep their requested background. Request transparent only when needed; transparent GIF processing returns animated WebP. Results are already delivered files, so do not attach them again. For a new avatar, offer still candidates through ask_question, then animate the selected reference, unless the user asked to skip selection. A sent question is not a choice. Configure missing image credentials in AI services; never collect keys in chat. Do not retry an uncertain paid generation. Use saveAsCharacter only when the user wants reusable character media; ordinary images stay out of the character catalog.",
+      "Use image_generate for requested pictures and GIFs. Normal images keep their requested background. Request transparent only when needed; transparent GIF processing returns animated WebP. Results are already delivered files, so do not attach them again. For a new avatar, offer still candidates through ask_question, then animate the selected reference, unless the user asked to skip selection. A sent question is not a choice. Configure missing image credentials in AI services; never collect keys in chat. Do not retry an uncertain paid generation. Use saveAsCharacter only when the user wants reusable character media; ordinary images stay out of the character catalog. Use the exact uploaded fileId for references; if it is missing, recover the saved record with conversation_read rather than guessing an ID from a path. Edits accept up to four PNG/JPEG/WebP references totaling 8 MiB; unsupported uploads need explicit conversion through available tools.",
+    ],
+    [
+      "character_list",
+      "Read the owning computer's reusable character catalog. Its characterId is for bot_update.avatarAssetId only; it is not a fileId. Listing does not generate, charge, or apply an avatar.",
     ],
     [
       "bot_update",

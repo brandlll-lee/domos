@@ -54,4 +54,29 @@ test("existing custom characters migrate without changing theme, instructions or
   expect((await runtime.bots.profile(id, context)).avatarMedia).toEqual(
     after.avatarMedia,
   );
+  if (!after.avatarMedia) throw new Error("Missing migrated media");
+  const legacy = {
+    ...after.avatarMedia,
+    src: `/files/${id}/${"f".repeat(64)}`,
+  };
+  await runtime.harness.commit(async (tx) => {
+    const bot = (await tx.doc(BotDirectory)).items.find((bot) => bot.id === id);
+    if (!bot) throw new Error("Missing Bot");
+    bot.avatarMedia = legacy;
+    delete bot.avatarAssetId;
+  }, context);
+  await runtime.bots.migrateCharacters(context, id);
+  const failed = await runtime.bots.profile(id, context);
+  expect(failed.avatarMedia).toEqual(legacy);
+  expect(failed.avatarMigrationError).toContain("角色尚未收录");
+  await runtime.harness.commit(async (tx) => {
+    const bot = (await tx.doc(BotDirectory)).items.find((bot) => bot.id === id);
+    if (!bot) throw new Error("Missing Bot");
+    bot.avatarMedia = after.avatarMedia;
+  }, context);
+  await runtime.bots.migrateCharacters(context, id);
+  expect(
+    (await runtime.bots.profile(id, context)).avatarMigrationError,
+  ).toBeUndefined();
+  expect((await runtime.bots.profile(id, context)).avatarAssetId).toBeTruthy();
 });

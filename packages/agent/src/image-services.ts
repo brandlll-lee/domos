@@ -1,6 +1,7 @@
 import type { Context } from "@earendil-works/chord/context";
 import { type CredentialStore, Type } from "@earendil-works/pi-ai";
 import { defineDoc, defineTool } from "@earendil-works/pi-durable";
+import type { Attachment } from "./attachments.ts";
 import { BotDirectory, type Bots } from "./bots.ts";
 import { Characters } from "./characters.ts";
 import type { Computers } from "./computer/catalog.ts";
@@ -39,7 +40,15 @@ const ImageServicesDoc = defineDoc<{ items: Record<string, ImageSettings> }>({
 const ImageIdentity = defineDoc<{
   requests: Record<
     string,
-    { botId: number; revision: number; files: string[] }
+    {
+      botId: number;
+      revision: number;
+      files: string[];
+      scope?: { computerId: string; directory: string; fingerprint: string };
+      published?: Record<string, Attachment>;
+      generated?: Generated;
+      results?: ImageResult[];
+    }
   >;
 }>({
   kind: "domos.image-identity",
@@ -61,6 +70,17 @@ export type ImageInput = {
   transparent?: boolean;
   keyColor?: string;
   referenceFiles?: string[];
+};
+type ImageResult = {
+  file: Attachment;
+  originalId: string;
+  coverId: string;
+  width: number;
+  height: number;
+  frames: number;
+  delay: number[];
+  format: string;
+  characterId?: string;
 };
 type Generated = {
   files: {
@@ -179,11 +199,47 @@ export class ImageServices {
     input: ImageInput,
     requestId: string,
     context: Context,
+  ): Promise<ImageResult[]> {
+    return this.computers.transfer(
+      botId,
+      () => this.generateBound(botId, input, requestId, context),
+      context,
+    );
+  }
+  private async generateBound(
+    botId: number,
+    input: ImageInput,
+    requestId: string,
+    context: Context,
   ) {
     const { settings, key } = await this.connection(botId, context);
+    const directory = (await this.computers.workspace(botId, context)).cwd;
+    const scope = {
+      computerId: settings.computerId,
+      directory,
+      fingerprint: JSON.stringify({
+        ...input,
+        model: input.model ?? settings.model,
+        quality: input.quality ?? settings.quality,
+        complexity: input.complexity ?? settings.complexity,
+        baseUrl: settings.baseUrl,
+      }),
+    };
+    let receipt = (await this.harness.snapshot(ImageIdentity, context))
+      ?.requests[requestId];
+    if (
+      receipt &&
+      (receipt.botId !== botId ||
+        (receipt.scope &&
+          JSON.stringify(receipt.scope) !== JSON.stringify(scope)))
+    )
+      throw new Error(
+        "图像请求上下文已改变。请回到原工作电脑、目录和服务配置恢复原请求；不要重新发起付费生成。",
+      );
+    if (receipt?.results) return receipt.results;
     const references: string[] = [];
     let bytes = 0;
-    for (const id of input.referenceFiles ?? []) {
+    for (const id of receipt?.generated ? [] : (input.referenceFiles ?? [])) {
       const metadata = await this.files.metadata(botId, id);
       await this.files.verify(botId, [metadata], context);
       if (
@@ -210,52 +266,71 @@ export class ImageServices {
           botId,
           revision: bot?.revision ?? 0,
           files: [],
+          scope,
+          published: {},
         };
+      } else {
+        const saved = doc.requests[requestId];
+        if (
+          saved.botId !== botId ||
+          (saved.scope && JSON.stringify(saved.scope) !== JSON.stringify(scope))
+        )
+          throw new Error("图像请求标识或上下文冲突。");
+        saved.scope ??= scope;
       }
     }, context);
-    const directory = (await this.computers.workspace(botId, context)).cwd;
-    const generated = await this.computers.mcp<Generated>(
-      settings.computerId,
-      {
-        action: "image_generate",
-        baseUrl: settings.baseUrl,
-        key,
-        requestId,
-        params: {
-          ...input,
-          model: input.model ?? settings.model,
-          quality: input.quality ?? settings.quality,
-          complexity: input.complexity ?? settings.complexity,
-          format: input.format ?? "png",
-          count: input.count ?? 1,
-          frames: input.frames ?? 16,
-          frameDurationMs: input.frameDurationMs ?? 100,
-          references,
+    receipt = (await this.harness.snapshot(ImageIdentity, context))?.requests[
+      requestId
+    ];
+    const published = receipt?.published ?? {};
+    const publish = async (path: string) => {
+      if (published[path]) return published[path];
+      const file = await this.files.publish(botId, path, context, directory);
+      await this.harness.commit(async (tx) => {
+        const saved = (await tx.doc(ImageIdentity)).requests[requestId];
+        if (!saved) throw new Error("图像发布记录丢失。");
+        saved.published ??= {};
+        saved.published[path] = file;
+      }, context);
+      published[path] = file;
+      return file;
+    };
+    const generated =
+      receipt?.generated ??
+      (await this.computers.mcp<Generated>(
+        settings.computerId,
+        {
+          action: "image_generate",
+          baseUrl: settings.baseUrl,
+          key,
+          requestId,
+          params: {
+            ...input,
+            model: input.model ?? settings.model,
+            quality: input.quality ?? settings.quality,
+            complexity: input.complexity ?? settings.complexity,
+            format: input.format ?? "png",
+            count: input.count ?? 1,
+            frames: input.frames ?? 16,
+            frameDurationMs: input.frameDurationMs ?? 100,
+            references,
+          },
         },
-      },
-      context,
-      context.abortSignal,
-      botId,
-    );
-    const results = [];
+        context,
+        context.abortSignal,
+        botId,
+      ));
+    await this.harness.commit(async (tx) => {
+      const saved = (await tx.doc(ImageIdentity)).requests[requestId];
+      if (saved) saved.generated = generated;
+    }, context);
+    const results: ImageResult[] = [];
     for (const item of generated.files) {
       context.abortSignal?.throwIfAborted();
-      const original = await this.files.publish(
-        botId,
-        item.original,
-        context,
-        directory,
-      );
+      const original = await publish(item.original);
       const file =
-        item.path === item.original
-          ? original
-          : await this.files.publish(botId, item.path, context, directory);
-      const cover = await this.files.publish(
-        botId,
-        item.cover,
-        context,
-        directory,
-      );
+        item.path === item.original ? original : await publish(item.path);
+      const cover = await publish(item.cover);
       results.push({
         ...(input.saveAsCharacter
           ? {
@@ -287,7 +362,10 @@ export class ImageServices {
     const fileIds = results.map((item) => item.file.id);
     await this.harness.commit(async (tx) => {
       const receipt = (await tx.doc(ImageIdentity)).requests[requestId];
-      if (receipt) receipt.files = fileIds;
+      if (receipt) {
+        receipt.files = fileIds;
+        receipt.results = results;
+      }
     }, context);
     return results;
   }
@@ -309,7 +387,7 @@ export function imageExtension(
       defineTool({
         name: "image_generate",
         description:
-          "Generate ordinary images or GIFs using the work computer's configured image service. References are saved Files IDs. Only request transparent output when wanted; GIF transparency uses automatic colour-key removal and returns animated WebP. Choose a keyColor different from the subject. For avatar creation offer 3–4 still candidates with ask_question, then animate the selected reference; skip selection when the user requests it. Generation never changes identity. Results include saved file IDs, cover IDs and actual frame metadata; files are delivered automatically. Never resend an uncertain paid request. GIF requires provider preview access.",
+          "Generate ordinary images or GIFs using the work computer's configured image service. References must use exact fileId values from uploaded file references or attach_file, never a path, path digest or characterId. References support PNG/JPEG/WebP only, at most 4 files and 8 MiB combined; uploading a GIF or larger image does not make it a supported editing reference. Only request transparent output when wanted; GIF transparency uses automatic colour-key removal and returns animated WebP. Choose a keyColor different from the subject. For avatar creation offer 3–4 still candidates with ask_question, then animate the selected reference; skip selection when the user requests it. Generation never changes identity. Results include saved file IDs, cover IDs and actual frame metadata; files are delivered automatically. Never resend an uncertain paid request. GIF requires provider preview access.",
         parameters: Type.Object({
           saveAsCharacter: Type.Optional(
             Type.Boolean({
@@ -368,13 +446,33 @@ export function imageExtension(
         },
       }),
       defineTool({
+        name: "character_list",
+        description:
+          "List reusable character catalog entries on your owning work computer. characterId is only for bot_update.avatarAssetId, never a fileId. This does not generate or apply media.",
+        parameters: Type.Object({}),
+        replay: "safe",
+        executionMode: "sequential",
+        async execute(_input, api, context) {
+          const botId = await owningBot(api, api.conversationId, context);
+          return toolResult(
+            (await bots().characters.list(botId, context)).map(
+              ({ id, name }) => ({ kind: "character", characterId: id, name }),
+            ),
+          );
+        },
+      }),
+      defineTool({
         name: "bot_update",
         description:
           "Update only your own Bot name or avatar when the user requests it. Use a saved image file ID and a static cover ID from image_generate. This applies an existing image without generating or removing its background. Use ask_question for requested candidate selection and wait for the real answer. Pass resetAvatar to restore the built-in character. No other Bot, instructions, credentials or arbitrary URLs can be changed.",
         parameters: Type.Object({
           name: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
           avatarAssetId: Type.Optional(
-            Type.String({ pattern: "^[a-f0-9]{64}$" }),
+            Type.String({
+              pattern: "^[a-f0-9]{64}$",
+              description:
+                "characterId from character_list or image_generate.saveAsCharacter. Not a Files fileId.",
+            }),
           ),
           avatarFileId: Type.Optional(
             Type.String({ pattern: "^[a-f0-9]{64}$" }),

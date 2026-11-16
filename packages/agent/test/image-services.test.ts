@@ -34,6 +34,85 @@ const pixels = (width = 24, frames = 2) => {
   return data;
 };
 
+test("paid results resume partial publishing without reference files and reject changed context", async () => {
+  const fixture = await setup();
+  const runtime = await fixture.open();
+  onTestFinished(() => runtime.harness.close(context));
+  const id = runtime.conversation.id;
+  const bytes = await sharp(pixels(24, 1), {
+    raw: { width: 24, height: 24, channels: 4 },
+  })
+    .png()
+    .toBuffer();
+  const reference = await runtime.files.upload(
+    id,
+    "reference.png",
+    bytes,
+    context,
+  );
+  const workspace = await runtime.files.workspace(id);
+  let cwd = workspace.cwd;
+  const original = join(cwd, "generated-original.png");
+  const cover = join(cwd, "generated-cover.png");
+  await writeFile(original, bytes);
+  await writeFile(cover, bytes);
+  const mcp = vi.fn(async () => ({
+    files: [
+      {
+        original,
+        path: original,
+        cover,
+        width: 24,
+        height: 24,
+        frames: 1,
+        delay: [],
+        format: "png",
+      },
+    ],
+  }));
+  const computers = {
+    binding: async () => ({ computer: { id: "local", authorized: true } }),
+    workspace: async () => ({ cwd }),
+    transfer: async <T>(_id: number, fn: () => Promise<T>) => fn(),
+    mcp,
+  } as unknown as Computers;
+  const service = new ImageServices(runtime.harness, computers, runtime.files, {
+    read: async () => ({ type: "api_key", key: "test-only" }),
+    list: async () => [],
+    delete: async () => {},
+    modify: async () => undefined,
+  } as CredentialStore);
+  const publish = runtime.files.publish.bind(runtime.files);
+  let failed = false;
+  const spy = vi
+    .spyOn(runtime.files, "publish")
+    .mockImplementation(async (...args) => {
+      if (args[1] === cover && !failed) {
+        failed = true;
+        throw new Error("publish interrupted");
+      }
+      return publish(...args);
+    });
+  const input = { prompt: "blonde", referenceFiles: [reference.id] };
+  await expect(service.generate(id, input, "retry", context)).rejects.toThrow(
+    "publish interrupted",
+  );
+  expect(mcp).toHaveBeenCalledTimes(1);
+  await runtime.files.discard(id, reference.id);
+  const result = await service.generate(id, input, "retry", context);
+  expect(result).toHaveLength(1);
+  expect(mcp).toHaveBeenCalledTimes(1);
+  expect(spy.mock.calls.filter((call) => call[1] === original)).toHaveLength(1);
+  expect(await service.generate(id, input, "retry", context)).toEqual(result);
+  expect(mcp).toHaveBeenCalledTimes(1);
+  cwd = join(cwd, "different");
+  await expect(service.generate(id, input, "retry", context)).rejects.toThrow(
+    "上下文",
+  );
+  expect(mcp).toHaveBeenCalledTimes(1);
+  spy.mockRestore();
+});
+
 test("colour-key processing preserves enclosed same-colour details", () => {
   const data = pixels(24, 1);
   const centre = (12 * 24 + 12) * 4;
@@ -169,6 +248,27 @@ test("work process preserves animated transparency, references and paid request 
   await expect(
     worker.mcp({ ...input, params: { ...input.params, prompt: "changed" } }),
   ).rejects.toThrow("请求标识");
+  await expect(
+    worker.mcp({ ...input, baseUrl: `${input.baseUrl}/changed` }),
+  ).rejects.toThrow("请求标识");
+  const otherDirectory = join(directory, "other");
+  await mkdir(otherDirectory, { recursive: true });
+  const movedWorker = new WorkProcess(
+    [
+      process.execPath,
+      fileURLToPath(new URL("../src/harness/worker.mjs", import.meta.url)),
+    ],
+    { cwd: otherDirectory, home: directory },
+    [],
+    async () => ({ content: [] }),
+  );
+  try {
+    await movedWorker.ready;
+    await expect(movedWorker.mcp(input)).rejects.toThrow("请求标识");
+  } finally {
+    await movedWorker.close();
+  }
+  expect(calls).toBe(1);
   const uncertain = {
     ...input,
     requestId: "uncertain-call",
@@ -298,14 +398,18 @@ test("shared identity tool retains instructions, publishes media and cannot repl
         tools: () => extension.tools.map((tool) => ({ extension, tool })),
       },
       agent: async () => ({
-        callable: [{ name: "image_generate" }, { name: "bot_update" }],
+        callable: [
+          { name: "image_generate" },
+          { name: "character_list" },
+          { name: "bot_update" },
+        ],
       }),
       snapshot: runtime.harness.snapshot.bind(runtime.harness),
     } as unknown as EngineRuntime,
     context,
   );
   expect(catalog.map((item) => item.name)).toEqual(
-    expect.arrayContaining(["image_generate", "bot_update"]),
+    expect.arrayContaining(["image_generate", "bot_update", "character_list"]),
   );
   expect(
     JSON.stringify(
@@ -328,7 +432,7 @@ test("shared identity tool retains instructions, publishes media and cannot repl
       throw new Error("generation should not run");
     },
     () => runtime.bots,
-  ).tools[1];
+  ).tools[2];
   const api = {
     conversationId: botId,
     taskId: 123,
@@ -357,6 +461,10 @@ test("shared identity tool retains instructions, publishes media and cannot repl
     (await runtime.bots.list(context)).find((bot) => bot.id === botId)
       ?.avatarMedia,
   ).toEqual(applied.avatarMedia);
+  const characterTool = extension.tools[1];
+  const listed = await characterTool.execute({}, api, context);
+  expect(JSON.stringify(listed)).toContain(applied.avatarAssetId);
+  expect(JSON.stringify(listed)).toContain("characterId");
   await runtime.bots.updateIdentity(
     botId,
     { name: "New name" },

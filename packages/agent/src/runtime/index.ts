@@ -9,6 +9,7 @@ import {
   type Harness,
   LiveDoc,
 } from "@earendil-works/pi-durable";
+import { attachmentInstructions } from "../attachments.ts";
 import { type ChatPage, chatView } from "../chat-view.ts";
 import { DelegationsDoc } from "../collaboration.ts";
 import {
@@ -935,9 +936,7 @@ export class Runtime {
             input.displayText !== undefined
               ? input.text
               : materialText(input.text, input.materials),
-            ...(input.attachments ?? []).map(
-              (file) => `Uploaded file: ${file.path}`,
-            ),
+            attachmentInstructions(input.attachments ?? [], ownerId),
           ].join("\n\n"),
           submissionId: submission.id,
           previous: waiting ? doc.activeId : previous,

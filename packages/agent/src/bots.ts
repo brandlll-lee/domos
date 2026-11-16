@@ -31,6 +31,7 @@ export type Bot = {
   avatar: string;
   avatarMedia?: CharacterMedia;
   avatarAssetId?: string;
+  avatarMigrationError?: string;
   createdAt?: number;
   welcomeComplete?: boolean;
 };
@@ -50,7 +51,9 @@ export type CreateBot = {
 };
 
 export const BotDirectory = defineDoc<{
+  pending?: { requestId: string; input: string; bot: Bot }[];
   items: (Bot & {
+    createInput?: string;
     requestId: string | null;
     revision?: number;
     updateId?: string;
@@ -99,14 +102,20 @@ export class Bots {
     if (!this.files) throw new Error("文件服务未就绪。");
     return new Characters(this.harness, this.files, this.computers);
   }
-  async migrateCharacters(context: Context) {
+  async migrateCharacters(context: Context, onlyBotId?: number) {
     if (!this.files) return;
     for (const bot of await this.list(context)) {
-      if (!bot.avatarMedia || bot.avatarAssetId) continue;
+      if (
+        (onlyBotId !== undefined && bot.id !== onlyBotId) ||
+        !bot.avatarMedia ||
+        bot.avatarAssetId
+      )
+        continue;
       const image = /\/([a-f0-9]{64})$/.exec(bot.avatarMedia.src)?.[1];
       const cover = /\/([a-f0-9]{64})$/.exec(bot.avatarMedia.cover)?.[1];
-      if (!image || !cover) continue;
       try {
+        if (!image || !cover)
+          throw new Error("旧头像没有可用的 Files 文件引用。");
         const asset = await this.characters.save(
           bot.id,
           bot.name,
@@ -125,6 +134,7 @@ export class Bots {
             !saved.avatarAssetId
           ) {
             saved.avatarAssetId = asset.id;
+            delete saved.avatarMigrationError;
             saved.avatarMedia = {
               ...media,
               ...bot.avatarMedia,
@@ -133,9 +143,19 @@ export class Bots {
             };
           }
         }, context);
-      } catch {
-        // Unavailable source media remains on the existing Bot.
+      } catch (error) {
         context.abortSignal?.throwIfAborted();
+        await this.harness.commit(async (tx) => {
+          const saved = (await tx.doc(BotDirectory)).items.find(
+            (item) => item.id === bot.id,
+          );
+          if (saved && !saved.avatarAssetId)
+            saved.avatarMigrationError =
+              `角色尚未收录，现有头像已保留。${error instanceof Error ? error.message : "请重试。"}`.slice(
+                0,
+                400,
+              );
+        }, context);
       }
     }
   }
@@ -278,9 +298,11 @@ export class Bots {
       avatar: bot.avatar,
       avatarMedia: bot.avatarMedia,
       avatarAssetId: bot.avatarAssetId,
+      avatarMigrationError: bot.avatarMigrationError,
       revision: bot.revision ?? 0,
       instructions: agent.instructions ?? "",
       model: agent.model,
+      createdAt: bot.createdAt,
     };
   }
 
@@ -314,6 +336,8 @@ export class Bots {
       if (bot.updateId === input.requestId) return;
       requireRevision(bot.revision ?? 0, input.revision);
       bot.name = requiredText(input.name, BOT_NAME_LENGTH);
+      if (input.avatarAssetId === null || media)
+        delete bot.avatarMigrationError;
       if (input.avatarAssetId === null) {
         delete bot.avatarMedia;
         delete bot.avatarAssetId;
@@ -415,6 +439,7 @@ export class Bots {
       requireRevision(bot.revision ?? 0, expectedRevision);
       if (input.name !== undefined)
         bot.name = requiredText(input.name, BOT_NAME_LENGTH);
+      if (input.resetAvatar || media) delete bot.avatarMigrationError;
       if (input.resetAvatar) {
         delete bot.avatarMedia;
         delete bot.avatarAssetId;
@@ -430,6 +455,15 @@ export class Bots {
   }
 
   async create(input: CreateBot, context: Context): Promise<Bot> {
+    const fingerprint = JSON.stringify(input);
+    const previous = (
+      await this.harness.snapshot(BotDirectory, context)
+    )?.items.find((bot) => bot.requestId === input.requestId);
+    if (previous) {
+      if (previous.createInput && previous.createInput !== fingerprint)
+        throw new WorkError("CONFLICT", "创建请求内容已改变。");
+      return this.profile(previous.id, context);
+    }
     if (input.avatarAssetId)
       await this.characters.forCreation(
         input.avatarAssetId,
@@ -441,13 +475,19 @@ export class Bots {
       const existing = directory.items.find(
         (bot) => bot.requestId === input.requestId,
       );
-      if (existing)
-        return {
-          id: existing.id,
-          name: existing.name,
-          avatar: existing.avatar,
-          createdAt: existing.createdAt,
-        };
+      if (existing) {
+        if (existing.createInput && existing.createInput !== fingerprint)
+          throw new WorkError("CONFLICT", "创建请求内容已改变。");
+        return JSON.parse(JSON.stringify(existing)) as Bot;
+      }
+      const pending = directory.pending?.find(
+        (item) => item.requestId === input.requestId,
+      );
+      if (pending) {
+        if (pending.input !== fingerprint)
+          throw new WorkError("CONFLICT", "创建请求内容已改变。");
+        return JSON.parse(JSON.stringify(pending.bot)) as Bot;
+      }
       const conversation = await tx.createConversation({
         ownership: { kind: "ownerless" },
       });
@@ -457,25 +497,45 @@ export class Bots {
       });
       const bot = {
         id: conversation.id,
-        name: input.name,
+        name: requiredText(input.name, BOT_NAME_LENGTH),
         avatar: input.avatar ?? randomUUID(),
         createdAt: Date.now(),
       };
       await this.computers?.attach(tx, bot.id, input.computerId);
-      directory.items.push({ ...bot, requestId: input.requestId });
+      directory.pending ??= [];
+      directory.pending.push({
+        requestId: input.requestId,
+        input: fingerprint,
+        bot,
+      });
       return bot;
     }, context);
-    if (input.avatarAssetId)
-      await this.updateIdentity(
-        created.id,
-        { avatarAssetId: input.avatarAssetId },
-        `create:${input.requestId}`,
-        context,
+    const media = input.avatarAssetId
+      ? await this.characters.apply(created.id, input.avatarAssetId, context)
+      : undefined;
+    context.abortSignal?.throwIfAborted();
+    await this.harness.commit(async (tx) => {
+      const directory = await tx.doc(BotDirectory);
+      if (directory.items.some((bot) => bot.requestId === input.requestId))
+        return;
+      const pending = directory.pending?.find(
+        (item) => item.requestId === input.requestId,
       );
-    return {
-      ...created,
-      ...(input.avatarAssetId ? await this.profile(created.id, context) : {}),
-    };
+      if (!pending || pending.input !== fingerprint)
+        throw new WorkError("CONFLICT", "创建请求未确认。");
+      directory.items.push({
+        ...created,
+        ...(media
+          ? { avatarMedia: media, avatarAssetId: input.avatarAssetId }
+          : {}),
+        requestId: input.requestId,
+        createInput: fingerprint,
+      });
+      directory.pending = directory.pending?.filter(
+        (item) => item.requestId !== input.requestId,
+      );
+    }, context);
+    return this.profile(created.id, context);
   }
 
   watch(context: Context) {
