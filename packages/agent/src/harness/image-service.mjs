@@ -497,24 +497,6 @@ async function finishImages(
     signal.throwIfAborted();
     const output = join(outputDirectory, `${index}.webp`);
     const source = await prepareImage(original);
-    if (
-      params.format === "gif" &&
-      (source.format !== "gif" ||
-        source.frames !== params.frames ||
-        source.delay.length !== source.frames ||
-        source.delay.some(
-          (delay) => delay !== Math.round(params.frameDurationMs / 10) * 10,
-        ))
-    )
-      throw new Error(
-        `请求 GIF ${params.frames} 帧，每帧 ${params.frameDurationMs} 毫秒；服务返回 ${source.format} ${source.frames} 帧，帧时长 ${JSON.stringify(source.delay)}。原始文件已保留。`,
-      );
-    if (
-      params.purpose === "avatar" &&
-      params.format !== "gif" &&
-      source.frames !== 1
-    )
-      throw new Error("静态头像返回了动画；原始结果已保留。");
     const info = params.transparent
       ? await prepareImage(original, output, true)
       : source;
@@ -533,7 +515,7 @@ async function finishImages(
         purpose: params.purpose ?? "image",
         status: "ready",
         transparent: !!params.transparent,
-        animated: params.format === "gif",
+        animated: info.frames > 1,
       },
     });
   }

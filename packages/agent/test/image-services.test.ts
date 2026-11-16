@@ -756,20 +756,25 @@ test("real computer, worker and Files recover legacy directory aliases after res
       return;
     }
     let output = bytes;
-    if (body.output_format === "gif")
-      output = await sharp(pixels(24, body.frame_count), {
+    if (
+      body.output_format === "gif" &&
+      !body.prompt.startsWith("static result")
+    ) {
+      const frames = body.prompt.startsWith("over budget") ? 17 : 9;
+      output = await sharp(pixels(24, frames), {
         raw: {
           width: 24,
-          height: 24 * body.frame_count,
+          height: 24 * frames,
           channels: 4,
           pageHeight: 24,
         },
       })
         .gif({
-          delay: Array(body.frame_count).fill(body.frame_duration_ms),
+          delay: Array(frames).fill(250),
           loop: 0,
         })
         .toBuffer();
+    }
     res.end(
       JSON.stringify({ data: [{ b64_json: output.toString("base64") }] }),
     );
@@ -1008,8 +1013,8 @@ test("real computer, worker and Files recover legacy directory aliases after res
   expect(prompts.at(-1)).toContain("pure magenta");
   expect(avatar).toMatchObject({
     format: "webp",
-    frames: 16,
-    delay: Array(16).fill(100),
+    frames: 9,
+    delay: Array(9).fill(250),
     preparation: {
       purpose: "avatar",
       status: "ready",
@@ -1060,8 +1065,8 @@ test("real computer, worker and Files recover legacy directory aliases after res
   );
   expect(opaque).toMatchObject({
     format: "gif",
-    frames: 2,
-    delay: [120, 120],
+    frames: 9,
+    delay: Array(9).fill(250),
     preparation: { transparent: false, animated: true },
   });
   const count = requests.length;
@@ -1110,11 +1115,31 @@ test("real computer, worker and Files recover legacy directory aliases after res
   const recovered = await service.recover(botId, failId, context);
   expect(recovered[0]).toMatchObject({
     format: "webp",
-    frames: 2,
+    frames: 9,
+    delay: Array(9).fill(250),
     preparation: { purpose: "avatar", status: "ready" },
   });
   expect(requests).toHaveLength(paid);
   hasKey = true;
+  const [staticResult] = await service.generate(
+    botId,
+    { purpose: "avatar", prompt: "static result" },
+    "static-result",
+    context,
+  );
+  expect(staticResult).toMatchObject({
+    frames: 1,
+    delay: [],
+    preparation: { animated: false },
+  });
+  await expect(
+    service.generate(
+      botId,
+      { purpose: "avatar", prompt: "over budget" },
+      "over-budget",
+      context,
+    ),
+  ).rejects.toThrow("处理预算");
   for (const prompt of ["rejected avatar", "disconnected avatar"]) {
     const input = { purpose: "avatar" as const, prompt };
     const error = await service

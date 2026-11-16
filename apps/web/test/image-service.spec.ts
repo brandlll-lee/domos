@@ -27,7 +27,7 @@ test("image service generates media and shared tools apply a character with work
     for await (const chunk of request) chunks.push(chunk);
     const body = JSON.parse(Buffer.concat(chunks).toString());
     calls.push(body);
-    const frames = body.output_format === "gif" ? body.frame_count : 1;
+    const frames = body.output_format === "gif" ? 9 : 1;
     const data = Buffer.alloc(24 * 24 * frames * 4);
     for (let f = 0; f < frames; f++)
       for (let y = 0; y < 24; y++)
@@ -44,7 +44,7 @@ test("image service generates media and shared tools apply a character with work
     const bytes = await (frames > 1
       ? image.gif({
           loop: 0,
-          delay: Array(frames).fill(body.frame_duration_ms),
+          delay: Array(frames).fill(250),
         })
       : image.png()
     ).toBuffer();
