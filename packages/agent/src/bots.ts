@@ -357,6 +357,7 @@ export class Bots {
     id: number,
     input: {
       name?: string;
+      useOriginal?: boolean;
       avatarFileId?: string;
       avatarAssetId?: string;
       coverFileId?: string;
@@ -368,6 +369,7 @@ export class Bots {
     requestId: string,
     context: Context,
   ) {
+    input = { ...input };
     const fingerprint = JSON.stringify(input);
     const previous = (await this.harness.snapshot(IdentityChanges, context))
       ?.items[requestId];
@@ -377,6 +379,18 @@ export class Bots {
       return this.profile(id, context);
     }
     const profile = await this.profile(id, context);
+    let preparation: import("./image-services.ts").ImagePreparation | undefined;
+    if (input.avatarFileId && !input.useOriginal) {
+      if (!this.images) throw new Error("需要制作头像，当前图像服务不可用。");
+      const prepared = await this.images.preparedAvatar(
+        id,
+        input.avatarFileId,
+        context,
+      );
+      input.avatarFileId = prepared.file.id;
+      input.coverFileId = prepared.coverId;
+      preparation = prepared.preparation;
+    }
     const expectedRevision =
       input.revision ??
       (input.avatarFileId
@@ -386,6 +400,13 @@ export class Bots {
     requireRevision(profile.revision, expectedRevision);
     let media = profile.avatarMedia;
     let assetId = input.avatarAssetId;
+    if (assetId) {
+      const asset = await this.characters.get(assetId, context);
+      if (asset.preparation?.purpose === "image" && !input.useOriginal)
+        throw new Error(
+          "该素材是普通图片，需要制作头像；仅明确要求原图直用时设置 useOriginal:true。",
+        );
+    }
     if (assetId) media = await this.characters.apply(id, assetId, context);
     if (
       (input.resetAvatar && (input.avatarFileId || input.avatarAssetId)) ||
@@ -411,6 +432,7 @@ export class Bots {
         input.avatarFileId,
         input.coverFileId,
         context,
+        preparation,
       );
       assetId = asset.id;
       media = await this.characters.apply(id, asset.id, context);

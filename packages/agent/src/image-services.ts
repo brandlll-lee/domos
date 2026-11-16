@@ -59,6 +59,7 @@ const ImageIdentity = defineDoc<{
 });
 export type ImageInput = {
   prompt: string;
+  purpose?: "image" | "avatar";
   saveAsCharacter?: boolean;
   model?: (typeof imageModels)[number];
   format?: "png" | "webp" | "gif";
@@ -71,7 +72,15 @@ export type ImageInput = {
   keyColor?: string;
   referenceFiles?: string[];
 };
+export type ImagePreparation = {
+  purpose: "image" | "avatar";
+  status: "ready";
+  transparent: boolean;
+  animated: boolean;
+};
 type ImageResult = {
+  preparation?: ImagePreparation;
+  requestId?: string;
   file: Attachment;
   originalId: string;
   coverId: string;
@@ -84,6 +93,7 @@ type ImageResult = {
 };
 type Generated = {
   files: {
+    preparation?: ImagePreparation;
     original: string;
     path: string;
     cover: string;
@@ -187,6 +197,27 @@ export class ImageServices {
       botId,
     );
   }
+  async preparedAvatar(botId: number, reference: string, context: Context) {
+    const requests =
+      (await this.harness.snapshot(ImageIdentity, context))?.requests ?? {};
+    const result = Object.values(requests)
+      .filter((item) => item.botId === botId)
+      .flatMap((item) => item.results ?? [])
+      .find(
+        (item) =>
+          item.file.id === reference ||
+          item.originalId === reference ||
+          item.coverId === reference,
+      );
+    if (
+      result?.preparation?.purpose !== "avatar" ||
+      result.preparation.status !== "ready"
+    )
+      throw new Error(
+        '需要制作头像：请使用 image_generate(purpose:"avatar", referenceFiles:[原文件ID])；完成后用最终 fileId 应用，仅明确要求原图直用时设置 useOriginal:true。',
+      );
+    return result;
+  }
   async avatarRevision(botId: number, fileId: string, context: Context) {
     const requests =
       (await this.harness.snapshot(ImageIdentity, context))?.requests ?? {};
@@ -214,6 +245,20 @@ export class ImageServices {
     requestId: string,
     context: Context,
   ) {
+    if (input.purpose === "avatar")
+      input = {
+        ...input,
+        format: input.format ?? "gif",
+        transparent: input.transparent ?? true,
+      };
+    if (
+      input.format &&
+      input.format !== "gif" &&
+      (input.frames !== undefined || input.frameDurationMs !== undefined)
+    )
+      throw new Error("静态格式不能指定动画帧参数。");
+    if (input.frameDurationMs !== undefined && input.frameDurationMs % 10 !== 0)
+      throw new Error("GIF每帧时长必须是10毫秒的倍数。");
     const { settings, key } = await this.connection(botId, context);
     const workspace = await this.computers.workspace(botId, context);
     const directory = workspace.cwd;
@@ -409,6 +454,8 @@ export class ImageServices {
           item.path === item.original ? original : await publish(item.path);
         const cover = await publish(item.cover);
         results.push({
+          ...(item.preparation ? { preparation: item.preparation } : {}),
+          requestId,
           ...(input.saveAsCharacter
             ? {
                 characterId: (
@@ -422,6 +469,7 @@ export class ImageServices {
                     file.id,
                     cover.id,
                     context,
+                    item.preparation,
                   )
                 ).id,
               }
@@ -470,8 +518,14 @@ export function imageExtension(
       defineTool({
         name: "image_generate",
         description:
-          "Generate ordinary images or GIFs using the work computer's configured image service. References must use exact fileId values from uploaded file references or attach_file, never a path, path digest or characterId. References support PNG/JPEG/WebP only, at most 4 files and 8 MiB combined; uploading a GIF or larger image does not make it a supported editing reference. Only request transparent output when wanted; GIF transparency uses automatic colour-key removal and returns animated WebP. Choose a keyColor different from the subject. For avatar creation offer 3–4 still candidates with ask_question, then animate the selected reference; skip selection when the user requests it. Generation never changes identity. Results include saved file IDs, cover IDs and actual frame metadata; files are delivered automatically. Never resend an uncertain paid request. If a failure supplies recoverRequestId, call this same tool with only that field to publish the retained result without generation or provider credentials. GIF requires provider preview access.",
+          "Generate ordinary images or GIFs using the work computer's configured image service. References must use exact fileId values from uploaded file references or attach_file, never a path, path digest or characterId. References support PNG/JPEG/WebP only, at most 4 files and 8 MiB combined; uploading a GIF or larger image does not make it a supported editing reference. For ordinary images request transparent output only when wanted; avatar purpose defaults to transparency. GIF transparency uses automatic colour-key removal and returns animated WebP. Choose a keyColor different from the subject. For avatar creation always set purpose:avatar; it supplies animation and transparency defaults with explicit parameter overrides. An uploaded reference is already selected. Offer candidates through ask_question only when requested. Generation never changes identity. Results include saved file IDs, cover IDs and actual frame metadata; files are delivered automatically. Never resend an uncertain paid request. If a failure supplies recoverRequestId, call this same tool with only that field to publish the retained result without generation or provider credentials. GIF requires provider preview access.",
         parameters: Type.Object({
+          purpose: Type.Optional(
+            Type.Union([Type.Literal("image"), Type.Literal("avatar")], {
+              description:
+                "Default image. Use avatar for Bot-avatar creation: defaults GIF, transparency and cover. Explicit format and transparent:false override defaults. Uploaded reference is already selected; ask candidates only if requested.",
+            }),
+          ),
           saveAsCharacter: Type.Optional(
             Type.Boolean({
               description:
@@ -558,7 +612,12 @@ export function imageExtension(
           const botId = await owningBot(api, api.conversationId, context);
           return toolResult(
             (await bots().characters.list(botId, context)).map(
-              ({ id, name }) => ({ kind: "character", characterId: id, name }),
+              ({ id, name, preparation }) => ({
+                kind: "character",
+                characterId: id,
+                name,
+                preparation: preparation ?? { status: "unknown" },
+              }),
             ),
           );
         },
@@ -566,7 +625,7 @@ export function imageExtension(
       defineTool({
         name: "bot_update",
         description:
-          "Update only your own Bot name or avatar when the user requests it. Use a saved image file ID and a static cover ID from image_generate. This applies an existing image without generating or removing its background. Use ask_question for requested candidate selection and wait for the real answer. Pass resetAvatar to restore the built-in character. No other Bot, instructions, credentials or arbitrary URLs can be changed.",
+          "Update only your own Bot name or avatar when the user requests it. Use the final saved image file ID from image_generate. Use the final fileId from a ready purpose:avatar result; its cover is resolved automatically. Unprepared uploads require avatar generation first. useOriginal:true is only for explicit original-media use. This tool never generates or charges. Use ask_question for requested candidate selection and wait for the real answer. Pass resetAvatar to restore the built-in character. No other Bot, instructions, credentials or arbitrary URLs can be changed.",
         parameters: Type.Object({
           name: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
           avatarAssetId: Type.Optional(
@@ -574,6 +633,12 @@ export function imageExtension(
               pattern: "^[a-f0-9]{64}$",
               description:
                 "characterId from character_list or image_generate.saveAsCharacter. Not a Files fileId.",
+            }),
+          ),
+          useOriginal: Type.Optional(
+            Type.Boolean({
+              description:
+                "Only true when user explicitly requests using original media unchanged. Never infer from an ordinary avatar request.",
             }),
           ),
           avatarFileId: Type.Optional(

@@ -85,6 +85,7 @@ test("saved characters keep their pixels, share across Bots and transform only o
   const applied = await api.work.identity({
     botId: source.id,
     name: "黄色角色",
+    useOriginal: true,
     avatarFileId: file.id,
     coverFileId: file.id,
     revision: profile.revision,

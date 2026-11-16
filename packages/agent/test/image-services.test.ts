@@ -459,6 +459,7 @@ test("shared identity tool retains instructions, publishes media and cannot repl
   } as Parameters<typeof tool.execute>[1];
   const input = {
     name: "Godzilla",
+    useOriginal: true,
     avatarFileId: file.id,
     coverFileId: file.id,
   };
@@ -501,7 +502,7 @@ test("shared identity tool retains instructions, publishes media and cannot repl
   await expect(
     runtime.bots.updateIdentity(
       botId,
-      { avatarFileId: file.id, coverFileId: file.id },
+      { useOriginal: true, avatarFileId: file.id, coverFileId: file.id },
       "late-image",
       context,
     ),
@@ -538,16 +539,36 @@ test("real computer, worker and Files recover legacy directory aliases after res
     process.platform === "win32" ? "junction" : "dir",
   );
   const requests: string[] = [];
+  const prompts: string[] = [];
   const bytes = await sharp(pixels(24, 1), {
     raw: { width: 24, height: 24, channels: 4 },
   })
     .png()
     .toBuffer();
   const provider = createServer(async (req, res) => {
-    for await (const _chunk of req) {
-    }
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const body = JSON.parse(Buffer.concat(chunks).toString());
     requests.push(req.url ?? "");
-    res.end(JSON.stringify({ data: [{ b64_json: bytes.toString("base64") }] }));
+    prompts.push(body.prompt);
+    let output = bytes;
+    if (body.output_format === "gif")
+      output = await sharp(pixels(24, body.frame_count), {
+        raw: {
+          width: 24,
+          height: 24 * body.frame_count,
+          channels: 4,
+          pageHeight: 24,
+        },
+      })
+        .gif({
+          delay: Array(body.frame_count).fill(body.frame_duration_ms),
+          loop: 0,
+        })
+        .toBuffer();
+    res.end(
+      JSON.stringify({ data: [{ b64_json: output.toString("base64") }] }),
+    );
   });
   provider.listen(0, "127.0.0.1");
   await once(provider, "listening");
@@ -754,4 +775,139 @@ test("real computer, worker and Files recover legacy directory aliases after res
       await (await runtime.files.download(botId, historical.id)).arrayBuffer(),
     ),
   ).toEqual(bytes);
+
+  hasKey = true;
+  runtime.bots.images = service;
+  const before = await runtime.bots.profile(botId, context);
+  await expect(
+    runtime.bots.updateIdentity(
+      botId,
+      { avatarFileId: historical.id },
+      "raw-blocked",
+      context,
+    ),
+  ).rejects.toThrow("需要制作头像");
+  expect((await runtime.bots.profile(botId, context)).avatarMedia).toEqual(
+    before.avatarMedia,
+  );
+  const [avatar] = await service.generate(
+    botId,
+    {
+      purpose: "avatar",
+      prompt: "这个作为头像可以吗",
+      referenceFiles: [historical.id],
+    },
+    "avatar-default",
+    context,
+  );
+  if (!avatar) throw new Error("Missing avatar");
+  expect(prompts.at(-1)).toContain("pure magenta");
+  expect(avatar).toMatchObject({
+    format: "webp",
+    frames: 16,
+    delay: Array(16).fill(100),
+    preparation: {
+      purpose: "avatar",
+      status: "ready",
+      transparent: true,
+      animated: true,
+    },
+  });
+  const raw = await sharp(
+    Buffer.from(
+      await (await runtime.files.download(botId, avatar.file.id)).arrayBuffer(),
+    ),
+    { animated: true },
+  )
+    .ensureAlpha()
+    .raw()
+    .toBuffer();
+  expect(raw.some((v, i) => i % 4 === 3 && v === 0)).toBe(true);
+  expect(raw.some((v, i) => i % 4 === 3 && v === 255)).toBe(true);
+  await runtime.bots.updateIdentity(
+    botId,
+    { avatarFileId: avatar.originalId },
+    "apply-ready",
+    context,
+  );
+  const retained = await runtime.bots.profile(botId, context);
+  expect(retained.avatarAssetId).toBeTruthy();
+  const [staticAvatar] = await service.generate(
+    botId,
+    { purpose: "avatar", format: "png", prompt: "static" },
+    "avatar-static",
+    context,
+  );
+  expect(staticAvatar).toMatchObject({
+    frames: 1,
+    preparation: { transparent: true, animated: false },
+  });
+  const [opaque] = await service.generate(
+    botId,
+    {
+      purpose: "avatar",
+      transparent: false,
+      frames: 2,
+      frameDurationMs: 120,
+      prompt: "keep background",
+    },
+    "avatar-opaque",
+    context,
+  );
+  expect(opaque).toMatchObject({
+    format: "gif",
+    frames: 2,
+    delay: [120, 120],
+    preparation: { transparent: false, animated: true },
+  });
+  const count = requests.length;
+  await expect(
+    service.generate(
+      botId,
+      { purpose: "avatar", format: "png", frames: 2, prompt: "conflict" },
+      "conflict",
+      context,
+    ),
+  ).rejects.toThrow("静态格式");
+  expect(requests).toHaveLength(count);
+  const failId = "avatar-process-failure";
+  const hash = createHash("sha256").update(failId).digest("hex");
+  const block = join(
+    (await computers.workspace(botId, context)).cwd,
+    ".domos-generated",
+    hash,
+    "0.webp",
+  );
+  await mkdir(block, { recursive: true });
+  await expect(
+    service.generate(
+      botId,
+      { purpose: "avatar", frames: 2, prompt: "retain original" },
+      failId,
+      context,
+    ),
+  ).rejects.toThrow("recoverRequestId");
+  expect((await runtime.bots.profile(botId, context)).avatarAssetId).toBe(
+    retained.avatarAssetId,
+  );
+  const paid = requests.length;
+  await rm(block, { recursive: true });
+  hasKey = false;
+  await computers.close(context);
+  await runtime.harness.close(context);
+  computers = new Computers(config);
+  runtime = await open();
+  service = new ImageServices(
+    runtime.harness,
+    computers,
+    runtime.files,
+    credentials,
+  );
+  const recovered = await service.recover(botId, failId, context);
+  expect(recovered[0]).toMatchObject({
+    format: "webp",
+    frames: 2,
+    preparation: { purpose: "avatar", status: "ready" },
+  });
+  expect(requests).toHaveLength(paid);
 }, 30000);

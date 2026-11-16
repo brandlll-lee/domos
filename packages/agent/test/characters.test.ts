@@ -19,7 +19,7 @@ test("characters survive source cleanup, reuse across Bots and keep theme change
   const file = await runtime.files.upload(source, "yellow.png", yellow);
   const applied = await runtime.bots.updateIdentity(
     source,
-    { avatarFileId: file.id, coverFileId: file.id },
+    { useOriginal: true, avatarFileId: file.id, coverFileId: file.id },
     "apply-yellow",
     context,
   );

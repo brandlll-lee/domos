@@ -61,6 +61,7 @@ export function workRouter(bots: Bots, work: BotWork, engines?: Runtime) {
             .string()
             .regex(/^[a-f0-9]{64}$/)
             .optional(),
+          useOriginal: z.boolean().optional(),
           avatarFileId: z
             .string()
             .regex(/^[a-f0-9]{64}$/)

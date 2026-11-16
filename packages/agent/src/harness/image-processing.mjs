@@ -119,6 +119,14 @@ export async function prepareImage(path, output, transparent = false) {
       pixels.every((value, i) => i % 4 !== 3 || value === 255)
     )
       removeBackground(pixels, width, height, key);
+    let clear = 0,
+      subject = 0;
+    for (let i = 3; i < pixels.length; i += 4) {
+      if (pixels[i] === 0) clear++;
+      if (pixels[i] > 0) subject++;
+    }
+    if (clear < width * height * 0.01 || subject < width * height * 0.02)
+      throw new Error("透明处理未得到可靠背景或非空主体；原始文件已保留。");
   }
   await sharp(data, {
     raw: { width, height: height * frames, channels: 4, pageHeight: height },

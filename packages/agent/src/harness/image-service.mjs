@@ -53,17 +53,21 @@ async function saveJson(path, value) {
 }
 
 export async function imageOperation(input, home, signal) {
-  if (input.action === "image_recover") return operation(input, home, signal);
   const root = join(home, "image-requests");
   await mkdir(root, { recursive: true, mode: 0o700 });
   const lock = join(root, "active.lock");
   let handle;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 10; attempt++) {
     try {
       handle = await open(lock, "wx", 0o600);
       await handle.writeFile(String(process.pid));
       break;
     } catch (error) {
+      // Windows may retain a deleted lock handle briefly after cancellation.
+      if (error.code === "EPERM" && attempt < 9) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        continue;
+      }
       if (error.code !== "EEXIST") throw error;
       let pid;
       try {
@@ -134,10 +138,39 @@ async function relativeResult(saved, id) {
 async function operation(input, home, signal) {
   if (input.action === "image_recover") {
     const id = createHash("sha256").update(input.requestId).digest("hex");
+    const directory = join(home, "image-requests", id);
+    try {
+      return await relativeResult(
+        JSON.parse(await readFile(join(directory, "result.json"), "utf8")),
+        id,
+      );
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
     const saved = JSON.parse(
-      await readFile(join(home, "image-requests", id, "result.json"), "utf8"),
+      await readFile(join(directory, "originals.json"), "utf8"),
     );
-    return relativeResult(saved, id);
+    if (!saved.processing || saved.directory !== process.cwd())
+      throw new Error("原始结果缺少处理上下文，不能自动重生成。");
+    const validated = await relativeResult(
+      {
+        files: saved.files.map((original) => ({
+          original,
+          path: original,
+          cover: original,
+        })),
+      },
+      id,
+    );
+    return finishImages(
+      saved.processing,
+      validated.files.map((item) => join(process.cwd(), item.original)),
+      join(process.cwd(), ".domos-generated", id),
+      join(directory, "result.json"),
+      saved.fingerprint,
+      id,
+      signal,
+    );
   }
   const base = imageBaseUrl(input.baseUrl);
   const request = async (path, body) => {
@@ -228,10 +261,46 @@ async function operation(input, home, signal) {
         throw new Error("此前生图请求已发出但结果未知；不会自动再次收费生成。");
       throw error;
     }
+    let keyColor = params.keyColor ?? "bright blue";
+    if (
+      params.purpose === "avatar" &&
+      params.transparent &&
+      params.format === "gif" &&
+      !params.keyColor &&
+      params.references?.length
+    ) {
+      const candidates = [
+        { name: "pure blue (#0000ff)", rgb: [0, 0, 255], hits: 0 },
+        { name: "pure magenta (#ff00ff)", rgb: [255, 0, 255], hits: 0 },
+        { name: "pure green (#00ff00)", rgb: [0, 255, 0], hits: 0 },
+      ];
+      for (const reference of params.references) {
+        const bytes = Buffer.from(
+          reference.slice(reference.indexOf(",") + 1),
+          "base64",
+        );
+        const sample = await sharp(bytes, {
+          limitInputPixels: 16 * 1024 * 1024,
+        })
+          .resize(32, 32, { fit: "inside" })
+          .removeAlpha()
+          .toColourspace("srgb")
+          .raw()
+          .toBuffer();
+        for (let i = 0; i < sample.length; i += 3)
+          for (const candidate of candidates)
+            if (
+              Math.hypot(...candidate.rgb.map((v, c) => v - sample[i + c])) <
+              100
+            )
+              candidate.hits++;
+      }
+      keyColor = candidates.sort((a, b) => a.hits - b.hits)[0].name;
+    }
     const prompt =
       params.transparent && params.format === "gif"
-        ? `${params.prompt}\nUse a perfectly uniform ${params.keyColor ?? "bright blue"} background, no gradient or shadows. Keep the entire character inside the canvas, fixed camera and stable head position, generous clear border, seamless loop. The background colour must differ from all foreground colours.`
-        : params.prompt;
+        ? `${params.prompt}\nUse a perfectly uniform ${keyColor} background, no gradient or shadows. Keep the entire character inside the canvas, fixed camera and stable head position, generous clear border, seamless loop. The background colour must differ from all foreground colours.`
+        : `${params.prompt}${params.purpose === "avatar" ? " Avatar composition: entire subject inside canvas, fixed camera, stable head, generous clear border. Structured background and animation settings override conflicting prompt instructions." : ""}`;
     const body = {
       model: params.model,
       prompt,
@@ -282,8 +351,38 @@ async function operation(input, home, signal) {
       await writeFile(path, bytes, { mode: 0o600 });
       originals.push(path);
     }
-    await saveJson(rawManifest, { fingerprint, files: originals });
+    await saveJson(rawManifest, {
+      fingerprint,
+      files: originals,
+      directory: process.cwd(),
+      processing: {
+        format: params.format,
+        frames: params.frames,
+        frameDurationMs: params.frameDurationMs,
+        transparent: !!params.transparent,
+        purpose: params.purpose ?? "image",
+      },
+    });
   }
+  return finishImages(
+    params,
+    originals,
+    outputDirectory,
+    manifest,
+    fingerprint,
+    id,
+    signal,
+  );
+}
+async function finishImages(
+  params,
+  originals,
+  outputDirectory,
+  manifest,
+  fingerprint,
+  id,
+  signal,
+) {
   const files = [];
   for (const [index, original] of originals.entries()) {
     signal.throwIfAborted();
@@ -301,6 +400,12 @@ async function operation(input, home, signal) {
       throw new Error(
         "服务返回格式、帧数或时长不符；原始文件已保留，不会自动重生成。",
       );
+    if (
+      params.purpose === "avatar" &&
+      params.format !== "gif" &&
+      source.frames !== 1
+    )
+      throw new Error("静态头像返回了动画；原始结果已保留。");
     const info = params.transparent
       ? await prepareImage(original, output, true)
       : source;
@@ -315,6 +420,12 @@ async function operation(input, home, signal) {
       path: params.transparent ? output : original,
       cover,
       ...info,
+      preparation: {
+        purpose: params.purpose ?? "image",
+        status: "ready",
+        transparent: !!params.transparent,
+        animated: params.format === "gif",
+      },
     });
   }
   signal.throwIfAborted();

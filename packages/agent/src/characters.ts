@@ -7,6 +7,7 @@ import { defineDoc, type Harness } from "@earendil-works/pi-durable";
 import type { Computers } from "./computer/catalog.ts";
 import { ComputersDoc } from "./computer/state.ts";
 import type { Files } from "./files.ts";
+import type { ImagePreparation } from "./image-services.ts";
 
 export type SavedCharacter = {
   id: string;
@@ -15,6 +16,7 @@ export type SavedCharacter = {
   imageType: string;
   coverType: string;
   media: CharacterMedia;
+  preparation?: ImagePreparation;
 };
 const CharactersDoc = defineDoc<{ items: SavedCharacter[] }>({
   kind: "domos.characters",
@@ -48,9 +50,12 @@ export class Characters {
   }
   async list(botId: number | undefined, context: Context) {
     const computerId = await this.computer(botId, context);
-    return (
-      (await this.harness.snapshot(CharactersDoc, context))?.items ?? []
-    ).filter((item) => item.computerId === computerId);
+    return ((await this.harness.snapshot(CharactersDoc, context))?.items ?? [])
+      .filter((item) => item.computerId === computerId)
+      .map((item) => ({
+        ...item,
+        preparationStatus: item.preparation?.status ?? "unknown",
+      }));
   }
   async forCreation(
     id: string,
@@ -90,6 +95,7 @@ export class Characters {
     imageId: string,
     coverId: string,
     context: Context,
+    preparation?: ImagePreparation,
   ) {
     const computerId = await this.computer(botId, context);
     const originals = await Promise.all(
@@ -168,6 +174,7 @@ export class Characters {
       id,
       computerId,
       name,
+      ...(preparation ? { preparation } : {}),
       imageType: image.file.mimeType ?? "image/webp",
       coverType: cover.file.mimeType ?? "image/png",
       media,

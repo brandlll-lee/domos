@@ -103,13 +103,6 @@ test("image service generates media and shared tools apply a character with work
     await expect(settings.locator(".image-thumbnail img")).toBeVisible();
     await page.screenshot({ path: "test-results/image-service-settings.png" });
     await page.getByRole("button", { name: "关闭设置", exact: true }).click();
-    const preview = await api.images.preview({
-      botId,
-      animated: true,
-      requestId: crypto.randomUUID(),
-    });
-    const candidate = preview[0];
-    if (!candidate) throw new Error("Generated candidate missing");
     await service.control({
       responses: [
         {
@@ -120,10 +113,9 @@ test("image service generates media and shared tools apply a character with work
               name: "image_generate",
               arguments: {
                 prompt: "A waving dinosaur",
-                format: "gif",
+                purpose: "avatar",
                 frames: 2,
                 frameDurationMs: 100,
-                transparent: true,
               },
             },
           ],
@@ -133,7 +125,7 @@ test("image service generates media and shared tools apply a character with work
       ],
     });
     const composer = page.getByRole("textbox", { name: "消息", exact: true });
-    await composer.fill("请生成一个挥手动图");
+    await composer.fill("用这个挥手角色作为头像");
     await page.getByRole("button", { name: "发送", exact: true }).click();
     await expect(
       page.locator(".messages").getByText("动图已经生成。", { exact: true }),
@@ -162,8 +154,9 @@ test("image service generates media and shared tools apply a character with work
               name: "bot_update",
               arguments: {
                 name: "小怪兽",
-                avatarFileId: candidate.file.id,
-                coverFileId: candidate.coverId,
+                avatarFileId: (await animation.getAttribute("src"))
+                  ?.split("/")
+                  .pop(),
               },
             },
           ],
