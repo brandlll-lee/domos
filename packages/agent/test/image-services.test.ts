@@ -1,14 +1,25 @@
 import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Credential, CredentialStore } from "@earendil-works/pi-ai";
+import { createModels } from "@earendil-works/pi-ai/models";
+import { createRegistry, defineDoc } from "@earendil-works/pi-durable";
 import sharp from "sharp";
 import { expect, onTestFinished, test, vi } from "vitest";
-import type { Computers } from "../src/computer/catalog.ts";
+import { Computers } from "../src/computer/catalog.ts";
+import { Files } from "../src/files.ts";
 import {
   prepareImage,
   removeBackground,
@@ -18,6 +29,8 @@ import { WorkProcess } from "../src/harness/process.ts";
 import { productCatalog } from "../src/harness/product-tools.ts";
 import type { EngineRuntime } from "../src/harness/task-types.ts";
 import { ImageServices, imageExtension } from "../src/image-services.ts";
+import { openAgent } from "../src/open-agent.ts";
+import { parseConfig } from "../src/runtime/config.ts";
 import { context, setup } from "./fixtures/work.ts";
 
 const pixels = (width = 24, frames = 2) => {
@@ -72,7 +85,10 @@ test("paid results resume partial publishing without reference files and reject 
   }));
   const computers = {
     binding: async () => ({ computer: { id: "local", authorized: true } }),
-    workspace: async () => ({ cwd }),
+    workspace: async () => ({
+      cwd,
+      path: async (value: string) => join(cwd, value === cwd ? "." : value),
+    }),
     transfer: async <T>(_id: number, fn: () => Promise<T>) => fn(),
     mcp,
   } as unknown as Computers;
@@ -223,8 +239,8 @@ test("work process preserves animated transparency, references and paid request 
   const file = generated.files[0];
   if (!file) throw new Error("Generated image missing");
   expect(file).toMatchObject({ frames: 2, delay: [100, 100] });
-  expect(await readFile(file.original)).toEqual(gif);
-  const output = sharp(file.path, { animated: true });
+  expect(await readFile(join(directory, file.original))).toEqual(gif);
+  const output = sharp(join(directory, file.path), { animated: true });
   expect(await output.metadata()).toMatchObject({
     format: "webp",
     pages: 2,
@@ -234,7 +250,9 @@ test("work process preserves animated transparency, references and paid request 
   const data = await output.ensureAlpha().raw().toBuffer();
   expect(data[3]).toBe(0);
   expect(data[(12 * 24 + 12) * 4 + 3]).toBe(255);
-  expect(await sharp(file.cover).metadata()).toMatchObject({ format: "png" });
+  expect(await sharp(join(directory, file.cover)).metadata()).toMatchObject({
+    format: "png",
+  });
   expect((await worker.mcp<Result>(input)).files).toEqual(generated.files);
   expect(calls).toBe(1);
   expect(requests[0]).toMatchObject({
@@ -507,3 +525,233 @@ test("shared identity tool retains instructions, publishes media and cannot repl
     (await runtime.bots.profile(botId, context)).avatarMedia,
   ).toBeUndefined();
 });
+
+test("real computer, worker and Files recover legacy directory aliases after restart without credentials or new generation", async () => {
+  sharp.cache(false);
+  const directory = await mkdtemp(join(tmpdir(), "domos-image-alias-"));
+  const actual = join(directory, "actual");
+  const alias = join(directory, "alias");
+  await mkdir(actual);
+  await symlink(
+    actual,
+    alias,
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  const requests: string[] = [];
+  const bytes = await sharp(pixels(24, 1), {
+    raw: { width: 24, height: 24, channels: 4 },
+  })
+    .png()
+    .toBuffer();
+  const provider = createServer(async (req, res) => {
+    for await (const _chunk of req) {
+    }
+    requests.push(req.url ?? "");
+    res.end(JSON.stringify({ data: [{ b64_json: bytes.toString("base64") }] }));
+  });
+  provider.listen(0, "127.0.0.1");
+  await once(provider, "listening");
+  const address = provider.address();
+  if (!address || typeof address === "string")
+    throw new Error("provider address");
+  const database = join(actual, "agent.sqlite");
+  const config = parseConfig(
+    { dataDir: alias },
+    join(directory, "config.json"),
+  );
+  let computers = new Computers(config);
+  let runtime: Awaited<ReturnType<typeof openAgent>> | undefined;
+  let hasKey = true;
+  const credentials: CredentialStore = {
+    read: async () =>
+      hasKey ? { type: "api_key", key: "test-only" } : undefined,
+    list: async () => [],
+    modify: async () => undefined,
+    delete: async () => {},
+  };
+  const open = async () => {
+    const files = new Files(
+      database,
+      (id, ctx, dir) => computers.workspace(id, ctx, undefined, dir),
+      (id, ctx) => computers.computerId(id, ctx),
+    );
+    const registry = createRegistry();
+    registry.install(files.extension());
+    const opened = await openAgent(
+      database,
+      { registry, models: createModels() },
+      {},
+      context,
+      files,
+    );
+    await computers.initialize(opened.harness, opened.bots, context, true);
+    return opened;
+  };
+  onTestFinished(async () => {
+    provider.closeAllConnections();
+    provider.close();
+    await computers.close(context);
+    await runtime?.harness.close(context);
+    await rm(directory, { recursive: true, force: true, maxRetries: 10 });
+  });
+  runtime = await open();
+  const botId = runtime.conversation.id;
+  const workspace = await computers.workspace(botId, context);
+  expect(workspace.cwd).toBe(await realpath(workspace.cwd));
+  const uploaded = await runtime.files.upload(
+    botId,
+    "reference.png",
+    bytes,
+    context,
+  );
+  let service = new ImageServices(
+    runtime.harness,
+    computers,
+    runtime.files,
+    credentials,
+  );
+  await service.save(
+    botId,
+    {
+      ...(await service.state(botId, context)),
+      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    },
+    context,
+  );
+  const publish = vi
+    .spyOn(runtime.files, "publish")
+    .mockRejectedValueOnce(new Error("publication interrupted"));
+  const requestId = "retained-alias";
+  await expect(
+    service.generate(
+      botId,
+      { prompt: "golden hair", referenceFiles: [uploaded.id] },
+      requestId,
+      context,
+    ),
+  ).rejects.toThrow("recoverRequestId");
+  publish.mockRestore();
+  expect(requests).toEqual(["/v1/images/edits"]);
+  const requestHash = createHash("sha256").update(requestId).digest("hex");
+  const journal = join(
+    actual,
+    "engines",
+    "image-requests",
+    requestHash,
+    "result.json",
+  );
+  const saved = JSON.parse(await readFile(journal, "utf8"));
+  const legacyRoot = join(
+    alias,
+    "agent.sqlite.files",
+    String(botId),
+    "workspace",
+  );
+  const Receipt = defineDoc<{
+    requests: Record<string, { scope: { directory: string } }>;
+  }>({
+    kind: "domos.image-identity",
+    version: 1,
+    checkpointWhen: () => false,
+    scope: "session",
+    initial: () => ({ requests: {} }),
+  });
+  await runtime.harness.commit(async (tx) => {
+    const receipt = (await tx.doc(Receipt)).requests[requestId];
+    if (!receipt) throw new Error("Missing saved receipt");
+    receipt.scope.directory = legacyRoot;
+  }, context);
+  // Existing worker journals used absolute paths. Preserve that historical shape.
+  await writeFile(journal, JSON.stringify(saved));
+  hasKey = false;
+  await runtime.files.discard(botId, uploaded.id);
+  await computers.close(context);
+  await runtime.harness.close(context);
+  computers = new Computers(config);
+  runtime = await open();
+  service = new ImageServices(
+    runtime.harness,
+    computers,
+    runtime.files,
+    credentials,
+  );
+  const [first, second] = await Promise.all([
+    service.recover(botId, requestId, context),
+    service.recover(botId, requestId, context),
+  ]);
+  expect(first).toEqual(second);
+  expect(first[0]?.file.id).toBeTruthy();
+  expect(first[0]?.file.path.startsWith(".domos-generated/")).toBe(true);
+  const file = first[0]?.file;
+  if (!file) throw new Error("Missing recovered file");
+  expect(
+    Buffer.from(
+      await (await runtime.files.download(botId, file.id)).arrayBuffer(),
+    ),
+  ).toEqual(bytes);
+  expect(requests).toHaveLength(1);
+  const bots = runtime.bots;
+  const tool = imageExtension(
+    () => service,
+    () => bots,
+  ).tools[0];
+  const toolResult = await tool.execute(
+    { recoverRequestId: requestId },
+    {
+      snapshot: runtime.harness.snapshot.bind(runtime.harness),
+      conversationId: botId,
+      taskId: 998,
+      callId: "recover",
+    } as Parameters<typeof tool.execute>[1],
+    context,
+  );
+  expect(toolResult).toMatchObject({
+    details: { attachments: [{ id: first[0]?.file.id }] },
+  });
+  expect(requests).toHaveLength(1);
+  const other = await runtime.bots.create(
+    { name: "Other", requestId: crypto.randomUUID() },
+    context,
+  );
+  await expect(service.recover(other.id, requestId, context)).rejects.toThrow(
+    "当前 Bot",
+  );
+  await expect(
+    service.recover(botId, "another-bot-request", context),
+  ).rejects.toThrow("当前 Bot");
+  const escaped = join(actual, "outside.png");
+  await writeFile(escaped, bytes);
+  saved.files[0].original = escaped;
+  await writeFile(journal, JSON.stringify(saved));
+  await expect(
+    computers.mcp(
+      "process",
+      { action: "image_recover", requestId },
+      context,
+      undefined,
+      botId,
+    ),
+  ).rejects.toThrow("原请求");
+  expect(requests).toHaveLength(1);
+  const historical = await runtime.files.upload(
+    botId,
+    "historical.png",
+    bytes,
+    context,
+  );
+  await writeFile(
+    join(runtime.files.directory(botId, historical.id), "metadata.json"),
+    JSON.stringify({ ...historical, directory: legacyRoot }),
+  );
+  const reference = { ...historical };
+  await runtime.files.verify(botId, [reference], context);
+  expect(reference.id).toBe(historical.id);
+  expect(
+    await (await computers.workspace(botId, context)).path(reference.path),
+  ).toBe(await realpath(join(legacyRoot, historical.path)));
+  expect(
+    Buffer.from(
+      await (await runtime.files.download(botId, historical.id)).arrayBuffer(),
+    ),
+  ).toEqual(bytes);
+}, 30000);

@@ -200,10 +200,12 @@ export class ImageServices {
     requestId: string,
     context: Context,
   ): Promise<ImageResult[]> {
-    return this.computers.transfer(
-      botId,
-      () => this.generateBound(botId, input, requestId, context),
-      context,
+    return this.files.exclusive(botId, () =>
+      this.computers.transfer(
+        botId,
+        () => this.generateBound(botId, input, requestId, context),
+        context,
+      ),
     );
   }
   private async generateBound(
@@ -213,7 +215,8 @@ export class ImageServices {
     context: Context,
   ) {
     const { settings, key } = await this.connection(botId, context);
-    const directory = (await this.computers.workspace(botId, context)).cwd;
+    const workspace = await this.computers.workspace(botId, context);
+    const directory = workspace.cwd;
     const scope = {
       computerId: settings.computerId,
       directory,
@@ -231,7 +234,10 @@ export class ImageServices {
       receipt &&
       (receipt.botId !== botId ||
         (receipt.scope &&
-          JSON.stringify(receipt.scope) !== JSON.stringify(scope)))
+          (receipt.scope.computerId !== scope.computerId ||
+            receipt.scope.fingerprint !== scope.fingerprint ||
+            (await workspace.path(receipt.scope.directory)) !==
+              (await workspace.path(".")))))
     )
       throw new Error(
         "图像请求上下文已改变。请回到原工作电脑、目录和服务配置恢复原请求；不要重新发起付费生成。",
@@ -273,7 +279,7 @@ export class ImageServices {
         const saved = doc.requests[requestId];
         if (
           saved.botId !== botId ||
-          (saved.scope && JSON.stringify(saved.scope) !== JSON.stringify(scope))
+          (saved.scope && saved.scope.fingerprint !== scope.fingerprint)
         )
           throw new Error("图像请求标识或上下文冲突。");
         saved.scope ??= scope;
@@ -282,92 +288,169 @@ export class ImageServices {
     receipt = (await this.harness.snapshot(ImageIdentity, context))?.requests[
       requestId
     ];
-    const published = receipt?.published ?? {};
-    const publish = async (path: string) => {
-      if (published[path]) return published[path];
-      const file = await this.files.publish(botId, path, context, directory);
-      await this.harness.commit(async (tx) => {
-        const saved = (await tx.doc(ImageIdentity)).requests[requestId];
-        if (!saved) throw new Error("图像发布记录丢失。");
-        saved.published ??= {};
-        saved.published[path] = file;
-      }, context);
-      published[path] = file;
-      return file;
-    };
     const generated =
       receipt?.generated ??
-      (await this.computers.mcp<Generated>(
-        settings.computerId,
-        {
-          action: "image_generate",
-          baseUrl: settings.baseUrl,
-          key,
-          requestId,
-          params: {
-            ...input,
-            model: input.model ?? settings.model,
-            quality: input.quality ?? settings.quality,
-            complexity: input.complexity ?? settings.complexity,
-            format: input.format ?? "png",
-            count: input.count ?? 1,
-            frames: input.frames ?? 16,
-            frameDurationMs: input.frameDurationMs ?? 100,
-            references,
+      (await this.computers
+        .mcp<Generated>(
+          settings.computerId,
+          {
+            action: "image_generate",
+            baseUrl: settings.baseUrl,
+            key,
+            requestId,
+            params: {
+              ...input,
+              model: input.model ?? settings.model,
+              quality: input.quality ?? settings.quality,
+              complexity: input.complexity ?? settings.complexity,
+              format: input.format ?? "png",
+              count: input.count ?? 1,
+              frames: input.frames ?? 16,
+              frameDurationMs: input.frameDurationMs ?? 100,
+              references,
+            },
           },
+          context,
+          context.abortSignal,
+          botId,
+        )
+        .catch((error) => {
+          if (context.abortSignal?.aborted) throw error;
+          throw new Error(
+            `图像生成或处理结果尚未确认。请仅用 {"recoverRequestId":${JSON.stringify(requestId)}} 检查并恢复已保存结果；不要重新付费生成。原因：${error instanceof Error ? error.message : "请求未完成。"}`,
+          );
+        }));
+    return this.publishGenerated(
+      botId,
+      input,
+      requestId,
+      directory,
+      generated,
+      context,
+    );
+  }
+  async recover(
+    botId: number,
+    requestId: string,
+    context: Context,
+  ): Promise<ImageResult[]> {
+    return this.files.exclusive(botId, () =>
+      this.computers.transfer(
+        botId,
+        async () => {
+          const receipt = (await this.harness.snapshot(ImageIdentity, context))
+            ?.requests[requestId];
+          if (!receipt || receipt.botId !== botId || !receipt.scope)
+            throw new Error("没有属于当前 Bot 的可恢复图像请求。");
+          const computerId = await this.target(botId, context);
+          const workspace = await this.computers.workspace(botId, context);
+          if (
+            computerId !== receipt.scope.computerId ||
+            (await workspace.path(receipt.scope.directory)) !==
+              (await workspace.path("."))
+          )
+            throw new Error("请在原工作电脑和原目录恢复图像。");
+          if (receipt.results) return receipt.results;
+          const generated = await this.computers.mcp<Generated>(
+            computerId,
+            { action: "image_recover", requestId },
+            context,
+            context.abortSignal,
+            botId,
+          );
+          const input = JSON.parse(receipt.scope.fingerprint) as ImageInput;
+          return this.publishGenerated(
+            botId,
+            input,
+            requestId,
+            workspace.cwd,
+            generated,
+            context,
+          );
         },
         context,
-        context.abortSignal,
-        botId,
-      ));
-    await this.harness.commit(async (tx) => {
-      const saved = (await tx.doc(ImageIdentity)).requests[requestId];
-      if (saved) saved.generated = generated;
-    }, context);
-    const results: ImageResult[] = [];
-    for (const item of generated.files) {
-      context.abortSignal?.throwIfAborted();
-      const original = await publish(item.original);
-      const file =
-        item.path === item.original ? original : await publish(item.path);
-      const cover = await publish(item.cover);
-      results.push({
-        ...(input.saveAsCharacter
-          ? {
-              characterId: (
-                await new Characters(
-                  this.harness,
-                  this.files,
-                  this.computers,
-                ).save(
-                  botId,
-                  input.prompt.slice(0, 80),
-                  file.id,
-                  cover.id,
-                  context,
-                )
-              ).id,
-            }
-          : {}),
-        file,
-        originalId: original.id,
-        coverId: cover.id,
-        width: item.width,
-        height: item.height,
-        frames: item.frames,
-        delay: item.delay,
-        format: item.format,
-      });
-    }
-    const fileIds = results.map((item) => item.file.id);
-    await this.harness.commit(async (tx) => {
-      const receipt = (await tx.doc(ImageIdentity)).requests[requestId];
-      if (receipt) {
-        receipt.files = fileIds;
-        receipt.results = results;
+      ),
+    );
+  }
+  private async publishGenerated(
+    botId: number,
+    input: ImageInput,
+    requestId: string,
+    directory: string,
+    generated: Generated,
+    context: Context,
+  ): Promise<ImageResult[]> {
+    try {
+      await this.harness.commit(async (tx) => {
+        const saved = (await tx.doc(ImageIdentity)).requests[requestId];
+        if (!saved) throw new Error("原请求记录不存在。");
+        saved.generated = generated;
+      }, context);
+      const receipt = (await this.harness.snapshot(ImageIdentity, context))
+        ?.requests[requestId];
+      const published = receipt?.published ?? {};
+      const publish = async (path: string) => {
+        if (published[path]) return published[path];
+        const file = await this.files.publish(botId, path, context, directory);
+        await this.harness.commit(async (tx) => {
+          const saved = (await tx.doc(ImageIdentity)).requests[requestId];
+          if (!saved) throw new Error("图像发布记录丢失。");
+          saved.published ??= {};
+          saved.published[path] = file;
+        }, context);
+        published[path] = file;
+        return file;
+      };
+      const results: ImageResult[] = [];
+      for (const item of generated.files) {
+        context.abortSignal?.throwIfAborted();
+        const original = await publish(item.original);
+        const file =
+          item.path === item.original ? original : await publish(item.path);
+        const cover = await publish(item.cover);
+        results.push({
+          ...(input.saveAsCharacter
+            ? {
+                characterId: (
+                  await new Characters(
+                    this.harness,
+                    this.files,
+                    this.computers,
+                  ).save(
+                    botId,
+                    input.prompt.slice(0, 80),
+                    file.id,
+                    cover.id,
+                    context,
+                  )
+                ).id,
+              }
+            : {}),
+          file,
+          originalId: original.id,
+          coverId: cover.id,
+          width: item.width,
+          height: item.height,
+          frames: item.frames,
+          delay: item.delay,
+          format: item.format,
+        });
       }
-    }, context);
-    return results;
+      const fileIds = results.map((item) => item.file.id);
+      await this.harness.commit(async (tx) => {
+        const receipt = (await tx.doc(ImageIdentity)).requests[requestId];
+        if (receipt) {
+          receipt.files = fileIds;
+          receipt.results = results;
+        }
+      }, context);
+      return results;
+    } catch (error) {
+      if (context.abortSignal?.aborted) throw error;
+      throw new Error(
+        `图片已生成并保留，发布失败。请调用 image_generate，仅传 {"recoverRequestId":${JSON.stringify(requestId)}} 恢复交付；不要重新生成或要求重新上传。原因：${error instanceof Error ? error.message : "发布未完成。"}`,
+      );
+    }
   }
 }
 
@@ -387,7 +470,7 @@ export function imageExtension(
       defineTool({
         name: "image_generate",
         description:
-          "Generate ordinary images or GIFs using the work computer's configured image service. References must use exact fileId values from uploaded file references or attach_file, never a path, path digest or characterId. References support PNG/JPEG/WebP only, at most 4 files and 8 MiB combined; uploading a GIF or larger image does not make it a supported editing reference. Only request transparent output when wanted; GIF transparency uses automatic colour-key removal and returns animated WebP. Choose a keyColor different from the subject. For avatar creation offer 3–4 still candidates with ask_question, then animate the selected reference; skip selection when the user requests it. Generation never changes identity. Results include saved file IDs, cover IDs and actual frame metadata; files are delivered automatically. Never resend an uncertain paid request. GIF requires provider preview access.",
+          "Generate ordinary images or GIFs using the work computer's configured image service. References must use exact fileId values from uploaded file references or attach_file, never a path, path digest or characterId. References support PNG/JPEG/WebP only, at most 4 files and 8 MiB combined; uploading a GIF or larger image does not make it a supported editing reference. Only request transparent output when wanted; GIF transparency uses automatic colour-key removal and returns animated WebP. Choose a keyColor different from the subject. For avatar creation offer 3–4 still candidates with ask_question, then animate the selected reference; skip selection when the user requests it. Generation never changes identity. Results include saved file IDs, cover IDs and actual frame metadata; files are delivered automatically. Never resend an uncertain paid request. If a failure supplies recoverRequestId, call this same tool with only that field to publish the retained result without generation or provider credentials. GIF requires provider preview access.",
         parameters: Type.Object({
           saveAsCharacter: Type.Optional(
             Type.Boolean({
@@ -395,7 +478,17 @@ export function imageExtension(
                 "Save validated character media to this work computer's reusable character catalog. Ordinary generated images are not saved as characters by default.",
             }),
           ),
-          prompt: Type.String({ minLength: 1, maxLength: 32000 }),
+          recoverRequestId: Type.Optional(
+            Type.String({
+              minLength: 1,
+              maxLength: 256,
+              description:
+                "Recover a saved result belonging to this Bot. Supply only this field; no provider call is made.",
+            }),
+          ),
+          prompt: Type.Optional(
+            Type.String({ minLength: 1, maxLength: 32000 }),
+          ),
           model: Type.Optional(
             Type.Union([
               Type.Literal(imageModels[0]),
@@ -428,12 +521,21 @@ export function imageExtension(
         executionMode: "sequential",
         async execute(input, api, context) {
           const botId = await owningBot(api, api.conversationId, context);
-          const results = await services().generate(
-            botId,
-            input,
-            `tool:${api.taskId}:${api.callId}`,
-            context,
-          );
+          if (
+            input.recoverRequestId &&
+            Object.keys(input).some((key) => key !== "recoverRequestId")
+          )
+            throw new Error("恢复交付只传 recoverRequestId。");
+          if (!input.recoverRequestId && !input.prompt?.trim())
+            throw new Error("新生成需要 prompt。");
+          const results = input.recoverRequestId
+            ? await services().recover(botId, input.recoverRequestId, context)
+            : await services().generate(
+                botId,
+                { ...input, prompt: input.prompt ?? "" },
+                `tool:${api.taskId}:${api.callId}`,
+                context,
+              );
           return {
             ...toolResult(
               results.map(({ file, ...rest }) => ({

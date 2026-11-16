@@ -136,7 +136,11 @@ function invoke(callId, name, args, signal) {
 }
 
 async function manageMcp(input, signal, onprogress) {
-  if (input.action === "image_generate" || input.action === "image_test")
+  if (
+    input.action === "image_generate" ||
+    input.action === "image_recover" ||
+    input.action === "image_test"
+  )
     return imageOperation(input, home, signal);
   if (input.action === "pi_catalog") {
     if (!child?.connected)
@@ -432,6 +436,7 @@ lines.on("line", (line) => {
               error:
                 frame.input.action === "pi_catalog" ||
                 frame.input.action === "image_generate" ||
+                frame.input.action === "image_recover" ||
                 frame.input.action === "image_test" ||
                 error instanceof McpError
                   ? error.message

@@ -1,6 +1,15 @@
 import { createHash } from "node:crypto";
-import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import {
+  lstat,
+  mkdir,
+  open,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { isAbsolute, join, relative, sep } from "node:path";
 import sharp from "sharp";
 import { prepareImage } from "./image-processing.mjs";
 
@@ -44,6 +53,7 @@ async function saveJson(path, value) {
 }
 
 export async function imageOperation(input, home, signal) {
+  if (input.action === "image_recover") return operation(input, home, signal);
   const root = join(home, "image-requests");
   await mkdir(root, { recursive: true, mode: 0o700 });
   const lock = join(root, "active.lock");
@@ -85,7 +95,50 @@ export async function imageOperation(input, home, signal) {
   }
 }
 
+async function relativeResult(saved, id) {
+  const root = process.cwd();
+  const output = join(root, ".domos-generated", id);
+  const files = [];
+  for (const item of saved.files) {
+    const result = { ...item };
+    for (const part of ["original", "path", "cover"]) {
+      const source = isAbsolute(item[part])
+        ? item[part]
+        : join(root, item[part]);
+      const sourceInfo = await lstat(source);
+      if (
+        sourceInfo.isSymbolicLink() ||
+        (sourceInfo.isFile() && sourceInfo.nlink > 1)
+      )
+        throw new Error("图像输出不能经过链接。");
+      const actual = await realpath(source);
+      const local = relative(output, actual);
+      if (!local || local === ".." || local.includes(sep) || isAbsolute(local))
+        throw new Error("已保存图像不在原请求的输出目录。");
+      for (const segment of [
+        ".domos-generated",
+        join(".domos-generated", id),
+        relative(root, actual),
+      ]) {
+        const info = await lstat(join(root, segment));
+        if (info.isSymbolicLink() || (info.isFile() && info.nlink > 1))
+          throw new Error("图像输出不能经过链接。");
+      }
+      result[part] = relative(root, actual).split(sep).join("/");
+    }
+    files.push(result);
+  }
+  return { ...saved, files };
+}
+
 async function operation(input, home, signal) {
+  if (input.action === "image_recover") {
+    const id = createHash("sha256").update(input.requestId).digest("hex");
+    const saved = JSON.parse(
+      await readFile(join(home, "image-requests", id, "result.json"), "utf8"),
+    );
+    return relativeResult(saved, id);
+  }
   const base = imageBaseUrl(input.baseUrl);
   const request = async (path, body) => {
     const response = await fetch(`${base}/${path}`, {
@@ -152,7 +205,7 @@ async function operation(input, home, signal) {
       throw new Error(
         "请求标识或原工作目录、服务地址不一致。请恢复原上下文读取保留结果；不会重新收费生成。",
       );
-    return saved;
+    return relativeResult(saved, id);
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
@@ -267,5 +320,5 @@ async function operation(input, home, signal) {
   signal.throwIfAborted();
   const result = { fingerprint, files };
   await saveJson(manifest, result);
-  return result;
+  return relativeResult(result, id);
 }

@@ -1,6 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  open,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { basename, join, posix, resolve, win32 } from "node:path";
 import { Readable } from "node:stream";
 import type { Context } from "@earendil-works/chord/context";
@@ -150,7 +158,7 @@ export class Files {
     if (this.environment) return this.environment(botId, context, directory);
     const cwd = directory ?? join(this.root, String(botId), "workspace");
     await mkdir(cwd, { recursive: true });
-    return new Workspace({ cwd });
+    return new Workspace({ cwd: await realpath(cwd) });
   }
 
   async exclusive<T>(botId: number, action: () => Promise<T>): Promise<T> {

@@ -4,6 +4,7 @@ import {
   constants,
   mkdir,
   readFile,
+  realpath,
   stat,
   writeFile,
 } from "node:fs/promises";
@@ -155,7 +156,7 @@ export class Computer {
           throw new Error("请选择已存在的绝对目录。");
         await access(directory, constants.R_OK | constants.W_OK);
       } else await mkdir(cwd, { recursive: true });
-      const env = new Workspace({ cwd });
+      const env = new Workspace({ cwd: await realpath(cwd) });
       return env;
     }
     let connection = this.connections.get(botId);

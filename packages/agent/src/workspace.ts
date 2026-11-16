@@ -1,5 +1,5 @@
-import { lstat } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { lstat, realpath } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Context } from "@earendil-works/chord/context";
 import {
   type ExecutionEnv,
@@ -17,12 +17,34 @@ export type WorkEnvironment = ExecutionEnv & {
 
 export class Workspace extends NodeExecutionEnv {
   async path(input: string) {
-    const path = resolve(this.cwd, input);
-    const local = relative(this.cwd, path);
+    const root = await realpath(this.cwd);
+    const candidate = resolve(this.cwd, input);
+    let local = relative(this.cwd, candidate);
+    const outside = (value: string) =>
+      value === ".." || value.startsWith(`..${sep}`) || isAbsolute(value);
+    if (outside(local)) local = relative(root, candidate);
+    if (outside(local)) {
+      // Windows application redirection and saved root aliases can name the same
+      // directory. Resolve ancestors only; never follow a file or child link.
+      let parent = candidate;
+      while (true) {
+        const actual = await realpath(parent).catch(
+          (error: NodeJS.ErrnoException) => {
+            if (error.code === "ENOENT") return undefined;
+            throw error;
+          },
+        );
+        if (actual && relative(root, actual) === "") {
+          local = relative(parent, candidate);
+          break;
+        }
+        const next = dirname(parent);
+        if (next === parent) break;
+        parent = next;
+      }
+    }
     if (
-      local === ".." ||
-      local.startsWith(`..${sep}`) ||
-      isAbsolute(local) ||
+      outside(local) ||
       local.includes(":") ||
       local.split(sep).some((segment) => /[. ]$/.test(segment))
     )
@@ -30,7 +52,7 @@ export class Workspace extends NodeExecutionEnv {
         "permission_denied",
         "Path is outside this Bot's workspace",
       );
-    let current = this.cwd;
+    let current = root;
     for (const segment of ["", ...local.split(sep).filter(Boolean)]) {
       current = join(current, segment);
       const info = await lstat(current).catch(
@@ -45,7 +67,7 @@ export class Workspace extends NodeExecutionEnv {
           "Linked paths are outside the workspace capability",
         );
     }
-    return path;
+    return resolve(root, local);
   }
 
   private async access<T>(
