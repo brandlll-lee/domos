@@ -230,6 +230,24 @@
   width: var(--avatar-panel);
   height: var(--avatar-panel);
 }
+.identity-avatar {
+  position: relative;
+  display: inline-flex;
+  width: 100%;
+  height: 100%;
+}
+.identity-avatar > .bot-avatar {
+  width: 100%;
+  height: 100%;
+}
+.identity-burst {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
 .chat-identity-avatar > :is(.bot-avatar, .team-avatar) {
   width: 100%;
   height: 100%;

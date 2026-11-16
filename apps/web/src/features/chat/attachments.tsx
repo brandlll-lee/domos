@@ -28,7 +28,7 @@ export function Attachments({
   files: Attachment[];
   caption?: string;
   inline?: boolean;
-  author?: "user" | { name: string; avatar: string };
+  author?: "user" | { botId?: number; name: string; avatar: string };
 }) {
   const [error, setError] = useState(false);
   const preview = useFilePreview();
@@ -91,7 +91,7 @@ function AttachmentCard({
   botId: number;
   file: Attachment;
   onOpen: () => void;
-  author?: "user" | { name: string; avatar: string };
+  author?: "user" | { botId?: number; name: string; avatar: string };
 }) {
   const { element, summary } = useFileSummary(botId, file);
   const kind = filePreviewKind(file);
@@ -151,7 +151,7 @@ function AttachmentCard({
             ) : (
               author && (
                 <span title={author.name}>
-                  <BotAvatar seed={author.avatar} />
+                  <BotAvatar botId={author.botId} seed={author.avatar} />
                 </span>
               )
             )

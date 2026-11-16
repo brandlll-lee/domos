@@ -2,6 +2,7 @@ import type { Context } from "@earendil-works/chord/context";
 import { type CredentialStore, Type } from "@earendil-works/pi-ai";
 import { defineDoc, defineTool } from "@earendil-works/pi-durable";
 import { BotDirectory, type Bots } from "./bots.ts";
+import { Characters } from "./characters.ts";
 import type { Computers } from "./computer/catalog.ts";
 import { owningBot } from "./conversations.ts";
 import type { Files } from "./files.ts";
@@ -22,7 +23,7 @@ export type ImageSettings = {
 };
 const defaults: ImageSettings = {
   name: "图像生成",
-  baseUrl: "https://8stoken.com/v1",
+  baseUrl: "https://api.openai.com/v1",
   model: imageModels[0],
   quality: "high",
   complexity: "high",
@@ -49,6 +50,7 @@ const ImageIdentity = defineDoc<{
 });
 export type ImageInput = {
   prompt: string;
+  saveAsCharacter?: boolean;
   model?: (typeof imageModels)[number];
   format?: "png" | "webp" | "gif";
   count?: number;
@@ -255,6 +257,23 @@ export class ImageServices {
         directory,
       );
       results.push({
+        ...(input.saveAsCharacter
+          ? {
+              characterId: (
+                await new Characters(
+                  this.harness,
+                  this.files,
+                  this.computers,
+                ).save(
+                  botId,
+                  input.prompt.slice(0, 80),
+                  file.id,
+                  cover.id,
+                  context,
+                )
+              ).id,
+            }
+          : {}),
         file,
         originalId: original.id,
         coverId: cover.id,
@@ -292,6 +311,12 @@ export function imageExtension(
         description:
           "Generate ordinary images or GIFs using the work computer's configured image service. References are saved Files IDs. Only request transparent output when wanted; GIF transparency uses automatic colour-key removal and returns animated WebP. Choose a keyColor different from the subject. For avatar creation offer 3–4 still candidates with ask_question, then animate the selected reference; skip selection when the user requests it. Generation never changes identity. Results include saved file IDs, cover IDs and actual frame metadata; files are delivered automatically. Never resend an uncertain paid request. GIF requires provider preview access.",
         parameters: Type.Object({
+          saveAsCharacter: Type.Optional(
+            Type.Boolean({
+              description:
+                "Save validated character media to this work computer's reusable character catalog. Ordinary generated images are not saved as characters by default.",
+            }),
+          ),
           prompt: Type.String({ minLength: 1, maxLength: 32000 }),
           model: Type.Optional(
             Type.Union([
@@ -348,6 +373,9 @@ export function imageExtension(
           "Update only your own Bot name or avatar when the user requests it. Use a saved image file ID and a static cover ID from image_generate. This applies an existing image without generating or removing its background. Use ask_question for requested candidate selection and wait for the real answer. Pass resetAvatar to restore the built-in character. No other Bot, instructions, credentials or arbitrary URLs can be changed.",
         parameters: Type.Object({
           name: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
+          avatarAssetId: Type.Optional(
+            Type.String({ pattern: "^[a-f0-9]{64}$" }),
+          ),
           avatarFileId: Type.Optional(
             Type.String({ pattern: "^[a-f0-9]{64}$" }),
           ),

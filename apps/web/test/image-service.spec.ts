@@ -177,16 +177,17 @@ test("image service generates media and shared tools apply a character with work
     await expect(
       page.locator(".messages").getByText("角色已应用。", { exact: true }),
     ).toBeVisible({ timeout: 30000 });
+    const applied = await api.work.profile({ botId });
     const character = page.locator(".chat-header .character").first();
     await expect(character.locator(".character-body > image")).toHaveAttribute(
       "href",
-      `/files/${botId}/${candidate.file.id}`,
+      applied.avatarMedia?.src ?? "",
     );
     await expect(character.locator(".character-face")).toHaveCount(0);
     await page.emulateMedia({ reducedMotion: "reduce" });
     await expect(character.locator(".character-body > image")).toHaveAttribute(
       "href",
-      `/files/${botId}/${candidate.coverId}`,
+      applied.avatarMedia?.cover ?? "",
     );
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.screenshot({ path: "test-results/image-character-applied.png" });

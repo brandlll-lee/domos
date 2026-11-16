@@ -120,7 +120,11 @@ export function WorkPanel(
                     >
                       <span className="work-mark">
                         {turn.author && (
-                          <BotAvatar seed={turn.author.avatar} size="small" />
+                          <BotAvatar
+                            botId={turn.author.botId}
+                            seed={turn.author.avatar}
+                            size="small"
+                          />
                         )}
                         <span
                           className={

@@ -109,7 +109,7 @@ export function TeamDialog({
               <Checkbox
                 label={
                   <span className="team-member-identity">
-                    <BotAvatar seed={bot.avatar} size="small" />
+                    <BotAvatar botId={bot.id} seed={bot.avatar} size="small" />
                     <span>{bot.name}</span>
                   </span>
                 }

@@ -161,7 +161,11 @@ function Notices({ children }: { children: ReactNode }) {
             const content = (
               <>
                 {item.data?.attention ? (
-                  <BotAvatar seed={item.data.attention.avatar} />
+                  <BotAvatar
+                    media={item.data.attention.avatarMedia}
+                    botId={item.data.attention.botId}
+                    seed={item.data.attention.avatar}
+                  />
                 ) : item.type === "error" ? (
                   <WarningCircleIcon
                     className="attention-symbol"

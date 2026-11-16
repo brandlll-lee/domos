@@ -13,6 +13,7 @@ import {
   section,
 } from "@earendil-works/pi-durable";
 import { botPreview } from "./bot-preview.ts";
+import { Characters } from "./characters.ts";
 import { ChatDirectory } from "./chat-directory.ts";
 import type { Computers } from "./computer/catalog.ts";
 import { BotSession, BotSessions, owningBot } from "./conversations.ts";
@@ -29,6 +30,7 @@ export type Bot = {
   name: string;
   avatar: string;
   avatarMedia?: CharacterMedia;
+  avatarAssetId?: string;
   createdAt?: number;
   welcomeComplete?: boolean;
 };
@@ -44,6 +46,7 @@ export type CreateBot = {
   computerId?: string | null;
   requestId: string;
   avatar?: string;
+  avatarAssetId?: string;
 };
 
 export const BotDirectory = defineDoc<{
@@ -91,6 +94,50 @@ export class Bots {
     this.harness = harness;
     this.computers = computers;
     this.chats = new ChatDirectory(harness, database);
+  }
+  get characters() {
+    if (!this.files) throw new Error("文件服务未就绪。");
+    return new Characters(this.harness, this.files, this.computers);
+  }
+  async migrateCharacters(context: Context) {
+    if (!this.files) return;
+    for (const bot of await this.list(context)) {
+      if (!bot.avatarMedia || bot.avatarAssetId) continue;
+      const image = /\/([a-f0-9]{64})$/.exec(bot.avatarMedia.src)?.[1];
+      const cover = /\/([a-f0-9]{64})$/.exec(bot.avatarMedia.cover)?.[1];
+      if (!image || !cover) continue;
+      try {
+        const asset = await this.characters.save(
+          bot.id,
+          bot.name,
+          image,
+          cover,
+          context,
+        );
+        const media = await this.characters.apply(bot.id, asset.id, context);
+        await this.harness.commit(async (tx) => {
+          const saved = (await tx.doc(BotDirectory)).items.find(
+            (item) => item.id === bot.id,
+          );
+          if (
+            saved &&
+            saved.avatarMedia?.src === bot.avatarMedia?.src &&
+            !saved.avatarAssetId
+          ) {
+            saved.avatarAssetId = asset.id;
+            saved.avatarMedia = {
+              ...media,
+              ...bot.avatarMedia,
+              src: media.src,
+              cover: media.cover,
+            };
+          }
+        }, context);
+      } catch {
+        // Unavailable source media remains on the existing Bot.
+        context.abortSignal?.throwIfAborted();
+      }
+    }
   }
   owner(id: number, context: Context) {
     return owningBot(this.harness, id as ConversationId, context);
@@ -151,6 +198,7 @@ export class Bots {
           name,
           avatar,
           avatarMedia,
+          avatarAssetId,
           createdAt,
           welcomeComplete,
         }) => {
@@ -165,6 +213,7 @@ export class Bots {
             name,
             avatar,
             avatarMedia,
+            avatarAssetId,
             createdAt,
             welcomeComplete: Boolean(welcomeComplete),
             busy: Boolean(
@@ -228,6 +277,7 @@ export class Bots {
       name: bot.name,
       avatar: bot.avatar,
       avatarMedia: bot.avatarMedia,
+      avatarAssetId: bot.avatarAssetId,
       revision: bot.revision ?? 0,
       instructions: agent.instructions ?? "",
       model: agent.model,
@@ -240,11 +290,22 @@ export class Bots {
       name: string;
       instructions: string;
       avatar: string;
+      avatarAssetId?: string | null;
       revision: number;
       requestId: string;
     },
     context: Context,
   ) {
+    const current = (
+      await this.harness.snapshot(BotDirectory, context)
+    )?.items.find((bot) => bot.id === id);
+    if (!current) throw new WorkError("NOT_FOUND", "Bot不存在。");
+    if (current.updateId === input.requestId) return this.profile(id, context);
+    requireRevision(current.revision ?? 0, input.revision);
+    const media =
+      input.avatarAssetId && input.avatarAssetId !== current.avatarAssetId
+        ? await this.characters.apply(id, input.avatarAssetId, context)
+        : undefined;
     await this.harness.commit(async (tx) => {
       const bot = (await tx.doc(BotDirectory)).items.find(
         (item) => item.id === id,
@@ -253,7 +314,13 @@ export class Bots {
       if (bot.updateId === input.requestId) return;
       requireRevision(bot.revision ?? 0, input.revision);
       bot.name = requiredText(input.name, BOT_NAME_LENGTH);
-      if (bot.avatar !== input.avatar) delete bot.avatarMedia;
+      if (input.avatarAssetId === null) {
+        delete bot.avatarMedia;
+        delete bot.avatarAssetId;
+      } else if (media) {
+        if (bot.avatarAssetId !== input.avatarAssetId) bot.avatarMedia = media;
+        bot.avatarAssetId = input.avatarAssetId;
+      }
       bot.avatar = input.avatar;
       bot.revision = (bot.revision ?? 0) + 1;
       bot.updateId = input.requestId;
@@ -267,6 +334,7 @@ export class Bots {
     input: {
       name?: string;
       avatarFileId?: string;
+      avatarAssetId?: string;
       coverFileId?: string;
       resetAvatar?: boolean;
       revision?: number;
@@ -293,7 +361,12 @@ export class Bots {
       profile.revision;
     requireRevision(profile.revision, expectedRevision);
     let media = profile.avatarMedia;
-    if (input.resetAvatar && input.avatarFileId)
+    let assetId = input.avatarAssetId;
+    if (assetId) media = await this.characters.apply(id, assetId, context);
+    if (
+      (input.resetAvatar && (input.avatarFileId || input.avatarAssetId)) ||
+      (input.avatarFileId && input.avatarAssetId)
+    )
       throw new Error("恢复默认与设置头像不能同时进行。");
     if (input.avatarFileId) {
       if (!this.files || !input.coverFileId)
@@ -308,12 +381,15 @@ export class Bots {
           throw new Error("头像文件格式不支持。");
         await this.files.verify(id, [file], context);
       }
-      media = {
-        src: `/files/${id}/${input.avatarFileId}`,
-        cover: `/files/${id}/${input.coverFileId}`,
-        headset: { x: 50, y: 30, scale: 0.64 },
-        computer: { x: 50, y: 48, scale: 0.82 },
-      };
+      const asset = await this.characters.save(
+        id,
+        input.name ?? profile.name,
+        input.avatarFileId,
+        input.coverFileId,
+        context,
+      );
+      assetId = asset.id;
+      media = await this.characters.apply(id, asset.id, context);
     }
     if (media)
       media = {
@@ -339,8 +415,13 @@ export class Bots {
       requireRevision(bot.revision ?? 0, expectedRevision);
       if (input.name !== undefined)
         bot.name = requiredText(input.name, BOT_NAME_LENGTH);
-      if (input.resetAvatar) delete bot.avatarMedia;
-      else if (media) bot.avatarMedia = media;
+      if (input.resetAvatar) {
+        delete bot.avatarMedia;
+        delete bot.avatarAssetId;
+      } else if (media) {
+        bot.avatarMedia = media;
+        if (assetId) bot.avatarAssetId = assetId;
+      }
       changes.items[requestId] = { botId: id, input: fingerprint };
       bot.revision = (bot.revision ?? 0) + 1;
       bot.updateId = requestId;
@@ -349,7 +430,13 @@ export class Bots {
   }
 
   async create(input: CreateBot, context: Context): Promise<Bot> {
-    return this.harness.commit(async (tx) => {
+    if (input.avatarAssetId)
+      await this.characters.forCreation(
+        input.avatarAssetId,
+        input.computerId,
+        context,
+      );
+    const created = await this.harness.commit(async (tx) => {
       const directory = await tx.doc(BotDirectory);
       const existing = directory.items.find(
         (bot) => bot.requestId === input.requestId,
@@ -378,6 +465,17 @@ export class Bots {
       directory.items.push({ ...bot, requestId: input.requestId });
       return bot;
     }, context);
+    if (input.avatarAssetId)
+      await this.updateIdentity(
+        created.id,
+        { avatarAssetId: input.avatarAssetId },
+        `create:${input.requestId}`,
+        context,
+      );
+    return {
+      ...created,
+      ...(input.avatarAssetId ? await this.profile(created.id, context) : {}),
+    };
   }
 
   watch(context: Context) {

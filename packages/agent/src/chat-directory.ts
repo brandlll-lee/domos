@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { setImmediate } from "node:timers/promises";
+import type { CharacterMedia } from "@domos/ui/characters";
 import {
   BACKGROUND_CONTEXT,
   type Context,
@@ -36,6 +37,7 @@ export type ChatSearchResult = ChatTarget & {
   sequence: number;
   name: string;
   avatar: string;
+  avatarMedia?: CharacterMedia;
   author: string;
   timestamp: number;
   snippet: string;
@@ -45,6 +47,7 @@ export type ChatAttention = ChatTarget & {
   name: string;
   chatName: string;
   avatar: string;
+  avatarMedia?: CharacterMedia;
   text: string;
   kind: "complete" | "failed" | "question" | "approval" | "takeover";
 };
@@ -430,6 +433,7 @@ export class ChatDirectory {
         sequence: row.sequence,
         name: channel.name,
         avatar: channel.bot.avatar,
+        avatarMedia: channel.bot.avatarMedia,
         author: row.author,
         timestamp: row.timestamp,
         snippet: `${start ? "…" : ""}${row.text.slice(start, start + 180)}${row.text.length > start + 180 ? "…" : ""}`,
@@ -499,6 +503,7 @@ export class ChatDirectory {
         name: channel.bot.name,
         chatName: channel.name,
         avatar: channel.bot.avatar,
+        avatarMedia: channel.bot.avatarMedia,
       } as ChatAttention;
     });
     return { counts, events };

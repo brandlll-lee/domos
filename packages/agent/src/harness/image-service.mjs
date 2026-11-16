@@ -55,7 +55,13 @@ export async function imageOperation(input, home, signal) {
       break;
     } catch (error) {
       if (error.code !== "EEXIST") throw error;
-      const pid = Number(await readFile(lock, "utf8"));
+      let pid;
+      try {
+        pid = Number(await readFile(lock, "utf8"));
+      } catch (failure) {
+        if (failure.code === "ENOENT") continue;
+        throw failure;
+      }
       try {
         process.kill(pid, 0);
       } catch (failure) {

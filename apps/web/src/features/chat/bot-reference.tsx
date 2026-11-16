@@ -52,7 +52,7 @@ export function BotReference({
         { "--bot-color": characterIdentity(bot.avatar).color } as CSSProperties
       }
     >
-      <BotAvatar seed={bot.avatar} size="small" />
+      <BotAvatar botId={bot.botId} seed={bot.avatar} size="small" />
       <span>{bot.name}</span>
     </span>
   );
@@ -86,6 +86,7 @@ export function TeamAvatar({
         return (
           <span key={bot.id} title={bot.name}>
             <BotAvatar
+              botId={bot.id}
               seed={bot.avatar}
               size="small"
               work={

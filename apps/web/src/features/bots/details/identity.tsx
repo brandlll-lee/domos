@@ -22,19 +22,22 @@ export function IdentityEditor({
   action: WorkAction;
   onSaved: (profile: Profile) => void;
 }) {
-  const { name, instructions, avatar, change } = useIdentityDraft(profile);
+  const { name, instructions, avatar, avatarAssetId, change } =
+    useIdentityDraft(profile);
   const setName = (name: string) => change({ name });
   const setInstructions = (instructions: string) => change({ instructions });
   const setAvatar = (avatar: string) => change({ avatar });
   const dirty =
     name !== profile.name ||
     instructions !== profile.instructions ||
-    avatar !== profile.avatar;
+    avatar !== profile.avatar ||
+    avatarAssetId !== profile.avatarAssetId;
   const input = {
     botId: profile.id,
     name,
     instructions,
     avatar,
+    avatarAssetId,
     revision: profile.revision,
   };
   return (
@@ -53,7 +56,14 @@ export function IdentityEditor({
     >
       <fieldset className="bot-fields" disabled={action.busy}>
         <div className="profile-identity">
-          <AvatarEditor value={avatar} onChange={setAvatar} />
+          <AvatarEditor
+            botId={profile.id}
+            value={avatar}
+            assetId={avatarAssetId}
+            media={profile.avatarMedia}
+            onAssetChange={(avatarAssetId) => change({ avatarAssetId })}
+            onChange={setAvatar}
+          />
           <TextField
             label="名字"
             value={name}
@@ -81,6 +91,7 @@ export function IdentityEditor({
                 setName(profile.name);
                 setInstructions(profile.instructions);
                 setAvatar(profile.avatar);
+                change({ avatarAssetId: profile.avatarAssetId });
               }}
             >
               还原
@@ -120,6 +131,7 @@ export function BotIdentity({
         onClick={onEdit}
       >
         <BotAvatar
+          botId={bot.id}
           interactive
           seed={profile?.avatar ?? bot.avatar}
           size="panel"

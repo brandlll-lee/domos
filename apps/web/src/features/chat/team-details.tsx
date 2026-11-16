@@ -125,7 +125,13 @@ export function TeamDetails({
                 {members.map((member) => (
                   <PanelRow
                     key={member.id}
-                    icon={<BotAvatar seed={member.avatar} size="small" />}
+                    icon={
+                      <BotAvatar
+                        botId={member.id}
+                        seed={member.avatar}
+                        size="small"
+                      />
+                    }
                     title={member.name}
                     value={member.id === team.owner ? "默认负责人" : undefined}
                     onClick={() => onMember(member)}

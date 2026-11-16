@@ -247,12 +247,20 @@ test("image configuration scopes encrypted credentials and rejects stale saves b
   );
   const botId = runtime.conversation.id;
   const initial = await service.state(botId, context);
+  expect(initial.baseUrl).toBe("https://api.openai.com/v1");
   const saved = await service.save(
     botId,
-    { ...initial, apiKey: "private-test-key" },
+    {
+      ...initial,
+      baseUrl: "https://example.com/v1",
+      apiKey: "private-test-key",
+    },
     context,
   );
   expect(saved.configured).toBe(true);
+  expect((await service.state(botId, context)).baseUrl).toBe(
+    "https://example.com/v1",
+  );
   expect(JSON.stringify(saved)).not.toContain("private-test-key");
   await expect(
     service.save(botId, { ...initial, apiKey: "wrong-stale-key" }, context),
@@ -338,10 +346,13 @@ test("shared identity tool retains instructions, publishes media and cannot repl
     name: "Godzilla",
     instructions: before.instructions,
     avatarMedia: {
-      src: `/files/${botId}/${file.id}`,
-      cover: `/files/${botId}/${file.id}`,
+      src: expect.stringMatching(new RegExp(`^/files/${botId}/[a-f0-9]{64}$`)),
+      cover: expect.stringMatching(
+        new RegExp(`^/files/${botId}/[a-f0-9]{64}$`),
+      ),
     },
   });
+  expect(applied.avatarMedia?.src).not.toBe(`/files/${botId}/${file.id}`);
   expect(
     (await runtime.bots.list(context)).find((bot) => bot.id === botId)
       ?.avatarMedia,

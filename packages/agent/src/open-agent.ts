@@ -192,6 +192,7 @@ export async function openAgent(
     for (const session of (await harness.snapshot(BotSessions, context))
       ?.items ?? [])
       await computerRuntime?.prepare(session.id, context, false);
+    await bots.migrateCharacters(context);
     routines = new Routines(harness, options.now);
     harness.resume();
     return {

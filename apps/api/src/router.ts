@@ -117,6 +117,28 @@ export function createRouter(
     work: workRouter(bots, work, engines),
     files: fileRouter(bots, files, computer),
     bots: {
+      characters: os
+        .input(z.object({ botId: z.number().int().positive().optional() }))
+        .handler(({ input }) =>
+          bots.characters.list(input.botId, BACKGROUND_CONTEXT),
+        ),
+      saveCharacter: os
+        .input(
+          botTarget.extend({
+            name: z.string().min(1).max(80),
+            imageId: z.string().regex(/^[a-f0-9]{64}$/),
+            coverId: z.string().regex(/^[a-f0-9]{64}$/),
+          }),
+        )
+        .handler(({ input }) =>
+          bots.characters.save(
+            input.botId,
+            input.name,
+            input.imageId,
+            input.coverId,
+            BACKGROUND_CONTEXT,
+          ),
+        ),
       list: os.handler(() => bots.list(BACKGROUND_CONTEXT)),
       completeWelcome: os.input(botTarget).handler(async ({ input }) => {
         await botConversation(bots, input.botId);
@@ -136,6 +158,10 @@ export function createRouter(
             computerId: z.string().min(1).nullable().optional(),
             requestId: z.uuid(),
             avatar: z.uuid().optional(),
+            avatarAssetId: z
+              .string()
+              .regex(/^[a-f0-9]{64}$/)
+              .optional(),
           }),
         )
         .handler(async ({ input }) => {

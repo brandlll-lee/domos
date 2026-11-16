@@ -39,6 +39,13 @@ async function inspectZip(path) {
 
 async function preview(input) {
   if (input.kind === "image") {
+    const { default: sharp } = await import("sharp");
+    const metadata = await sharp(input.path, {
+      animated: true,
+      limitInputPixels: false,
+    }).metadata();
+    if (!metadata.width || !metadata.height)
+      throw new Error("无法读取图片尺寸。");
     const { createNodePhotonImages } = await import(
       "@earendil-works/pi-durable/images/node"
     );
@@ -55,6 +62,9 @@ async function preview(input) {
     if (!image) throw new Error("无法生成图片缩略图。");
     return {
       kind: "image",
+      width: metadata.width,
+      height: metadata.pageHeight ?? metadata.height,
+      frames: metadata.pages ?? 1,
       thumbnail: `data:${image.mimeType};base64,${image.data}`,
     };
   }

@@ -53,7 +53,7 @@ export function ChatPage() {
     <AvatarMediaContext
       value={Object.fromEntries(
         bots.items.flatMap((bot) =>
-          bot.avatarMedia ? [[bot.avatar, bot.avatarMedia]] : [],
+          bot.avatarMedia ? [[bot.id, bot.avatarMedia]] : [],
         ),
       )}
     >

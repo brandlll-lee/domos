@@ -62,6 +62,7 @@ function BotForm({
 }) {
   const [name, setName] = useState("");
   const [avatar, setAvatar] = useState(characterSeed);
+  const [avatarAssetId, setAvatarAssetId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<Bot>();
   const [second, setSecond] = useState(false);
@@ -89,6 +90,7 @@ function BotForm({
         const input = {
           name: name.trim(),
           avatar,
+          avatarAssetId: avatarAssetId ?? undefined,
         };
         const payload = JSON.stringify(input);
         if (request.current?.payload !== payload)
@@ -131,7 +133,12 @@ function BotForm({
       )}
       <fieldset disabled={saving} className="bot-fields">
         <div className="profile-identity">
-          <AvatarEditor value={avatar} onChange={setAvatar} />
+          <AvatarEditor
+            value={avatar}
+            onChange={setAvatar}
+            assetId={avatarAssetId}
+            onAssetChange={setAvatarAssetId}
+          />
           <TextField
             label="名字"
             value={name}

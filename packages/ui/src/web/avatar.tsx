@@ -18,6 +18,7 @@ type Motion = "idle" | "running";
 
 export const BotAvatar = memo(function BotAvatar({
   seed,
+  botId,
   color,
   state = "idle",
   size = "medium",
@@ -28,6 +29,7 @@ export const BotAvatar = memo(function BotAvatar({
   media,
 }: {
   seed: string;
+  botId?: number;
   color?: string;
   state?: Motion;
   size?: "small" | "medium" | "panel" | "large";
@@ -38,7 +40,7 @@ export const BotAvatar = memo(function BotAvatar({
   media?: CharacterMedia;
 }) {
   const catalog = useContext(AvatarMediaContext);
-  const source = media ?? catalog[seed];
+  const source = media ?? (botId ? catalog[botId] : undefined);
   const identity = characterIdentity(seed);
   const workingAvatar = work !== undefined;
   const root = useRef<HTMLSpanElement>(null);

@@ -5,7 +5,9 @@ import { userError } from "../../user-error.ts";
 
 export type WorkData = Awaited<ReturnType<typeof client.work.get>>;
 export type Profile = Awaited<ReturnType<typeof client.work.profile>>;
-type IdentityDraft = Pick<Profile, "name" | "instructions" | "avatar">;
+type IdentityDraft = Pick<Profile, "name" | "instructions" | "avatar"> & {
+  avatarAssetId?: string | null;
+};
 export type WorkAction = ReturnType<typeof useWorkAction>;
 
 export function useWorkAction() {
@@ -117,6 +119,7 @@ export function useIdentityDraft(profile: Profile) {
         name: profile.name,
         instructions: profile.instructions,
         avatar: profile.avatar,
+        avatarAssetId: profile.avatarAssetId,
       },
   );
   const change = (patch: Partial<IdentityDraft>) =>

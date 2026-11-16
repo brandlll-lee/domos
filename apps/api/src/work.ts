@@ -57,6 +57,10 @@ export function workRouter(bots: Bots, work: BotWork, engines?: Runtime) {
       .input(
         botTarget.extend({
           name: z.string().trim().min(1).max(BOT_NAME_LENGTH).optional(),
+          avatarAssetId: z
+            .string()
+            .regex(/^[a-f0-9]{64}$/)
+            .optional(),
           avatarFileId: z
             .string()
             .regex(/^[a-f0-9]{64}$/)
@@ -96,6 +100,11 @@ export function workRouter(bots: Bots, work: BotWork, engines?: Runtime) {
           name: z.string().trim().min(1).max(BOT_NAME_LENGTH),
           instructions: z.string().max(WORK_TEXT_LENGTH),
           avatar: z.uuid(),
+          avatarAssetId: z
+            .string()
+            .regex(/^[a-f0-9]{64}$/)
+            .nullable()
+            .optional(),
           revision,
           requestId,
         }),

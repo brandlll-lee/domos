@@ -25,7 +25,15 @@ export type SpreadsheetPreview = {
   columnLimit: number;
 };
 
-type FilePreview = SpreadsheetPreview | { kind: "image"; thumbnail: string };
+type FilePreview =
+  | SpreadsheetPreview
+  | {
+      kind: "image";
+      thumbnail: string;
+      width: number;
+      height: number;
+      frames: number;
+    };
 
 export class FilePreviews {
   private readonly pending = new Map<

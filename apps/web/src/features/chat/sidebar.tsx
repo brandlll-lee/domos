@@ -173,6 +173,7 @@ export function Sidebar({
                 }
               >
                 <BotAvatar
+                  botId={bot.id}
                   interactive
                   seed={bot.avatar}
                   state={connected && bot.busy ? "running" : "idle"}
@@ -242,7 +243,11 @@ export function Sidebar({
                     openChatTarget(item);
                   }}
                 >
-                  <BotAvatar seed={item.avatar} />
+                  <BotAvatar
+                    media={item.avatarMedia}
+                    botId={item.botId}
+                    seed={item.avatar}
+                  />
                   <div className="chat-preview">
                     <strong>{item.name}</strong>
                     {!!item.timestamp && (

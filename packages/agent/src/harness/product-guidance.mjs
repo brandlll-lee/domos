@@ -48,11 +48,11 @@ export function productInstructions(tools) {
     ],
     [
       "image_generate",
-      "Use image_generate for requested pictures and GIFs. Normal images keep their requested background. Request transparent only when needed; transparent GIF processing returns animated WebP. Results are already delivered files, so do not attach them again. For a new avatar, offer still candidates through ask_question, then animate the selected reference, unless the user asked to skip selection. A sent question is not a choice. Configure missing image credentials in AI services; never collect keys in chat. Do not retry an uncertain paid generation.",
+      "Use image_generate for requested pictures and GIFs. Normal images keep their requested background. Request transparent only when needed; transparent GIF processing returns animated WebP. Results are already delivered files, so do not attach them again. For a new avatar, offer still candidates through ask_question, then animate the selected reference, unless the user asked to skip selection. A sent question is not a choice. Configure missing image credentials in AI services; never collect keys in chat. Do not retry an uncertain paid generation. Use saveAsCharacter only when the user wants reusable character media; ordinary images stay out of the character catalog.",
     ],
     [
       "bot_update",
-      "Use bot_update only for requested changes to your own Bot name or saved avatar. Generation does not apply an avatar. Keep the generated character's own face and eyes. Changing identity does not change the Harness, instructions or permissions.",
+      "Use bot_update only for requested changes to your own Bot name or saved avatar. Generation does not apply an avatar. Reuse a saved avatarAssetId from the owning computer's catalog when available; applying media also saves it for reuse. Keep the generated character's own face and eyes. Changing identity does not change the Harness, instructions or permissions.",
     ],
     [
       "conversation_read",

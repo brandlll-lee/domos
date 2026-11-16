@@ -119,6 +119,29 @@ export function createApp(
       );
     }
   });
+  app.get("/files/characters/:id/:part", async (c) => {
+    try {
+      const id = c.req.param("id");
+      const part = c.req.param("part");
+      if (part !== "image" && part !== "cover") return c.notFound();
+      const asset = await bots.characters.get(id, BACKGROUND_CONTEXT);
+      const path = bots.characters.path(id, part);
+      const info = await import("node:fs/promises").then((fs) => fs.stat(path));
+      return streamResponse(
+        path,
+        info.size,
+        {
+          "Content-Type": part === "cover" ? asset.coverType : asset.imageType,
+          "X-Content-Type-Options": "nosniff",
+          "Content-Security-Policy": "sandbox",
+          "Cache-Control": "private, max-age=31536000, immutable",
+        },
+        c.req.header("Range"),
+      );
+    } catch {
+      return c.notFound();
+    }
+  });
   app.get("/files/:botId/:id/preview", async (c) => {
     const botId = Number(c.req.param("botId"));
     if (

@@ -1,9 +1,9 @@
 import type { Bot } from "@domos/agent/bots";
-import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { EngineMark } from "../bots/engine-mark.tsx";
 import type { WorkActivity } from "./activity-state.ts";
 import { TeamAvatar } from "./bot-reference.tsx";
+import { IdentityAvatar } from "./identity-avatar.tsx";
 
 export function ChatHeader({
   bot,
@@ -66,9 +66,9 @@ export function ChatHeader({
               stopping={stopping}
             />
           ) : (
-            <BotAvatar
-              seed={bot.avatar}
-              state={busy ? "running" : "idle"}
+            <IdentityAvatar
+              bot={bot}
+              busy={busy}
               work={{ id: current?.id, working }}
             />
           )}
