@@ -36,6 +36,7 @@ export type Bot = {
   welcomeComplete?: boolean;
 };
 export type BotPresence = Bot & {
+  revision: number;
   busy: boolean;
   preview: string;
   lastMessageAt?: number;
@@ -219,6 +220,8 @@ export class Bots {
           avatar,
           avatarMedia,
           avatarAssetId,
+          avatarMigrationError,
+          revision,
           createdAt,
           welcomeComplete,
         }) => {
@@ -234,6 +237,8 @@ export class Bots {
             avatar,
             avatarMedia,
             avatarAssetId,
+            avatarMigrationError,
+            revision: revision ?? 0,
             createdAt,
             welcomeComplete: Boolean(welcomeComplete),
             busy: Boolean(

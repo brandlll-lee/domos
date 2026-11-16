@@ -2,22 +2,33 @@ import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
 import { SettingRow } from "@domos/ui/setting-row";
-import { useState } from "react";
 import { client } from "../../../client.ts";
-import type { Profile, WorkAction } from "./use-bot-work.ts";
+import { equipmentFields } from "./identity-state.ts";
+import {
+  type Profile,
+  saveBotIdentity,
+  useIdentityDraft,
+  type WorkAction,
+} from "./use-bot-work.ts";
 
 export function AvatarEquipment({
   profile,
   action,
-  onSaved,
 }: {
   profile: Profile;
   action: WorkAction;
-  onSaved: (profile: Profile) => void;
 }) {
-  const [media, setMedia] = useState(profile.avatarMedia);
-  if (!media) return null;
-  const dirty = JSON.stringify(media) !== JSON.stringify(profile.avatarMedia);
+  const draft = useIdentityDraft(profile);
+  if (!profile.avatarMedia) return null;
+  const media = {
+    ...profile.avatarMedia,
+    headset: draft.values.headset ?? profile.avatarMedia.headset,
+    computer: draft.values.computer ?? profile.avatarMedia.computer,
+  };
+  const dirty = draft.dirty.some((field) => equipmentFields.includes(field));
+  const conflicted = draft.conflicts.some((field) =>
+    equipmentFields.includes(field),
+  );
   return (
     <>
       <SettingRow title="角色装备预览">
@@ -56,15 +67,12 @@ export function AvatarEquipment({
                 onValueChange={(value) => {
                   const number = Number(value);
                   if (Number.isFinite(number))
-                    setMedia({
-                      ...media,
-                      [equipment]: {
-                        ...media[equipment],
-                        [field]: Math.max(
-                          field === "scale" ? 0.1 : 0,
-                          Math.min(field === "scale" ? 2 : 100, number),
-                        ),
-                      },
+                    draft.change(equipment, {
+                      ...media[equipment],
+                      [field]: Math.max(
+                        field === "scale" ? 0.1 : 0,
+                        Math.min(field === "scale" ? 2 : 100, number),
+                      ),
                     });
                 }}
               />
@@ -77,7 +85,7 @@ export function AvatarEquipment({
           type="button"
           size="small"
           variant="secondary"
-          disabled={!dirty || action.busy}
+          disabled={!dirty || action.busy || conflicted}
           onClick={() => {
             const input = {
               botId: profile.id,
@@ -85,10 +93,10 @@ export function AvatarEquipment({
               headset: media.headset,
               computer: media.computer,
             };
-            void action.run(
-              ["equipment", input],
-              (requestId) => client.work.identity({ ...input, requestId }),
-              onSaved,
+            void action.run(["equipment", input], (requestId) =>
+              saveBotIdentity(profile.id, equipmentFields, () =>
+                client.work.identity({ ...input, requestId }),
+              ),
             );
           }}
         >
@@ -105,10 +113,12 @@ export function AvatarEquipment({
               revision: profile.revision,
               resetAvatar: true,
             };
-            void action.run(
-              ["reset-avatar", input],
-              (requestId) => client.work.identity({ ...input, requestId }),
-              onSaved,
+            void action.run(["reset-avatar", input], (requestId) =>
+              saveBotIdentity(
+                profile.id,
+                ["appearance", ...equipmentFields],
+                () => client.work.identity({ ...input, requestId }),
+              ),
             );
           }}
         >

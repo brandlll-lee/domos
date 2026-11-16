@@ -26,7 +26,11 @@ import {
   invalidateConnectionContext,
 } from "../settings/use-connection-context.ts";
 import { saveWorkspaceView, workspaceView } from "../shell/workspace-state.ts";
-import { clearBotWork, invalidateBotWork } from "./details/use-bot-work.ts";
+import {
+  clearBotWork,
+  invalidateBotWork,
+  receiveBotProfile,
+} from "./details/use-bot-work.ts";
 
 function subscribeLocation(listener: () => void) {
   window.addEventListener("hashchange", listener);
@@ -101,6 +105,7 @@ export function useBots() {
           clearImageSettings(ids);
           clearConnectionContexts(ids);
           for (const bot of next.items) {
+            receiveBotProfile(bot);
             receiveModelActivity(bot.id, bot.busy);
             const binding = next.bindings[String(bot.id)];
             const key = JSON.stringify([

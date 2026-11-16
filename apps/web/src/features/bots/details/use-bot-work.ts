@@ -1,13 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import type { BotPresence } from "@domos/agent/bots";
+import { ORPCError } from "@orpc/client";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { client } from "../../../client.ts";
 import { createReadState, useReadState } from "../../read-state.ts";
 import { userError } from "../../user-error.ts";
+import {
+  createIdentityState,
+  type IdentityField,
+  type Profile,
+} from "./identity-state.ts";
 
 export type WorkData = Awaited<ReturnType<typeof client.work.get>>;
-export type Profile = Awaited<ReturnType<typeof client.work.profile>>;
-type IdentityDraft = Pick<Profile, "name" | "instructions" | "avatar"> & {
-  avatarAssetId?: string | null;
-};
+export type { Profile } from "./identity-state.ts";
 export type WorkAction = ReturnType<typeof useWorkAction>;
 
 export function useWorkAction() {
@@ -42,13 +46,61 @@ export function useWorkAction() {
 }
 
 function createWork(botId: number) {
+  const identity = createIdentityState();
+  const profile = createReadState((signal) =>
+    client.work.profile({ botId }, { signal }),
+  );
+  let received: Profile | undefined;
+  profile.subscribe(() => {
+    const value = profile.snapshot().data;
+    if (value && value !== received) {
+      received = value;
+      identity.receive(value);
+    }
+  });
   const data = createReadState((signal) =>
     client.work.get({ botId }, { signal }),
   );
   let viewers = 0;
   let controller: AbortController | undefined;
+  let pendingSave:
+    | {
+        write: () => Promise<Profile>;
+        edits: ReturnType<typeof identity.capture>;
+      }
+    | undefined;
   return {
     data,
+    profile,
+    identity,
+    directoryKey: undefined as string | undefined,
+    retrySave() {
+      const pending = pendingSave;
+      return pending ? () => this.save([], pending.write) : undefined;
+    },
+    async save(selected: IdentityField[], write: () => Promise<Profile>) {
+      pendingSave ??= { write, edits: identity.capture(selected) };
+      const pending = pendingSave;
+      try {
+        const value = await pending.write();
+        identity.saved(value, pending.edits);
+        profile.receive(identity.snapshot().profile ?? value);
+        pendingSave = undefined;
+        return value;
+      } catch (error) {
+        if (
+          error instanceof ORPCError &&
+          !["TIMEOUT", "SERVICE_UNAVAILABLE", "INTERNAL_SERVER_ERROR"].includes(
+            error.code,
+          )
+        ) {
+          pendingSave = undefined;
+          if (error.code === "CONFLICT")
+            await profile.load(true).catch(() => {});
+        }
+        throw error;
+      }
+    },
     watch() {
       viewers++;
       if (!controller) {
@@ -90,10 +142,6 @@ function createWork(botId: number) {
       controller?.abort();
       data.dispose();
     },
-    profile: createReadState((signal) =>
-      client.work.profile({ botId }, { signal }),
-    ),
-    draft: undefined as IdentityDraft | undefined,
   };
 }
 const retained = new Map<number, ReturnType<typeof createWork>>();
@@ -113,23 +161,51 @@ export function invalidateBotWork(botId: number) {
   store?.data.clear();
 }
 export function useIdentityDraft(profile: Profile) {
-  const [draft, update] = useState<IdentityDraft>(
-    () =>
-      retained.get(profile.id)?.draft ?? {
-        name: profile.name,
-        instructions: profile.instructions,
-        avatar: profile.avatar,
-        avatarAssetId: profile.avatarAssetId,
-      },
-  );
-  const change = (patch: Partial<IdentityDraft>) =>
-    update((current) => {
-      const next = { ...current, ...patch };
-      const state = retained.get(profile.id);
-      if (state) state.draft = next;
-      return next;
-    });
-  return { ...draft, change };
+  const identity = workFor(profile.id).identity;
+  const state = useSyncExternalStore(identity.subscribe, identity.snapshot);
+  if (!state.values) throw new Error("资料尚未加载。");
+  return {
+    ...state,
+    values: state.values,
+    change: identity.change,
+    changeAppearance: (patch: Partial<typeof state.values.appearance>) =>
+      identity.change("appearance", {
+        ...(identity.snapshot().values?.appearance ?? state.values.appearance),
+        ...patch,
+      }),
+    resolve: identity.resolve,
+    reset: identity.reset,
+  };
+}
+export function receiveBotProfile(bot: BotPresence) {
+  const store = retained.get(bot.id);
+  if (!store) return;
+  const current = store.identity.snapshot().profile;
+  if (current && bot.revision < current.revision) return;
+  const key = (value: Profile | BotPresence) =>
+    JSON.stringify([
+      value.revision,
+      value.name,
+      value.avatar,
+      value.avatarAssetId,
+      value.avatarMedia,
+      value.avatarMigrationError,
+    ]);
+  const next = key(bot);
+  if (store.directoryKey === next) return;
+  store.directoryKey = next;
+  if (
+    (current && key(current) !== next) ||
+    (!current && store.profile.snapshot().loading)
+  )
+    store.profile.invalidate();
+}
+export function saveBotIdentity(
+  botId: number,
+  selected: IdentityField[],
+  write: () => Promise<Profile>,
+) {
+  return workFor(botId).save(selected, write);
 }
 export function clearBotWork(ids?: Set<number>) {
   for (const [id, store] of retained)
@@ -150,14 +226,18 @@ export function useBotWork(
   const store = workFor(botId);
   const data = useReadState(store.data, active);
   const profile = useReadState(store.profile, profileActive);
+  const identity = useSyncExternalStore(
+    store.identity.subscribe,
+    store.identity.snapshot,
+  );
   const loaded = !!data.data;
   useEffect(() => {
     if (active && live && loaded) return store.watch();
   }, [active, live, loaded, store]);
   return {
     data: data.data ?? null,
-    profile: profile.data ?? null,
-    setProfile: (value: Profile) => store.profile.receive(value),
+    profile: identity.profile ?? null,
+    retrySave: store.retrySave(),
     error: data.error ? userError(data.error, "详情连接中断。请重试。") : null,
     profileError: profile.error
       ? userError(profile.error, "资料加载失败。请重试。")

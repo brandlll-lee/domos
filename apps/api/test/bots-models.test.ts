@@ -18,6 +18,7 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
       {
         id: first.conversation.id,
         name: "Domos",
+        revision: 0,
         avatar: expect.any(String),
         createdAt: expect.any(Number),
         welcomeComplete: false,
@@ -41,6 +42,7 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
       {
         id: first.conversation.id,
         name: "Domos",
+        revision: 0,
         avatar: expect.any(String),
         createdAt: expect.any(Number),
         welcomeComplete: false,
@@ -48,7 +50,11 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
         preview: "",
       },
       {
-        ...bot,
+        id: bot.id,
+        name: bot.name,
+        avatar: bot.avatar,
+        createdAt: bot.createdAt,
+        revision: 0,
         welcomeComplete: false,
         busy: false,
         preview: input.instructions,
@@ -104,6 +110,9 @@ test("Bot creation is atomic, idempotent, observable, and durable", async () => 
       name: input.name,
       avatar: input.avatar,
       createdAt,
+      revision: 0,
+      instructions: input.instructions,
+      model: input.model,
     });
     expect(await second.client.bots.list()).toHaveLength(2);
     const view = await second.client.get({ botId });

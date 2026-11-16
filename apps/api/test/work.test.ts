@@ -120,6 +120,10 @@ test("Bot work routes enforce ownership, revisions, validation and live updates"
       requestId: crypto.randomUUID(),
     });
     expect(updated.name).toBe("Archivist");
+    expect(
+      (await runtime.client.bots.list()).find((bot) => bot.id === botId)
+        ?.revision,
+    ).toBe(updated.revision);
     await expect(
       runtime.client.work.update({
         botId,

@@ -9,6 +9,206 @@ const sharp = createRequire(
   new URL("../../../packages/agent/package.json", import.meta.url),
 )("sharp");
 
+test("profile updates merge with drafts and keep character equipment scoped", async ({
+  page,
+  service,
+}, info) => {
+  test.setTimeout(60000);
+  const api = createORPCClient<typeof appClient>(
+    new RPCLink({ url: `${service.url}/rpc` }),
+  );
+  const bot = (await api.bots.list())[0];
+  if (!bot) throw new Error("Bot missing");
+  const apply = async (color: string) => {
+    const bytes = await sharp({
+      create: { width: 32, height: 32, channels: 4, background: color },
+    })
+      .png()
+      .toBuffer();
+    const file = await api.files.upload({
+      botId: bot.id,
+      file: new File([bytes], `${color.slice(1)}.png`, { type: "image/png" }),
+    });
+    const profile = await api.work.profile({ botId: bot.id });
+    return api.work.identity({
+      botId: bot.id,
+      avatarFileId: file.id,
+      coverFileId: file.id,
+      useOriginal: true,
+      revision: profile.revision,
+      requestId: crypto.randomUUID(),
+    });
+  };
+  await apply("#ff0000");
+  await page.goto(service.url);
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  const details = page.locator("#bot-details");
+  await details.getByRole("button", { name: "编辑", exact: true }).click();
+  const name = details.getByRole("textbox", { name: "名字", exact: true });
+  const save = details.getByRole("button", { name: "保存身份", exact: true });
+  await name.fill("My name");
+  const yellow = await apply("#ffff00");
+  await expect(
+    details.locator(".avatar-editor .character-body > image"),
+  ).toHaveAttribute("href", yellow.avatarMedia?.src ?? "");
+  await expect(
+    details.locator(".setting-row .character-body > image"),
+  ).toHaveAttribute("href", yellow.avatarMedia?.cover ?? "");
+  await expect(name).toHaveValue("My name");
+  await expect(name).toBeFocused();
+  await api.work.update({
+    botId: bot.id,
+    name: yellow.name,
+    instructions: "Remote instructions",
+    avatar: yellow.avatar,
+    revision: yellow.revision,
+    requestId: crypto.randomUUID(),
+  });
+  await expect(
+    details.getByRole("textbox", { name: "职责与长期指令", exact: true }),
+  ).toHaveValue("Remote instructions");
+  await save.click();
+  await expect(save).toHaveCount(0);
+  expect(await api.work.profile({ botId: bot.id })).toMatchObject({
+    name: "My name",
+    instructions: "Remote instructions",
+    avatarAssetId: yellow.avatarAssetId,
+  });
+
+  await name.fill("Retained name");
+  await details
+    .getByRole("spinbutton", { name: "耳机水平", exact: true })
+    .fill("23");
+  await details
+    .getByRole("button", { name: "保存装备位置", exact: true })
+    .click();
+  await expect(
+    details.getByRole("button", { name: "保存装备位置", exact: true }),
+  ).toBeDisabled();
+  await expect(name).toHaveValue("Retained name");
+  await save.click();
+  await expect(save).toHaveCount(0);
+  await details
+    .getByRole("spinbutton", { name: "耳机水平", exact: true })
+    .fill("31");
+  const blue = await apply("#0000ff");
+  await expect(
+    details.getByText("耳机位置已在别处更新。请选择要保留的内容。", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    details.getByRole("button", { name: "保存装备位置", exact: true }),
+  ).toBeDisabled();
+  await page.screenshot({ path: info.outputPath("equipment-conflict.png") });
+  await details
+    .getByRole("button", { name: "保留我的修改", exact: true })
+    .click();
+  await details
+    .getByRole("button", { name: "保存装备位置", exact: true })
+    .click();
+  await expect
+    .poll(
+      async () =>
+        (await api.work.profile({ botId: bot.id })).avatarMedia?.headset.x,
+    )
+    .toBe(31);
+  expect((await api.work.profile({ botId: bot.id })).avatarAssetId).toBe(
+    blue.avatarAssetId,
+  );
+
+  await details.getByRole("button", { name: "返回", exact: true }).click();
+  let reads = 0;
+  page.on("request", (request) => {
+    if (request.url().endsWith("/rpc/work/profile")) reads++;
+  });
+  const green = await apply("#00ff00");
+  await expect(
+    page.locator(".chat-header .character-body > image"),
+  ).toHaveAttribute("href", green.avatarMedia?.src ?? "");
+  expect(reads).toBe(0);
+  await details.getByRole("button", { name: "编辑", exact: true }).click();
+  await expect(
+    details.locator(".avatar-editor .character-body > image"),
+  ).toHaveAttribute("href", green.avatarMedia?.src ?? "");
+  await expect(name).toHaveValue("Retained name");
+  await expect(save).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath("profile-current.png") });
+});
+
+test("profile conflicts refresh after a racing write and uncertain saves reuse the issued request", async ({
+  page,
+  service,
+}) => {
+  test.setTimeout(60000);
+  const api = createORPCClient<typeof appClient>(
+    new RPCLink({ url: `${service.url}/rpc` }),
+  );
+  const bot = (await api.bots.list())[0];
+  if (!bot) throw new Error("Bot missing");
+  await page.goto(service.url);
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  const details = page.locator("#bot-details");
+  await details.getByRole("button", { name: "编辑", exact: true }).click();
+  const name = details.getByRole("textbox", { name: "名字", exact: true });
+  const save = details.getByRole("button", { name: "保存身份", exact: true });
+  await name.fill("Mine");
+  let race = true;
+  let loseResponse = false;
+  const issued: string[] = [];
+  await page.route("**/rpc/work/update", async (route) => {
+    issued.push(route.request().postData() ?? "");
+    if (race) {
+      race = false;
+      const current = await api.work.profile({ botId: bot.id });
+      await api.work.identity({
+        botId: bot.id,
+        name: "Theirs",
+        revision: current.revision,
+        requestId: crypto.randomUUID(),
+      });
+    }
+    const response = await route.fetch();
+    if (loseResponse) {
+      loseResponse = false;
+      await route.abort();
+    } else await route.fulfill({ response });
+  });
+  await save.click();
+  await expect(page.locator(".attention-toast[data-error]")).toContainText(
+    "内容已更新",
+  );
+  await expect(name).toHaveValue("Mine");
+  await expect(save).toBeDisabled();
+  await details
+    .getByRole("button", { name: "保留我的修改", exact: true })
+    .click();
+  await save.click();
+  await expect(save).toHaveCount(0);
+  expect((await api.work.profile({ botId: bot.id })).name).toBe("Mine");
+  await name.fill("Confirmed after retry");
+  loseResponse = true;
+  await save.click();
+  await expect(page.locator(".attention-toast[data-error]")).toBeVisible();
+  const original = issued.at(-1);
+  await page
+    .locator(".attention-toast[data-error]")
+    .getByRole("button", { name: "重试", exact: true })
+    .click();
+  await expect(page.locator(".attention-toast[data-error]")).toHaveCount(0);
+  expect(issued.at(-1)).toBe(original);
+  await expect(save).toHaveCount(0);
+  const latest = await api.work.profile({ botId: bot.id });
+  await api.work.identity({
+    botId: bot.id,
+    name: "Latest name",
+    revision: latest.revision,
+    requestId: crypto.randomUUID(),
+  });
+  await expect(name).toHaveValue("Latest name");
+  await expect(save).toHaveCount(0);
+});
+
 test("character retention failure stays visible and explicit retry clears it", async ({
   page,
   service,

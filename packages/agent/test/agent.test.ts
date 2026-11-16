@@ -288,6 +288,7 @@ test("adopts the existing root conversation with its history and configuration",
     expect(await runtime.bots.list(context)).toEqual([
       {
         id: root.id,
+        revision: 0,
         name: "Domos",
         avatar: expect.any(String),
         createdAt: expect.any(Number),

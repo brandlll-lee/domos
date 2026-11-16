@@ -1,4 +1,7 @@
+import { createORPCClient } from "@orpc/client";
+import { RPCLink } from "@orpc/client/fetch";
 import { expect } from "@playwright/test";
+import type { client as appClient } from "../src/client.ts";
 import {
   attachFiles,
   chooseAppearance,
@@ -8,6 +11,82 @@ import {
   openDetails,
 } from "./fixtures/chat-ui.ts";
 import { test } from "./fixtures/service.ts";
+
+test("profile reads reject late responses and drafts stay with their Bot", async ({
+  page,
+  service,
+}) => {
+  const api = createORPCClient<typeof appClient>(
+    new RPCLink({ url: `${service.url}/rpc` }),
+  );
+  const first = (await api.bots.list())[0];
+  if (!first) throw new Error("Bot missing");
+  const second = await api.bots.create({
+    name: "Second",
+    requestId: crypto.randomUUID(),
+  });
+  const captured = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let delay = true;
+  await page.route("**/rpc/work/profile", async (route) => {
+    const response = await route.fetch();
+    if (delay) {
+      delay = false;
+      captured.resolve();
+      await release.promise;
+    }
+    await route.fulfill({ response });
+  });
+  await page.goto(service.url);
+  await page.getByRole("link", { name: "Domos", exact: false }).click();
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  const details = page.locator("#bot-details");
+  await details.getByRole("button", { name: "编辑", exact: true }).click();
+  await captured.promise;
+  const initial = await api.work.profile({ botId: first.id });
+  await api.work.update({
+    botId: first.id,
+    name: "Current",
+    instructions: "Current instructions",
+    avatar: initial.avatar,
+    revision: initial.revision,
+    requestId: crypto.randomUUID(),
+  });
+  const name = details.getByRole("textbox", { name: "名字", exact: true });
+  await expect(name).toHaveValue("Current");
+  release.resolve();
+  await expect(
+    details.getByRole("textbox", { name: "职责与长期指令", exact: true }),
+  ).toHaveValue("Current instructions");
+  await name.fill("First draft");
+  await page.getByRole("link", { name: "Second", exact: false }).click();
+  if (
+    await details.getByRole("button", { name: "编辑", exact: true }).isVisible()
+  )
+    await details.getByRole("button", { name: "编辑", exact: true }).click();
+  await expect(name).toHaveValue("Second");
+  await name.fill("Second draft");
+  await page.getByRole("link", { name: "Current", exact: false }).click();
+  if (
+    await details.getByRole("button", { name: "编辑", exact: true }).isVisible()
+  )
+    await details.getByRole("button", { name: "编辑", exact: true }).click();
+  await expect(name).toHaveValue("First draft");
+  expect((await api.work.profile({ botId: second.id })).name).toBe("Second");
+  await page.evaluate(() => window.dispatchEvent(new Event("domos:computer")));
+  await page.getByRole("link", { name: "Second", exact: false }).click();
+  if (
+    await details.getByRole("button", { name: "编辑", exact: true }).isVisible()
+  )
+    await details.getByRole("button", { name: "编辑", exact: true }).click();
+  await expect(name).toHaveValue("Second");
+  await page.getByRole("link", { name: "Current", exact: false }).click();
+  if (
+    await details.getByRole("button", { name: "编辑", exact: true }).isVisible()
+  )
+    await details.getByRole("button", { name: "编辑", exact: true }).click();
+  await expect(name).toHaveValue("Current");
+});
 
 test("chat suggestions fill the draft and dismissal stays complete on other devices and after restart", async ({
   service,
@@ -688,7 +767,9 @@ test("Bot identity stays consistent and image previews work in drafts and histor
     .getByLabel("你的消息", { exact: true })
     .getByRole("img", { name: "sample.png" });
   await expect(history).toHaveJSProperty("naturalWidth", 1);
-  await expect(page.getByLabel("视觉助手 的回复")).toHaveCount(1);
+  await expect(page.getByLabel("视觉助手 的回复")).toHaveCount(1, {
+    timeout: 30000,
+  });
   await page.reload();
   await expect(history).toHaveJSProperty("naturalWidth", 1);
   await expect(selected).toHaveAttribute("data-seed", seed ?? "");

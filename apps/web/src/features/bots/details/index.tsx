@@ -98,7 +98,15 @@ export function BotDetails({
   const error =
     action.error ??
     (view === "identity" ? work.profileError : workActive ? work.error : null);
-  useErrorNotice(error, action.error ? undefined : work.retry);
+  const retrySave = work.retrySave;
+  useErrorNotice(
+    error,
+    action.error
+      ? retrySave
+        ? () => action.run("profile-retry", retrySave)
+        : undefined
+      : work.retry,
+  );
   const [selection, setSelection] = useState<PanelEditor | null>(null);
   const editor = selection?.view === view ? selection : null;
   const navigate = (next: BotPanelView) => {
@@ -249,12 +257,7 @@ export function BotDetails({
         )}
         {work.profile && (
           <div hidden={view !== "identity"}>
-            <IdentityEditor
-              key={work.profile.revision}
-              profile={work.profile}
-              action={action}
-              onSaved={work.setProfile}
-            />
+            <IdentityEditor profile={work.profile} action={action} />
           </div>
         )}
         {view !== "identity" && (view !== "root" || tab === "bot") && (

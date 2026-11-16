@@ -9,30 +9,45 @@ import { client } from "../../../client.ts";
 import { AvatarEditor } from "../avatar-editor.tsx";
 import { AvatarEquipment } from "./avatar-equipment.tsx";
 import {
+  equipmentFields,
+  type IdentityField,
+  identityFields,
+} from "./identity-state.ts";
+import {
   type Profile,
+  saveBotIdentity,
   useIdentityDraft,
   type WorkAction,
 } from "./use-bot-work.ts";
 
+const fieldLabels: Record<IdentityField, string> = {
+  name: "名字",
+  instructions: "职责与长期指令",
+  appearance: "头像",
+  headset: "耳机位置",
+  computer: "电脑位置",
+};
+
 export function IdentityEditor({
   profile,
   action,
-  onSaved,
 }: {
   profile: Profile;
   action: WorkAction;
-  onSaved: (profile: Profile) => void;
 }) {
-  const { name, instructions, avatar, avatarAssetId, change } =
-    useIdentityDraft(profile);
-  const setName = (name: string) => change({ name });
-  const setInstructions = (instructions: string) => change({ instructions });
-  const setAvatar = (avatar: string) => change({ avatar });
-  const dirty =
-    name !== profile.name ||
-    instructions !== profile.instructions ||
-    avatar !== profile.avatar ||
-    avatarAssetId !== profile.avatarAssetId;
+  const draft = useIdentityDraft(profile);
+  const { values, change, conflicts } = draft;
+  const {
+    name,
+    instructions,
+    appearance: { avatar, avatarAssetId },
+  } = values;
+  const setName = (name: string) => change("name", name);
+  const setInstructions = (instructions: string) =>
+    change("instructions", instructions);
+  const setAvatar = (avatar: string) => draft.changeAppearance({ avatar });
+  const dirty = draft.dirty.some((field) => identityFields.includes(field));
+  const conflicted = conflicts.some((field) => identityFields.includes(field));
   const input = {
     botId: profile.id,
     name,
@@ -47,11 +62,11 @@ export function IdentityEditor({
       aria-busy={action.busy}
       onSubmit={(event) => {
         event.preventDefault();
-        if (!dirty) return;
-        void action.run(
-          ["profile", input],
-          (requestId) => client.work.update({ ...input, requestId }),
-          onSaved,
+        if (!dirty || conflicted) return;
+        void action.run(["profile", input], (requestId) =>
+          saveBotIdentity(profile.id, identityFields, () =>
+            client.work.update({ ...input, requestId }),
+          ),
         );
       }}
     >
@@ -61,8 +76,14 @@ export function IdentityEditor({
             botId={profile.id}
             value={avatar}
             assetId={avatarAssetId}
-            media={profile.avatarMedia}
-            onAssetChange={(avatarAssetId) => change({ avatarAssetId })}
+            media={
+              avatarAssetId === profile.avatarAssetId
+                ? profile.avatarMedia
+                : undefined
+            }
+            onAssetChange={(avatarAssetId) =>
+              draft.changeAppearance({ avatarAssetId })
+            }
             onChange={setAvatar}
           />
           <TextField
@@ -81,6 +102,32 @@ export function IdentityEditor({
           maxLength={WORK_TEXT_LENGTH}
           placeholder="例如：帮我整理资料、准备每周工作计划。"
         />
+        {conflicts.map((field) => (
+          <InlineNotice key={field}>
+            <span>{fieldLabels[field]}已在别处更新。请选择要保留的内容。</span>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                draft.resolve(field, "current");
+                action.clear();
+              }}
+            >
+              使用最新值
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={equipmentFields.includes(field) && !profile.avatarMedia}
+              onClick={() => {
+                draft.resolve(field, "draft");
+                action.clear();
+              }}
+            >
+              保留我的修改
+            </Button>
+          </InlineNotice>
+        ))}
         {profile.avatarMigrationError && (
           <InlineNotice>
             <span>{profile.avatarMigrationError}</span>
@@ -89,11 +136,10 @@ export function IdentityEditor({
               variant="ghost"
               pending={action.busy}
               onClick={() =>
-                void action.run(
-                  { migration: profile.id },
-                  () =>
+                void action.run({ migration: profile.id }, () =>
+                  saveBotIdentity(profile.id, [], () =>
                     client.bots.retryCharacterMigration({ botId: profile.id }),
-                  onSaved,
+                  ),
                 )
               }
             >
@@ -101,7 +147,7 @@ export function IdentityEditor({
             </Button>
           </InlineNotice>
         )}
-        <AvatarEquipment profile={profile} action={action} onSaved={onSaved} />
+        <AvatarEquipment profile={profile} action={action} />
         {dirty && (
           <div className="form-actions">
             <Button
@@ -109,10 +155,8 @@ export function IdentityEditor({
               variant="ghost"
               size="small"
               onClick={() => {
-                setName(profile.name);
-                setInstructions(profile.instructions);
-                setAvatar(profile.avatar);
-                change({ avatarAssetId: profile.avatarAssetId });
+                draft.reset(identityFields);
+                action.clear();
               }}
             >
               还原
@@ -122,7 +166,7 @@ export function IdentityEditor({
               size="small"
               aria-label="保存身份"
               pending={action.busy}
-              disabled={!name.trim()}
+              disabled={!name.trim() || conflicted}
             >
               保存
             </Button>
@@ -154,7 +198,7 @@ export function BotIdentity({
         <BotAvatar
           botId={bot.id}
           interactive
-          seed={profile?.avatar ?? bot.avatar}
+          seed={bot.avatar}
           size="panel"
           statusLabel="正在工作"
         />
@@ -163,7 +207,7 @@ export function BotIdentity({
         </span>
       </Button>
       <div className="bot-hero-copy">
-        <h2>{profile?.name ?? bot.name}</h2>
+        <h2>{bot.name}</h2>
         {profile?.instructions.trim() && <p>{profile.instructions}</p>}
       </div>
     </section>
