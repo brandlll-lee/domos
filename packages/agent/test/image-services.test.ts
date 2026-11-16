@@ -24,7 +24,10 @@ import {
   prepareImage,
   removeBackground,
 } from "../src/harness/image-processing.mjs";
-import { imageBaseUrl } from "../src/harness/image-service.mjs";
+import {
+  type ImageRequestFailure,
+  imageBaseUrl,
+} from "../src/harness/image-service.mjs";
 import { WorkProcess } from "../src/harness/process.ts";
 import { productCatalog } from "../src/harness/product-tools.ts";
 import type { EngineRuntime } from "../src/harness/task-types.ts";
@@ -292,7 +295,9 @@ test("work process preserves animated transparency, references and paid request 
     requestId: "uncertain-call",
     params: { ...input.params, prompt: "uncertain", transparent: false },
   };
-  await expect(worker.mcp(uncertain)).rejects.toThrow();
+  await expect(worker.mcp(uncertain)).rejects.toMatchObject({
+    imageRequest: { outcome: "unknown", originalsAvailable: false },
+  });
   const after = calls;
   await expect(worker.mcp(uncertain)).rejects.toThrow("结果未知");
   expect(calls).toBe(after);
@@ -310,6 +315,19 @@ test("work process preserves animated transparency, references and paid request 
   );
   controller.abort(new Error("Stopped"));
   await rejected;
+  await expect
+    .poll(() =>
+      readFile(join(directory, "image-requests", "active.lock")).then(
+        () => true,
+        () => false,
+      ),
+    )
+    .toBe(false);
+  await expect(
+    worker.mcp({ action: "image_recover", requestId: cancelled.requestId }),
+  ).rejects.toMatchObject({
+    imageRequest: { outcome: "unknown", originalsAvailable: false },
+  });
   const afterCancel = calls;
   await expect(worker.mcp(cancelled)).rejects.toThrow("结果未知");
   expect(calls).toBe(afterCancel);
@@ -324,11 +342,180 @@ test("work process preserves animated transparency, references and paid request 
   await expect(worker.mcp(local)).rejects.toThrow();
   const afterLocal = calls;
   await rm(blockedOutput, { recursive: true });
-  expect((await worker.mcp<Result>(local)).files[0]?.frames).toBe(2);
+  expect(
+    (
+      await worker.mcp<Result>({
+        action: "image_recover",
+        requestId: local.requestId,
+      })
+    ).files[0]?.frames,
+  ).toBe(2);
+  expect(calls).toBe(afterLocal);
+  const missing = join(directory, file.original);
+  await rm(missing);
+  await expect(
+    worker.mcp({ action: "image_recover", requestId: input.requestId }),
+  ).rejects.toMatchObject({
+    message: "保留的图片文件不存在。",
+    imageRequest: { outcome: "generated", originalsAvailable: false },
+  });
   expect(calls).toBe(afterLocal);
   const invalid = join(directory, "invalid");
   await writeFile(invalid, "not an image");
   await expect(prepareImage(invalid)).rejects.toThrow("未返回支持");
+}, 30000);
+
+test("image failures retain provider facts across worker restarts and recovery never generates", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "domos-image-errors-"));
+  const requests: string[] = [];
+  const server = createServer(async (request, response) => {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const body = JSON.parse(Buffer.concat(chunks).toString());
+    requests.push(body.prompt);
+    if (body.prompt === "disconnected") {
+      response.destroy();
+      return;
+    }
+    response.statusCode =
+      body.prompt === "server failure"
+        ? 502
+        : body.prompt === "timeout"
+          ? 408
+          : 400;
+    response.setHeader("x-request-id", "provider-request");
+    response.end(
+      body.prompt === "text failure"
+        ? `Invalid output: Bearer private-test-key ${"x".repeat(20000)}`
+        : JSON.stringify({
+            error: {
+              code: "invalid_parameter",
+              param: "output_format",
+              message: "GIF unavailable; private-test-key",
+              api_key: "unrelated-secret",
+            },
+          }),
+    );
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  if (!address || typeof address === "string")
+    throw new Error("server address");
+  const open = () =>
+    new WorkProcess(
+      [
+        process.execPath,
+        fileURLToPath(new URL("../src/harness/worker.mjs", import.meta.url)),
+      ],
+      { cwd: directory, home: directory },
+      [],
+      async () => ({ content: [] }),
+    );
+  let worker = open();
+  onTestFinished(async () => {
+    server.closeAllConnections();
+    server.close();
+    await worker.close();
+    await rm(directory, { recursive: true, force: true, maxRetries: 5 });
+  }, 30000);
+  await worker.ready;
+  const input = {
+    action: "image_generate",
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    key: "private-test-key",
+    requestId: "rejected",
+    params: {
+      model: "gpt-image-2.6-flare",
+      format: "gif",
+      count: 1,
+      frames: 16,
+      frameDurationMs: 100,
+      prompt: "rejected",
+    },
+  };
+  const rejected = await worker
+    .mcp<never>(input)
+    .catch((error: Error & { imageRequest: ImageRequestFailure }) => error);
+  expect(rejected).toMatchObject({
+    imageRequest: {
+      outcome: "rejected",
+      originalsAvailable: false,
+      httpStatus: 400,
+      provider: {
+        code: "invalid_parameter",
+        param: "output_format",
+        requestId: "provider-request",
+      },
+    },
+  });
+  expect(JSON.stringify(rejected.imageRequest)).not.toMatch(
+    /private-test-key|unrelated-secret/,
+  );
+  const hash = createHash("sha256").update(input.requestId).digest("hex");
+  expect(
+    await readFile(
+      join(directory, "image-requests", hash, "intent.json"),
+      "utf8",
+    ),
+  ).not.toContain("private-test-key");
+  await worker.close();
+  worker = open();
+  await worker.ready;
+  await expect(worker.mcp(input)).rejects.toMatchObject({
+    imageRequest: rejected.imageRequest,
+  });
+  await expect(
+    worker.mcp({ action: "image_recover", requestId: input.requestId }),
+  ).rejects.toMatchObject({ imageRequest: rejected.imageRequest });
+  expect(requests).toHaveLength(1);
+  for (const prompt of [
+    "text failure",
+    "server failure",
+    "timeout",
+    "disconnected",
+  ]) {
+    const next = {
+      ...input,
+      requestId: prompt,
+      params: { ...input.params, prompt },
+    };
+    const error = await worker
+      .mcp<never>(next)
+      .catch((error: Error & { imageRequest: ImageRequestFailure }) => error);
+    expect(error.imageRequest).toMatchObject({
+      outcome: prompt === "text failure" ? "rejected" : "unknown",
+      originalsAvailable: false,
+    });
+    expect(JSON.stringify(error.imageRequest)).not.toContain(
+      "private-test-key",
+    );
+    expect(JSON.stringify(error.imageRequest).length).toBeLessThan(18000);
+    const count = requests.length;
+    await expect(
+      worker.mcp({ action: "image_recover", requestId: prompt }),
+    ).rejects.toMatchObject({
+      imageRequest: {
+        outcome: error.imageRequest.outcome,
+        originalsAvailable: false,
+      },
+    });
+    await expect(worker.mcp(next)).rejects.toThrow();
+    expect(requests).toHaveLength(count);
+  }
+  await expect(
+    worker.mcp({ action: "image_recover", requestId: "absent" }),
+  ).rejects.toMatchObject({
+    imageRequest: { outcome: "not_sent", originalsAvailable: false },
+  });
+  await expect(
+    worker.mcp({
+      ...input,
+      requestId: "corrected",
+      params: { ...input.params, prompt: "corrected" },
+    }),
+  ).rejects.toMatchObject({ imageRequest: { httpStatus: 400 } });
+  expect(requests.at(-1)).toBe("corrected");
 }, 30000);
 
 test("image configuration scopes encrypted credentials and rejects stale saves before changing a key", async () => {
@@ -551,6 +738,23 @@ test("real computer, worker and Files recover legacy directory aliases after res
     const body = JSON.parse(Buffer.concat(chunks).toString());
     requests.push(req.url ?? "");
     prompts.push(body.prompt);
+    if (body.prompt.startsWith("rejected avatar")) {
+      res.statusCode = 400;
+      res.end(
+        JSON.stringify({
+          error: {
+            code: "invalid_parameter",
+            param: "output_format",
+            message: "GIF unavailable; test-only",
+          },
+        }),
+      );
+      return;
+    }
+    if (body.prompt.startsWith("disconnected avatar")) {
+      res.destroy();
+      return;
+    }
     let output = bytes;
     if (body.output_format === "gif")
       output = await sharp(pixels(24, body.frame_count), {
@@ -910,4 +1114,44 @@ test("real computer, worker and Files recover legacy directory aliases after res
     preparation: { purpose: "avatar", status: "ready" },
   });
   expect(requests).toHaveLength(paid);
+  hasKey = true;
+  for (const prompt of ["rejected avatar", "disconnected avatar"]) {
+    const input = { purpose: "avatar" as const, prompt };
+    const error = await service
+      .generate(botId, input, prompt, context)
+      .catch((error) => error);
+    const facts = JSON.parse(error.message);
+    expect(facts).toMatchObject({
+      requestId: prompt,
+      outcome: prompt === "rejected avatar" ? "rejected" : "unknown",
+      originalsAvailable: false,
+    });
+    expect(facts).not.toHaveProperty("recoverRequestId");
+    if (prompt === "rejected avatar")
+      expect(facts.provider).toMatchObject({
+        code: "invalid_parameter",
+        param: "output_format",
+      });
+    expect(error.message).not.toContain("test-only");
+    const count = requests.length;
+    const recovery = await service
+      .recover(botId, prompt, context)
+      .catch((error) => error);
+    expect(JSON.parse(recovery.message)).toMatchObject({
+      requestId: prompt,
+      outcome: facts.outcome,
+      originalsAvailable: false,
+    });
+    await expect(
+      service.generate(botId, input, prompt, context),
+    ).rejects.toThrow();
+    expect(requests).toHaveLength(count);
+  }
+  const [corrected] = await service.generate(
+    botId,
+    { prompt: "corrected request" },
+    "corrected-request",
+    context,
+  );
+  expect(corrected?.file.id).toBeTruthy();
 }, 30000);

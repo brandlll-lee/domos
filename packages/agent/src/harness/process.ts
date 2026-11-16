@@ -93,7 +93,12 @@ export class WorkProcess implements EngineProcess {
           clearTimeout(request.timer);
           if (frame.error)
             request.reject(
-              Object.assign(new Error(frame.error), { code: frame.code }),
+              Object.assign(new Error(frame.error), {
+                code: frame.code,
+                ...(frame.imageRequest
+                  ? { imageRequest: frame.imageRequest }
+                  : {}),
+              }),
             );
           else request.resolve(frame.result);
         } else if (frame.type === "mcp_notification") {

@@ -441,6 +441,9 @@ lines.on("line", (line) => {
                 error instanceof McpError
                   ? error.message
                   : "MCP 连接未完成。请检查配置和授权。",
+              ...(frame.input.action.startsWith("image_") && error.imageRequest
+                ? { imageRequest: error.imageRequest }
+                : {}),
             }),
           )
           .finally(() => operations.delete(frame.id));

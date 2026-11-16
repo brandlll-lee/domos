@@ -7,7 +7,10 @@ import { Characters } from "./characters.ts";
 import type { Computers } from "./computer/catalog.ts";
 import { owningBot } from "./conversations.ts";
 import type { Files } from "./files.ts";
-import { imageBaseUrl } from "./harness/image-service.mjs";
+import {
+  type ImageRequestFailure,
+  imageBaseUrl,
+} from "./harness/image-service.mjs";
 import { requireRevision, toolResult } from "./work/state.ts";
 
 export const imageModels = [
@@ -104,6 +107,23 @@ type Generated = {
     format: string;
   }[];
 };
+
+function imageFailure(error: unknown, requestId: string) {
+  const failure = (error as { imageRequest?: ImageRequestFailure })
+    ?.imageRequest;
+  return new Error(
+    JSON.stringify({
+      ...(failure ?? {
+        outcome: "unknown",
+        originalsAvailable: null,
+        message:
+          error instanceof Error ? error.message : "工作电脑未确认请求结果。",
+      }),
+      requestId,
+      ...(failure?.originalsAvailable ? { recoverRequestId: requestId } : {}),
+    }),
+  );
+}
 
 export class ImageServices {
   private readonly harness: import("@earendil-works/pi-durable").Harness;
@@ -361,9 +381,7 @@ export class ImageServices {
         )
         .catch((error) => {
           if (context.abortSignal?.aborted) throw error;
-          throw new Error(
-            `图像生成或处理结果尚未确认。请仅用 {"recoverRequestId":${JSON.stringify(requestId)}} 检查并恢复已保存结果；不要重新付费生成。原因：${error instanceof Error ? error.message : "请求未完成。"}`,
-          );
+          throw imageFailure(error, requestId);
         }));
     return this.publishGenerated(
       botId,
@@ -396,13 +414,18 @@ export class ImageServices {
           )
             throw new Error("请在原工作电脑和原目录恢复图像。");
           if (receipt.results) return receipt.results;
-          const generated = await this.computers.mcp<Generated>(
-            computerId,
-            { action: "image_recover", requestId },
-            context,
-            context.abortSignal,
-            botId,
-          );
+          const generated = await this.computers
+            .mcp<Generated>(
+              computerId,
+              { action: "image_recover", requestId },
+              context,
+              context.abortSignal,
+              botId,
+            )
+            .catch((error) => {
+              if (context.abortSignal?.aborted) throw error;
+              throw imageFailure(error, requestId);
+            });
           const input = JSON.parse(receipt.scope.fingerprint) as ImageInput;
           return this.publishGenerated(
             botId,
@@ -518,7 +541,7 @@ export function imageExtension(
       defineTool({
         name: "image_generate",
         description:
-          "Generate ordinary images or GIFs using the work computer's configured image service. References must use exact fileId values from uploaded file references or attach_file, never a path, path digest or characterId. References support PNG/JPEG/WebP only, at most 4 files and 8 MiB combined; uploading a GIF or larger image does not make it a supported editing reference. For ordinary images request transparent output only when wanted; avatar purpose defaults to transparency. GIF transparency uses automatic colour-key removal and returns animated WebP. Choose a keyColor different from the subject. For avatar creation always set purpose:avatar; it supplies animation and transparency defaults with explicit parameter overrides. An uploaded reference is already selected. Offer candidates through ask_question only when requested. Generation never changes identity. Results include saved file IDs, cover IDs and actual frame metadata; files are delivered automatically. Never resend an uncertain paid request. If a failure supplies recoverRequestId, call this same tool with only that field to publish the retained result without generation or provider credentials. GIF requires provider preview access.",
+          "Generate ordinary images or GIFs using the work computer's configured image service. References must use exact fileId values from uploaded file references or attach_file, never a path, path digest or characterId. References support PNG/JPEG/WebP only, at most 4 files and 8 MiB combined; uploading a GIF or larger image does not make it a supported editing reference. For ordinary images request transparent output only when wanted; avatar purpose defaults to transparency. GIF transparency uses automatic colour-key removal and returns animated WebP. Choose a keyColor different from the subject. For avatar creation always set purpose:avatar; it supplies animation and transparency defaults with explicit parameter overrides. An uploaded reference is already selected. Offer candidates through ask_question only when requested. Generation never changes identity. Results include saved file IDs, cover IDs and actual frame metadata; files are delivered automatically. Failures report outcome, originalsAvailable, provider details and requestId. Correct rejected requests within the user’s authorization; do not automatically resend unknown paid requests. recoverRequestId is available for retained output. Pass only that field to retrieve or process saved output without generation or provider credentials. GIF requires provider preview access.",
         parameters: Type.Object({
           purpose: Type.Optional(
             Type.Union([Type.Literal("image"), Type.Literal("avatar")], {

@@ -16,6 +16,80 @@ import { prepareImage } from "./image-processing.mjs";
 const MAX_BYTES = 32 * 1024 * 1024;
 const models = ["gpt-image-2.6-flare", "gpt-image-2.6-sunburst"];
 
+function redact(value, key) {
+  let text = String(value);
+  if (key)
+    for (const secret of [
+      key,
+      JSON.stringify(key).slice(1, -1),
+      encodeURIComponent(key),
+    ])
+      text = text.replaceAll(secret, "[REDACTED]");
+  return text
+    .replace(/Bearer\s+[^\s"'<>]+/gi, "Bearer [REDACTED]")
+    .replace(
+      /(api[_-]?key|authorization|token|secret|password)(["']?\s*[:=]\s*["']?)[^\s"'<>;,}]+/gi,
+      "$1$2[REDACTED]",
+    )
+    .replace(/sk-[\w-]+/g, "[REDACTED]");
+}
+
+function requestFailure(info) {
+  return Object.assign(new Error(info.message), { imageRequest: info });
+}
+
+async function readJson(path) {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+}
+
+async function providerFailure(response, key) {
+  const chunks = [];
+  let size = 0;
+  try {
+    for await (const chunk of response.body ?? []) {
+      chunks.push(chunk.subarray(0, 16384 - size));
+      size += chunk.length;
+      if (size >= 16384) break;
+    }
+  } catch {
+    // Keep the received HTTP status when the error body cannot be read.
+  }
+  const text = Buffer.concat(chunks).toString("utf8");
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {}
+  const source = body?.error ?? body;
+  const provider = {};
+  for (const field of ["message", "code", "param", "type"])
+    if (["string", "number"].includes(typeof source?.[field]))
+      provider[field] = redact(source[field], key).slice(0, 2048);
+  const requestId =
+    response.headers.get("x-request-id") ??
+    response.headers.get("request-id") ??
+    body?.request_id;
+  if (typeof requestId === "string")
+    provider.requestId = redact(requestId, key).slice(0, 512);
+  provider.message ??= redact(
+    body ? "服务未提供错误说明。" : text || "服务返回空错误正文。",
+    key,
+  ).slice(0, 4096);
+  return requestFailure({
+    outcome:
+      response.status >= 400 && response.status < 500 && response.status !== 408
+        ? "rejected"
+        : "unknown",
+    originalsAvailable: false,
+    httpStatus: response.status,
+    provider,
+    message: `图像服务 HTTP ${response.status}：${provider.message}`,
+  });
+}
+
 export function imageBaseUrl(value) {
   const url = new URL(value);
   if (
@@ -93,6 +167,28 @@ export async function imageOperation(input, home, signal) {
   try {
     signal.throwIfAborted();
     return await operation(input, home, signal);
+  } catch (error) {
+    if (error.imageRequest || input.action === "image_test") throw error;
+    const id = createHash("sha256").update(input.requestId).digest("hex");
+    const directory = join(root, id);
+    const saved = await readJson(join(directory, "originals.json"));
+    const intent = await readJson(join(directory, "intent.json"));
+    const files = await Promise.all(
+      (saved?.files ?? []).map((path) =>
+        lstat(path).then(
+          (info) => info.isFile(),
+          () => false,
+        ),
+      ),
+    );
+    throw requestFailure({
+      outcome: saved ? "generated" : intent ? "unknown" : "not_sent",
+      originalsAvailable: files.length > 0 && files.every(Boolean),
+      message:
+        error.code === "ENOENT"
+          ? "保留的图片文件不存在。"
+          : redact(error.message, input.key),
+    });
   } finally {
     await handle.close();
     await rm(lock, { force: true });
@@ -147,9 +243,18 @@ async function operation(input, home, signal) {
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
-    const saved = JSON.parse(
-      await readFile(join(directory, "originals.json"), "utf8"),
-    );
+    const saved = await readJson(join(directory, "originals.json"));
+    if (!saved) {
+      const intent = await readJson(join(directory, "intent.json"));
+      if (intent?.failure) throw requestFailure(intent.failure);
+      throw requestFailure({
+        outcome: intent ? "unknown" : "not_sent",
+        originalsAvailable: false,
+        message: intent
+          ? "没有保留图片。原请求结果未知。"
+          : "没有此请求的生成记录或保留图片。",
+      });
+    }
     if (!saved.processing || saved.directory !== process.cwd())
       throw new Error("原始结果缺少处理上下文，不能自动重生成。");
     const validated = await relativeResult(
@@ -185,10 +290,7 @@ async function operation(input, home, signal) {
       signal,
     });
     if (!response.ok) {
-      await response.body?.cancel();
-      throw new Error(
-        `图像服务 HTTP ${response.status}：${response.status === 401 ? "认证失败" : response.status === 403 ? "权限或额度不足" : response.status === 429 ? "额度或并发限制" : "请求未完成"}。`,
-      );
+      throw await providerFailure(response, input.key);
     }
     return JSON.parse((await boundedResponse(response)).toString("utf8"));
   };
@@ -232,6 +334,11 @@ async function operation(input, home, signal) {
     .update(JSON.stringify({ params, baseUrl: base, directory: process.cwd() }))
     .digest("hex");
   const manifest = join(directory, "result.json");
+  const intentPath = join(directory, "intent.json");
+  const intent = await readJson(intentPath);
+  if (intent && intent.fingerprint !== fingerprint)
+    throw new Error("请求标识冲突。");
+  if (intent?.failure) throw requestFailure(intent.failure);
   try {
     const saved = JSON.parse(await readFile(manifest, "utf8"));
     if (saved.fingerprint !== fingerprint)
@@ -250,17 +357,8 @@ async function operation(input, home, signal) {
     originals = saved.files;
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
-    try {
-      await writeFile(
-        join(directory, "intent.json"),
-        JSON.stringify({ fingerprint }),
-        { flag: "wx", mode: 0o600 },
-      );
-    } catch (error) {
-      if (error.code === "EEXIST")
-        throw new Error("此前生图请求已发出但结果未知；不会自动再次收费生成。");
-      throw error;
-    }
+    if (intent)
+      throw new Error("此前生图请求已发出但结果未知；不会自动再次收费生成。");
     let keyColor = params.keyColor ?? "bright blue";
     if (
       params.purpose === "avatar" &&
@@ -321,10 +419,21 @@ async function operation(input, home, signal) {
         ? { images: params.references.map((image_url) => ({ image_url })) }
         : {}),
     };
+    await writeFile(intentPath, JSON.stringify({ fingerprint }), {
+      flag: "wx",
+      mode: 0o600,
+    });
     const response = await request(
       params.references?.length ? "images/edits" : "images/generations",
       body,
-    );
+    ).catch(async (error) => {
+      if (error.imageRequest)
+        await saveJson(intentPath, {
+          fingerprint,
+          failure: error.imageRequest,
+        });
+      throw error;
+    });
     if (
       !Array.isArray(response.data) ||
       !response.data.length ||
@@ -398,7 +507,7 @@ async function finishImages(
         ))
     )
       throw new Error(
-        "服务返回格式、帧数或时长不符；原始文件已保留，不会自动重生成。",
+        `请求 GIF ${params.frames} 帧，每帧 ${params.frameDurationMs} 毫秒；服务返回 ${source.format} ${source.frames} 帧，帧时长 ${JSON.stringify(source.delay)}。原始文件已保留。`,
       );
     if (
       params.purpose === "avatar" &&
