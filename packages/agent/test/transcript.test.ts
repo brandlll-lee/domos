@@ -209,7 +209,7 @@ test("saved product notices remain visible without exposing raw tool output", ()
   expect(chatTranscript(view([{ ...saved, hidden: true }]))).toEqual([]);
 });
 
-test("files arrive at task completion and stay hidden for interrupted tasks", () => {
+test("delivered files retain their first receipt during work, completion, failure and stop", () => {
   const file = { id: "file", name: "report.txt", size: 12, path: "report.txt" };
   const messages = [
     message("user", "turn", []),
@@ -218,25 +218,47 @@ test("files arrive at task completion and stay hidden for interrupted tasks", ()
       attachments: [file],
     }),
   ];
-  const working = chatTranscript(
-    view(messages, { activeTurnId: "turn", busy: true }),
-  );
-  expect(working).toMatchObject([
+  const expected = [
     { kind: "message", message: { role: "user" } },
+    { kind: "attachments", id: messages[1]?.id, files: [file] },
     {
       kind: "message",
-      message: { content: [{ text: "Result" }], attachments: undefined },
+      message: { content: [{ text: "Result" }], attachments: [] },
     },
-  ]);
-  const complete = chatTranscript(view(messages));
-  expect(complete).toHaveLength(2);
-  expect(complete[1]).toMatchObject({
-    kind: "message",
-    message: { attachments: [file] },
-  });
-  const failed = chatTranscript(view(messages, { failed: true }));
-  expect(failed.some((item) => item.kind === "attachments")).toBe(false);
-  expect(failed[1]).toMatchObject({ message: { attachments: undefined } });
+  ];
+  for (const state of [
+    { activeTurnId: "turn", busy: true },
+    {},
+    { failed: true },
+  ]) {
+    const items = chatTranscript(view(messages, state));
+    expect(items.slice(0, 3)).toMatchObject(expected);
+  }
+  expect(
+    chatTranscript(
+      view([...messages, message("assistant", "turn", [], { stopped: true })]),
+    ),
+  ).toMatchObject(expected);
+});
+
+test("unconfirmed, failed, hidden and delegated tool files stay out of chat", () => {
+  const file = { id: "file", name: "report.txt", size: 12, path: "report.txt" };
+  for (const fields of [
+    { pending: true },
+    { stopped: true },
+    { isError: true },
+    { toolStatus: "running" as const },
+    { toolStatus: "failed" as const },
+    { hidden: true },
+    { parentId: "internal-task" },
+  ])
+    expect(
+      chatTranscript(
+        view([
+          message("toolResult", "turn", [], { attachments: [file], ...fields }),
+        ]),
+      ),
+    ).toEqual([]);
 });
 
 test("complete product messages and questions arrive immediately", () => {

@@ -94,7 +94,7 @@ export class EngineProjection {
         if (
           previous.id !== id &&
           previous.pending &&
-          !previous.content.some((part) => part.type === "toolCall")
+          previous.content.some((part) => part.type === "thinking")
         ) {
           previous.pending = false;
           previous.endedAt ??= now;

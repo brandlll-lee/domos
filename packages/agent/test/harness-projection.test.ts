@@ -92,6 +92,39 @@ test("slow storage does not block events; terminal flush drains changes and keep
   }
 });
 
+test("text waits for its own completion while other native events continue", async () => {
+  const f = fixture();
+  f.released.resolve();
+  await f.projection.emit({ type: "text", id: "reply", text: "你叫" });
+  await f.projection.emit({ type: "thinking", id: "reason", text: "private" });
+  await f.projection.emit({
+    type: "tool",
+    id: "read",
+    name: "read",
+    input: {},
+  });
+  await f.projection.emit({ type: "text", id: "reply", text: "什么名字" });
+  await f.projection.flush();
+  expect(f.doc.drafts.find((m) => m.id === "turn:reply:message")).toMatchObject(
+    {
+      pending: true,
+      content: [{ text: "你叫什么名字" }],
+    },
+  );
+  await f.projection.emit({
+    type: "message",
+    id: "reply",
+    text: "你叫什么名字",
+  });
+  await f.projection.flush();
+  expect(f.doc.drafts.find((m) => m.id === "turn:reply:message")).toMatchObject(
+    {
+      pending: false,
+      content: [{ text: "你叫什么名字" }],
+    },
+  );
+});
+
 test("native acceptance waits for durable receipt and advances the handoff cursor", async () => {
   const f = fixture();
   let accepted = false;

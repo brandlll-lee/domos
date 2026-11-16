@@ -673,7 +673,7 @@ test("file reads recover from failure and cannot cross a Bot switch", async ({
   expect(repeatedReads).toBe(0);
 });
 
-test("published files wait for the complete reply", async ({
+test("completed messages and published files arrive before the final reply", async ({
   service,
   page,
 }) => {
@@ -687,7 +687,10 @@ test("published files wait for the complete reply", async ({
   await service.control({
     responses: [
       {
-        content: [call("write", { path: "report.md", content: "# Report" })],
+        content: [
+          { type: "text", text: "我会先生成报告。" },
+          call("write", { path: "report.md", content: "# Report" }),
+        ],
         stopReason: "toolUse",
       },
       {
@@ -703,10 +706,16 @@ test("published files wait for the complete reply", async ({
   await expect(page.locator(".typing-dots")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "另存为 report.md", exact: true }),
-  ).toHaveCount(0);
-  await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
-  await service.control("release");
+  ).toBeVisible();
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(1);
+  await expect(page.getByLabel("Domos 的回复")).toContainText(
+    "我会先生成报告。",
+  );
+  await page.screenshot({
+    path: "test-results/completed-message-delivery.png",
+  });
+  await service.control("release");
+  await expect(page.getByLabel("Domos 的回复")).toHaveCount(2);
   await expect(
     page.getByRole("button", { name: "另存为 report.md", exact: true }),
   ).toBeVisible();

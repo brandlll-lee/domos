@@ -66,31 +66,17 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
   }
   let attachmentTurn: string | undefined;
   const delivered = new Set<string>();
-  const attached = new Set(
-    messages.flatMap((message) =>
-      message.role === "assistant" && !message.pending && !message.stopped
-        ? (message.attachments ?? []).map(
-            (file) => `${message.turnId ?? message.id}:${file.id}`,
-          )
-        : [],
-    ),
-  );
   const filesFor = (message: ChatMessage) =>
     message.attachments?.filter((file) => {
       const key = `${message.turnId ?? message.id}:${file.id}`;
-      if (
-        delivered.has(key) ||
-        (message.role === "toolResult" && attached.has(key))
-      )
-        return false;
+      if (delivered.has(key)) return false;
       delivered.add(key);
       return true;
     });
   messages.forEach((message, index) => {
     if (message.hidden || (message.role === "user" && message.routine)) return;
     const id = message.turnId ?? message.id;
-    const held =
-      id === view.activeTurnId || notices.has(id) || interrupted.has(id);
+    if (message.parentId) return;
     if (message.role === "user")
       items.push({ kind: "message", id: message.id, message });
     else if (message.role === "toolResult") {
@@ -120,7 +106,15 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
             stopped: false,
           },
         });
-      const files = !held ? filesFor(message) : undefined;
+      const files =
+        !message.isError &&
+        !message.stopped &&
+        !message.pending &&
+        !["pending", "running", "failed", "stopped"].includes(
+          message.toolStatus ?? "",
+        )
+          ? filesFor(message)
+          : undefined;
       if (files?.length) {
         const previous = items.at(-1);
         if (previous?.kind === "attachments" && attachmentTurn === id)
@@ -136,20 +130,18 @@ export function chatTranscript(view: ChatView): TranscriptItem[] {
         attachmentTurn = id;
       }
     } else if (
-      !message.parentId &&
-      (message.takeover ||
-        message.approval ||
-        message.link ||
-        (!message.pending &&
-          !message.stopped &&
-          message.stopReason !== "error"))
+      message.takeover ||
+      message.approval ||
+      message.link ||
+      (!message.pending && !message.stopped && message.stopReason !== "error")
     ) {
       const content = message.content.filter(
         (part) =>
           part.type === "image" ||
           (part.type === "text" && part.text.trim().length > 0),
       );
-      const attachments = held ? undefined : filesFor(message);
+      const attachments =
+        message.approval || message.takeover ? undefined : filesFor(message);
       if (
         message.approval ||
         message.takeover ||

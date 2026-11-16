@@ -11,9 +11,110 @@ import * as productTools from "../src/harness/product-tools.ts";
 import { EngineDoc } from "../src/harness/state.ts";
 import { engineLimits } from "../src/harness/types.ts";
 import { openAgent } from "../src/open-agent.ts";
+import { chatTranscript } from "../src/transcript.ts";
 import { ProtocolProcess } from "./fixtures/engine-process.ts";
 import { featureProcess } from "./fixtures/feature-process.ts";
 import { runtimeFixture } from "./fixtures/runtime.ts";
+
+test("native completed messages reach subscribers before the turn settles", async () => {
+  const finish = Promise.withResolvers<string>();
+  const started = Promise.withResolvers<void>();
+  const worker = featureProcess(async () => {
+    worker.frame({
+      type: "message_start",
+      message: { role: "assistant", timestamp: 10 },
+    });
+    worker.frame({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "你叫" },
+    });
+    started.resolve();
+    return finish.promise;
+  });
+  const runtime = await runtimeFixture({
+    initialize: async () => {},
+    preflight: async () => {},
+    computerId: async () => "shared",
+    binding: async () => ({ directory: null, computerId: "shared" }),
+    tools: { catalog: async () => [], finish: () => {} },
+    process: async () => worker,
+  } as unknown as Computers);
+  const engines = runtime.engines;
+  if (!engines) throw new Error("Native engines required");
+  const botId = runtime.conversation.id;
+  await engines.configure(
+    botId,
+    {
+      config: { provider: "pi", model: null },
+      revision: 0,
+      requestId: crypto.randomUUID(),
+    },
+    context,
+  );
+  const controller = new AbortController();
+  const { withAbortSignal } = await import("@earendil-works/chord/context");
+  let latest: Awaited<ReturnType<typeof engines.view>> | undefined;
+  const reading = (async () => {
+    for await (const next of engines.watch(
+      botId,
+      withAbortSignal(controller.signal, context),
+    ))
+      latest = next;
+  })();
+  onTestFinished(async () => {
+    finish.resolve("最终回复");
+    controller.abort();
+    await reading;
+    await worker.close();
+  });
+  const task = await engines.submit(
+    botId,
+    { text: "Check", requestId: crypto.randomUUID() },
+    context,
+  );
+  await started.promise;
+  await vi.waitFor(() =>
+    expect(
+      latest?.messages.some(
+        (m) =>
+          m.pending &&
+          m.content.some((p) => p.type === "text" && p.text === "你叫"),
+      ),
+    ).toBe(true),
+  );
+  expect(
+    (latest ? chatTranscript(latest) : []).some(
+      (item) =>
+        item.kind === "message" &&
+        item.message.content.some(
+          (p) => p.type === "text" && p.text === "你叫",
+        ),
+    ),
+  ).toBe(false);
+  worker.frame({
+    type: "message_end",
+    message: {
+      role: "assistant",
+      timestamp: 10,
+      content: [{ type: "text", text: "你叫什么名字" }],
+      stopReason: "toolUse",
+    },
+  });
+  await vi.waitFor(() =>
+    expect(
+      (latest ? chatTranscript(latest) : []).some(
+        (item) =>
+          item.kind === "message" &&
+          item.message.content.some(
+            (p) => p.type === "text" && p.text === "你叫什么名字",
+          ),
+      ),
+    ).toBe(true),
+  );
+  expect(latest?.busy).toBe(true);
+  finish.resolve("最终回复");
+  await task.wait(context);
+});
 
 test.each([
   "connect",
