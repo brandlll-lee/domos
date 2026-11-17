@@ -15,7 +15,7 @@ import {
   type EngineTaskInput,
   stored,
 } from "./task-types.ts";
-import { finishUsage, UsageTaskDoc } from "./usage.ts";
+import { finishUsage, recordUsage } from "./usage.ts";
 
 export function engineTask(execution: EngineExecution) {
   const taskDefinition: ReturnType<
@@ -49,9 +49,7 @@ export function engineTask(execution: EngineExecution) {
                 async (event) => {
                   if (event.type !== "usage") return;
                   await runtime.commit(async (tx) => {
-                    (await tx.doc(UsageTaskDoc, runtime.taskId)).items[
-                      event.usage.id
-                    ] = event.usage;
+                    await recordUsage(tx, runtime.taskId, event.usage);
                   }, context);
                 },
                 [],

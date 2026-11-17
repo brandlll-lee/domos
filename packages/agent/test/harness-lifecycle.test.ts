@@ -16,6 +16,111 @@ import { ProtocolProcess } from "./fixtures/engine-process.ts";
 import { featureProcess } from "./fixtures/feature-process.ts";
 import { runtimeFixture } from "./fixtures/runtime.ts";
 
+test.each([undefined, 0])(
+  "ACP replies and native usage survive persistence and restart (cost: %s)",
+  async (cost) => {
+    const worker = new ProtocolProcess();
+    worker.receive = (request) => {
+      if (request.method === "session/prompt") {
+        const update = (update: object) =>
+          worker.frame({
+            jsonrpc: "2.0",
+            method: "session/update",
+            params: { sessionId: "native", update },
+          });
+        update({
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "在呢，有什么事？" },
+        });
+        if (cost !== undefined)
+          update({
+            sessionUpdate: "usage_update",
+            used: 120,
+            size: 10000,
+            cost: { amount: cost, currency: "USD" },
+          });
+        worker.response(request, {
+          stopReason: "end_turn",
+          usage: { inputTokens: 100, outputTokens: 20, totalTokens: 120 },
+        });
+      } else
+        worker.response(
+          request,
+          request.method === "initialize"
+            ? {
+                protocolVersion: 1,
+                agentCapabilities: { mcpCapabilities: { http: true } },
+              }
+            : request.method === "session/new"
+              ? {
+                  sessionId: "native",
+                  modes: {
+                    currentModeId: "default",
+                    availableModes: [{ id: "default", name: "Default" }],
+                  },
+                }
+              : {},
+        );
+    };
+    onTestFinished(() => worker.close());
+    const runtime = await runtimeFixture({
+      initialize: async () => {},
+      preflight: async () => {},
+      computerId: async () => "shared",
+      binding: async () => ({ directory: null, computerId: "shared" }),
+      tools: { catalog: async () => [], finish: () => {} },
+      process: async () => worker,
+    } as unknown as Computers);
+    const engines = runtime.engines;
+    if (!engines) throw new Error("Native engines required");
+    const botId = runtime.conversation.id;
+    await engines.configure(
+      botId,
+      {
+        config: { provider: "antigravity", model: null },
+        revision: 0,
+        requestId: crypto.randomUUID(),
+      },
+      context,
+    );
+    const task = await engines.submit(
+      botId,
+      { text: "在吗？", requestId: crypto.randomUUID() },
+      context,
+    );
+    await expect
+      .poll(async () => (await engines.view(botId, context)).busy)
+      .toBe(false);
+    expect((await engines.view(botId, context)).error).toBeNull();
+    await task.wait(context);
+    const restored = await runtime.reopen();
+    const view = await restored.engines?.view(botId, context);
+    expect(view?.error).toBeNull();
+    expect(view?.busy).toBe(false);
+    expect(
+      view &&
+        chatTranscript(view).some(
+          (item) =>
+            item.kind === "message" &&
+            item.message.role === "assistant" &&
+            item.message.content.some(
+              (part) =>
+                part.type === "text" && part.text === "在呢，有什么事？",
+            ),
+        ),
+    ).toBe(true);
+    const entries = await restored.conversation.entries(
+      {},
+      100,
+      undefined,
+      context,
+    );
+    expect(
+      entries.items.find((entry) => entry.kind === "domos.engine-usage")?.data,
+    ).toMatchObject({ input: 100, output: 20, costUsd: cost ?? null });
+  },
+);
+
 test("native completed messages reach subscribers before the turn settles", async () => {
   const finish = Promise.withResolvers<string>();
   const started = Promise.withResolvers<void>();

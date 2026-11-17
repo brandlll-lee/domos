@@ -1,11 +1,13 @@
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { setImmediate } from "node:timers/promises";
+import { copyJson, type JsonRepresentation } from "@earendil-works/chord";
 import type { Context } from "@earendil-works/chord/context";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type {
   ConversationId,
   EntryId,
   Harness,
+  TaskId,
 } from "@earendil-works/pi-durable";
 import { defineDoc, type Tx } from "@earendil-works/pi-durable";
 import type { EngineRuntime } from "./task-types.ts";
@@ -19,6 +21,12 @@ export const UsageTaskDoc = defineDoc<{ items: Record<string, EngineUsage> }>({
   scope: "task",
   initial: () => ({ items: {} }),
 });
+
+export async function recordUsage(tx: Tx, taskId: TaskId, usage: EngineUsage) {
+  (await tx.doc(UsageTaskDoc, taskId)).items[usage.id] = copyJson(usage, {
+    omitUndefinedProperties: true,
+  }) as JsonRepresentation<EngineUsage>;
+}
 
 export async function finishUsage(
   tx: Tx,

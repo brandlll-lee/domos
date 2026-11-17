@@ -8,7 +8,7 @@ import {
   stored,
 } from "./task-types.ts";
 import { type EngineEvent, engineLimits } from "./types.ts";
-import { UsageTaskDoc } from "./usage.ts";
+import { recordUsage } from "./usage.ts";
 
 export class EngineProjection {
   private readonly runtime: EngineRuntime;
@@ -214,9 +214,7 @@ export class EngineProjection {
             case "usage":
               if (doc.run && event.usage.model)
                 doc.run.model = event.usage.model;
-              (await tx.doc(UsageTaskDoc, runtime.taskId)).items[
-                event.usage.id
-              ] = event.usage;
+              await recordUsage(tx, runtime.taskId, event.usage);
               break;
             case "context":
             case "compaction":
