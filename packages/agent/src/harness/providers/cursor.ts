@@ -8,6 +8,7 @@ export const cursorProvider = acpProvider({
   command: "cursor-agent",
   package: "",
   login: ["login"],
+  toolDiscovery: "prompt",
   args: () => ["acp"],
   authMethod: "cursor_login",
   mcp: readNativeConfiguredMcp,

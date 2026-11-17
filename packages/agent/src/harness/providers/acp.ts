@@ -38,7 +38,7 @@ import { formContent, formQuestions } from "./question-form.ts";
 export function acpProvider(
   descriptor: Pick<
     EngineProvider,
-    "id" | "name" | "command" | "package" | "login" | "mcp"
+    "id" | "name" | "command" | "package" | "login" | "mcp" | "toolDiscovery"
   > & {
     notification?: (
       method: string,
@@ -832,9 +832,14 @@ export function acpProvider(
               },
               ...images,
             ];
-            const outcome = prompts
-              ? await prompts.run(blocks)
-              : await rpc.prompt({ sessionId: id, prompt: blocks });
+            const [outcome] = await Promise.all([
+              prompts
+                ? prompts.run(blocks)
+                : rpc.prompt({ sessionId: id, prompt: blocks }),
+              descriptor.toolDiscovery === "prompt"
+                ? process.toolsReady?.()
+                : undefined,
+            ]);
             await events;
             if (!openCode && (outcome.usage || nativeCost !== undefined))
               await emit({

@@ -16,12 +16,27 @@ import { ProtocolProcess } from "./fixtures/engine-process.ts";
 import { featureProcess } from "./fixtures/feature-process.ts";
 import { runtimeFixture } from "./fixtures/runtime.ts";
 
-test.each([undefined, 0])(
-  "ACP replies and native usage survive persistence and restart (cost: %s)",
-  async (cost) => {
-    const worker = new ProtocolProcess();
+test.each([
+  { provider: "antigravity", cost: undefined },
+  { provider: "antigravity", cost: 0 },
+  { provider: "cursor", cost: undefined },
+  { provider: "cursor", cost: undefined, discoveryError: true },
+])(
+  "$provider persists replies and usage when tools are ready ($discoveryError, cost: $cost)",
+  async ({ provider, cost, discoveryError }) => {
+    const listed = Promise.withResolvers<Error | undefined>();
+    const worker = Object.assign(new ProtocolProcess(), {
+      async toolsReady() {
+        const error = await listed.promise;
+        if (error) throw error;
+      },
+    });
+    if (provider !== "cursor") listed.resolve(undefined);
     worker.receive = (request) => {
       if (request.method === "session/prompt") {
+        listed.resolve(
+          discoveryError ? new Error("Tool discovery failed") : undefined,
+        );
         const update = (update: object) =>
           worker.frame({
             jsonrpc: "2.0",
@@ -77,7 +92,7 @@ test.each([undefined, 0])(
     await engines.configure(
       botId,
       {
-        config: { provider: "antigravity", model: null },
+        config: { provider, model: null },
         revision: 0,
         requestId: crypto.randomUUID(),
       },
@@ -88,11 +103,26 @@ test.each([undefined, 0])(
       { text: "在吗？", requestId: crypto.randomUUID() },
       context,
     );
-    await expect
-      .poll(async () => (await engines.view(botId, context)).busy)
-      .toBe(false);
-    expect((await engines.view(botId, context)).error).toBeNull();
-    await task.wait(context);
+    try {
+      await expect
+        .poll(async () => (await engines.view(botId, context)).busy)
+        .toBe(false);
+    } finally {
+      listed.resolve(new Error("Prompt did not start tool discovery"));
+      await task.wait(context).catch(() => {});
+    }
+    const settled = await engines.view(botId, context);
+    if (discoveryError) {
+      expect(settled.error).toContain("Tool discovery failed");
+      expect(
+        chatTranscript(settled).some(
+          (item) =>
+            item.kind === "message" && item.message.role === "assistant",
+        ),
+      ).toBe(false);
+      return;
+    }
+    expect(settled.error).toBeNull();
     const restored = await runtime.reopen();
     const view = await restored.engines?.view(botId, context);
     expect(view?.error).toBeNull();

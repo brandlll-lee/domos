@@ -898,7 +898,8 @@ export class EngineExecution {
         await emit({ type: "runtime", state: { notices: mcpNotices } });
       initialized.resolve(active.session);
       await active.session.ready?.();
-      await active.process.toolsReady?.();
+      if (provider.toolDiscovery !== "prompt")
+        await active.process.toolsReady?.();
       if (memoryReview) {
         if (snapshot.dispatched) {
           if (!(await active.session.recover?.(snapshot.turnId ?? null)))

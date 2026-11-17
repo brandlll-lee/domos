@@ -87,7 +87,8 @@ test
       await rm(directory, { recursive: true, force: true, maxRetries: 10 });
     });
     let session: EngineSession;
-    session = await engineProvider(id).open({
+    const provider = engineProvider(id);
+    session = await provider.open({
       process: worker,
       config: {
         provider: id,
@@ -112,7 +113,7 @@ test
       },
     });
     await session.ready?.();
-    await worker.toolsReady();
+    if (provider.toolDiscovery !== "prompt") await worker.toolsReady();
     const cases = [
       {
         prompt:

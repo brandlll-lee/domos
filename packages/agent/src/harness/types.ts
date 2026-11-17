@@ -362,6 +362,7 @@ export interface EngineProvider {
   readonly command: string;
   readonly package: string;
   readonly login: readonly string[] | null;
+  readonly toolDiscovery?: "prompt";
   readonly capabilities: {
     approvals: boolean;
     models: boolean;
