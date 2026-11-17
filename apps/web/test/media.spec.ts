@@ -13,8 +13,19 @@ test("attachment-only messages show cards directly for users and Bots", async ({
   page,
 }) => {
   await page.goto(service.url);
+  const transparent = await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 320;
+    canvas.height = 180;
+    canvas.getContext("2d")?.fillRect(80, 40, 160, 100);
+    return canvas.toDataURL().split(",")[1];
+  });
   await attachFiles(page, [
-    { name: "photo.png", mimeType: "image/png", buffer: png(320, 180) },
+    {
+      name: "photo.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(transparent ?? "", "base64"),
+    },
     {
       name: "report.txt",
       mimeType: "text/plain",
@@ -52,6 +63,10 @@ test("attachment-only messages show cards directly for users and Bots", async ({
   await expect(delivered).toHaveCount(1);
   for (const row of [outgoing, delivered]) {
     await expect(row.locator(".message-bubble")).toHaveCount(0);
+    await expect(row.locator(".image-thumbnail")).toHaveCSS(
+      "background-color",
+      "rgba(0, 0, 0, 0)",
+    );
     await expect(
       row.getByRole("button", { name: "查看图片 photo.png", exact: true }),
     ).toBeVisible();
@@ -88,6 +103,10 @@ test("audio decode failures preserve the file download action", async ({
 }) => {
   await service.control({ content: "已收到音频。" });
   await page.goto(service.url);
+  await page
+    .locator("#bot-details")
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
   const audio = await readFile(
     new URL(
       "../../../packages/agent/test/fixtures/media/audio.mp3",
@@ -138,6 +157,35 @@ test("audio decode failures preserve the file download action", async ({
     )
     .toBeGreaterThan(0.2);
   await expect(card.getByRole("alert")).toHaveCount(0);
+  await card
+    .getByRole("button", { name: "暂停 broken.mp3", exact: true })
+    .click();
+  const progress = card.getByRole("slider", { name: "播放进度 broken.mp3" });
+  await progress.press("ArrowRight");
+  await expect(progress).not.toHaveValue("0");
+  await progress.evaluate((node) => node.blur());
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await expect(card.locator(".audio-play")).toHaveCSS(
+      "color",
+      theme === "dark" ? "rgb(239, 239, 240)" : "rgb(32, 33, 35)",
+    );
+    await page.setViewportSize({
+      width: theme === "light" ? 1360 : 390,
+      height: 844,
+    });
+    await expect(card.locator(".action-menu-trigger")).toHaveCSS(
+      "position",
+      "static",
+    );
+    expect(
+      await card.evaluate((node) => node.scrollWidth <= node.clientWidth),
+    ).toBe(true);
+    await page.evaluate(() => document.activeViewTransition?.finished);
+    await card.evaluate((node) => node.scrollIntoView({ block: "center" }));
+    await page.screenshot({ path: `test-results/audio-pill-${theme}.png` });
+  }
 });
 
 test("message media leads captions and bubble tails follow both themes", async ({
@@ -172,10 +220,8 @@ test("message media leads captions and bubble tails follow both themes", async (
     .getByLabel("Domos 的回复")
     .last()
     .locator(".message-bubble");
-  const outgoing = page
-    .getByLabel("你的消息")
-    .last()
-    .locator(".message-bubble");
+  const outgoing = page.getByLabel("你的消息").last();
+  const outgoingBubble = outgoing.locator(".message-bubble");
   await expect(incoming).toContainText("图片和文档已收到。");
   await page.evaluate(() => document.activeViewTransition?.finished);
   const beforeImage = await incoming.boundingBox();
@@ -193,12 +239,12 @@ test("message media leads captions and bubble tails follow both themes", async (
   ] as const) {
     await page.setViewportSize({ width: 1360, height: 900 });
     await chooseAppearance(page, label);
-    const background = await outgoing.evaluate(
+    const background = await outgoingBubble.evaluate(
       (element) => getComputedStyle(element).backgroundColor,
     );
     if (theme === "light") lightBackground = background;
     else expect(background).not.toBe(lightBackground);
-    await expect(outgoing).toHaveCSS(
+    await expect(outgoingBubble).toHaveCSS(
       "color",
       await incoming.evaluate((element) => getComputedStyle(element).color),
     );
@@ -210,35 +256,18 @@ test("message media leads captions and bubble tails follow both themes", async (
           .locator(".attachments")
           .boundingBox();
         const caption = await outgoing.locator(".user-text").boundingBox();
-        const frame = await outgoing.boundingBox();
-        const image = await outgoing
-          .locator(".image-thumbnail img")
-          .boundingBox();
-        const document = await outgoing.locator(".file-card").boundingBox();
-        if (!frame || !image || !document || !caption)
-          throw new Error("Message media missing");
-        for (const media of [image, document]) {
-          expect(media.x - frame.x).toBeGreaterThan(0);
-          expect(media.x - frame.x).toBeLessThanOrEqual(4);
-          expect(
-            frame.x + frame.width - media.x - media.width,
-          ).toBeLessThanOrEqual(4);
-        }
-        expect(image.y - frame.y).toBeLessThanOrEqual(4);
-        expect(
-          await outgoing.locator(".user-text").evaluate((element) => {
-            const range = window.document.createRange();
-            range.selectNodeContents(element);
-            return range.getBoundingClientRect().x;
-          }),
-        ).toBeGreaterThan(image.x);
+        const image = outgoing.locator(".image-thumbnail");
+        await expect(image).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+        await expect(outgoingBubble.locator(".attachments, img")).toHaveCount(
+          0,
+        );
         expect(
           attachments &&
             caption &&
             attachments.y + attachments.height <= caption.y,
         ).toBeTruthy();
       }).toPass({ timeout: 5000 });
-      for (const bubble of [incoming, outgoing]) {
+      for (const bubble of [incoming, outgoingBubble]) {
         const tail = await bubble.evaluate((element) => {
           const style = getComputedStyle(element, "::after");
           return {

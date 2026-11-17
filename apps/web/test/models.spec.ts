@@ -99,6 +99,9 @@ test("model search and themed popups support keyboard, dismissal, and narrow scr
     exact: true,
   });
   await expect(search).toBeFocused();
+  await expect(
+    page.locator(".model-selector-identity .harness-version"),
+  ).toHaveText(/^v\d+\.\d+/);
   await search.click();
   await expect(search).toHaveCSS("outline-style", "none");
   await search.fill(crypto.randomUUID());
@@ -521,7 +524,8 @@ test("AI services share connection reads and keep Bot model selection separate",
           ready: provider !== "codex",
           authenticated: provider === "pi" || provider === "claude",
           path: provider === "codex" ? null : `C:/tools/${provider}`,
-          version: provider === "codex" ? null : "1.0.0",
+          version:
+            provider === "codex" ? null : claudeReady ? "1.1.0" : "1.0.0",
           message: provider === "codex" ? "尚未安装" : "连接状态已读取",
           models:
             provider === "pi"
@@ -579,7 +583,7 @@ test("AI services share connection reads and keep Bot model selection separate",
     ["Pi", "可用", "positive"],
   ] as const) {
     const row = settings.getByRole("group", { name, exact: true });
-    await expect(row.getByRole("status")).toHaveText(status);
+    await expect(row.getByRole("status")).toContainText(status);
     await expect(row.locator(".button")).toHaveCount(1);
     const badge = settings
       .locator(".ai-service-row")
@@ -588,6 +592,9 @@ test("AI services share connection reads and keep Bot model selection separate",
     await expect(badge).toHaveAttribute("data-tone", tone);
     await expect(badge).toHaveAccessibleName(status);
   }
+  await expect(
+    settings.getByRole("group", { name: "Codex", exact: true }),
+  ).toContainText("版本未提供");
   const snapshot = Object.fromEntries(reads);
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
@@ -690,7 +697,7 @@ test("AI services share connection reads and keep Bot model selection separate",
     settings
       .getByRole("group", { name: "Claude Code", exact: true })
       .getByRole("status"),
-  ).toHaveText("读取失败");
+  ).toContainText("读取失败");
   expect(Object.fromEntries(reads)).toEqual(snapshot);
   claudeReady = true;
   await settings.getByRole("button", { name: "重新检查", exact: true }).click();
@@ -698,7 +705,10 @@ test("AI services share connection reads and keep Bot model selection separate",
     settings
       .getByRole("group", { name: "Claude Code", exact: true })
       .getByRole("status"),
-  ).toHaveText("可用");
+  ).toContainText("可用");
+  await expect(
+    settings.getByRole("group", { name: "Claude Code", exact: true }),
+  ).toContainText("v1.1.0");
   expect(reads.get("claude")).toBe(2);
   await page.route("**/rpc/engines/login", (route) =>
     route.fulfill({ json: { json: { state: "waiting", prompt: "登录代码" } } }),

@@ -492,6 +492,7 @@ export function ModelSetting({
         onSelect={(model) =>
           void save({ ...config, model, options: undefined })
         }
+        version={connection?.version}
         status={connection ? connection.message : ""}
         onConfigure={settings.admin ? () => setConfiguring(true) : undefined}
         notice={

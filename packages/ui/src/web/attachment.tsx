@@ -11,13 +11,11 @@ export function AudioAttachment({
   name,
   src,
   duration,
-  avatar,
   action,
 }: {
   name: string;
   src: string;
   duration?: number;
-  avatar?: ReactNode;
   action?: ReactNode;
 }) {
   const id = useId();
@@ -140,57 +138,47 @@ export function AudioAttachment({
           />
         </svg>
       </Button>
-      <div className="audio-track">
-        <div className="audio-waveform">
-          <svg
-            viewBox="0 0 240 32"
-            preserveAspectRatio="none"
-            aria-hidden="true"
-          >
-            <defs>
-              <clipPath id={`${id}-progress`}>
-                <rect
-                  width={length ? (position / length) * 240 : 0}
-                  height="32"
-                />
-              </clipPath>
-            </defs>
-            <g id={`${id}-bars`} ref={bars}>
-              {waveformPositions.map((x) => (
-                <rect key={x} x={x} y="15" width="2" height="2" rx="1" />
-              ))}
-            </g>
-            <use
-              href={`#${id}-bars`}
-              clipPath={`url(#${id}-progress)`}
-              className="audio-waveform-played"
-            />
-          </svg>
-          <input
-            type="range"
-            min="0"
-            max={length || 1}
-            step="any"
-            value={position}
-            disabled={!started || !length}
-            aria-label={`播放进度 ${name}`}
-            aria-valuetext={`${mediaTime(position)} / ${mediaTime(length)}`}
-            onChange={(event) => {
-              const value = Number(event.target.value);
-              if (player.current) player.current.currentTime = value;
-              setPosition(value);
-            }}
+      <div className="audio-waveform">
+        <svg viewBox="0 0 240 32" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <clipPath id={`${id}-progress`}>
+              <rect
+                width={length ? (position / length) * 240 : 0}
+                height="32"
+              />
+            </clipPath>
+          </defs>
+          <g id={`${id}-bars`} ref={bars}>
+            {waveformPositions.map((x) => (
+              <rect key={x} x={x} y="15" width="2" height="2" rx="1" />
+            ))}
+          </g>
+          <use
+            href={`#${id}-bars`}
+            clipPath={`url(#${id}-progress)`}
+            className="audio-waveform-played"
           />
-        </div>
-        <div className="audio-caption">
-          <span className="media-attachment-duration">
-            {mediaTime(playing || position > 0 ? position : length)}
-          </span>
-          <span title={name}>{name}</span>
-        </div>
+        </svg>
+        <input
+          type="range"
+          min="0"
+          max={length || 1}
+          step="any"
+          value={position}
+          disabled={!started || !length}
+          aria-label={`播放进度 ${name}`}
+          aria-valuetext={`${mediaTime(position)} / ${mediaTime(length)}`}
+          onChange={(event) => {
+            const value = Number(event.target.value);
+            if (player.current) player.current.currentTime = value;
+            setPosition(value);
+          }}
+        />
       </div>
-      {avatar && <span className="audio-author">{avatar}</span>}
-      <div className="media-attachment-menu">{action}</div>
+      <span className="media-attachment-duration">
+        {mediaTime(playing || position > 0 ? position : length)}
+      </span>
+      {action}
       {error && (
         <p role="alert" className="audio-error">
           音频无法播放。请重试、另存为或使用系统打开。

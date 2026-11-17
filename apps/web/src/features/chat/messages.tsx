@@ -159,11 +159,9 @@ const MessageRow = memo(function MessageRow({
         <MessageDetail botId={botId} message={message}>
           {(resolved) => {
             const files = !!resolved.attachments?.length;
-            const standalone =
-              (files ||
-                resolved.content.some((part) => part.type === "image")) &&
-              !messageText(resolved).trim() &&
-              !materialTokens(resolved.materials).length;
+            const images = resolved.content.filter(
+              (part) => part.type === "image",
+            );
             const attachments = files && (
               <Attachments
                 botId={botId}
@@ -177,55 +175,64 @@ const MessageRow = memo(function MessageRow({
                 }
               />
             );
-            const content = (
-              <MessageContent
-                content={resolved.content}
-                materials={resolved.materials}
-                user={resolved.role === "user"}
-              />
-            );
-            return standalone ? (
-              <div className="attachment-message">
-                {attachments}
-                {content}
-              </div>
-            ) : (
-              <MessageBubble
-                side={resolved.role === "user" ? "outgoing" : "incoming"}
-              >
-                {attachments}
-                <MessageBody>
-                  {resolved.reply && (
-                    <button
-                      type="button"
-                      className="message-reply"
-                      aria-label={`回复「${resolved.reply.title}」`}
-                      onClick={() =>
-                        openChatTarget({
-                          chat: window.location.hash.slice(1) || `bot/${botId}`,
-                          botId,
-                          sessionId: botId,
-                          messageId: resolved.reply?.id ?? "",
-                          cursor: resolved.reply?.cursor,
-                        })
-                      }
-                    >
-                      <span>↪ {resolved.reply.title}</span>
-                      {resolved.reply.attachments?.[0] && (
-                        <img
-                          className="message-reply-image"
-                          src={fileUrl(botId, resolved.reply.attachments[0].id)}
-                          alt=""
-                          loading="lazy"
-                          decoding="async"
-                        />
+            return (
+              <div className="message-parts">
+                {(files || images.length > 0) && (
+                  <div className="attachment-message">
+                    {attachments}
+                    <MessageContent content={images} />
+                  </div>
+                )}
+                {(messageText(resolved).trim() ||
+                  materialTokens(resolved.materials).length > 0 ||
+                  resolved.reply) && (
+                  <MessageBubble
+                    side={resolved.role === "user" ? "outgoing" : "incoming"}
+                  >
+                    <MessageBody>
+                      {resolved.reply && (
+                        <button
+                          type="button"
+                          className="message-reply"
+                          aria-label={`回复「${resolved.reply.title}」`}
+                          onClick={() =>
+                            openChatTarget({
+                              chat:
+                                window.location.hash.slice(1) || `bot/${botId}`,
+                              botId,
+                              sessionId: botId,
+                              messageId: resolved.reply?.id ?? "",
+                              cursor: resolved.reply?.cursor,
+                            })
+                          }
+                        >
+                          <span>↪ {resolved.reply.title}</span>
+                          {resolved.reply.attachments?.[0] && (
+                            <img
+                              className="message-reply-image"
+                              src={fileUrl(
+                                botId,
+                                resolved.reply.attachments[0].id,
+                              )}
+                              alt=""
+                              loading="lazy"
+                              decoding="async"
+                            />
+                          )}
+                        </button>
                       )}
-                    </button>
-                  )}
-                  <MaterialChips materials={resolved.materials} />
-                  {content}
-                </MessageBody>
-              </MessageBubble>
+                      <MaterialChips materials={resolved.materials} />
+                      <MessageContent
+                        content={resolved.content.filter(
+                          (part) => part.type !== "image",
+                        )}
+                        materials={resolved.materials}
+                        user={resolved.role === "user"}
+                      />
+                    </MessageBody>
+                  </MessageBubble>
+                )}
+              </div>
             );
           }}
         </MessageDetail>

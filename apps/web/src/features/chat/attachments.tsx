@@ -4,10 +4,8 @@ import {
   FileAttachment,
   VideoAttachment,
 } from "@domos/ui/attachment";
-import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { ActionMenu } from "@domos/ui/menu";
-import { UserIcon } from "@phosphor-icons/react/dist/csr/User";
 import { useState } from "react";
 import { fileAction, fileUrl } from "../files/actions.ts";
 import { InlineFile } from "../files/content.tsx";
@@ -49,7 +47,12 @@ export function Attachments({
     }
   }
   return (
-    <div className="attachments">
+    <section
+      className="attachments"
+      aria-label={
+        author === "user" ? "你的附件" : author && `${author.name} 的附件`
+      }
+    >
       {images.length > 0 && (
         <ImageGallery
           botId={botId}
@@ -68,7 +71,6 @@ export function Attachments({
           <AttachmentCard
             botId={botId}
             file={file}
-            author={author}
             onOpen={() => preview?.open(file, botId)}
           />
         </div>
@@ -78,7 +80,7 @@ export function Attachments({
           {chatCopy.errors.download}
         </p>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -86,12 +88,10 @@ function AttachmentCard({
   botId,
   file,
   onOpen,
-  author,
 }: {
   botId: number;
   file: Attachment;
   onOpen: () => void;
-  author?: "user" | { botId?: number; name: string; avatar: string };
 }) {
   const { element, summary } = useFileSummary(botId, file);
   const kind = filePreviewKind(file);
@@ -145,17 +145,6 @@ function AttachmentCard({
           name={file.name}
           src={fileUrl(botId, file.id)}
           duration={summary?.duration}
-          avatar={
-            author === "user" ? (
-              <UserIcon aria-label="你" />
-            ) : (
-              author && (
-                <span title={author.name}>
-                  <BotAvatar botId={author.botId} seed={author.avatar} />
-                </span>
-              )
-            )
-          }
           action={menu}
         />
       ) : kind === "video" ? (

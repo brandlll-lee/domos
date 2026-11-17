@@ -231,6 +231,12 @@ function Services({ botId, admin }: { botId: number; admin: boolean }) {
                       title={failure || connection?.message}
                     >
                       {status?.label ?? <Loading label="正在检查连接" inline />}
+                      {" · "}
+                      <span className="harness-version">
+                        {connection?.version
+                          ? `v${connection.version}`
+                          : "版本未提供"}
+                      </span>
                     </span>
                   }
                 >

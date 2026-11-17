@@ -424,29 +424,25 @@
 .typing-row > .message-bubble {
   max-width: 100%;
 }
-.message-bubble:has(.attachments, .message-image) {
-  width: var(--message-media-width);
-  padding: var(--space-1);
+.message-parts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: var(--message-max-width);
+}
+.message.user .message-parts {
+  align-items: flex-end;
+}
+.message-parts > :is(.message-bubble, .attachment-message) {
+  max-width: 100%;
 }
 .attachment-message {
   width: var(--message-media-width);
   max-width: var(--message-max-width);
   min-width: 0;
 }
-.message-bubble:has(.attachments, .message-image) .message-body {
-  border-start-start-radius: calc(var(--radius-message) - var(--space-1));
-  border-start-end-radius: calc(var(--radius-message) - var(--space-1));
-}
-.message-bubble:has(.attachments, .message-image) :is(.user-text, .markdown) {
-  padding: 0 var(--space-2) var(--space-1);
-}
-.message-bubble .file-attachment {
-  --color-muted: var(--color-text);
-  background: color-mix(in srgb, currentColor 6%, transparent);
-  border-color: transparent;
-}
-.message-bubble > .attachments:not(:last-child),
-.message-body .message-image:not(:last-child),
 .message-body .material-chips:not(:last-child) {
   margin-bottom: var(--space-2);
 }
@@ -647,10 +643,6 @@
   width: fit-content;
   max-width: min(100%, 18rem);
 }
-.message-bubble .image-gallery {
-  width: 100%;
-  max-width: none;
-}
 .image-thumbnail {
   display: grid;
   place-items: center;
@@ -659,7 +651,7 @@
   overflow: hidden;
   border: 0;
   border-radius: var(--radius-control);
-  background: var(--color-assistant);
+  background: transparent;
   color: var(--color-text);
   cursor: zoom-in;
 }
@@ -899,10 +891,6 @@ body:has(.workspace[data-platform="darwin"]) .image-viewer-header {
   max-width: 100%;
   max-height: 16rem;
   aspect-ratio: auto;
-}
-.message-bubble .image-gallery[data-count="1"] img {
-  width: 100%;
-  max-height: none;
 }
 .button.return-latest[data-size="icon"] {
   position: absolute;

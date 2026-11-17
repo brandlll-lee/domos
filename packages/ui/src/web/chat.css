@@ -361,27 +361,23 @@ button.file-caption {
   margin: 0;
   min-width: 0;
   border: 0;
-  padding: var(--space-4) var(--space-8) var(--space-3) var(--space-3);
+  border-radius: var(--radius-round);
+  padding: var(--space-2);
   background: var(--color-assistant);
+  color: var(--color-muted);
 }
 .media-attachment-audio audio {
   display: none;
 }
-.audio-play {
+.media-attachment-audio .button[data-variant="ghost"] {
   flex-shrink: 0;
-}
-.audio-play svg {
-  fill: currentColor;
-}
-.audio-play svg {
-  width: var(--space-6);
-  height: var(--space-6);
-}
-.audio-track {
-  flex: 1;
-  min-width: 0;
+  border-radius: var(--radius-round);
+  background: var(--color-control-hover);
+  color: var(--color-text);
 }
 .audio-waveform {
+  flex: 1;
+  min-width: 0;
   position: relative;
   height: var(--space-8);
   color: var(--color-muted);
@@ -390,6 +386,11 @@ button.file-caption {
   width: 100%;
   height: 100%;
   fill: currentColor;
+}
+.media-attachment-audio .audio-play svg {
+  fill: currentColor;
+  width: var(--space-6);
+  height: var(--space-6);
 }
 .audio-waveform-played {
   color: var(--color-message-link);
@@ -413,32 +414,6 @@ button.file-caption {
   height: var(--space-3);
   border-radius: var(--radius-round);
   background: var(--color-message-link);
-}
-.audio-caption {
-  display: flex;
-  gap: var(--space-3);
-  justify-content: space-between;
-  color: var(--color-muted);
-  font-size: var(--text-small);
-}
-.audio-caption > span:last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.audio-author {
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  width: var(--space-10);
-  height: var(--space-10);
-  border-radius: var(--radius-round);
-  background: var(--color-surface);
-}
-.audio-author > svg {
-  width: var(--space-6);
-  height: var(--space-6);
-  color: var(--color-muted);
 }
 .audio-error {
   flex-basis: 100%;

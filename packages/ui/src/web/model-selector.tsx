@@ -14,6 +14,7 @@ export function ModelSelector({
   provider,
   effort,
   status,
+  version,
   notice,
   configuration,
   value,
@@ -38,6 +39,7 @@ export function ModelSelector({
   provider: string;
   effort?: ReactNode;
   status?: string;
+  version?: string | null;
   notice?: ReactNode;
   configuration?: ReactNode;
   value: string;
@@ -152,7 +154,12 @@ export function ModelSelector({
               <Tabs.Panel value={provider} className="model-selector-panel">
                 <div className="model-selector-header">
                   <div className="model-selector-identity">
-                    <strong>{selected?.name}</strong>
+                    <div>
+                      <strong>{selected?.name}</strong>{" "}
+                      <span className="harness-version">
+                        {version ? `v${version}` : "版本未提供"}
+                      </span>
+                    </div>
                     {status && <span title={status}>{status}</span>}
                   </div>
                 </div>
