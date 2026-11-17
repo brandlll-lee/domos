@@ -35,6 +35,7 @@ type Login = {
 };
 const loginHosts = {
   codex: ["auth.openai.com"],
+  grok: ["x.ai", "grok.com", "accounts.x.ai"],
   claude: [
     "claude.com",
     "claude.ai",
@@ -246,7 +247,7 @@ export class EngineLogins {
     config: EngineConfig,
     context: Context,
   ) {
-    const provider = config.provider as "codex" | "claude";
+    const provider = config.provider as keyof typeof loginHosts;
     let output = "";
     const collect = (chunk: Buffer) => {
       output = (output + stripVTControlCharacters(chunk.toString())).slice(
@@ -268,7 +269,7 @@ export class EngineLogins {
           } catch {}
         }
       }
-      if (provider === "codex")
+      if (provider === "codex" || provider === "grok")
         flow.status.code =
           output.match(/\b[A-Z0-9]{4,8}-[A-Z0-9]{4,8}\b/)?.[0] ?? null;
       else if (/paste[^\n]*code|enter[^\n]*code/i.test(output))

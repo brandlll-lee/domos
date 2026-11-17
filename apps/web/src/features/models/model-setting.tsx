@@ -215,6 +215,9 @@ export function ModelSetting({
       </Button>
     );
   }
+  const nativeProvider = profile?.providers.find(
+    (item) => item.id === config.provider,
+  );
   const configuration = (
     <div className="model-selector-connection">
       {!setupProvider && (
@@ -319,7 +322,8 @@ export function ModelSetting({
           action("检查连接", () => inspect())}
         {settings.admin && config.provider !== "acp" && (
           <>
-            {(!setupProvider || (connection && !connection.ready)) &&
+            {nativeProvider?.installable &&
+              (!setupProvider || (connection && !connection.ready)) &&
               action(
                 setupProvider
                   ? "下载并继续"
@@ -336,8 +340,9 @@ export function ModelSetting({
                   store.remember(installed.config, installed.connection);
                 },
               )}
-            {(!setupProvider ||
-              (connection?.ready && !connection.authenticated)) &&
+            {nativeProvider?.login &&
+              (!setupProvider ||
+                (connection?.ready && !connection.authenticated)) &&
               action(
                 "登录",
                 async () =>

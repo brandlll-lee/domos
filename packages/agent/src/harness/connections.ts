@@ -1,3 +1,4 @@
+import { RequestError } from "@agentclientprotocol/sdk";
 import type { Context } from "@earendil-works/chord/context";
 import { readClaudeAccount } from "./claude-account.ts";
 import { readControls } from "./controls.ts";
@@ -245,6 +246,18 @@ export class EngineConnections {
           (await session.vision?.()) ??
           null,
         message: "引擎已就绪。",
+      };
+    } catch (error) {
+      if (!(error instanceof RequestError) || error.code !== -32000)
+        throw error;
+      return {
+        ready: true,
+        version: installation.version,
+        path: installation.path,
+        authenticated: false,
+        models: [] as EngineModel[],
+        vision: null,
+        message: "请在工作电脑连接原生账号。",
       };
     } finally {
       await worker.close();

@@ -2,6 +2,12 @@ import type { EngineId } from "@domos/agent/harness/types";
 import "./engine-mark.css";
 import { TerminalWindowIcon } from "@phosphor-icons/react/dist/csr/TerminalWindow";
 
+const images: Record<string, string> = {
+  codex: new URL("./assets/codex.svg", import.meta.url).href,
+  claude: new URL("./assets/claude-code.svg", import.meta.url).href,
+  grok: new URL("./assets/grok.svg", import.meta.url).href,
+};
+
 const marks = {
   pi: {
     viewBox: "0 0 800 800",
@@ -31,16 +37,12 @@ const marks = {
 >;
 
 export function EngineMark({ provider }: { provider: EngineId }) {
-  if (provider === "codex" || provider === "claude")
+  if (images[provider])
     return (
       <img
         className="engine-mark"
         data-provider={provider}
-        src={
-          provider === "codex"
-            ? new URL("./assets/codex.svg", import.meta.url).href
-            : new URL("./assets/claude-code.svg", import.meta.url).href
-        }
+        src={images[provider]}
         alt=""
         draggable={false}
       />

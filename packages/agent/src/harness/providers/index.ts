@@ -1,6 +1,7 @@
 import type { EngineId, EngineProvider } from "../types.ts";
 import { claudeProvider } from "./claude.ts";
 import { codexProvider } from "./codex.ts";
+import { grokProvider } from "./grok.ts";
 import { customAcpProvider, opencodeProvider } from "./opencode.ts";
 import { piProvider } from "./pi.ts";
 
@@ -11,6 +12,7 @@ export const providers: ReadonlyMap<EngineId, EngineProvider> = new Map(
     claudeProvider,
     opencodeProvider,
     customAcpProvider,
+    grokProvider,
   ].map((provider) => [provider.id, provider]),
 );
 

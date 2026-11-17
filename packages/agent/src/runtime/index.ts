@@ -196,11 +196,7 @@ export class Runtime {
         doc?.prepared &&
           (doc.preparedComputerId ?? doc.computerId) === computerId,
       ),
-      providers: [...providers.values()].map(({ id, name, capabilities }) => ({
-        id,
-        name,
-        capabilities,
-      })),
+      providers: engineCatalog(),
     };
   }
 
@@ -937,7 +933,9 @@ export class Runtime {
               ? input.text
               : materialText(input.text, input.materials),
             attachmentInstructions(input.attachments ?? [], ownerId),
-          ].join("\n\n"),
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
           submissionId: submission.id,
           previous: waiting ? doc.activeId : previous,
           turnId,
@@ -1119,9 +1117,13 @@ export { EngineExecution } from "../harness/execution.ts";
 export { engineTask } from "../harness/task.ts";
 
 export function engineCatalog() {
-  return [...providers.values()].map(({ id, name, capabilities }) => ({
-    id,
-    name,
-    capabilities,
-  }));
+  return [...providers.values()].map(
+    ({ id, name, capabilities, package: nativePackage, login }) => ({
+      id,
+      name,
+      capabilities,
+      installable: Boolean(nativePackage),
+      login: Boolean(login) || id === "pi",
+    }),
+  );
 }

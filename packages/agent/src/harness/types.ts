@@ -16,6 +16,7 @@ export const approvalLabels: Record<ApprovalMode, string> = {
 export function supportedApprovalModes(provider: string): ApprovalMode[] {
   if (provider === "claude") return [...approvalModes];
   if (provider === "codex") return ["ask", "auto", "full"];
+  if (provider === "grok") return ["ask", "auto", "full"];
   if (provider === "pi" || provider === "opencode") return ["ask", "full"];
   return ["ask"];
 }
@@ -334,6 +335,7 @@ export interface EngineSession {
   steer?(
     text: string,
     images?: EngineImage[],
+    requestId?: string,
   ): Promise<"accepted" | "refused" | "uncertain">;
   interrupt(): Promise<void>;
   answer(id: string, answer: EngineAnswer): Promise<void>;

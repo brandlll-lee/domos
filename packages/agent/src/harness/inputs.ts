@@ -120,6 +120,7 @@ export class EngineInputs {
               ? `${handoffInstructions}${history}${requestInstructions}${next.input.text}`
               : next.input.text,
             images,
+            next.input.turnId,
           )) ?? "refused";
       } catch {}
       await this.runtime.commit(async (tx) => {

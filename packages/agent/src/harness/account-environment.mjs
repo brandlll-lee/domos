@@ -70,6 +70,7 @@ export async function accountEnvironment(spec, home, source) {
   env[pathKey] = [
     env[pathKey],
     join(env.HOME, ".local", "bin"),
+    join(env.HOME, ".grok", "bin"),
     join(env.HOME, ".npm-global", "bin"),
     ...(env.APPDATA ? [join(env.APPDATA, "npm")] : []),
     join(home, "runtime", "node_modules", ".bin"),
@@ -96,12 +97,14 @@ export async function accountEnvironment(spec, home, source) {
 export async function accountFingerprint(provider, env) {
   const user = env.HOME || env.USERPROFILE || homedir();
   const root = {
+    grok: join(user, ".grok"),
     pi: env.PI_CODING_AGENT_DIR || join(user, ".pi", "agent"),
     codex: env.CODEX_HOME || join(user, ".codex"),
     claude: env.CLAUDE_CONFIG_DIR || join(user, ".claude"),
     opencode: join(env.XDG_CONFIG_HOME || join(user, ".config"), "opencode"),
   }[provider];
   const files = {
+    grok: ["auth.json", "config.toml"],
     pi: ["auth.json", "models.json"],
     codex: ["auth.json", "config.toml"],
     claude: [".credentials.json", "settings.json"],
@@ -124,7 +127,7 @@ export async function accountFingerprint(provider, env) {
   ))
     if (
       !serviceKey.test(key) &&
-      (/^(?:PI_|OPENAI_|ANTHROPIC_|CLAUDE_|CODEX_|OPENCODE_|AWS_|GOOGLE_|AZURE_)/.test(
+      (/^(?:PI_|OPENAI_|ANTHROPIC_|CLAUDE_|CODEX_|OPENCODE_|GROK_|AWS_|GOOGLE_|AZURE_)/.test(
         key,
       ) ||
         /(?:KEY|TOKEN|SECRET|PASSWORD)$/.test(key))
