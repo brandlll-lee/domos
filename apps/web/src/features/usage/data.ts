@@ -29,6 +29,7 @@ export const harnesses = [
   { value: "opencode", label: "OpenCode" },
   { value: "grok", label: "Grok" },
   { value: "antigravity", label: "Antigravity" },
+  { value: "devin", label: "Devin" },
 ];
 
 export const metricLabel = (metric: Metric) =>

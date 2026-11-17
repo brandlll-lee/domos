@@ -24,6 +24,8 @@ export class AcpPrompts {
 
   observe(text: string) {
     this.userText += text;
+    if (!this.submissions.some((item) => item.text.startsWith(this.userText)))
+      this.userText = text;
     for (const item of this.submissions)
       if (item.text && this.userText === item.text)
         item.admitted.resolve("accepted");

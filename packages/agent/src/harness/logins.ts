@@ -41,6 +41,7 @@ const loginHosts = {
     "antigravity.google.com",
   ],
   grok: ["x.ai", "grok.com", "accounts.x.ai"],
+  devin: ["devin.ai", "app.devin.ai", "cognition.ai", "windsurf.com"],
   claude: [
     "claude.com",
     "claude.ai",

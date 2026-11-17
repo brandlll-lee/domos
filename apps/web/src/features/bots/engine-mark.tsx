@@ -7,6 +7,7 @@ const images: Record<string, string> = {
   claude: new URL("./assets/claude-code.svg", import.meta.url).href,
   antigravity: new URL("./assets/antigravity.svg", import.meta.url).href,
   grok: new URL("./assets/grok.svg", import.meta.url).href,
+  devin: new URL("./assets/devin.svg", import.meta.url).href,
 };
 
 const marks = {

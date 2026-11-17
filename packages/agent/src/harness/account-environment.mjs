@@ -65,6 +65,7 @@ export async function accountEnvironment(spec, home, source) {
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.CLAUDECODE;
   delete env.CLAUDE_CODE_ENTRYPOINT;
+  delete env.ACP_BACKEND;
   const pathKey =
     Object.keys(env).find((key) => key.toUpperCase() === "PATH") ?? "PATH";
   env[pathKey] = [
@@ -100,6 +101,10 @@ export async function accountFingerprint(provider, env) {
   const root = {
     antigravity: join(user, ".gemini"),
     grok: join(user, ".grok"),
+    devin: join(
+      env.APPDATA || env.XDG_DATA_HOME || join(user, ".local", "share"),
+      "devin",
+    ),
     pi: env.PI_CODING_AGENT_DIR || join(user, ".pi", "agent"),
     codex: env.CODEX_HOME || join(user, ".codex"),
     claude: env.CLAUDE_CONFIG_DIR || join(user, ".claude"),
@@ -108,6 +113,7 @@ export async function accountFingerprint(provider, env) {
   const files = {
     antigravity: ["settings.json", "oauth_creds.json"],
     grok: ["auth.json", "config.toml"],
+    devin: ["credentials.toml"],
     pi: ["auth.json", "models.json"],
     codex: ["auth.json", "config.toml"],
     claude: [".credentials.json", "settings.json"],

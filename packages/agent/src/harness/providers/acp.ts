@@ -322,7 +322,10 @@ export function acpProvider(
                   request.options.find(
                     (item) =>
                       item.kind ===
-                      (answer.allow ? "allow_always" : "reject_always"),
+                        (answer.allow ? "allow_always" : "reject_always") &&
+                      (descriptor.id !== "devin" ||
+                        !answer.allow ||
+                        config.approvalMode === "full"),
                   ))
                 : undefined;
             return {
@@ -772,6 +775,21 @@ export function acpProvider(
               ? await prompts.run(blocks)
               : await rpc.prompt({ sessionId: id, prompt: blocks });
             await events;
+            if (outcome.usage && !openCode)
+              await emit({
+                type: "usage",
+                usage: {
+                  id: messageId,
+                  source: `${descriptor.id}.acp.prompt`,
+                  provider: null,
+                  model: config.model,
+                  input: outcome.usage.inputTokens,
+                  output: outcome.usage.outputTokens,
+                  cacheRead: outcome.usage.cachedReadTokens ?? null,
+                  cacheWrite: outcome.usage.cachedWriteTokens ?? null,
+                  costUsd: null,
+                },
+              });
             if (outcome.stopReason === "cancelled")
               throw new Error("工作已停止。");
             await reply();
