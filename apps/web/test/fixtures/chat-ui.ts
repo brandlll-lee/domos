@@ -126,7 +126,7 @@ export async function expectTextContrast(
     };
     return [
       ...document.querySelectorAll<HTMLElement>(
-        ".chat-preview span, .picker-trigger, .message-bubble, .picker-item, .message-composer-editor, .avatar-editor legend, .avatar-editor .navigation-tab",
+        ".chat-preview span, .picker-trigger, .message-bubble, .picker-item, .message-composer-editor, .avatar-editor legend, .avatar-editor .navigation-tab, .composer-action button, .message-material-token, .question-reply:is([aria-pressed=true], [data-selected]), .link-card-action, .media-attachment-audio",
       ),
     ].map((element) => {
       const parents: Element[] = [];
@@ -172,7 +172,9 @@ export async function createBot(
   await page.getByRole("menuitem", { name: "新建 Bot", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "新建 Bot", exact: true });
   await dialog.getByLabel("名字", { exact: true }).fill(name);
-  await expect(dialog.getByRole("textbox")).toHaveCount(1);
+  await expect(
+    dialog.getByRole("textbox", { name: "HEX", exact: true }),
+  ).toBeVisible();
   await expect(dialog.getByRole("combobox")).toHaveCount(0);
   await dialog.getByRole("button", { name: "创建", exact: true }).click();
 

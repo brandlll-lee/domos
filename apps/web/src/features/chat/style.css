@@ -1069,12 +1069,13 @@ body:has(.workspace[data-platform="darwin"]) .image-viewer-header {
   min-height: var(--control-height);
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--color-divider);
-  color: var(--color-message-link, var(--color-link));
+  background: var(--bot-color);
+  color: var(--bot-foreground);
   text-decoration: none;
   overflow-wrap: anywhere;
 }
 .link-card-action:hover {
-  background: var(--color-selection);
+  text-decoration: underline;
 }
 .link-card-action svg {
   width: var(--space-4);
@@ -1170,26 +1171,19 @@ body:has(.workspace[data-platform="darwin"]) .image-viewer-header {
 }
 .question-reply[aria-pressed="true"],
 .question-reply[data-selected] {
+  --color-muted: var(--bot-foreground);
   border-color: currentColor;
-  background: color-mix(
-    in srgb,
-    var(--color-message-link, var(--color-link)) 6%,
-    transparent
-  );
-  color: var(--color-message-link, var(--color-link));
+  background: var(--bot-color);
+  color: var(--bot-foreground);
 }
 @media (hover: hover) and (pointer: fine) {
-  .question-reply.button:not(:disabled, [aria-pressed="true"]):hover {
+  .question-reply.button:not(
+    :disabled,
+    [aria-pressed="true"],
+    [data-selected]
+  ):hover {
     background: color-mix(in srgb, var(--color-text) 3%, transparent);
     border-color: color-mix(in srgb, var(--color-text) 25%, var(--color-edge));
-  }
-  .question-reply.button[aria-pressed="true"]:not(:disabled):hover {
-    color: var(--color-message-link, var(--color-link));
-    background: color-mix(
-      in srgb,
-      var(--color-message-link, var(--color-link)) 6%,
-      transparent
-    );
   }
   .question-candidate:has(.question-reply.button:not(:disabled):hover):not(
     :has([aria-pressed="true"], [data-selected])
@@ -1275,12 +1269,10 @@ body:has(.workspace[data-platform="darwin"]) .image-viewer-header {
   .question-reply[data-selected],
   .question-reply[aria-pressed="true"]
 ) {
-  background: color-mix(
-    in srgb,
-    var(--color-message-link, var(--color-link)) 6%,
-    transparent
-  );
-  border-color: var(--color-message-link, var(--color-link));
+  --color-muted: var(--bot-foreground);
+  background: var(--bot-color);
+  border-color: var(--color-border);
+  color: var(--bot-foreground);
 }
 .question-candidate-copy {
   text-align: center;
@@ -1619,8 +1611,8 @@ button.takeover-preview:focus-visible {
   height: 1.15em;
   flex-shrink: 0;
 }
-.message-material-token:has(.bot-reference) {
-  background: transparent;
+.message-material-token .bot-reference {
+  color: inherit;
 }
 .message-author .bot-reference {
   font-size: var(--text-small);

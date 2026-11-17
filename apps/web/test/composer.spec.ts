@@ -17,6 +17,9 @@ test("composer shares Bot colors across voice, send, attachments and stop in bot
   page,
 }, info) => {
   await page.goto(service.url);
+  await page.addStyleTag({
+    content: ".composer-action button { transition: none; }",
+  });
   const input = page.getByLabel("消息", { exact: true });
   const action = page.locator(".composer-action button");
   await expect(action).toHaveAttribute("data-action", "voice");
@@ -27,7 +30,6 @@ test("composer shares Bot colors across voice, send, attachments and stop in bot
   for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await expect(action).toHaveCSS("opacity", "1");
-    await expect(action).toHaveCSS("color", "rgb(255, 255, 255)");
     const color = await action.evaluate(
       (node) => getComputedStyle(node).backgroundColor,
     );
@@ -35,16 +37,16 @@ test("composer shares Bot colors across voice, send, attachments and stop in bot
     background = color;
     const contrast = await action.evaluate(
       (node, colors) => {
-        const owner = node.parentElement as HTMLElement;
+        const owner = node.closest<HTMLElement>(".chat-surface");
+        if (!owner) throw new Error("Chat required");
         const previous = owner.style.getPropertyValue("--bot-color");
         const canvas = document.createElement("canvas");
         canvas.width = canvas.height = 1;
         const context = canvas.getContext("2d");
         if (!context) throw new Error("Canvas required for color measurement");
         try {
-          return colors.map(({ color }) => {
-            owner.style.setProperty("--bot-color", color);
-            context.fillStyle = getComputedStyle(node).backgroundColor;
+          const luminance = (color: string) => {
+            context.fillStyle = color;
             context.fillRect(0, 0, 1, 1);
             const [r = 0, g = 0, b = 0] = [
               ...context.getImageData(0, 0, 1, 1).data,
@@ -56,23 +58,51 @@ test("composer shares Bot colors across voice, send, attachments and stop in bot
                   ? channel / 12.92
                   : ((channel + 0.055) / 1.055) ** 2.4;
               });
-            return 1.05 / (r * 0.2126 + g * 0.7152 + b * 0.0722 + 0.05);
+            return r * 0.2126 + g * 0.7152 + b * 0.0722;
+          };
+          return colors.map(({ color }) => {
+            owner.style.setProperty("--bot-color", color);
+            const style = getComputedStyle(node);
+            const background = luminance(style.backgroundColor);
+            const foreground = luminance(style.color);
+            return {
+              actual: style.backgroundColor,
+              expected: `rgb(${color
+                .slice(1)
+                .match(/../g)
+                ?.map((part) => Number.parseInt(part, 16))
+                .join(", ")})`,
+              ratio:
+                (Math.max(background, foreground) + 0.05) /
+                (Math.min(background, foreground) + 0.05),
+            };
           });
         } finally {
           if (previous) owner.style.setProperty("--bot-color", previous);
           else owner.style.removeProperty("--bot-color");
         }
       },
-      [...characterColors],
+      [
+        ...characterColors,
+        ...["#000000", "#ffffff", "#808080", "#ffffaa", "#123456"].map(
+          (color) => ({ color }),
+        ),
+      ],
     );
-    for (const ratio of contrast) expect(ratio).toBeGreaterThanOrEqual(3);
+    for (const { ratio, actual, expected } of contrast) {
+      expect(actual).toBe(expected);
+      expect(ratio).toBeGreaterThanOrEqual(4.5);
+    }
+    const foreground = await action.evaluate(
+      (node) => getComputedStyle(node).color,
+    );
     await page
       .locator(".message-composer")
       .screenshot({ path: info.outputPath(`composer-voice-${theme}.png`) });
     await input.fill("发送内容");
     await expect(action).toHaveAttribute("data-action", "send");
     await expect(action).toBeEnabled();
-    await expect(action).toHaveCSS("color", "rgb(255, 255, 255)");
+    await expect(action).toHaveCSS("color", foreground);
     expect((await action.boundingBox())?.width).toBe(bounds?.width);
     await page
       .locator(".message-composer")
@@ -98,7 +128,7 @@ test("composer shares Bot colors across voice, send, attachments and stop in bot
   await expect(action).toBeEnabled();
   for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme });
-    await expect(action).toHaveCSS("color", "rgb(255, 255, 255)");
+    await expect(action).toHaveCSS("background-color", background);
     await page
       .locator(".message-composer")
       .screenshot({ path: info.outputPath(`composer-stop-${theme}.png`) });

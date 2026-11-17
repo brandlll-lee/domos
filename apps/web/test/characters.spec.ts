@@ -9,6 +9,83 @@ const sharp = createRequire(
   new URL("../../../packages/agent/package.json", import.meta.url),
 )("sharp");
 
+test("custom theme colors validate, save and survive restart in both themes", async ({
+  page,
+  service,
+}, info) => {
+  const api = createORPCClient<typeof appClient>(
+    new RPCLink({ url: `${service.url}/rpc` }),
+  );
+  const bot = (await api.bots.list())[0];
+  if (!bot) throw new Error("Bot missing");
+  await page.goto(service.url);
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  const details = page.locator("#bot-details");
+  await details.getByRole("button", { name: "编辑", exact: true }).click();
+  const colors = details.getByRole("group", { name: "主题色", exact: true });
+  const hex = colors.getByRole("textbox", { name: "HEX", exact: true });
+  const native = colors.getByLabel("自定义颜色", { exact: true });
+  const preview = details.locator(".avatar-preview > .bot-avatar");
+  const original = await preview.getAttribute("data-seed");
+  await hex.fill("#12zz");
+  await expect(hex).toHaveAttribute("aria-invalid", "true");
+  await expect(colors.getByText("请输入 # 和六位十六进制颜色")).toBeVisible();
+  await expect(preview).toHaveAttribute("data-seed", original ?? "");
+  await details.getByLabel("名字", { exact: true }).fill("Custom theme");
+  await details.getByRole("button", { name: "保存身份", exact: true }).click();
+  await expect(hex).toBeFocused();
+  expect((await api.work.profile({ botId: bot.id })).name).toBe(bot.name);
+  await hex.fill("#73479F");
+  await expect(hex).toHaveValue("#73479f");
+  await expect(hex).toBeFocused();
+  await expect(native).toHaveValue("#73479f");
+  await native.evaluate((node: HTMLInputElement) => {
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set?.call(node, "#123456");
+    node.dispatchEvent(new Event("input", { bubbles: true }));
+    node.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await expect(hex).toHaveValue("#123456");
+  await colors.getByRole("button", { name: "颜色：晴蓝", exact: true }).click();
+  await expect(hex).toHaveValue("#659fff");
+  await hex.fill("#73479f");
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.setViewportSize({
+      width: theme === "light" ? 1360 : 390,
+      height: 900,
+    });
+    await expect
+      .poll(() =>
+        colors.evaluate((node) => node.scrollWidth <= node.clientWidth),
+      )
+      .toBe(true);
+    await native.focus();
+    await expect(native).toBeFocused();
+    await colors.screenshot({
+      path: info.outputPath(`theme-colors-${theme}.png`),
+    });
+  }
+  await details.getByRole("button", { name: "保存身份", exact: true }).click();
+  await expect(
+    details.getByRole("button", { name: "保存身份", exact: true }),
+  ).toHaveCount(0);
+  expect((await api.work.profile({ botId: bot.id })).avatar).toContain(
+    "73479f000000",
+  );
+  const port = Number(new URL(service.url).port);
+  await service.stop();
+  await service.start(port);
+  await page.reload();
+  await expect(hex).toHaveValue("#73479f");
+  await expect(page.locator(".chat-surface")).toHaveCSS(
+    "--bot-color",
+    "#73479f",
+  );
+});
+
 test("profile updates merge with drafts and keep character equipment scoped", async ({
   page,
   service,

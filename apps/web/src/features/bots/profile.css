@@ -52,27 +52,66 @@
   border-radius: var(--radius-control);
 }
 .avatar-colors {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
+  display: grid;
+  gap: var(--space-4);
   margin: 0;
   padding: 0;
   border: 0;
 }
-.avatar-colors .button {
-  width: var(--control-height);
-  height: var(--control-height);
-  padding: var(--space-2);
+.avatar-color-grid {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: var(--space-2);
+  max-width: 24rem;
 }
-.avatar-editor .button[aria-pressed="true"] {
+.avatar-color-grid .button {
+  width: 100%;
+  min-height: 0;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--space-1);
+}
+.avatar-shapes .button[aria-pressed="true"] {
   border-color: var(--color-text);
   background: var(--color-control-hover);
   color: var(--color-text);
 }
-.avatar-colors span {
-  width: var(--space-5);
-  height: var(--space-5);
-  border-radius: var(--radius-round);
+.avatar-color-grid .button[aria-pressed="true"] {
+  outline: 2px solid var(--color-text);
+  outline-offset: 2px;
+}
+.avatar-color-custom {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-4);
+  max-width: 24rem;
+}
+.avatar-color-picker {
+  position: relative;
+  display: grid;
+  gap: var(--space-2);
+  font-size: var(--text-label);
+  cursor: pointer;
+}
+.avatar-color-picker > span {
+  width: var(--control-height);
+  height: var(--control-height);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+.avatar-color-picker > input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.avatar-color-picker:focus-within > span {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }
 .equipment-fields {
   display: grid;

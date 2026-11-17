@@ -6,7 +6,7 @@ import { RPCLink } from "@orpc/client/fetch";
 import type { RouterClient } from "@orpc/server";
 import { expect } from "@playwright/test";
 import type { AppRouter } from "../../api/src/router.ts";
-import { chooseAppearance } from "./fixtures/chat-ui.ts";
+import { chooseAppearance, expectTextContrast } from "./fixtures/chat-ui.ts";
 import { test } from "./fixtures/service.ts";
 
 test("native questions use the shared card and native replies persist", async ({
@@ -574,6 +574,7 @@ test("question replies align and completed questions remain readable", async ({
     });
     expect(distance).toBeGreaterThan(0);
     expect(distance).toBeLessThan(20);
+    await expectTextContrast(page);
     await page.screenshot({
       path: info.outputPath(`question-readable-${colorScheme}.png`),
     });

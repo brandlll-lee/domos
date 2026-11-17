@@ -590,7 +590,9 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
     await expect(
       dialog.getByRole("textbox", { name: "名字", exact: true }),
     ).toBeEnabled();
-    await expect(dialog.getByRole("textbox")).toHaveCount(1);
+    await expect(
+      dialog.getByRole("textbox", { name: "HEX", exact: true }),
+    ).toBeVisible();
     await expect(dialog.getByRole("combobox")).toHaveCount(0);
     await page.screenshot({ path: `test-results/bot-dialog-${theme}.png` });
     await page.keyboard.press("Escape");

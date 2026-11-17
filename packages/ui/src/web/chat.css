@@ -1,8 +1,6 @@
 .chat-surface {
   container: chat / inline-size;
-  --color-message-link: oklch(
-    from var(--bot-color) var(--color-link-lightness) min(c, 0.12) h
-  );
+  --bot-foreground: contrast-color(var(--bot-color));
   --color-user: oklch(
     from var(--bot-color) var(--color-user-lightness)
       min(c, var(--color-user-chroma)) h
@@ -73,12 +71,6 @@
   display: flex;
   flex-shrink: 0;
 }
-.composer-action {
-  --bot-action: oklch(
-    from var(--bot-color, var(--color-working))
-      var(--color-bot-action-lightness) var(--color-bot-action-chroma) h
-  );
-}
 .composer-leading .button[data-size="icon"] {
   width: var(--composer-control-size);
   min-height: var(--composer-control-size);
@@ -91,15 +83,18 @@
   width: var(--composer-control-size);
   min-height: var(--composer-control-size);
   border-radius: var(--radius-round);
-  background: var(--bot-action);
-  color: var(--color-on-bot-action);
+  border-color: var(--color-border);
+  background: var(--bot-color);
+  color: var(--bot-foreground);
 }
 .composer-action .button[data-action="voice"]:disabled {
   opacity: 1;
 }
 @media (hover: hover) and (pointer: fine) {
   .composer-action .button:not(:disabled):hover {
-    background: color-mix(in srgb, var(--bot-action) 88%, black);
+    background: var(--bot-color);
+    color: var(--bot-foreground);
+    box-shadow: inset 0 0 0 1px currentColor;
   }
 }
 .message-composer-editor {
@@ -142,8 +137,8 @@
   max-width: 100%;
   padding: calc(var(--space-1) / 2) var(--space-1);
   border-radius: var(--radius-control);
-  background: color-mix(in oklch, var(--color-message-link) 14%, transparent);
-  color: var(--color-message-link);
+  background: var(--bot-color);
+  color: var(--bot-foreground);
   font-size: inherit;
   font-weight: var(--weight-medium);
   line-height: inherit;
@@ -360,27 +355,29 @@ button.file-caption {
   gap: var(--space-3);
   margin: 0;
   min-width: 0;
-  border: 0;
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-round);
   padding: var(--space-2);
-  background: var(--color-assistant);
-  color: var(--color-muted);
+  background: var(--bot-color);
+  color: var(--bot-foreground);
 }
 .media-attachment-audio audio {
   display: none;
 }
-.media-attachment-audio .button[data-variant="ghost"] {
+.media-attachment-audio .button[data-variant="ghost"],
+.media-attachment-audio .button[data-variant="ghost"]:not(:disabled):hover {
   flex-shrink: 0;
   border-radius: var(--radius-round);
-  background: var(--color-control-hover);
-  color: var(--color-text);
+  background: transparent;
+  border-color: currentColor;
+  color: inherit;
 }
 .audio-waveform {
   flex: 1;
   min-width: 0;
   position: relative;
   height: var(--space-8);
-  color: var(--color-muted);
+  color: color-mix(in srgb, var(--bot-foreground) 50%, var(--bot-color));
 }
 .audio-waveform svg {
   width: 100%;
@@ -393,7 +390,7 @@ button.file-caption {
   height: var(--space-6);
 }
 .audio-waveform-played {
-  color: var(--color-message-link);
+  color: var(--bot-foreground);
 }
 .audio-waveform input {
   position: absolute;
@@ -403,7 +400,7 @@ button.file-caption {
   background: transparent;
   appearance: none;
   cursor: pointer;
-  accent-color: var(--color-message-link);
+  accent-color: var(--bot-foreground);
 }
 .audio-waveform input::-webkit-slider-runnable-track {
   background: transparent;
@@ -413,12 +410,15 @@ button.file-caption {
   width: var(--space-3);
   height: var(--space-3);
   border-radius: var(--radius-round);
-  background: var(--color-message-link);
+  background: var(--bot-foreground);
 }
 .audio-error {
   flex-basis: 100%;
   font-size: var(--text-small);
   color: var(--color-danger);
+  background: var(--color-popup);
+  border-radius: var(--radius-control);
+  padding: var(--space-2);
 }
 .file-card-thumbnail {
   display: block;
@@ -483,7 +483,8 @@ button.file-caption {
   margin-block: 0.2em;
 }
 .message-link {
-  color: var(--color-message-link, var(--color-link));
+  color: var(--bot-color, var(--color-link));
+  background: var(--bot-foreground, transparent);
   font-weight: var(--weight-medium);
   text-decoration-line: underline;
   text-decoration-color: currentColor;
@@ -493,19 +494,11 @@ button.file-caption {
   border-radius: var(--space-1);
 }
 .message-link:is(:hover, :focus-visible) {
-  background: color-mix(in oklab, currentColor 12%, transparent);
+  text-decoration-thickness: 0.14em;
 }
 .message-link:focus-visible {
   outline: 2px solid currentColor;
   outline-offset: 2px;
-}
-.message-bubble[data-side="outgoing"] .message-link {
-  color: var(--color-message-text);
-  text-decoration-color: color-mix(
-    in oklab,
-    var(--bot-color),
-    currentColor 65%
-  );
 }
 .message-link-icon {
   display: inline-grid;

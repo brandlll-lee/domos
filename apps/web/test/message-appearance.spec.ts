@@ -657,7 +657,10 @@ test("composer fades scrolling messages and covers content below its edge", asyn
         )
         .toBeLessThan(scroll);
       const pane = await page.locator(".transcript-pane").boundingBox();
-      expect(pane && Math.round(pane.y + pane.height)).toBe(700);
+      const conversation = await page.locator(".conversation").boundingBox();
+      expect(pane && Math.round(pane.y + pane.height)).toBe(
+        conversation && Math.round(conversation.y + conversation.height),
+      );
       await page.screenshot({
         path: `test-results/floating-composer-${width}-${label}.png`,
       });
@@ -723,16 +726,29 @@ test("message links follow Bot colors and preserve contrast in both themes", asy
   for (const theme of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     const palette = new Set<string>();
-    for (const { color } of characterColors) {
+    for (const { color } of [
+      ...characterColors,
+      ...["#000000", "#ffffff", "#808080", "#ffffaa", "#123456"].map(
+        (color) => ({ color }),
+      ),
+    ]) {
       await page
         .locator(".conversation")
         .evaluate(
           (node, color) => node.style.setProperty("--bot-color", color),
           color,
         );
-      palette.add(
-        await source.evaluate((node) => getComputedStyle(node).color),
+      const actual = await source.evaluate(
+        (node) => getComputedStyle(node).color,
       );
+      expect(actual).toBe(
+        `rgb(${color
+          .slice(1)
+          .match(/../g)
+          ?.map((part) => Number.parseInt(part, 16))
+          .join(", ")})`,
+      );
+      palette.add(actual);
       const ratios = await page
         .locator(".message-bubble .message-link")
         .evaluateAll((links) =>
@@ -803,7 +819,7 @@ test("message links follow Bot colors and preserve contrast in both themes", asy
     }
     await page.setViewportSize({ width: 1360, height: 900 });
   }
-  expect(colors[0]).not.toBe(colors[1]);
+  expect(colors[0]).toBe(colors[1]);
 });
 
 test("long bubbles fold with a fade and retain full text without outgoing timestamps", async ({

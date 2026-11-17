@@ -7,12 +7,17 @@ import {
   characterSeed,
 } from "@domos/ui/characters";
 import { Button } from "@domos/ui/controls";
+import { TextField } from "@domos/ui/field";
 import { Loading } from "@domos/ui/loading";
 import { InlineNotice } from "@domos/ui/message";
 import { Tabs } from "@domos/ui/tabs";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowsClockwise";
+import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
+import { useEffect, useState } from "react";
 import { useCharacters } from "./character-state.ts";
 import "./profile.css";
+
+const hexColor = /^#[0-9a-f]{6}$/i;
 
 export function AvatarEditor({
   value,
@@ -30,6 +35,8 @@ export function AvatarEditor({
   onChange: (value: string) => void;
 }) {
   const identity = characterIdentity(value);
+  const [hex, setHex] = useState(identity.color);
+  useEffect(() => setHex(identity.color), [identity.color]);
   const { store, data, error, loading: pending } = useCharacters(botId);
   const selected = data?.find((item) => item.id === assetId);
   const source = assetId === null ? undefined : (media ?? selected?.media);
@@ -120,19 +127,59 @@ export function AvatarEditor({
       </Tabs.Root>
       <fieldset className="avatar-colors" aria-label="主题色">
         <legend>主题色</legend>
-        {characterColors.map(({ name, color }) => (
-          <Button
-            type="button"
-            key={color}
-            variant="ghost"
-            aria-label={`颜色：${name}`}
-            title={name}
-            aria-pressed={identity.color === color}
-            onClick={() => onChange(characterSeed(identity.shape, color))}
-          >
-            <span style={{ backgroundColor: color }} />
-          </Button>
-        ))}
+        <div className="avatar-color-grid">
+          {characterColors.map(({ name, color }) => (
+            <Button
+              type="button"
+              key={color}
+              variant="ghost"
+              aria-label={`颜色：${name}`}
+              title={name}
+              aria-pressed={identity.color === color}
+              style={{
+                backgroundColor: color,
+                color: `contrast-color(${color})`,
+              }}
+              onClick={() => {
+                setHex(color);
+                onChange(characterSeed(identity.shape, color));
+              }}
+            >
+              {identity.color === color && <CheckIcon size={16} />}
+            </Button>
+          ))}
+        </div>
+        <div className="avatar-color-custom">
+          <label className="avatar-color-picker">
+            自定义颜色
+            <span style={{ backgroundColor: identity.color }} />
+            <input
+              type="color"
+              aria-label="自定义颜色"
+              value={identity.color}
+              onChange={(event) => {
+                setHex(event.target.value);
+                onChange(characterSeed(identity.shape, event.target.value));
+              }}
+            />
+          </label>
+          <TextField
+            label="HEX"
+            value={hex}
+            required
+            pattern="#[0-9A-Fa-f]{6}"
+            maxLength={7}
+            autoComplete="off"
+            error={
+              hexColor.test(hex) ? undefined : "请输入 # 和六位十六进制颜色"
+            }
+            onValueChange={(next) => {
+              setHex(next);
+              if (hexColor.test(next))
+                onChange(characterSeed(identity.shape, next.toLowerCase()));
+            }}
+          />
+        </div>
       </fieldset>
     </fieldset>
   );

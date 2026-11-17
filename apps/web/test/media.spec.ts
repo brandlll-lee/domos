@@ -169,8 +169,20 @@ test("audio decode failures preserve the file download action", async ({
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     await expect(card.locator(".audio-play")).toHaveCSS(
       "color",
-      theme === "dark" ? "rgb(239, 239, 240)" : "rgb(32, 33, 35)",
+      await card.evaluate((node) => getComputedStyle(node).color),
     );
+    const raw = await page
+      .locator(".chat-surface")
+      .evaluate((node) => node.style.getPropertyValue("--bot-color"));
+    await expect(card).toHaveCSS(
+      "background-color",
+      `rgb(${raw
+        .slice(1)
+        .match(/../g)
+        ?.map((part) => Number.parseInt(part, 16))
+        .join(", ")})`,
+    );
+    await expectTextContrast(page);
     await page.setViewportSize({
       width: theme === "light" ? 1360 : 390,
       height: 844,
