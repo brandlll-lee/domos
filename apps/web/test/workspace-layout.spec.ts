@@ -881,10 +881,51 @@ test("empty chats retain their creation time and compact controls across layouts
   await input.click();
   await expect(composer).toHaveCSS("border-color", border);
   await expect(input).toHaveCSS("outline-style", "none");
-  await expect(page.getByRole("searchbox")).toHaveAttribute(
-    "placeholder",
-    "搜索",
-  );
+  await expect(page.getByRole("searchbox")).toHaveCount(0);
+  const searchButton = page.getByRole("button", {
+    name: "搜索联系人和聊天记录",
+    exact: true,
+  });
+  const searchDialog = page.getByRole("dialog", { name: "搜索", exact: true });
+  for (const platform of ["win32", "darwin"]) {
+    await page.locator(".workspace").evaluate((node, value) => {
+      (node as HTMLElement).dataset.platform = value;
+    }, platform);
+    for (const width of [1360, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      if (width === 390) {
+        await expect(page.locator(".workspace")).toHaveAttribute(
+          "data-mobile",
+          "true",
+        );
+        const inspector = page.locator(
+          '.workspace-panel[data-side="inspector"][data-modal]',
+        );
+        if (await inspector.isVisible())
+          await inspector
+            .getByRole("button", { name: "关闭", exact: true })
+            .click();
+        await page.getByRole("button", { name: "联系人", exact: true }).click();
+      }
+      await searchButton.click();
+      await expect(searchDialog.getByRole("searchbox")).toBeFocused();
+      const bounds = await searchDialog.boundingBox();
+      if (!bounds) throw new Error("Search dialog missing");
+      expect(bounds.x).toBeGreaterThanOrEqual(0);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+      expect(bounds.y).toBeGreaterThanOrEqual(32);
+      await expect(
+        searchDialog.getByRole("button", { name: "关闭弹窗" }),
+      ).toBeInViewport();
+      await page.screenshot({
+        path: `test-results/search-${platform}-${width}.png`,
+      });
+      await page.keyboard.press("Escape");
+      await expect(searchButton).toBeFocused();
+      if (width === 390) await page.keyboard.press("Escape");
+    }
+    await page.setViewportSize({ width: 1360, height: 900 });
+  }
   await page.reload();
   await expect(time).toHaveAttribute("datetime", createdAt ?? "");
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
@@ -997,14 +1038,36 @@ test("contact rows keep their density and searchable previews across selections"
   ).toBe(true);
   expect(geometry[0]?.height).toBe(54);
   expect(geometry[0]?.nameWeight).toBe("500");
-  const search = page.getByRole("searchbox", { name: "搜索联系人和聊天记录" });
+  const searchButton = page.getByRole("button", {
+    name: "搜索联系人和聊天记录",
+    exact: true,
+  });
+  await expect(page.locator(".sidebar-heading")).toHaveText("Bots");
+  for (const button of await page.locator(".sidebar-toolbar > .button").all()) {
+    await expect(button).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  }
+  await searchButton.click();
+  const dialog = page.getByRole("dialog", { name: "搜索", exact: true });
+  const search = dialog.getByRole("searchbox");
+  await expect(search).toBeFocused();
+  const size = await dialog.boundingBox();
   await search.fill("开始对话");
-  await expect(contacts.getByRole("link")).toHaveCount(2);
+  await expect(
+    dialog.getByRole("region", { name: "Bot与团队" }).locator(".search-hit"),
+  ).toHaveCount(2);
   await search.fill("整理研究资料");
   await expect(
-    contacts.getByRole("link", { name: "研究助手", exact: true }),
+    dialog.getByRole("button", { name: "研究助手", exact: true }),
   ).toBeVisible();
-  await search.clear();
+  expect(await dialog.boundingBox()).toEqual(size);
+  await search.press("ArrowDown");
+  await expect(
+    dialog.getByRole("button", { name: "研究助手", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(search).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(searchButton).toBeFocused();
   const root = contacts.getByRole("link", { name: "Domos", exact: true });
   await root.click();
   await expect(
@@ -1019,9 +1082,20 @@ test("contact rows keep their density and searchable previews across selections"
   await expect(
     page.getByRole("button", { name: "Bot详情", exact: true }),
   ).toContainText("研究助手");
+  await searchButton.click();
   await search.fill("已收到：核对列表预览");
-  await expect(root).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Domos", exact: true }),
+  ).toBeVisible();
   await search.clear();
+  await dialog.getByRole("tab", { name: "聊天记录", exact: true }).click();
+  await expect(dialog.getByText("输入关键词搜索聊天记录")).toBeVisible();
+  await dialog.getByRole("tab", { name: "Bot与团队", exact: true }).click();
+  await search.fill("Domos");
+  await search.press("Enter");
+  await expect(dialog).toBeHidden();
+  await expect(root).toHaveAttribute("aria-current", "page");
+  await contacts.getByRole("link", { name: "研究助手", exact: true }).click();
   const active = contacts.getByRole("link", { name: "研究助手", exact: true });
   await page.mouse.move(400, 800);
   await expect(active).toHaveAttribute("aria-current", "page");

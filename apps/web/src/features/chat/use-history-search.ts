@@ -52,6 +52,18 @@ export function useHistorySearch() {
       controller.abort();
     };
   }, [search]);
+  useEffect(() => {
+    const clear = () => {
+      request.current?.abort();
+      setQuery("");
+      setItems([]);
+      setBefore(undefined);
+      setError("");
+      setLoading(false);
+    };
+    window.addEventListener("domos:computer", clear);
+    return () => window.removeEventListener("domos:computer", clear);
+  }, []);
   return {
     query,
     setQuery,

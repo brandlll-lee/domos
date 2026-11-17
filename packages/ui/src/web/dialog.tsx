@@ -32,6 +32,7 @@ export function Dialog({
   children,
   className,
   finalFocus,
+  initialFocus,
   footer,
   viewportRef,
   headerActions,
@@ -45,6 +46,7 @@ export function Dialog({
   children: ReactNode;
   className?: string;
   finalFocus?: () => HTMLElement | null;
+  initialFocus?: () => HTMLElement | null;
   footer?: ReactNode;
   viewportRef?: RefObject<HTMLDivElement | null>;
   headerActions?: ReactNode;
@@ -61,19 +63,21 @@ export function Dialog({
         <BaseDialog.Popup
           className={`dialog-popup ${className ?? ""}`}
           finalFocus={finalFocus}
-          initialFocus={() =>
-            Array.from(
-              body.current?.querySelectorAll<HTMLElement>(
-                "button, input, textarea, a[href], [role=combobox]",
-              ) ?? [],
-            ).find(
-              (element) =>
-                element.checkVisibility() && !element.matches(":disabled"),
-            ) ??
-            body.current
-              ?.closest(".dialog-popup")
-              ?.querySelector<HTMLElement>(".dialog-footer button") ??
-            body.current
+          initialFocus={
+            initialFocus ??
+            (() =>
+              Array.from(
+                body.current?.querySelectorAll<HTMLElement>(
+                  "button, input, textarea, a[href], [role=combobox]",
+                ) ?? [],
+              ).find(
+                (element) =>
+                  element.checkVisibility() && !element.matches(":disabled"),
+              ) ??
+              body.current
+                ?.closest(".dialog-popup")
+                ?.querySelector<HTMLElement>(".dialog-footer button") ??
+              body.current)
           }
         >
           <header className="dialog-header">

@@ -346,7 +346,7 @@ test("message text remains readable when bundled Chinese fonts cannot load", asy
   await page.screenshot({ path: "test-results/chat-font-fallback.png" });
 });
 
-test("IM bubbles, sidebar search, and popup surfaces share both themes", async ({
+test("IM bubbles, search dialog, and popup surfaces share both themes", async ({
   service,
   page,
 }) => {
@@ -376,20 +376,23 @@ test("IM bubbles, sidebar search, and popup surfaces share both themes", async (
   );
   expect(received.width).toBeLessThanOrEqual(720);
   expect(sent.x + sent.width).toBeCloseTo(column.x + column.width, 0);
+  const searchButton = page.getByRole("button", {
+    name: "搜索联系人和聊天记录",
+    exact: true,
+  });
+  await searchButton.click();
   const search = page.getByRole("searchbox", { name: "搜索联系人和聊天记录" });
   await search.fill(crypto.randomUUID());
   await expect(page.getByText("没有找到联系人", { exact: true })).toBeVisible();
-  const navigation = page.getByRole("navigation", {
-    name: "联系人",
-    exact: true,
-  });
-  await expect(navigation.getByRole("link")).toHaveCount(0);
   await search.fill("统一交互");
-  await expect(navigation.getByRole("link")).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
-  await search.fill("");
+  await expect(
+    page
+      .getByRole("dialog", { name: "搜索", exact: true })
+      .locator(".search-hit")
+      .first(),
+  ).toBeVisible();
+  await search.clear();
+  await page.keyboard.press("Escape");
   for (const [theme, label] of [
     ["light", "浅色"],
     ["dark", "深色"],
@@ -397,12 +400,13 @@ test("IM bubbles, sidebar search, and popup surfaces share both themes", async (
     await chooseAppearance(page, label);
     await expectTextContrast(page);
     await expect(page.locator(".settings-window")).toHaveCount(0);
-    await search.click();
+    await searchButton.click();
     await expect(search).toHaveCSS("outline-style", "none");
-    await expect(page.locator(".sidebar-search")).toHaveCSS(
+    await expect(page.locator(".chat-search-controls .search-field")).toHaveCSS(
       "box-shadow",
       "none",
     );
+    await page.keyboard.press("Escape");
     await expect(outgoing).toHaveCSS(
       "color",
       await incoming.evaluate((element) => getComputedStyle(element).color),

@@ -293,14 +293,10 @@ test("contacts snap to an icon column and restore their width without losing cha
     expect(contactBox.width).toBeCloseTo(54, 0);
     expect(contactBox.height).toBeCloseTo(contactBox.width, 1);
     expect(Math.abs(contactBox.x + contactBox.width / 2 - 48)).toBeLessThan(1);
-    const matchingBackgrounds = async () =>
-      (await contact.evaluate(
-        (node) => getComputedStyle(node).backgroundColor,
-      )) ===
-      (await searchButton.evaluate(
-        (node) => getComputedStyle(node).backgroundColor,
-      ));
-    await expect.poll(matchingBackgrounds).toBe(true);
+    await expect(searchButton).toHaveCSS(
+      "background-color",
+      "rgba(0, 0, 0, 0)",
+    );
     await searchButton.hover();
     await searchButton.evaluate((node) =>
       Promise.all(node.getAnimations().map((animation) => animation.finished)),
@@ -322,41 +318,17 @@ test("contacts snap to an icon column and restore their width without losing cha
   await sidebar
     .getByRole("button", { name: "搜索联系人和聊天记录", exact: true })
     .click();
-  const search = sidebar.getByRole("searchbox");
+  const search = page
+    .getByRole("dialog", { name: "搜索", exact: true })
+    .getByRole("searchbox");
   await expect(search).toBeFocused();
-  await expect(handle).toHaveAttribute("aria-valuenow", "208");
-  await search.fill("不存在的联系人");
-  await workspace.evaluate((root) => {
-    root.addEventListener(
-      "transitionrun",
-      () => {
-        const panel = root.querySelector(
-          '.workspace-panel[data-side="sidebar"]',
-        );
-        for (const node of [root, panel]) {
-          for (const animation of node?.getAnimations() ?? []) {
-            if (!(animation instanceof CSSTransition)) continue;
-            if (
-              !["width", "grid-template-columns"].includes(
-                animation.transitionProperty,
-              )
-            )
-              continue;
-            animation.pause();
-            animation.currentTime =
-              Number(animation.effect?.getTiming().duration) / 2;
-          }
-        }
-      },
-      { once: true },
-    );
-  });
-  await handle.dblclick();
   await expect(workspace).toHaveAttribute("data-sidebar-compact", "true");
-  await handle.dblclick();
-  await expect(handle).toHaveAttribute("aria-valuenow", "208");
-  await expect(search).toHaveValue("不存在的联系人");
-  await search.fill("");
+  await search.fill("不存在的联系人");
+  await expect(page.getByText("没有找到联系人", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(
+    sidebar.getByRole("button", { name: "搜索联系人和聊天记录", exact: true }),
+  ).toBeFocused();
   await handle.press("Home");
   await expect(handle).toHaveAttribute("aria-valuenow", "96");
   await expect(sidebar).toHaveCSS("width", "96px");
@@ -413,7 +385,12 @@ test("contacts snap to an icon column and restore their width without losing cha
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "关闭", exact: true }).click();
   await page.getByRole("button", { name: "联系人", exact: true }).click();
-  await expect(sidebar.getByRole("searchbox")).toBeVisible();
+  await sidebar
+    .getByRole("button", { name: "搜索联系人和聊天记录", exact: true })
+    .click();
+  await expect(search).toBeFocused();
+  await expect(search).toHaveValue("不存在的联系人");
+  await page.keyboard.press("Escape");
   await expect(sidebar.locator(".chat-preview").first()).toBeVisible();
   await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 1600, height: 960 });

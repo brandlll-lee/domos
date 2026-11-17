@@ -176,7 +176,7 @@ test.afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
-test("unread survives reload and history search shares the sidebar and bounded navigation", async ({
+test("unread survives reload and search dialog retains pagination and bounded navigation", async ({
   page,
 }, info) => {
   const bot = (await rpc.bots.list())[0];
@@ -224,15 +224,30 @@ test("unread survives reload and history search shares the sidebar and bounded n
   await expect(page.locator(".workspace")).not.toHaveAttribute(
     "data-sidebar-snapping",
   );
-  const before = await contact.locator(".chat-preview").boundingBox();
+  const before = await contact.boundingBox();
   const search = page.getByRole("searchbox", { name: "搜索联系人和聊天记录" });
   await search.fill("查找报告");
   await expect(page.locator(".search-result")).toHaveCount(50);
   await page.getByRole("button", { name: "更多聊天记录", exact: true }).click();
   await expect(page.locator(".search-result")).toHaveCount(100);
-  await page.locator(".sidebar-scroll .scroll-viewport").evaluate((node) => {
-    node.scrollTop = 0;
+  const dialog = page.getByRole("dialog", { name: "搜索", exact: true });
+  const headerBox = await dialog.locator(".dialog-subheader").boundingBox();
+  const footerBox = await dialog.locator(".dialog-footer").boundingBox();
+  await dialog.locator(".scroll-viewport").evaluate((node) => {
+    node.scrollTop = node.scrollHeight;
   });
+  expect(await dialog.locator(".dialog-subheader").boundingBox()).toEqual(
+    headerBox,
+  );
+  expect(await dialog.locator(".dialog-footer").boundingBox()).toEqual(
+    footerBox,
+  );
+
+  await page
+    .locator(".chat-search-dialog .scroll-viewport")
+    .evaluate((node) => {
+      node.scrollTop = 0;
+    });
   for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await page.screenshot({
@@ -240,9 +255,11 @@ test("unread survives reload and history search shares the sidebar and bounded n
       animations: "disabled",
     });
   }
-  await page.locator(".sidebar-scroll .scroll-viewport").evaluate((node) => {
-    node.scrollTop = 0;
-  });
+  await page
+    .locator(".chat-search-dialog .scroll-viewport")
+    .evaluate((node) => {
+      node.scrollTop = 0;
+    });
   await search.fill("查找报告 0");
   await expect(page.locator(".search-result")).toHaveCount(1);
   let positioned = 0;
@@ -255,9 +272,10 @@ test("unread survives reload and history search shares the sidebar and bounded n
   });
   await page.locator(".search-result").click();
   await expect(page.locator('[data-message-id="saved:0"]')).toBeInViewport();
-  await expect(search).toHaveValue("查找报告 0");
+  await expect(
+    page.getByRole("dialog", { name: "搜索", exact: true }),
+  ).toBeHidden();
   expect(positioned).toBe(1);
-  await search.fill("");
   await expect
     .poll(async () =>
       Number(
@@ -274,8 +292,9 @@ test("unread survives reload and history search shares the sidebar and bounded n
       )?.split(" ")[0],
     ),
   ).toBeGreaterThan(0);
-  const after = await contact.locator(".chat-preview").boundingBox();
+  const after = await contact.boundingBox();
   expect(after?.x).toBe(before?.x);
+  await handle.dblclick();
   await page.locator(`.contact-row[href="#bot/${peer.id}"]`).click();
   await page.reload();
   await expect(contact.locator(".unread-badge")).toBeVisible();
@@ -377,7 +396,7 @@ test("attention identifies the assistant, opens its message and respects mute", 
   ).toBeVisible();
 });
 
-test("sidebar search retries failures and discards an older query response", async ({
+test("search dialog retries failures and discards an older query response", async ({
   page,
 }) => {
   await seed({ records: [message(1, "报告甲"), message(2, "报告乙")] });
@@ -395,9 +414,14 @@ test("sidebar search retries failures and discards an older query response", asy
       await route.continue().catch(() => {});
     } else await route.continue();
   });
+  await page
+    .getByRole("button", { name: "搜索联系人和聊天记录", exact: true })
+    .click();
   const search = page.getByRole("searchbox", { name: "搜索联系人和聊天记录" });
   await search.fill("报告");
-  await expect(page.getByRole("alert")).toContainText("聊天记录搜索失败");
+  await expect(
+    page.locator(".chat-search-dialog .inline-notice"),
+  ).toContainText("聊天记录搜索失败，请重试。");
   await page.getByRole("button", { name: "重试", exact: true }).click();
   await expect(page.locator(".search-result")).toHaveCount(2);
   await search.fill("报告甲");
@@ -408,7 +432,16 @@ test("sidebar search retries failures and discards an older query response", asy
   release?.();
   await search.fill("");
   await expect(page.locator(".search-result")).toHaveCount(0);
-  await expect(page.locator(".contact-row").first()).toBeVisible();
+  await expect(
+    page
+      .getByRole("dialog", { name: "搜索", exact: true })
+      .locator(".search-hit")
+      .first(),
+  ).toBeVisible();
+  await search.fill("报告乙");
+  await page.evaluate(() => window.dispatchEvent(new Event("domos:computer")));
+  await expect(search).toHaveValue("");
+  await expect(page.locator(".search-result")).toHaveCount(0);
 });
 
 test("failure reminders open the corresponding Work record", async ({

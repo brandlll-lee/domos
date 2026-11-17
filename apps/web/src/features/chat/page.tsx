@@ -36,6 +36,7 @@ import { chatCopy } from "./copy.ts";
 import { ChatHeader } from "./header.tsx";
 import { Messages } from "./messages.tsx";
 import { RuntimeStatus } from "./runtime.tsx";
+import { SearchDialog } from "./search-dialog.tsx";
 import { Sidebar } from "./sidebar.tsx";
 import { TeamDetails } from "./team-details.tsx";
 import { useChat } from "./use-chat.ts";
@@ -142,6 +143,8 @@ function BotChat({
     [draft.update],
   );
   const [view, setView] = useState<"chat" | "usage">("chat");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchTrigger = useRef<HTMLButtonElement>(null);
   const [appsOpen, setAppsOpen] = useState(false);
   const [detailsOpen, updateDetailsOpen] = useState(
     () =>
@@ -360,15 +363,15 @@ function BotChat({
           closePanel();
         }}
         onSettings={() => settings.open("general", bot.id)}
-        sidebar={(compact, expand) => (
+        sidebar={(compact) => (
           <Sidebar
             compact={compact}
-            onExpand={expand}
+            onSearch={() => setSearchOpen(true)}
+            searchTrigger={searchTrigger}
             bots={bots}
             teams={directory.teams}
             onTeamsChange={directory.setTeams}
             selected={bot}
-            searchState={search}
             connected={directoryConnected}
             onBotCreated={selectBot}
             onSelect={() => setView("chat")}
@@ -610,6 +613,15 @@ function BotChat({
           </TeamMembers>
         )}
       </Workspace>
+      <SearchDialog
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+        trigger={searchTrigger}
+        bots={bots}
+        teams={directory.teams}
+        search={search}
+        onNavigate={() => setView("chat")}
+      />
     </FilePreviewContext>
   );
 }
