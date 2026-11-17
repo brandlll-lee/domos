@@ -504,6 +504,39 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     await expect(page.locator(".app-titlebar, .app-rail")).toHaveCount(0);
     await expect(page.locator("#bot-details")).toBeVisible();
     await expect(page.locator(".chat-identity .engine-mark")).toBeVisible();
+    expect(
+      await page.evaluate(() => {
+        const platform = window.domosDesktop?.platform;
+        const style = getComputedStyle(document.documentElement);
+        const width =
+          parseFloat(style.fontSize) *
+          parseFloat(
+            style.getPropertyValue(
+              platform === "darwin"
+                ? "--mac-controls-width"
+                : "--window-controls-width",
+            ),
+          );
+        const height = parseFloat(style.getPropertyValue("--titlebar-height"));
+        return Array.from(
+          document.querySelectorAll(
+            ".environment-trigger, .sidebar-toolbar button, .chat-header button, .bot-details > .panel-header button",
+          ),
+        )
+          .filter((node) => {
+            const box = node.getBoundingClientRect();
+            return (
+              box.width > 0 &&
+              box.height > 0 &&
+              box.top < height &&
+              (platform === "darwin"
+                ? box.left < width
+                : box.right > innerWidth - width)
+            );
+          })
+          .map((node) => node.getAttribute("aria-label"));
+      }),
+    ).toEqual([]);
     await captureWindow(
       desktop,
       page,

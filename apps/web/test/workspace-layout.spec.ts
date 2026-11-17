@@ -260,7 +260,14 @@ test("three columns keep the two-line identity and navigation clear at each widt
   const footer = page.locator(".sidebar-footer");
   const composer = await page.locator(".message-composer").boundingBox();
   if (!composer) throw new Error("Composer missing");
-  expect(composer.y + composer.height).toBeGreaterThan(930);
+  expect(composer.y + composer.height).toBeCloseTo(
+    frame.y +
+      frame.height -
+      (await page
+        .locator(".composer-area")
+        .evaluate((node) => parseFloat(getComputedStyle(node).paddingBottom))),
+    0,
+  );
   await expect(
     footer.getByRole("button", { name: "应用连接", exact: true }),
   ).toBeVisible();
@@ -271,6 +278,23 @@ test("three columns keep the two-line identity and navigation clear at each widt
   for (const theme of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    const inspector = await page
+      .locator('.workspace-panel[data-side="inspector"]')
+      .boundingBox();
+    if (!inspector) throw new Error("Details missing");
+    expect(inspector.y).toBe(frame.y);
+    expect(inspector.height).toBe(frame.height);
+    expect(inspector.x).toBeCloseTo(frame.x + frame.width, 0);
+    expect(inspector.x + inspector.width).toBe(1600 - frame.y);
+    expect(frame.y).toBeGreaterThan(0);
+    await expect(page.locator(".workspace")).toHaveCSS(
+      "background-color",
+      theme === "dark" ? "rgb(12, 12, 13)" : "rgb(255, 255, 255)",
+    );
+    await expect(page.locator(".workspace-content")).toHaveCSS(
+      "background-color",
+      theme === "dark" ? "rgb(15, 15, 16)" : "rgb(253, 253, 253)",
+    );
     await expect(capsule.locator(".chat-identity-avatar")).toHaveCSS(
       "background-color",
       "rgba(0, 0, 0, 0)",
@@ -288,6 +312,9 @@ test("three columns keep the two-line identity and navigation clear at each widt
   }
   await details.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(details).toBeHidden();
+  const expandedFrame = await page.locator(".conversation").boundingBox();
+  if (!expandedFrame) throw new Error("Chat frame missing");
+  expect(expandedFrame.x + expandedFrame.width).toBe(1600 - frame.y);
   await capsule.locator(".chat-identity-label").click();
   await expect(details).toBeVisible();
   await details.getByRole("button", { name: "关闭", exact: true }).click();
@@ -301,6 +328,10 @@ test("three columns keep the two-line identity and navigation clear at each widt
     ).toBeVisible();
     await page.screenshot({ path: info.outputPath(`workspace-${width}.png`) });
     await page.keyboard.press("Escape");
+    if (width === 390) {
+      const mobileFrame = await page.locator(".conversation").boundingBox();
+      expect(mobileFrame).toMatchObject({ x: 0, y: 0, width });
+    }
     await expect(page.getByLabel("消息", { exact: true })).toHaveText(
       "保留这份草稿",
     );
