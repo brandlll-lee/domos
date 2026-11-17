@@ -8,3 +8,11 @@
 .engine-mark[data-provider="codex"] {
   padding: 1px;
 }
+
+.engine-mark-mask {
+  display: inline-block;
+  background: currentColor;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+}

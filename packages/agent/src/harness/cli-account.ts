@@ -1,13 +1,15 @@
+import { z } from "zod";
 import type { EngineProcess } from "./types.ts";
 import { engineLimits } from "./types.ts";
 
-const connectionCheckError = "Claude Code 连接检查未完成。请检查工作电脑。";
-
-export async function readClaudeAccount(
+export async function readCliAccount(
   worker: EngineProcess,
+  provider: "claude" | "cursor",
   env: Record<string, string> = {},
-  command = "claude",
+  command = provider === "claude" ? "claude" : "cursor-agent",
 ): Promise<boolean> {
+  const connectionCheckError = `${provider === "claude" ? "Claude Code" : "Cursor"} 连接检查未完成。请检查工作电脑。`;
+  const field = provider === "claude" ? "loggedIn" : "isAuthenticated";
   let output = "";
   let timer: NodeJS.Timeout | undefined;
   worker.output.on("data", (chunk) => {
@@ -19,7 +21,10 @@ export async function readClaudeAccount(
       (async () => {
         await worker.launch({
           command,
-          args: ["auth", "status"],
+          args:
+            provider === "claude"
+              ? ["auth", "status"]
+              : ["status", "--format", "json"],
           env,
         });
         return worker.closed;
@@ -32,16 +37,10 @@ export async function readClaudeAccount(
         timer.unref();
       }),
     ]);
-    const status: unknown = JSON.parse(output);
-    if (
-      !status ||
-      typeof status !== "object" ||
-      !("loggedIn" in status) ||
-      typeof status.loggedIn !== "boolean" ||
-      (result.code !== 0 && !(result.code === 1 && status.loggedIn === false))
-    )
+    const status = z.object({ [field]: z.boolean() }).parse(JSON.parse(output));
+    if (result.code !== 0 && !(result.code === 1 && status[field] === false))
       throw new Error(connectionCheckError);
-    return status.loggedIn;
+    return status[field] === true;
   } catch {
     throw new Error(connectionCheckError);
   } finally {

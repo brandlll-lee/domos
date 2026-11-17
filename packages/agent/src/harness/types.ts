@@ -19,7 +19,8 @@ export function supportedApprovalModes(provider: string): ApprovalMode[] {
   if (provider === "antigravity") return [...approvalModes];
   if (provider === "grok") return ["ask", "auto", "full"];
   if (provider === "devin") return ["edits", "auto", "full"];
-  if (provider === "pi" || provider === "opencode") return ["ask", "full"];
+  if (provider === "pi" || provider === "opencode" || provider === "cursor")
+    return ["ask", "full"];
   return ["ask"];
 }
 

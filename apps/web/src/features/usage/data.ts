@@ -30,6 +30,7 @@ export const harnesses = [
   { value: "grok", label: "Grok" },
   { value: "antigravity", label: "Antigravity" },
   { value: "devin", label: "Devin" },
+  { value: "cursor", label: "Cursor" },
 ];
 
 export const metricLabel = (metric: Metric) =>

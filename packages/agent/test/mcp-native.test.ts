@@ -11,7 +11,16 @@ import type { EngineSession, ProductResult } from "../src/harness/types.ts";
 
 test
   .skipIf(process.env.DOMOS_NATIVE_SMOKE !== "1")
-  .each(["codex", "claude", "pi", "opencode"])(
+  .each([
+    "codex",
+    "claude",
+    "pi",
+    "opencode",
+    "grok",
+    "antigravity",
+    "devin",
+    "cursor",
+  ])(
   "%s calls a managed stdio MCP through its native session",
   async (provider) => {
     const directory = await mkdtemp(join(tmpdir(), "domos-mcp-native-"));

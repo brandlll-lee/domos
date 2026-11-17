@@ -2,12 +2,31 @@ import type { EngineId } from "@domos/agent/harness/types";
 import "./engine-mark.css";
 import { TerminalWindowIcon } from "@phosphor-icons/react/dist/csr/TerminalWindow";
 
-const images: Record<string, string> = {
-  codex: new URL("./assets/codex.svg", import.meta.url).href,
-  claude: new URL("./assets/claude-code.svg", import.meta.url).href,
-  antigravity: new URL("./assets/antigravity.svg", import.meta.url).href,
-  grok: new URL("./assets/grok.svg", import.meta.url).href,
-  devin: new URL("./assets/devin.svg", import.meta.url).href,
+const images: Record<string, { url: string; monochrome: boolean }> = {
+  codex: {
+    url: new URL("./assets/codex.svg", import.meta.url).href,
+    monochrome: false,
+  },
+  claude: {
+    url: new URL("./assets/claude-code.svg", import.meta.url).href,
+    monochrome: false,
+  },
+  antigravity: {
+    url: new URL("./assets/antigravity.svg", import.meta.url).href,
+    monochrome: false,
+  },
+  grok: {
+    url: new URL("./assets/grok.svg", import.meta.url).href,
+    monochrome: true,
+  },
+  devin: {
+    url: new URL("./assets/devin.svg", import.meta.url).href,
+    monochrome: true,
+  },
+  cursor: {
+    url: new URL("./assets/cursor.svg", import.meta.url).href,
+    monochrome: true,
+  },
 };
 
 const marks = {
@@ -39,12 +58,22 @@ const marks = {
 >;
 
 export function EngineMark({ provider }: { provider: EngineId }) {
-  if (images[provider])
+  const image = images[provider];
+  if (image?.monochrome)
+    return (
+      <span
+        className="engine-mark engine-mark-mask"
+        data-provider={provider}
+        style={{ maskImage: `url("${image.url}")` }}
+        aria-hidden="true"
+      />
+    );
+  if (image)
     return (
       <img
         className="engine-mark"
         data-provider={provider}
-        src={images[provider]}
+        src={image.url}
         alt=""
         draggable={false}
       />

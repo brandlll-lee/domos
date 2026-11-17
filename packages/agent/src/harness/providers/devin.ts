@@ -1,3 +1,4 @@
+import { readNativeConfiguredMcp } from "../mcp-catalog.ts";
 import { acpProvider } from "./acp.ts";
 
 export const devinProvider = acpProvider({
@@ -7,6 +8,7 @@ export const devinProvider = acpProvider({
   package: "",
   login: ["auth", "login"],
   args: () => ["acp"],
+  mcp: readNativeConfiguredMcp,
   mode: (config) =>
     config.approvalMode === "full"
       ? "bypass"

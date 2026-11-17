@@ -1103,7 +1103,15 @@ export class EngineExecution {
           [...(active.managed?.values() ?? [])].every(
             (mounted) => mounted.worker === active.process,
           ) &&
-          ["codex", "claude", "pi"].includes(provider.id) &&
+          [
+            "codex",
+            "claude",
+            "pi",
+            "grok",
+            "antigravity",
+            "devin",
+            "cursor",
+          ].includes(provider.id) &&
           connection.release()
         ) {
           const timer = setTimeout(() => {

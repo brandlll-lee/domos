@@ -14,7 +14,16 @@ import type { EngineSession } from "../src/harness/types.ts";
 
 test
   .skipIf(process.env.DOMOS_NATIVE_PRODUCT !== "1")
-  .each(["codex", "claude", "pi", "opencode"])(
+  .each([
+    "codex",
+    "claude",
+    "pi",
+    "opencode",
+    "grok",
+    "antigravity",
+    "devin",
+    "cursor",
+  ])(
   "%s selects product capabilities from user intent",
   async (id) => {
     const directory = await mkdtemp(join(tmpdir(), "domos-product-eval-"));

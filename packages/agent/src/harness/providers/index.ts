@@ -2,6 +2,7 @@ import type { EngineId, EngineProvider } from "../types.ts";
 import { antigravityProvider } from "./antigravity.ts";
 import { claudeProvider } from "./claude.ts";
 import { codexProvider } from "./codex.ts";
+import { cursorProvider } from "./cursor.ts";
 import { devinProvider } from "./devin.ts";
 import { grokProvider } from "./grok.ts";
 import { customAcpProvider, opencodeProvider } from "./opencode.ts";
@@ -17,6 +18,7 @@ export const providers: ReadonlyMap<EngineId, EngineProvider> = new Map(
     grokProvider,
     antigravityProvider,
     devinProvider,
+    cursorProvider,
   ].map((provider) => [provider.id, provider]),
 );
 

@@ -13,14 +13,20 @@ type Submission = {
   >;
 };
 
+function refused(error: unknown) {
+  return error instanceof RequestError && [-32601, -32602].includes(error.code);
+}
+
 export class AcpPrompts {
   private readonly submissions: Submission[] = [];
   private running = false;
   private userText = "";
-  constructor(
-    private readonly rpc: ClientSideConnection,
-    private readonly sessionId: string,
-  ) {}
+  private readonly rpc: ClientSideConnection;
+  private readonly sessionId: string;
+  constructor(rpc: ClientSideConnection, sessionId: string) {
+    this.rpc = rpc;
+    this.sessionId = sessionId;
+  }
 
   observe(text: string) {
     this.userText += text;
@@ -46,10 +52,7 @@ export class AcpPrompts {
     this.submissions.push(item);
     void item.reply.then(
       () => admitted.resolve("accepted"),
-      (error) =>
-        admitted.resolve(
-          error instanceof RequestError ? "refused" : "uncertain",
-        ),
+      (error) => admitted.resolve(refused(error) ? "refused" : "uncertain"),
     );
     return item;
   }
@@ -68,7 +71,7 @@ export class AcpPrompts {
         try {
           result = await item.reply;
         } catch (error) {
-          if (index === 0 || !(error instanceof RequestError)) throw error;
+          if (index === 0 || !refused(error)) throw error;
         }
       }
       return result;

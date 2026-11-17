@@ -1,3 +1,4 @@
+import { readNativeConfiguredMcp } from "../mcp-catalog.ts";
 import { acpProvider } from "./acp.ts";
 
 export const antigravityProvider = acpProvider({
@@ -7,6 +8,7 @@ export const antigravityProvider = acpProvider({
   package: "",
   login: ["acp", "--login"],
   args: () => ["acp"],
+  mcp: readNativeConfiguredMcp,
   mode: (config) =>
     config.approvalMode === "full" || config.approvalMode === "edits"
       ? "accept-edits"

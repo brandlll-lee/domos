@@ -54,6 +54,7 @@
     "fflate": "0.8.2",
     "file-type": "^22.2.0",
     "jmespath": "0.16.0",
+    "jsonc-parser": "3.3.1",
     "proper-lockfile": "4.1.2",
     "remark-gfm": "4.0.1",
     "remark-parse": "11.0.0",

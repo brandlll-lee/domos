@@ -58,6 +58,27 @@ export const unsupportedMcp = (): EngineMcpCatalog => ({
   status: "unsupported",
 });
 
+export async function readNativeConfiguredMcp({
+  process,
+  config,
+}: {
+  process: EngineProcess;
+  config: EngineConfig;
+}) {
+  if (!process.mcp) throw new Error("工作电脑需要更新原生 MCP 目录支持。");
+  return process.mcp<EngineMcpCatalog>({
+    action: "native_catalog",
+    provider: config.provider,
+    command:
+      config.command ??
+      (config.provider === "antigravity"
+        ? "agy"
+        : config.provider === "cursor"
+          ? "cursor-agent"
+          : "devin"),
+  });
+}
+
 export async function readConfiguredMcp(
   provider: EngineProvider,
   process: EngineProcess,

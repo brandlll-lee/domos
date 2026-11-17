@@ -294,7 +294,7 @@ test.each([
   );
 });
 
-test.each(["pi", "claude"] as const)(
+test.each(["pi", "claude", "grok", "antigravity", "devin", "cursor"] as const)(
   "%s reuses its session and binds product tools to each new task",
   async (provider) => {
     const workers: ProtocolProcess[] = [];
@@ -343,6 +343,46 @@ test.each(["pi", "claude"] as const)(
               });
               worker.frame({ type: "result", is_error: false });
             }
+          };
+        if (["grok", "antigravity", "devin", "cursor"].includes(provider))
+          worker.receive = async (request) => {
+            if (request.method === "initialize")
+              worker.response(request, {
+                protocolVersion: 1,
+                agentInfo: { name: provider, version: "1.5.9" },
+                agentCapabilities: {
+                  loadSession: true,
+                  mcpCapabilities: { http: true },
+                },
+              });
+            else if (
+              request.method === "session/new" ||
+              request.method === "session/load"
+            )
+              worker.response(request, {
+                sessionId: "retained",
+                modes: {
+                  currentModeId: "default",
+                  availableModes: [
+                    { id: "default", name: "Default" },
+                    { id: "accept-edits", name: "Accept edits" },
+                  ],
+                },
+              });
+            else if (request.method === "session/prompt") {
+              worker.frame({
+                jsonrpc: "2.0",
+                method: "session/update",
+                params: {
+                  sessionId: "retained",
+                  update: {
+                    sessionUpdate: "agent_message_chunk",
+                    content: { type: "text", text: await read() },
+                  },
+                },
+              });
+              worker.response(request, { stopReason: "end_turn" });
+            } else worker.response(request, {});
           };
         workers.push(worker);
         return worker;

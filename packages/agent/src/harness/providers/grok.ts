@@ -1,5 +1,6 @@
 import { RequestError } from "@agentclientprotocol/sdk";
 import { z } from "zod";
+import { mcpCatalog } from "../mcp-catalog.ts";
 import { acpProvider } from "./acp.ts";
 
 export const grokProvider = acpProvider({
@@ -8,6 +9,37 @@ export const grokProvider = acpProvider({
   command: "grok",
   package: "",
   login: ["login", "--device-auth"],
+  async sessionMcp(rpc, sessionId) {
+    const result = z
+      .object({
+        servers: z.array(
+          z.object({
+            name: z.string(),
+            source: z.string(),
+            sourceLabel: z.string().optional(),
+            session: z
+              .object({
+                enabled: z.boolean(),
+                status: z.string().optional(),
+                authRequired: z.boolean().optional(),
+              })
+              .optional(),
+          }),
+        ),
+      })
+      .parse(await rpc.extMethod("_x.ai/mcp/list", { sessionId }));
+    return mcpCatalog(
+      result.servers.map((server) => ({
+        name: server.name,
+        source: server.sourceLabel ?? server.source,
+        enabled: server.session?.enabled ?? null,
+        status: server.session?.status ?? "unknown",
+        authStatus:
+          server.session?.authRequired === true ? "required" : "unknown",
+      })),
+      "session",
+    );
+  },
   async question(method, params, ask) {
     if (method !== "_x.ai/ask_user_question")
       throw new Error("Grok 请求了不支持的交互。");

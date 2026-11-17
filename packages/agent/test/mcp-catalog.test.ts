@@ -300,7 +300,16 @@ test("session catalog reads use the requested execution, hide mounted names and 
 
 test
   .skipIf(process.env.DOMOS_MCP_CATALOG_SMOKE !== "1")
-  .each(["codex", "claude", "pi", "opencode"])(
+  .each([
+    "codex",
+    "claude",
+    "pi",
+    "opencode",
+    "grok",
+    "antigravity",
+    "devin",
+    "cursor",
+  ])(
   "%s reads its installed native catalog without a model turn",
   async (id) => {
     const directory = await mkdtemp(join(tmpdir(), "domos-mcp-catalog-"));

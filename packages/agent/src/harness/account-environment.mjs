@@ -5,6 +5,7 @@ import { access, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, extname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
+import { nativeMcpFiles } from "./native-configuration.mjs";
 
 const serviceKey = /^(DOMOS_|SERVICE_)|^DATABASE_URL$/i;
 
@@ -72,7 +73,12 @@ export async function accountEnvironment(spec, home, source) {
     env[pathKey],
     join(env.HOME, ".local", "bin"),
     join(env.HOME, ".grok", "bin"),
-    ...(env.LOCALAPPDATA ? [join(env.LOCALAPPDATA, "agy", "bin")] : []),
+    ...(env.LOCALAPPDATA
+      ? [
+          join(env.LOCALAPPDATA, "agy", "bin"),
+          join(env.LOCALAPPDATA, "cursor-agent"),
+        ]
+      : []),
     join(env.HOME, ".npm-global", "bin"),
     ...(env.APPDATA ? [join(env.APPDATA, "npm")] : []),
     join(home, "runtime", "node_modules", ".bin"),
@@ -101,6 +107,11 @@ export async function accountFingerprint(provider, env) {
   const root = {
     antigravity: join(user, ".gemini"),
     grok: join(user, ".grok"),
+    cursor:
+      env.CURSOR_CONFIG_DIR ||
+      (process.platform !== "win32" && env.XDG_CONFIG_HOME
+        ? join(env.XDG_CONFIG_HOME, "cursor")
+        : join(user, ".cursor")),
     devin: join(
       env.APPDATA || env.XDG_DATA_HOME || join(user, ".local", "share"),
       "devin",
@@ -111,8 +122,13 @@ export async function accountFingerprint(provider, env) {
     opencode: join(env.XDG_CONFIG_HOME || join(user, ".config"), "opencode"),
   }[provider];
   const files = {
-    antigravity: ["settings.json", "oauth_creds.json"],
+    antigravity: [
+      "settings.json",
+      "oauth_creds.json",
+      "antigravity-cli/settings.json",
+    ],
     grok: ["auth.json", "config.toml"],
+    cursor: ["cli-config.json"],
     devin: ["credentials.toml"],
     pi: ["auth.json", "models.json"],
     codex: ["auth.json", "config.toml"],
@@ -120,6 +136,24 @@ export async function accountFingerprint(provider, env) {
     opencode: ["opencode.json", "opencode.jsonc"],
   }[provider];
   const paths = (files ?? []).map((file) => join(root, file));
+  if (["cursor", "antigravity", "devin"].includes(provider))
+    paths.push(...nativeMcpFiles(provider, env, process.cwd()));
+  if (provider === "cursor")
+    paths.push(
+      process.platform === "win32"
+        ? join(
+            env.APPDATA || join(user, "AppData", "Roaming"),
+            "Cursor",
+            "auth.json",
+          )
+        : process.platform === "darwin"
+          ? join(user, ".cursor", "auth.json")
+          : join(
+              env.XDG_CONFIG_HOME || join(user, ".config"),
+              "cursor",
+              "auth.json",
+            ),
+    );
   if (provider === "opencode") {
     paths.push(
       join(
@@ -136,7 +170,7 @@ export async function accountFingerprint(provider, env) {
   ))
     if (
       !serviceKey.test(key) &&
-      (/^(?:PI_|OPENAI_|ANTHROPIC_|CLAUDE_|CODEX_|OPENCODE_|GROK_|AWS_|GOOGLE_|AZURE_)/.test(
+      (/^(?:PI_|OPENAI_|ANTHROPIC_|CLAUDE_|CODEX_|OPENCODE_|GROK_|XAI_|CURSOR_|DEVIN_|COGNITION_|AWS_|GOOGLE_|AZURE_)/.test(
         key,
       ) ||
         /(?:KEY|TOKEN|SECRET|PASSWORD)$/.test(key))

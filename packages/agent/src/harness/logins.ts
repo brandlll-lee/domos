@@ -1,6 +1,6 @@
 import { stripVTControlCharacters } from "node:util";
 import type { Context } from "@earendil-works/chord/context";
-import { readClaudeAccount } from "./claude-account.ts";
+import { readCliAccount } from "./cli-account.ts";
 import type { EngineExecution } from "./execution.ts";
 import { JsonLines } from "./json-lines.ts";
 import { openOpenCodeAccount } from "./opencode-account.ts";
@@ -42,6 +42,7 @@ const loginHosts = {
   ],
   grok: ["x.ai", "grok.com", "accounts.x.ai"],
   devin: ["devin.ai", "app.devin.ai", "cognition.ai", "windsurf.com"],
+  cursor: ["cursor.com", "cursor.sh"],
   claude: [
     "claude.com",
     "claude.ai",
@@ -299,14 +300,14 @@ export class EngineLogins {
       .then(async ({ code }) => {
         if (flow.status.state !== "waiting") return;
         let success = code === 0;
-        if (success && provider === "claude") {
+        if (success && (provider === "claude" || provider === "cursor")) {
           const worker = await this.execution.computers.process(
             botId,
             [],
             async () => ({ content: [] }),
             context,
           );
-          success = await readClaudeAccount(worker, {}, config.command);
+          success = await readCliAccount(worker, provider, {}, config.command);
         }
         if (flow.status.state !== "waiting") return;
         await this.finish(botId, success, flow);

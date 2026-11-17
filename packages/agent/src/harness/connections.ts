@@ -1,6 +1,6 @@
 import { RequestError } from "@agentclientprotocol/sdk";
 import type { Context } from "@earendil-works/chord/context";
-import { readClaudeAccount } from "./claude-account.ts";
+import { readCliAccount } from "./cli-account.ts";
 import { readControls } from "./controls.ts";
 import type { EngineExecution } from "./execution.ts";
 import { type EngineLoginInput, EngineLogins } from "./logins.ts";
@@ -177,8 +177,13 @@ export class EngineConnections {
     );
     try {
       let authenticated: boolean | undefined;
-      if (config.provider === "claude") {
-        authenticated = await readClaudeAccount(worker, {}, config.command);
+      if (config.provider === "claude" || config.provider === "cursor") {
+        authenticated = await readCliAccount(
+          worker,
+          config.provider,
+          {},
+          config.command,
+        );
         if (!authenticated)
           return {
             ready: true,

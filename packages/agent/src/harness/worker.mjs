@@ -16,6 +16,7 @@ import { openGateway } from "./gateway.mjs";
 import { openHttpService } from "./http-service.mjs";
 import { imageOperation } from "./image-service.mjs";
 import { closeMcpClients, mcpOperation } from "./mcp-client.mjs";
+import { nativeMcpCatalog } from "./native-configuration.mjs";
 import { nativeCheckpoint, nativeHistory } from "./native-history.mjs";
 
 delete process.env.ELECTRON_RUN_AS_NODE;
@@ -136,6 +137,16 @@ function invoke(callId, name, args, signal) {
 }
 
 async function manageMcp(input, signal, onprogress) {
+  if (input.action === "native_catalog") {
+    const { env } = await accountEnvironment({}, home, accountEnv);
+    return nativeMcpCatalog(
+      input.provider,
+      env,
+      process.cwd(),
+      signal,
+      await resolveProgram(input.command, env),
+    );
+  }
   if (
     input.action === "image_generate" ||
     input.action === "image_recover" ||

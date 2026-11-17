@@ -345,7 +345,7 @@ test("native Harness controls persist and client accounts retain model access", 
   expect(captions.length).toBe(3);
   expect(new Set(captions).size).toBe(1);
   await trigger.click();
-  await expect(popup.getByRole("tab")).toHaveCount(5);
+  await expect(popup.getByRole("tab")).toHaveCount(9);
   const choice = popup.getByRole("option", {
     name: "Pi · 测试模型二",
     exact: true,
@@ -615,13 +615,30 @@ test("AI services share connection reads and keep Bot model selection separate",
         colorScheme === "dark" ? "rgb(239, 239, 240)" : "rgb(32, 33, 35)",
       );
     }
-    for (const provider of ["codex", "claude"]) {
+    for (const provider of [
+      "codex",
+      "claude",
+      "grok",
+      "antigravity",
+      "devin",
+      "cursor",
+    ]) {
       const mark = settings.locator(
-        `img.engine-mark[data-provider="${provider}"]`,
+        `.engine-mark[data-provider="${provider}"]`,
       );
       await expect
         .poll(() =>
-          mark.evaluate((node) => (node as HTMLImageElement).naturalWidth),
+          mark.evaluate(async (node) => {
+            if (node instanceof HTMLImageElement) return node.naturalWidth;
+            const source = getComputedStyle(node).maskImage.match(
+              /^url\(["']?(.*?)["']?\)$/,
+            )?.[1];
+            if (!source) return 0;
+            const image = new Image();
+            image.src = source;
+            await image.decode();
+            return image.naturalWidth;
+          }),
         )
         .toBeGreaterThan(0);
       await expect(mark).toHaveCSS("width", "24px");

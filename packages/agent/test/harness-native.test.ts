@@ -17,7 +17,17 @@ import type { EngineSession, ProductResult } from "../src/harness/types.ts";
 
 test
   .skipIf(process.env.DOMOS_NATIVE_SMOKE !== "1")
-  .each(["pi", "codex", "claude", "opencode", "acp"])(
+  .each([
+    "pi",
+    "codex",
+    "claude",
+    "opencode",
+    "acp",
+    "grok",
+    "antigravity",
+    "devin",
+    "cursor",
+  ])(
   "%s reads tool images, coordinates and verified results",
   async (id) => {
     const directory = await mkdtemp(join(tmpdir(), "domos-native-smoke-"));

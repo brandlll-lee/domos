@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Readable, Writable } from "node:stream";
 import {
   ClientSideConnection,
@@ -6,8 +7,6 @@ import {
   ndJsonStream,
   PROTOCOL_VERSION,
   type SessionConfigOption,
-  type ToolCall,
-  type ToolCallUpdate,
 } from "@agentclientprotocol/sdk";
 import { z } from "zod";
 import { openCodeRequest } from "../http-service.mjs";
@@ -18,12 +17,17 @@ import {
   type EngineConfig,
   type EngineControls,
   type EngineEvent,
+  type EngineMcpCatalog,
   type EngineOpen,
+  type EnginePlan,
   type EngineProvider,
   type EngineSession,
   engineLimits,
 } from "../types.ts";
+import { CumulativeCost } from "../usage-cost.ts";
+import { answerAcpPermission } from "./acp-permission.ts";
 import { AcpPrompts } from "./acp-prompts.ts";
+import { acpTools } from "./acp-tools.ts";
 import {
   completedCompaction,
   openCodeRecords,
@@ -34,8 +38,19 @@ import { formContent, formQuestions } from "./question-form.ts";
 export function acpProvider(
   descriptor: Pick<
     EngineProvider,
-    "id" | "name" | "command" | "package" | "login"
+    "id" | "name" | "command" | "package" | "login" | "mcp"
   > & {
+    notification?: (
+      method: string,
+      params: Record<string, unknown>,
+      emit: EngineOpen["emit"],
+      plan: Map<string, EnginePlan[number]>,
+    ) => Promise<void>;
+    authMethod?: string;
+    sessionMcp?: (
+      rpc: ClientSideConnection,
+      sessionId: string,
+    ) => Promise<EngineMcpCatalog>;
     promptSteering?: (
       hello: InitializeResponse,
     ) => "replace" | "append" | undefined;
@@ -54,7 +69,7 @@ export function acpProvider(
     ) => Promise<"accepted" | "refused" | "uncertain">;
   },
 ): EngineProvider {
-  return {
+  const provider: EngineProvider = {
     ...descriptor,
     capabilities: {
       approvals: true,
@@ -71,7 +86,20 @@ export function acpProvider(
             return readOpenCodeMcp(process, "configuration");
           },
         }
-      : {}),
+      : descriptor.sessionMcp
+        ? {
+            async mcp(input) {
+              const session = await provider.open({
+                ...input,
+                sessionId: null,
+                instructions: "Domos native capability read.",
+                emit: async () => {},
+              });
+              if (!session.mcp) throw new Error("原生引擎未提供 MCP 目录。");
+              return session.mcp();
+            },
+          }
+        : {}),
     async open({
       process,
       config,
@@ -90,66 +118,26 @@ export function acpProvider(
       let active = false;
       let prompts: AcpPrompts | undefined;
       let compactionConfirmed = false;
+      let compactionSummary = "";
+      let compactionBoundary = "";
+      let nativeCost: number | undefined;
+      const cost = new CumulativeCost(Boolean(sessionId));
+      const costCounter = randomUUID();
       let nativeId = sessionId;
       let contextReading: Extract<EngineEvent, { type: "context" }> | undefined;
       let messageId = "";
-      let replyText = "";
-      let completed = "";
+      const replies = new Map<string, { text: string; completed: string }>();
+      const children = new Map<string, string>();
+      const nativePlan = new Map<string, EnginePlan[number]>();
       let events = Promise.resolve();
       const reply = async () => {
-        if (!replyText.trim() || replyText === completed) return;
-        await emit({ type: "message", id: messageId, text: replyText });
-        completed = replyText;
+        for (const [id, value] of replies) {
+          if (!value.text.trim() || value.text === value.completed) continue;
+          await emit({ type: "message", id, text: value.text });
+          value.completed = value.text;
+        }
       };
-      const toolCalls = new Map<string, Partial<ToolCall>>();
-      const recordTool = async (
-        update: ToolCallUpdate | ToolCall,
-        recovered = false,
-        timing: {
-          timestamp?: number;
-          endedAt?: number;
-          receivedAt?: number;
-        } = {},
-      ) => {
-        const previous = toolCalls.get(update.toolCallId);
-        const native = {
-          ...previous,
-          ...Object.fromEntries(
-            Object.entries(update).filter(([, value]) => value != null),
-          ),
-        } as Partial<ToolCall>;
-        toolCalls.set(update.toolCallId, native);
-        const metadata = {
-          ...(recovered ? { recovered: true } : {}),
-          ...timing,
-        };
-        const { rawOutput: _output, content: _content, ...input } = native;
-        if (
-          !previous ||
-          update.rawInput != null ||
-          update.title != null ||
-          recovered
-        )
-          await emit({
-            type: "tool",
-            id: update.toolCallId,
-            name: native.title ?? "Tool",
-            input: (native.rawInput ?? {}) as Record<string, unknown>,
-            native: input,
-            ...metadata,
-          });
-        if (native.status || native.rawOutput != null || native.content?.length)
-          await emit({
-            type: "tool_result",
-            id: update.toolCallId,
-            name: native.title ?? "Tool",
-            text: "",
-            failed: native.status === "failed",
-            partial: !["completed", "failed"].includes(native.status ?? ""),
-            native: native as Record<string, unknown>,
-            ...metadata,
-          });
-      };
+      const recordTool = acpTools(emit);
       let configOptions: SessionConfigOption[] = [];
       let commands: EngineControls["commands"] = [];
       let modes:
@@ -163,7 +151,11 @@ export function acpProvider(
         commands,
         options: [
           ...configOptions
-            .filter((item) => item.category !== "model")
+            .filter(
+              (item) =>
+                item.category !== "model" &&
+                !(descriptor.mode && item.id === "mode"),
+            )
             .map((item) => ({
               id: item.id,
               ...(item.category === "thought_level"
@@ -186,7 +178,9 @@ export function acpProvider(
                           })),
                     ),
             })),
-          ...(modes && !configOptions.some((item) => item.id === "mode")
+          ...(modes &&
+          !descriptor.mode &&
+          !configOptions.some((item) => item.id === "mode")
             ? [
                 {
                   id: "mode",
@@ -212,7 +206,7 @@ export function acpProvider(
         approval: EngineApproval,
         validate?: (answer: EngineAnswer) => unknown,
       ) {
-        await reply();
+        if (openCode) await reply();
         const result = Promise.withResolvers<EngineAnswer>();
         pending.set(approval.id, { answer: result.resolve, validate });
         const timer = setTimeout(
@@ -238,6 +232,19 @@ export function acpProvider(
       });
       const rpc = new ClientSideConnection(
         () => ({
+          async extNotification(method, params) {
+            if (!active || !descriptor.notification) return;
+            const receivedAt = Date.now();
+            events = events.then(() =>
+              descriptor.notification?.(
+                method,
+                params,
+                (event) => emit({ ...event, receivedAt }),
+                nativePlan,
+              ),
+            );
+            void events.catch(() => {});
+          },
           async extMethod(method, params) {
             if (!descriptor.question)
               throw new Error("原生引擎请求了不支持的交互。");
@@ -264,85 +271,76 @@ export function acpProvider(
               ? { action: "accept", content: formContent(schema, answer) }
               : { action: "cancel" };
           },
-          async requestPermission(request) {
-            const id = `permission:${++sequence}`;
-            const question = String(
-              request.toolCall.toolCallId ?? "",
-            ).startsWith("interaction_");
-            const options = request.options.map((option) => ({
-              id: option.optionId,
-              label: option.name,
-            }));
-            const title =
-              request.toolCall.title ??
-              (question ? "需要你的回答" : "工具权限请求");
-            const answer = await ask({
-              id,
-              title: question ? title : "允许这次操作？",
-              detail: question ? "" : title,
-              ...(!question && request.toolCall.rawInput
-                ? {
-                    fields: Object.entries(
-                      typeof request.toolCall.rawInput === "object"
-                        ? request.toolCall.rawInput
-                        : { 参数: request.toolCall.rawInput },
-                    ).map(([label, value]) => ({
-                      label,
-                      value:
-                        typeof value === "string"
-                          ? value
-                          : (JSON.stringify(value) ?? ""),
-                    })),
-                  }
-                : {}),
-              kind: question ? "question" : "permission",
-              automatic: !question,
-              ...(question
-                ? { questions: [{ id, title, options }] }
-                : { options }),
-            });
-            const selected = question
-              ? answer.answers?.[id]?.[0]
-              : answer.optionId;
-            const option = selected
-              ? request.options.find(
-                  (item) =>
-                    item.optionId === selected &&
-                    (question ||
-                      (answer.allow
-                        ? item.kind.startsWith("allow_")
-                        : item.kind.startsWith("reject_"))),
-                )
-              : !question
-                ? (request.options.find(
-                    (item) =>
-                      item.kind ===
-                      (answer.allow ? "allow_once" : "reject_once"),
-                  ) ??
-                  request.options.find(
-                    (item) =>
-                      item.kind ===
-                        (answer.allow ? "allow_always" : "reject_always") &&
-                      (descriptor.id !== "devin" ||
-                        !answer.allow ||
-                        config.approvalMode === "full"),
-                  ))
-                : undefined;
-            return {
-              outcome: option
-                ? { outcome: "selected", optionId: option.optionId }
-                : { outcome: "cancelled" },
-            };
-          },
+          requestPermission: (request) =>
+            answerAcpPermission(
+              request,
+              config,
+              `permission:${++sequence}`,
+              ask,
+            ),
           async sessionUpdate(notification) {
             const receivedAt = Date.now();
+            const parentId = children.has(notification.sessionId)
+              ? notification.sessionId
+              : undefined;
             const forward = (event: EngineEvent) =>
-              emit({ ...event, receivedAt });
+              emit({ ...event, ...(parentId ? { parentId } : {}), receivedAt });
             events = events.then(async () => {
               const emit = forward;
               const { sessionId, update } = notification;
-              if (nativeId && sessionId !== nativeId) return;
+              if (
+                nativeId &&
+                sessionId !== nativeId &&
+                !children.has(sessionId)
+              )
+                return;
+              if (update.sessionUpdate === "subagent_update") {
+                children.set(update.sessionId, sessionId);
+                await emit({
+                  type: "tool",
+                  id: update.sessionId,
+                  name: update.title ?? "Subagent",
+                  input: { description: update.description ?? "" },
+                  native: update,
+                });
+                await emit({
+                  type: "tool_result",
+                  id: update.sessionId,
+                  name: update.title ?? "Subagent",
+                  text: update.description ?? "",
+                  failed: false,
+                  partial: update.state?.state !== "idle",
+                  native: update,
+                });
+                return;
+              }
+              if (parentId) {
+                if (
+                  (update.sessionUpdate === "agent_message_chunk" ||
+                    update.sessionUpdate === "agent_thought_chunk") &&
+                  update.content.type === "text"
+                )
+                  await emit({
+                    type:
+                      update.sessionUpdate === "agent_thought_chunk"
+                        ? "thinking"
+                        : "text",
+                    id: `${sessionId}:${update.messageId ?? update.sessionUpdate}`,
+                    text: update.content.text,
+                    native: update,
+                  });
+                if (
+                  update.sessionUpdate === "tool_call" ||
+                  update.sessionUpdate === "tool_call_update"
+                )
+                  await recordTool(update, false, { receivedAt, parentId });
+                return;
+              }
               if (update.sessionUpdate === "usage_update") {
+                if (update.cost?.currency === "USD") {
+                  nativeCost = update.cost.amount;
+                  if (!active) cost.read(`baseline:${nativeCost}`, nativeCost);
+                }
                 contextReading = {
                   type: "context",
                   tokens: update.used,
@@ -358,6 +356,13 @@ export function acpProvider(
                 if (nativeId) await emit(contextReading);
               }
               if (active && update.sessionUpdate === "compaction_update") {
+                if (update.summary) {
+                  compactionBoundary = update.compactionId;
+                  compactionSummary = update.summary
+                    .filter((block) => block.type === "text")
+                    .map((block) => block.text)
+                    .join("\n");
+                }
                 const status =
                   update.status === "in_progress"
                     ? "running"
@@ -373,16 +378,36 @@ export function acpProvider(
                     type: "compaction",
                     status,
                     nativeId: update.compactionId,
+                    ...(status === "completed" &&
+                    compactionSummary &&
+                    compactionBoundary === update.compactionId
+                      ? {
+                          summary: {
+                            text: compactionSummary,
+                            nativeBoundary: update.compactionId,
+                            retained: [],
+                          },
+                        }
+                      : {}),
                     ...(update.error ? { error: update.error } : {}),
                   });
                 }
               }
-              if (active && update.sessionUpdate === "compaction_summary_chunk")
+              if (
+                active &&
+                update.sessionUpdate === "compaction_summary_chunk"
+              ) {
+                if (compactionBoundary !== update.compactionId)
+                  compactionSummary = "";
+                compactionBoundary = update.compactionId;
+                if (update.content.type === "text")
+                  compactionSummary += update.content.text;
                 await emit({
                   type: "compaction",
                   status: "running",
                   nativeId: update.compactionId,
                 });
+              }
               if (update.sessionUpdate === "notice")
                 await emit({
                   type: "runtime",
@@ -429,17 +454,22 @@ export function acpProvider(
                 update.content.type === "text"
               )
                 prompts?.observe(update.content.text);
-              if (update.sessionUpdate === "plan")
-                await emit({
-                  type: "plan",
-                  plan: update.entries.map((entry) => ({
+              if (update.sessionUpdate === "plan") {
+                nativePlan.clear();
+                update.entries.forEach((entry, index) => {
+                  nativePlan.set(String(index), {
                     step: entry.content,
                     status:
                       entry.status === "in_progress"
                         ? "inProgress"
                         : entry.status,
-                  })),
+                  });
                 });
+                await emit({
+                  type: "plan",
+                  plan: [...nativePlan.values()],
+                });
+              }
               if (
                 (update.sessionUpdate === "agent_message_chunk" ||
                   update.sessionUpdate === "agent_thought_chunk") &&
@@ -447,12 +477,15 @@ export function acpProvider(
               ) {
                 if (update.sessionUpdate === "agent_message_chunk") {
                   if (update.messageId && update.messageId !== messageId) {
-                    await reply();
+                    if (openCode) await reply();
                     messageId = update.messageId;
-                    replyText = "";
-                    completed = "";
                   }
-                  replyText += update.content.text;
+                  const value = replies.get(messageId) ?? {
+                    text: "",
+                    completed: "",
+                  };
+                  value.text += update.content.text;
+                  replies.set(messageId, value);
                 }
                 await emit({
                   type:
@@ -467,11 +500,11 @@ export function acpProvider(
                 update.sessionUpdate === "tool_call" ||
                 update.sessionUpdate === "tool_call_update"
               ) {
-                await reply();
+                if (openCode) await reply();
                 await recordTool(update, false, { receivedAt });
               }
             });
-            await events;
+            void events.catch(() => {});
           },
         }),
         ndJsonStream(
@@ -527,6 +560,11 @@ export function acpProvider(
         },
         clientInfo: { name: "domos", version: "1.0.0" },
       });
+      if (descriptor.authMethod)
+        await rpc.authenticate({ methodId: descriptor.authMethod });
+      const nativeInstructions = Boolean(
+        hello.agentCapabilities?.sessionCapabilities?.systemPrompt,
+      );
       const mcpServers = [
         { name: "domos", url: ready.url },
         ...(mcp?.servers ?? []),
@@ -540,6 +578,14 @@ export function acpProvider(
       const params = {
         cwd: ready.cwd,
         mcpServers,
+        ...(nativeInstructions
+          ? {
+              systemPrompt: {
+                mode: "append",
+                content: [{ type: "text" as const, text: instructions }],
+              },
+            }
+          : {}),
       };
       if (sessionId && !hello.agentCapabilities?.loadSession)
         throw new Error(
@@ -567,12 +613,14 @@ export function acpProvider(
       const modelOption = result.configOptions?.find(
         (item) => item.category === "model",
       );
-      if (config.model && modelOption)
-        await rpc.setSessionConfigOption({
+      if (config.model && modelOption) {
+        const changed = await rpc.setSessionConfigOption({
           sessionId: id,
           configId: modelOption.id,
           value: config.model,
         });
+        configOptions = changed.configOptions;
+      }
       if (config.model && !modelOption && nativeModels)
         await rpc.extMethod("session/set_model", {
           sessionId: id,
@@ -603,6 +651,8 @@ export function acpProvider(
         }
       }
       for (const [key, value] of Object.entries(config.options ?? {})) {
+        if (key === "mode" && descriptor.mode)
+          throw new Error("请通过统一审批设置选择权限模式。");
         if (
           key === "mode" &&
           modes &&
@@ -647,6 +697,8 @@ export function acpProvider(
       if (contextReading) await emit(contextReading);
       const records = openCodeRecords(process, id, emit, recordTool);
       const { since, record, recordMessage } = records;
+      const configuredMcp = descriptor.mcp;
+      const sessionMcp = descriptor.sessionMcp;
       const messages = () =>
         openCode ? records.messages() : Promise.resolve([]);
       const session: EngineSession = {
@@ -656,7 +708,11 @@ export function acpProvider(
               mcp: (signal?: AbortSignal) =>
                 readOpenCodeMcp(process, "session", signal),
             }
-          : {}),
+          : sessionMcp
+            ? { mcp: () => sessionMcp(rpc, id) }
+            : configuredMcp
+              ? { mcp: () => configuredMcp({ process, config }) }
+              : {}),
         async skills() {
           if (descriptor.id !== "opencode") return undefined;
           const items = await process.request<
@@ -678,7 +734,9 @@ export function acpProvider(
           compactionConfirmed = false;
           await session.prompt("/compact");
           if (!compactionConfirmed)
-            throw new Error("OpenCode 没有返回压缩完成记录。结果未确认。");
+            throw new Error(
+              `${descriptor.name} 没有返回压缩完成记录。结果未确认。`,
+            );
         },
         async recoverCompaction(cursor) {
           if (!openCode || !cursor?.startsWith("opencode:")) return false;
@@ -752,9 +810,9 @@ export function acpProvider(
               "当前引擎协议不支持图片。请更换引擎或使用文本资料。",
             );
           active = true;
+          nativeCost = undefined;
           messageId = `${descriptor.id}:${++sequence}`;
-          replyText = "";
-          completed = "";
+          replies.clear();
           const baseline = openCode
             ? `time:${await process.checkpoint?.("opencode", id)}`
             : "";
@@ -767,7 +825,10 @@ export function acpProvider(
             const blocks: ContentBlock[] = [
               {
                 type: "text",
-                text: openCode ? text : `${instructions}\n\n${text}`,
+                text:
+                  openCode || nativeInstructions
+                    ? text
+                    : `${instructions}\n\n${text}`,
               },
               ...images,
             ];
@@ -775,7 +836,7 @@ export function acpProvider(
               ? await prompts.run(blocks)
               : await rpc.prompt({ sessionId: id, prompt: blocks });
             await events;
-            if (outcome.usage && !openCode)
+            if (!openCode && (outcome.usage || nativeCost !== undefined))
               await emit({
                 type: "usage",
                 usage: {
@@ -783,11 +844,14 @@ export function acpProvider(
                   source: `${descriptor.id}.acp.prompt`,
                   provider: null,
                   model: config.model,
-                  input: outcome.usage.inputTokens,
-                  output: outcome.usage.outputTokens,
-                  cacheRead: outcome.usage.cachedReadTokens ?? null,
-                  cacheWrite: outcome.usage.cachedWriteTokens ?? null,
-                  costUsd: null,
+                  input: outcome.usage?.inputTokens ?? null,
+                  output: outcome.usage?.outputTokens ?? null,
+                  cacheRead: outcome.usage?.cachedReadTokens ?? null,
+                  cacheWrite: outcome.usage?.cachedWriteTokens ?? null,
+                  costUsd: cost.read(messageId, nativeCost),
+                  costBasis: "reported",
+                  costCumulative: nativeCost,
+                  costCounter,
                 },
               });
             if (outcome.stopReason === "cancelled")
@@ -863,4 +927,5 @@ export function acpProvider(
       return session;
     },
   };
+  return provider;
 }

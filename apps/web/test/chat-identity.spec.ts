@@ -21,7 +21,16 @@ test("identity labels retain long names and inline marks for each Harness", asyn
   });
   await page.goto(service.url);
   await page.getByRole("link", { name, exact: false }).click();
-  for (const provider of ["pi", "codex", "claude", "opencode"]) {
+  for (const provider of [
+    "pi",
+    "codex",
+    "claude",
+    "opencode",
+    "grok",
+    "antigravity",
+    "devin",
+    "cursor",
+  ]) {
     const profile = await rpc("engines/get", { botId: bot.id });
     await rpc("engines/configure", {
       botId: bot.id,
