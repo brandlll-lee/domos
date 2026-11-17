@@ -5,6 +5,7 @@ import { TerminalWindowIcon } from "@phosphor-icons/react/dist/csr/TerminalWindo
 const images: Record<string, string> = {
   codex: new URL("./assets/codex.svg", import.meta.url).href,
   claude: new URL("./assets/claude-code.svg", import.meta.url).href,
+  antigravity: new URL("./assets/antigravity.svg", import.meta.url).href,
   grok: new URL("./assets/grok.svg", import.meta.url).href,
 };
 

@@ -16,6 +16,7 @@ export const approvalLabels: Record<ApprovalMode, string> = {
 export function supportedApprovalModes(provider: string): ApprovalMode[] {
   if (provider === "claude") return [...approvalModes];
   if (provider === "codex") return ["ask", "auto", "full"];
+  if (provider === "antigravity") return [...approvalModes];
   if (provider === "grok") return ["ask", "auto", "full"];
   if (provider === "pi" || provider === "opencode") return ["ask", "full"];
   return ["ask"];

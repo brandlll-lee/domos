@@ -1,4 +1,5 @@
 import { expect, onTestFinished, test, vi } from "vitest";
+import { antigravityProvider } from "../src/harness/providers/antigravity.ts";
 import { grokProvider } from "../src/harness/providers/grok.ts";
 import type { EngineEvent, EngineProvider } from "../src/harness/types.ts";
 import { ProtocolProcess, type Request } from "./fixtures/engine-process.ts";
@@ -26,6 +27,13 @@ function agent(provider: EngineProvider, initialization: object = {}) {
               request.method === "session/load"
             ? {
                 sessionId: "native",
+                modes: {
+                  currentModeId: "default",
+                  availableModes: [
+                    { id: "default", name: "Default" },
+                    { id: "accept-edits", name: "Accept edits" },
+                  ],
+                },
                 configOptions: [
                   {
                     id: "model",
@@ -109,6 +117,40 @@ test("Grok uses the installed CLI, native models and stable interjection identit
     expect.objectContaining({ type: "message", text: "Saved" }),
   );
   expect(await session.steer?.("Late")).toBe("refused");
+});
+
+test("Antigravity keeps the task open across two prompt replacements", async () => {
+  const { process, prompts, open } = agent(antigravityProvider, {
+    agentInfo: { name: "Antigravity", version: "1.5.9" },
+  });
+  const session = await open();
+  expect(process.spec?.args).toEqual(["acp"]);
+  let completed = false;
+  const run = session.prompt("First").then(() => {
+    completed = true;
+  });
+  await vi.waitFor(() => expect(prompts).toHaveLength(1));
+  const second = session.steer?.("Second");
+  await vi.waitFor(() => expect(prompts).toHaveLength(2));
+  process.response(prompts[0] as Request, { stopReason: "end_turn" });
+  expect(await second).toBe("accepted");
+  expect(completed).toBe(false);
+  const third = session.steer?.("Third");
+  await vi.waitFor(() => expect(prompts).toHaveLength(3));
+  process.response(prompts[1] as Request, { stopReason: "end_turn" });
+  expect(await third).toBe("accepted");
+  expect(completed).toBe(false);
+  process.response(prompts[2] as Request, { stopReason: "end_turn" });
+  await run;
+  expect(completed).toBe(true);
+});
+
+test("Antigravity retains queued input when the CLI version does not confirm steering", async () => {
+  const { open } = agent(antigravityProvider, {
+    agentInfo: { name: "Antigravity", version: "1.4.5" },
+  });
+  const session = await open();
+  expect(session.steer).toBeUndefined();
 });
 
 test.each([-32601, -32602, -32603])(

@@ -71,6 +71,7 @@ export async function accountEnvironment(spec, home, source) {
     env[pathKey],
     join(env.HOME, ".local", "bin"),
     join(env.HOME, ".grok", "bin"),
+    ...(env.LOCALAPPDATA ? [join(env.LOCALAPPDATA, "agy", "bin")] : []),
     join(env.HOME, ".npm-global", "bin"),
     ...(env.APPDATA ? [join(env.APPDATA, "npm")] : []),
     join(home, "runtime", "node_modules", ".bin"),
@@ -97,6 +98,7 @@ export async function accountEnvironment(spec, home, source) {
 export async function accountFingerprint(provider, env) {
   const user = env.HOME || env.USERPROFILE || homedir();
   const root = {
+    antigravity: join(user, ".gemini"),
     grok: join(user, ".grok"),
     pi: env.PI_CODING_AGENT_DIR || join(user, ".pi", "agent"),
     codex: env.CODEX_HOME || join(user, ".codex"),
@@ -104,6 +106,7 @@ export async function accountFingerprint(provider, env) {
     opencode: join(env.XDG_CONFIG_HOME || join(user, ".config"), "opencode"),
   }[provider];
   const files = {
+    antigravity: ["settings.json", "oauth_creds.json"],
     grok: ["auth.json", "config.toml"],
     pi: ["auth.json", "models.json"],
     codex: ["auth.json", "config.toml"],

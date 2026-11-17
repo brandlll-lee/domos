@@ -35,6 +35,11 @@ type Login = {
 };
 const loginHosts = {
   codex: ["auth.openai.com"],
+  antigravity: [
+    "accounts.google.com",
+    "antigravity.google",
+    "antigravity.google.com",
+  ],
   grok: ["x.ai", "grok.com", "accounts.x.ai"],
   claude: [
     "claude.com",

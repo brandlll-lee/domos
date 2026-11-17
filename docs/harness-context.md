@@ -4,9 +4,11 @@
 
 Domos stores Bot identity, complete chat, memories, attachments, and computer permissions. Pi Durable 1.4.0 stores submissions and tasks. Runtime.submit admits ordinary chat, additional input, routines, API requests, and CLI requests. Stable request IDs deduplicate retries.
 
-The selected native Harness runs on the Bot's work computer. It owns generation, model context, and native tools. The driver registry includes Pi RPC, Codex app-server, Claude Code stream JSON, OpenCode ACP, Grok ACP, and custom ACP. UI choices come from the registry. Models and thinking levels come from the selected native program.
+The selected native Harness runs on the Bot's work computer. It owns generation, model context, and native tools. The driver registry includes Pi RPC, Codex app-server, Claude Code stream JSON, OpenCode ACP, Grok ACP, Antigravity ACP, and custom ACP. UI choices come from the registry. Models and thinking levels come from the selected native program.
 
 Grok uses `grok agent stdio` and the native account on the work computer. Its interjection extension retains message identity and image blocks. Rejected input waits for a later turn; uncertain input remains behind recovery. Native questions use stored question cards.
+
+Antigravity uses the installed `agy acp`. Version 1.5.0 and later can replace a running prompt. The adapter retains every outstanding prompt and waits for the final response. A refused or unconfirmed addition retains its admission state.
 
 Custom ACP uses the stable v1 SDK. The administrator supplies a program and arguments. Config options expose native model and thinking selectors. The adapter supplies Domos and managed MCP endpoints over HTTP when the Harness supports it. Otherwise, the work computer starts an official MCP SDK stdio transport to the same authenticated endpoints. It forwards requests, notifications, progress and cancellation. Each additional Harness needs a compatibility check before it is listed as supported. Draft ACP v2 is not enabled.
 

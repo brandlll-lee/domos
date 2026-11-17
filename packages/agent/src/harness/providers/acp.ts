@@ -23,6 +23,7 @@ import {
   type EngineSession,
   engineLimits,
 } from "../types.ts";
+import { AcpPrompts } from "./acp-prompts.ts";
 import {
   completedCompaction,
   openCodeRecords,
@@ -35,6 +36,9 @@ export function acpProvider(
     EngineProvider,
     "id" | "name" | "command" | "package" | "login"
   > & {
+    promptSteering?: (
+      hello: InitializeResponse,
+    ) => "replace" | "append" | undefined;
     question?: (
       method: string,
       params: Record<string, unknown>,
@@ -84,6 +88,7 @@ export function acpProvider(
         throw new Error("请指定工作电脑上的 ACP 程序。");
       let sequence = 0;
       let active = false;
+      let prompts: AcpPrompts | undefined;
       let compactionConfirmed = false;
       let nativeId = sessionId;
       let contextReading: Extract<EngineEvent, { type: "context" }> | undefined;
@@ -181,7 +186,7 @@ export function acpProvider(
                           })),
                     ),
             })),
-          ...(modes
+          ...(modes && !configOptions.some((item) => item.id === "mode")
             ? [
                 {
                   id: "mode",
@@ -416,6 +421,11 @@ export function acpProvider(
                 });
               }
               if (!active) return;
+              if (
+                update.sessionUpdate === "user_message_chunk" &&
+                update.content.type === "text"
+              )
+                prompts?.observe(update.content.text);
               if (update.sessionUpdate === "plan")
                 await emit({
                   type: "plan",
@@ -536,6 +546,8 @@ export function acpProvider(
         ? await rpc.loadSession({ ...params, sessionId })
         : await rpc.newSession(params);
       const id = sessionId ?? (result as { sessionId: string }).sessionId;
+      const promptSteering = descriptor.promptSteering?.(hello);
+      if (promptSteering) prompts = new AcpPrompts(rpc, id);
       configOptions = result.configOptions ?? [];
       const nativeModels = z
         .object({
@@ -588,7 +600,11 @@ export function acpProvider(
         }
       }
       for (const [key, value] of Object.entries(config.options ?? {})) {
-        if (key === "mode" && modes) {
+        if (
+          key === "mode" &&
+          modes &&
+          !configOptions.some((item) => item.id === key)
+        ) {
           if (!modes.availableModes.some((item) => item.id === value))
             throw new Error("此引擎没有提供这个工作模式。");
           await rpc.setSessionMode({ sessionId: id, modeId: value });
@@ -694,7 +710,7 @@ export function acpProvider(
                 id: item.modelId,
                 name: item.name,
               })) ?? []),
-        ...(descriptor.steer
+        ...(descriptor.steer || promptSteering
           ? {
               async steer(
                 text: string,
@@ -708,6 +724,11 @@ export function acpProvider(
                     !hello.agentCapabilities?.promptCapabilities?.image)
                 )
                   return "refused" as const;
+                if (prompts)
+                  return prompts.steer(
+                    [{ type: "text", text }, ...images],
+                    promptSteering === "replace",
+                  );
                 return (
                   descriptor.steer?.(
                     rpc,
@@ -736,20 +757,20 @@ export function acpProvider(
             : "";
           await emit({
             type: "accepted",
-            id: `opencode:${baseline}`,
+            id: openCode ? `opencode:${baseline}` : `${descriptor.id}:${id}`,
           });
           try {
             contextReading = undefined;
-            const outcome = await rpc.prompt({
-              sessionId: id,
-              prompt: [
-                {
-                  type: "text",
-                  text: openCode ? text : `${instructions}\n\n${text}`,
-                },
-                ...images,
-              ],
-            });
+            const blocks: ContentBlock[] = [
+              {
+                type: "text",
+                text: openCode ? text : `${instructions}\n\n${text}`,
+              },
+              ...images,
+            ];
+            const outcome = prompts
+              ? await prompts.run(blocks)
+              : await rpc.prompt({ sessionId: id, prompt: blocks });
             await events;
             if (outcome.stopReason === "cancelled")
               throw new Error("工作已停止。");
