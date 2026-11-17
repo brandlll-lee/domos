@@ -49,10 +49,10 @@ test("profile updates merge with drafts and keep character equipment scoped", as
   await name.fill("My name");
   const yellow = await apply("#ffff00");
   await expect(
-    details.locator(".avatar-editor .character-body > image"),
+    details.locator(".avatar-editor .avatar-preview .character-body > image"),
   ).toHaveAttribute("href", yellow.avatarMedia?.src ?? "");
   await expect(
-    details.locator(".setting-row .character-body > image"),
+    details.locator(".equipment-editor .character-body > image"),
   ).toHaveAttribute("href", yellow.avatarMedia?.cover ?? "");
   await expect(name).toHaveValue("My name");
   await expect(name).toBeFocused();
@@ -117,6 +117,45 @@ test("profile updates merge with drafts and keep character equipment scoped", as
     blue.avatarAssetId,
   );
 
+  await details.getByRole("tab", { name: "我的角色", exact: true }).click();
+  const catalog = await api.bots.characters({ botId: bot.id });
+  const yellowAsset = catalog.find((item) => item.id === yellow.avatarAssetId);
+  const blueAsset = catalog.find((item) => item.id === blue.avatarAssetId);
+  if (!yellowAsset || !blueAsset) throw new Error("Characters missing");
+  const choices = details.getByRole("button", { name: /^角色：/ });
+  await choices
+    .filter({ has: page.locator(`image[href="${yellowAsset.media.cover}"]`) })
+    .click();
+  await expect(
+    details.getByRole("spinbutton", { name: "耳机水平", exact: true }),
+  ).toHaveValue("23");
+  await expect(
+    details.locator(".equipment-editor .character-body > image"),
+  ).toHaveAttribute("href", yellowAsset.media.cover);
+  await details
+    .getByRole("spinbutton", { name: "耳机水平", exact: true })
+    .fill("29");
+  await name.fill("Unsaved name");
+  await details
+    .getByRole("button", { name: "保存角色与装备", exact: true })
+    .click();
+  await expect(
+    details.getByRole("button", { name: "保存装备位置", exact: true }),
+  ).toBeDisabled();
+  expect((await api.work.profile({ botId: bot.id })).name).toBe(
+    "Retained name",
+  );
+  await expect(name).toHaveValue("Unsaved name");
+  await name.fill("Retained name");
+  await choices
+    .filter({ has: page.locator(`image[href="${blueAsset.media.cover}"]`) })
+    .click();
+  await expect(
+    details.getByRole("spinbutton", { name: "耳机水平", exact: true }),
+  ).toHaveValue("31");
+  await save.click();
+  await expect(save).toHaveCount(0);
+
   await details.getByRole("button", { name: "返回", exact: true }).click();
   let reads = 0;
   page.on("request", (request) => {
@@ -129,7 +168,7 @@ test("profile updates merge with drafts and keep character equipment scoped", as
   expect(reads).toBe(0);
   await details.getByRole("button", { name: "编辑", exact: true }).click();
   await expect(
-    details.locator(".avatar-editor .character-body > image"),
+    details.locator(".avatar-editor .avatar-preview .character-body > image"),
   ).toHaveAttribute("href", green.avatarMedia?.src ?? "");
   await expect(name).toHaveValue("Retained name");
   await expect(save).toHaveCount(0);
@@ -310,9 +349,7 @@ test("saved characters keep their pixels, share across Bots and transform only o
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   const details = page.locator("#bot-details");
   await details.getByRole("button", { name: "编辑", exact: true }).click();
-  await details.getByRole("button", { name: "选择头像", exact: true }).click();
   await page.getByRole("button", { name: "颜色：晴蓝", exact: true }).click();
-  await page.keyboard.press("Escape");
   await details.getByRole("button", { name: "保存身份", exact: true }).click();
   await expect
     .poll(async () => (await api.work.profile({ botId: source.id })).avatar)
@@ -347,13 +384,11 @@ test("saved characters keep their pixels, share across Bots and transform only o
   await page.getByRole("button", { name: "新建", exact: true }).click();
   await page.getByRole("menuitem", { name: "新建 Bot", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "新建 Bot", exact: true });
-  await dialog.getByRole("button", { name: "选择头像", exact: true }).click();
-  await page.getByRole("button", { name: "我的角色", exact: true }).click();
+  await page.getByRole("tab", { name: "我的角色", exact: true }).click();
   await page
     .getByRole("button", { name: "角色：黄色角色", exact: true })
     .click();
   await page.getByRole("button", { name: "颜色：翡翠绿", exact: true }).click();
-  await page.keyboard.press("Escape");
   await dialog.getByLabel("名字", { exact: true }).fill("复用角色");
   await page.screenshot({ path: "test-results/character-create-picker.png" });
   await dialog.getByRole("button", { name: "创建", exact: true }).click();
@@ -378,10 +413,8 @@ test("saved characters keep their pixels, share across Bots and transform only o
   ).toBe(2);
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   await details.getByRole("button", { name: "编辑", exact: true }).click();
-  await details.getByRole("button", { name: "选择头像", exact: true }).click();
-  await page.getByRole("button", { name: "内置角色", exact: true }).click();
+  await page.getByRole("tab", { name: "内置角色", exact: true }).click();
   await page.getByRole("button", { name: "外形：圆球", exact: true }).click();
-  await page.keyboard.press("Escape");
   await details.getByRole("button", { name: "保存身份", exact: true }).click();
   await expect
     .poll(

@@ -54,6 +54,22 @@ test("existing custom characters migrate without changing theme, instructions or
   expect((await runtime.bots.profile(id, context)).avatarMedia).toEqual(
     after.avatarMedia,
   );
+  await runtime.bots.updateIdentity(
+    id,
+    { resetAvatar: true },
+    crypto.randomUUID(),
+    context,
+  );
+  const restored = await runtime.bots.updateIdentity(
+    id,
+    { avatarAssetId: after.avatarAssetId },
+    crypto.randomUUID(),
+    context,
+  );
+  expect(restored.avatarMedia).toMatchObject({
+    headset: media.headset,
+    computer: media.computer,
+  });
   if (!after.avatarMedia) throw new Error("Missing migrated media");
   const legacy = {
     ...after.avatarMedia,

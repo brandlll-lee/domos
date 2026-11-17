@@ -71,21 +71,8 @@ export function IdentityEditor({
       }}
     >
       <fieldset className="bot-fields" disabled={action.busy}>
-        <div className="profile-identity">
-          <AvatarEditor
-            botId={profile.id}
-            value={avatar}
-            assetId={avatarAssetId}
-            media={
-              avatarAssetId === profile.avatarAssetId
-                ? profile.avatarMedia
-                : undefined
-            }
-            onAssetChange={(avatarAssetId) =>
-              draft.changeAppearance({ avatarAssetId })
-            }
-            onChange={setAvatar}
-          />
+        <fieldset className="bot-fields">
+          <legend>基本资料</legend>
           <TextField
             label="名字"
             value={name}
@@ -93,14 +80,28 @@ export function IdentityEditor({
             required
             maxLength={BOT_NAME_LENGTH}
           />
-        </div>
-        <TextField
-          label="职责与长期指令"
-          value={instructions}
-          onValueChange={setInstructions}
-          multiline
-          maxLength={WORK_TEXT_LENGTH}
-          placeholder="例如：帮我整理资料、准备每周工作计划。"
+          <TextField
+            label="职责与长期指令"
+            value={instructions}
+            onValueChange={setInstructions}
+            multiline
+            maxLength={WORK_TEXT_LENGTH}
+            placeholder="例如：帮我整理资料、准备每周工作计划。"
+          />
+        </fieldset>
+        <AvatarEditor
+          botId={profile.id}
+          value={avatar}
+          assetId={avatarAssetId}
+          media={
+            avatarAssetId === profile.avatarAssetId
+              ? profile.avatarMedia
+              : undefined
+          }
+          onAssetChange={(avatarAssetId) =>
+            draft.changeAppearance({ avatarAssetId })
+          }
+          onChange={setAvatar}
         />
         {conflicts.map((field) => (
           <InlineNotice key={field}>
@@ -118,7 +119,9 @@ export function IdentityEditor({
             <Button
               type="button"
               variant="ghost"
-              disabled={equipmentFields.includes(field) && !profile.avatarMedia}
+              disabled={
+                equipmentFields.includes(field) && avatarAssetId === null
+              }
               onClick={() => {
                 draft.resolve(field, "draft");
                 action.clear();
@@ -147,7 +150,6 @@ export function IdentityEditor({
             </Button>
           </InlineNotice>
         )}
-        <AvatarEquipment profile={profile} action={action} />
         {dirty && (
           <div className="form-actions">
             <Button
@@ -172,6 +174,7 @@ export function IdentityEditor({
             </Button>
           </div>
         )}
+        <AvatarEquipment profile={profile} action={action} />
       </fieldset>
     </form>
   );

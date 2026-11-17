@@ -50,15 +50,18 @@ export type CreateBot = {
   avatar?: string;
   avatarAssetId?: string;
 };
+type Equipment = Pick<CharacterMedia, "headset" | "computer">;
+type StoredBot = Bot & {
+  characterEquipment?: Record<string, Equipment>;
+  createInput?: string;
+  requestId: string | null;
+  revision?: number;
+  updateId?: string;
+};
 
 export const BotDirectory = defineDoc<{
   pending?: { requestId: string; input: string; bot: Bot }[];
-  items: (Bot & {
-    createInput?: string;
-    requestId: string | null;
-    revision?: number;
-    updateId?: string;
-  })[];
+  items: StoredBot[];
 }>({
   kind: "domos.bots",
   version: 1,
@@ -66,6 +69,34 @@ export const BotDirectory = defineDoc<{
   scope: "session",
   initial: () => ({ items: [] }),
 });
+
+function setCharacter(
+  bot: StoredBot,
+  media: CharacterMedia | undefined,
+  assetId: string | undefined,
+  equipment: Partial<Equipment>,
+) {
+  if (bot.avatarAssetId && bot.avatarMedia) {
+    bot.characterEquipment ??= {};
+    bot.characterEquipment[bot.avatarAssetId] = {
+      headset: bot.avatarMedia.headset,
+      computer: bot.avatarMedia.computer,
+    };
+  }
+  if (media) {
+    bot.avatarMedia = {
+      ...media,
+      ...(assetId ? bot.characterEquipment?.[assetId] : undefined),
+      ...equipment,
+    };
+    bot.avatarAssetId = assetId;
+    if (assetId) delete bot.characterEquipment?.[assetId];
+  } else {
+    delete bot.avatarMedia;
+    delete bot.avatarAssetId;
+  }
+  delete bot.avatarMigrationError;
+}
 
 const ModelVisibility = defineDoc<{
   items: { harness: EngineId; model: string; visible: boolean }[];
@@ -303,6 +334,7 @@ export class Bots {
       avatar: bot.avatar,
       avatarMedia: bot.avatarMedia,
       avatarAssetId: bot.avatarAssetId,
+      characterEquipment: bot.characterEquipment,
       avatarMigrationError: bot.avatarMigrationError,
       revision: bot.revision ?? 0,
       instructions: agent.instructions ?? "",
@@ -318,6 +350,8 @@ export class Bots {
       instructions: string;
       avatar: string;
       avatarAssetId?: string | null;
+      headset?: CharacterMedia["headset"];
+      computer?: CharacterMedia["computer"];
       revision: number;
       requestId: string;
     },
@@ -341,15 +375,21 @@ export class Bots {
       if (bot.updateId === input.requestId) return;
       requireRevision(bot.revision ?? 0, input.revision);
       bot.name = requiredText(input.name, BOT_NAME_LENGTH);
-      if (input.avatarAssetId === null || media)
-        delete bot.avatarMigrationError;
-      if (input.avatarAssetId === null) {
-        delete bot.avatarMedia;
-        delete bot.avatarAssetId;
-      } else if (media) {
-        if (bot.avatarAssetId !== input.avatarAssetId) bot.avatarMedia = media;
-        bot.avatarAssetId = input.avatarAssetId;
-      }
+      if (
+        input.avatarAssetId === null ||
+        media ||
+        input.headset ||
+        input.computer
+      )
+        setCharacter(
+          bot,
+          input.avatarAssetId === null ? undefined : (media ?? bot.avatarMedia),
+          input.avatarAssetId ?? bot.avatarAssetId,
+          {
+            ...(input.headset ? { headset: input.headset } : {}),
+            ...(input.computer ? { computer: input.computer } : {}),
+          },
+        );
       bot.avatar = input.avatar;
       bot.revision = (bot.revision ?? 0) + 1;
       bot.updateId = input.requestId;
@@ -442,12 +482,6 @@ export class Bots {
       assetId = asset.id;
       media = await this.characters.apply(id, asset.id, context);
     }
-    if (media)
-      media = {
-        ...media,
-        ...(input.headset ? { headset: input.headset } : {}),
-        ...(input.computer ? { computer: input.computer } : {}),
-      };
     context.abortSignal?.throwIfAborted();
     await this.harness.commit(async (tx) => {
       context.abortSignal?.throwIfAborted();
@@ -466,14 +500,16 @@ export class Bots {
       requireRevision(bot.revision ?? 0, expectedRevision);
       if (input.name !== undefined)
         bot.name = requiredText(input.name, BOT_NAME_LENGTH);
-      if (input.resetAvatar || media) delete bot.avatarMigrationError;
-      if (input.resetAvatar) {
-        delete bot.avatarMedia;
-        delete bot.avatarAssetId;
-      } else if (media) {
-        bot.avatarMedia = media;
-        if (assetId) bot.avatarAssetId = assetId;
-      }
+      if (input.resetAvatar || media)
+        setCharacter(
+          bot,
+          input.resetAvatar ? undefined : media,
+          assetId ?? bot.avatarAssetId,
+          {
+            ...(input.headset ? { headset: input.headset } : {}),
+            ...(input.computer ? { computer: input.computer } : {}),
+          },
+        );
       changes.items[requestId] = { botId: id, input: fingerprint };
       bot.revision = (bot.revision ?? 0) + 1;
       bot.updateId = requestId;

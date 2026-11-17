@@ -22,6 +22,11 @@ const context = BACKGROUND_CONTEXT;
 const id = z.string().min(1).max(128);
 const revision = z.number().int().nonnegative();
 const requestId = z.uuid();
+const equipment = z.object({
+  x: z.number().min(0).max(100),
+  y: z.number().min(0).max(100),
+  scale: z.number().min(0.1).max(2),
+});
 const itemTarget = botTarget.extend({ id, revision });
 const schedule = z.discriminatedUnion("type", [
   z.object({
@@ -71,20 +76,8 @@ export function workRouter(bots: Bots, work: BotWork, engines?: Runtime) {
             .regex(/^[a-f0-9]{64}$/)
             .optional(),
           resetAvatar: z.boolean().optional(),
-          headset: z
-            .object({
-              x: z.number().min(0).max(100),
-              y: z.number().min(0).max(100),
-              scale: z.number().min(0.1).max(2),
-            })
-            .optional(),
-          computer: z
-            .object({
-              x: z.number().min(0).max(100),
-              y: z.number().min(0).max(100),
-              scale: z.number().min(0.1).max(2),
-            })
-            .optional(),
+          headset: equipment.optional(),
+          computer: equipment.optional(),
           revision,
           requestId,
         }),
@@ -101,6 +94,8 @@ export function workRouter(bots: Bots, work: BotWork, engines?: Runtime) {
           name: z.string().trim().min(1).max(BOT_NAME_LENGTH),
           instructions: z.string().max(WORK_TEXT_LENGTH),
           avatar: z.uuid(),
+          headset: equipment.optional(),
+          computer: equipment.optional(),
           avatarAssetId: z
             .string()
             .regex(/^[a-f0-9]{64}$/)

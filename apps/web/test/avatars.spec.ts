@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { characterIdentity } from "@domos/ui/characters";
 import { expect, test } from "@playwright/test";
+import { expectTextContrast } from "./fixtures/chat-ui.ts";
 
 test("plush identities load, animate and survive profile changes", async ({
   page,
@@ -202,10 +203,18 @@ test("plush identities load, animate and survive profile changes", async ({
     await contactAvatar.hover();
     await expect(gesture).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
     await details.getByRole("button", { name: "编辑", exact: true }).click();
-    await details
-      .getByRole("button", { name: "选择头像", exact: true })
-      .click();
-    const picker = page.getByRole("dialog", { name: "头像外观", exact: true });
+    const picker = details.locator(".avatar-editor");
+    await picker.getByRole("tab", { name: "内置角色", exact: true }).focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(
+      picker.getByRole("tab", { name: "我的角色", exact: true }),
+    ).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(
+      picker.getByRole("tab", { name: "我的角色", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("Enter");
     await expect(picker.getByRole("button", { name: /^外形：/ })).toHaveCount(
       15,
     );
@@ -265,7 +274,7 @@ test("plush identities load, animate and survive profile changes", async ({
     await picker
       .getByRole("button", { name: "颜色：樱粉", exact: true })
       .click();
-    await expect(details.locator(".character")).toHaveAttribute(
+    await expect(details.locator(".avatar-preview .character")).toHaveAttribute(
       "data-shape",
       "capsule",
     );
@@ -278,7 +287,7 @@ test("plush identities load, animate and survive profile changes", async ({
     await picker
       .getByRole("button", { name: "颜色：天蓝", exact: true })
       .click();
-    await expect(details.locator(".character")).toHaveAttribute(
+    await expect(details.locator(".avatar-preview .character")).toHaveAttribute(
       "data-shape",
       "cloud",
     );
@@ -292,14 +301,16 @@ test("plush identities load, animate and survive profile changes", async ({
       );
     });
     await page.screenshot({
-      path: testInfo.outputPath("avatar-picker-light.png"),
+      path: testInfo.outputPath("avatar-editor-light.png"),
       animations: "disabled",
     });
+    await expectTextContrast(page);
     await page.emulateMedia({ colorScheme: "dark" });
     await page.screenshot({
-      path: testInfo.outputPath("avatar-picker-dark.png"),
+      path: testInfo.outputPath("avatar-editor-dark.png"),
       animations: "disabled",
     });
+    await expectTextContrast(page);
     await page.setViewportSize({ width: 390, height: 844 });
     await checkAvatarSizes();
     await expect(async () => {
@@ -308,13 +319,14 @@ test("plush identities load, animate and survive profile changes", async ({
       expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(390);
     }).toPass();
     await page.screenshot({
-      path: testInfo.outputPath("avatar-picker-mobile.png"),
+      path: testInfo.outputPath("avatar-editor-mobile.png"),
       animations: "disabled",
     });
-    await page.keyboard.press("Escape");
     await page.setViewportSize({ width: 1360, height: 900 });
     await page.emulateMedia({ colorScheme: "light" });
-    const next = await details.locator(".bot-avatar").getAttribute("data-seed");
+    const next = await details
+      .locator(".avatar-preview > .bot-avatar")
+      .getAttribute("data-seed");
     expect(next).not.toBe(initial);
     await expect(header).toHaveAttribute("data-seed", initial ?? "");
     await details

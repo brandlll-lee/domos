@@ -132,21 +132,19 @@ function BotForm({
         </>
       )}
       <fieldset disabled={saving} className="bot-fields">
-        <div className="profile-identity">
-          <AvatarEditor
-            value={avatar}
-            onChange={setAvatar}
-            assetId={avatarAssetId}
-            onAssetChange={setAvatarAssetId}
-          />
-          <TextField
-            label="名字"
-            value={name}
-            onValueChange={setName}
-            required
-            maxLength={BOT_NAME_LENGTH}
-          />
-        </div>
+        <TextField
+          label="名字"
+          value={name}
+          onValueChange={setName}
+          required
+          maxLength={BOT_NAME_LENGTH}
+        />
+        <AvatarEditor
+          value={avatar}
+          onChange={setAvatar}
+          assetId={avatarAssetId}
+          onAssetChange={setAvatarAssetId}
+        />
       </fieldset>
       {error && (
         <p className="alert" role="alert">

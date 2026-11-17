@@ -26,24 +26,38 @@ export const identityFields: IdentityField[] = [
 export const equipmentFields: IdentityField[] = ["headset", "computer"];
 const same = (a: unknown, b: unknown) =>
   JSON.stringify(a) === JSON.stringify(b);
-const owner = (profile: Profile) =>
-  profile.avatarAssetId ?? profile.avatarMedia?.src;
-function valuesOf(profile: Profile): Values {
+const appearanceOf = (profile: Profile): Values["appearance"] => ({
+  avatar: profile.avatar,
+  avatarAssetId: profile.avatarAssetId,
+});
+const owner = (profile: Profile, appearance = appearanceOf(profile)) =>
+  appearance.avatarAssetId === null
+    ? undefined
+    : (appearance.avatarAssetId ?? profile.avatarMedia?.src);
+function valuesOf(
+  profile: Profile,
+  appearance = appearanceOf(profile),
+): Values {
+  const media =
+    appearance.avatarAssetId === null
+      ? undefined
+      : appearance.avatarAssetId === profile.avatarAssetId
+        ? profile.avatarMedia
+        : profile.characterEquipment?.[appearance.avatarAssetId ?? ""];
   return {
     name: profile.name,
     instructions: profile.instructions,
-    appearance: {
-      avatar: profile.avatar,
-      avatarAssetId: profile.avatarAssetId,
-    },
-    headset: profile.avatarMedia?.headset,
-    computer: profile.avatarMedia?.computer,
+    appearance,
+    headset: media?.headset,
+    computer: media?.computer,
   };
 }
 
 export function createIdentityState() {
   let profile: Profile | undefined;
   let edits: Edit[] = [];
+  const appearance = () =>
+    edits.find((edit) => edit.field === "appearance")?.value;
   const listeners = new Set<() => void>();
   const snapshot = () => {
     if (!profile)
@@ -53,16 +67,22 @@ export function createIdentityState() {
         conflicts: [] as IdentityField[],
         dirty: [] as IdentityField[],
       };
-    const values = valuesOf(profile);
+    const values = valuesOf(profile, appearance());
     const conflicts: IdentityField[] = [];
     for (const edit of edits) {
+      const equipment = equipmentFields.includes(edit.field);
+      const matchesOwner = edit.owner === owner(profile, values.appearance);
+      const current =
+        edit.field === "appearance"
+          ? appearanceOf(profile)
+          : (values[edit.field] ?? (matchesOwner ? edit.base : undefined));
       if (
-        (!same(values[edit.field], edit.base) &&
-          !same(values[edit.field], edit.value)) ||
-        (equipmentFields.includes(edit.field) && edit.owner !== owner(profile))
+        (!same(current, edit.base) && !same(current, edit.value)) ||
+        (equipment && !matchesOwner)
       )
         conflicts.push(edit.field);
-      Object.assign(values, { [edit.field]: edit.value });
+      if (!equipment || matchesOwner)
+        Object.assign(values, { [edit.field]: edit.value });
     }
     return {
       profile,
@@ -87,25 +107,36 @@ export function createIdentityState() {
     receive(value: Profile) {
       if (profile && value.revision < profile.revision) return;
       profile = value;
-      const current = valuesOf(value);
+      const current = valuesOf(value, appearance());
       edits = edits.filter(
         (edit) =>
-          !same(edit.value, current[edit.field]) ||
-          (equipmentFields.includes(edit.field) && edit.owner !== owner(value)),
+          !same(
+            edit.value,
+            edit.field === "appearance"
+              ? appearanceOf(value)
+              : current[edit.field],
+          ) ||
+          (equipmentFields.includes(edit.field) &&
+            edit.owner !== owner(value, current.appearance)),
       );
       publish();
     },
-    change<K extends IdentityField>(field: K, value: Values[K]) {
+    change<K extends IdentityField>(
+      field: K,
+      value: Values[K],
+      base?: Values[K],
+    ) {
       if (!profile) return;
-      const current = valuesOf(profile);
+      const current = valuesOf(profile, appearance());
+      if (field === "appearance") current.appearance = appearanceOf(profile);
       const previous = edits.find((edit) => edit.field === field);
       edits = edits.filter((edit) => edit.field !== field);
       if (!same(value, current[field]))
         edits.push({
           field,
-          base: previous?.base ?? current[field],
+          base: previous?.base ?? current[field] ?? base,
           value,
-          owner: previous?.owner ?? owner(profile),
+          owner: previous?.owner ?? owner(profile, current.appearance),
         } as Edit);
       publish();
     },
@@ -114,8 +145,9 @@ export function createIdentityState() {
       if (choice === "current")
         edits = edits.filter((edit) => edit.field !== field);
       else {
-        const current = valuesOf(profile);
-        const currentOwner = owner(profile);
+        const current = valuesOf(profile, appearance());
+        if (field === "appearance") current.appearance = appearanceOf(profile);
+        const currentOwner = owner(profile, current.appearance);
         edits = edits.map((edit) =>
           edit.field === field
             ? ({ ...edit, base: current[field], owner: currentOwner } as Edit)

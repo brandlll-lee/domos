@@ -13,6 +13,7 @@ function profile(patch: Partial<Profile> = {}): Profile {
     instructions: "Initial",
     avatar: "seed",
     avatarAssetId: "a",
+    characterEquipment: undefined,
     avatarMedia: {
       src: "a.png",
       cover: "a.png",
@@ -82,6 +83,29 @@ test("equipment edits require confirmation when the character changes", () => {
   expect(state.snapshot().conflicts).toEqual(["headset"]);
   state.resolve("headset", "current");
   expect(state.snapshot().values?.headset?.x).toBe(50);
+});
+
+test("equipment follows the selected character while other profile fields refresh", () => {
+  const state = createIdentityState();
+  state.receive(profile());
+  state.change("appearance", { avatar: "next", avatarAssetId: "b" });
+  const base = { x: 50, y: 30, scale: 0.64 };
+  state.change("headset", { ...base, x: 27 }, base);
+  state.receive(profile({ revision: 2, instructions: "Updated" }));
+  expect(state.snapshot()).toMatchObject({
+    values: {
+      appearance: { avatar: "next", avatarAssetId: "b" },
+      headset: { x: 27 },
+      instructions: "Updated",
+    },
+    conflicts: [],
+  });
+  state.change("appearance", { avatar: "seed", avatarAssetId: "a" });
+  expect(state.snapshot().conflicts).toEqual(["headset"]);
+  expect(state.snapshot().values?.headset?.x).toBe(50);
+  state.change("appearance", { avatar: "next", avatarAssetId: "b" });
+  expect(state.snapshot().values?.headset?.x).toBe(27);
+  expect(state.snapshot().conflicts).toEqual([]);
 });
 
 test("save acknowledgements clear only submitted edits and ignore older profiles", () => {

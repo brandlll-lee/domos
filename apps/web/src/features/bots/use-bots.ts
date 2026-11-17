@@ -26,6 +26,7 @@ import {
   invalidateConnectionContext,
 } from "../settings/use-connection-context.ts";
 import { saveWorkspaceView, workspaceView } from "../shell/workspace-state.ts";
+import { receiveCharacter } from "./character-state.ts";
 import {
   clearBotWork,
   invalidateBotWork,
@@ -105,6 +106,7 @@ export function useBots() {
           clearImageSettings(ids);
           clearConnectionContexts(ids);
           for (const bot of next.items) {
+            receiveCharacter(bot);
             receiveBotProfile(bot);
             receiveModelActivity(bot.id, bot.busy);
             const binding = next.bindings[String(bot.id)];

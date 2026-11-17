@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import {
   fauxAssistantMessage,
   fauxToolCall,
@@ -5,6 +6,107 @@ import {
 import { expect, onTestFinished, test } from "vitest";
 import { EngineDoc } from "../../../packages/agent/src/harness/state.ts";
 import { botInput, context, setup } from "./fixtures/api.ts";
+
+const sharp = createRequire(
+  new URL("../../../packages/agent/package.json", import.meta.url),
+)("sharp");
+
+test("character equipment survives role changes and restart within its Bot", async () => {
+  const fixture = await setup();
+  let runtime = await fixture.open();
+  onTestFinished(() => runtime.harness.close(context));
+  const botId = runtime.conversation.id;
+  const apply = async (color: string) => {
+    const bytes = await sharp({
+      create: { width: 24, height: 24, channels: 4, background: color },
+    })
+      .png()
+      .toBuffer();
+    const file = await runtime.client.files.upload({
+      botId,
+      file: new File([new Uint8Array(bytes)], "character.png", {
+        type: "image/png",
+      }),
+    });
+    return runtime.client.work.identity({
+      botId,
+      avatarFileId: file.id,
+      coverFileId: file.id,
+      useOriginal: true,
+      revision: (await runtime.client.work.profile({ botId })).revision,
+      requestId: crypto.randomUUID(),
+    });
+  };
+  const first = await apply("#ffff00");
+  const headset = { x: 23, y: 18, scale: 0.51 };
+  const computer = { x: 36, y: 60, scale: 0.72 };
+  await runtime.client.work.identity({
+    botId,
+    headset,
+    computer,
+    revision: first.revision,
+    requestId: crypto.randomUUID(),
+  });
+  const second = await apply("#0000ff");
+  const restored = await runtime.client.work.update({
+    botId,
+    name: first.name,
+    instructions: first.instructions,
+    avatar: first.avatar,
+    avatarAssetId: first.avatarAssetId,
+    revision: second.revision,
+    requestId: crypto.randomUUID(),
+  });
+  expect(restored.avatarMedia).toMatchObject({ headset, computer });
+  const themed = await runtime.client.work.update({
+    botId,
+    name: first.name,
+    instructions: first.instructions,
+    avatar: crypto.randomUUID(),
+    revision: restored.revision,
+    requestId: crypto.randomUUID(),
+  });
+  expect(themed.avatarMedia).toEqual(restored.avatarMedia);
+  await runtime.client.work.identity({
+    botId,
+    resetAvatar: true,
+    revision: themed.revision,
+    requestId: crypto.randomUUID(),
+  });
+  await runtime.harness.close(context);
+  runtime = await fixture.open();
+  const reapplied = await runtime.client.work.identity({
+    botId,
+    avatarAssetId: first.avatarAssetId,
+    revision: (await runtime.client.work.profile({ botId })).revision,
+    requestId: crypto.randomUUID(),
+  });
+  expect(reapplied.avatarMedia).toMatchObject({ headset, computer });
+  expect(
+    (await runtime.client.bots.list()).find((bot) => bot.id === botId)
+      ?.avatarMedia,
+  ).toEqual(reapplied.avatarMedia);
+  const other = await runtime.client.bots.create({
+    ...botInput("Other"),
+    avatarAssetId: first.avatarAssetId,
+  });
+  expect(other.avatarMedia?.headset).toEqual(first.avatarMedia?.headset);
+  const changed = await runtime.client.work.update({
+    botId,
+    name: reapplied.name,
+    instructions: reapplied.instructions,
+    avatar: reapplied.avatar,
+    avatarAssetId: second.avatarAssetId,
+    headset,
+    revision: reapplied.revision,
+    requestId: crypto.randomUUID(),
+  });
+  expect(changed.avatarMedia?.headset).toEqual(headset);
+  expect(
+    (await runtime.client.work.profile({ botId: other.id })).avatarMedia
+      ?.headset,
+  ).toEqual(first.avatarMedia?.headset);
+});
 
 test("native skill selections retain their source and follow the active Harness", async () => {
   const { open, faux } = await setup();

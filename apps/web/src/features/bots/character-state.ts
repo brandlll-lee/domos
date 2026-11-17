@@ -1,3 +1,4 @@
+import type { Bot } from "@domos/agent/bots";
 import { client } from "../../client.ts";
 import { createReadState, useReadState } from "../read-state.ts";
 
@@ -15,6 +16,20 @@ export function useCharacters(botId?: number) {
     stores.set(key, store);
   }
   return { store, ...useReadState(store, true) };
+}
+export function receiveCharacter(bot: Bot) {
+  if (!bot.avatarAssetId) return;
+  for (const key of [0, bot.id]) {
+    const store = stores.get(key);
+    const state = store?.snapshot();
+    if (
+      state?.data &&
+      !state.loading &&
+      !state.error &&
+      !state.data.some((item) => item.id === bot.avatarAssetId)
+    )
+      store?.invalidate();
+  }
 }
 function clear() {
   for (const store of stores.values()) store.dispose();

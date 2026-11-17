@@ -15,51 +15,70 @@
 .bot-form textarea.field-control {
   min-height: var(--profile-text-height);
 }
-.profile-identity {
+.bot-fields > legend,
+.equipment-fields > legend,
+.avatar-colors > legend {
+  margin-bottom: var(--space-3);
+  font-weight: var(--weight-medium);
+}
+.avatar-editor,
+.equipment-editor {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-divider);
+}
+.avatar-preview {
   display: grid;
-  grid-template-columns: var(--avatar-large) minmax(0, 1fr);
-  align-items: center;
-  gap: var(--space-5);
-}
-.avatar-editor {
-  position: relative;
-  width: var(--avatar-large);
-  height: var(--avatar-large);
-}
-.avatar-editor > .button {
-  position: absolute;
-  right: calc(-1 * var(--space-1));
-  bottom: 0;
-  box-shadow: var(--color-popup-shadow);
-}
-.avatar-picker {
-  display: grid;
-  gap: var(--space-3);
-  width: min(16rem, var(--available-width));
+  place-items: center;
+  margin: 0;
   padding: var(--space-3);
 }
-.avatar-shapes,
-.avatar-colors {
+.avatar-preview > .bot-avatar {
+  width: calc(var(--avatar-large) * 1.75);
+  height: calc(var(--avatar-large) * 1.75);
+}
+.avatar-editor .workspace-tabs {
+  margin-inline: 0;
+}
+.avatar-shapes {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
   gap: var(--space-2);
   margin: 0;
   padding: 0;
   border: 0;
 }
+.avatar-shapes .button {
+  min-height: 4.5rem;
+  border-radius: var(--radius-control);
+}
 .avatar-colors {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
-.avatar-picker .button {
-  min-height: var(--control-small);
-  padding: var(--space-1);
+.avatar-colors .button {
+  width: var(--control-height);
+  height: var(--control-height);
+  padding: var(--space-2);
 }
-.avatar-picker .button[aria-pressed="true"] {
+.avatar-editor .button[aria-pressed="true"] {
   border-color: var(--color-text);
   background: var(--color-control-hover);
+  color: var(--color-text);
 }
 .avatar-colors span {
   width: var(--space-5);
   height: var(--space-5);
   border-radius: var(--radius-round);
+}
+.equipment-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
 }

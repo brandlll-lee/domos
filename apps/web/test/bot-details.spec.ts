@@ -376,7 +376,7 @@ test("Bot details share the desktop with chat and cover narrow screens", async (
       .boundingBox();
     if (!chatBox || !panelBox) throw new Error("Chat details layout missing");
     expect(panelBox.x - chatBox.x - chatBox.width).toBe(0);
-    expect(panelBox.x + panelBox.width).toBeCloseTo(1360, 0);
+    expect(panelBox.x + panelBox.width).toBeCloseTo(1360 - chatBox.y, 0);
   }).toPass();
   const input = page.getByLabel("消息", { exact: true });
   await input.fill("面板打开时继续聊天");
@@ -578,9 +578,7 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
   await page.getByRole("menuitem", { name: "新建 Bot", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "新建 Bot", exact: true });
   const name = dialog.getByLabel("名字", { exact: true });
-  await expect(
-    dialog.getByRole("button", { name: "选择头像", exact: true }),
-  ).toBeFocused();
+  await expect(name).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
@@ -710,9 +708,8 @@ test("Bot identity stays consistent and image previews work in drafts and histor
   await page.getByRole("button", { name: "新建", exact: true }).click();
   await page.getByRole("menuitem", { name: "新建 Bot", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "新建 Bot", exact: true });
-  const avatar = dialog.locator(".avatar-editor > .bot-avatar");
+  const avatar = dialog.locator(".avatar-editor .avatar-preview > .bot-avatar");
   const initial = await avatar.getAttribute("data-seed");
-  await dialog.getByRole("button", { name: "选择头像", exact: true }).click();
   for (const name of ["兔子", "幽灵", "火箭", "手柄", "幼苗", "气泡"]) {
     const shape = page.getByRole("button", {
       name: `外形：${name}`,
@@ -723,7 +720,6 @@ test("Bot identity stays consistent and image previews work in drafts and histor
     await expect(avatar.locator(".character")).toHaveCSS("opacity", "1");
   }
   await expect(avatar).not.toHaveAttribute("data-seed", initial ?? "");
-  await page.keyboard.press("Escape");
   const seed = await avatar.getAttribute("data-seed");
   expect(seed).toBeTruthy();
   await dialog.getByLabel("名字", { exact: true }).fill("视觉助手");
