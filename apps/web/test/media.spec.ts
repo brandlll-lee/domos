@@ -169,7 +169,7 @@ test("audio decode failures preserve the file download action", async ({
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     await expect(card.locator(".audio-play")).toHaveCSS(
       "color",
-      await card.evaluate((node) => getComputedStyle(node).color),
+      "rgb(255, 255, 255)",
     );
     const raw = await page
       .locator(".chat-surface")

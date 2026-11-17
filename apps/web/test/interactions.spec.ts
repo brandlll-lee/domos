@@ -380,6 +380,23 @@ test("shared question and approval cards persist answers and terminal states", a
         card.getByRole("textbox", { name: "你的回答", exact: true }),
       ).toHaveValue("附加建议");
       await expect(card).toHaveAttribute("data-state", "pending");
+      const selected = card
+        .locator('.question-reply[aria-pressed="true"]')
+        .first();
+      for (const colorScheme of ["light", "dark"] as const) {
+        await page.emulateMedia({ colorScheme });
+        await selected.hover();
+        await expect(selected).toHaveCSS(
+          "background-color",
+          "rgba(0, 0, 0, 0)",
+        );
+        await expect(selected).toHaveCSS(
+          "border-color",
+          await page
+            .locator(".composer-action button")
+            .evaluate((node) => getComputedStyle(node).backgroundColor),
+        );
+      }
       await card.getByRole("button", { name: "发送回答", exact: true }).click();
     } else if (mode === "expire") service.worker.send("release");
     else
@@ -574,6 +591,18 @@ test("question replies align and completed questions remain readable", async ({
     });
     expect(distance).toBeGreaterThan(0);
     expect(distance).toBeLessThan(20);
+    const selected = card.locator(".question-reply[data-selected]");
+    await expect(selected).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(selected).toHaveCSS(
+      "border-color",
+      await page
+        .locator(".composer-action button")
+        .evaluate((node) => getComputedStyle(node).backgroundColor),
+    );
+    await expect(selected).toHaveCSS(
+      "color",
+      await card.evaluate((node) => getComputedStyle(node).color),
+    );
     await expectTextContrast(page);
     await page.screenshot({
       path: info.outputPath(`question-readable-${colorScheme}.png`),
@@ -761,6 +790,20 @@ test("link cards show custom actions, lazy previews and stable history", async (
   }
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
+    const action = card.locator(".link-card-action");
+    await page.mouse.move(1, 1);
+    await expect(action).toHaveCSS(
+      "color",
+      await card.evaluate((node) => getComputedStyle(node).color),
+    );
+    await action.hover();
+    await expect(action).toHaveCSS(
+      "color",
+      await page
+        .locator(".composer-action button")
+        .evaluate((node) => getComputedStyle(node).backgroundColor),
+    );
+    await expect(action).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     for (const width of [1360, 390]) {
       await page.setViewportSize({ width, height: 900 });
       const inspector = page.getByRole("complementary", { name: /的详情$/ });
@@ -1095,6 +1138,14 @@ test("rich questions keep media separate from replies and restore selected actio
   await expect(card.locator(".question-candidate")).toHaveCount(5);
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
+    const selected = card.locator(".question-candidate:has([data-selected])");
+    await expect(selected).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(selected).toHaveCSS(
+      "border-color",
+      await page
+        .locator(".composer-action button")
+        .evaluate((node) => getComputedStyle(node).backgroundColor),
+    );
     await page.screenshot({
       path: info.outputPath(`rich-question-answered-${colorScheme}.png`),
     });

@@ -1069,12 +1069,12 @@ body:has(.workspace[data-platform="darwin"]) .image-viewer-header {
   min-height: var(--control-height);
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--color-divider);
-  background: var(--bot-color);
-  color: var(--bot-foreground);
+  color: inherit;
   text-decoration: none;
   overflow-wrap: anywhere;
 }
-.link-card-action:hover {
+.link-card-action:is(:hover, :focus-visible) {
+  color: var(--bot-color);
   text-decoration: underline;
 }
 .link-card-action svg {
@@ -1170,11 +1170,15 @@ body:has(.workspace[data-platform="darwin"]) .image-viewer-header {
   margin-top: var(--space-1);
 }
 .question-reply[aria-pressed="true"],
-.question-reply[data-selected] {
-  --color-muted: var(--bot-foreground);
-  border-color: currentColor;
-  background: var(--bot-color);
-  color: var(--bot-foreground);
+.question-reply[data-selected],
+.question-reply.button:is([aria-pressed="true"], [data-selected]):hover,
+.question-candidate:has(
+  .question-reply[data-selected],
+  .question-reply[aria-pressed="true"]
+) {
+  border-color: var(--bot-color);
+  background: transparent;
+  color: var(--color-text);
 }
 @media (hover: hover) and (pointer: fine) {
   .question-reply.button:not(
@@ -1264,15 +1268,6 @@ body:has(.workspace[data-platform="darwin"]) .image-viewer-header {
 .question-preview svg {
   width: var(--space-6);
   height: var(--space-6);
-}
-.question-candidate:has(
-  .question-reply[data-selected],
-  .question-reply[aria-pressed="true"]
-) {
-  --color-muted: var(--bot-foreground);
-  background: var(--bot-color);
-  border-color: var(--color-border);
-  color: var(--bot-foreground);
 }
 .question-candidate-copy {
   text-align: center;

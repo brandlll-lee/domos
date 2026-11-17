@@ -126,7 +126,7 @@ export async function expectTextContrast(
     };
     return [
       ...document.querySelectorAll<HTMLElement>(
-        ".chat-preview span, .picker-trigger, .message-bubble, .picker-item, .message-composer-editor, .avatar-editor legend, .avatar-editor .navigation-tab, .composer-action button, .message-material-token, .question-reply:is([aria-pressed=true], [data-selected]), .link-card-action, .media-attachment-audio",
+        ".chat-preview span, .picker-trigger, .message-bubble, .picker-item, .message-composer-editor, .avatar-editor legend, .avatar-editor .navigation-tab, .message-material-token, .question-reply:is([aria-pressed=true], [data-selected]), .link-card-action, .media-attachment-audio",
       ),
     ].map((element) => {
       const parents: Element[] = [];

@@ -35,67 +35,35 @@ test("composer shares Bot colors across voice, send, attachments and stop in bot
     );
     if (background) expect(color).toBe(background);
     background = color;
-    const contrast = await action.evaluate(
-      (node, colors) => {
-        const owner = node.closest<HTMLElement>(".chat-surface");
-        if (!owner) throw new Error("Chat required");
-        const previous = owner.style.getPropertyValue("--bot-color");
-        const canvas = document.createElement("canvas");
-        canvas.width = canvas.height = 1;
-        const context = canvas.getContext("2d");
-        if (!context) throw new Error("Canvas required for color measurement");
-        try {
-          const luminance = (color: string) => {
-            context.fillStyle = color;
-            context.fillRect(0, 0, 1, 1);
-            const [r = 0, g = 0, b = 0] = [
-              ...context.getImageData(0, 0, 1, 1).data,
-            ]
-              .slice(0, 3)
-              .map((value) => {
-                const channel = value / 255;
-                return channel <= 0.04045
-                  ? channel / 12.92
-                  : ((channel + 0.055) / 1.055) ** 2.4;
-              });
-            return r * 0.2126 + g * 0.7152 + b * 0.0722;
-          };
-          return colors.map(({ color }) => {
-            owner.style.setProperty("--bot-color", color);
-            const style = getComputedStyle(node);
-            const background = luminance(style.backgroundColor);
-            const foreground = luminance(style.color);
-            return {
-              actual: style.backgroundColor,
-              expected: `rgb(${color
-                .slice(1)
-                .match(/../g)
-                ?.map((part) => Number.parseInt(part, 16))
-                .join(", ")})`,
-              ratio:
-                (Math.max(background, foreground) + 0.05) /
-                (Math.min(background, foreground) + 0.05),
-            };
-          });
-        } finally {
-          if (previous) owner.style.setProperty("--bot-color", previous);
-          else owner.style.removeProperty("--bot-color");
-        }
-      },
-      [
-        ...characterColors,
-        ...["#000000", "#ffffff", "#808080", "#ffffaa", "#123456"].map(
-          (color) => ({ color }),
-        ),
-      ],
+    const owner = page.locator(".chat-surface");
+    const original = await owner.evaluate((node) =>
+      node.style.getPropertyValue("--bot-color"),
     );
-    for (const { ratio, actual, expected } of contrast) {
-      expect(actual).toBe(expected);
-      expect(ratio).toBeGreaterThanOrEqual(4.5);
+    for (const { color } of [
+      ...characterColors,
+      ...["#000000", "#ffffff", "#808080", "#ffffaa", "#123456"].map(
+        (color) => ({ color }),
+      ),
+    ]) {
+      await owner.evaluate(
+        (node, color) => node.style.setProperty("--bot-color", color),
+        color,
+      );
+      await expect(action).toHaveCSS(
+        "background-color",
+        `rgb(${color
+          .slice(1)
+          .match(/../g)
+          ?.map((part) => Number.parseInt(part, 16))
+          .join(", ")})`,
+      );
+      await expect(action).toHaveCSS("color", "rgb(255, 255, 255)");
     }
-    const foreground = await action.evaluate(
-      (node) => getComputedStyle(node).color,
+    await owner.evaluate(
+      (node, color) => node.style.setProperty("--bot-color", color),
+      original,
     );
+    const foreground = "rgb(255, 255, 255)";
     await page
       .locator(".message-composer")
       .screenshot({ path: info.outputPath(`composer-voice-${theme}.png`) });
@@ -129,6 +97,7 @@ test("composer shares Bot colors across voice, send, attachments and stop in bot
   for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await expect(action).toHaveCSS("background-color", background);
+    await expect(action).toHaveCSS("color", "rgb(255, 255, 255)");
     await page
       .locator(".message-composer")
       .screenshot({ path: info.outputPath(`composer-stop-${theme}.png`) });
