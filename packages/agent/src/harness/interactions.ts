@@ -67,7 +67,9 @@ export function interactionExtension(execution: EngineExecution) {
                 id: Type.String({
                   minLength: 1,
                   maxLength: 256,
-                  pattern: "^(?!body$).+$",
+                  pattern: "^.+$",
+                  description:
+                    "Field identifier. body is reserved for draft text.",
                 }),
                 label: Type.String({ minLength: 1, maxLength: 256 }),
                 value: Type.String({ maxLength: 16000 }),
@@ -81,6 +83,8 @@ export function interactionExtension(execution: EngineExecution) {
         replay: "safe",
         executionMode: "sequential",
         async execute(input, api, context) {
+          if (input.fields?.some((field) => field.id === "body"))
+            throw new Error("字段标识 body 为草稿正文保留。");
           if (
             new Set(input.fields?.map((field) => field.id)).size !==
             (input.fields?.length ?? 0)

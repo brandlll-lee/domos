@@ -304,6 +304,28 @@ test("native question batches keep separate cards and retain questions after can
   }
 });
 
+test("draft fields reserve body for the editable draft text", async () => {
+  const approve = vi.fn(async () => ({ allow: false }));
+  const tool = interactionExtension({
+    computer: { approve },
+  } as unknown as EngineExecution).tools[0];
+  if (!tool) throw new Error("Draft tool required");
+  await expect(
+    tool.execute(
+      {
+        title: "发送邮件",
+        confirmLabel: "发送",
+        fields: [{ id: "body", label: "正文", value: "草稿" }],
+      },
+      { conversationId: 1, callId: "reserved" } as Parameters<
+        typeof tool.execute
+      >[1],
+      context,
+    ),
+  ).rejects.toThrow("草稿正文");
+  expect(approve).not.toHaveBeenCalled();
+});
+
 test("draft confirmation returns the edited version and records cancellation", async () => {
   const fixture = await setup();
   const runtime = await fixture.open();
