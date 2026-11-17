@@ -82,7 +82,6 @@ export function ComputerServices({
         onOpenChange={(open) => {
           if (!busy && !open) setMode(undefined);
         }}
-        className="decision-dialog"
         title="重启并切换浏览器？"
         description="当前标签页和未提交的内容会关闭。保存的登录信息继续使用。请先结束电脑任务并交还控制权。有界面浏览器会在 Bot 的工作电脑上打开。切换不保证网站放行。"
         footer={

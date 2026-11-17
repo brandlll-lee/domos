@@ -1,5 +1,6 @@
 import type { EngineConfig } from "@domos/agent/harness/types";
 import { Button } from "@domos/ui/controls";
+import { DialogFooter } from "@domos/ui/dialog";
 import { Loading } from "@domos/ui/loading";
 import { SetupStatus } from "@domos/ui/setup";
 import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
@@ -116,21 +117,23 @@ export function ModelSetup({
         setupProvider={setup ? provider : undefined}
         onBusyChange={reportBusy}
       />
-      <div className="setup-actions">
-        {onReady && (
-          <Button
-            disabled={
-              busy ||
-              profile.config.provider !== provider ||
-              !(profile.revision || profile.prepared)
-            }
-            onClick={onReady}
-          >
-            开始聊天
-          </Button>
-        )}
-        {setup && back}
-      </div>
+      <DialogFooter>
+        <div className="setup-actions">
+          {onReady && (
+            <Button
+              disabled={
+                busy ||
+                profile.config.provider !== provider ||
+                !(profile.revision || profile.prepared)
+              }
+              onClick={onReady}
+            >
+              开始聊天
+            </Button>
+          )}
+          {setup && back}
+        </div>
+      </DialogFooter>
     </div>
   );
 }

@@ -1,14 +1,27 @@
 import { Dialog as BaseDialog } from "@base-ui/react/dialog";
 import {
+  createContext,
   type ReactElement,
   type ReactNode,
   type RefObject,
+  useContext,
   useRef,
+  useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "./controls.tsx";
 import { ScrollArea } from "./scroll-area.tsx";
 
 export { BaseDialog as PanelDialog };
+
+const FooterContext = createContext<HTMLElement | null | undefined>(undefined);
+
+export function DialogFooter({ children }: { children: ReactNode }) {
+  const target = useContext(FooterContext);
+  return target === undefined
+    ? children
+    : target && createPortal(children, target);
+}
 
 export function Dialog({
   open,
@@ -39,6 +52,7 @@ export function Dialog({
 }) {
   const internalBody = useRef<HTMLDivElement>(null);
   const body = viewportRef ?? internalBody;
+  const [footerTarget, setFooterTarget] = useState<HTMLElement | null>(null);
   return (
     <BaseDialog.Root open={open} onOpenChange={onOpenChange}>
       {trigger && <BaseDialog.Trigger render={trigger} />}
@@ -56,9 +70,9 @@ export function Dialog({
               (element) =>
                 element.checkVisibility() && !element.matches(":disabled"),
             ) ??
-            body.current?.parentElement?.querySelector<HTMLElement>(
-              ".dialog-footer button",
-            ) ??
+            body.current
+              ?.closest(".dialog-popup")
+              ?.querySelector<HTMLElement>(".dialog-footer button") ??
             body.current
           }
         >
@@ -82,10 +96,14 @@ export function Dialog({
             </BaseDialog.Description>
           )}
           {subheader && <div className="dialog-subheader">{subheader}</div>}
-          <ScrollArea className="dialog-body" viewportRef={body}>
-            {children}
-          </ScrollArea>
-          {footer && <footer className="dialog-footer">{footer}</footer>}
+          <FooterContext value={footerTarget}>
+            <ScrollArea className="dialog-body" viewportRef={body}>
+              {children}
+            </ScrollArea>
+            <footer className="dialog-footer" ref={setFooterTarget}>
+              {footer}
+            </footer>
+          </FooterContext>
         </BaseDialog.Popup>
       </BaseDialog.Portal>
     </BaseDialog.Root>
@@ -113,7 +131,6 @@ export function ConfirmDialog({
       onOpenChange={onOpenChange}
       title={title}
       description={description}
-      className="decision-dialog"
       footer={
         <div className="dialog-actions">
           <Button variant="secondary" onClick={() => onOpenChange(false)}>

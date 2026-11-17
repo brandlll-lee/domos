@@ -1,7 +1,7 @@
 import { WORK_TEXT_LENGTH } from "@domos/agent/work/limits";
 import { SegmentedControl } from "@domos/ui/choice";
 import { Button } from "@domos/ui/controls";
-import { ConfirmDialog, Dialog } from "@domos/ui/dialog";
+import { ConfirmDialog, Dialog, DialogFooter } from "@domos/ui/dialog";
 import { Checkbox, TextField } from "@domos/ui/field";
 import { ActionMenu } from "@domos/ui/menu";
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
@@ -192,6 +192,7 @@ function MemoryEditor({
   };
   return (
     <form
+      id="memory-editor"
       className="bot-form"
       aria-busy={action.busy}
       onSubmit={(event) => {
@@ -230,19 +231,28 @@ function MemoryEditor({
           checked={shared}
           onCheckedChange={setShared}
         />
-        <div className="form-actions">
-          <Button type="button" variant="ghost" size="small" onClick={onDone}>
-            取消
-          </Button>
-          <Button
-            type="submit"
-            size="small"
-            pending={action.busy}
-            disabled={!text.trim()}
-          >
-            保存
-          </Button>
-        </div>
+        <DialogFooter>
+          <div className="dialog-actions">
+            <Button
+              type="button"
+              variant="ghost"
+              size="small"
+              onClick={onDone}
+              disabled={action.busy}
+            >
+              取消
+            </Button>
+            <Button
+              type="submit"
+              form="memory-editor"
+              size="small"
+              pending={action.busy}
+              disabled={action.busy || !text.trim()}
+            >
+              保存
+            </Button>
+          </div>
+        </DialogFooter>
       </fieldset>
     </form>
   );

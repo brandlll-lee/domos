@@ -616,14 +616,27 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
   const create = dialog.getByRole("button", { name: "创建", exact: true });
   await expect(create).toBeEnabled();
   await page.screenshot({ path: "test-results/bot-dialog-mobile.png" });
+  const frame = await dialog.boundingBox();
+  await expect(
+    dialog
+      .locator(".dialog-footer")
+      .getByRole("button", { name: "创建", exact: true }),
+  ).toBeInViewport();
   await create.click();
+  expect(await dialog.boundingBox()).toEqual(frame);
   await expect(dialog.getByRole("alert")).toContainText("创建未确认");
   await create.click();
+  expect(await dialog.boundingBox()).toEqual(frame);
   await dialog.getByRole("button", { name: "Pi", exact: true }).click();
   await dialog.getByRole("combobox", { name: "模型", exact: true }).click();
   await page
     .getByRole("option", { name: "Pi · 测试模型一", exact: true })
     .click();
+  await expect(
+    dialog
+      .locator(".dialog-footer")
+      .getByRole("button", { name: "开始聊天", exact: true }),
+  ).toBeInViewport();
   await dialog.getByRole("button", { name: "开始聊天", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await page.getByRole("button", { name: "联系人", exact: true }).click();

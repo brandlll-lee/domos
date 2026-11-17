@@ -76,7 +76,7 @@ a,
   );
   height: min(var(--dialog-max-height), calc(100dvh - var(--space-8)));
   overflow: hidden;
-  padding: var(--space-6);
+  padding: var(--space-8);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
   background: var(--color-surface);
@@ -92,7 +92,7 @@ a,
   justify-content: space-between;
   flex-shrink: 0;
   gap: var(--space-4);
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-6);
 }
 .dialog-header svg {
   width: var(--space-4);
@@ -113,17 +113,29 @@ a,
 .dialog-body > .scroll-viewport {
   padding-inline-end: var(--space-3);
 }
-.dialog-body:has(.scroll-viewport > div:empty) {
-  display: none;
-}
 .dialog-footer {
+  display: flex;
+  justify-content: flex-end;
   flex-shrink: 0;
   padding-top: var(--space-5);
+}
+.dialog-footer:empty {
+  display: none;
+}
+.dialog-footer .setup-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+}
+:where(.dialog-footer) .setup-actions > .button {
+  width: auto;
+  min-height: var(--control-height);
 }
 .dialog-title {
   margin: 0;
   flex: 1;
-  font-size: var(--text-heading);
+  font-size: var(--text-title);
   font-weight: var(--weight-semibold);
 }
 .dialog-description {
@@ -137,12 +149,6 @@ a,
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
-}
-.decision-dialog {
-  height: auto;
-  max-height: calc(100dvh - var(--space-8));
-  width: min(var(--settings-content-width), calc(100vw - var(--space-8)));
-  border-radius: var(--radius-panel);
 }
 
 .skip-link {
@@ -253,5 +259,11 @@ a,
   :root [contenteditable="true"]:focus,
   .composer-field:focus-within {
     outline: 2px solid Highlight;
+  }
+}
+
+@media (max-width: 600px) {
+  .dialog-popup {
+    padding: var(--space-4);
   }
 }

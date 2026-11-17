@@ -160,8 +160,6 @@ export const metrics = {
   "navigation-height": "2.25rem",
   "table-row-height": "2.375rem",
   "dialog-max-height": "38rem",
-  "connections-width": "70rem",
-  "connections-height": "48rem",
   "resize-hit-width": "0.5rem",
   "window-controls-width": "9rem",
   "font-body":

@@ -135,16 +135,6 @@
   justify-content: flex-end;
 }
 
-.dialog-popup.apps-dialog {
-  width: min(var(--connections-width), calc(100vw - var(--space-8)));
-  height: min(var(--connections-height), calc(100dvh - var(--space-8)));
-  border-radius: var(--radius-surface);
-  padding: var(--space-8);
-  background: var(--color-surface);
-}
-.apps-dialog .dialog-title {
-  font-size: var(--text-title);
-}
 .apps-navigation {
   display: grid;
   gap: var(--space-4);
@@ -164,9 +154,6 @@
   align-content: start;
 }
 @media (max-width: 600px) {
-  .dialog-popup.apps-dialog {
-    padding: var(--space-5);
-  }
   .apps-search-row {
     flex-wrap: wrap;
   }

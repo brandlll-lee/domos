@@ -402,8 +402,11 @@ test("centered dialogs share stable geometry and Harness marks", async ({
     await expect(mark.locator("path")).not.toHaveCount(0);
     await expect(mark).toHaveCSS("transform", "none");
   }
-  for (const width of [1360, 390]) {
-    await page.setViewportSize({ width, height: 900 });
+  for (const { width, height } of [
+    { width: 1360, height: 900 },
+    { width: 390, height: 380 },
+  ]) {
+    await page.setViewportSize({ width, height });
     if (width === 390) {
       await page.keyboard.press("Escape");
       await page.getByRole("button", { name: "联系人", exact: true }).click();
@@ -457,9 +460,41 @@ test("centered dialogs share stable geometry and Harness marks", async ({
         "overflow-y",
         /auto|scroll/,
       );
+      if (state === "editor") {
+        await expect(
+          memory
+            .locator(".dialog-footer")
+            .getByRole("button", { name: "保存", exact: true }),
+        ).toBeInViewport();
+        const viewport = memory.locator(".dialog-body > .scroll-viewport");
+        const header = await memory.getByRole("heading").boundingBox();
+        const footer = await memory.locator(".dialog-footer").boundingBox();
+        await viewport.evaluate((node) => {
+          node.scrollTop = node.scrollHeight;
+        });
+        expect(await memory.getByRole("heading").boundingBox()).toEqual(header);
+        expect(await memory.locator(".dialog-footer").boundingBox()).toEqual(
+          footer,
+        );
+        await expect(memory.locator(".scroll-viewport")).toHaveCount(1);
+        if (height === 380)
+          expect(
+            await viewport.evaluate(
+              (node) => node.scrollHeight > node.clientHeight,
+            ),
+          ).toBe(true);
+      }
     }
     await page.keyboard.press("Escape");
-    if (width === 390) await page.keyboard.press("Escape");
+    if (width === 390) {
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "联系人", exact: true }).click();
+    }
+    await page.getByRole("button", { name: "应用连接", exact: true }).click();
+    const apps = page.getByRole("dialog", { name: "应用连接", exact: true });
+    await expect(apps).toBeVisible();
+    expect(await apps.boundingBox()).toEqual(size);
+    await page.keyboard.press("Escape");
   }
 });
 

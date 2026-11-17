@@ -116,7 +116,6 @@ export function SettingsRoot({
       <Dialog
         open={discard}
         onOpenChange={setDiscard}
-        className="decision-dialog"
         title="放弃未保存的配置？"
         description="已保存的连接不受影响。"
         finalFocus={() =>

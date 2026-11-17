@@ -3,7 +3,7 @@ import { BOT_NAME_LENGTH } from "@domos/agent/work/limits";
 import { BotAvatar } from "@domos/ui/avatar";
 import { characterSeed } from "@domos/ui/characters";
 import { Button } from "@domos/ui/controls";
-import { Dialog } from "@domos/ui/dialog";
+import { Dialog, DialogFooter } from "@domos/ui/dialog";
 import { TextField } from "@domos/ui/field";
 import { useEffect, useRef, useState } from "react";
 import { client } from "../../client.ts";
@@ -83,6 +83,7 @@ function BotForm({
     );
   return (
     <form
+      id="create-bot"
       className="bot-form"
       onSubmit={async (event) => {
         event.preventDefault();
@@ -151,19 +152,26 @@ function BotForm({
           {error}
         </p>
       )}
-      <div className="dialog-actions">
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={onCancel}
-          disabled={saving}
-        >
-          取消
-        </Button>
-        <Button type="submit" pending={saving} disabled={!name.trim()}>
-          {saving ? "正在创建…" : "创建"}
-        </Button>
-      </div>
+      <DialogFooter>
+        <div className="dialog-actions">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onCancel}
+            disabled={saving}
+          >
+            取消
+          </Button>
+          <Button
+            type="submit"
+            form="create-bot"
+            pending={saving}
+            disabled={!name.trim()}
+          >
+            {saving ? "正在创建…" : "创建"}
+          </Button>
+        </div>
+      </DialogFooter>
     </form>
   );
 }

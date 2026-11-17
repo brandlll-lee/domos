@@ -28,7 +28,6 @@ export function ConfirmComputerAction({
       }}
       title={title}
       description={description}
-      className="decision-dialog"
       trigger={
         <Button variant={variant} size="small" disabled={busy}>
           {title}

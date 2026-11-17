@@ -471,8 +471,18 @@ test("Apps manages a real MCP connection and Bot grants across reloads and theme
     await expect(renamed.getByText(/^可用/)).toBeVisible({ timeout: 20_000 });
     await renamed.getByRole("button", { name: "Team Docs的操作" }).click();
     await page.getByRole("menuitem", { name: "删除", exact: true }).click();
-    await page
-      .getByRole("dialog", { name: "删除连接", exact: true })
+    const confirmation = page.getByRole("dialog", {
+      name: "删除连接",
+      exact: true,
+    });
+    await expect(confirmation).toBeVisible();
+    expect(await confirmation.boundingBox()).toEqual(frame);
+    await expect(
+      confirmation
+        .locator(".dialog-footer")
+        .getByRole("button", { name: "删除", exact: true }),
+    ).toBeInViewport();
+    await confirmation
       .getByRole("button", { name: "删除", exact: true })
       .click();
     await expect(renamed).toHaveCount(0);

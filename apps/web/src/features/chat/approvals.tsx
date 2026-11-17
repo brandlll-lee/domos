@@ -155,12 +155,7 @@ function NativeApproval({
           >
             {request.title} · <span role="status">{status}</span>
           </InlineNotice>
-          <Dialog
-            open={open}
-            onOpenChange={setOpen}
-            title={request.title}
-            className="decision-dialog"
-          >
+          <Dialog open={open} onOpenChange={setOpen} title={request.title}>
             <p className="interaction-result" role="status">
               {status}
             </p>
