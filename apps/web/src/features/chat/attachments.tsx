@@ -13,9 +13,9 @@ import { fileAction, fileUrl } from "../files/actions.ts";
 import { InlineFile } from "../files/content.tsx";
 import { useFilePreview } from "../files/context.tsx";
 import { fileIcon } from "../files/file-icon.ts";
+import { ImageGallery } from "../files/image-gallery.tsx";
 import { useFileSummary } from "../files/use-file-summary.ts";
 import { chatCopy } from "./copy.ts";
-import { ImageGallery } from "./image-gallery.tsx";
 
 export function Attachments({
   botId,

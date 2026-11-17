@@ -9,10 +9,10 @@ import { ArrowSquareOutIcon } from "@phosphor-icons/react/dist/csr/ArrowSquareOu
 import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
 import { FolderOpenIcon } from "@phosphor-icons/react/dist/csr/FolderOpen";
 import { useState } from "react";
-import { ImageGallery } from "../chat/image-gallery.tsx";
 import { fileAction } from "./actions.ts";
 import { FileContent } from "./content.tsx";
 import { useFilePreview } from "./context.tsx";
+import { ImageGallery } from "./image-gallery.tsx";
 import { useFile } from "./use-file.ts";
 import "./style.css";
 
@@ -95,6 +95,7 @@ export function FilePanel({
           <div className="file-inline-target" ref={onTarget} />
         ) : kind === "image" ? (
           <ImageGallery
+            preview
             botId={botId}
             files={[file]}
             downloading={pending}

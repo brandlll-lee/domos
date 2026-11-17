@@ -138,7 +138,7 @@
 }
 .workspace .chat-header,
 .workspace .sidebar-toolbar,
-.workspace .bot-details > .panel-header {
+.workspace-panel[data-side="inspector"] > .panel-body > * > .panel-header {
   -webkit-app-region: drag;
   user-select: none;
 }
@@ -151,11 +151,29 @@
 .workspace[data-platform="darwin"] .contacts-trigger {
   top: calc(var(--titlebar-height) + var(--space-3));
 }
-.workspace[data-platform="win32"] .bot-details > .panel-header,
-.workspace[data-platform="linux"] .bot-details > .panel-header {
+.workspace:is([data-platform="win32"], [data-platform="linux"])
+  .workspace-panel[data-side="inspector"]
+  > .panel-body
+  > *
+  > .panel-header {
   padding-inline-end: max(
     var(--window-controls-width),
     var(--window-inset-end, 0px)
+  );
+}
+.workspace[data-platform="darwin"]
+  .workspace-panel[data-side="inspector"][data-expanded]
+  > .panel-body
+  > *
+  > .panel-header,
+.workspace[data-platform="darwin"][data-mobile]
+  .workspace-panel[data-side="inspector"]
+  > .panel-body
+  > *
+  > .panel-header {
+  padding-inline-start: max(
+    var(--mac-controls-width),
+    var(--window-inset-start, 0px)
   );
 }
 .workspace[data-platform="win32"]:not([data-details]) .chat-header,

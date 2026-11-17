@@ -31,7 +31,7 @@ test("files preview documents, search old history and return to the source", asy
     new File(["const greeting = '你好';"], "代码.ts"),
     new File(["%PDF-1.7\ninvalid"], "损坏.pdf"),
     new File([new Uint8Array([0, 255, 0])], "文件.bin"),
-    new File([png(320, 240)], "照片.png"),
+    new File([png(1200, 1600)], "照片.png"),
     new File(
       [
         await readFile(
@@ -222,6 +222,44 @@ test("files preview documents, search old history and return to the source", asy
   await page.setViewportSize({ width: 1360, height: 900 });
   await list.getByRole("tab", { name: "全部", exact: true }).click();
   expect(categoryReads).toBe(3);
+  for (const [name, selector] of [
+    ["照片.png", "img"],
+    ["录像.mp4", "video"],
+    ["语音.mp3", "audio"],
+  ]) {
+    await list
+      .getByRole("button", { name: `预览 ${name}`, exact: true })
+      .click();
+    const media = panel.locator(`.file-panel-content ${selector}`).first();
+    await expect(media).toBeVisible();
+    const content = await panel.locator(".file-panel-content").boundingBox();
+    const bounds = await media.boundingBox();
+    if (!content || !bounds) throw new Error("Media bounds required");
+    expect(
+      Math.abs(bounds.x + bounds.width / 2 - content.x - content.width / 2),
+    ).toBeLessThan(2);
+    expect(
+      Math.abs(bounds.y + bounds.height / 2 - content.y - content.height / 2),
+    ).toBeLessThan(2);
+    expect(bounds.width).toBeLessThanOrEqual(content.width);
+    expect(bounds.height).toBeLessThanOrEqual(content.height);
+    if (selector === "audio") expect(bounds.width).toBeLessThanOrEqual(448);
+    if (selector === "img") {
+      await media.click();
+      const viewer = page.getByRole("dialog", {
+        name: "照片.png",
+        exact: true,
+      });
+      await expect(
+        viewer.getByRole("button", { name: "原始尺寸", exact: true }),
+      ).toBeVisible();
+      await page.keyboard.press("Escape");
+    }
+    await page.screenshot({
+      path: testInfo.outputPath(`preview-${selector}.png`),
+    });
+    await panel.getByRole("button", { name: "返回", exact: true }).click();
+  }
   const filtering = Promise.withResolvers<void>();
   await page.route("**/rpc/files/list", async (route) => {
     await filtering.promise;
@@ -486,6 +524,23 @@ test("PDF preview renders selectable pages in both themes and a narrow panel", a
   test.setTimeout(60_000);
   await service.control({ content: "已收到。" });
   await page.goto(service.url);
+  const appearance = () =>
+    page.locator(".sidebar").evaluate((node) => {
+      const sidebar = getComputedStyle(node);
+      return {
+        scheme: getComputedStyle(document.documentElement).colorScheme,
+        background: sidebar.backgroundColor,
+        color: sidebar.color,
+        shadow: sidebar.boxShadow,
+        radius: sidebar.borderRadius,
+      };
+    });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  const dark = await appearance();
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  const light = await appearance();
   await attachFiles(page, {
     name: "阅读.pdf",
     mimeType: "application/pdf",
@@ -509,6 +564,34 @@ test("PDF preview renders selectable pages in both themes and a narrow panel", a
     "PDF page one",
   );
   await expect(panel.locator("canvas").first()).toBeVisible();
+  expect(await appearance()).toEqual(light);
+  for (const platform of ["win32", "darwin"]) {
+    await page.locator(".workspace").evaluate((node, platform) => {
+      (node as HTMLElement).dataset.platform = platform;
+    }, platform);
+    for (const width of [1360, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const close = await panel
+        .getByRole("button", { name: "关闭", exact: true })
+        .boundingBox();
+      const back = await panel
+        .getByRole("button", { name: "返回", exact: true })
+        .boundingBox();
+      if (!close || !back) throw new Error("Preview controls required");
+      if (platform === "win32")
+        expect(close.x + close.width).toBeLessThanOrEqual(width - 144);
+      else if (width === 390) expect(back.x).toBeGreaterThanOrEqual(80);
+      else {
+        const bounds = await panel.boundingBox();
+        if (!bounds) throw new Error("Preview bounds required");
+        expect(back.x - bounds.x).toBeLessThan(80);
+      }
+    }
+  }
+  await page
+    .locator(".workspace")
+    .evaluate((node) => node.removeAttribute("data-platform"));
+  await page.setViewportSize({ width: 1360, height: 900 });
   await expect(
     panel.getByRole("button", { name: "适应宽度", exact: true }),
   ).toBeVisible();
@@ -554,6 +637,7 @@ test("PDF preview renders selectable pages in both themes and a narrow panel", a
   await panel.getByRole("button", { name: "放大", exact: true }).click();
   await page.screenshot({ path: testInfo.outputPath("files-pdf-light.png") });
   await panel.getByRole("button", { name: "关闭", exact: true }).click();
+  expect(await appearance()).toEqual(light);
   await chooseAppearance(page, "深色");
   await page.setViewportSize({ width: 390, height: 760 });
   await page
@@ -565,6 +649,7 @@ test("PDF preview renders selectable pages in both themes and a narrow panel", a
   await expect(panel.locator(".textLayer").first()).toContainText(
     "PDF page one",
   );
+  expect(await appearance()).toEqual(dark);
   await expect(panel).toBeInViewport();
   expect(
     await panel.evaluate(

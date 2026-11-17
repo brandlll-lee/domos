@@ -11,7 +11,7 @@ import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimpl
 import { MagnifyingGlassPlusIcon } from "@phosphor-icons/react/dist/csr/MagnifyingGlassPlus";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
-import { chatCopy } from "./copy.ts";
+import { chatCopy } from "../chat/copy.ts";
 export function ImageGallery({
   botId,
   files,
@@ -19,6 +19,7 @@ export function ImageGallery({
   downloading,
   error,
   caption,
+  preview = false,
 }: {
   botId: number;
   files: Attachment[];
@@ -26,6 +27,7 @@ export function ImageGallery({
   downloading: boolean;
   error?: string;
   caption?: string;
+  preview?: boolean;
 }) {
   const [selected, setSelected] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
@@ -98,7 +100,7 @@ export function ImageGallery({
   return (
     <>
       <fieldset
-        className="image-gallery"
+        className={preview ? "file-image-preview" : "image-gallery"}
         aria-label={chatCopy.gallery}
         data-count={files.length}
       >
@@ -106,7 +108,7 @@ export function ImageGallery({
           <button
             key={item.id}
             type="button"
-            className="image-thumbnail"
+            className={preview ? "file-image" : "image-thumbnail"}
             data-file-id={item.id}
             aria-label={`${chatCopy.viewImage} ${item.name}`}
             onClick={(event) => {

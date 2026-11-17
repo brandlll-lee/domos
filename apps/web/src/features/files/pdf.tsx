@@ -4,10 +4,12 @@ import { Loading } from "@domos/ui/loading";
 import { InlineNotice } from "@domos/ui/message";
 import { CaretLeftIcon } from "@phosphor-icons/react/dist/csr/CaretLeft";
 import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
-import { useEffect, useRef, useState } from "react";
-import "pdfjs-dist/web/pdf_viewer.css";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import viewerStyles from "pdfjs-dist/web/pdf_viewer.css?inline";
+import { useEffect, useRef, useState } from "react";
 import { fileSummary } from "./file-state.ts";
+
+const styles = `@scope (.file-pdf) { ${viewerStyles.replaceAll(":root", ":scope")} :scope { color-scheme: inherit; } }`;
 
 export default function PdfPreview({
   source,
@@ -139,6 +141,7 @@ export default function PdfPreview({
   }, [source, botId, file]);
   return (
     <div className="file-pdf">
+      <style>{styles}</style>
       {state.error ? (
         <div className="file-preview-notice" role="alert">
           <InlineNotice>{state.error}</InlineNotice>
