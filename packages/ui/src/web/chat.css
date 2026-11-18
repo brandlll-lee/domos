@@ -353,35 +353,48 @@ button.file-caption {
   align-items: center;
   gap: var(--space-3);
   margin: 0;
+  width: min(100%, 24rem);
   min-width: 0;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-round);
+  border-radius: var(--radius-panel);
   padding: var(--space-2);
-  background: var(--bot-color);
-  color: var(--bot-foreground);
+  background: var(--color-popup);
+  color: var(--color-text);
 }
 .media-attachment-audio audio {
   display: none;
 }
-.media-attachment-audio .button[data-variant="ghost"],
-.media-attachment-audio .button[data-variant="ghost"]:not(:disabled):hover {
+.media-attachment-audio .button[data-variant="ghost"] {
   flex-shrink: 0;
-  border-radius: var(--radius-round);
-  background: transparent;
-  border-color: currentColor;
-  color: var(--bot-icon-color);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: #515157;
+  color: white;
+}
+.media-attachment-audio .button[data-variant="ghost"]:not(:disabled):hover {
+  background: #606067;
+  color: white;
+}
+.media-attachment-audio .media-attachment-duration {
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
 }
 .audio-waveform {
   flex: 1;
   min-width: 0;
   position: relative;
   height: var(--space-8);
-  color: color-mix(in srgb, var(--bot-foreground) 50%, var(--bot-color));
+  color: var(--color-muted);
 }
 .audio-waveform svg {
+  display: block;
   width: 100%;
   height: 100%;
-  fill: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+.audio-waveform :is(g, use) {
+  stroke: currentColor;
 }
 .media-attachment-audio .audio-play svg {
   fill: currentColor;
@@ -389,7 +402,7 @@ button.file-caption {
   height: var(--space-6);
 }
 .audio-waveform-played {
-  color: var(--bot-foreground);
+  color: var(--bot-color);
 }
 .audio-waveform input {
   position: absolute;
@@ -399,7 +412,6 @@ button.file-caption {
   background: transparent;
   appearance: none;
   cursor: pointer;
-  accent-color: var(--bot-foreground);
 }
 .audio-waveform input::-webkit-slider-runnable-track {
   background: transparent;
@@ -409,7 +421,16 @@ button.file-caption {
   width: var(--space-3);
   height: var(--space-3);
   border-radius: var(--radius-round);
-  background: var(--bot-foreground);
+  background: transparent;
+}
+.audio-waveform input::-moz-range-thumb {
+  border: 0;
+  background: transparent;
+}
+.audio-waveform input:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
 }
 .audio-error {
   flex-basis: 100%;

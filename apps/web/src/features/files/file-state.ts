@@ -11,6 +11,7 @@ export type FileSummary = {
   pages?: number;
   sheets?: number;
   duration?: number;
+  waveform?: number[];
   thumbnail?: string;
 };
 const summaries = new Map<

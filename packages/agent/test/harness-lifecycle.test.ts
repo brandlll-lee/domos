@@ -1244,8 +1244,20 @@ test.each([false, true])(
     expect(
       workers[1]?.requests.some((request) => request.method === "thread/start"),
     ).toBe(true);
+    const view = await engines.view(botId, context);
+    expect(view).toMatchObject({
+      busy: false,
+      processing: false,
+      activeTurnId: null,
+      runs: expect.arrayContaining([
+        expect.objectContaining({ status: "ended" }),
+      ]),
+    });
     expect(
-      (await engines.view(botId, context)).messages.some((message) =>
+      view.activity?.some((item) => item.executionId || item.waiting),
+    ).toBe(false);
+    expect(
+      view.messages.some((message) =>
         JSON.stringify(message).includes("Review the recent conversation"),
       ),
     ).toBe(false);

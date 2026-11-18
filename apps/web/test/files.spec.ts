@@ -15,6 +15,109 @@ import {
 } from "./fixtures/chat-ui.ts";
 import { test } from "./fixtures/service.ts";
 
+test("chat audio shows recorded peaks and outgoing images share the bubble edge", async ({
+  service,
+  page,
+}, info) => {
+  const client: RouterClient<AppRouter> = createORPCClient(
+    new RPCLink({ url: `${service.url}/rpc` }),
+  );
+  const bot = (await client.bots.list())[0];
+  if (!bot) throw new Error("Bot required");
+  const audio = await client.files.upload({
+    botId: bot.id,
+    file: new File(
+      [
+        await readFile(
+          new URL(
+            "../../../packages/agent/test/fixtures/media/audio.mp3",
+            import.meta.url,
+          ),
+        ),
+      ],
+      "语音.mp3",
+    ),
+  });
+  const images = await Promise.all(
+    ["正面.png", "侧面.png"].map((name) =>
+      client.files.upload({
+        botId: bot.id,
+        file: new File([png(240, 320)], name),
+      }),
+    ),
+  );
+  const single = images[0];
+  if (!single) throw new Error("Image required");
+  for (const [text, files] of [
+    ["单张图片", [single, audio]],
+    ["多张图片", images],
+  ] as const) {
+    await service.control({ content: "已收到。" });
+    await client.send({
+      botId: bot.id,
+      text,
+      attachments: files.map((file) => file.id),
+      requestId: crypto.randomUUID(),
+    });
+    await expect
+      .poll(async () => (await client.get({ botId: bot.id })).busy)
+      .toBe(false);
+  }
+  await page.goto(service.url);
+  await chooseAppearance(page, "深色");
+  for (const text of ["单张图片", "多张图片"]) {
+    const message = page.locator(".message.user").filter({ hasText: text });
+    await expect(message.locator(".image-gallery img").last()).toBeVisible();
+    const bounds = await message.evaluate((node) => ({
+      bubble: node.querySelector(".message-bubble")?.getBoundingClientRect()
+        .right,
+      image: [...node.querySelectorAll(".image-gallery img")]
+        .at(-1)
+        ?.getBoundingClientRect().right,
+    }));
+    expect(bounds.image).toBeCloseTo(bounds.bubble ?? 0, 0);
+  }
+  const card = page.getByRole("group", { name: "音频 语音.mp3", exact: true });
+  const bars = card.locator(".audio-waveform g line");
+  const heights = () =>
+    bars.evaluateAll((lines) =>
+      lines.map(
+        (line) =>
+          Number(line.getAttribute("y2")) - Number(line.getAttribute("y1")),
+      ),
+    );
+  await expect(bars).toHaveCount(48);
+  const wave = await heights();
+  expect(new Set(wave).size).toBeGreaterThan(10);
+  await expect(card.locator("audio")).not.toHaveAttribute("src", /.+/);
+  await expect(card.getByText("0:00", { exact: true })).toBeVisible();
+  await card.screenshot({ path: info.outputPath("chat-audio-idle.png") });
+  await card
+    .getByRole("button", { name: "播放 语音.mp3", exact: true })
+    .click();
+  const pause = card.getByRole("button", {
+    name: "暂停 语音.mp3",
+    exact: true,
+  });
+  await expect(pause).toBeVisible();
+  const slider = card.getByRole("slider", { name: "播放进度 语音.mp3" });
+  await expect
+    .poll(async () => Number(await slider.inputValue()))
+    .toBeGreaterThan(0.1);
+  await card.screenshot({ path: info.outputPath("chat-audio-playing.png") });
+  await pause.click();
+  await expect(
+    card.getByRole("button", { name: "播放 语音.mp3", exact: true }),
+  ).toBeVisible();
+  await card.screenshot({ path: info.outputPath("chat-audio-paused.png") });
+  await slider.press("End");
+  await expect
+    .poll(async () => Number(await slider.inputValue()))
+    .toBeGreaterThan(2.9);
+  expect(await heights()).toEqual(wave);
+  await card.screenshot({ path: info.outputPath("chat-audio-seek.png") });
+});
+
 test("files preview documents, search old history and return to the source", async ({
   service,
   page,

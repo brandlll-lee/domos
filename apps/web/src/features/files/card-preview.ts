@@ -3,6 +3,35 @@ import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { fileUrl } from "./actions.ts";
 import type { FileSummary } from "./file-state.ts";
 
+async function readAudioWaveform(url: string, signal: AbortSignal) {
+  const response = await fetch(url, { signal });
+  if (!response.ok) throw new Error("无法读取音频波形。");
+  const bytes = await response.arrayBuffer();
+  signal.throwIfAborted();
+  const decoder = new OfflineAudioContext(1, 1, 8000);
+  const audio = await decoder.decodeAudioData(bytes).catch((error: unknown) => {
+    if (error instanceof DOMException && error.name === "EncodingError") return;
+    throw error;
+  });
+  signal.throwIfAborted();
+  if (!audio) return;
+  const channels = Array.from({ length: audio.numberOfChannels }, (_, index) =>
+    audio.getChannelData(index),
+  );
+  const bars = 48;
+  const peaks = Array.from({ length: bars }, (_, index) => {
+    const start = Math.floor((index * audio.length) / bars);
+    const end = Math.floor(((index + 1) * audio.length) / bars);
+    let peak = 0;
+    for (const channel of channels)
+      for (let sample = start; sample < end; sample++)
+        peak = Math.max(peak, Math.abs(channel[sample] ?? 0));
+    return peak;
+  });
+  const loudest = Math.max(0.04, ...peaks);
+  return peaks.map((peak) => Math.sqrt(peak / loudest));
+}
+
 export async function readCardPreview(
   botId: number,
   file: Attachment,
@@ -49,7 +78,8 @@ export async function readCardPreview(
     }
   }
   if (kind !== "video" && kind !== "audio") return {};
-  return new Promise((resolve, reject) => {
+  const url = fileUrl(botId, file.id);
+  const summary = await new Promise<FileSummary>((resolve, reject) => {
     const media = document.createElement(kind);
     const finish = (error?: unknown, data?: FileSummary) => {
       media.onloadedmetadata = null;
@@ -84,6 +114,15 @@ export async function readCardPreview(
         thumbnail: canvas.toDataURL("image/webp"),
       });
     };
-    media.src = fileUrl(botId, file.id);
+    media.src = url;
   });
+  if (
+    kind === "audio" &&
+    file.size <= 8 * 1024 * 1024 &&
+    summary.duration !== undefined &&
+    summary.duration > 0 &&
+    summary.duration <= 300
+  )
+    summary.waveform = await readAudioWaveform(url, signal);
+  return summary;
 }

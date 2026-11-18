@@ -349,9 +349,6 @@ export class Runtime {
         (message) => !saved.has(message.id),
       ),
     );
-    view.busy ||= Boolean(engine?.tasks.length);
-    view.processing = Boolean(engine?.activeId && !requests?.approvals.length);
-    view.activeTurnId = engine?.activeTurn ?? view.activeTurnId;
     view.engine = engine?.config;
     if (engine?.config.model) {
       const separator = engine.config.model.indexOf("/");
@@ -391,37 +388,41 @@ export class Runtime {
           sessions.set(item.session, item.recipient as ConversationId);
       }
     }
-    view.activity = await Promise.all(
+    const executions = await Promise.all(
       [...sessions].map(async ([sessionId, owner]) => {
         const [state, approvals] =
           sessionId === botId
             ? [engine, requests]
             : await Promise.all([
-                this.harness.snapshot(EngineDoc, sessionId, context),
+                readEngine(this.harness, sessionId, context),
                 this.harness.snapshot(ComputerRequests, sessionId, context),
               ]);
-        let waiting: string | undefined;
-        let queued: string | undefined;
-        if (!state?.activeId && state?.tasks.length) {
-          await this.harness.commit(async (tx) => {
-            for (const id of state.tasks) {
-              const task = await tx.task(id);
-              if (!task || task.state.status === "terminal") continue;
-              queued = (task.input as EngineTaskInput).turnId;
-              const previousId = (task.input as EngineTaskInput).previous;
-              const previous = previousId
-                ? await tx.task(previousId)
-                : undefined;
-              waiting =
-                previous && previous.state.status !== "terminal"
-                  ? previous.conversationId !== sessionId
-                    ? "正在处理另一项任务，完成后继续。"
-                    : "排队中，等待前一项任务完成。"
-                  : "等待执行。";
-              break;
-            }
-          }, context);
-        } else if (state?.activeId && approvals?.approvals.length) {
+        const activeTurnId = state?.activeTurn ?? null;
+        const queued =
+          !activeTurnId && state?.tasks.length
+            ? await this.harness.commit(async (tx) => {
+                for (const id of state.tasks) {
+                  const task = await tx.task(id);
+                  if (!task || task.state.status === "terminal") continue;
+                  const input = task.input as EngineTaskInput;
+                  if (input.memoryReview) continue;
+                  const previous = input.previous
+                    ? await tx.task(input.previous)
+                    : null;
+                  return {
+                    turnId: input.turnId,
+                    waiting:
+                      previous && previous.state.status !== "terminal"
+                        ? previous.conversationId !== sessionId
+                          ? "正在处理另一项任务，完成后继续。"
+                          : "排队中，等待前一项任务完成。"
+                        : "等待执行。",
+                  };
+                }
+              }, context)
+            : undefined;
+        let waiting = queued?.waiting;
+        if (activeTurnId && approvals?.approvals.length) {
           waiting = approvals.approvals.some((item) => item.takeover)
             ? "等待你完成接管。"
             : approvals.approvals.some((item) => item.kind === "question")
@@ -429,25 +430,29 @@ export class Runtime {
               : "等待你的确认。";
         }
         return {
-          botId: owner,
-          sessionId,
-          executionId:
-            state?.activeTurn ??
-            (state?.activeId != null ? String(state.activeId) : queued),
-          processing: Boolean(
-            state?.activeId &&
-              state.run?.status !== "stopping" &&
-              !approvals?.approvals.length,
-          ),
-          retry: state?.runtime?.retry,
-          waiting,
+          activeTurnId,
+          activity: {
+            botId: owner,
+            sessionId,
+            executionId: activeTurnId ?? queued?.turnId,
+            processing: Boolean(
+              activeTurnId && state?.run?.status !== "stopping" && !waiting,
+            ),
+            retry: activeTurnId ? state?.runtime?.retry : undefined,
+            waiting,
+          },
         };
       }),
     );
+    const own = executions.find(({ activity }) => activity.sessionId === botId);
+    view.activity = executions.map(({ activity }) => activity);
+    view.activeTurnId = own?.activeTurnId ?? view.activeTurnId;
+    view.processing = own?.activity.processing ?? false;
     view.busy ||= Boolean(
-      view.delegations?.some(
-        (item) => item.status === "running" || item.status === "queued",
-      ),
+      view.activity.some((item) => item.executionId) ||
+        view.delegations?.some(
+          (item) => item.status === "running" || item.status === "queued",
+        ),
     );
     view.failed ||= Boolean(engine?.error);
     applyRoutineDelivery(

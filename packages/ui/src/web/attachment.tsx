@@ -1,8 +1,6 @@
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { Button } from "./controls.tsx";
 
-const waveformPositions = Array.from({ length: 60 }, (_, index) => index * 4);
-
 function mediaTime(value: number) {
   return `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, "0")}`;
 }
@@ -11,17 +9,17 @@ export function AudioAttachment({
   name,
   src,
   duration,
+  waveform,
   action,
 }: {
   name: string;
   src: string;
   duration?: number;
+  waveform?: number[];
   action?: ReactNode;
 }) {
   const id = useId();
   const player = useRef<HTMLAudioElement>(null);
-  const bars = useRef<SVGGElement>(null);
-  const analysis = useRef<{ context: AudioContext; node: AnalyserNode }>(null);
   const [started, setStarted] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
@@ -36,40 +34,8 @@ export function AudioAttachment({
       media?.pause();
       media?.removeAttribute("src");
       media?.load();
-      void analysis.current?.context.close();
     };
   }, []);
-  useEffect(() => {
-    if (!playing || !analysis.current) return;
-    const { node } = analysis.current;
-    const samples = new Uint8Array(node.fftSize);
-    const reduced = matchMedia("(prefers-reduced-motion: reduce)");
-    let frame = 0;
-    const draw = () => {
-      node.getByteTimeDomainData(samples);
-      let amplitude = 1;
-      for (const sample of samples)
-        amplitude = Math.max(amplitude, Math.abs(sample - 128));
-      const elements = bars.current?.children;
-      if (elements) {
-        for (let index = 0; index < elements.length; index++) {
-          const start = Math.floor((index * samples.length) / elements.length);
-          const end = Math.floor(
-            ((index + 1) * samples.length) / elements.length,
-          );
-          let peak = 0;
-          for (let sample = start; sample < end; sample++)
-            peak = Math.max(peak, Math.abs((samples[sample] ?? 128) - 128));
-          const height = Math.max(2, (peak / amplitude) * 32);
-          elements[index]?.setAttribute("height", String(height));
-          elements[index]?.setAttribute("y", String((32 - height) / 2));
-        }
-      }
-      if (!reduced.matches) frame = requestAnimationFrame(draw);
-    };
-    draw();
-    return () => cancelAnimationFrame(frame);
-  }, [playing]);
   async function toggle() {
     const media = player.current;
     if (!media) return;
@@ -83,18 +49,9 @@ export function AudioAttachment({
         media.src = src;
         setStarted(true);
       }
-      if (!analysis.current) {
-        const context = new AudioContext();
-        const node = context.createAnalyser();
-        context.createMediaElementSource(media).connect(node);
-        node.connect(context.destination);
-        analysis.current = { context, node };
-      }
-      await analysis.current.context.resume();
       await media.play();
     } catch {
       setError(true);
-      void analysis.current?.context.suspend();
     }
   }
   return (
@@ -107,10 +64,7 @@ export function AudioAttachment({
         ref={player}
         preload="none"
         onPlay={() => setPlaying(true)}
-        onPause={() => {
-          setPlaying(false);
-          void analysis.current?.context.suspend();
-        }}
+        onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
         onTimeUpdate={() => setPosition(player.current?.currentTime ?? 0)}
         onLoadedMetadata={() => {
@@ -120,7 +74,6 @@ export function AudioAttachment({
         onError={() => {
           setError(true);
           setPlaying(false);
-          void analysis.current?.context.suspend();
         }}
       />
       <Button
@@ -148,10 +101,24 @@ export function AudioAttachment({
               />
             </clipPath>
           </defs>
-          <g id={`${id}-bars`} ref={bars}>
-            {waveformPositions.map((x) => (
-              <rect key={x} x={x} y="15" width="2" height="2" rx="1" />
-            ))}
+          <g id={`${id}-bars`}>
+            {waveform ? (
+              waveform.map((peak, index) => {
+                const x = ((index + 0.5) * 240) / waveform.length;
+                const halfHeight = 1 + peak * 13;
+                return (
+                  <line
+                    key={x}
+                    x1={x}
+                    x2={x}
+                    y1={16 - halfHeight}
+                    y2={16 + halfHeight}
+                  />
+                );
+              })
+            ) : (
+              <line x1="1" x2="239" y1="16" y2="16" />
+            )}
           </g>
           <use
             href={`#${id}-bars`}
@@ -175,8 +142,11 @@ export function AudioAttachment({
           }}
         />
       </div>
-      <span className="media-attachment-duration">
-        {mediaTime(playing || position > 0 ? position : length)}
+      <span
+        className="media-attachment-duration"
+        title={length ? `总时长 ${mediaTime(length)}` : undefined}
+      >
+        {mediaTime(position)}
       </span>
       {action}
       {error && (

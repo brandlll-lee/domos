@@ -453,6 +453,9 @@
 .message.user .message-parts {
   align-items: flex-end;
 }
+.message.user .attachment-message .image-gallery {
+  margin-inline-start: auto;
+}
 .message-parts > :is(.message-bubble, .attachment-message) {
   max-width: 100%;
 }

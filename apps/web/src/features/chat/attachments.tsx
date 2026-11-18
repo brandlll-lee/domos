@@ -145,6 +145,7 @@ function AttachmentCard({
           name={file.name}
           src={fileUrl(botId, file.id)}
           duration={summary?.duration}
+          waveform={summary?.waveform}
           action={menu}
         />
       ) : kind === "video" ? (
