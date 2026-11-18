@@ -55,56 +55,13 @@
 .character-eyelid[data-side="1"] {
   animation-delay: 24ms;
 }
-.character-team {
-  display: flex;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  min-width: 0;
-  align-items: center;
-  gap: clamp(var(--space-2), 3vw, var(--space-4));
-  width: 100%;
-  max-width: 32rem;
-  min-height: 8rem;
-}
-.character-team > .button {
-  position: relative;
-  display: block;
-  flex: var(--character-weight) 1 0;
-  aspect-ratio: var(--character-aspect);
-  min-width: 0;
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-round);
-  background: transparent;
-  box-shadow: none;
-  touch-action: manipulation;
-}
-.character-team > .button::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: max(100%, 24px);
-  height: max(100%, 44px);
-  transform: translate(-50%, -50%);
-}
 .character-gesture {
   display: block;
   width: 100%;
   height: 100%;
   transform-origin: 50% 65%;
 }
-.character-team .character-pose,
-.character-team .character-body,
-.character-team .character-face,
-.character-team .character-pupils,
-.character-team .character-eyelid {
-  animation-delay: var(--character-delay);
-}
-.bot-avatar[data-paused] *,
-.character-team [data-paused] * {
+.bot-avatar[data-paused] * {
   animation-play-state: paused;
 }
 [data-blink] .character-eyelid {

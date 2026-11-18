@@ -244,25 +244,17 @@ function BotChat({
     return () => window.removeEventListener("domos:chat-open", open);
   }, [bot.id, team, navigationReady, setDetailsOpen]);
   useEffect(() => {
-    const save = () =>
-      saveWorkspaceView({
-        panels: {
-          [chatKey]: {
-            open: detailsOpen,
-            tab: panel,
-            detail: detailPanel,
-            file,
-            fileBotId,
-          },
+    saveWorkspaceView({
+      panels: {
+        [chatKey]: {
+          open: detailsOpen,
+          tab: panel,
+          detail: detailPanel,
+          file,
+          fileBotId,
         },
-      });
-    window.addEventListener("domos:workspace-save", save);
-    window.addEventListener("pagehide", save);
-    return () => {
-      save();
-      window.removeEventListener("domos:workspace-save", save);
-      window.removeEventListener("pagehide", save);
-    };
+      },
+    });
   }, [chatKey, detailsOpen, panel, detailPanel, file, fileBotId]);
   const [takeover, setTakeover] = useState<{
     id: string;

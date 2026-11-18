@@ -2,7 +2,6 @@ import type { EngineConfig } from "@domos/agent/harness/types";
 import { Button } from "@domos/ui/controls";
 import { DialogFooter } from "@domos/ui/dialog";
 import { Loading } from "@domos/ui/loading";
-import { SetupStatus } from "@domos/ui/setup";
 import { StartupScene } from "@domos/ui/startup";
 import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
 import { type CSSProperties, useCallback, useEffect, useState } from "react";
@@ -33,13 +32,17 @@ export function ModelSetup({
   botId: number;
   onBusyChange?: (busy: boolean) => void;
   onReady?: () => void;
-  onboarding?: { issue: string; skip: () => void };
+  onboarding?: {
+    binding: Awaited<ReturnType<typeof client.computer.get>>;
+    issue: string;
+    skip: () => void;
+  };
 }) {
   const settings = useSettings();
   const setup = Boolean(onReady);
+  const guided = Boolean(onboarding);
   const { profile, store } = useModelSettings(botId);
-  const [binding, setBinding] =
-    useState<Awaited<ReturnType<typeof client.computer.get>>>();
+  const [binding, setBinding] = useState(onboarding?.binding);
   const [provider, setProvider] = useState<EngineConfig["provider"]>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -61,16 +64,14 @@ export function ModelSetup({
     [botId, store],
   );
   useEffect(() => {
-    void refresh().catch((cause) => setError(cause.message));
-  }, [refresh]);
+    if (!guided) void refresh().catch((cause) => setError(cause.message));
+  }, [guided, refresh]);
   useEffect(() => {
     if (!setup && profile) setProvider(profile.config.provider);
   }, [setup, profile]);
   if (!binding || !profile)
     return error ? (
       <p role="alert">{error}</p>
-    ) : setup ? (
-      <SetupStatus>正在读取连接…</SetupStatus>
     ) : (
       <Loading label="正在读取连接" />
     );

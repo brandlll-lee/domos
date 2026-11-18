@@ -20,9 +20,6 @@ input {
   -webkit-app-region: drag;
   user-select: none;
 }
-.setup-window:has(.startup-loading) .titlebar {
-  background: #000;
-}
 .saved-connections {
   display: flex;
   flex-wrap: wrap;

@@ -24,7 +24,7 @@ async function capture(page: Page, info: TestInfo, name: string) {
         expect(box?.y).toBe(0);
         expect(box?.height).toBe(900);
         await expect(
-          page.locator(".startup-guide, .setup-page .scroll-viewport"),
+          page.locator(".startup-guide, .startup-loading"),
         ).toHaveCSS("overflow-y", /auto|scroll|clip/);
       }
       await page.screenshot({
@@ -62,7 +62,21 @@ test("first use prepares the default Bot with a computer and model before shared
       body.json.prepared = false;
       await route.fulfill({ response, json: body });
     });
+    const connectionRead = Promise.withResolvers<void>();
+    await page.route(
+      "**/hosting/info",
+      async (route) => {
+        await connectionRead.promise;
+        await route.continue();
+      },
+      { times: 1 },
+    );
     await page.goto(`http://127.0.0.1:${ready.port}`);
+    try {
+      await expect(page.locator(".startup-loading .startup-crt")).toBeVisible();
+    } finally {
+      connectionRead.resolve();
+    }
     await expect(
       page.getByRole("heading", { name: "连接这个 Domos" }),
     ).toBeVisible();
@@ -75,7 +89,18 @@ test("first use prepares the default Bot with a computer and model before shared
       ready.code,
     );
     await page.unroute("**/hosting/exchange");
-    await page.getByRole("button", { name: "连接", exact: true }).click();
+    const configurationRead = Promise.withResolvers<void>();
+    await page.route("**/rpc/bots/list", async (route) => {
+      await configurationRead.promise;
+      await route.continue();
+    });
+    try {
+      await page.getByRole("button", { name: "连接", exact: true }).click();
+      await expect(page.locator(".startup-loading .startup-crt")).toBeVisible();
+    } finally {
+      configurationRead.resolve();
+      await page.unroute("**/rpc/bots/list");
+    }
     const setup = page.locator(".startup-guide");
     await expect(
       setup.getByRole("heading", { name: "连接你的 AI" }),

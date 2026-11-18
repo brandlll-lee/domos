@@ -1,5 +1,5 @@
 import { Button } from "@domos/ui/controls";
-import { SetupPage, SetupStatus } from "@domos/ui/setup";
+import { StartupLoading } from "@domos/ui/startup";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { client } from "../../client.ts";
 import { ModelSetup } from "../bots/details/model.tsx";
@@ -8,7 +8,11 @@ import type { SettingsAccess } from "../settings/sections.tsx";
 import { Titlebar } from "../shell/titlebar.tsx";
 import { saveWorkspaceView, workspaceView } from "../shell/workspace-state.ts";
 
-type Setup = { botId: number; computer: boolean; configured: boolean };
+type Setup = {
+  botId: number;
+  binding: Awaited<ReturnType<typeof client.computer.get>>;
+  ready: boolean;
+};
 
 export function Onboarding({
   children,
@@ -31,27 +35,32 @@ export function Onboarding({
     ]);
     const next: Setup = {
       botId: bot.id,
-      computer: Boolean(binding.computer?.authorized),
-      configured: engine.revision > 0 || engine.prepared,
+      binding,
+      ready: Boolean(
+        binding.computer?.authorized &&
+          (engine.revision > 0 || engine.prepared),
+      ),
     };
     setSetup(next);
     return next;
   }, []);
   const initialize = useCallback(async () => {
     const next = await refresh();
-    setFinished(next.configured && next.computer);
+    setFinished(next.ready);
   }, [refresh]);
   useEffect(() => {
     if (!finished) void initialize().catch((cause) => setError(cause.message));
   }, [finished, initialize]);
   if (finished) return children;
+  const guide = setup && admin && !standalone;
   return (
     <div className="setup-window">
-      <Titlebar />
-      {setup && admin && !standalone ? (
+      <Titlebar loading={!guide} />
+      {guide ? (
         <ModelSetup
           botId={setup.botId}
           onboarding={{
+            binding: setup.binding,
             issue: error,
             skip: () => {
               saveWorkspaceView({ onboardingDeferred: true });
@@ -61,22 +70,21 @@ export function Onboarding({
           onReady={() =>
             void refresh()
               .then((next) => {
-                if (next.configured && next.computer) setFinished(true);
+                if (next.ready) setFinished(true);
                 else setError("请先保存模型配置。");
               })
               .catch((cause) => setError(cause.message))
           }
         />
       ) : (
-        <SetupPage title={setup ? "连接你的 AI" : "正在启动 Domos…"}>
-          {setup && <p role="status">请让管理员完成首次设置，然后重试。</p>}
-          {!setup && !error && <SetupStatus>正在读取配置…</SetupStatus>}
-          {error && (
-            <p role="alert" className="alert">
-              {error}
-            </p>
-          )}
-          {(error || (setup && (!admin || standalone))) && (
+        <StartupLoading
+          message={
+            error ||
+            (setup ? "请让管理员完成首次设置，然后重试。" : "正在读取配置…")
+          }
+          status={error ? "error" : setup ? "waiting" : "loading"}
+        >
+          {(error || setup) && (
             <Button
               variant="secondary"
               onClick={() =>
@@ -86,7 +94,7 @@ export function Onboarding({
               重试
             </Button>
           )}
-        </SetupPage>
+        </StartupLoading>
       )}
     </div>
   );

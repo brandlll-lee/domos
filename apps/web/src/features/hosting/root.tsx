@@ -1,10 +1,10 @@
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
-import { SetupPage, SetupStatus } from "@domos/ui/setup";
-import { StartupScene } from "@domos/ui/startup";
+import { StartupLoading, StartupScene } from "@domos/ui/startup";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import { client, selectComputer } from "../../client.ts";
+import { ApplicationNotices } from "../notices.tsx";
 import { Onboarding } from "../onboarding/root.tsx";
 import { SettingsRoot } from "../settings/root.tsx";
 import { Titlebar } from "../shell/titlebar.tsx";
@@ -71,18 +71,20 @@ export function HostingRoot({ children }: { children: ReactNode }) {
         deviceId={session?.device.id}
         standalone={state === "standalone"}
       >
-        <Onboarding
-          admin={session?.device.scope === "admin" || state === "standalone"}
-          deviceId={session?.device.id}
-          standalone={state === "standalone"}
-        >
-          {children}
-        </Onboarding>
+        <ApplicationNotices>
+          <Onboarding
+            admin={session?.device.scope === "admin" || state === "standalone"}
+            deviceId={session?.device.id}
+            standalone={state === "standalone"}
+          >
+            {children}
+          </Onboarding>
+        </ApplicationNotices>
       </SettingsRoot>
     );
   return (
     <div className="setup-window">
-      <Titlebar />
+      <Titlebar loading={state === "loading"} />
       {state === "pair" ? (
         <StartupScene
           stop="pair"
@@ -154,26 +156,22 @@ export function HostingRoot({ children }: { children: ReactNode }) {
           </form>
         </StartupScene>
       ) : (
-        <SetupPage title="正在连接 Domos…">
-          {error ? (
-            <>
-              <p className="alert" role="alert">
-                {error}
-              </p>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setError("");
-                  void refresh().catch((error) => setError(error.message));
-                }}
-              >
-                重试
-              </Button>
-            </>
-          ) : (
-            <SetupStatus>正在读取连接信息…</SetupStatus>
+        <StartupLoading
+          message={error || "正在读取连接信息…"}
+          status={error ? "error" : "loading"}
+        >
+          {error && (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setError("");
+                void refresh().catch((error) => setError(error.message));
+              }}
+            >
+              重试
+            </Button>
           )}
-        </SetupPage>
+        </StartupLoading>
       )}
     </div>
   );

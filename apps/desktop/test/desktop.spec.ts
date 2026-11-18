@@ -164,9 +164,7 @@ test("native setup starts and resumes with Docker unavailable", async ({
       .click();
 
     await setup.getByRole("button", { name: "重试", exact: true }).click();
-    await expect(
-      setup.getByRole("main", { name: "本机后台准备" }),
-    ).toBeVisible();
+    await expect(setup.getByRole("main", { name: "Domos 启动" })).toBeVisible();
     await expect(
       setup.locator(".startup-pixel-bot [data-work=working]"),
     ).toBeVisible();
@@ -179,6 +177,7 @@ test("native setup starts and resumes with Docker unavailable", async ({
     await expect(
       page.getByRole("heading", { name: "连接你的 AI" }),
     ).toBeVisible();
+    await expect(page.getByText("桌面状态读取失败。")).toBeHidden();
     await desktop.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows().find((window) =>
         window.contentView.children.some(

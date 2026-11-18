@@ -144,7 +144,6 @@ export const metrics = {
   "titlebar-height": `${layout.titlebar}px`,
   "settings-content-width": "49rem",
   "setup-content-width": "32rem",
-  "setup-title-size": "2rem",
   "setup-button-width": "22rem",
   "setup-control-height": "2.875rem",
   "mac-controls-width": "5rem",

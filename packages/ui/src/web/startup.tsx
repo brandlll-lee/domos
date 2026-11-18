@@ -18,14 +18,16 @@ import "./startup.css";
 
 export function StartupLoading({
   message,
+  status = "loading",
   children,
 }: {
   message: string;
+  status?: "loading" | "error" | "waiting";
   children?: ReactNode;
 }) {
   const work = useId();
   return (
-    <main className="startup-loading" aria-label="本机后台准备">
+    <main className="startup-loading" aria-label="Domos 启动">
       <div className="startup-crt">
         <div className="startup-glass">
           <div className="startup-pixel-bot">
@@ -35,30 +37,35 @@ export function StartupLoading({
               work={{ id: work, working: true }}
             />
           </div>
-          <div role="status" className="startup-readiness">
-            <span className="startup-spinner" aria-hidden="true">
-              {[
-                [50, 8],
-                [80, 20],
-                [92, 50],
-                [80, 80],
-                [50, 92],
-                [20, 80],
-                [8, 50],
-                [20, 20],
-              ].map(([x, y], step) => (
-                <i
-                  key={`${x}:${y}`}
-                  style={
-                    {
-                      "--x": `${x}%`,
-                      "--y": `${y}%`,
-                      "--step": step,
-                    } as CSSProperties
-                  }
-                />
-              ))}
-            </span>
+          <div
+            role={status === "error" ? "alert" : "status"}
+            className="startup-readiness"
+          >
+            {status === "loading" && (
+              <span className="startup-spinner" aria-hidden="true">
+                {[
+                  [50, 8],
+                  [80, 20],
+                  [92, 50],
+                  [80, 80],
+                  [50, 92],
+                  [20, 80],
+                  [8, 50],
+                  [20, 20],
+                ].map(([x, y], step) => (
+                  <i
+                    key={`${x}:${y}`}
+                    style={
+                      {
+                        "--x": `${x}%`,
+                        "--y": `${y}%`,
+                        "--step": step,
+                      } as CSSProperties
+                    }
+                  />
+                ))}
+              </span>
+            )}
             <span>{message}</span>
           </div>
         </div>

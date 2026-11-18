@@ -14,7 +14,13 @@ const windowControls = () =>
   (navigator as Navigator & { windowControlsOverlay?: ControlsOverlay })
     .windowControlsOverlay;
 
-export function Titlebar({ embedded = false }: { embedded?: boolean }) {
+export function Titlebar({
+  embedded = false,
+  loading = false,
+}: {
+  embedded?: boolean;
+  loading?: boolean;
+}) {
   const desktop = window.domosDesktop;
   useEffect(() => {
     const overlay = windowControls();
@@ -46,7 +52,9 @@ export function Titlebar({ embedded = false }: { embedded?: boolean }) {
     if (!desktop?.appearance) return;
     const sync = () =>
       void desktop.appearance(
-        document.documentElement.dataset.theme === "dark" ? "dark" : "light",
+        loading || document.documentElement.dataset.theme === "dark"
+          ? "dark"
+          : "light",
       );
     sync();
     const observer = new MutationObserver(sync);
@@ -55,12 +63,12 @@ export function Titlebar({ embedded = false }: { embedded?: boolean }) {
       attributeFilter: ["data-theme"],
     });
     return () => observer.disconnect();
-  }, []);
+  }, [loading]);
   if (embedded) return null;
   return (
     <header className="app-titlebar" data-platform={desktop?.platform}>
       <div className="titlebar-actions" />
-      {desktop && (
+      {desktop && !loading && (
         <Button
           variant="ghost"
           size="icon-small"

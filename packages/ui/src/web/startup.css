@@ -3,6 +3,9 @@
   src: url("../../assets/FusionPixelSC.woff2") format("woff2");
   font-display: swap;
 }
+.setup-window:has(> .startup-loading) {
+  background: #000;
+}
 .startup-guide,
 .startup-loading {
   --crt-text: #e7f5d9;
