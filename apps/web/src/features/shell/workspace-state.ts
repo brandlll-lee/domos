@@ -31,6 +31,7 @@ const panelSchema = z.object({
     .optional(),
 });
 const schema = z.object({
+  onboardingDeferred: z.boolean().optional(),
   contact: z
     .string()
     .regex(/^#(?:bot\/\d+|team\/.+)$/)

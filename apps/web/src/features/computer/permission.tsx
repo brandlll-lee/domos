@@ -9,11 +9,13 @@ export function ComputerPermission({
   onReady,
   onBusyChange,
   footer,
+  illustrated = true,
 }: {
   botId: number;
   onReady: () => Promise<unknown>;
   onBusyChange?: (busy: boolean) => void;
   footer?: ReactNode;
+  illustrated?: boolean;
 }) {
   const request = useRef(crypto.randomUUID());
   const [busy, setBusy] = useState(false);
@@ -27,7 +29,7 @@ export function ComputerPermission({
   }, [botId]);
   return (
     <div className="setup-permission">
-      <SetupComputer />
+      {illustrated && <SetupComputer />}
       <p className="setup-permission-title">
         允许 Domos 运行本机程序并访问文件
       </p>

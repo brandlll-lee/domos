@@ -1,6 +1,7 @@
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
 import { SetupPage, SetupStatus } from "@domos/ui/setup";
+import { StartupScene } from "@domos/ui/startup";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import { client, selectComputer } from "../../client.ts";
@@ -82,16 +83,12 @@ export function HostingRoot({ children }: { children: ReactNode }) {
   return (
     <div className="setup-window">
       <Titlebar />
-      <SetupPage
-        title={state === "pair" ? "连接这个 Domos" : "正在连接 Domos…"}
-        description={
-          state === "pair"
-            ? "输入管理员提供的配对码，继续使用 Bot。"
-            : undefined
-        }
-      >
-        {state === "loading" && <SetupStatus>正在读取连接信息…</SetupStatus>}
-        {state === "pair" && (
+      {state === "pair" ? (
+        <StartupScene
+          title="连接这个 Domos"
+          signal="[ PC ] → [ PAIR ]"
+          description="输入管理员提供的配对码，继续使用 Bot。"
+        >
           <form
             className="setup-form"
             aria-busy={busy}
@@ -146,23 +143,29 @@ export function HostingRoot({ children }: { children: ReactNode }) {
               </Button>
             </div>
           </form>
-        )}
-        {state === "loading" && error && (
-          <p className="alert" role="alert">
-            {error}
-          </p>
-        )}
-        {state === "loading" && error && (
-          <Button
-            variant="secondary"
-            onClick={() =>
-              void refresh().catch((error) => setError(error.message))
-            }
-          >
-            重试
-          </Button>
-        )}
-      </SetupPage>
+        </StartupScene>
+      ) : (
+        <SetupPage title="正在连接 Domos…">
+          {error ? (
+            <>
+              <p className="alert" role="alert">
+                {error}
+              </p>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setError("");
+                  void refresh().catch((error) => setError(error.message));
+                }}
+              >
+                重试
+              </Button>
+            </>
+          ) : (
+            <SetupStatus>正在读取连接信息…</SetupStatus>
+          )}
+        </SetupPage>
+      )}
     </div>
   );
 }

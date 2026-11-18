@@ -1,7 +1,8 @@
 import { fileURLToPath } from "node:url";
 import type { InstallProgress } from "@domos/hosting/install";
 import type { Instance } from "@domos/hosting/instance";
-import { type BrowserWindow, ipcMain, shell } from "electron";
+import { themes, windowOverlay } from "@domos/ui/tokens";
+import { type BrowserWindow, ipcMain, nativeTheme, shell } from "electron";
 import { z } from "zod";
 import { createWindow } from "./windows.ts";
 
@@ -57,7 +58,8 @@ export class ConnectionSetup {
       this.controller = controller;
       const window = this.window;
       try {
-        if (input.mode === "local")
+        if (input.mode === "local") {
+          this.setLoadingAppearance(true);
           await this.options.local(
             input.runtime,
             (progress) => {
@@ -66,12 +68,13 @@ export class ConnectionSetup {
             },
             controller.signal,
           );
-        else
+        } else
           await this.options.remote(input.url, input.name, controller.signal);
         window?.close();
         return { ok: true };
       } catch (error) {
         if (window && !window.isDestroyed()) {
+          this.setLoadingAppearance(false);
           window.show();
           window.focus();
         }
@@ -108,6 +111,18 @@ export class ConnectionSetup {
       throw new Error("请求来源无效。");
   }
 
+  private setLoadingAppearance(loading: boolean) {
+    const dark = loading || nativeTheme.shouldUseDarkColors;
+    this.window?.setBackgroundColor(
+      loading ? "#000000" : themes[dark ? "dark" : "light"].frame,
+    );
+    if (process.platform !== "darwin")
+      this.window?.setTitleBarOverlay({
+        ...windowOverlay,
+        symbolColor: themes[dark ? "dark" : "light"].text,
+      });
+  }
+
   hide() {
     this.window?.hide();
   }
@@ -135,6 +150,7 @@ export class ConnectionSetup {
       this.window = undefined;
     });
     this.window = window;
+    if (prepare) this.setLoadingAppearance(true);
     void window.loadFile(fileURLToPath(this.url));
   }
 }

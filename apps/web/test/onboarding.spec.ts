@@ -23,10 +23,9 @@ async function capture(page: Page, info: TestInfo, name: string) {
         const box = await frame.boundingBox();
         expect(box?.y).toBe(0);
         expect(box?.height).toBe(900);
-        await expect(page.locator(".setup-page .scroll-viewport")).toHaveCSS(
-          "overflow-y",
-          /auto|scroll/,
-        );
+        await expect(
+          page.locator(".startup-guide, .setup-page .scroll-viewport"),
+        ).toHaveCSS("overflow-y", /auto|scroll/);
       }
       await page.screenshot({
         path: info.outputPath(`${name}-${colorScheme}-${width}.png`),
@@ -77,7 +76,7 @@ test("first use prepares the default Bot with a computer and model before shared
     );
     await page.unroute("**/hosting/exchange");
     await page.getByRole("button", { name: "连接", exact: true }).click();
-    const setup = page.getByRole("main", { name: "连接你的 AI" });
+    const setup = page.locator(".startup-guide");
     await expect(
       setup.getByRole("heading", { name: "连接你的 AI" }),
     ).toBeVisible();
@@ -98,6 +97,24 @@ test("first use prepares the default Bot with a computer and model before shared
     await expect(
       setup.getByRole("button", { name: "Pi", exact: true }),
     ).toBeVisible();
+    const deferred = await browser.newContext({
+      storageState: await page.context().storageState(),
+    });
+    try {
+      const workspace = await deferred.newPage();
+      await workspace.goto(page.url());
+      await workspace.getByRole("button", { name: /暂时跳过/ }).click();
+      await expect(
+        workspace.getByRole("textbox", { name: "消息", exact: true }),
+      ).toBeVisible();
+      await workspace.reload();
+      await expect(
+        workspace.getByRole("textbox", { name: "消息", exact: true }),
+      ).toBeVisible();
+      await expect(workspace.locator(".startup-guide")).toHaveCount(0);
+    } finally {
+      await deferred.close();
+    }
     expect(inspections).toHaveLength(0);
     await capture(page, testInfo, "connection-list");
     await setup.getByRole("button", { name: "Pi", exact: true }).click();
@@ -105,7 +122,7 @@ test("first use prepares the default Bot with a computer and model before shared
       setup.getByText("允许 Domos 运行本机程序并访问文件", { exact: true }),
     ).toBeVisible();
     expect(inspections).toHaveLength(0);
-    await setup.getByRole("button", { name: "返回", exact: true }).click();
+    await setup.getByRole("button", { name: "沿线返回", exact: true }).click();
     await setup.getByRole("button", { name: "Pi", exact: true }).click();
     await capture(page, testInfo, "computer-setup");
     await page.setViewportSize({ width: 390, height: 600 });
@@ -128,7 +145,7 @@ test("first use prepares the default Bot with a computer and model before shared
       .getByRole("button", { name: "允许访问并继续", exact: true })
       .click();
     await expect(
-      setup.getByRole("heading", { name: "连接你的 AI" }),
+      setup.getByRole("heading", { name: "给 Bot 选一个模型" }),
     ).toBeVisible();
     await setup.getByRole("button", { name: "返回", exact: true }).click();
     await setup
@@ -170,14 +187,17 @@ test("first use prepares the default Bot with a computer and model before shared
       name: "下载并继续",
       exact: true,
     });
-    const installSize = await install.boundingBox();
+    const size = () =>
+      install.evaluate((button: HTMLButtonElement) => [
+        button.offsetWidth,
+        button.offsetHeight,
+      ]);
+    const installSize = await size();
     await install.click();
     try {
       await expect(install).toBeDisabled();
       await expect(install.locator(".button-spinner")).toBeVisible();
-      const pendingSize = await install.boundingBox();
-      expect(pendingSize?.width).toBe(installSize?.width);
-      expect(pendingSize?.height).toBe(installSize?.height);
+      expect(await size()).toEqual(installSize);
     } finally {
       installing.resolve();
     }
@@ -230,11 +250,21 @@ test("first use prepares the default Bot with a computer and model before shared
     await expect(
       setup.getByRole("button", { name: "开始聊天", exact: true }),
     ).toBeDisabled();
-    await setup.getByRole("combobox", { name: "模型", exact: true }).click();
-    await page
-      .getByRole("option", { name: "Pi · Faux Model", exact: true })
-      .click();
+    const models = setup.getByRole("region", { name: "模型", exact: true });
+    const focusedModel = (name: string) =>
+      models.getByRole("button", { name: `确认模型 ${name}`, exact: true });
+    await focusedModel("Faux Model").hover();
+    await page.mouse.wheel(0, 130);
+    await expect(focusedModel("Faux Model 2")).toBeVisible();
+    await expect(
+      setup.getByRole("button", { name: "开始聊天", exact: true }),
+    ).toBeDisabled();
+    await focusedModel("Faux Model 2").press("ArrowUp");
+    await expect(focusedModel("Faux Model")).toBeFocused();
     await capture(page, testInfo, "model-setup");
+    await setup
+      .getByRole("button", { name: "确认模型 Faux Model", exact: true })
+      .click();
     await setup.getByRole("button", { name: "开始聊天", exact: true }).click();
     await expect(setup).toBeHidden();
     await page

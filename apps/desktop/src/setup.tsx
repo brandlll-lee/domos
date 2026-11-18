@@ -3,7 +3,7 @@ import type { Instance } from "@domos/hosting/instance";
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
 import { ActionMenu, Caret } from "@domos/ui/menu";
-import { CharacterTeam, SetupPage, SetupStatus } from "@domos/ui/setup";
+import { StartupLoading, StartupScene } from "@domos/ui/startup";
 import { useEffect, useEffectEvent, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "@fontsource-variable/geist/wght.css";
@@ -97,148 +97,165 @@ function Welcome() {
       },
     );
   }, []);
+  const cancel = (
+    <Button variant="secondary" onClick={() => void bridge.cancel()}>
+      取消准备
+    </Button>
+  );
   return (
     <div className="setup-window">
       <header className="titlebar" />
-      <SetupPage
-        title={
-          !loaded || busy ? "" : remote ? "连接另一台电脑" : "认识一下 Domos"
-        }
-        corner={
-          loaded &&
-          !busy &&
-          !remote && (
-            <ActionMenu
-              label="高级"
-              side="top"
-              trigger={
-                <Button
-                  variant="ghost"
-                  className="setup-advanced"
-                  aria-label="高级"
-                  title={
-                    runtime === "docker"
-                      ? "需要安装并启动 Docker。首次会下载运行包。"
-                      : undefined
-                  }
-                >
-                  {runtime === "docker" ? "高级 · Docker" : "高级"}
-                  <Caret />
-                </Button>
-              }
-              items={[
-                { label: "直接运行", onSelect: () => setRuntime("native") },
-                {
-                  label: "在 Docker 中运行",
-                  onSelect: () => setRuntime("docker"),
-                },
-              ]}
-            />
-          )
-        }
-        footer={
-          busy ? (
-            <Button variant="secondary" onClick={() => void bridge.cancel()}>
-              取消准备
-            </Button>
-          ) : loaded ? (
-            <>
-              <Button
-                type={remote ? "submit" : "button"}
-                form={remote ? "remote-connection" : undefined}
-                onClick={
-                  remote
-                    ? undefined
-                    : () => void submit({ mode: "local", runtime })
+      {!loaded || (busy && !remote) ? (
+        <StartupLoading message={phase?.message ?? "正在准备本机…"}>
+          {busy && cancel}
+        </StartupLoading>
+      ) : (
+        <StartupScene
+          title={remote ? "连接另一台电脑" : "你的 Bot 在哪台电脑？"}
+          signal={remote ? "[ THIS PC ] → [ DOMOS ]" : "[ BOT ] → [ PC ]"}
+          description={
+            remote
+              ? "打开另一台电脑上的 Bot。"
+              : "在本机开始，或连接已有的 Domos。"
+          }
+          back={
+            remote && !busy
+              ? () => {
+                  setRemote(false);
+                  setError("");
                 }
+              : undefined
+          }
+          footer={
+            !remote && (
+              <ActionMenu
+                label="高级"
+                side="top"
+                trigger={
+                  <Button
+                    variant="ghost"
+                    className="setup-advanced"
+                    aria-label="高级"
+                    title={
+                      runtime === "docker"
+                        ? "需要安装并启动 Docker。首次会下载运行包。"
+                        : undefined
+                    }
+                  >
+                    {runtime === "docker" ? "高级 · Docker" : "高级"}
+                    <Caret />
+                  </Button>
+                }
+                items={[
+                  { label: "直接运行", onSelect: () => setRuntime("native") },
+                  {
+                    label: "在 Docker 中运行",
+                    onSelect: () => setRuntime("docker"),
+                  },
+                ]}
+              />
+            )
+          }
+        >
+          {remote ? (
+            <form
+              id="remote-connection"
+              className="setup-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submit({ mode: "existing", url, name });
+              }}
+            >
+              {connections.length > 0 && (
+                <section
+                  className="saved-connections"
+                  aria-label="已保存的连接"
+                >
+                  {connections.map((connection) => (
+                    <Button
+                      key={connection.id}
+                      type="button"
+                      variant="secondary"
+                      onClick={() => {
+                        setUrl(connection.url);
+                        setName(connection.name);
+                      }}
+                    >
+                      {connection.name}
+                    </Button>
+                  ))}
+                </section>
+              )}
+              <TextField
+                label="连接名称"
+                value={name}
+                onValueChange={setName}
+                disabled={busy}
+                required
+                maxLength={80}
+              />
+              <TextField
+                label="Domos 地址"
+                value={url}
+                onValueChange={setUrl}
+                disabled={busy}
+                type="url"
+                placeholder="https://domos.example.com"
+                required
+              />
+              <div className="startup-branches">
+                <Button
+                  type="submit"
+                  variant="ghost"
+                  className="startup-branch"
+                  pending={busy}
+                >
+                  {busy ? "正在连接…" : "连接"}
+                </Button>
+              </div>
+              {busy && cancel}
+            </form>
+          ) : (
+            <div className="startup-branches">
+              <Button
+                variant="ghost"
+                className="startup-branch"
+                aria-label={error ? "重试" : "在本机开始"}
+                onClick={() => void submit({ mode: "local", runtime })}
               >
-                {remote ? "连接" : error ? "重试" : "开始使用"}
+                <span className="startup-branch-copy">
+                  <strong>{error ? "重试" : "在本机开始"}</strong>
+                  <small>设置这台电脑上的 Domos</small>
+                </span>
               </Button>
               <Button
-                variant="secondary"
+                variant="ghost"
+                className="startup-branch"
+                aria-label="连接另一台电脑"
                 onClick={() => {
-                  setRemote(!remote);
+                  setRemote(true);
                   setError("");
                 }}
               >
-                {remote ? "返回" : "连接另一台电脑"}
+                <span className="startup-branch-copy">
+                  <strong>连接另一台电脑</strong>
+                  <small>打开已有的 Domos</small>
+                </span>
               </Button>
-            </>
-          ) : undefined
-        }
-      >
-        {!loaded || busy ? (
-          <SetupStatus>
-            {phase?.message ?? "正在启动 Domos…"}
-            {busy && (
-              <progress className="setup-progress" aria-label="准备进度" />
-            )}
-          </SetupStatus>
-        ) : remote ? (
-          <form
-            id="remote-connection"
-            className="setup-form setup-remote"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submit({ mode: "existing", url, name });
-            }}
-          >
-            {connections.length > 0 && (
-              <section className="saved-connections" aria-label="已保存的连接">
-                {connections.map((connection) => (
-                  <Button
-                    key={connection.id}
-                    type="button"
-                    variant="secondary"
-                    onClick={() => {
-                      setUrl(connection.url);
-                      setName(connection.name);
-                    }}
-                  >
-                    {connection.name}
-                  </Button>
-                ))}
-              </section>
-            )}
-            <TextField
-              label="连接名称"
-              value={name}
-              onValueChange={setName}
-              required
-              maxLength={80}
-            />
-            <TextField
-              label="Domos 地址"
-              value={url}
-              onValueChange={setUrl}
-              type="url"
-              placeholder="https://domos.example.com"
-              required
-            />
-          </form>
-        ) : (
-          <div className="setup-welcome">
-            <CharacterTeam />
-            <div>
-              <h2>你的 AI 队友，在电脑上工作，随时与你连接。</h2>
-              <p>
-                运行在你的电脑或云服务器上。用手机或电脑与它交流，Domos Bot
-                像你一样工作。
-              </p>
             </div>
-          </div>
-        )}
-        {error && (
-          <p className="alert" role="alert">
-            {error}
-          </p>
-        )}
-        {error && runtime === "docker" && phase?.phase === "checking" && (
-          <Button variant="ghost" onClick={() => void bridge.docker()}>
-            安装或启动 Docker Desktop
-          </Button>
-        )}
-      </SetupPage>
+          )}
+          {error && (
+            <p className="alert" role="alert">
+              {error}
+            </p>
+          )}
+          {error && runtime === "docker" && phase?.phase === "checking" && (
+            <Button variant="ghost" onClick={() => void bridge.docker()}>
+              安装或启动 Docker Desktop
+            </Button>
+          )}
+        </StartupScene>
+      )}
     </div>
   );
 }

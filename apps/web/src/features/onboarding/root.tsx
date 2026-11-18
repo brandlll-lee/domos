@@ -6,6 +6,7 @@ import { ModelSetup } from "../bots/details/model.tsx";
 import { readModelSettings } from "../models/model-state.ts";
 import type { SettingsAccess } from "../settings/sections.tsx";
 import { Titlebar } from "../shell/titlebar.tsx";
+import { saveWorkspaceView, workspaceView } from "../shell/workspace-state.ts";
 
 type Setup = { botId: number; computer: boolean; configured: boolean };
 
@@ -16,7 +17,9 @@ export function Onboarding({
 }: SettingsAccess & { children: ReactNode }) {
   const [setup, setSetup] = useState<Setup>();
   const [error, setError] = useState("");
-  const [finished, setFinished] = useState(false);
+  const [finished, setFinished] = useState(
+    () => workspaceView().onboardingDeferred === true,
+  );
   const refresh = useCallback(async () => {
     setError("");
     const bots = await client.bots.list();
@@ -39,46 +42,52 @@ export function Onboarding({
     setFinished(next.configured && next.computer);
   }, [refresh]);
   useEffect(() => {
-    void initialize().catch((cause) => setError(cause.message));
-  }, [initialize]);
+    if (!finished) void initialize().catch((cause) => setError(cause.message));
+  }, [finished, initialize]);
   if (finished) return children;
   return (
     <div className="setup-window">
       <Titlebar />
-      <SetupPage title={setup ? "连接你的 AI" : "正在启动 Domos…"}>
-        {setup &&
-          (admin && !standalone ? (
-            <ModelSetup
-              botId={setup.botId}
-              onReady={() =>
-                void refresh()
-                  .then((next) => {
-                    if (next.configured && next.computer) setFinished(true);
-                    else setError("请先保存模型配置。");
-                  })
-                  .catch((cause) => setError(cause.message))
+      {setup && admin && !standalone ? (
+        <ModelSetup
+          botId={setup.botId}
+          onboarding={{
+            issue: error,
+            skip: () => {
+              saveWorkspaceView({ onboardingDeferred: true });
+              setFinished(true);
+            },
+          }}
+          onReady={() =>
+            void refresh()
+              .then((next) => {
+                if (next.configured && next.computer) setFinished(true);
+                else setError("请先保存模型配置。");
+              })
+              .catch((cause) => setError(cause.message))
+          }
+        />
+      ) : (
+        <SetupPage title={setup ? "连接你的 AI" : "正在启动 Domos…"}>
+          {setup && <p role="status">请让管理员完成首次设置，然后重试。</p>}
+          {!setup && !error && <SetupStatus>正在读取配置…</SetupStatus>}
+          {error && (
+            <p role="alert" className="alert">
+              {error}
+            </p>
+          )}
+          {(error || (setup && (!admin || standalone))) && (
+            <Button
+              variant="secondary"
+              onClick={() =>
+                void initialize().catch((cause) => setError(cause.message))
               }
-            />
-          ) : (
-            <p role="status">请让管理员完成首次设置，然后重试。</p>
-          ))}
-        {!setup && !error && <SetupStatus>正在读取配置…</SetupStatus>}
-        {error && (
-          <p role="alert" className="alert">
-            {error}
-          </p>
-        )}
-        {(error || (setup && (!admin || standalone))) && (
-          <Button
-            variant="secondary"
-            onClick={() =>
-              void initialize().catch((cause) => setError(cause.message))
-            }
-          >
-            重试
-          </Button>
-        )}
-      </SetupPage>
+            >
+              重试
+            </Button>
+          )}
+        </SetupPage>
+      )}
     </div>
   );
 }

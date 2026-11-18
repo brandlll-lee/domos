@@ -13,6 +13,7 @@ import { useErrorNotice } from "../notices.tsx";
 import { useSettings } from "../settings/context.ts";
 import { Effort } from "./effort.tsx";
 import { useModelSettings } from "./model-state.ts";
+import { SetupModels } from "./setup-models.tsx";
 import { useVisibility } from "./use-visibility.ts";
 
 export function ModelSetting({
@@ -22,10 +23,12 @@ export function ModelSetting({
   onBusyChange,
   setupProvider,
   connectionOnly = false,
+  guided = false,
 }: {
   botId: number;
   setupProvider?: string;
   connectionOnly?: boolean;
+  guided?: boolean;
   connected: boolean;
   disabled?: boolean;
   onBusyChange?: (busy: boolean) => void;
@@ -428,23 +431,34 @@ export function ModelSetting({
         )}
         {!connection && !error && <Loading label="正在检查连接" inline />}
         {login?.state === "waiting" && <p role="status">等待登录…</p>}
-        {!connectionOnly && models.length > 0 && (
-          <SearchPicker
-            label="模型"
-            searchLabel="搜索模型"
-            placeholder="选择模型"
-            emptyLabel="没有可用模型"
-            value={config.model ?? ""}
-            items={models.map((model) => ({
-              value: model.id,
-              label: `${providers.find((item) => item.id === config.provider)?.name} · ${model.name}`,
-            }))}
-            disabled={Boolean(disabled || profile?.busy || busy || saving)}
-            onValueChange={(model) =>
-              void save({ ...config, model, options: undefined })
-            }
-          />
-        )}
+        {!connectionOnly &&
+          models.length > 0 &&
+          (guided ? (
+            <SetupModels
+              models={models}
+              value={config.model}
+              disabled={Boolean(disabled || profile?.busy || busy || saving)}
+              onSelect={(model) =>
+                void save({ ...config, model, options: undefined })
+              }
+            />
+          ) : (
+            <SearchPicker
+              label="模型"
+              searchLabel="搜索模型"
+              placeholder="选择模型"
+              emptyLabel="没有可用模型"
+              value={config.model ?? ""}
+              items={models.map((model) => ({
+                value: model.id,
+                label: `${providers.find((item) => item.id === config.provider)?.name} · ${model.name}`,
+              }))}
+              disabled={Boolean(disabled || profile?.busy || busy || saving)}
+              onValueChange={(model) =>
+                void save({ ...config, model, options: undefined })
+              }
+            />
+          ))}
         {!connectionOnly &&
         connection?.authenticated &&
         models.length > 0 &&

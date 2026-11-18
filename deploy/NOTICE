@@ -52,6 +52,10 @@ See licenses/cross-spawn.txt and licenses/proper-lockfile.txt.
 Source: https://github.com/moxystudio/node-cross-spawn
 Source: https://github.com/moxystudio/node-proper-lockfile
 
+Fusion Pixel
+Licensed under SIL Open Font License 1.1. See licenses/fusion-pixel.txt.
+Source: https://github.com/TakWolf/fusion-pixel-font
+
 UI adaptations
 
 apps/web/src/features/shell/resize-handle.tsx adapts

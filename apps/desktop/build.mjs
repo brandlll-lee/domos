@@ -85,7 +85,7 @@ await build({
   platform: "browser",
   format: "esm",
   target: "chrome144",
-  loader: { ".webp": "file", ".woff2": "file" },
+  loader: { ".webp": "file", ".woff2": "file", ".png": "file" },
   assetNames: "assets/[name]-[hash]",
   define: { "process.env.NODE_ENV": '"production"' },
 });

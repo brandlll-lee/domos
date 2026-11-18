@@ -3,6 +3,7 @@ import { Button } from "@domos/ui/controls";
 import { DialogFooter } from "@domos/ui/dialog";
 import { Loading } from "@domos/ui/loading";
 import { SetupStatus } from "@domos/ui/setup";
+import { StartupScene } from "@domos/ui/startup";
 import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../../client.ts";
@@ -16,10 +17,12 @@ export function ModelSetup({
   botId,
   onBusyChange,
   onReady,
+  onboarding,
 }: {
   botId: number;
   onBusyChange?: (busy: boolean) => void;
   onReady?: () => void;
+  onboarding?: { issue: string; skip: () => void };
 }) {
   const settings = useSettings();
   const setup = Boolean(onReady);
@@ -60,54 +63,121 @@ export function ModelSetup({
     ) : (
       <Loading label="正在读取连接" />
     );
-  if (!provider)
+  const providers = profile.providers.filter(
+    (item) => settings.admin || item.id === profile.config.provider,
+  );
+  if (!provider) {
+    const branches = (items: typeof providers) =>
+      items.map((item) => {
+        const choice = store.snapshot().choices[item.id];
+        const connection = store.connection(
+          choice ?? { provider: item.id, model: null },
+        );
+        return (
+          <Button
+            key={item.id}
+            variant="ghost"
+            className={onboarding ? "startup-branch" : "setup-provider"}
+            aria-label={item.name}
+            disabled={profile.busy}
+            onClick={() => setProvider(item.id)}
+          >
+            <EngineMark provider={item.id} />
+            {onboarding ? (
+              <span className="startup-branch-copy">
+                <strong>{item.name}</strong>
+                <small>
+                  {connection?.version && `v${connection.version} · `}
+                  {connection
+                    ? connection.ready
+                      ? connection.authenticated
+                        ? "可用"
+                        : "需登录"
+                      : "未就绪"
+                    : "未检查"}
+                </small>
+              </span>
+            ) : (
+              <span>{item.name}</span>
+            )}
+            {!onboarding &&
+              profile.connection?.ready &&
+              profile.config.provider === item.id && (
+                <span className="setup-provider-status">
+                  {profile.connection.authenticated ? "已连接" : "待登录"}
+                </span>
+              )}
+            <CaretRightIcon aria-hidden="true" />
+          </Button>
+        );
+      });
+    if (onboarding)
+      return (
+        <StartupScene
+          title="连接你的 AI"
+          signal="[ BOT ] → [ AGENT ]"
+          description="选择一个 Agent 引擎来执行任务。"
+        >
+          <section
+            className="startup-branches startup-engines"
+            aria-label="Agent 引擎"
+          >
+            {branches(providers.filter((item) => item.id !== "acp"))}
+            <Button
+              variant="ghost"
+              className="startup-branch"
+              onClick={onboarding.skip}
+            >
+              <span className="startup-branch-copy">
+                <strong>暂时跳过</strong>
+                <small>进入工作区后可新建 Bot 或设置模型</small>
+              </span>
+            </Button>
+          </section>
+          {providers.some((item) => item.id === "acp") && (
+            <Button variant="ghost" onClick={() => setProvider("acp")}>
+              自定义 ACP
+            </Button>
+          )}
+        </StartupScene>
+      );
     return (
       <section className="setup-providers" aria-label="可用连接">
-        {profile.providers
-          .filter(
-            (item) => settings.admin || item.id === profile.config.provider,
-          )
-          .map((item) => (
-            <Button
-              key={item.id}
-              variant="ghost"
-              className="setup-provider"
-              aria-label={item.name}
-              disabled={profile.busy}
-              onClick={() => setProvider(item.id)}
-            >
-              <EngineMark provider={item.id} />
-              <span>{item.name}</span>
-              {profile.connection?.ready &&
-                profile.config.provider === item.id && (
-                  <span className="setup-provider-status">
-                    {profile.connection.authenticated ? "已连接" : "待登录"}
-                  </span>
-                )}
-              <CaretRightIcon aria-hidden="true" />
-            </Button>
-          ))}
+        {branches(providers)}
       </section>
     );
+  }
+  const goBack = () => {
+    if (!busy) setProvider(undefined);
+  };
   const back = (
-    <Button
-      variant="secondary"
-      disabled={busy}
-      onClick={() => setProvider(undefined)}
-    >
+    <Button variant="secondary" disabled={busy} onClick={goBack}>
       返回
     </Button>
   );
-  if (!binding.computer?.authorized)
-    return (
+  if (!binding.computer?.authorized) {
+    const permission = (
       <ComputerPermission
         botId={botId}
         onReady={() => refresh(true)}
         onBusyChange={reportBusy}
-        footer={back}
+        footer={onboarding ? undefined : back}
+        illustrated={!onboarding}
       />
     );
-  return (
+    return onboarding ? (
+      <StartupScene
+        title="允许访问电脑"
+        signal="[ AGENT ] → [ PC ]"
+        back={busy ? undefined : goBack}
+      >
+        {permission}
+      </StartupScene>
+    ) : (
+      permission
+    );
+  }
+  const model = (
     <div className="model-setup">
       <ModelSetting
         key={provider}
@@ -115,6 +185,7 @@ export function ModelSetup({
         connected
         disabled={profile.busy}
         setupProvider={setup ? provider : undefined}
+        guided={Boolean(onboarding)}
         onBusyChange={reportBusy}
       />
       <DialogFooter>
@@ -131,9 +202,21 @@ export function ModelSetup({
               开始聊天
             </Button>
           )}
-          {setup && back}
+          {setup && !onboarding && back}
         </div>
       </DialogFooter>
+      {onboarding?.issue && <p role="alert">{onboarding.issue}</p>}
     </div>
+  );
+  return onboarding ? (
+    <StartupScene
+      title="给 Bot 选一个模型"
+      signal="[ MSG ] → [ MODEL ]"
+      back={busy ? undefined : goBack}
+    >
+      {model}
+    </StartupScene>
+  ) : (
+    model
   );
 }

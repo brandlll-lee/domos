@@ -69,7 +69,7 @@ test("native setup starts and resumes with Docker unavailable", async ({
   try {
     const setup = await desktop.firstWindow();
     await expect(
-      setup.getByRole("heading", { name: "认识一下 Domos" }),
+      setup.getByRole("heading", { name: "你的 Bot 在哪台电脑？" }),
     ).toBeVisible();
     if (process.platform === "win32") {
       const handle = await desktop.evaluate(({ BrowserWindow }) =>
@@ -96,8 +96,8 @@ test("native setup starts and resumes with Docker unavailable", async ({
       expect(JSON.parse(stdout).appId).toBe("app.domos.desktop.development");
     }
     await expect(
-      setup.getByRole("group", { name: "Domos 角色" }).getByRole("button"),
-    ).toHaveCount(7);
+      setup.getByRole("button", { name: "随机变身", exact: true }),
+    ).toBeVisible();
     await desktop.evaluate(({ nativeTheme }) => {
       nativeTheme.themeSource = "dark";
     });
@@ -134,7 +134,7 @@ test("native setup starts and resumes with Docker unavailable", async ({
           .evaluate((main) => main.scrollWidth <= main.clientWidth),
       )
       .toBe(true);
-    const next = setup.getByRole("button", { name: "开始使用", exact: true });
+    const next = setup.getByRole("button", { name: "在本机开始", exact: true });
     await next.scrollIntoViewIfNeeded();
     await expect(next).toBeInViewport({ ratio: 1 });
     await captureWindow(
@@ -154,7 +154,9 @@ test("native setup starts and resumes with Docker unavailable", async ({
     await setup
       .getByRole("menuitem", { name: "在 Docker 中运行", exact: true })
       .click();
-    await setup.getByRole("button", { name: "开始使用", exact: true }).click();
+    await setup
+      .getByRole("button", { name: "在本机开始", exact: true })
+      .click();
     await expect(setup.getByRole("alert")).toContainText("Docker Desktop");
     await setup.getByRole("button", { name: "高级", exact: true }).click();
     await setup
@@ -162,6 +164,17 @@ test("native setup starts and resumes with Docker unavailable", async ({
       .click();
 
     await setup.getByRole("button", { name: "重试", exact: true }).click();
+    await expect(
+      setup.getByRole("main", { name: "本机后台准备" }),
+    ).toBeVisible();
+    await expect(
+      setup.locator(".startup-pixel-bot [data-work=working]"),
+    ).toBeVisible();
+    await captureWindow(
+      desktop,
+      setup,
+      testInfo.outputPath("local-readiness.png"),
+    );
     const page = await workspacePage(desktop);
     await expect(
       page.getByRole("heading", { name: "连接你的 AI" }),
@@ -228,7 +241,7 @@ test("native setup starts and resumes with Docker unavailable", async ({
       .getByRole("button", { name: "允许访问并继续", exact: true })
       .click();
     await expect(
-      resumed.getByRole("heading", { name: "连接你的 AI" }),
+      resumed.getByRole("heading", { name: "给 Bot 选一个模型" }),
     ).toBeVisible();
     await resumed.evaluate(async () => {
       const rpc = async (name: string, json: unknown) => {
@@ -479,7 +492,7 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
   try {
     const setup = await desktop.firstWindow();
     await expect(
-      setup.getByRole("heading", { name: "认识一下 Domos" }),
+      setup.getByRole("heading", { name: "你的 Bot 在哪台电脑？" }),
     ).toBeVisible();
     await setup
       .getByRole("button", { name: "连接另一台电脑", exact: true })
@@ -544,7 +557,6 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     );
     await page.getByRole("combobox", { name: "模型", exact: true }).click();
     const selector = page.locator(".model-selector-popup");
-    await expect(selector.getByRole("tab")).toHaveCount(5);
     await selector.getByRole("tab", { name: "OpenCode", exact: true }).click();
     await expect(
       selector.getByRole("button", { name: "配置连接", exact: true }),
@@ -806,7 +818,7 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     );
     const chooser = await choosing;
     await expect(
-      chooser.getByRole("heading", { name: "认识一下 Domos" }),
+      chooser.getByRole("heading", { name: "你的 Bot 在哪台电脑？" }),
     ).toBeVisible();
     await chooser
       .getByRole("button", { name: "连接另一台电脑", exact: true })

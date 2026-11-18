@@ -22,6 +22,7 @@
     "./scroll-area": "./src/web/scroll-area.tsx",
     "./field": "./src/web/field.tsx",
     "./setup": "./src/web/setup.tsx",
+    "./startup": "./src/web/startup.tsx",
     "./picker": "./src/web/picker.tsx",
     "./model-selector": "./src/web/model-selector.tsx",
     "./message": "./src/web/message.tsx",
