@@ -6,6 +6,8 @@ import { expect, onTestFinished, test } from "vitest";
 const nativeConfiguration = "../src/harness/native-configuration.mjs";
 const { nativeMcpFiles, nativeMcpCatalog, antigravityMcpCatalog } =
   await import(nativeConfiguration);
+const accountEnvironment = "../src/harness/account-environment.mjs";
+const { accountFingerprint } = await import(accountEnvironment);
 
 test.each(["cursor", "devin"])(
   "%s reads native MCP layers without publishing credentials or claiming connections",
@@ -65,12 +67,37 @@ test("Antigravity uses its native MCP catalog and removes command credentials at
 test("Antigravity session identity changes with native CLI settings", async () => {
   const root = await mkdtemp(join(tmpdir(), "domos-native-account-"));
   onTestFinished(() => rm(root, { recursive: true, force: true }));
-  const module = "../src/harness/account-environment.mjs";
-  const { accountFingerprint } = await import(module);
   const env = { HOME: root };
   const initial = await accountFingerprint("antigravity", env);
   const directory = join(root, ".gemini", "antigravity-cli");
   await mkdir(directory, { recursive: true });
   await writeFile(join(directory, "settings.json"), '{"model":"native-model"}');
   expect(await accountFingerprint("antigravity", env)).not.toBe(initial);
+});
+
+test("Cursor keeps session identity across privacy cache refreshes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "domos-cursor-account-"));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
+  const env = { HOME: root, CURSOR_CONFIG_DIR: root };
+  const config = join(root, "cli-config.json");
+  const initial = {
+    permissions: { deny: [] },
+    privacyCache: { ghostMode: false, updatedAt: 100 },
+  };
+  await writeFile(config, JSON.stringify(initial, null, 2));
+  const fingerprint = await accountFingerprint("cursor", env);
+  await writeFile(
+    config,
+    JSON.stringify({
+      ...initial,
+      privacyCache: { ...initial.privacyCache, updatedAt: 200 },
+    }),
+  );
+  expect(await accountFingerprint("cursor", env)).toBe(fingerprint);
+
+  await writeFile(
+    config,
+    JSON.stringify({ ...initial, permissions: { deny: ["Shell(git)"] } }),
+  );
+  expect(await accountFingerprint("cursor", env)).not.toBe(fingerprint);
 });

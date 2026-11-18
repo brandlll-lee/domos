@@ -128,7 +128,6 @@ export async function accountFingerprint(provider, env) {
       "antigravity-cli/settings.json",
     ],
     grok: ["auth.json", "config.toml"],
-    cursor: ["cli-config.json"],
     devin: ["credentials.toml"],
     pi: ["auth.json", "models.json"],
     codex: ["auth.json", "config.toml"],
@@ -136,6 +135,9 @@ export async function accountFingerprint(provider, env) {
     opencode: ["opencode.json", "opencode.jsonc"],
   }[provider];
   const paths = (files ?? []).map((file) => join(root, file));
+  const cursorConfig =
+    provider === "cursor" ? join(root, "cli-config.json") : null;
+  if (cursorConfig) paths.push(cursorConfig);
   if (["cursor", "antigravity", "devin"].includes(provider))
     paths.push(...nativeMcpFiles(provider, env, process.cwd()));
   if (provider === "cursor")
@@ -177,12 +179,25 @@ export async function accountFingerprint(provider, env) {
     )
       hash.update(JSON.stringify([key, value]));
   for (const path of paths) {
-    try {
-      hash.update(await readFile(path));
-    } catch (error) {
+    const content = await readFile(path).catch((error) => {
       if (error.code !== "ENOENT")
         throw new Error("工作电脑的账号配置无法读取。");
+    });
+    if (!content) continue;
+    if (path !== cursorConfig) {
+      hash.update(content);
+      continue;
     }
+    let config;
+    try {
+      config = JSON.parse(content.toString("utf8"));
+    } catch {
+      throw new Error("Cursor 的 CLI 配置必须是有效的 JSON。");
+    }
+    if (!config || typeof config !== "object" || Array.isArray(config))
+      throw new Error("Cursor 的 CLI 配置必须是 JSON 对象。");
+    delete config.privacyCache?.updatedAt;
+    hash.update(JSON.stringify(config));
   }
   return hash.digest("hex");
 }
