@@ -98,7 +98,11 @@ function Welcome() {
     );
   }, []);
   const cancel = (
-    <Button variant="secondary" onClick={() => void bridge.cancel()}>
+    <Button
+      variant="secondary"
+      className="startup-form-cancel"
+      onClick={() => void bridge.cancel()}
+    >
       取消准备
     </Button>
   );
@@ -111,12 +115,12 @@ function Welcome() {
         </StartupLoading>
       ) : (
         <StartupScene
+          stop={remote ? "address" : "home"}
           title={remote ? "连接另一台电脑" : "你的 Bot 在哪台电脑？"}
-          signal={remote ? "[ THIS PC ] → [ DOMOS ]" : "[ BOT ] → [ PC ]"}
           description={
             remote
-              ? "打开另一台电脑上的 Bot。"
-              : "在本机开始，或连接已有的 Domos。"
+              ? "用地址找到存放 Bot 的那台电脑。"
+              : "在本机创建，或连接另一台电脑。"
           }
           back={
             remote && !busy
@@ -211,6 +215,9 @@ function Welcome() {
                   pending={busy}
                 >
                   {busy ? "正在连接…" : "连接"}
+                  <span className="startup-arrow" aria-hidden="true">
+                    →
+                  </span>
                 </Button>
               </div>
               {busy && cancel}
@@ -227,6 +234,9 @@ function Welcome() {
                   <strong>{error ? "重试" : "在本机开始"}</strong>
                   <small>设置这台电脑上的 Domos</small>
                 </span>
+                <span className="startup-arrow" aria-hidden="true">
+                  ↗
+                </span>
               </Button>
               <Button
                 variant="ghost"
@@ -238,19 +248,26 @@ function Welcome() {
                 }}
               >
                 <span className="startup-branch-copy">
-                  <strong>连接另一台电脑</strong>
-                  <small>打开已有的 Domos</small>
+                  <strong>连接已有 Domos</strong>
+                  <small>打开另一台电脑上的 Bot</small>
+                </span>
+                <span className="startup-arrow" aria-hidden="true">
+                  ↘
                 </span>
               </Button>
             </div>
           )}
           {error && (
-            <p className="alert" role="alert">
+            <p className="alert startup-error" role="alert">
               {error}
             </p>
           )}
           {error && runtime === "docker" && phase?.phase === "checking" && (
-            <Button variant="ghost" onClick={() => void bridge.docker()}>
+            <Button
+              variant="ghost"
+              className="startup-extra"
+              onClick={() => void bridge.docker()}
+            >
               安装或启动 Docker Desktop
             </Button>
           )}

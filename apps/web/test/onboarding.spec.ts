@@ -25,7 +25,7 @@ async function capture(page: Page, info: TestInfo, name: string) {
         expect(box?.height).toBe(900);
         await expect(
           page.locator(".startup-guide, .setup-page .scroll-viewport"),
-        ).toHaveCSS("overflow-y", /auto|scroll/);
+        ).toHaveCSS("overflow-y", /auto|scroll|clip/);
       }
       await page.screenshot({
         path: info.outputPath(`${name}-${colorScheme}-${width}.png`),
@@ -118,12 +118,28 @@ test("first use prepares the default Bot with a computer and model before shared
     expect(inspections).toHaveLength(0);
     await capture(page, testInfo, "connection-list");
     await setup.getByRole("button", { name: "Pi", exact: true }).click();
+    const viewport = setup.locator(".startup-viewport");
+    await expect(viewport).toHaveAttribute("data-travelling", "");
     await expect(
       setup.getByText("允许 Domos 运行本机程序并访问文件", { exact: true }),
     ).toBeVisible();
     expect(inspections).toHaveLength(0);
-    await setup.getByRole("button", { name: "沿线返回", exact: true }).click();
+    await expect(viewport).not.toHaveAttribute("data-travelling", "");
+    const view = await viewport.boundingBox();
+    if (!view) throw new Error("Startup viewport is missing");
+    const x = view.x + view.width * 0.03;
+    let hit = false;
+    for (let y = view.y + 10; y < view.y + view.height; y += 12) {
+      await page.mouse.move(x, y);
+      if (!((await viewport.getAttribute("data-return-hover")) === ""))
+        continue;
+      await page.mouse.click(x, y);
+      hit = true;
+      break;
+    }
+    expect(hit).toBe(true);
     await setup.getByRole("button", { name: "Pi", exact: true }).click();
+    await expect(viewport).not.toHaveAttribute("data-travelling", "");
     await capture(page, testInfo, "computer-setup");
     await page.setViewportSize({ width: 390, height: 600 });
     const next = setup.getByRole("button", {
@@ -147,10 +163,12 @@ test("first use prepares the default Bot with a computer and model before shared
     await expect(
       setup.getByRole("heading", { name: "给 Bot 选一个模型" }),
     ).toBeVisible();
+    await expect(viewport).not.toHaveAttribute("data-travelling", "");
     await setup.getByRole("button", { name: "返回", exact: true }).click();
     await setup
       .getByRole("button", { name: "自定义 ACP", exact: true })
       .click();
+    await expect(viewport).not.toHaveAttribute("data-travelling", "");
     await expect(
       setup.getByRole("button", { name: "检查连接", exact: true }),
     ).toBeEnabled();
@@ -247,6 +265,7 @@ test("first use prepares the default Bot with a computer and model before shared
     await page.unroute("**/rpc/engines/inspect");
     await setup.getByRole("button", { name: "返回", exact: true }).click();
     await setup.getByRole("button", { name: "Pi", exact: true }).click();
+    await expect(viewport).not.toHaveAttribute("data-travelling", "");
     await expect(
       setup.getByRole("button", { name: "开始聊天", exact: true }),
     ).toBeDisabled();

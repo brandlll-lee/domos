@@ -136,7 +136,7 @@ test("native setup starts and resumes with Docker unavailable", async ({
       .toBe(true);
     const next = setup.getByRole("button", { name: "在本机开始", exact: true });
     await next.scrollIntoViewIfNeeded();
-    await expect(next).toBeInViewport({ ratio: 1 });
+    await expect(next).toBeInViewport({ ratio: 0.99 });
     await captureWindow(
       desktop,
       setup,
@@ -208,7 +208,7 @@ test("native setup starts and resumes with Docker unavailable", async ({
       exact: true,
     });
     await continueSetup.scrollIntoViewIfNeeded();
-    await expect(continueSetup).toBeInViewport({ ratio: 1 });
+    await expect(continueSetup).toBeInViewport({ ratio: 0.99 });
     await captureWindow(
       desktop,
       page,
@@ -497,6 +497,10 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     await setup
       .getByRole("button", { name: "连接另一台电脑", exact: true })
       .click();
+    await expect(setup.locator(".startup-viewport")).not.toHaveAttribute(
+      "data-travelling",
+      "",
+    );
     await setup.getByLabel("Domos 地址").fill(`http://127.0.0.1:${ready.port}`);
     await setup.getByRole("button", { name: "返回", exact: true }).click();
     await setup

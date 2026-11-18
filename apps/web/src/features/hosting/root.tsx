@@ -85,9 +85,9 @@ export function HostingRoot({ children }: { children: ReactNode }) {
       <Titlebar />
       {state === "pair" ? (
         <StartupScene
+          stop="pair"
           title="连接这个 Domos"
-          signal="[ PC ] → [ PAIR ]"
-          description="输入管理员提供的配对码，继续使用 Bot。"
+          description="配对码让另一台电脑认出你的设备。"
         >
           <form
             className="setup-form"
@@ -133,13 +133,22 @@ export function HostingRoot({ children }: { children: ReactNode }) {
               {window.domosDesktop && (
                 <Button
                   variant="secondary"
+                  className="startup-form-cancel"
                   onClick={() => window.domosDesktop?.cancelConnection()}
                 >
                   取消
                 </Button>
               )}
-              <Button type="submit" pending={busy}>
+              <Button
+                type="submit"
+                variant="ghost"
+                className="startup-branch"
+                pending={busy}
+              >
                 {busy ? "正在连接…" : "连接"}
+                <span className="startup-arrow" aria-hidden="true">
+                  →
+                </span>
               </Button>
             </div>
           </form>

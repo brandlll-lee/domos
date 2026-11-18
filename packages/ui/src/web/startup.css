@@ -7,8 +7,7 @@
 .startup-loading {
   --crt-text: #e7f5d9;
   --crt-signal: #b9f47b;
-  --startup-wire: var(--color-muted);
-  --startup-current: #526e2b;
+  --startup-current: #57752c;
   font-family: "Fusion Pixel", var(--font-body);
   min-block-size: 0;
 }
@@ -95,246 +94,385 @@
 .startup-spinner {
   position: relative;
   display: block;
-  inline-size: clamp(12px, 2.7cqw, 24px);
+  inline-size: clamp(14px, 2.85cqw, 27px);
   aspect-ratio: 1;
   color: var(--crt-signal);
-  background:
-    linear-gradient(currentColor, currentColor) 50% 0 / 16% 16%,
-    linear-gradient(currentColor, currentColor) 84% 16% / 16% 16%,
-    linear-gradient(currentColor, currentColor) 100% 50% / 16% 16%,
-    linear-gradient(#b9f47b80, #b9f47b80) 84% 84% / 16% 16%,
-    linear-gradient(#b9f47b38, #b9f47b38) 50% 100% / 16% 16%;
-  background-repeat: no-repeat;
-  animation: startup-spin 980ms steps(8) infinite;
+  filter: drop-shadow(0 0 5px #b9f47b77);
+}
+.startup-spinner i {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: 16%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  background: currentColor;
+  opacity: 0.38;
+  animation: startup-spin 960ms steps(3, end) infinite;
+  animation-delay: calc(var(--step) * 120ms - 960ms);
+}
+@font-face {
+  font-family: "Fusion Pixel Mono";
+  src: url("../../assets/FusionPixelMono.woff2") format("woff2");
+  font-display: swap;
 }
 .startup-guide {
-  display: flex;
-  flex-direction: column;
-  overflow: auto;
-  scrollbar-width: none;
-  padding: var(--space-4);
-  background: var(--startup-ground);
-}
-.startup-scene {
-  display: grid;
-  grid-template-columns: minmax(17rem, 1.18fr) minmax(14rem, 1fr);
-  align-items: center;
-  gap: clamp(1rem, 5vw, 4rem);
-  width: min(100%, 76rem);
-  margin: auto;
-  padding-inline: clamp(0.75rem, 2vw, 2rem);
-  animation: startup-travel 360ms var(--ease-message-in) both;
-}
-.startup-computer,
-.startup-station {
   position: relative;
-  min-width: 0;
+  display: grid;
+  grid-template-rows: 42px minmax(0, 1fr) 47px;
+  overflow: clip;
+  scrollbar-width: none;
+  color: var(--color-text);
+  background: var(--startup-ground);
+  font-size: 15px;
 }
-.startup-screen-copy {
+.startup-rail {
+  display: flex;
+  align-items: center;
+  padding-inline: clamp(15px, 4vw, 58px);
+  gap: var(--space-2);
+}
+header.startup-rail {
+  font-size: 20px;
+  font-weight: 660;
+}
+.startup-footer .button {
+  font-size: 12px;
+}
+.startup-footer .button[data-variant="primary"] {
+  margin-inline-start: auto;
+}
+.startup-guide:has([data-travelling]) .startup-footer .button {
+  pointer-events: none;
+}
+.startup-viewport {
+  position: relative;
+  overflow: clip;
+  isolation: isolate;
+}
+.startup-viewport[data-return-hover] {
+  cursor: pointer;
+}
+.startup-wires {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.startup-world {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+.startup-scene {
+  position: absolute;
+  pointer-events: none;
+}
+.startup-scene :is(button, input, textarea, a, summary) {
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+.startup-computer {
+  position: absolute;
+  top: var(--computer-y);
+  left: var(--computer-x);
+  width: var(--computer-w);
+}
+.startup-screen-copy {
   display: grid;
   align-content: center;
-  gap: clamp(3px, 1.2cqw, 7px);
+  gap: clamp(4px, 1.2cqw, 7px);
   padding: 2.4cqw 4.6cqw;
-  line-height: 1.3;
 }
 .startup-screen-copy h1,
 .startup-screen-copy p {
   margin: 0;
-  text-wrap: balance;
 }
 .startup-screen-copy h1 {
-  font-size: clamp(11px, 3cqw, 20px);
+  font-size: clamp(10px, 3cqw, 17px);
+  line-height: 1.25;
+  font-weight: 620;
+  text-wrap: balance;
   outline: none;
 }
-.startup-screen-copy p,
-.startup-signal {
-  font-size: clamp(9px, 2.1cqw, 13px);
+.startup-screen-copy p {
+  color: #c5dcbb;
+  font-size: clamp(8.5px, 2.1cqw, 12px);
+  line-height: 1.45;
+  text-wrap: pretty;
 }
 .startup-signal {
+  min-height: 4.68em;
+  margin: 0;
   color: var(--crt-signal);
-  letter-spacing: 0.04em;
-  animation: startup-signal 2s steps(3) infinite alternate;
+  font:
+    clamp(6px, 1.65cqw, 10px) / 1.17 "Fusion Pixel Mono",
+    monospace;
+  text-shadow: 0 0 8px #aeea4770;
+  white-space: pre;
 }
-.startup-guide-bot.button {
+.startup-guide .startup-guide-bot.button {
   position: absolute;
-  inset: auto auto 5% 0;
-  inline-size: 32%;
-  block-size: auto;
-  aspect-ratio: 1;
+  z-index: 1;
+  top: var(--bot-y);
+  left: var(--bot-x);
+  width: var(--bot-w);
+  height: var(--bot-w);
   padding: 0;
-  border-radius: var(--radius-round);
+  border: 0;
+  border-radius: 22%;
   background: transparent;
   box-shadow: none;
 }
-.startup-return-wire.button {
-  position: absolute;
-  z-index: 1;
-  inset: 68% auto auto -1.15rem;
-  inline-size: 3.1rem;
-  min-block-size: 2.75rem;
-  color: var(--startup-wire);
-  background: transparent;
-  border: 0;
-  padding: 0;
-  translate: 0 -50%;
+.startup-station {
+  display: contents;
 }
-.startup-return-wire::after {
-  content: "";
+.startup-station > :is(.setup-form, .setup-permission, .model-setup) {
+  --station-origin-x: var(--station-x);
+  --station-origin-y: var(--station-y);
   position: absolute;
-  inset: 50% 0 auto 58%;
-  border-block-start: 2px dotted currentColor;
+  left: var(--station-origin-x);
+  top: var(--station-origin-y);
+  width: var(--station-w);
+  margin: 0;
 }
-.startup-branches {
-  display: grid;
-  position: relative;
+.startup-station > .setup-form {
+  --station-origin-y: calc(var(--station-y) - 20px);
+  --form-actions-y: calc(var(--form-pin-y) - var(--station-origin-y));
   gap: var(--space-2);
-  margin-inline-start: var(--space-4);
 }
-.startup-branches::before {
-  content: "";
+.startup-guide .setup-form > .alert {
   position: absolute;
-  inset: 50% calc(100% + var(--space-4)) auto auto;
-  inline-size: clamp(1rem, 9vw, 8rem);
-  border-block-start: 2px dotted var(--startup-wire);
+  top: calc(var(--form-actions-y) + 54px);
+  margin: 0;
 }
-.startup-branches::after {
-  content: "";
+.startup-guide .setup-form .startup-form-cancel {
   position: absolute;
-  inset: var(--space-5) calc(100% + var(--space-3)) var(--space-5) auto;
-  border-inline-start: 2px dotted var(--startup-wire);
+  top: calc(var(--form-actions-y) + 32px);
+  left: 0;
 }
-.startup-branch.button {
-  display: flex;
-  position: relative;
+.startup-guide .setup-form:has(> .alert) .startup-form-cancel {
+  top: calc(var(--form-actions-y) + 84px);
+}
+.startup-guide .setup-form .saved-connections {
+  position: absolute;
+  bottom: calc(100% + 8px);
+}
+.startup-scene[data-stop="model"] .model-setup {
+  --station-origin-y: calc(var(--station-y) - 36px);
+}
+.startup-guide .setup-permission {
+  text-align: start;
+  align-items: start;
+}
+.startup-guide .setup-permission .detail-note {
+  text-align: start;
+}
+.startup-guide .setup-connection {
+  min-width: 0;
+}
+.startup-guide .setup-model-status {
+  margin: 0;
+}
+.startup-guide .startup-branch.button {
+  --branch-left: calc(var(--choice-x) - var(--station-origin-x, 0px));
+  display: inline-flex;
+  align-items: center;
   justify-content: start;
-  gap: var(--space-2);
-  inline-size: 100%;
-  min-block-size: 2.75rem;
-  padding: var(--space-2) var(--space-1);
+  gap: 12px;
+  position: absolute;
+  left: var(--branch-left);
+  top: calc(var(--choice-y) - var(--station-origin-y, 0px));
+  translate: 0 -50%;
+  min-height: 48px;
+  max-width: calc(100% - var(--branch-left) - 10px);
+  padding: 6px 12px 6px 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  box-shadow: none;
+  opacity: 0;
+  transition: opacity 200ms ease;
   text-align: start;
   white-space: normal;
 }
-.startup-branch::before {
+.startup-guide .startup-branch.button:active {
+  transform: none;
+}
+.startup-guide .startup-branch.button[data-variant="ghost"]:hover {
+  background: transparent;
+}
+.startup-guide .startup-branch.button:focus-visible {
+  outline: 2px solid var(--startup-current);
+}
+.startup-scene[data-active] .startup-branch.button {
+  opacity: 1;
+  transition-delay: var(--delay);
+}
+.startup-scene[data-outgoing] .startup-branch.button {
+  transition-delay: 0ms;
+}
+.startup-guide .startup-branch::before {
   content: "";
-  box-sizing: border-box;
-  flex: 0 0 0.78rem;
-  inline-size: 0.78rem;
-  block-size: 0.78rem;
-  border: 1px solid currentColor;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--color-muted);
   border-radius: 50%;
-  background: radial-gradient(circle, currentColor 24%, transparent 28%);
+  background: radial-gradient(
+    circle,
+    var(--color-muted) 0 3px,
+    var(--startup-ground) 3px
+  );
 }
-.startup-branch::after {
-  content: "";
-  position: absolute;
-  inset: 50% calc(100% - 0.25rem) auto auto;
-  inline-size: calc(var(--space-4) + 0.25rem);
-  border-block-start: 2px dotted var(--startup-wire);
+.startup-guide .startup-branch[data-powered] {
+  opacity: 1;
+  transition-delay: 0ms;
 }
-.startup-branch:hover,
-.startup-branch:focus-visible,
-.startup-return-wire:hover,
-.startup-return-wire:focus-visible {
-  color: var(--startup-current);
-}
-.startup-branch:is(:hover, :focus-visible)::after {
+.startup-guide .startup-branch[data-powered]::before {
   border-color: var(--startup-current);
+  background: radial-gradient(
+    circle,
+    var(--startup-current) 0 3px,
+    var(--startup-ground) 3px
+  );
+  box-shadow: 0 0 0 4px
+    color-mix(in srgb, var(--startup-current) 18%, transparent);
+}
+.startup-branch[data-powered] :is(strong, .startup-arrow) {
+  color: var(--startup-current);
 }
 .startup-branch-copy {
   display: grid;
-  gap: var(--space-1);
-  overflow-wrap: anywhere;
+  gap: 5px;
 }
-.startup-branch-copy small {
+.startup-branch strong {
+  font-size: 17px;
+  font-weight: 620;
+}
+.startup-branch small {
   color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.35;
 }
-.startup-engines {
-  gap: var(--space-1);
+.startup-arrow {
+  color: var(--color-muted);
+  margin-inline-start: 4px;
+  font-size: 16px;
 }
-.startup-engines .startup-branch {
-  padding-block: var(--space-1);
-  animation: startup-branch-in 200ms var(--ease-message-in) both;
+.startup-guide .startup-engines .startup-branch {
+  gap: 8px;
+  padding-block: 2px;
 }
-.startup-engines .startup-branch:nth-child(even) {
-  animation-delay: 100ms;
+.startup-guide .startup-engines .startup-branch::before {
+  flex-basis: 12px;
+  height: 12px;
+  margin-inline: 2px;
+}
+.startup-engines .startup-branch-copy {
+  gap: 3px;
+}
+.startup-engines .startup-branch strong {
+  font-size: 15px;
+}
+.startup-engines .startup-branch:last-child::before {
+  border-style: dashed;
 }
 .startup-engines .engine-mark {
-  flex: 0 0 var(--space-5);
-  filter: contrast(1.25);
+  display: block;
+  flex: none;
+  width: 27px;
+  height: 27px;
+}
+.startup-engine-mark {
+  --mark-row: 0px;
+  background-image: url("../../assets/startup-engine-marks.png");
+  background-size: 800% 200%;
+  background-position: calc(var(--mark-index) * 100% / 7) var(--mark-row);
   image-rendering: pixelated;
 }
-.startup-models [data-model-step="0"] {
-  color: var(--startup-current);
-  font-size: 1.15em;
+@media (prefers-color-scheme: dark) {
+  .startup-engine-mark {
+    --mark-row: 100%;
+  }
 }
-.startup-models [data-model-step="-1"],
-.startup-models [data-model-step="1"] {
-  opacity: 0.68;
+.startup-extra {
+  position: absolute;
+  left: var(--station-x);
+  bottom: 0;
 }
-.startup-models .startup-branch:is(:hover, :focus-visible) {
-  opacity: 1;
+.startup-models {
+  min-height: 252px;
+  pointer-events: auto;
 }
-.startup-model-space {
-  min-block-size: 2.75rem;
+.startup-guide .startup-models .startup-branch {
+  margin-top: calc(var(--model-offset, 0px) * 0.75);
 }
-.startup-footer {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin-block-start: var(--space-3);
+.startup-guide .startup-models .startup-branch[aria-current="true"] {
+  margin-top: var(--model-offset, 0px);
+}
+.startup-models [aria-current="true"] strong {
+  font-size: 21px;
+}
+.startup-scene[data-active]
+  .startup-models
+  .startup-branch:not([aria-current="true"], [data-powered]) {
+  opacity: 0.6;
+}
+.startup-models
+  .startup-branch:not([aria-current="true"], [data-powered])
+  .startup-arrow {
+  visibility: hidden;
+}
+.startup-model-hint {
+  position: absolute;
+  left: calc(704px - var(--station-origin-x));
+  top: calc(456px - var(--station-origin-y));
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.startup-viewport[data-compact] .startup-model-hint {
+  left: calc(150px - var(--station-origin-x));
+  top: calc(548px - var(--station-origin-y));
+}
+.startup-viewport[data-compact] .startup-engines .startup-branch {
+  gap: 5px;
+  padding-inline-end: 5px;
+}
+.startup-viewport[data-compact] .startup-engines .startup-branch strong {
+  font-size: 13px;
+}
+.startup-viewport[data-compact] .startup-engines .startup-branch small {
+  font-size: 10px;
+}
+.startup-viewport[data-compact] .startup-engines .startup-extra {
+  left: 20px;
+}
+.startup-viewport[data-compact] .startup-models .startup-branch {
+  max-width: 238px;
+}
+.startup-error {
+  position: absolute;
+  left: var(--station-x);
+  top: calc(var(--station-y) + 290px);
+  width: var(--station-w);
 }
 @keyframes startup-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-@keyframes startup-signal {
-  from {
-    opacity: 0.66;
-  }
-  to {
+  0% {
     opacity: 1;
   }
-}
-@keyframes startup-branch-in {
-  from {
-    opacity: 0;
-    translate: -8px 0;
-  }
-}
-@keyframes startup-travel {
-  from {
-    opacity: 0;
-    transform: translateX(2rem) scale(0.975);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-@media (max-width: 650px) {
-  .startup-scene {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-4);
-  }
-  .startup-computer {
-    width: min(100%, 25rem);
-    margin-inline: auto;
-  }
-  .startup-branches::before {
-    inset: auto 100% 100% auto;
-    inline-size: 0;
-    block-size: var(--space-4);
-    border-inline-start: 2px dotted var(--startup-wire);
+  70%,
+  100% {
+    opacity: 0.17;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .startup-spinner,
-  .startup-scene,
-  .startup-signal,
-  .startup-engines .startup-branch {
+  .startup-spinner i {
     animation: none;
+  }
+  .startup-guide .startup-branch.button {
+    transition: none;
   }
 }

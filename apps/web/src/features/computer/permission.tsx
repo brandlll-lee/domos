@@ -45,6 +45,8 @@ export function ComputerPermission({
       <DialogFooter>
         <div className="setup-actions">
           <Button
+            variant={illustrated ? "primary" : "ghost"}
+            className={illustrated ? undefined : "startup-branch"}
             pending={busy}
             disabled={!computer}
             onClick={async () => {
@@ -80,6 +82,11 @@ export function ComputerPermission({
             }}
           >
             允许访问并继续
+            {!illustrated && (
+              <span className="startup-arrow" aria-hidden="true">
+                →
+              </span>
+            )}
           </Button>
           {footer}
         </div>

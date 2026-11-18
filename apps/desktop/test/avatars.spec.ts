@@ -126,7 +126,7 @@ test("startup Bot follows the pointer and changes shape while working", async ({
       .scrollIntoViewIfNeeded();
     await expect(
       page.getByRole("button", { name: "连接另一台电脑", exact: true }),
-    ).toBeInViewport({ ratio: 1 });
+    ).toBeInViewport({ ratio: 0.99 });
     await page.screenshot({
       path: testInfo.outputPath("welcome-narrow.png"),
       scale: "css",

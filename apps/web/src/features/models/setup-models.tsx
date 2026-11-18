@@ -21,19 +21,48 @@ export function SetupModels({
   const at = (step: number) =>
     models[(current + step + models.length) % models.length];
   const browse = (step: number) => {
-    if (!disabled) setBrowsed(at(step)?.id);
+    if (disabled || models.length < 2) return;
+    setBrowsed(at(step)?.id);
+    const element = region.current;
+    element?.dispatchEvent(
+      new CustomEvent("startup:browse", { detail: step, bubbles: true }),
+    );
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const distance = element?.closest("[data-compact]") ? 71 : 85;
+    for (const label of element?.querySelectorAll(".startup-model-name") ??
+      []) {
+      for (const animation of label.getAnimations()) animation.cancel();
+      label.animate(
+        [
+          {
+            transform: `translateY(${distance * step * 0.68}px)`,
+            opacity: 0.15,
+          },
+          { transform: "translateY(0)", opacity: 1 },
+        ],
+        { duration: 240, easing: "cubic-bezier(.2,.73,.26,1)" },
+      );
+    }
   };
   const wheel = useEffectEvent(browse);
   useEffect(() => {
     const element = region.current;
     if (!element || models.length < 2 || disabled) return;
     let last = -Infinity;
+    let remainder = 0;
     const scroll = (event: WheelEvent) => {
       if (event.ctrlKey || !event.deltaY) return;
       event.preventDefault();
-      if (event.timeStamp - last < 180) return;
+      if (event.timeStamp - last < 210) return;
+      const delta =
+        event.deltaY *
+        (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1);
+      if (Math.sign(remainder) !== Math.sign(delta)) remainder = 0;
+      remainder += delta;
+      if (Math.abs(remainder) < 22) return;
       last = event.timeStamp;
-      wheel(Math.sign(event.deltaY));
+      wheel(Math.sign(remainder));
+      remainder = 0;
     };
     element.addEventListener("wheel", scroll, { passive: false });
     return () => element.removeEventListener("wheel", scroll);
@@ -66,17 +95,18 @@ export function SetupModels({
             onClick={() => (step ? browse(step) : onSelect(model.id))}
           >
             <span className="startup-branch-copy">
-              <strong>{model.name}</strong>
+              <strong className="startup-model-name">{model.name}</strong>
               {!step && model.id === value && <small>已选择</small>}
             </span>
-            <span aria-hidden="true">
+            <span className="startup-arrow" aria-hidden="true">
               {step < 0 ? "↑" : step > 0 ? "↓" : "→"}
             </span>
           </Button>
-        ) : (
-          <div className="startup-model-space" key={step} />
-        );
+        ) : null;
       })}
+      {models.length > 1 && (
+        <p className="startup-model-hint">↑ ↓ 滚动浏览 · Enter 确认</p>
+      )}
     </section>
   );
 }

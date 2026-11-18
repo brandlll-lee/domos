@@ -5,13 +5,24 @@ import { Loading } from "@domos/ui/loading";
 import { SetupStatus } from "@domos/ui/setup";
 import { StartupScene } from "@domos/ui/startup";
 import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
-import { useCallback, useEffect, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useState } from "react";
 import { client } from "../../../client.ts";
 import { ComputerPermission } from "../../computer/permission.tsx";
 import { ModelSetting } from "../../models/model-setting.tsx";
 import { useModelSettings } from "../../models/model-state.ts";
 import { useSettings } from "../../settings/context.ts";
 import { EngineMark } from "../engine-mark.tsx";
+
+const engineOrder = [
+  "pi",
+  "codex",
+  "claude",
+  "opencode",
+  "cursor",
+  "antigravity",
+  "grok",
+  "devin",
+];
 
 export function ModelSetup({
   botId,
@@ -82,7 +93,19 @@ export function ModelSetup({
             disabled={profile.busy}
             onClick={() => setProvider(item.id)}
           >
-            <EngineMark provider={item.id} />
+            {onboarding ? (
+              <span
+                className="engine-mark startup-engine-mark"
+                aria-hidden="true"
+                style={
+                  {
+                    "--mark-index": engineOrder.indexOf(item.id),
+                  } as CSSProperties
+                }
+              />
+            ) : (
+              <EngineMark provider={item.id} />
+            )}
             {onboarding ? (
               <span className="startup-branch-copy">
                 <strong>{item.name}</strong>
@@ -107,22 +130,32 @@ export function ModelSetup({
                   {profile.connection.authenticated ? "已连接" : "待登录"}
                 </span>
               )}
-            <CaretRightIcon aria-hidden="true" />
+            {onboarding ? (
+              <span className="startup-arrow" aria-hidden="true">
+                →
+              </span>
+            ) : (
+              <CaretRightIcon aria-hidden="true" />
+            )}
           </Button>
         );
       });
     if (onboarding)
       return (
         <StartupScene
+          stop="engine"
           title="连接你的 AI"
-          signal="[ BOT ] → [ AGENT ]"
-          description="选择一个 Agent 引擎来执行任务。"
+          description="选择 Agent 引擎。引擎让 Bot 能执行任务。"
         >
           <section
             className="startup-branches startup-engines"
             aria-label="Agent 引擎"
           >
-            {branches(providers.filter((item) => item.id !== "acp"))}
+            {branches(
+              engineOrder.flatMap((id) =>
+                providers.filter((item) => item.id === id),
+              ),
+            )}
             <Button
               variant="ghost"
               className="startup-branch"
@@ -130,12 +163,19 @@ export function ModelSetup({
             >
               <span className="startup-branch-copy">
                 <strong>暂时跳过</strong>
-                <small>进入工作区后可新建 Bot 或设置模型</small>
+                <small>进入工作区后，可以随时创建 Bot</small>
+              </span>
+              <span className="startup-arrow" aria-hidden="true">
+                →
               </span>
             </Button>
           </section>
           {providers.some((item) => item.id === "acp") && (
-            <Button variant="ghost" onClick={() => setProvider("acp")}>
+            <Button
+              variant="ghost"
+              className="startup-extra"
+              onClick={() => setProvider("acp")}
+            >
               自定义 ACP
             </Button>
           )}
@@ -167,8 +207,9 @@ export function ModelSetup({
     );
     return onboarding ? (
       <StartupScene
+        stop="access"
         title="允许访问电脑"
-        signal="[ AGENT ] → [ PC ]"
+        description="等你确认，Domos 才会连接这台电脑。"
         back={busy ? undefined : goBack}
       >
         {permission}
@@ -177,6 +218,18 @@ export function ModelSetup({
       permission
     );
   }
+  const continueAction = onReady && (
+    <Button
+      disabled={
+        busy ||
+        profile.config.provider !== provider ||
+        !(profile.revision || profile.prepared)
+      }
+      onClick={onReady}
+    >
+      开始聊天
+    </Button>
+  );
   const model = (
     <div className="model-setup">
       <ModelSetting
@@ -188,31 +241,24 @@ export function ModelSetup({
         guided={Boolean(onboarding)}
         onBusyChange={reportBusy}
       />
-      <DialogFooter>
-        <div className="setup-actions">
-          {onReady && (
-            <Button
-              disabled={
-                busy ||
-                profile.config.provider !== provider ||
-                !(profile.revision || profile.prepared)
-              }
-              onClick={onReady}
-            >
-              开始聊天
-            </Button>
-          )}
-          {setup && !onboarding && back}
-        </div>
-      </DialogFooter>
+      {!onboarding && (
+        <DialogFooter>
+          <div className="setup-actions">
+            {continueAction}
+            {setup && back}
+          </div>
+        </DialogFooter>
+      )}
       {onboarding?.issue && <p role="alert">{onboarding.issue}</p>}
     </div>
   );
   return onboarding ? (
     <StartupScene
+      stop="model"
       title="给 Bot 选一个模型"
-      signal="[ MSG ] → [ MODEL ]"
+      description={providers.find((item) => item.id === provider)?.name}
       back={busy ? undefined : goBack}
+      footer={continueAction}
     >
       {model}
     </StartupScene>
