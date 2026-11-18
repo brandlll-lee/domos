@@ -24,6 +24,7 @@ import {
 import {
   conversationHandoff,
   handoffInstructions,
+  rebuildInstructions,
   requestInstructions,
 } from "./handoff.ts";
 import { conversationHistory } from "./history.ts";
@@ -1046,6 +1047,7 @@ export class EngineExecution {
         engineLimits.historyCharacters,
         doc.summary,
         resumed ? (doc.sessions?.[key]?.teamThrough ?? null) : null,
+        !resumed,
       );
       runtime.signal.throwIfAborted();
       active.controller.signal.throwIfAborted();
@@ -1074,7 +1076,7 @@ export class EngineExecution {
         await Promise.race([
           active.session.prompt(
             history
-              ? `${handoffInstructions}${history}${requestInstructions}${text}`
+              ? `${handoffInstructions}${resumed ? "" : rebuildInstructions}${history}${requestInstructions}${text}`
               : text,
             images,
           ),

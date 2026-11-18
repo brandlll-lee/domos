@@ -60,6 +60,13 @@ function historyMessages(
   );
 }
 
+function visibleHistoryEntry(entry: EntryRecord) {
+  return (
+    entry.kind !== EngineMessage ||
+    !(entry.data as unknown as ChatMessage).hidden
+  );
+}
+
 function historyMessage(
   entryId: EntryId,
   message: Pick<ChatMessage, "role"> &
@@ -73,6 +80,7 @@ function historyMessage(
         | "stopped"
         | "toolName"
         | "toolCallId"
+        | "toolStatus"
         | "author"
         | "link"
         | "approval"
@@ -94,7 +102,10 @@ function historyMessage(
     return {
       entryId,
       role: message.role,
-      text: `${message.toolName ?? "Tool"}: ${status}`.slice(0, 120),
+      text: `${message.toolName ?? "Tool"}: ${message.toolStatus ?? status}`.slice(
+        0,
+        120,
+      ),
       status,
       ...(message.attachments?.length
         ? {
@@ -145,6 +156,35 @@ function historyMessage(
   };
 }
 
+function historyPlan(entry: EntryRecord): HistoryMessage | undefined {
+  if (entry.kind !== EngineMessage) return;
+  const message = entry.data as unknown as ChatMessage;
+  const plan = message.activity;
+  if (message.hidden || plan?.type !== "plan" || !plan.plan.length) return;
+  return {
+    entryId: entry.id,
+    role: "assistant",
+    status: "recorded",
+    text: [
+      "Historical plan (reported):",
+      ...plan.plan.map(({ step, status }) => `${status}: ${step}`),
+    ].join("\n"),
+  };
+}
+
+function handoffExcerpt(bytes: Buffer, limit: number, keepEnd: boolean) {
+  const separator = "\n[…]\n";
+  if (!keepEnd || bytes.length <= limit || limit < 32)
+    return utf8Prefix(bytes, limit);
+  const available = limit - Buffer.byteLength(separator);
+  const head = Math.ceil(available / 2);
+  let tail = bytes.length - (available - head);
+  while ((bytes.readUInt8(tail) & 0xc0) === 0x80) tail++;
+  return (
+    utf8Prefix(bytes, head) + separator + bytes.subarray(tail).toString("utf8")
+  );
+}
+
 export async function conversationEntry(
   runtime: HistoryReader,
   entryId: EntryId,
@@ -185,22 +225,24 @@ export async function conversationEntry(
   }, context);
   if (!entry || (entry.conversationId !== runtime.conversationId && !shared))
     throw new Error("聊天记录不存在。");
+  const own = entry.conversationId === runtime.conversationId;
+  const plan = own ? historyPlan(entry) : undefined;
   return JSON.stringify({
     entryId,
     ...textPage(
       JSON.stringify(
         entry.kind === EngineToolResult
           ? entry.data
-          : historyMessages(
-              entry,
-              entry.conversationId === runtime.conversationId ? "full" : "omit",
-              ownerBotId,
-            ).map((message) => ({
-              ...message,
-              ...(message.role === "assistant" && !message.author && author
-                ? { author }
-                : {}),
-            })),
+          : plan
+            ? [plan]
+            : historyMessages(entry, own ? "full" : "omit", ownerBotId).map(
+                (message) => ({
+                  ...message,
+                  ...(message.role === "assistant" && !message.author && author
+                    ? { author }
+                    : {}),
+                }),
+              ),
       ),
       offset,
       engineLimits.historyCharacters / 4,
@@ -218,9 +260,11 @@ export async function conversationHistory(
   tools: "full" | "summary" | "omit" = "full",
   summary?: HandoffSummary,
   teamThrough?: EntryId | null,
+  rebuild = false,
 ) {
   const owners = new Map<number, number>();
   let entries: readonly EntryRecord[] = [];
+  let opening: HistoryMessage | undefined;
   const authors = new Map<number, NonNullable<ChatMessage["author"]>>();
   let bounded = before !== undefined;
   await runtime.commit(async (tx) => {
@@ -239,6 +283,21 @@ export async function conversationHistory(
         engineLimits.historyEntries,
       )
     ).items;
+    if (rebuild && entries.length === engineLimits.historyEntries) {
+      const first = await tx.scanEntries(
+        {
+          conversationId: runtime.conversationId,
+          order: "ascending",
+        },
+        engineLimits.historyEntries,
+      );
+      opening = first.items
+        .filter(visibleHistoryEntry)
+        .flatMap((entry) =>
+          historyMessages(entry, "omit", owners.get(runtime.conversationId)),
+        )
+        .find((message) => message.role === "user" && message.text.trim());
+    }
     const teamId =
       teamThrough !== undefined
         ? (await tx.doc(BotSession, runtime.conversationId)).teamId
@@ -313,15 +372,14 @@ export async function conversationHistory(
   );
   if (turnId && current < 0 && !bounded && entries.length)
     throw new Error("当前消息的上下文边界无法确认。");
-  const previous = entries
-    .slice(current + 1)
-    .filter(
-      (entry) =>
-        entry.id >
-        (entry.conversationId === runtime.conversationId
-          ? (through ?? summary?.through ?? 0)
-          : (teamThrough ?? 0)),
-    );
+  const window = entries.slice(current + 1);
+  const previous = window.filter(
+    (entry) =>
+      entry.id >
+      (entry.conversationId === runtime.conversationId
+        ? (through ?? summary?.through ?? 0)
+        : (teamThrough ?? 0)),
+  );
   const messages = previous
     .toReversed()
     .flatMap((entry) =>
@@ -339,6 +397,46 @@ export async function conversationHistory(
       })),
     )
     .filter((message) => message.text.trim());
+  let priority: HistoryMessage[] = [];
+  if (rebuild) {
+    const own = window.filter(
+      (entry) =>
+        entry.conversationId === runtime.conversationId &&
+        visibleHistoryEntry(entry),
+    );
+    if (opening && entries[current] && opening.entryId >= entries[current].id)
+      opening = undefined;
+    const userMessages = own
+      .flatMap((entry) =>
+        historyMessages(entry, "omit", owners.get(runtime.conversationId)),
+      )
+      .filter((message) => message.role === "user" && message.text.trim());
+    opening ??= userMessages.at(-1);
+    const requests = [
+      ...userMessages.slice(0, 2),
+      ...(opening ? [opening] : []),
+    ];
+    for (const request of requests) {
+      const existing = messages.find(
+        (message) =>
+          message.entryId === request.entryId &&
+          message.role === request.role &&
+          message.text === request.text,
+      );
+      priority.push(existing ?? request);
+      if (!existing) messages.push(request);
+    }
+    const plan = own.map(historyPlan).find((item) => item !== undefined);
+    const results = own
+      .flatMap((entry) =>
+        historyMessages(entry, "summary", owners.get(runtime.conversationId)),
+      )
+      .filter((message) => message.role === "toolResult")
+      .slice(0, 4);
+    const progress = [...(plan ? [plan] : []), ...results];
+    messages.push(...progress);
+    priority = [...new Set([...priority, ...progress])];
+  }
   if (tools === "summary") {
     let remaining = 20;
     for (let index = messages.length - 1; index >= 0; index--)
@@ -361,26 +459,51 @@ export async function conversationHistory(
         items.some((item) => item.excerpt),
       messages: items,
     });
-  for (const message of messages.reverse()) {
+  const preferred = new Set(priority);
+  const candidates = [
+    ...priority,
+    ...messages.toReversed().filter((message) => !preferred.has(message)),
+  ];
+  for (const message of candidates) {
     const bytes = Buffer.from(message.text);
+    const keyRequest = preferred.has(message) && message.role === "user";
     let low = 1;
-    let high = Math.min(engineLimits.historyCharacters / 4, bytes.length);
+    let high = Math.min(
+      engineLimits.historyCharacters / 4,
+      preferred.has(message) && priority.length > 2
+        ? Math.floor(limit / 6)
+        : limit,
+      bytes.length,
+    );
+    const target = high;
+    const position = selected.findIndex(
+      (item) => item.entryId >= message.entryId,
+    );
+    const index = position < 0 ? selected.length : position;
     let item: Excerpt | undefined;
     while (low <= high) {
       const middle = Math.floor((low + high) / 2);
-      const text = utf8Prefix(bytes, middle);
+      const text = handoffExcerpt(bytes, middle, keyRequest);
       const candidate = {
         ...message,
         text,
         ...(text !== message.text ? { excerpt: true } : {}),
       };
-      if (Buffer.byteLength(packet([candidate, ...selected])) <= limit) {
+      if (
+        Buffer.byteLength(packet(selected.toSpliced(index, 0, candidate))) <=
+        limit
+      ) {
         if (text) item = candidate;
         low = middle + 1;
       } else high = middle - 1;
     }
-    if (!item) break;
-    selected.unshift(item);
+    if (summary && keyRequest && high < target)
+      throw new Error("会话摘要挤占了重要原文的交接预算。");
+    if (!item) {
+      if (!rebuild) break;
+      continue;
+    }
+    selected.splice(index, 0, item);
   }
   if (
     !summary &&

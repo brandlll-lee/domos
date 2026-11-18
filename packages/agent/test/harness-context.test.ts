@@ -115,13 +115,15 @@ test("conversation_read recovers persisted tool text after reopen within its Bot
   ).rejects.toThrow("不存在");
 });
 
-test("long handoffs deliver recent original messages and retain source history", async () => {
+test("long handoffs reserve the opening request, corrections and recorded progress", async () => {
   const runtime = await runtimeFixture();
   const reader = {
     conversationId: runtime.conversation.id,
     commit: runtime.harness.commit.bind(runtime.harness),
   };
   let first!: EntryId;
+  let planId!: EntryId;
+  let checkId!: EntryId;
   await reader.commit(async (tx) => {
     for (let index = 0; index < 75; index++) {
       const entry = await tx.appendEntry(reader.conversationId, {
@@ -144,11 +146,61 @@ test("long handoffs deliver recent original messages and retain source history",
       });
       if (index === 0) first = entry.id;
     }
+    planId = (
+      await tx.appendEntry(reader.conversationId, {
+        kind: EngineMessage,
+        data: {
+          id: "plan",
+          role: "assistant",
+          content: [],
+          activity: {
+            type: "plan",
+            plan: [
+              { step: "Implement A", status: "completed" },
+              { step: "Implement B", status: "inProgress" },
+              { step: "Implement C", status: "pending" },
+            ],
+          },
+        },
+      })
+    ).id;
+    checkId = (
+      await tx.appendEntry(reader.conversationId, {
+        kind: EngineMessage,
+        data: {
+          id: "check",
+          role: "toolResult",
+          toolName: "run_tests",
+          toolStatus: "running",
+          content: [{ type: "text", text: "test detail retained in Work" }],
+        },
+      })
+    ).id;
   }, context);
   const result = await conversationHandoff(reader, null, context, null, 3000);
-  expect(JSON.parse(result.history).excerpt).toBe(true);
+  const packet = JSON.parse(result.history);
+  expect(packet.excerpt).toBe(true);
+  expect(packet.messages[0]).toMatchObject({ entryId: first, excerpt: true });
+  expect(result.history).toContain(scenario.handoff.constraint);
+  expect(result.history).toContain(scenario.longMessage.tail);
   expect(result.history).toContain(scenario.handoff.correction);
-  expect(result.notice).toContain("已交接近期原文");
+  expect(packet.messages).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        entryId: planId,
+        text: expect.stringContaining("pending: Implement C"),
+      }),
+      expect.objectContaining({ entryId: checkId, text: "run_tests: running" }),
+    ]),
+  );
+  expect(result.history).not.toContain("test detail retained in Work");
+  expect(await conversationEntry(reader, checkId, 0, context)).toContain(
+    "test detail retained in Work",
+  );
+  expect(await conversationEntry(reader, planId, 0, context)).toContain(
+    "Implement B",
+  );
+  expect(result.notice).toContain("已交接聊天节选");
   expect(Buffer.byteLength(result.history)).toBeLessThanOrEqual(3000);
   expect(await conversationEntry(reader, first, 0, context)).toContain(
     "Do not install dependencies.",
@@ -274,21 +326,13 @@ test("an oversized saved summary preserves recent original history and file refe
       if (index === 0) first = entry.id;
     }
   }, context);
-  const original = await conversationHistory(
-    reader,
-    null,
-    context,
-    null,
-    undefined,
-    3000,
-    "omit",
-  );
+  const original = await conversationHandoff(reader, null, context, null, 3000);
   const result = await conversationHandoff(reader, null, context, null, 3000, {
     text: "x".repeat(3000),
     through: first,
   });
-  expect(result.history).toBe(original);
-  expect(result.notice).toContain("已交接近期原文");
+  expect(result.history).toBe(original.history);
+  expect(result.notice).toContain("已交接聊天节选");
   expect(await conversationEntry(reader, first, 0, context)).toContain(
     "report.csv",
   );

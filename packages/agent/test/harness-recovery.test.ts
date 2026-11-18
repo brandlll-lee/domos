@@ -424,11 +424,12 @@ test.each(["pi", "claude"] as const)(
     expect(await task.wait(context)).toMatchObject({ status: "done" });
     expect(prompts).toHaveLength(1);
     expect(prompts[0]).toContain("Review the current report");
+    expect(prompts[0]).toContain("Checked report 0.");
     expect(prompts[0]).toContain("Checked report 74.");
     expect(workers).toHaveLength(1);
     expect(
       (await engines.profile(botId, context)).runtime?.notices?.handoff,
-    ).toContain("已交接近期原文");
+    ).toContain("已交接聊天节选");
   },
 );
 
@@ -556,14 +557,15 @@ test("switching from embedded Pi imports recent conversation into the first nati
     },
     context,
   );
-  await (
-    await engines.submit(
-      runtime.conversation.id,
-      { text: "Use that folder", requestId: crypto.randomUUID() },
-      context,
-    )
-  ).wait(context);
+  const firstTurn = await engines.submit(
+    runtime.conversation.id,
+    { text: "Use that folder", requestId: crypto.randomUUID() },
+    context,
+  );
+  const firstOutcome = await firstTurn.wait(context);
+  expect(firstOutcome.status, JSON.stringify(firstOutcome)).toBe("done");
   expect(prompt).toContain("Remember the blue folder");
+  expect(prompt).toContain("check the current workspace and key evidence");
   expect(prompt).toContain("Current request");
   const change = async (
     provider: "pi" | "codex",
