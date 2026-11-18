@@ -14,7 +14,7 @@ Bring your own agents and subscriptions (BYOA & BYOS). Turn native agents like C
 
 <br>
 
-<img src="docs/assets/domos-desktop.webp" width="100%" alt="Domos in dark mode: contacts, link cards in chat, and the browser takeover panel." />
+<img src="docs/assets/domos-desktop.png" width="100%" alt="The Domos desktop app in dark mode with the model picker open, over a pixel-art landscape." />
 
 </div>
 

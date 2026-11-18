@@ -14,7 +14,7 @@
 
 <br>
 
-<img src="docs/assets/domos-desktop.webp" width="100%" alt="Domos 深色桌面界面：联系人、聊天链接卡片，以及浏览器接管面板。" />
+<img src="docs/assets/domos-desktop.png" width="100%" alt="像素风景背景中的 Domos 深色桌面界面，右侧打开了模型选择器。" />
 
 </div>
 
