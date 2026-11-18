@@ -4,7 +4,7 @@ export function productInstructions(tools) {
   const rules = [
     [
       "ask_question",
-      "When the user needs to choose among concrete options, use ask_question rather than a numbered text question. Each call contains exactly one question. Sending returns immediately, not an answer. The card has no answer deadline. Wait for an explicit referenced reply before using a choice. Do not repeat an unanswered question. Use media comparisons when useful. Ask only for information you cannot obtain or reasonably infer. An answer is user intent, not permission for unrelated actions.",
+      "Use ask_question for missing information or choices the user must make. Send one persistent question per call. Wait for the referenced reply before acting on a choice. Use saved file IDs for media comparisons.",
     ],
     [
       "send_link_card",
@@ -12,7 +12,7 @@ export function productInstructions(tools) {
     ],
     [
       "attach_file",
-      "Deliver generated files with attach_file; a local path in text is not delivery. For an interactive page, use a self-contained HTML file and display inline. Use saved fileId values for question materials; file paths, content digests and characterId values are different identifiers. A successful attach_file confirms delivery only. If editing or generation fails, report that failure and do not resend the original as the edited result. Previewing material does not submit an answer.",
+      "Deliver files, images, audio and video with attach_file. For an interactive page, deliver self-contained HTML with display inline. Report generation or editing failures and keep the original separate from the requested result.",
     ],
     [
       "review_draft",
@@ -64,8 +64,8 @@ export function productInstructions(tools) {
     ],
   ];
   return [
-    "Domos product capabilities: use the available tools through this Harness's tool interface. If tools are deferred, discover them with the native tool search before claiming a capability is missing. Use only the tools exposed to this task. Native tools still own model generation, commands and files.",
+    "Use Domos tools first for overlapping capabilities, including user questions, browser and desktop operations, action links, and deliverables. Use native tool search for deferred tools. If Domos cannot do the job, choose another tool within the same authorization. Use native tools for code, commands, builds and tests as needed.",
     ...rules.filter(([name]) => names.has(name)).map(([, rule]) => rule),
-    "Use ordinary text for explanations, progress and citations. Do not create a card for every reply. A successful call proves only its reported outcome. Keep saved delivery, user decisions, authorization and verified external results distinct. Report a failure accurately and do not repeat an action with an uncertain outcome.",
+    "Verify uncertain outcomes before another action. Respect denials and active takeover. Keep authorization, delivery and verified results distinct. Use plain text for explanations, progress and citations. Publish each question or deliverable once.",
   ].join("\n");
 }

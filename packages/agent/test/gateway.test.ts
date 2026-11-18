@@ -21,7 +21,9 @@ test("MCP initialization exposes only available product guidance", async () => {
     await gateway.close();
   });
   await client.connect(new StreamableHTTPClientTransport(new URL(gateway.url)));
-  expect(client.getInstructions()).toContain("use ask_question rather than");
+  expect(client.getInstructions()).toContain("Use Domos tools first");
+  expect(client.getInstructions()).toContain("Use ask_question");
+  expect(client.getInstructions()).toContain("within the same authorization");
   expect(client.getInstructions()).not.toContain("send_link_card");
 });
 

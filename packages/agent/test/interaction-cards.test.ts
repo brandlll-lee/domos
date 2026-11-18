@@ -612,7 +612,8 @@ test.each(["pi", "codex", "claude", "opencode", "acp"])(
     const opened = vi
       .spyOn(engineProvider(provider), "open")
       .mockImplementation(async (options) => {
-        expect(options.instructions).toContain("use ask_question rather than");
+        expect(options.instructions).toContain("Use Domos tools first");
+        expect(options.instructions).toContain("Use ask_question");
         expect(options.instructions).toContain("use send_link_card with");
         expect(options.instructions).toContain("Use review_draft");
         expect(options.instructions).toContain("Use request_credentials");

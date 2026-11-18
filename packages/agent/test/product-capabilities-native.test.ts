@@ -10,35 +10,65 @@ import { productInstructions } from "../src/harness/product-guidance.mjs";
 import { permissionTool } from "../src/harness/product-tools.ts";
 import { claudePermission } from "../src/harness/providers/claude-approval.ts";
 import { engineProvider } from "../src/harness/providers/index.ts";
-import type { EngineSession } from "../src/harness/types.ts";
+import type { EngineApproval, EngineSession } from "../src/harness/types.ts";
+
+const question = {
+  prompt:
+    "我想让你写报告，但还没决定要简短结论还是完整报告。请发一个提问，让我选择这两种交付形式。收到选择前不要写报告。",
+  tool: "ask_question",
+};
 
 test
   .skipIf(process.env.DOMOS_NATIVE_PRODUCT !== "1")
   .each([
-    "codex",
-    "claude",
-    "pi",
-    "opencode",
-    "grok",
-    "antigravity",
-    "devin",
-    "cursor",
-  ])(
-  "%s selects product capabilities from user intent",
-  async (id) => {
+    ["antigravity", "Domos question"],
+    ["antigravity", "native question fallback"],
+    ...(
+      [
+        "codex",
+        "claude",
+        "pi",
+        "opencode",
+        "grok",
+        "antigravity",
+        "devin",
+        "cursor",
+      ] as const
+    ).map((id) => [id, "product capabilities"] as const),
+  ] as const)(
+  "%s selects %s from user intent",
+  async (id, scenario) => {
+    const nativeFallback = scenario === "native question fallback";
     const directory = await mkdtemp(join(tmpdir(), "domos-product-eval-"));
-    const tools = interactionExtension({} as EngineExecution).tools.map(
-      (tool) => ({
+    const tools = interactionExtension({} as EngineExecution)
+      .tools.filter((tool) => !nativeFallback || tool.name !== question.tool)
+      .map((tool) => ({
         name: tool.name,
         description: tool.description,
         inputSchema: JSON.parse(JSON.stringify(tool.parameters)) as Record<
           string,
           unknown
         >,
-      }),
-    );
+      }));
     const calls: { name: string; args: Record<string, unknown> }[] = [];
     const replies: string[] = [];
+    let nativeQuestions = 0;
+    function answer(approval: EngineApproval) {
+      if (approval.kind !== "question")
+        return {
+          allow: tools.some((tool) => approval.detail.includes(tool.name)),
+        };
+      nativeQuestions++;
+      return {
+        allow: nativeFallback,
+        answers: Object.fromEntries(
+          (approval.questions ?? []).map((item) => [
+            item.id,
+            [item.options?.[0]?.id ?? "简短结论"],
+          ]),
+        ),
+      };
+    }
     let rounds = 0;
     const worker = new WorkProcess(
       [
@@ -48,7 +78,8 @@ test
       { cwd: directory, home: directory },
       [...tools, ...(id === "claude" ? [permissionTool] : [])],
       async (_callId, name, args) => {
-        if (name === "approve")
+        if (name === "approve") {
+          if (args.tool_name === "AskUserQuestion") nativeQuestions++;
           return {
             content: [
               {
@@ -63,6 +94,7 @@ test
               },
             ],
           };
+        }
         calls.push({ name, args });
         return {
           content: [
@@ -70,7 +102,7 @@ test
               type: "text",
               text: JSON.stringify(
                 name === "ask_question"
-                  ? { status: "answered", answers: { format: ["summary"] } }
+                  ? { status: "sent", questionId: "fixture-question" }
                   : name === "review_draft"
                     ? { status: "confirmed", body: "Reviewed draft" }
                     : name === "request_credentials"
@@ -97,29 +129,20 @@ test
       },
       sessionId: null,
       instructions: `${productInstructions(tools)}\nThis is a controlled product-selection test. Use no shell, browser or file tools. Product results are test fixtures. Do not perform external actions.`,
-      approve: async () => ({ allow: false }),
+      approve: async (approval) => answer(approval),
       emit: async (event) => {
         if (event.type === "message") {
           replies.push(event.text);
           rounds++;
         }
         if (event.type === "approval")
-          await session.answer(event.approval.id, {
-            allow:
-              /ask_question|send_link_card|review_draft|request_credentials/.test(
-                event.approval.detail,
-              ),
-          });
+          await session.answer(event.approval.id, answer(event.approval));
       },
     });
     await session.ready?.();
     if (provider.toolDiscovery !== "prompt") await worker.toolsReady();
     const cases = [
-      {
-        prompt:
-          "我想让你写报告，但我还没决定要简短结论还是完整报告。现在请让我选一下这两种交付形式。",
-        tool: "ask_question",
-      },
+      ...(id === "antigravity" ? [] : [question]),
       {
         prompt:
           "把 https://example.com/report 发给我，我接下来要打开这份报告。",
@@ -138,21 +161,26 @@ test
       { prompt: "只回答：2 加 2 等于几？", tool: null },
     ];
     const evidence = [];
-    for (const item of cases) {
+    for (const item of scenario === "product capabilities"
+      ? cases
+      : [{ ...question, tool: nativeFallback ? null : question.tool }]) {
       const start = performance.now();
       const before = calls.length;
       const beforeRounds = rounds;
+      const beforeQuestions = nativeQuestions;
       await session.prompt(item.prompt);
-      const used = calls.slice(before);
+      const used = calls.slice(before).map((call) => call.name);
+      const native = nativeQuestions - beforeQuestions;
       evidence.push({
         expected: item.tool,
-        tools: used.map((call) => call.name),
+        tools: used,
+        nativeQuestions: native,
         elapsedMs: Math.round(performance.now() - start),
         assistantMessages: rounds - beforeRounds,
       });
       await mkdir("test-results", { recursive: true });
       await writeFile(
-        `test-results/product-capabilities-${id}.json`,
+        `test-results/product-capabilities-${id}${scenario === "product capabilities" ? "" : `-${scenario.replaceAll(" ", "-")}`}.json`,
         JSON.stringify(
           {
             harness: id,
@@ -164,12 +192,8 @@ test
           2,
         ),
       );
-      if (item.tool)
-        expect(
-          used.map((call) => call.name),
-          replies.join("\n"),
-        ).toContain(item.tool);
-      else expect(used, replies.join("\n")).toHaveLength(0);
+      expect(used, replies.join("\n")).toEqual(item.tool ? [item.tool] : []);
+      expect(native, replies.join("\n")).toBe(nativeFallback ? 1 : 0);
     }
   },
   240_000,
