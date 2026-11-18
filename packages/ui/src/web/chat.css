@@ -355,10 +355,10 @@ button.file-caption {
   margin: 0;
   width: min(100%, 24rem);
   min-width: 0;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-divider);
   border-radius: var(--radius-panel);
   padding: var(--space-2);
-  background: var(--color-popup);
+  background: var(--color-surface);
   color: var(--color-text);
 }
 .media-attachment-audio audio {
@@ -368,12 +368,13 @@ button.file-caption {
   flex-shrink: 0;
   border: 0;
   border-radius: var(--radius-control);
-  background: #515157;
-  color: white;
+  background: var(--color-control-hover);
+  color: var(--color-muted);
 }
-.media-attachment-audio .button[data-variant="ghost"]:not(:disabled):hover {
-  background: #606067;
-  color: white;
+.media-attachment-audio
+  .button[data-variant="ghost"]:not(:disabled):is(:hover, [data-popup-open]) {
+  background: var(--color-divider);
+  color: var(--color-text);
 }
 .media-attachment-audio .media-attachment-duration {
   color: var(--color-muted);

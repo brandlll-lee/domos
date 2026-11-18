@@ -63,8 +63,14 @@ test("chat audio shows recorded peaks and outgoing images share the bubble edge"
       .poll(async () => (await client.get({ botId: bot.id })).busy)
       .toBe(false);
   }
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.setViewportSize({ width: 768, height: 900 });
   await page.goto(service.url);
-  await chooseAppearance(page, "深色");
+  await expect(page.getByRole("button", { name: "Bot详情" })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  await page.setViewportSize({ width: 1360, height: 900 });
   for (const text of ["单张图片", "多张图片"]) {
     const message = page.locator(".message.user").filter({ hasText: text });
     await expect(message.locator(".image-gallery img").last()).toBeVisible();
@@ -116,6 +122,29 @@ test("chat audio shows recorded peaks and outgoing images share the bubble edge"
     .toBeGreaterThan(2.9);
   expect(await heights()).toEqual(wave);
   await card.screenshot({ path: info.outputPath("chat-audio-seek.png") });
+  await slider.press("Home");
+  const more = card.getByRole("button", { name: "更多文件操作 语音.mp3" });
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-theme",
+      colorScheme,
+    );
+    for (const width of [390, 768, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await more.click({ trial: true });
+      await card.screenshot({
+        path: info.outputPath(`chat-audio-${colorScheme}-${width}.png`),
+      });
+    }
+    await more.click();
+    const details = page.getByRole("menuitem", { name: "查看详情" });
+    await expect(details).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(details).toBeHidden();
+    await more.evaluate((button) => button.blur());
+    await page.mouse.move(0, 0);
+  }
 });
 
 test("files preview documents, search old history and return to the source", async ({
