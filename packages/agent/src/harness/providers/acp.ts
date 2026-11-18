@@ -125,17 +125,18 @@ export function acpProvider(
       const costCounter = randomUUID();
       let nativeId = sessionId;
       let contextReading: Extract<EngineEvent, { type: "context" }> | undefined;
-      let messageId = "";
-      const replies = new Map<string, { text: string; completed: string }>();
+      let turnId = "";
+      let reply:
+        | { id: string; nativeId?: string; text: string; published?: string }
+        | undefined;
       const children = new Map<string, string>();
       const nativePlan = new Map<string, EnginePlan[number]>();
       let events = Promise.resolve();
-      const reply = async () => {
-        for (const [id, value] of replies) {
-          if (!value.text.trim() || value.text === value.completed) continue;
-          await emit({ type: "message", id, text: value.text });
-          value.completed = value.text;
-        }
+      const publishReply = async (receivedAt?: number) => {
+        if (!reply?.text.trim() || reply.text === reply.published) return;
+        const { id, text } = reply;
+        await emit({ type: "message", id, text, receivedAt });
+        reply.published = text;
       };
       const recordTool = acpTools(emit);
       let configOptions: SessionConfigOption[] = [];
@@ -206,7 +207,7 @@ export function acpProvider(
         approval: EngineApproval,
         validate?: (answer: EngineAnswer) => unknown,
       ) {
-        if (openCode) await reply();
+        if (openCode) await events.then(() => publishReply());
         const result = Promise.withResolvers<EngineAnswer>();
         pending.set(approval.id, { answer: result.resolve, validate });
         const timer = setTimeout(
@@ -476,23 +477,26 @@ export function acpProvider(
                 update.content.type === "text"
               ) {
                 if (update.sessionUpdate === "agent_message_chunk") {
-                  if (update.messageId && update.messageId !== messageId) {
-                    if (openCode) await reply();
-                    messageId = update.messageId;
+                  if (
+                    update.messageId &&
+                    update.messageId !== reply?.nativeId
+                  ) {
+                    await publishReply(receivedAt);
+                    reply = undefined;
                   }
-                  const value = replies.get(messageId) ?? {
+                  reply ??= {
+                    id: update.messageId ?? `${descriptor.id}:${++sequence}`,
+                    nativeId: update.messageId ?? undefined,
                     text: "",
-                    completed: "",
                   };
-                  value.text += update.content.text;
-                  replies.set(messageId, value);
+                  reply.text += update.content.text;
                 }
                 await emit({
                   type:
                     update.sessionUpdate === "agent_message_chunk"
                       ? "text"
                       : "thinking",
-                  id: update.messageId ?? messageId,
+                  id: update.messageId ?? reply?.id ?? turnId,
                   text: update.content.text,
                 });
               }
@@ -500,7 +504,11 @@ export function acpProvider(
                 update.sessionUpdate === "tool_call" ||
                 update.sessionUpdate === "tool_call_update"
               ) {
-                if (openCode) await reply();
+                if (update.sessionUpdate === "tool_call") {
+                  if (openCode || !reply?.nativeId)
+                    await publishReply(receivedAt);
+                  if (!reply?.nativeId) reply = undefined;
+                }
                 await recordTool(update, false, { receivedAt });
               }
             });
@@ -811,8 +819,8 @@ export function acpProvider(
             );
           active = true;
           nativeCost = undefined;
-          messageId = `${descriptor.id}:${++sequence}`;
-          replies.clear();
+          turnId = `${descriptor.id}:${++sequence}`;
+          reply = undefined;
           const baseline = openCode
             ? `time:${await process.checkpoint?.("opencode", id)}`
             : "";
@@ -845,7 +853,7 @@ export function acpProvider(
               await emit({
                 type: "usage",
                 usage: {
-                  id: messageId,
+                  id: turnId,
                   source: `${descriptor.id}.acp.prompt`,
                   provider: null,
                   model: config.model,
@@ -853,7 +861,7 @@ export function acpProvider(
                   output: outcome.usage?.outputTokens ?? null,
                   cacheRead: outcome.usage?.cachedReadTokens ?? null,
                   cacheWrite: outcome.usage?.cachedWriteTokens ?? null,
-                  costUsd: cost.read(messageId, nativeCost),
+                  costUsd: cost.read(turnId, nativeCost),
                   costBasis: "reported",
                   costCumulative: nativeCost,
                   costCounter,
@@ -861,7 +869,7 @@ export function acpProvider(
               });
             if (outcome.stopReason === "cancelled")
               throw new Error("工作已停止。");
-            await reply();
+            await publishReply();
             const updated =
               since(
                 await messages().catch(async () => {

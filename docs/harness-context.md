@@ -12,7 +12,7 @@ Antigravity uses the installed `agy acp`. Version 1.5.0 and later can replace a 
 
 Devin admits mid-turn prompts only when the native capability is present. User-message echoes confirm acceptance. The final response supplies one usage record for the run. Its supported approval modes are accept edits, smart, and bypass. A single approval cannot switch the session into bypass.
 
-Cursor uses the installed `cursor-agent acp` and its native login. It exposes native model and effort options, questions, plans, tasks and MCP configuration. Additional input waits for the next turn because its ACP driver has no confirmed steering receipt. Work retains incomplete native text until prompt completion confirms delivery.
+Cursor uses the installed `cursor-agent acp` and its native login. It exposes native model and effort options, questions, plans, tasks and MCP configuration. Additional input waits for the next turn because its ACP driver has no confirmed steering receipt.
 
 ACP context readings and USD cost counters retain their native values. Usage records calculate cumulative cost deltas without estimating missing amounts. Readable native compaction summaries enter the existing handoff path. Session loading resumes compatible contexts. Grok, Antigravity, Devin and Cursor cannot verify an interrupted turn's outcome through this adapter. Uncertain dispatch remains behind the recovery boundary and is not replayed.
 
@@ -117,7 +117,7 @@ Protocol sources: [Pi RPC](https://pi.dev/docs/latest/rpc), [Codex app-server](h
 
 ## Messages and questions
 
-Native assistant messages deliver updates and final results. Chat reveals each text message in full when its native completion is confirmed, while partial text remains in Work. Other native events do not complete an unfinished text message. Confirmed file deliveries, links, product notices and published interaction requests appear without waiting for the turn to end. Later failure or Stop retains delivered content. File deduplication preserves the first delivery position within the turn. Conditional routines retain their result commit gate.
+Native assistant messages deliver updates and final results. Chat reveals each text message in full when its native completion is confirmed, while partial text remains in Work. ACP closes the previous message when its native message ID changes. For text without an ID, a new tool call closes the preceding text segment. The prompt response closes the final message. Confirmed file deliveries, links, product notices and published interaction requests appear without waiting for the turn to end. Later failure or Stop retains delivered content. File deduplication preserves the first delivery position within the turn. Conditional routines retain their result commit gate.
 
 Pi questions use extension UI select/input requests. Codex uses native user-input and elicitation requests. Claude uses AskUserQuestion. OpenCode and ACP use native interaction permissions or form elicitation. These requests use the shared stored question card. Native batches become separate stored cards. Their answers return through the originating native protocol while the request remains live. Cancellation ends the native wait and retains the question. Late answers enter the original Bot session through Runtime.submit. An unavailable native question capability must remain unavailable.
 

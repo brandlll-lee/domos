@@ -12,7 +12,7 @@ import { EngineDoc } from "../src/harness/state.ts";
 import { engineLimits } from "../src/harness/types.ts";
 import { openAgent } from "../src/open-agent.ts";
 import { chatTranscript } from "../src/transcript.ts";
-import { ProtocolProcess } from "./fixtures/engine-process.ts";
+import { ProtocolProcess, type Request } from "./fixtures/engine-process.ts";
 import { featureProcess } from "./fixtures/feature-process.ts";
 import { runtimeFixture } from "./fixtures/runtime.ts";
 
@@ -148,6 +148,165 @@ test.each([
     expect(
       entries.items.find((entry) => entry.kind === "domos.engine-usage")?.data,
     ).toMatchObject({ input: 100, output: 20, costUsd: cost ?? null });
+  },
+);
+
+test.each([
+  { provider: "cursor", outcome: "complete" },
+  { provider: "cursor", outcome: "stop" },
+  { provider: "antigravity", outcome: "complete" },
+  { provider: "antigravity", outcome: "fail" },
+  { provider: "grok", outcome: "complete", messageId: "progress" },
+  { provider: "devin", outcome: "complete" },
+  { provider: "opencode", outcome: "complete", messageId: "progress" },
+  { provider: "acp", outcome: "complete", messageId: "progress" },
+] as const)(
+  "$provider publishes complete ACP messages once ($outcome)",
+  async (scenario) => {
+    const { provider, outcome } = scenario;
+    const messageId = "messageId" in scenario ? scenario.messageId : undefined;
+    const worker = new ProtocolProcess();
+    const prompt = Promise.withResolvers<Request>();
+    const cancelled = Promise.withResolvers<void>();
+    const modes = ["default", "accept-edits", "auto", "smart"];
+    worker.receive = (request) => {
+      if (request.method === "session/prompt") prompt.resolve(request);
+      else if (request.method === "session/cancel") cancelled.resolve();
+      else
+        worker.response(
+          request,
+          request.method === "initialize"
+            ? {
+                protocolVersion: 1,
+                agentCapabilities: { mcpCapabilities: { http: true } },
+              }
+            : request.method === "session/new"
+              ? {
+                  sessionId: "native",
+                  modes: {
+                    currentModeId: "default",
+                    availableModes: modes.map((id) => ({ id, name: id })),
+                  },
+                }
+              : {},
+        );
+    };
+    onTestFinished(() => worker.close());
+    const runtime = await runtimeFixture({
+      initialize: async () => {},
+      preflight: async () => {},
+      computerId: async () => "shared",
+      binding: async () => ({ directory: null, computerId: "shared" }),
+      tools: { catalog: async () => [], finish: () => {} },
+      process: async () =>
+        Object.assign(worker, {
+          terminate: async () => {
+            await cancelled.promise;
+            await worker.close();
+          },
+        }),
+    } as unknown as Computers);
+    const engines = runtime.engines;
+    if (!engines) throw new Error("Native engines required");
+    const botId = runtime.conversation.id;
+    await engines.configure(
+      botId,
+      {
+        config: {
+          provider,
+          model: null,
+          ...(provider === "acp" ? { command: "test-acp" } : {}),
+        },
+        revision: 0,
+        requestId: crypto.randomUUID(),
+      },
+      context,
+    );
+    const task = await engines.submit(
+      botId,
+      { text: "Check", requestId: crypto.randomUUID() },
+      context,
+    );
+    const request = await prompt.promise;
+    const update = (update: object) =>
+      worker.frame({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: { sessionId: "native", update },
+      });
+    const chunk = (text: string, messageId?: string) =>
+      update({
+        sessionUpdate: "agent_message_chunk",
+        messageId,
+        content: { type: "text", text },
+      });
+    const messages = async () => {
+      const view = await engines.view(botId, context);
+      const text = chatTranscript(view).flatMap((item) =>
+        item.kind === "message" && item.message.role === "assistant"
+          ? item.message.content.flatMap((part) =>
+              part.type === "text" ? [part.text] : [],
+            )
+          : [],
+      );
+      return { busy: view.busy, text };
+    };
+    chunk("I will ", messageId);
+    chunk("read the file.", messageId);
+    update({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "previous",
+      status: "completed",
+    });
+    await expect
+      .poll(async () =>
+        (await engines.view(botId, context)).messages.some(
+          (message) =>
+            message.toolCallId === "previous" && message.toolStatus === "done",
+        ),
+      )
+      .toBe(true);
+    expect(await messages()).toEqual({ busy: true, text: [] });
+    for (const toolCallId of ["read", "read-next"])
+      update({
+        sessionUpdate: "tool_call",
+        toolCallId,
+        title: "Read",
+        status: "in_progress",
+      });
+    if (messageId && provider !== "opencode") chunk("Found ", "final");
+    await expect
+      .poll(messages)
+      .toEqual({ busy: true, text: ["I will read the file."] });
+    if (outcome === "stop") {
+      await engines.stop(botId, context);
+      await cancelled.promise;
+    } else if (outcome === "fail")
+      worker.frame({
+        jsonrpc: "2.0",
+        id: request.id,
+        error: { code: -32603, message: "Native failure" },
+      });
+    else {
+      if (!messageId || provider === "opencode")
+        chunk("Found ", messageId ? "final" : undefined);
+      for (const toolCallId of ["read", "read-next"])
+        update({
+          sessionUpdate: "tool_call_update",
+          toolCallId,
+          status: "completed",
+        });
+      chunk("the result.", messageId ? "final" : undefined);
+      worker.response(request, { stopReason: "end_turn" });
+    }
+    await task.wait(context);
+    expect(await messages()).toEqual({
+      busy: false,
+      text:
+        outcome === "complete"
+          ? ["I will read the file.", "Found the result."]
+          : ["I will read the file."],
+    });
   },
 );
 

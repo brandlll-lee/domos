@@ -842,6 +842,16 @@ test("Codex handles approval, streams tools and recovers a completed native turn
         params: { plan: [{ step: "Read", status: "inProgress" }] },
       });
       process.frame({
+        method: "item/completed",
+        params: {
+          item: {
+            id: "progress",
+            type: "agentMessage",
+            text: "I will save it.",
+          },
+        },
+      });
+      process.frame({
         id: "approval",
         method: "item/commandExecution/requestApproval",
         params: { command: "write report.md" },
@@ -872,6 +882,9 @@ test("Codex handles approval, streams tools and recovers a completed native turn
     emit: async (event) => {
       await emit(event);
       if (event.type === "approval") {
+        expect(events.filter((event) => event.type === "message")).toEqual([
+          expect.objectContaining({ id: "progress", text: "I will save it." }),
+        ]);
         expect(event.approval.automatic).toBe(true);
         await session.answer(event.approval.id, { allow: true });
       }
@@ -888,6 +901,10 @@ test("Codex handles approval, streams tools and recovers a completed native turn
     }),
   );
   expect(approved).toBe(true);
+  expect(events.filter((event) => event.type === "message")).toEqual([
+    expect.objectContaining({ id: "progress", text: "I will save it." }),
+    expect.objectContaining({ id: "message", text: "Saved" }),
+  ]);
   expect(events).toContainEqual(
     expect.objectContaining({ type: "accepted", id: "turn-1" }),
   );
@@ -987,7 +1004,7 @@ test("Claude uses the work computer account and keeps its own session", async ()
       type: "stream_event",
       event: {
         type: "content_block_delta",
-        delta: { type: "text_delta", text: "Saved" },
+        delta: { type: "text_delta", text: "I will save it." },
       },
     });
     process.frame({
@@ -995,7 +1012,7 @@ test("Claude uses the work computer account and keeps its own session", async ()
       message: {
         id: "message",
         content: [
-          { type: "text", text: "Saved" },
+          { type: "text", text: "I will save it." },
           {
             type: "tool_use",
             id: "write",
@@ -1005,15 +1022,6 @@ test("Claude uses the work computer account and keeps its own session", async ()
         ],
       },
     });
-    process.frame({
-      type: "user",
-      message: {
-        content: [
-          { type: "tool_result", tool_use_id: "write", content: "Done" },
-        ],
-      },
-    });
-    process.frame({ type: "result", is_error: false });
   };
   const session = await claudeProvider.open({
     process,
@@ -1022,7 +1030,24 @@ test("Claude uses the work computer account and keeps its own session", async ()
     instructions: "Role",
     emit,
   });
-  await session.prompt("Save report");
+  const run = session.prompt("Save report");
+  await vi.waitFor(() =>
+    expect(events.filter((event) => event.type === "message")).toEqual([
+      expect.objectContaining({ id: "message", text: "I will save it." }),
+    ]),
+  );
+  process.frame({
+    type: "user",
+    message: {
+      content: [{ type: "tool_result", tool_use_id: "write", content: "Done" }],
+    },
+  });
+  process.frame({
+    type: "assistant",
+    message: { id: "final", content: [{ type: "text", text: "Saved" }] },
+  });
+  process.frame({ type: "result", is_error: false });
+  await run;
   expect(session.id).toBe("native-session");
   expect(process.spec?.env?.CLAUDE_CONFIG_DIR).toBeUndefined();
   expect(process.spec?.args).toContain("--resume");
@@ -1040,16 +1065,13 @@ test("Claude uses the work computer account and keeps its own session", async ()
     expect.objectContaining({
       type: "text",
       id: "message",
-      text: "Saved",
+      text: "I will save it.",
     }),
   );
-  expect(events).toContainEqual(
-    expect.objectContaining({
-      type: "message",
-      id: "message",
-      text: "Saved",
-    }),
-  );
+  expect(events.filter((event) => event.type === "message")).toEqual([
+    expect.objectContaining({ id: "message", text: "I will save it." }),
+    expect.objectContaining({ id: "final", text: "Saved" }),
+  ]);
 });
 
 test("Claude reports retries, resumes output and preserves connection errors", async () => {
@@ -1189,13 +1211,13 @@ test("OpenCode uses ACP model discovery, permissions and native session load", a
   });
   expect(await session.models()).toEqual([{ id: "test/model", name: "Test" }]);
   await session.prompt("Save report");
-  expect(events).toContainEqual(
-    expect.objectContaining({
-      type: "text",
-      id: "opencode:1",
-      text: "Saved",
-    }),
-  );
+  const chunk = events.find((event) => event.type === "text");
+  if (!chunk || !("id" in chunk))
+    throw new Error("Missing OpenCode text chunk");
+  expect(chunk).toMatchObject({ id: expect.any(String), text: "Saved" });
+  expect(events.filter((event) => event.type === "message")).toEqual([
+    expect.objectContaining({ id: chunk.id, text: "Saved" }),
+  ]);
   expect(
     process.requests.find((request) => request.id === "permission")?.result,
   ).toEqual({ outcome: { outcome: "selected", optionId: "allow" } });
