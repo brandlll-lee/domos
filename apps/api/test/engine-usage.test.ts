@@ -20,6 +20,7 @@ test("HTTP usage retains native attribution, deduplicates and survives reopening
   const directory = await mkdtemp(join(tmpdir(), "domos-usage-"));
   const models = createModels();
   models.setProvider(fauxProvider().provider);
+  let timestamp = 100;
   const computers = {
     initialize: async () => {},
     preflight: async () => {},
@@ -41,7 +42,7 @@ test("HTTP usage retains native attribution, deduplicates and survives reopening
         if (request.type === "prompt") {
           const message = {
             role: "assistant",
-            timestamp: 100,
+            timestamp: timestamp++,
             provider: "test-provider",
             model: "test-model",
             stopReason: "stop",
@@ -79,7 +80,7 @@ test("HTTP usage retains native attribution, deduplicates and survives reopening
         fetch: async (request, init) => app.fetch(new Request(request, init)),
       }),
     );
-    return { ...runtime, client };
+    return { ...runtime, client, app };
   };
   let runtime = await open();
   onTestFinished(async () => {
@@ -208,9 +209,21 @@ test("HTTP usage retains native attribution, deduplicates and survives reopening
     metric: "cost",
     limit: 5,
   });
+  expect(summary.missingUsage).toBe(1);
+  const csv = await runtime.app.request(
+    "http://localhost/usage/export.csv?query=needle-model",
+  );
+  expect(csv.status).toBe(200);
+  const exported = await csv.text();
+  expect(exported.split("\r\n")).toHaveLength(3);
+  expect(exported).toContain("needle-model");
+  expect(
+    (await runtime.app.request("http://localhost/usage/export.csv?botId=bad"))
+      .status,
+  ).toBe(400);
   expect(summary.totals).toMatchObject({
     records: 127,
-    tasks: 127,
+    tasks: 128,
     cost: 63,
     unpriced: 2,
   });

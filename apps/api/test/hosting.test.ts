@@ -129,6 +129,7 @@ test("hosting authenticates RPC, files, admin operations, origins and pairing", 
     ).status,
   ).toBe(200);
   expect((await request("/files/1/test")).status).toBe(401);
+  expect((await request("/usage/export.csv")).status).toBe(401);
   const pairing = sessions.pairing("client");
   const login = await request("/hosting/exchange", {
     method: "POST",
@@ -144,6 +145,10 @@ test("hosting authenticates RPC, files, admin operations, origins and pairing", 
   expect(login.headers.get("set-cookie")).toContain("Secure");
   expect(
     (await request("/rpc/bots/list", { headers: { Cookie: cookie } })).status,
+  ).toBe(200);
+  expect(
+    (await request("/usage/export.csv", { headers: { Cookie: cookie } }))
+      .status,
   ).toBe(200);
   expect(
     (await request("/hosting/devices", { headers: { Cookie: cookie } })).status,

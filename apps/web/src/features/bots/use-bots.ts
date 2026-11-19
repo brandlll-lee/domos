@@ -26,6 +26,7 @@ import {
   invalidateConnectionContext,
 } from "../settings/use-connection-context.ts";
 import { saveWorkspaceView, workspaceView } from "../shell/workspace-state.ts";
+import { invalidateQuota } from "../usage/quota-state.ts";
 import { receiveCharacter } from "./character-state.ts";
 import {
   clearBotWork,
@@ -44,6 +45,7 @@ export const selectBot = (bot: Bot) => {
 
 export function useBots() {
   const connection = useConnection();
+  const activity = useRef(new Map<number, boolean>());
   const bindings = useRef<Record<string, string>>({});
   const [items, setItems] = useState<BotPresence[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -109,6 +111,9 @@ export function useBots() {
             receiveCharacter(bot);
             receiveBotProfile(bot);
             receiveModelActivity(bot.id, bot.busy);
+            if (activity.current.get(bot.id) && !bot.busy)
+              invalidateQuota(bot.id);
+            activity.current.set(bot.id, bot.busy);
             const binding = next.bindings[String(bot.id)];
             const key = JSON.stringify([
               binding?.computerId ?? next.defaultComputerId,
@@ -121,6 +126,7 @@ export function useBots() {
               invalidateModelSettings(bot.id);
               invalidateImageSettings(bot.id);
               invalidateConnectionContext(bot.id);
+              invalidateQuota(bot.id);
             }
             bindings.current[bot.id] = key;
           }

@@ -1507,7 +1507,7 @@ test("Claude reads its native skill catalog", async () => {
 });
 
 test.each([null, "retained-session"])(
-  "Claude projects cumulative money as turn deltas (%s)",
+  "Claude retains query counters for durable accounting (%s)",
   async (sessionId) => {
     const { process, events, emit } = protocol();
     const session = await claudeProvider.open({
@@ -1545,13 +1545,9 @@ test.each([null, "retained-session"])(
     const usage = events
       .filter((event) => event.type === "usage")
       .map((event) => event.usage);
-    expect(usage.map((row) => row.costUsd)).toEqual([
-      sessionId ? null : 2,
-      3,
-      1,
-    ]);
+    expect(usage.map((row) => row.costUsd)).toEqual([null, null, null]);
     expect(usage.map((row) => row.costCumulative)).toEqual([2, 5, 1]);
-    expect(new Set(usage.map((row) => row.costCounter)).size).toBe(1);
+    expect(new Set(usage.map((row) => row.costCounter)).size).toBe(2);
   },
 );
 
@@ -1559,7 +1555,9 @@ test.each([undefined, 10])(
   "Codex retains native cache-write counts and their protocol default (%s)",
   async (cacheWriteInputTokens) => {
     const { process, events, emit } = protocol();
+    let turn = 0;
     process.receive = (request) => {
+      if (request.method === "turn/start") turn++;
       process.response(
         request,
         request.method === "thread/start"
@@ -1569,7 +1567,7 @@ test.each([undefined, 10])(
               model: "gpt-6.1-terra",
             }
           : request.method === "turn/start"
-            ? { turn: { id: "turn" } }
+            ? { turn: { id: `turn-${turn}` } }
             : {},
       );
       if (request.method === "turn/start") {
@@ -1577,15 +1575,15 @@ test.each([undefined, 10])(
           method: "thread/tokenUsage/updated",
           params: {
             threadId: "thread",
-            turnId: "turn",
+            turnId: `turn-${turn}`,
             tokenUsage: {
               total: {
-                inputTokens: 1000,
-                cachedInputTokens: 200,
-                outputTokens: 100,
+                inputTokens: 1000 * turn,
+                cachedInputTokens: 200 * turn,
+                outputTokens: 100 * turn,
                 ...(cacheWriteInputTokens === undefined
                   ? {}
-                  : { cacheWriteInputTokens }),
+                  : { cacheWriteInputTokens: cacheWriteInputTokens * turn }),
               },
             },
           },
@@ -1594,7 +1592,7 @@ test.each([undefined, 10])(
           method: "turn/completed",
           params: {
             threadId: "thread",
-            turn: { id: "turn", status: "completed" },
+            turn: { id: `turn-${turn}`, status: "completed" },
           },
         });
       }
@@ -1607,9 +1605,102 @@ test.each([undefined, 10])(
       emit,
     });
     await session.prompt("Work");
-    const event = events.find((event) => event.type === "usage");
+    await session.prompt("Next task");
+    const readings = events.filter((event) => event.type === "usage");
+    expect(readings.map((event) => event.usage.input)).toEqual([1000, 1000]);
+    expect(readings.map((event) => event.usage.cacheRead)).toEqual([200, 200]);
+    const event = readings[0];
     if (event?.type !== "usage") throw new Error("Usage required");
     expect(event.usage.cacheWrite).toBe(cacheWriteInputTokens ?? 0);
-    expect(priceUsage(event.usage, "codex").costBasis).toBe("estimated");
+    expect(priceUsage(event.usage, "codex").costBasis).toBe(
+      cacheWriteInputTokens ? undefined : "estimated",
+    );
   },
 );
+
+test("native quota reads preserve exhausted, signed-out, unsupported and missing states", async () => {
+  const { process } = protocol();
+  let mode = "ready";
+  process.receive = (request) => {
+    if (request.method === "account/read")
+      process.response(request, {
+        account:
+          mode === "signed-out"
+            ? null
+            : { type: mode === "api" ? "apiKey" : "chatgpt" },
+      });
+    else if (request.method === "account/rateLimits/read")
+      process.response(
+        request,
+        mode === "empty"
+          ? {}
+          : {
+              rateLimitsByLimitId: {},
+              rateLimits: {
+                primary: {
+                  usedPercent: 100,
+                  windowDurationMins: 300,
+                  resetsAt: 2000000000,
+                },
+                credits: { hasCredits: true, unlimited: false, balance: "0" },
+              },
+            },
+      );
+    else process.response(request, {});
+  };
+  const client = await openCodexClient(process, {
+    provider: "codex",
+    model: null,
+  });
+  expect(await client.quota()).toMatchObject({
+    status: "ready",
+    windows: [{ usedPercent: 100, resetsAt: 2000000000000 }],
+    credits: { balance: "0" },
+  });
+  for (const [input, status] of [
+    ["signed-out", "signed-out"],
+    ["api", "unsupported"],
+    ["empty", "empty"],
+  ] as const) {
+    mode = input;
+    expect((await client.quota()).status).toBe(status);
+  }
+  const claude = protocol();
+  claude.process.receive = (request) => {
+    if (request.type !== "control_request") return;
+    const frame = request as unknown as {
+      request_id: string;
+      request: { subtype: string };
+    };
+    claude.process.frame({
+      type: "control_response",
+      response: {
+        request_id: frame.request_id,
+        subtype: "success",
+        response:
+          frame.request.subtype === "get_usage"
+            ? {
+                rate_limits_available: true,
+                rate_limits: {
+                  five_hour: {
+                    utilization: 0,
+                    resets_at: "2030-01-01T00:00:00Z",
+                  },
+                },
+              }
+            : { models: [] },
+      },
+    });
+  };
+  const session = await claudeProvider.open({
+    process: claude.process,
+    config: { provider: "claude", model: null },
+    sessionId: null,
+    instructions: "",
+    emit: claude.emit,
+  });
+  expect(await session.quota?.()).toMatchObject({
+    status: "ready",
+    windows: [{ usedPercent: 0, resetsAt: 1893456000000 }],
+  });
+});

@@ -1,64 +1,94 @@
 import type { EngineUsage } from "./types.ts";
+import { usagePrices } from "./usage-prices.ts";
 
-const rates: Record<string, [number, number, number, number]> = {
-  "gpt-6-astra": [10, 1, 12.5, 50],
-  "gpt-6.1-sol": [2, 0.1, 2.5, 10],
-  "gpt-6.1-terra": [1, 0.05, 1.25, 5],
-  "gpt-6-luna": [0.1, 0.01, 0.125, 0.5],
-};
-
-export function priceUsage<T extends EngineUsage>(row: T, harness: string): T {
-  if (row.costUsd !== null)
+export function priceUsage<T extends EngineUsage>(
+  row: T,
+  harness: string,
+  timestamp = Date.now(),
+): T {
+  if (row.costUsd !== null) {
+    if (!Number.isFinite(row.costUsd) || row.costUsd < 0)
+      throw new RangeError("原生金额无效。");
     return {
       ...row,
       costBasis: row.costBasis ?? "reported",
       costSource: row.costSource ?? row.source,
     };
-  const price =
-    harness === "codex" && row.provider === "openai" && row.model
-      ? rates[row.model]
-      : undefined;
-  const { input, cacheRead: cached, cacheWrite: written, output } = row;
-  const counts = [input, cached, written, output];
+  }
+  const unknown = (pricingReason: string): T => ({
+    ...row,
+    pricingReason: row.pricingReason ?? pricingReason,
+  });
+  const provider =
+    row.provider ??
+    ({ claude: "anthropic", grok: "xai" } as Record<string, string>)[harness];
+  const model = row.model?.replace(/\[1m\]$/i, "");
+  const price = usagePrices.findLast(
+    (item) =>
+      item.provider === provider &&
+      item.model === model &&
+      timestamp >= Date.parse(item.from),
+  );
+  if (!price) return unknown("此日期的模型价格未核验。");
+  const { input, cacheRead, cacheWrite, output } = row;
   if (
-    !price ||
-    counts.some(
-      (value) => value === null || !Number.isFinite(value) || value < 0,
+    [input, cacheRead, cacheWrite, output].some(
+      (value) => value === null || !Number.isSafeInteger(value) || value < 0,
     )
   )
+    return unknown("原生 token 字段不完整或无效。");
+  if (
+    input === null ||
+    cacheRead === null ||
+    cacheWrite === null ||
+    output === null
+  )
     return row;
-  if (input === null || cached === null || written === null || output === null)
-    return row;
-  if (input < cached + written || input > 272_000) return row;
+  const prompt = input + cacheRead + cacheWrite;
+  const long = price.threshold !== undefined && prompt >= price.threshold;
+  if (
+    long &&
+    prompt !== row.requestInput &&
+    (row.smallestRequestInput === undefined ||
+      row.smallestRequestInput < (price.threshold ?? 0))
+  )
+    return unknown("多次请求的上下文档位无法确认。");
+  const rates = long ? price.long : price.rates;
+  if (!rates) return unknown("此上下文档位的价格未核验。");
+  let written = 0;
+  const writeRate =
+    row.cacheWriteMinutes === undefined
+      ? undefined
+      : price.writes?.[row.cacheWriteMinutes];
+  if (cacheWrite) {
+    if (row.cacheWrite1h !== undefined && provider === "anthropic") {
+      if (row.cacheWrite1h > cacheWrite || row.cacheWrite1h < 0)
+        return unknown("缓存期限计数无效。");
+      written =
+        (cacheWrite - row.cacheWrite1h) * rates[2] * 1.25 +
+        row.cacheWrite1h * rates[2] * 2;
+    } else if (writeRate !== undefined) {
+      const multiplier = long && price.rates[2] ? rates[2] / price.rates[2] : 1;
+      written = cacheWrite * multiplier * writeRate;
+    } else return unknown("缓存写入期限未提供。");
+  }
   return {
     ...row,
     costUsd:
-      ((input - cached - written) * price[0] +
-        cached * price[1] +
-        written * price[2] +
-        output * price[3]) /
+      (input * rates[0] + cacheRead * rates[1] + written + output * rates[3]) /
       1_000_000,
     costBasis: "estimated",
-    costSource: "https://developers.openai.com/api/docs/pricing",
-    costVersion: "2026-11-13 · standard API · short context · 30m cache",
+    costSource: price.source,
+    costVersion: JSON.stringify({
+      from: price.from,
+      verified: price.verified,
+      context: long ? "long" : "short",
+      rates,
+      cacheWriteMinutes: row.cacheWriteMinutes,
+      cacheWrite1h: row.cacheWrite1h,
+      unit: "USD/1M tokens",
+      tier: "standard API equivalent",
+    }),
+    pricingReason: undefined,
   };
-}
-
-export class CumulativeCost {
-  private previous: number | null;
-  private readonly values = new Map<string, number | null>();
-  constructor(resumed: boolean) {
-    this.previous = resumed ? null : 0;
-  }
-  read(id: string, value: number | undefined): number | null {
-    if (this.values.has(id)) return this.values.get(id) ?? null;
-    let delta: number | null = null;
-    if (value !== undefined && Number.isFinite(value) && value >= 0) {
-      if (this.previous !== null)
-        delta = value >= this.previous ? value - this.previous : value;
-      this.previous = value;
-    } else this.previous = null;
-    this.values.set(id, delta);
-    return delta;
-  }
 }

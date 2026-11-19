@@ -17,18 +17,23 @@ import {
   type Metric,
   metrics,
   money,
+  purposes,
   type UsagePeriod,
   type UsageRecord,
   type UsageSummary,
   usagePeriodRange,
 } from "./data.ts";
+import { QuotaPanel } from "./quota.tsx";
 import { Breakdown, Records } from "./tables.tsx";
 import "./style.css";
 
 const periods = [
   { value: "month", label: "本月" },
   { value: "lastMonth", label: "上月" },
+  { value: "days7", label: "近 7 天" },
   { value: "days30", label: "近 30 天" },
+  { value: "days90", label: "近 90 天" },
+  { value: "days365", label: "近一年" },
 ];
 const limits = [
   { value: "5", label: "Top 5" },
@@ -87,6 +92,7 @@ export function UsageSurface() {
   const [reload, setReload] = useState(0);
   const [metric, setMetric] = useState<Metric>("cost");
   const [dimension, setDimension] = useState<Dimension>("model");
+  const [quotaBot, setQuotaBot] = useState("");
   const [limit, setLimit] = useState("5");
   const range = useMemo(
     () => ({ ...usagePeriodRange(period), attempt: reload }),
@@ -181,7 +187,9 @@ export function UsageSurface() {
           : dimension === "harness"
             ? (harnesses.find((item) => item.value === group.key)?.label ??
               group.key)
-            : group.key,
+            : dimension === "purpose"
+              ? (purposes[group.key] ?? group.key)
+              : group.key,
     color:
       group.key === "other"
         ? "var(--color-chart-other)"
@@ -251,6 +259,24 @@ export function UsageSurface() {
             </Button>
           </div>
         </header>
+        {bots.length ? (
+          <div className="usage-section">
+            <ChoicePicker
+              label="额度所属 Bot"
+              size="small"
+              value={quotaBot || String(bots[0]?.id)}
+              onValueChange={setQuotaBot}
+              items={bots.map((bot) => ({
+                value: String(bot.id),
+                label: bot.name,
+              }))}
+            />
+            <QuotaPanel
+              key={quotaBot || String(bots[0]?.id)}
+              botId={Number(quotaBot || bots[0]?.id)}
+            />
+          </div>
+        ) : null}
         <fieldset className="usage-filters" aria-label="筛选用量">
           <Filter
             label="Harness"
@@ -301,7 +327,8 @@ export function UsageSurface() {
               重试
             </Button>
           </div>
-        ) : !summary && loading ? (
+        ) : null}
+        {!summary && loading ? (
           <div
             className="usage-loading"
             role="status"
@@ -317,14 +344,46 @@ export function UsageSurface() {
           </div>
         ) : totals ? (
           <>
+            <section className="usage-completeness" aria-label="数据完整性">
+              <p>
+                {summary?.missingUsage} 个任务未采到用量 · {totals.incomplete}{" "}
+                条字段不全 · {totals.unpriced} 条无法计价
+                {totals.historical
+                  ? ` · ${totals.historical} 条历史口径待核对`
+                  : ""}
+              </p>
+              <details>
+                <summary>各引擎采集情况</summary>
+                <ul>
+                  {harnesses.map((item) => {
+                    const row = summary?.coverage.find(
+                      (row) => row.harness === item.value,
+                    );
+                    return (
+                      <li key={item.value}>
+                        {item.label}：{row?.tasks ?? 0} 个任务，
+                        {row?.missingUsage ?? 0} 个未采到用量
+                      </li>
+                    );
+                  })}
+                </ul>
+              </details>
+            </section>
             <section className="usage-hero" aria-label="用量总览">
               <div className="usage-hero-main">
-                <span className="usage-hero-kicker">已知任务成本</span>
+                <span className="usage-hero-kicker">
+                  {metric === "tokens" ? "已知完整 Token" : "已知任务成本"}
+                </span>
                 <strong className="usage-hero-value">
-                  {money(totals.cost)}
+                  {metric === "tokens"
+                    ? totals.tokens === null
+                      ? "未知"
+                      : compactNumber(totals.tokens)
+                    : money(totals.cost)}
                 </strong>
                 <p className="usage-hero-meta">
-                  USD · {periods.find((item) => item.value === period)?.label} ·{" "}
+                  {metric === "tokens" ? "Token" : "USD"} ·{" "}
+                  {periods.find((item) => item.value === period)?.label} ·{" "}
                   {totals.tasks} 个任务 · {totals.records} 条记录 ·{" "}
                   {totals.unpriced} 条成本未提供
                 </p>
@@ -352,7 +411,7 @@ export function UsageSurface() {
             <dl className="usage-stats">
               <Stat label="任务数" value={compactNumber(totals.tasks)} />
               <Stat
-                label="输入用量"
+                label="未缓存输入"
                 value={
                   totals.input === null ? "—" : compactNumber(totals.input)
                 }
@@ -414,6 +473,13 @@ export function UsageSurface() {
                   />
                 </div>
               </header>
+              {dimension === "skill" ? (
+                <p className="usage-note">
+                  按任务中的 skill_read
+                  调用关联。同一任务可关联多个技能，分组不可相加，也不代表技能独立收费。
+                  {summary?.hasSkills ? "" : " 当前没有可确认的关联记录。"}
+                </p>
+              ) : null}
               <Breakdown
                 groups={groups}
                 metric={metric}
@@ -424,6 +490,21 @@ export function UsageSurface() {
             <section className="usage-section" aria-label="用量明细">
               <header className="usage-section-head">
                 <h2>全部记录</h2>
+                <Button
+                  size="small"
+                  variant="secondary"
+                  onClick={() => {
+                    const params = new URLSearchParams();
+                    for (const [key, value] of Object.entries(filter))
+                      if (value !== undefined) params.set(key, String(value));
+                    const link = document.createElement("a");
+                    link.href = `/usage/export.csv?${params}`;
+                    link.download = "domos-usage.csv";
+                    link.click();
+                  }}
+                >
+                  导出筛选记录
+                </Button>
                 {totals.records === 0 && (
                   <span role="status">此范围还没有用量记录。</span>
                 )}
@@ -452,6 +533,16 @@ export function UsageSurface() {
                 {totals.snapshots} 条会话累计
               </span>
             </footer>
+            <p className="usage-note">
+              采集起点：
+              {summary?.startedAt == null
+                ? "未知"
+                : new Date(summary.startedAt).toLocaleString()}{" "}
+              · 最新记录：
+              {summary?.updatedAt == null
+                ? "未知"
+                : new Date(summary.updatedAt).toLocaleString()}
+            </p>
             <p className="usage-note">
               UTC · USD。估算为标准 API
               等值，不代表订阅扣款。原生零值不代表免费。会话累计快照不计入任务总额。

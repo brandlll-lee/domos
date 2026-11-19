@@ -5,6 +5,7 @@ import type {
   EngineConfig,
   EngineControls,
   EngineProcess,
+  EngineQuota,
   EngineSkill,
 } from "../types.ts";
 
@@ -196,6 +197,105 @@ export async function openCodexClient(
     }
   };
   return {
+    async quota(): Promise<EngineQuota> {
+      const source = "codex.account/rateLimits/read";
+      const observedAt = Date.now();
+      const base = { source, observedAt, windows: [] };
+      const account = await rpc.request<{
+        account?: { type?: string };
+        requiresOpenaiAuth?: boolean;
+      }>("account/read", { refreshToken: false });
+      if (!account.account && account.requiresOpenaiAuth !== false)
+        return {
+          ...base,
+          status: "signed-out",
+          message: "请先在工作电脑登录 Codex。",
+        };
+      if (
+        account.account?.type === "apiKey" ||
+        (!account.account && account.requiresOpenaiAuth === false)
+      )
+        return {
+          ...base,
+          status: "unsupported",
+          message: "API 账号未提供订阅额度。",
+        };
+      const window = z
+        .object({
+          usedPercent: z.number().min(0).max(100),
+          windowDurationMins: z.number().nonnegative().nullish(),
+          resetsAt: z.number().nonnegative().nullish(),
+        })
+        .nullable()
+        .optional();
+      const limit = z.object({
+        limitName: z.string().nullish(),
+        primary: window,
+        secondary: window,
+        credits: z
+          .object({
+            hasCredits: z.boolean(),
+            unlimited: z.boolean(),
+            balance: z.string().nullish(),
+          })
+          .nullish(),
+      });
+      let result: unknown;
+      try {
+        result = await rpc.request("account/rateLimits/read");
+      } catch (error) {
+        if (error instanceof EngineRequestRejected && error.code === -32601)
+          return {
+            ...base,
+            status: "unsupported",
+            message: "此 Codex 版本不支持额度读取。",
+          };
+        throw error;
+      }
+      const parsed = z
+        .object({
+          rateLimits: limit.nullish(),
+          rateLimitsByLimitId: z.record(z.string(), limit.nullable()).nullish(),
+        })
+        .parse(result);
+      const entries =
+        parsed.rateLimitsByLimitId &&
+        Object.keys(parsed.rateLimitsByLimitId).length
+          ? Object.entries(parsed.rateLimitsByLimitId)
+          : parsed.rateLimits
+            ? [["codex", parsed.rateLimits] as const]
+            : [];
+      const windows: EngineQuota["windows"] = [];
+      for (const [id, value] of entries) {
+        if (!value) continue;
+        for (const key of ["primary", "secondary"] as const) {
+          const item = value[key];
+          if (!item) continue;
+          windows.push({
+            id: `${id}:${key}`,
+            name: `${value.limitName ?? id} · ${item.windowDurationMins ? `${item.windowDurationMins / 60} 小时` : key === "primary" ? "主要窗口" : "次要窗口"}`,
+            usedPercent: item.usedPercent,
+            durationMinutes: item.windowDurationMins ?? null,
+            resetsAt: item.resetsAt == null ? null : item.resetsAt * 1000,
+          });
+        }
+      }
+      const credits = parsed.rateLimits?.credits;
+      return {
+        ...base,
+        status: windows.length || credits ? "ready" : "empty",
+        windows,
+        ...(credits
+          ? {
+              credits: {
+                available: credits.hasCredits,
+                unlimited: credits.unlimited,
+                balance: credits.balance ?? null,
+              },
+            }
+          : {}),
+      };
+    },
     mcp,
     skills,
     rpc,

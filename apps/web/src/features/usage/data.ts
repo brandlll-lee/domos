@@ -6,12 +6,23 @@ export type UsageRecord = Awaited<
 export type UsageSummary = Awaited<
   ReturnType<typeof client.engines.usageSummary>
 >;
-export type Metric = "cost" | "tasks" | "input" | "output";
-export type Dimension = "model" | "provider" | "harness" | "bot";
-export type UsagePeriod = "month" | "lastMonth" | "days30";
+export type Metric = Parameters<
+  typeof client.engines.usageSummary
+>[0]["metric"];
+export type Dimension = Parameters<
+  typeof client.engines.usageSummary
+>[0]["dimension"];
+export type UsagePeriod =
+  | "month"
+  | "lastMonth"
+  | "days7"
+  | "days30"
+  | "days90"
+  | "days365";
 
 export const metrics = [
   { value: "cost", label: "任务成本", unit: "USD" },
+  { value: "tokens", label: "Token", unit: "tok" },
   { value: "tasks", label: "任务数", unit: "次" },
   { value: "input", label: "输入用量", unit: "tok" },
   { value: "output", label: "输出用量", unit: "tok" },
@@ -21,8 +32,20 @@ export const dimensions = [
   { value: "provider", label: "Provider" },
   { value: "harness", label: "Harness" },
   { value: "bot", label: "Bot" },
+  { value: "day", label: "日期" },
+  { value: "purpose", label: "任务用途" },
+  { value: "skill", label: "关联技能" },
 ] as const;
+export const purposes: Record<string, string> = {
+  private: "对话",
+  team: "团队",
+  delegation: "委派",
+  routine: "例程",
+  compact: "上下文压缩",
+  memory: "记忆审阅",
+};
 export const harnesses = [
+  { value: "acp", label: "自定义 ACP" },
   { value: "pi", label: "Pi" },
   { value: "codex", label: "Codex" },
   { value: "claude", label: "Claude Code" },
@@ -126,7 +149,9 @@ export function usagePeriodRange(
       to: day(new Date(Date.UTC(year, month, 0))),
     };
   return {
-    from: day(new Date(now.getTime() - 29 * 24 * 60 * 60_000)),
+    from: day(
+      new Date(now.getTime() - (Number(period.slice(4)) - 1) * 86_400_000),
+    ),
     to: day(now),
   };
 }

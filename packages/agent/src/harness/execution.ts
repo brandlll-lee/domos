@@ -88,6 +88,15 @@ type Active = {
   };
 };
 export class EngineExecution {
+  usageRevision = 0;
+
+  quota(botId: number) {
+    const live = this.idle.get(botId)?.live;
+    const session =
+      this.active.get(botId)?.session ??
+      (live?.closed ? undefined : live?.session);
+    return session?.quota?.();
+  }
   mcp?: McpConnections;
   readonly active = new Map<number, Active>();
   private readonly idle = new Map<
@@ -819,6 +828,19 @@ export class EngineExecution {
         approve: (approval) => approve(approval, active.controller.signal),
         emit: async (event) => {
           if (!receiving || active.controller.signal.aborted) return;
+          if (event.type === "usage") {
+            this.usageRevision++;
+            event = {
+              ...event,
+              usage: {
+                ...event.usage,
+                computerId: doc.computerId,
+                accountId: account,
+                observedAt:
+                  event.usage.observedAt ?? event.receivedAt ?? Date.now(),
+              },
+            };
+          }
           if (event.type === "approval_closed") {
             closedApprovals.add(event.id);
             this.computer.expire(runtime.conversationId, event.id);

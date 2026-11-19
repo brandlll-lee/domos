@@ -40,7 +40,7 @@ const config = z
   })
   .strict();
 
-const usageFilter = z.object({
+export const usageFilter = z.object({
   botId: z.number().int().nonnegative().optional(),
   harness: z.string().min(1).max(128).optional(),
   provider: z.string().max(256).optional(),
@@ -50,31 +50,33 @@ const usageFilter = z.object({
   query: z.string().trim().max(200).optional(),
 });
 
+export async function usageScope(
+  bots: Bots,
+  input: z.infer<typeof usageFilter>,
+  signal?: AbortSignal,
+) {
+  const scoped = signal ? withAbortSignal(signal, context) : context;
+  const available = await bots.list(scoped);
+  const query = input.query?.toLocaleLowerCase();
+  return {
+    botIds: available.map((bot) => bot.id),
+    context: scoped,
+    filter: {
+      ...input,
+      searchBots: query
+        ? available
+            .filter((bot) => bot.name.toLocaleLowerCase().includes(query))
+            .map((bot) => bot.id)
+        : [],
+    },
+  };
+}
+
 export function engineRouter(bots: Bots, runtime?: Runtime) {
   async function target(botId: number) {
     await botConversation(bots, botId);
     if (!runtime) throw new ORPCError("NOT_IMPLEMENTED");
     return runtime;
-  }
-  async function usageScope(
-    input: z.infer<typeof usageFilter>,
-    signal?: AbortSignal,
-  ) {
-    const scoped = signal ? withAbortSignal(signal, context) : context;
-    const available = await bots.list(scoped);
-    const query = input.query?.toLocaleLowerCase();
-    return {
-      botIds: available.map((bot) => bot.id),
-      context: scoped,
-      filter: {
-        ...input,
-        searchBots: query
-          ? available
-              .filter((bot) => bot.name.toLocaleLowerCase().includes(query))
-              .map((bot) => bot.id)
-          : [],
-      },
-    };
   }
   return {
     catalog: os.handler(() => engineCatalog()),
@@ -256,23 +258,42 @@ export function engineRouter(bots: Bots, runtime?: Runtime) {
         }),
       )
       .handler(async ({ input, signal }) => {
-        const scope = await usageScope(input, signal);
-        return runtime
-          ? runtime.usage(scope.botIds, scope.filter, scope.context)
-          : { items: [], total: 0, page: 1, pageSize: 50 };
+        const scope = await usageScope(bots, input, signal);
+        if (!runtime)
+          throw new ORPCError("NOT_FOUND", { message: "用量服务不可用。" });
+        return runtime.usage(scope.botIds, scope.filter, scope.context);
+      }),
+    quota: os
+      .input(botTarget.extend({ refresh: z.boolean().optional() }))
+      .handler(async ({ input, signal }) => {
+        const runtime = await target(input.botId);
+        return runtime.connections.quota(
+          input.botId,
+          (await runtime.profile(input.botId, context)).config,
+          signal ? withAbortSignal(signal, context) : context,
+          input.refresh,
+        );
       }),
     usageSummary: os
       .input(
         usageFilter.extend({
-          dimension: z.enum(["model", "provider", "harness", "bot"]),
-          metric: z.enum(["cost", "tasks", "input", "output"]),
+          dimension: z.enum([
+            "model",
+            "provider",
+            "harness",
+            "bot",
+            "day",
+            "purpose",
+            "skill",
+          ]),
+          metric: z.enum(["cost", "tokens", "tasks", "input", "output"]),
           limit: z.number().int().min(1).max(20),
         }),
       )
       .handler(async ({ input, signal }) => {
         if (!runtime)
           throw new ORPCError("NOT_FOUND", { message: "用量服务不可用。" });
-        const scope = await usageScope(input, signal);
+        const scope = await usageScope(bots, input, signal);
         return runtime.usageSummary(
           scope.botIds,
           scope.filter,

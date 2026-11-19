@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { Readable, Writable } from "node:stream";
 import {
   ClientSideConnection,
@@ -21,10 +20,10 @@ import {
   type EngineOpen,
   type EnginePlan,
   type EngineProvider,
+  type EngineQuota,
   type EngineSession,
   engineLimits,
 } from "../types.ts";
-import { CumulativeCost } from "../usage-cost.ts";
 import { answerAcpPermission } from "./acp-permission.ts";
 import { AcpPrompts } from "./acp-prompts.ts";
 import { acpTools } from "./acp-tools.ts";
@@ -51,6 +50,7 @@ export function acpProvider(
       rpc: ClientSideConnection,
       sessionId: string,
     ) => Promise<EngineMcpCatalog>;
+    sessionQuota?: (rpc: ClientSideConnection) => Promise<EngineQuota>;
     promptSteering?: (
       hello: InitializeResponse,
     ) => "replace" | "append" | undefined;
@@ -76,6 +76,20 @@ export function acpProvider(
       models: true,
       recovery: descriptor.id === "opencode",
     },
+    ...(descriptor.sessionQuota
+      ? {
+          async quota(input: Pick<EngineOpen, "process" | "config">) {
+            const session = await provider.open({
+              ...input,
+              sessionId: null,
+              instructions: "Domos account usage read.",
+              emit: async () => {},
+            });
+            if (!session.quota) throw new Error("原生引擎未提供额度接口。");
+            return session.quota();
+          },
+        }
+      : {}),
     ...(descriptor.id === "opencode"
       ? {
           async mcp({
@@ -114,6 +128,7 @@ export function acpProvider(
       const openCode = descriptor.id === "opencode";
       if (descriptor.id === "acp" && !config.command)
         throw new Error("请指定工作电脑上的 ACP 程序。");
+      const resumed = Boolean(sessionId);
       let sequence = 0;
       let active = false;
       let prompts: AcpPrompts | undefined;
@@ -121,8 +136,7 @@ export function acpProvider(
       let compactionSummary = "";
       let compactionBoundary = "";
       let nativeCost: number | undefined;
-      const cost = new CumulativeCost(Boolean(sessionId));
-      const costCounter = randomUUID();
+      let costBaseline: number | undefined;
       let nativeId = sessionId;
       let contextReading: Extract<EngineEvent, { type: "context" }> | undefined;
       let turnId = "";
@@ -340,7 +354,28 @@ export function acpProvider(
               if (update.sessionUpdate === "usage_update") {
                 if (update.cost?.currency === "USD") {
                   nativeCost = update.cost.amount;
-                  if (!active) cost.read(`baseline:${nativeCost}`, nativeCost);
+                  if (!active) costBaseline = nativeCost;
+                  else if (!openCode)
+                    await emit({
+                      type: "usage",
+                      usage: {
+                        id: turnId,
+                        source: `${descriptor.id}.acp.prompt`,
+                        provider: null,
+                        model: config.model,
+                        input: null,
+                        output: null,
+                        cacheRead: null,
+                        cacheWrite: null,
+                        costUsd: null,
+                        costCumulative: nativeCost,
+                        costCounter: `${descriptor.id}:${nativeId}`,
+                        costInitial: !resumed,
+                        costBaseline,
+                        nativeSessionId: nativeId ?? undefined,
+                        observedAt: receivedAt,
+                      },
+                    });
                 }
                 contextReading = {
                   type: "context",
@@ -707,10 +742,12 @@ export function acpProvider(
       const { since, record, recordMessage } = records;
       const configuredMcp = descriptor.mcp;
       const sessionMcp = descriptor.sessionMcp;
+      const sessionQuota = descriptor.sessionQuota;
       const messages = () =>
         openCode ? records.messages() : Promise.resolve([]);
       const session: EngineSession = {
         id,
+        ...(sessionQuota ? { quota: () => sessionQuota(rpc) } : {}),
         ...(openCode
           ? {
               mcp: (signal?: AbortSignal) =>
@@ -861,10 +898,14 @@ export function acpProvider(
                   output: outcome.usage?.outputTokens ?? null,
                   cacheRead: outcome.usage?.cachedReadTokens ?? null,
                   cacheWrite: outcome.usage?.cachedWriteTokens ?? null,
-                  costUsd: cost.read(turnId, nativeCost),
+                  costUsd: null,
                   costBasis: "reported",
                   costCumulative: nativeCost,
-                  costCounter,
+                  costCounter: `${descriptor.id}:${id}`,
+                  costInitial: !resumed,
+                  costBaseline,
+                  nativeSessionId: id,
+                  observedAt: Date.now(),
                 },
               });
             if (outcome.stopReason === "cancelled")

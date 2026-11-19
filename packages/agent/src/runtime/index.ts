@@ -205,6 +205,10 @@ export class Runtime {
     return this.usageReader.read(botIds, filter, context);
   }
 
+  usageExport(botIds: number[], filter: UsageFilter, context: Context) {
+    return this.usageReader.export(botIds, filter, context);
+  }
+
   usageSummary(
     botIds: number[],
     filter: UsageFilter,

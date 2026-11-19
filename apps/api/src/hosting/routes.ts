@@ -270,6 +270,7 @@ export function hostingApp(options: {
   app.route("/rpc", protectedApp);
   app.get("/mcp/oauth/callback", (c) => options.forward(c.req.raw));
   app.route("/files", protectedApp);
+  app.route("/usage", protectedApp);
   app.use(
     "/*",
     async (c, next) => {

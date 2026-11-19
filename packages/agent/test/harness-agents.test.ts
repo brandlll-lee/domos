@@ -378,10 +378,8 @@ test("ACP retains context readings, cumulative native costs and readable compact
   await next;
   const costs = events
     .filter((event) => event.type === "usage")
-    .map((event) => event.usage.costUsd);
-  expect(costs).toHaveLength(2);
-  expect(costs[0]).toBeCloseTo(0.3);
-  expect(costs[1]).toBeCloseTo(0.2);
+    .map((event) => event.usage.costCumulative);
+  expect(costs).toEqual([0.3, 0.3, 0.5, 0.5]);
 });
 
 test.each([-32601, -32602, -32603])(

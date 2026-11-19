@@ -9,6 +9,48 @@ export const grokProvider = acpProvider({
   command: "grok",
   package: "",
   login: ["login", "--device-auth"],
+  async sessionQuota(rpc) {
+    const source = "grok._x.ai/billing";
+    const { config } = z
+      .object({
+        config: z
+          .object({
+            creditUsagePercent: z.number().min(0).max(100).optional(),
+            currentPeriod: z
+              .object({
+                start: z.iso.datetime({ offset: true }),
+                end: z.iso.datetime({ offset: true }),
+              })
+              .optional(),
+          })
+          .optional(),
+      })
+      .parse(await rpc.extMethod("_x.ai/billing", {}));
+    const windows =
+      config?.creditUsagePercent === undefined
+        ? []
+        : [
+            {
+              id: "credits",
+              name: "积分周期",
+              usedPercent: config.creditUsagePercent,
+              durationMinutes: config.currentPeriod
+                ? (Date.parse(config.currentPeriod.end) -
+                    Date.parse(config.currentPeriod.start)) /
+                  60000
+                : null,
+              resetsAt: config.currentPeriod
+                ? Date.parse(config.currentPeriod.end)
+                : null,
+            },
+          ];
+    return {
+      source,
+      observedAt: Date.now(),
+      status: windows.length ? "ready" : "empty",
+      windows,
+    };
+  },
   async sessionMcp(rpc, sessionId) {
     const result = z
       .object({

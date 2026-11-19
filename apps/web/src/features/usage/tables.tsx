@@ -9,6 +9,7 @@ import {
   type Metric,
   metricUnit,
   money,
+  purposes,
   recordTime,
   type UsageGroup,
   type UsageRecord,
@@ -114,7 +115,7 @@ export function Records({
                 <th scope="col">Harness</th>
                 <th scope="col">模型</th>
                 <th scope="col" className="usage-cell-value">
-                  输入
+                  未缓存输入
                 </th>
                 <th scope="col" className="usage-cell-value">
                   输出
@@ -125,6 +126,7 @@ export function Records({
                 <th scope="col" className="usage-cell-value">
                   成本
                 </th>
+                <th scope="col">记录依据</th>
               </tr>
             </thead>
             <tbody>
@@ -168,11 +170,38 @@ export function Records({
                       {row.costScope === "session"
                         ? "会话累计"
                         : row.costUsd === null
-                          ? "未提供"
+                          ? (row.pricingReason ?? "缺少原生金额或价格依据")
                           : row.costBasis === "estimated"
                             ? "价格估算"
                             : "引擎报告"}
                     </small>
+                  </td>
+                  <td>
+                    <details className="usage-evidence">
+                      <summary>
+                        {purposes[row.purpose ?? ""] ?? "任务"} · 来源
+                      </summary>
+                      <dl>
+                        <dt>任务</dt>
+                        <dd>{row.taskId}</dd>
+                        <dt>会话</dt>
+                        <dd>{row.sessionId ?? "未返回"}</dd>
+                        <dt>采集来源</dt>
+                        <dd>{row.source}</dd>
+                        <dt>计价依据</dt>
+                        <dd>
+                          {row.costSource ?? row.pricingReason ?? "未提供"}
+                        </dd>
+                        <dt>价格版本</dt>
+                        <dd>{row.costVersion ?? "未提供"}</dd>
+                        {row.nativeTokens ? (
+                          <>
+                            <dt>原生计数</dt>
+                            <dd>{JSON.stringify(row.nativeTokens)}</dd>
+                          </>
+                        ) : null}
+                      </dl>
+                    </details>
                   </td>
                 </tr>
               ))}

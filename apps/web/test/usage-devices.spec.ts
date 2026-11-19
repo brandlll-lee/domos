@@ -26,6 +26,27 @@ async function usageRoutes(
   read: () => UsageFixture[],
   gate: () => Promise<void> = async () => {},
 ) {
+  await page.route("**/rpc/engines/quota", (route) =>
+    route.fulfill({
+      json: {
+        json: {
+          status: "ready",
+          source: "native-test",
+          observedAt: Date.now(),
+          windows: [
+            {
+              id: "weekly",
+              name: "每周",
+              usedPercent: 100,
+              durationMinutes: 10080,
+              resetsAt: Date.now() + 3600000,
+            },
+          ],
+          credits: { available: true, unlimited: false, balance: "0" },
+        },
+      },
+    }),
+  );
   await page.route("**/rpc/engines/usage*", async (route) => {
     await gate();
     const input = route.request().postDataJSON()?.json ?? {};
@@ -90,7 +111,39 @@ async function usageRoutes(
     await route.fulfill({
       json: {
         json: {
+          missingUsage: 0,
+          coverage: [...new Set(rows.map((row) => row.harness))].map(
+            (harness) => ({
+              harness,
+              tasks: rows.filter((row) => row.harness === harness).length,
+              missingUsage: 0,
+            }),
+          ),
+          startedAt: rows[0]?.timestamp ?? null,
+          updatedAt: rows.at(-1)?.timestamp ?? null,
+          hasSkills: false,
           totals: {
+            incomplete: rows.filter((row) =>
+              [row.input, row.output, row.cacheRead, row.cacheWrite].some(
+                (value) => value === null,
+              ),
+            ).length,
+            historical: 0,
+            tokens: rows
+              .filter((row) =>
+                [row.input, row.output, row.cacheRead, row.cacheWrite].every(
+                  (value) => value !== null,
+                ),
+              )
+              .reduce(
+                (total, row) =>
+                  total +
+                  Number(row.input) +
+                  Number(row.output) +
+                  Number(row.cacheRead) +
+                  Number(row.cacheWrite),
+                0,
+              ),
             records: rows.length,
             tasks: new Set(rows.map((row) => row.taskId)).size,
             unpriced: rows.filter(
@@ -170,6 +223,8 @@ test("usage reports native task costs and preserves session snapshots across the
   await page.getByRole("menuitem", { name: "用量", exact: true }).click();
   const usage = page.getByRole("main", { name: "用量", exact: true });
   await expect(usage.getByLabel("正在读取用量")).toBeVisible();
+  await expect(usage.getByLabel("每周剩余额度")).toHaveAttribute("value", "0");
+  await expect(usage.getByLabel("订阅额度")).toContainText("剩余 0.0%");
   mode = "data";
   loaded.resolve();
   await expect(usage.locator(".usage-hero-value")).toContainText("$2.50");
@@ -228,6 +283,27 @@ test("usage reports native task costs and preserves session snapshots across the
     usage.getByText("此范围还没有用量记录。", { exact: true }),
   ).toBeVisible();
   mode = "error";
+  await page.route("**/rpc/engines/quota", (route) =>
+    route.fulfill({
+      json: {
+        json: {
+          status: "ready",
+          source: "native-test",
+          observedAt: Date.now(),
+          windows: [
+            {
+              id: "weekly",
+              name: "每周",
+              usedPercent: 100,
+              durationMinutes: 10080,
+              resetsAt: Date.now() + 3600000,
+            },
+          ],
+          credits: { available: true, unlimited: false, balance: "0" },
+        },
+      },
+    }),
+  );
   await page.route("**/rpc/engines/usage*", (route) => route.abort());
   await usage.getByRole("button", { name: "刷新用量", exact: true }).click();
   await expect(usage.getByRole("alert")).toBeVisible();

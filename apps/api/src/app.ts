@@ -20,6 +20,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { botConversation } from "./conversation.ts";
+import { usageFilter, usageScope } from "./engines.ts";
 import { createRouter } from "./router.ts";
 
 export function createApp(
@@ -56,6 +57,50 @@ export function createApp(
     });
     if (matched) return c.newResponse(response.body, response);
     await next();
+  });
+  app.get("/usage/export.csv", async (c) => {
+    if (!engines) return c.text("用量服务不可用。", 404);
+    const raw = c.req.query();
+    const input = usageFilter.safeParse({
+      ...raw,
+      ...Object.fromEntries(
+        ["botId", "from", "to"]
+          .filter((key) => raw[key] !== undefined)
+          .map((key) => [key, Number(raw[key])]),
+      ),
+    });
+    if (!input.success) return c.text("用量筛选无效。", 400);
+    const scope = await usageScope(bots, input.data, c.req.raw.signal);
+    const chunks = engines.usageExport(
+      scope.botIds,
+      scope.filter,
+      scope.context,
+    );
+    const first = await chunks.next();
+    const encoder = new TextEncoder();
+    return new Response(
+      new ReadableStream({
+        start(controller) {
+          if (!first.done) controller.enqueue(encoder.encode(first.value));
+        },
+        async pull(controller) {
+          const next = await chunks.next();
+          if (next.done) controller.close();
+          else controller.enqueue(encoder.encode(next.value));
+        },
+        async cancel() {
+          await chunks.return();
+        },
+      }),
+      {
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": 'attachment; filename="domos-usage.csv"',
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
+        },
+      },
+    );
   });
   app.get("/health", (c) => c.json({ ok: true }));
   app.get("/mcp/oauth/callback", async (c) => {

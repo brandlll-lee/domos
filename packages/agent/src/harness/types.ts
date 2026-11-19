@@ -91,22 +91,55 @@ export type EngineCompaction = {
   afterTokens: number | null;
   error: string | null;
 };
-export type EngineUsage = {
-  id: string;
-  source: string;
-  provider: string | null;
-  model: string | null;
+export type EngineTokens = {
   input: number | null;
   output: number | null;
   cacheRead: number | null;
   cacheWrite: number | null;
+};
+export type EngineQuota = {
+  status: "ready" | "unsupported" | "signed-out" | "empty" | "failed";
+  observedAt: number;
+  source: string;
+  message?: string;
+  windows: {
+    id: string;
+    name: string;
+    usedPercent: number;
+    durationMinutes: number | null;
+    resetsAt: number | null;
+  }[];
+  credits?: { available: boolean; unlimited: boolean; balance: string | null };
+};
+export type EngineUsage = EngineTokens & {
+  id: string;
+  source: string;
+  provider: string | null;
+  model: string | null;
   costUsd: number | null;
+  tokenBasis?: "uncached";
+  nativeTokens?: EngineTokens;
+  tokensCumulative?: EngineTokens;
+  tokensBaseline?: EngineTokens;
+  counterId?: string;
+  nativeSessionId?: string;
+  observedAt?: number;
+  requestInput?: number;
+  smallestRequestInput?: number;
+  cacheWrite1h?: number;
+  cacheWriteMinutes?: number;
+  pricingReason?: string;
+  historical?: boolean;
+  computerId?: string | null;
+  accountId?: string;
   costScope?: "session";
   costBasis?: "reported" | "estimated";
   costSource?: string;
   costVersion?: string;
   costCumulative?: number;
   costCounter?: string;
+  costInitial?: boolean;
+  costBaseline?: number;
 };
 export type EngineRuntimeState = {
   processing?: boolean;
@@ -244,6 +277,7 @@ export type EngineEvent = {
     }
   | { type: "approval_closed"; id: string }
   | { type: "usage"; usage: EngineUsage }
+  | { type: "quota_changed" }
   | { type: "runtime"; state: EngineRuntimeState }
   | { type: "session"; id: string }
   | { type: "accepted"; id?: string; ready?: boolean }
@@ -333,6 +367,7 @@ export interface EngineSession {
   mcp?(signal?: AbortSignal): Promise<EngineMcpCatalog>;
   compact?(): Promise<void>;
   authenticated?(): Promise<boolean>;
+  quota?(): Promise<EngineQuota>;
   vision?(): Promise<boolean | null>;
   prompt(text: string, images?: EngineImage[]): Promise<void>;
   steer?(
@@ -369,6 +404,7 @@ export interface EngineProvider {
     recovery: boolean;
   };
   open(input: EngineOpen): Promise<EngineSession>;
+  quota?(input: Pick<EngineOpen, "process" | "config">): Promise<EngineQuota>;
   mcp?(
     input: Pick<EngineOpen, "process" | "config">,
   ): Promise<EngineMcpCatalog>;

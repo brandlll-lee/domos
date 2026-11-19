@@ -9,6 +9,7 @@ import type {
   EngineProvider,
   EngineSession,
 } from "../types.ts";
+import { uncachedTokens } from "../usage-tokens.ts";
 import { codexAnswer, codexApproval } from "./codex-approval.ts";
 import { openCodexClient } from "./codex-client.ts";
 import { readCodexTurn } from "./codex-history.ts";
@@ -26,6 +27,9 @@ export const codexProvider: EngineProvider = {
   package: "@openai/codex@0.163.0",
   login: ["login", "--device-auth"],
   capabilities: { approvals: true, models: true, recovery: true },
+  async quota({ process, config }) {
+    return (await openCodexClient(process, config)).quota();
+  },
   async mcp({ process, config }) {
     const result = mcpEntries(
       z.object({
@@ -81,10 +85,19 @@ export const codexProvider: EngineProvider = {
     let compacting = false;
     let compactBoundary = false;
     let metering = false;
+    let smallestRequestInput: number | undefined;
     let starting: Promise<void> | undefined;
     let baseline: NonNullable<
       NonNullable<CodexFrame["params"]>["tokenUsage"]
     >["total"];
+    let latest = baseline;
+    const tokens = (value: typeof baseline) =>
+      uncachedTokens({
+        input: value?.inputTokens ?? null,
+        output: value?.outputTokens ?? null,
+        cacheRead: value?.cachedInputTokens ?? null,
+        cacheWrite: value?.cacheWriteInputTokens ?? 0,
+      });
     const requests = new Map<string, CodexFrame>();
     const children = new Map<string, string>();
     rpc.on("frame", (frame: CodexFrame) => {
@@ -93,6 +106,10 @@ export const codexProvider: EngineProvider = {
         emit({ ...event, receivedAt });
       events = events
         .then(async () => {
+          if (frame.method === "account/rateLimits/updated") {
+            await forward({ type: "quota_changed" });
+            return;
+          }
           const params = frame.params ?? {};
           const parentId = children.get(params.threadId ?? "");
           const emit = (event: import("../types.ts").EngineEvent) =>
@@ -218,6 +235,12 @@ export const codexProvider: EngineProvider = {
               baseline = usage.total;
               return;
             }
+            latest = usage.total;
+            if (usage.last?.inputTokens !== undefined)
+              smallestRequestInput = Math.min(
+                smallestRequestInput ?? Infinity,
+                usage.last.inputTokens,
+              );
             if (usage.total)
               await emit({
                 type: "usage",
@@ -245,6 +268,23 @@ export const codexProvider: EngineProvider = {
                     (usage.total.cacheWriteInputTokens ?? 0) -
                     (baseline?.cacheWriteInputTokens ?? 0),
                   costUsd: null,
+                  counterId: `codex:${nativeId}`,
+                  nativeSessionId: nativeId,
+                  nativeTokens: {
+                    input: usage.total.inputTokens ?? null,
+                    output: usage.total.outputTokens ?? null,
+                    cacheRead: usage.total.cachedInputTokens ?? null,
+                    cacheWrite: usage.total.cacheWriteInputTokens ?? 0,
+                  },
+                  tokensCumulative: tokens(usage.total),
+                  tokensBaseline: baseline
+                    ? tokens(baseline)
+                    : sessionId
+                      ? undefined
+                      : { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                  observedAt: receivedAt,
+                  requestInput: usage.last?.inputTokens,
+                  smallestRequestInput,
                 },
               });
             await emit({
@@ -270,6 +310,9 @@ export const codexProvider: EngineProvider = {
             });
           }
           if (frame.method === "turn/completed") {
+            smallestRequestInput = undefined;
+            baseline = latest;
+            metering = false;
             if (compacting && params.turn?.status !== "completed")
               await emit({
                 type: "compaction",
@@ -366,6 +409,7 @@ export const codexProvider: EngineProvider = {
         );
       },
       models: client.models,
+      quota: client.quota,
       vision,
       authenticated: client.authenticated,
       async prompt(text, images = []) {

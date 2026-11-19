@@ -4,6 +4,7 @@ import { client } from "../../client.ts";
 import { invalidateNativeConnections } from "../apps/connection-state.ts";
 import { invalidateBotWork } from "../bots/details/use-bot-work.ts";
 import { createReadState } from "../read-state.ts";
+import { invalidateQuota } from "../usage/quota-state.ts";
 
 type Profile = Awaited<ReturnType<typeof client.engines.get>>;
 type Connection = Awaited<ReturnType<typeof client.engines.inspect>>;
@@ -72,6 +73,7 @@ function createSettings(botId: number) {
     ) {
       invalidateNativeConnections(botId);
       invalidateBotWork(botId);
+      invalidateQuota(botId);
     }
     if (busy !== undefined) profile = { ...profile, busy };
     confirmed = profile;

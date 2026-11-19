@@ -3,12 +3,18 @@ import type { Context } from "@earendil-works/chord/context";
 import { readCliAccount } from "./cli-account.ts";
 import { readControls } from "./controls.ts";
 import type { EngineExecution } from "./execution.ts";
+import { EngineRequestRejected } from "./json-lines.ts";
 import { type EngineLoginInput, EngineLogins } from "./logins.ts";
 import type { EngineModelCatalog } from "./model-catalog.ts";
 import { openOpenCodeAccount } from "./opencode-account.ts";
 import { openCodexClient } from "./providers/codex-client.ts";
 import { engineProvider, providers } from "./providers/index.ts";
-import { type EngineConfig, type EngineModel, engineLimits } from "./types.ts";
+import {
+  type EngineConfig,
+  type EngineModel,
+  type EngineQuota,
+  engineLimits,
+} from "./types.ts";
 
 export class EngineConnections {
   private readonly execution: EngineExecution;
@@ -16,6 +22,15 @@ export class EngineConnections {
   private readonly operations = new Set<number>();
   private readonly installations = new Set<string>();
   private readonly logins: EngineLogins;
+  private readonly quotas = new Map<
+    string,
+    {
+      value?: EngineQuota;
+      pending?: Promise<EngineQuota>;
+      expires: number;
+      revision: number;
+    }
+  >();
   private readonly catalogs = new Map<
     string,
     {
@@ -36,6 +51,110 @@ export class EngineConnections {
   }
   busy(botId: number) {
     return this.operations.has(botId) || this.logins.busy(botId);
+  }
+
+  async quota(
+    botId: number,
+    config: EngineConfig,
+    context: Context,
+    refresh = false,
+  ) {
+    const provider = engineProvider(config.provider);
+    const computerId = await this.execution.computers.computerId(
+      botId,
+      context,
+    );
+    const base: EngineQuota = {
+      status: "unsupported",
+      source: provider.id,
+      observedAt: Date.now(),
+      windows: [],
+      message: "此引擎的原生协议尚未提供可读取的订阅额度。",
+    };
+    const readQuota = provider.quota;
+    if (!readQuota) return { ...base, computerId, accountId: null };
+    const worker = await this.execution.computers.process(
+      botId,
+      [],
+      async () => {
+        throw new Error("额度读取不调用工具。");
+      },
+      context,
+    );
+    try {
+      const command = config.command || provider.command;
+      const path = worker.resolve ? await worker.resolve(command) : command;
+      if (!path)
+        return {
+          ...base,
+          status: "failed" as const,
+          message: "工作电脑尚未安装此引擎。",
+          computerId,
+          accountId: null,
+        };
+      const accountId = await worker.account?.(provider.id);
+      if (accountId === undefined)
+        throw new Error("工作电脑尚未提供账号隔离标识。");
+      const key = JSON.stringify([
+        computerId,
+        provider.id,
+        path,
+        config.args,
+        accountId,
+      ]);
+      let cached = this.quotas.get(key);
+      if (cached?.pending)
+        return { ...(await cached.pending), computerId, accountId };
+      if (
+        cached?.value &&
+        !refresh &&
+        cached.expires > Date.now() &&
+        cached.revision === this.execution.usageRevision
+      )
+        return { ...cached.value, computerId, accountId };
+      cached ??= { expires: 0, revision: 0 };
+      this.quotas.set(key, cached);
+      const entry = cached;
+      entry.revision = this.execution.usageRevision;
+      entry.pending = (async (): Promise<EngineQuota> => {
+        try {
+          const value = await (this.execution.quota(botId) ??
+            readQuota({
+              process: worker,
+              config: { ...config, command: path },
+            }));
+          entry.value = value;
+          entry.expires = Math.min(
+            Date.now() + 240_000,
+            ...value.windows.flatMap((window) =>
+              window.resetsAt && window.resetsAt > value.observedAt
+                ? [window.resetsAt]
+                : [],
+            ),
+          );
+          return value;
+        } catch (error) {
+          const code =
+            error instanceof RequestError ||
+            error instanceof EngineRequestRejected
+              ? error.code
+              : null;
+          const value: EngineQuota = {
+            ...(entry.value ?? base),
+            status: code === -32601 ? "unsupported" : "failed",
+            message: error instanceof Error ? error.message : "额度读取失败。",
+          };
+          entry.value = value;
+          entry.expires = Date.now() + 30_000;
+          return value;
+        } finally {
+          entry.pending = undefined;
+        }
+      })();
+      return { ...(await entry.pending), computerId, accountId };
+    } finally {
+      await worker.close();
+    }
   }
 
   async snapshot(botId: number, config: EngineConfig, context: Context) {
@@ -429,6 +548,7 @@ export class EngineConnections {
       botId,
       context,
     );
+    this.quotas.clear();
     await this.modelCatalog?.invalidate(computerId, config, context);
     for (const [key, entry] of this.catalogs)
       if (entry.computerId === computerId && entry.provider === config.provider)

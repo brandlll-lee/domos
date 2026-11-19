@@ -147,7 +147,12 @@ test.each([
     );
     expect(
       entries.items.find((entry) => entry.kind === "domos.engine-usage")?.data,
-    ).toMatchObject({ input: 100, output: 20, costUsd: cost ?? null });
+    ).toMatchObject({
+      input: null,
+      output: 20,
+      costUsd: cost ?? null,
+      nativeTokens: { input: 100, cacheRead: null, cacheWrite: null },
+    });
   },
 );
 
@@ -251,6 +256,13 @@ test.each([
       );
       return { busy: view.busy, text };
     };
+    if (provider !== "opencode")
+      update({
+        sessionUpdate: "usage_update",
+        used: 100,
+        size: 10000,
+        cost: { currency: "USD", amount: 1.25 },
+      });
     chunk("I will ", messageId);
     chunk("read the file.", messageId);
     update({
@@ -300,6 +312,11 @@ test.each([
       worker.response(request, { stopReason: "end_turn" });
     }
     await task.wait(context);
+    if (provider !== "opencode") {
+      const usage = await engines.usage([botId], {}, context);
+      expect(usage.items).toHaveLength(1);
+      expect(usage.items[0]?.costUsd).toBe(1.25);
+    }
     expect(await messages()).toEqual({
       busy: false,
       text:

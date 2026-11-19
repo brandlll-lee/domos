@@ -9,9 +9,11 @@ import {
   type EngineImage,
   type EngineOpen,
   type EngineProvider,
+  type EngineQuota,
+  type EngineTokens,
   engineLimits,
 } from "../types.ts";
-import { CumulativeCost } from "../usage-cost.ts";
+import { tokenFields } from "../usage-tokens.ts";
 import { textContent } from "./pi.ts";
 
 type ClaudePart = {
@@ -100,6 +102,16 @@ export const claudeProvider: EngineProvider = {
     approvals: true,
     models: true,
     recovery: true,
+  },
+  async quota(input) {
+    const session = await claudeProvider.open({
+      ...input,
+      sessionId: null,
+      instructions: "Domos account usage read.",
+      emit: async () => {},
+    });
+    if (!session.quota) throw new Error("Claude 未提供额度接口。");
+    return session.quota();
   },
   async mcp(input) {
     const session = await claudeProvider.open({
@@ -213,8 +225,15 @@ export const claudeProvider: EngineProvider = {
           });
       }
     };
-    const cost = new CumulativeCost(Boolean(sessionId));
-    const costCounter = randomUUID();
+    let costCounter = randomUUID();
+    let previousCost = 0;
+    let confirmedTokens: EngineTokens = {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    };
+    const requests = new Map<string, NonNullable<ClaudeFrame["usage"]>>();
     let running = false;
     let compacting = false;
     let contextTokens: number | null = null;
@@ -314,6 +333,10 @@ export const claudeProvider: EngineProvider = {
       events = events
         .then(async () => {
           const emit = forward;
+          if (frame.type === "rate_limit_event") {
+            await emit({ type: "quota_changed" });
+            return;
+          }
           if (frame.parent_tool_use_id) {
             await recordContent(frame, false, receivedAt);
             if (frame.type !== "tool_progress") return;
@@ -402,6 +425,45 @@ export const claudeProvider: EngineProvider = {
               contextWindow = null;
             }
             if (message.usage?.input_tokens !== undefined) {
+              requests.set(message.id, message.usage);
+              const current = { ...confirmedTokens };
+              for (const usage of requests.values()) {
+                const fields = {
+                  input: usage.input_tokens,
+                  output: usage.output_tokens,
+                  cacheRead: usage.cache_read_input_tokens,
+                  cacheWrite: usage.cache_creation_input_tokens,
+                };
+                for (const key of tokenFields) {
+                  const value = fields[key];
+                  current[key] =
+                    current[key] === null || value === undefined
+                      ? null
+                      : current[key] + value;
+                }
+              }
+              await emit({
+                type: "usage",
+                usage: {
+                  id: `claude:${message.id}`,
+                  source: "claude.assistant.usage",
+                  provider: "anthropic",
+                  model: nativeModel,
+                  ...current,
+                  tokenBasis: "uncached",
+                  tokensCumulative: current,
+                  tokensBaseline: {
+                    input: 0,
+                    output: 0,
+                    cacheRead: 0,
+                    cacheWrite: 0,
+                  },
+                  counterId: costCounter,
+                  nativeSessionId: id,
+                  observedAt: receivedAt,
+                  costUsd: null,
+                },
+              });
               contextSource = "claude.assistant.usage";
               contextTokens =
                 message.usage.input_tokens +
@@ -426,7 +488,19 @@ export const claudeProvider: EngineProvider = {
           if (frame.type === "result") {
             if (frame.origin?.kind === "task-notification") return;
             if (frame.usage && frame.uuid) {
+              if (frame.total_cost_usd !== undefined) {
+                if (frame.total_cost_usd < previousCost)
+                  costCounter = randomUUID();
+                previousCost = frame.total_cost_usd;
+              }
               const models = Object.keys(frame.modelUsage ?? {});
+              confirmedTokens = {
+                input: frame.usage.input_tokens ?? null,
+                output: frame.usage.output_tokens ?? null,
+                cacheRead: frame.usage.cache_read_input_tokens ?? null,
+                cacheWrite: frame.usage.cache_creation_input_tokens ?? null,
+              };
+              requests.clear();
               const model =
                 models.length > 1 ? null : (models[0] ?? nativeModel);
               await emit({
@@ -440,10 +514,27 @@ export const claudeProvider: EngineProvider = {
                   output: frame.usage.output_tokens ?? null,
                   cacheRead: frame.usage.cache_read_input_tokens ?? null,
                   cacheWrite: frame.usage.cache_creation_input_tokens ?? null,
-                  costUsd: cost.read(frame.uuid, frame.total_cost_usd),
+                  costUsd: null,
+                  tokenBasis: "uncached",
+                  tokensCumulative: {
+                    input: frame.usage.input_tokens ?? null,
+                    output: frame.usage.output_tokens ?? null,
+                    cacheRead: frame.usage.cache_read_input_tokens ?? null,
+                    cacheWrite: frame.usage.cache_creation_input_tokens ?? null,
+                  },
+                  tokensBaseline: {
+                    input: 0,
+                    output: 0,
+                    cacheRead: 0,
+                    cacheWrite: 0,
+                  },
+                  counterId: costCounter,
+                  nativeSessionId: id,
+                  observedAt: receivedAt,
                   costBasis: "reported",
                   costCumulative: frame.total_cost_usd,
                   costCounter,
+                  costInitial: true,
                 },
               });
               contextWindow =
@@ -532,7 +623,11 @@ export const claudeProvider: EngineProvider = {
     let initialization:
       | Promise<NonNullable<ClaudeFrame["response"]>["response"]>
       | undefined;
-    async function control(subtype: string, signal?: AbortSignal) {
+    async function control(
+      subtype: string,
+      signal?: AbortSignal,
+      parameters: Record<string, unknown> = {},
+    ) {
       signal?.throwIfAborted();
       const requestId = randomUUID();
       const result =
@@ -551,7 +646,7 @@ export const claudeProvider: EngineProvider = {
         await rpc.send({
           type: "control_request",
           request_id: requestId,
-          request: { subtype },
+          request: { subtype, ...parameters },
         });
         return await result.promise;
       } finally {
@@ -566,6 +661,60 @@ export const claudeProvider: EngineProvider = {
     }
     const session = {
       id,
+      async quota(): Promise<EngineQuota> {
+        await initialize();
+        const source = "claude.get_usage";
+        const window = z
+          .object({
+            utilization: z.number().min(0).max(100).nullable(),
+            resets_at: z.iso.datetime({ offset: true }).nullable(),
+          })
+          .nullable();
+        const result = z
+          .object({
+            rate_limits_available: z.boolean(),
+            rate_limits: z.record(z.string(), window).nullable(),
+          })
+          .parse(
+            await control("get_usage", undefined, { skip_behaviors: true }),
+          );
+        const windows = Object.entries(result.rate_limits ?? {}).flatMap(
+          ([id, item]) =>
+            item?.utilization == null
+              ? []
+              : [
+                  {
+                    id,
+                    name:
+                      id === "five_hour"
+                        ? "5 小时"
+                        : id === "seven_day"
+                          ? "7 天"
+                          : id,
+                    usedPercent: item.utilization,
+                    durationMinutes:
+                      id === "five_hour"
+                        ? 300
+                        : id.startsWith("seven_day")
+                          ? 10080
+                          : null,
+                    resetsAt: item.resets_at
+                      ? Date.parse(item.resets_at)
+                      : null,
+                  },
+                ],
+        );
+        return {
+          source,
+          observedAt: Date.now(),
+          status: !result.rate_limits_available
+            ? "unsupported"
+            : windows.length
+              ? "ready"
+              : "empty",
+          windows,
+        };
+      },
       async mcp(signal?: AbortSignal) {
         await initialize();
         const raw = z
