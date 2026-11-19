@@ -963,3 +963,25 @@ test.each(["view", "stop", "reopen", "queued"])(
     ).toHaveLength(1);
   },
 );
+
+test("backend maintenance survives reopen and blocks task admission until released", async () => {
+  const runtime = await runtimeFixture({
+    initialize: async () => {},
+    binding: async () => ({ directory: null }),
+    tools: { catalog: async () => [], finish: () => {} },
+  } as unknown as Computers);
+  if (!runtime.engines) throw new Error("Native engines required");
+  await runtime.engines.maintenance(true, context);
+  await expect(
+    runtime.engines.submit(
+      runtime.conversation.id,
+      { text: "Run", requestId: crypto.randomUUID() },
+      context,
+    ),
+  ).rejects.toThrow("正在更新后台");
+  const reopened = await runtime.reopen();
+  if (!reopened.engines) throw new Error("Native engines required");
+  expect(await reopened.engines.maintenance(undefined, context)).toBe(true);
+  await reopened.engines.maintenance(false, context);
+  expect(await reopened.engines.maintenance(undefined, context)).toBe(false);
+});

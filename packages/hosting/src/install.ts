@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { computerSchema } from "@domos/agent/config";
 import { z } from "zod";
 
@@ -10,28 +10,34 @@ export type InstallProgress = { phase: string; message: string };
 export const releaseSchema = z
   .object({
     version: z.string(),
-    serviceImage: z.string().min(1).optional(),
-    serviceBuild: z
-      .object({ context: z.string(), dockerfile: z.string() })
+    serviceImage: z
+      .string()
+      .regex(/^\S+@sha256:[a-f0-9]{64}$/)
       .optional(),
-    workImage: z.string().min(1),
-    proxyImage: z.string().min(1).optional(),
-    proxyBuild: z
-      .object({ context: z.string(), dockerfile: z.string() })
+    workImage: z
+      .string()
+      .regex(/^\S+@sha256:[a-f0-9]{64}$/)
+      .optional(),
+    proxyImage: z
+      .string()
+      .regex(/^\S+@sha256:[a-f0-9]{64}$/)
       .optional(),
     controllerEntry: z.string(),
     serverEntry: z.string(),
     bridgeEntry: z.string(),
     workerEntry: z.string().optional(),
     staticDir: z.string(),
-    workBuild: z
-      .object({ context: z.string(), dockerfile: z.string() })
-      .optional(),
   })
   .strict();
 export type Release = z.infer<typeof releaseSchema>;
+export const publishedReleaseSchema = releaseSchema.required({
+  serviceImage: true,
+  workImage: true,
+  proxyImage: true,
+});
 
 export function workComputer(release: Release) {
+  if (!release.workImage) return undefined;
   const id = `team-${randomBytes(6).toString("hex")}`;
   return computerSchema.options[1].parse({
     kind: "docker",
@@ -70,8 +76,8 @@ export async function runCommand(
       diagnosticSize += chunk.length;
       if (diagnosticSize <= 1024 * 1024) diagnostics.push(chunk);
     });
-    child.once("error", () =>
-      reject(new Error("无法执行安装命令。请检查运行环境和权限。")),
+    child.once("error", (cause) =>
+      reject(new Error("无法执行安装命令。请检查运行环境和权限。", { cause })),
     );
     child.once("close", (code) =>
       code === 0
@@ -141,11 +147,14 @@ export async function prepareWorkImages(
   signal?: AbortSignal,
   execute: typeof runCommand = runCommand,
 ) {
-  const stage = (phase: string, message: string) => {
-    signal?.throwIfAborted();
-    progress({ phase, message });
-  };
-  stage("checking", "正在检查 Docker 和目录权限…");
+  await checkDocker(signal, execute);
+  for (const image of [release.workImage, release.proxyImage]) {
+    if (image) await prepareImage(image, progress, signal, execute);
+  }
+}
+
+export async function checkDocker(signal?: AbortSignal, execute = runCommand) {
+  signal?.throwIfAborted();
   const system = await execute(
     "docker",
     ["info", "--format", "{{json .OSType}}"],
@@ -159,39 +168,35 @@ export async function prepareWorkImages(
   });
   if (JSON.parse(system) !== "linux")
     throw new Error("请将 Docker 切换为 Linux 容器模式。");
-  stage("image", "正在准备 Linux 工作镜像…");
-  for (const { image, build } of [
-    { image: release.workImage, build: release.workBuild },
-    ...(release.proxyImage
-      ? [{ image: release.proxyImage, build: release.proxyBuild }]
-      : []),
-  ]) {
-    try {
-      await execute("docker", ["image", "inspect", image], {
-        signal,
-        timeout: 30_000,
-      });
-    } catch {
-      signal?.throwIfAborted();
-      if (build)
-        await execute(
-          "docker",
-          [
-            "build",
-            "-f",
-            resolve(build.context, build.dockerfile),
-            "-t",
-            image,
-            build.context,
-          ],
-          { signal, timeout: 20 * 60_000 },
-        );
-      else
-        await execute("docker", ["pull", image], {
-          signal,
-          timeout: 20 * 60_000,
-        });
-    }
+}
+
+export async function prepareImage(
+  image: string,
+  progress: (value: InstallProgress) => void,
+  signal?: AbortSignal,
+  execute = runCommand,
+) {
+  signal?.throwIfAborted();
+  try {
+    await execute("docker", ["image", "inspect", image], {
+      signal,
+      timeout: 30_000,
+    });
+  } catch (error) {
+    signal?.throwIfAborted();
+    if (
+      !(error instanceof Error) ||
+      !z
+        .object({ stderr: z.string().regex(/No such image/i) })
+        .safeParse(error.cause).success
+    )
+      throw error;
+    progress({ phase: "image", message: "正在下载当前版本的运行包…" });
+    await execute("docker", ["pull", image], { signal, timeout: 20 * 60_000 });
+    await execute("docker", ["image", "inspect", image], {
+      signal,
+      timeout: 30_000,
+    });
   }
 }
 

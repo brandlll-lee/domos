@@ -1,6 +1,6 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { releaseSchema, runCommand } from "@domos/hosting/install";
 import {
   backupInstallation,
@@ -42,12 +42,8 @@ test.runIf(process.env.DOMOS_CONTAINER_TESTS === "1")(
       JSON.parse(await readFile("deploy/release.json", "utf8")),
     );
     release.serviceImage = "domos-app:test";
-    for (const build of [
-      release.serviceBuild,
-      release.workBuild,
-      release.proxyBuild,
-    ])
-      if (build) build.context = resolve(build.context);
+    release.workImage = "domos-workspace:1.2.0";
+    release.proxyImage = "domos-egress:1";
     const installations = [root];
     let stack = new LocalStack(root, release);
     const targets: { botId: number; id: string }[] = [];

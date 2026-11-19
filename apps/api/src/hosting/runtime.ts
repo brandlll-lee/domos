@@ -25,6 +25,7 @@ export async function openHostedRuntime() {
       models,
       credentials,
       lease: false,
+      maintenance: process.env.DOMOS_MAINTENANCE === "1",
     });
     const app = createApp(
       runtime.bots,
@@ -40,10 +41,13 @@ export async function openHostedRuntime() {
         config.publicUrl ?? `http://127.0.0.1:${config.port}`,
       ).href,
     );
+    const engines = runtime.engines;
+    if (!engines) throw new Error("任务引擎尚未启动。");
     const hosted = hostingApp({
       config,
       sessions,
       models,
+      maintenance: (held) => engines.maintenance(held, BACKGROUND_CONTEXT),
       forward: async (request) => app.fetch(request),
     });
     let closed = false;

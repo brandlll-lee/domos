@@ -1,14 +1,15 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, onTestFinished, test, vi } from "vitest";
 import type { Release, runCommand } from "../src/install.ts";
 import { LocalStack } from "../src/stack.ts";
+import { StackUpgrade } from "../src/stack-upgrade.ts";
 
 const release: Release = {
   version: "test",
-  serviceImage: "domos-service:test",
-  workImage: "domos-work:test",
+  serviceImage: `registry/service@sha256:${"a".repeat(64)}`,
+  workImage: `registry/work@sha256:${"b".repeat(64)}`,
   controllerEntry: "controller",
   serverEntry: "server",
   bridgeEntry: "bridge",
@@ -17,10 +18,19 @@ const release: Release = {
 
 async function fixture() {
   const directory = await mkdtemp(join(tmpdir(), "domos-stack-"));
-  onTestFinished(() => rm(directory, { recursive: true, force: true }));
-  const run = vi.fn<typeof runCommand>(async (_command, args) =>
-    args[0] === "info" ? '"linux"' : "",
-  );
+  onTestFinished(async () => {
+    vi.restoreAllMocks();
+    await rm(directory, { recursive: true, force: true });
+    await rm(`${directory}.upgrade`, { recursive: true, force: true });
+  });
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ ok: true }));
+  const run = vi.fn<typeof runCommand>(async (_command, args, options) => {
+    options?.signal?.throwIfAborted();
+    if (args[0] === "info") return '"linux"';
+    if (args.includes("--quiet")) return "container-id";
+    if (args.includes("--format")) return "sha256:installed";
+    return "";
+  });
   const ready = vi.fn(async (_origin: string, signal: AbortSignal) => {
     signal.throwIfAborted();
   });
@@ -96,4 +106,115 @@ test("an aborted choice does not start a service or prepare a replacement", asyn
   await expect(stack.start(() => {}, controller.signal)).rejects.toThrow();
   await stack.stop();
   expect(run).not.toHaveBeenCalled();
+});
+
+test("upgrades hold admission before backup and preserve bindings and data", async () => {
+  const { stack, directory, run, ready } = await fixture();
+  const signal = new AbortController().signal;
+  await stack.start(() => {}, signal);
+  await stack.stop();
+  const config = await readFile(join(directory, "controller.json"), "utf8");
+  await writeFile(join(directory, "data/record"), "saved");
+  const next = {
+    ...release,
+    serviceImage: `registry/service@sha256:${"c".repeat(64)}`,
+  };
+  const upgraded = new LocalStack(directory, next, run, ready);
+  const fetcher = vi.mocked(fetch);
+  fetcher.mockClear();
+  await upgraded.start(() => {}, signal);
+  expect(
+    fetcher.mock.calls.map(
+      ([, options]) => JSON.parse(String(options?.body)).maintenance,
+    ),
+  ).toEqual([true, false]);
+  expect(
+    await readFile(join(`${directory}.upgrade`, "data/record"), "utf8"),
+  ).toBe("saved");
+  expect(await readFile(join(directory, "controller.json"), "utf8")).toBe(
+    config,
+  );
+  expect(
+    JSON.parse(await readFile(join(directory, "compose.json"), "utf8")).services
+      .app.image,
+  ).toBe(next.serviceImage);
+  await upgraded.stop();
+});
+
+test("a failed new backend restores its snapshot and retains the failed data", async () => {
+  const { stack, directory, run, ready } = await fixture();
+  const signal = new AbortController().signal;
+  await stack.start(() => {}, signal);
+  await stack.stop();
+  await writeFile(join(directory, "data/record"), "saved");
+  ready.mockImplementationOnce(async () => {
+    await writeFile(join(directory, "data/record"), "migrated");
+    throw new Error("Migration failed");
+  });
+  const next = new LocalStack(
+    directory,
+    { ...release, serviceImage: `registry/service@sha256:${"c".repeat(64)}` },
+    run,
+    ready,
+  );
+  await expect(next.start(() => {}, signal)).rejects.toThrow(
+    "Migration failed",
+  );
+  expect(await readFile(join(directory, "data/record"), "utf8")).toBe("saved");
+  expect(
+    await readFile(join(`${directory}.upgrade`, "failed-data/record"), "utf8"),
+  ).toBe("migrated");
+  expect(
+    JSON.parse(await readFile(join(directory, "compose.json"), "utf8")).services
+      .app.image,
+  ).toBe(release.serviceImage);
+});
+
+test("busy work and download failures leave the running installation intact", async () => {
+  const { stack, directory, run, ready } = await fixture();
+  const signal = new AbortController().signal;
+  await stack.start(() => {}, signal);
+  const previous = await readFile(join(directory, "compose.json"), "utf8");
+  run.mockClear();
+  vi.mocked(fetch).mockResolvedValueOnce(
+    Response.json({ error: "Bot 仍有任务" }, { status: 409 }),
+  );
+  const next = new LocalStack(
+    directory,
+    { ...release, serviceImage: `registry/service@sha256:${"c".repeat(64)}` },
+    run,
+    ready,
+  );
+  await expect(next.start(() => {}, signal)).rejects.toThrow("Bot 仍有任务");
+  expect(run.mock.calls.some(([, args]) => args.includes("stop"))).toBe(false);
+  expect(await readFile(join(directory, "compose.json"), "utf8")).toBe(
+    previous,
+  );
+  run.mockRejectedValueOnce(new Error("Registry unavailable"));
+  await expect(next.start(() => {}, signal)).rejects.toThrow();
+  expect(await readFile(join(directory, "compose.json"), "utf8")).toBe(
+    previous,
+  );
+});
+
+test("an interrupted upgrade restores the old backend before allowing another attempt", async () => {
+  const { stack, directory, run, ready } = await fixture();
+  const signal = new AbortController().signal;
+  await stack.start(() => {}, signal);
+  await stack.stop();
+  await writeFile(join(directory, "data/record"), "saved");
+  const snapshot = new StackUpgrade(directory);
+  await snapshot.save("next");
+  await snapshot.phase("starting", "next");
+  await writeFile(join(directory, "data/record"), "partial migration");
+  const reopened = new LocalStack(directory, release, run, ready);
+  await expect(reopened.start(() => {}, signal)).rejects.toThrow(
+    "已恢复原后台",
+  );
+  expect(await readFile(join(directory, "data/record"), "utf8")).toBe("saved");
+  expect(
+    await readFile(join(`${directory}.upgrade`, "failed-data/record"), "utf8"),
+  ).toBe("partial migration");
+  await reopened.start(() => {}, signal);
+  await reopened.stop();
 });

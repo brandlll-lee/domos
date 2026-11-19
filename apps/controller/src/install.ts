@@ -1,5 +1,5 @@
 import { chown, mkdir, readdir, readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import {
   prepareInstallation,
   releaseSchema,
@@ -18,12 +18,6 @@ try {
   const release = releaseSchema.parse(
     JSON.parse(await readFile("deploy/release.json", "utf8")),
   );
-  for (const key of ["workBuild", "proxyBuild"] as const) {
-    const build = release[key];
-    if (build && process.argv[3])
-      build.context = resolve(process.argv[3], build.context);
-    else delete release[key];
-  }
   release.staticDir = "/app/apps/web/dist";
   const installed = await prepareInstallation(
     directory,

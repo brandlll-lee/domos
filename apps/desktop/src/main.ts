@@ -3,7 +3,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   type InstallProgress,
-  prepareWorkImages,
   releaseSchema,
   writeConfiguration,
 } from "@domos/hosting/install";
@@ -261,12 +260,7 @@ async function main() {
     JSON.parse(await readFile(join(runtime, "release.json"), "utf8")),
   );
   release.staticDir = join(runtime, release.staticDir);
-  if (release.workBuild)
-    release.workBuild.context = join(runtime, release.workBuild.context);
-  if (release.proxyBuild)
-    release.proxyBuild.context = join(runtime, release.proxyBuild.context);
-  if (release.serviceBuild)
-    release.serviceBuild.context = join(runtime, release.serviceBuild.context);
+
   hostingDirectory = join(app.getPath("userData"), "hosting");
   containerDirectory = join(app.getPath("userData"), "container");
   try {
@@ -413,7 +407,8 @@ async function main() {
     false,
   );
   handle("desktop:prepare", async () => {
-    await prepareWorkImages(release, () => {});
+    if (!release.workImage)
+      throw new Error("此开发包未包含 Docker 发布清单。请使用正式发布包。");
     return { image: release.workImage, proxyImage: release.proxyImage };
   });
   handle(

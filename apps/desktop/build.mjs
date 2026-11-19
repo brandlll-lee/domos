@@ -7,13 +7,24 @@ import { fileURLToPath } from "node:url";
 import { metrics, themes } from "@domos/ui/tokens";
 import { build } from "esbuild";
 import { desktopBinary } from "../../packages/agent/src/harness/desktop-driver.mjs";
+import {
+  publishedReleaseSchema,
+  releaseSchema,
+} from "../../packages/hosting/src/install.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../..");
 const runtime = join(here, "runtime");
 const dist = join(here, "dist");
-const release = JSON.parse(
-  await readFile(join(root, "deploy/release.json"), "utf8"),
+const release = (
+  process.argv[2] ? publishedReleaseSchema : releaseSchema
+).parse(
+  JSON.parse(
+    await readFile(
+      process.argv[2] ?? join(root, "deploy/release.json"),
+      "utf8",
+    ),
+  ),
 );
 const pnpm = (...args) => {
   const result = spawnSync(
@@ -108,45 +119,10 @@ await cp(join(root, "deploy/NOTICE"), join(runtime, "NOTICE"));
 await cp(join(root, "deploy/licenses"), join(runtime, "licenses"), {
   recursive: true,
 });
-await mkdir(join(runtime, "work/deploy"), { recursive: true });
-await mkdir(join(runtime, "work/packages/agent/src/harness"), {
-  recursive: true,
-});
-for (const name of [
-  "worker.mjs",
-  "image-service.mjs",
-  "image-processing.mjs",
-  "account-environment.mjs",
-  "pi-auth.mjs",
-  "pi-tools.mjs",
-  "pi-runtime.mjs",
-  "http-service.mjs",
-  "native-history.mjs",
-  "native-configuration.mjs",
-  "mcp-client.mjs",
-  "mcp-stdio.mjs",
-  "gateway.mjs",
-  "tool-results.mjs",
-  "text-page.mjs",
-  "browser-service.mjs",
-  "browser-tools.mjs",
-  "browser-command.mjs",
-  "browser-view.mjs",
-  "desktop-view.mjs",
-  "computer-service.mjs",
-  "desktop-tools.mjs",
-  "desktop-driver.mjs",
-  "cursor-theme.mjs",
-  "cursor.lottie",
-])
-  await cp(
-    join(root, "packages/agent/src/harness", name),
-    join(runtime, "work/packages/agent/src/harness", name),
-  );
 const nativeBinary = await desktopBinary(homedir());
 const nativeDirectory = join(
   runtime,
-  "work/packages/agent/src/harness/cua-driver",
+  "node_modules/@domos/agent/src/harness/cua-driver",
 );
 await mkdir(nativeDirectory, { recursive: true });
 await cp(
@@ -166,72 +142,14 @@ await cp(
     process.platform === "win32" ? "cua-cursor-theme.exe" : "cua-cursor-theme",
   ),
 );
-await cp(
-  join(root, "deploy/workspace.Dockerfile"),
-  join(runtime, "work/deploy/workspace.Dockerfile"),
-);
-await cp(
-  join(root, "deploy/workspace.mjs"),
-  join(runtime, "work/deploy/workspace.mjs"),
-);
-for (const name of ["proxy.Dockerfile", "squid.conf"])
-  await cp(join(root, "deploy", name), join(runtime, "work/deploy", name));
-await cp(join(root, "deploy/licenses"), join(runtime, "work/deploy/licenses"), {
-  recursive: true,
-});
-const service = join(runtime, "service");
-await mkdir(service, { recursive: true });
-for (const name of [
-  "package.json",
-  "pnpm-lock.yaml",
-  "pnpm-workspace.yaml",
-  "patches",
-  "domos.config.json",
-  ".dockerignore",
-])
-  await cp(join(root, name), join(service, name), { recursive: true });
-for (const name of [
-  "apps/api",
-  "apps/cli",
-  "apps/controller",
-  "apps/web",
-  "packages/agent",
-  "packages/hosting",
-  "packages/ui",
-])
-  await cp(join(root, name), join(service, name), {
-    recursive: true,
-    filter: (path) =>
-      !path
-        .split(/[\\/]/)
-        .some((part) =>
-          ["node_modules", "dist", "test", "runtime", "release"].includes(part),
-        ),
-  });
-await mkdir(join(service, "apps/desktop"), { recursive: true });
-await cp(
-  join(here, "package.json"),
-  join(service, "apps/desktop/package.json"),
-);
-await mkdir(join(service, "deploy"), { recursive: true });
-for (const name of ["Dockerfile", "release.json", "NOTICE", "licenses"])
-  await cp(join(root, "deploy", name), join(service, "deploy", name), {
-    recursive: true,
-  });
 await writeFile(
   join(runtime, "release.json"),
   JSON.stringify({
-    version: release.version,
-    serviceImage: release.serviceImage,
-    serviceBuild: { context: "service", dockerfile: "deploy/Dockerfile" },
-    workImage: release.workImage,
-    proxyImage: release.proxyImage,
-    proxyBuild: { context: "work", dockerfile: "deploy/proxy.Dockerfile" },
+    ...release,
     controllerEntry: "controller.mjs",
     serverEntry: "server.mjs",
     bridgeEntry: "bridge.mjs",
     workerEntry: "node_modules/@domos/agent/src/harness/worker.mjs",
     staticDir: "web",
-    workBuild: { context: "work", dockerfile: "deploy/workspace.Dockerfile" },
   }),
 );

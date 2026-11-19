@@ -4,8 +4,10 @@ import { join } from "node:path";
 import { acquireDataLease } from "@domos/agent/lease";
 import { expect, onTestFinished, test } from "vitest";
 import {
+  prepareImage,
   prepareInstallation,
   prepareLocalInstallation,
+  publishedReleaseSchema,
   type Release,
   runCommand,
 } from "../src/install.ts";
@@ -18,7 +20,7 @@ async function fixture() {
 }
 const release: Release = {
   version: "test",
-  workImage: "test-image:1",
+  workImage: `registry/work@sha256:${"a".repeat(64)}`,
   controllerEntry: "controller.ts",
   serverEntry: "server.ts",
   bridgeEntry: "bridge.ts",
@@ -66,7 +68,8 @@ test("installation checks Linux mode, preserves configuration and retries image 
   const run = async (_command: string, args: string[]) => {
     executed.push(args);
     if (args[0] === "info") return JSON.stringify("linux");
-    if (args[0] === "image" && missingImage) throw new Error("Missing image");
+    if (args[0] === "image" && missingImage)
+      throw new Error("Missing image", { cause: { stderr: "No such image" } });
     if (args[0] === "pull") missingImage = false;
     return "";
   };
@@ -95,7 +98,7 @@ test("installation checks Linux mode, preserves configuration and retries image 
     token,
   );
   expect(executed.some((args) => args[0] === "pull")).toBe(true);
-  expect(phases).toEqual(["checking", "image", "configuration"]);
+  expect(phases).toEqual(["image", "configuration"]);
   await expect(
     prepareInstallation(
       join(directory, "windows"),
@@ -142,4 +145,43 @@ test("encrypted backups require stopped writers and restore credentials and file
   await expect(restoreInstallation(archive, target, password)).rejects.toThrow(
     "新的",
   );
+});
+
+test("published releases require immutable images and cached images stay offline", async () => {
+  expect(() => publishedReleaseSchema.parse(release)).toThrow();
+  const complete = {
+    ...release,
+    serviceImage: release.workImage,
+    proxyImage: release.workImage,
+  };
+  const published = publishedReleaseSchema.parse(complete);
+  expect(published).toEqual(complete);
+  expect(() =>
+    publishedReleaseSchema.parse({
+      ...complete,
+      serviceImage: "service:latest",
+    }),
+  ).toThrow();
+  const commands: string[][] = [];
+  await prepareImage(
+    published.serviceImage,
+    () => {},
+    undefined,
+    async (_command, args) => {
+      commands.push(args);
+      return "found";
+    },
+  );
+  expect(commands).toHaveLength(1);
+  expect(commands[0]).toEqual(["image", "inspect", complete.serviceImage]);
+  await expect(
+    prepareImage(
+      published.serviceImage,
+      () => {},
+      undefined,
+      async () => {
+        throw new Error("Access denied");
+      },
+    ),
+  ).rejects.toThrow("Access denied");
 });

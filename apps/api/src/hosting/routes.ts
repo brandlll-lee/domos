@@ -22,6 +22,7 @@ export function hostingApp(options: {
   config: RuntimeConfig;
   sessions: Sessions;
   models: Models;
+  maintenance?: (held?: boolean) => Promise<boolean>;
   forward: (request: Request) => Promise<Response>;
 }) {
   const { config, sessions, models } = options;
@@ -30,6 +31,15 @@ export function hostingApp(options: {
   const app = new Hono<HostingEnv>();
   app.get("/health", (c) => c.json({ ok: true }));
   app.use("*", originGuard(publicUrl));
+  app.use("*", async (c, next) => {
+    if (
+      c.req.path !== "/hosting/desktop" &&
+      c.req.path !== "/hosting/info" &&
+      (await options.maintenance?.())
+    )
+      return c.json({ error: "正在更新后台。请稍后再试。" }, 503);
+    await next();
+  });
   app.get("/hosting/info", (c) =>
     c.json({
       product: "domos",
@@ -60,7 +70,7 @@ export function hostingApp(options: {
       await sessions.removeBootstrap(config.dataDir);
     return c.json({ device: result.device });
   });
-  app.post("/hosting/desktop", async (c) => {
+  app.use("/hosting/desktop", async (c, next) => {
     if (!config.desktopCredentialFile) return c.json({}, 404);
     const token = (await readFile(config.desktopCredentialFile, "utf8")).trim();
     const hash = (value: string) => createHash("sha256").update(value).digest();
@@ -72,6 +82,32 @@ export function hostingApp(options: {
       )
     )
       return c.json({}, 401);
+    await next();
+  });
+  app.post("/hosting/desktop", async (c) => {
+    const input = z
+      .object({ maintenance: z.boolean() })
+      .optional()
+      .parse(
+        c.req.header("content-type")?.includes("application/json")
+          ? await c.req.json()
+          : undefined,
+      );
+    if (input) {
+      if (!options.maintenance) return c.json({}, 503);
+      try {
+        await options.maintenance(input.maintenance);
+      } catch (error) {
+        return c.json(
+          {
+            error:
+              error instanceof Error ? error.message : "无法切换维护状态。",
+          },
+          409,
+        );
+      }
+      return c.json({ ok: true });
+    }
     return c.json(await desktopSession(sessions, config.dataDir));
   });
   app.use("/hosting/*", authenticate(sessions));

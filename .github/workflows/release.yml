@@ -1,0 +1,153 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  images:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: amd64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .node-version
+      - uses: pnpm/action-setup@v6.1.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint && pnpm typecheck
+      - name: Build and test release images
+        run: |
+          docker build -f deploy/Dockerfile -t domos-app:test .
+          docker build -f deploy/workspace.Dockerfile -t domos-workspace:1.2.0 .
+          docker build -f deploy/proxy.Dockerfile -t domos-egress:1 .
+          sudo bash deploy/restrict-computer-egress.sh
+          DOMOS_CONTAINER_TESTS=1 pnpm exec vitest run packages/agent/test/container.test.ts apps/api/test/stack-container.test.ts
+      - name: Publish tested images
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          registry="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          mkdir -p digests
+          for component in service workspace proxy; do
+            case "$component" in
+              service) local_image=domos-app:test ;;
+              workspace) local_image=domos-workspace:1.2.0 ;;
+              proxy) local_image=domos-egress:1 ;;
+            esac
+            tag="$registry-$component:$GITHUB_SHA-$ARCH"
+            docker tag "$local_image" "$tag"
+            docker push "$tag"
+            docker image inspect --format '{{index .RepoDigests 0}}' "$tag" > "digests/$component-$ARCH"
+          done
+      - uses: actions/upload-artifact@v6
+        with:
+          name: digests-${{ matrix.arch }}
+          path: digests/
+  manifest:
+    needs: images
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.manifest.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .node-version
+      - uses: pnpm/action-setup@v6.1.0
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: digests-*
+          merge-multiple: true
+          path: digests
+      - uses: docker/setup-buildx-action@v3
+      - name: Assemble tested multi-platform images
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          registry="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          for component in service workspace proxy; do
+            tag="$registry-$component:$GITHUB_SHA"
+            docker buildx imagetools create --tag "$tag" "$(cat digests/$component-amd64)" "$(cat digests/$component-arm64)"
+            docker buildx imagetools inspect "$tag" --format '{{json .Manifest}}' > "digests/$component.json"
+          done
+      - id: manifest
+        name: Write immutable release manifest
+        run: |
+          node --input-type=module <<'JS'
+          import { readFile, writeFile, appendFile } from 'node:fs/promises';
+          import { publishedReleaseSchema } from './packages/hosting/src/install.ts';
+          const release = JSON.parse(await readFile('deploy/release.json', 'utf8'));
+          if (process.env.GITHUB_REF_TYPE === 'tag' && process.env.GITHUB_REF_NAME !== `v${release.version}`) throw Error('Release version does not match tag');
+          for (const [field, name] of [['serviceImage','service'],['workImage','workspace'],['proxyImage','proxy']]) {
+            const manifest = JSON.parse(await readFile(`digests/${name}.json`, 'utf8'));
+            release[field] = `ghcr.io/${process.env.GITHUB_REPOSITORY.toLowerCase()}-${name}@${manifest.digest}`;
+          }
+          await writeFile('release.json', JSON.stringify(publishedReleaseSchema.parse(release), null, 2));
+          await appendFile(process.env.GITHUB_OUTPUT, `version=${release.version}\n`);
+          JS
+      - name: Verify anonymous image access
+        run: |
+          docker logout ghcr.io
+          node --input-type=module <<'JS'
+          import { readFile } from 'node:fs/promises';
+          import { execFileSync } from 'node:child_process';
+          const release = JSON.parse(await readFile('release.json', 'utf8'));
+          for (const field of ['serviceImage','workImage','proxyImage']) execFileSync('docker', ['buildx','imagetools','inspect',release[field]], {stdio:'inherit'});
+          JS
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-manifest
+          path: release.json
+  desktop:
+    needs: manifest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .node-version
+      - uses: pnpm/action-setup@v6.1.0
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-manifest
+          path: release-manifest
+      - name: Package matched desktop
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pnpm --filter @domos/desktop exec node build.mjs ../../release-manifest/release.json
+          pnpm --filter @domos/desktop exec electron-builder --publish never
+      - name: Verify packaged runtime on Windows
+        if: runner.os == 'Windows'
+        run: node --test apps/desktop/test/package.test.mjs
+      - uses: actions/upload-artifact@v6
+        with:
+          name: domos-${{ needs.manifest.outputs.version }}-${{ matrix.os }}
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.AppImage

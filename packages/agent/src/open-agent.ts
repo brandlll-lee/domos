@@ -40,6 +40,7 @@ export async function openAgent(
     computers?: Computers;
     legacy?: boolean;
     credentials?: CredentialStore;
+    maintenance?: boolean;
   },
   agent: AgentChange,
   context: Context,
@@ -200,7 +201,11 @@ export async function openAgent(
       await computerRuntime?.prepare(session.id, context, false);
     await bots.migrateCharacters(context);
     routines = new Routines(harness, options.now);
-    harness.resume();
+    if (options.maintenance) {
+      if (!engines) throw new Error("维护模式需要任务引擎。");
+      await engines.maintenance(true, context);
+    } else if (!(await engines?.maintenance(undefined, context)))
+      harness.resume();
     return {
       harness,
       conversation,

@@ -59,10 +59,6 @@ async function main() {
     JSON.parse(await readFile(join(root, "deploy/release.json"), "utf8")),
   );
   release.staticDir = resolve(root, release.staticDir);
-  if (release.workBuild)
-    release.workBuild.context = resolve(root, release.workBuild.context);
-  if (release.proxyBuild)
-    release.proxyBuild.context = resolve(root, release.proxyBuild.context);
   const prepared = await prepareInstallation(
     directory,
     release,

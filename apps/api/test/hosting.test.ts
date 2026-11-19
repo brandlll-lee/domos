@@ -15,6 +15,7 @@ test("managed desktop pairing requires its private installation credential", asy
   await writeFile(credentialFile, credential);
   const store = await HostingStore.open(directory);
   const sessions = new Sessions(store);
+  let held = false;
   const hosted = hostingApp({
     config: parseConfig(
       { dataDir: directory, desktopCredentialFile: credentialFile },
@@ -22,6 +23,10 @@ test("managed desktop pairing requires its private installation credential", asy
     ),
     sessions,
     models: createModels(),
+    maintenance: async (value) => {
+      if (value !== undefined) held = value;
+      return held;
+    },
     forward: async () => Response.json({ ok: true }),
   });
   onTestFinished(async () => {
@@ -52,6 +57,33 @@ test("managed desktop pairing requires its private installation credential", asy
       })
     ).status,
   ).toBe(403);
+  const maintenance = (value: boolean, token: string = credential) =>
+    hosted.app.request("http://127.0.0.1:4310/hosting/desktop", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ maintenance: value }),
+    });
+  if (!client) throw new Error("Client session required");
+  expect((await maintenance(true, client.token)).status).toBe(401);
+  expect((await maintenance(true)).status).toBe(200);
+  expect(
+    (
+      await hosted.app.request("http://127.0.0.1:4310/rpc/bots/list", {
+        headers: { Authorization: `Bearer ${session.token}` },
+      })
+    ).status,
+  ).toBe(503);
+  expect((await maintenance(false)).status).toBe(200);
+  expect(
+    (
+      await hosted.app.request("http://127.0.0.1:4310/rpc/bots/list", {
+        headers: { Authorization: `Bearer ${session.token}` },
+      })
+    ).status,
+  ).toBe(200);
 });
 
 test("hosting authenticates RPC, files, admin operations, origins and pairing", async () => {

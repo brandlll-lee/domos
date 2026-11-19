@@ -1,17 +1,20 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { z } from "zod";
 import {
   allocatePort,
+  checkDocker,
   type InstallProgress,
-  prepareWorkImages,
+  prepareImage,
   type Release,
   runCommand,
   waitForService,
   workComputer,
   writeConfiguration,
 } from "./install.ts";
+
+import { StackUpgrade } from "./stack-upgrade.ts";
 
 const stackSchema = z.object({
   id: z.string().regex(/^domos-[a-f0-9]{12}$/),
@@ -65,56 +68,158 @@ export class LocalStack {
     const image = this.release.serviceImage;
     if (!image)
       throw new Error("安装文件缺少 Docker 运行包。请重新安装 Domos。");
-    await prepareWorkImages(this.release, progress, signal, this.execute);
+    progress({ phase: "checking", message: "正在检查 Docker…" });
+    await checkDocker(signal, this.execute);
     await this.execute("docker", ["compose", "version"], {
       signal,
       timeout: 30_000,
     });
-    const stack = await this.prepare();
-    signal.throwIfAborted();
-    progress({ phase: "image", message: "首次准备可能需要几分钟…" });
-    const build = this.release.serviceBuild;
-    try {
-      await this.execute("docker", ["image", "inspect", image], {
-        signal,
-        timeout: 30_000,
-      });
-    } catch {
-      signal.throwIfAborted();
-      await this.execute(
-        "docker",
-        build
-          ? [
-              "build",
-              "--file",
-              resolve(build.context, build.dockerfile),
-              "--tag",
-              image,
-              build.context,
-            ]
-          : ["pull", image],
-        { signal, timeout: operationTimeout },
+    await prepareImage(image, progress, signal, this.execute);
+    const upgrade = new StackUpgrade(this.directory);
+    const saved = await upgrade.state();
+    if (saved && saved.phase !== "complete") {
+      await this.compose(["stop", "--timeout", "30"]);
+      await this.recover(upgrade);
+      throw new Error(
+        `上次升级未完成，已恢复原后台。失败数据保留在 ${upgrade.directory}。请重试更新。`,
       );
     }
-    progress({ phase: "starting", message: "正在启动 Domos…" });
+    const previous = await this.savedSpecification();
+    let replacing = false;
+    if (previous && previous.services.app.image !== image) {
+      progress({ phase: "backup", message: "正在保护数据，准备更新后台…" });
+      const port = previous.services.app.ports[0];
+      if (!port) throw new Error("原后台端口配置缺失。");
+      const origin = `http://127.0.0.1:${port.split(":")[1]}`;
+      const ids = await this.compose(["ps", "--quiet", "app"], signal);
+      if (ids.trim()) await this.maintenance(origin, true, signal);
+      try {
+        await this.compose(["stop", "--timeout", "30"], signal);
+        await upgrade.save(image);
+      } catch (error) {
+        await this.compose([
+          "up",
+          "--detach",
+          "--wait",
+          "--wait-timeout",
+          "120",
+        ]);
+        await this.ready(origin, AbortSignal.timeout(120_000));
+        await this.maintenance(origin, false);
+        throw error;
+      }
+      replacing = true;
+    }
     try {
+      const stack = await this.prepare(replacing);
+      signal.throwIfAborted();
+      if (replacing) await upgrade.phase("starting", image);
+      progress({ phase: "starting", message: "正在启动 Domos…" });
       await this.compose(
         ["up", "--detach", "--wait", "--wait-timeout", "120"],
         signal,
       );
-      this.active = true;
       const origin = `http://127.0.0.1:${stack.port}`;
       await this.ready(
         origin,
         AbortSignal.any([signal, AbortSignal.timeout(120_000)]),
       );
+      const expected = await this.execute(
+        "docker",
+        ["image", "inspect", "--format", "{{.Id}}", image],
+        { signal, timeout: 30_000 },
+      );
+      for (const service of ["app", "controller"]) {
+        const id = await this.compose(["ps", "--quiet", service], signal);
+        if (!id.trim()) throw new Error("后台容器未启动。");
+        const actual = await this.execute(
+          "docker",
+          ["inspect", "--format", "{{.Image}}", id.trim()],
+          { signal, timeout: 30_000 },
+        );
+        if (!expected.trim() || actual.trim() !== expected.trim())
+          throw new Error("后台容器版本与发布清单不一致。");
+      }
+      if (replacing) {
+        await writeConfiguration(
+          join(this.directory, "compose.json"),
+          this.specification(stack, false),
+        );
+        await upgrade.phase("complete", image);
+      }
+      replacing = false;
+      await this.maintenance(origin, false, signal);
+      this.active = true;
       this.origin = origin;
       progress({ phase: "ready", message: "Domos 已启动。" });
       return { origin, url: origin };
     } catch (error) {
-      await this.compose(["stop", "--timeout", "10"]).catch(() => {});
       this.active = false;
+      await this.compose(["stop", "--timeout", "30"]);
+      if (replacing) await this.recover(upgrade);
       throw error;
+    }
+  }
+
+  private async recover(upgrade: StackUpgrade) {
+    await upgrade.restore();
+    const previous = await this.savedSpecification();
+    const port = previous?.services.app.ports[0];
+    if (!port) throw new Error("备份缺少后台端口，恢复已停止。");
+    const origin = `http://127.0.0.1:${port.split(":")[1]}`;
+    await this.compose(["up", "--detach", "--wait", "--wait-timeout", "120"]);
+    await this.ready(origin, AbortSignal.timeout(120_000));
+    await this.maintenance(origin, false);
+    await upgrade.phase("complete", previous.services.app.image);
+  }
+
+  private async savedSpecification() {
+    try {
+      return z
+        .object({
+          services: z.object({
+            app: z.object({
+              image: z.string(),
+              ports: z.array(z.string()).min(1),
+            }),
+          }),
+        })
+        .parse(
+          JSON.parse(
+            await readFile(join(this.directory, "compose.json"), "utf8"),
+          ),
+        );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw error;
+    }
+  }
+
+  private async maintenance(
+    origin: string,
+    held: boolean,
+    signal = AbortSignal.timeout(15_000),
+  ) {
+    const token = await this.secret("desktop-token");
+    const response = await fetch(new URL("/hosting/desktop", origin), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ maintenance: held }),
+      redirect: "error",
+      signal,
+    });
+    if (!response.ok) {
+      const message = z
+        .object({ error: z.string() })
+        .safeParse(await response.json());
+      throw new Error(
+        message.success
+          ? message.data.error
+          : "后台未能切换维护状态。请等待任务完成，并确认后台支持安全升级。",
+      );
     }
   }
 
@@ -130,7 +235,7 @@ export class LocalStack {
     }
   }
 
-  private async prepare() {
+  private async prepare(maintenance: boolean) {
     await mkdir(join(this.directory, "data"), { recursive: true, mode: 0o700 });
     const filename = join(this.directory, "stack.json");
     let stack: z.infer<typeof stackSchema>;
@@ -162,6 +267,8 @@ export class LocalStack {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       const template = workComputer(this.release);
+      if (!template)
+        throw new Error("发布清单缺少 Bot 工作环境。请重新安装正式发布包。");
       const work = {
         kind: "controller",
         id: template.id,
@@ -197,12 +304,15 @@ export class LocalStack {
     });
     await writeConfiguration(
       join(this.directory, "compose.json"),
-      this.specification(stack),
+      this.specification(stack, maintenance),
     );
     return stack;
   }
 
-  private specification(stack: z.infer<typeof stackSchema>) {
+  private specification(
+    stack: z.infer<typeof stackSchema>,
+    maintenance: boolean,
+  ) {
     const control = {
       type: "bind",
       source: this.directory,
@@ -227,6 +337,7 @@ export class LocalStack {
           ports: [`127.0.0.1:${stack.port}:4310`],
           environment: {
             DOMOS_CONFIG: "/control/service.json",
+            ...(maintenance ? { DOMOS_MAINTENANCE: "1" } : {}),
             DOMOS_PUBLIC_URL: `http://127.0.0.1:${stack.port}`,
           },
           volumes: [

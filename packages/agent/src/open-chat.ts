@@ -21,6 +21,7 @@ export async function openChat(
     models?: Models;
     credentials?: CredentialStore;
     lease?: boolean;
+    maintenance?: boolean;
   } = {},
 ) {
   configureModelHttp();
@@ -59,6 +60,7 @@ export async function openChat(
         registry,
         computers: computer,
         credentials: options.credentials,
+        maintenance: options.maintenance,
         legacy,
         env: ({ conversationId, read }, ctx) =>
           computer.environment(conversationId, ctx, read),

@@ -18,16 +18,9 @@ test("the Windows distribution contains its server dependencies and starts its p
   const release = JSON.parse(
     await readFile(join(runtime, "release.json"), "utf8"),
   );
-  const context = join(runtime, release.serviceBuild.context);
-  for (const path of [
-    release.serviceBuild.dockerfile,
-    "pnpm-lock.yaml",
-    "patches/@earendil-works__pi-durable@1.4.0.patch",
-    "apps/controller/src/health.ts",
-    "packages/hosting/src/stack.ts",
-    "packages/ui/assets/icon.png",
-  ])
-    assert.ok(await readFile(join(context, path)));
+  assert.equal(release.serviceBuild, undefined);
+  assert.equal(release.workBuild, undefined);
+  assert.equal(release.proxyBuild, undefined);
   for (const dependency of [
     "@earendil-works/pi-ai/models",
     "@earendil-works/pi-env",
@@ -65,11 +58,6 @@ test("the Windows distribution contains its server dependencies and starts its p
     driver.uniffiDestroy();
   }
   assert.ok(await readFile(join(runtime, "licenses/cua-driver.txt")));
-  assert.ok(
-    await readFile(
-      join(runtime, release.workBuild.context, "deploy/workspace.mjs"),
-    ),
-  );
   const directory = await mkdtemp(join(tmpdir(), "domos-package-"));
   const listener = createServer();
   listener.listen(0, "127.0.0.1");

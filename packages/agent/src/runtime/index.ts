@@ -61,6 +61,7 @@ import { watchCommits } from "../watch.ts";
 import { applyRoutineDelivery } from "../work/routine-delivery.ts";
 import { RoutinesDoc } from "../work/routine-state.ts";
 import { WorkError } from "../work/state.ts";
+import { MaintenanceDoc } from "./maintenance.ts";
 
 export function slimChatView(view: import("../chat-view.ts").ChatView) {
   const slim = (message: import("../messages.ts").ChatMessage) => {
@@ -774,6 +775,8 @@ export class Runtime {
   }
 
   async submit(botId: number, input: EngineInput, context: Context) {
+    if ((await this.harness.snapshot(MaintenanceDoc, context))?.held)
+      throw new WorkError("CONFLICT", "正在更新后台。请稍后再试。");
     const id = botId as ConversationId;
     const ownerId = await owningBot(this.harness, id, context);
     if (ownerId !== id) {
@@ -806,6 +809,8 @@ export class Runtime {
       throw new WorkError("BAD_REQUEST", "请选择这个 Bot 的工作电脑。");
     let waiting: ReturnType<ComputerRuntime["questionWaiting"]>;
     const admission = this.harness.commit(async (tx) => {
+      if ((await tx.doc(MaintenanceDoc)).held)
+        throw new WorkError("CONFLICT", "正在更新后台。请稍后再试。");
       const existing = await tx.submissionByRequest(id, input.requestId);
       if (existing) return existing.id;
       const question = input.questionAnswer
@@ -983,6 +988,37 @@ export class Runtime {
     const submission = await this.harness.submission(submissionId, context);
     if (!submission) throw new Error("任务记录不存在。");
     return submission;
+  }
+
+  async maintenance(held: boolean | undefined, context: Context) {
+    if (held === undefined)
+      return (
+        (await this.harness.snapshot(MaintenanceDoc, context))?.held ?? false
+      );
+    await this.harness.commit(async (tx) => {
+      if (held) {
+        for (const status of [
+          "pending",
+          "running",
+          "waiting",
+          "sleeping",
+          "completing",
+        ] as const) {
+          const tasks = await tx.scanTasks(
+            { kind: this.task.definition.name, status },
+            1,
+          );
+          if (tasks.items.length)
+            throw new WorkError(
+              "CONFLICT",
+              "Bot 仍有任务。请等待任务完成后再更新。",
+            );
+        }
+      }
+      (await tx.doc(MaintenanceDoc)).held = held;
+    }, context);
+    if (!held) this.harness.resume();
+    return held;
   }
 
   async cancelMemoryReview(botId: number, context: Context) {

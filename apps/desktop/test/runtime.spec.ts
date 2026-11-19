@@ -15,9 +15,7 @@ test("desktop runtime starts its worker and discovers computer tools", async () 
   const release = releaseSchema.parse(
     JSON.parse(await readFile(join(runtime, "release.json"), "utf8")),
   );
-  if (!release.workBuild) throw new Error("Work build context required");
-  const work = join(runtime, release.workBuild.context);
-  const workBrowser = join(work, "packages/agent/src/harness");
+  const workBrowser = join(runtime, "node_modules/@domos/agent/src/harness");
   const { browserObserve, browserToolListed } = await import(
     pathToFileURL(join(workBrowser, "browser-tools.mjs")).href
   );
