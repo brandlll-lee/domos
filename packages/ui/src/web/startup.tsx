@@ -135,6 +135,7 @@ type SceneProps = {
   children: ReactNode;
   back?: () => void;
   footer?: ReactNode;
+  notice?: ReactNode;
 };
 
 function Screen({ stop, title, description }: SceneProps) {
@@ -256,7 +257,7 @@ export class StartupScene extends Component<SceneProps> {
   }
 
   render() {
-    const { stop, title, children, back, footer } = this.props;
+    const { stop, title, children, back, footer, notice } = this.props;
     return (
       <main
         className="startup-guide"
@@ -319,6 +320,7 @@ export class StartupScene extends Component<SceneProps> {
             </section>
           </div>
         </div>
+        <div className="startup-notice">{notice}</div>
         <footer className="startup-footer startup-rail">
           {back && (
             <Button

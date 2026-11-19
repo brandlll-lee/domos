@@ -98,28 +98,62 @@ test("native setup starts and resumes with Docker unavailable", async ({
     await expect(
       setup.getByRole("button", { name: "随机变身", exact: true }),
     ).toBeVisible();
-    await desktop.evaluate(({ nativeTheme }) => {
-      nativeTheme.themeSource = "dark";
-    });
-    await setup.emulateMedia({ colorScheme: "dark" });
-    await expect(setup.locator("body")).toHaveCSS(
-      "background-color",
-      "rgb(15, 15, 16)",
-    );
-    await setup.screenshot({
-      path: testInfo.outputPath("service-choice-dark.png"),
-    });
-    await desktop.evaluate(({ nativeTheme }) => {
-      nativeTheme.themeSource = "light";
-    });
-    await setup.emulateMedia({ colorScheme: "light" });
-    await expect(setup.locator("body")).toHaveCSS(
-      "background-color",
-      "rgb(253, 253, 253)",
-    );
-    await setup.screenshot({
-      path: testInfo.outputPath("service-choice-light.png"),
-    });
+    for (const theme of ["dark", "light"] as const) {
+      await desktop.evaluate(({ nativeTheme }, theme) => {
+        nativeTheme.themeSource = theme;
+      }, theme);
+      await setup.emulateMedia({ colorScheme: theme });
+      const background =
+        theme === "dark" ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)";
+      for (const selector of ["body", ".setup-window", ".startup-guide"])
+        await expect(setup.locator(selector)).toHaveCSS(
+          "background-color",
+          background,
+        );
+      expect(
+        await desktop.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()[0]?.getBackgroundColor(),
+        ),
+      ).toMatch(theme === "dark" ? /^#000000$/i : /^#ffffff$/i);
+      const header = setup.locator(".startup-guide > header");
+      await expect(header).toHaveCSS("-webkit-app-region", "drag");
+      expect(
+        await header.locator("span").evaluate((logo) => {
+          const box = logo.getBoundingClientRect();
+          const style = getComputedStyle(document.documentElement);
+          const reserved =
+            parseFloat(style.getPropertyValue("--window-controls-width")) *
+            parseFloat(style.fontSize);
+          return (
+            box.top < 24 && box.left < 100 && box.right < innerWidth - reserved
+          );
+        }),
+      ).toBe(true);
+      const bot = setup.getByRole("button", { name: "随机变身", exact: true });
+      await expect(bot.locator(".character-body > image")).toBeVisible();
+      await expect(bot.locator(".character")).not.toHaveAttribute(
+        "data-entering",
+        "true",
+      );
+      await bot.hover();
+      await expect(bot).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+      await captureWindow(
+        desktop,
+        setup,
+        testInfo.outputPath(`service-choice-${theme}.png`),
+      );
+      await bot.focus();
+      await setup.keyboard.press("Tab");
+      await setup.keyboard.press("Shift+Tab");
+      await expect(bot).toBeFocused();
+      await expect(bot).not.toHaveCSS("outline-style", "none");
+      await bot.press("Enter");
+      await expect(bot.locator(".character")).not.toHaveAttribute(
+        "data-entering",
+        "true",
+      );
+      await bot.press("Tab");
+    }
     await expect(setup.getByRole("progressbar")).toBeHidden();
     await desktop.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows()[0];
@@ -150,6 +184,10 @@ test("native setup starts and resumes with Docker unavailable", async ({
     await expect(
       setup.getByRole("menuitem", { name: "在 Docker 中运行", exact: true }),
     ).toBeHidden();
+    await desktop.evaluate(({ nativeTheme }) => {
+      nativeTheme.themeSource = "dark";
+    });
+    await setup.emulateMedia({ colorScheme: "dark" });
     await setup.getByRole("button", { name: "高级", exact: true }).click();
     await setup
       .getByRole("menuitem", { name: "在 Docker 中运行", exact: true })
@@ -174,6 +212,55 @@ test("native setup starts and resumes with Docker unavailable", async ({
       }),
     ).toBe(true);
     await setup.screenshot({ path: testInfo.outputPath("docker-missing.png") });
+    const errorText = await setup.getByRole("alert").textContent();
+    await setup.getByRole("alert").evaluate((alert) => {
+      alert.textContent = `${alert.textContent} 请检查 Docker Desktop 的安装目录与运行状态，然后重试连接。`;
+    });
+    for (const size of [
+      [1120, 820, 1],
+      [680, 540, 1],
+      [420, 640, 1.25],
+    ] as const) {
+      await desktop.evaluate(({ BrowserWindow }, [width, height, zoom]) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        window?.setSize(width, height);
+        window?.webContents.setZoomFactor(zoom);
+      }, size);
+      await expect
+        .poll(() =>
+          setup.locator(".setup-error").evaluate((notice) => {
+            const box = notice.getBoundingClientRect();
+            const footer = document
+              .querySelector(".startup-footer")
+              ?.getBoundingClientRect();
+            if (!footer) throw new Error("Startup footer missing");
+            return (
+              box.left >= 0 &&
+              box.right <= innerWidth &&
+              box.top >= 0 &&
+              box.bottom <= footer.top &&
+              footer.bottom <= innerHeight
+            );
+          }),
+        )
+        .toBe(true);
+      await expect(
+        setup.getByRole("button", { name: "安装 Docker Desktop", exact: true }),
+      ).toBeInViewport({ ratio: 1 });
+      await captureWindow(
+        desktop,
+        setup,
+        testInfo.outputPath(`docker-missing-${size.join("-")}.png`),
+      );
+    }
+    await setup.getByRole("alert").evaluate((alert, text) => {
+      alert.textContent = text;
+    }, errorText);
+    await desktop.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      window?.setSize(680, 760);
+      window?.webContents.setZoomFactor(1);
+    });
     await setup.getByRole("button", { name: "高级", exact: true }).click();
     await setup
       .getByRole("menuitem", { name: "直接运行", exact: true })

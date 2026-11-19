@@ -4,7 +4,7 @@
 body {
   margin: 0;
   color-scheme: light dark;
-  background: var(--color-canvas);
+  background: var(--color-startup);
   color: var(--color-text);
   font-family: var(--font-body);
   font-size: var(--text-body);
@@ -16,9 +16,25 @@ input {
   font: inherit;
 }
 .titlebar {
+  grid-area: 1 / 1;
   height: var(--titlebar-height);
   -webkit-app-region: drag;
   user-select: none;
+}
+.setup-window {
+  background: var(--color-startup);
+}
+.setup-window > .startup-guide {
+  --startup-header-height: var(--titlebar-height);
+  grid-area: 1 / 1 / -1 / -1;
+}
+.setup-window > .startup-guide > header {
+  -webkit-app-region: drag;
+  user-select: none;
+  padding-inline: var(--space-3) var(--window-controls-width);
+}
+.setup-window[data-platform="darwin"] > .startup-guide > header {
+  padding-inline: var(--mac-controls-width) var(--space-3);
 }
 .saved-connections {
   display: flex;
@@ -43,6 +59,8 @@ input {
   display: grid;
   gap: var(--space-2);
   justify-items: start;
+  max-width: 36rem;
+  margin-inline-start: auto;
 }
 .setup-error .alert {
   margin: 0;

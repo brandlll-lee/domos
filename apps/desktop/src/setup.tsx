@@ -115,7 +115,7 @@ function Welcome() {
     </Button>
   );
   return (
-    <div className="setup-window">
+    <div className="setup-window" data-platform={bridge.platform}>
       <header className="titlebar" />
       {!loaded || (busy && !remote) ? (
         <StartupLoading message={phase?.message ?? "正在准备本机…"}>
@@ -137,6 +137,39 @@ function Welcome() {
                   setError("");
                 }
               : undefined
+          }
+          notice={
+            error && (
+              <div className="setup-error">
+                <p className="alert" role="alert">
+                  {error}
+                </p>
+                {runtime === "docker" && docker === "missing" && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => void bridge.docker()}
+                  >
+                    安装 Docker Desktop
+                  </Button>
+                )}
+                {runtime === "docker" &&
+                  docker === "stopped" &&
+                  bridge.platform === "win32" && (
+                    <Button
+                      variant="secondary"
+                      onClick={() =>
+                        void submit({
+                          mode: "local",
+                          runtime: "docker",
+                          startDocker: true,
+                        })
+                      }
+                    >
+                      启动 Docker Desktop 并继续
+                    </Button>
+                  )}
+              </div>
+            )
           }
           footer={
             !remote && (
@@ -263,37 +296,6 @@ function Welcome() {
                   ↘
                 </span>
               </Button>
-            </div>
-          )}
-          {error && (
-            <div className="startup-error setup-error">
-              <p className="alert" role="alert">
-                {error}
-              </p>
-              {runtime === "docker" && docker === "missing" && (
-                <Button
-                  variant="secondary"
-                  onClick={() => void bridge.docker()}
-                >
-                  安装 Docker Desktop
-                </Button>
-              )}
-              {runtime === "docker" &&
-                docker === "stopped" &&
-                bridge.platform === "win32" && (
-                  <Button
-                    variant="secondary"
-                    onClick={() =>
-                      void submit({
-                        mode: "local",
-                        runtime: "docker",
-                        startDocker: true,
-                      })
-                    }
-                  >
-                    启动 Docker Desktop 并继续
-                  </Button>
-                )}
             </div>
           )}
         </StartupScene>

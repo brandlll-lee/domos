@@ -14,6 +14,7 @@ export class ConnectionSetup {
   private window?: BrowserWindow;
   private controller?: AbortController;
   private busy = false;
+  private loading = false;
   private error = "";
   private prepare = false;
   private remote = false;
@@ -120,10 +121,9 @@ export class ConnectionSetup {
   }
 
   private setLoadingAppearance(loading: boolean) {
+    this.loading = loading;
     const dark = loading || nativeTheme.shouldUseDarkColors;
-    this.window?.setBackgroundColor(
-      loading ? "#000000" : themes[dark ? "dark" : "light"].frame,
-    );
+    this.window?.setBackgroundColor(themes[dark ? "dark" : "light"].startup);
     if (process.platform !== "darwin")
       this.window?.setTitleBarOverlay({
         ...windowOverlay,
@@ -145,6 +145,8 @@ export class ConnectionSetup {
       return;
     }
     const window = createWindow("./setup-preload.cjs");
+    const appearance = () => this.setLoadingAppearance(this.loading);
+    nativeTheme.on("updated", appearance);
     window.setSize(1120, 820);
     window.setMinimumSize(360, 540);
     window.webContents.on("will-navigate", (event) => event.preventDefault());
@@ -154,11 +156,12 @@ export class ConnectionSetup {
     );
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.on("closed", () => {
+      nativeTheme.removeListener("updated", appearance);
       this.controller?.abort();
       this.window = undefined;
     });
     this.window = window;
-    if (prepare) this.setLoadingAppearance(true);
+    this.setLoadingAppearance(prepare);
     void window.loadFile(fileURLToPath(this.url));
   }
 }

@@ -15,12 +15,11 @@
   min-block-size: 0;
 }
 .startup-guide {
-  --startup-ground: #fff;
+  --startup-ground: var(--color-startup);
 }
 @media (prefers-color-scheme: dark) {
   .startup-guide {
     --startup-current: var(--crt-signal);
-    --startup-ground: #000;
   }
 }
 .startup-crt {
@@ -122,7 +121,7 @@
 .startup-guide {
   position: relative;
   display: grid;
-  grid-template-rows: 42px minmax(0, 1fr) 47px;
+  grid-template-rows: var(--startup-header-height, 42px) minmax(0, 1fr) auto 47px;
   overflow: clip;
   scrollbar-width: none;
   color: var(--color-text);
@@ -227,6 +226,10 @@ header.startup-rail {
   border-radius: 22%;
   background: transparent;
   box-shadow: none;
+}
+.startup-guide
+  .startup-guide-bot.button[data-variant="ghost"]:not(:disabled):hover {
+  background: transparent;
 }
 .startup-station {
   display: contents;
@@ -456,11 +459,10 @@ header.startup-rail {
 .startup-viewport[data-compact] .startup-models .startup-branch {
   max-width: 238px;
 }
-.startup-error {
-  position: absolute;
-  left: var(--station-x);
-  top: calc(var(--station-y) + 290px);
-  width: var(--station-w);
+.startup-notice {
+  min-height: 0;
+  overflow: auto;
+  padding-inline: clamp(15px, 4vw, 58px);
 }
 @keyframes startup-spin {
   0% {
