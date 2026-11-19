@@ -24,16 +24,14 @@ export function HostingRoot({ children }: { children: ReactNode }) {
   const [label, setLabel] = useState("我的设备");
   const [busy, setBusy] = useState(false);
   const refresh = useCallback(async () => {
-    const info = await fetch("/hosting/info");
-    if (info.status === 404) {
+    const response = await fetch("/hosting/session");
+    if (response.status === 404) {
       const node = await client.computer.node();
       selectComputer(node.id);
       setComputerId(node.id);
       setState("standalone");
       return;
     }
-    if (!info.ok) throw new Error("暂时无法连接 Domos。");
-    const response = await fetch("/hosting/session");
     if (response.status === 401) {
       setState("pair");
       window.domosDesktop?.pairing();

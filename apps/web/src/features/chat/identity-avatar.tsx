@@ -1,5 +1,5 @@
 import type { Bot } from "@domos/agent/bots";
-import { BotAvatar } from "@domos/ui/avatar";
+import { BotAvatar, prepareBotAvatar } from "@domos/ui/avatar";
 import { type CharacterWork, WorkBurst } from "@domos/ui/character-work";
 import { characterIdentity } from "@domos/ui/characters";
 import { useEffect, useRef, useState } from "react";
@@ -8,6 +8,7 @@ function identity(bot: Bot) {
   return JSON.stringify([
     bot.name,
     bot.avatarMedia?.src ?? characterIdentity(bot.avatar).shape,
+    bot.avatarMedia?.cover,
   ]);
 }
 export function IdentityAvatar({
@@ -20,7 +21,7 @@ export function IdentityAvatar({
   work: CharacterWork;
 }) {
   const [view, setView] = useState(bot);
-  const [changing, setChanging] = useState(false);
+  const [changing, setChanging] = useState<Bot>();
   const accepted = useRef(identity(bot));
   const burst = useRef<SVGSVGElement>(null);
   useEffect(() => {
@@ -30,19 +31,16 @@ export function IdentityAvatar({
       return;
     }
     let cancelled = false;
+    let prepared = false;
     let frame = 0;
     const immediate = () => {
       accepted.current = next;
       setView(bot);
-      setChanging(false);
+      setChanging(undefined);
     };
     const motion = matchMedia("(prefers-reduced-motion: reduce)");
-    if (document.hidden || motion.matches) {
-      immediate();
-      return;
-    }
     const settle = () => {
-      if (document.hidden || motion.matches) {
+      if (prepared && (document.hidden || motion.matches)) {
         cancelled = true;
         cancelAnimationFrame(frame);
         immediate();
@@ -51,18 +49,10 @@ export function IdentityAvatar({
     document.addEventListener("visibilitychange", settle);
     motion.addEventListener("change", settle);
     void (async () => {
-      if (bot.avatarMedia) {
-        const image = new Image();
-        image.src = bot.avatarMedia.cover;
-        try {
-          await image.decode();
-        } catch {
-          if (!cancelled) immediate();
-          return;
-        }
-      }
-      if (cancelled) return;
-      setChanging(true);
+      prepared = await prepareBotAvatar(bot.avatar, bot.avatarMedia, true);
+      if (cancelled || !prepared) return;
+      if (document.hidden || motion.matches) return immediate();
+      setChanging(bot);
       const tick = () => {
         if (cancelled) return;
         const animation = burst.current
@@ -100,6 +90,7 @@ export function IdentityAvatar({
       />
       {changing && (
         <svg
+          key={identity(changing)}
           ref={burst}
           className="character identity-burst"
           viewBox="0 0 100 100"
@@ -107,9 +98,11 @@ export function IdentityAvatar({
           aria-hidden="true"
           onAnimationEnd={(event) => {
             if (event.animationName === "character-work-poof") {
-              accepted.current = identity(bot);
-              setView(bot);
-              setChanging(false);
+              if (identity(changing) === identity(bot)) {
+                accepted.current = identity(bot);
+                setView(bot);
+              }
+              setChanging(undefined);
             }
           }}
         >

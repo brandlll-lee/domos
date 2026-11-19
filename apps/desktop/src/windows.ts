@@ -57,6 +57,7 @@ export async function prepareInstance(
     const { width, height } = window.getContentBounds();
     view.setBounds({ x: 0, y: 0, width, height });
   };
+  resize();
   const show = () => {
     if (shown) return;
     shown = true;

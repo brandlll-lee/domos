@@ -1,4 +1,10 @@
-import { BotAvatar } from "@domos/ui/avatar";
+import {
+  BotAvatar,
+  characterImages,
+  prepareBotAvatar,
+  retryAvatarImages,
+  useAvatarImages,
+} from "@domos/ui/avatar";
 import type { CharacterMedia } from "@domos/ui/characters";
 import {
   characterColors,
@@ -18,6 +24,10 @@ import { useCharacters } from "./character-state.ts";
 import "./profile.css";
 
 const hexColor = /^#[0-9a-f]{6}$/i;
+const shapes = Object.keys(characterNames) as (keyof typeof characterNames)[];
+const pickerImages = [
+  ...new Set(shapes.flatMap((shape) => characterImages(shape, true))),
+];
 
 export function AvatarEditor({
   value,
@@ -40,11 +50,22 @@ export function AvatarEditor({
   const { store, data, error, loading: pending } = useCharacters(botId);
   const selected = data?.find((item) => item.id === assetId);
   const source = assetId === null ? undefined : (media ?? selected?.media);
+  const picker = useAvatarImages(pickerImages);
+  const [preview, setPreview] = useState({ value, source });
+  useEffect(() => {
+    let current = true;
+    void prepareBotAvatar(value, source, false).then((ready) => {
+      if (current && ready) setPreview({ value, source });
+    });
+    return () => {
+      current = false;
+    };
+  }, [value, source]);
   return (
     <fieldset className="bot-fields avatar-editor">
       <legend>角色与主题</legend>
       <div className="avatar-preview">
-        <BotAvatar seed={value} media={source} size="large" />
+        <BotAvatar seed={preview.value} media={preview.source} size="large" />
       </div>
       <Tabs.Root defaultValue={assetId ? "saved" : "built-in"}>
         <Tabs.List className="workspace-tabs" aria-label="角色来源">
@@ -88,28 +109,40 @@ export function AvatarEditor({
           )}
         </Tabs.Panel>
         <Tabs.Panel value="built-in">
-          <fieldset className="avatar-shapes" aria-label="外形">
-            {(
-              Object.keys(characterNames) as (keyof typeof characterNames)[]
-            ).map((shape) => (
+          {picker === "loading" && <Loading label="正在准备内置角色" inline />}
+          {picker === "failed" && (
+            <InlineNotice>
+              <span>内置角色读取失败。</span>
               <Button
                 type="button"
-                key={shape}
                 variant="ghost"
-                aria-label={`外形：${characterNames[shape]}`}
-                title={characterNames[shape]}
-                aria-pressed={!source && identity.shape === shape}
-                onClick={() => {
-                  onAssetChange?.(null);
-                  onChange(characterSeed(shape, identity.color));
-                }}
+                onClick={() => retryAvatarImages(pickerImages)}
               >
-                <BotAvatar
-                  seed={characterSeed(shape, identity.color)}
-                  size="medium"
-                />
+                重试
               </Button>
-            ))}
+            </InlineNotice>
+          )}
+          <fieldset className="avatar-shapes" aria-label="外形">
+            {picker === "ready" &&
+              shapes.map((shape) => (
+                <Button
+                  type="button"
+                  key={shape}
+                  variant="ghost"
+                  aria-label={`外形：${characterNames[shape]}`}
+                  title={characterNames[shape]}
+                  aria-pressed={!source && identity.shape === shape}
+                  onClick={() => {
+                    onAssetChange?.(null);
+                    onChange(characterSeed(shape, identity.color));
+                  }}
+                >
+                  <BotAvatar
+                    seed={characterSeed(shape, identity.color)}
+                    size="medium"
+                  />
+                </Button>
+              ))}
           </fieldset>
           <Button
             type="button"

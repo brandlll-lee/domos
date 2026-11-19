@@ -15,7 +15,8 @@ import {
 } from "@earendil-works/pi-durable/storage/sqlite";
 import { openNodeSqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { expect, onTestFinished, test, vi } from "vitest";
-import { openStorage } from "../src/runtime/storage.ts";
+import { EngineDoc, engineCheckpointInterval } from "../src/harness/state.ts";
+import { checkpointEngineState, openStorage } from "../src/runtime/storage.ts";
 
 test("backs up schema v1 before migration and preserves the backup on reopen", async () => {
   const directory = await mkdtemp(join(tmpdir(), "domos-upgrade-"));
@@ -130,4 +131,57 @@ test("replays document history in bounded pages and preserves historical reads",
   } finally {
     await storage.close(context);
   }
+});
+
+test("checkpoints retained engine state before the workspace opens", async () => {
+  const storage = await SqliteStorage.open(
+    await openNodeSqliteDatabase(":memory:"),
+  );
+  onTestFinished(() => storage.close(context));
+  const id = await storage.mintId<DocumentId>();
+  const latest = engineCheckpointInterval + 1;
+  await storage.commit(
+    [
+      { type: "conversation", value: { id: ROOT_CONVERSATION_ID } },
+      {
+        type: "document.create",
+        record: {
+          id,
+          kind: EngineDoc.definition.kind,
+          scope: { kind: "conversation", conversationId: ROOT_CONVERSATION_ID },
+          history: "latest",
+          fork: "initial",
+        },
+        content: {
+          kind: "base",
+          version: 1,
+          value: EngineDoc.definition.initial(),
+        },
+      },
+    ],
+    context,
+  );
+  for (let revision = 1; revision <= latest; revision++) {
+    await storage.commit(
+      [
+        {
+          type: "document.change",
+          id,
+          content: {
+            kind: "delta",
+            version: 1,
+            ops: [["s", ["revision"], revision]],
+          },
+        },
+      ],
+      context,
+    );
+  }
+  const before = await storage.document(id, "current", context);
+  expect(before).toMatchObject({ deltasSinceBase: latest });
+  await checkpointEngineState(storage, context);
+  expect(await storage.document(id, "current", context)).toEqual({
+    ...before,
+    deltasSinceBase: 0,
+  });
 });

@@ -25,7 +25,7 @@ import { EngineExecution, engineTask, Runtime } from "./runtime/index.ts";
 import { migrateRuntime } from "./runtime/migrate.ts";
 import { modelDiagnostics } from "./runtime/model-diagnostics.ts";
 import { modelImages } from "./runtime/model-images.ts";
-import { openStorage } from "./runtime/storage.ts";
+import { checkpointEngineState, openStorage } from "./runtime/storage.ts";
 import { Teams } from "./teams.ts";
 import { botWork } from "./work/index.ts";
 import { memory } from "./work/memory.ts";
@@ -123,6 +123,12 @@ export async function openAgent(
     ),
   );
   const storage = await openStorage(database);
+  try {
+    await checkpointEngineState(storage, context);
+  } catch (error) {
+    await storage.close(context);
+    throw error;
+  }
   const models = modelDiagnostics(options.models);
   const harness = await Harness.open(storage, { ...options, models }, context);
   try {

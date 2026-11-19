@@ -1,3 +1,4 @@
+import { prepareAvatarImages, thumbnailEyes } from "@domos/ui/avatar";
 import { initializeTheme, ThemeProvider } from "@domos/ui/theme";
 import { IconContext } from "@phosphor-icons/react/dist/lib/context";
 import { StrictMode } from "react";
@@ -11,6 +12,7 @@ import "./features/chat/style.css";
 
 const root = document.getElementById("root");
 const initialPreference = initializeTheme();
+void prepareAvatarImages(thumbnailEyes);
 if (root)
   createRoot(root).render(
     <StrictMode>

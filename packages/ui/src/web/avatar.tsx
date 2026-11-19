@@ -4,15 +4,38 @@ import {
   type CharacterMedia,
   characterIdentity,
 } from "../characters.ts";
-import { Character } from "./character.tsx";
+import { avatarImageStatus, prepareAvatarImages } from "./avatar-images.ts";
+import { Character, characterImages } from "./character.tsx";
 import { animateCharacter } from "./character-motion.ts";
 import type { CharacterWork } from "./character-work.tsx";
 import { StatusDot } from "./status-dot.tsx";
 import { UnreadBadge } from "./unread-badge.tsx";
 
+export {
+  avatarImageStatus,
+  prepareAvatarImages,
+  retryAvatarImages,
+  useAvatarImages,
+} from "./avatar-images.ts";
+export { characterImages, thumbnailEyes } from "./character.tsx";
+
 export const AvatarMediaContext = createContext<Record<string, CharacterMedia>>(
   {},
 );
+
+export async function prepareBotAvatar(
+  seed: string,
+  media: CharacterMedia | undefined,
+  thumbnail: boolean,
+) {
+  if (media) {
+    await prepareAvatarImages([media.cover]);
+    if (avatarImageStatus(media.cover) === "ready") return true;
+  }
+  const urls = characterImages(characterIdentity(seed).shape, thumbnail);
+  await prepareAvatarImages(urls);
+  return urls.every((url) => avatarImageStatus(url) === "ready");
+}
 
 type Motion = "idle" | "running";
 
@@ -58,7 +81,7 @@ export const BotAvatar = memo(function BotAvatar({
       <span className="character-gesture">
         <Character
           media={source}
-          thumbnail={size === "small" || size === "medium"}
+          thumbnail={size !== "large"}
           animateMedia={workingAvatar || size === "panel" || size === "large"}
           shape={identity.shape}
           color={color ?? identity.color}
@@ -77,7 +100,7 @@ export const BotAvatar = memo(function BotAvatar({
 export function BrandMark() {
   return (
     <span className="brand-mark">
-      <Character {...brandCharacter} state="idle" />
+      <Character {...brandCharacter} state="idle" thumbnail />
     </span>
   );
 }

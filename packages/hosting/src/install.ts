@@ -281,7 +281,7 @@ export async function waitForService(origin: string, signal: AbortSignal) {
       const timer = setTimeout(() => {
         signal.removeEventListener("abort", abort);
         resolve();
-      }, 500);
+      }, 100);
       signal.addEventListener("abort", abort, { once: true });
     });
   }

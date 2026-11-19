@@ -23,6 +23,8 @@ import chatThumbnail from "../../assets/characters/thumbnails/chat.webp";
 import cloudThumbnail from "../../assets/characters/thumbnails/cloud.webp";
 import controllerThumbnail from "../../assets/characters/thumbnails/controller.webp";
 import dropThumbnail from "../../assets/characters/thumbnails/drop.webp";
+import ivoryThumbnail from "../../assets/characters/thumbnails/eye-ivory.webp";
+import pupilThumbnail from "../../assets/characters/thumbnails/eye-velvet.webp";
 import ghostThumbnail from "../../assets/characters/thumbnails/ghost.webp";
 import heartThumbnail from "../../assets/characters/thumbnails/heart.webp";
 import hexThumbnail from "../../assets/characters/thumbnails/hex.webp";
@@ -37,8 +39,8 @@ import {
   type CharacterMedia,
   type CharacterShape,
   characterFaces,
-  characterShapes,
 } from "../characters.ts";
+import { useAvatarImages } from "./avatar-images.ts";
 import {
   type CharacterWork,
   WorkBurst,
@@ -63,7 +65,18 @@ const textures = {
   sprout: [sprout, sproutThumbnail],
   star: [star, starThumbnail],
   triangle: [triangle, triangleThumbnail],
-};
+} as const;
+export const thumbnailEyes = [ivoryThumbnail, pupilThumbnail] as const;
+
+export function characterImages(
+  shape: CharacterShape,
+  thumbnail: boolean,
+): readonly [string, string, string] {
+  return thumbnail
+    ? [textures[shape][1], ...thumbnailEyes]
+    : [textures[shape][0], ivory, pupil];
+}
+
 const bodyPadding = (48 / 1024) * 100;
 const channels = (color: string) =>
   [1, 3, 5].map((index) => Number.parseInt(color.slice(index, index + 2), 16));
@@ -93,10 +106,14 @@ function Eye({
   cx,
   clip,
   shadow,
+  white,
+  iris,
 }: {
   cx: number;
   clip: string;
   shadow: string;
+  white: string;
+  iris: string;
 }) {
   return (
     <g clipPath={`url(#${clip})`}>
@@ -108,11 +125,11 @@ function Eye({
         fill="#f6f5ea"
         filter={`url(#${shadow})`}
       />
-      <image href={ivory} x={cx - 11.8} y="31.6" width="23.6" height="29.6" />
+      <image href={white} x={cx - 11.8} y="31.6" width="23.6" height="29.6" />
       <g className="character-look">
         <g className="character-pupils">
           <image
-            href={pupil}
+            href={iris}
             x={cx - 5.35}
             y="38.65"
             width="10.7"
@@ -146,7 +163,27 @@ export function Character({
   const id = useId();
   const root = useRef<SVGSVGElement>(null);
   const [playing, setPlaying] = useState(false);
-  const [loadedTexture, setLoadedTexture] = useState<string>();
+  const cover = media?.cover;
+  const coverImages = useMemo(() => (cover ? [cover] : []), [cover]);
+  const coverReady = useAvatarImages(coverImages) === "ready" && !!media;
+  const animatedSource =
+    coverReady && playing && (!work?.id || work.working)
+      ? media.src
+      : undefined;
+  const animationImages = useMemo(
+    () => (animatedSource ? [animatedSource] : []),
+    [animatedSource],
+  );
+  const animationReady = useAvatarImages(animationImages) === "ready";
+  const builtInImages = useMemo(
+    () => characterImages(shape, thumbnail),
+    [shape, thumbnail],
+  );
+  const emptyImages = useMemo(() => [], []);
+  const builtInReady =
+    useAvatarImages(coverReady ? emptyImages : builtInImages) === "ready";
+  const [texture, white, iris] = builtInImages;
+  const visibleMedia = coverReady ? media : undefined;
   useEffect(() => {
     if (!media || !animateMedia || !root.current) {
       setPlaying(false);
@@ -180,11 +217,9 @@ export function Character({
     previous.current = work.id;
     setEntering(!matchMedia("(prefers-reduced-motion: reduce)").matches);
   }, [work?.id]);
-  const face = media?.headset ??
+  const face = visibleMedia?.headset ??
     characterFaces[shape] ?? { x: 50, y: 46.4, scale: 1 };
-  const computer = media?.computer ?? face;
-  const texture = textures[shape][thumbnail ? 1 : 0];
-  const bodyReady = loadedTexture === texture;
+  const computer = visibleMedia?.computer ?? face;
   const [red, green, blue] = useMemo(() => tint(color), [color]);
   return (
     <svg
@@ -242,15 +277,18 @@ export function Character({
           </clipPath>
         ))}
       </defs>
-      <g className="character-work-arrival">
+      <g
+        className="character-work-arrival"
+        visibility={visibleMedia || builtInReady ? undefined : "hidden"}
+      >
         <g className="character-pose">
           <g className="character-body">
-            {media ? (
+            {visibleMedia ? (
               <image
                 href={
-                  playing && (!work?.id || work.working)
-                    ? media.src
-                    : media.cover
+                  animationReady && animatedSource
+                    ? animatedSource
+                    : visibleMedia.cover
                 }
                 x="0"
                 y="0"
@@ -259,30 +297,21 @@ export function Character({
                 preserveAspectRatio="xMidYMid meet"
               />
             ) : (
-              <>
-                {!bodyReady && (
-                  <path
-                    d={characterShapes[shape === "cat" ? "round" : shape]}
-                    fill="currentColor"
-                    opacity=".12"
-                  />
-                )}
+              builtInReady && (
                 <image
-                  key={texture}
                   href={texture}
                   x={-bodyPadding}
                   y={-bodyPadding}
                   width={100 + bodyPadding * 2}
                   height={100 + bodyPadding * 2}
                   filter={`url(#${id}-tint)`}
-                  onLoad={() => setLoadedTexture(texture)}
                 />
-              </>
+              )
             )}
             <g
               transform={`translate(${face.x} ${face.y}) scale(${face.scale}) translate(-50 -46.4)`}
             >
-              {!media && bodyReady && (
+              {!visibleMedia && builtInReady && (
                 <g className="character-face">
                   {[37.4, 62.6].map((cx, index) => (
                     <Eye
@@ -290,6 +319,8 @@ export function Character({
                       cx={cx}
                       clip={`${id}-${index}`}
                       shadow={`${id}-shadow`}
+                      white={white}
+                      iris={iris}
                     />
                   ))}
                 </g>

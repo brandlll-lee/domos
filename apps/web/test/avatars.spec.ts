@@ -41,11 +41,32 @@ test("plush identities load, animate and survive profile changes", async ({
   };
   try {
     const [ready] = (await once(worker, "message")) as [{ port: number }];
-    await page.goto(`http://127.0.0.1:${ready.port}`);
+    const firstEyes = Promise.withResolvers<void>();
+    const eyesRequested = Promise.withResolvers<void>();
+    await page.route("**/assets/eye-velvet-*.webp", async (route) => {
+      eyesRequested.resolve();
+      await firstEyes.promise;
+      await route.continue();
+    });
+    await page.goto(`http://127.0.0.1:${ready.port}`, {
+      waitUntil: "domcontentloaded",
+    });
+    try {
+      await eyesRequested.promise;
+      await expect(
+        page.getByRole("status", { name: "正在读取联系人" }),
+      ).toBeVisible();
+      await expect(page.locator(".chat-header")).toHaveCount(0);
+    } finally {
+      firstEyes.resolve();
+    }
     await expect(
       page.getByRole("button", { name: "Bot详情", exact: true }),
     ).toBeVisible();
     const avatar = page.locator(".chat-header .character");
+    await expect(avatar.locator(".character-body > image")).toBeVisible();
+    await expect(avatar.locator(".character-face image")).toHaveCount(4);
+    await expect(page.locator(".character-body > path")).toHaveCount(0);
     await checkAvatarSizes();
     const contact = page.locator('.contact-row[aria-current="page"]');
     const contactAvatar = contact.locator(".bot-avatar");
@@ -215,14 +236,21 @@ test("plush identities load, animate and survive profile changes", async ({
       name: "外形：云团",
       exact: true,
     });
-    await expect(cloud.locator(".character-body > path")).toBeVisible();
-    await expect(cloud.locator(".character-face")).toHaveCount(0);
+    await expect(
+      picker.getByRole("status", { name: "正在准备内置角色" }),
+    ).toBeVisible();
+    await expect(picker.getByRole("button", { name: /^外形：/ })).toHaveCount(
+      0,
+    );
     const textureResponse = page.waitForResponse("**/assets/cloud-*.webp");
     texture.resolve();
     expect((await textureResponse).headers()["cache-control"]).toContain(
       "immutable",
     );
     await expect(cloud.locator(".character-face")).toBeVisible();
+    await expect(
+      picker.locator('[aria-label="外形"] .character-face'),
+    ).toHaveCount(15);
     expect(
       await cloud.locator(".character-body > image").evaluate(async (node) => {
         const image = new Image();

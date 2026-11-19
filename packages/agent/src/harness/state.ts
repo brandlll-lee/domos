@@ -24,6 +24,7 @@ export type HandoffSummary = {
 
 export const EngineMessage = "domos.engine-message";
 export const EngineToolResult = "domos.engine-tool-result";
+export const engineCheckpointInterval = 64;
 
 export const EngineInputDoc = defineDoc<{
   status:
@@ -75,7 +76,8 @@ export type EngineState = {
 export const EngineDoc = defineDoc<EngineState>({
   kind: "domos.engine",
   version: 1,
-  checkpointWhen: () => false,
+  checkpointWhen: (_value, _ops, { deltasSinceBase }) =>
+    deltasSinceBase >= engineCheckpointInterval,
   scope: "conversation",
   history: "latest",
   fork: "initial",

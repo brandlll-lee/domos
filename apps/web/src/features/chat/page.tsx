@@ -4,6 +4,7 @@ import { type ChatMessage, messageText } from "@domos/agent/messages";
 import type { Team } from "@domos/agent/teams";
 import { AvatarMediaContext } from "@domos/ui/avatar";
 import { characterIdentity } from "@domos/ui/characters";
+import { Button } from "@domos/ui/controls";
 import { Loading } from "@domos/ui/loading";
 import { layout } from "@domos/ui/tokens";
 import {
@@ -44,10 +45,17 @@ import { useComposerDock } from "./use-composer-dock.ts";
 import { useDraft } from "./use-draft.ts";
 import { useHistorySearch } from "./use-history-search.ts";
 import { ChatWelcome } from "./welcome.tsx";
+import { useWorkspaceAvatars } from "./workspace-avatars.ts";
 
 export function ChatPage() {
   const bots = useBots();
   const search = useHistorySearch();
+  const avatars = useWorkspaceAvatars(
+    bots.selected,
+    bots.items,
+    bots.teams,
+    bots.selectedTeam,
+  );
   if (!bots.selected)
     return bots.error ? null : <Loading label="正在读取联系人" />;
   return (
@@ -68,6 +76,7 @@ export function ChatPage() {
           directoryConnected={bots.connected}
           directory={bots}
           search={search}
+          avatars={avatars}
         />
       </ChatAttentionProvider>
     </AvatarMediaContext>
@@ -82,6 +91,7 @@ function BotChat({
   directoryConnected,
   directory,
   search,
+  avatars,
 }: {
   team?: Team;
   bot: Bot;
@@ -90,6 +100,7 @@ function BotChat({
   directoryConnected: boolean;
   directory: ReturnType<typeof useBots>;
   search: ReturnType<typeof useHistorySearch>;
+  avatars: ReturnType<typeof useWorkspaceAvatars>;
 }) {
   const members = useMemo(
     () =>
@@ -332,6 +343,12 @@ function BotChat({
     }),
     [openFile, selectedFile, inlineFiles, registerFile, fileTarget],
   );
+  if (avatars.waiting)
+    return avatars.failed ? (
+      <Button onClick={avatars.retry}>头像读取失败，重试</Button>
+    ) : (
+      <Loading label="正在读取联系人" />
+    );
   return (
     <FilePreviewContext value={filePreview}>
       <Workspace

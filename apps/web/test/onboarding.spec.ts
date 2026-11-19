@@ -64,7 +64,7 @@ test("first use prepares the default Bot with a computer and model before shared
     });
     const connectionRead = Promise.withResolvers<void>();
     await page.route(
-      "**/hosting/info",
+      "**/hosting/session",
       async (route) => {
         await connectionRead.promise;
         await route.continue();
