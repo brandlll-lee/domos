@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import {
   prepareInstallation,
-  releaseSchema,
+  publishedReleaseSchema,
   waitForService,
 } from "@domos/hosting/install";
 import {
@@ -21,6 +21,7 @@ async function main() {
     allowPositionals: true,
     options: {
       directory: { type: "string" },
+      release: { type: "string" },
       file: { type: "string" },
       "password-file": { type: "string" },
     },
@@ -55,8 +56,9 @@ async function main() {
   if (command !== "start" && command !== "install")
     throw new Error("支持 install、start、pair、backup、restore。");
   const root = fileURLToPath(new URL("../../../", import.meta.url));
-  const release = releaseSchema.parse(
-    JSON.parse(await readFile(join(root, "deploy/release.json"), "utf8")),
+  if (!values.release) throw new Error("请使用 --release 指定正式发布清单。");
+  const release = publishedReleaseSchema.parse(
+    JSON.parse(await readFile(resolve(values.release), "utf8")),
   );
   release.staticDir = resolve(root, release.staticDir);
   const prepared = await prepareInstallation(
@@ -72,7 +74,14 @@ async function main() {
     fork(
       fileURLToPath(new URL("../../controller/src/main.ts", import.meta.url)),
       [prepared.controllerFile],
-      { stdio: ["ignore", "inherit", "inherit", "ipc"] },
+      {
+        env: {
+          ...process.env,
+          DOMOS_WORK_IMAGE: release.workImage,
+          DOMOS_PROXY_IMAGE: release.proxyImage,
+        },
+        stdio: ["ignore", "inherit", "inherit", "ipc"],
+      },
     ),
     fork(fileURLToPath(new URL("../../api/src/main.ts", import.meta.url)), [], {
       env: { ...process.env, DOMOS_CONFIG: prepared.configFile },
@@ -103,18 +112,6 @@ async function main() {
       origin,
       AbortSignal.any([cancellation.signal, AbortSignal.timeout(90_000)]),
     );
-    const control = JSON.parse(await readFile(prepared.controllerFile, "utf8"));
-    const response = await fetch(
-      `http://${control.host}:${control.port}/${control.computer.id}/start`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${(await readFile(control.credentialFile, "utf8")).trim()}`,
-        },
-        signal: AbortSignal.timeout(60_000),
-      },
-    );
-    if (!response.ok) throw new Error("工作电脑未启动。请检查控制端。");
     console.log(
       `打开 ${origin}。管理员码保存在 ${join(directory, "data", "owner-code")}。`,
     );

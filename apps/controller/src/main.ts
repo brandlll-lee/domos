@@ -1,7 +1,11 @@
 import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { DockerComputer } from "@domos/agent/computer/docker";
-import { computerSchema } from "@domos/agent/config";
+import { dirname, join, resolve } from "node:path";
+import {
+  DockerComputer,
+  prepareDockerImage,
+} from "@domos/agent/computer/docker";
+import { computerSchema, identifier } from "@domos/agent/config";
+import { releaseSchema, writeConfiguration } from "@domos/hosting/install";
 import { z } from "zod";
 import { controlServer } from "./server.ts";
 
@@ -24,10 +28,69 @@ async function main() {
   ).trim();
   if (token.length < 32) throw new Error("控制端凭据无效。");
   const template = config.computer;
+  const imagesFile = join(dirname(filename), "computers.json");
+  const imagesSchema = z.object({
+    image: z.string().min(1),
+    proxyImage: z.string().optional(),
+  });
+  let retained: Record<string, z.infer<typeof imagesSchema>>;
+  try {
+    retained = z
+      .record(identifier, imagesSchema)
+      .parse(JSON.parse(await readFile(imagesFile, "utf8")));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    retained = {};
+  }
+  const released = process.env.DOMOS_WORK_IMAGE
+    ? {
+        image: releaseSchema.shape.workImage
+          .unwrap()
+          .parse(process.env.DOMOS_WORK_IMAGE),
+        proxyImage: releaseSchema.shape.proxyImage.parse(
+          process.env.DOMOS_PROXY_IMAGE,
+        ),
+      }
+    : undefined;
+  const create = (id: string) =>
+    new DockerComputer({
+      ...template,
+      ...retained[id],
+      id,
+      volume: id === template.id ? template.volume : `domos-${id}-work`,
+    });
+  let saving: Promise<void> = Promise.resolve();
   const controller = controlServer(
-    new DockerComputer(template),
+    create(template.id),
     token,
-    (id) => new DockerComputer({ ...template, id, volume: `domos-${id}-work` }),
+    create,
+    async (driver, action) => {
+      if (!released) return driver;
+      const current = create(driver.config.id);
+      if (action === "start") {
+        const volume = await current.command([
+          "docker",
+          "volume",
+          "ls",
+          "--quiet",
+          "--filter",
+          `name=^${current.config.volume}$`,
+        ]);
+        if (volume.trim()) return driver;
+      }
+      for (const image of [released.image, released.proxyImage])
+        if (image)
+          await prepareDockerImage(image, current.command.bind(current));
+      saving = saving
+        .catch(() => {})
+        .then(async () => {
+          const next = { ...retained, [driver.config.id]: released };
+          await writeConfiguration(imagesFile, next);
+          retained = next;
+        });
+      await saving;
+      return create(driver.config.id);
+    },
   );
   const close = () =>
     void controller.close().then(() => {

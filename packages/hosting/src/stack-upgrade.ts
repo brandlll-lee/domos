@@ -6,12 +6,14 @@ import { writeConfiguration } from "./install.ts";
 
 const stateSchema = z.object({
   phase: z.enum(["saved", "starting", "restoring", "complete"]),
-  target: z.string(),
+  held: z.boolean(),
 });
 
 export class StackUpgrade {
   readonly directory: string;
-  constructor(private readonly installation: string) {
+  private readonly installation: string;
+  constructor(installation: string) {
+    this.installation = installation;
     this.directory = `${installation}.upgrade`;
   }
 
@@ -26,17 +28,16 @@ export class StackUpgrade {
     }
   }
 
-  async phase(
-    phase: "saved" | "starting" | "restoring" | "complete",
-    target: string,
-  ) {
+  async phase(phase: "saved" | "starting" | "restoring" | "complete") {
+    const state = await this.state();
+    if (!state) throw new Error("升级快照缺失。");
     await writeConfiguration(join(this.directory, "state.json"), {
+      ...state,
       phase,
-      target,
     });
   }
 
-  async save(target: string) {
+  async save(held: boolean) {
     const release = await acquireDataLease(join(this.installation, "data"));
     try {
       await rm(this.directory, { recursive: true, force: true });
@@ -50,7 +51,10 @@ export class StackUpgrade {
         join(this.installation, "compose.json"),
         join(this.directory, "compose.json"),
       );
-      await this.phase("saved", target);
+      await writeConfiguration(join(this.directory, "state.json"), {
+        phase: "saved",
+        held,
+      });
     } finally {
       await release();
     }
@@ -59,7 +63,7 @@ export class StackUpgrade {
   async restore() {
     const state = await this.state();
     if (!state) throw new Error("升级快照缺失。");
-    await this.phase("restoring", state.target);
+    await this.phase("restoring");
     const data = join(this.installation, "data");
     const failed = join(this.directory, "failed-data");
     const restored = join(this.directory, "restore");

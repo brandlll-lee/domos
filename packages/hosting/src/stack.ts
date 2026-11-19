@@ -66,10 +66,10 @@ export class LocalStack {
   ) {
     await this.pending;
     const image = this.release.serviceImage;
-    if (!image)
-      throw new Error("安装文件缺少 Docker 运行包。请重新安装 Domos。");
     progress({ phase: "checking", message: "正在检查 Docker…" });
     await checkDocker(signal, this.execute);
+    if (!image)
+      throw new Error("安装文件缺少 Docker 运行包。请重新安装 Domos。");
     await this.execute("docker", ["compose", "version"], {
       signal,
       timeout: 30_000,
@@ -92,10 +92,11 @@ export class LocalStack {
       if (!port) throw new Error("原后台端口配置缺失。");
       const origin = `http://127.0.0.1:${port.split(":")[1]}`;
       const ids = await this.compose(["ps", "--quiet", "app"], signal);
-      if (ids.trim()) await this.maintenance(origin, true, signal);
+      const held = Boolean(ids.trim());
+      if (held) await this.maintenance(origin, true, signal);
       try {
         await this.compose(["stop", "--timeout", "30"], signal);
-        await upgrade.save(image);
+        await upgrade.save(held);
       } catch (error) {
         await this.compose([
           "up",
@@ -105,7 +106,7 @@ export class LocalStack {
           "120",
         ]);
         await this.ready(origin, AbortSignal.timeout(120_000));
-        await this.maintenance(origin, false);
+        if (held) await this.maintenance(origin, false);
         throw error;
       }
       replacing = true;
@@ -113,7 +114,7 @@ export class LocalStack {
     try {
       const stack = await this.prepare(replacing);
       signal.throwIfAborted();
-      if (replacing) await upgrade.phase("starting", image);
+      if (replacing) await upgrade.phase("starting");
       progress({ phase: "starting", message: "正在启动 Domos…" });
       await this.compose(
         ["up", "--detach", "--wait", "--wait-timeout", "120"],
@@ -145,7 +146,7 @@ export class LocalStack {
           join(this.directory, "compose.json"),
           this.specification(stack, false),
         );
-        await upgrade.phase("complete", image);
+        await upgrade.phase("complete");
       }
       replacing = false;
       await this.maintenance(origin, false, signal);
@@ -162,6 +163,7 @@ export class LocalStack {
   }
 
   private async recover(upgrade: StackUpgrade) {
+    const state = await upgrade.state();
     await upgrade.restore();
     const previous = await this.savedSpecification();
     const port = previous?.services.app.ports[0];
@@ -169,8 +171,8 @@ export class LocalStack {
     const origin = `http://127.0.0.1:${port.split(":")[1]}`;
     await this.compose(["up", "--detach", "--wait", "--wait-timeout", "120"]);
     await this.ready(origin, AbortSignal.timeout(120_000));
-    await this.maintenance(origin, false);
-    await upgrade.phase("complete", previous.services.app.image);
+    if (state?.held) await this.maintenance(origin, false);
+    await upgrade.phase("complete");
   }
 
   private async savedSpecification() {
@@ -319,6 +321,10 @@ export class LocalStack {
       target: "/control",
       read_only: true,
     };
+    const images = {
+      DOMOS_WORK_IMAGE: this.release.workImage,
+      DOMOS_PROXY_IMAGE: this.release.proxyImage,
+    };
     const common = {
       image: this.release.serviceImage,
       init: true,
@@ -336,6 +342,7 @@ export class LocalStack {
           user: `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`,
           ports: [`127.0.0.1:${stack.port}:4310`],
           environment: {
+            ...images,
             DOMOS_CONFIG: "/control/service.json",
             ...(maintenance ? { DOMOS_MAINTENANCE: "1" } : {}),
             DOMOS_PUBLIC_URL: `http://127.0.0.1:${stack.port}`,
@@ -354,6 +361,7 @@ export class LocalStack {
         controller: {
           ...common,
           user: "0:0",
+          environment: images,
           cap_add: ["DAC_READ_SEARCH"],
           command: [
             "node",
@@ -361,7 +369,7 @@ export class LocalStack {
             "/control/controller.json",
           ],
           volumes: [
-            control,
+            { ...control, read_only: false },
             {
               type: "bind",
               source: "/var/run/docker.sock",

@@ -158,12 +158,12 @@ function ContainerSettings({ item, bots, busy, error, run }: RecordProps) {
       </SettingRow>
       <SettingRow
         title="重建容器"
-        description="保留工作卷，并结束容器内的进程。"
+        description="使用当前发布环境重建。保留工作卷和账号，结束容器内的进程。"
       >
         <ConfirmComputerAction
           title="重建工作容器"
           label="确认重建"
-          description={`工作卷保留，容器内的进程将结束。使用者：${bots.join("、") || "暂无"}。`}
+          description={`将采用当前发布环境（如有）。工作卷和账号保留，临时层文件丢弃。使用者：${bots.join("、") || "暂无"}。`}
           busy={busy}
           error={error}
           onConfirm={() =>

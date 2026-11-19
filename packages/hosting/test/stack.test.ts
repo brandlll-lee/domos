@@ -204,8 +204,8 @@ test("an interrupted upgrade restores the old backend before allowing another at
   await stack.stop();
   await writeFile(join(directory, "data/record"), "saved");
   const snapshot = new StackUpgrade(directory);
-  await snapshot.save("next");
-  await snapshot.phase("starting", "next");
+  await snapshot.save(true);
+  await snapshot.phase("starting");
   await writeFile(join(directory, "data/record"), "partial migration");
   const reopened = new LocalStack(directory, release, run, ready);
   await expect(reopened.start(() => {}, signal)).rejects.toThrow(
@@ -217,4 +217,29 @@ test("an interrupted upgrade restores the old backend before allowing another at
   ).toBe("partial migration");
   await reopened.start(() => {}, signal);
   await reopened.stop();
+});
+
+test("failed upgrades of a stopped backend restore data without requiring its maintenance endpoint", async () => {
+  const { stack, directory, run, ready } = await fixture();
+  const signal = new AbortController().signal;
+  await stack.start(() => {}, signal);
+  await stack.stop();
+  await writeFile(join(directory, "data/record"), "saved");
+  const execute: typeof runCommand = async (command, args, options) =>
+    args.includes("--quiet") && args.includes("app") && !args.includes("up")
+      ? ""
+      : run(command, args, options);
+  ready.mockRejectedValueOnce(new Error("Migration failed"));
+  vi.mocked(fetch).mockClear();
+  const next = new LocalStack(
+    directory,
+    { ...release, serviceImage: `registry/service@sha256:${"c".repeat(64)}` },
+    execute,
+    ready,
+  );
+  await expect(next.start(() => {}, signal)).rejects.toThrow(
+    "Migration failed",
+  );
+  expect(fetch).not.toHaveBeenCalled();
+  expect(await readFile(join(directory, "data/record"), "utf8")).toBe("saved");
 });

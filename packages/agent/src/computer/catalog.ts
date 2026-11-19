@@ -29,6 +29,7 @@ import {
 } from "../runtime/config.ts";
 import { requiredText, requireRevision, WorkError } from "../work/state.ts";
 import { ComputerAssistance } from "./assistance.ts";
+import { DockerComputer, prepareDockerImage } from "./docker.ts";
 import { Computer, type ComputerStatus } from "./index.ts";
 import { ComputerPreparation } from "./preparation.ts";
 import { ComputerRequests } from "./runtime.ts";
@@ -136,6 +137,18 @@ export class Computers {
     }, context);
   }
 
+  local(config: ComputerConfig) {
+    if (config.kind === "process") return true;
+    if (config.kind === "docker") return !config.ssh;
+    const work = this.config.workComputer;
+    return (
+      this.config.deployment === "container" &&
+      work?.kind === "controller" &&
+      config.endpoint === work.endpoint &&
+      config.credentialFile === work.credentialFile
+    );
+  }
+
   async attach(
     tx: Tx,
     botId: number,
@@ -145,12 +158,7 @@ export class Computers {
     const doc = await tx.doc(ComputersDoc);
     const id = computerId === undefined ? "process" : computerId;
     const item = id === null ? undefined : requireComputer(doc.items, id);
-    if (
-      !migrating &&
-      item &&
-      (item.config.kind === "controller" ||
-        (item.config.kind === "docker" && item.config.ssh))
-    )
+    if (!migrating && item && !this.local(item.config))
       throw new WorkError(
         "BAD_REQUEST",
         "请连接目标电脑上的 Domos，再创建 Bot。",
@@ -252,9 +260,7 @@ export class Computers {
             ? "应用容器"
             : "此电脑"
           : item.name,
-      local:
-        item.config.kind === "process" ||
-        (item.config.kind === "docker" && !item.config.ssh),
+      local: this.local(item.config),
       authorized: item.authorized,
       scope: item.scope,
       busy: this.changing.has(item.id),
@@ -515,10 +521,7 @@ export class Computers {
       requireRevision(previous?.revision ?? 0, input.revision);
       if (input.computerId && input.computerId !== previous?.computerId) {
         const target = requireComputer(doc.items, input.computerId).config;
-        if (
-          target.kind === "controller" ||
-          (target.kind === "docker" && target.ssh)
-        )
+        if (!this.local(target))
           throw new WorkError(
             "BAD_REQUEST",
             "请连接目标电脑上的 Domos，再创建 Bot。",
@@ -720,7 +723,7 @@ export class Computers {
     context: Context,
   ) {
     const doc = await this.harness.snapshot(ComputersDoc, context);
-    const item = requireComputer(doc?.items ?? [], id);
+    let item = requireComputer(doc?.items ?? [], id);
     if (!item.authorized)
       throw new WorkError("BAD_REQUEST", "请先授权这台电脑。");
     if (this.changing.has(id))
@@ -728,14 +731,41 @@ export class Computers {
     this.changing.add(id);
     this.events.emit("change");
     try {
-      await this.target(item).manage(action, context, () =>
+      const idle = () =>
         this.harness.commit(async (tx) => {
           for (const [botId, binding] of Object.entries(
             (await tx.doc(ComputersDoc)).bindings,
           ))
             if (binding.computerId === id) await this.idle(tx, Number(botId));
-        }, context),
-      );
+        }, context);
+      const template = this.config.workComputer;
+      if (
+        action === "rebuild" &&
+        item.config.kind === "docker" &&
+        !item.config.ssh &&
+        template?.kind === "docker" &&
+        !template.ssh
+      ) {
+        const config = { ...item.config, image: template.image };
+        if (template.proxyImage) config.proxyImage = template.proxyImage;
+        else delete config.proxyImage;
+        const driver = new DockerComputer(config);
+        for (const image of [config.image, config.proxyImage])
+          if (image)
+            await prepareDockerImage(image, driver.command.bind(driver));
+        await idle();
+        await this.target(item).close(context);
+        await this.harness.commit(async (tx) => {
+          const doc = await tx.doc(ComputersDoc);
+          for (const [botId, binding] of Object.entries(doc.bindings))
+            if (binding.computerId === id) await this.idle(tx, Number(botId));
+          requireComputer(doc.items, id).config = config;
+        }, context);
+        this.targets.delete(id);
+        item = { ...item, config };
+      }
+
+      await this.target(item).manage(action, context, idle);
       return await this.view(item);
     } finally {
       this.changing.delete(id);

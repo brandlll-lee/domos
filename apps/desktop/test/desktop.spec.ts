@@ -158,6 +158,22 @@ test("native setup starts and resumes with Docker unavailable", async ({
       .getByRole("button", { name: "在本机开始", exact: true })
       .click();
     await expect(setup.getByRole("alert")).toContainText("Docker Desktop");
+    await expect(
+      setup.getByRole("button", { name: "重试", exact: true }),
+    ).toHaveCSS("opacity", "1");
+    await expect(
+      setup.getByRole("button", { name: "安装 Docker Desktop", exact: true }),
+    ).toBeVisible();
+    expect(
+      await setup.locator(".setup-error").evaluate((notice) => {
+        const alert = notice
+          .querySelector("[role=alert]")
+          ?.getBoundingClientRect();
+        const button = notice.querySelector("button")?.getBoundingClientRect();
+        return alert && button && button.top >= alert.bottom;
+      }),
+    ).toBe(true);
+    await setup.screenshot({ path: testInfo.outputPath("docker-missing.png") });
     await setup.getByRole("button", { name: "高级", exact: true }).click();
     await setup
       .getByRole("menuitem", { name: "直接运行", exact: true })

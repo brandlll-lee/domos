@@ -3,14 +3,25 @@ import type { Duplex } from "node:stream";
 import type { ComputerDriver } from "@domos/agent/computer/driver";
 
 export class ControlTarget {
-  readonly driver: ComputerDriver;
+  driver: ComputerDriver;
   private readonly processes = new Set<ReturnType<typeof spawn>>();
   private pending: Promise<unknown> = Promise.resolve();
   private used = false;
   private generation = 0;
+  private readonly prepare?: (
+    driver: ComputerDriver,
+    action: "start" | "rebuild",
+  ) => Promise<ComputerDriver>;
 
-  constructor(driver: ComputerDriver) {
+  constructor(
+    driver: ComputerDriver,
+    prepare?: (
+      driver: ComputerDriver,
+      action: "start" | "rebuild",
+    ) => Promise<ComputerDriver>,
+  ) {
     this.driver = driver;
+    this.prepare = prepare;
   }
 
   async status() {
@@ -31,6 +42,12 @@ export class ControlTarget {
       .catch(() => {})
       .then(async () => {
         for (const child of this.processes) child.kill();
+        if (
+          this.prepare &&
+          (action === "rebuild" ||
+            (action === "start" && (await this.driver.inspect()) === "missing"))
+        )
+          this.driver = await this.prepare(this.driver, action);
         await this.driver[action]();
         return this.inspect();
       });

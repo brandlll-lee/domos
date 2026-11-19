@@ -15,6 +15,7 @@ import {
 import { expect, onTestFinished, test, vi } from "vitest";
 import { WorkProcess } from "../../../packages/agent/src/harness/process.ts";
 import { controlServer } from "../src/server.ts";
+import { ControlTarget } from "../src/target.ts";
 
 test("native engine transport checks authorization and starts in the assigned computer", async () => {
   const directory = await mkdtemp(join(tmpdir(), "domos-engine-control-"));
@@ -251,4 +252,43 @@ test("the authenticated controller preserves the Pi byte stream, binary files an
   } finally {
     reopened.close();
   }
+});
+
+test("work preparation leaves retained environments intact until a confirmed rebuild", async () => {
+  let state: "missing" | "running" | "stopped" = "missing";
+  const calls: string[] = [];
+  const driver: ComputerDriver = {
+    config: { id: "work", timeoutSeconds: 30, network: "none" },
+    binding: {},
+    directory: "/work",
+    inspect: async () => state,
+    checkNetwork: async () => {},
+    daemon: () => [],
+    start: async () => {
+      state = "running";
+      calls.push("start");
+    },
+    stop: async () => {
+      state = "stopped";
+    },
+    rebuild: async () => {
+      calls.push("rebuild");
+    },
+  };
+  const prepare = vi.fn(async () => {
+    calls.push("prepare");
+    return driver;
+  });
+  const target = new ControlTarget(driver, prepare);
+  await target.change("start");
+  expect(calls).toEqual(["prepare", "start"]);
+  await target.change("stop");
+  await target.change("start");
+  expect(prepare).toHaveBeenCalledTimes(1);
+  prepare.mockRejectedValueOnce(new Error("Download failed"));
+  await expect(target.change("rebuild")).rejects.toThrow("Download failed");
+  expect(calls).not.toContain("rebuild");
+  await target.change("rebuild");
+  expect(calls.slice(-2)).toEqual(["prepare", "rebuild"]);
+  await target.close();
 });

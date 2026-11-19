@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 import type { ComputerConfig } from "../runtime/config.ts";
 import type { ComputerDriver } from "./driver.ts";
 
@@ -32,12 +33,16 @@ export class ControllerComputer implements ComputerDriver {
       {
         method,
         headers: { Authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(60_000),
+        signal: AbortSignal.timeout(method === "POST" ? 21 * 60_000 : 60_000),
         redirect: "error",
       },
     );
-    if (!response.ok)
-      throw new Error("工作电脑控制端未完成请求。请核对实际状态。");
+    if (!response.ok) {
+      const result = z
+        .object({ error: z.string() })
+        .parse(await response.json());
+      throw new Error(result.error);
+    }
     return response.json() as Promise<{
       state: "running" | "stopped" | "missing";
       network: string;

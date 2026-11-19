@@ -42,7 +42,7 @@ export function createArguments(config: DockerConfig) {
     "docker",
     "container",
     "create",
-    "--pull=never",
+    "--pull=missing",
     "--name",
     names.container,
     "--label",
@@ -107,6 +107,27 @@ type Inspection = {
 const inspection =
   '{"running":{{json .State.Running}},"spec":{{json (index .Config.Labels "domos.spec")}},"user":{{json .Config.User}},"privileged":{{json .HostConfig.Privileged}},"readonly":{{json .HostConfig.ReadonlyRootfs}},"caps":{{json .HostConfig.CapDrop}},"added":{{json .HostConfig.CapAdd}},"cpus":{{json .HostConfig.NanoCpus}},"memory":{{json .HostConfig.Memory}},"pids":{{json .HostConfig.PidsLimit}},"pidMode":{{json .HostConfig.PidMode}},"networks":{{json .NetworkSettings.Networks}},"security":{{json .HostConfig.SecurityOpt}},"network":{{json .HostConfig.NetworkMode}},"mounts":{{json .Mounts}}}';
 
+export async function prepareDockerImage(
+  image: string,
+  command: (args: readonly string[]) => Promise<string>,
+) {
+  try {
+    await command(["docker", "image", "inspect", image]);
+  } catch (error) {
+    const cause = error instanceof Error ? error.cause : undefined;
+    if (
+      !cause ||
+      typeof cause !== "object" ||
+      !("stderr" in cause) ||
+      typeof cause.stderr !== "string" ||
+      !/No such image/i.test(cause.stderr)
+    )
+      throw error;
+    await command(["docker", "pull", image]);
+    await command(["docker", "image", "inspect", image]);
+  }
+}
+
 export class DockerComputer {
   readonly config: DockerConfig;
   readonly directory = sandboxHome;
@@ -139,14 +160,25 @@ export class DockerComputer {
     if (!program) throw new Error("电脑控制命令缺失。");
     try {
       const result = await execute(program, argv, {
-        timeout: 30_000,
+        timeout:
+          (args[1] === "container" && args[2] === "create") ||
+          args[1] === "pull"
+            ? 20 * 60_000
+            : 30_000,
         maxBuffer: 1024 * 1024,
         windowsHide: true,
       });
       return result.stdout.trim();
-    } catch {
+    } catch (cause) {
+      const detail =
+        cause instanceof Error &&
+        "stderr" in cause &&
+        typeof cause.stderr === "string"
+          ? cause.stderr.trim().slice(0, 600)
+          : "";
       throw new Error(
-        "电脑控制请求未完成。请检查 Docker、SSH 主机密钥和权限；核对实际状态后再重试。",
+        `电脑控制请求未完成。${detail || "请检查 Docker、SSH 主机密钥和权限；核对实际状态后再重试。"}`,
+        { cause },
       );
     }
   }

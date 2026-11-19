@@ -2,7 +2,7 @@ import { chown, mkdir, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   prepareInstallation,
-  releaseSchema,
+  publishedReleaseSchema,
   writeConfiguration,
 } from "@domos/hosting/install";
 
@@ -15,8 +15,10 @@ try {
   console.log("托管配置已存在。");
 } catch (error) {
   if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  const release = releaseSchema.parse(
-    JSON.parse(await readFile("deploy/release.json", "utf8")),
+  const manifest = process.argv[3];
+  if (!manifest) throw new Error("需要正式发布清单。");
+  const release = publishedReleaseSchema.parse(
+    JSON.parse(await readFile(manifest, "utf8")),
   );
   release.staticDir = "/app/apps/web/dist";
   const installed = await prepareInstallation(

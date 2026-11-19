@@ -101,7 +101,7 @@ export class WebNetwork {
         "container",
         "create",
         "--init",
-        "--pull=never",
+        "--pull=missing",
         "--name",
         this.proxy,
         "--network",

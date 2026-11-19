@@ -9,3 +9,5 @@ LocalStack downloads the required service image before it stops an existing back
 Backend upgrades block new task admission and require idle tasks. After service shutdown, the data lease protects a sibling snapshot at `<installation>.upgrade`. The new backend starts in maintenance mode. It resumes tasks only after version and readiness checks succeed. An interrupted or failed upgrade restores the stopped snapshot and its compose file. Failed migrated data stays in `failed-data`. Recovery does not merge migrated data into an older schema. A backend that lacks the maintenance endpoint cannot upgrade while running.
 
 Production release acceptance requires the container jobs. Unit tests and native desktop smoke do not verify Docker Desktop, image registry access, or Linux container input on a user's computer.
+
+Native self-hosting uses `pnpm host --directory <installation> --release <release.json>`. The development Compose setup uses `sh deploy/install.sh <release.json>` and builds the service from source. Both use published work images and prepare work containers on demand.

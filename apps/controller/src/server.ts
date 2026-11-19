@@ -10,8 +10,14 @@ export function controlServer(
   driver: ComputerDriver,
   token: string,
   create?: (id: string) => ComputerDriver,
+  prepare?: (
+    driver: ComputerDriver,
+    action: "start" | "rebuild",
+  ) => Promise<ComputerDriver>,
 ) {
-  const targets = new Map([[driver.config.id, new ControlTarget(driver)]]);
+  const targets = new Map([
+    [driver.config.id, new ControlTarget(driver, prepare)],
+  ]);
   let closing: Promise<void> | undefined;
   const trusted = (request: IncomingMessage) =>
     !closing &&
@@ -26,7 +32,7 @@ export function controlServer(
     const id = match[1] as string;
     let value = targets.get(id);
     if (!value && create) {
-      value = new ControlTarget(create(id));
+      value = new ControlTarget(create(id), prepare);
       targets.set(id, value);
     }
     return value ? { value, action: match[2] } : undefined;
@@ -58,10 +64,15 @@ export function controlServer(
       ) {
         response.end(JSON.stringify(await item.value.change(item.action)));
       } else response.writeHead(404).end("{}");
-    } catch {
-      response
-        .writeHead(503)
-        .end(JSON.stringify({ error: "电脑准备未完成。请重试。" }));
+    } catch (error) {
+      response.writeHead(503).end(
+        JSON.stringify({
+          error:
+            error instanceof Error
+              ? error.message
+              : "电脑准备未完成。请核对实际状态。",
+        }),
+      );
     }
   });
   server.on("connect", async (request, socket, head) => {

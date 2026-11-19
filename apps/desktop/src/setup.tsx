@@ -15,7 +15,7 @@ import "./setup.css";
 
 type Runtime = "native" | "docker";
 type Input =
-  | { mode: "local"; runtime: Runtime }
+  | { mode: "local"; runtime: Runtime; startDocker?: boolean }
   | { mode: "existing"; url: string; name: string };
 declare global {
   interface Window {
@@ -28,9 +28,12 @@ declare global {
         prepare: boolean;
         remote: boolean;
       }>;
-      submit: (
-        input: Input,
-      ) => Promise<{ ok: boolean; cancelled?: boolean; error?: string }>;
+      submit: (input: Input) => Promise<{
+        ok: boolean;
+        cancelled?: boolean;
+        error?: string;
+        docker?: "missing" | "stopped" | "mode" | "connection";
+      }>;
       cancel: () => Promise<void>;
       docker: () => Promise<void>;
       progress: (listener: (value: InstallProgress) => void) => void;
@@ -49,11 +52,13 @@ function Welcome() {
   const [name, setName] = useState("我的 Domos");
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<InstallProgress>();
+  const [docker, setDocker] = useState<string>();
   const [error, setError] = useState("");
   async function submit(input: Input) {
     if (busy) return;
     setBusy(true);
     setError("");
+    setDocker(undefined);
     setPhase({
       phase: "starting",
       message: input.mode === "local" ? "正在启动 Domos…" : "正在连接 Domos…",
@@ -61,7 +66,10 @@ function Welcome() {
     try {
       const result = await bridge.submit(input);
       if (result.cancelled) setError("准备已取消。可以重试。");
-      else if (!result.ok) setError(result.error ?? "连接未完成。请重试。");
+      else if (!result.ok) {
+        setError(result.error ?? "连接未完成。请重试。");
+        setDocker(result.docker);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "连接未完成。请重试。");
     } finally {
@@ -258,18 +266,35 @@ function Welcome() {
             </div>
           )}
           {error && (
-            <p className="alert startup-error" role="alert">
-              {error}
-            </p>
-          )}
-          {error && runtime === "docker" && phase?.phase === "checking" && (
-            <Button
-              variant="ghost"
-              className="startup-extra"
-              onClick={() => void bridge.docker()}
-            >
-              安装或启动 Docker Desktop
-            </Button>
+            <div className="startup-error setup-error">
+              <p className="alert" role="alert">
+                {error}
+              </p>
+              {runtime === "docker" && docker === "missing" && (
+                <Button
+                  variant="secondary"
+                  onClick={() => void bridge.docker()}
+                >
+                  安装 Docker Desktop
+                </Button>
+              )}
+              {runtime === "docker" &&
+                docker === "stopped" &&
+                bridge.platform === "win32" && (
+                  <Button
+                    variant="secondary"
+                    onClick={() =>
+                      void submit({
+                        mode: "local",
+                        runtime: "docker",
+                        startDocker: true,
+                      })
+                    }
+                  >
+                    启动 Docker Desktop 并继续
+                  </Button>
+                )}
+            </div>
           )}
         </StartupScene>
       )}

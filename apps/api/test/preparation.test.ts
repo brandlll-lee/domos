@@ -408,7 +408,7 @@ test("host choice grants access and stale switches leave the binding intact", as
   expect(native.computerId).toBe("process");
 });
 
-test("remote templates keep existing bindings while new environments stay on the owner", async () => {
+test("native hosts retain remote bindings and keep new environments on the owner", async () => {
   const remote = {
     kind: "controller" as const,
     id: "remote",
@@ -418,12 +418,12 @@ test("remote templates keep existing bindings while new environments stay on the
     timeoutSeconds: 120,
   };
   const state = await fixture({
-    deployment: "container",
+    deployment: "native",
     workComputer: remote,
   });
   const { computer, conversation, harness } = state.runtime;
   expect(await computer.preparation.state(context)).toEqual({
-    deployment: "container",
+    deployment: "native",
     canIsolate: false,
   });
   await expect(
@@ -472,4 +472,41 @@ test("remote templates keep existing bindings while new environments stay on the
       context,
     ),
   ).rejects.toThrow("连接目标电脑");
+});
+
+test("container hosts create work environments through their own controller", async () => {
+  const state = await fixture({
+    deployment: "container",
+    workComputer: {
+      kind: "controller",
+      id: "owned",
+      endpoint: "http://controller:4311",
+      credentialFile: "controller-token",
+      network: "none",
+    },
+  });
+  const { computer, conversation } = state.runtime;
+  expect(await computer.preparation.state(context)).toEqual({
+    deployment: "container",
+    canIsolate: true,
+  });
+  const binding = await computer.binding(conversation.id, context);
+  const isolated = await computer.preparation.configure(
+    {
+      botId: conversation.id,
+      mode: "dedicated",
+      revision: binding.revision,
+      requestId: crypto.randomUUID(),
+    },
+    context,
+  );
+  expect(isolated.computer).toMatchObject({
+    kind: "controller",
+    local: true,
+    scope: { kind: "dedicated", botId: conversation.id },
+  });
+  await state.reopen();
+  expect(
+    (await state.runtime.computer.binding(conversation.id, context)).computerId,
+  ).toBe(isolated.computerId);
 });

@@ -11,7 +11,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("容器环境");
   const [id, setId] = useState(() => `work-${crypto.randomUUID().slice(0, 8)}`);
-  const [image, setImage] = useState("domos-workspace:3");
+  const [image, setImage] = useState("");
   const [network, setNetwork] = useState<"none" | "web" | "restricted">("none");
   const [proxyImage, setProxyImage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -24,7 +24,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
         if (!busy) setOpen(next);
       }}
       title="添加容器环境"
-      description="在这台电脑上运行隔离容器。需要 Docker 和工作镜像。"
+      description="在这台电脑上运行隔离容器。需要 Docker。首次使用时下载工作镜像。"
       trigger={
         <Button variant="secondary" size="small">
           <PlusIcon size={14} />
@@ -112,7 +112,7 @@ export function AddComputer({ onAdded }: { onAdded: () => Promise<void> }) {
                 }
               }}
             >
-              准备本地 Docker 镜像
+              使用本版工作环境
             </Button>
           </div>
         )}

@@ -4,12 +4,14 @@ import { join } from "node:path";
 import { acquireDataLease } from "@domos/agent/lease";
 import { expect, onTestFinished, test } from "vitest";
 import {
+  checkDocker,
   prepareImage,
   prepareInstallation,
   prepareLocalInstallation,
   publishedReleaseSchema,
   type Release,
   runCommand,
+  startDocker,
 } from "../src/install.ts";
 import { backupInstallation, restoreInstallation } from "../src/maintenance.ts";
 
@@ -59,7 +61,7 @@ test("local installation creates a loopback service and preserves existing confi
   );
 });
 
-test("installation checks Linux mode, preserves configuration and retries image setup", async () => {
+test("installation checks Linux mode and preserves configuration without downloading work images", async () => {
   const directory = await fixture();
   const installation = join(directory, "host");
   const phases: string[] = [];
@@ -97,8 +99,8 @@ test("installation checks Linux mode, preserves configuration and retries image 
   expect(await readFile(join(installation, "controller-token"), "utf8")).toBe(
     token,
   );
-  expect(executed.some((args) => args[0] === "pull")).toBe(true);
-  expect(phases).toEqual(["image", "configuration"]);
+  expect(executed.some((args) => args[0] === "pull")).toBe(false);
+  expect(phases).toEqual(["checking", "configuration"]);
   await expect(
     prepareInstallation(
       join(directory, "windows"),
@@ -184,4 +186,65 @@ test("published releases require immutable images and cached images stay offline
       },
     ),
   ).rejects.toThrow("Access denied");
+});
+
+test("Docker checks distinguish installation, stopped engine, mode and permissions", async () => {
+  for (const [code, cause] of [
+    ["missing", { code: "ENOENT" }],
+    [
+      "stopped",
+      {
+        stderr:
+          "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?",
+      },
+    ],
+    [
+      "stopped",
+      {
+        stderr:
+          "open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.",
+      },
+    ],
+    ["connection", { stderr: "permission denied while trying to connect" }],
+  ] as const) {
+    await expect(
+      checkDocker(undefined, async () => {
+        throw new Error("Docker failed", { cause });
+      }),
+    ).rejects.toMatchObject({ code });
+  }
+  await expect(
+    checkDocker(undefined, async () => '"windows"'),
+  ).rejects.toMatchObject({ code: "mode" });
+});
+
+test("Docker Desktop waits for readiness after one start and respects cancellation", async () => {
+  let checks = 0;
+  const commands: string[][] = [];
+  const signal = new AbortController().signal;
+  await startDocker(
+    signal,
+    () => {},
+    async (_command, args) => {
+      commands.push(args);
+      if (args[0] === "info" && ++checks === 1)
+        throw new Error("not running", {
+          cause: { stderr: "Cannot connect to the Docker daemon" },
+        });
+      return '"linux"';
+    },
+  );
+  expect(commands.filter((args) => args[0] === "desktop")).toHaveLength(1);
+  expect(checks).toBe(2);
+  const controller = new AbortController();
+  controller.abort();
+  await expect(
+    startDocker(
+      controller.signal,
+      () => {},
+      async () => {
+        throw new Error("Must not execute");
+      },
+    ),
+  ).rejects.toThrow(/abort/i);
 });

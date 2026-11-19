@@ -89,7 +89,7 @@ test.runIf(process.env.DOMOS_CONTAINER_TESTS === "1")(
       let api = await client();
       expect(await api.computer.setup()).toEqual({
         deployment: "container",
-        canIsolate: false,
+        canIsolate: true,
       });
       for (const name of ["Writer", "Reviewer"]) {
         const bot = await api.bots.create({

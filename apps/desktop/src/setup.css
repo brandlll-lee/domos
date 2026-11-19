@@ -38,3 +38,13 @@ input {
 .detail-note {
   color: var(--color-muted);
 }
+
+.setup-error {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+}
+.setup-error .alert {
+  margin: 0;
+  text-align: start;
+}

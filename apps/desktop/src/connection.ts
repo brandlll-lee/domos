@@ -1,5 +1,9 @@
 import { fileURLToPath } from "node:url";
-import type { InstallProgress } from "@domos/hosting/install";
+import {
+  DockerError,
+  type InstallProgress,
+  startDocker,
+} from "@domos/hosting/install";
 import type { Instance } from "@domos/hosting/instance";
 import { themes, windowOverlay } from "@domos/ui/tokens";
 import { type BrowserWindow, ipcMain, nativeTheme, shell } from "electron";
@@ -45,6 +49,7 @@ export class ConnectionSetup {
           z.object({
             mode: z.literal("local"),
             runtime: z.enum(["native", "docker"]),
+            startDocker: z.boolean().optional(),
           }),
           z.object({
             mode: z.literal("existing"),
@@ -60,14 +65,16 @@ export class ConnectionSetup {
       try {
         if (input.mode === "local") {
           this.setLoadingAppearance(true);
-          await this.options.local(
-            input.runtime,
-            (progress) => {
-              if (window && !window.isDestroyed())
-                window.webContents.send("setup:progress", progress);
-            },
-            controller.signal,
-          );
+          const progress = (value: InstallProgress) => {
+            if (window && !window.isDestroyed())
+              window.webContents.send("setup:progress", value);
+          };
+          if (input.startDocker) {
+            if (process.platform !== "win32" || input.runtime !== "docker")
+              throw new Error("此操作需要 Windows Docker Desktop。");
+            await startDocker(controller.signal, progress);
+          }
+          await this.options.local(input.runtime, progress, controller.signal);
         } else
           await this.options.remote(input.url, input.name, controller.signal);
         window?.close();
@@ -81,6 +88,7 @@ export class ConnectionSetup {
         return {
           ok: false,
           cancelled: controller.signal.aborted,
+          docker: error instanceof DockerError ? error.code : undefined,
           error:
             error instanceof Error ? error.message : "连接未完成。请重试。",
         };

@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join } from "node:path";
+import { prepareDockerImage } from "@domos/agent/computer/docker";
 import { computerSchema } from "@domos/agent/config";
 import { z } from "zod";
 
@@ -56,23 +57,27 @@ export async function runCommand(
     signal?: AbortSignal;
     cwd?: string;
     timeout?: number;
+    output?: (value: string) => void;
   } = {},
 ) {
   return new Promise<string>((resolve, reject) => {
+    const { output, ...settings } = options;
     const child = spawn(command, args, {
-      ...options,
+      ...settings,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
     const chunks: Buffer[] = [];
     let size = 0;
     child.stdout.on("data", (chunk: Buffer) => {
+      output?.(chunk.toString("utf8"));
       size += chunk.length;
       if (size <= 1024 * 1024) chunks.push(chunk);
     });
     const diagnostics: Buffer[] = [];
     let diagnosticSize = 0;
     child.stderr.on("data", (chunk: Buffer) => {
+      output?.(chunk.toString("utf8"));
       diagnosticSize += chunk.length;
       if (diagnosticSize <= 1024 * 1024) diagnostics.push(chunk);
     });
@@ -115,11 +120,20 @@ export async function prepareLocalInstallation(
   const configFile = join(directory, "domos.config.json");
   const controllerFile = join(directory, "controller.json");
   try {
-    return {
-      configFile,
-      controllerFile,
-      config: JSON.parse(await readFile(configFile, "utf8")),
-    };
+    const config = JSON.parse(await readFile(configFile, "utf8"));
+    if (
+      release.workImage &&
+      (!config.workComputer ||
+        (config.workComputer.kind === "docker" && !config.workComputer.ssh))
+    ) {
+      config.workComputer = {
+        ...(config.workComputer ?? workComputer(release)),
+        image: release.workImage,
+        proxyImage: release.proxyImage,
+      };
+      await writeConfiguration(configFile, config);
+    }
+    return { configFile, controllerFile, config };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
@@ -141,33 +155,104 @@ export async function writeConfiguration(filename: string, value: unknown) {
   await rename(temporary, filename);
 }
 
-export async function prepareWorkImages(
-  release: Release,
-  progress: (value: InstallProgress) => void,
-  signal?: AbortSignal,
-  execute: typeof runCommand = runCommand,
-) {
-  await checkDocker(signal, execute);
-  for (const image of [release.workImage, release.proxyImage]) {
-    if (image) await prepareImage(image, progress, signal, execute);
+export class DockerError extends Error {
+  readonly code: "missing" | "stopped" | "mode" | "connection";
+  constructor(code: DockerError["code"], message: string, cause?: unknown) {
+    super(message, { cause });
+    this.code = code;
   }
 }
 
 export async function checkDocker(signal?: AbortSignal, execute = runCommand) {
   signal?.throwIfAborted();
-  const system = await execute(
-    "docker",
-    ["info", "--format", "{{json .OSType}}"],
-    {
+  let system: string;
+  try {
+    system = await execute("docker", ["info", "--format", "{{json .OSType}}"], {
       signal,
       timeout: 30_000,
-    },
-  ).catch(() => {
+    });
+  } catch (error) {
     signal?.throwIfAborted();
-    throw new Error("无法连接 Docker。请安装并启动 Docker Desktop，然后重试。");
-  });
+    const cause = error instanceof Error ? error.cause : error;
+    if (z.object({ code: z.literal("ENOENT") }).safeParse(cause).success)
+      throw new DockerError(
+        "missing",
+        "未安装 Docker。请先安装 Docker Desktop。",
+        error,
+      );
+    const diagnostic = z.object({ stderr: z.string() }).safeParse(cause);
+    if (
+      diagnostic.success &&
+      /is the docker daemon running|cannot connect to the docker daemon|(?:dockerDesktopLinuxEngine|docker_engine).*(?:cannot find|not find|找不到)|docker\.sock.*no such file/i.test(
+        diagnostic.data.stderr,
+      )
+    )
+      throw new DockerError(
+        "stopped",
+        "Docker 引擎未启动。请启动 Docker Desktop。",
+        error,
+      );
+    throw new DockerError(
+      "connection",
+      `Docker 连接失败。${diagnostic.success ? diagnostic.data.stderr.slice(0, 600) : error instanceof Error ? error.message : "请检查权限与连接设置。"}`,
+      error,
+    );
+  }
   if (JSON.parse(system) !== "linux")
-    throw new Error("请将 Docker 切换为 Linux 容器模式。");
+    throw new DockerError(
+      "mode",
+      "Docker 当前使用 Windows 容器。请切换为 Linux 容器模式。",
+    );
+}
+
+export async function startDocker(
+  signal: AbortSignal,
+  progress: (value: InstallProgress) => void,
+  execute = runCommand,
+) {
+  signal.throwIfAborted();
+  progress({
+    phase: "checking",
+    message: "正在启动 Docker Desktop，等待引擎就绪…",
+  });
+  const deadline = AbortSignal.any([signal, AbortSignal.timeout(120_000)]);
+  try {
+    await execute("docker", ["desktop", "start", "--timeout", "120"], {
+      signal: deadline,
+      timeout: 130_000,
+    });
+  } catch (error) {
+    deadline.throwIfAborted();
+    const detail = z
+      .object({ stderr: z.string() })
+      .safeParse(error instanceof Error ? error.cause : undefined);
+    throw new Error(
+      `Docker Desktop 启动失败。${detail.success ? detail.data.stderr.slice(0, 600) : "请检查 Docker Desktop 安装与权限。"}`,
+      { cause: error },
+    );
+  }
+  while (true) {
+    try {
+      await checkDocker(deadline, execute);
+      return;
+    } catch (error) {
+      deadline.throwIfAborted();
+      if (!(error instanceof DockerError) || error.code !== "stopped")
+        throw error;
+    }
+    await new Promise<void>((resolve, reject) => {
+      const abort = () => {
+        clearTimeout(timer);
+        reject(deadline.reason);
+      };
+      const timer = setTimeout(() => {
+        deadline.removeEventListener("abort", abort);
+        resolve();
+      }, 500);
+      deadline.addEventListener("abort", abort, { once: true });
+      if (deadline.aborted) abort();
+    });
+  }
 }
 
 export async function prepareImage(
@@ -177,27 +262,29 @@ export async function prepareImage(
   execute = runCommand,
 ) {
   signal?.throwIfAborted();
-  try {
-    await execute("docker", ["image", "inspect", image], {
+  let reported = 0;
+  await prepareDockerImage(image, (args) => {
+    const pulling = args[1] === "pull";
+    if (pulling)
+      progress({ phase: "image", message: "正在下载当前版本的运行包…" });
+    return execute("docker", [...args.slice(1)], {
       signal,
-      timeout: 30_000,
+      timeout: pulling ? 20 * 60_000 : 30_000,
+      output: pulling
+        ? (value) => {
+            if (Date.now() - reported < 150) return;
+            reported = Date.now();
+            const line = value
+              .trim()
+              .split(/[\r\n]+/)
+              .at(-1)
+              ?.slice(0, 160);
+            if (line)
+              progress({ phase: "image", message: `正在下载运行包… ${line}` });
+          }
+        : undefined,
     });
-  } catch (error) {
-    signal?.throwIfAborted();
-    if (
-      !(error instanceof Error) ||
-      !z
-        .object({ stderr: z.string().regex(/No such image/i) })
-        .safeParse(error.cause).success
-    )
-      throw error;
-    progress({ phase: "image", message: "正在下载当前版本的运行包…" });
-    await execute("docker", ["pull", image], { signal, timeout: 20 * 60_000 });
-    await execute("docker", ["image", "inspect", image], {
-      signal,
-      timeout: 30_000,
-    });
-  }
+  });
 }
 
 export async function prepareInstallation(
@@ -211,7 +298,10 @@ export async function prepareInstallation(
     signal?.throwIfAborted();
     progress({ phase, message });
   };
-  await prepareWorkImages(release, progress, signal, execute);
+  stage("checking", "正在检查 Docker…");
+  await checkDocker(signal, execute);
+  if (!release.workImage)
+    throw new Error("发布清单缺少工作镜像。请使用正式发布清单。");
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const configFile = join(directory, "domos.config.json");
   const controllerFile = join(directory, "controller.json");

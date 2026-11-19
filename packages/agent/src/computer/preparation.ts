@@ -26,7 +26,7 @@ export class ComputerPreparation {
     const { workComputer, computer } = this.computers.config;
     const template =
       workComputer ?? (computer.kind !== "process" ? computer : undefined);
-    return template?.kind === "docker" && !template.ssh ? template : undefined;
+    return template && this.computers.local(template) ? template : undefined;
   }
 
   async state(_context: Context) {
@@ -85,7 +85,7 @@ export class ComputerPreparation {
       const config = computerSchema.parse({
         ...template,
         id,
-        volume: `domos-${id}-work`,
+        ...(template.kind === "docker" ? { volume: `domos-${id}-work` } : {}),
       });
       const item: ComputerRecord = {
         id,
