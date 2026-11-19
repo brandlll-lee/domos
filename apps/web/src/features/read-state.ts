@@ -1,6 +1,8 @@
 import { useEffect, useSyncExternalStore } from "react";
 
-export function createReadState<T>(read: (signal: AbortSignal) => Promise<T>) {
+export function createReadState<T>(
+  read: (signal: AbortSignal, refresh: boolean) => Promise<T>,
+) {
   let state: { data?: T; error?: unknown; loading: boolean; revision: number } =
     {
       loading: false,
@@ -47,7 +49,7 @@ export function createReadState<T>(read: (signal: AbortSignal) => Promise<T>) {
       controller = new AbortController();
       const revision = state.revision;
       update({ loading: true, error: undefined });
-      pending = read(controller.signal)
+      pending = read(controller.signal, refresh)
         .then((data) => {
           if (revision === state.revision) update({ data, error: undefined });
           return data;

@@ -39,9 +39,16 @@ export function useComputerServices(botId: number, active = true) {
     setBusy(service);
     setError(undefined);
     try {
-      setState(
-        await client.computer.service({ botId, service, enabled, install }),
-      );
+      const next = await client.computer.service({
+        botId,
+        service,
+        enabled,
+        install,
+      });
+      setState(next);
+      if (install && !next[service].available)
+        setError(next[service].error ?? "浏览器未能连接。请重试。");
+      return next[service].available;
     } catch (cause) {
       setError(userError(cause, "电脑服务未能连接。请重试。"));
     } finally {

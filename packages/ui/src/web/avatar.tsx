@@ -58,6 +58,7 @@ export const BotAvatar = memo(function BotAvatar({
       <span className="character-gesture">
         <Character
           media={source}
+          thumbnail={size === "small" || size === "medium"}
           animateMedia={workingAvatar || size === "panel" || size === "large"}
           shape={identity.shape}
           color={color ?? identity.color}

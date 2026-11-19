@@ -16,6 +16,8 @@ export function ComputerViewer({
   onExpand,
   onSettings,
   takeoverId,
+  installBrowser,
+  installing,
 }: {
   botId: number;
   service: "browser" | "desktop";
@@ -23,6 +25,8 @@ export function ComputerViewer({
   onExpand: () => void;
   onSettings: () => void;
   takeoverId?: string;
+  installBrowser?: () => Promise<boolean | undefined>;
+  installing?: boolean;
 }) {
   const {
     frame,
@@ -124,25 +128,37 @@ export function ComputerViewer({
       {(error || failure) && (
         <div role="alert" className="computer-view-error">
           {error ?? failure}
-          {error && (
-            <Button variant="ghost" size="small" onClick={reconnect}>
-              重新连接
-            </Button>
-          )}
+          {error &&
+            (installBrowser && error.includes("Chrome not found.") ? (
+              <Button
+                variant="ghost"
+                size="small"
+                pending={installing}
+                onClick={async () => {
+                  if (await installBrowser()) await reconnect();
+                }}
+              >
+                安装并连接浏览器
+              </Button>
+            ) : (
+              <Button variant="ghost" size="small" onClick={reconnect}>
+                重新连接
+              </Button>
+            ))}
         </div>
       )}
       <div className="computer-view-toolbar">
         <span
           role="status"
           className="computer-view-status"
-          data-connected={connected || undefined}
+          data-connected={(connected && Boolean(frame)) || undefined}
         >
           <span className="computer-live-dot" />
           {busy
             ? "正在交接…"
             : blocked
               ? "操作已暂停"
-              : connected
+              : connected && frame
                 ? controlling
                   ? "你正在操作"
                   : "实时"

@@ -214,6 +214,8 @@ export function createApp(
       await next();
       if (c.res.headers.get("Content-Type")?.startsWith("text/html"))
         c.header("Cache-Control", "no-store");
+      else if (c.res.ok && /^\/assets\/[^/]+-[\w-]{8}\.webp$/.test(c.req.path))
+        c.header("Cache-Control", "public, max-age=31536000, immutable");
     },
     serveStatic({ root: staticDir }),
   );

@@ -1,6 +1,5 @@
 import type { Bot } from "@domos/agent/bots";
 import { Button } from "@domos/ui/controls";
-import { Disclosure } from "@domos/ui/disclosure";
 import { DesktopIcon } from "@phosphor-icons/react/dist/csr/Desktop";
 import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
 import { GlobeIcon } from "@phosphor-icons/react/dist/csr/Globe";
@@ -40,13 +39,11 @@ export function ComputerWorkspace({
   );
   const item = state?.[service];
   const label = serviceLabels[service];
-  const install =
-    service === "browser" &&
-    Boolean(item?.error?.includes("Chrome not found."));
+  const viewing = status?.authorized && item?.enabled;
   return (
     <section className="computer-workspace" aria-label={`${bot.name}的电脑`}>
       <div className="computer-workspace-stage">
-        {status?.authorized && item?.enabled && item.available ? (
+        {viewing ? (
           <ComputerViewer
             takeoverId={takeoverId}
             botId={bot.id}
@@ -54,10 +51,16 @@ export function ComputerWorkspace({
             expanded={expanded}
             onExpand={onExpand}
             onSettings={onSettings}
+            installBrowser={
+              admin && service === "browser"
+                ? () => configure(service, true, true)
+                : undefined
+            }
+            installing={busy === service}
           />
         ) : (
           <div className="computer-workspace-empty">
-            {(!state || !status?.authorized || item?.enabled) && (
+            {(!state || !status?.authorized) && (
               <>
                 {service === "browser" ? (
                   <GlobeIcon size={28} />
@@ -69,20 +72,11 @@ export function ComputerWorkspace({
                     ? "允许机器人访问此电脑"
                     : !status.authorized
                       ? "电脑需要授权"
-                      : !state
-                        ? error
-                          ? "电脑暂时无法连接"
-                          : "正在连接电脑…"
-                        : item?.enabled
-                          ? `${label}尚未就绪`
-                          : `${label}尚未启用`}
+                      : error
+                        ? "电脑暂时无法连接"
+                        : "正在连接电脑…"}
                 </h3>
               </>
-            )}
-            {item?.error && (
-              <Disclosure label="错误详情">
-                <p>{item.error}</p>
-              </Disclosure>
             )}
             {status && !status.authorized && (
               <p>{computerLabels.state[status.state]}</p>
@@ -99,20 +93,16 @@ export function ComputerWorkspace({
                   variant="secondary"
                   pending={busy === service}
                   disabled={Boolean(busy)}
-                  onClick={() => void configure(service, true, install)}
+                  onClick={() => void configure(service, true)}
                 >
-                  {item?.enabled
-                    ? install
-                      ? "安装并连接浏览器"
-                      : `重新检查${label}`
-                    : `启用${label}`}
+                  启用{label}
                 </Button>
               )
             )}
             {state && !admin && <p>请联系管理员启用{label}。</p>}
           </div>
         )}
-        {!(status?.authorized && item?.enabled && item.available) && (
+        {!viewing && (
           <div className="computer-empty-controls">
             <Button
               variant="ghost"

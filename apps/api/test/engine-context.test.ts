@@ -462,6 +462,17 @@ test("model catalogs survive restart and stay on their work computer", async () 
       (item) => item.id === "pi",
     )?.version,
   ).toBe(inspected.version);
+  await expect(
+    f.runtime.client.engines.status({
+      botId,
+      config: { provider: "pi", model: null },
+    }),
+  ).resolves.toEqual({
+    ready: true,
+    version: inspected.version,
+    authenticated: null,
+  });
+  expect(f.state.workers).toHaveLength(count + 1);
   const gate = Promise.withResolvers<void>();
   f.state.catalogGate = gate.promise;
   const refresh = f.runtime.client.engines.inspect({

@@ -505,6 +505,7 @@ test("AI services share connection reads and keep Bot model selection separate",
   page,
 }, info) => {
   const reads = new Map<string, number>();
+  const catalogs = new Set<string>();
   const mutations: string[] = [];
   let claudeReady = false;
   const inspection = Promise.withResolvers<void>();
@@ -512,12 +513,14 @@ test("AI services share connection reads and keep Bot model selection separate",
     if (/\/rpc\/engines\/(configure|select)$/.test(request.url()))
       mutations.push(request.url());
   });
-  await page.route("**/rpc/engines/inspect", async (route) => {
+  await page.route("**/rpc/engines/{inspect,status}", async (route) => {
     const provider = route.request().postDataJSON().json.config.provider;
-    reads.set(provider, (reads.get(provider) ?? 0) + 1);
-    if (provider === "opencode" && reads.get(provider) === 1)
-      await inspection.promise;
-    if (provider === "claude" && !claudeReady) return route.abort("failed");
+    if (route.request().url().endsWith("/status")) {
+      reads.set(provider, (reads.get(provider) ?? 0) + 1);
+      if (provider === "opencode" && reads.get(provider) === 1)
+        await inspection.promise;
+      if (provider === "claude" && !claudeReady) return route.abort("failed");
+    } else catalogs.add(provider);
     await route.fulfill({
       json: {
         json: {
@@ -575,6 +578,7 @@ test("AI services share connection reads and keep Bot model selection separate",
     "正在检查连接",
   );
   await expect(checking.locator(".status-dot")).toHaveCount(0);
+  expect(catalogs.has("opencode")).toBe(false);
   inspection.resolve();
   for (const [name, status, tone] of [
     ["Codex", "未安装", "negative"],
@@ -745,6 +749,7 @@ test("AI services share connection reads and keep Bot model selection separate",
     .getByRole("combobox", { name: "模型提供方", exact: true })
     .click();
   await page.getByRole("option", { name: "测试提供方", exact: true }).click();
+  expect(catalogs.has("opencode")).toBe(true);
   await settings.getByRole("button", { name: "登录", exact: true }).click();
   await expect(settings.getByText("等待登录…", { exact: true })).toBeVisible();
   await expect(

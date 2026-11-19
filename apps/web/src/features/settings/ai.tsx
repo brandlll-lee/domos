@@ -15,6 +15,7 @@ import { EngineMark } from "../bots/engine-mark.tsx";
 import { ModelSetting } from "../models/model-setting.tsx";
 import { useModelSettings } from "../models/model-state.ts";
 import { useVisibility } from "../models/use-visibility.ts";
+import { useReadState } from "../read-state.ts";
 import { userError } from "../user-error.ts";
 import { ImageServiceSettings } from "./image-service.tsx";
 import { useConnectionContext } from "./use-connection-context.ts";
@@ -84,21 +85,6 @@ function Services({ botId, admin }: { botId: number; admin: boolean }) {
       ? selected
       : (store.snapshot().choices[id] ?? { provider: id, model: null });
   const enabled = Boolean(scope?.computer?.authorized);
-  useEffect(() => {
-    if (!profile || !enabled) return;
-    for (const item of profile.providers) {
-      if (!admin && item.id !== profile.config.provider) continue;
-      const config =
-        profile.config.provider === item.id
-          ? profile.config
-          : (store.snapshot().choices[item.id] ?? {
-              provider: item.id,
-              model: null,
-            });
-      if (item.id === "acp" && !config.command) continue;
-      void store.inspect(config, admin).catch(() => {});
-    }
-  }, [profile, enabled, admin, store]);
   async function refresh() {
     setBusy(true);
     setError("");
@@ -109,7 +95,10 @@ function Services({ botId, admin }: { botId: number; admin: boolean }) {
           providers
             .filter((item) => item.id !== "acp" || configFor(item.id).command)
             .map((item) =>
-              store.inspect(configFor(item.id), admin, true).catch(() => {}),
+              store
+                .serviceStatus(configFor(item.id), admin)
+                .load(true)
+                .catch(() => {}),
             ),
         );
     } catch (cause) {
@@ -196,68 +185,96 @@ function Services({ botId, admin }: { botId: number; admin: boolean }) {
         </>
       ) : (
         <PanelGroup title="可用服务">
-          {providers.map((item) => {
-            const config = configFor(item.id);
-            const connection = store.connection(config);
-            const failure = store.inspectionError(config);
-            const loading = store.inspecting(config);
-            const status: { label: string; tone: StatusTone } | undefined =
-              !enabled
-                ? { label: "等待工作电脑授权", tone: "warning" }
-                : loading
-                  ? undefined
-                  : failure
-                    ? { label: "读取失败", tone: "negative" }
-                    : connection
-                      ? !connection.ready
-                        ? { label: "未安装", tone: "negative" }
-                        : connection.authenticated
-                          ? { label: "可用", tone: "positive" }
-                          : { label: "待登录", tone: "warning" }
-                      : item.id === "acp"
-                        ? { label: "待配置", tone: "warning" }
-                        : undefined;
-            return (
-              <div className="ai-service-row" key={item.id}>
-                <span className="ai-service-mark">
-                  <EngineMark provider={item.id} />
-                  {status && <StatusDot {...status} />}
-                </span>
-                <SettingRow
-                  title={item.name}
-                  description={
-                    <span
-                      role={status ? "status" : undefined}
-                      title={failure || connection?.message}
-                    >
-                      {status?.label ?? <Loading label="正在检查连接" inline />}
-                      {" · "}
-                      <span className="harness-version">
-                        {connection?.version
-                          ? `v${connection.version}`
-                          : "版本未提供"}
-                      </span>
-                    </span>
-                  }
-                >
-                  <Button
-                    variant="secondary"
-                    size="small"
-                    aria-label={`${connection?.authenticated && !failure ? "管理" : "设置"} ${item.name}`}
-                    onClick={() => setProvider(item.id)}
-                  >
-                    {connection?.authenticated && !failure ? "管理" : "设置"}
-                  </Button>
-                </SettingRow>
-              </div>
-            );
-          })}
+          {providers.map((item) => (
+            <ServiceRow
+              key={item.id}
+              name={item.name}
+              config={configFor(item.id)}
+              store={store}
+              savedVersion={
+                profile?.catalog.find((entry) => entry.id === item.id)?.version
+              }
+              admin={admin}
+              enabled={enabled}
+              onOpen={() => setProvider(item.id)}
+            />
+          ))}
         </PanelGroup>
       )}
       {!active && (
         <ImageServiceSettings botId={botId} admin={admin} enabled={enabled} />
       )}
       {!admin && <InlineNotice>账号和程序由管理员配置。</InlineNotice>}
+    </div>
+  );
+}
+
+function ServiceRow({
+  name,
+  config,
+  store,
+  savedVersion,
+  admin,
+  enabled,
+  onOpen,
+}: {
+  name: string;
+  config: EngineConfig;
+  store: ReturnType<typeof useModelSettings>["store"];
+  savedVersion?: string | null;
+  admin: boolean;
+  enabled: boolean;
+  onOpen: () => void;
+}) {
+  const configured = config.provider !== "acp" || Boolean(config.command);
+  const { data, loading, error } = useReadState(
+    store.serviceStatus(config, admin),
+    enabled && configured,
+  );
+  const connection = store.connection(config);
+  const ready = data?.ready ?? connection?.ready;
+  const authenticated = data?.authenticated ?? connection?.authenticated;
+  const version = data ? data.version : (connection?.version ?? savedVersion);
+  const failure = error ? userError(error, "连接读取失败。") : undefined;
+  let status: { label: string; tone: StatusTone } | undefined;
+  if (!enabled) status = { label: "等待工作电脑授权", tone: "warning" };
+  else if (!configured) status = { label: "待配置", tone: "warning" };
+  else if (failure) status = { label: "读取失败", tone: "negative" };
+  else if (ready === false) status = { label: "未安装", tone: "negative" };
+  else if (authenticated === true) status = { label: "可用", tone: "positive" };
+  else if (authenticated === false)
+    status = { label: "待登录", tone: "warning" };
+  else if (ready) status = { label: "已安装 · 登录待检查", tone: "warning" };
+
+  const action = ready && authenticated !== false && !failure ? "管理" : "设置";
+  return (
+    <div className="ai-service-row">
+      <span className="ai-service-mark">
+        <EngineMark provider={config.provider} />
+        {status && <StatusDot {...status} />}
+      </span>
+      <SettingRow
+        title={name}
+        description={
+          <span role={status ? "status" : undefined} title={failure}>
+            {status?.label ?? <Loading label="正在检查连接" inline />}
+            {status && loading && " · 正在检查连接"}
+            {" · "}
+            <span className="harness-version">
+              {version ? `v${version}` : "版本未提供"}
+            </span>
+          </span>
+        }
+      >
+        <Button
+          variant="secondary"
+          size="small"
+          aria-label={`${action} ${name}`}
+          onClick={onOpen}
+        >
+          {action}
+        </Button>
+      </SettingRow>
     </div>
   );
 }

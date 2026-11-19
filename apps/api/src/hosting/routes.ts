@@ -174,6 +174,7 @@ export function hostingApp(options: {
   for (const path of [
     "configure",
     "inspect",
+    "status",
     "install",
     "login",
     "loginState",

@@ -670,12 +670,12 @@ test("workspace empty states stay centered at every panel width", async ({
   page,
 }, info) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  for (const state of ["loading", "disabled", "unavailable", "failed"]) {
+  for (const state of ["loading", "disabled", "failed"]) {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.route("**/rpc/computer/services", async (route) => {
       if (state === "loading") return;
       if (state === "failed") return route.abort();
-      const value = { enabled: state === "unavailable", available: false };
+      const value = { enabled: false, available: false };
       await route.fulfill({
         json: { json: { browser: value, desktop: value } },
       });
@@ -690,10 +690,6 @@ test("workspace empty states stay centered at every panel width", async ({
     else if (state === "failed")
       await expect(
         page.getByRole("heading", { name: "电脑暂时无法连接" }),
-      ).toBeVisible();
-    else if (state === "unavailable")
-      await expect(
-        page.getByRole("heading", { name: "桌面尚未就绪" }),
       ).toBeVisible();
     else
       await expect(

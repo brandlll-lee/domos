@@ -170,15 +170,17 @@ test("plush identities load, animate and survive profile changes", async ({
         .evaluate((item) => item.getAnimations().length),
     ).toBeGreaterThan(0);
     await page.emulateMedia({ reducedMotion: "reduce" });
-    expect(
-      await page
-        .locator(".character")
-        .evaluateAll(
-          (items) =>
-            items.flatMap((item) => item.getAnimations({ subtree: true }))
-              .length,
-        ),
-    ).toBe(0);
+    await expect
+      .poll(() =>
+        page
+          .locator(".character")
+          .evaluateAll(
+            (items) =>
+              items.flatMap((item) => item.getAnimations({ subtree: true }))
+                .length,
+          ),
+      )
+      .toBe(0);
     const header = page.locator(".chat-header .bot-avatar");
     const initial = await header.getAttribute("data-seed");
     await page.getByRole("button", { name: "Bot详情", exact: true }).click();
@@ -202,8 +204,33 @@ test("plush identities load, animate and survive profile changes", async ({
     await page.emulateMedia({ reducedMotion: "reduce" });
     await contactAvatar.hover();
     await expect(gesture).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
+    const texture = Promise.withResolvers<void>();
+    await page.route("**/assets/cloud-*.webp", async (route) => {
+      await texture.promise;
+      await route.continue();
+    });
     await details.getByRole("button", { name: "编辑", exact: true }).click();
     const picker = details.locator(".avatar-editor");
+    const cloud = picker.getByRole("button", {
+      name: "外形：云团",
+      exact: true,
+    });
+    await expect(cloud.locator(".character-body > path")).toBeVisible();
+    await expect(cloud.locator(".character-face")).toHaveCount(0);
+    const textureResponse = page.waitForResponse("**/assets/cloud-*.webp");
+    texture.resolve();
+    expect((await textureResponse).headers()["cache-control"]).toContain(
+      "immutable",
+    );
+    await expect(cloud.locator(".character-face")).toBeVisible();
+    expect(
+      await cloud.locator(".character-body > image").evaluate(async (node) => {
+        const image = new Image();
+        image.src = node.getAttribute("href") ?? "";
+        await image.decode();
+        return image.naturalWidth;
+      }),
+    ).toBe(160);
     await picker.getByRole("tab", { name: "内置角色", exact: true }).focus();
     await page.keyboard.press("ArrowRight");
     await expect(
@@ -222,7 +249,7 @@ test("plush identities load, animate and survive profile changes", async ({
       18,
     );
     const bodies = await picker
-      .locator(".character-body > image")
+      .locator('[aria-label="外形"] .character-body > image')
       .evaluateAll(async (nodes) => {
         const sources = new Set(nodes.map((node) => node.getAttribute("href")));
         return Promise.all(
@@ -262,9 +289,9 @@ test("plush identities load, animate and survive profile changes", async ({
       });
     expect(bodies).toHaveLength(15);
     for (const body of bodies) {
-      expect(body.size).toEqual([1120, 1120]);
+      expect(body.size).toEqual([160, 160]);
       expect(body.neutral).toBe(true);
-      expect(Math.abs(body.median / 255 - 0.55)).toBeLessThan(2 / 255);
+      expect(Math.abs(body.median / 255 - 0.55)).toBeLessThan(3 / 255);
     }
     await checkAvatarSizes();
     await picker.getByRole("button", { name: "换个形象", exact: true }).click();

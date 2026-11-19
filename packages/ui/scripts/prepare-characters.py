@@ -79,5 +79,10 @@ if __name__ == "__main__":
             materials.append((output / path.name, material))
             print(f"Prepared {path.name}", flush=True)
     output.mkdir(parents=True, exist_ok=True)
+    thumbnails = output / "thumbnails"
+    thumbnails.mkdir(exist_ok=True)
     for path, material in materials:
         material.save(path, lossless=True, method=6)
+        material.resize((160, 160), Image.Resampling.LANCZOS).save(
+            thumbnails / path.name, lossless=True, method=6
+        )

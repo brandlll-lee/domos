@@ -134,6 +134,17 @@ export function engineRouter(bots: Bots, runtime?: Runtime) {
         (await runtime.profile(input.botId, context)).config,
       );
     }),
+    status: os
+      .input(botTarget.extend({ config, refresh: z.boolean().optional() }))
+      .handler(async ({ input }) => {
+        const runtime = await target(input.botId);
+        return runtime.connections.status(
+          input.botId,
+          input.config,
+          context,
+          input.refresh,
+        );
+      }),
     inspect: os
       .input(
         botTarget.extend({

@@ -16,11 +16,28 @@ import round from "../../assets/characters/round.webp";
 import soft from "../../assets/characters/soft.webp";
 import sprout from "../../assets/characters/sprout.webp";
 import star from "../../assets/characters/star.webp";
+import bunnyThumbnail from "../../assets/characters/thumbnails/bunny.webp";
+import capsuleThumbnail from "../../assets/characters/thumbnails/capsule.webp";
+import catThumbnail from "../../assets/characters/thumbnails/cat.webp";
+import chatThumbnail from "../../assets/characters/thumbnails/chat.webp";
+import cloudThumbnail from "../../assets/characters/thumbnails/cloud.webp";
+import controllerThumbnail from "../../assets/characters/thumbnails/controller.webp";
+import dropThumbnail from "../../assets/characters/thumbnails/drop.webp";
+import ghostThumbnail from "../../assets/characters/thumbnails/ghost.webp";
+import heartThumbnail from "../../assets/characters/thumbnails/heart.webp";
+import hexThumbnail from "../../assets/characters/thumbnails/hex.webp";
+import rocketThumbnail from "../../assets/characters/thumbnails/rocket.webp";
+import roundThumbnail from "../../assets/characters/thumbnails/round.webp";
+import softThumbnail from "../../assets/characters/thumbnails/soft.webp";
+import sproutThumbnail from "../../assets/characters/thumbnails/sprout.webp";
+import starThumbnail from "../../assets/characters/thumbnails/star.webp";
+import triangleThumbnail from "../../assets/characters/thumbnails/triangle.webp";
 import triangle from "../../assets/characters/triangle.webp";
 import {
   type CharacterMedia,
   type CharacterShape,
   characterFaces,
+  characterShapes,
 } from "../characters.ts";
 import {
   type CharacterWork,
@@ -30,22 +47,22 @@ import {
 } from "./character-work.tsx";
 
 const textures = {
-  cat,
-  bunny,
-  ghost,
-  rocket,
-  controller,
-  sprout,
-  chat,
-  cloud,
-  drop,
-  heart,
-  hex,
-  round,
-  soft,
-  star,
-  triangle,
-  capsule,
+  bunny: [bunny, bunnyThumbnail],
+  capsule: [capsule, capsuleThumbnail],
+  cat: [cat, catThumbnail],
+  chat: [chat, chatThumbnail],
+  cloud: [cloud, cloudThumbnail],
+  controller: [controller, controllerThumbnail],
+  drop: [drop, dropThumbnail],
+  ghost: [ghost, ghostThumbnail],
+  heart: [heart, heartThumbnail],
+  hex: [hex, hexThumbnail],
+  rocket: [rocket, rocketThumbnail],
+  round: [round, roundThumbnail],
+  soft: [soft, softThumbnail],
+  sprout: [sprout, sproutThumbnail],
+  star: [star, starThumbnail],
+  triangle: [triangle, triangleThumbnail],
 };
 const bodyPadding = (48 / 1024) * 100;
 const channels = (color: string) =>
@@ -114,6 +131,7 @@ export function Character({
   work,
   media,
   animateMedia = false,
+  thumbnail = false,
   viewBox = "0 0 100 100",
 }: {
   shape: CharacterShape;
@@ -122,11 +140,13 @@ export function Character({
   work?: CharacterWork;
   media?: CharacterMedia;
   animateMedia?: boolean;
+  thumbnail?: boolean;
   viewBox?: string;
 }) {
   const id = useId();
   const root = useRef<SVGSVGElement>(null);
   const [playing, setPlaying] = useState(false);
+  const [loadedTexture, setLoadedTexture] = useState<string>();
   useEffect(() => {
     if (!media || !animateMedia || !root.current) {
       setPlaying(false);
@@ -163,7 +183,8 @@ export function Character({
   const face = media?.headset ??
     characterFaces[shape] ?? { x: 50, y: 46.4, scale: 1 };
   const computer = media?.computer ?? face;
-  const texture = textures[shape];
+  const texture = textures[shape][thumbnail ? 1 : 0];
+  const bodyReady = loadedTexture === texture;
   const [red, green, blue] = useMemo(() => tint(color), [color]);
   return (
     <svg
@@ -238,19 +259,30 @@ export function Character({
                 preserveAspectRatio="xMidYMid meet"
               />
             ) : (
-              <image
-                href={texture}
-                x={-bodyPadding}
-                y={-bodyPadding}
-                width={100 + bodyPadding * 2}
-                height={100 + bodyPadding * 2}
-                filter={`url(#${id}-tint)`}
-              />
+              <>
+                {!bodyReady && (
+                  <path
+                    d={characterShapes[shape === "cat" ? "round" : shape]}
+                    fill="currentColor"
+                    opacity=".12"
+                  />
+                )}
+                <image
+                  key={texture}
+                  href={texture}
+                  x={-bodyPadding}
+                  y={-bodyPadding}
+                  width={100 + bodyPadding * 2}
+                  height={100 + bodyPadding * 2}
+                  filter={`url(#${id}-tint)`}
+                  onLoad={() => setLoadedTexture(texture)}
+                />
+              </>
             )}
             <g
               transform={`translate(${face.x} ${face.y}) scale(${face.scale}) translate(-50 -46.4)`}
             >
-              {!media && (
+              {!media && bodyReady && (
                 <g className="character-face">
                   {[37.4, 62.6].map((cx, index) => (
                     <Eye

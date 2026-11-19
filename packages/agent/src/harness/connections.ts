@@ -6,6 +6,7 @@ import type { EngineExecution } from "./execution.ts";
 import { type EngineLoginInput, EngineLogins } from "./logins.ts";
 import type { EngineModelCatalog } from "./model-catalog.ts";
 import { openOpenCodeAccount } from "./opencode-account.ts";
+import { openCodexClient } from "./providers/codex-client.ts";
 import { engineProvider, providers } from "./providers/index.ts";
 import { type EngineConfig, type EngineModel, engineLimits } from "./types.ts";
 
@@ -151,6 +152,58 @@ export class EngineConnections {
     }
   }
 
+  async status(
+    botId: number,
+    config: EngineConfig,
+    context: Context,
+    refresh = false,
+  ) {
+    const cached = await this.snapshot(botId, config, context);
+    if (cached && !refresh)
+      return {
+        ready: cached.ready,
+        version: cached.version,
+        authenticated: cached.authenticated,
+      };
+    const installation = await this.installed(botId, config, context);
+    return {
+      ready: installation.available,
+      version: installation.version,
+      authenticated: installation.path
+        ? await this.readAccount(
+            botId,
+            { ...config, command: installation.path },
+            context,
+          )
+        : null,
+    };
+  }
+
+  private async readAccount(
+    botId: number,
+    config: EngineConfig,
+    context: Context,
+  ) {
+    const { provider, command } = config;
+    if (provider !== "claude" && provider !== "cursor" && provider !== "codex")
+      return null;
+    const worker = await this.execution.computers.process(
+      botId,
+      [],
+      async () => {
+        throw new Error("工具不可用。");
+      },
+      context,
+    );
+    if (provider !== "codex")
+      return readCliAccount(worker, provider, {}, command);
+    try {
+      return await (await openCodexClient(worker, config)).authenticated();
+    } finally {
+      await worker.close();
+    }
+  }
+
   private async discover(
     botId: number,
     config: EngineConfig,
@@ -167,7 +220,21 @@ export class EngineConnections {
         message: "这台工作电脑还未安装此引擎。",
       };
     config = { ...config, command: installation.path ?? config.command };
-    let worker = await this.execution.computers.process(
+    const authenticated =
+      config.provider === "claude" || config.provider === "cursor"
+        ? await this.readAccount(botId, config, context)
+        : null;
+    if (authenticated === false)
+      return {
+        ready: true,
+        version: installation.version,
+        path: installation.path,
+        authenticated,
+        models: [] as EngineModel[],
+        vision: null,
+        message: "请连接账号。",
+      };
+    const worker = await this.execution.computers.process(
       botId,
       [],
       async () => {
@@ -176,33 +243,6 @@ export class EngineConnections {
       context,
     );
     try {
-      let authenticated: boolean | undefined;
-      if (config.provider === "claude" || config.provider === "cursor") {
-        authenticated = await readCliAccount(
-          worker,
-          config.provider,
-          {},
-          config.command,
-        );
-        if (!authenticated)
-          return {
-            ready: true,
-            version: installation.version,
-            path: installation.path,
-            authenticated,
-            models: [] as EngineModel[],
-            vision: null,
-            message: "请连接账号。",
-          };
-        worker = await this.execution.computers.process(
-          botId,
-          [],
-          async () => {
-            throw new Error("工具不可用。");
-          },
-          context,
-        );
-      }
       if (config.provider === "opencode") {
         const account = await openOpenCodeAccount(worker, {}, config.command);
         const result = await account.catalog(config.model);

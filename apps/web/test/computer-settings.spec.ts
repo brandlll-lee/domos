@@ -426,6 +426,13 @@ test("computer viewing uses separate tabs and releases control when closed", asy
     details.getByRole("combobox", { name: "模型", exact: true }),
   ).toBeVisible();
   await page.setViewportSize({ width: 1360, height: 900 });
+  await page.route("**/rpc/computer/services", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.json.browser.available = false;
+    body.json.browser.error = "旧检测结果";
+    await route.fulfill({ response, json: body });
+  });
   await details.getByRole("tab", { name: "Browser", exact: true }).click();
   await expect(
     view.getByRole("button", { name: "接管", exact: true }),
@@ -439,7 +446,7 @@ test("computer viewing uses separate tabs and releases control when closed", asy
 for (const [error, action, install] of [
   [
     JSON.stringify({ code: "outcome_unknown", error: "Invalid response: EOF" }),
-    "重新检查浏览器",
+    "重新连接",
     false,
   ],
   ["Chrome not found. Run agent-browser install.", "安装并连接浏览器", true],
@@ -455,6 +462,23 @@ for (const [error, action, install] of [
     await page.route("**/rpc/computer/services", (route) =>
       route.fulfill({ json: { json: state } }),
     );
+    let attempts = 0;
+    const opening = Promise.withResolvers<void>();
+    await page.route("**/rpc/computer/watch", async (route) => {
+      attempts++;
+      await opening.promise;
+      return route.fulfill({
+        status: 400,
+        json: {
+          json: {
+            defined: false,
+            code: "BAD_REQUEST",
+            status: 400,
+            message: error,
+          },
+        },
+      });
+    });
     const submitted = Promise.withResolvers<unknown>();
     await page.route("**/rpc/computer/service", async (route) => {
       submitted.resolve(route.request().postDataJSON());
@@ -464,17 +488,16 @@ for (const [error, action, install] of [
     await page.getByRole("button", { name: "Bot详情", exact: true }).click();
     await page.getByRole("tab", { name: "Browser", exact: true }).click();
     const view = page.getByRole("region", { name: "Domos的电脑", exact: true });
-    await expect(
-      view.getByRole("heading", { name: "浏览器尚未就绪" }),
-    ).toBeVisible();
-    await expect(view.getByText(error, { exact: true })).toBeHidden();
+    await expect(view.getByText("正在连接…", { exact: true })).toBeVisible();
+    opening.resolve();
+    await expect(view.getByRole("alert")).toContainText(error);
     await page.screenshot({ path: info.outputPath("browser-recovery.png") });
-    await view.getByText("错误详情", { exact: true }).click();
-    await expect(view.getByText(error, { exact: true })).toBeVisible();
     await view.getByRole("button", { name: action, exact: true }).click();
-    expect(await submitted.promise).toMatchObject({
-      json: { service: "browser", enabled: true, install },
-    });
+    if (install)
+      expect(await submitted.promise).toMatchObject({
+        json: { service: "browser", enabled: true, install },
+      });
+    else await expect.poll(() => attempts).toBe(2);
   });
 }
 

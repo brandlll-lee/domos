@@ -103,10 +103,11 @@ export function useView(
           setConnected(true);
         } else setFrame(event.frame);
       }
+      if (!controller.signal.aborted) setError("画面连接已断开。请重新连接。");
     })()
       .catch((cause) => {
         if (!controller.signal.aborted)
-          setError(cause.message ?? "画面连接已断开。");
+          setError(cause instanceof Error ? cause.message : "画面连接已断开。");
       })
       .finally(() => {
         if (!controller.signal.aborted) session.current = undefined;

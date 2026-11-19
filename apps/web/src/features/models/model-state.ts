@@ -3,9 +3,11 @@ import { useSyncExternalStore } from "react";
 import { client } from "../../client.ts";
 import { invalidateNativeConnections } from "../apps/connection-state.ts";
 import { invalidateBotWork } from "../bots/details/use-bot-work.ts";
+import { createReadState } from "../read-state.ts";
 
 type Profile = Awaited<ReturnType<typeof client.engines.get>>;
 type Connection = Awaited<ReturnType<typeof client.engines.inspect>>;
+type ServiceStatus = Awaited<ReturnType<typeof client.engines.status>>;
 const stores = new Map<number, ReturnType<typeof createSettings>>();
 window.addEventListener("domos:computer", () => stores.clear());
 window.addEventListener("domos:pair", () => stores.clear());
@@ -36,10 +38,25 @@ function createSettings(botId: number) {
   let pending = Promise.resolve();
   let reading: Promise<Profile> | undefined;
   const inspections = new Map<string, Promise<Connection>>();
+  const statuses = new Map<
+    string,
+    ReturnType<typeof createReadState<ServiceStatus>>
+  >();
   const listeners = new Set<() => void>();
   const update = (patch: Partial<typeof state>) => {
     state = { ...state, ...patch };
     for (const listener of listeners) listener();
+  };
+  const statusKey = (key: string, admin: boolean) =>
+    JSON.stringify([key, admin]);
+  const remember = (config: EngineConfig, connection: Connection) => {
+    const key = keyOf(config);
+    for (const admin of [true, false])
+      statuses.get(statusKey(key, admin))?.receive(connection);
+    update({
+      connections: { ...state.connections, [key]: connection },
+      inspectionErrors: { ...state.inspectionErrors, [key]: "" },
+    });
   };
   const receive = (profile: Profile) => {
     if (
@@ -88,12 +105,20 @@ function createSettings(botId: number) {
       state.inspectionErrors[keyOf(config)],
     inspecting: (config: EngineConfig) =>
       Boolean(state.inspecting[keyOf(config)]),
-    remember(config: EngineConfig, connection: Connection) {
-      update({
-        connections: { ...state.connections, [keyOf(config)]: connection },
-        inspectionErrors: { ...state.inspectionErrors, [keyOf(config)]: "" },
-      });
+    serviceStatus(config: EngineConfig, admin: boolean) {
+      const key = statusKey(keyOf(config), admin);
+      let status = statuses.get(key);
+      if (!status) {
+        status = createReadState<ServiceStatus>((signal, refresh) =>
+          admin
+            ? client.engines.status({ botId, config, refresh }, { signal })
+            : client.engines.available({ botId }, { signal }),
+        );
+        statuses.set(key, status);
+      }
+      return status;
     },
+    remember,
     load(refresh = false) {
       if (state.profile && !refresh) return Promise.resolve(state.profile);
       const current = generation;
@@ -131,10 +156,7 @@ function createSettings(botId: number) {
           : client.engines.available({ botId })
       )
         .then((connection) => {
-          if (current === generation)
-            update({
-              connections: { ...state.connections, [key]: connection },
-            });
+          if (current === generation) remember(config, connection);
           return connection;
         })
         .catch((cause: unknown) => {
@@ -161,6 +183,7 @@ function createSettings(botId: number) {
       reading = undefined;
       confirmed = undefined;
       inspections.clear();
+      for (const status of statuses.values()) status.clear();
       update({
         profile: undefined,
         selected: undefined,

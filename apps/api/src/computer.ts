@@ -130,18 +130,17 @@ export function computerRouter(bots: Bots, computers?: Computers) {
       await botConversation(bots, input.botId);
       const target = await access(async (target) => target);
       const aborted = signal ?? new AbortController().signal;
-      const id = await target.views.open(
-        input.botId,
-        input.service,
-        aborted,
-        context,
+      const id = await access(() =>
+        target.views.open(input.botId, input.service, aborted, context),
       );
       try {
         yield { type: "ready" as const, id };
         while (!aborted.aborted)
           yield {
             type: "frame" as const,
-            frame: await target.views.next(input.botId, id, aborted, context),
+            frame: await access(() =>
+              target.views.next(input.botId, id, aborted, context),
+            ),
           };
       } finally {
         await target.views.close(id, context).catch(() => {});

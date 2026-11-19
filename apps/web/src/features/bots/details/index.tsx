@@ -237,7 +237,7 @@ export function BotDetails({
         active && (
           <ComputerWorkspace
             takeoverId={takeoverId}
-            key={tab}
+            key={`${tab}:${sessionBot.id}`}
             bot={sessionBot}
             computer={computer}
             admin={canManage}
