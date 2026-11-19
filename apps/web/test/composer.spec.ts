@@ -18,7 +18,8 @@ test("composer shares Bot colors across voice, send, attachments and stop in bot
 }, info) => {
   await page.goto(service.url);
   await page.addStyleTag({
-    content: ".composer-action button { transition: none; }",
+    content:
+      ".composer-action button, .composer-leading button { transition: none; }",
   });
   const input = page.getByLabel("消息", { exact: true });
   const action = page.locator(".composer-action button");
@@ -29,6 +30,26 @@ test("composer shares Bot colors across voice, send, attachments and stop in bot
   let background = "";
   for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    const add = page.getByRole("button", { name: "添加内容", exact: true });
+    const surface = page.locator(".message-composer");
+    const neutral = await add.evaluate(
+      (node) => getComputedStyle(node).backgroundColor,
+    );
+    expect(neutral).not.toBe(
+      await surface.evaluate((node) => getComputedStyle(node).backgroundColor),
+    );
+    expect((await add.boundingBox())?.width).toBe(bounds?.width);
+    expect((await add.boundingBox())?.height).toBe(bounds?.height);
+    await expect(add).toHaveCSS("border-radius", "999px");
+    await add.hover();
+    expect(
+      await add.evaluate((node) => getComputedStyle(node).backgroundColor),
+    ).not.toBe(neutral);
+    await page.mouse.down();
+    await expect(add).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 1)");
+    await page.mouse.move(0, 0);
+    await page.mouse.up();
     await expect(action).toHaveCSS("opacity", "1");
     const color = await action.evaluate(
       (node) => getComputedStyle(node).backgroundColor,

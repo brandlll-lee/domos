@@ -12,6 +12,7 @@ import {
   type Page,
   test,
 } from "@playwright/test";
+import { composerFiles } from "../../web/test/fixtures/chat-ui.ts";
 import { workspacePage } from "./pages.ts";
 
 async function captureWindow(
@@ -502,34 +503,32 @@ test("native setup starts and resumes with Docker unavailable", async ({
         .locator(".composer-attachments")
         .getByRole("button", { name: "重试", exact: true }),
     ).toHaveCount(0);
-    const previews = await resumed.evaluate(async () => {
-      const draftKey = Object.keys(localStorage).find((key) =>
-        key.startsWith("domos:composer:v2:"),
-      );
-      const files = JSON.parse(localStorage.getItem(draftKey ?? "") ?? "{}")
-        .attachments as { id: string; name: string }[];
-      const bots = await fetch("/rpc/bots/list", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ json: {} }),
-      });
-      const botId = (await bots.json()).json[0].id as number;
-      const results = [];
-      for (const name of ["data.xlsx", "report.docx"]) {
-        const file = files.find((file) => file.name === name);
-        if (!file) throw new Error("Native attachment missing");
-        const response = await fetch(
-          `/files/${botId}/${file.id}${name === "data.xlsx" ? "/preview" : "?download=1"}`,
-        );
-        if (!response.ok) throw new Error(await response.text());
-        results.push(
-          name === "data.xlsx"
-            ? await response.json()
-            : { size: (await response.arrayBuffer()).byteLength },
-        );
-      }
-      return results;
-    });
+    const previews = await resumed.evaluate(
+      async (files) => {
+        const bots = await fetch("/rpc/bots/list", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ json: {} }),
+        });
+        const botId = (await bots.json()).json[0].id as number;
+        const results = [];
+        for (const name of ["data.xlsx", "report.docx"]) {
+          const file = files.find((file) => file.name === name);
+          if (!file) throw new Error("Native attachment missing");
+          const response = await fetch(
+            `/files/${botId}/${file.id}${name === "data.xlsx" ? "/preview" : "?download=1"}`,
+          );
+          if (!response.ok) throw new Error(await response.text());
+          results.push(
+            name === "data.xlsx"
+              ? await response.json()
+              : { size: (await response.arrayBuffer()).byteLength },
+          );
+        }
+        return results;
+      },
+      await composerFiles(resumed),
+    );
     expect(previews[0]).toMatchObject({
       kind: "xlsx",
       sheets: ["汇总", "明细"],

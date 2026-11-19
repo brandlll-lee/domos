@@ -82,7 +82,7 @@ export function Composer({
   );
   const composer = useComposer(
     draft,
-    connected && !stopping && !sending && !uploads.items.length,
+    draft.ready && connected && !stopping && !sending && !uploads.items.length,
     onSend,
   );
   useErrorNotice(uploads.error ?? composer.error);
@@ -116,6 +116,7 @@ export function Composer({
                 : chatCopy.send,
         disabled:
           !hasContent ||
+          !draft.ready ||
           !connected ||
           sending ||
           stopping ||
@@ -276,7 +277,7 @@ export function Composer({
           );
           if (!files.length) return;
           event.preventDefault();
-          if (!connected || composer.pending) return;
+          if (!draft.ready || !connected || composer.pending) return;
           if (!computerReady) {
             onComputerRequired?.();
             return;
@@ -290,7 +291,7 @@ export function Composer({
             botId={conversationId}
             members={members}
             onBot={selectBot}
-            disabled={!connected || composer.pending}
+            disabled={!draft.ready || !connected || composer.pending}
             filesDisabled={
               uploads.busy || composer.attachments.length >= MAX_ATTACHMENTS
             }
@@ -323,11 +324,7 @@ export function Composer({
                   <div className="composer-upload-caption">
                     <strong title={item.file.name}>{item.file.name}</strong>
                     <span role={item.status === "failed" ? "alert" : "status"}>
-                      {item.status === "failed"
-                        ? item.error
-                        : item.cancelled
-                          ? "正在取消…"
-                          : "正在上传…"}
+                      {item.status === "failed" ? item.error : "正在上传…"}
                     </span>
                   </div>
                   {item.status === "failed" && (
@@ -343,7 +340,6 @@ export function Composer({
                     variant="ghost"
                     size="icon-small"
                     aria-label={`取消上传 ${item.file.name}`}
-                    disabled={item.cancelled}
                     onClick={() => uploads.cancel(item.id)}
                   >
                     <XIcon />

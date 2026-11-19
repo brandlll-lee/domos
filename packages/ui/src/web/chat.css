@@ -76,7 +76,6 @@
   width: var(--composer-control-size);
   min-height: var(--composer-control-size);
   border: 0;
-  background: var(--color-control);
   color: var(--color-muted);
   border-radius: var(--radius-round);
 }

@@ -35,6 +35,11 @@ test("drafts stay on their computer when the same address changes hosts", async 
   await page.goto(service.url);
   const input = page.getByLabel("消息", { exact: true });
   await expect(input).toHaveText("原有草稿");
+  await expect
+    .poll(() =>
+      page.evaluate(() => localStorage.getItem("domos:composer:v1:1")),
+    )
+    .toBeNull();
   await input.fill("ASUS 草稿");
   await page.route("**/rpc/computer/node", async (route) => {
     const response = await route.fetch();
@@ -83,13 +88,22 @@ test("storage failures keep the draft and prevent an unrecorded send", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    Storage.prototype.setItem = () => {
+    localStorage.setItem(
+      "domos:composer:v1:1",
+      JSON.stringify({ text: "已有草稿", attachments: [], pending: null }),
+    );
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = () => {
       throw new DOMException("Blocked", "SecurityError");
     };
+    window.addEventListener("domos:test:storage-ready", () => {
+      IDBObjectStore.prototype.put = put;
+    });
   });
   await page.goto(service.url);
   await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   const input = page.getByLabel("消息", { exact: true });
+  await expect(input).toHaveText("已有草稿");
   await input.fill("保留在输入框");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(
@@ -97,6 +111,19 @@ test("storage failures keep the draft and prevent an unrecorded send", async ({
   ).toBeVisible();
   await expect(input).toHaveText("保留在输入框");
   await expect(page.getByLabel("你的消息")).toHaveCount(0);
+  expect(
+    await page.evaluate(() => localStorage.getItem("domos:composer:v1:1")),
+  ).not.toBeNull();
+  await page.evaluate(() =>
+    window.dispatchEvent(new Event("domos:test:storage-ready")),
+  );
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByLabel("你的消息", { exact: true })).toHaveCount(1);
+  await expect
+    .poll(() =>
+      page.evaluate(() => localStorage.getItem("domos:composer:v1:1")),
+    )
+    .toBeNull();
 });
 
 test("attachment retry keeps its request and draft after a lost receipt", async ({
@@ -332,19 +359,199 @@ test("file upload retry keeps its identity and cancellation releases the draft",
     await release.promise;
     await route.fulfill({ response });
   });
+  await page.evaluate(() => {
+    AbortController.prototype.abort = () => {};
+  });
   await attachFiles(page, {
     name: "cancel.txt",
     mimeType: "text/plain",
     buffer: Buffer.from("Cancelled source"),
   });
   await reached.promise;
+  const cleaned = page.waitForResponse("**/rpc/files/discard");
   await page
     .getByRole("button", { name: "取消上传 cancel.txt", exact: true })
     .click();
-  release.resolve();
+  try {
+    await expect(page.locator(".composer-attachments")).toHaveCount(0);
+    await page.getByLabel("消息", { exact: true }).fill("A regular message");
+    await expect(
+      page.getByRole("button", { name: "发送", exact: true }),
+    ).toBeEnabled();
+  } finally {
+    release.resolve();
+  }
+  await cleaned;
   await expect(page.locator(".composer-attachments")).toHaveCount(0);
-  await page.getByLabel("消息", { exact: true }).fill("A regular message");
+});
+
+test("draft writes leave editing responsive and a send waits for persistence", async ({
+  service,
+  page,
+}) => {
+  await page.goto(service.url);
+  await attachFiles(page, {
+    name: "source.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("Source"),
+  });
   await expect(
-    page.getByRole("button", { name: "发送", exact: true }),
-  ).toBeEnabled();
+    page.getByRole("button", { name: "移除文件 source.txt" }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    const transaction = IDBDatabase.prototype.transaction;
+    let holding = true;
+    const completions: (() => void)[] = [];
+    window.addEventListener("domos:test:release-drafts", () => {
+      holding = false;
+      for (const complete of completions) complete();
+    });
+    IDBDatabase.prototype.transaction = function (...args) {
+      const result = transaction.apply(this, args);
+      if (args[1] === "readwrite") {
+        Object.defineProperty(result, "oncomplete", {
+          set(handler: (event: Event) => void) {
+            result.addEventListener("complete", (event) => {
+              if (holding) completions.push(() => handler.call(result, event));
+              else handler.call(result, event);
+            });
+          },
+        });
+      }
+      return result;
+    };
+  });
+  let cleanups = 0;
+  let sends = 0;
+  page.on("request", (request) => {
+    if (request.url().endsWith("/rpc/files/discard")) cleanups++;
+    if (request.url().endsWith("/rpc/send")) sends++;
+  });
+  try {
+    await page.getByRole("button", { name: "移除文件 source.txt" }).click();
+    await expect(page.locator(".composer-attachments")).toHaveCount(0);
+    await page.getByLabel("消息", { exact: true }).fill("等待存储确认后发送");
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "重试发送", exact: true }),
+    ).toBeVisible();
+    expect(cleanups).toBe(0);
+    expect(sends).toBe(0);
+    await page.getByLabel("消息", { exact: true }).fill("下一条草稿");
+  } finally {
+    await page.evaluate(() =>
+      window.dispatchEvent(new Event("domos:test:release-drafts")),
+    );
+  }
+  await expect(page.getByLabel("你的消息", { exact: true })).toContainText(
+    "等待存储确认后发送",
+  );
+  await expect.poll(() => cleanups).toBe(1);
+  expect(sends).toBe(1);
+  await page.reload();
+  await expect(page.getByLabel("消息", { exact: true })).toHaveText(
+    "下一条草稿",
+  );
+});
+
+test("attachment removal updates the editor before cleanup and can retry cleanup", async ({
+  service,
+  page,
+}) => {
+  await page.goto(service.url);
+  await attachFiles(page, [
+    {
+      name: "source.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("Source"),
+    },
+    { name: "image.png", mimeType: "image/png", buffer: png(1, 1) },
+  ]);
+  await expect(
+    page.getByRole("button", { name: "移除文件 image.png" }),
+  ).toBeVisible();
+  const release = Promise.withResolvers<void>();
+  const reached = Promise.withResolvers<void>();
+  let failed = false;
+  await page.route("**/rpc/files/discard", async (route) => {
+    if (failed) return route.continue();
+    reached.resolve();
+    await release.promise;
+    failed = true;
+    await route.fulfill({
+      status: 503,
+      json: {
+        json: {
+          code: "SERVICE_UNAVAILABLE",
+          message: "Cleanup unavailable",
+          status: 503,
+        },
+      },
+    });
+  });
+  await page.getByRole("button", { name: "移除文件 source.txt" }).click();
+  await reached.promise;
+  try {
+    await expect(
+      page.getByRole("button", { name: "移除文件 source.txt" }),
+    ).toHaveCount(0);
+    await page.getByLabel("消息", { exact: true }).fill("仍然可以输入");
+    await expect(
+      page.getByRole("button", { name: "发送", exact: true }),
+    ).toBeEnabled();
+  } finally {
+    release.resolve();
+  }
+  const notice = page.getByRole("alert").filter({ hasText: "服务暂时不可用" });
+  await expect(notice).toBeVisible();
+  await notice.getByRole("button", { name: "重试", exact: true }).click();
+  await expect(notice).toHaveCount(0);
+  await page.getByRole("button", { name: "移除文件 image.png" }).click();
+  await expect(page.locator(".composer-attachments")).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByLabel("消息", { exact: true })).toHaveText(
+    "仍然可以输入",
+  );
+  await expect(page.locator(".composer-attachments")).toHaveCount(0);
+});
+
+test("cancelling a queued upload releases its card before the first upload settles", async ({
+  service,
+  page,
+}) => {
+  await page.goto(service.url);
+  const release = Promise.withResolvers<void>();
+  const reached = Promise.withResolvers<void>();
+  const uploaded: string[] = [];
+  await page.route("**/files/*/upload?*", async (route) => {
+    uploaded.push(
+      new URL(route.request().url()).searchParams.get("name") ?? "",
+    );
+    const response = await route.fetch();
+    reached.resolve();
+    await release.promise;
+    await route.fulfill({ response });
+  });
+  await attachFiles(page, [
+    { name: "first.txt", mimeType: "text/plain", buffer: Buffer.from("First") },
+    {
+      name: "queued.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("Queued"),
+    },
+  ]);
+  await reached.promise;
+  try {
+    await page.getByRole("button", { name: "取消上传 queued.txt" }).click();
+    await expect(
+      page.getByRole("button", { name: "取消上传 queued.txt" }),
+    ).toHaveCount(0);
+  } finally {
+    release.resolve();
+  }
+  await expect(
+    page.getByRole("button", { name: "移除文件 first.txt" }),
+  ).toBeVisible();
+  await expect(page.locator(".composer-upload")).toHaveCount(0);
+  expect(uploaded).toEqual(["first.txt"]);
 });

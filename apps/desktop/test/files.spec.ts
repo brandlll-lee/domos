@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 import { pdf } from "../../../packages/agent/test/fixtures/pdf.ts";
 import { png } from "../../../packages/agent/test/fixtures/png.ts";
+import { composerFiles } from "../../web/test/fixtures/chat-ui.ts";
 import { workspacePage } from "./pages.ts";
 
 test("desktop uploads, previews, searches and downloads saved files", async ({
@@ -52,6 +53,10 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
     await setup
       .getByRole("button", { name: "连接另一台电脑", exact: true })
       .click();
+    await expect(setup.locator(".startup-viewport")).not.toHaveAttribute(
+      "data-travelling",
+      "",
+    );
     await setup.getByLabel("Domos 地址").fill(`http://127.0.0.1:${ready.port}`);
 
     await setup.getByRole("button", { name: "连接", exact: true }).click();
@@ -119,17 +124,9 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
     await expect(page.locator(".composer-attachments .attachment")).toHaveCount(
       10,
     );
-    const sharedAudio = await page.evaluate(() => {
-      const key = Object.keys(localStorage).find((key) =>
-        key.startsWith("domos:composer:v2:"),
-      );
-      return (
-        JSON.parse(localStorage.getItem(key ?? "") ?? "{}").attachments as {
-          name: string;
-          path: string;
-        }[]
-      ).find((file) => file.name === "audio.mp3");
-    });
+    const sharedAudio = (await composerFiles(page)).find(
+      (file) => file.name === "audio.mp3",
+    );
     await page
       .getByRole("textbox", { name: "消息", exact: true })
       .fill("桌面验收");

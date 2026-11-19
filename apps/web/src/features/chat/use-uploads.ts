@@ -6,6 +6,7 @@ import {
 } from "@domos/agent/attachments";
 import { useEffect, useRef, useState } from "react";
 import { client } from "../../client.ts";
+import { notifyError } from "../notices.tsx";
 import { userError } from "../user-error.ts";
 
 type Upload = {
@@ -22,7 +23,7 @@ type Upload = {
 export function useUploads(
   botId: number,
   attachments: Attachment[],
-  attach: (file: Attachment) => boolean,
+  attach: (file: Attachment) => void,
 ) {
   const [items, setItems] = useState<Upload[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +45,31 @@ export function useUploads(
   }, []);
   function refresh() {
     if (active.current)
-      setItems([...tasks.current.values()].map((item) => ({ ...item })));
+      setItems(
+        [...tasks.current.values()]
+          .filter((item) => !item.cancelled)
+          .map((item) => ({ ...item })),
+      );
+  }
+  async function discard(id: string) {
+    const noticeId = `attachment:${botId}:${id}`;
+    try {
+      await client.files.discard({ botId, id });
+      notifyError("", noticeId);
+    } catch (cause) {
+      notifyError(userError(cause, "附件清理失败，请重试。"), noticeId, () =>
+        discard(id),
+      );
+    }
+  }
+  async function remove(id: string, removeDraft: () => Promise<boolean>) {
+    if (await removeDraft()) void discard(id);
+    else
+      notifyError(
+        "附件移除尚未保存，请重试。",
+        `attachment:${botId}:${id}`,
+        () => remove(id, removeDraft),
+      );
   }
   function upload(item: Upload) {
     item.status = "uploading";
@@ -75,8 +100,7 @@ export function useUploads(
             return (await response.json()) as Attachment;
           })());
         item.attachment = file;
-        if (item.cancelled || !active.current)
-          await client.files.discard({ botId, id: file.id });
+        if (item.cancelled || !active.current) void discard(file.id);
         else latest.current.attach(file);
         tasks.current.delete(item.id);
       } catch (cause) {
@@ -86,12 +110,7 @@ export function useUploads(
           return;
         }
         item.status = "failed";
-        item.error = userError(
-          cause,
-          item.cancelled
-            ? `${item.file.name}：清理未确认，请重试。`
-            : `${item.file.name}：上传失败，请重试。`,
-        );
+        item.error = userError(cause, `${item.file.name}：上传失败，请重试。`);
       }
       refresh();
     });
@@ -102,8 +121,11 @@ export function useUploads(
     busy: items.some((item) => item.status === "uploading"),
     add(files: FileList | File[]) {
       setError(null);
+      const pending = [...tasks.current.values()].filter(
+        (item) => !item.cancelled,
+      );
       if (
-        latest.current.attachments.length + tasks.current.size + files.length >
+        latest.current.attachments.length + pending.length + files.length >
         MAX_ATTACHMENTS
       ) {
         setError(`最多添加 ${MAX_ATTACHMENTS} 个文件。`);
@@ -113,7 +135,7 @@ export function useUploads(
         (sum, file) => sum + file.size,
         0,
       );
-      for (const item of tasks.current.values()) total += item.file.size;
+      for (const item of pending) total += item.file.size;
       for (const file of Array.from(files)) {
         if (total + file.size > MAX_MESSAGE_FILE_BYTES) {
           setError(
@@ -150,13 +172,6 @@ export function useUploads(
       const item = tasks.current.get(id);
       if (item?.status === "failed") upload(item);
     },
-    async remove(id: string, remove: () => void) {
-      try {
-        await client.files.discard({ botId, id });
-        remove();
-      } catch (cause) {
-        setError(userError(cause, "附件清理失败，请重试。"));
-      }
-    },
+    remove,
   };
 }

@@ -46,6 +46,8 @@ Pi Durable 1.4.0 stores Bot tasks. Native Harness processes own model loops. Dom
 | `packages/hosting` | Hosting setup, credentials, device sessions, installation, and service lifecycle. |
 | `packages/ui` | Shared controls, theme tokens, and avatars. |
 
+- Store composer drafts in IndexedDB by computer and conversation. Update memory before saving. Persist pending sends before dispatch and attachment removal before file cleanup. Import local drafts within their saved computer ownership.
+
 ## Computer Use contracts
 
 - Reuse Cua for desktop execution and the existing browser service for DOM/CDP operations. Keep platform details at these boundaries.

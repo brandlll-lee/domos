@@ -77,12 +77,20 @@ export function useComposer(
       !input.bots?.length
     )
       return;
-    if (!draft.update({ pending: input, text: pending ? original.text : "" })) {
-      draft.update(original);
-      return;
-    }
     submitting.current = true;
     try {
+      if (
+        !(await draft.update({
+          pending: input,
+          text: pending ? original.text : "",
+        }))
+      ) {
+        draft.update({
+          pending: original.pending,
+          text: draft.current.current.text || original.text,
+        });
+        return;
+      }
       const result = await send(input, draft.current.current.attachments, {
         bots: original.materials.bots?.map((item) => ({
           ...item,

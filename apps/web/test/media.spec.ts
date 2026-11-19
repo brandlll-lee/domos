@@ -4,6 +4,7 @@ import { png } from "../../../packages/agent/test/fixtures/png.ts";
 import {
   attachFiles,
   chooseAppearance,
+  composerFiles,
   expectTextContrast,
 } from "./fixtures/chat-ui.ts";
 import { test } from "./fixtures/service.ts";
@@ -35,14 +36,7 @@ test("attachment-only messages show cards directly for users and Bots", async ({
   await expect(page.locator(".composer-attachments .attachment")).toHaveCount(
     2,
   );
-  const files = await page.evaluate(() => {
-    const key = Object.keys(localStorage).find((key) =>
-      key.startsWith("domos:composer:v2:"),
-    );
-    return JSON.parse(localStorage.getItem(key ?? "") ?? "{}").attachments as {
-      path: string;
-    }[];
-  });
+  const files = await composerFiles(page);
   await service.control({
     responses: [
       {
@@ -325,14 +319,7 @@ test("delivered images form a gallery with viewer downloads and keyboard navigat
   await expect(page.locator(".composer-attachments .attachment")).toHaveCount(
     3,
   );
-  const files = await page.evaluate(() => {
-    const key = Object.keys(localStorage).find((key) =>
-      key.startsWith("domos:composer:v2:"),
-    );
-    return JSON.parse(localStorage.getItem(key ?? "") ?? "{}").attachments as {
-      path: string;
-    }[];
-  });
+  const files = await composerFiles(page);
   await service.control({
     responses: [
       {

@@ -1,3 +1,4 @@
+import type { Attachment } from "@domos/agent/attachments";
 import { layout } from "@domos/ui/tokens";
 import { expect, type FileChooser, type Page } from "@playwright/test";
 
@@ -9,6 +10,38 @@ export async function attachFiles(
   const chooser = page.waitForEvent("filechooser");
   await page.getByRole("menuitem", { name: "添加文件", exact: true }).click();
   await (await chooser).setFiles(files);
+}
+
+export async function composerFiles(page: Page) {
+  let files: Attachment[] = [];
+  await expect
+    .poll(async () => {
+      files = await page.evaluate(
+        () =>
+          new Promise<Attachment[]>((resolve, reject) => {
+            const request = indexedDB.open("domos:composer", 1);
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+              const db = request.result;
+              const read = db
+                .transaction("drafts")
+                .objectStore("drafts")
+                .getAll();
+              read.onsuccess = () => {
+                db.close();
+                resolve(read.result.flatMap((draft) => draft.attachments));
+              };
+              read.onerror = () => {
+                db.close();
+                reject(read.error);
+              };
+            };
+          }),
+      );
+      return files.length;
+    })
+    .toBe(await page.locator(".composer-attachments .attachment").count());
+  return files;
 }
 
 export async function openSettings(page: import("@playwright/test").Page) {

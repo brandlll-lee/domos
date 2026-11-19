@@ -9,6 +9,7 @@ import type { AppRouter } from "../../api/src/router.ts";
 import {
   attachFiles,
   chooseAppearance,
+  composerFiles,
   createBot,
   expectTextContrast,
   openDetails,
@@ -957,13 +958,8 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
   await expect(
     page.getByRole("button", { name: "移除文件 资料.txt", exact: true }),
   ).toBeEnabled();
-  const file = await page.evaluate(() => {
-    const key = Object.keys(localStorage).find((key) =>
-      key.startsWith("domos:composer:v2:"),
-    );
-    return JSON.parse(localStorage.getItem(key ?? "") ?? "{}")
-      .attachments[0] as { id: string; path: string };
-  });
+  const [file] = await composerFiles(page);
+  if (!file) throw new Error("Draft attachment required");
   await input.fill("整理成报告");
   await page.reload();
   await expect(input).toHaveText("整理成报告");
