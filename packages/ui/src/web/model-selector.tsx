@@ -99,7 +99,7 @@ export function ModelSelector({
         >
           <Popover.Popup
             ref={popup}
-            className="model-selector-popup"
+            className="popover-surface model-selector-popup"
             initialFocus={(interaction) =>
               interaction === "keyboard"
                 ? popup.current?.querySelector<HTMLInputElement>(

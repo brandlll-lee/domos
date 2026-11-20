@@ -196,18 +196,21 @@ function createDraft(key: string) {
       publish();
       writes = writes.then(async () => {
         let saved = true;
+        let error: string | null = null;
         try {
           await save(key, current.current);
           if (migration) {
             localStorage.removeItem(migration);
             migration = undefined;
           }
-          state = { ...state, draft: current.current, error: null };
         } catch {
-          state = { ...state, draft: current.current, error: storageError };
+          error = storageError;
           saved = false;
         }
-        publish();
+        if (state.error !== error) {
+          state = { ...state, error };
+          publish();
+        }
         return saved;
       });
       return writes;

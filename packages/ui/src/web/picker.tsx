@@ -56,7 +56,10 @@ export function ChoicePicker({
           sideOffset={6}
           alignItemWithTrigger={false}
         >
-          <Select.Popup className="picker-popup" aria-label={label}>
+          <Select.Popup
+            className="popover-surface picker-popup"
+            aria-label={label}
+          >
             <ScrollArea className="picker-scroll">
               <Select.List className="picker-list">
                 {items.map((item) => (
@@ -140,7 +143,7 @@ export function SearchPicker({
           sideOffset={6}
         >
           <Combobox.Popup
-            className="picker-popup picker-search-popup"
+            className="popover-surface picker-popup picker-search-popup"
             aria-label={label}
           >
             <Combobox.Input

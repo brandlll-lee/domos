@@ -357,24 +357,85 @@ test("usage overview keeps the hero visible and reads details on demand", async 
   ).toHaveCount(0);
   await expect.poll(() => quotaReads).toBe(9);
   const codex = quota.getByRole("article", { name: "Codex", exact: true });
-  await expect(codex.getByRole("progressbar")).toHaveAttribute("value", "0");
+  await expect(codex.getByRole("progressbar")).toHaveAttribute(
+    "aria-valuenow",
+    "0",
+  );
+  await expect(codex).toContainText("1 小时 0 分钟后重置");
+  await expect(quota.locator("summary")).toHaveCount(0);
+  await expect(quota.getByText("来源与详情", { exact: true })).toHaveCount(0);
+  const cardBox = await codex.boundingBox();
+  const infoButton = codex.getByRole("button", {
+    name: "Codex 额度详情",
+    exact: true,
+  });
+  await infoButton.click();
+  await expect(
+    page.getByRole("dialog", { name: "Codex 额度详情" }),
+  ).toContainText("native-test");
+  await expect
+    .poll(async () => (await codex.boundingBox())?.height)
+    .toBe(cardBox?.height);
+  await page.keyboard.press("Escape");
+  await expect(infoButton).toBeFocused();
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
     await page.screenshot({
       path: info.outputPath(`usage-quota-${colorScheme}.png`),
+      animations: "disabled",
     });
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: info.outputPath(`quota-mobile-${colorScheme}.png`),
+      animations: "disabled",
+    });
+    await page.setViewportSize({ width: 1360, height: 900 });
   }
   await page.route("**/rpc/engines/quota", (route) => route.abort());
-  await codex.getByRole("button", { name: "刷新", exact: true }).click();
+  await codex
+    .getByRole("button", { name: "刷新 Codex 额度", exact: true })
+    .click();
   await expect(codex).toContainText("保留上次读数");
-  await expect(codex.getByRole("progressbar")).toHaveAttribute("value", "0");
+  await expect(codex.getByRole("progressbar")).toHaveAttribute(
+    "aria-valuenow",
+    "0",
+  );
   await usage.getByRole("radio", { name: "费用", exact: true }).click();
   await expect(usage.locator(".usage-hero-value")).toHaveText("US$6.78");
   const reads = quotaReads;
   await usage.getByRole("radio", { name: "订阅额度", exact: true }).click();
   await expect(quota).toContainText("剩余 0.0%");
   expect(quotaReads).toBe(reads);
-  await quota.getByText("其他状态 · 8 个引擎", { exact: true }).click();
+  await page.setViewportSize({ width: 1360, height: 650 });
+  await page.mouse.move(1000, 500);
+  await page.waitForTimeout(500);
+  const avatarReads = await page.evaluate(async () => {
+    const avatar = document.querySelector<HTMLElement>(".sidebar .bot-avatar");
+    const viewport = document.querySelector(".usage-surface .scroll-viewport");
+    if (!avatar || !viewport) throw new Error("Usage viewport missing");
+    const measure = avatar.getBoundingClientRect.bind(avatar);
+    let reads = 0;
+    avatar.getBoundingClientRect = () => {
+      reads++;
+      return measure();
+    };
+    try {
+      viewport.scrollTop = 80;
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      return { reads, top: viewport.scrollTop };
+    } finally {
+      delete (avatar as Partial<HTMLElement>).getBoundingClientRect;
+    }
+  });
+  expect(avatarReads.top).toBeGreaterThan(0);
+  expect(avatarReads.reads).toBe(0);
+  await page.setViewportSize({ width: 1360, height: 900 });
   await expect(
     quota.getByRole("article", { name: "Pi", exact: true }),
   ).toContainText("尚未接入额度读取");
@@ -485,6 +546,22 @@ test("usage chart selects dates and keeps engine details inside the plot", async
       timestamp: usageRecord.timestamp - (6 - index) * 86400000,
       costUsd: index === 6 ? null : 0,
     },
+    ...[
+      "codex",
+      "opencode",
+      "grok",
+      "antigravity",
+      "devin",
+      "cursor",
+      "acp",
+    ].map((harness) => ({
+      ...usageRecord,
+      id: `${harness}-${index}`,
+      taskId: `${harness}-${index}`,
+      harness,
+      timestamp: usageRecord.timestamp - (6 - index) * 86400000,
+      costUsd: 0,
+    })),
   ]).flat();
   await usageRoutes(page, () => records);
   const usage = await openUsage(page, service.url);
@@ -514,6 +591,11 @@ test("usage chart selects dates and keeps engine details inside the plot", async
         box.y >= panel.y - 1 &&
         box.y + box.height <= panel.y + panel.height + 1,
     ).toBe(true);
+    expect(
+      await tip.evaluate(
+        (element) => element.scrollHeight <= element.clientHeight,
+      ),
+    ).toBe(true);
   };
   await inside();
   for (const colorScheme of ["dark", "light"] as const) {
@@ -535,6 +617,20 @@ test("usage chart selects dates and keeps engine details inside the plot", async
   await page.mouse.move(box.x + box.width - 1, box.y + box.height / 2);
   await expect(slider).toHaveAttribute("aria-valuenow", "6");
   await inside();
+  const tipBox = await tip.boundingBox();
+  if (!tipBox) throw new Error("Chart tooltip required");
+  expect(
+    await page.evaluate(
+      ({ x, y }) =>
+        document.elementFromPoint(x, y)?.classList.contains("usage-chart-hit"),
+      { x: tipBox.x + tipBox.width / 2, y: tipBox.y + tipBox.height / 2 },
+    ),
+  ).toBe(true);
+  await page.mouse.move(
+    tipBox.x + tipBox.width / 2,
+    tipBox.y + tipBox.height / 2,
+  );
+  await expect(tip).toBeVisible();
   await slider.dispatchEvent("pointerdown", {
     pointerType: "touch",
     clientX: box.x + box.width / 2,

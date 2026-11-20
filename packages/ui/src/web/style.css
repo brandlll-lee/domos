@@ -1,3 +1,4 @@
+@import "./popover.css";
 @import "./chat.css";
 @import "./controls.css";
 @import "./menu.css";
@@ -8,6 +9,7 @@
 @import "./status-dot.css";
 @import "./scroll-area.css";
 @import "./panel.css";
+@import "./progress.css";
 
 :root {
   font-family: var(--font-body);

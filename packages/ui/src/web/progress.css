@@ -1,0 +1,30 @@
+.progress {
+  height: var(--space-2);
+  overflow: hidden;
+  border-radius: var(--radius-round);
+  background: var(--color-divider);
+}
+.progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-chart-1);
+  transform-origin: left;
+  transition: transform var(--motion-feedback);
+}
+.progress[data-tone="positive"] > span {
+  background: var(--color-status-positive);
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress > span {
+    transition: none;
+  }
+}
+@media (forced-colors: active) {
+  .progress {
+    outline: 1px solid CanvasText;
+  }
+  .progress > span {
+    background: Highlight;
+  }
+}

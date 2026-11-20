@@ -1,5 +1,37 @@
 import type { client } from "../../client.ts";
 
+export function quotaReset(resetsAt: number | null, now: number) {
+  if (resetsAt === null) return "重置时间未提供";
+  if (resetsAt <= now) return "等待更新";
+  const minutes = Math.ceil((resetsAt - now) / 60_000);
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  return `${days ? `${days} 天 ${hours} 小时` : hours ? `${hours} 小时 ${minutes % 60} 分钟` : `${minutes} 分钟`}后重置`;
+}
+
+export function quotaGroups(
+  windows: Awaited<ReturnType<typeof client.engines.quota>>["windows"],
+) {
+  const groups = new Map<
+    string,
+    { window: (typeof windows)[number]; label: string }[]
+  >();
+  for (const window of windows) {
+    const split = window.name.lastIndexOf(" · ");
+    const period =
+      window.durationMinutes === 10080
+        ? "每周"
+        : window.durationMinutes === 300
+          ? "5 小时"
+          : null;
+    const name = period && split > 0 ? window.name.slice(0, split) : "";
+    const rows = groups.get(name) ?? [];
+    rows.push({ window, label: name && period ? period : window.name });
+    groups.set(name, rows);
+  }
+  return [...groups].map(([name, rows]) => ({ name, rows }));
+}
+
 export type UsageRecord = Awaited<
   ReturnType<typeof client.engines.usage>
 >["items"][number];

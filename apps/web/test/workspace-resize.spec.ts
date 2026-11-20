@@ -256,15 +256,8 @@ test("contacts snap to an icon column and restore their width without losing cha
       number,
     ][];
   });
-  expect(snapFrames.some(([width]) => width > 97 && width < 207)).toBe(true);
+  expect(snapFrames.every(([width]) => width <= 97 || width >= 207)).toBe(true);
   expect(Math.max(...snapFrames.map(([, gap]) => gap))).toBeLessThanOrEqual(1);
-  const firstY = snapFrames[0]?.[2];
-  const lastY = snapFrames.at(-1)?.[2];
-  if (firstY === undefined || lastY === undefined)
-    throw new Error("Snap frames missing");
-  expect(snapFrames.some(([, , y]) => y > firstY + 1 && y < lastY - 1)).toBe(
-    true,
-  );
   const stored = await page.evaluate(() =>
     JSON.parse(localStorage.getItem("domos:layout:v1") ?? "{}"),
   );
@@ -342,23 +335,10 @@ test("contacts snap to an icon column and restore their width without losing cha
   await expect(sidebar).toHaveCSS("width", "240px");
   await handle.press("Home");
   await expect(handle).toHaveAttribute("aria-valuenow", "96");
-  await workspace.evaluate((root) => {
-    const panel = root.querySelector('.workspace-panel[data-side="sidebar"]');
-    if (!panel) throw new Error("Sidebar missing");
-    for (const animation of [
-      ...root.getAnimations(),
-      ...panel.getAnimations(),
-    ]) {
-      if (!(animation instanceof CSSTransition)) continue;
-      animation.pause();
-      animation.currentTime = 80;
-    }
-  });
   const moving = await handle.boundingBox();
   const currentWidth = (await sidebar.boundingBox())?.width;
   if (!moving || !currentWidth) throw new Error("Moving sidebar missing");
-  expect(currentWidth).toBeGreaterThan(96);
-  expect(currentWidth).toBeLessThan(240);
+  expect(currentWidth).toBe(96);
   await page.mouse.move(moving.x + moving.width / 2, y);
   await page.mouse.down();
   expect((await sidebar.boundingBox())?.width).toBeCloseTo(currentWidth, 0);
@@ -377,7 +357,6 @@ test("contacts snap to an icon column and restore their width without losing cha
   await handle.press("ArrowRight");
   await expect(handle).toHaveAttribute("aria-valuenow", "232");
   await expect(sidebar).toHaveCSS("width", "232px");
-  await expect(workspace).not.toHaveAttribute("data-sidebar-snapping");
   expect(await workspace.evaluate((root) => root.getAnimations().length)).toBe(
     0,
   );

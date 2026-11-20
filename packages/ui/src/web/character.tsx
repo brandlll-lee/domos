@@ -185,19 +185,27 @@ export function Character({
   const [texture, white, iris] = builtInImages;
   const visibleMedia = coverReady ? media : undefined;
   useEffect(() => {
-    if (!media || !animateMedia || !root.current) {
-      setPlaying(false);
-      return;
-    }
+    const element = root.current;
+    if (!element) return;
     let visible = false;
     const reduced = matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () =>
-      setPlaying(visible && !document.hidden && !reduced.matches);
+    const update = () => {
+      element.toggleAttribute("data-paused", !visible || document.hidden);
+      setPlaying(
+        Boolean(
+          media &&
+            animateMedia &&
+            visible &&
+            !document.hidden &&
+            !reduced.matches,
+        ),
+      );
+    };
     const observer = new IntersectionObserver(([entry]) => {
       visible = Boolean(entry?.isIntersecting);
       update();
     });
-    observer.observe(root.current);
+    observer.observe(element);
     document.addEventListener("visibilitychange", update);
     reduced.addEventListener("change", update);
     return () => {

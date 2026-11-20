@@ -54,7 +54,7 @@ function MaterialChoice({
       </Tooltip.Trigger>
       <Tooltip.Portal>
         <Tooltip.Positioner
-          className="composer-detail-positioner"
+          className="tooltip-positioner composer-detail-positioner"
           side="right"
           align="center"
           sideOffset={8}
@@ -63,7 +63,7 @@ function MaterialChoice({
           <Tooltip.Popup
             id={detailId}
             role="tooltip"
-            className="composer-detail"
+            className="tooltip-surface composer-detail"
           >
             {detail}
           </Tooltip.Popup>

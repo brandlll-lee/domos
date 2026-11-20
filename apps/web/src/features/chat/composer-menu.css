@@ -7,26 +7,12 @@
   max-height: var(--available-height);
   overflow: auto;
   padding: var(--space-1);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-panel);
-  background: var(--color-popup);
-  color: var(--color-text);
-  box-shadow: var(--color-popup-shadow);
-  transform-origin: var(--transform-origin);
-  transition:
-    opacity var(--motion-feedback),
-    scale var(--motion-feedback);
 }
 .composer-menu-popup[data-panel="skills"],
 .composer-menu-popup[data-panel="mcp"],
 .composer-menu-popup[data-panel="text"],
 .composer-menu-popup[data-panel="messages"] {
   width: calc(var(--sidebar-width) + var(--space-12));
-}
-.composer-menu-popup[data-starting-style],
-.composer-menu-popup[data-ending-style] {
-  opacity: 0;
-  scale: 0.97;
 }
 .composer-menu-item,
 .composer-picker-row {
@@ -159,11 +145,6 @@
 .composer-upload-caption span {
   color: var(--color-muted);
 }
-@media (prefers-reduced-motion: reduce) {
-  .composer-menu-popup {
-    transition: none;
-  }
-}
 
 .message.user .material-chip,
 .message.user .material-chip > svg {
@@ -200,11 +181,6 @@
   max-height: var(--available-height);
   overflow: auto;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  background: var(--color-popup);
-  color: var(--color-text);
-  box-shadow: var(--color-popup-shadow);
   font-size: var(--text-body);
   overflow-wrap: anywhere;
 }

@@ -18,7 +18,7 @@ export function ResizeHandle({
   onResize: (width: number) => void;
   onCommit: (width: number) => void;
   onToggle?: () => void;
-  onDragChange: (dragging: boolean, moving?: boolean) => void;
+  onDragChange: (dragging: boolean) => void;
 }) {
   const drag = useRef<{
     x: number;
@@ -104,10 +104,7 @@ export function ResizeHandle({
             frame.current = undefined;
             if (drag.current) {
               onResize(drag.current.next);
-              if (!drag.current.moving) {
-                drag.current.moving = true;
-                onDragChange(true, true);
-              }
+              drag.current.moving = true;
             }
           });
       }}

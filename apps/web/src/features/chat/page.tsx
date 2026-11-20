@@ -11,6 +11,8 @@ import {
   addTransitionType,
   type ComponentProps,
   type CSSProperties,
+  lazy,
+  Suspense,
   startTransition,
   useCallback,
   useEffect,
@@ -28,7 +30,6 @@ import { useErrorNotice } from "../notices.tsx";
 import { useSettings } from "../settings/context.ts";
 import { Workspace } from "../shell/workspace.tsx";
 import { saveWorkspaceView, workspaceView } from "../shell/workspace-state.ts";
-import { UsageSurface } from "../usage/page.tsx";
 import { ChatAttentionProvider, consumeChatTarget } from "./attention.tsx";
 import { TeamMembers } from "./bot-reference.tsx";
 import { Composer } from "./composer.tsx";
@@ -46,6 +47,12 @@ import { useDraft } from "./use-draft.ts";
 import { useHistorySearch } from "./use-history-search.ts";
 import { ChatWelcome } from "./welcome.tsx";
 import { useWorkspaceAvatars } from "./workspace-avatars.ts";
+
+const UsageSurface = lazy(() =>
+  import("../usage/page.tsx").then((module) => ({
+    default: module.UsageSurface,
+  })),
+);
 
 export function ChatPage() {
   const bots = useBots();
@@ -492,7 +499,9 @@ function BotChat({
           computers={directory.computers.items}
         />
         {view === "usage" ? (
-          <UsageSurface />
+          <Suspense fallback={<Loading label="正在读取用量" />}>
+            <UsageSurface />
+          </Suspense>
         ) : (
           <TeamMembers value={referenceBots}>
             <button

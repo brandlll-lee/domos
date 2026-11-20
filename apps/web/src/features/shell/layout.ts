@@ -44,7 +44,6 @@ export function useWorkspaceLayout(details: boolean) {
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
   const available = useSyncExternalStore(subscribeViewport, viewportWidth);
   const [preferred, setPreferred] = useState(readWidths);
-  const [snapping, setSnapping] = useState(false);
   const mobile = available < layout.sidebar.min + layout.chatMin;
   const compact = !mobile && preferred.collapsed;
   const sidebarMin = compact ? layout.sidebar.compact : layout.sidebar.min;
@@ -86,11 +85,6 @@ export function useWorkspaceLayout(details: boolean) {
       next.inspector !== preferred.inspector ||
       next.collapsed !== preferred.collapsed
     ) {
-      setSnapping(
-        side === "sidebar" &&
-          collapsed !== preferred.collapsed &&
-          !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-      );
       setPreferred(next);
     }
     if (persist) {
@@ -108,8 +102,6 @@ export function useWorkspaceLayout(details: boolean) {
     overlay,
     widths,
     maximum,
-    snapping,
-    setSnapping,
     resize,
     toggleSidebar: () =>
       resize(

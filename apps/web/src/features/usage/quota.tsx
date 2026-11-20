@@ -1,11 +1,16 @@
 import { Button } from "@domos/ui/controls";
-import { Disclosure } from "@domos/ui/disclosure";
 import { Loading } from "@domos/ui/loading";
 import { InlineNotice } from "@domos/ui/message";
+import { PanelCard } from "@domos/ui/panel";
+import { Popover } from "@domos/ui/popover";
+import { Progress } from "@domos/ui/progress";
+import { ArrowClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
+import { InfoIcon } from "@phosphor-icons/react/dist/csr/Info";
 import { useEffect, useState } from "react";
 import { EngineMark } from "../bots/engine-mark.tsx";
 import { useReadState } from "../read-state.ts";
 import { userError } from "../user-error.ts";
+import { quotaGroups, quotaReset } from "./data.ts";
 import { quotaCatalog, quotaStore } from "./quota-state.ts";
 
 const labels = {
@@ -21,10 +26,24 @@ function AccountQuota({ provider, name }: { provider: string; name: string }) {
   const store = quotaStore(provider);
   const { data, error, loading } = useReadState(store);
   const [now, setNow] = useState(Date.now());
+  const timed = data?.windows.some((window) => window.resetsAt !== null);
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(timer);
-  }, []);
+    if (!timed) return;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const sync = () => {
+      clearInterval(timer);
+      if (!document.hidden) {
+        setNow(Date.now());
+        timer = setInterval(() => setNow(Date.now()), 30_000);
+      }
+    };
+    sync();
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, [timed]);
   useEffect(() => {
     const next = data?.windows
       .map((window) => window.resetsAt)
@@ -40,9 +59,14 @@ function AccountQuota({ provider, name }: { provider: string; name: string }) {
     return () => clearTimeout(timer);
   }, [data, store]);
   const readable = Boolean(data?.windows.length || data?.credits);
-  const label = data?.accountLabel?.replace(/^(.{1,2})[^@]*(@.*)$/, "$1•••$2");
+  const label =
+    data?.accountLabel === "当前登录账号"
+      ? undefined
+      : data?.accountLabel?.replace(/^(.{1,2})[^@]*(@.*)$/, "$1•••$2");
+  const identity = [label, data?.plan].filter(Boolean).join(" · ");
   return (
-    <article
+    <PanelCard
+      role="article"
       className="usage-quota-account"
       data-readable={readable || undefined}
       aria-label={name}
@@ -53,24 +77,64 @@ function AccountQuota({ provider, name }: { provider: string; name: string }) {
           <EngineMark provider={provider} />
           <div>
             <h3>{name}</h3>
-            {readable && (
-              <small>
-                {label ?? "当前登录账号"}
-                {data?.plan ? ` · ${data.plan}` : ""}
-              </small>
-            )}
+            {identity && <small>{identity}</small>}
           </div>
         </div>
-        <Button
-          size="small"
-          variant="ghost"
-          pending={loading}
-          onClick={() => {
-            void store.load(true).catch(() => {});
-          }}
-        >
-          刷新
-        </Button>
+        <div className="usage-section-actions">
+          {data && (
+            <Popover.Root>
+              <Popover.Trigger
+                render={
+                  <Button
+                    size="icon-small"
+                    variant="ghost"
+                    aria-label={`${name} 额度详情`}
+                  />
+                }
+              >
+                <InfoIcon />
+              </Popover.Trigger>
+              <Popover.Portal>
+                <Popover.Positioner
+                  className="usage-quota-positioner"
+                  side="bottom"
+                  align="end"
+                  sideOffset={8}
+                  collisionPadding={12}
+                >
+                  <Popover.Popup className="popover-surface usage-quota-info">
+                    <Popover.Title>{name} 额度详情</Popover.Title>
+                    {data.message && <p>{data.message}</p>}
+                    <p>{data.source}</p>
+                    <p>{new Date(data.observedAt).toLocaleString()} 更新</p>
+                    {data.windows.map((window) => (
+                      <p key={window.id}>
+                        {window.name}
+                        {window.resetsAt !== null && (
+                          <>
+                            {" "}
+                            · {new Date(window.resetsAt).toLocaleString()} 重置
+                          </>
+                        )}
+                      </p>
+                    ))}
+                  </Popover.Popup>
+                </Popover.Positioner>
+              </Popover.Portal>
+            </Popover.Root>
+          )}
+          <Button
+            size="icon-small"
+            variant="ghost"
+            aria-label={`刷新 ${name} 额度`}
+            pending={loading}
+            onClick={() => {
+              void store.load(true).catch(() => {});
+            }}
+          >
+            <ArrowClockwiseIcon />
+          </Button>
+        </div>
       </header>
       {!data && loading && <Loading label="正在读取额度" inline />}
       {Boolean(error) && (
@@ -83,36 +147,33 @@ function AccountQuota({ provider, name }: { provider: string; name: string }) {
         <>
           {!readable && (
             <p className="usage-muted" role="status">
-              {data.status === "unsupported" && data.message
-                ? data.message
-                : labels[data.status]}
+              {data.message ?? labels[data.status]}
             </p>
           )}
           {readable && data.status === "failed" && (
             <InlineNotice>读取失败，保留上次读数。</InlineNotice>
           )}
-          <div className="usage-quota-windows">
-            {data.windows.map((window) => (
-              <div className="usage-quota-window" key={window.id}>
-                <div>
-                  <span>{window.name}</span>
-                  <strong>剩余 {(100 - window.usedPercent).toFixed(1)}%</strong>
+          {quotaGroups(data.windows).map((group) => (
+            <div className="usage-quota-windows" key={group.name}>
+              {group.name && <h4>{group.name}</h4>}
+              {group.rows.map(({ window, label }) => (
+                <div className="usage-quota-window" key={window.id}>
+                  <div className="usage-quota-values">
+                    <span>{label}</span>
+                    <strong>
+                      剩余 {(100 - window.usedPercent).toFixed(1)}%
+                    </strong>
+                  </div>
+                  <Progress
+                    value={100 - window.usedPercent}
+                    label={`${name} ${window.name}剩余额度`}
+                    tone="positive"
+                  />
+                  <small>{quotaReset(window.resetsAt, now)}</small>
                 </div>
-                <progress
-                  aria-label={`${name} ${window.name}剩余额度`}
-                  value={100 - window.usedPercent}
-                  max={100}
-                />
-                <small>
-                  {window.resetsAt === null
-                    ? "重置时间未提供"
-                    : window.resetsAt <= now
-                      ? "等待重置后读数"
-                      : `${Math.ceil((window.resetsAt - now) / 60_000)} 分钟后重置`}
-                </small>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ))}
           {data.credits && (
             <p className="usage-quota-credit">
               积分{" "}
@@ -124,56 +185,17 @@ function AccountQuota({ provider, name }: { provider: string; name: string }) {
               </strong>
             </p>
           )}
-          <Disclosure label="来源与详情">
-            <div className="usage-note">
-              {data.message && <p>{data.message}</p>}
-              <p>
-                {data.source} · {new Date(data.observedAt).toLocaleString()}
-              </p>
-              {data.windows.map(
-                (window) =>
-                  window.resetsAt !== null && (
-                    <p key={window.id}>
-                      {window.name} ·{" "}
-                      {new Date(window.resetsAt).toLocaleString()} 重置
-                    </p>
-                  ),
-              )}
-            </div>
-          </Disclosure>
         </>
       )}
-    </article>
+    </PanelCard>
   );
 }
 
 export function QuotaPanel() {
   const { data: providers, error, loading } = useReadState(quotaCatalog);
-  const [, update] = useState(0);
-  useEffect(() => {
-    const stores = providers?.map((provider) => quotaStore(provider.id)) ?? [];
-    const subscriptions = stores.map((store) =>
-      store.subscribe(() => update((value) => value + 1)),
-    );
-    for (const store of stores) void store.load().catch(() => {});
-    return () => {
-      for (const unsubscribe of subscriptions) unsubscribe();
-    };
-  }, [providers]);
-  const accounts =
-    providers?.filter((provider) => {
-      const data = quotaStore(provider.id).snapshot().data;
-      return Boolean(data?.windows.length || data?.credits);
-    }) ?? [];
-  const others =
-    providers?.filter((provider) => !accounts.includes(provider)) ?? [];
-  const reading = providers?.some(
-    (provider) => quotaStore(provider.id).snapshot().loading,
-  );
   return (
     <section className="usage-quota" aria-label="订阅额度">
-      <header className="usage-section-head">
-        <p className="usage-muted">当前电脑 · 已登录账号的额度</p>
+      <header className="usage-quota-toolbar">
         <Button
           size="small"
           variant="ghost"
@@ -190,12 +212,11 @@ export function QuotaPanel() {
         </Button>
       </header>
       {loading && !providers && <Loading label="正在读取引擎" />}
-      {reading && <Loading label="正在更新账号额度" inline />}
       {Boolean(error) && (
         <InlineNotice>{userError(error, "引擎目录读取失败。")}</InlineNotice>
       )}
       <div className="usage-quota-grid">
-        {accounts.map((provider) => (
+        {providers?.map((provider) => (
           <AccountQuota
             key={provider.id}
             provider={provider.id}
@@ -203,22 +224,6 @@ export function QuotaPanel() {
           />
         ))}
       </div>
-      {!reading && providers && !accounts.length && (
-        <p className="usage-muted">当前尚无可显示的额度。</p>
-      )}
-      {others.length > 0 && (
-        <Disclosure label={`其他状态 · ${others.length} 个引擎`}>
-          <div className="usage-quota-grid usage-quota-other">
-            {others.map((provider) => (
-              <AccountQuota
-                key={provider.id}
-                provider={provider.id}
-                name={provider.name}
-              />
-            ))}
-          </div>
-        </Disclosure>
-      )}
     </section>
   );
 }

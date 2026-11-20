@@ -38,22 +38,10 @@
   max-width: calc(100vw - var(--space-6));
 }
 .model-selector-popup {
+  padding: 0;
   width: min(26rem, calc(100vw - var(--space-6)));
   max-height: var(--available-height);
   overflow: hidden;
-  border-radius: 0.875rem;
-  background: var(--color-popup);
-  color: var(--color-text);
-  box-shadow: var(--color-popup-shadow);
-  transform-origin: var(--transform-origin);
-  transition:
-    opacity var(--motion-feedback),
-    scale var(--motion-feedback);
-}
-.model-selector-popup[data-starting-style],
-.model-selector-popup[data-ending-style] {
-  opacity: 0;
-  scale: 0.98;
 }
 .model-selector-content {
   display: grid;

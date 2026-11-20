@@ -13,7 +13,6 @@ import {
   addTransitionType,
   type ReactNode,
   startTransition,
-  useCallback,
   useEffect,
   useLayoutEffect,
   useState,
@@ -77,13 +76,6 @@ export function Workspace({
       window.removeEventListener("beforeinput", interrupt, true);
     };
   }, [sizing.root]);
-  const dragChange = useCallback(
-    (dragging: boolean, moving = false) => {
-      if (moving) sizing.setSnapping(false);
-      setDragging(dragging);
-    },
-    [sizing.setSnapping],
-  );
   useEffect(() => {
     const close = () => setContactsOpen(false);
     window.addEventListener("hashchange", close);
@@ -122,14 +114,6 @@ export function Workspace({
       ref={sizing.setRoot}
       data-mobile={sizing.mobile || undefined}
       data-sidebar-compact={sizing.compact || undefined}
-      data-sidebar-snapping={sizing.snapping || undefined}
-      onTransitionEnd={(event) => {
-        if (
-          event.target === event.currentTarget &&
-          event.propertyName === "grid-template-columns"
-        )
-          sizing.setSnapping(false);
-      }}
       data-platform={window.domosDesktop?.platform}
       data-details={(detailsOpen && !sizing.overlay && !expanded) || undefined}
       style={{
@@ -178,7 +162,7 @@ export function Workspace({
             {modal && <PanelDialog.Backdrop className="panel-backdrop" />}
             <ViewTransition
               update={
-                side === "sidebar" && !dragging && !sizing.snapping
+                side === "sidebar" && !dragging
                   ? { default: "none", "panel-layout": "panel-layout" }
                   : "none"
               }
@@ -226,7 +210,7 @@ export function Workspace({
                     onToggle={
                       side === "sidebar" ? sizing.toggleSidebar : undefined
                     }
-                    onDragChange={dragChange}
+                    onDragChange={setDragging}
                   />
                 )}
                 <div className="panel-body">

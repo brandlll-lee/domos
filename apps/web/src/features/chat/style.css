@@ -13,9 +13,6 @@
   flex-shrink: 0;
   overflow: hidden;
   padding-block: var(--space-3);
-  transition:
-    height var(--motion-message-in) var(--ease-message-in),
-    padding var(--motion-message-in) var(--ease-message-in);
 }
 .sidebar-heading {
   flex: 1;
@@ -81,7 +78,6 @@
   transition:
     opacity var(--motion-feedback),
     translate var(--motion-message-in) var(--ease-message-in),
-    flex-grow var(--motion-message-in) var(--ease-message-in),
     visibility 0s;
 }
 .chat-preview time {
@@ -169,7 +165,7 @@
   opacity: 0;
   visibility: hidden;
   translate: calc(-1 * var(--space-2)) 0;
-  transition-delay: 0s, 0s, 0s, var(--motion-feedback);
+  transition-delay: 0s, 0s, var(--motion-feedback);
 }
 .conversation {
   --chat-header-height: 7.75rem;

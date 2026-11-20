@@ -158,7 +158,7 @@ export function ComposerMenu({
         >
           <Popover.Popup
             ref={popup}
-            className="composer-menu-popup"
+            className="popover-surface composer-menu-popup"
             data-panel={panel}
             aria-label={titles[panel]}
             onKeyDownCapture={(event) => {

@@ -206,24 +206,6 @@
   background: var(--color-canvas);
   border-inline-start: 1px solid var(--color-edge);
 }
-@media (prefers-reduced-motion: no-preference) {
-  .workspace[data-sidebar-snapping] {
-    transition: grid-template-columns var(--motion-message-in)
-      var(--ease-message-in);
-  }
-  .workspace[data-sidebar-snapping] .workspace-panel[data-side="sidebar"] {
-    transition:
-      width var(--motion-message-in) var(--ease-message-in),
-      opacity var(--motion-feedback),
-      translate var(--motion-message-in) var(--ease-message-in);
-  }
-  .workspace[data-sidebar-snapping] .contact-row {
-    transition:
-      width var(--motion-message-in) var(--ease-message-in),
-      padding var(--motion-message-in) var(--ease-message-in),
-      gap var(--motion-message-in) var(--ease-message-in);
-  }
-}
 .workspace-panel[data-side="inspector"][data-starting-style],
 .workspace-panel[data-side="inspector"][data-ending-style] {
   opacity: 0;

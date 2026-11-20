@@ -195,7 +195,7 @@ export function Composer({
               ref={mentionMenu}
               initialFocus={false}
               finalFocus={false}
-              className="composer-menu-popup bot-mention-menu"
+              className="popover-surface composer-menu-popup bot-mention-menu"
               aria-label="选择 Bot"
               onKeyDown={(event) => {
                 if (event.key === "ArrowDown" || event.key === "ArrowUp") {

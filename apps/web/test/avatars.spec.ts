@@ -251,6 +251,39 @@ test("plush identities load, animate and survive profile changes", async ({
     await expect(
       picker.locator('[aria-label="外形"] .character-face'),
     ).toHaveCount(15);
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.setViewportSize({ width: 390, height: 700 });
+    await details.getByLabel("名字", { exact: true }).scrollIntoViewIfNeeded();
+    const shapes = picker.locator('[aria-label="外形"] .character');
+    await expect
+      .poll(() =>
+        shapes.evaluateAll((nodes) =>
+          nodes.every((node) => {
+            const box = node.getBoundingClientRect();
+            return (
+              (box.top < innerHeight && box.bottom > 0) ||
+              node
+                .getAnimations({ subtree: true })
+                .every((animation) => animation.playState === "paused")
+            );
+          }),
+        ),
+      )
+      .toBe(true);
+    await cloud.scrollIntoViewIfNeeded();
+    await expect
+      .poll(() =>
+        cloud
+          .locator(".character")
+          .evaluate((node) =>
+            node
+              .getAnimations({ subtree: true })
+              .some((animation) => animation.playState === "running"),
+          ),
+      )
+      .toBe(true);
+    await page.setViewportSize({ width: 1360, height: 900 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
     expect(
       await cloud.locator(".character-body > image").evaluate(async (node) => {
         const image = new Image();

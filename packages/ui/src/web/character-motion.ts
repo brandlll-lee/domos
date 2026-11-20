@@ -278,6 +278,16 @@ function start() {
     }
     wake();
   };
+  const scroll = (event: Event) => {
+    const target = event.target;
+    if (
+      target instanceof Node &&
+      [...items].some(
+        ([element, item]) => item.visible && target.contains(element),
+      )
+    )
+      wake();
+  };
   window.addEventListener("pointermove", move, { passive: true });
   window.addEventListener("pointerdown", down, {
     passive: true,
@@ -291,7 +301,7 @@ function start() {
   window.addEventListener("keydown", keyDown);
   window.addEventListener("keyup", release);
   window.addEventListener("resize", wake);
-  document.addEventListener("scroll", wake, true);
+  document.addEventListener("scroll", scroll, true);
   reduced.addEventListener("change", motion);
   document.addEventListener("visibilitychange", visibility);
   return () => {
@@ -307,7 +317,7 @@ function start() {
     window.removeEventListener("keydown", keyDown);
     window.removeEventListener("keyup", release);
     window.removeEventListener("resize", wake);
-    document.removeEventListener("scroll", wake, true);
+    document.removeEventListener("scroll", scroll, true);
     reduced.removeEventListener("change", motion);
     document.removeEventListener("visibilitychange", visibility);
   };

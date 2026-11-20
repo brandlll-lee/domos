@@ -1,5 +1,6 @@
 import { Popover } from "@base-ui/react/popover";
 import type { ReactElement, ReactNode } from "react";
+import { Progress } from "./progress.tsx";
 import "./context-window.css";
 
 const tokens = (value: number | null | undefined) =>
@@ -51,7 +52,7 @@ export function ContextWindow({
           collisionPadding={12}
           className="context-window-positioner"
         >
-          <Popover.Popup className="context-window-popup">
+          <Popover.Popup className="popover-surface context-window-popup">
             <header className="context-window-head">
               <Popover.Title>上下文窗口</Popover.Title>
               <span
@@ -61,16 +62,7 @@ export function ContextWindow({
                 {tokens(used)} / {tokens(capacity)}
               </span>
             </header>
-            <div
-              className="context-window-meter"
-              role="img"
-              aria-label={`已用 ${share(percent)}`}
-            >
-              <span
-                className="context-window-meter-used"
-                style={{ width: `${percent ?? 0}%` }}
-              />
-            </div>
+            <Progress value={percent} label={`已用 ${share(percent)}`} />
             <dl className="context-window-rows">
               <div>
                 <dt>

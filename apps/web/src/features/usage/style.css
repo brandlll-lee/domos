@@ -149,6 +149,11 @@
   height: 100%;
   overflow: visible;
 }
+.usage-plot > .usage-chart-selection {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
 .usage-grid-line {
   stroke: var(--color-divider);
   stroke-opacity: 0.5;
@@ -184,20 +189,18 @@
 }
 .usage-tip {
   position: absolute;
+  inset: 0 auto auto 0;
   display: grid;
-  gap: var(--space-2);
+  gap: var(--space-1);
   width: max-content;
   max-width: 100%;
   max-height: 100%;
-  overflow: auto;
-  padding: var(--space-3);
-  border-radius: var(--radius-control);
-  background: var(--color-popup);
-  box-shadow: var(--color-popup-shadow);
+  overflow: hidden;
+  padding: var(--space-2);
   font-size: var(--text-caption);
 }
 .usage-tip > strong {
-  margin-bottom: var(--space-1);
+  line-height: var(--leading-caption);
 }
 .usage-tip-row,
 .usage-tip-total {
@@ -456,6 +459,10 @@
 .usage-quota p {
   margin: 0;
 }
+.usage-quota-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
 .usage-quota-windows {
   display: grid;
   gap: var(--space-5);
@@ -464,14 +471,17 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-6);
+  align-items: start;
 }
 .usage-quota-account {
   display: grid;
   align-content: start;
   gap: var(--space-4);
   min-width: 0;
-  padding-block: var(--space-5);
-  border-top: 1px solid var(--color-divider);
+  padding: var(--space-5);
+}
+.usage-quota-account[data-readable] {
+  order: -1;
 }
 .usage-quota-identity {
   display: flex;
@@ -498,29 +508,46 @@
   justify-content: space-between;
   font-size: var(--text-label);
 }
-.usage-quota-other .usage-quota-account {
-  gap: var(--space-2);
-}
-.usage-quota-other .usage-quota-windows:empty {
-  display: none;
-}
 .usage-quota-window {
   display: grid;
   gap: var(--space-2);
 }
-.usage-quota-window > div {
+.usage-quota-values {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
   gap: var(--space-2);
 }
-.usage-quota-window progress {
-  width: 100%;
-  height: var(--space-1);
-  accent-color: var(--color-chart-1);
+.usage-quota-windows h4 {
+  margin: 0;
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
 }
-.usage-quota-window small,
-.usage-note {
+.usage-quota-window strong {
+  font-weight: var(--weight-medium);
+}
+.usage-quota-positioner {
+  z-index: 6;
+}
+.usage-quota-info {
+  display: grid;
+  gap: var(--space-2);
+  width: min(22rem, var(--available-width));
+  max-height: var(--available-height);
+  overflow: auto;
+  padding: var(--space-4);
+  overflow-wrap: anywhere;
+}
+.usage-quota-info h2 {
+  margin: 0;
+  font-size: var(--text-label);
+}
+.usage-quota-info p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+}
+.usage-quota-window small {
   color: var(--color-muted);
   font-size: var(--text-caption);
 }

@@ -221,9 +221,6 @@ test("unread survives reload and search dialog retains pagination and bounded na
   await page
     .getByRole("button", { name: "搜索联系人和聊天记录", exact: true })
     .click();
-  await expect(page.locator(".workspace")).not.toHaveAttribute(
-    "data-sidebar-snapping",
-  );
   const before = await contact.boundingBox();
   const search = page.getByRole("searchbox", { name: "搜索联系人和聊天记录" });
   await search.fill("查找报告");

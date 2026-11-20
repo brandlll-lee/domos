@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { Button } from "./controls.tsx";
 
 export function PanelHeader({
@@ -65,6 +65,10 @@ export function PanelHeader({
   );
 }
 
+export function PanelCard({ className = "", ...props }: ComponentProps<"div">) {
+  return <div className={`panel-card ${className}`} {...props} />;
+}
+
 export function PanelGroup({
   title,
   children,
@@ -75,7 +79,7 @@ export function PanelGroup({
   return (
     <section className="panel-group" aria-label={title}>
       <h3 className="panel-group-title">{title}</h3>
-      <div className="panel-card">{children}</div>
+      <PanelCard>{children}</PanelCard>
     </section>
   );
 }

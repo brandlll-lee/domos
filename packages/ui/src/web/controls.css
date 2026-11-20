@@ -424,20 +424,7 @@ textarea.field-control {
   max-height: var(--available-height);
   overflow: hidden;
   padding: 4px;
-  border-radius: 0.875rem;
-  background: var(--color-popup);
-  color: var(--color-text);
-  box-shadow: var(--color-popup-shadow);
   outline: none;
-  transform-origin: var(--transform-origin);
-  animation: popup-surface-in var(--motion-feedback)
-    cubic-bezier(0.22, 1, 0.36, 1);
-}
-@keyframes popup-surface-in {
-  from {
-    opacity: 0;
-    scale: 0.97;
-  }
 }
 .picker-search-popup {
   display: flex;
