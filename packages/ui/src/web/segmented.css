@@ -1,4 +1,6 @@
 .segmented-control {
+  position: relative;
+  isolation: isolate;
   display: inline-flex;
   flex-wrap: wrap;
   gap: 0;
@@ -8,7 +10,19 @@
   border-radius: var(--radius-control);
   background: var(--color-surface);
 }
+.segmented-indicator {
+  position: absolute;
+  inset: 0 auto auto 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform-origin: top left;
+  border: 1px solid var(--color-divider);
+  border-radius: calc(var(--radius-control) - var(--space-1));
+  background: var(--color-control-selected);
+  box-shadow: 0 1px 2px var(--color-divider);
+}
 .segmented-option {
+  position: relative;
   display: grid;
   place-items: center;
   flex: 0 1 auto;
@@ -27,11 +41,13 @@
   color: var(--color-text);
 }
 .segmented-option[data-checked] {
-  border-color: var(--color-divider);
-  background: var(--color-control-selected);
   color: var(--color-text);
-  box-shadow: 0 1px 2px var(--color-divider);
   font-weight: var(--weight-medium);
+}
+@media (forced-colors: active) {
+  .segmented-option[data-checked] {
+    border-color: Highlight;
+  }
 }
 .segmented-option:focus-visible {
   outline: 2px solid var(--color-focus);

@@ -1,3 +1,5 @@
+import type { StatusTone } from "./status-dot.tsx";
+
 export function Progress({
   value,
   label,
@@ -5,7 +7,7 @@ export function Progress({
 }: {
   value: number | null;
   label: string;
-  tone?: "default" | "positive";
+  tone?: "default" | StatusTone;
 }) {
   return (
     <div

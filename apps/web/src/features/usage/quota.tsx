@@ -167,7 +167,13 @@ function AccountQuota({ provider, name }: { provider: string; name: string }) {
                   <Progress
                     value={100 - window.usedPercent}
                     label={`${name} ${window.name}剩余额度`}
-                    tone="positive"
+                    tone={
+                      window.usedPercent >= 90
+                        ? "negative"
+                        : window.usedPercent >= 80
+                          ? "warning"
+                          : "positive"
+                    }
                   />
                   <small>{quotaReset(window.resetsAt, now)}</small>
                 </div>

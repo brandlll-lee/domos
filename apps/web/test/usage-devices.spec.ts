@@ -478,6 +478,191 @@ test("usage overview keeps the hero visible and reads details on demand", async 
   );
 });
 
+test("segmented controls slide between selections and settle after interruption or resize", async ({
+  service,
+  page,
+}) => {
+  await usageRoutes(page, () => [usageRecord]);
+  const usage = await openUsage(page, service.url);
+  const group = usage.getByRole("radiogroup", { name: "统计指标" });
+  const aligned = async (label: string, control = group) => {
+    await control
+      .locator(".segmented-indicator")
+      .evaluate((element) =>
+        Promise.all(
+          element.getAnimations().map((animation) => animation.finished),
+        ),
+      );
+    await expect
+      .poll(async () => {
+        const marker = await control
+          .locator(".segmented-indicator")
+          .boundingBox();
+        const selected = await control
+          .getByRole("radio", { name: label, exact: true })
+          .boundingBox();
+        return Boolean(
+          marker &&
+            selected &&
+            ["x", "y", "width", "height"].every(
+              (key) => Math.abs(marker[key as "x"] - selected[key as "x"]) < 1,
+            ),
+        );
+      })
+      .toBe(true);
+  };
+  await aligned("费用");
+  const moving = await group.evaluate(async (element) => {
+    element.querySelector<HTMLElement>('[data-value="tokens"]')?.click();
+    await new Promise(requestAnimationFrame);
+    const marker = element.querySelector<HTMLElement>(".segmented-indicator");
+    if (!marker) throw new Error("Selected segment required");
+    const animation = marker.getAnimations()[0];
+    return {
+      running: animation?.playState,
+      frames: (animation?.effect as KeyframeEffect)
+        ?.getKeyframes()
+        .map((frame) => Object.keys(frame)),
+      inFlight:
+        Math.abs(
+          new DOMMatrixReadOnly(getComputedStyle(marker).transform).e -
+            new DOMMatrixReadOnly(marker.style.transform).e,
+        ) > 1,
+    };
+  });
+  expect(moving.running).toBe("running");
+  expect(moving.inFlight).toBe(true);
+  expect(
+    moving.frames?.every((keys) =>
+      keys.every((key) =>
+        [
+          "transform",
+          "offset",
+          "computedOffset",
+          "easing",
+          "composite",
+        ].includes(key),
+      ),
+    ),
+  ).toBe(true);
+  const pending = await group.evaluate(async (element) => {
+    const counts = [];
+    for (const value of ["cost", "tokens", "cost", "tokens"]) {
+      element.querySelector<HTMLElement>(`[data-value="${value}"]`)?.click();
+      await new Promise(requestAnimationFrame);
+      counts.push(
+        element.querySelector(".segmented-indicator")?.getAnimations().length,
+      );
+    }
+    return counts;
+  });
+  expect(pending).toEqual([1, 1, 1, 1]);
+  await aligned("Token");
+  await group.getByRole("radio", { name: "费用", exact: true }).hover();
+  await expect(
+    group.getByRole("radio", { name: "Token", exact: true }),
+  ).toBeChecked();
+  await group.getByRole("radio", { name: "Token", exact: true }).focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(
+    group.getByRole("radio", { name: "费用", exact: true }),
+  ).toBeChecked();
+  await aligned("费用");
+  const breakdown = usage.getByRole("radiogroup", { name: "分组维度" });
+  await breakdown.getByRole("radio", { name: "日期", exact: true }).click();
+  await aligned("日期", breakdown);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await aligned("费用");
+  await aligned("日期", breakdown);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await group.getByRole("radio", { name: "Token", exact: true }).click();
+  expect(
+    await group
+      .locator(".segmented-indicator")
+      .evaluate((element) => element.getAnimations().length),
+  ).toBe(0);
+  await aligned("Token");
+});
+
+test("quota tracks retain their remaining length at warning and critical thresholds", async ({
+  service,
+  page,
+}, info) => {
+  let usedPercent = 0;
+  await usageRoutes(page, () => [usageRecord]);
+  await page.route("**/rpc/engines/quota", (route) =>
+    route.request().postDataJSON()?.json.provider !== "codex"
+      ? route.fallback()
+      : route.fulfill({
+          json: {
+            json: {
+              status: "ready",
+              computerId: "process",
+              accountId: "quota-color",
+              source: "native-test",
+              observedAt: Date.now(),
+              windows: [
+                {
+                  id: "weekly",
+                  name: "每周",
+                  usedPercent,
+                  durationMinutes: 10080,
+                  resetsAt: Date.now() + 3600000,
+                },
+              ],
+            },
+          },
+        }),
+  );
+  const usage = await openUsage(page, service.url);
+  await usage.getByRole("radio", { name: "订阅额度", exact: true }).click();
+  const card = usage.getByRole("article", { name: "Codex", exact: true });
+  const bar = card.getByRole("progressbar");
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    const colors = new Map<string, string>();
+    for (const used of [0, 79.9, 80, 89.9, 90, 100]) {
+      usedPercent = used;
+      await card
+        .getByRole("button", { name: "刷新 Codex 额度", exact: true })
+        .click();
+      const tone =
+        used >= 90 ? "negative" : used >= 80 ? "warning" : "positive";
+      await expect(bar).toHaveAttribute("aria-valuenow", String(100 - used));
+      await expect(bar).toHaveAttribute("data-tone", tone);
+      const fill = bar.locator("span");
+      await fill.evaluate((element) =>
+        Promise.all(
+          element.getAnimations().map((animation) => animation.finished),
+        ),
+      );
+      const track = await bar.boundingBox();
+      const filled = await fill.boundingBox();
+      expect(
+        track &&
+          filled &&
+          Math.abs((filled.width / track.width) * 100 - (100 - used)) < 0.1,
+      ).toBe(true);
+      colors.set(
+        tone,
+        await fill.evaluate(
+          (element) => getComputedStyle(element).backgroundColor,
+        ),
+      );
+    }
+    expect(new Set(colors.values()).size).toBe(3);
+    usedPercent = 85;
+    await card
+      .getByRole("button", { name: "刷新 Codex 额度", exact: true })
+      .click();
+    await expect(bar).toHaveAttribute("data-tone", "warning");
+    await card.screenshot({
+      path: info.outputPath(`quota-warning-${colorScheme}.png`),
+      animations: "disabled",
+    });
+  }
+});
+
 test("usage distinguishes unknown, zero and sub-cent amounts and retains refresh results", async ({
   service,
   page,

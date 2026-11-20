@@ -15,6 +15,12 @@
 .progress[data-tone="positive"] > span {
   background: var(--color-status-positive);
 }
+.progress[data-tone="warning"] > span {
+  background: var(--color-status-warning);
+}
+.progress[data-tone="negative"] > span {
+  background: var(--color-status-negative);
+}
 @media (prefers-reduced-motion: reduce) {
   .progress > span {
     transition: none;
