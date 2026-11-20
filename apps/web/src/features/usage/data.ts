@@ -21,11 +21,8 @@ export type UsagePeriod =
   | "days365";
 
 export const metrics = [
-  { value: "cost", label: "任务成本", unit: "USD" },
-  { value: "tokens", label: "Token", unit: "tok" },
-  { value: "tasks", label: "任务数", unit: "次" },
-  { value: "input", label: "输入用量", unit: "tok" },
-  { value: "output", label: "输出用量", unit: "tok" },
+  { value: "cost", label: "费用" },
+  { value: "tokens", label: "Token" },
 ] as const;
 export const dimensions = [
   { value: "model", label: "模型" },
@@ -56,70 +53,57 @@ export const harnesses = [
   { value: "cursor", label: "Cursor" },
 ];
 
-export const metricLabel = (metric: Metric) =>
-  metrics.find((item) => item.value === metric)?.label ?? metric;
-export const metricUnit = (metric: Metric) =>
-  metrics.find((item) => item.value === metric)?.unit ?? "";
-
 export const compactNumber = (value: number) =>
   new Intl.NumberFormat("en", {
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(value);
-export const money = (value: number | null) =>
+export const money = (value: number | null, precise = false): string =>
   value === null
-    ? "未提供"
-    : new Intl.NumberFormat("en", {
-        style: "currency",
-        currency: "USD",
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 4,
-      }).format(value);
+    ? "暂无法估价"
+    : !precise && value > 0 && value < 0.01
+      ? "<US$0.01"
+      : new Intl.NumberFormat("en", {
+          style: "currency",
+          currency: "USD",
+          currencyDisplay: "code",
+          minimumFractionDigits: 2,
+          maximumFractionDigits: precise ? 6 : 2,
+        })
+          .format(value)
+          .replace("USD", "US$")
+          .replace(/\s/g, "");
 export const formatValue = (value: number | null, metric: Metric) =>
   value === null
     ? "—"
     : metric === "cost"
       ? money(value)
       : compactNumber(value);
-export const formatAxis = (value: number, metric: Metric, decimals: number) =>
+export const formatAxis = (value: number, metric: Metric) =>
   metric === "cost"
     ? `$${new Intl.NumberFormat("en", {
         notation: value >= 1000 ? "compact" : "standard",
-        maximumFractionDigits: decimals,
+        maximumFractionDigits: value > 0 && value < 0.01 ? 6 : 2,
       }).format(value)}`
     : compactNumber(value);
 
-export type UsageGroup = {
-  key: string;
-  label: string;
-  value: number | null;
-  color: string;
-};
+export type UsageGroup = UsageSummary["groups"][number] & { label: string };
 
 export function dailyUsage(
   summary: UsageSummary,
-  groups: UsageGroup[],
+  metric: Metric,
   from: string,
   to: string,
 ) {
-  const values = new Map(
-    summary.daily.map((row) => [`${row.day}:${row.key}`, row.value]),
-  );
-  const days = [];
+  const values = new Map(summary.days.map((row) => [row.day, row[metric]]));
+  const days: { day: string; value: number | null }[] = [];
   for (
     let date = Date.parse(from);
     date <= Date.parse(to);
     date += 86_400_000
   ) {
     const day = new Date(date).toISOString().slice(0, 10);
-    const series = groups.map(
-      (group) => values.get(`${day}:${group.key}`) ?? null,
-    );
-    days.push({
-      day,
-      values: series,
-      total: series.reduce<number>((sum, value) => sum + (value ?? 0), 0),
-    });
+    days.push({ day, value: values.get(day) ?? null });
   }
   return days;
 }

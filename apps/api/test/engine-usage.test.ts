@@ -210,6 +210,38 @@ test("HTTP usage retains native attribution, deduplicates and survives reopening
     limit: 5,
   });
   expect(summary.missingUsage).toBe(1);
+  expect(summary.groups.reduce((sum, row) => sum + (row.cost ?? 0), 0)).toBe(
+    summary.totals.cost,
+  );
+  expect(summary.engines.reduce((sum, row) => sum + (row.cost ?? 0), 0)).toBe(
+    summary.totals.cost,
+  );
+  expect(summary.groups.reduce((sum, row) => sum + (row.tokens ?? 0), 0)).toBe(
+    summary.totals.tokens,
+  );
+  expect(summary.days.reduce((sum, row) => sum + (row.tokens ?? 0), 0)).toBe(
+    summary.totals.tokens,
+  );
+  for (const dimension of [
+    "model",
+    "bot",
+    "day",
+    "harness",
+    "provider",
+    "purpose",
+  ] as const) {
+    const grouped = await runtime.client.engines.usageSummary({
+      dimension,
+      metric: "tokens",
+      limit: 1,
+    });
+    expect(grouped.groups.reduce((sum, row) => sum + (row.cost ?? 0), 0)).toBe(
+      summary.totals.cost,
+    );
+    expect(
+      grouped.groups.reduce((sum, row) => sum + (row.tokens ?? 0), 0),
+    ).toBe(summary.totals.tokens);
+  }
   const csv = await runtime.app.request(
     "http://localhost/usage/export.csv?query=needle-model",
   );

@@ -1,13 +1,10 @@
-import type { EngineId } from "@domos/agent/harness/types";
 import { SearchField } from "@domos/ui/field";
 import { Pagination } from "@domos/ui/pagination";
 import { EngineMark } from "../bots/engine-mark.tsx";
 import {
+  compactNumber,
   type Dimension,
-  formatValue,
   harnesses,
-  type Metric,
-  metricUnit,
   money,
   purposes,
   recordTime,
@@ -22,54 +19,69 @@ const harnessLabel = (id: string) =>
 
 export function Breakdown({
   groups,
-  metric,
   dimension,
   total,
+  onSelect,
 }: {
   groups: UsageGroup[];
-  metric: Metric;
   dimension: Dimension;
   total: number | null;
+  onSelect: (key: string) => void;
 }) {
-  const max = Math.max(...groups.map((group) => group.value ?? 0), 0);
   return (
-    <ul className="usage-breakdown" aria-label="分组用量">
-      {groups.map((group) => {
-        const share =
-          total && group.value !== null ? (group.value / total) * 100 : null;
-        return (
-          <li key={group.key}>
-            <span className="usage-breakdown-label">
-              {dimension === "harness" && group.key !== "other" ? (
-                <EngineMark provider={group.key as EngineId} />
-              ) : (
-                <i className="usage-dot" style={{ background: group.color }} />
-              )}
-              <span className="usage-truncate">{group.label}</span>
-            </span>
-            <span className="usage-breakdown-value">
-              {formatValue(group.value, metric)}
-              <small>{share === null ? "—" : `${share.toFixed(1)}%`}</small>
-            </span>
-            <span className="usage-breakdown-track" aria-hidden="true">
-              <span
-                style={{
-                  width: `${max && group.value !== null ? Math.max(2, (group.value / max) * 100) : 0}%`,
-                  background: group.color,
-                }}
-              />
-            </span>
-          </li>
-        );
-      })}
-      <li className="usage-breakdown-total">
-        <span>合计</span>
-        <span>
-          {metric === "cost" ? money(total) : formatValue(total, metric)}
-          <small>{metricUnit(metric)}</small>
-        </span>
-      </li>
-    </ul>
+    <div className="usage-table-scroll">
+      <table className="usage-table" aria-label="用量构成">
+        <thead>
+          <tr>
+            <th scope="col">
+              {dimension === "bot"
+                ? "Bot"
+                : dimension === "day"
+                  ? "日期"
+                  : dimension === "model"
+                    ? "模型"
+                    : "名称"}
+            </th>
+            <th scope="col">费用</th>
+            <th scope="col">Token</th>
+          </tr>
+        </thead>
+        <tbody>
+          {groups.map((group) => (
+            <tr key={group.key}>
+              <th scope="row">
+                {group.key === "other" ||
+                dimension === "skill" ||
+                dimension === "purpose" ? (
+                  group.label
+                ) : (
+                  <button
+                    type="button"
+                    className="usage-row-link"
+                    title={group.label}
+                    onClick={() => onSelect(group.key)}
+                  >
+                    {group.label}
+                  </button>
+                )}
+              </th>
+              <td
+                title={
+                  total && group.cost !== null
+                    ? `占已知费用 ${((group.cost / total) * 100).toFixed(1)}%`
+                    : undefined
+                }
+              >
+                {money(group.cost)}
+              </td>
+              <td>
+                {group.tokens === null ? "—" : compactNumber(group.tokens)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -161,7 +173,7 @@ export function Records({
                     {count(row.cacheRead)} / {count(row.cacheWrite)}
                   </td>
                   <td className="usage-cell-value">
-                    {money(row.costUsd)}
+                    {money(row.costUsd, true)}
                     <small
                       title={[row.costSource ?? row.source, row.costVersion]
                         .filter(Boolean)

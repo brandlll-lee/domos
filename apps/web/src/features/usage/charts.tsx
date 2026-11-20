@@ -1,172 +1,167 @@
-import { type CSSProperties, useState } from "react";
-import {
-  dayLabel,
-  formatAxis,
-  formatValue,
-  type Metric,
-  metricUnit,
-  type UsageGroup,
-} from "./data.ts";
+import { useId, useState } from "react";
+import { dayLabel, formatAxis, formatValue, type Metric } from "./data.ts";
 
 export function DailyChart({
-  days: bars,
-  groups,
+  days,
   metric,
 }: {
-  days: { day: string; values: (number | null)[]; total: number }[];
-  groups: UsageGroup[];
+  days: { day: string; value: number | null }[];
   metric: Metric;
 }) {
+  const fillId = useId();
   const [hovered, setHovered] = useState<number | null>(null);
-  const max = Math.max(...bars.map((bar) => bar.total), 0);
-  const decimals = max >= 100 ? 0 : max >= 0.1 ? 2 : 4;
-  const ticks = [1, 2 / 3, 1 / 3];
-  const last = bars.length - 1;
-  const labeled = new Set([
-    0,
-    Math.round(last / 3),
-    Math.round((last * 2) / 3),
-    last,
-  ]);
-  const active = hovered === null ? null : bars[hovered];
-  if (!max)
-    return (
-      <p className="usage-muted">
-        {bars.some((bar) => bar.values.some((value) => value !== null))
-          ? "该指标为零。"
-          : "该指标未提供数据。"}
-      </p>
-    );
-  const pick = (element: HTMLElement, clientX: number) => {
-    const rect = element.getBoundingClientRect();
-    const ratio = (clientX - rect.left) / rect.width;
-    setHovered(Math.min(last, Math.max(0, Math.floor(ratio * bars.length))));
-  };
+  const known = days.filter((day) => day.value !== null);
+  const max = Math.max(...known.map((day) => day.value ?? 0), 0);
+  const scale = max || 1;
+  const x = (index: number) =>
+    days.length < 2 ? 500 : (index / (days.length - 1)) * 1000;
+  const y = (value: number) => 230 - (value / scale) * 220;
+  const segments: { index: number; value: number }[][] = [];
+  days.forEach((day, index) => {
+    if (day.value === null) return;
+    if (index === 0 || days[index - 1]?.value === null) segments.push([]);
+    segments.at(-1)?.push({ index, value: day.value });
+  });
+  const active = hovered === null ? undefined : days[hovered];
   return (
-    <div className="usage-chart" data-hover={hovered !== null || undefined}>
+    <div className="usage-chart">
       <div className="usage-chart-axis" aria-hidden="true">
-        {ticks.map((tick) => (
-          <span key={tick} style={{ bottom: `${tick * 100}%` }}>
-            {formatAxis(max * tick, metric, decimals)}
+        {[1, 0.5, 0].map((tick) => (
+          <span
+            key={tick}
+            style={{ top: `${((10 + (1 - tick) * 220) / 240) * 100}%` }}
+          >
+            {formatAxis(scale * tick, metric)}
           </span>
         ))}
       </div>
       <div className="usage-plot">
-        <div className="usage-chart-grid" aria-hidden="true">
-          {ticks.map((tick) => (
-            <span key={tick} style={{ bottom: `${tick * 100}%` }} />
-          ))}
-        </div>
-        <div
-          className="usage-bars"
-          role="img"
-          aria-label={`每日${metric === "cost" ? "成本" : "用量"}趋势，${bars[0]?.day} 至 ${bars.at(-1)?.day}，峰值 ${formatValue(max, metric)} ${metricUnit(metric)}`}
-          onPointerMove={(event) => {
-            if (event.pointerType === "mouse")
-              pick(event.currentTarget, event.clientX);
-          }}
-          onPointerDown={(event) => pick(event.currentTarget, event.clientX)}
-          onPointerLeave={() => setHovered(null)}
+        <svg
+          viewBox="0 0 1000 240"
+          preserveAspectRatio="none"
+          aria-hidden="true"
         >
-          {bars.map((bar, index) => (
-            <div
-              className="usage-bar"
-              key={bar.day}
-              data-active={hovered === index || undefined}
-              title={`${bar.day} · ${formatValue(bar.total, metric)} ${metricUnit(metric)}`}
-            >
-              {bar.total ? (
-                <span className="usage-bar-stack">
-                  {bar.values.map((value, slot) =>
-                    value ? (
-                      <span
-                        key={groups[slot]?.key}
-                        style={
-                          {
-                            height: `${(value / max) * 100}%`,
-                            "--segment": groups[slot]?.color,
-                          } as CSSProperties
-                        }
-                      />
-                    ) : null,
-                  )}
-                </span>
-              ) : (
-                <span className="usage-bar-tick" aria-hidden="true" />
-              )}
-            </div>
+          <defs>
+            <linearGradient id={fillId} x1="0" x2="0" y1="0" y2="1">
+              <stop
+                offset="0%"
+                stopColor="var(--color-chart-1)"
+                stopOpacity="0.13"
+              />
+              <stop
+                offset="100%"
+                stopColor="var(--color-chart-1)"
+                stopOpacity="0"
+              />
+            </linearGradient>
+          </defs>
+          {[10, 120, 230].map((height) => (
+            <line
+              key={height}
+              x1="0"
+              x2="1000"
+              y1={height}
+              y2={height}
+              className="usage-grid-line"
+            />
           ))}
-        </div>
-        {hovered !== null && (
-          <span
-            className="usage-cursor"
-            aria-hidden="true"
-            style={{
-              insetInlineStart: `${((hovered + 0.5) * 100) / bars.length}%`,
-            }}
-          />
+          {segments.map((segment) => {
+            const first = segment[0]!;
+            const last = segment.at(-1)!;
+            const line = segment
+              .map(
+                (point, index) =>
+                  `${index ? "L" : "M"}${x(point.index)},${y(point.value)}`,
+              )
+              .join(" ");
+            return (
+              <g key={first.index}>
+                <path
+                  d={`${line} L${x(last.index)},230 L${x(first.index)},230 Z`}
+                  fill={`url(#${fillId})`}
+                />
+                <path d={line} className="usage-line" />
+                {segment.length === 1 && (
+                  <circle
+                    cx={x(first.index)}
+                    cy={y(first.value)}
+                    r="2.5"
+                    fill="var(--color-chart-1)"
+                  />
+                )}
+              </g>
+            );
+          })}
+        </svg>
+        <div
+          className="usage-chart-hit"
+          role="slider"
+          tabIndex={0}
+          aria-label={`每日${metric === "cost" ? "费用" : "用量"}趋势`}
+          aria-valuemin={0}
+          aria-valuemax={Math.max(0, days.length - 1)}
+          aria-valuenow={hovered ?? 0}
+          aria-valuetext={
+            active
+              ? `${active.day} ${formatValue(active.value, metric)}`
+              : "使用方向键查看每日数据"
+          }
+          onPointerMove={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            setHovered(
+              Math.max(
+                0,
+                Math.min(
+                  days.length - 1,
+                  Math.round(
+                    ((event.clientX - rect.left) / rect.width) *
+                      (days.length - 1),
+                  ),
+                ),
+              ),
+            );
+          }}
+          onPointerLeave={() => setHovered(null)}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+              event.preventDefault();
+              setHovered(
+                Math.max(
+                  0,
+                  Math.min(
+                    days.length - 1,
+                    (hovered ?? 0) + (event.key === "ArrowRight" ? 1 : -1),
+                  ),
+                ),
+              );
+            }
+          }}
+        />
+        {!known.length && (
+          <p className="usage-chart-empty">此范围暂无可用数据</p>
         )}
         {active && (
           <div
             className="usage-tip"
-            data-align={
-              hovered === 0 ? "start" : hovered === last ? "end" : "center"
-            }
             style={{
-              insetInlineStart: `${((hovered ?? 0) + 0.5) * (100 / bars.length)}%`,
+              insetInlineStart: `${Math.min(82, Math.max(18, ((hovered ?? 0) / Math.max(1, days.length - 1)) * 100))}%`,
             }}
           >
-            <span className="usage-tip-day">{dayLabel(active.day)}</span>
-            <strong className="usage-tip-total">
-              {formatValue(active.total, metric)}
-              <small>{metricUnit(metric)}</small>
-            </strong>
-            {groups.length > 1 && (
-              <ul>
-                {groups.map((group, slot) =>
-                  active.values[slot] ? (
-                    <li key={group.key}>
-                      <i style={{ background: group.color }} />
-                      <span>{group.label}</span>
-                      <b>{formatValue(active.values[slot], metric)}</b>
-                    </li>
-                  ) : null,
-                )}
-              </ul>
-            )}
+            <span>{dayLabel(active.day)}</span>
+            <strong>{formatValue(active.value, metric)}</strong>
+            {active.value === null && <small>未返回数据</small>}
           </div>
         )}
       </div>
       <div className="usage-chart-dates" aria-hidden="true">
-        {bars.map((bar, index) =>
-          labeled.has(index) ? (
-            <span
-              key={bar.day}
-              data-align={
-                index === 0 ? "start" : index === last ? "end" : undefined
-              }
-              style={{
-                insetInlineStart: `${((index + 0.5) * 100) / bars.length}%`,
-              }}
-            >
-              {dayLabel(bar.day)}
+        {[0, Math.round((days.length - 1) / 2), days.length - 1]
+          .filter((index, slot, all) => all.indexOf(index) === slot)
+          .map((index) => (
+            <span key={index}>
+              {days[index] ? dayLabel(days[index].day) : ""}
             </span>
-          ) : null,
-        )}
+          ))}
       </div>
     </div>
-  );
-}
-
-export function Legend({ groups }: { groups: UsageGroup[] }) {
-  return (
-    <ul className="usage-legend">
-      {groups.map((group) => (
-        <li key={group.key} title={group.label}>
-          <i style={{ background: group.color }} />
-          <span>{group.label}</span>
-        </li>
-      ))}
-    </ul>
   );
 }

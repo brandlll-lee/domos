@@ -718,11 +718,25 @@ export class UsageReader {
         .get(...groupValues, ...keys);
       top.push({ key: "other", value: others?.value as number | null });
     }
+    const usageGroups =
+      dimension === "skill"
+        ? "(SELECT u.*,s.name skill FROM domos_usage_index u JOIN domos_usage_skills s USING(taskId))"
+        : "domos_usage_index";
+    const groupTotals = db
+      .prepare(
+        `SELECT ${groupSQL} key, ${totalsSQL} FROM ${usageGroups} WHERE ${sql} GROUP BY key`,
+      )
+      .all(...keys, ...values) as (UsageTotals & { key: string })[];
+    const engines = db
+      .prepare(
+        `SELECT harness key, ${totalsSQL} FROM domos_usage_index WHERE ${sql} GROUP BY harness ORDER BY cost DESC,harness`,
+      )
+      .all(...values) as (UsageTotals & { key: string })[];
     const days = db
       .prepare(
-        `SELECT strftime('%Y-%m-%d',timestamp/1000,'unixepoch') day, SUM(cost) cost FROM domos_usage_index WHERE ${sql} GROUP BY day ORDER BY day`,
+        `SELECT strftime('%Y-%m-%d',timestamp/1000,'unixepoch') day, ${totalsSQL} FROM domos_usage_index WHERE ${sql} GROUP BY day ORDER BY day`,
       )
-      .all(...values) as { day: string; cost: number | null }[];
+      .all(...values) as (UsageTotals & { day: string })[];
     const options = db
       .prepare(
         `SELECT DISTINCT provider,model FROM domos_usage_index WHERE botId IN (${botIds.map(() => "?").join(",") || "NULL"}) AND timestamp>=? AND timestamp<=?`,
@@ -758,7 +772,13 @@ export class UsageReader {
     );
     return {
       totals,
-      groups: top,
+      groups: top.map((group) => ({
+        ...group,
+        cost: groupTotals.find((row) => row.key === group.key)?.cost ?? null,
+        tokens:
+          groupTotals.find((row) => row.key === group.key)?.tokens ?? null,
+      })),
+      engines,
       daily,
       days,
       options,

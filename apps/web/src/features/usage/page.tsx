@@ -1,17 +1,19 @@
+import type { EngineId } from "@domos/agent/harness/types";
 import { SegmentedControl } from "@domos/ui/choice";
 import { Button } from "@domos/ui/controls";
+import { Dialog } from "@domos/ui/dialog";
 import { ChoicePicker } from "@domos/ui/picker";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { ArrowClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
 import { useEffect, useMemo, useState } from "react";
 import { client } from "../../client.ts";
+import { EngineMark } from "../bots/engine-mark.tsx";
 import { userError } from "../user-error.ts";
-import { DailyChart, Legend } from "./charts.tsx";
+import { DailyChart } from "./charts.tsx";
 import {
   compactNumber,
   type Dimension,
   dailyUsage,
-  dayLabel,
   dimensions,
   harnesses,
   type Metric,
@@ -35,12 +37,6 @@ const periods = [
   { value: "days90", label: "近 90 天" },
   { value: "days365", label: "近一年" },
 ];
-const limits = [
-  { value: "5", label: "Top 5" },
-  { value: "10", label: "Top 10" },
-  { value: "20", label: "Top 20" },
-];
-
 function Filter({
   label,
   value,
@@ -83,17 +79,25 @@ export function UsageSurface() {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const [summary, setSummary] = useState<UsageSummary>();
+  const [summary, setSummary] = useState<
+    UsageSummary & { dimension: Dimension }
+  >();
   const [rows, setRows] = useState<UsageRecord[]>([]);
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [elapsed, setElapsed] = useState(0);
   const [reload, setReload] = useState(0);
   const [metric, setMetric] = useState<Metric>("cost");
   const [dimension, setDimension] = useState<Dimension>("model");
+  const [analysisDimension, setAnalysisDimension] =
+    useState<Dimension>("harness");
   const [quotaBot, setQuotaBot] = useState("");
-  const [limit, setLimit] = useState("5");
+  const [panel, setPanel] = useState<
+    "quota" | "data" | "records" | "filters" | "analysis" | null
+  >(null);
+  const summaryDimension = panel === "analysis" ? analysisDimension : dimension;
+  const [expanded, setExpanded] = useState(false);
+  const [drill, setDrill] = useState<{ dimension: Dimension; key: string }>();
   const range = useMemo(
     () => ({ ...usagePeriodRange(period), attempt: reload }),
     [period, reload],
@@ -106,9 +110,8 @@ export function UsageSurface() {
       provider: provider || undefined,
       model: model || undefined,
       botId: botId ? Number(botId) : undefined,
-      query: query.trim() || undefined,
     }),
-    [range, harness, provider, model, botId, query],
+    [range, harness, provider, model, botId],
   );
   useEffect(() => {
     void client.bots
@@ -118,12 +121,11 @@ export function UsageSurface() {
   }, []);
   useEffect(() => {
     const controller = new AbortController();
-    const started = performance.now();
     setLoading(true);
     setError("");
     void client.engines
       .usageSummary(
-        { ...filter, dimension, metric, limit: Number(limit) },
+        { ...filter, dimension: summaryDimension, metric, limit: 20 },
         {
           signal: AbortSignal.any([
             controller.signal,
@@ -133,8 +135,7 @@ export function UsageSurface() {
       )
       .then((value) => {
         if (!controller.signal.aborted) {
-          setSummary(value);
-          setElapsed(Math.round(performance.now() - started));
+          setSummary({ ...value, dimension: summaryDimension });
         }
       })
       .catch((cause) => {
@@ -145,14 +146,34 @@ export function UsageSurface() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [filter, dimension, metric, limit]);
+  }, [filter, summaryDimension, metric]);
   const [reading, setReading] = useState(false);
+  const recordFilter = useMemo(
+    () => ({
+      ...filter,
+      ...(drill?.dimension === "day"
+        ? {
+            from: Date.parse(`${drill.key}T00:00:00Z`),
+            to: Date.parse(`${drill.key}T23:59:59.999Z`),
+          }
+        : drill
+          ? {
+              [drill.dimension === "bot" ? "botId" : drill.dimension]:
+                drill.dimension === "bot" ? Number(drill.key) : drill.key,
+            }
+          : {}),
+      query: query.trim() || undefined,
+    }),
+    [filter, drill, query],
+  );
   useEffect(() => {
+    if (panel !== "records") return;
     const controller = new AbortController();
     setReading(true);
+    setError("");
     void client.engines
       .usage(
-        { ...filter, page },
+        { ...recordFilter, page },
         {
           signal: AbortSignal.any([
             controller.signal,
@@ -175,41 +196,28 @@ export function UsageSurface() {
         if (!controller.signal.aborted) setReading(false);
       });
     return () => controller.abort();
-  }, [filter, page]);
+  }, [recordFilter, page, panel]);
   const names = new Map(bots.map((bot) => [bot.id, bot.name]));
-  const groups = (summary?.groups ?? []).map((group, index) => ({
+  const groups = (summary?.groups ?? []).map((group) => ({
     ...group,
     label:
       group.key === "other"
         ? "其他"
-        : dimension === "bot"
+        : summary?.dimension === "bot"
           ? (names.get(Number(group.key)) ?? `Bot ${group.key}`)
-          : dimension === "harness"
+          : summary?.dimension === "harness"
             ? (harnesses.find((item) => item.value === group.key)?.label ??
               group.key)
-            : dimension === "purpose"
+            : summary?.dimension === "purpose"
               ? (purposes[group.key] ?? group.key)
               : group.key,
-    color:
-      group.key === "other"
-        ? "var(--color-chart-other)"
-        : `var(--color-chart-${(index % 5) + 1})`,
   }));
-  const days = summary ? dailyUsage(summary, groups, range.from, range.to) : [];
+  const days = summary ? dailyUsage(summary, metric, range.from, range.to) : [];
   const totals = summary?.totals;
-  const daily = summary?.days ?? [];
   const change = (set: (value: string) => void) => (value: string) => {
     set(value);
     setPage(1);
   };
-  const peak = daily.reduce(
-    (best, item) =>
-      item.cost !== null && (best.cost === null || item.cost > best.cost)
-        ? item
-        : best,
-    { day: "", cost: null as number | null },
-  );
-  const activeDays = daily.filter((item) => item.cost !== null).length;
   const activeFilters = [harness, provider, botId, model].filter(
     Boolean,
   ).length;
@@ -227,16 +235,44 @@ export function UsageSurface() {
       .sort()
       .map((value) => ({ value, label: value })),
   ];
+  const selectGroup = (key: string) => {
+    if (
+      !summary ||
+      summary.dimension === "skill" ||
+      summary.dimension === "purpose"
+    )
+      return;
+    setDrill({ dimension: summary.dimension, key });
+    setQuery("");
+    setPage(1);
+    setPanel("records");
+  };
+  const openRecords = () => {
+    setDrill(undefined);
+    setQuery("");
+    setPage(1);
+    setPanel("records");
+  };
+  const partial =
+    summary &&
+    (summary.missingUsage > 0 ||
+      summary.totals.incomplete > 0 ||
+      summary.totals.unpriced > 0 ||
+      summary.totals.historical > 0);
+  const scope = [
+    harnesses.find((item) => item.value === harness)?.label,
+    provider,
+    names.get(Number(botId)),
+    model,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <ScrollArea className="usage-surface">
       <main className="usage-page" aria-label="用量" aria-busy={loading}>
         <header className="usage-head">
-          <div className="usage-head-text">
-            <h1>用量</h1>
-            <p>查看任务用量、引擎报告与价格估算。</p>
-          </div>
+          <h1>用量</h1>
           <div className="usage-head-actions">
-            <span className="usage-timezone">UTC</span>
             <ChoicePicker
               label="日期范围"
               size="small"
@@ -247,87 +283,69 @@ export function UsageSurface() {
               }}
               items={periods}
             />
+            <SegmentedControl
+              label="统计指标"
+              value={metric}
+              onValueChange={setMetric}
+              options={metrics}
+            />
             <Button
               size="small"
-              variant="secondary"
+              variant="ghost"
+              onClick={() => setPanel("quota")}
+            >
+              订阅额度
+            </Button>
+            <Button
+              size="small"
+              variant="ghost"
+              onClick={() => setPanel("filters")}
+            >
+              筛选{activeFilters ? ` · ${activeFilters}` : ""}
+            </Button>
+            <Button
+              size="icon-small"
+              variant="ghost"
               aria-label="刷新用量"
               title="刷新用量"
-              disabled={loading}
+              pending={loading}
               onClick={refresh}
             >
               <ArrowClockwiseIcon />
             </Button>
           </div>
         </header>
-        {bots.length ? (
-          <div className="usage-section">
-            <ChoicePicker
-              label="额度所属 Bot"
-              size="small"
-              value={quotaBot || String(bots[0]?.id)}
-              onValueChange={setQuotaBot}
-              items={bots.map((bot) => ({
-                value: String(bot.id),
-                label: bot.name,
-              }))}
-            />
-            <QuotaPanel
-              key={quotaBot || String(bots[0]?.id)}
-              botId={Number(quotaBot || bots[0]?.id)}
-            />
-          </div>
-        ) : null}
-        <fieldset className="usage-filters" aria-label="筛选用量">
-          <Filter
-            label="Harness"
-            value={harness}
-            onChange={change(setHarness)}
-            items={[{ value: "", label: "Harness" }, ...harnesses]}
-          />
-          <Filter
-            label="Provider"
-            value={provider}
-            onChange={change(setProvider)}
-            items={options(
-              (summary?.options ?? []).map((row) => row.provider),
-              "Provider",
-            )}
-          />
-          <Filter
-            label="Bot"
-            value={botId}
-            onChange={change(setBotId)}
-            items={[
-              { value: "", label: "Bot" },
-              ...bots.map((bot) => ({
-                value: String(bot.id),
-                label: bot.name,
-              })),
-            ]}
-          />
-          <Filter
-            label="用量模型"
-            value={model}
-            onChange={change(setModel)}
-            items={options(
-              (summary?.options ?? []).map((row) => row.model),
-              "模型",
-            )}
-          />
-          {activeFilters > 0 && (
+        {activeFilters > 0 && (
+          <div className="usage-active-filters">
+            <span>{scope}</span>
             <Button size="small" variant="ghost" onClick={clearFilters}>
-              清除
+              清除筛选
             </Button>
-          )}
-        </fieldset>
-        {error ? (
+          </div>
+        )}
+        {error && (
           <div className="usage-error" role="alert">
             <p>{error}</p>
-            <Button variant="secondary" size="small" onClick={refresh}>
+            <Button size="small" variant="secondary" onClick={refresh}>
               重试
             </Button>
           </div>
-        ) : null}
+        )}
+        {partial && (
+          <div className="usage-completeness">
+            <span>
+              部分用量尚不完整 · {summary.missingUsage} 个任务未返回用量 ·{" "}
+              {totals?.unpriced} 条暂无法估价
+            </span>
+            <Button
+              size="small"
+              variant="ghost"
+              onClick={() => setPanel("data")}
+            >
+              查看详情
+            </Button>
+          </div>
+        )}
         {!summary && loading ? (
           <div
             className="usage-loading"
@@ -335,221 +353,348 @@ export function UsageSurface() {
             aria-label="正在读取用量"
           >
             <div className="usage-skeleton usage-skeleton-hero" />
-            <div className="usage-skeleton-stats" aria-hidden="true">
-              {[0, 1, 2, 3, 4].map((slot) => (
-                <span className="usage-skeleton" key={slot} />
-              ))}
-            </div>
             <div className="usage-skeleton usage-skeleton-chart" />
           </div>
-        ) : totals ? (
-          <>
-            <section className="usage-completeness" aria-label="数据完整性">
-              <p>
-                {summary?.missingUsage} 个任务未采到用量 · {totals.incomplete}{" "}
-                条字段不全 · {totals.unpriced} 条无法计价
-                {totals.historical
-                  ? ` · ${totals.historical} 条历史口径待核对`
-                  : ""}
-              </p>
-              <details>
-                <summary>各引擎采集情况</summary>
-                <ul>
-                  {harnesses.map((item) => {
-                    const row = summary?.coverage.find(
-                      (row) => row.harness === item.value,
-                    );
-                    return (
-                      <li key={item.value}>
-                        {item.label}：{row?.tasks ?? 0} 个任务，
-                        {row?.missingUsage ?? 0} 个未采到用量
+        ) : (
+          totals && (
+            <>
+              <section className="usage-hero" aria-label="用量总览">
+                <div className="usage-hero-main">
+                  <strong className="usage-hero-value">
+                    {metric === "tokens"
+                      ? totals.tokens === null
+                        ? "—"
+                        : compactNumber(totals.tokens)
+                      : money(totals.cost)}
+                  </strong>
+                  <p className="usage-hero-meta">
+                    {metric === "tokens" ? "已知完整 Token" : "已知费用 · USD"}{" "}
+                    · {totals.tasks} 个任务
+                  </p>
+                  <ul className="usage-engines" aria-label="引擎用量">
+                    {(expanded
+                      ? summary.engines
+                      : summary.engines.slice(0, 3)
+                    ).map((engine) => (
+                      <li key={engine.key}>
+                        <div className="usage-engine-head">
+                          <span>
+                            <EngineMark provider={engine.key as EngineId} />
+                            {harnesses.find((item) => item.value === engine.key)
+                              ?.label ?? engine.key}
+                          </span>
+                          <b>
+                            {metric === "tokens"
+                              ? engine.tokens === null
+                                ? "—"
+                                : compactNumber(engine.tokens)
+                              : money(engine.cost)}
+                          </b>
+                        </div>
+                        <small>
+                          {engine.cost !== null && totals.cost
+                            ? `${((engine.cost / totals.cost) * 100).toFixed(1)}% 已知费用 · `
+                            : ""}
+                          {engine.tokens === null
+                            ? "Token 未完整返回"
+                            : `${compactNumber(engine.tokens)} Token`}
+                        </small>
                       </li>
-                    );
-                  })}
-                </ul>
-              </details>
-            </section>
-            <section className="usage-hero" aria-label="用量总览">
-              <div className="usage-hero-main">
-                <span className="usage-hero-kicker">
-                  {metric === "tokens" ? "已知完整 Token" : "已知任务成本"}
-                </span>
-                <strong className="usage-hero-value">
-                  {metric === "tokens"
-                    ? totals.tokens === null
-                      ? "未知"
-                      : compactNumber(totals.tokens)
-                    : money(totals.cost)}
-                </strong>
-                <p className="usage-hero-meta">
-                  {metric === "tokens" ? "Token" : "USD"} ·{" "}
-                  {periods.find((item) => item.value === period)?.label} ·{" "}
-                  {totals.tasks} 个任务 · {totals.records} 条记录 ·{" "}
-                  {totals.unpriced} 条成本未提供
+                    ))}
+                  </ul>
+                  {summary.engines.length > 3 && (
+                    <Button
+                      size="small"
+                      variant="ghost"
+                      onClick={() => setExpanded(!expanded)}
+                    >
+                      {expanded
+                        ? "收起引擎"
+                        : `查看全部 ${summary.engines.length} 个引擎`}
+                    </Button>
+                  )}
+                </div>
+                <section className="usage-trend" aria-label="每日趋势">
+                  <header className="usage-section-head">
+                    <h2>每日{metric === "cost" ? "费用" : "用量"}</h2>
+                    <Button
+                      size="small"
+                      variant="ghost"
+                      onClick={() => setDimension("day")}
+                    >
+                      查看每日数据
+                    </Button>
+                  </header>
+                  <DailyChart days={days} metric={metric} />
+                </section>
+              </section>
+              {totals.records === 0 && (
+                <p className="usage-muted" role="status">
+                  此范围还没有用量记录。
                 </p>
-              </div>
-              <dl className="usage-facts">
-                <div>
-                  <dt>峰值日</dt>
-                  <dd>
-                    {peak.day ? dayLabel(peak.day) : "—"}
-                    <small>{money(peak.cost)}</small>
-                  </dd>
-                </div>
-                <div>
-                  <dt>日均（有记录 {activeDays} 天）</dt>
-                  <dd>
-                    <small>
-                      {activeDays
-                        ? money((totals.cost ?? 0) / activeDays)
-                        : "—"}
-                    </small>
-                  </dd>
-                </div>
+              )}
+              <dl className="usage-stats">
+                {(
+                  [
+                    ["总 Token", totals.tokens],
+                    ["缓存读取", totals.cacheRead],
+                    ["未缓存输入", totals.input],
+                    ["缓存写入", totals.cacheWrite],
+                    ["输出", totals.output],
+                  ] as const
+                ).map(([label, value]) => (
+                  <Stat
+                    key={label}
+                    label={label}
+                    value={value === null ? "—" : compactNumber(value)}
+                  />
+                ))}
               </dl>
-            </section>
-            <dl className="usage-stats">
-              <Stat label="任务数" value={compactNumber(totals.tasks)} />
-              <Stat
-                label="未缓存输入"
-                value={
-                  totals.input === null ? "—" : compactNumber(totals.input)
-                }
-              />
-              <Stat
-                label="输出用量"
-                value={
-                  totals.output === null ? "—" : compactNumber(totals.output)
-                }
-              />
-              <Stat
-                label="缓存读"
-                value={
-                  totals.cacheRead === null
-                    ? "—"
-                    : compactNumber(totals.cacheRead)
-                }
-              />
-              <Stat
-                label="缓存写"
-                value={
-                  totals.cacheWrite === null
-                    ? "—"
-                    : compactNumber(totals.cacheWrite)
-                }
-              />
-            </dl>
-            <section className="usage-section" aria-label="每日趋势">
-              <header className="usage-section-head">
-                <h2>
-                  {metrics.find((item) => item.value === metric)?.label}趋势
-                </h2>
-                <SegmentedControl
-                  label="统计指标"
-                  value={metric}
-                  onValueChange={setMetric}
-                  options={metrics}
-                />
-              </header>
-              <DailyChart days={days} groups={groups} metric={metric} />
-              {groups.length > 1 && <Legend groups={groups} />}
-            </section>
-            <section className="usage-section" aria-label="构成">
-              <header className="usage-section-head">
-                <h2>构成</h2>
-                <div className="usage-section-tools">
+              <section className="usage-section" aria-label="用量构成">
+                <header className="usage-section-head">
+                  <h2>用量构成</h2>
                   <SegmentedControl
                     label="分组维度"
                     value={dimension}
                     onValueChange={setDimension}
-                    options={dimensions}
+                    options={dimensions.filter((item) =>
+                      ["model", "bot", "day"].includes(item.value),
+                    )}
                   />
-                  <ChoicePicker
-                    label="显示数量"
+                </header>
+                <Breakdown
+                  groups={groups}
+                  dimension={summary.dimension}
+                  total={totals.cost}
+                  onSelect={selectGroup}
+                />
+                <div className="usage-section-actions">
+                  <Button size="small" variant="ghost" onClick={openRecords}>
+                    查看记录
+                  </Button>
+                  <Button
                     size="small"
-                    value={limit}
-                    onValueChange={setLimit}
-                    items={limits}
-                  />
+                    variant="ghost"
+                    onClick={() => setPanel("analysis")}
+                  >
+                    更多分析
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="ghost"
+                    onClick={() => setPanel("data")}
+                  >
+                    数据说明
+                  </Button>
                 </div>
-              </header>
-              {dimension === "skill" ? (
-                <p className="usage-note">
-                  按任务中的 skill_read
-                  调用关联。同一任务可关联多个技能，分组不可相加，也不代表技能独立收费。
-                  {summary?.hasSkills ? "" : " 当前没有可确认的关联记录。"}
-                </p>
-              ) : null}
-              <Breakdown
-                groups={groups}
-                metric={metric}
-                dimension={dimension}
-                total={totals[metric]}
-              />
-            </section>
-            <section className="usage-section" aria-label="用量明细">
-              <header className="usage-section-head">
-                <h2>全部记录</h2>
-                <Button
-                  size="small"
-                  variant="secondary"
-                  onClick={() => {
-                    const params = new URLSearchParams();
-                    for (const [key, value] of Object.entries(filter))
-                      if (value !== undefined) params.set(key, String(value));
-                    const link = document.createElement("a");
-                    link.href = `/usage/export.csv?${params}`;
-                    link.download = "domos-usage.csv";
-                    link.click();
-                  }}
-                >
-                  导出筛选记录
-                </Button>
-                {totals.records === 0 && (
-                  <span role="status">此范围还没有用量记录。</span>
-                )}
-                <span className="usage-section-meta">
-                  {totals.tasks} 个任务 · {totals.records} 条
-                </span>
-              </header>
-              <Records
-                rows={rows}
-                names={names}
-                query={query}
-                onQuery={change(setQuery)}
-                page={page}
-                total={total}
-                onPage={setPage}
-                loading={reading}
-              />
-            </section>
-            <footer className="usage-footer">
-              <span>
-                {totals.tasks} 个任务 · {totals.records} 条用量记录 · {elapsed}
-                ms 读取
-              </span>
-              <span>
-                {totals.unpriced} 条成本未提供 · {totals.estimated} 条价格估算 ·{" "}
-                {totals.snapshots} 条会话累计
-              </span>
-            </footer>
-            <p className="usage-note">
+              </section>
+            </>
+          )
+        )}
+      </main>
+      <Dialog
+        open={panel !== null}
+        onOpenChange={(open) => {
+          if (!open) setPanel(null);
+        }}
+        title={
+          panel === "quota"
+            ? "订阅额度"
+            : panel === "filters"
+              ? "筛选用量"
+              : panel === "records"
+                ? "用量记录"
+                : panel === "analysis"
+                  ? "更多分析"
+                  : "数据说明"
+        }
+        className="usage-dialog"
+      >
+        {panel === "quota" && (
+          <>
+            <p className="usage-muted">
+              选择 Bot 以查看其工作账号的额度。此选择不改变用量统计范围。
+            </p>
+            {bots.length ? (
+              <>
+                <ChoicePicker
+                  label="额度所属 Bot"
+                  value={quotaBot || String(bots[0]?.id)}
+                  onValueChange={setQuotaBot}
+                  items={bots.map((bot) => ({
+                    value: String(bot.id),
+                    label: bot.name,
+                  }))}
+                />
+                <QuotaPanel
+                  key={quotaBot || String(bots[0]?.id)}
+                  botId={Number(quotaBot || bots[0]?.id)}
+                />
+              </>
+            ) : (
+              <p>当前没有 Bot。</p>
+            )}
+          </>
+        )}
+        {panel === "filters" && (
+          <fieldset className="usage-filters" aria-label="筛选用量">
+            <Filter
+              label="Harness"
+              value={harness}
+              onChange={change(setHarness)}
+              items={[{ value: "", label: "全部引擎" }, ...harnesses]}
+            />
+            <Filter
+              label="Provider"
+              value={provider}
+              onChange={change(setProvider)}
+              items={options(
+                (summary?.options ?? []).map((row) => row.provider),
+                "全部 Provider",
+              )}
+            />
+            <Filter
+              label="Bot"
+              value={botId}
+              onChange={change(setBotId)}
+              items={[
+                { value: "", label: "全部 Bot" },
+                ...bots.map((bot) => ({
+                  value: String(bot.id),
+                  label: bot.name,
+                })),
+              ]}
+            />
+            <Filter
+              label="用量模型"
+              value={model}
+              onChange={change(setModel)}
+              items={options(
+                (summary?.options ?? []).map((row) => row.model),
+                "全部模型",
+              )}
+            />
+            <Button size="small" variant="ghost" onClick={clearFilters}>
+              清除筛选
+            </Button>
+          </fieldset>
+        )}
+        {panel === "data" && summary && (
+          <section className="usage-data">
+            <p>
+              费用为引擎报告金额或标准 API
+              等值估算，不代表订阅扣款。原生零值不代表免费。未知值不计为零。
+            </p>
+            <p>
+              {summary.missingUsage} 个任务未返回用量 ·{" "}
+              {summary.totals.incomplete} 条 Token 字段不完整 ·{" "}
+              {summary.totals.unpriced} 条暂无法估价 ·{" "}
+              {summary.totals.historical} 条历史口径待核对。
+            </p>
+            <p>
+              {summary.totals.estimated} 条价格估算 · {summary.totals.snapshots}{" "}
+              条会话累计快照。会话累计快照不计入任务总额。逐条计价依据见用量记录。
+            </p>
+            <p>
+              统计范围：{range.from} 至 {range.to} · UTC · {scope || "全部 Bot"}
+            </p>
+            <p>
               采集起点：
-              {summary?.startedAt == null
+              {summary.startedAt === null
                 ? "未知"
-                : new Date(summary.startedAt).toLocaleString()}{" "}
-              · 最新记录：
-              {summary?.updatedAt == null
+                : new Date(summary.startedAt).toLocaleString()}
+              <br />
+              最新记录：
+              {summary.updatedAt === null
                 ? "未知"
                 : new Date(summary.updatedAt).toLocaleString()}
             </p>
-            <p className="usage-note">
-              UTC · USD。估算为标准 API
-              等值，不代表订阅扣款。原生零值不代表免费。会话累计快照不计入任务总额。
-            </p>
+            <ul>
+              {harnesses.map((item) => {
+                const row = summary.coverage.find(
+                  (row) => row.harness === item.value,
+                );
+                return (
+                  <li key={item.value}>
+                    {item.label}：{row?.tasks ?? 0} 个任务，
+                    {row?.missingUsage ?? 0} 个未返回用量
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
+        {panel === "analysis" && totals && (
+          <>
+            <ChoicePicker
+              label="分析维度"
+              value={analysisDimension}
+              onValueChange={(value) =>
+                setAnalysisDimension(value as Dimension)
+              }
+              items={dimensions.filter(
+                (item) => !["model", "bot", "day"].includes(item.value),
+              )}
+            />
+            {analysisDimension === "skill" && (
+              <p className="usage-muted">
+                按任务中的 skill_read
+                调用关联。同一任务可关联多个技能，分组不可相加，不代表技能独立收费。
+              </p>
+            )}
+            <Breakdown
+              groups={groups}
+              dimension={summary.dimension}
+              total={totals.cost}
+              onSelect={selectGroup}
+            />
           </>
-        ) : null}
-      </main>
+        )}
+        {panel === "records" && (
+          <>
+            <div className="usage-section-head">
+              <p className="usage-muted">
+                {drill
+                  ? `${dimensions.find((item) => item.value === drill.dimension)?.label}：${drill.dimension === "bot" ? (names.get(Number(drill.key)) ?? drill.key) : drill.key}`
+                  : "当前范围全部记录"}
+              </p>
+              <Button
+                size="small"
+                variant="secondary"
+                onClick={() => {
+                  const params = new URLSearchParams();
+                  for (const [key, value] of Object.entries(recordFilter))
+                    if (value !== undefined) params.set(key, String(value));
+                  const link = document.createElement("a");
+                  link.href = `/usage/export.csv?${params}`;
+                  link.download = "domos-usage.csv";
+                  link.click();
+                }}
+              >
+                导出筛选记录
+              </Button>
+            </div>
+            {error && (
+              <div role="alert">
+                {error}
+                <Button size="small" variant="ghost" onClick={refresh}>
+                  重试
+                </Button>
+              </div>
+            )}
+            <Records
+              rows={rows}
+              names={names}
+              query={query}
+              onQuery={change(setQuery)}
+              page={page}
+              total={total}
+              onPage={setPage}
+              loading={reading}
+            />
+          </>
+        )}
+      </Dialog>
     </ScrollArea>
   );
 }

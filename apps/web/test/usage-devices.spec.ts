@@ -52,8 +52,14 @@ async function usageRoutes(
     const input = route.request().postDataJSON()?.json ?? {};
     const rows = read().filter(
       (row) =>
-        !input.query ||
-        `${row.model} ${row.provider} ${row.source}`.includes(input.query),
+        (!input.harness || row.harness === input.harness) &&
+        (!input.provider || row.provider === input.provider) &&
+        (!input.model || row.model === input.model) &&
+        (!input.botId || row.botId === input.botId) &&
+        (!input.from || row.timestamp >= input.from) &&
+        (!input.to || row.timestamp <= input.to) &&
+        (!input.query ||
+          `${row.model} ${row.provider} ${row.source}`.includes(input.query)),
     );
     const sum = (items: UsageFixture[], key: string): number | null => {
       const values = items
@@ -84,14 +90,46 @@ async function usageRoutes(
       });
       return;
     }
-    const key = (row: UsageFixture) => String(row[input.dimension as "model"]);
+    const tokenSum = (items: UsageFixture[]) => {
+      const complete = items.filter((row) =>
+        [row.input, row.output, row.cacheRead, row.cacheWrite].every(
+          (value) => value !== null,
+        ),
+      );
+      return complete.length
+        ? complete.reduce(
+            (sum, row) =>
+              sum +
+              Number(row.input) +
+              Number(row.output) +
+              Number(row.cacheRead) +
+              Number(row.cacheWrite),
+            0,
+          )
+        : null;
+    };
+    const key = (row: UsageFixture) =>
+      input.dimension === "day"
+        ? new Date(row.timestamp).toISOString().slice(0, 10)
+        : String(
+            row[
+              input.dimension === "bot" ? "botId" : (input.dimension as "model")
+            ],
+          );
     const value = (items: UsageFixture[]) =>
       input.metric === "tasks"
         ? new Set(items.map((row) => row.taskId)).size
-        : sum(items, input.metric);
+        : input.metric === "tokens"
+          ? tokenSum(items)
+          : sum(items, input.metric);
     const all = [...new Set(rows.map(key))]
       .map((keyValue) => ({
         key: keyValue,
+        cost: sum(
+          rows.filter((row) => key(row) === keyValue),
+          "cost",
+        ),
+        tokens: tokenSum(rows.filter((row) => key(row) === keyValue)),
         value: value(rows.filter((row) => key(row) === keyValue)),
       }))
       .sort(
@@ -104,6 +142,11 @@ async function usageRoutes(
       groups.push({
         key: "other",
         value: value(rows.filter((row) => !top.has(key(row)))),
+        cost: sum(
+          rows.filter((row) => !top.has(key(row))),
+          "cost",
+        ),
+        tokens: tokenSum(rows.filter((row) => !top.has(key(row)))),
       });
     const day = (row: UsageFixture) =>
       new Date(row.timestamp).toISOString().slice(0, 10);
@@ -158,6 +201,14 @@ async function usageRoutes(
             cacheRead: sum(rows, "cacheRead"),
             cacheWrite: sum(rows, "cacheWrite"),
           },
+          engines: [...new Set(rows.map((row) => row.harness))].map((key) => ({
+            key,
+            cost: sum(
+              rows.filter((row) => row.harness === key),
+              "cost",
+            ),
+            tokens: tokenSum(rows.filter((row) => row.harness === key)),
+          })),
           groups,
           daily: days.flatMap((date) =>
             groups.map((group) => ({
@@ -176,6 +227,7 @@ async function usageRoutes(
           ),
           days: days.map((date) => ({
             day: date,
+            tokens: tokenSum(rows.filter((row) => day(row) === date)),
             cost: sum(
               rows.filter((row) => day(row) === date),
               "cost",
@@ -188,81 +240,63 @@ async function usageRoutes(
   });
 }
 
-test("usage reports native task costs and preserves session snapshots across themes", async ({
+const usageRecord: UsageFixture = {
+  id: "u",
+  taskId: "t",
+  botId: 1,
+  harness: "claude",
+  provider: "anthropic",
+  model: "claude-model",
+  source: "native",
+  timestamp: Date.now(),
+  input: 1000,
+  output: 50,
+  cacheRead: 100,
+  cacheWrite: 0,
+  costUsd: 6.7808,
+};
+async function openUsage(page: Page, url: string) {
+  await page.goto(url);
+  await page.getByRole("button", { name: "用户菜单", exact: true }).click();
+  await page.getByRole("menuitem", { name: "用量", exact: true }).click();
+  return page.getByRole("main", { name: "用量", exact: true });
+}
+
+test("usage overview keeps the hero visible and reads details on demand", async ({
   service,
   page,
 }, info) => {
-  const records = Array.from({ length: 8 }, (_, index) => ({
-    id: `usage-${index}`,
-    taskId: `task-${index}`,
-    botId: 1,
-    sessionId: "session",
-    harness: index < 2 ? "claude" : "pi",
-    provider: `provider-${index}`,
-    model: `model-${index}`,
-    source: "native-test",
-    timestamp: Date.now(),
-    input: index === 7 ? null : 1000 * (index + 1),
-    output: 100,
-    cacheRead: null,
-    cacheWrite: null,
-    costUsd: index < 2 ? 100 + index : index === 7 ? null : 0.5,
-    ...(index < 2 ? { costScope: "session" } : {}),
-  }));
-  let mode = "loading";
-  const loaded = Promise.withResolvers<void>();
-  await usageRoutes(
-    page,
-    () => (mode === "empty" ? [] : records),
-    async () => {
-      await loaded.promise;
+  const records = [
+    { ...usageRecord, model: "a-model-with-a-very-long-name-".repeat(4) },
+    {
+      ...usageRecord,
+      id: "u2",
+      taskId: "t2",
+      harness: "pi",
+      model: "unknown",
+      input: null,
+      costUsd: null,
     },
-  );
-  await page.goto(service.url);
-  await page.getByRole("button", { name: "用户菜单", exact: true }).click();
-  await page.getByRole("menuitem", { name: "用量", exact: true }).click();
-  const usage = page.getByRole("main", { name: "用量", exact: true });
-  await expect(usage.getByLabel("正在读取用量")).toBeVisible();
-  await expect(usage.getByLabel("每周剩余额度")).toHaveAttribute("value", "0");
-  await expect(usage.getByLabel("订阅额度")).toContainText("剩余 0.0%");
-  mode = "data";
-  loaded.resolve();
-  await expect(usage.locator(".usage-hero-value")).toContainText("$2.50");
-  await expect(usage.locator(".usage-footer")).toContainText("2 条会话累计");
-  await expect(usage.locator(".usage-footer")).toContainText("3 条成本未提供");
-  const summary = usage.getByRole("list", { name: "分组用量", exact: true });
-  const details = usage.getByRole("table", { name: "用量明细", exact: true });
-  const scroll = page.locator(".usage-surface > .scroll-viewport");
-  await expect(scroll).toHaveCSS("scrollbar-width", "none");
-  await expect(page.locator(".usage-surface > .scroll-bar")).toHaveCount(1);
+  ];
+  let detailReads = 0;
+  let quotaReads = 0;
+  page.on("request", (request) => {
+    if (request.url().endsWith("/usage")) detailReads++;
+    if (request.url().endsWith("/quota")) quotaReads++;
+  });
+  await usageRoutes(page, () => records);
+  const usage = await openUsage(page, service.url);
+  await expect(usage.locator(".usage-hero-value")).toHaveText("US$6.78");
+  expect(detailReads).toBe(0);
+  expect(quotaReads).toBe(0);
+  await expect(usage.getByRole("slider")).toBeInViewport();
+  const table = usage.getByRole("table", { name: "用量构成" });
+  await expect(table.locator("thead th")).toHaveCount(3);
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
-    const search = usage.getByRole("searchbox", { name: "搜索用量记录" });
-    await search.click();
-    await expect(search).toHaveCSS("outline-style", "none");
-    await expect(summary).toContainText("model-2");
-    await expect(summary).toContainText("其他");
-    await expect(details).toContainText("$101.00");
-    await expect(details).toContainText("会话累计");
     await page.screenshot({
       path: info.outputPath(`usage-overview-${colorScheme}.png`),
     });
-    await usage.getByRole("radio", { name: "输入用量", exact: true }).click();
-    await expect(
-      usage.getByRole("heading", { name: "输入用量趋势", exact: true }),
-    ).toBeVisible();
-    await expect(usage.locator(".usage-hero-value")).toContainText("$2.50");
-    await usage.getByRole("radio", { name: "Provider", exact: true }).click();
-    await expect(summary).toContainText("provider-2");
-    await page.screenshot({
-      path: info.outputPath(`usage-explore-${colorScheme}.png`),
-    });
-    await usage.getByRole("radio", { name: "任务成本", exact: true }).click();
-    await usage.getByRole("radio", { name: "模型", exact: true }).click();
-    await scroll.evaluate((node) => {
-      node.scrollTo({ top: node.scrollHeight });
-    });
-    await expect(details).toBeInViewport();
     await page.setViewportSize({ width: 390, height: 844 });
     expect(
       await page.evaluate(
@@ -273,165 +307,125 @@ test("usage reports native task costs and preserves session snapshots across the
       path: info.outputPath(`usage-mobile-${colorScheme}.png`),
     });
     await page.setViewportSize({ width: 1360, height: 900 });
-    await scroll.evaluate((node) => {
-      node.scrollTo({ top: 0 });
-    });
   }
-  mode = "empty";
-  await usage.getByRole("button", { name: "刷新用量", exact: true }).click();
+  await usage.getByRole("button", { name: "查看详情", exact: true }).click();
+  let dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("Token 字段不完整");
+  await dialog.getByRole("button", { name: "关闭弹窗" }).click();
+  await usage.getByRole("button", { name: "订阅额度", exact: true }).click();
+  dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("剩余 0.0%");
+  expect(quotaReads).toBe(1);
+  await dialog.getByRole("button", { name: "关闭弹窗" }).click();
+  await table
+    .getByRole("button", { name: records[0]?.model, exact: true })
+    .click();
   await expect(
-    usage.getByText("此范围还没有用量记录。", { exact: true }),
+    page.getByRole("dialog").getByRole("table", { name: "用量明细" }),
   ).toBeVisible();
-  mode = "error";
-  await page.route("**/rpc/engines/quota", (route) =>
-    route.fulfill({
-      json: {
-        json: {
-          status: "ready",
-          source: "native-test",
-          observedAt: Date.now(),
-          windows: [
-            {
-              id: "weekly",
-              name: "每周",
-              usedPercent: 100,
-              durationMinutes: 10080,
-              resetsAt: Date.now() + 3600000,
-            },
-          ],
-          credits: { available: true, unlimited: false, balance: "0" },
-        },
-      },
-    }),
+  await expect(page.getByRole("dialog").locator("tbody tr")).toHaveCount(1);
+  expect(detailReads).toBeGreaterThan(0);
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "关闭弹窗" })
+    .click();
+  await usage.getByRole("radio", { name: "Bot", exact: true }).click();
+  await expect(table.locator("tbody tr")).toHaveCount(1);
+  await expect(table).toContainText("US$6.78");
+  await usage.getByRole("radio", { name: "日期", exact: true }).click();
+  await expect(table.locator("tbody tr")).toHaveCount(1);
+  await expect(table).toContainText(
+    new Date(usageRecord.timestamp).toISOString().slice(0, 10),
   );
-  await page.route("**/rpc/engines/usage*", (route) => route.abort());
-  await usage.getByRole("button", { name: "刷新用量", exact: true }).click();
-  await expect(usage.getByRole("alert")).toBeVisible();
-  mode = "data";
-  await page.unroute("**/rpc/engines/usage*");
-  await usageRoutes(page, () => records);
-  await usage.getByRole("button", { name: "重试", exact: true }).click();
-  await expect(usage.locator(".usage-hero-value")).toContainText("$2.50");
+  await usage.getByRole("button", { name: "更多分析", exact: true }).click();
+  dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("table").locator("tbody tr")).toHaveCount(2);
+  await dialog.getByRole("button", { name: "关闭弹窗" }).click();
+  await expect(
+    usage.getByRole("radio", { name: "日期", exact: true }),
+  ).toBeChecked();
+  await expect(table).toContainText(
+    new Date(usageRecord.timestamp).toISOString().slice(0, 10),
+  );
 });
 
-test("usage totals distinguish unknown costs and include recorded zero-cost days", async ({
+test("usage distinguishes unknown, zero and sub-cent amounts and retains refresh results", async ({
   service,
   page,
 }) => {
-  await page.clock.setFixedTime(new Date("2026-10-03T12:00:00Z"));
-  const record = {
-    id: "usage-1",
-    taskId: "task-1",
-    botId: 1,
-    sessionId: "session",
-    harness: "pi",
-    provider: "provider",
-    model: "model",
-    source: "native-test",
-    timestamp: Date.parse("2026-10-01T12:00:00Z"),
-    input: 10,
-    output: 1,
-    cacheRead: null,
-    cacheWrite: null,
-    costUsd: null as number | null,
-  };
-  let records: (typeof record & { costScope?: "session" })[] = [record];
+  let records: UsageFixture[] = [{ ...usageRecord, costUsd: null }];
   await usageRoutes(page, () => records);
-  await page.goto(service.url);
-  await page.getByRole("button", { name: "用户菜单", exact: true }).click();
-  await page.getByRole("menuitem", { name: "用量", exact: true }).click();
-  const usage = page.getByRole("main", { name: "用量", exact: true });
-  const total = usage.locator(".usage-breakdown-total");
-  await expect(usage.locator(".usage-hero-value")).toHaveText("未提供");
-  await expect(total).toContainText("未提供");
-  records = [{ ...record, costUsd: 100, costScope: "session" }];
-  await usage.getByRole("button", { name: "刷新用量", exact: true }).click();
-  await expect(usage.locator(".usage-footer")).toContainText("1 条会话累计");
-  await expect(usage.locator(".usage-hero-value")).toHaveText("未提供");
-  await expect(total).toContainText("未提供");
+  const usage = await openUsage(page, service.url);
+  await expect(usage.locator(".usage-hero-value")).toHaveText("暂无法估价");
+  await expect(usage.locator(".usage-chart-empty")).toBeVisible();
+  records = [{ ...usageRecord, costUsd: 0 }];
+  await usage.getByRole("button", { name: "刷新用量" }).click();
+  await expect(usage.locator(".usage-hero-value")).toHaveText("US$0.00");
+  await expect(usage.locator(".usage-chart-empty")).toHaveCount(0);
+  records = [{ ...usageRecord, costUsd: 0.0015 }];
+  await usage.getByRole("button", { name: "刷新用量" }).click();
+  await expect(usage.locator(".usage-hero-value")).toHaveText("<US$0.01");
+  await usage.getByRole("combobox", { name: "日期范围" }).click();
+  await page.getByRole("option", { name: "近 30 天", exact: true }).click();
   records = [
-    { ...record, costUsd: 1 },
     {
-      ...record,
-      id: "usage-2",
-      taskId: "task-2",
-      timestamp: Date.parse("2026-10-02T12:00:00Z"),
+      ...usageRecord,
+      id: "before",
+      taskId: "before",
+      timestamp: usageRecord.timestamp - 3 * 86400000,
+      costUsd: 1,
+    },
+    {
+      ...usageRecord,
+      id: "gap",
+      taskId: "gap",
+      timestamp: usageRecord.timestamp - 2 * 86400000,
+      costUsd: null,
+    },
+    {
+      ...usageRecord,
+      id: "zero",
+      taskId: "zero",
+      timestamp: usageRecord.timestamp - 86400000,
       costUsd: 0,
     },
+    { ...usageRecord, costUsd: 0.0015 },
   ];
-  await usage.getByRole("button", { name: "刷新用量", exact: true }).click();
-  await expect(usage.locator(".usage-facts")).toContainText(
-    "日均（有记录 2 天）$0.50",
-  );
-  records = [{ ...record, costUsd: 0 }];
-  await usage.getByRole("button", { name: "刷新用量", exact: true }).click();
-  await expect(usage.locator(".usage-facts")).toContainText(
-    "峰值日10月1日$0.00",
-  );
-  await expect(usage.locator(".usage-facts")).toContainText(
-    "日均（有记录 1 天）$0.00",
-  );
-  await expect(usage.getByText("该指标为零。", { exact: true })).toBeVisible();
+  await usage.getByRole("button", { name: "刷新用量" }).click();
+  await expect(usage.locator(".usage-line")).toHaveCount(2);
+  await expect(usage.locator(".usage-hero-value")).toHaveText("US$1.00");
+  await page.route("**/rpc/engines/usageSummary", (route) => route.abort());
+  await usage.getByRole("button", { name: "刷新用量" }).click();
+  await expect(usage.getByRole("alert")).toBeVisible();
+  await expect(usage.locator(".usage-hero-value")).toHaveText("US$1.00");
 });
 
-test("usage pages keep totals and search the full record set", async ({
+test("usage records retain pagination, precision and search without changing overview", async ({
   service,
   page,
-}, info) => {
-  const records: UsageFixture[] = Array.from({ length: 123 }, (_, index) => ({
-    id: `usage-${index}`,
-    taskId: `task-${index}`,
-    botId: 1,
-    harness: "codex",
-    provider: "openai",
-    model: index === 122 ? "needle-model" : "gpt-6.1-terra",
-    source: "native",
-    timestamp: Date.now() - index * 1000,
-    input: 1000,
-    output: 100,
-    cacheRead: 0,
-    cacheWrite: 0,
+}) => {
+  const records = Array.from({ length: 123 }, (_, index) => ({
+    ...usageRecord,
+    id: `u-${index}`,
+    taskId: `t-${index}`,
+    model: index === 122 ? "needle-model" : "model",
     costUsd: 0.0015,
-    costBasis: "estimated",
-    costSource: "https://developers.openai.com/api/docs/pricing",
-    costVersion: "2026-11-13 · standard API · short context · 30m cache",
   }));
-  let summaries = 0;
-  page.on("request", (request) => {
-    if (request.url().endsWith("usageSummary")) summaries++;
-  });
   await usageRoutes(page, () => records);
-  await page.goto(service.url);
-  await page.getByRole("button", { name: "用户菜单", exact: true }).click();
-  await page.getByRole("menuitem", { name: "用量", exact: true }).click();
-  const usage = page.getByRole("main", { name: "用量", exact: true });
-  const table = usage.getByRole("table", { name: "用量明细", exact: true });
-  const navigation = usage.getByRole("navigation", { name: "用量翻页" });
+  const usage = await openUsage(page, service.url);
+  await expect(usage.locator(".usage-hero-value")).toHaveText("US$0.18");
+  await usage.getByRole("button", { name: "查看记录", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const table = dialog.getByRole("table", { name: "用量明细" });
   await expect(table.locator("tbody tr")).toHaveCount(50);
-  await expect(navigation).toContainText("1–50 / 123");
-  await expect(usage.locator(".usage-hero-value")).toHaveText("$0.1845");
-  const count = summaries;
+  await expect(table).toContainText("US$0.0015");
+  const navigation = dialog.getByRole("navigation", { name: "用量翻页" });
   await navigation.getByRole("button", { name: "下一页" }).click();
   await expect(navigation).toContainText("51–100 / 123");
-  await expect(table.locator("tbody tr")).toHaveCount(50);
-  expect(summaries).toBe(count);
-  await expect(usage.locator(".usage-hero-value")).toHaveText("$0.1845");
-  await navigation.getByRole("button", { name: "下一页" }).click();
-  await expect(table.locator("tbody tr")).toHaveCount(23);
-  await expect(table.getByText("价格估算", { exact: true })).toHaveCount(23);
-  for (const colorScheme of ["light", "dark"] as const) {
-    await page.emulateMedia({ colorScheme });
-    await navigation.scrollIntoViewIfNeeded();
-    await page.screenshot({
-      path: info.outputPath(`usage-pages-${colorScheme}.png`),
-    });
-  }
-  await usage
-    .getByRole("searchbox", { name: "搜索用量记录" })
-    .fill("needle-model");
-  await expect(navigation).toContainText("1–1 / 1");
+  await dialog.getByRole("searchbox").fill("needle-model");
   await expect(table.locator("tbody tr")).toHaveCount(1);
-  await expect(table).toContainText("needle-model");
+  await dialog.getByRole("button", { name: "关闭弹窗" }).click();
+  await expect(usage.locator(".usage-hero-value")).toHaveText("US$0.18");
 });
 
 test("authorized devices use compact pages and retain the current device", async ({
