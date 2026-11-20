@@ -26,27 +26,39 @@ async function usageRoutes(
   read: () => UsageFixture[],
   gate: () => Promise<void> = async () => {},
 ) {
-  await page.route("**/rpc/engines/quota", (route) =>
-    route.fulfill({
+  await page.route("**/rpc/engines/quota", (route) => {
+    const provider = route.request().postDataJSON()?.json.provider;
+    return route.fulfill({
       json: {
         json: {
-          status: "ready",
+          status: provider === "codex" ? "ready" : "unsupported",
+          computerId: "process",
+          accountId: provider === "codex" ? "shared-account" : null,
+          accountLabel: provider === "codex" ? "person@example.com" : undefined,
+          plan: provider === "codex" ? "Pro" : undefined,
           source: "native-test",
+          message: provider === "pi" ? "此引擎尚未接入额度读取。" : undefined,
           observedAt: Date.now(),
-          windows: [
-            {
-              id: "weekly",
-              name: "每周",
-              usedPercent: 100,
-              durationMinutes: 10080,
-              resetsAt: Date.now() + 3600000,
-            },
-          ],
-          credits: { available: true, unlimited: false, balance: "0" },
+          windows:
+            provider === "codex"
+              ? [
+                  {
+                    id: "weekly",
+                    name: "每周",
+                    usedPercent: 100,
+                    durationMinutes: 10080,
+                    resetsAt: Date.now() + 3600000,
+                  },
+                ]
+              : [],
+          credits:
+            provider === "codex"
+              ? { available: true, unlimited: false, balance: "0" }
+              : undefined,
         },
       },
-    }),
-  );
+    });
+  });
   await page.route("**/rpc/engines/usage*", async (route) => {
     await gate();
     const input = route.request().postDataJSON()?.json ?? {};
@@ -210,6 +222,29 @@ async function usageRoutes(
             tokens: tokenSum(rows.filter((row) => row.harness === key)),
           })),
           groups,
+          engineDays: days.flatMap((date) =>
+            [
+              ...new Set(
+                rows
+                  .filter((row) => day(row) === date)
+                  .map((row) => row.harness),
+              ),
+            ].map((harness) => ({
+              day: date,
+              key: harness,
+              cost: sum(
+                rows.filter(
+                  (row) => day(row) === date && row.harness === harness,
+                ),
+                "cost",
+              ),
+              tokens: tokenSum(
+                rows.filter(
+                  (row) => day(row) === date && row.harness === harness,
+                ),
+              ),
+            })),
+          ),
           daily: days.flatMap((date) =>
             groups.map((group) => ({
               day: date,
@@ -312,11 +347,41 @@ test("usage overview keeps the hero visible and reads details on demand", async 
   let dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("Token 字段不完整");
   await dialog.getByRole("button", { name: "关闭弹窗" }).click();
-  await usage.getByRole("button", { name: "订阅额度", exact: true }).click();
-  dialog = page.getByRole("dialog");
-  await expect(dialog).toContainText("剩余 0.0%");
-  expect(quotaReads).toBe(1);
-  await dialog.getByRole("button", { name: "关闭弹窗" }).click();
+  await usage.getByRole("radio", { name: "订阅额度", exact: true }).click();
+  const quota = usage.getByRole("region", { name: "订阅额度", exact: true });
+  await expect(quota).toContainText("剩余 0.0%");
+  await expect(quota).toContainText("pe•••@example.com · Pro");
+  await expect(quota.getByRole("combobox")).toHaveCount(0);
+  await expect(
+    page.getByRole("dialog", { name: "订阅额度", exact: true }),
+  ).toHaveCount(0);
+  await expect.poll(() => quotaReads).toBe(9);
+  const codex = quota.getByRole("article", { name: "Codex", exact: true });
+  await expect(codex.getByRole("progressbar")).toHaveAttribute("value", "0");
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await page.screenshot({
+      path: info.outputPath(`usage-quota-${colorScheme}.png`),
+    });
+  }
+  await page.route("**/rpc/engines/quota", (route) => route.abort());
+  await codex.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(codex).toContainText("保留上次读数");
+  await expect(codex.getByRole("progressbar")).toHaveAttribute("value", "0");
+  await usage.getByRole("radio", { name: "费用", exact: true }).click();
+  await expect(usage.locator(".usage-hero-value")).toHaveText("US$6.78");
+  const reads = quotaReads;
+  await usage.getByRole("radio", { name: "订阅额度", exact: true }).click();
+  await expect(quota).toContainText("剩余 0.0%");
+  expect(quotaReads).toBe(reads);
+  await quota.getByText("其他状态 · 8 个引擎", { exact: true }).click();
+  await expect(
+    quota.getByRole("article", { name: "Pi", exact: true }),
+  ).toContainText("尚未接入额度读取");
+  await expect(
+    quota.getByRole("article", { name: "Claude Code", exact: true }),
+  ).toContainText("未提供订阅额度");
+  await usage.getByRole("radio", { name: "费用", exact: true }).click();
   await table
     .getByRole("button", { name: records[0]?.model, exact: true })
     .click();
@@ -398,6 +463,93 @@ test("usage distinguishes unknown, zero and sub-cent amounts and retains refresh
   await usage.getByRole("button", { name: "刷新用量" }).click();
   await expect(usage.getByRole("alert")).toBeVisible();
   await expect(usage.locator(".usage-hero-value")).toHaveText("US$1.00");
+});
+
+test("usage chart selects dates and keeps engine details inside the plot", async ({
+  service,
+  page,
+}, info) => {
+  const records = Array.from({ length: 7 }, (_, index) => [
+    {
+      ...usageRecord,
+      id: `c-${index}`,
+      taskId: `c-${index}`,
+      timestamp: usageRecord.timestamp - (6 - index) * 86400000,
+      costUsd: index / 10,
+    },
+    {
+      ...usageRecord,
+      id: `p-${index}`,
+      taskId: `p-${index}`,
+      harness: "pi",
+      timestamp: usageRecord.timestamp - (6 - index) * 86400000,
+      costUsd: index === 6 ? null : 0,
+    },
+  ]).flat();
+  await usageRoutes(page, () => records);
+  const usage = await openUsage(page, service.url);
+  await usage.getByRole("combobox", { name: "日期范围" }).click();
+  await page.getByRole("option", { name: "近 7 天", exact: true }).click();
+  const slider = usage.getByRole("slider");
+  await slider.focus();
+  await slider.press("End");
+  const tip = usage.getByRole("tooltip");
+  await expect(tip).toContainText(
+    new Date(usageRecord.timestamp).toISOString().slice(0, 10),
+  );
+  await expect(tip).toContainText("Claude Code");
+  await expect(tip).toContainText("Pi");
+  await expect(tip).toContainText("未返回数据");
+  await expect(tip).toContainText("已知合计");
+  await expect(usage.locator(".usage-active-point")).toHaveCount(1);
+  await expect(usage.locator(".usage-crosshair")).toHaveCount(1);
+  const inside = async () => {
+    const panel = await usage.locator(".usage-plot").boundingBox();
+    const box = await tip.boundingBox();
+    expect(
+      box &&
+        panel &&
+        box.x >= panel.x - 1 &&
+        box.x + box.width <= panel.x + panel.width + 1 &&
+        box.y >= panel.y - 1 &&
+        box.y + box.height <= panel.y + panel.height + 1,
+    ).toBe(true);
+  };
+  await inside();
+  for (const colorScheme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await page.screenshot({
+      path: info.outputPath(`usage-chart-${colorScheme}.png`),
+    });
+  }
+  await slider.press("Home");
+  await expect(tip).toContainText("US$0.00");
+  await expect(tip).not.toContainText("未返回数据");
+  await inside();
+  await slider.press("ArrowRight");
+  await expect(slider).toHaveAttribute("aria-valuenow", "1");
+  await slider.press("Escape");
+  await expect(tip).toHaveCount(0);
+  const box = await slider.boundingBox();
+  if (!box) throw new Error("Chart required");
+  await page.mouse.move(box.x + box.width - 1, box.y + box.height / 2);
+  await expect(slider).toHaveAttribute("aria-valuenow", "6");
+  await inside();
+  await slider.dispatchEvent("pointerdown", {
+    pointerType: "touch",
+    clientX: box.x + box.width / 2,
+    clientY: box.y + box.height / 2,
+  });
+  await expect(slider).toHaveAttribute("aria-valuenow", "3");
+  await usage.getByRole("radio", { name: "Token", exact: true }).click();
+  await slider.focus();
+  await slider.press("End");
+  await expect(tip).not.toContainText("US$");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await slider.scrollIntoViewIfNeeded();
+  await slider.focus();
+  await slider.press("End");
+  await inside();
 });
 
 test("usage records retain pagination, precision and search without changing overview", async ({

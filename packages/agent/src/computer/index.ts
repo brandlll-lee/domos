@@ -103,7 +103,7 @@ export class Computer {
   }
 
   async process(
-    botId: number,
+    botId: number | null,
     tools: ProductTool[],
     invoke: (
       callId: string,
@@ -114,24 +114,25 @@ export class Computer {
     context: Context,
     directory?: string,
   ) {
-    const workspace = await this.workspace(botId, context, directory);
-    const command = this.driver
-      ? await this.driver.process?.(botId)
-      : [
-          process.execPath,
-          process.env.DOMOS_WORKER_ENTRY ??
-            fileURLToPath(new URL("../harness/worker.mjs", import.meta.url)),
-        ];
+    if (botId === null && this.driver)
+      throw new Error("账号读取必须在当前电脑运行。");
+    const cwd =
+      botId === null
+        ? this.config.dataDir
+        : (await this.workspace(botId, context, directory)).cwd;
+    const command =
+      this.driver && botId !== null
+        ? await this.driver.process?.(botId)
+        : [
+            process.execPath,
+            process.env.DOMOS_WORKER_ENTRY ??
+              fileURLToPath(new URL("../harness/worker.mjs", import.meta.url)),
+          ];
     if (!command) throw new Error("工作电脑需要更新，才能运行所选引擎。");
     const home = this.driver
       ? posix.join(this.driver.directory, ".domos", "engines")
       : join(this.config.dataDir, "engines");
-    const worker = new WorkProcess(
-      command,
-      { cwd: workspace.cwd, home },
-      tools,
-      invoke,
-    );
+    const worker = new WorkProcess(command, { cwd, home }, tools, invoke);
     this.processes.add(worker);
     void worker.closed.then(() => this.processes.delete(worker));
     return worker;

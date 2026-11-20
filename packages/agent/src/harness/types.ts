@@ -102,6 +102,8 @@ export type EngineQuota = {
   observedAt: number;
   source: string;
   message?: string;
+  accountLabel?: string;
+  plan?: string;
   windows: {
     id: string;
     name: string;

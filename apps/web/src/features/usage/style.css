@@ -21,6 +21,10 @@
   gap: var(--space-3);
   flex-wrap: wrap;
 }
+.usage-overview:not([hidden]) {
+  display: grid;
+  gap: var(--space-8);
+}
 .usage-head-actions {
   justify-content: flex-end;
   gap: var(--space-2);
@@ -122,7 +126,7 @@
 .usage-chart {
   display: grid;
   grid-template-columns: 3.75rem minmax(0, 1fr);
-  grid-template-rows: clamp(13rem, 26vh, 18rem) auto;
+  grid-template-rows: clamp(17rem, 30vh, 22rem) auto;
   column-gap: var(--space-3);
 }
 .usage-chart-axis {
@@ -180,16 +184,60 @@
 }
 .usage-tip {
   position: absolute;
-  top: 0;
   display: grid;
-  gap: var(--space-1);
+  gap: var(--space-2);
+  width: max-content;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: auto;
   padding: var(--space-3);
   border-radius: var(--radius-control);
   background: var(--color-popup);
   box-shadow: var(--color-popup-shadow);
   font-size: var(--text-caption);
-  translate: -50% 0;
-  pointer-events: none;
+}
+.usage-tip > strong {
+  margin-bottom: var(--space-1);
+}
+.usage-tip-row,
+.usage-tip-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.usage-tip-row > span {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.usage-tip-row .engine-mark {
+  flex: 0 0 0.875rem;
+  width: 0.875rem;
+  height: 0.875rem;
+}
+.usage-tip-row b,
+.usage-tip-total b {
+  white-space: nowrap;
+  font-weight: var(--weight-medium);
+}
+.usage-tip-total {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-divider);
+  color: var(--color-muted);
+}
+.usage-crosshair {
+  stroke: var(--color-muted);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.usage-active-point {
+  fill: var(--color-chart-1);
+  stroke: var(--color-canvas);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
 }
 .usage-stats {
   display: grid;
@@ -280,6 +328,9 @@
 .usage-row-link:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+.usage-table tr:has(.usage-row-link):is(:hover, :focus-within) {
+  background: var(--color-control-hover);
 }
 .usage-dialog {
   font-variant-numeric: tabular-nums;
@@ -407,8 +458,51 @@
 }
 .usage-quota-windows {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
   gap: var(--space-5);
+}
+.usage-quota-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-6);
+}
+.usage-quota-account {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  min-width: 0;
+  padding-block: var(--space-5);
+  border-top: 1px solid var(--color-divider);
+}
+.usage-quota-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.usage-quota-identity > .engine-mark {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+}
+.usage-quota-identity h3 {
+  margin: 0;
+  font-size: var(--text-heading);
+  font-weight: var(--weight-medium);
+}
+.usage-quota-identity small {
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+.usage-quota-credit {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--text-label);
+}
+.usage-quota-other .usage-quota-account {
+  gap: var(--space-2);
+}
+.usage-quota-other .usage-quota-windows:empty {
+  display: none;
 }
 .usage-quota-window {
   display: grid;
@@ -422,7 +516,7 @@
 }
 .usage-quota-window progress {
   width: 100%;
-  height: var(--space-2);
+  height: var(--space-1);
   accent-color: var(--color-chart-1);
 }
 .usage-quota-window small,
@@ -445,6 +539,9 @@
   }
 }
 @media (max-width: 44rem) {
+  .usage-quota-grid {
+    grid-template-columns: 1fr;
+  }
   .usage-page {
     gap: var(--space-6);
   }

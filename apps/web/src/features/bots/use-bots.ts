@@ -111,8 +111,7 @@ export function useBots() {
             receiveCharacter(bot);
             receiveBotProfile(bot);
             receiveModelActivity(bot.id, bot.busy);
-            if (activity.current.get(bot.id) && !bot.busy)
-              invalidateQuota(bot.id);
+            if (activity.current.get(bot.id) && !bot.busy) invalidateQuota();
             activity.current.set(bot.id, bot.busy);
             const binding = next.bindings[String(bot.id)];
             const key = JSON.stringify([
@@ -126,7 +125,7 @@ export function useBots() {
               invalidateModelSettings(bot.id);
               invalidateImageSettings(bot.id);
               invalidateConnectionContext(bot.id);
-              invalidateQuota(bot.id);
+              invalidateQuota();
             }
             bindings.current[bot.id] = key;
           }

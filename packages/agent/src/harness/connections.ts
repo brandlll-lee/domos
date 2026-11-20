@@ -54,44 +54,61 @@ export class EngineConnections {
   }
 
   async quota(
-    botId: number,
+    botId: number | null,
     config: EngineConfig,
     context: Context,
     refresh = false,
   ) {
     const provider = engineProvider(config.provider);
-    const computerId = await this.execution.computers.computerId(
-      botId,
-      context,
-    );
+    const computerId =
+      botId === null
+        ? "process"
+        : await this.execution.computers.computerId(botId, context);
     const base: EngineQuota = {
       status: "unsupported",
       source: provider.id,
       observedAt: Date.now(),
       windows: [],
-      message: "此引擎的原生协议尚未提供可读取的订阅额度。",
+      message: "此引擎尚未接入额度读取。",
     };
     const readQuota = provider.quota;
-    if (!readQuota) return { ...base, computerId, accountId: null };
-    const worker = await this.execution.computers.process(
-      botId,
-      [],
-      async () => {
-        throw new Error("额度读取不调用工具。");
-      },
-      context,
-    );
+    if (!readQuota && botId !== null)
+      return { ...base, computerId, accountId: null };
+    if (provider.id === "acp" && !config.command)
+      return {
+        ...base,
+        computerId,
+        accountId: null,
+        message: "请先配置自定义 ACP。",
+      };
+    const worker =
+      botId === null
+        ? await this.execution.computers.accountProcess(context)
+        : await this.execution.computers.process(
+            botId,
+            [],
+            async () => {
+              throw new Error("额度读取不调用工具。");
+            },
+            context,
+          );
+    const abort = () => {
+      void worker.close();
+    };
+    context.abortSignal?.addEventListener("abort", abort, { once: true });
     try {
+      context.abortSignal?.throwIfAborted();
       const command = config.command || provider.command;
       const path = worker.resolve ? await worker.resolve(command) : command;
       if (!path)
         return {
           ...base,
-          status: "failed" as const,
+          status: "not-installed" as const,
           message: "工作电脑尚未安装此引擎。",
           computerId,
           accountId: null,
         };
+      if (!readQuota) return { ...base, computerId, accountId: null };
       const accountId = await worker.account?.(provider.id);
       if (accountId === undefined)
         throw new Error("工作电脑尚未提供账号隔离标识。");
@@ -118,7 +135,9 @@ export class EngineConnections {
       entry.revision = this.execution.usageRevision;
       entry.pending = (async (): Promise<EngineQuota> => {
         try {
-          const value = await (this.execution.quota(botId) ??
+          const value = await ((botId === null
+            ? undefined
+            : this.execution.quota(botId)) ??
             readQuota({
               process: worker,
               config: { ...config, command: path },
@@ -134,6 +153,7 @@ export class EngineConnections {
           );
           return value;
         } catch (error) {
+          context.abortSignal?.throwIfAborted();
           const code =
             error instanceof RequestError ||
             error instanceof EngineRequestRejected
@@ -153,6 +173,7 @@ export class EngineConnections {
       })();
       return { ...(await entry.pending), computerId, accountId };
     } finally {
+      context.abortSignal?.removeEventListener("abort", abort);
       await worker.close();
     }
   }

@@ -26,6 +26,10 @@ test("HTTP usage retains native attribution, deduplicates and survives reopening
     preflight: async () => {},
     computerId: async () => "local",
     binding: async () => ({ directory: null }),
+    accountProcess: async () =>
+      Object.assign(new ProtocolProcess(), {
+        resolve: async () => "/native/pi",
+      }),
     tools: { catalog: async () => [], finish: () => {} },
     process: async () => {
       const process = new ProtocolProcess();
@@ -88,6 +92,21 @@ test("HTTP usage retains native attribution, deduplicates and survives reopening
     await rm(directory, { recursive: true, force: true });
   });
   const botId = runtime.conversation.id;
+  await expect(
+    runtime.client.engines.quota({ provider: "pi" }),
+  ).resolves.toMatchObject({ status: "unsupported", computerId: "process" });
+  const invalidQuota = await runtime.app.request(
+    "http://localhost/rpc/engines/quota",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ json: {} }),
+    },
+  );
+  expect(invalidQuota.status).toBe(400);
+  await expect(
+    runtime.client.engines.quota({ provider: "invalid" as "pi" }),
+  ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   const submission = await runtime.client.send({
     botId,
     text: "Work",
@@ -222,6 +241,10 @@ test("HTTP usage retains native attribution, deduplicates and survives reopening
   expect(summary.days.reduce((sum, row) => sum + (row.tokens ?? 0), 0)).toBe(
     summary.totals.tokens,
   );
+  for (const metric of ["cost", "tokens"] as const)
+    expect(
+      summary.engineDays.reduce((sum, row) => sum + (row[metric] ?? 0), 0),
+    ).toBe(summary.totals[metric]);
   for (const dimension of [
     "model",
     "bot",
@@ -235,6 +258,7 @@ test("HTTP usage retains native attribution, deduplicates and survives reopening
       metric: "tokens",
       limit: 1,
     });
+    expect(grouped.engineDays).toEqual(summary.engineDays);
     expect(grouped.groups.reduce((sum, row) => sum + (row.cost ?? 0), 0)).toBe(
       summary.totals.cost,
     );

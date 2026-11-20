@@ -737,6 +737,11 @@ export class UsageReader {
         `SELECT strftime('%Y-%m-%d',timestamp/1000,'unixepoch') day, ${totalsSQL} FROM domos_usage_index WHERE ${sql} GROUP BY day ORDER BY day`,
       )
       .all(...values) as (UsageTotals & { day: string })[];
+    const engineDays = db
+      .prepare(
+        `SELECT strftime('%Y-%m-%d',timestamp/1000,'unixepoch') day, harness key, ${totalsSQL} FROM domos_usage_index WHERE ${sql} GROUP BY day,harness ORDER BY day,harness`,
+      )
+      .all(...values) as (UsageTotals & { day: string; key: string })[];
     const options = db
       .prepare(
         `SELECT DISTINCT provider,model FROM domos_usage_index WHERE botId IN (${botIds.map(() => "?").join(",") || "NULL"}) AND timestamp>=? AND timestamp<=?`,
@@ -781,6 +786,7 @@ export class UsageReader {
       engines,
       daily,
       days,
+      engineDays,
       options,
       missingUsage: health.missingUsage,
       coverage,

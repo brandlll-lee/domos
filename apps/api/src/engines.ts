@@ -264,12 +264,25 @@ export function engineRouter(bots: Bots, runtime?: Runtime) {
         return runtime.usage(scope.botIds, scope.filter, scope.context);
       }),
     quota: os
-      .input(botTarget.extend({ refresh: z.boolean().optional() }))
+      .input(
+        z.union([
+          botTarget.extend({ refresh: z.boolean().optional() }),
+          z.object({
+            provider: config.shape.provider,
+            refresh: z.boolean().optional(),
+          }),
+        ]),
+      )
       .handler(async ({ input, signal }) => {
-        const runtime = await target(input.botId);
+        if (!runtime) throw new ORPCError("NOT_IMPLEMENTED");
+        const selected =
+          "botId" in input
+            ? (await (await target(input.botId)).profile(input.botId, context))
+                .config
+            : { provider: input.provider, model: null };
         return runtime.connections.quota(
-          input.botId,
-          (await runtime.profile(input.botId, context)).config,
+          "botId" in input ? input.botId : null,
+          selected,
           signal ? withAbortSignal(signal, context) : context,
           input.refresh,
         );

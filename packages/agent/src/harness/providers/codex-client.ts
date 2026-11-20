@@ -202,7 +202,7 @@ export async function openCodexClient(
       const observedAt = Date.now();
       const base = { source, observedAt, windows: [] };
       const account = await rpc.request<{
-        account?: { type?: string };
+        account?: { type?: string; email?: string; planType?: string };
         requiresOpenaiAuth?: boolean;
       }>("account/read", { refreshToken: false });
       if (!account.account && account.requiresOpenaiAuth !== false)
@@ -284,6 +284,8 @@ export async function openCodexClient(
       return {
         ...base,
         status: windows.length || credits ? "ready" : "empty",
+        accountLabel: account.account?.email,
+        plan: account.account?.planType,
         windows,
         ...(credits
           ? {

@@ -91,9 +91,9 @@ export function UsageSurface() {
   const [dimension, setDimension] = useState<Dimension>("model");
   const [analysisDimension, setAnalysisDimension] =
     useState<Dimension>("harness");
-  const [quotaBot, setQuotaBot] = useState("");
+  const [view, setView] = useState<"cost" | "tokens" | "quota">("cost");
   const [panel, setPanel] = useState<
-    "quota" | "data" | "records" | "filters" | "analysis" | null
+    "data" | "records" | "filters" | "analysis" | null
   >(null);
   const summaryDimension = panel === "analysis" ? analysisDimension : dimension;
   const [expanded, setExpanded] = useState(false);
@@ -273,224 +273,232 @@ export function UsageSurface() {
         <header className="usage-head">
           <h1>用量</h1>
           <div className="usage-head-actions">
-            <ChoicePicker
-              label="日期范围"
-              size="small"
-              value={period}
-              onValueChange={(value) => {
-                setPeriod(value as UsagePeriod);
-                setPage(1);
-              }}
-              items={periods}
-            />
+            {view !== "quota" && (
+              <ChoicePicker
+                label="日期范围"
+                size="small"
+                value={period}
+                onValueChange={(value) => {
+                  setPeriod(value as UsagePeriod);
+                  setPage(1);
+                }}
+                items={periods}
+              />
+            )}
             <SegmentedControl
               label="统计指标"
-              value={metric}
-              onValueChange={setMetric}
-              options={metrics}
+              value={view}
+              onValueChange={(value) => {
+                setView(value);
+                if (value !== "quota") setMetric(value);
+              }}
+              options={[...metrics, { value: "quota", label: "订阅额度" }]}
             />
-            <Button
-              size="small"
-              variant="ghost"
-              onClick={() => setPanel("quota")}
-            >
-              订阅额度
-            </Button>
-            <Button
-              size="small"
-              variant="ghost"
-              onClick={() => setPanel("filters")}
-            >
-              筛选{activeFilters ? ` · ${activeFilters}` : ""}
-            </Button>
-            <Button
-              size="icon-small"
-              variant="ghost"
-              aria-label="刷新用量"
-              title="刷新用量"
-              pending={loading}
-              onClick={refresh}
-            >
-              <ArrowClockwiseIcon />
-            </Button>
+            {view !== "quota" && (
+              <>
+                <Button
+                  size="small"
+                  variant="ghost"
+                  onClick={() => setPanel("filters")}
+                >
+                  筛选{activeFilters ? ` · ${activeFilters}` : ""}
+                </Button>
+                <Button
+                  size="icon-small"
+                  variant="ghost"
+                  aria-label="刷新用量"
+                  title="刷新用量"
+                  pending={loading}
+                  onClick={refresh}
+                >
+                  <ArrowClockwiseIcon />
+                </Button>
+              </>
+            )}
           </div>
         </header>
-        {activeFilters > 0 && (
-          <div className="usage-active-filters">
-            <span>{scope}</span>
-            <Button size="small" variant="ghost" onClick={clearFilters}>
-              清除筛选
-            </Button>
-          </div>
-        )}
-        {error && (
-          <div className="usage-error" role="alert">
-            <p>{error}</p>
-            <Button size="small" variant="secondary" onClick={refresh}>
-              重试
-            </Button>
-          </div>
-        )}
-        {partial && (
-          <div className="usage-completeness">
-            <span>
-              部分用量尚不完整 · {summary.missingUsage} 个任务未返回用量 ·{" "}
-              {totals?.unpriced} 条暂无法估价
-            </span>
-            <Button
-              size="small"
-              variant="ghost"
-              onClick={() => setPanel("data")}
+        {view === "quota" && <QuotaPanel />}
+        <div className="usage-overview" hidden={view === "quota"}>
+          {activeFilters > 0 && (
+            <div className="usage-active-filters">
+              <span>{scope}</span>
+              <Button size="small" variant="ghost" onClick={clearFilters}>
+                清除筛选
+              </Button>
+            </div>
+          )}
+          {error && (
+            <div className="usage-error" role="alert">
+              <p>{error}</p>
+              <Button size="small" variant="secondary" onClick={refresh}>
+                重试
+              </Button>
+            </div>
+          )}
+          {partial && (
+            <div className="usage-completeness">
+              <span>
+                部分用量尚不完整 · {summary.missingUsage} 个任务未返回用量 ·{" "}
+                {totals?.unpriced} 条暂无法估价
+              </span>
+              <Button
+                size="small"
+                variant="ghost"
+                onClick={() => setPanel("data")}
+              >
+                查看详情
+              </Button>
+            </div>
+          )}
+          {!summary && loading ? (
+            <div
+              className="usage-loading"
+              role="status"
+              aria-label="正在读取用量"
             >
-              查看详情
-            </Button>
-          </div>
-        )}
-        {!summary && loading ? (
-          <div
-            className="usage-loading"
-            role="status"
-            aria-label="正在读取用量"
-          >
-            <div className="usage-skeleton usage-skeleton-hero" />
-            <div className="usage-skeleton usage-skeleton-chart" />
-          </div>
-        ) : (
-          totals && (
-            <>
-              <section className="usage-hero" aria-label="用量总览">
-                <div className="usage-hero-main">
-                  <strong className="usage-hero-value">
-                    {metric === "tokens"
-                      ? totals.tokens === null
-                        ? "—"
-                        : compactNumber(totals.tokens)
-                      : money(totals.cost)}
-                  </strong>
-                  <p className="usage-hero-meta">
-                    {metric === "tokens" ? "已知完整 Token" : "已知费用 · USD"}{" "}
-                    · {totals.tasks} 个任务
-                  </p>
-                  <ul className="usage-engines" aria-label="引擎用量">
-                    {(expanded
-                      ? summary.engines
-                      : summary.engines.slice(0, 3)
-                    ).map((engine) => (
-                      <li key={engine.key}>
-                        <div className="usage-engine-head">
-                          <span>
-                            <EngineMark provider={engine.key as EngineId} />
-                            {harnesses.find((item) => item.value === engine.key)
-                              ?.label ?? engine.key}
-                          </span>
-                          <b>
-                            {metric === "tokens"
-                              ? engine.tokens === null
-                                ? "—"
-                                : compactNumber(engine.tokens)
-                              : money(engine.cost)}
-                          </b>
-                        </div>
-                        <small>
-                          {engine.cost !== null && totals.cost
-                            ? `${((engine.cost / totals.cost) * 100).toFixed(1)}% 已知费用 · `
-                            : ""}
-                          {engine.tokens === null
-                            ? "Token 未完整返回"
-                            : `${compactNumber(engine.tokens)} Token`}
-                        </small>
-                      </li>
-                    ))}
-                  </ul>
-                  {summary.engines.length > 3 && (
-                    <Button
-                      size="small"
-                      variant="ghost"
-                      onClick={() => setExpanded(!expanded)}
-                    >
-                      {expanded
-                        ? "收起引擎"
-                        : `查看全部 ${summary.engines.length} 个引擎`}
-                    </Button>
-                  )}
-                </div>
-                <section className="usage-trend" aria-label="每日趋势">
-                  <header className="usage-section-head">
-                    <h2>每日{metric === "cost" ? "费用" : "用量"}</h2>
-                    <Button
-                      size="small"
-                      variant="ghost"
-                      onClick={() => setDimension("day")}
-                    >
-                      查看每日数据
-                    </Button>
-                  </header>
-                  <DailyChart days={days} metric={metric} />
-                </section>
-              </section>
-              {totals.records === 0 && (
-                <p className="usage-muted" role="status">
-                  此范围还没有用量记录。
-                </p>
-              )}
-              <dl className="usage-stats">
-                {(
-                  [
-                    ["总 Token", totals.tokens],
-                    ["缓存读取", totals.cacheRead],
-                    ["未缓存输入", totals.input],
-                    ["缓存写入", totals.cacheWrite],
-                    ["输出", totals.output],
-                  ] as const
-                ).map(([label, value]) => (
-                  <Stat
-                    key={label}
-                    label={label}
-                    value={value === null ? "—" : compactNumber(value)}
-                  />
-                ))}
-              </dl>
-              <section className="usage-section" aria-label="用量构成">
-                <header className="usage-section-head">
-                  <h2>用量构成</h2>
-                  <SegmentedControl
-                    label="分组维度"
-                    value={dimension}
-                    onValueChange={setDimension}
-                    options={dimensions.filter((item) =>
-                      ["model", "bot", "day"].includes(item.value),
+              <div className="usage-skeleton usage-skeleton-hero" />
+              <div className="usage-skeleton usage-skeleton-chart" />
+            </div>
+          ) : (
+            totals && (
+              <>
+                <section className="usage-hero" aria-label="用量总览">
+                  <div className="usage-hero-main">
+                    <strong className="usage-hero-value">
+                      {metric === "tokens"
+                        ? totals.tokens === null
+                          ? "—"
+                          : compactNumber(totals.tokens)
+                        : money(totals.cost)}
+                    </strong>
+                    <p className="usage-hero-meta">
+                      {metric === "tokens"
+                        ? "已知完整 Token"
+                        : "已知费用 · USD"}{" "}
+                      · {totals.tasks} 个任务
+                    </p>
+                    <ul className="usage-engines" aria-label="引擎用量">
+                      {(expanded
+                        ? summary.engines
+                        : summary.engines.slice(0, 3)
+                      ).map((engine) => (
+                        <li key={engine.key}>
+                          <div className="usage-engine-head">
+                            <span>
+                              <EngineMark provider={engine.key as EngineId} />
+                              {harnesses.find(
+                                (item) => item.value === engine.key,
+                              )?.label ?? engine.key}
+                            </span>
+                            <b>
+                              {metric === "tokens"
+                                ? engine.tokens === null
+                                  ? "—"
+                                  : compactNumber(engine.tokens)
+                                : money(engine.cost)}
+                            </b>
+                          </div>
+                          <small>
+                            {engine.cost !== null && totals.cost
+                              ? `${((engine.cost / totals.cost) * 100).toFixed(1)}% 已知费用 · `
+                              : ""}
+                            {engine.tokens === null
+                              ? "Token 未完整返回"
+                              : `${compactNumber(engine.tokens)} Token`}
+                          </small>
+                        </li>
+                      ))}
+                    </ul>
+                    {summary.engines.length > 3 && (
+                      <Button
+                        size="small"
+                        variant="ghost"
+                        onClick={() => setExpanded(!expanded)}
+                      >
+                        {expanded
+                          ? "收起引擎"
+                          : `查看全部 ${summary.engines.length} 个引擎`}
+                      </Button>
                     )}
+                  </div>
+                  <section className="usage-trend" aria-label="每日趋势">
+                    <header className="usage-section-head">
+                      <h2>每日{metric === "cost" ? "费用" : "用量"}</h2>
+                      <Button
+                        size="small"
+                        variant="ghost"
+                        onClick={() => setDimension("day")}
+                      >
+                        查看每日数据
+                      </Button>
+                    </header>
+                    <DailyChart days={days} metric={metric} />
+                  </section>
+                </section>
+                {totals.records === 0 && (
+                  <p className="usage-muted" role="status">
+                    此范围还没有用量记录。
+                  </p>
+                )}
+                <dl className="usage-stats">
+                  {(
+                    [
+                      ["总 Token", totals.tokens],
+                      ["缓存读取", totals.cacheRead],
+                      ["未缓存输入", totals.input],
+                      ["缓存写入", totals.cacheWrite],
+                      ["输出", totals.output],
+                    ] as const
+                  ).map(([label, value]) => (
+                    <Stat
+                      key={label}
+                      label={label}
+                      value={value === null ? "—" : compactNumber(value)}
+                    />
+                  ))}
+                </dl>
+                <section className="usage-section" aria-label="用量构成">
+                  <header className="usage-section-head">
+                    <h2>用量构成</h2>
+                    <SegmentedControl
+                      label="分组维度"
+                      value={dimension}
+                      onValueChange={setDimension}
+                      options={dimensions.filter((item) =>
+                        ["model", "bot", "day"].includes(item.value),
+                      )}
+                    />
+                  </header>
+                  <Breakdown
+                    groups={groups}
+                    dimension={summary.dimension}
+                    total={totals.cost}
+                    onSelect={selectGroup}
                   />
-                </header>
-                <Breakdown
-                  groups={groups}
-                  dimension={summary.dimension}
-                  total={totals.cost}
-                  onSelect={selectGroup}
-                />
-                <div className="usage-section-actions">
-                  <Button size="small" variant="ghost" onClick={openRecords}>
-                    查看记录
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="ghost"
-                    onClick={() => setPanel("analysis")}
-                  >
-                    更多分析
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="ghost"
-                    onClick={() => setPanel("data")}
-                  >
-                    数据说明
-                  </Button>
-                </div>
-              </section>
-            </>
-          )
-        )}
+                  <div className="usage-section-actions">
+                    <Button size="small" variant="ghost" onClick={openRecords}>
+                      查看记录
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="ghost"
+                      onClick={() => setPanel("analysis")}
+                    >
+                      更多分析
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="ghost"
+                      onClick={() => setPanel("data")}
+                    >
+                      数据说明
+                    </Button>
+                  </div>
+                </section>
+              </>
+            )
+          )}
+        </div>
       </main>
       <Dialog
         open={panel !== null}
@@ -498,44 +506,16 @@ export function UsageSurface() {
           if (!open) setPanel(null);
         }}
         title={
-          panel === "quota"
-            ? "订阅额度"
-            : panel === "filters"
-              ? "筛选用量"
-              : panel === "records"
-                ? "用量记录"
-                : panel === "analysis"
-                  ? "更多分析"
-                  : "数据说明"
+          panel === "filters"
+            ? "筛选用量"
+            : panel === "records"
+              ? "用量记录"
+              : panel === "analysis"
+                ? "更多分析"
+                : "数据说明"
         }
         className="usage-dialog"
       >
-        {panel === "quota" && (
-          <>
-            <p className="usage-muted">
-              选择 Bot 以查看其工作账号的额度。此选择不改变用量统计范围。
-            </p>
-            {bots.length ? (
-              <>
-                <ChoicePicker
-                  label="额度所属 Bot"
-                  value={quotaBot || String(bots[0]?.id)}
-                  onValueChange={setQuotaBot}
-                  items={bots.map((bot) => ({
-                    value: String(bot.id),
-                    label: bot.name,
-                  }))}
-                />
-                <QuotaPanel
-                  key={quotaBot || String(bots[0]?.id)}
-                  botId={Number(quotaBot || bots[0]?.id)}
-                />
-              </>
-            ) : (
-              <p>当前没有 Bot。</p>
-            )}
-          </>
-        )}
         {panel === "filters" && (
           <fieldset className="usage-filters" aria-label="筛选用量">
             <Filter

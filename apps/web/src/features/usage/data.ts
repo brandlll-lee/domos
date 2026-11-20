@@ -96,14 +96,32 @@ export function dailyUsage(
   to: string,
 ) {
   const values = new Map(summary.days.map((row) => [row.day, row[metric]]));
-  const days: { day: string; value: number | null }[] = [];
+  const engines = new Map<string, { key: string; value: number | null }[]>();
+  for (const row of summary.engineDays) {
+    const entries = engines.get(row.day) ?? [];
+    entries.push({ key: row.key, value: row[metric] });
+    engines.set(row.day, entries);
+  }
+  const days: {
+    day: string;
+    value: number | null;
+    engines: { key: string; value: number | null }[];
+  }[] = [];
   for (
     let date = Date.parse(from);
     date <= Date.parse(to);
     date += 86_400_000
   ) {
     const day = new Date(date).toISOString().slice(0, 10);
-    days.push({ day, value: values.get(day) ?? null });
+    const entries = engines.get(day);
+    days.push({
+      day,
+      value: values.get(day) ?? null,
+      engines: summary.engines.map(({ key }) => ({
+        key,
+        value: entries?.find((entry) => entry.key === key)?.value ?? null,
+      })),
+    });
   }
   return days;
 }

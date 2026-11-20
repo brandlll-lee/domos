@@ -1,18 +1,52 @@
-import { useId, useState } from "react";
-import { dayLabel, formatAxis, formatValue, type Metric } from "./data.ts";
+import { useId, useLayoutEffect, useRef, useState } from "react";
+import { EngineMark } from "../bots/engine-mark.tsx";
+import {
+  type dailyUsage,
+  dayLabel,
+  formatAxis,
+  formatValue,
+  harnesses,
+  type Metric,
+} from "./data.ts";
 
 export function DailyChart({
   days,
   metric,
 }: {
-  days: { day: string; value: number | null }[];
+  days: ReturnType<typeof dailyUsage>;
   metric: Metric;
 }) {
   const fillId = useId();
   const [hovered, setHovered] = useState<number | null>(null);
+  const plot = useRef<HTMLDivElement>(null);
+  const tip = useRef<HTMLDivElement>(null);
+  const [bounds, setBounds] = useState({ width: 0, height: 0 });
+  const [position, setPosition] = useState({ left: 0, top: 0 });
+  useLayoutEffect(() => {
+    if (!plot.current) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry)
+        setBounds({
+          width: entry.contentRect.width,
+          height: entry.contentRect.height,
+        });
+    });
+    observer.observe(plot.current);
+    return () => observer.disconnect();
+  }, []);
   const known = days.filter((day) => day.value !== null);
   const max = Math.max(...known.map((day) => day.value ?? 0), 0);
-  const scale = max || 1;
+  const rawStep = (max * 1.15 || 1) / 4;
+  const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+  const step =
+    [1, 2, 2.5, 5, 10]
+      .map((value) => value * magnitude)
+      .find((value) => value >= rawStep) ?? magnitude * 10;
+  const scale = Math.ceil((max * 1.15 || 1) / step) * step;
+  const ticks = Array.from(
+    { length: Math.round(scale / step) + 1 },
+    (_, index) => index * step,
+  );
   const x = (index: number) =>
     days.length < 2 ? 500 : (index / (days.length - 1)) * 1000;
   const y = (value: number) => 230 - (value / scale) * 220;
@@ -23,19 +57,42 @@ export function DailyChart({
     segments.at(-1)?.push({ index, value: day.value });
   });
   const active = hovered === null ? undefined : days[hovered];
+  useLayoutEffect(() => {
+    if (!tip.current || hovered === null || !active) return;
+    const { width, height } = tip.current.getBoundingClientRect();
+    const anchorX =
+      (days.length < 2 ? 0.5 : hovered / (days.length - 1)) * bounds.width;
+    const anchorY =
+      active.value === null
+        ? bounds.height / 2
+        : ((230 - (active.value / scale) * 220) / 240) * bounds.height;
+    setPosition({
+      left: Math.max(
+        0,
+        Math.min(
+          bounds.width - width,
+          anchorX + width + 16 <= bounds.width
+            ? anchorX + 16
+            : anchorX - width - 16,
+        ),
+      ),
+      top: Math.max(0, Math.min(bounds.height - height, anchorY - height / 2)),
+    });
+  }, [hovered, active, bounds, scale, days.length]);
   return (
     <div className="usage-chart">
       <div className="usage-chart-axis" aria-hidden="true">
-        {[1, 0.5, 0].map((tick) => (
-          <span
-            key={tick}
-            style={{ top: `${((10 + (1 - tick) * 220) / 240) * 100}%` }}
-          >
-            {formatAxis(scale * tick, metric)}
+        {ticks.map((tick) => (
+          <span key={tick} style={{ top: `${(y(tick) / 240) * 100}%` }}>
+            {formatAxis(tick, metric)}
           </span>
         ))}
       </div>
-      <div className="usage-plot">
+      <div
+        className="usage-plot"
+        ref={plot}
+        onPointerLeave={() => setHovered(null)}
+      >
         <svg
           viewBox="0 0 1000 240"
           preserveAspectRatio="none"
@@ -55,13 +112,13 @@ export function DailyChart({
               />
             </linearGradient>
           </defs>
-          {[10, 120, 230].map((height) => (
+          {ticks.map((tick) => (
             <line
-              key={height}
+              key={tick}
               x1="0"
               x2="1000"
-              y1={height}
-              y2={height}
+              y1={y(tick)}
+              y2={y(tick)}
               className="usage-grid-line"
             />
           ))}
@@ -92,6 +149,26 @@ export function DailyChart({
               </g>
             );
           })}
+          {active && hovered !== null && (
+            <>
+              <line
+                x1={x(hovered)}
+                x2={x(hovered)}
+                y1="10"
+                y2="230"
+                className="usage-crosshair"
+              />
+              {active.value !== null && (
+                <ellipse
+                  cx={x(hovered)}
+                  cy={y(active.value)}
+                  rx={bounds.width ? 4000 / bounds.width : 4}
+                  ry={bounds.height ? 960 / bounds.height : 4}
+                  className="usage-active-point"
+                />
+              )}
+            </>
+          )}
         </svg>
         <div
           className="usage-chart-hit"
@@ -106,6 +183,22 @@ export function DailyChart({
               ? `${active.day} ${formatValue(active.value, metric)}`
               : "使用方向键查看每日数据"
           }
+          onPointerDown={(event) => {
+            event.currentTarget.focus({ preventScroll: true });
+            const rect = event.currentTarget.getBoundingClientRect();
+            setHovered(
+              Math.max(
+                0,
+                Math.min(
+                  days.length - 1,
+                  Math.round(
+                    ((event.clientX - rect.left) / rect.width) *
+                      (days.length - 1),
+                  ),
+                ),
+              ),
+            );
+          }}
           onPointerMove={(event) => {
             const rect = event.currentTarget.getBoundingClientRect();
             setHovered(
@@ -121,10 +214,18 @@ export function DailyChart({
               ),
             );
           }}
-          onPointerLeave={() => setHovered(null)}
+          onFocus={() => setHovered((value) => value ?? 0)}
+          onBlur={() => setHovered(null)}
           onKeyDown={(event) => {
-            if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+            if (
+              ["ArrowLeft", "ArrowRight", "Home", "End", "Escape"].includes(
+                event.key,
+              )
+            ) {
               event.preventDefault();
+              if (event.key === "Escape") return setHovered(null);
+              if (event.key === "Home") return setHovered(0);
+              if (event.key === "End") return setHovered(days.length - 1);
               setHovered(
                 Math.max(
                   0,
@@ -141,15 +242,34 @@ export function DailyChart({
           <p className="usage-chart-empty">此范围暂无可用数据</p>
         )}
         {active && (
-          <div
-            className="usage-tip"
-            style={{
-              insetInlineStart: `${Math.min(82, Math.max(18, ((hovered ?? 0) / Math.max(1, days.length - 1)) * 100))}%`,
-            }}
-          >
-            <span>{dayLabel(active.day)}</span>
-            <strong>{formatValue(active.value, metric)}</strong>
-            {active.value === null && <small>未返回数据</small>}
+          <div className="usage-tip" role="tooltip" ref={tip} style={position}>
+            <strong>{active.day}</strong>
+            {active.engines.map((engine) => (
+              <div className="usage-tip-row" key={engine.key}>
+                <span>
+                  <EngineMark provider={engine.key} />
+                  {harnesses.find((item) => item.value === engine.key)?.label ??
+                    engine.key}
+                </span>
+                <b>
+                  {engine.value === null
+                    ? "未返回数据"
+                    : formatValue(engine.value, metric)}
+                </b>
+              </div>
+            ))}
+            <div className="usage-tip-total">
+              <span>
+                {active.engines.some((engine) => engine.value === null)
+                  ? "已知合计"
+                  : "合计"}
+              </span>
+              <b>
+                {active.value === null
+                  ? "未返回数据"
+                  : formatValue(active.value, metric)}
+              </b>
+            </div>
           </div>
         )}
       </div>

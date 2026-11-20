@@ -427,6 +427,23 @@ export class Computers {
     );
   }
 
+  async accountProcess(context: Context) {
+    const doc = await this.harness.snapshot(ComputersDoc, context);
+    const item = requireComputer(doc?.items ?? [], "process");
+    if (!item.authorized)
+      throw new WorkError("BAD_REQUEST", "请先在电脑设置中授权此电脑。");
+    if (this.changing.has(item.id))
+      throw new WorkError("CONFLICT", "工作电脑正在操作中。");
+    return this.target(item).process(
+      null,
+      [],
+      async () => {
+        throw new Error("额度读取不调用工具。");
+      },
+      context,
+    );
+  }
+
   async serviceTarget(botId: number, context: Context) {
     botId = await this.owner(botId, context);
     await this.workspace(botId, context);

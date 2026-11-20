@@ -73,7 +73,7 @@ function createSettings(botId: number) {
     ) {
       invalidateNativeConnections(botId);
       invalidateBotWork(botId);
-      invalidateQuota(botId);
+      invalidateQuota();
     }
     if (busy !== undefined) profile = { ...profile, busy };
     confirmed = profile;
