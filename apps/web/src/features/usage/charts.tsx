@@ -25,6 +25,55 @@ export function DailyChart({
   metric: Metric;
 }) {
   const fillId = useId();
+  const curves = useRef<SVGGElement>(null);
+  const previous = useRef("");
+  useLayoutEffect(() => {
+    const group = curves.current;
+    const key = JSON.stringify([
+      metric,
+      days.map((day) => [
+        day.day,
+        day.engines.map(({ key, value }) => [key, value]),
+      ]),
+    ]);
+    if (!group || previous.current === key) return;
+    previous.current = key;
+    for (const animation of group.getAnimations()) animation.cancel();
+    if (
+      document.hidden ||
+      group.closest("[hidden]") ||
+      matchMedia("(prefers-reduced-motion: reduce)").matches ||
+      !days.some((day) =>
+        day.engines.some((engine) => engine.value !== null && engine.value > 0),
+      )
+    )
+      return;
+    const style = getComputedStyle(group);
+    group.animate([{ transform: "scaleY(0)" }, { transform: "scaleY(1)" }], {
+      duration: Number.parseFloat(style.getPropertyValue("--motion-data")),
+      easing: style.getPropertyValue("--ease-message-in").trim(),
+    });
+  }, [days, metric]);
+  useLayoutEffect(() => {
+    const group = curves.current;
+    const settle = () => {
+      for (const animation of group?.getAnimations() ?? []) animation.cancel();
+    };
+    const visibility = () => {
+      if (document.hidden) settle();
+    };
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+    const motion = () => {
+      if (reduced.matches) settle();
+    };
+    document.addEventListener("visibilitychange", visibility);
+    reduced.addEventListener("change", motion);
+    return () => {
+      settle();
+      document.removeEventListener("visibilitychange", visibility);
+      reduced.removeEventListener("change", motion);
+    };
+  }, []);
   const series = (days[0]?.engines ?? []).map((engine, index) => ({
     key: engine.key,
     values: days.map((day) => day.engines[index]?.value ?? null),
@@ -83,56 +132,58 @@ export function DailyChart({
               className="usage-grid-line"
             />
           ))}
-          {series.map((item) => (
-            <g
-              key={item.key}
-              data-engine={item.key}
-              style={{ color: engineColor(item.key) }}
-            >
-              <defs>
-                <linearGradient
-                  id={`${fillId}-${item.key}`}
-                  x1="0"
-                  x2="0"
-                  y1="0"
-                  y2="1"
-                >
-                  <stop
-                    offset="0%"
-                    stopColor="currentColor"
-                    stopOpacity="0.12"
-                  />
-                  <stop
-                    offset="100%"
-                    stopColor="currentColor"
-                    stopOpacity="0"
-                  />
-                </linearGradient>
-              </defs>
-              <path
-                d={fill(item.values) ?? undefined}
-                fill={`url(#${fillId}-${item.key})`}
-              />
-              <path
-                d={curve(item.values) ?? undefined}
-                className="usage-line"
-              />
-              {item.values.map(
-                (value, index) =>
-                  value !== null &&
-                  item.values[index - 1] == null &&
-                  item.values[index + 1] == null && (
-                    <circle
-                      key={days[index]?.day}
-                      cx={x(index)}
-                      cy={y(value)}
-                      r="2.5"
-                      fill="currentColor"
+          <g className="usage-chart-series" ref={curves}>
+            {series.map((item) => (
+              <g
+                key={item.key}
+                data-engine={item.key}
+                style={{ color: engineColor(item.key) }}
+              >
+                <defs>
+                  <linearGradient
+                    id={`${fillId}-${item.key}`}
+                    x1="0"
+                    x2="0"
+                    y1="0"
+                    y2="1"
+                  >
+                    <stop
+                      offset="0%"
+                      stopColor="currentColor"
+                      stopOpacity="0.12"
                     />
-                  ),
-              )}
-            </g>
-          ))}
+                    <stop
+                      offset="100%"
+                      stopColor="currentColor"
+                      stopOpacity="0"
+                    />
+                  </linearGradient>
+                </defs>
+                <path
+                  d={fill(item.values) ?? undefined}
+                  fill={`url(#${fillId}-${item.key})`}
+                />
+                <path
+                  d={curve(item.values) ?? undefined}
+                  className="usage-line"
+                />
+                {item.values.map(
+                  (value, index) =>
+                    value !== null &&
+                    item.values[index - 1] == null &&
+                    item.values[index + 1] == null && (
+                      <circle
+                        key={days[index]?.day}
+                        cx={x(index)}
+                        cy={y(value)}
+                        r="2.5"
+                        fill="currentColor"
+                      />
+                    ),
+                )}
+              </g>
+            ))}
+          </g>
         </svg>
       </ChartInteraction>
       <div className="usage-chart-dates" aria-hidden="true">

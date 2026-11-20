@@ -224,6 +224,7 @@ export const metrics = {
   "message-media-width": "24rem",
   "message-paragraph-gap": "0.5em",
   "motion-feedback": "140ms",
+  "motion-data": "600ms",
   "motion-spinner": "800ms",
   "motion-message-in": "220ms",
   "ease-message-in": "cubic-bezier(0.22, 1, 0.36, 1)",

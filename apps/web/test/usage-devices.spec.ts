@@ -324,7 +324,7 @@ test("usage overview keeps the hero visible and reads details on demand", async 
   });
   await usageRoutes(page, () => records);
   const usage = await openUsage(page, service.url);
-  await expect(usage.locator(".usage-hero-value")).toHaveText("US$6.78");
+  await expect(usage.locator(".number-ticker")).toHaveAccessibleName("US$6.78");
   expect(detailReads).toBe(0);
   expect(quotaReads).toBe(0);
   await expect(usage.getByRole("slider")).toBeInViewport();
@@ -409,7 +409,7 @@ test("usage overview keeps the hero visible and reads details on demand", async 
     "0",
   );
   await usage.getByRole("radio", { name: "费用", exact: true }).click();
-  await expect(usage.locator(".usage-hero-value")).toHaveText("US$6.78");
+  await expect(usage.locator(".number-ticker")).toHaveAccessibleName("US$6.78");
   const reads = quotaReads;
   await usage.getByRole("radio", { name: "订阅额度", exact: true }).click();
   await expect(quota).toContainText("剩余 0.0%");
@@ -584,6 +584,238 @@ test("segmented controls slide between selections and settle after interruption 
   await aligned("Token");
 });
 
+test("usage numbers roll in either direction and settle at their formatted value", async ({
+  service,
+  page,
+}, info) => {
+  let cost: number | null = 9.99;
+  let input = 1200;
+  await usageRoutes(page, () => [{ ...usageRecord, costUsd: cost, input }]);
+  const usage = await openUsage(page, service.url);
+  const ticker = usage.locator(".number-ticker");
+  const settle = async (text: string) => {
+    await expect(ticker).toHaveAccessibleName(text);
+    await ticker.evaluate(async (element) => {
+      await Promise.all(
+        element
+          .getAnimations({ subtree: true })
+          .map((animation) => animation.finished),
+      );
+    });
+    const visible = await ticker.locator(":scope > span").evaluate((element) =>
+      [...element.childNodes]
+        .map((node) => {
+          if (!(node instanceof HTMLElement)) return node.textContent;
+          const track = node.firstElementChild;
+          if (!track) throw new Error("Digit track required");
+          const position =
+            -new DOMMatrixReadOnly(getComputedStyle(track).transform).f /
+            Number.parseFloat(getComputedStyle(element).fontSize);
+          return String(Math.round(position) % 10);
+        })
+        .join(""),
+    );
+    expect(visible).toBe(text);
+    expect(
+      await ticker.evaluate((element) => {
+        const parent = element.parentElement;
+        return (
+          parent &&
+          element.getBoundingClientRect().right <=
+            parent.getBoundingClientRect().right + 1
+        );
+      }),
+    ).toBe(true);
+  };
+  await expect(ticker).toHaveAccessibleName("US$9.99");
+  expect(
+    await ticker.evaluate(
+      (element) => element.getAnimations({ subtree: true }).length,
+    ),
+  ).toBeGreaterThan(0);
+  await settle("US$9.99");
+  for (const [value, text, direction] of [
+    [10.01, "US$10.01", -1],
+    [1.98, "US$1.98", 1],
+  ] as const) {
+    cost = value;
+    await usage.getByRole("button", { name: "刷新用量" }).click();
+    await expect(ticker).toHaveAccessibleName(text);
+    const deltas = await ticker.evaluate((element) =>
+      element.getAnimations({ subtree: true }).map((animation) => {
+        const frames = (animation.effect as KeyframeEffect).getKeyframes();
+        return (
+          Number.parseFloat(String(frames[1]?.transform).slice(11)) -
+          Number.parseFloat(String(frames[0]?.transform).slice(11))
+        );
+      }),
+    );
+    expect(deltas.length).toBeGreaterThan(0);
+    expect(deltas.every((delta) => Math.sign(delta) === direction)).toBe(true);
+    const width = await ticker.evaluate(
+      (element) => element.getBoundingClientRect().width,
+    );
+    await settle(text);
+    expect(
+      await ticker.evaluate((element) => element.getBoundingClientRect().width),
+    ).toBeCloseTo(width, 1);
+  }
+  for (const [value, text] of [
+    [0, "US$0.00"],
+    [0.0015, "<US$0.01"],
+    [1234.56, "US$1,234.56"],
+    [null, "暂无法估价"],
+  ] as const) {
+    cost = value;
+    await usage.getByRole("button", { name: "刷新用量" }).click();
+    await settle(text);
+  }
+  await usage.getByRole("radio", { name: "Token", exact: true }).click();
+  await settle("1.4K");
+  for (const value of [2_000_000, 980, 12_000]) {
+    input = value;
+    await usage.getByRole("button", { name: "刷新用量" }).click();
+    await expect(ticker).toHaveAccessibleName(
+      new Intl.NumberFormat("en", {
+        notation: "compact",
+        maximumFractionDigits: 1,
+      }).format(value + 150),
+    );
+    expect(
+      await ticker.evaluate(
+        (element) => element.getAnimations({ subtree: true }).length,
+      ),
+    ).toBeLessThanOrEqual(await ticker.locator(".number-ticker-digit").count());
+  }
+  await settle("12.2K");
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
+    await page.setViewportSize({ width: 390, height: 844 });
+    input += 100;
+    await usage.getByRole("button", { name: "刷新用量" }).click();
+    await settle(
+      new Intl.NumberFormat("en", {
+        notation: "compact",
+        maximumFractionDigits: 1,
+      }).format(input + 150),
+    );
+    expect(
+      await ticker.evaluate(
+        (element) => element.getAnimations({ subtree: true }).length,
+      ),
+    ).toBe(0);
+    await ticker.screenshot({ path: info.outputPath(`ticker-${theme}.png`) });
+  }
+});
+
+test("usage curves grow on accepted data and retain their state during pending reads", async ({
+  service,
+  page,
+}) => {
+  let cost = 6.78;
+  let pending: Promise<void> | undefined;
+  await usageRoutes(
+    page,
+    () => [{ ...usageRecord, costUsd: cost }],
+    async () => pending,
+  );
+  const usage = await openUsage(page, service.url);
+  const curves = page.locator(".usage-chart-series");
+  const ticker = usage.locator(".number-ticker");
+  await expect(ticker).toHaveAccessibleName("US$6.78");
+  const initial = await curves.evaluate((element) => ({
+    count: element.getAnimations().length,
+    duration: element.getAnimations()[0]?.effect?.getTiming().duration,
+    scale: new DOMMatrixReadOnly(getComputedStyle(element).transform).d,
+  }));
+  expect(initial.count).toBe(1);
+  expect(initial.duration).toBe(600);
+  expect(initial.scale).toBeLessThan(1);
+  const settle = () =>
+    curves.evaluate(async (element) => {
+      await Promise.all(
+        element.getAnimations().map((animation) => animation.finished),
+      );
+    });
+  await settle();
+  let release = () => {};
+  pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const path = await usage.locator(".usage-line").getAttribute("d");
+  await usage.getByRole("radio", { name: "Token", exact: true }).click();
+  await expect(usage.getByRole("button", { name: "刷新用量" })).toBeDisabled();
+  await expect(ticker).toHaveAccessibleName("US$6.78");
+  await expect(usage.locator(".usage-line")).toHaveAttribute("d", path ?? "");
+  await expect(
+    usage.getByRole("heading", { name: "每日费用", exact: true }),
+  ).toBeVisible();
+  release();
+  pending = undefined;
+  await expect(ticker).toHaveAccessibleName("1.2K");
+  expect(
+    await curves.evaluate((element) => element.getAnimations().length),
+  ).toBe(1);
+  const hidden = await page.evaluate(() => {
+    const elements = document.querySelectorAll(
+      ".number-ticker, .usage-chart-series",
+    );
+    const count = () =>
+      [...elements].reduce(
+        (sum, element) => sum + element.getAnimations({ subtree: true }).length,
+        0,
+      );
+    const before = count();
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: true,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    const after = count();
+    Reflect.deleteProperty(document, "hidden");
+    return { before, after };
+  });
+  expect(hidden.before).toBeGreaterThan(1);
+  expect(hidden.after).toBe(0);
+  await settle();
+  await usage.getByRole("button", { name: "刷新用量" }).click();
+  await expect(usage.getByRole("button", { name: "刷新用量" })).toBeEnabled();
+  expect(
+    await curves.evaluate((element) => element.getAnimations().length),
+  ).toBe(0);
+  await page.setViewportSize({ width: 980, height: 800 });
+  await usage.getByRole("slider").hover();
+  await usage.getByRole("button", { name: "数据说明", exact: true }).click();
+  expect(
+    await curves.evaluate((element) => element.getAnimations().length),
+  ).toBe(0);
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "关闭弹窗", exact: true })
+    .click();
+  await usage.getByRole("combobox", { name: "日期范围" }).click();
+  await page.getByRole("option", { name: "近 30 天", exact: true }).click();
+  await expect(usage.getByRole("button", { name: "刷新用量" })).toBeEnabled();
+  expect(
+    await curves.evaluate((element) => element.getAnimations().length),
+  ).toBe(1);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  expect(
+    await curves.evaluate((element) => element.getAnimations().length),
+  ).toBe(0);
+  await usage.getByRole("radio", { name: "费用", exact: true }).click();
+  await expect(ticker).toHaveAccessibleName("US$6.78");
+  expect(
+    await curves.evaluate((element) => element.getAnimations().length),
+  ).toBe(0);
+  cost = 0;
+  await usage.getByRole("button", { name: "刷新用量" }).click();
+  await expect(ticker).toHaveAccessibleName("US$0.00");
+  expect(
+    await curves.evaluate((element) => element.getAnimations().length),
+  ).toBe(0);
+});
+
 test("quota tracks retain their remaining length at warning and critical thresholds", async ({
   service,
   page,
@@ -670,15 +902,19 @@ test("usage distinguishes unknown, zero and sub-cent amounts and retains refresh
   let records: UsageFixture[] = [{ ...usageRecord, costUsd: null }];
   await usageRoutes(page, () => records);
   const usage = await openUsage(page, service.url);
-  await expect(usage.locator(".usage-hero-value")).toHaveText("暂无法估价");
+  await expect(usage.locator(".number-ticker")).toHaveAccessibleName(
+    "暂无法估价",
+  );
   await expect(usage.locator(".usage-chart-empty")).toBeVisible();
   records = [{ ...usageRecord, costUsd: 0 }];
   await usage.getByRole("button", { name: "刷新用量" }).click();
-  await expect(usage.locator(".usage-hero-value")).toHaveText("US$0.00");
+  await expect(usage.locator(".number-ticker")).toHaveAccessibleName("US$0.00");
   await expect(usage.locator(".usage-chart-empty")).toHaveCount(0);
   records = [{ ...usageRecord, costUsd: 0.0015 }];
   await usage.getByRole("button", { name: "刷新用量" }).click();
-  await expect(usage.locator(".usage-hero-value")).toHaveText("<US$0.01");
+  await expect(usage.locator(".number-ticker")).toHaveAccessibleName(
+    "<US$0.01",
+  );
   await usage.getByRole("combobox", { name: "日期范围" }).click();
   await page.getByRole("option", { name: "近 30 天", exact: true }).click();
   records = [
@@ -714,11 +950,11 @@ test("usage distinguishes unknown, zero and sub-cent amounts and retains refresh
           ?.length,
     )
     .toBe(2);
-  await expect(usage.locator(".usage-hero-value")).toHaveText("US$1.00");
+  await expect(usage.locator(".number-ticker")).toHaveAccessibleName("US$1.00");
   await page.route("**/rpc/engines/usageSummary", (route) => route.abort());
   await usage.getByRole("button", { name: "刷新用量" }).click();
   await expect(usage.getByRole("alert")).toBeVisible();
-  await expect(usage.locator(".usage-hero-value")).toHaveText("US$1.00");
+  await expect(usage.locator(".number-ticker")).toHaveAccessibleName("US$1.00");
 });
 
 test("usage chart selects dates and keeps engine details inside the plot", async ({
@@ -884,7 +1120,7 @@ test("usage records retain pagination, precision and search without changing ove
   }));
   await usageRoutes(page, () => records);
   const usage = await openUsage(page, service.url);
-  await expect(usage.locator(".usage-hero-value")).toHaveText("US$0.18");
+  await expect(usage.locator(".number-ticker")).toHaveAccessibleName("US$0.18");
   await usage.getByRole("button", { name: "查看记录", exact: true }).click();
   const dialog = page.getByRole("dialog");
   const table = dialog.getByRole("table", { name: "用量明细" });
@@ -896,7 +1132,7 @@ test("usage records retain pagination, precision and search without changing ove
   await dialog.getByRole("searchbox").fill("needle-model");
   await expect(table.locator("tbody tr")).toHaveCount(1);
   await dialog.getByRole("button", { name: "关闭弹窗" }).click();
-  await expect(usage.locator(".usage-hero-value")).toHaveText("US$0.18");
+  await expect(usage.locator(".number-ticker")).toHaveAccessibleName("US$0.18");
 });
 
 test("authorized devices use compact pages and retain the current device", async ({

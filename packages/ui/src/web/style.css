@@ -10,6 +10,7 @@
 @import "./scroll-area.css";
 @import "./panel.css";
 @import "./progress.css";
+@import "./number-ticker.css";
 
 :root {
   font-family: var(--font-body);

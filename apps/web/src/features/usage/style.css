@@ -159,6 +159,10 @@
   stroke-opacity: 0.5;
   vector-effect: non-scaling-stroke;
 }
+.usage-chart-series {
+  transform-box: view-box;
+  transform-origin: 0 230px;
+}
 .usage-line {
   fill: none;
   stroke: currentColor;

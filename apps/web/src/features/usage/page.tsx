@@ -2,6 +2,7 @@ import type { EngineId } from "@domos/agent/harness/types";
 import { SegmentedControl } from "@domos/ui/choice";
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
+import { NumberTicker } from "@domos/ui/number-ticker";
 import { ChoicePicker } from "@domos/ui/picker";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { ArrowClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
@@ -81,7 +82,12 @@ export function UsageSurface() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [summary, setSummary] = useState<
-    UsageSummary & { dimension: Dimension }
+    UsageSummary & {
+      dimension: Dimension;
+      metric: Metric;
+      from: string;
+      to: string;
+    }
   >();
   const [rows, setRows] = useState<UsageRecord[]>([]);
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
@@ -136,7 +142,13 @@ export function UsageSurface() {
       )
       .then((value) => {
         if (!controller.signal.aborted) {
-          setSummary({ ...value, dimension: summaryDimension });
+          setSummary({
+            ...value,
+            dimension: summaryDimension,
+            metric,
+            from: range.from,
+            to: range.to,
+          });
         }
       })
       .catch((cause) => {
@@ -147,7 +159,7 @@ export function UsageSurface() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [filter, summaryDimension, metric]);
+  }, [filter, summaryDimension, metric, range.from, range.to]);
   const [reading, setReading] = useState(false);
   const recordFilter = useMemo(
     () => ({
@@ -213,7 +225,14 @@ export function UsageSurface() {
               ? (purposes[group.key] ?? group.key)
               : group.key,
   }));
-  const days = summary ? dailyUsage(summary, metric, range.from, range.to) : [];
+  const displayedMetric = summary?.metric ?? metric;
+  const days = useMemo(
+    () =>
+      summary
+        ? dailyUsage(summary, summary.metric, summary.from, summary.to)
+        : [],
+    [summary],
+  );
   const totals = summary?.totals;
   const change = (set: (value: string) => void) => (value: string) => {
     set(value);
@@ -366,14 +385,19 @@ export function UsageSurface() {
                 <section className="usage-hero" aria-label="用量总览">
                   <div className="usage-hero-main">
                     <strong className="usage-hero-value">
-                      {metric === "tokens"
-                        ? totals.tokens === null
-                          ? "—"
-                          : compactNumber(totals.tokens)
-                        : money(totals.cost)}
+                      <NumberTicker
+                        value={totals[displayedMetric]}
+                        text={
+                          displayedMetric === "tokens"
+                            ? totals.tokens === null
+                              ? "—"
+                              : compactNumber(totals.tokens)
+                            : money(totals.cost)
+                        }
+                      />
                     </strong>
                     <p className="usage-hero-meta">
-                      {metric === "tokens"
+                      {displayedMetric === "tokens"
                         ? "已知完整 Token"
                         : "已知费用 · USD"}{" "}
                       · {totals.tasks} 个任务
@@ -397,7 +421,7 @@ export function UsageSurface() {
                               )?.label ?? engine.key}
                             </span>
                             <b>
-                              {metric === "tokens"
+                              {displayedMetric === "tokens"
                                 ? engine.tokens === null
                                   ? "—"
                                   : compactNumber(engine.tokens)
@@ -429,7 +453,9 @@ export function UsageSurface() {
                   </div>
                   <section className="usage-trend" aria-label="每日趋势">
                     <header className="usage-section-head">
-                      <h2>每日{metric === "cost" ? "费用" : "用量"}</h2>
+                      <h2>
+                        每日{displayedMetric === "cost" ? "费用" : "用量"}
+                      </h2>
                       <Button
                         size="small"
                         variant="ghost"
@@ -438,7 +464,7 @@ export function UsageSurface() {
                         查看每日数据
                       </Button>
                     </header>
-                    <DailyChart days={days} metric={metric} />
+                    <DailyChart days={days} metric={displayedMetric} />
                   </section>
                 </section>
                 {totals.records === 0 && (

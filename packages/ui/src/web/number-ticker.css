@@ -1,0 +1,26 @@
+.number-ticker {
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.number-ticker > span {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  line-height: 1;
+}
+.number-ticker-digit {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  width: 1ch;
+  height: 1em;
+}
+.number-ticker-digit > span {
+  position: absolute;
+  inset: 0 0 auto;
+}
+.number-ticker-digit > span > span {
+  display: block;
+  height: 1em;
+}
