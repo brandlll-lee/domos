@@ -15,6 +15,7 @@ import {
   type Dimension,
   dailyUsage,
   dimensions,
+  engineColor,
   harnesses,
   type Metric,
   metrics,
@@ -385,6 +386,11 @@ export function UsageSurface() {
                         <li key={engine.key}>
                           <div className="usage-engine-head">
                             <span>
+                              <i
+                                className="usage-series-dot"
+                                style={{ background: engineColor(engine.key) }}
+                                aria-hidden="true"
+                              />
                               <EngineMark provider={engine.key as EngineId} />
                               {harnesses.find(
                                 (item) => item.value === engine.key,

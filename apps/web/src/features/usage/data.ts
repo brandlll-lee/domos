@@ -85,6 +85,9 @@ export const harnesses = [
   { value: "cursor", label: "Cursor" },
 ];
 
+export const engineColor = (key: string) =>
+  `var(--color-chart-${harnesses.findIndex((item) => item.value === key) + 1 || "other"})`;
+
 export const compactNumber = (value: number) =>
   new Intl.NumberFormat("en", {
     notation: "compact",
@@ -122,22 +125,42 @@ export const formatAxis = (value: number, metric: Metric) =>
 export type UsageGroup = UsageSummary["groups"][number] & { label: string };
 
 export function dailyUsage(
-  summary: UsageSummary,
+  summary: Pick<
+    UsageSummary,
+    "days" | "engineDays" | "engines" | "missingDays" | "startedAt"
+  >,
   metric: Metric,
   from: string,
   to: string,
 ) {
-  const values = new Map(summary.days.map((row) => [row.day, row[metric]]));
-  const engines = new Map<string, { key: string; value: number | null }[]>();
+  const values = new Map(summary.days.map((row) => [row.day, row]));
+  const engines = new Map<
+    string,
+    Map<string, UsageSummary["engineDays"][number]>
+  >();
   for (const row of summary.engineDays) {
-    const entries = engines.get(row.day) ?? [];
-    entries.push({ key: row.key, value: row[metric] });
+    const entries = engines.get(row.day) ?? new Map();
+    entries.set(row.key, row);
     engines.set(row.day, entries);
   }
+  const missing = new Set(
+    summary.missingDays.map((row) => `${row.day}:${row.key}`),
+  );
+  const keys = [
+    ...new Set([
+      ...summary.engines.map(({ key }) => key),
+      ...summary.missingDays.map(({ key }) => key),
+    ]),
+  ];
+  const start =
+    summary.startedAt === null
+      ? null
+      : new Date(summary.startedAt).toISOString().slice(0, 10);
   const days: {
     day: string;
     value: number | null;
-    engines: { key: string; value: number | null }[];
+    partial: boolean;
+    engines: { key: string; value: number | null; partial: boolean }[];
   }[] = [];
   for (
     let date = Date.parse(from);
@@ -146,13 +169,28 @@ export function dailyUsage(
   ) {
     const day = new Date(date).toISOString().slice(0, 10);
     const entries = engines.get(day);
+    const empty = start !== null && day >= start ? 0 : null;
+    const readings = keys.map((key) => {
+      const row = entries?.get(key);
+      const absent = missing.has(`${day}:${key}`);
+      return {
+        key,
+        value: row ? row[metric] : absent ? null : empty,
+        partial:
+          absent ||
+          Boolean(row && (metric === "cost" ? row.unpriced : row.incomplete)),
+      };
+    });
+    const row = values.get(day);
     days.push({
       day,
-      value: values.get(day) ?? null,
-      engines: summary.engines.map(({ key }) => ({
-        key,
-        value: entries?.find((entry) => entry.key === key)?.value ?? null,
-      })),
+      value: row
+        ? row[metric]
+        : readings.some((entry) => entry.value === null)
+          ? null
+          : empty,
+      partial: readings.some((entry) => entry.partial || entry.value === null),
+      engines: readings,
     });
   }
   return days;

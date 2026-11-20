@@ -760,6 +760,11 @@ export class UsageReader {
       tasks: number;
       missingUsage: number;
     }[];
+    const missingDays = db
+      .prepare(
+        `SELECT DISTINCT strftime('%Y-%m-%d',timestamp/1000,'unixepoch') day, harness key FROM domos_usage_tasks WHERE (${coverageSQL}) AND taskId NOT IN (SELECT taskId FROM domos_usage_index) ORDER BY day,key`,
+      )
+      .all(...coverageValues) as { day: string; key: string }[];
     const times = db
       .prepare(
         `SELECT MIN(timestamp) startedAt, MAX(timestamp) updatedAt FROM (SELECT timestamp FROM domos_usage_tasks WHERE botId IN (${botIds.map(() => "?").join(",") || "NULL"}) UNION ALL SELECT timestamp FROM domos_usage_index WHERE botId IN (${botIds.map(() => "?").join(",") || "NULL"})) WHERE timestamp>0`,
@@ -787,6 +792,7 @@ export class UsageReader {
       daily,
       days,
       engineDays,
+      missingDays,
       options,
       missingUsage: health.missingUsage,
       coverage,

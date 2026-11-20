@@ -229,6 +229,20 @@ test("HTTP usage retains native attribution, deduplicates and survives reopening
     limit: 5,
   });
   expect(summary.missingUsage).toBe(1);
+  expect(summary.missingDays).toEqual([
+    { day: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), key: "pi" },
+  ]);
+  expect(
+    (
+      await runtime.client.engines.usageSummary({
+        from: 1000,
+        to: 1124,
+        dimension: "day",
+        metric: "cost",
+        limit: 5,
+      })
+    ).missingDays,
+  ).toEqual([]);
   expect(summary.groups.reduce((sum, row) => sum + (row.cost ?? 0), 0)).toBe(
     summary.totals.cost,
   );
@@ -259,6 +273,7 @@ test("HTTP usage retains native attribution, deduplicates and survives reopening
       limit: 1,
     });
     expect(grouped.engineDays).toEqual(summary.engineDays);
+    expect(grouped.missingDays).toEqual(summary.missingDays);
     expect(grouped.groups.reduce((sum, row) => sum + (row.cost ?? 0), 0)).toBe(
       summary.totals.cost,
     );

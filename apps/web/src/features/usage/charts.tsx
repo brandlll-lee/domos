@@ -1,3 +1,4 @@
+import { area, curveMonotoneX, line } from "d3-shape";
 import {
   type ReactNode,
   useId,
@@ -9,6 +10,7 @@ import { EngineMark } from "../bots/engine-mark.tsx";
 import {
   type dailyUsage,
   dayLabel,
+  engineColor,
   formatAxis,
   formatValue,
   harnesses,
@@ -23,8 +25,14 @@ export function DailyChart({
   metric: Metric;
 }) {
   const fillId = useId();
-  const known = days.filter((day) => day.value !== null);
-  const max = Math.max(...known.map((day) => day.value ?? 0), 0);
+  const series = (days[0]?.engines ?? []).map((engine, index) => ({
+    key: engine.key,
+    values: days.map((day) => day.engines[index]?.value ?? null),
+  }));
+  const max = Math.max(
+    ...series.flatMap((item) => item.values.map((value) => value ?? 0)),
+    0,
+  );
   const rawStep = (max * 1.15 || 1) / 4;
   const magnitude = 10 ** Math.floor(Math.log10(rawStep));
   const step =
@@ -39,12 +47,17 @@ export function DailyChart({
   const x = (index: number) =>
     days.length < 2 ? 500 : (index / (days.length - 1)) * 1000;
   const y = (value: number) => 230 - (value / scale) * 220;
-  const segments: { index: number; value: number }[][] = [];
-  days.forEach((day, index) => {
-    if (day.value === null) return;
-    if (index === 0 || days[index - 1]?.value === null) segments.push([]);
-    segments.at(-1)?.push({ index, value: day.value });
-  });
+  const curve = line<number | null>()
+    .defined((value) => value !== null)
+    .x((_, index) => x(index))
+    .y((value) => y(value ?? 0))
+    .curve(curveMonotoneX);
+  const fill = area<number | null>()
+    .defined((value) => value !== null)
+    .x((_, index) => x(index))
+    .y0(230)
+    .y1((value) => y(value ?? 0))
+    .curve(curveMonotoneX);
   return (
     <div className="usage-chart">
       <div className="usage-chart-axis" aria-hidden="true">
@@ -60,20 +73,6 @@ export function DailyChart({
           preserveAspectRatio="none"
           aria-hidden="true"
         >
-          <defs>
-            <linearGradient id={fillId} x1="0" x2="0" y1="0" y2="1">
-              <stop
-                offset="0%"
-                stopColor="var(--color-chart-1)"
-                stopOpacity="0.13"
-              />
-              <stop
-                offset="100%"
-                stopColor="var(--color-chart-1)"
-                stopOpacity="0"
-              />
-            </linearGradient>
-          </defs>
           {ticks.map((tick) => (
             <line
               key={tick}
@@ -84,33 +83,56 @@ export function DailyChart({
               className="usage-grid-line"
             />
           ))}
-          {segments.map((segment) => {
-            const first = segment[0]!;
-            const last = segment.at(-1)!;
-            const line = segment
-              .map(
-                (point, index) =>
-                  `${index ? "L" : "M"}${x(point.index)},${y(point.value)}`,
-              )
-              .join(" ");
-            return (
-              <g key={first.index}>
-                <path
-                  d={`${line} L${x(last.index)},230 L${x(first.index)},230 Z`}
-                  fill={`url(#${fillId})`}
-                />
-                <path d={line} className="usage-line" />
-                {segment.length === 1 && (
-                  <circle
-                    cx={x(first.index)}
-                    cy={y(first.value)}
-                    r="2.5"
-                    fill="var(--color-chart-1)"
+          {series.map((item) => (
+            <g
+              key={item.key}
+              data-engine={item.key}
+              style={{ color: engineColor(item.key) }}
+            >
+              <defs>
+                <linearGradient
+                  id={`${fillId}-${item.key}`}
+                  x1="0"
+                  x2="0"
+                  y1="0"
+                  y2="1"
+                >
+                  <stop
+                    offset="0%"
+                    stopColor="currentColor"
+                    stopOpacity="0.12"
                   />
-                )}
-              </g>
-            );
-          })}
+                  <stop
+                    offset="100%"
+                    stopColor="currentColor"
+                    stopOpacity="0"
+                  />
+                </linearGradient>
+              </defs>
+              <path
+                d={fill(item.values) ?? undefined}
+                fill={`url(#${fillId}-${item.key})`}
+              />
+              <path
+                d={curve(item.values) ?? undefined}
+                className="usage-line"
+              />
+              {item.values.map(
+                (value, index) =>
+                  value !== null &&
+                  item.values[index - 1] == null &&
+                  item.values[index + 1] == null && (
+                    <circle
+                      key={days[index]?.day}
+                      cx={x(index)}
+                      cy={y(value)}
+                      r="2.5"
+                      fill="currentColor"
+                    />
+                  ),
+              )}
+            </g>
+          ))}
         </svg>
       </ChartInteraction>
       <div className="usage-chart-dates" aria-hidden="true">
@@ -204,10 +226,18 @@ function ChartInteraction({
   };
   const anchorX =
     (days.length < 2 ? 0.5 : (hovered ?? 0) / (days.length - 1)) * bounds.width;
+  const selected =
+    active?.engines.filter(
+      (engine): engine is typeof engine & { value: number } =>
+        engine.value !== null,
+    ) ?? [];
   const anchorY =
-    active?.value == null
+    selected.length === 0
       ? bounds.height / 2
-      : ((230 - (active.value / scale) * 220) / 240) * bounds.height;
+      : ((230 -
+          (Math.max(...selected.map((engine) => engine.value)) / scale) * 220) /
+          240) *
+        bounds.height;
   const left = Math.max(
     0,
     Math.min(
@@ -245,15 +275,17 @@ function ChartInteraction({
             y2="230"
             className="usage-crosshair"
           />
-          {active.value !== null && (
+          {selected.map((engine) => (
             <ellipse
+              key={engine.key}
               cx={days.length < 2 ? 500 : (hovered / (days.length - 1)) * 1000}
-              cy={230 - (active.value / scale) * 220}
+              cy={230 - (engine.value / scale) * 220}
               rx={bounds.width ? 4000 / bounds.width : 4}
               ry={bounds.height ? 960 / bounds.height : 4}
               className="usage-active-point"
+              style={{ color: engineColor(engine.key) }}
             />
-          )}
+          ))}
         </svg>
       )}
       <div
@@ -313,9 +345,9 @@ function ChartInteraction({
           );
         }}
       />
-      {!days.some((day) => day.value !== null) && (
-        <p className="usage-chart-empty">此范围暂无可用数据</p>
-      )}
+      {!days.some((day) =>
+        day.engines.some((engine) => engine.value !== null),
+      ) && <p className="usage-chart-empty">此范围暂无可用数据</p>}
       {active && (
         <div
           className="tooltip-surface usage-tip"
@@ -330,6 +362,11 @@ function ChartInteraction({
           {active.engines.map((engine) => (
             <div className="usage-tip-row" key={engine.key}>
               <span>
+                <i
+                  className="usage-series-dot"
+                  style={{ background: engineColor(engine.key) }}
+                  aria-hidden="true"
+                />
                 <EngineMark provider={engine.key} />
                 {harnesses.find((item) => item.value === engine.key)?.label ??
                   engine.key}
@@ -342,11 +379,7 @@ function ChartInteraction({
             </div>
           ))}
           <div className="usage-tip-total">
-            <span>
-              {active.engines.some((engine) => engine.value === null)
-                ? "已知合计"
-                : "合计"}
-            </span>
+            <span>{active.partial ? "已知合计" : "合计"}</span>
             <b>
               {active.value === null
                 ? "未返回数据"

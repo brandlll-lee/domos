@@ -161,8 +161,10 @@
 }
 .usage-line {
   fill: none;
-  stroke: var(--color-chart-1);
-  stroke-width: 1.25;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
 .usage-chart-hit {
@@ -198,6 +200,26 @@
   overflow: hidden;
   padding: var(--space-2);
   font-size: var(--text-caption);
+  transition:
+    transform var(--motion-feedback),
+    opacity var(--motion-feedback);
+}
+@starting-style {
+  .usage-tip {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .usage-tip {
+    transition: none;
+  }
+}
+.usage-series-dot {
+  display: inline-block;
+  width: var(--space-2);
+  height: var(--space-2);
+  flex-shrink: 0;
+  border-radius: var(--radius-round);
 }
 .usage-tip > strong {
   line-height: var(--leading-caption);
@@ -237,7 +259,7 @@
   vector-effect: non-scaling-stroke;
 }
 .usage-active-point {
-  fill: var(--color-chart-1);
+  fill: currentColor;
   stroke: var(--color-canvas);
   stroke-width: 2;
   vector-effect: non-scaling-stroke;

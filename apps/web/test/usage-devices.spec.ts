@@ -167,6 +167,7 @@ async function usageRoutes(
       json: {
         json: {
           missingUsage: 0,
+          missingDays: [],
           coverage: [...new Set(rows.map((row) => row.harness))].map(
             (harness) => ({
               harness,
@@ -174,7 +175,9 @@ async function usageRoutes(
               missingUsage: 0,
             }),
           ),
-          startedAt: rows[0]?.timestamp ?? null,
+          startedAt: read().length
+            ? Math.min(...read().map((row) => row.timestamp))
+            : null,
           updatedAt: rows.at(-1)?.timestamp ?? null,
           hasSkills: false,
           totals: {
@@ -518,7 +521,14 @@ test("usage distinguishes unknown, zero and sub-cent amounts and retains refresh
     { ...usageRecord, costUsd: 0.0015 },
   ];
   await usage.getByRole("button", { name: "刷新用量" }).click();
-  await expect(usage.locator(".usage-line")).toHaveCount(2);
+  await expect(usage.locator(".usage-line")).toHaveCount(1);
+  await expect
+    .poll(
+      async () =>
+        (await usage.locator(".usage-line").getAttribute("d"))?.match(/M/g)
+          ?.length,
+    )
+    .toBe(2);
   await expect(usage.locator(".usage-hero-value")).toHaveText("US$1.00");
   await page.route("**/rpc/engines/usageSummary", (route) => route.abort());
   await usage.getByRole("button", { name: "刷新用量" }).click();
@@ -536,7 +546,7 @@ test("usage chart selects dates and keeps engine details inside the plot", async
       id: `c-${index}`,
       taskId: `c-${index}`,
       timestamp: usageRecord.timestamp - (6 - index) * 86400000,
-      costUsd: index / 10,
+      costUsd: index === 3 ? 0.5 : index / 10,
     },
     {
       ...usageRecord,
@@ -578,9 +588,29 @@ test("usage chart selects dates and keeps engine details inside the plot", async
   await expect(tip).toContainText("Pi");
   await expect(tip).toContainText("未返回数据");
   await expect(tip).toContainText("已知合计");
-  await expect(usage.locator(".usage-active-point")).toHaveCount(1);
+  await expect(usage.locator(".usage-active-point")).toHaveCount(8);
   await expect(usage.locator(".usage-crosshair")).toHaveCount(1);
+  const paths = await usage
+    .locator(".usage-line")
+    .evaluateAll((elements) =>
+      elements.map((element) => element.getAttribute("d")),
+    );
+  expect(paths.some((path) => path?.includes("C"))).toBe(true);
+  expect(
+    new Set(
+      await usage
+        .locator(".usage-line")
+        .evaluateAll((elements) =>
+          elements.map((element) => getComputedStyle(element).stroke),
+        ),
+    ).size,
+  ).toBe(9);
   const inside = async () => {
+    await tip.evaluate((element) =>
+      Promise.all(
+        element.getAnimations().map((animation) => animation.finished),
+      ),
+    );
     const panel = await usage.locator(".usage-plot").boundingBox();
     const box = await tip.boundingBox();
     expect(
@@ -607,6 +637,7 @@ test("usage chart selects dates and keeps engine details inside the plot", async
   await slider.press("Home");
   await expect(tip).toContainText("US$0.00");
   await expect(tip).not.toContainText("未返回数据");
+  await expect(usage.locator(".usage-active-point")).toHaveCount(9);
   await inside();
   await slider.press("ArrowRight");
   await expect(slider).toHaveAttribute("aria-valuenow", "1");
@@ -637,6 +668,13 @@ test("usage chart selects dates and keeps engine details inside the plot", async
     clientY: box.y + box.height / 2,
   });
   await expect(slider).toHaveAttribute("aria-valuenow", "3");
+  expect(
+    await usage
+      .locator(".usage-line")
+      .evaluateAll((elements) =>
+        elements.map((element) => element.getAttribute("d")),
+      ),
+  ).toEqual(paths);
   await usage.getByRole("radio", { name: "Token", exact: true }).click();
   await slider.focus();
   await slider.press("End");
