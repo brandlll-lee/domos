@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
-import { expect, onTestFinished, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import { BotDirectory } from "../src/bots.ts";
 import { EngineConnections } from "../src/harness/connections.ts";
 import type { EngineExecution } from "../src/harness/execution.ts";
@@ -115,6 +115,11 @@ test("quota coalesces shared accounts, retains failed reads and invalidates afte
 });
 
 test("computer account reads require authorization and work without a Bot workspace", async () => {
+  vi.stubEnv("DEVIN_BEARER_TOKEN", "");
+  vi.stubEnv("DEVIN_AUTHORIZATION", "");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
   const directory = await mkdtemp(join(tmpdir(), "domos-account-quota-"));
   const config = parseConfig(
     { dataDir: directory },
@@ -140,7 +145,76 @@ test("computer account reads require authorization and work without a Bot worksp
       await worker.resolve?.("domos-quota-uninstalled-fixture"),
     ).toBeNull();
     expect(await runtime.bots.list(context)).toHaveLength(0);
+    expect(await worker.quota?.("devin", "devin")).toMatchObject({
+      status: "signed-out",
+      source: "devin.billing/quota/usage",
+    });
   } finally {
     await worker.close();
   }
 });
+
+test.each(["cursor", "antigravity", "devin"] as const)(
+  "%s reads through the owning worker and retains its last quota after failure",
+  async (provider) => {
+    let fail = false;
+    let reads = 0;
+    let installed = provider === "antigravity";
+    const execution = {
+      usageRevision: 0,
+      computers: {
+        computerId: async () => "computer",
+        accountProcess: async () =>
+          Object.assign(new ProtocolProcess(), {
+            resolve: async () => (installed ? "/native/agent" : null),
+            quota: async (id: string) => {
+              expect(id).toBe(provider);
+              reads++;
+              return {
+                source: provider,
+                observedAt: 1234,
+                status: fail ? "failed" : "ready",
+                message: fail ? "offline" : undefined,
+                windows: fail
+                  ? []
+                  : [
+                      {
+                        id: "primary",
+                        name: "Quota",
+                        usedPercent: 20,
+                        durationMinutes: null,
+                        resetsAt: null,
+                      },
+                    ],
+              };
+            },
+          }),
+      },
+    };
+    const connections = new EngineConnections(
+      execution as unknown as EngineExecution,
+    );
+    const config = { provider, model: null };
+    expect(await connections.quota(null, config, context)).toMatchObject({
+      status: "ready",
+      windows: [{ usedPercent: 20 }],
+    });
+    expect(await connections.quota(null, config, context)).toMatchObject({
+      status: "ready",
+    });
+    expect(reads).toBe(1);
+    fail = true;
+    expect(await connections.quota(null, config, context, true)).toMatchObject({
+      status: "failed",
+      observedAt: 1234,
+      message: "offline",
+      windows: [{ usedPercent: 20 }],
+    });
+    if (provider === "antigravity") {
+      installed = false;
+      expect(
+        await connections.quota(null, config, context, true),
+      ).toMatchObject({ status: "not-installed" });
+    }
+  },
+);

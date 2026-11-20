@@ -18,6 +18,7 @@ import { imageOperation } from "./image-service.mjs";
 import { closeMcpClients, mcpOperation } from "./mcp-client.mjs";
 import { nativeMcpCatalog } from "./native-configuration.mjs";
 import { nativeCheckpoint, nativeHistory } from "./native-history.mjs";
+import { readNativeQuota } from "./native-quota.mjs";
 
 delete process.env.ELECTRON_RUN_AS_NODE;
 const accountEnv = { ...process.env };
@@ -36,6 +37,7 @@ let tools;
 const gateways = new Map();
 const mcpProgress = new Map();
 const piCatalogs = new Map();
+const quotaReads = new Set();
 const emit = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 
 async function close(force = false) {
@@ -54,6 +56,7 @@ async function close(force = false) {
       request.reject(new Error("Connection closed"));
     piCatalogs.clear();
     for (const operation of operations.values()) operation.abort();
+    await Promise.allSettled(quotaReads);
     const mcpClosed = Promise.all([
       ...[...gateways.values()].map((gateway) => gateway.close()),
       closeMcpClients(),
@@ -409,6 +412,29 @@ lines.on("line", (line) => {
           .finally(() => operations.delete(frame.id));
       } else if (frame.type === "http_cancel") {
         operations.get(frame.id)?.abort();
+      } else if (frame.type === "quota") {
+        const controller = new AbortController();
+        operations.set(frame.id, controller);
+        const { env } = await accountEnvironment({}, home, accountEnv);
+        const read = readNativeQuota(
+          frame.provider,
+          frame.command,
+          env,
+          controller.signal,
+        )
+          .then((result) => emit({ type: "http", id: frame.id, result }))
+          .catch(() =>
+            emit({
+              type: "http",
+              id: frame.id,
+              error: "账号额度读取失败。请检查登录和网络。",
+            }),
+          )
+          .finally(() => {
+            operations.delete(frame.id);
+            quotaReads.delete(read);
+          });
+        quotaReads.add(read);
       } else if (["history", "checkpoint", "account"].includes(frame.type)) {
         void (
           frame.type === "history"

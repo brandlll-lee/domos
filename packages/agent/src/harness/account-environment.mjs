@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { delimiter, extname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { nativeMcpFiles } from "./native-configuration.mjs";
+import { quotaAccountFiles } from "./native-quota.mjs";
 
 const serviceKey = /^(DOMOS_|SERVICE_)|^DATABASE_URL$/i;
 
@@ -135,27 +136,12 @@ export async function accountFingerprint(provider, env) {
     opencode: ["opencode.json", "opencode.jsonc"],
   }[provider];
   const paths = (files ?? []).map((file) => join(root, file));
+  paths.push(...quotaAccountFiles(provider, env));
   const cursorConfig =
     provider === "cursor" ? join(root, "cli-config.json") : null;
   if (cursorConfig) paths.push(cursorConfig);
   if (["cursor", "antigravity", "devin"].includes(provider))
     paths.push(...nativeMcpFiles(provider, env, process.cwd()));
-  if (provider === "cursor")
-    paths.push(
-      process.platform === "win32"
-        ? join(
-            env.APPDATA || join(user, "AppData", "Roaming"),
-            "Cursor",
-            "auth.json",
-          )
-        : process.platform === "darwin"
-          ? join(user, ".cursor", "auth.json")
-          : join(
-              env.XDG_CONFIG_HOME || join(user, ".config"),
-              "cursor",
-              "auth.json",
-            ),
-    );
   if (provider === "opencode") {
     paths.push(
       join(

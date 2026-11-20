@@ -7,6 +7,7 @@ import type { ComputerRequest } from "../computer/service-types.ts";
 import {
   type EngineId,
   type EngineProcess,
+  type EngineQuota,
   engineLimits,
   type ProcessReady,
   type ProcessSpec,
@@ -252,6 +253,14 @@ export class WorkProcess implements EngineProcess {
 
   account(provider: EngineId) {
     return this.exchange<string>({ type: "account", provider });
+  }
+
+  quota(provider: EngineId, command: string) {
+    return this.exchange<EngineQuota>({
+      type: "quota",
+      provider,
+      command,
+    });
   }
 
   history(sessionId: string, provider: EngineId = "claude", since?: string) {

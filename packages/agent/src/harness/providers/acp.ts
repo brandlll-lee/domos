@@ -37,7 +37,14 @@ import { formContent, formQuestions } from "./question-form.ts";
 export function acpProvider(
   descriptor: Pick<
     EngineProvider,
-    "id" | "name" | "command" | "package" | "login" | "mcp" | "toolDiscovery"
+    | "id"
+    | "name"
+    | "command"
+    | "package"
+    | "login"
+    | "mcp"
+    | "toolDiscovery"
+    | "quota"
   > & {
     notification?: (
       method: string,

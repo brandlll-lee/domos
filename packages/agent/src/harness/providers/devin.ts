@@ -1,4 +1,5 @@
 import { readNativeConfiguredMcp } from "../mcp-catalog.ts";
+import { readAccountQuota } from "./account-quota.ts";
 import { acpProvider } from "./acp.ts";
 
 export const devinProvider = acpProvider({
@@ -9,6 +10,7 @@ export const devinProvider = acpProvider({
   login: ["auth", "login"],
   args: () => ["acp"],
   mcp: readNativeConfiguredMcp,
+  quota: readAccountQuota,
   mode: (config) =>
     config.approvalMode === "full"
       ? "bypass"

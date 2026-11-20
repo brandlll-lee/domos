@@ -351,6 +351,7 @@ export interface EngineProcess {
   ): Promise<T>;
   checkpoint?(provider: EngineId, sessionId: string): Promise<string | null>;
   account?(provider: EngineId): Promise<string>;
+  quota?(provider: EngineId, command: string): Promise<EngineQuota>;
   history?(
     sessionId: string,
     provider?: EngineId,

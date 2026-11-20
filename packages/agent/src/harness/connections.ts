@@ -100,7 +100,7 @@ export class EngineConnections {
       context.abortSignal?.throwIfAborted();
       const command = config.command || provider.command;
       const path = worker.resolve ? await worker.resolve(command) : command;
-      if (!path)
+      if (!path && !["cursor", "devin"].includes(provider.id))
         return {
           ...base,
           status: "not-installed" as const,
@@ -135,16 +135,22 @@ export class EngineConnections {
       entry.revision = this.execution.usageRevision;
       entry.pending = (async (): Promise<EngineQuota> => {
         try {
-          const value = await ((botId === null
+          let value = await ((botId === null
             ? undefined
             : this.execution.quota(botId)) ??
             readQuota({
               process: worker,
-              config: { ...config, command: path },
+              config: { ...config, command: path ?? command },
             }));
+          if (value.status === "failed" && entry.value)
+            value = {
+              ...entry.value,
+              status: "failed",
+              message: value.message,
+            };
           entry.value = value;
           entry.expires = Math.min(
-            Date.now() + 240_000,
+            Date.now() + (value.status === "failed" ? 30_000 : 240_000),
             ...value.windows.flatMap((window) =>
               window.resetsAt && window.resetsAt > value.observedAt
                 ? [window.resetsAt]

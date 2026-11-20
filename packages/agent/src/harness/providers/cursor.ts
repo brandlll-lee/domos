@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { readNativeConfiguredMcp } from "../mcp-catalog.ts";
+import { readAccountQuota } from "./account-quota.ts";
 import { acpProvider } from "./acp.ts";
 
 export const cursorProvider = acpProvider({
@@ -12,6 +13,7 @@ export const cursorProvider = acpProvider({
   args: () => ["acp"],
   authMethod: "cursor_login",
   mcp: readNativeConfiguredMcp,
+  quota: readAccountQuota,
   async notification(method, params, emit, plan) {
     if (method === "cursor/update_todos") {
       const update = z
