@@ -52,6 +52,26 @@ export async function recordUsage(tx: Tx, taskId: TaskId, usage: EngineUsage) {
   }) as JsonRepresentation<EngineUsage>;
 }
 
+export async function settleUsage(runtime: EngineRuntime, context: Context) {
+  try {
+    await runtime.commit(async (tx, task) => {
+      const engine = await tx.doc(EngineDoc, runtime.conversationId);
+      await finishUsage(
+        tx,
+        runtime,
+        engine.config.provider,
+        task.input.memoryReview ? null : engine.sessionId,
+        task.input,
+      );
+    }, context);
+  } catch (error) {
+    console.warn("Harness usage settlement failed", {
+      taskId: String(runtime.taskId),
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 export async function finishUsage(
   tx: Tx,
   runtime: EngineRuntime,

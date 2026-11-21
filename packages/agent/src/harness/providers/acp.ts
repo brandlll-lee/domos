@@ -615,15 +615,32 @@ export function acpProvider(
       const nativeInstructions = Boolean(
         hello.agentCapabilities?.sessionCapabilities?.systemPrompt,
       );
+      const version = hello.agentInfo?.version?.match(/^(\d+)\.(\d+)\./);
+      const uncachedInput =
+        descriptor.id === "antigravity" &&
+        version &&
+        (Number(version[1]) > 1 ||
+          (Number(version[1]) === 1 && Number(version[2]) >= 5));
       const mcpServers = [
         { name: "domos", url: ready.url },
         ...(mcp?.servers ?? []),
       ].map(({ name, url }) => {
-        if (hello.agentCapabilities?.mcpCapabilities?.http)
+        if (
+          descriptor.id !== "antigravity" &&
+          hello.agentCapabilities?.mcpCapabilities?.http
+        )
           return { type: "http" as const, name, url, headers: [] };
         if (!ready.mcpStdio)
           throw new Error("工作电脑需要更新 stdio MCP 支持。");
-        return { ...ready.mcpStdio, name, args: [...ready.mcpStdio.args, url] };
+        return {
+          ...ready.mcpStdio,
+          name,
+          args: [
+            ...ready.mcpStdio.args,
+            url,
+            ...(descriptor.id === "antigravity" ? ["--deferred"] : []),
+          ],
+        };
       });
       const params = {
         cwd: ready.cwd,
@@ -899,6 +916,7 @@ export function acpProvider(
                 usage: {
                   id: turnId,
                   source: `${descriptor.id}.acp.prompt`,
+                  ...(uncachedInput ? { tokenBasis: "uncached" as const } : {}),
                   provider: null,
                   model: config.model,
                   input: outcome.usage?.inputTokens ?? null,

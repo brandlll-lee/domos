@@ -19,11 +19,14 @@ import { runtimeFixture } from "./fixtures/runtime.ts";
 test.each([
   { provider: "antigravity", cost: undefined },
   { provider: "antigravity", cost: 0 },
+  { provider: "antigravity", cost: -1 },
   { provider: "cursor", cost: undefined },
   { provider: "cursor", cost: undefined, discoveryError: true },
 ])(
   "$provider persists replies and usage when tools are ready ($discoveryError, cost: $cost)",
   async ({ provider, cost, discoveryError }) => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    onTestFinished(() => warning.mockRestore());
     const listed = Promise.withResolvers<Error | undefined>();
     const worker = Object.assign(new ProtocolProcess(), {
       async toolsReady() {
@@ -56,7 +59,14 @@ test.each([
           });
         worker.response(request, {
           stopReason: "end_turn",
-          usage: { inputTokens: 100, outputTokens: 20, totalTokens: 120 },
+          usage: {
+            inputTokens: 100,
+            outputTokens: 20,
+            totalTokens: provider === "antigravity" ? 1020 : 120,
+            ...(provider === "antigravity"
+              ? { cachedReadTokens: 900, cachedWriteTokens: 0 }
+              : {}),
+          },
         });
       } else
         worker.response(
@@ -64,6 +74,7 @@ test.each([
           request.method === "initialize"
             ? {
                 protocolVersion: 1,
+                agentInfo: { name: provider, version: "1.5.9" },
                 agentCapabilities: { mcpCapabilities: { http: true } },
               }
             : request.method === "session/new"
@@ -145,13 +156,29 @@ test.each([
       undefined,
       context,
     );
-    expect(
-      entries.items.find((entry) => entry.kind === "domos.engine-usage")?.data,
-    ).toMatchObject({
-      input: null,
+    const usage = entries.items.find(
+      (entry) => entry.kind === "domos.engine-usage",
+    );
+    if (cost === -1) {
+      expect(warning).toHaveBeenCalledWith(
+        "Harness usage settlement failed",
+        expect.objectContaining({ error: "原生累计成本无效。" }),
+      );
+      expect(usage).toBeUndefined();
+      expect(
+        entries.items.find((entry) => entry.kind === "domos.engine-run")?.data,
+      ).toMatchObject({ status: "ended" });
+      return;
+    }
+    expect(usage?.data).toMatchObject({
+      input: provider === "antigravity" ? 100 : null,
       output: 20,
       costUsd: cost ?? null,
-      nativeTokens: { input: 100, cacheRead: null, cacheWrite: null },
+      nativeTokens: {
+        input: 100,
+        cacheRead: provider === "antigravity" ? 900 : null,
+        cacheWrite: provider === "antigravity" ? 0 : null,
+      },
     });
   },
 );

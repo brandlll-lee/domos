@@ -9,6 +9,71 @@ import { claudePermission } from "../src/harness/providers/claude-approval.ts";
 import { engineProvider } from "../src/harness/providers/index.ts";
 import type { EngineSession, ProductResult } from "../src/harness/types.ts";
 
+test.skipIf(process.env.DOMOS_NATIVE_SMOKE !== "1")(
+  "Antigravity calls a large product tool through its native registration",
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), "domos-agy-tools-"));
+    const marker = crypto.randomUUID();
+    const calls: string[] = [];
+    const replies: string[] = [];
+    const worker = new WorkProcess(
+      [
+        process.execPath,
+        fileURLToPath(new URL("../src/harness/worker.mjs", import.meta.url)),
+      ],
+      { cwd: directory, home: directory },
+      [
+        ...Array.from({ length: 30 }, (_, index) => ({
+          name: `catalog_${index}`,
+          description: "Read catalog metadata. ".repeat(80),
+          inputSchema: { type: "object" },
+        })),
+        {
+          name: "image_generate",
+          description:
+            "Return the image test receipt. This is a local test fixture. ".repeat(
+              160,
+            ),
+          inputSchema: {
+            type: "object",
+            properties: { prompt: { type: "string" } },
+            required: ["prompt"],
+          },
+        },
+      ],
+      async (_id, name, args) => {
+        expect(name).toBe("image_generate");
+        expect(args).toEqual({ prompt: "receipt" });
+        calls.push(name);
+        return { content: [{ type: "text", text: marker }] };
+      },
+    );
+    onTestFinished(async () => {
+      await worker.close();
+      await rm(directory, { recursive: true, force: true, maxRetries: 10 });
+    });
+    const session = await engineProvider("antigravity").open({
+      process: worker,
+      config: { provider: "antigravity", model: "claude-opus-4-6-thinking" },
+      sessionId: null,
+      instructions:
+        "Call the domos image_generate test fixture with prompt receipt. It returns a local receipt, not an image. Do not use native image generation, subagents, files or commands.",
+      approve: async () => ({ allow: true }),
+      emit: async (event) => {
+        if (event.type === "message") replies.push(event.text);
+      },
+    });
+    await session.ready?.();
+    await worker.toolsReady();
+    await session.prompt(
+      'Call domos image_generate with {"prompt":"receipt"} and report the exact receipt. Use no other capabilities.',
+    );
+    expect(calls, replies.join("\n")).toEqual(["image_generate"]);
+    expect(replies.join("\n")).toContain(marker);
+  },
+  150_000,
+);
+
 test
   .skipIf(process.env.DOMOS_NATIVE_SMOKE !== "1")
   .each([

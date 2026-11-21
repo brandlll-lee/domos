@@ -15,10 +15,11 @@ export class ProtocolProcess implements EngineProcess {
   readonly input = new PassThrough();
   readonly output = new PassThrough();
   readonly error = new PassThrough();
-  readonly ready = Promise.resolve({
+  readonly ready: EngineProcess["ready"] = Promise.resolve({
     url: "http://127.0.0.1:12345/mcp/test",
     cwd: "/work/bots/1",
     home: "/work/accounts",
+    mcpStdio: { command: "node", args: ["mcp-stdio.mjs"], env: [] },
   });
   readonly ended = Promise.withResolvers<{ code: number | null }>();
   readonly closed = this.ended.promise;

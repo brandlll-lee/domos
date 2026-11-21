@@ -177,6 +177,38 @@ test("Antigravity retains queued input when the CLI version does not confirm ste
   expect(session.steer).toBeUndefined();
 });
 
+test("Antigravity retains uncached input separately from cache reads", async () => {
+  const { process, prompts, events, open } = agent(antigravityProvider, {
+    agentInfo: { name: "Antigravity", version: "1.5.9" },
+  });
+  const session = await open();
+  const run = session.prompt("First");
+  await vi.waitFor(() => expect(prompts).toHaveLength(1));
+  process.response(prompts[0] as Request, {
+    stopReason: "end_turn",
+    usage: {
+      inputTokens: 100,
+      cachedReadTokens: 900,
+      cachedWriteTokens: 0,
+      outputTokens: 20,
+      totalTokens: 1020,
+    },
+  });
+  await run;
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      type: "usage",
+      usage: expect.objectContaining({
+        input: 100,
+        cacheRead: 900,
+        cacheWrite: 0,
+        output: 20,
+        tokenBasis: "uncached",
+      }),
+    }),
+  );
+});
+
 test("Antigravity preserves uncertain prompt failures", async () => {
   const { process, prompts, open } = agent(antigravityProvider, {
     agentInfo: { name: "Antigravity", version: "1.5.9" },

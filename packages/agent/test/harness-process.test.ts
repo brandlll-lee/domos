@@ -16,6 +16,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { expect, onTestFinished, test, vi } from "vitest";
 import { openGateway } from "../src/harness/gateway.mjs";
@@ -572,6 +573,46 @@ test("an ACP stdio agent discovers and calls the work computer's MCP", async () 
   await session.prompt("Use the available tool");
   expect(calls).toEqual(["stdio"]);
   expect(events.join("")).toContain("stdio");
+});
+
+test("the deferred MCP bridge retains schemas and calls the original allowed tool", async () => {
+  const { process, calls } = await worker();
+  const ready = await process.ready;
+  const client = new Client({ name: "deferred-test", version: "1" });
+  onTestFinished(() => client.close());
+  if (!ready.mcpStdio) throw new Error("Stdio transport required");
+  await client.connect(
+    new StdioClientTransport({
+      command: ready.mcpStdio.command,
+      args: [...ready.mcpStdio.args, ready.url, "--deferred"],
+      env: { ELECTRON_RUN_AS_NODE: "1" },
+      stderr: "pipe",
+    }),
+  );
+  expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual([
+    "call_tool",
+  ]);
+  const schema = await client.callTool({
+    name: "call_tool",
+    arguments: { name: "echo" },
+  });
+  expect(
+    JSON.parse((schema.content as { text: string }[])[0]?.text ?? ""),
+  ).toMatchObject({ name: "echo", inputSchema: { type: "object" } });
+  expect(calls).toEqual([]);
+  const result = await client.callTool({
+    name: "call_tool",
+    arguments: { name: "echo", arguments: { text: "deferred" } },
+  });
+  expect(result.content).toContainEqual({ type: "text", text: "deferred" });
+  expect(calls).toEqual(["deferred"]);
+  await expect(
+    client.callTool({
+      name: "call_tool",
+      arguments: { name: "other", arguments: {} },
+    }),
+  ).rejects.toThrow("工具不可用");
+  expect(calls).toEqual(["deferred"]);
 });
 
 test("a missing work computer command reports a missing program", async () => {

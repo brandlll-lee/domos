@@ -15,7 +15,7 @@ import {
   type EngineTaskInput,
   stored,
 } from "./task-types.ts";
-import { finishUsage, recordUsage } from "./usage.ts";
+import { recordUsage, settleUsage } from "./usage.ts";
 
 export function engineTask(execution: EngineExecution) {
   const taskDefinition: ReturnType<
@@ -58,6 +58,7 @@ export function engineTask(execution: EngineExecution) {
               );
             completed = enabled;
           } finally {
+            await settleUsage(runtime, context);
             await runtime.commit(async (tx) => {
               const doc = await tx.doc(EngineDoc, runtime.conversationId);
               const review = await tx.doc(
@@ -69,13 +70,6 @@ export function engineTask(execution: EngineExecution) {
                 review.through = task.input.reviewThrough ?? review.through;
                 review.turns = Math.max(0, review.turns - 10);
               }
-              await finishUsage(
-                tx,
-                runtime,
-                doc.config.provider,
-                null,
-                task.input,
-              );
               doc.tasks = doc.tasks.filter((id) => id !== runtime.taskId);
               doc.taskId = doc.tasks.at(-1) ?? null;
             }, context);
@@ -199,17 +193,11 @@ export function engineTask(execution: EngineExecution) {
     },
     async abort(_task, runtime, context) {
       if (_task.input.memoryReview) {
+        await settleUsage(runtime, context);
         await runtime.commit(async (tx) => {
           const doc = await tx.doc(EngineDoc, runtime.conversationId);
           (await tx.doc(MemoryReviewDoc, runtime.conversationId)).reviewing =
             false;
-          await finishUsage(
-            tx,
-            runtime,
-            doc.config.provider,
-            null,
-            _task.input,
-          );
           doc.tasks = doc.tasks.filter((id) => id !== runtime.taskId);
           doc.taskId = doc.tasks.at(-1) ?? null;
         }, context);
@@ -230,11 +218,11 @@ async function finish(
     typeof defineTask<EngineTaskInput, EngineCheckpoint, null, object>
   >,
 ) {
+  await settleUsage(runtime, context);
   await runtime.commit(async (tx, current) => {
     const doc = await tx.doc(EngineDoc, runtime.conversationId);
     if (!doc.tasks.includes(runtime.taskId)) {
       await finishCompactions(tx, runtime);
-      await finishUsage(tx, runtime, doc.config.provider, null, current.input);
       return {
         status: "terminal",
         outcome: { status: "completed", result: null },
@@ -304,13 +292,6 @@ async function finish(
         error: error ?? "引擎未确认压缩结果。",
       });
     await finishCompactions(tx, runtime);
-    await finishUsage(
-      tx,
-      runtime,
-      doc.config.provider,
-      doc.sessionId,
-      current.input,
-    );
     let answer: EntryId | undefined;
     if (doc.activeId === runtime.taskId) {
       if (doc.run) {
