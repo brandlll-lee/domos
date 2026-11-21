@@ -83,7 +83,7 @@ test("first use prepares the default Bot with a computer and model before shared
     await capture(page, testInfo, "pairing");
     await page.getByLabel("配对码", { exact: true }).fill(ready.code);
     await page.route("**/hosting/exchange", (route) => route.abort());
-    await page.getByRole("button", { name: "连接", exact: true }).click();
+    await page.getByRole("button", { name: "确认连接", exact: true }).click();
     await expect(page.getByRole("alert")).toBeVisible();
     await expect(page.getByLabel("配对码", { exact: true })).toHaveValue(
       ready.code,
@@ -95,7 +95,7 @@ test("first use prepares the default Bot with a computer and model before shared
       await route.continue();
     });
     try {
-      await page.getByRole("button", { name: "连接", exact: true }).click();
+      await page.getByRole("button", { name: "确认连接", exact: true }).click();
       await expect(page.locator(".startup-loading .startup-crt")).toBeVisible();
     } finally {
       configurationRead.resolve();
@@ -328,7 +328,9 @@ test("first use prepares the default Bot with a computer and model before shared
       const second = await remote.newPage();
       await second.goto(`http://127.0.0.1:${ready.port}`);
       await second.getByLabel("配对码", { exact: true }).fill(ready.clientCode);
-      await second.getByRole("button", { name: "连接", exact: true }).click();
+      await second
+        .getByRole("button", { name: "确认连接", exact: true })
+        .click();
       await expect(second.getByRole("log", { name: "聊天记录" })).toContainText(
         "模型已回复。",
       );

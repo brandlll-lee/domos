@@ -1176,7 +1176,9 @@ test("authorized devices use compact pages and retain the current device", async
     name: "访问设备",
     exact: true,
   });
-  await expect(devices.getByText("当前设备", { exact: true })).toBeVisible();
+  await expect(
+    devices.getByText("当前设备 · 管理员", { exact: true }),
+  ).toBeVisible();
   const navigation = devices.getByRole("navigation", { name: "授权翻页" });
   await expect(navigation).toContainText("1–10 / 23");
   await expect(devices.locator(".panel-row")).toHaveCount(10);

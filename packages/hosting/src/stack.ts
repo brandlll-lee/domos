@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import type { DesktopIdentity } from "./desktop.ts";
 import {
   allocatePort,
   checkDocker,
@@ -299,7 +300,7 @@ export class LocalStack {
       ...config,
       host: "0.0.0.0",
       port: 4310,
-      publicUrl: `http://127.0.0.1:${stack.port}`,
+      desktopUrl: `http://127.0.0.1:${stack.port}`,
       dataDir: "/data",
       staticDir: "/app/apps/web/dist",
       desktopCredentialFile: "/control/desktop-token",
@@ -345,7 +346,6 @@ export class LocalStack {
             ...images,
             DOMOS_CONFIG: "/control/service.json",
             ...(maintenance ? { DOMOS_MAINTENANCE: "1" } : {}),
-            DOMOS_PUBLIC_URL: `http://127.0.0.1:${stack.port}`,
           },
           volumes: [
             control,
@@ -402,12 +402,16 @@ export class LocalStack {
     );
   }
 
-  async pair() {
+  async pair(identity: DesktopIdentity) {
     if (!this.origin || !this.active) throw new Error("请先启动 Domos。");
     const token = await this.secret("desktop-token");
     const response = await fetch(new URL("/hosting/desktop", this.origin), {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(identity),
       signal: AbortSignal.timeout(10_000),
       redirect: "error",
     });

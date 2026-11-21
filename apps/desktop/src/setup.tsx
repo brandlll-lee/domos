@@ -240,7 +240,7 @@ function Welcome() {
                 maxLength={80}
               />
               <TextField
-                label="Domos 地址"
+                label="Domos 地址或配对链接"
                 value={url}
                 onValueChange={setUrl}
                 disabled={busy}

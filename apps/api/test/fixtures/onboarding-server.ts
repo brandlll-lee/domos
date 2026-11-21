@@ -58,11 +58,12 @@ let hosted: ReturnType<typeof hostingApp>;
 const server = createServer((request, response) =>
   getRequestListener(hosted.app.fetch)(request, response),
 );
-server.listen(0, "127.0.0.1", () => {
+server.listen(0, "127.0.0.1", async () => {
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("Port required");
   config.port = address.port;
   hosted = hostingApp({
+    computerId: (await runtime.computer.node(BACKGROUND_CONTEXT)).id,
     config,
     sessions,
     models,

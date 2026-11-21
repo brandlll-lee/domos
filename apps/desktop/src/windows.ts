@@ -33,7 +33,7 @@ export async function prepareInstance(
   window: BrowserWindow,
   url: string,
   desktopSession:
-    | (() => Promise<{ token: string; expires: number }>)
+    | ((currentToken?: string) => Promise<{ token: string; expires: number }>)
     | undefined,
   signal: AbortSignal,
   pairing: () => void,
@@ -166,30 +166,22 @@ export async function prepareInstance(
     await Promise.all([
       (async () => {
         if (desktopSession) {
-          const response = await contents.session.fetch(
-            new URL("/hosting/session", origin).href,
-            {
-              credentials: "include",
-              redirect: "error",
-              signal,
-            },
-          );
-          await response.body?.cancel();
-          if (response.status === 401) {
-            const session = await desktopSession();
-            signal.throwIfAborted();
-            await contents.session.cookies.set({
-              url: origin,
-              name: "domos_session",
-              value: session.token,
-              httpOnly: true,
-              secure: origin.startsWith("https:"),
-              sameSite: "strict",
-              path: "/",
-              expirationDate: session.expires / 1000,
-            });
-          } else if (!response.ok)
-            throw new Error("本机授权读取失败。请重试。");
+          const cookies = await contents.session.cookies.get({
+            url: origin,
+            name: "domos_session",
+          });
+          const session = await desktopSession(cookies[0]?.value);
+          signal.throwIfAborted();
+          await contents.session.cookies.set({
+            url: origin,
+            name: "domos_session",
+            value: session.token,
+            httpOnly: true,
+            secure: origin.startsWith("https:"),
+            sameSite: "strict",
+            path: "/",
+            expirationDate: session.expires / 1000,
+          });
         }
         signal.throwIfAborted();
         await contents.loadURL(url);

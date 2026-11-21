@@ -25,7 +25,7 @@ export const sections: Record<
     label: string;
     description: string;
     icon: typeof GearIcon;
-    pages?: Record<string, string>;
+    pages?: Record<string, { label: string; parent?: string }>;
     render: (props: SectionProps) => ReactNode;
   }
 > = {
@@ -47,7 +47,13 @@ export const sections: Record<
     label: "当前电脑",
     description: "",
     icon: DesktopIcon,
-    pages: { devices: "设备访问", environments: "工作环境" },
+    pages: {
+      devices: { label: "设备访问" },
+      environments: { label: "工作环境" },
+      connection: { label: "连接新设备", parent: "devices" },
+      device: { label: "登录详情", parent: "devices" },
+      revocation: { label: "撤销其他登录", parent: "devices" },
+    },
     render: (props: SectionProps) => <ComputerSettings {...props} />,
   },
 };

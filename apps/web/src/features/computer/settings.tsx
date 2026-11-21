@@ -116,11 +116,7 @@ export function ComputerSettings({
       )}
       {admin && deviceId && (
         <div hidden={page === "environments"}>
-          <Devices
-            current={deviceId}
-            open={page === "devices"}
-            onOpen={() => onPageChange("devices")}
-          />
+          <Devices current={deviceId} page={page} onPageChange={onPageChange} />
         </div>
       )}
       {catalog && (

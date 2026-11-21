@@ -7,6 +7,7 @@ import {
   writeConfiguration,
 } from "@domos/hosting/install";
 import {
+  connectionLink,
   type Instance,
   instanceSchema,
   probeInstance,
@@ -97,6 +98,7 @@ function connect(
   instance: Instance,
   progress: (value: InstallProgress) => void = () => {},
   signal = new AbortController().signal,
+  code?: string,
 ) {
   if (busy) return Promise.reject(new Error("请等待当前操作结束。"));
   switching?.abort(new Error("已选择另一台电脑。"));
@@ -113,6 +115,7 @@ function connect(
           controller.signal,
           AbortSignal.timeout(300_000),
         ]),
+        code,
       ),
     );
   transition = pending;
@@ -125,6 +128,7 @@ async function openWorkspace(
   instance: Instance,
   progress: (value: InstallProgress) => void,
   signal: AbortSignal,
+  code?: string,
 ) {
   signal.throwIfAborted();
   if (active && selected === instance.id) {
@@ -135,12 +139,15 @@ async function openWorkspace(
       await host.start(progress, signal);
     return;
   }
-  let session: (() => Promise<{ token: string; expires: number }>) | undefined;
+  let session:
+    | ((currentToken?: string) => Promise<{ token: string; expires: number }>)
+    | undefined;
   let url = instance.url;
   if (instance.mode === "local") {
     const target = instance.runtime === "docker" ? stack : host;
     url = (await target.start(progress, signal)).origin;
-    session = () => target.pair();
+    session = (currentToken) =>
+      target.pair({ installationId: instance.id, currentToken });
   } else await probeInstance(url, signal);
   signal.throwIfAborted();
   if (!current) {
@@ -153,8 +160,14 @@ async function openWorkspace(
     });
   }
   const window = current;
-  const next = await prepareInstance(window, url, session, signal, () =>
-    connection.hide(),
+  const destination = new URL(url);
+  if (code) destination.hash = new URLSearchParams({ pair: code }).toString();
+  const next = await prepareInstance(
+    window,
+    destination.href,
+    session,
+    signal,
+    () => connection.hide(),
   );
   try {
     const saved = { ...instance, url };
@@ -223,18 +236,22 @@ async function local(
       runtime,
       url: "http://127.0.0.1",
     };
+    const next = [...instances, instance];
+    await save(next);
+    instances = next;
   }
   await connect(instance, progress, signal);
 }
 
 async function remote(url: string, name: string, signal: AbortSignal) {
-  const { origin } = await probeInstance(url, signal);
+  const link = connectionLink(url);
+  const { origin } = await probeInstance(link.origin, signal);
   signal.throwIfAborted();
   let instance = instances.find((item) => item.url === origin);
   if (!instance) {
     instance = { id: crypto.randomUUID(), name, mode: "existing", url: origin };
   }
-  await connect(instance, undefined, signal);
+  await connect(instance, undefined, signal, link.code);
 }
 
 async function main() {

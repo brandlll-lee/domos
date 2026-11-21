@@ -6,7 +6,13 @@ import { Tabs } from "@domos/ui/tabs";
 import { compactChat } from "@domos/ui/tokens";
 import { ArrowLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowLeft";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
-import { type RefObject, useEffect, useRef, useState } from "react";
+import {
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   type SettingsAccess,
   type SettingsSection,
@@ -32,7 +38,8 @@ export function SettingsPage({
   const [visited, setVisited] = useState([section]);
   const [query, setQuery] = useState("");
   const [detail, setDetail] = useState<string>();
-  const detailTrigger = useRef<HTMLElement | null>(null);
+  const detailTriggers = useRef(new Map<string, HTMLElement>());
+  const navigationFocus = useRef<HTMLElement | null>(null);
   const [compact, setCompact] = useState(
     () => matchMedia(`(max-width: ${compactChat.maxWidth})`).matches,
   );
@@ -40,7 +47,9 @@ export function SettingsPage({
   const needle = query.trim().toLocaleLowerCase();
   const matches = (Object.keys(sections) as SettingsSection[]).filter((id) => {
     const item = sections[id];
-    return `${item.label} ${item.description} ${Object.values(item.pages ?? {}).join(" ")}`
+    return `${item.label} ${item.description} ${Object.values(item.pages ?? {})
+      .map((page) => page.label)
+      .join(" ")}`
       .toLocaleLowerCase()
       .includes(needle);
   });
@@ -69,18 +78,31 @@ export function SettingsPage({
   }
 
   function openDetail(next?: string) {
-    if (next) detailTrigger.current = document.activeElement as HTMLElement;
+    const back = detail && sections[section].pages?.[detail]?.parent === next;
+    if (next && !back)
+      detailTriggers.current.set(next, document.activeElement as HTMLElement);
+    navigationFocus.current =
+      (back || !next) && detail
+        ? (detailTriggers.current.get(detail) ?? null)
+        : null;
     setDetail(next);
     scroll.current?.scrollTo({ top: 0 });
-    requestAnimationFrame(() => {
-      if (!next && detailTrigger.current?.isConnected)
-        detailTrigger.current.focus();
-      else
-        contentRef.current
-          ?.querySelector<HTMLElement>(".settings-main")
-          ?.focus();
-    });
   }
+  useLayoutEffect(() => {
+    if (!detail && !navigationFocus.current) return;
+    const saved = navigationFocus.current;
+    const trigger = saved?.isConnected
+      ? saved
+      : saved?.id
+        ? contentRef.current?.querySelector<HTMLElement>(
+            `#${CSS.escape(saved.id)}`,
+          )
+        : null;
+    if (trigger?.isConnected && trigger.checkVisibility()) trigger.focus();
+    else
+      contentRef.current?.querySelector<HTMLElement>(".settings-main")?.focus();
+    navigationFocus.current = null;
+  }, [detail, contentRef]);
 
   return (
     <Tabs.Root
@@ -102,7 +124,7 @@ export function SettingsPage({
         event.preventDefault();
         event.stopPropagation();
         if (query) setQuery("");
-        else if (detail) openDetail();
+        else if (detail) openDetail(sections[section].pages?.[detail]?.parent);
         else onBack();
       }}
     >
@@ -172,8 +194,10 @@ export function SettingsPage({
               <Button
                 variant="ghost"
                 size="icon-small"
-                aria-label={`返回${sections[section].label}`}
-                onClick={() => openDetail()}
+                aria-label={`返回${sections[section].pages?.[sections[section].pages?.[detail]?.parent ?? ""]?.label ?? sections[section].label}`}
+                onClick={() =>
+                  openDetail(sections[section].pages?.[detail]?.parent)
+                }
               >
                 <ArrowLeftIcon />
               </Button>
@@ -181,7 +205,7 @@ export function SettingsPage({
             <div>
               <h2>
                 {detail
-                  ? sections[section].pages?.[detail]
+                  ? sections[section].pages?.[detail]?.label
                   : sections[section].label}
               </h2>
               {!detail && sections[section].description && (

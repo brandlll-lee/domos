@@ -9,7 +9,7 @@ export function SettingRow({
   title: string;
   description?: ReactNode;
   notice?: ReactNode;
-  children: ReactNode;
+  children?: ReactNode;
 }) {
   const id = useId();
   return (
@@ -20,7 +20,7 @@ export function SettingRow({
           <div className="setting-description">{description}</div>
         )}
       </div>
-      <div className="setting-control">{children}</div>
+      {children != null && <div className="setting-control">{children}</div>}
       {notice && <div className="setting-notice">{notice}</div>}
     </fieldset>
   );

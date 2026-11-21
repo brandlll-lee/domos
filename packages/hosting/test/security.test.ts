@@ -1,9 +1,11 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { expect, onTestFinished, test, vi } from "vitest";
 import { persistentCredentials } from "../src/credentials.ts";
-import { serverOrigin } from "../src/instance.ts";
+import { desktopSession } from "../src/desktop.ts";
+import { connectionLink, serverOrigin } from "../src/instance.ts";
 import { Sessions, sessionPolicy } from "../src/sessions.ts";
 import { HostingStore } from "../src/store.ts";
 
@@ -16,6 +18,117 @@ async function fixture() {
   });
   return { directory, store };
 }
+
+test("desktop identity adopts its current grant, rotates in place, and isolates installations", async () => {
+  const { store, directory } = await fixture();
+  let now = Date.now();
+  const sessions = new Sessions(store, () => now);
+  const owner = sessions.exchange(sessions.pairing("admin").code, "Domos 桌面");
+  if (!owner) throw new Error("Owner required");
+  const identity = {
+    installationId: crypto.randomUUID(),
+    currentToken: owner.token,
+  };
+  const adopted = await desktopSession(sessions, directory, identity);
+  expect(sessions.list()).toHaveLength(1);
+  expect(sessions.authenticate(adopted.token)?.id).toBe(owner.device.id);
+  expect(
+    await desktopSession(sessions, directory, {
+      ...identity,
+      currentToken: adopted.token,
+    }),
+  ).toEqual(adopted);
+  const adoptedDevice = sessions.authenticate(adopted.token);
+  if (!adoptedDevice) throw new Error("Desktop grant required");
+  const tracked = sessions.track(adoptedDevice);
+  now += 1000;
+  const rotated = await desktopSession(sessions, directory, {
+    installationId: identity.installationId,
+  });
+  expect(rotated.token).not.toBe(adopted.token);
+  expect(sessions.authenticate(adopted.token)).toBeUndefined();
+  expect(tracked.signal.aborted).toBe(true);
+  tracked.release();
+  expect(sessions.authenticate(rotated.token)).toMatchObject({
+    id: owner.device.id,
+    created: owner.device.created,
+    installationId: identity.installationId,
+  });
+  const restarted = new Sessions(store, () => now);
+  await desktopSession(restarted, directory, {
+    installationId: identity.installationId,
+    currentToken: rotated.token,
+  });
+  expect(restarted.list()).toHaveLength(1);
+  await desktopSession(restarted, directory, {
+    installationId: crypto.randomUUID(),
+    currentToken: rotated.token,
+  });
+  expect(restarted.list()).toHaveLength(2);
+  now += sessionPolicy.sessionMs;
+  const renewed = await desktopSession(restarted, directory, {
+    installationId: identity.installationId,
+  });
+  expect(restarted.authenticate(renewed.token)?.id).toBe(owner.device.id);
+  expect(
+    Number(store.db.prepare("SELECT COUNT(*) n FROM devices").get()?.n),
+  ).toBe(2);
+});
+
+test("old grants survive schema migration and cleanup preserves current and later grants", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "domos-device-upgrade-"));
+  const old = new DatabaseSync(join(directory, "hosting.sqlite"));
+  old.exec(
+    "CREATE TABLE devices(id TEXT PRIMARY KEY,hash TEXT UNIQUE,label TEXT,scope TEXT,created INTEGER,expires INTEGER)",
+  );
+  old
+    .prepare("INSERT INTO devices VALUES(?,?,?,?,?,?)")
+    .run("old", "saved-hash", "Domos 桌面", "admin", 1, Date.now() + 86400_000);
+  old.close();
+  const store = await HostingStore.open(directory);
+  onTestFinished(async () => {
+    await store.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const sessions = new Sessions(store);
+  expect(sessions.list()[0]).toMatchObject({
+    id: "old",
+    installationId: null,
+    lastSeen: null,
+  });
+  const owner = await desktopSession(sessions, directory, {
+    installationId: crypto.randomUUID(),
+  });
+  const current = sessions.authenticate(owner.token);
+  if (!current) throw new Error("Current grant required");
+  const preview = sessions.list().filter((device) => device.id !== current.id);
+  const later = sessions.exchange(sessions.pairing("admin").code, "Domos 桌面");
+  if (!later) throw new Error("Later grant required");
+  const removed = await sessions.revokeOthers(current.id, [
+    ...preview.map((device) => device.id),
+    current.id,
+  ]);
+  expect(removed).toEqual(["old"]);
+  expect(sessions.authenticate(owner.token)?.id).toBe(current.id);
+  expect(sessions.authenticate(later.token)?.id).toBe(later.device.id);
+  expect(sessions.list()).toHaveLength(2);
+});
+
+test("pairing links retain the secret in the fragment and reject other URL credentials", () => {
+  expect(
+    connectionLink("https://domos.test/#pair=12345678901234567890"),
+  ).toEqual({ origin: "https://domos.test", code: "12345678901234567890" });
+  expect(connectionLink("127.0.0.1:4310").origin).toBe(
+    "https://127.0.0.1:4310",
+  );
+  for (const value of [
+    "https://user:secret@domos.test/#pair=12345678901234567890",
+    "https://domos.test/?pair=secret",
+    "https://domos.test/#pair=short",
+    "http://domos.test/#pair=12345678901234567890",
+  ])
+    expect(() => connectionLink(value)).toThrow();
+});
 
 test("pairing is single use, scoped, bounded, and revocation closes active requests", async () => {
   const { store, directory } = await fixture();

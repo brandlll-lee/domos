@@ -52,7 +52,7 @@ test.runIf(process.env.DOMOS_CONTAINER_TESTS === "1")(
         () => {},
         new AbortController().signal,
       );
-      const session = await stack.pair();
+      const session = await stack.pair({ installationId: crypto.randomUUID() });
       return createORPCClient<RouterClient<AppRouter>>(
         new RPCLink({
           url: `${origin}/rpc`,

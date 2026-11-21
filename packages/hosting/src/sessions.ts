@@ -8,6 +8,7 @@ export const sessionPolicy = {
   sessionMs: 30 * 24 * 60 * 60_000,
   attempts: 10,
   attemptWindowMs: 60_000,
+  activityMs: 60_000,
 } as const;
 export type Scope = "admin" | "client";
 export type Device = {
@@ -16,6 +17,8 @@ export type Device = {
   scope: Scope;
   created: number;
   expires: number;
+  installationId: string | null;
+  lastSeen: number | null;
 };
 export const digest = (value: string) =>
   createHash("sha256").update(value).digest("hex");
@@ -35,7 +38,7 @@ export class Sessions {
   list() {
     return this.store.db
       .prepare(
-        "SELECT id,label,scope,created,expires FROM devices WHERE expires>? ORDER BY created",
+        "SELECT id,label,scope,created,expires,installation_id installationId,last_seen lastSeen FROM devices WHERE expires>? ORDER BY created",
       )
       .all(this.now()) as Device[];
   }
@@ -53,7 +56,7 @@ export class Sessions {
     );
     const items = this.store.db
       .prepare(
-        "SELECT id,label,scope,created,expires FROM devices WHERE expires>? ORDER BY (id=?) DESC,created DESC,id LIMIT 10 OFFSET ?",
+        "SELECT id,label,scope,created,expires,installation_id installationId,last_seen lastSeen FROM devices WHERE expires>? ORDER BY (id=?) DESC,created DESC,id LIMIT 10 OFFSET ?",
       )
       .all(now, current, (page - 1) * 10) as Device[];
     return { items, total, page, pageSize: 10 };
@@ -114,19 +117,97 @@ export class Sessions {
       scope: row.scope as Scope,
       created: now,
       expires: now + sessionPolicy.sessionMs,
+      installationId: null,
+      lastSeen: now,
     };
     this.store.db
-      .prepare("INSERT INTO devices VALUES (?,?,?,?,?,?)")
-      .run(device.id, digest(token), label, device.scope, now, device.expires);
+      .prepare(
+        "INSERT INTO devices(id,hash,label,scope,created,expires,last_seen) VALUES (?,?,?,?,?,?,?)",
+      )
+      .run(
+        device.id,
+        digest(token),
+        label,
+        device.scope,
+        now,
+        device.expires,
+        now,
+      );
     return { token, device };
   }
 
   authenticate(token: string) {
-    return this.store.db
+    const device = this.store.db
       .prepare(
-        "SELECT id,label,scope,created,expires FROM devices WHERE hash=? AND expires>?",
+        "SELECT id,label,scope,created,expires,installation_id installationId,last_seen lastSeen FROM devices WHERE hash=? AND expires>?",
       )
       .get(digest(token), this.now()) as Device | undefined;
+    if (
+      device &&
+      (device.lastSeen === null ||
+        this.now() - device.lastSeen >= sessionPolicy.activityMs)
+    ) {
+      device.lastSeen = this.now();
+      this.store.db
+        .prepare("UPDATE devices SET last_seen=? WHERE id=?")
+        .run(device.lastSeen, device.id);
+    }
+    return device;
+  }
+
+  desktop(installationId: string, currentToken?: string) {
+    return this.store.transact(async () => {
+      const now = this.now();
+      const current = currentToken
+        ? this.authenticate(currentToken)
+        : undefined;
+      const bound = this.store.db
+        .prepare("SELECT id FROM devices WHERE installation_id=?")
+        .get(installationId);
+      const adopted =
+        current?.scope === "admin" && !current.installationId
+          ? current
+          : undefined;
+      const id = String(bound?.id ?? adopted?.id ?? randomUUID());
+      if (
+        currentToken &&
+        current?.id === id &&
+        current.installationId === installationId
+      )
+        return { token: currentToken, expires: current.expires };
+      const token = randomBytes(32).toString("base64url");
+      const expires = now + sessionPolicy.sessionMs;
+      this.store.db
+        .prepare(`INSERT INTO devices(id,hash,label,scope,created,expires,installation_id,last_seen)
+        VALUES (?,?,?,'admin',?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+        hash=excluded.hash,expires=excluded.expires,installation_id=excluded.installation_id,last_seen=excluded.last_seen`)
+        .run(
+          id,
+          digest(token),
+          "Domos 桌面",
+          now,
+          expires,
+          installationId,
+          now,
+        );
+      for (const controller of this.active.get(id) ?? []) controller.abort();
+      this.active.delete(id);
+      return { token, expires };
+    });
+  }
+
+  revokeOthers(current: string, ids: string[]) {
+    return this.store.transact(async () => {
+      if (
+        !this.list().some(
+          (device) => device.id === current && device.scope === "admin",
+        )
+      )
+        throw new Error("需要当前管理员授权。");
+      const removed = [...new Set(ids)].filter((id) => id !== current);
+      for (const id of removed) this.logout(id);
+      return removed;
+    });
   }
 
   revoke(id: string) {
@@ -167,7 +248,8 @@ export class Sessions {
       release: () => {
         clearTimeout(timer);
         entries.delete(controller);
-        if (!entries.size) this.active.delete(device.id);
+        if (!entries.size && this.active.get(device.id) === entries)
+          this.active.delete(device.id);
       },
     };
   }

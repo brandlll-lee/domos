@@ -5,7 +5,7 @@ import { parseConfig } from "@domos/agent/config";
 import { Sessions } from "@domos/hosting/sessions";
 import { HostingStore } from "@domos/hosting/store";
 import { createModels } from "@earendil-works/pi-ai/models";
-import { expect, onTestFinished, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import { hostingApp } from "../src/hosting/routes.ts";
 
 test("managed desktop pairing requires its private installation credential", async () => {
@@ -17,6 +17,7 @@ test("managed desktop pairing requires its private installation credential", asy
   const sessions = new Sessions(store);
   let held = false;
   const hosted = hostingApp({
+    computerId: "test-computer",
     config: parseConfig(
       { dataDir: directory, desktopCredentialFile: credentialFile },
       join(directory, "config.json"),
@@ -34,10 +35,17 @@ test("managed desktop pairing requires its private installation credential", asy
     await store.close();
     await rm(directory, { recursive: true, force: true });
   });
-  const request = (authorization: string) =>
+  const request = (authorization: string, currentToken?: string) =>
     hosted.app.request("http://127.0.0.1:4310/hosting/desktop", {
       method: "POST",
-      headers: { Authorization: authorization },
+      headers: {
+        Authorization: authorization,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        installationId: "278e1234-a89b-4b40-8012-299d34382aa2",
+        currentToken,
+      }),
     });
   expect((await request("Bearer wrong")).status).toBe(401);
   const client = sessions.exchange(sessions.pairing("client").code, "Phone");
@@ -46,6 +54,24 @@ test("managed desktop pairing requires its private installation credential", asy
   expect(response.status).toBe(200);
   const session = await response.json();
   expect(sessions.authenticate(session.token)?.scope).toBe("admin");
+  expect((await request(`Bearer ${credential}`, session.token)).status).toBe(
+    200,
+  );
+  expect(
+    sessions.list().filter((device) => device.scope === "admin"),
+  ).toHaveLength(1);
+  expect(
+    (
+      await hosted.app.request("http://127.0.0.1:4310/hosting/desktop", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${credential}`,
+          "Content-Type": "application/json",
+        },
+        body: "{}",
+      })
+    ).status,
+  ).toBe(400);
   expect(
     (
       await hosted.app.request("http://127.0.0.1:4310/hosting/desktop", {
@@ -86,12 +112,148 @@ test("managed desktop pairing requires its private installation credential", asy
   ).toBe(200);
 });
 
+test("connection checks, origin-specific cookies and explicit revocation share server authorization", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "domos-pairing-boundary-"));
+  const store = await HostingStore.open(directory);
+  const sessions = new Sessions(store);
+  const config = parseConfig(
+    { publicUrl: "https://domos.test", dataDir: directory },
+    join(directory, "config.json"),
+  );
+  const hosted = hostingApp({
+    config,
+    sessions,
+    computerId: "computer-a",
+    models: createModels(),
+    forward: async () => Response.json({ ok: true }),
+  });
+  onTestFinished(async () => {
+    vi.restoreAllMocks();
+    hosted.close();
+    await store.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const owner = sessions.exchange(sessions.pairing("admin").code, "Owner");
+  if (!owner) throw new Error("Owner required");
+  const headers = {
+    Authorization: `Bearer ${owner.token}`,
+    Origin: "https://domos.test",
+    "Content-Type": "application/json",
+  };
+  const request = (path: string, init: RequestInit = {}) =>
+    hosted.app.request(`https://domos.test/hosting/${path}`, {
+      ...init,
+      headers: { ...headers, ...init.headers },
+    });
+  const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    Response.json({
+      product: "domos",
+      version: "1",
+      computerId: "computer-b",
+    }),
+  );
+  expect((await (await request("connection")).json()).state).toBe("error");
+  expect(
+    (
+      await request("pairing", {
+        method: "POST",
+        body: JSON.stringify({ scope: "client" }),
+      })
+    ).status,
+  ).toBe(409);
+  fetcher.mockRejectedValueOnce(new Error("certificate has expired"));
+  expect((await (await request("connection")).json()).error).toContain(
+    "certificate has expired",
+  );
+  fetcher.mockImplementation(async () =>
+    Response.json({ product: "domos", version: "1", computerId: "computer-a" }),
+  );
+  const pair = await (
+    await request("pairing", {
+      method: "POST",
+      body: JSON.stringify({ scope: "client" }),
+    })
+  ).json();
+  expect(new URL(pair.url).hash).toBe(`#pair=${pair.code}`);
+  expect(new URL(pair.url).search).toBe("");
+  const phone = sessions.exchange(pair.code, "Phone");
+  if (!phone) throw new Error("Phone required");
+  const tracked = sessions.track(phone.device);
+  const preview = await (await request("devices/revocation")).json();
+  const later = sessions.exchange(sessions.pairing("client").code, "Later");
+  if (!later) throw new Error("Later grant required");
+  const removed = await request("devices/revocation", {
+    method: "POST",
+    body: JSON.stringify({
+      ids: [
+        ...preview.items.map((item: { id: string }) => item.id),
+        owner.device.id,
+      ],
+    }),
+  });
+  expect(removed.status).toBe(200);
+  expect(tracked.signal.aborted).toBe(true);
+  tracked.release();
+  expect(sessions.authenticate(phone.token)).toBeUndefined();
+  expect(sessions.authenticate(later.token)).toBeDefined();
+  expect(sessions.authenticate(owner.token)).toBeDefined();
+  expect(
+    (
+      await request("devices/revocation", {
+        headers: { Authorization: `Bearer ${later.token}` },
+      })
+    ).status,
+  ).toBe(403);
+  for (const origin of ["http://127.0.0.1:4310", "https://domos.test"]) {
+    const code = sessions.pairing("client").code;
+    const response = await hosted.app.request(`${origin}/hosting/exchange`, {
+      method: "POST",
+      headers: { Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ code, label: "Browser" }),
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")?.includes("Secure")).toBe(
+      origin.startsWith("https:"),
+    );
+  }
+  expect(
+    (
+      await hosted.app.request("http://127.0.0.1:4310/hosting/session", {
+        headers: { Origin: "https://domos.test" },
+      })
+    ).status,
+  ).toBe(403);
+  expect(
+    (
+      await request("exchange", {
+        method: "POST",
+        body: JSON.stringify({
+          code: sessions.pairing("client").code,
+          label: "Forged",
+          installationId: crypto.randomUUID(),
+        }),
+      })
+    ).status,
+  ).toBe(400);
+  config.publicUrl = undefined;
+  expect((await (await request("connection")).json()).state).toBe("local");
+  expect(
+    (
+      await request("pairing", {
+        method: "POST",
+        body: JSON.stringify({ scope: "client" }),
+      })
+    ).status,
+  ).toBe(409);
+});
+
 test("hosting authenticates RPC, files, admin operations, origins and pairing", async () => {
   const directory = await mkdtemp(join(tmpdir(), "domos-auth-"));
   const store = await HostingStore.open(directory);
   const sessions = new Sessions(store);
   let streamClosed = false;
   const hosted = hostingApp({
+    computerId: "test-computer",
     config: parseConfig(
       { publicUrl: "https://domos.test", dataDir: directory },
       join(directory, "config.json"),
@@ -257,6 +419,7 @@ test("HTML entry points use fresh resources after an update", async () => {
   const directory = await mkdtemp(join(tmpdir(), "domos-web-entry-"));
   const store = await HostingStore.open(directory);
   const hosted = hostingApp({
+    computerId: "test-computer",
     config: parseConfig(
       { dataDir: directory, staticDir: directory },
       join(directory, "config.json"),

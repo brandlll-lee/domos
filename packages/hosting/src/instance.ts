@@ -11,6 +11,17 @@ export const instanceSchema = z
   .strict();
 export type Instance = z.infer<typeof instanceSchema>;
 
+export function connectionLink(input: string) {
+  const url = new URL(input.includes("://") ? input : `https://${input}`);
+  const code = url.hash
+    ? new URLSearchParams(url.hash.slice(1)).get("pair")
+    : null;
+  if (url.hash && (!code || !/^[\w-]{20}$/.test(code)))
+    throw new Error("配对链接无效。");
+  url.hash = "";
+  return { origin: serverOrigin(url.href), code: code ?? undefined };
+}
+
 export function serverOrigin(input: string) {
   const url = new URL(input.includes("://") ? input : `https://${input}`);
   const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
@@ -36,7 +47,11 @@ export async function probeInstance(input: string, signal?: AbortSignal) {
   });
   if (!response.ok) throw new Error("无法连接 Domos。");
   const info = z
-    .object({ product: z.literal("domos"), version: z.string() })
+    .object({
+      product: z.literal("domos"),
+      version: z.string(),
+      computerId: z.string().min(1).optional(),
+    })
     .parse(await response.json());
   return { origin, ...info };
 }

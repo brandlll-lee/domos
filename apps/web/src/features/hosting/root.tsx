@@ -13,14 +13,22 @@ import "./style.css";
 
 type Session = { device: { id: string; scope: string } };
 
-export function HostingRoot({ children }: { children: ReactNode }) {
+export function HostingRoot({
+  children,
+  pairingCode,
+  pairingError,
+}: {
+  children: ReactNode;
+  pairingCode?: string;
+  pairingError?: string;
+}) {
   const [state, setState] = useState<
     "loading" | "pair" | "ready" | "standalone" | "suspended"
   >("loading");
   const [computerId, setComputerId] = useState("");
   const [session, setSession] = useState<Session>();
-  const [error, setError] = useState("");
-  const [code, setCode] = useState("");
+  const [error, setError] = useState(pairingError ?? "");
+  const [code, setCode] = useState(pairingCode ?? "");
   const [label, setLabel] = useState("我的设备");
   const [busy, setBusy] = useState(false);
   const refresh = useCallback(async () => {
@@ -145,7 +153,7 @@ export function HostingRoot({ children }: { children: ReactNode }) {
                 className="startup-branch"
                 pending={busy}
               >
-                {busy ? "正在连接…" : "连接"}
+                {busy ? "正在连接…" : "确认连接"}
                 <span className="startup-arrow" aria-hidden="true">
                   →
                 </span>

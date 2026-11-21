@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { parseConfig } from "@domos/agent/config";
+import type { DesktopIdentity } from "@domos/hosting/desktop";
 import {
   type InstallProgress,
   prepareLocalInstallation,
@@ -103,7 +104,7 @@ export class LocalHost {
       this.release,
     );
     const config = parseConfig(prepared.config, prepared.configFile);
-    if (config.host !== "127.0.0.1" || config.publicUrl)
+    if (config.host !== "127.0.0.1")
       throw new Error("桌面本机后台必须仅监听回环地址。");
     if (config.staticDir !== this.release.staticDir || !config.workComputer) {
       const { configFile: _configFile, ...value } = config;
@@ -113,7 +114,7 @@ export class LocalHost {
         workComputer: config.workComputer ?? workComputer(this.release),
       });
     }
-    const origin = config.publicUrl ?? `http://${config.host}:${config.port}`;
+    const origin = `http://${config.host}:${config.port}`;
     if (!this.running) {
       await this.stopChildren();
       signal.throwIfAborted();
@@ -235,7 +236,7 @@ export class LocalHost {
     }
   }
 
-  pair() {
+  pair(identity: DesktopIdentity) {
     const server = this.server;
     if (!server) throw new Error("本机后台未启动。");
     return new Promise<{ token: string; expires: number }>(
@@ -266,7 +267,7 @@ export class LocalHost {
         server.on("message", receive);
         server.once("exit", failed);
         try {
-          server.postMessage("pair-desktop");
+          server.postMessage({ type: "pair-desktop", ...identity });
         } catch {
           failed();
         }

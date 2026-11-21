@@ -1,11 +1,23 @@
+import { z } from "zod";
 import type { Sessions } from "./sessions.ts";
 
-export async function desktopSession(sessions: Sessions, directory: string) {
-  const result = sessions.exchange(
-    sessions.pairing("admin").code,
-    "Domos 桌面",
+export const desktopIdentity = z
+  .object({
+    installationId: z.uuid(),
+    currentToken: z.string().min(1).max(200).optional(),
+  })
+  .strict();
+export type DesktopIdentity = z.infer<typeof desktopIdentity>;
+
+export async function desktopSession(
+  sessions: Sessions,
+  directory: string,
+  identity: DesktopIdentity,
+) {
+  const result = await sessions.desktop(
+    identity.installationId,
+    identity.currentToken,
   );
-  if (!result) throw new Error("桌面连接未完成。");
   await sessions.removeBootstrap(directory);
-  return { token: result.token, expires: result.device.expires };
+  return result;
 }

@@ -2,7 +2,9 @@ import type { Device, Sessions } from "@domos/hosting/sessions";
 import type { Context, MiddlewareHandler } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 
-export type HostingEnv = { Variables: { device: Device } };
+export type HostingEnv = {
+  Variables: { device: Device; accessOrigin: string };
+};
 const cookie = "domos_session";
 
 export function sessionCookie(
@@ -20,12 +22,15 @@ export function sessionCookie(
   });
 }
 
-export function originGuard(publicUrl: string): MiddlewareHandler {
-  const origin = new URL(publicUrl).origin;
-  const expectedHost = new URL(origin).host;
+export function originGuard(
+  addresses: string[],
+): MiddlewareHandler<HostingEnv> {
+  const origins = addresses.map((address) => new URL(address));
   return async (c, next) => {
-    if (c.req.header("host") && c.req.header("host") !== expectedHost)
-      return c.json({ error: "服务器地址不匹配。" }, 403);
+    const host = c.req.header("host") ?? new URL(c.req.url).host;
+    const address = origins.find((address) => address.host === host);
+    if (!address) return c.json({ error: "服务器地址不匹配。" }, 403);
+    const origin = address.origin;
     const supplied = c.req.header("origin");
     if (supplied && supplied !== origin)
       return c.json({ error: "请求来源不匹配。" }, 403);
@@ -37,6 +42,7 @@ export function originGuard(publicUrl: string): MiddlewareHandler {
       !c.req.header("authorization")
     )
       return c.json({ error: "需要同源请求或设备凭据。" }, 403);
+    c.set("accessOrigin", origin);
     await next();
   };
 }

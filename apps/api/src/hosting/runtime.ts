@@ -2,7 +2,7 @@ import { openChat } from "@domos/agent/chat";
 import { loadConfig } from "@domos/agent/config";
 import { acquireDataLease } from "@domos/agent/lease";
 import { persistentCredentials } from "@domos/hosting/credentials";
-import { desktopSession } from "@domos/hosting/desktop";
+import { type DesktopIdentity, desktopSession } from "@domos/hosting/desktop";
 import { Sessions } from "@domos/hosting/sessions";
 import { HostingStore } from "@domos/hosting/store";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -48,13 +48,15 @@ export async function openHostedRuntime() {
       sessions,
       models,
       maintenance: (held) => engines.maintenance(held, BACKGROUND_CONTEXT),
+      computerId: (await runtime.computer.node(BACKGROUND_CONTEXT)).id,
       forward: async (request) => app.fetch(request),
     });
     let closed = false;
     return {
       config,
       app: hosted.app,
-      pairDesktop: () => desktopSession(sessions, config.dataDir),
+      pairDesktop: (identity: DesktopIdentity) =>
+        desktopSession(sessions, config.dataDir, identity),
       async close() {
         if (closed) return;
         closed = true;

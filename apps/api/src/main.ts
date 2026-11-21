@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { desktopIdentity } from "@domos/hosting/desktop";
 import { getRequestListener } from "@hono/node-server";
 import { openHostedRuntime } from "./hosting/runtime.ts";
 
@@ -55,13 +56,26 @@ async function main() {
   ).parentPort;
   parent?.on("message", (event) => {
     if (event.data === "shutdown") shutdown();
-    if (event.data === "pair-desktop" && config.host === "127.0.0.1")
+    if (
+      typeof event.data === "object" &&
+      event.data &&
+      "type" in event.data &&
+      event.data.type === "pair-desktop" &&
+      config.host === "127.0.0.1"
+    ) {
+      const { type: _, ...input } = event.data;
+      const identity = desktopIdentity.safeParse(input);
+      if (!identity.success) {
+        parent.postMessage({ type: "desktop-session-error" });
+        return;
+      }
       void runtime
-        .pairDesktop()
+        .pairDesktop(identity.data)
         .then((session) =>
           parent.postMessage({ type: "desktop-session", ...session }),
         )
         .catch(() => parent.postMessage({ type: "desktop-session-error" }));
+    }
   });
   server.once("error", (error) => {
     report(error);

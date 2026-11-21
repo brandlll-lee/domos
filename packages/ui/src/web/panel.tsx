@@ -85,22 +85,33 @@ export function PanelGroup({
 }
 
 export function PanelRow({
+  id,
   icon,
   title,
   value,
+  description,
   onClick,
 }: {
+  id?: string;
   icon: ReactNode;
   title: string;
   value?: string;
+  description?: string;
   onClick: () => void;
 }) {
   return (
-    <button type="button" className="panel-row" onClick={onClick}>
+    <button id={id} type="button" className="panel-row" onClick={onClick}>
       <span className="panel-row-icon" aria-hidden="true">
         {icon}
       </span>
-      <span className="panel-row-label">{title}</span>
+      <span className="panel-row-content">
+        <span className="panel-row-label" title={title}>
+          {title}
+        </span>
+        {description && (
+          <span className="panel-row-description">{description}</span>
+        )}
+      </span>
       <span className="panel-row-value" title={value}>
         {value}
       </span>

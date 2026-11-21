@@ -77,6 +77,21 @@ const schema = z
       }, "远程访问需要 HTTPS，并使用独立域名源。")
       .optional(),
     host: z.string().min(1).default("127.0.0.1"),
+    desktopUrl: z
+      .url()
+      .refine((value) => {
+        const url = new URL(value);
+        return (
+          url.protocol === "http:" &&
+          url.hostname === "127.0.0.1" &&
+          !url.username &&
+          !url.password &&
+          !url.hash &&
+          !url.search &&
+          url.pathname === "/"
+        );
+      }, "桌面入口必须使用本机回环地址。")
+      .optional(),
     port: z.coerce.number().int().min(1).max(65535).default(4310),
     dataDir: z.string().min(1).default("data"),
     staticDir: z.string().min(1).optional(),

@@ -328,7 +328,18 @@ test("native setup starts and resumes with Docker unavailable", async ({
 
     await desktop.close();
     desktop = await playwright._electron.launch({ executablePath, args, env });
-    const resumed = await workspacePage(desktop, origin);
+    let resumed = await workspacePage(desktop, origin);
+    expect(
+      await resumed.evaluate(async () => {
+        const result = await (await fetch("/hosting/devices")).json();
+        return { total: result.total, id: result.items[0].id };
+      }),
+    ).toEqual(firstGrant);
+
+    await desktop.context().clearCookies();
+    await desktop.close();
+    desktop = await playwright._electron.launch({ executablePath, args, env });
+    resumed = await workspacePage(desktop, origin);
     expect(
       await resumed.evaluate(async () => {
         const result = await (await fetch("/hosting/devices")).json();
@@ -602,13 +613,15 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
       "data-travelling",
       "",
     );
-    await setup.getByLabel("Domos 地址").fill(`http://127.0.0.1:${ready.port}`);
+    await setup
+      .getByLabel("Domos 地址或配对链接")
+      .fill(`http://127.0.0.1:${ready.port}/#pair=${ready.pairing}`);
     await setup.getByRole("button", { name: "返回", exact: true }).click();
     await setup
       .getByRole("button", { name: "连接另一台电脑", exact: true })
       .click();
-    await expect(setup.getByLabel("Domos 地址")).toHaveValue(
-      `http://127.0.0.1:${ready.port}`,
+    await expect(setup.getByLabel("Domos 地址或配对链接")).toHaveValue(
+      `http://127.0.0.1:${ready.port}/#pair=${ready.pairing}`,
     );
 
     await setup.getByRole("button", { name: "连接", exact: true }).click();
@@ -616,8 +629,11 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     await expect(
       page.getByRole("heading", { name: "连接这个 Domos" }),
     ).toBeVisible();
-    await page.getByLabel("配对码", { exact: true }).fill(ready.pairing);
-    await page.getByRole("button", { name: "连接", exact: true }).click();
+    await expect(page.getByLabel("配对码", { exact: true })).toHaveValue(
+      ready.pairing,
+    );
+    expect(new URL(page.url()).hash).toBe("");
+    await page.getByRole("button", { name: "确认连接", exact: true }).click();
     await expect(page.getByRole("button", { name: "Bot详情" })).toBeVisible();
     await expect(page.locator(".app-titlebar, .app-rail")).toHaveCount(0);
     await expect(page.locator("#bot-details")).toBeVisible();
@@ -805,6 +821,26 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
       await expect(
         page.locator('.workspace-panel[data-side="sidebar"]'),
       ).toHaveCSS("background-color", `rgb(${rgb?.join(", ")})`);
+      await settings
+        .getByRole("tab", { name: "当前电脑", exact: true })
+        .click();
+      await settings.getByRole("button", { name: /^设备访问/ }).click();
+      await settings
+        .getByRole("button", { name: "连接新设备", exact: true })
+        .click();
+      await expect(
+        settings.getByText("仅本机可用", { exact: true }),
+      ).toBeVisible();
+      await page.screenshot({
+        path: testInfo.outputPath(`device-connection-${label}.png`),
+      });
+      await settings
+        .getByRole("button", { name: "返回设备访问", exact: true })
+        .click();
+      await settings
+        .getByRole("button", { name: "返回当前电脑", exact: true })
+        .click();
+      await settings.getByRole("tab", { name: "通用", exact: true }).click();
     }
     const nativeMenu = await desktop.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()?.items[0]?.submenu?.items.map(
@@ -931,7 +967,7 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     await chooser
       .getByRole("button", { name: "我的 Domos", exact: true })
       .click();
-    await expect(chooser.getByLabel("Domos 地址")).toHaveValue(
+    await expect(chooser.getByLabel("Domos 地址或配对链接")).toHaveValue(
       `http://127.0.0.1:${ready.port}`,
     );
   } finally {

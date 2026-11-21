@@ -110,9 +110,26 @@
   height: 1rem;
 }
 .panel-row-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--text-label);
   font-weight: var(--weight-medium);
   line-height: var(--leading-control);
+}
+.panel-row:has(.panel-row-description) {
+  grid-template-columns: 1rem minmax(0, 1fr) auto 0.875rem;
+}
+.panel-row-content {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+}
+.panel-row-description {
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-caption);
 }
 .panel-row-value {
   overflow: hidden;

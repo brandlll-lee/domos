@@ -25,6 +25,21 @@ export class HostingStore {
         hash TEXT PRIMARY KEY, scope TEXT NOT NULL, expires INTEGER NOT NULL
       );
     `);
+    const columns = this.db.prepare("PRAGMA table_info(devices)").all();
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      if (!columns.some((column) => column.name === "installation_id"))
+        this.db.exec("ALTER TABLE devices ADD COLUMN installation_id TEXT");
+      if (!columns.some((column) => column.name === "last_seen"))
+        this.db.exec("ALTER TABLE devices ADD COLUMN last_seen INTEGER");
+      this.db.exec(
+        "CREATE UNIQUE INDEX IF NOT EXISTS device_installation ON devices(installation_id); COMMIT",
+      );
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      this.db.close();
+      throw error;
+    }
   }
 
   static async open(directory: string) {

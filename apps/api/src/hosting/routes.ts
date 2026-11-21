@@ -2,7 +2,8 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { RuntimeConfig } from "@domos/agent/config";
 import { modelProviders } from "@domos/agent/models";
-import { desktopSession } from "@domos/hosting/desktop";
+import { desktopIdentity, desktopSession } from "@domos/hosting/desktop";
+import { probeInstance } from "@domos/hosting/instance";
 import type { Sessions } from "@domos/hosting/sessions";
 import type { Models } from "@earendil-works/pi-ai";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -22,15 +23,42 @@ export function hostingApp(options: {
   config: RuntimeConfig;
   sessions: Sessions;
   models: Models;
+  computerId: string;
   maintenance?: (held?: boolean) => Promise<boolean>;
   forward: (request: Request) => Promise<Response>;
 }) {
   const { config, sessions, models } = options;
   const publicUrl = config.publicUrl ?? `http://${config.host}:${config.port}`;
+  const desktopUrl = config.desktopUrl ?? `http://127.0.0.1:${config.port}`;
+  async function connection(signal: AbortSignal) {
+    const checkedAt = Date.now();
+    if (!config.publicUrl || new URL(config.publicUrl).protocol !== "https:")
+      return { state: "local" as const, checkedAt };
+    try {
+      const info = await probeInstance(config.publicUrl, signal);
+      if (info.computerId !== options.computerId)
+        throw new Error("此地址没有指向当前 Domos。");
+      return { state: "ready" as const, url: info.origin, checkedAt };
+    } catch (error) {
+      const cause =
+        error instanceof Error && "cause" in error
+          ? (error.cause as { code?: string })
+          : undefined;
+      return {
+        state: "error" as const,
+        url: new URL(config.publicUrl).origin,
+        checkedAt,
+        error:
+          error instanceof Error
+            ? `${error.message}${cause?.code ? ` (${cause.code})` : ""}`
+            : "无法验证 HTTPS 连接。",
+      };
+    }
+  }
   const logins = new ModelLogins(models);
   const app = new Hono<HostingEnv>();
   app.get("/health", (c) => c.json({ ok: true }));
-  app.use("*", originGuard(publicUrl));
+  app.use("*", originGuard([desktopUrl, publicUrl]));
   app.use("*", async (c, next) => {
     if (
       c.req.path !== "/hosting/desktop" &&
@@ -44,6 +72,7 @@ export function hostingApp(options: {
     c.json({
       product: "domos",
       version: "1",
+      computerId: options.computerId,
     }),
   );
   app.use("/hosting/*", bodyLimit({ maxSize: 64 * 1024 }));
@@ -57,6 +86,7 @@ export function hostingApp(options: {
         code: z.string().min(1).max(80),
         label: z.string().trim().min(1).max(80),
       })
+      .strict()
       .parse(await c.req.json());
     const result = sessions.exchange(input.code, input.label);
     if (!result) return c.json({ error: "配对码无效或已过期。" }, 401);
@@ -64,7 +94,7 @@ export function hostingApp(options: {
       c,
       result.token,
       result.device.expires,
-      new URL(publicUrl).protocol === "https:",
+      new URL(c.get("accessOrigin")).protocol === "https:",
     );
     if (result.device.scope === "admin")
       await sessions.removeBootstrap(config.dataDir);
@@ -86,14 +116,13 @@ export function hostingApp(options: {
   });
   app.post("/hosting/desktop", async (c) => {
     const input = z
-      .object({ maintenance: z.boolean() })
-      .optional()
+      .union([z.object({ maintenance: z.boolean() }).strict(), desktopIdentity])
       .parse(
         c.req.header("content-type")?.includes("application/json")
           ? await c.req.json()
-          : undefined,
+          : {},
       );
-    if (input) {
+    if ("maintenance" in input) {
       if (!options.maintenance) return c.json({}, 503);
       try {
         await options.maintenance(input.maintenance);
@@ -108,7 +137,7 @@ export function hostingApp(options: {
       }
       return c.json({ ok: true });
     }
-    return c.json(await desktopSession(sessions, config.dataDir));
+    return c.json(await desktopSession(sessions, config.dataDir, input));
   });
   app.use("/hosting/*", authenticate(sessions));
   app.get("/hosting/session", (c) => c.json({ device: c.get("device") }));
@@ -116,7 +145,12 @@ export function hostingApp(options: {
     logins.cancel(c.get("device").id);
     sessions.logout(c.get("device").id);
     await sessions.bootstrap(config.dataDir);
-    sessionCookie(c, "", 0, new URL(publicUrl).protocol === "https:");
+    sessionCookie(
+      c,
+      "",
+      0,
+      new URL(c.get("accessOrigin")).protocol === "https:",
+    );
     return c.json({ ok: true });
   });
   app.use("/hosting/*", administrator);
@@ -130,11 +164,45 @@ export function hostingApp(options: {
     if (!parsed.success) return c.json({ error: "页码无效。" }, 400);
     return c.json(sessions.page(c.get("device").id, parsed.data));
   });
+  app.get("/hosting/connection", async (c) =>
+    c.json(await connection(c.req.raw.signal)),
+  );
+  app.get("/hosting/devices/revocation", (c) =>
+    c.json({
+      items: sessions
+        .list()
+        .filter((device) => device.id !== c.get("device").id),
+    }),
+  );
+  app.post("/hosting/devices/revocation", async (c) => {
+    const { ids } = z
+      .object({ ids: z.array(z.uuid()).max(1000) })
+      .strict()
+      .parse(await c.req.json());
+    const removed = await sessions.revokeOthers(c.get("device").id, ids);
+    for (const id of removed) logins.cancel(id);
+    return c.json({ removed });
+  });
   app.post("/hosting/pairing", async (c) => {
     const { scope } = z
       .object({ scope: z.enum(["admin", "client"]) })
+      .strict()
       .parse(await c.req.json());
-    return c.json(sessions.pairing(scope));
+    const status = await connection(c.req.raw.signal);
+    if (status.state !== "ready")
+      return c.json(
+        {
+          error:
+            status.state === "local"
+              ? "仅本机可用。请先配置可访问的 HTTPS 地址。"
+              : status.error,
+        },
+        409,
+      );
+    const result = sessions.pairing(scope);
+    const url = new URL(status.url);
+    url.hash = new URLSearchParams({ pair: result.code }).toString();
+    return c.json({ ...result, url: url.href });
   });
   app.delete("/hosting/devices/:id", (c) => {
     sessions.revoke(c.req.param("id"));

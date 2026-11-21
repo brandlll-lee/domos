@@ -145,17 +145,62 @@ test("computer ownership, project directories and access stay distinct", async (
   ).toBe(project);
 });
 
-test("computer overview pairs and revokes devices through the hosting service", async ({
+test.use({ ignoreHTTPSErrors: true });
+
+test("connection settings explain local access before offering pairing", async ({
   service,
   page,
-  browser,
 }, info) => {
   await service.stop();
   await service.start(0, "hosting");
   await page.goto(service.url);
+  await page.getByLabel("配对码", { exact: true }).fill(service.pairing);
+  await page.getByRole("button", { name: "确认连接", exact: true }).click();
+  await page.getByRole("button", { name: "用户菜单", exact: true }).click();
+  await page.getByRole("menuitem", { name: "设置", exact: true }).click();
+  const settings = page.getByRole("main", { name: "设置", exact: true });
+  await settings.getByRole("tab", { name: "当前电脑", exact: true }).click();
+  await settings.getByRole("button", { name: /^设备访问/ }).click();
+  await settings
+    .getByRole("button", { name: "连接新设备", exact: true })
+    .click();
+  await expect(settings.getByText("仅本机可用", { exact: true })).toBeVisible();
+  await expect(
+    settings.getByRole("button", { name: "生成配对链接" }),
+  ).toHaveCount(0);
+  await expect(settings.getByRole("img")).toHaveCount(0);
+  expect(
+    (
+      await page.request.post(`${service.url}/hosting/pairing`, {
+        headers: { origin: service.url },
+        data: { scope: "client" },
+      })
+    ).status(),
+  ).toBe(409);
+  for (const theme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect
+      .poll(() => settings.evaluate((el) => el.scrollWidth <= el.clientWidth))
+      .toBe(true);
+    await page.screenshot({
+      path: info.outputPath(`local-connection-${theme}.png`),
+    });
+  }
+});
+
+test("computer settings pair through HTTPS and preview explicit login revocation", async ({
+  service,
+  page,
+  browser,
+}, info) => {
+  test.setTimeout(90_000);
+  await service.stop();
+  await service.start(0, "https");
+  await page.goto(service.url);
   await page.getByLabel("设备名称", { exact: true }).fill("管理电脑");
   await page.getByLabel("配对码", { exact: true }).fill(service.pairing);
-  await page.getByRole("button", { name: "连接", exact: true }).click();
+  await page.getByRole("button", { name: "确认连接", exact: true }).click();
   await page.getByRole("button", { name: "用户菜单", exact: true }).click();
   await page.getByRole("menuitem", { name: "设置", exact: true }).click();
   const settings = page.getByRole("main", { name: "设置", exact: true });
@@ -163,57 +208,76 @@ test("computer overview pairs and revokes devices through the hosting service", 
   await expect(
     settings.getByRole("textbox", { name: "电脑名称", exact: true }),
   ).toHaveCount(0);
-  await expect(
-    settings.getByRole("button", { name: /设备访问.*已授权 1 台/ }),
-  ).toBeVisible();
   await expect(settings.locator("summary")).toHaveCount(0);
   await page.screenshot({ path: info.outputPath("computer-overview.png") });
   await settings.getByRole("button", { name: /^设备访问/ }).click();
-  await expect(
-    settings.getByRole("heading", { name: "设备访问", exact: true }),
-  ).toBeVisible();
-  await page.screenshot({ path: info.outputPath("devices.png") });
   await settings
     .getByRole("button", { name: "连接新设备", exact: true })
     .click();
-  const pairing = page.getByRole("dialog", { name: "连接新设备", exact: true });
   await expect(
-    pairing.getByRole("combobox", { name: "设备权限" }),
-  ).toContainText("使用 Bot");
+    settings.getByRole("switch", { name: "允许管理 Domos" }),
+  ).not.toBeChecked();
+  await expect(settings.getByText(service.url, { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("dialog", { name: "连接新设备", exact: true }),
+  ).toHaveCount(0);
+  await settings.getByRole("button", { name: "生成配对链接" }).click();
+  await expect(settings.getByAltText("连接此 Domos 的二维码")).toBeVisible();
+  const code = await settings.locator(".pairing-code").innerText();
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await settings.getByRole("button", { name: "复制链接", exact: true }).click();
+  const link = await page.evaluate(() => navigator.clipboard.readText());
+  expect(new URL(link).hash).toBe(`#pair=${code}`);
   await page.screenshot({ path: info.outputPath("connect-device.png") });
-  await pairing.getByRole("button", { name: "生成配对码" }).click();
-  const code = await pairing.locator(".pairing-code").innerText();
-  const remote = await browser.newContext();
+  const remote = await browser.newContext({ ignoreHTTPSErrors: true });
   try {
-    const response = await remote.request.post(
-      `${service.url}/hosting/exchange`,
-      { data: { code, label: "演示手机" }, headers: { origin: service.url } },
+    const remotePage = await remote.newPage();
+    await remotePage.goto(link);
+    await expect(remotePage.getByLabel("配对码", { exact: true })).toHaveValue(
+      code,
     );
-    expect(response.ok()).toBe(true);
-    expect((await response.json()).device.scope).toBe("client");
+    expect(new URL(remotePage.url()).hash).toBe("");
+    expect(
+      (await remote.request.get(`${service.url}/hosting/session`)).status(),
+    ).toBe(401);
+    await remotePage.getByLabel("设备名称", { exact: true }).fill("演示手机");
+    await remotePage
+      .getByRole("button", { name: "确认连接", exact: true })
+      .click();
+    await expect
+      .poll(async () =>
+        (await remote.request.get(`${service.url}/hosting/session`)).status(),
+      )
+      .toBe(200);
+    expect(
+      (
+        await (
+          await remote.request.get(`${service.url}/hosting/session`)
+        ).json()
+      ).device.scope,
+    ).toBe("client");
     expect(
       (await remote.request.get(`${service.url}/hosting/devices`)).status(),
     ).toBe(403);
     expect(
       (
-        await page.request.post(`${service.url}/hosting/exchange`, {
+        await remote.request.post(`${service.url}/hosting/exchange`, {
           data: { code, label: "重复配对" },
           headers: { origin: service.url },
         })
       ).status(),
     ).toBe(401);
-    await pairing.getByRole("button", { name: "关闭", exact: true }).click();
+    await settings
+      .getByRole("button", { name: "返回设备访问", exact: true })
+      .click();
     await settings.getByRole("button", { name: "刷新设备" }).click();
-    await expect(settings.getByText("有效至", { exact: true })).toHaveCount(0);
     await settings.getByRole("button", { name: /^演示手机/ }).click();
-    const device = page.getByRole("dialog", { name: "演示手机", exact: true });
-    await expect(device.getByText("有效至", { exact: true })).toBeVisible();
-    await device.getByRole("button", { name: "撤销访问", exact: true }).click();
-    const confirm = page.getByRole("dialog", {
-      name: "撤销 演示手机 的访问？",
-      exact: true,
-    });
-    await confirm
+    await expect(settings.getByText("有效至", { exact: true })).toBeVisible();
+    await settings
+      .getByRole("button", { name: "撤销访问", exact: true })
+      .click();
+    await page
+      .getByRole("dialog", { name: "撤销 演示手机 的访问？", exact: true })
       .getByRole("button", { name: "撤销访问", exact: true })
       .click();
     await expect(
@@ -222,24 +286,73 @@ test("computer overview pairs and revokes devices through the hosting service", 
     expect(
       (await remote.request.get(`${service.url}/hosting/session`)).status(),
     ).toBe(401);
+    const login = async (label: string) => {
+      const response = await page.request.post(
+        `${service.url}/hosting/pairing`,
+        { headers: { origin: service.url }, data: { scope: "client" } },
+      );
+      expect(response.ok()).toBe(true);
+      const pair = await response.json();
+      const exchanged = await remote.request.post(
+        `${service.url}/hosting/exchange`,
+        { headers: { origin: service.url }, data: { code: pair.code, label } },
+      );
+      expect(exchanged.ok()).toBe(true);
+      return (await exchanged.json()).device.id as string;
+    };
+    await login("旧登录 A");
+    await login("旧登录 B");
+    await settings.getByRole("button", { name: "刷新设备" }).click();
+    await settings
+      .getByRole("button", { name: "撤销其他登录", exact: true })
+      .click();
+    await expect(settings.getByText("旧登录 A", { exact: true })).toBeVisible();
+    await expect(settings.getByText("旧登录 B", { exact: true })).toBeVisible();
+    await settings.getByRole("button", { name: "取消", exact: true }).click();
+    expect(
+      (await remote.request.get(`${service.url}/hosting/session`)).status(),
+    ).toBe(200);
+    await settings
+      .getByRole("button", { name: "撤销其他登录", exact: true })
+      .click();
+    const laterId = await login("后来连接的设备");
+    await settings
+      .getByRole("button", { name: "确认撤销其他登录", exact: true })
+      .click();
+    await page
+      .getByRole("dialog", { name: "撤销这 2 条登录？", exact: true })
+      .getByRole("button", { name: "撤销访问", exact: true })
+      .click();
+    await expect(settings.getByRole("button", { name: /^旧登录/ })).toHaveCount(
+      0,
+    );
+    await expect(
+      settings.getByRole("button", { name: /^后来连接的设备/ }),
+    ).toBeVisible();
+    expect(
+      (
+        await (
+          await remote.request.get(`${service.url}/hosting/session`)
+        ).json()
+      ).device.id,
+    ).toBe(laterId);
+    expect(
+      (await (await page.request.get(`${service.url}/hosting/session`)).json())
+        .device.scope,
+    ).toBe("admin");
   } finally {
     await remote.close();
   }
   await settings.getByRole("button", { name: /^管理电脑/ }).click();
-  const current = page.getByRole("dialog", { name: "管理电脑", exact: true });
-  await expect(current.getByRole("button", { name: "撤销访问" })).toHaveCount(
-    0,
-  );
-  await current.getByRole("button", { name: "关闭弹窗" }).click();
   await expect(
-    settings.getByRole("button", { name: /^管理电脑/ }),
-  ).toBeFocused();
+    settings.getByRole("button", { name: "撤销访问", exact: true }),
+  ).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(
-    settings.getByRole("heading", { name: "当前电脑", exact: true }),
+    settings.getByRole("heading", { name: "设备访问", exact: true }),
   ).toBeVisible();
   await expect(
-    settings.getByRole("button", { name: /^设备访问/ }),
+    settings.getByRole("button", { name: /^管理电脑/ }),
   ).toBeFocused();
   for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme });
@@ -247,7 +360,7 @@ test("computer overview pairs and revokes devices through the hosting service", 
     await expect
       .poll(() => settings.evaluate((el) => el.scrollWidth <= el.clientWidth))
       .toBe(true);
-    await page.screenshot({ path: info.outputPath(`overview-${theme}.png`) });
+    await page.screenshot({ path: info.outputPath(`devices-${theme}.png`) });
   }
 });
 

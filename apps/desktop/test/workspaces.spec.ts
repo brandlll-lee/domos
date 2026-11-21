@@ -81,7 +81,7 @@ test("workspaces switch in one window and preserve identity, authorization and r
       .selected;
   const pair = async (page: Page, code: string) => {
     await page.getByLabel("配对码", { exact: true }).fill(code);
-    await page.getByRole("button", { name: "连接", exact: true }).click();
+    await page.getByRole("button", { name: "确认连接", exact: true }).click();
     await expect(
       page.getByRole("button", { name: "Bot详情", exact: true }),
     ).toBeVisible();
@@ -292,7 +292,7 @@ test("workspaces switch in one window and preserve identity, authorization and r
     ]);
     await settings.getByRole("tab", { name: "当前电脑", exact: true }).click();
     await expect(
-      settings.getByRole("region", { name: "访问设备", exact: true }),
+      settings.getByRole("button", { name: /^设备访问/ }),
     ).toBeVisible();
     await pageA.screenshot({ path: info.outputPath("current-computer.png") });
     await pageA.getByRole("button", { name: "关闭设置", exact: true }).click();
@@ -328,7 +328,9 @@ test("workspaces switch in one window and preserve identity, authorization and r
       .getByRole("menuitem", { name: "连接其他电脑…", exact: true })
       .click();
     const setup = await opening;
-    await setup.getByLabel("Domos 地址", { exact: true }).fill(b.origin);
+    await setup
+      .getByLabel("Domos 地址或配对链接", { exact: true })
+      .fill(b.origin);
     await setup.getByLabel("连接名称", { exact: true }).fill("电脑 B");
     await setup.getByRole("button", { name: "连接", exact: true }).click();
     pageB = await workspacePage(desktop, b.origin);

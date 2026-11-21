@@ -78,8 +78,23 @@ test("container hosting starts only on selection and resumes its owned installat
   ).toBe(true);
   await stack.stop();
   expect(stack.running).toBe(false);
+  const configuration = join(directory, "domos.config.json");
+  const saved = JSON.parse(await readFile(configuration, "utf8"));
+  await writeFile(
+    configuration,
+    JSON.stringify({ ...saved, publicUrl: "https://domos.test" }),
+  );
   const resumed = new LocalStack(directory, release, run, ready);
   expect(await resumed.start(() => {}, signal)).toEqual(first);
+  const service = JSON.parse(
+    await readFile(join(directory, "service.json"), "utf8"),
+  );
+  expect(service.publicUrl).toBe("https://domos.test");
+  expect(service.desktopUrl).toBe(first.origin);
+  expect(
+    JSON.parse(await readFile(join(directory, "compose.json"), "utf8")).services
+      .app.environment.DOMOS_PUBLIC_URL,
+  ).toBeUndefined();
   expect(
     JSON.parse(await readFile(join(directory, "compose.json"), "utf8")).name,
   ).toBe(spec.name);

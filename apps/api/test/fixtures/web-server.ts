@@ -328,7 +328,7 @@ const server = createServer((request, response) => {
   if (!fixture(request, response))
     getRequestListener(hosted?.app.fetch ?? app.fetch)(request, response);
 });
-server.listen(Number(process.argv[3] ?? 0), "127.0.0.1", () => {
+server.listen(Number(process.argv[3] ?? 0), "127.0.0.1", async () => {
   const address = server.address();
   if (address && typeof address === "object") {
     app = createApp(
@@ -344,11 +344,13 @@ server.listen(Number(process.argv[3] ?? 0), "127.0.0.1", () => {
     );
     if (sessions)
       hosted = hostingApp({
+        computerId: (await computer.node(BACKGROUND_CONTEXT)).id,
         config: parseConfig(
           {
             model: { provider: "faux", modelId: "faux-1" },
             host: "127.0.0.1",
             port: address.port,
+            publicUrl: process.argv[5] || undefined,
             dataDir: dirname(database),
           },
           database,
