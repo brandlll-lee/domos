@@ -4,6 +4,7 @@ import { Type } from "@earendil-works/pi-ai";
 import { defineExtension, defineTool } from "@earendil-works/pi-durable";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 import type { Attachment } from "../attachments.ts";
+import type { ChatDirectory } from "../chat-directory.ts";
 import type { Computers } from "../computer/catalog.ts";
 import { computerInstructions } from "../computer/instructions.ts";
 import { ComputerRequests, type ComputerRuntime } from "../computer/runtime.ts";
@@ -98,6 +99,7 @@ export class EngineExecution {
     return session?.quota?.();
   }
   mcp?: McpConnections;
+  chats?: ChatDirectory;
   readonly active = new Map<number, Active>();
   private readonly idle = new Map<
     number,
@@ -598,6 +600,7 @@ export class EngineExecution {
               args,
               context,
               combined,
+              this.chats,
             );
         return name === "conversation_read"
           ? result

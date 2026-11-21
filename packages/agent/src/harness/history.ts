@@ -5,15 +5,22 @@ import {
   defineTool,
   type EntryId,
   type EntryRecord,
+  type Tx,
 } from "@earendil-works/pi-durable";
 import { fileReference } from "../attachments.ts";
 import { BotDirectory } from "../bots.ts";
+import type { ChatDirectory } from "../chat-directory.ts";
+import { chatView } from "../chat-view.ts";
 import { BotSession, BotSessions } from "../conversations.ts";
 import {
   type ChatContent,
   type ChatMessage,
   messageText,
 } from "../messages.ts";
+import { TeamsDoc } from "../teams.ts";
+import { chatTranscript } from "../transcript.ts";
+import { applyRoutineDelivery } from "../work/routine-delivery.ts";
+import { type RoutineRun, RoutinesDoc } from "../work/routine-state.ts";
 import {
   EngineMessage,
   EngineToolResult,
@@ -33,6 +40,9 @@ import { engineLimits } from "./types.ts";
 
 type HistoryMessage = {
   entryId: EntryId;
+  conversationId?: number;
+  turnId?: string;
+  taskId?: number;
   role: ChatMessage["role"];
   text: string;
   files?: ReturnType<typeof fileReference>[];
@@ -47,6 +57,26 @@ function historyMessages(
   tools: "full" | "summary" | "omit" = "full",
   ownerBotId: number = entry.conversationId,
 ): HistoryMessage[] {
+  if (entry.kind === EngineToolResult) {
+    if (tools !== "full") return [];
+    const result = entry.data as {
+      taskId?: number;
+      callId?: string;
+      name?: string;
+    };
+    return [
+      {
+        entryId: entry.id,
+        conversationId: entry.conversationId,
+        taskId: result.taskId,
+        role: "toolResult",
+        text: "Archived tool result. Read entryId for original evidence.",
+        tool: result.name,
+        toolCallId: result.callId,
+        status: "recorded",
+      },
+    ];
+  }
   const messages =
     entry.kind === EngineMessage
       ? [entry.data as unknown as ChatMessage]
@@ -55,7 +85,16 @@ function historyMessages(
     message.role === "user" ||
     message.role === "assistant" ||
     (message.role === "toolResult" && tools !== "omit")
-      ? [historyMessage(entry.id, message, tools, ownerBotId)]
+      ? [
+          {
+            ...historyMessage(entry.id, message, tools, ownerBotId),
+            conversationId: entry.conversationId,
+            taskId: entry.byTaskId ?? undefined,
+            ...("turnId" in message && message.turnId
+              ? { turnId: String(message.turnId) }
+              : {}),
+          },
+        ]
       : [],
   );
 }
@@ -163,6 +202,9 @@ function historyPlan(entry: EntryRecord): HistoryMessage | undefined {
   if (message.hidden || plan?.type !== "plan" || !plan.plan.length) return;
   return {
     entryId: entry.id,
+    conversationId: entry.conversationId,
+    taskId: entry.byTaskId ?? undefined,
+    ...(message.turnId ? { turnId: message.turnId } : {}),
     role: "assistant",
     status: "recorded",
     text: [
@@ -185,6 +227,48 @@ function handoffExcerpt(bytes: Buffer, limit: number, keepEnd: boolean) {
   );
 }
 
+async function historyConversations(
+  tx: Tx,
+  id: HistoryReader["conversationId"],
+) {
+  const current = await tx.doc(BotSession, id);
+  if (current.purpose === "delegation") return [id];
+  const botId = current.botId ?? id;
+  const teams = (await tx.doc(TeamsDoc)).items.filter(
+    (team) =>
+      team.members.includes(botId) &&
+      (!current.teamId || team.id === current.teamId),
+  );
+  const scope = new Set([id]);
+  for (const session of (await tx.doc(BotSessions)).items)
+    if (
+      teams.some((team) => team.id === session.teamId) &&
+      (await tx.doc(BotSession, session.id)).purpose === "team"
+    )
+      scope.add(session.id);
+  return [...scope];
+}
+
+function sharedHistoryEntry(entry: EntryRecord, runs: RoutineRun[]) {
+  if (entry.kind !== EngineMessage) return false;
+  const view = chatView({
+    conversation: { id: entry.conversationId },
+    entries: [entry],
+    docs: {},
+  });
+  applyRoutineDelivery(
+    view,
+    runs.filter((run) => run.botId === entry.conversationId),
+  );
+  return chatTranscript(view).some(
+    (item) =>
+      item.kind === "message" &&
+      ["user", "assistant"].includes(item.message.role) &&
+      !item.message.pending &&
+      !item.message.stopped,
+  );
+}
+
 export async function conversationEntry(
   runtime: HistoryReader,
   entryId: EntryId,
@@ -201,17 +285,11 @@ export async function conversationEntry(
       ownerBotId =
         (await tx.doc(BotSession, entry.conversationId)).botId ??
         entry.conversationId;
-    const teamId = (await tx.doc(BotSession, runtime.conversationId)).teamId;
+    const scope = await historyConversations(tx, runtime.conversationId);
     shared = Boolean(
-      teamId &&
-        entry?.kind === EngineMessage &&
-        !(entry.data as unknown as ChatMessage).hidden &&
-        ["user", "assistant"].includes(
-          (entry.data as unknown as ChatMessage).role,
-        ) &&
-        (await tx.doc(BotSessions)).items.some(
-          (item) => item.id === entry?.conversationId && item.teamId === teamId,
-        ),
+      entry &&
+        scope.includes(entry.conversationId) &&
+        sharedHistoryEntry(entry, (await tx.doc(RoutinesDoc)).runs),
     );
     if (shared) {
       const session = (await tx.doc(BotSessions)).items.find(
@@ -229,6 +307,7 @@ export async function conversationEntry(
   const plan = own ? historyPlan(entry) : undefined;
   return JSON.stringify({
     entryId,
+    conversationId: entry.conversationId,
     ...textPage(
       JSON.stringify(
         entry.kind === EngineToolResult
@@ -303,8 +382,10 @@ export async function conversationHistory(
         ? (await tx.doc(BotSession, runtime.conversationId)).teamId
         : undefined;
     if (teamId) {
+      const scope = await historyConversations(tx, runtime.conversationId);
+      const runs = (await tx.doc(RoutinesDoc)).runs;
       const sessions = (await tx.doc(BotSessions)).items.filter(
-        (item) => item.teamId === teamId,
+        (item) => item.teamId === teamId && scope.includes(item.id),
       );
       const bots = (await tx.doc(BotDirectory)).items;
       const shared: EntryRecord[] = [];
@@ -322,14 +403,7 @@ export async function conversationHistory(
           engineLimits.historyEntries,
         );
         shared.push(
-          ...page.items.filter(
-            (entry) =>
-              entry.kind === EngineMessage &&
-              ["user", "assistant"].includes(
-                (entry.data as unknown as ChatMessage).role,
-              ) &&
-              !(entry.data as unknown as ChatMessage).hidden,
-          ),
+          ...page.items.filter((entry) => sharedHistoryEntry(entry, runs)),
         );
       }
       const current = entries.find(
@@ -444,14 +518,17 @@ export async function conversationHistory(
         messages.splice(index, 1);
   }
   const limit = Math.max(0, Math.min(engineLimits.historyCharacters, budget));
-  type Excerpt = HistoryMessage & { excerpt?: boolean };
+  type Excerpt = HistoryMessage & { excerpt?: boolean; omittedBytes?: number };
   const selected: Excerpt[] = [];
   const packet = (items: Excerpt[]) =>
     JSON.stringify({
+      conversationId: runtime.conversationId,
       after: through,
       ...(summary ? { summary } : {}),
       from: items[0]?.entryId ?? previous.at(-1)?.id,
       through: items.at(-1)?.entryId,
+      omittedMessages: messages.length - items.length,
+      scanLimitReached: entries.length === engineLimits.historyEntries,
       excerpt:
         items.length < messages.length ||
         (entries.length === engineLimits.historyEntries &&
@@ -487,7 +564,17 @@ export async function conversationHistory(
       const candidate = {
         ...message,
         text,
-        ...(text !== message.text ? { excerpt: true } : {}),
+        ...(text !== message.text
+          ? {
+              excerpt: true,
+              omittedBytes:
+                bytes.length -
+                Buffer.byteLength(text) +
+                (keyRequest && bytes.length > middle && middle >= 32
+                  ? Buffer.byteLength("\n[…]\n")
+                  : 0),
+            }
+          : {}),
       };
       if (
         Buffer.byteLength(packet(selected.toSpliced(index, 0, candidate))) <=
@@ -523,48 +610,113 @@ export async function conversationHistory(
   return result;
 }
 
-export const history = defineExtension({
-  name: "domos-history",
-  tools: [
-    defineTool({
-      name: "conversation_read",
-      description:
-        "Read quoted Bot history. Use from as before for older pages. Read entryId with a UTF-8 byte offset to recover omitted details or a persisted original tool result. Continue with nextOffset. Files remain on their recorded computer.",
-      parameters: Type.Object({
-        before: Type.Optional(Type.Integer({ minimum: 1 })),
-        entryId: Type.Optional(Type.Integer({ minimum: 1 })),
-        offset: Type.Optional(Type.Integer({ minimum: 0 })),
-      }),
-      replay: "safe",
-      async execute(args, api, context) {
-        if (
-          (args.entryId !== undefined && args.before !== undefined) ||
-          (args.offset !== undefined && args.entryId === undefined)
+export const historyDescription =
+  "Search quoted chat with query. Results include entryId, conversationId, turnId, author, time and excerpts. Search before is an opaque result cursor. Without query, use from as before for older history pages, including Work evidence references. Read entryId with a UTF-8 byte offset for original text or archived tool results; continue with nextOffset. Only this Bot's private chat and authorized team messages are searchable. Files stay on their recorded computer.";
+
+export const historyParameters = Type.Object(
+  {
+    query: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+    before: Type.Optional(Type.Integer({ minimum: 1 })),
+    entryId: Type.Optional(Type.Integer({ minimum: 1 })),
+    offset: Type.Optional(Type.Integer({ minimum: 0 })),
+  },
+  { additionalProperties: false },
+);
+
+export async function readHistory(
+  runtime: HistoryReader,
+  args: Record<string, unknown>,
+  context: Context,
+  chats?: ChatDirectory,
+) {
+  context.abortSignal?.throwIfAborted();
+  if (
+    Object.keys(args).some(
+      (key) => !["query", "before", "entryId", "offset"].includes(key),
+    ) ||
+    ["before", "entryId", "offset"].some(
+      (key) =>
+        args[key] !== undefined &&
+        (!Number.isSafeInteger(args[key]) ||
+          (args[key] as number) < (key === "offset" ? 0 : 1)),
+    ) ||
+    (args.entryId !== undefined && args.before !== undefined) ||
+    (args.offset !== undefined && args.entryId === undefined) ||
+    (args.query !== undefined &&
+      (typeof args.query !== "string" ||
+        !args.query.trim() ||
+        args.query.length > 200 ||
+        args.entryId !== undefined ||
+        args.offset !== undefined))
+  )
+    throw new Error("聊天记录游标或查询无效。");
+  if (typeof args.query === "string") {
+    if (!chats) throw new Error("聊天搜索尚未就绪。");
+    let scope: number[] = [];
+    await runtime.commit(async (tx) => {
+      scope = await historyConversations(tx, runtime.conversationId);
+    }, context);
+    const page = await chats.search(
+      args.query.trim(),
+      args.before as number | undefined,
+      context,
+      scope,
+    );
+    return JSON.stringify({
+      items: page.items.map((item) => ({
+        entryId: Number(item.cursor?.split(":")[0]),
+        conversationId: item.sessionId,
+        turnId: item.turnId,
+        author: item.author,
+        timestamp: item.timestamp,
+        excerpt: item.snippet,
+      })),
+      before: page.before,
+    });
+  }
+  return (
+    (args.entryId !== undefined
+      ? await conversationEntry(
+          runtime,
+          args.entryId as EntryId,
+          (args.offset as number | undefined) ?? 0,
+          context,
         )
-          throw new Error("聊天记录游标无效。");
-        const text =
-          args.entryId !== undefined
-            ? await conversationEntry(
-                api,
-                args.entryId as EntryId,
-                args.offset ?? 0,
-                context,
-              )
-            : await conversationHistory(
-                api,
-                null,
-                context,
-                null,
-                args.before === undefined
-                  ? undefined
-                  : ((args.before - 1) as EntryId),
-                undefined,
-                "full",
-                undefined,
-                null,
-              );
-        return { output: [{ type: "text", text: text || "{}" }] };
-      },
-    }),
-  ],
-});
+      : await conversationHistory(
+          runtime,
+          null,
+          context,
+          null,
+          args.before === undefined
+            ? undefined
+            : (((args.before as number) - 1) as EntryId),
+          undefined,
+          "full",
+          undefined,
+          null,
+        )) || "{}"
+  );
+}
+
+export const history = (chats: () => ChatDirectory) =>
+  defineExtension({
+    name: "domos-history",
+    tools: [
+      defineTool({
+        name: "conversation_read",
+        description: historyDescription,
+        parameters: historyParameters,
+        replay: "safe",
+        async execute(args, api, context) {
+          return {
+            output: [
+              {
+                type: "text",
+                text: await readHistory(api, args, context, chats()),
+              },
+            ],
+          };
+        },
+      }),
+    ],
+  });

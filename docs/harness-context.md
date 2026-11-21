@@ -44,9 +44,13 @@ The forward migration keeps the current database. It sets migrated Bots to Pi an
 
 Switching Harness or work computer creates a native session. The display history remains continuous. Native session keys include the computer, configuration, and native account fingerprint. Native recovery checks recorded outcomes before deciding that a turn completed. Uncertain work is not sent again.
 
+conversation_read uses query for keyword search in the owning computer's existing ChatDirectory index. Private sessions can search their Bot's private chat and current team memberships. Team sessions stay within that team. Delegated sessions cannot search private or team history. Search scopes apply before SQL pagination. Search before is an opaque search cursor; history before is an entry boundary. Matches retain entryId, conversationId, turnId when known, author, time and a bounded excerpt. Original reads check scope again. Shared reads use published chat only; other members' raw Work results remain private. Tool-result references in the current session's history point to the retained originals.
+
+Handoff entries retain source conversation, entry, native task and turn identifiers when available, plus recorded file ownership and paths. omittedBytes counts omitted UTF-8 source bytes. omittedMessages counts excluded messages in the scanned window. scanLimitReached identifies a bounded scan, not a count of older records. Existing native summaries retain their own provenance and boundaries. Handoffs add no model requests. Missing context uses keyword search followed by original reads; important changes still require current file and evidence checks.
+
 Handoffs contain quoted chat and retained summaries. Rebuilt sessions prioritize the opening user message, the two newest user messages in the recent window, the latest recorded plan, and up to four tool statuses. The recent scan reads up to 64 entries. A bounded scan at the start can recover the opening request. Long priority requests keep both ends. Each text excerpt has a 4000-byte limit. The packet has a 16000-byte limit. JSON escaping and metadata count toward the limit. Native recovery sends only messages after the confirmed receipt cursor. Historical images, private reasoning, tool arguments and raw outputs stay outside the packet. The receiving Harness can read the plan and complete tool records by entry ID through conversation_read.
 
-Team handoffs combine visible messages from that team’s member and delegated sessions. They retain authors and use the same packet limit. Native acceptance advances a separate team receipt cursor. Later native output does not advance this cursor. Additional input uses the same team cursor. conversation_read can read shared transcript entries from the current team. Other members’ tool records and private conversations remain outside that scope.
+Team handoffs combine published messages from that team’s member sessions. Delegated native contexts stay private. They retain authors and use the same packet limit. Native acceptance advances a separate team receipt cursor. Later native output does not advance this cursor. Additional input uses the same team cursor. conversation_read can read shared transcript entries from the current team. Other members’ tool records and private conversations remain outside that scope.
 
 Native text, reasoning and tool records confirm receipt in the same accepted session, even when the turn later fails. The handoff cursor advances only through that confirmed range. Unconfirmed user input, stopped turns and terminal errors remain outside it. Compact operations retain their existing session boundary.
 
@@ -56,6 +60,7 @@ Rebuilt sessions dispatch with available summaries, bounded recent original mess
 
 The conversation_read tool reads the complete stored record:
 
+- `{ "query": "release" }` searches authorized chat. Use its `before` cursor with the same query for the next search page.
 - `{}` reads a recent page. Pass its `from` cursor as `before` for older entries.
 - `{ "entryId": 123, "offset": 0 }` reads a record in UTF-8 chunks. Follow `nextOffset` until null.
 

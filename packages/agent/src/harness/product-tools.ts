@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Context } from "@earendil-works/chord/context";
+import { type Context, withAbortSignal } from "@earendil-works/chord/context";
 import {
   defineDoc,
   type EntryId,
@@ -8,9 +8,14 @@ import {
   type TaskId,
   ToolTask,
 } from "@earendil-works/pi-durable";
+import type { ChatDirectory } from "../chat-directory.ts";
 import { ComputerRequests } from "../computer/runtime.ts";
 import { RoutinesDoc } from "../work/routine-state.ts";
-import { conversationEntry, conversationHistory } from "./history.ts";
+import {
+  historyDescription,
+  historyParameters,
+  readHistory,
+} from "./history.ts";
 import { EngineDoc, EngineMessage, EngineToolResult } from "./state.ts";
 import { type EngineRuntime, stored } from "./task-types.ts";
 import type { ProductResult, ProductTool } from "./types.ts";
@@ -103,17 +108,8 @@ export async function productCatalog(
     ...computer.filter((tool) => names.has(tool.name)),
     {
       name: "conversation_read",
-      description:
-        "Read quoted Bot history. Pass from as before for older pages. Read entryId with a UTF-8 byte offset to recover omitted details or a persisted original tool result. Continue with nextOffset. Files remain references on their recorded computer.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          before: { type: "integer", minimum: 1 },
-          entryId: { type: "integer", minimum: 1 },
-          offset: { type: "integer", minimum: 0 },
-        },
-        additionalProperties: false,
-      },
+      description: historyDescription,
+      inputSchema: stored(historyParameters) as Record<string, unknown>,
     },
   ];
 }
@@ -125,47 +121,18 @@ export async function callProductTool(
   args: Record<string, unknown>,
   context: Context,
   signal: AbortSignal = runtime.signal,
+  chats?: ChatDirectory,
 ): Promise<ProductResult> {
   signal.throwIfAborted();
   if (name === "conversation_read") {
-    if (
-      Object.keys(args).some(
-        (key) => !["before", "entryId", "offset"].includes(key),
-      ) ||
-      ["before", "entryId", "offset"].some(
-        (key) =>
-          args[key] !== undefined &&
-          (!Number.isSafeInteger(args[key]) ||
-            (args[key] as number) < (key === "offset" ? 0 : 1)),
-      ) ||
-      (args.entryId !== undefined && args.before !== undefined) ||
-      (args.offset !== undefined && args.entryId === undefined)
-    )
-      throw new Error("聊天记录游标无效。");
-    return {
-      content: [
-        {
-          type: "text",
-          text:
-            args.entryId !== undefined
-              ? await conversationEntry(
-                  runtime,
-                  args.entryId as EntryId,
-                  (args.offset as number | undefined) ?? 0,
-                  context,
-                )
-              : (await conversationHistory(
-                  runtime,
-                  null,
-                  context,
-                  null,
-                  args.before === undefined
-                    ? undefined
-                    : (((args.before as number) - 1) as EntryId),
-                )) || "{}",
-        },
-      ],
-    };
+    const text = await readHistory(
+      runtime,
+      args,
+      withAbortSignal(signal, context),
+      chats,
+    );
+    signal.throwIfAborted();
+    return { content: [{ type: "text", text }] };
   }
   const catalog = await productCatalog(runtime, context);
   signal.throwIfAborted();

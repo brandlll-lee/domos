@@ -59,6 +59,7 @@ type Indexed = {
   sessionId: number;
   messageId: string;
   cursor: string | null;
+  turnId: string | null;
   author: string;
   text: string;
   timestamp: number;
@@ -401,7 +402,12 @@ export class ChatDirectory {
     this.indexed = revision;
   }
 
-  async search(query: string, before: number | undefined, context: Context) {
+  async search(
+    query: string,
+    before: number | undefined,
+    context: Context,
+    sessions?: readonly number[],
+  ) {
     await this.sync();
     context.abortSignal?.throwIfAborted();
     const channels = await this.channels(context);
@@ -411,11 +417,14 @@ export class ChatDirectory {
     const rows = this.db()
       .prepare(`SELECT i.* FROM domos_chat_search s JOIN domos_chat_index i ON i.sequence=s.rowid
       WHERE s.text LIKE ? ${escaped ? "ESCAPE '\\'" : ""} AND i.cursor IS NOT NULL AND i.sequence < ?
-      AND i.chat IN (SELECT value FROM json_each(?)) ORDER BY i.sequence DESC LIMIT 51`)
+      AND i.chat IN (SELECT value FROM json_each(?))
+      ${sessions ? "AND i.sessionId IN (SELECT value FROM json_each(?))" : ""}
+      ORDER BY i.sequence DESC LIMIT 51`)
       .all(
         pattern,
         before ?? Number.MAX_SAFE_INTEGER,
         JSON.stringify([...allowed.keys()]),
+        ...(sessions ? [JSON.stringify(sessions)] : []),
       ) as Indexed[];
     const items: ChatSearchResult[] = rows.slice(0, 50).map((row) => {
       const channel = channels.find((item) => item.session === row.sessionId);
@@ -430,6 +439,7 @@ export class ChatDirectory {
         sessionId: row.sessionId,
         messageId: row.messageId,
         cursor: row.cursor,
+        turnId: row.turnId ?? undefined,
         sequence: row.sequence,
         name: channel.name,
         avatar: channel.bot.avatar,

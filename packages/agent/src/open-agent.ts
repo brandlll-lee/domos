@@ -48,7 +48,7 @@ export async function openAgent(
 ) {
   options.registry.install(modelImages(await createNodePhotonImages()));
   options.registry.install(messaging);
-  options.registry.install(history);
+  options.registry.install(history(() => bots.chats));
   options.registry.install(identity);
   options.registry.install(memory);
   options.registry.install(skillExtension(files));
@@ -136,6 +136,7 @@ export async function openAgent(
     const conversation = await harness.root(context, { agent });
     bots = new Bots(harness, options.computers, database);
     bots.files = files;
+    if (execution) execution.chats = bots.chats;
     if (computers) {
       images = new ImageServices(
         harness,

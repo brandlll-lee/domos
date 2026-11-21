@@ -627,6 +627,15 @@ test.each(["pi", "claude", "grok", "antigravity", "devin", "cursor"] as const)(
             {},
             new AbortController().signal,
           );
+          const found = await invoke(
+            crypto.randomUUID(),
+            "conversation_read",
+            { query: "request" },
+            new AbortController().signal,
+          );
+          const hits = JSON.parse((found.content[0] as { text: string }).text);
+          expect(hits.items.length).toBeGreaterThan(0);
+          expect(hits.items[0].entryId).toBeGreaterThan(0);
           reads.push(JSON.stringify(result));
           return `Reply ${reads.length}`;
         };
