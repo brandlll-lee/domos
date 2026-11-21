@@ -147,7 +147,7 @@ test("computer ownership, project directories and access stay distinct", async (
 
 test.use({ ignoreHTTPSErrors: true });
 
-test("connection settings explain local access before offering pairing", async ({
+test("connection settings offer private networking and validate HTTPS before pairing", async ({
   service,
   page,
 }, info) => {
@@ -164,7 +164,13 @@ test("connection settings explain local access before offering pairing", async (
   await settings
     .getByRole("button", { name: "连接新设备", exact: true })
     .click();
-  await expect(settings.getByText("仅本机可用", { exact: true })).toBeVisible();
+  await expect(
+    settings.getByRole("radiogroup", { name: "连接方式", exact: true }),
+  ).toBeVisible();
+  await expect(
+    settings.getByRole("button", { name: "重新检测 Tailscale" }),
+  ).toBeVisible();
+  await page.screenshot({ path: info.outputPath("private-connection.png") });
   await expect(
     settings.getByRole("button", { name: "生成配对链接" }),
   ).toHaveCount(0);
@@ -177,6 +183,26 @@ test("connection settings explain local access before offering pairing", async (
       })
     ).status(),
   ).toBe(409);
+  await settings
+    .getByRole("radio", { name: "HTTPS 地址", exact: true })
+    .click();
+  await settings
+    .getByRole("textbox", { name: "HTTPS 地址", exact: true })
+    .fill("http://100.64.0.1:4310");
+  await settings
+    .getByRole("button", { name: "保存并检测", exact: true })
+    .click();
+  await expect(
+    settings.getByText("请输入完整的 HTTPS 地址，不含路径、参数或配对码。", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    settings.getByRole("button", { name: "保存并检测", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    settings.getByRole("button", { name: "生成配对链接" }),
+  ).toHaveCount(0);
   for (const theme of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await page.setViewportSize({ width: 390, height: 844 });
@@ -217,7 +243,15 @@ test("computer settings pair through HTTPS and preview explicit login revocation
   await expect(
     settings.getByRole("switch", { name: "允许管理 Domos" }),
   ).not.toBeChecked();
-  await expect(settings.getByText(service.url, { exact: true })).toBeVisible();
+  await expect(
+    settings.getByRole("textbox", { name: "HTTPS 地址", exact: true }),
+  ).toHaveValue(service.url);
+  await settings
+    .getByRole("button", { name: "保存并检测", exact: true })
+    .click();
+  await expect(
+    settings.getByRole("button", { name: "保存并检测", exact: true }),
+  ).toBeEnabled();
   await expect(
     page.getByRole("dialog", { name: "连接新设备", exact: true }),
   ).toHaveCount(0);
@@ -229,6 +263,21 @@ test("computer settings pair through HTTPS and preview explicit login revocation
   const link = await page.evaluate(() => navigator.clipboard.readText());
   expect(new URL(link).hash).toBe(`#pair=${code}`);
   await page.screenshot({ path: info.outputPath("connect-device.png") });
+  for (const theme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect
+      .poll(() => settings.evaluate((el) => el.scrollWidth <= el.clientWidth))
+      .toBe(true);
+    await settings
+      .getByRole("button", { name: "复制链接", exact: true })
+      .scrollIntoViewIfNeeded();
+    await expect(
+      settings.getByRole("button", { name: "复制链接", exact: true }),
+    ).toBeInViewport();
+    await page.screenshot({ path: info.outputPath(`pairing-${theme}.png`) });
+  }
+  await page.setViewportSize({ width: 1360, height: 900 });
   const remote = await browser.newContext({ ignoreHTTPSErrors: true });
   try {
     const remotePage = await remote.newPage();
@@ -258,6 +307,14 @@ test("computer settings pair through HTTPS and preview explicit login revocation
     ).toBe("client");
     expect(
       (await remote.request.get(`${service.url}/hosting/devices`)).status(),
+    ).toBe(403);
+    expect(
+      (
+        await remote.request.post(`${service.url}/hosting/connection`, {
+          headers: { origin: service.url },
+          data: { mode: "off" },
+        })
+      ).status(),
     ).toBe(403);
     expect(
       (

@@ -36,10 +36,11 @@ export async function openHostedRuntime() {
       config.staticDir,
       runtime.engines,
       runtime.mcp,
-      new URL(
-        "/mcp/oauth/callback",
-        config.publicUrl ?? `http://127.0.0.1:${config.port}`,
-      ).href,
+      () =>
+        new URL(
+          "/mcp/oauth/callback",
+          hosted.connection.origin ?? `http://127.0.0.1:${config.port}`,
+        ).href,
     );
     const engines = runtime.engines;
     if (!engines) throw new Error("任务引擎尚未启动。");

@@ -23,10 +23,12 @@ export function sessionCookie(
 }
 
 export function originGuard(
-  addresses: string[],
+  addresses: string[] | (() => string[]),
 ): MiddlewareHandler<HostingEnv> {
-  const origins = addresses.map((address) => new URL(address));
   return async (c, next) => {
+    const origins = (
+      typeof addresses === "function" ? addresses() : addresses
+    ).map((address) => new URL(address));
     const host = c.req.header("host") ?? new URL(c.req.url).host;
     const address = origins.find((address) => address.host === host);
     if (!address) return c.json({ error: "服务器地址不匹配。" }, 403);

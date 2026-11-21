@@ -14,7 +14,7 @@ const revision = z.number().int().nonnegative();
 export function mcpRouter(
   bots: Bots,
   connections?: McpConnections,
-  callback?: string,
+  callback?: string | (() => string),
 ) {
   const access = async <T>(action: (service: McpConnections) => Promise<T>) => {
     if (!connections)
@@ -145,7 +145,7 @@ export function mcpRouter(
             });
           return service.login(
             input.id,
-            callback,
+            typeof callback === "function" ? callback() : callback,
             input.client,
             BACKGROUND_CONTEXT,
           );

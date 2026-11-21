@@ -32,7 +32,7 @@ export function createApp(
   staticDir = fileURLToPath(new URL("../../web/dist", import.meta.url)),
   engines?: Runtime,
   mcp?: McpConnections,
-  mcpCallback?: string,
+  mcpCallback?: string | (() => string),
 ) {
   const app = new Hono();
   const handler = new RPCHandler(

@@ -2,8 +2,8 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { RuntimeConfig } from "@domos/agent/config";
 import { modelProviders } from "@domos/agent/models";
+import { connectionInput, DirectConnection } from "@domos/hosting/connection";
 import { desktopIdentity, desktopSession } from "@domos/hosting/desktop";
-import { probeInstance } from "@domos/hosting/instance";
 import type { Sessions } from "@domos/hosting/sessions";
 import type { Models } from "@earendil-works/pi-ai";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -28,37 +28,19 @@ export function hostingApp(options: {
   forward: (request: Request) => Promise<Response>;
 }) {
   const { config, sessions, models } = options;
-  const publicUrl = config.publicUrl ?? `http://${config.host}:${config.port}`;
   const desktopUrl = config.desktopUrl ?? `http://127.0.0.1:${config.port}`;
-  async function connection(signal: AbortSignal) {
-    const checkedAt = Date.now();
-    if (!config.publicUrl || new URL(config.publicUrl).protocol !== "https:")
-      return { state: "local" as const, checkedAt };
-    try {
-      const info = await probeInstance(config.publicUrl, signal);
-      if (info.computerId !== options.computerId)
-        throw new Error("此地址没有指向当前 Domos。");
-      return { state: "ready" as const, url: info.origin, checkedAt };
-    } catch (error) {
-      const cause =
-        error instanceof Error && "cause" in error
-          ? (error.cause as { code?: string })
-          : undefined;
-      return {
-        state: "error" as const,
-        url: new URL(config.publicUrl).origin,
-        checkedAt,
-        error:
-          error instanceof Error
-            ? `${error.message}${cause?.code ? ` (${cause.code})` : ""}`
-            : "无法验证 HTTPS 连接。",
-      };
-    }
-  }
+  const connection = new DirectConnection(
+    sessions.store,
+    config,
+    options.computerId,
+  );
   const logins = new ModelLogins(models);
   const app = new Hono<HostingEnv>();
   app.get("/health", (c) => c.json({ ok: true }));
-  app.use("*", originGuard([desktopUrl, publicUrl]));
+  app.use(
+    "*",
+    originGuard(() => [desktopUrl, ...connection.origins]),
+  );
   app.use("*", async (c, next) => {
     if (
       c.req.path !== "/hosting/desktop" &&
@@ -165,8 +147,19 @@ export function hostingApp(options: {
     return c.json(sessions.page(c.get("device").id, parsed.data));
   });
   app.get("/hosting/connection", async (c) =>
-    c.json(await connection(c.req.raw.signal)),
+    c.json(await connection.status(c.req.raw.signal)),
   );
+  app.post("/hosting/connection", async (c) => {
+    const input = connectionInput.parse(await c.req.json());
+    try {
+      return c.json(await connection.configure(input, c.req.raw.signal));
+    } catch (error) {
+      return c.json(
+        { error: error instanceof Error ? error.message : "连接未完成。" },
+        409,
+      );
+    }
+  });
   app.get("/hosting/devices/revocation", (c) =>
     c.json({
       items: sessions
@@ -188,13 +181,13 @@ export function hostingApp(options: {
       .object({ scope: z.enum(["admin", "client"]) })
       .strict()
       .parse(await c.req.json());
-    const status = await connection(c.req.raw.signal);
-    if (status.state !== "ready")
+    const status = await connection.status(c.req.raw.signal, false);
+    if (status.state !== "ready" || !status.url)
       return c.json(
         {
           error:
             status.state === "local"
-              ? "仅本机可用。请先配置可访问的 HTTPS 地址。"
+              ? "请先启用 Tailscale 连接，或保存可访问的 HTTPS 地址。"
               : status.error,
         },
         409,
@@ -359,5 +352,5 @@ export function hostingApp(options: {
       400,
     ),
   );
-  return { app, close: () => logins.close() };
+  return { app, connection, close: () => logins.close() };
 }

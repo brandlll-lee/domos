@@ -1,5 +1,5 @@
 import type { Device } from "@domos/hosting/sessions";
-import { Button, Switch } from "@domos/ui/controls";
+import { Button } from "@domos/ui/controls";
 import { ConfirmDialog } from "@domos/ui/dialog";
 import { Loading } from "@domos/ui/loading";
 import { Pagination } from "@domos/ui/pagination";
@@ -10,6 +10,7 @@ import { DevicesIcon } from "@phosphor-icons/react/dist/csr/Devices";
 import { useCallback, useEffect, useState } from "react";
 import { useErrorNotice } from "../notices.tsx";
 import { hostingRequest } from "./api.ts";
+import { DeviceConnection } from "./connection.tsx";
 
 type DevicePage = {
   items: Device[];
@@ -17,12 +18,6 @@ type DevicePage = {
   page: number;
   pageSize: number;
 };
-type Connection = {
-  state: "local" | "ready" | "error";
-  url?: string;
-  error?: string;
-};
-type Pairing = { code: string; expires: number; url: string };
 const time = (value: number | null) =>
   value ? new Date(value).toLocaleString() : "未知";
 
@@ -38,17 +33,12 @@ export function Devices({
   const [selected, setSelected] = useState<Device>();
   const [result, setResult] = useState<DevicePage>();
   const [number, setNumber] = useState(1);
-  const [connection, setConnection] = useState<Connection>();
-  const [pairing, setPairing] = useState<Pairing>();
-  const [qr, setQr] = useState("");
-  const [admin, setAdmin] = useState(false);
   const [preview, setPreview] = useState<Device[]>();
   const [previewPage, setPreviewPage] = useState(1);
   const [confirm, setConfirm] = useState<"device" | "others">();
   const [reading, setReading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState("");
   const refresh = useCallback(
     async (signal?: AbortSignal) => {
       setReading(true);
@@ -76,43 +66,6 @@ export function Devices({
     });
     return () => controller.abort();
   }, [refresh]);
-  useEffect(() => {
-    if (page !== "connection") return;
-    const controller = new AbortController();
-    setConnection(undefined);
-    setPairing(undefined);
-    setAdmin(false);
-    setCopied("");
-    void hostingRequest<Connection>(
-      "connection",
-      undefined,
-      "GET",
-      controller.signal,
-    )
-      .then(setConnection)
-      .catch((cause) => {
-        if (!controller.signal.aborted) setError(cause.message);
-      });
-    return () => controller.abort();
-  }, [page]);
-  useEffect(() => {
-    setQr("");
-    if (!pairing || page !== "connection") return;
-    let active = true;
-    void import("qrcode")
-      .then((module) =>
-        module.toDataURL(pairing.url, { width: 192, margin: 2 }),
-      )
-      .then((value) => {
-        if (active) setQr(value);
-      })
-      .catch((cause) => {
-        if (active) setError(cause.message);
-      });
-    return () => {
-      active = false;
-    };
-  }, [pairing, page]);
   async function run(action: () => Promise<unknown>) {
     if (busy) return;
     setBusy(true);
@@ -126,10 +79,6 @@ export function Devices({
     }
   }
   useErrorNotice(error, () => run(() => refresh()));
-  async function copy(value: string, label: string) {
-    await navigator.clipboard.writeText(value);
-    setCopied(label);
-  }
   if (!page)
     return (
       <PanelCard>
@@ -141,140 +90,7 @@ export function Devices({
         />
       </PanelCard>
     );
-  if (page === "connection")
-    return (
-      <section
-        className="settings-sections"
-        aria-label="连接新设备"
-        aria-busy={busy}
-      >
-        {!connection && !error && <Loading label="正在检查连接地址" />}
-        {connection?.state === "local" && (
-          <PanelCard>
-            <SettingRow
-              title="仅本机可用"
-              description="在 domos.config.json 配置 publicUrl，并通过 HTTPS 反向代理指向此服务。配置后重启 Domos，再连接其他设备。"
-            />
-          </PanelCard>
-        )}
-        {connection?.state === "error" && (
-          <PanelCard>
-            <SettingRow title="连接验证失败" description={connection.error}>
-              <Button
-                variant="secondary"
-                pending={busy}
-                onClick={() =>
-                  void run(async () =>
-                    setConnection(await hostingRequest("connection")),
-                  )
-                }
-              >
-                重试
-              </Button>
-            </SettingRow>
-          </PanelCard>
-        )}
-        {connection?.state === "ready" && (
-          <>
-            <PanelCard>
-              <SettingRow title="连接地址" description={connection.url} />
-              {!pairing && (
-                <SettingRow
-                  title="允许管理 Domos"
-                  description="默认可使用 Bot。开启后，还可修改设置和管理设备授权。"
-                >
-                  <Switch
-                    label="允许管理 Domos"
-                    checked={admin}
-                    onCheckedChange={setAdmin}
-                    disabled={busy}
-                  />
-                </SettingRow>
-              )}
-            </PanelCard>
-            {!pairing ? (
-              <div className="form-actions">
-                <Button
-                  pending={busy}
-                  onClick={() =>
-                    void run(async () =>
-                      setPairing(
-                        await hostingRequest("pairing", {
-                          scope: admin ? "admin" : "client",
-                        }),
-                      ),
-                    )
-                  }
-                >
-                  生成配对链接
-                </Button>
-              </div>
-            ) : (
-              <>
-                <PanelCard>
-                  <div className="pairing-result">
-                    {qr && (
-                      <img
-                        className="pairing-qr"
-                        src={qr}
-                        width={192}
-                        height={192}
-                        alt="连接此 Domos 的二维码"
-                      />
-                    )}
-                    <div className="pairing-copy">
-                      <p>在另一台设备扫码，或打开链接后确认连接。</p>
-                      <code className="pairing-code">{pairing.code}</code>
-                      <p className="detail-note">
-                        有效至 {new Date(pairing.expires).toLocaleTimeString()}
-                        ，仅可使用一次。
-                        {admin ? "含管理员权限。" : "权限：使用 Bot。"}
-                      </p>
-                      <div className="form-actions">
-                        <Button
-                          variant="secondary"
-                          onClick={() =>
-                            void run(() => copy(pairing.url, "链接已复制"))
-                          }
-                        >
-                          复制链接
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          onClick={() =>
-                            void run(() => copy(pairing.code, "配对码已复制"))
-                          }
-                        >
-                          复制配对码
-                        </Button>
-                      </div>
-                      <span role="status" className="detail-note">
-                        {copied}
-                      </span>
-                    </div>
-                  </div>
-                </PanelCard>
-                <p className="detail-note">
-                  若另一台设备无法打开，请检查它能否访问此 HTTPS 地址。
-                </p>
-                <div className="form-actions">
-                  <Button
-                    variant="ghost"
-                    disabled={busy}
-                    onClick={() => {
-                      setPairing(undefined);
-                      setCopied("");
-                    }}
-                  >
-                    重新生成
-                  </Button>
-                </div>
-              </>
-            )}
-          </>
-        )}
-      </section>
-    );
+  if (page === "connection") return <DeviceConnection />;
   return (
     <section
       className="settings-sections"

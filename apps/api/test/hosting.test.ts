@@ -235,16 +235,40 @@ test("connection checks, origin-specific cookies and explicit revocation share s
       })
     ).status,
   ).toBe(400);
-  config.publicUrl = undefined;
-  expect((await (await request("connection")).json()).state).toBe("local");
+  const local = (path: string, body?: object) =>
+    hosted.app.request(`http://127.0.0.1:4310/hosting/${path}`, {
+      method: body ? "POST" : "GET",
+      headers: { ...headers, Origin: "http://127.0.0.1:4310" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
   expect(
     (
-      await request("pairing", {
+      await request("connection", {
         method: "POST",
-        body: JSON.stringify({ scope: "client" }),
+        headers: { Authorization: `Bearer ${later.token}` },
+        body: JSON.stringify({ mode: "off" }),
       })
     ).status,
-  ).toBe(409);
+  ).toBe(403);
+  expect(
+    (await local("connection", { mode: "https", url: "https://next.test" }))
+      .status,
+  ).toBe(200);
+  expect((await request("connection")).status).toBe(403);
+  expect(
+    (
+      await hosted.app.request("https://next.test/hosting/session", {
+        headers: {
+          Authorization: `Bearer ${owner.token}`,
+          Origin: "https://next.test",
+        },
+      })
+    ).status,
+  ).toBe(200);
+  expect((await local("session")).status).toBe(200);
+  expect((await local("connection", { mode: "off" })).status).toBe(200);
+  expect((await (await local("connection")).json()).state).toBe("local");
+  expect((await local("pairing", { scope: "client" })).status).toBe(409);
 });
 
 test("hosting authenticates RPC, files, admin operations, origins and pairing", async () => {

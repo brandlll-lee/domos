@@ -46,7 +46,7 @@ export function createRouter(
   computer?: Computers,
   engines?: Runtime,
   mcp?: McpConnections,
-  mcpCallback?: string,
+  mcpCallback?: string | (() => string),
 ) {
   return {
     chats: {
