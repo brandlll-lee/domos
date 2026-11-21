@@ -43,6 +43,11 @@ test("plush identities load, animate and survive profile changes", async ({
     const [ready] = (await once(worker, "message")) as [{ port: number }];
     const firstEyes = Promise.withResolvers<void>();
     const eyesRequested = Promise.withResolvers<void>();
+    const texture = Promise.withResolvers<void>();
+    await page.route("**/assets/cloud-*.webp", async (route) => {
+      await texture.promise;
+      await route.continue();
+    });
     await page.route("**/assets/eye-velvet-*.webp", async (route) => {
       eyesRequested.resolve();
       await firstEyes.promise;
@@ -225,11 +230,6 @@ test("plush identities load, animate and survive profile changes", async ({
     await page.emulateMedia({ reducedMotion: "reduce" });
     await contactAvatar.hover();
     await expect(gesture).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
-    const texture = Promise.withResolvers<void>();
-    await page.route("**/assets/cloud-*.webp", async (route) => {
-      await texture.promise;
-      await route.continue();
-    });
     await details.getByRole("button", { name: "编辑", exact: true }).click();
     const picker = details.locator(".avatar-editor");
     const cloud = picker.getByRole("button", {
@@ -237,17 +237,16 @@ test("plush identities load, animate and survive profile changes", async ({
       exact: true,
     });
     await expect(
-      picker.getByRole("status", { name: "正在准备内置角色" }),
-    ).toBeVisible();
-    await expect(picker.getByRole("button", { name: /^外形：/ })).toHaveCount(
-      0,
-    );
+      details.getByRole("button", { name: "编辑", exact: true }),
+    ).toHaveAttribute("aria-busy", "true");
+    await expect(picker).toHaveCount(0);
     const textureResponse = page.waitForResponse("**/assets/cloud-*.webp");
     texture.resolve();
     expect((await textureResponse).headers()["cache-control"]).toContain(
       "immutable",
     );
     await expect(cloud.locator(".character-face")).toBeVisible();
+    await expect(picker.getByRole("status")).toHaveCount(0);
     await expect(
       picker.locator('[aria-label="外形"] .character-face'),
     ).toHaveCount(15);
@@ -293,16 +292,9 @@ test("plush identities load, animate and survive profile changes", async ({
       }),
     ).toBe(160);
     await picker.getByRole("tab", { name: "内置角色", exact: true }).focus();
-    await page.keyboard.press("ArrowRight");
     await expect(
       picker.getByRole("tab", { name: "我的角色", exact: true }),
-    ).toBeFocused();
-    await page.keyboard.press("Enter");
-    await expect(
-      picker.getByRole("tab", { name: "我的角色", exact: true }),
-    ).toHaveAttribute("aria-selected", "true");
-    await page.keyboard.press("ArrowLeft");
-    await page.keyboard.press("Enter");
+    ).toBeDisabled();
     await expect(picker.getByRole("button", { name: /^外形：/ })).toHaveCount(
       15,
     );

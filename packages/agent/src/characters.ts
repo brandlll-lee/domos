@@ -50,12 +50,37 @@ export class Characters {
   }
   async list(botId: number | undefined, context: Context) {
     const computerId = await this.computer(botId, context);
-    return ((await this.harness.snapshot(CharactersDoc, context))?.items ?? [])
-      .filter((item) => item.computerId === computerId)
-      .map((item) => ({
+    const items = (
+      (await this.harness.snapshot(CharactersDoc, context))?.items ?? []
+    ).filter((item) => item.computerId === computerId);
+    return Promise.all(
+      items.map(async (item) => ({
         ...item,
+        media: {
+          ...item.media,
+          thumbnail:
+            item.media.thumbnail ?? (await this.thumbnail(item, context)),
+        },
         preparationStatus: item.preparation?.status ?? "unknown",
-      }));
+      })),
+    );
+  }
+  private async thumbnail(asset: SavedCharacter, context: Context) {
+    const path = this.path(asset.id, "cover");
+    const preview = await this.files.previews.read(
+      {
+        id: asset.id,
+        name: "character-cover",
+        path,
+        size: (await stat(path)).size,
+        mimeType: asset.coverType,
+      },
+      path,
+      undefined,
+      context.abortSignal,
+    );
+    if (preview.kind !== "image") throw new Error("角色封面无效。");
+    return preview.thumbnail;
   }
   async forCreation(
     id: string,
@@ -128,7 +153,7 @@ export class Characters {
             16 * 1024 * 1024
         )
           throw new Error("角色尺寸或帧数超过预算。");
-        return { file, path, metadata };
+        return { file, path, metadata, thumbnail: preview.thumbnail };
       }),
     );
     const image = originals[0];
@@ -167,6 +192,7 @@ export class Characters {
     const media = {
       src: `/files/characters/${id}/image`,
       cover: `/files/characters/${id}/cover`,
+      thumbnail: cover.thumbnail,
       headset: { x: 50, y: 30, scale: 0.64 },
       computer: { x: 50, y: 48, scale: 0.82 },
     };

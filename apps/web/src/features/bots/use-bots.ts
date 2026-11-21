@@ -27,7 +27,7 @@ import {
 } from "../settings/use-connection-context.ts";
 import { saveWorkspaceView, workspaceView } from "../shell/workspace-state.ts";
 import { invalidateQuota } from "../usage/quota-state.ts";
-import { receiveCharacter } from "./character-state.ts";
+import { invalidateCharacters, receiveCharacter } from "./character-state.ts";
 import {
   clearBotWork,
   invalidateBotWork,
@@ -120,6 +120,7 @@ export function useBots() {
             ]);
             const previous = bindings.current[bot.id];
             if (previous !== undefined && previous !== key) {
+              invalidateCharacters(bot.id);
               invalidateNativeConnections(bot.id);
               invalidateBotWork(bot.id);
               invalidateModelSettings(bot.id);

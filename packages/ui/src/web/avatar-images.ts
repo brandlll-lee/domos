@@ -2,7 +2,11 @@ import { useEffect, useSyncExternalStore } from "react";
 
 const images = new Map<
   string,
-  { status: "loading" | "ready" | "failed"; done: Promise<void> }
+  {
+    status: "loading" | "ready" | "failed";
+    done: Promise<void>;
+    image: HTMLImageElement;
+  }
 >();
 const listeners = new Set<() => void>();
 
@@ -19,13 +23,28 @@ export function prepareAvatarImages(urls: readonly string[]) {
       const pending = images.get(url);
       if (pending) return pending.done;
       const image = new Image();
+      // Chromium can defer low-priority images behind long-lived workspace streams.
+      image.fetchPriority = "high";
       image.src = url;
       const entry: NonNullable<ReturnType<typeof images.get>> = {
         status: "loading",
-        done: image.decode().then(
-          () => settle("ready"),
-          () => settle("failed"),
-        ),
+        image,
+        done: new Promise<void>((resolve) => {
+          const timer = window.setTimeout(() => {
+            image.src = "";
+            finish("failed");
+          }, 15_000);
+          function finish(status: "ready" | "failed") {
+            if (entry.status !== "loading") return;
+            window.clearTimeout(timer);
+            settle(status);
+            resolve();
+          }
+          void image.decode().then(
+            () => finish("ready"),
+            () => finish("failed"),
+          );
+        }),
       };
       function settle(status: "ready" | "failed") {
         entry.status = status;
@@ -40,23 +59,28 @@ export function prepareAvatarImages(urls: readonly string[]) {
 export function retryAvatarImages(urls: readonly string[]) {
   for (const url of urls)
     if (avatarImageStatus(url) === "failed") images.delete(url);
-  void prepareAvatarImages(urls);
+  const pending = prepareAvatarImages(urls);
   for (const listener of listeners) listener();
+  return pending;
 }
 
 export function useAvatarImages(urls: readonly string[]) {
-  const status = useSyncExternalStore(subscribe, () => {
-    if (
-      urls.some((url) => {
-        const current = avatarImageStatus(url);
-        return !current || current === "loading";
-      })
-    )
-      return "loading";
-    return urls.some((url) => avatarImageStatus(url) === "failed")
-      ? "failed"
-      : "ready";
-  });
+  const status = useSyncExternalStore(
+    subscribe,
+    () => {
+      if (
+        urls.some((url) => {
+          const current = avatarImageStatus(url);
+          return !current || current === "loading";
+        })
+      )
+        return "loading";
+      return urls.some((url) => avatarImageStatus(url) === "failed")
+        ? "failed"
+        : "ready";
+    },
+    () => "ready",
+  );
   useEffect(() => {
     void prepareAvatarImages(urls);
   }, [urls]);

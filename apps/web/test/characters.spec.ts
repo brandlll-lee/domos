@@ -201,7 +201,11 @@ test("profile updates merge with drafts and keep character equipment scoped", as
   if (!yellowAsset || !blueAsset) throw new Error("Characters missing");
   const choices = details.getByRole("button", { name: /^角色：/ });
   await choices
-    .filter({ has: page.locator(`image[href="${yellowAsset.media.cover}"]`) })
+    .filter({
+      has: page.locator(
+        `image[href="${yellowAsset.media.thumbnail ?? yellowAsset.media.cover}"]`,
+      ),
+    })
     .click();
   await expect(
     details.getByRole("spinbutton", { name: "耳机水平", exact: true }),
@@ -225,7 +229,11 @@ test("profile updates merge with drafts and keep character equipment scoped", as
   await expect(name).toHaveValue("Unsaved name");
   await name.fill("Retained name");
   await choices
-    .filter({ has: page.locator(`image[href="${blueAsset.media.cover}"]`) })
+    .filter({
+      has: page.locator(
+        `image[href="${blueAsset.media.thumbnail ?? blueAsset.media.cover}"]`,
+      ),
+    })
     .click();
   await expect(
     details.getByRole("spinbutton", { name: "耳机水平", exact: true }),

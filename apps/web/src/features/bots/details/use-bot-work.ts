@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { client } from "../../../client.ts";
 import { createReadState, useReadState } from "../../read-state.ts";
 import { userError } from "../../user-error.ts";
+import { prepareCharacters } from "../character-state.ts";
 import {
   createIdentityState,
   type IdentityField,
@@ -47,9 +48,14 @@ export function useWorkAction() {
 
 function createWork(botId: number) {
   const identity = createIdentityState();
-  const profile = createReadState((signal) =>
-    client.work.profile({ botId }, { signal }),
-  );
+  const profile = createReadState(async (signal) => {
+    const [value] = await Promise.all([
+      client.work.profile({ botId }, { signal }),
+      prepareCharacters(botId),
+    ]);
+    signal.throwIfAborted();
+    return value;
+  });
   let received: Profile | undefined;
   profile.subscribe(() => {
     const value = profile.snapshot().data;
@@ -230,6 +236,9 @@ export function useBotWork(
     store.identity.subscribe,
     store.identity.snapshot,
   );
+  useEffect(() => {
+    if (active && !identity.profile) void store.profile.load().catch(() => {});
+  }, [active, identity.profile, store]);
   const loaded = !!data.data;
   useEffect(() => {
     if (active && live && loaded) return store.watch();
@@ -237,6 +246,7 @@ export function useBotWork(
   return {
     data: data.data ?? null,
     profile: identity.profile ?? null,
+    prepareProfile: () => store.profile.load(!!store.profile.snapshot().error),
     retrySave: store.retrySave(),
     error: data.error ? userError(data.error, "详情连接中断。请重试。") : null,
     profileError: profile.error

@@ -6,13 +6,14 @@ import { Loading } from "@domos/ui/loading";
 import { PanelHeader } from "@domos/ui/panel";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { Tabs } from "@domos/ui/tabs";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useChat } from "../../chat/use-chat.ts";
 import { WorkPanel } from "../../chat/work.tsx";
 import type { useComputer } from "../../computer/use-computer.ts";
 import { ComputerWorkspace } from "../../computer/workspace.tsx";
 import { FilesList } from "../../files/list.tsx";
 import { useErrorNotice } from "../../notices.tsx";
+import { prepareCharacters } from "../character-state.ts";
 import { ComputerSettings } from "./computer.tsx";
 import { BotIdentity, IdentityEditor } from "./identity.tsx";
 import { MemoryDialog } from "./memory.tsx";
@@ -43,7 +44,7 @@ export function BotDetails({
   bot,
   sessionBot = bot,
   active,
-  view,
+  view: requestedView,
   onViewChange,
   onClose,
   onBack,
@@ -84,20 +85,34 @@ export function BotDetails({
   const [memoryOpen, setMemoryOpen] = useState(false);
   const workActive =
     active &&
-    ((view === "root" && tab === "bot") ||
-      view === "skills" ||
-      view === "routines" ||
+    ((requestedView === "root" && tab === "bot") ||
+      requestedView === "skills" ||
+      requestedView === "routines" ||
       memoryOpen);
   const work = useBotWork(
     bot.id,
     workActive,
-    view !== "root" || memoryOpen,
-    active && view === "identity",
+    requestedView !== "root" || memoryOpen,
+    active && requestedView === "identity",
+  );
+  const view =
+    requestedView === "identity" && !work.profile ? "root" : requestedView;
+  const current = useRef({ active, botId: bot.id, view });
+  current.current = { active, botId: bot.id, view };
+  useEffect(
+    () => () => {
+      current.current.active = false;
+    },
+    [],
   );
   const action = useWorkAction();
   const error =
     action.error ??
-    (view === "identity" ? work.profileError : workActive ? work.error : null);
+    (requestedView === "identity"
+      ? work.profileError
+      : workActive
+        ? work.error
+        : null);
   const retrySave = work.retrySave;
   useErrorNotice(
     error,
@@ -194,7 +209,21 @@ export function BotDetails({
           <BotIdentity
             bot={bot}
             profile={work.profile}
-            onEdit={() => navigate("identity")}
+            pending={action.busy}
+            onEdit={() => {
+              void action.run("identity-prepare", async () => {
+                await Promise.all([
+                  work.prepareProfile(),
+                  prepareCharacters(bot.id),
+                ]);
+                if (
+                  current.current.active &&
+                  current.current.botId === bot.id &&
+                  current.current.view === "root"
+                )
+                  navigate("identity");
+              });
+            }}
           />
           <Tabs.Root
             className="bot-tabs"
@@ -252,11 +281,8 @@ export function BotDetails({
         className="detail-scroll"
         viewportClassName="detail-content"
       >
-        {view === "identity" && !work.profile && !work.profileError && (
-          <Loading label="正在读取资料" />
-        )}
-        {work.profile && (
-          <div hidden={view !== "identity"}>
+        {view === "identity" && work.profile && (
+          <div>
             <IdentityEditor profile={work.profile} action={action} />
           </div>
         )}

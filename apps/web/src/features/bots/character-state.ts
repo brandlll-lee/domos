@@ -1,21 +1,46 @@
 import type { Bot } from "@domos/agent/bots";
+import {
+  avatarImageStatus,
+  characterPickerImages,
+  retryAvatarImages,
+} from "@domos/ui/avatar";
 import { client } from "../../client.ts";
 import { createReadState, useReadState } from "../read-state.ts";
 
 const stores = new Map<number, ReturnType<typeof make>>();
 function make(botId?: number) {
-  return createReadState((signal) =>
-    client.bots.characters({ botId }, { signal }),
-  );
+  return createReadState(async (signal) => {
+    const data = await client.bots.characters({ botId }, { signal });
+    const images = [
+      ...characterPickerImages,
+      ...data.map((item) => item.media.thumbnail ?? item.media.cover),
+    ];
+    await retryAvatarImages(images);
+    signal.throwIfAborted();
+    if (images.some((url) => avatarImageStatus(url) !== "ready"))
+      throw new Error("角色图片读取失败，请重试。");
+    return data;
+  });
 }
-export function useCharacters(botId?: number) {
+function charactersFor(botId?: number) {
   const key = botId ?? 0;
   let store = stores.get(key);
   if (!store) {
     store = make(botId);
     stores.set(key, store);
   }
-  return { store, ...useReadState(store, true) };
+  return store;
+}
+export function prepareCharacters(botId?: number) {
+  const store = charactersFor(botId);
+  return store.load(!!store.snapshot().error);
+}
+export function invalidateCharacters(botId: number) {
+  stores.get(botId)?.clear();
+}
+export function useCharacters(botId?: number, active = true) {
+  const store = charactersFor(botId);
+  return { store, ...useReadState(store, active) };
 }
 export function receiveCharacter(bot: Bot) {
   if (!bot.avatarAssetId) return;

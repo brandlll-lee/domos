@@ -184,10 +184,12 @@ export function BotIdentity({
   bot,
   profile,
   onEdit,
+  pending,
 }: {
   bot: Bot;
   profile: Profile | null;
   onEdit: () => void;
+  pending: boolean;
 }) {
   return (
     <section className="bot-hero" aria-label="Bot资料">
@@ -197,6 +199,7 @@ export function BotIdentity({
         className="bot-hero-avatar"
         aria-label="编辑"
         onClick={onEdit}
+        pending={pending}
       >
         <BotAvatar
           botId={bot.id}

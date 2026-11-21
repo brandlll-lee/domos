@@ -1,6 +1,7 @@
 export type CharacterMedia = {
   src: string;
   cover: string;
+  thumbnail?: string;
   headset: { x: number; y: number; scale: number };
   computer: { x: number; y: number; scale: number };
 };

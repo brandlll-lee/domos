@@ -11,7 +11,10 @@ import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { RobotIcon } from "@phosphor-icons/react/dist/csr/Robot";
 import { UsersThreeIcon } from "@phosphor-icons/react/dist/csr/UsersThree";
 import { type RefObject, useEffect, useRef, useState } from "react";
+import { prepareCharacters } from "../bots/character-state.ts";
 import { CreateBot } from "../bots/create-bot.tsx";
+import { useWorkAction } from "../bots/details/use-bot-work.ts";
+import { useErrorNotice } from "../notices.tsx";
 import { useAttention } from "./attention.tsx";
 import { TeamAvatar } from "./bot-reference.tsx";
 import { chatCopy } from "./copy.ts";
@@ -51,6 +54,8 @@ export function Sidebar({
 }) {
   const createTrigger = useRef<HTMLButtonElement>(null);
   const [creation, setCreation] = useState<"bot" | "team">();
+  const action = useWorkAction();
+  useErrorNotice(action.error);
   const attention = useAttention();
   const currentChat = window.location.hash.startsWith("#team/")
     ? window.location.hash.slice(1)
@@ -72,6 +77,7 @@ export function Sidebar({
               variant="ghost"
               size="icon-small"
               aria-label="新建"
+              pending={action.busy}
             >
               <PlusIcon />
             </Button>
@@ -80,7 +86,12 @@ export function Sidebar({
             {
               label: "新建 Bot",
               icon: <RobotIcon />,
-              onSelect: () => setCreation("bot"),
+              onSelect: () => {
+                void action.run("create-prepare", async () => {
+                  await prepareCharacters();
+                  setCreation("bot");
+                });
+              },
             },
             {
               label: "新建团队",

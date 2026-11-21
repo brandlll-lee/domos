@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { characterIdentity, characterSeed } from "@domos/ui/characters";
 import sharp from "sharp";
 import { expect, onTestFinished, test, vi } from "vitest";
@@ -12,7 +13,7 @@ test("characters survive source cleanup, reuse across Bots and keep theme change
   onTestFinished(() => runtime.harness.close(context));
   const source = runtime.conversation.id;
   const yellow = await sharp({
-    create: { width: 24, height: 24, channels: 4, background: "#ffe000" },
+    create: { width: 512, height: 512, channels: 4, background: "#ffe000" },
   })
     .png()
     .toBuffer();
@@ -28,6 +29,17 @@ test("characters survive source cleanup, reuse across Bots and keep theme change
   if (!assetId) throw new Error("asset missing");
   const assets = await runtime.bots.characters.list(source, context);
   expect(assets).toHaveLength(1);
+  const thumbnail = assets[0]?.media.thumbnail;
+  expect(thumbnail).toMatch(/^data:image\//);
+  if (!thumbnail) throw new Error("thumbnail missing");
+  expect(
+    await sharp(
+      Buffer.from(thumbnail.split(",")[1] ?? "", "base64"),
+    ).metadata(),
+  ).toMatchObject({ width: 160, height: 160 });
+  expect(
+    await readFile(runtime.bots.characters.path(assetId, "cover")),
+  ).toEqual(yellow);
   const pendingInput = {
     name: "Retry creation",
     avatarAssetId: assetId,

@@ -3,6 +3,7 @@ import {
   brandCharacter,
   type CharacterMedia,
   characterIdentity,
+  characterNames,
 } from "../characters.ts";
 import { avatarImageStatus, prepareAvatarImages } from "./avatar-images.ts";
 import { Character, characterImages } from "./character.tsx";
@@ -19,6 +20,14 @@ export {
 } from "./avatar-images.ts";
 export { characterImages, thumbnailEyes } from "./character.tsx";
 
+export const characterPickerImages = [
+  ...new Set(
+    Object.keys(characterNames).flatMap((shape) =>
+      characterImages(shape as keyof typeof characterNames, true),
+    ),
+  ),
+];
+
 export const AvatarMediaContext = createContext<Record<string, CharacterMedia>>(
   {},
 );
@@ -29,8 +38,9 @@ export async function prepareBotAvatar(
   thumbnail: boolean,
 ) {
   if (media) {
-    await prepareAvatarImages([media.cover]);
-    if (avatarImageStatus(media.cover) === "ready") return true;
+    const cover = thumbnail ? (media.thumbnail ?? media.cover) : media.cover;
+    await prepareAvatarImages([cover]);
+    if (avatarImageStatus(cover) === "ready") return true;
   }
   const urls = characterImages(characterIdentity(seed).shape, thumbnail);
   await prepareAvatarImages(urls);

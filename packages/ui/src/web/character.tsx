@@ -163,9 +163,15 @@ export function Character({
   const id = useId();
   const root = useRef<SVGSVGElement>(null);
   const [playing, setPlaying] = useState(false);
-  const cover = media?.cover;
+  const cover = thumbnail ? (media?.thumbnail ?? media?.cover) : media?.cover;
   const coverImages = useMemo(() => (cover ? [cover] : []), [cover]);
   const coverReady = useAvatarImages(coverImages) === "ready" && !!media;
+  const previewImages = useMemo(
+    () => (media?.thumbnail && !thumbnail ? [media.thumbnail] : []),
+    [media?.thumbnail, thumbnail],
+  );
+  const previewReady =
+    useAvatarImages(previewImages) === "ready" && !!media?.thumbnail;
   const animatedSource =
     coverReady && playing && (!work?.id || work.working)
       ? media.src
@@ -180,10 +186,18 @@ export function Character({
     [shape, thumbnail],
   );
   const emptyImages = useMemo(() => [], []);
-  const builtInReady =
+  const fullReady =
     useAvatarImages(coverReady ? emptyImages : builtInImages) === "ready";
-  const [texture, white, iris] = builtInImages;
-  const visibleMedia = coverReady ? media : undefined;
+  const smallImages = useMemo(() => characterImages(shape, true), [shape]);
+  const smallReady =
+    useAvatarImages(coverReady ? emptyImages : smallImages) === "ready";
+  const builtInReady = fullReady || smallReady;
+  const [texture, white, iris] = fullReady ? builtInImages : smallImages;
+  const visibleMedia = coverReady
+    ? { ...media, cover }
+    : previewReady
+      ? { ...media, cover: media.thumbnail }
+      : undefined;
   useEffect(() => {
     const element = root.current;
     if (!element) return;

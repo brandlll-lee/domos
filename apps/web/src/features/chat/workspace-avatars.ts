@@ -3,12 +3,15 @@ import type { Team } from "@domos/agent/teams";
 import {
   avatarImageStatus,
   characterImages,
+  characterPickerImages,
+  prepareAvatarImages,
   retryAvatarImages,
   useAvatarImages,
 } from "@domos/ui/avatar";
 import { characterIdentity } from "@domos/ui/characters";
 import { metrics } from "@domos/ui/tokens";
 import { useEffect, useMemo, useState } from "react";
+import { useCharacters } from "../bots/character-state.ts";
 import { useErrorNotice } from "../notices.tsx";
 
 export function useWorkspaceAvatars(
@@ -19,6 +22,10 @@ export function useWorkspaceAvatars(
 ) {
   const [entered, setEntered] = useState(false);
   const [coverBudgetUsed, setCoverBudgetUsed] = useState(false);
+  useCharacters(selected?.id, entered && !!selected);
+  useEffect(() => {
+    if (entered) void prepareAvatarImages(characterPickerImages);
+  }, [entered]);
   const { bodies, covers } = useMemo(() => {
     if (!selected) return { bodies: [], covers: [] };
     const rem = Number.parseFloat(
@@ -47,7 +54,9 @@ export function useWorkspaceAvatars(
       covers: [
         ...new Set(
           visible.flatMap((bot) =>
-            bot.avatarMedia ? [bot.avatarMedia.cover] : [],
+            bot.avatarMedia
+              ? [bot.avatarMedia.thumbnail ?? bot.avatarMedia.cover]
+              : [],
           ),
         ),
       ],
