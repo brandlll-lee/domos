@@ -3,7 +3,6 @@ import { GearIcon } from "@phosphor-icons/react/dist/csr/Gear";
 import { SparkleIcon } from "@phosphor-icons/react/dist/csr/Sparkle";
 import type { ReactNode } from "react";
 import { ComputerSettings } from "../computer/settings.tsx";
-import { Devices } from "../hosting/devices.tsx";
 import { AISettings } from "./ai.tsx";
 import { GeneralSettings } from "./general.tsx";
 
@@ -14,9 +13,22 @@ export type SettingsAccess = {
 };
 type SectionProps = SettingsAccess & {
   botId?: number;
+  page?: string;
+  onPageChange: (page?: string) => void;
 };
 
-export const sections = {
+export type SettingsSection = "general" | "ai" | "computers";
+
+export const sections: Record<
+  SettingsSection,
+  {
+    label: string;
+    description: string;
+    icon: typeof GearIcon;
+    pages?: Record<string, string>;
+    render: (props: SectionProps) => ReactNode;
+  }
+> = {
   general: {
     label: "通用",
     description: "主题与数据管理。",
@@ -33,24 +45,11 @@ export const sections = {
   },
   computers: {
     label: "当前电脑",
-    description: "名称、设备访问与电脑权限。",
+    description: "",
     icon: DesktopIcon,
-    render: ({ admin, deviceId }: SectionProps) => (
-      <div className="settings-sections">
-        <ComputerSettings admin={admin} />
-        {admin && deviceId && <Devices current={deviceId} />}
-      </div>
-    ),
+    pages: { devices: "设备访问", environments: "工作环境" },
+    render: (props: SectionProps) => <ComputerSettings {...props} />,
   },
-} satisfies Record<
-  string,
-  {
-    label: string;
-    description: string;
-    icon: typeof GearIcon;
-    render: (props: SectionProps) => ReactNode;
-  }
->;
+};
 
-export type SettingsSection = keyof typeof sections;
 export const defaultSection: SettingsSection = "general";

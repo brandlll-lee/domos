@@ -1171,6 +1171,7 @@ test("authorized devices use compact pages and retain the current device", async
   await page.getByRole("menuitem", { name: "设置", exact: true }).click();
   const settings = page.getByRole("main", { name: "设置", exact: true });
   await settings.getByRole("tab", { name: "当前电脑", exact: true }).click();
+  await settings.getByRole("button", { name: /^设备访问/ }).click();
   const devices = settings.getByRole("region", {
     name: "访问设备",
     exact: true,
@@ -1178,7 +1179,7 @@ test("authorized devices use compact pages and retain the current device", async
   await expect(devices.getByText("当前设备", { exact: true })).toBeVisible();
   const navigation = devices.getByRole("navigation", { name: "授权翻页" });
   await expect(navigation).toContainText("1–10 / 23");
-  await expect(devices.getByRole("button", { name: /^撤销/ })).toHaveCount(9);
+  await expect(devices.locator(".panel-row")).toHaveCount(10);
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
     await navigation.scrollIntoViewIfNeeded();
@@ -1188,7 +1189,7 @@ test("authorized devices use compact pages and retain the current device", async
   }
   await navigation.getByRole("button", { name: "下一页" }).click();
   await expect(navigation).toContainText("11–20 / 23");
-  await expect(devices.getByRole("button", { name: /^撤销/ })).toHaveCount(10);
+  await expect(devices.locator(".panel-row")).toHaveCount(10);
   await navigation.getByRole("button", { name: "下一页" }).click();
   await expect(navigation).toContainText("21–23 / 23");
   await expect(

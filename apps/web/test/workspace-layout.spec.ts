@@ -551,7 +551,7 @@ for (const dialogName of [
         await page.getByRole("tab", { name: "当前电脑", exact: true }).click();
         await page
           .getByRole("main", { name: "设置", exact: true })
-          .locator("summary", { hasText: "高级设置" })
+          .getByRole("button", { name: /^工作环境/ })
           .click();
         await page
           .getByRole("button", { name: "添加容器环境", exact: true })

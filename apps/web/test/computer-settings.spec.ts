@@ -34,7 +34,7 @@ test("computer details share live directory status and recover a failed refresh"
     name: "设置",
     exact: true,
   });
-  await settings.locator("summary", { hasText: "高级设置" }).click();
+  await settings.getByRole("button", { name: /^工作环境/ }).click();
   await page.route("**/rpc/computer/list", (route) => route.abort("failed"));
   await settings.getByRole("button", { name: "刷新电脑状态" }).click();
   await expect(page.locator(".attention-toast[data-error]")).toBeVisible();
@@ -84,12 +84,15 @@ test("computer ownership, project directories and access stay distinct", async (
   await expect(
     settings.getByRole("combobox", { name: "新机器人使用" }),
   ).toHaveCount(0);
-  await settings.getByLabel("电脑名称", { exact: true }).fill("ASUS");
-  await settings.getByRole("button", { name: "保存", exact: true }).click();
+  await settings.getByRole("button", { name: "编辑电脑名称" }).click();
+  await page
+    .getByRole("textbox", { name: "电脑名称", exact: true })
+    .fill("ASUS");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect.poll(async () => (await rpc("computer/node")).name).toBe("ASUS");
   expect((await rpc("computer/node")).id).toBe(node.id);
   await expect(
-    settings.locator(".settings-group[aria-label=电脑]"),
+    settings.locator(".settings-sections[aria-label=电脑]"),
   ).toHaveAttribute("aria-busy", "false");
   const created = await rpc("bots/create", {
     name: "Writer",
@@ -142,6 +145,112 @@ test("computer ownership, project directories and access stay distinct", async (
   ).toBe(project);
 });
 
+test("computer overview pairs and revokes devices through the hosting service", async ({
+  service,
+  page,
+  browser,
+}, info) => {
+  await service.stop();
+  await service.start(0, "hosting");
+  await page.goto(service.url);
+  await page.getByLabel("设备名称", { exact: true }).fill("管理电脑");
+  await page.getByLabel("配对码", { exact: true }).fill(service.pairing);
+  await page.getByRole("button", { name: "连接", exact: true }).click();
+  await page.getByRole("button", { name: "用户菜单", exact: true }).click();
+  await page.getByRole("menuitem", { name: "设置", exact: true }).click();
+  const settings = page.getByRole("main", { name: "设置", exact: true });
+  await settings.getByRole("tab", { name: "当前电脑", exact: true }).click();
+  await expect(
+    settings.getByRole("textbox", { name: "电脑名称", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    settings.getByRole("button", { name: /设备访问.*已授权 1 台/ }),
+  ).toBeVisible();
+  await expect(settings.locator("summary")).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath("computer-overview.png") });
+  await settings.getByRole("button", { name: /^设备访问/ }).click();
+  await expect(
+    settings.getByRole("heading", { name: "设备访问", exact: true }),
+  ).toBeVisible();
+  await page.screenshot({ path: info.outputPath("devices.png") });
+  await settings
+    .getByRole("button", { name: "连接新设备", exact: true })
+    .click();
+  const pairing = page.getByRole("dialog", { name: "连接新设备", exact: true });
+  await expect(
+    pairing.getByRole("combobox", { name: "设备权限" }),
+  ).toContainText("使用 Bot");
+  await page.screenshot({ path: info.outputPath("connect-device.png") });
+  await pairing.getByRole("button", { name: "生成配对码" }).click();
+  const code = await pairing.locator(".pairing-code").innerText();
+  const remote = await browser.newContext();
+  try {
+    const response = await remote.request.post(
+      `${service.url}/hosting/exchange`,
+      { data: { code, label: "演示手机" }, headers: { origin: service.url } },
+    );
+    expect(response.ok()).toBe(true);
+    expect((await response.json()).device.scope).toBe("client");
+    expect(
+      (await remote.request.get(`${service.url}/hosting/devices`)).status(),
+    ).toBe(403);
+    expect(
+      (
+        await page.request.post(`${service.url}/hosting/exchange`, {
+          data: { code, label: "重复配对" },
+          headers: { origin: service.url },
+        })
+      ).status(),
+    ).toBe(401);
+    await pairing.getByRole("button", { name: "关闭", exact: true }).click();
+    await settings.getByRole("button", { name: "刷新设备" }).click();
+    await expect(settings.getByText("有效至", { exact: true })).toHaveCount(0);
+    await settings.getByRole("button", { name: /^演示手机/ }).click();
+    const device = page.getByRole("dialog", { name: "演示手机", exact: true });
+    await expect(device.getByText("有效至", { exact: true })).toBeVisible();
+    await device.getByRole("button", { name: "撤销访问", exact: true }).click();
+    const confirm = page.getByRole("dialog", {
+      name: "撤销 演示手机 的访问？",
+      exact: true,
+    });
+    await confirm
+      .getByRole("button", { name: "撤销访问", exact: true })
+      .click();
+    await expect(
+      settings.getByRole("button", { name: /^演示手机/ }),
+    ).toHaveCount(0);
+    expect(
+      (await remote.request.get(`${service.url}/hosting/session`)).status(),
+    ).toBe(401);
+  } finally {
+    await remote.close();
+  }
+  await settings.getByRole("button", { name: /^管理电脑/ }).click();
+  const current = page.getByRole("dialog", { name: "管理电脑", exact: true });
+  await expect(current.getByRole("button", { name: "撤销访问" })).toHaveCount(
+    0,
+  );
+  await current.getByRole("button", { name: "关闭弹窗" }).click();
+  await expect(
+    settings.getByRole("button", { name: /^管理电脑/ }),
+  ).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(
+    settings.getByRole("heading", { name: "当前电脑", exact: true }),
+  ).toBeVisible();
+  await expect(
+    settings.getByRole("button", { name: /^设备访问/ }),
+  ).toBeFocused();
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect
+      .poll(() => settings.evaluate((el) => el.scrollWidth <= el.clientWidth))
+      .toBe(true);
+    await page.screenshot({ path: info.outputPath(`overview-${theme}.png`) });
+  }
+});
+
 test("local container setup submits the selected browser network policy", async ({
   service,
   page,
@@ -151,7 +260,7 @@ test("local container setup submits the selected browser network policy", async 
   await page.getByRole("menuitem", { name: "设置", exact: true }).click();
   const settings = page.getByRole("main", { name: "设置", exact: true });
   await settings.getByRole("tab", { name: "当前电脑", exact: true }).click();
-  await settings.locator(".settings-group > .disclosure > summary").click();
+  await settings.getByRole("button", { name: /^工作环境/ }).click();
   await settings
     .getByRole("button", { name: "添加容器环境", exact: true })
     .click();
@@ -169,6 +278,9 @@ test("local container setup submits the selected browser network policy", async 
   await heading.press("Enter");
   await expect(advanced).toHaveAttribute("open", "");
   await expect(dialog.getByLabel("工作镜像", { exact: true })).toBeVisible();
+  await dialog
+    .getByLabel("工作镜像", { exact: true })
+    .fill("domos-workspace:3");
   await heading.press("Space");
   await expect(advanced).not.toHaveAttribute("open");
   await heading.click();

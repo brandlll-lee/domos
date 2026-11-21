@@ -31,6 +31,8 @@ export function SettingsPage({
 }) {
   const [visited, setVisited] = useState([section]);
   const [query, setQuery] = useState("");
+  const [detail, setDetail] = useState<string>();
+  const detailTrigger = useRef<HTMLElement | null>(null);
   const [compact, setCompact] = useState(
     () => matchMedia(`(max-width: ${compactChat.maxWidth})`).matches,
   );
@@ -38,7 +40,7 @@ export function SettingsPage({
   const needle = query.trim().toLocaleLowerCase();
   const matches = (Object.keys(sections) as SettingsSection[]).filter((id) => {
     const item = sections[id];
-    return `${item.label} ${item.description}`
+    return `${item.label} ${item.description} ${Object.values(item.pages ?? {}).join(" ")}`
       .toLocaleLowerCase()
       .includes(needle);
   });
@@ -57,12 +59,27 @@ export function SettingsPage({
   }, []);
 
   function select(next: SettingsSection) {
+    setDetail(undefined);
     setSection(next);
     setVisited((current) =>
       current.includes(next) ? current : [...current, next],
     );
     setQuery("");
     scroll.current?.scrollTo({ top: 0 });
+  }
+
+  function openDetail(next?: string) {
+    if (next) detailTrigger.current = document.activeElement as HTMLElement;
+    setDetail(next);
+    scroll.current?.scrollTo({ top: 0 });
+    requestAnimationFrame(() => {
+      if (!next && detailTrigger.current?.isConnected)
+        detailTrigger.current.focus();
+      else
+        contentRef.current
+          ?.querySelector<HTMLElement>(".settings-main")
+          ?.focus();
+    });
   }
 
   return (
@@ -85,6 +102,7 @@ export function SettingsPage({
         event.preventDefault();
         event.stopPropagation();
         if (query) setQuery("");
+        else if (detail) openDetail();
         else onBack();
       }}
     >
@@ -149,11 +167,27 @@ export function SettingsPage({
         tabIndex={-1}
       >
         <header className="settings-header">
-          <div>
-            <h2>{sections[section].label}</h2>
-            {sections[section].description && (
-              <p>{sections[section].description}</p>
+          <div className="settings-heading">
+            {detail && (
+              <Button
+                variant="ghost"
+                size="icon-small"
+                aria-label={`返回${sections[section].label}`}
+                onClick={() => openDetail()}
+              >
+                <ArrowLeftIcon />
+              </Button>
             )}
+            <div>
+              <h2>
+                {detail
+                  ? sections[section].pages?.[detail]
+                  : sections[section].label}
+              </h2>
+              {!detail && sections[section].description && (
+                <p>{sections[section].description}</p>
+              )}
+            </div>
           </div>
           <Button
             variant="ghost"
@@ -168,7 +202,12 @@ export function SettingsPage({
           <div className="settings-content">
             {visited.map((id) => (
               <Tabs.Panel key={id} value={id} keepMounted>
-                {sections[id].render({ ...access, botId })}
+                {sections[id].render({
+                  ...access,
+                  botId,
+                  page: id === section ? detail : undefined,
+                  onPageChange: openDetail,
+                })}
               </Tabs.Panel>
             ))}
             {message && (
