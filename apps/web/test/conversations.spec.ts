@@ -6,11 +6,33 @@ import type { AppRouter } from "../../api/src/router.ts";
 import { chooseAppearance, openDetails } from "./fixtures/chat-ui.ts";
 import { test } from "./fixtures/service.ts";
 
+async function openConversations(page: Page) {
+  await expect(page.locator(".workspace")).toBeVisible();
+  const contacts = page.getByRole("button", { name: "联系人", exact: true });
+  const link = page.getByRole("link", { name: "Domos", exact: true });
+  const sidebar = page.locator('.workspace-panel[data-side="sidebar"]');
+  if ((await sidebar.getAttribute("data-closed")) !== null)
+    await contacts.click();
+  await expect(page.locator(".bot-conversations").first()).toBeVisible();
+  if ((await page.locator(".sidebar").getAttribute("data-compact")) !== null) {
+    await page.getByRole("button", { name: "Domos", exact: true }).click();
+  } else {
+    await link.hover({ position: { x: 20, y: 20 } });
+    await page
+      .getByRole("button", { name: "Domos 的操作", exact: true })
+      .click();
+  }
+  await page.getByRole("menuitem", { name: "管理会话", exact: true }).click();
+  return page.getByRole("dialog", { name: "Domos 的会话", exact: true });
+}
+
 async function createConversation(page: Page) {
-  await page.getByRole("button", { name: "当前会话", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Domos的会话" });
-  await dialog.getByRole("button", { name: "新建会话", exact: true }).click();
-  await expect(dialog).toBeHidden();
+  await page
+    .getByRole("link", { name: "Domos", exact: true })
+    .hover({ position: { x: 20, y: 20 } });
+  await page
+    .getByRole("button", { name: "为 Domos 新建会话", exact: true })
+    .click();
 }
 
 test("three conversations keep drafts, configuration and history through navigation and restart", async ({
@@ -62,8 +84,7 @@ test("three conversations keep drafts, configuration and history through navigat
     .click();
   await page.reload();
   await expect(page.getByLabel("你的消息")).toContainText("分析账单");
-  await page.getByRole("button", { name: "当前会话", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Domos的会话", exact: true });
+  const dialog = await openConversations(page);
   await dialog
     .getByRole("button", { name: "准备面试的操作", exact: true })
     .click();
@@ -77,7 +98,7 @@ test("three conversations keep drafts, configuration and history through navigat
     .click();
   await page.getByRole("menuitem", { name: "归档", exact: true }).click();
   await expect(dialog.locator(".conversation-list-row")).toHaveCount(0);
-  await dialog.getByLabel("已归档", { exact: true }).check();
+  await dialog.getByRole("tab", { name: "已归档", exact: true }).click();
   await expect(dialog.locator(".conversation-list-row")).toHaveCount(1);
   await dialog
     .getByRole("button", { name: "面试资料的操作", exact: true })
@@ -96,9 +117,9 @@ test("three conversations keep drafts, configuration and history through navigat
     .locator('.workspace-panel[data-side="inspector"]')
     .getByRole("button", { name: "关闭", exact: true })
     .click();
-  await page.getByRole("button", { name: "当前会话", exact: true }).click();
+  await openConversations(page);
   await expect(
-    page.getByRole("dialog", { name: "Domos的会话", exact: true }),
+    page.getByRole("dialog", { name: "Domos 的会话", exact: true }),
   ).toBeVisible();
   await page.screenshot({ path: "test-results/conversations-narrow.png" });
   await page
@@ -214,4 +235,213 @@ test("the sidebar keeps one current row and reveals older conversations in place
   await expect(current).toContainText("访谈纪要");
   await parent.press("Enter");
   await expect(current).toContainText("访谈纪要");
+});
+
+test("conversation palette fits its rows and keeps management and keyboard actions separate", async ({
+  service,
+  page,
+}, info) => {
+  test.setTimeout(60_000);
+  const client = createORPCClient<RouterClient<AppRouter>>(
+    new RPCLink({ url: `${service.url}/rpc` }),
+  );
+  await page.goto(service.url);
+  let dialog = await openConversations(page);
+  await expect(dialog.getByRole("searchbox")).toBeFocused();
+  await expect(dialog.locator(".conversation-list-row")).toHaveCount(1);
+  const one = await dialog.boundingBox();
+  expect(one?.width).toBe(620);
+  expect(one?.height).toBeLessThan(300);
+  await page.screenshot({
+    path: info.outputPath("conversation-palette-single.png"),
+  });
+  await expect(
+    dialog.getByRole("button", { name: "上一页", exact: true }),
+  ).toHaveCount(0);
+  await expect(dialog.getByRole("checkbox")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  for (let i = 0; i < 2; i++) {
+    const item = await client.conversations.create({
+      botId: 1,
+      source: 1,
+      requestId: crypto.randomUUID(),
+    });
+    await client.conversations.update({
+      botId: 1,
+      id: item.id,
+      title: `资料 ${i}`,
+    });
+  }
+  dialog = await openConversations(page);
+  await expect(dialog.locator(".conversation-list-row")).toHaveCount(3);
+  expect((await dialog.boundingBox())?.height).toBeGreaterThan(
+    one?.height ?? 0,
+  );
+  await dialog.getByRole("searchbox").fill("资料 0");
+  await expect(dialog.locator("[data-highlighted]")).toContainText("资料 0");
+  const route = page.url();
+  await dialog
+    .getByRole("button", { name: "资料 0的操作", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "归档", exact: true }).click();
+  await expect(dialog.locator(".conversation-list-row")).toHaveCount(0);
+  expect(page.url()).toBe(route);
+  await dialog.getByRole("tab", { name: "已归档", exact: true }).click();
+  await expect(dialog.locator(".conversation-list-row")).toHaveCount(1);
+  await dialog
+    .getByRole("button", { name: "资料 0的操作", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "恢复会话", exact: true }).click();
+  await dialog.getByRole("tab", { name: "活跃", exact: true }).click();
+  await dialog.getByRole("searchbox").press("Enter");
+  await expect(dialog).toBeHidden();
+  await expect(page.locator(".chat-identity-conversation")).toHaveText(
+    "资料 0",
+  );
+  await expect(page.locator(".chat-header")).toHaveCSS("min-height", "124px");
+  for (let i = 2; i < 27; i++) {
+    const item = await client.conversations.create({
+      botId: 1,
+      source: 1,
+      requestId: crypto.randomUUID(),
+    });
+    await client.conversations.update({
+      botId: 1,
+      id: item.id,
+      title: `资料 ${i}`,
+    });
+  }
+  dialog = await openConversations(page);
+  await expect(dialog.locator(".conversation-list-row")).toHaveCount(28);
+  await expect(dialog.locator('[aria-current="page"]')).toBeInViewport();
+  const scroll = dialog.locator(".scroll-viewport");
+  expect(
+    await scroll.evaluate((node) => node.scrollHeight > node.clientHeight),
+  ).toBe(true);
+  for (const appearance of ["light", "dark"] as const) {
+    await page.keyboard.press("Escape");
+    await page.emulateMedia({ colorScheme: appearance });
+    dialog = await openConversations(page);
+    expect((await dialog.boundingBox())?.height).toBeLessThanOrEqual(630);
+    await dialog.getByRole("searchbox").press("ArrowDown");
+    await expect(dialog.getByRole("searchbox")).toBeFocused();
+    await page.screenshot({
+      path: info.outputPath(`conversation-palette-${appearance}.png`),
+    });
+  }
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".workspace")).toHaveAttribute(
+    "data-mobile",
+    "true",
+  );
+  const inspector = page.locator(
+    '.workspace-panel[data-side="inspector"][data-modal]',
+  );
+  if (await inspector.isVisible()) {
+    await inspector.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(inspector).toBeHidden();
+  }
+  dialog = await openConversations(page);
+  expect((await dialog.boundingBox())?.width).toBeLessThan(390);
+  expect((await dialog.boundingBox())?.height).toBeLessThanOrEqual(591);
+  await page.screenshot({
+    path: info.outputPath("conversation-palette-narrow.png"),
+  });
+});
+
+test("search palette shows recent conversations and keeps its active result visible while typing", async ({
+  service,
+  page,
+}, info) => {
+  const client = createORPCClient<RouterClient<AppRouter>>(
+    new RPCLink({ url: `${service.url}/rpc` }),
+  );
+  const second = await client.conversations.create({
+    botId: 1,
+    source: 1,
+    requestId: crypto.randomUUID(),
+  });
+  await client.conversations.update({
+    botId: 1,
+    id: second.id,
+    title: "发布计划",
+  });
+  await page.goto(service.url);
+  const trigger = page.getByRole("button", {
+    name: "搜索联系人和聊天记录",
+    exact: true,
+  });
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: "搜索", exact: true });
+  const input = dialog.getByRole("searchbox");
+  await expect(input).toBeFocused();
+  await expect(
+    dialog.getByRole("rowgroup", { name: "最近会话" }),
+  ).toContainText("发布计划");
+  await expect(dialog.locator("[data-highlighted]")).toHaveCount(1);
+  await expect(dialog.locator("[data-highlighted]")).toContainText("开始对话");
+  const first = await input.getAttribute("aria-activedescendant");
+  await input.press("ArrowDown");
+  await expect(input).toBeFocused();
+  await expect(input).not.toHaveAttribute("aria-activedescendant", first ?? "");
+  const recent = dialog.getByRole("button", {
+    name: "Domos：发布计划",
+    exact: true,
+  });
+  await recent.hover();
+  await expect(dialog.locator("[data-highlighted]")).toContainText("发布计划");
+  await input.press("Enter");
+  await expect(page).toHaveURL(new RegExp(`#bot/1/${second.id}$`));
+  await expect(dialog).toBeHidden();
+  await trigger.click();
+  await expect(dialog.locator("[data-highlighted]")).toContainText("开始对话");
+  await input.fill("没有匹配的名称");
+  await expect(dialog.locator("[data-highlighted]")).toHaveCount(0);
+  await input.press("Enter");
+  await expect(dialog).toBeVisible();
+  await input.clear();
+  for (const appearance of ["light", "dark"] as const) {
+    await input.press("Escape");
+    await page.emulateMedia({ colorScheme: appearance });
+    await trigger.click();
+    await expect(dialog).toHaveCSS("opacity", "1");
+    expect((await dialog.boundingBox())?.height).toBeLessThan(400);
+    await page.screenshot({
+      path: info.outputPath(`search-palette-${appearance}.png`),
+    });
+  }
+  await input.press("Escape");
+  await expect(trigger).toBeFocused();
+});
+
+test.describe("touch navigation", () => {
+  test.use({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+    reducedMotion: "reduce",
+  });
+  test("users create conversations through the Bot menu", async ({
+    service,
+    page,
+  }) => {
+    await page.goto(service.url);
+    await expect(page.locator(".workspace")).toHaveAttribute(
+      "data-mobile",
+      "true",
+    );
+    await page.getByRole("button", { name: "联系人", exact: true }).tap();
+    const menu = page.getByRole("button", {
+      name: "Domos 的操作",
+      exact: true,
+    });
+    await expect(menu).toBeVisible();
+    await menu.tap();
+    await page.getByRole("menuitem", { name: "新建会话", exact: true }).tap();
+    await expect(page).toHaveURL(/#bot\/1\/\d+$/);
+    await expect(page.locator(".chat-identity-conversation")).toHaveText(
+      "新会话",
+    );
+  });
 });

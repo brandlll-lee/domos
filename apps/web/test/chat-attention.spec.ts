@@ -176,7 +176,7 @@ test.afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
-test("unread survives reload and search dialog retains pagination and bounded navigation", async ({
+test("unread survives reload and search dialog loads results on scroll and bounded navigation", async ({
   page,
 }, info) => {
   const bot = (await rpc.bots.list())[0];
@@ -223,10 +223,29 @@ test("unread survives reload and search dialog retains pagination and bounded na
     .click();
   const before = await contact.boundingBox();
   const search = page.getByRole("searchbox", { name: "搜索联系人和聊天记录" });
+  let pageRequests = 0;
+  await page.route("**/rpc/chats/search", async (route) => {
+    if (
+      route.request().postData()?.includes('"before"') &&
+      ++pageRequests === 1
+    )
+      await route.abort("failed");
+    else await route.continue();
+  });
   await search.fill("查找报告");
   await expect(page.locator(".search-result")).toHaveCount(50);
-  await page.getByRole("button", { name: "更多聊天记录", exact: true }).click();
+  await page
+    .locator(".chat-search-dialog .scroll-viewport")
+    .evaluate((node) => {
+      node.scrollTop = node.scrollHeight;
+    });
+  await expect(
+    page.locator(".chat-search-dialog .inline-notice"),
+  ).toContainText("聊天记录搜索失败，请重试。");
+  expect(pageRequests).toBe(1);
+  await page.getByRole("button", { name: "重试", exact: true }).click();
   await expect(page.locator(".search-result")).toHaveCount(100);
+  expect(pageRequests).toBe(2);
   const dialog = page.getByRole("dialog", { name: "搜索", exact: true });
   const headerBox = await dialog.locator(".dialog-subheader").boundingBox();
   const footerBox = await dialog.locator(".dialog-footer").boundingBox();

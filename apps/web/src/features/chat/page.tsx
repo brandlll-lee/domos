@@ -34,7 +34,6 @@ import { ChatAttentionProvider, consumeChatTarget } from "./attention.tsx";
 import { TeamMembers } from "./bot-reference.tsx";
 import { Composer } from "./composer.tsx";
 import { ContextRing } from "./context.tsx";
-import { ConversationsDialog } from "./conversations.tsx";
 import { chatCopy } from "./copy.ts";
 import { ChatHeader } from "./header.tsx";
 import { Messages } from "./messages.tsx";
@@ -129,7 +128,6 @@ function BotChat({
     : conversationId === bot.id
       ? `bot/${bot.id}`
       : `bot/${bot.id}/${conversationId}`;
-  const [conversationsOpen, setConversationsOpen] = useState(false);
   const [savedPanel] = useState(() => workspaceView().panels[chatKey]);
   const chat = useChat(
     conversationId,
@@ -542,11 +540,10 @@ function BotChat({
             >
               <ChatHeader
                 conversationTitle={
-                  !team
+                  !team && conversationId !== bot.id
                     ? (directory.conversation?.title ?? "新会话")
                     : undefined
                 }
-                onConversations={() => setConversationsOpen(true)}
                 members={members}
                 bot={team ? { ...bot, name: team.name } : bot}
                 busy={chat.activity.length > 0}
@@ -653,19 +650,6 @@ function BotChat({
           </TeamMembers>
         )}
       </Workspace>
-      <ConversationsDialog
-        bot={
-          bots.find((item) => item.id === bot.id) ?? {
-            ...bot,
-            busy: false,
-            revision: 0,
-            preview: "",
-          }
-        }
-        current={conversationId}
-        open={conversationsOpen}
-        onOpenChange={setConversationsOpen}
-      />
       <SearchDialog
         open={searchOpen}
         onOpenChange={setSearchOpen}

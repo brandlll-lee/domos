@@ -7,6 +7,7 @@ import { ActionMenu } from "@domos/ui/menu";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { BellIcon } from "@phosphor-icons/react/dist/csr/Bell";
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
+import { DotsThreeIcon } from "@phosphor-icons/react/dist/csr/DotsThree";
 import { MagnifyingGlassIcon as MagnifyingGlass } from "@phosphor-icons/react/dist/csr/MagnifyingGlass";
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { RobotIcon } from "@phosphor-icons/react/dist/csr/Robot";
@@ -299,6 +300,44 @@ export function Sidebar({
                       >
                         <CaretDownIcon />
                       </Button>
+                    )}
+                    {!compact && (
+                      <div className="bot-contact-actions">
+                        <Button
+                          variant="ghost"
+                          size="icon-small"
+                          aria-label={`为 ${bot.name} 新建会话`}
+                          className="bot-create-action"
+                          title="新建会话"
+                          pending={action.busy}
+                          onClick={create}
+                        >
+                          <PlusIcon />
+                        </Button>
+                        <ActionMenu
+                          label={`${bot.name} 的操作`}
+                          trigger={
+                            <Button
+                              variant="ghost"
+                              size="icon-small"
+                              aria-label={`${bot.name} 的操作`}
+                            >
+                              <DotsThreeIcon />
+                            </Button>
+                          }
+                          items={[
+                            {
+                              label: "新建会话",
+                              onSelect: create,
+                              disabled: action.busy,
+                            },
+                            {
+                              label: "管理会话",
+                              onSelect: () => setBrowsing(bot.id),
+                            },
+                          ]}
+                        />
+                      </div>
                     )}
                   </div>
                   {open && visible.length > 0 && (

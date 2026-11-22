@@ -404,7 +404,14 @@ test("centered dialogs share stable geometry and Harness marks", async ({
   ]) {
     await page.setViewportSize({ width, height });
     if (width === 390) {
+      await expect(page.locator(".workspace")).toHaveAttribute(
+        "data-mobile",
+        "true",
+      );
       await page.keyboard.press("Escape");
+      await expect(
+        page.locator('.workspace-panel[data-side="inspector"]'),
+      ).toBeHidden();
       await page.getByRole("button", { name: "联系人", exact: true }).click();
     }
     await page.getByRole("button", { name: "用户菜单", exact: true }).click();
@@ -1054,17 +1061,19 @@ test("Bot rows keep their density and conversation titles while search retains p
   const size = await dialog.boundingBox();
   await search.fill("开始对话");
   await expect(
-    dialog.getByRole("region", { name: "Bot与团队" }).locator(".search-hit"),
+    dialog.getByRole("rowgroup", { name: "Bot 与团队" }).locator(".search-hit"),
   ).toHaveCount(2);
   await search.fill("整理研究资料");
   await expect(
     dialog.getByRole("button", { name: "研究助手", exact: true }),
   ).toBeVisible();
-  expect(await dialog.boundingBox()).toEqual(size);
+  expect((await dialog.boundingBox())?.width).toBe(size?.width);
+  expect((await dialog.boundingBox())?.height).toBeLessThanOrEqual(
+    size?.height ?? 0,
+  );
   await search.press("ArrowDown");
-  await expect(
-    dialog.getByRole("button", { name: "研究助手", exact: true }),
-  ).toBeFocused();
+  await expect(search).toBeFocused();
+  await expect(dialog.locator("[data-highlighted]")).toContainText("研究助手");
   await page.keyboard.press("ArrowUp");
   await expect(search).toBeFocused();
   await page.keyboard.press("Escape");
@@ -1093,7 +1102,7 @@ test("Bot rows keep their density and conversation titles while search retains p
   await search.clear();
   await dialog.getByRole("tab", { name: "聊天记录", exact: true }).click();
   await expect(dialog.getByText("输入关键词搜索聊天记录")).toBeVisible();
-  await dialog.getByRole("tab", { name: "Bot与团队", exact: true }).click();
+  await dialog.getByRole("tab", { name: "Bot 与团队", exact: true }).click();
   await search.fill("Domos");
   await search.press("Enter");
   await expect(dialog).toBeHidden();

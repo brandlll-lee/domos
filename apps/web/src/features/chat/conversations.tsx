@@ -1,11 +1,12 @@
 import type { BotPresence } from "@domos/agent/bots";
 import type { PrivateConversation } from "@domos/agent/conversations";
+import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
-import { Checkbox, SearchField, TextField } from "@domos/ui/field";
+import { SearchField, TextField } from "@domos/ui/field";
 import { ActionMenu } from "@domos/ui/menu";
-import { Pagination } from "@domos/ui/pagination";
 import { StatusDot } from "@domos/ui/status-dot";
+import { Tabs } from "@domos/ui/tabs";
 import { ClockIcon } from "@phosphor-icons/react/dist/csr/Clock";
 import { DotsThreeIcon } from "@phosphor-icons/react/dist/csr/DotsThree";
 import { HandPalmIcon } from "@phosphor-icons/react/dist/csr/HandPalm";
@@ -17,6 +18,7 @@ import { flushModelSettings } from "../models/model-state.ts";
 import { useErrorNotice } from "../notices.tsx";
 import { useAttention } from "./attention.tsx";
 import { contactTime } from "./format.ts";
+import { useCommandSelection } from "./use-command-selection.ts";
 
 export const conversationRoute = (botId: number, id: number) =>
   id === botId ? `bot/${botId}` : `bot/${botId}/${id}`;
@@ -93,8 +95,7 @@ export function ConversationsDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [archived, setArchived] = useState(false);
-  const [page, setPage] = useState(1);
+  const [tab, setTab] = useState("active");
   const [editing, setEditing] = useState<PrivateConversation>();
   const [title, setTitle] = useState("");
   const action = useWorkAction();
@@ -102,21 +103,37 @@ export function ConversationsDialog({
   const attention = useAttention();
   const items = (bot.conversations ?? []).filter(
     (item) =>
-      item.archived === archived &&
+      item.archived === (tab === "archived") &&
       item.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
   );
-  const currentPage = Math.min(page, Math.max(1, Math.ceil(items.length / 12)));
+  const command = useCommandSelection(
+    items.map((item) => String(item.id)),
+    `${open}:${bot.id}:${query}:${tab}`,
+    String(current),
+  );
   const now = Date.now();
   return (
     <Dialog
-      title={editing ? "会话名称" : `${bot.name}的会话`}
+      className="chat-command-dialog conversations-dialog"
+      title={
+        editing ? (
+          "会话名称"
+        ) : (
+          <span className="conversation-dialog-identity">
+            <BotAvatar botId={bot.id} seed={bot.avatar} />
+            <span>{bot.name} 的会话</span>
+          </span>
+        )
+      }
       open={open}
       onOpenChange={onOpenChange}
+      onOpenChangeComplete={command.onOpenChangeComplete}
+      initialFocus={editing ? undefined : () => command.input.current}
       headerActions={
         !editing && (
           <Button
             size="small"
-            variant="secondary"
+            variant="ghost"
             pending={action.busy}
             onClick={() =>
               void action.run("create", async (requestId) => {
@@ -131,24 +148,25 @@ export function ConversationsDialog({
       }
       subheader={
         !editing && (
-          <div className="conversation-controls">
+          <div className="command-controls">
             <SearchField
+              inputRef={command.input}
               aria-label="搜索会话"
               placeholder="搜索会话"
               value={query}
-              onValueChange={(value) => {
-                setQuery(value);
-                setPage(1);
-              }}
+              onValueChange={setQuery}
+              {...command.inputProps}
             />
-            <Checkbox
-              label="已归档"
-              checked={archived}
-              onCheckedChange={(value) => {
-                setArchived(value);
-                setPage(1);
-              }}
-            />
+            <Tabs.Root value={tab} onValueChange={setTab}>
+              <Tabs.List className="command-tabs" aria-label="会话范围">
+                <Tabs.Tab className="navigation-tab" value="active">
+                  活跃
+                </Tabs.Tab>
+                <Tabs.Tab className="navigation-tab" value="archived">
+                  已归档
+                </Tabs.Tab>
+              </Tabs.List>
+            </Tabs.Root>
           </div>
         )
       }
@@ -176,13 +194,9 @@ export function ConversationsDialog({
             </Button>
           </>
         ) : (
-          <Pagination
-            label="会话分页"
-            page={currentPage}
-            pageSize={12}
-            total={items.length}
-            onPage={setPage}
-          />
+          <span className="chat-search-hint">
+            ↑↓ 选择　Enter 打开　Esc 关闭
+          </span>
         )
       }
     >
@@ -195,64 +209,87 @@ export function ConversationsDialog({
           autoFocus
         />
       ) : (
-        <div className="conversation-list">
-          {items.slice((currentPage - 1) * 12, currentPage * 12).map((item) => (
-            <div className="conversation-list-row" key={item.id}>
-              <Button
-                variant="ghost"
-                className="conversation-row"
-                aria-current={item.id === current ? "page" : undefined}
-                onClick={() => {
-                  selectConversation(bot.id, item.id);
-                  onOpenChange(false);
-                }}
+        <table
+          className="conversation-list command-results"
+          {...command.listProps}
+          aria-label="会话"
+        >
+          <tbody>
+            {items.map((item) => (
+              <tr
+                className="conversation-list-row command-row"
+                key={item.id}
+                {...command.rowProps(String(item.id))}
               >
-                <span className="conversation-row-title">{item.title}</span>
-                <ConversationState
-                  status={item.status}
-                  updatedAt={item.updatedAt}
-                  unread={
-                    attention?.counts[conversationRoute(bot.id, item.id)] ?? 0
-                  }
-                  now={now}
-                />
-              </Button>
-              <ActionMenu
-                label="会话操作"
-                trigger={
+                <td className="command-main-cell">
                   <Button
                     variant="ghost"
-                    size="icon-small"
-                    aria-label={`${item.title}的操作`}
+                    className="conversation-row"
+                    data-command-action
+                    aria-current={item.id === current ? "page" : undefined}
+                    onKeyDown={command.keyDown}
+                    onClick={() => {
+                      selectConversation(bot.id, item.id);
+                      onOpenChange(false);
+                    }}
                   >
-                    <DotsThreeIcon />
+                    <span className="conversation-row-title">{item.title}</span>
+                    <ConversationState
+                      status={item.status}
+                      updatedAt={item.updatedAt}
+                      unread={
+                        attention?.counts[conversationRoute(bot.id, item.id)] ??
+                        0
+                      }
+                      now={now}
+                    />
                   </Button>
-                }
-                items={[
-                  {
-                    label: "重命名",
-                    onSelect: () => {
-                      setTitle(item.title);
-                      setEditing(item);
-                    },
-                  },
-                  {
-                    label: item.archived ? "恢复会话" : "归档",
-                    onSelect: () =>
-                      void action.run(["archive", item.id], () =>
-                        client.conversations.update({
-                          botId: bot.id,
-                          id: item.id,
-                          archived: !item.archived,
-                        }),
-                      ),
-                  },
-                ]}
-              />
-            </div>
-          ))}
-          {!items.length && <p className="sidebar-empty">没有匹配的会话</p>}
-        </div>
+                </td>
+                <td className="command-row-actions">
+                  <ActionMenu
+                    label="会话操作"
+                    trigger={
+                      <Button
+                        variant="ghost"
+                        size="icon-small"
+                        aria-label={`${item.title}的操作`}
+                      >
+                        <DotsThreeIcon />
+                      </Button>
+                    }
+                    items={[
+                      {
+                        label: "重命名",
+                        onSelect: () => {
+                          setTitle(item.title);
+                          setEditing(item);
+                        },
+                      },
+                      {
+                        label: item.archived ? "恢复会话" : "归档",
+                        onSelect: () =>
+                          void action.run(["archive", item.id], () =>
+                            client.conversations.update({
+                              botId: bot.id,
+                              id: item.id,
+                              archived: !item.archived,
+                            }),
+                          ),
+                      },
+                    ]}
+                  />
+                </td>
+              </tr>
+            ))}
+            {!items.length && (
+              <tr>
+                <td colSpan={2} className="sidebar-empty">
+                  没有匹配的会话
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       )}
     </Dialog>
   );

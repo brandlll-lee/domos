@@ -314,7 +314,7 @@ test("contacts collapse during dragging and restore their width without losing c
   await avatarMenu.press("Enter");
   await expect(page.getByRole("menuitem", { name: "新建会话" })).toBeVisible();
   await page.getByRole("menuitem", { name: "管理会话" }).press("Enter");
-  const conversations = page.getByRole("dialog", { name: "Domos的会话" });
+  const conversations = page.getByRole("dialog", { name: "Domos 的会话" });
   await expect(conversations).toBeVisible();
   await conversations.getByRole("button", { name: "关闭弹窗" }).click();
   await page.reload();

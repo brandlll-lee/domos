@@ -475,7 +475,7 @@ test("IM bubbles, search dialog, and popup surfaces share both themes", async ({
     await expect(page.locator(".settings-window")).toHaveCount(0);
     await searchButton.click();
     await expect(search).toHaveCSS("outline-style", "none");
-    await expect(page.locator(".chat-search-controls .search-field")).toHaveCSS(
+    await expect(page.locator(".chat-search-dialog .command-search")).toHaveCSS(
       "box-shadow",
       "none",
     );

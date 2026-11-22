@@ -7,13 +7,16 @@ import { SearchField } from "@domos/ui/field";
 import { Loading } from "@domos/ui/loading";
 import { InlineNotice } from "@domos/ui/message";
 import { Tabs } from "@domos/ui/tabs";
-import { type KeyboardEvent, type RefObject, useRef, useState } from "react";
+import { ArrowElbowDownLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowElbowDownLeft";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import { selectBot } from "../bots/use-bots.ts";
 import { openChatTarget } from "./attention.tsx";
 import { TeamAvatar } from "./bot-reference.tsx";
+import { selectConversation } from "./conversations.tsx";
 import { chatCopy } from "./copy.ts";
 import { contactTime } from "./format.ts";
 import { contactPreview, selectTeam } from "./sidebar.tsx";
+import { useCommandSelection } from "./use-command-selection.ts";
 import type { useHistorySearch } from "./use-history-search.ts";
 
 export function SearchDialog({
@@ -34,67 +37,158 @@ export function SearchDialog({
   onNavigate: () => void;
 }) {
   const [tab, setTab] = useState("all");
-  const input = useRef<HTMLInputElement>(null);
-  const results = useRef<HTMLDivElement>(null);
+  const viewport = useRef<HTMLDivElement>(null);
+  const sentinel = useRef<HTMLDivElement>(null);
   const query = search.query.trim().toLocaleLowerCase();
   const contacts = tab !== "messages";
   const messages = tab !== "contacts" && Boolean(query);
-  const matches = bots.filter((bot) =>
-    `${bot.name}\n${contactPreview(bot)}`.toLocaleLowerCase().includes(query),
+  const groups = [
+    {
+      name: "Bot 与团队",
+      items: contacts
+        ? [
+            ...bots
+              .filter((bot) =>
+                `${bot.name}\n${contactPreview(bot)}`
+                  .toLocaleLowerCase()
+                  .includes(query),
+              )
+              .map((bot) => ({
+                id: `bot-${bot.id}`,
+                name: bot.name,
+                preview: contactPreview(bot),
+                timestamp: bot.lastMessageAt,
+                avatar: <BotAvatar botId={bot.id} seed={bot.avatar} />,
+                label: bot.name,
+                onOpen: () => selectBot(bot),
+              })),
+            ...teams
+              .filter((team) =>
+                `${team.name} ${team.purpose}`
+                  .toLocaleLowerCase()
+                  .includes(query),
+              )
+              .map((team) => ({
+                id: `team-${team.id}`,
+                name: team.name,
+                preview: team.purpose || `${team.members.length} 位 Bot`,
+                timestamp: undefined,
+                avatar: (
+                  <TeamAvatar
+                    members={bots.filter((bot) =>
+                      team.members.includes(bot.id),
+                    )}
+                  />
+                ),
+                label: team.name,
+                onOpen: () => selectTeam(team),
+              })),
+          ]
+        : [],
+    },
+    {
+      name: "最近会话",
+      items:
+        tab === "all" && !query
+          ? bots
+              .flatMap((bot) =>
+                (bot.conversations ?? [])
+                  .filter((item) => !item.archived)
+                  .map((item) => ({
+                    id: `conversation-${item.id}`,
+                    name: item.title,
+                    preview: bot.name,
+                    timestamp: item.updatedAt,
+                    avatar: <BotAvatar botId={bot.id} seed={bot.avatar} />,
+                    label: `${bot.name}：${item.title}`,
+                    onOpen: () => selectConversation(bot.id, item.id),
+                  })),
+              )
+              .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
+              .slice(0, 6)
+          : [],
+    },
+    {
+      name: "聊天记录",
+      items: messages
+        ? search.items.map((item) => ({
+            id: `message-${item.sequence}`,
+            name: item.name,
+            preview: `${item.author}：${item.snippet}`,
+            timestamp: item.timestamp,
+            avatar: (
+              <BotAvatar
+                media={item.avatarMedia}
+                botId={item.botId}
+                seed={item.avatar}
+              />
+            ),
+            label: `${item.name}：${item.snippet}`,
+            onOpen: () => openChatTarget(item),
+          }))
+        : [],
+    },
+  ];
+  const command = useCommandSelection(
+    groups.flatMap((group) => group.items.map((item) => item.id)),
+    `${open}:${query}:${tab}`,
   );
-  const matchingTeams = teams.filter((team) =>
-    `${team.name} ${team.purpose}`.toLocaleLowerCase().includes(query),
-  );
-  function navigate(action: () => void) {
-    onOpenChange(false);
-    onNavigate();
-    action();
-  }
-  function keyDown(event: KeyboardEvent<HTMLElement>) {
-    if (event.nativeEvent.isComposing) return;
-    const items = Array.from(
-      results.current?.querySelectorAll<HTMLButtonElement>(".search-hit") ?? [],
+
+  useEffect(() => {
+    if (
+      !open ||
+      !messages ||
+      !search.before ||
+      search.loading ||
+      search.error ||
+      !sentinel.current
+    )
+      return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) void search.more();
+      },
+      { root: viewport.current, rootMargin: "80px" },
     );
-    if (event.key === "Enter" && event.target === input.current) {
-      event.preventDefault();
-      items[0]?.click();
-    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      const index = items.indexOf(event.target as HTMLButtonElement);
-      event.preventDefault();
-      const next =
-        event.key === "ArrowDown"
-          ? items[Math.min(index + 1, items.length - 1)]
-          : index < 0
-            ? items.at(-1)
-            : (items[index - 1] ?? input.current);
-      next?.focus();
-    }
-  }
+    observer.observe(sentinel.current);
+    return () => observer.disconnect();
+  }, [
+    open,
+    messages,
+    search.before,
+    search.loading,
+    search.error,
+    search.more,
+  ]);
+
   return (
     <Dialog
-      title="搜索"
-      className="chat-search-dialog"
+      title={<span className="sr-only">搜索</span>}
+      className="chat-command-dialog chat-search-dialog"
       open={open}
       onOpenChange={onOpenChange}
-      initialFocus={() => input.current}
+      onOpenChangeComplete={command.onOpenChangeComplete}
+      initialFocus={() => command.input.current}
       finalFocus={() => trigger.current}
+      viewportRef={viewport}
       subheader={
-        <div className="chat-search-controls">
+        <div className="command-controls">
           <SearchField
-            inputRef={input}
+            className="command-search"
+            inputRef={command.input}
             aria-label={chatCopy.search}
             placeholder="搜索 Bot、团队和聊天记录"
             value={search.query}
             onValueChange={search.setQuery}
-            onKeyDown={keyDown}
+            {...command.inputProps}
           />
           <Tabs.Root value={tab} onValueChange={setTab}>
-            <Tabs.List className="workspace-tabs" aria-label="搜索范围">
+            <Tabs.List className="command-tabs" aria-label="搜索范围">
               <Tabs.Tab className="navigation-tab" value="all">
                 全部
               </Tabs.Tab>
               <Tabs.Tab className="navigation-tab" value="contacts">
-                Bot与团队
+                Bot 与团队
               </Tabs.Tab>
               <Tabs.Tab className="navigation-tab" value="messages">
                 聊天记录
@@ -104,121 +198,98 @@ export function SearchDialog({
         </div>
       }
       footer={
-        <span className="chat-search-hint">↑ ↓ 选择　Enter 打开　Esc 关闭</span>
+        <span className="chat-search-hint">↑↓ 选择　Enter 打开　Esc 关闭</span>
       }
     >
-      <div className="chat-search-results" ref={results}>
-        {contacts && (
-          <section aria-label="Bot与团队">
-            <h3 className="search-section">Bot与团队</h3>
-            {matches.map((bot) => (
-              <Button
-                key={bot.id}
-                variant="ghost"
-                className="contact-row search-hit"
-                onKeyDown={keyDown}
-                aria-label={bot.name}
-                onClick={() => navigate(() => selectBot(bot))}
-              >
-                <BotAvatar botId={bot.id} seed={bot.avatar} />
-                <div className="chat-preview">
-                  <strong>{bot.name}</strong>
-                  <span>{contactPreview(bot)}</span>
-                </div>
-              </Button>
-            ))}
-            {matchingTeams.map((team) => (
-              <Button
-                key={team.id}
-                variant="ghost"
-                className="contact-row search-hit"
-                onKeyDown={keyDown}
-                aria-label={team.name}
-                onClick={() => navigate(() => selectTeam(team))}
-              >
-                <TeamAvatar
-                  members={bots.filter((bot) => team.members.includes(bot.id))}
-                />
-                <div className="chat-preview">
-                  <strong>{team.name}</strong>
-                  <span>{team.purpose || `${team.members.length} 位 Bot`}</span>
-                </div>
-              </Button>
-            ))}
-            {!matches.length && !matchingTeams.length && (
-              <p className="sidebar-empty" role="status">
-                没有找到联系人
-              </p>
-            )}
-          </section>
-        )}
-        {messages && (
-          <section aria-label="聊天记录">
-            <h3 className="search-section">聊天记录</h3>
-            {search.items.map((item) => (
-              <Button
-                key={item.sequence}
-                variant="ghost"
-                className="contact-row search-hit search-result"
-                onKeyDown={keyDown}
-                aria-label={`${item.name}：${item.snippet}`}
-                onClick={() => navigate(() => openChatTarget(item))}
-              >
-                <BotAvatar
-                  media={item.avatarMedia}
-                  botId={item.botId}
-                  seed={item.avatar}
-                />
-                <div className="chat-preview">
-                  <strong>{item.name}</strong>
-                  {!!item.timestamp && (
-                    <time dateTime={new Date(item.timestamp).toISOString()}>
-                      {contactTime(item.timestamp, Date.now())}
-                    </time>
-                  )}
-                  <span className="search-author">{item.author}</span>
-                  <span className="search-snippet">{item.snippet}</span>
-                </div>
-              </Button>
-            ))}
-            {search.loading && <Loading label="正在搜索聊天记录" />}
-            {!search.loading && !search.error && !search.items.length && (
-              <p className="sidebar-empty" role="status">
-                没有找到聊天记录
-              </p>
-            )}
-            {search.error && (
-              <InlineNotice>
-                {search.error}
-                <Button
-                  variant="ghost"
-                  size="small"
-                  onClick={
-                    search.before ? () => void search.more() : search.retry
-                  }
+      <table
+        className="chat-search-results command-results"
+        {...command.listProps}
+        aria-label="搜索结果"
+      >
+        {groups
+          .filter((group) => group.items.length > 0)
+          .map((group) => (
+            <tbody key={group.name} aria-label={group.name}>
+              <tr>
+                <td>
+                  <h3 className="search-section">{group.name}</h3>
+                </td>
+              </tr>
+              {group.items.map((item) => (
+                <tr
+                  className="command-row"
+                  key={item.id}
+                  {...command.rowProps(item.id)}
                 >
-                  重试
-                </Button>
-              </InlineNotice>
-            )}
-            {search.before && !search.error && (
+                  <td className="command-main-cell">
+                    <Button
+                      variant="ghost"
+                      className={`contact-row search-hit${group.name === "聊天记录" ? " search-result" : ""}`}
+                      data-command-action
+                      onKeyDown={command.keyDown}
+                      aria-label={item.label}
+                      onClick={() => {
+                        onOpenChange(false);
+                        onNavigate();
+                        item.onOpen();
+                      }}
+                    >
+                      {item.avatar}
+                      <span className="chat-preview">
+                        <strong>{item.name}</strong>
+                        <span>{item.preview}</span>
+                      </span>
+                      {!!item.timestamp && (
+                        <time dateTime={new Date(item.timestamp).toISOString()}>
+                          {contactTime(item.timestamp, Date.now())}
+                        </time>
+                      )}
+                      <ArrowElbowDownLeftIcon
+                        className="command-enter"
+                        aria-hidden="true"
+                      />
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          ))}
+      </table>
+      {contacts && !groups[0]?.items.length && (
+        <p className="sidebar-empty" role="status">
+          没有找到联系人
+        </p>
+      )}
+      {messages && (
+        <>
+          {search.loading && <Loading label="正在搜索聊天记录" />}
+          {!search.loading && !search.error && !search.items.length && (
+            <p className="sidebar-empty" role="status">
+              没有找到聊天记录
+            </p>
+          )}
+          {search.error && (
+            <InlineNotice>
+              {search.error}
               <Button
                 variant="ghost"
                 size="small"
-                pending={search.loading}
-                onClick={() => void search.more()}
+                onClick={
+                  search.before ? () => void search.more() : search.retry
+                }
               >
-                更多聊天记录
+                重试
               </Button>
-            )}
-          </section>
-        )}
-        {tab === "messages" && !query && (
-          <p className="sidebar-empty" role="status">
-            输入关键词搜索聊天记录
-          </p>
-        )}
-      </div>
+            </InlineNotice>
+          )}
+          <div ref={sentinel} className="command-load-sentinel" />
+        </>
+      )}
+      {tab === "messages" && !query && (
+        <p className="sidebar-empty" role="status">
+          输入关键词搜索聊天记录
+        </p>
+      )}
     </Dialog>
   );
 }
