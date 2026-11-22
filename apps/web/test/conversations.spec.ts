@@ -284,6 +284,11 @@ test("the sidebar keeps one current row and reveals older conversations in place
   await expect(current).toHaveCount(1);
   await expect(current).toHaveText("原有计划");
   await expect(current).toHaveCSS("min-height", "32px");
+  await expect(current).toHaveCSS("height", "32px");
+  await expect(current.locator(".conversation-status")).toHaveCSS(
+    "transform",
+    "matrix(0.875, 0, 0, 0.875, 0, 0)",
+  );
   await expect(list).toHaveCSS("border-inline-start-width", "0px");
   const parentBox = await parent.boundingBox();
   const currentBox = await current.boundingBox();
@@ -300,12 +305,17 @@ test("the sidebar keeps one current row and reveals older conversations in place
     await parent.focus();
     await page.keyboard.press("Tab");
     await expect(arrow).toBeFocused();
+    await expect(arrow).toHaveAttribute("aria-expanded", "true");
+    await expect(arrow.locator("svg")).toHaveCSS("rotate", "none");
     await page.keyboard.press("ArrowLeft");
     await expect(list).toBeHidden();
+    await expect(arrow).toHaveAttribute("aria-expanded", "false");
+    await expect(arrow.locator("svg")).toHaveCSS("rotate", "-90deg");
     await expect(current).toHaveCount(1);
     await expect(parent).toHaveCSS("background-color", selected);
     await expect(page).toHaveURL(/#bot\/1\/1$/);
     await page.keyboard.press("ArrowRight");
+    await expect(arrow.locator("svg")).toHaveCSS("rotate", "none");
     await expect(current).toHaveText("原有计划");
   }
   await list.getByRole("button", { name: "展开其余 2 条" }).press("Enter");
