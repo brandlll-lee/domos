@@ -2,16 +2,14 @@ import type { BotPresence } from "@domos/agent/bots";
 import type { Team } from "@domos/agent/teams";
 import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
-import { Dialog } from "@domos/ui/dialog";
-import { SearchField } from "@domos/ui/field";
 import { Loading } from "@domos/ui/loading";
 import { InlineNotice } from "@domos/ui/message";
-import { Tabs } from "@domos/ui/tabs";
 import { ArrowElbowDownLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowElbowDownLeft";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { selectBot } from "../bots/use-bots.ts";
 import { openChatTarget } from "./attention.tsx";
 import { TeamAvatar } from "./bot-reference.tsx";
+import { ChatCommandDialog, CommandRow } from "./command-dialog.tsx";
 import { selectConversation } from "./conversations.tsx";
 import { chatCopy } from "./copy.ts";
 import { contactTime } from "./format.ts";
@@ -162,47 +160,36 @@ export function SearchDialog({
   ]);
 
   return (
-    <Dialog
+    <ChatCommandDialog
       title={<span className="sr-only">搜索</span>}
-      className="chat-command-dialog chat-search-dialog"
+      className="chat-search-dialog"
       open={open}
       onOpenChange={onOpenChange}
       onOpenChangeComplete={command.onOpenChangeComplete}
       initialFocus={() => command.input.current}
       finalFocus={() => trigger.current}
       viewportRef={viewport}
-      subheader={
-        <div className="command-controls">
-          <SearchField
-            className="command-search"
-            inputRef={command.input}
-            aria-label={chatCopy.search}
-            placeholder="搜索 Bot、团队和聊天记录"
-            value={search.query}
-            onValueChange={search.setQuery}
-            {...command.inputProps}
-          />
-          <Tabs.Root value={tab} onValueChange={setTab}>
-            <Tabs.List className="command-tabs" aria-label="搜索范围">
-              <Tabs.Tab className="navigation-tab" value="all">
-                全部
-              </Tabs.Tab>
-              <Tabs.Tab className="navigation-tab" value="contacts">
-                Bot 与团队
-              </Tabs.Tab>
-              <Tabs.Tab className="navigation-tab" value="messages">
-                聊天记录
-              </Tabs.Tab>
-            </Tabs.List>
-          </Tabs.Root>
-        </div>
-      }
-      footer={
-        <span className="chat-search-hint">↑↓ 选择　Enter 打开　Esc 关闭</span>
-      }
+      search={{
+        inputRef: command.input,
+        "aria-label": chatCopy.search,
+        placeholder: "搜索 Bot、团队和聊天记录",
+        value: search.query,
+        onValueChange: search.setQuery,
+        ...command.inputProps,
+      }}
+      tabs={{
+        value: tab,
+        onValueChange: setTab,
+        label: "搜索范围",
+        items: [
+          { value: "all", label: "全部" },
+          { value: "contacts", label: "Bot 与团队" },
+          { value: "messages", label: "聊天记录" },
+        ],
+      }}
     >
       <table
-        className="chat-search-results command-results"
+        className="command-results"
         {...command.listProps}
         aria-label="搜索结果"
       >
@@ -216,41 +203,33 @@ export function SearchDialog({
                 </td>
               </tr>
               {group.items.map((item) => (
-                <tr
-                  className="command-row"
+                <CommandRow
                   key={item.id}
-                  {...command.rowProps(item.id)}
+                  id={item.id}
+                  command={command}
+                  className={`search-hit${group.name === "聊天记录" ? " search-result" : ""}`}
+                  label={item.label}
+                  onOpen={() => {
+                    onOpenChange(false);
+                    onNavigate();
+                    item.onOpen();
+                  }}
                 >
-                  <td className="command-main-cell">
-                    <Button
-                      variant="ghost"
-                      className={`contact-row search-hit${group.name === "聊天记录" ? " search-result" : ""}`}
-                      data-command-action
-                      onKeyDown={command.keyDown}
-                      aria-label={item.label}
-                      onClick={() => {
-                        onOpenChange(false);
-                        onNavigate();
-                        item.onOpen();
-                      }}
-                    >
-                      {item.avatar}
-                      <span className="chat-preview">
-                        <strong>{item.name}</strong>
-                        <span>{item.preview}</span>
-                      </span>
-                      {!!item.timestamp && (
-                        <time dateTime={new Date(item.timestamp).toISOString()}>
-                          {contactTime(item.timestamp, Date.now())}
-                        </time>
-                      )}
-                      <ArrowElbowDownLeftIcon
-                        className="command-enter"
-                        aria-hidden="true"
-                      />
-                    </Button>
-                  </td>
-                </tr>
+                  {item.avatar}
+                  <span className="command-preview">
+                    <strong>{item.name}</strong>
+                    <span>{item.preview}</span>
+                  </span>
+                  {!!item.timestamp && (
+                    <time dateTime={new Date(item.timestamp).toISOString()}>
+                      {contactTime(item.timestamp, Date.now())}
+                    </time>
+                  )}
+                  <ArrowElbowDownLeftIcon
+                    className="command-enter"
+                    aria-hidden="true"
+                  />
+                </CommandRow>
               ))}
             </tbody>
           ))}
@@ -290,6 +269,6 @@ export function SearchDialog({
           输入关键词搜索聊天记录
         </p>
       )}
-    </Dialog>
+    </ChatCommandDialog>
   );
 }

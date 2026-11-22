@@ -30,15 +30,17 @@ export function ActionMenu({
   disabled,
   trigger,
   side = "bottom",
+  onOpenChange,
 }: {
   label: string;
   items: ActionMenuItem[];
   disabled?: boolean;
   trigger?: ReactElement;
   side?: "top" | "bottom";
+  onOpenChange?: (open: boolean) => void;
 }) {
   return (
-    <Menu.Root>
+    <Menu.Root onOpenChange={onOpenChange}>
       <Menu.Trigger
         render={
           trigger ?? (

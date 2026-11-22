@@ -96,11 +96,11 @@ a,
   gap: var(--space-4);
   margin-bottom: var(--space-6);
 }
-.dialog-header svg {
+.dialog-header > .button svg {
   width: var(--space-4);
   height: var(--space-4);
 }
-.dialog-header svg:not([fill="currentColor"]) {
+.dialog-header > .button svg:not([fill="currentColor"]) {
   fill: none;
   stroke: currentColor;
   stroke-width: 1.5;

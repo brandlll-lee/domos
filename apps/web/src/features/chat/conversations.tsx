@@ -2,11 +2,9 @@ import type { BotPresence } from "@domos/agent/bots";
 import type { PrivateConversation } from "@domos/agent/conversations";
 import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
-import { Dialog } from "@domos/ui/dialog";
-import { SearchField, TextField } from "@domos/ui/field";
+import { TextField } from "@domos/ui/field";
 import { ActionMenu } from "@domos/ui/menu";
 import { StatusDot } from "@domos/ui/status-dot";
-import { Tabs } from "@domos/ui/tabs";
 import { ClockIcon } from "@phosphor-icons/react/dist/csr/Clock";
 import { DotsThreeIcon } from "@phosphor-icons/react/dist/csr/DotsThree";
 import { HandPalmIcon } from "@phosphor-icons/react/dist/csr/HandPalm";
@@ -17,6 +15,7 @@ import { useWorkAction } from "../bots/details/use-bot-work.ts";
 import { flushModelSettings } from "../models/model-state.ts";
 import { useErrorNotice } from "../notices.tsx";
 import { useAttention } from "./attention.tsx";
+import { ChatCommandDialog, CommandRow } from "./command-dialog.tsx";
 import { contactTime } from "./format.ts";
 import { useCommandSelection } from "./use-command-selection.ts";
 
@@ -113,8 +112,7 @@ export function ConversationsDialog({
   );
   const now = Date.now();
   return (
-    <Dialog
-      className="chat-command-dialog conversations-dialog"
+    <ChatCommandDialog
       title={
         editing ? (
           "会话名称"
@@ -146,30 +144,27 @@ export function ConversationsDialog({
           </Button>
         )
       }
-      subheader={
-        !editing && (
-          <div className="command-controls">
-            <SearchField
-              inputRef={command.input}
-              aria-label="搜索会话"
-              placeholder="搜索会话"
-              value={query}
-              onValueChange={setQuery}
-              {...command.inputProps}
-            />
-            <Tabs.Root value={tab} onValueChange={setTab}>
-              <Tabs.List className="command-tabs" aria-label="会话范围">
-                <Tabs.Tab className="navigation-tab" value="active">
-                  活跃
-                </Tabs.Tab>
-                <Tabs.Tab className="navigation-tab" value="archived">
-                  已归档
-                </Tabs.Tab>
-              </Tabs.List>
-            </Tabs.Root>
-          </div>
-        )
+      search={
+        editing
+          ? undefined
+          : {
+              inputRef: command.input,
+              "aria-label": "搜索会话",
+              placeholder: "搜索会话",
+              value: query,
+              onValueChange: setQuery,
+              ...command.inputProps,
+            }
       }
+      tabs={{
+        value: tab,
+        onValueChange: setTab,
+        label: "会话范围",
+        items: [
+          { value: "active", label: "活跃" },
+          { value: "archived", label: "已归档" },
+        ],
+      }}
       footer={
         editing ? (
           <>
@@ -193,11 +188,7 @@ export function ConversationsDialog({
               保存
             </Button>
           </>
-        ) : (
-          <span className="chat-search-hint">
-            ↑↓ 选择　Enter 打开　Esc 关闭
-          </span>
-        )
+        ) : undefined
       }
     >
       {editing ? (
@@ -210,44 +201,28 @@ export function ConversationsDialog({
         />
       ) : (
         <table
-          className="conversation-list command-results"
+          className="command-results"
           {...command.listProps}
           aria-label="会话"
         >
           <tbody>
             {items.map((item) => (
-              <tr
-                className="conversation-list-row command-row"
+              <CommandRow
                 key={item.id}
-                {...command.rowProps(String(item.id))}
-              >
-                <td className="command-main-cell">
-                  <Button
-                    variant="ghost"
-                    className="conversation-row"
-                    data-command-action
-                    aria-current={item.id === current ? "page" : undefined}
-                    onKeyDown={command.keyDown}
-                    onClick={() => {
-                      selectConversation(bot.id, item.id);
-                      onOpenChange(false);
-                    }}
-                  >
-                    <span className="conversation-row-title">{item.title}</span>
-                    <ConversationState
-                      status={item.status}
-                      updatedAt={item.updatedAt}
-                      unread={
-                        attention?.counts[conversationRoute(bot.id, item.id)] ??
-                        0
-                      }
-                      now={now}
-                    />
-                  </Button>
-                </td>
-                <td className="command-row-actions">
+                id={String(item.id)}
+                command={command}
+                className="command-conversation"
+                current={item.id === current}
+                onOpen={() => {
+                  selectConversation(bot.id, item.id);
+                  onOpenChange(false);
+                }}
+                actions={
                   <ActionMenu
                     label="会话操作"
+                    onOpenChange={(open) =>
+                      command.menuOpenChange(String(item.id), open)
+                    }
                     trigger={
                       <Button
                         variant="ghost"
@@ -278,8 +253,18 @@ export function ConversationsDialog({
                       },
                     ]}
                   />
-                </td>
-              </tr>
+                }
+              >
+                <span className="conversation-row-title">{item.title}</span>
+                <ConversationState
+                  status={item.status}
+                  updatedAt={item.updatedAt}
+                  unread={
+                    attention?.counts[conversationRoute(bot.id, item.id)] ?? 0
+                  }
+                  now={now}
+                />
+              </CommandRow>
             ))}
             {!items.length && (
               <tr>
@@ -291,6 +276,6 @@ export function ConversationsDialog({
           </tbody>
         </table>
       )}
-    </Dialog>
+    </ChatCommandDialog>
   );
 }

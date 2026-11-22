@@ -466,6 +466,7 @@ test("IM bubbles, search dialog, and popup surfaces share both themes", async ({
   ).toBeVisible();
   await search.clear();
   await page.keyboard.press("Escape");
+  await expect(searchButton).toBeFocused();
   for (const [theme, label] of [
     ["light", "浅色"],
     ["dark", "深色"],
@@ -480,6 +481,7 @@ test("IM bubbles, search dialog, and popup surfaces share both themes", async ({
       "none",
     );
     await page.keyboard.press("Escape");
+    await expect(searchButton).toBeFocused();
     await expect(outgoing).toHaveCSS(
       "color",
       await incoming.evaluate((element) => getComputedStyle(element).color),

@@ -15,6 +15,7 @@ export function useCommandSelection(
   const prefix = useId();
   const input = useRef<HTMLInputElement>(null);
   const [selection, setSelection] = useState({ scope, id: initial });
+  const [menuOpen, setMenuOpen] = useState(false);
   const selected =
     selection.scope === scope && ids.includes(selection.id ?? "")
       ? selection.id
@@ -24,6 +25,7 @@ export function useCommandSelection(
   const rowId = (id: string) => `${prefix}-${id}`;
   useEffect(() => {
     setSelection({ scope, id: initial });
+    setMenuOpen(false);
   }, [scope, initial]);
   const scrollSelection = useCallback(() => {
     if (selected)
@@ -34,7 +36,7 @@ export function useCommandSelection(
   useEffect(scrollSelection, [scrollSelection]);
 
   function keyDown(event: KeyboardEvent<HTMLElement>) {
-    if (event.nativeEvent.isComposing) return;
+    if (event.nativeEvent.isComposing || menuOpen) return;
     if (event.key === "Enter" && event.target === input.current) {
       event.preventDefault();
       if (selected)
@@ -72,12 +74,20 @@ export function useCommandSelection(
       onKeyDown: keyDown,
     },
     listProps: { id: prefix, role: "grid" as const },
+    menuOpenChange: (id: string, open: boolean) => {
+      setMenuOpen(open);
+      setSelection({ scope, id });
+    },
     rowProps: (id: string) => ({
       id: rowId(id),
       "aria-selected": selected === id,
       "data-highlighted": selected === id || undefined,
-      onPointerMove: () => setSelection({ scope, id }),
-      onFocus: () => setSelection({ scope, id }),
+      onPointerMove: () => {
+        if (!menuOpen) setSelection({ scope, id });
+      },
+      onFocus: () => {
+        if (!menuOpen) setSelection({ scope, id });
+      },
     }),
     keyDown,
   };

@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterClient } from "@orpc/server";
@@ -5,6 +6,10 @@ import { expect, type Page } from "@playwright/test";
 import type { AppRouter } from "../../api/src/router.ts";
 import { chooseAppearance, openDetails } from "./fixtures/chat-ui.ts";
 import { test } from "./fixtures/service.ts";
+
+const sharp = createRequire(
+  new URL("../../../packages/agent/package.json", import.meta.url),
+)("sharp");
 
 async function openConversations(page: Page) {
   await expect(page.locator(".workspace")).toBeVisible();
@@ -92,14 +97,14 @@ test("three conversations keep drafts, configuration and history through navigat
   await page.getByLabel("名称", { exact: true }).fill("面试资料");
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await dialog.getByLabel("搜索会话", { exact: true }).fill("面试");
-  await expect(dialog.locator(".conversation-list-row")).toHaveCount(1);
+  await expect(dialog.locator(".command-row")).toHaveCount(1);
   await dialog
     .getByRole("button", { name: "面试资料的操作", exact: true })
     .click();
   await page.getByRole("menuitem", { name: "归档", exact: true }).click();
-  await expect(dialog.locator(".conversation-list-row")).toHaveCount(0);
+  await expect(dialog.locator(".command-row")).toHaveCount(0);
   await dialog.getByRole("tab", { name: "已归档", exact: true }).click();
-  await expect(dialog.locator(".conversation-list-row")).toHaveCount(1);
+  await expect(dialog.locator(".command-row")).toHaveCount(1);
   await dialog
     .getByRole("button", { name: "面试资料的操作", exact: true })
     .click();
@@ -248,7 +253,7 @@ test("conversation palette fits its rows and keeps management and keyboard actio
   await page.goto(service.url);
   let dialog = await openConversations(page);
   await expect(dialog.getByRole("searchbox")).toBeFocused();
-  await expect(dialog.locator(".conversation-list-row")).toHaveCount(1);
+  await expect(dialog.locator(".command-row")).toHaveCount(1);
   const one = await dialog.boundingBox();
   expect(one?.width).toBe(620);
   expect(one?.height).toBeLessThan(300);
@@ -273,7 +278,7 @@ test("conversation palette fits its rows and keeps management and keyboard actio
     });
   }
   dialog = await openConversations(page);
-  await expect(dialog.locator(".conversation-list-row")).toHaveCount(3);
+  await expect(dialog.locator(".command-row")).toHaveCount(3);
   expect((await dialog.boundingBox())?.height).toBeGreaterThan(
     one?.height ?? 0,
   );
@@ -284,10 +289,10 @@ test("conversation palette fits its rows and keeps management and keyboard actio
     .getByRole("button", { name: "资料 0的操作", exact: true })
     .click();
   await page.getByRole("menuitem", { name: "归档", exact: true }).click();
-  await expect(dialog.locator(".conversation-list-row")).toHaveCount(0);
+  await expect(dialog.locator(".command-row")).toHaveCount(0);
   expect(page.url()).toBe(route);
   await dialog.getByRole("tab", { name: "已归档", exact: true }).click();
-  await expect(dialog.locator(".conversation-list-row")).toHaveCount(1);
+  await expect(dialog.locator(".command-row")).toHaveCount(1);
   await dialog
     .getByRole("button", { name: "资料 0的操作", exact: true })
     .click();
@@ -312,7 +317,7 @@ test("conversation palette fits its rows and keeps management and keyboard actio
     });
   }
   dialog = await openConversations(page);
-  await expect(dialog.locator(".conversation-list-row")).toHaveCount(28);
+  await expect(dialog.locator(".command-row")).toHaveCount(28);
   await expect(dialog.locator('[aria-current="page"]')).toBeInViewport();
   const scroll = dialog.locator(".scroll-viewport");
   expect(
@@ -382,9 +387,17 @@ test("search palette shows recent conversations and keeps its active result visi
   await expect(dialog.locator("[data-highlighted]")).toHaveCount(1);
   await expect(dialog.locator("[data-highlighted]")).toContainText("开始对话");
   const first = await input.getAttribute("aria-activedescendant");
+  const firstRow = dialog.locator(".command-row").first();
+  await firstRow.getByRole("button").hover();
   await input.press("ArrowDown");
   await expect(input).toBeFocused();
   await expect(input).not.toHaveAttribute("aria-activedescendant", first ?? "");
+  await expect(dialog.locator(".command-row[data-highlighted]")).toHaveCount(1);
+  await expect(firstRow).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(firstRow.getByRole("button")).toHaveCSS(
+    "background-color",
+    "rgba(0, 0, 0, 0)",
+  );
   const recent = dialog.getByRole("button", {
     name: "Domos：发布计划",
     exact: true,
@@ -415,6 +428,142 @@ test("search palette shows recent conversations and keeps its active result visi
   await expect(trigger).toBeFocused();
 });
 
+test("command rows own one highlight and keep menu focus and identity alignment", async ({
+  service,
+  page,
+}, info) => {
+  const api = createORPCClient<RouterClient<AppRouter>>(
+    new RPCLink({ url: `${service.url}/rpc` }),
+  );
+  await api.conversations.create({
+    botId: 1,
+    source: 1,
+    requestId: crypto.randomUUID(),
+  });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto(service.url);
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    const dialog = await openConversations(page);
+    const rows = dialog.locator(".command-row");
+    const first = rows.first();
+    const second = rows.nth(1);
+    const input = dialog.getByRole("searchbox");
+    await expect(dialog.locator(".command-search")).toHaveCSS(
+      "border-top-width",
+      "0px",
+    );
+    await expect(dialog.locator(".command-search")).toHaveCSS(
+      "background-color",
+      "rgba(0, 0, 0, 0)",
+    );
+    await first.locator("[data-command-action]").hover();
+    await expect(first.locator("[data-command-action]")).toHaveCSS(
+      "background-color",
+      "rgba(0, 0, 0, 0)",
+    );
+    await input.press("ArrowDown");
+    await expect(first).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(second).toHaveAttribute("data-highlighted");
+    await expect(dialog.locator(".command-row[data-highlighted]")).toHaveCount(
+      1,
+    );
+    const menu = second.locator(".command-row-actions button");
+    await menu.hover();
+    await expect(menu).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await menu.click();
+    await expect(menu).toHaveAttribute("aria-expanded", "true");
+    const box = await first.boundingBox();
+    if (!box) throw new Error("Command row missing");
+    await page.mouse.move(box.x + 20, box.y + box.height / 2);
+    await expect(second).toHaveAttribute("data-highlighted");
+    await expect(dialog.locator(".command-row[data-highlighted]")).toHaveCount(
+      1,
+    );
+    await page.keyboard.press("ArrowDown");
+    await expect(second).toHaveAttribute("data-highlighted");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeVisible();
+    await expect(menu).toBeFocused();
+    await input.press("ArrowUp");
+    await expect(input).toBeFocused();
+    await expect(first).toHaveAttribute("data-highlighted");
+    const identity = dialog.locator(".conversation-dialog-identity");
+    const avatar = identity.locator(".bot-avatar");
+    await expect(avatar).toHaveCSS("width", "32px");
+    await expect(avatar).toHaveCSS("height", "32px");
+    await expect(avatar.locator("svg.character")).toHaveCSS("width", "32px");
+    await expect(avatar.locator("svg.character")).toHaveCSS("height", "32px");
+    const avatarBox = await avatar.boundingBox();
+    const titleBox = await identity
+      .locator(":scope > span:last-child")
+      .boundingBox();
+    if (!avatarBox || !titleBox) throw new Error("Identity missing");
+    expect(avatarBox.y + avatarBox.height / 2).toBeCloseTo(
+      titleBox.y + titleBox.height / 2,
+      0,
+    );
+    await expect(
+      dialog.getByRole("button", { name: "关闭弹窗" }).locator("svg"),
+    ).toHaveCSS("width", "16px");
+    await dialog.screenshot({
+      path: info.outputPath(`command-interaction-${colorScheme}.png`),
+    });
+    await input.press("Escape");
+  }
+  const file = await api.files.upload({
+    botId: 1,
+    file: new File(
+      [
+        await sharp({
+          create: { width: 32, height: 32, channels: 4, background: "#659fff" },
+        })
+          .png()
+          .toBuffer(),
+      ],
+      "avatar.png",
+      { type: "image/png" },
+    ),
+  });
+  const profile = await api.work.profile({ botId: 1 });
+  const custom = await api.work.identity({
+    botId: 1,
+    avatarFileId: file.id,
+    coverFileId: file.id,
+    useOriginal: true,
+    revision: profile.revision,
+    requestId: crypto.randomUUID(),
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".workspace")).toHaveAttribute(
+    "data-mobile",
+    "true",
+  );
+  const inspector = page.locator(
+    '.workspace-panel[data-side="inspector"][data-modal]',
+  );
+  if (await inspector.isVisible()) {
+    await inspector.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(inspector).toBeHidden();
+  }
+  const dialog = await openConversations(page);
+  const avatar = dialog.locator(
+    ".conversation-dialog-identity .bot-avatar svg.character",
+  );
+  await expect(avatar).toHaveCSS("width", "32px");
+  await expect(avatar).toHaveCSS("height", "32px");
+  await expect(avatar.locator(".character-body > image")).toHaveAttribute(
+    "href",
+    custom.avatarMedia?.thumbnail ?? custom.avatarMedia?.cover ?? "",
+  );
+  expect(
+    await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth),
+  ).toBe(true);
+  await dialog.screenshot({
+    path: info.outputPath("command-custom-avatar-narrow.png"),
+  });
+});
+
 test.describe("touch navigation", () => {
   test.use({
     viewport: { width: 390, height: 844 },
@@ -443,5 +592,24 @@ test.describe("touch navigation", () => {
     await expect(page.locator(".chat-identity-conversation")).toHaveText(
       "新会话",
     );
+    await page.getByRole("button", { name: "联系人", exact: true }).tap();
+    await menu.tap();
+    await page.getByRole("menuitem", { name: "管理会话", exact: true }).tap();
+    const dialog = page.getByRole("dialog", {
+      name: "Domos 的会话",
+      exact: true,
+    });
+    const actions = dialog.locator(".command-row-actions").first();
+    await expect(actions).toHaveCSS("opacity", "1");
+    await actions.getByRole("button").tap();
+    await expect(dialog.locator(".command-row[data-highlighted]")).toHaveCount(
+      1,
+    );
+    await page.getByRole("menuitem", { name: "重命名", exact: true }).tap();
+    await expect(
+      page
+        .getByRole("dialog", { name: "会话名称", exact: true })
+        .getByRole("textbox", { name: "名称", exact: true }),
+    ).toBeFocused();
   });
 });
