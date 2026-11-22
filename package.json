@@ -17,6 +17,7 @@
     "test": "vitest run",
     "test:ci": "node .github/ci.mjs test",
     "eval:computer": "node apps/cli/src/eval-computer.ts",
+    "eval:memory": "node apps/cli/src/eval-memory.ts",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .github apps packages package.json domos.config.json tsconfig.json biome.json vitest.config.ts playwright.config.ts"
   },

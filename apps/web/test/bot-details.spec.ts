@@ -12,6 +12,65 @@ import {
 } from "./fixtures/chat-ui.ts";
 import { test } from "./fixtures/service.ts";
 
+test("memory candidates retain approval, provenance and deletion across a service crash", async ({
+  page,
+  service,
+}) => {
+  await page.goto(service.url);
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await openDetails(page);
+  await service.control("memory-candidates");
+  const details = page.getByRole("complementary", { name: /的详情$/ });
+  await chooseDetail(details, "记忆");
+  const memory = page.getByRole("dialog", { name: /^记忆/ });
+  await expect(
+    memory.getByRole("region", { name: "待确认记忆" }),
+  ).toContainText("报告使用公制单位");
+  await memory
+    .getByRole("button", { name: "保存记忆", exact: true })
+    .first()
+    .click();
+  await expect(memory.locator(".item-list")).toContainText("报告使用公制单位");
+  await memory.getByRole("button", { name: "保存记忆", exact: true }).click();
+  await expect(memory.locator(".item-list li")).toHaveCount(2);
+  await page.screenshot({ path: "test-results/memory-evidence-dark.png" });
+  await memory
+    .getByRole("button", { name: "查看出处", exact: true })
+    .first()
+    .click();
+  await expect(memory).toBeHidden();
+  await expect(page.getByLabel("你的消息")).toContainText(
+    "报告使用公制单位，金额使用人民币。",
+  );
+  await chooseDetail(details, "记忆");
+  await memory
+    .getByRole("button", { name: "记忆操作", exact: true })
+    .first()
+    .click();
+  await page.getByRole("menuitem", { name: "删除", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "删除这条记忆？", exact: true })
+    .getByRole("button", { name: "删除", exact: true })
+    .click();
+  await expect(memory.locator(".item-list li")).toHaveCount(1);
+  const port = Number(new URL(service.url).port);
+  await service.stop();
+  await service.start(port);
+  await page.reload();
+  await openDetails(page);
+  await chooseDetail(details, "记忆");
+  await expect(memory.locator(".item-list li")).toHaveCount(1);
+  await expect(memory.locator(".item-list")).toContainText("金额使用人民币");
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await page.setViewportSize({ width: 720, height: 850 });
+  await page.screenshot({ path: "test-results/memory-evidence-narrow.png" });
+  expect(
+    await memory.evaluate((node) => node.scrollWidth <= node.clientWidth),
+  ).toBe(true);
+});
+
 test("profile reads reject late responses and drafts stay with their Bot", async ({
   page,
   service,

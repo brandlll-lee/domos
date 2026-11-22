@@ -37,6 +37,7 @@ import type {
   EngineApproval,
   EngineRuntimeState,
 } from "../../../../packages/agent/src/harness/types.ts";
+import { saveMemory } from "../../../../packages/agent/src/work/memory.ts";
 import { PiProcess } from "../../../../packages/agent/test/fixtures/pi-process.ts";
 import { createApp } from "../../src/app.ts";
 import { hostingApp } from "../../src/hosting/routes.ts";
@@ -369,6 +370,50 @@ server.listen(Number(process.argv[3] ?? 0), "127.0.0.1", async () => {
 });
 let release: (() => void) | undefined;
 process.on("message", async (message) => {
+  if (message === "memory-candidates") {
+    const bot = (await bots.list(BACKGROUND_CONTEXT))[0];
+    if (!bot) throw new Error("Bot required");
+    const quote = "报告使用公制单位，金额使用人民币。";
+    const entryId = await harness.commit(async (tx) => {
+      const entry = await tx.appendEntry(bot.id, {
+        kind: EngineMessage,
+        data: {
+          id: "memory-source",
+          role: "user",
+          content: [{ type: "text", text: quote }],
+        },
+      });
+      return entry.id;
+    }, BACKGROUND_CONTEXT);
+    await harness.commit(async (tx) => {
+      for (const [id, text] of [
+        ["units", "报告使用公制单位"],
+        ["currency", "金额使用人民币"],
+      ]) {
+        if (!id || !text) throw new Error("Candidate required");
+        await saveMemory(
+          tx,
+          bot.id,
+          {
+            id,
+            text,
+            category: "profile",
+            shared: false,
+            revision: 0,
+            requestId: id,
+            origin: "user",
+            evidence: [{ conversationId: bot.id, entryId, quote }],
+          },
+          "bot:review",
+          bot.id,
+          false,
+          true,
+        );
+      }
+    }, BACKGROUND_CONTEXT);
+    process.send?.({ type: "memory-seeded" });
+    return;
+  }
   if (
     typeof message === "object" &&
     message !== null &&
