@@ -99,7 +99,7 @@
 }
 .command-conversation.button {
   display: grid;
-  grid-template-columns: var(--space-4) minmax(0, 1fr) auto;
+  grid-template-columns: var(--space-6) minmax(0, 1fr) auto;
   min-height: var(--control-height);
   gap: var(--space-2);
 }

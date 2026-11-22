@@ -831,7 +831,7 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
   await page.screenshot({ path: "test-results/bot-contacts-mobile.png" });
 });
 
-test("working contacts retain green status across switches, concurrent work, reload, and stop", async ({
+test("working contacts retain animated status across switches, concurrent work, reload, and stop", async ({
   service,
   page,
 }) => {
@@ -842,27 +842,42 @@ test("working contacts retain green status across switches, concurrent work, rel
   await input.fill("后台任务");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   const first = page.locator('.sidebar a[href="#bot/1"]');
-  await expect(first.getByRole("img", { name: "正在工作" })).toBeVisible();
+  await expect(first.getByRole("status", { name: "正在工作" })).toBeVisible();
   await createBot(page, "第二位助手");
   const second = page
     .getByRole("navigation", { name: "联系人", exact: true })
     .getByRole("link", { name: "第二位助手" });
-  await expect(first.locator(".status-dot")).toBeVisible();
-  await expect(second.locator(".status-dot")).toHaveCount(0);
+  await expect(first.locator(".bot-avatar > .loading-dots")).toBeVisible();
+  await expect(second.locator(".bot-avatar > .loading-dots")).toHaveCount(0);
   await service.control("gate");
   await input.fill("另一个任务");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  await expect(page.locator(".sidebar .status-dot")).toHaveCount(2);
+  await expect(
+    page.locator(".sidebar .bot-avatar > .loading-dots"),
+  ).toHaveCount(2);
   await page.reload();
-  await expect(page.locator(".sidebar .status-dot")).toHaveCount(2);
+  await expect(
+    page.locator(".sidebar .bot-avatar > .loading-dots"),
+  ).toHaveCount(2);
   for (const [theme, label] of [
     ["light", "浅色"],
     ["dark", "深色"],
   ] as const) {
     await chooseAppearance(page, label);
-    const dot = first.locator(".status-dot");
-    await expect(dot).toHaveAttribute("data-tone", "positive");
-    await expect(dot).toHaveCSS("background-color", "rgb(37, 216, 132)");
+    const dot = first.locator(".bot-avatar > .loading-dots");
+    const points = dot.locator("g");
+    await expect(points).toHaveCount(3);
+    for (const [index, color] of [
+      "rgb(255, 190, 50)",
+      "rgb(37, 216, 132)",
+      "rgb(255, 82, 101)",
+    ].entries()) {
+      await expect(points.nth(index)).toHaveCSS("color", color);
+      await expect(points.nth(index)).toHaveCSS(
+        "animation-name",
+        "loading-wave",
+      );
+    }
     const offset = await dot.evaluate((element) => {
       const frame = element.closest(".bot-avatar")?.getBoundingClientRect();
       if (!frame) throw new Error("Working avatar missing");
@@ -872,19 +887,26 @@ test("working contacts retain green status across switches, concurrent work, rel
         bottom: bounds.bottom - frame.bottom,
       };
     });
-    expect(offset.right).toBeCloseTo(0, 0);
-    expect(offset.bottom).toBeCloseTo(0, 0);
+    expect(offset.right).toBeCloseTo(4, 0);
+    expect(offset.bottom).toBeCloseTo(2, 0);
     await page.screenshot({
       path: `test-results/contacts-${theme}-working.png`,
       animations: "disabled",
     });
   }
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(first.locator(".loading-dots g").first()).toHaveCSS(
+    "animation-name",
+    "none",
+  );
   await service.control("release");
-  await expect(second.locator(".status-dot")).toHaveCount(0);
-  await expect(first.locator(".status-dot")).toBeVisible();
+  await expect(second.locator(".bot-avatar > .loading-dots")).toHaveCount(0);
+  await expect(first.locator(".bot-avatar > .loading-dots")).toBeVisible();
   await first.click();
   await page.getByRole("button", { name: "停止生成", exact: true }).click();
-  await expect(page.locator(".sidebar .status-dot")).toHaveCount(0);
+  await expect(
+    page.locator(".sidebar .bot-avatar > .loading-dots"),
+  ).toHaveCount(0);
 });
 
 test("Bot identity stays consistent and image previews work in drafts and history", async ({

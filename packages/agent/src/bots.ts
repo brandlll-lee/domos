@@ -668,6 +668,8 @@ export class Bots {
                 op[0] === "r" ||
                 op[1][0] === "tasks" ||
                 op[1][0] === "error" ||
+                (op[1][0] === "config" &&
+                  (op[1].length === 1 || op[1][1] === "provider")) ||
                 (op[1][0] === "run" &&
                   (op[1].length === 1 || op[1][1] === "status")),
             ))),

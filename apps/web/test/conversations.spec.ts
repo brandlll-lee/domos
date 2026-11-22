@@ -35,9 +35,8 @@ async function createConversation(page: Page) {
   await page
     .getByRole("link", { name: "Domos", exact: true })
     .hover({ position: { x: 20, y: 20 } });
-  await page
-    .getByRole("button", { name: "为 Domos 新建会话", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Domos 的操作", exact: true }).click();
+  await page.getByRole("menuitem", { name: "新建会话", exact: true }).click();
 }
 
 test("three conversations keep drafts, configuration and history through navigation and restart", async ({
@@ -158,6 +157,8 @@ test("switching away keeps work alive and Stop targets the queued conversation",
   await expect(list.locator('[title="排队中"]')).toBeVisible();
   await page.getByRole("button", { name: "停止生成", exact: true }).click();
   await expect(list.locator('[title="工作中"]')).toBeVisible();
+  await expect(list.locator('[title="工作中"] .loading-dots')).toBeVisible();
+  await expect(list.locator('[title="排队中"]')).toHaveCount(0);
   await service.control("release");
   await expect(list.getByRole("img", { name: "未读" })).toBeVisible();
   await expect(list.getByRole("link").first()).toHaveAttribute(
@@ -166,6 +167,91 @@ test("switching away keeps work alive and Stop targets the queued conversation",
   );
   await page.locator('.conversation-children a[href="#bot/1/1"]').click();
   await expect(page.getByLabel("Domos 的回复")).toContainText("做网站");
+});
+
+test("conversation marks keep their slot through failure, work, unread and completion", async ({
+  service,
+  page,
+}, info) => {
+  await page.goto(service.url);
+  const original = page.locator('.conversation-children a[href="#bot/1/1"]');
+  const title = original.locator(".conversation-row-title");
+  await expect(
+    original.locator('.engine-mark[data-provider="pi"]'),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "为 Domos 新建会话", exact: true }),
+  ).toHaveCount(0);
+  const titleInset = () => title.evaluate((el: HTMLElement) => el.offsetLeft);
+  const left = await titleInset();
+  await service.control({
+    records: [],
+    run: {
+      turnId: "failed-turn",
+      provider: "pi",
+      model: null,
+      startedAt: Date.now(),
+      endedAt: Date.now(),
+      status: "failed",
+    },
+  });
+  const failed = original.locator('[data-status="failed"]');
+  for (const appearance of ["浅色", "深色"] as const) {
+    await chooseAppearance(page, appearance);
+    await expect(failed.getByRole("img", { name: /^失败/ })).toBeVisible();
+    await expect(failed).toHaveCSS("border-radius", "999px");
+    expect(
+      await failed.evaluate((el) => getComputedStyle(el).backgroundColor),
+    ).not.toBe("rgba(0, 0, 0, 0)");
+    expect(await titleInset()).toBe(left);
+    await page.screenshot({
+      path: info.outputPath(`conversation-marks-${appearance}.png`),
+    });
+  }
+  await service.control("gate");
+  await page.getByLabel("消息", { exact: true }).fill("处理资料");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await service.control("wait-model");
+  const dots = original.locator(".loading-dots");
+  await expect(dots).toBeVisible();
+  await expect(dots.locator("g").first()).toHaveCSS(
+    "animation-name",
+    "loading-wave",
+  );
+  await expect(page.locator(".typing-dots > .loading-dots")).toBeVisible();
+  expect(await titleInset()).toBe(left);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(dots.locator("g").first()).toHaveCSS("animation-name", "none");
+  await createConversation(page);
+  await service.control({
+    sessionId: 1,
+    records: [
+      {
+        id: "published-result",
+        turnId: "published-turn",
+        role: "assistant",
+        stopped: false,
+        content: [
+          { type: "text", key: "published-text", text: "第一份资料已完成" },
+        ],
+      },
+    ],
+  });
+  const avatar = page.locator('.sidebar a[href="#bot/1"] .bot-avatar');
+  await expect(avatar.locator(".loading-dots")).toBeVisible();
+  await expect(avatar.locator(".unread-badge")).toBeVisible();
+  const work = await avatar.locator(".loading-dots").boundingBox();
+  const unread = await avatar.locator(".unread-badge").boundingBox();
+  expect(work && unread && work.y >= unread.y + unread.height).toBe(true);
+  await service.control("release");
+  await expect(avatar.locator(".loading-dots")).toHaveCount(0);
+  await expect(
+    original.getByRole("img", { name: "未读", exact: true }),
+  ).toBeVisible();
+  await original.click();
+  await expect(
+    original.locator('.engine-mark[data-provider="pi"]'),
+  ).toBeVisible();
 });
 
 test("the sidebar keeps one current row and reveals older conversations in place", async ({

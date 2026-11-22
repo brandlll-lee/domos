@@ -3,6 +3,7 @@ import type { PrivateConversation } from "@domos/agent/conversations";
 import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
+import { LoadingDots } from "@domos/ui/loading";
 import { ActionMenu } from "@domos/ui/menu";
 import { StatusDot } from "@domos/ui/status-dot";
 import { ClockIcon } from "@phosphor-icons/react/dist/csr/Clock";
@@ -12,6 +13,7 @@ import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { useState } from "react";
 import { client } from "../../client.ts";
 import { useWorkAction } from "../bots/details/use-bot-work.ts";
+import { EngineMark } from "../bots/engine-mark.tsx";
 import { flushModelSettings } from "../models/model-state.ts";
 import { useErrorNotice } from "../notices.tsx";
 import { useAttention } from "./attention.tsx";
@@ -39,18 +41,20 @@ export async function createConversation(
 }
 
 const conversationStatus = {
-  working: { label: "工作中", Icon: DotsThreeIcon },
+  working: { label: "工作中", Icon: undefined },
   queued: { label: "排队中", Icon: ClockIcon },
   waiting: { label: "等待处理", Icon: HandPalmIcon },
   failed: { label: "失败", Icon: XIcon },
 };
 
 export function ConversationState({
+  provider,
   status,
   updatedAt,
   unread,
   now,
 }: {
+  provider: PrivateConversation["provider"];
   status: PrivateConversation["status"];
   updatedAt?: number;
   unread: number;
@@ -60,17 +64,21 @@ export function ConversationState({
   const label = [mark?.label, unread > 0 && "未读"].filter(Boolean).join("，");
   return (
     <>
-      {label && (
+      {(label || provider) && (
         <span
           className="conversation-status"
           data-status={status}
-          title={label}
+          title={label || provider}
         >
-          {mark ? (
-            <mark.Icon role="img" aria-label={label} />
-          ) : (
+          {status === "working" ? (
+            <LoadingDots label={label} />
+          ) : mark?.Icon ? (
+            <mark.Icon role="img" aria-label={label} aria-hidden={false} />
+          ) : unread > 0 ? (
             <StatusDot tone="positive" label={label} />
-          )}
+          ) : provider ? (
+            <EngineMark provider={provider} />
+          ) : null}
         </span>
       )}
       {updatedAt && (
@@ -257,6 +265,7 @@ export function ConversationsDialog({
               >
                 <span className="conversation-row-title">{item.title}</span>
                 <ConversationState
+                  provider={item.provider}
                   status={item.status}
                   updatedAt={item.updatedAt}
                   unread={

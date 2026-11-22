@@ -1,0 +1,45 @@
+.loading-dots {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: var(--space-6);
+  height: var(--space-4);
+}
+.loading-dots svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.loading-dots g {
+  fill: currentColor;
+  opacity: 0.4;
+  animation: loading-wave var(--motion-typing) ease-in-out infinite;
+}
+.loading-dots g:nth-child(2) {
+  animation-delay: 0.18s;
+}
+.loading-dots g:nth-child(3) {
+  animation-delay: 0.36s;
+}
+@keyframes loading-wave {
+  0%,
+  60%,
+  100% {
+    opacity: 0.4;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-dots g {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+@media (forced-colors: active) {
+  .loading-dots g {
+    fill: CanvasText;
+  }
+}

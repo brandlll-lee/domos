@@ -61,6 +61,40 @@ test("work conversations retain their Bot configuration and separate history", a
   ).rejects.toThrow();
 });
 
+test("the directory reports each private conversation's Harness and follows configuration changes", async () => {
+  const { harness, conversation, bots } = await runtimeFixture();
+  const second = await bots.createSession(
+    conversation.id,
+    conversation.id,
+    crypto.randomUUID(),
+    context,
+  );
+  const events = bots.watch(context);
+  try {
+    expect((await events.next()).value?.[0]?.conversations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: conversation.id, provider: "pi" }),
+        expect.objectContaining({ id: second, provider: "pi" }),
+      ]),
+    );
+    await harness.commit(async (tx) => {
+      (await tx.doc(EngineDoc, conversation.id)).config.provider = "codex";
+      (await tx.doc(EngineDoc, second)).config = {
+        provider: "claude",
+        model: null,
+      };
+    }, context);
+    expect((await events.next()).value?.[0]?.conversations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: conversation.id, provider: "codex" }),
+        expect.objectContaining({ id: second, provider: "claude" }),
+      ]),
+    );
+  } finally {
+    await events.return();
+  }
+});
+
 test("private conversations inherit once and retain independent native contexts across restart", async () => {
   const workers: ReturnType<typeof featureProcess>[] = [];
   const computers = {

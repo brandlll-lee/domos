@@ -303,17 +303,6 @@ export function Sidebar({
                     )}
                     {!compact && (
                       <div className="bot-contact-actions">
-                        <Button
-                          variant="ghost"
-                          size="icon-small"
-                          aria-label={`为 ${bot.name} 新建会话`}
-                          className="bot-create-action"
-                          title="新建会话"
-                          pending={action.busy}
-                          onClick={create}
-                        >
-                          <PlusIcon />
-                        </Button>
                         <ActionMenu
                           label={`${bot.name} 的操作`}
                           trigger={
@@ -366,6 +355,7 @@ export function Sidebar({
                               {item.title}
                             </span>
                             <ConversationState
+                              provider={item.provider}
                               status={status}
                               updatedAt={item.updatedAt}
                               unread={unread}

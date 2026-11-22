@@ -13,6 +13,7 @@ import { BotDirectory } from "./bots.ts";
 import { ComputerRequests } from "./computer/runtime.ts";
 import { EngineDoc } from "./harness/state.ts";
 import { stored } from "./harness/task-types.ts";
+import type { EngineId } from "./harness/types.ts";
 import { WorkError } from "./work/state.ts";
 
 export const BotSession = defineDoc<{
@@ -153,6 +154,7 @@ export async function privateSession(
 
 export type PrivateConversation = {
   id: number;
+  provider: EngineId | undefined;
   title: string;
   archived: boolean;
   updatedAt?: number;
@@ -197,6 +199,7 @@ export async function privateConversations(
       return [
         {
           id,
+          provider: engine?.config.provider,
           title:
             session?.title ?? (preview.lastMessageAt ? "原有会话" : "新会话"),
           archived: session?.archived ?? false,

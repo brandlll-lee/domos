@@ -9,7 +9,7 @@ import { avatarImageStatus, prepareAvatarImages } from "./avatar-images.ts";
 import { Character, characterImages } from "./character.tsx";
 import { animateCharacter } from "./character-motion.ts";
 import type { CharacterWork } from "./character-work.tsx";
-import { StatusDot } from "./status-dot.tsx";
+import { LoadingDots } from "./loading.tsx";
 import { UnreadBadge } from "./unread-badge.tsx";
 
 export {
@@ -100,7 +100,7 @@ export const BotAvatar = memo(function BotAvatar({
         />
       </span>
       {state === "running" && statusLabel && (
-        <StatusDot tone="positive" label={statusLabel} />
+        <LoadingDots label={statusLabel} />
       )}
       <UnreadBadge count={unread} />
     </span>

@@ -199,3 +199,20 @@
   top: -2px;
   right: -4px;
 }
+.bot-avatar > .loading-dots {
+  position: absolute;
+  right: -4px;
+  bottom: -2px;
+  border-radius: var(--radius-round);
+  background: var(--color-surface);
+  pointer-events: none;
+}
+.bot-avatar > .loading-dots g:first-child {
+  color: var(--color-status-warning);
+}
+.bot-avatar > .loading-dots g:nth-child(2) {
+  color: var(--color-status-positive);
+}
+.bot-avatar > .loading-dots g:nth-child(3) {
+  color: var(--color-status-negative);
+}
