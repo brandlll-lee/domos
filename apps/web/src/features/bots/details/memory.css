@@ -1,0 +1,115 @@
+.memory-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  outline: none;
+}
+.memory-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.memory-toolbar .search-field {
+  flex: 1;
+  min-width: 12rem;
+}
+.memory-toolbar .segmented-control,
+.memory-editor-options .segmented-control {
+  width: fit-content;
+}
+.memory-page,
+.memory-reading,
+.memory-editor {
+  width: 100%;
+  max-width: var(--settings-content-width);
+  margin-inline: auto;
+}
+.memory-page {
+  display: grid;
+  gap: var(--space-4);
+}
+.memory-reading {
+  display: grid;
+  gap: var(--space-6);
+  padding-block: var(--space-3);
+}
+.memory-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--text-body);
+  font-weight: var(--weight-regular);
+  line-height: 1.8;
+  user-select: text;
+}
+.memory-metadata,
+.memory-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+}
+.memory-metadata {
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+}
+.memory-info {
+  width: min(20rem, var(--available-width));
+}
+.memory-info p {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+}
+.memory-info p:last-child {
+  display: block;
+  margin-bottom: 0;
+}
+.memory-comparison {
+  display: grid;
+  gap: var(--space-5);
+}
+.memory-comparison h3 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+}
+.memory-comparison .memory-text {
+  padding: var(--space-4);
+}
+.memory-dialog:has(.memory-editor) .dialog-body > .scroll-viewport {
+  flex: 1;
+}
+.memory-dialog:has(.memory-editor) .dialog-body > .scroll-viewport > div {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.memory-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: var(--space-5);
+  min-height: 0;
+}
+.memory-editor .field {
+  flex: 1;
+  grid-template-rows: auto minmax(12rem, 1fr);
+}
+.memory-editor-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+@media (min-width: 960px) {
+  .memory-page:has(.memory-comparison) {
+    max-width: none;
+  }
+  .memory-comparison {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

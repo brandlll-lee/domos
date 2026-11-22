@@ -29,17 +29,6 @@
   min-height: 100%;
   flex: 1 0 auto;
 }
-.memory-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-}
-.memory-title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
 .bot-tabs {
   margin-top: var(--space-5);
 }

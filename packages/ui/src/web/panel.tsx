@@ -90,22 +90,32 @@ export function PanelRow({
   title,
   value,
   description,
+  preview = false,
   onClick,
 }: {
   id?: string;
-  icon: ReactNode;
+  icon?: ReactNode;
   title: string;
   value?: string;
   description?: string;
+  preview?: boolean;
   onClick: () => void;
 }) {
   return (
-    <button id={id} type="button" className="panel-row" onClick={onClick}>
-      <span className="panel-row-icon" aria-hidden="true">
-        {icon}
-      </span>
+    <button
+      id={id}
+      type="button"
+      className="panel-row"
+      data-preview={preview || undefined}
+      onClick={onClick}
+    >
+      {icon && (
+        <span className="panel-row-icon" aria-hidden="true">
+          {icon}
+        </span>
+      )}
       <span className="panel-row-content">
-        <span className="panel-row-label" title={title}>
+        <span className="panel-row-label" title={preview ? undefined : title}>
           {title}
         </span>
         {description && (

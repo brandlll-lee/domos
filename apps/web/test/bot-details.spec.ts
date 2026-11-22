@@ -12,6 +12,114 @@ import {
 } from "./fixtures/chat-ui.ts";
 import { test } from "./fixtures/service.ts";
 
+test("memory browsing retains anchors and conflicting edits retain the draft", async ({
+  page,
+  service,
+}, testInfo) => {
+  const api = createORPCClient<typeof appClient>(
+    new RPCLink({ url: `${service.url}/rpc` }),
+  );
+  const bot = (await api.bots.list())[0];
+  if (!bot) throw new Error("Bot missing");
+  const text = "任务记录：保留原始文件与执行证据。".repeat(16);
+  for (let index = 0; index < 12; index++) {
+    await api.work.memory.save({
+      botId: bot.id,
+      id: `note-${index}`,
+      revision: 0,
+      text: `项目笔记 ${index}。${text}`,
+      category: "work",
+      shared: index === 0,
+      requestId: crypto.randomUUID(),
+    });
+  }
+  await page.goto(service.url);
+  await openDetails(page);
+  const details = page.getByRole("complementary", { name: /的详情$/ });
+  await chooseDetail(details, "记忆");
+  const memory = page.locator(".memory-dialog");
+  const search = memory.getByRole("searchbox", { name: "搜索记忆" });
+  await expect(search).toBeFocused();
+  await search.fill("项目 笔记");
+  await expect(memory.locator(".memory-list li")).toHaveCount(12);
+  const row = memory.locator("#memory-note-7");
+  await row.scrollIntoViewIfNeeded();
+  const viewport = memory.locator(".dialog-body > .scroll-viewport");
+  const top = await viewport.evaluate((node) => node.scrollTop);
+  expect(top).toBeGreaterThan(0);
+  await row.click();
+  await expect(memory.getByRole("article", { name: "记忆正文" })).toHaveText(
+    new RegExp(text),
+  );
+  await expect(memory.getByRole("textbox", { name: "内容" })).toHaveCount(0);
+  await memory.getByRole("button", { name: "返回", exact: true }).click();
+  await expect(search).toHaveValue("项目 笔记");
+  await expect(row).toBeFocused();
+  expect(await viewport.evaluate((node) => node.scrollTop)).toBeCloseTo(top, 0);
+  await row.click();
+  await memory.getByRole("button", { name: "编辑", exact: true }).click();
+  const editor = memory.getByRole("textbox", { name: "内容" });
+  await editor.fill("必须保留的手写草稿");
+  await api.work.memory.save({
+    botId: bot.id,
+    id: "note-7",
+    revision: 1,
+    text: "另一处已更新这条记忆",
+    category: "work",
+    shared: false,
+    requestId: crypto.randomUUID(),
+  });
+  await memory.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(memory.getByRole("alert")).toBeVisible();
+  await expect(editor).toHaveValue("必须保留的手写草稿");
+  for (const colorScheme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-theme",
+      colorScheme,
+    );
+    for (const width of [1360, 720]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.screenshot({
+        path: testInfo.outputPath(`editor-${colorScheme}-${width}.png`),
+        animations: "disabled",
+      });
+      expect(
+        await editor.evaluate((node) => node.getBoundingClientRect().height),
+      ).toBeGreaterThan(300);
+      expect(
+        await memory.evaluate((node) => node.scrollWidth <= node.clientWidth),
+      ).toBe(true);
+    }
+  }
+  await memory.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(memory.getByRole("article", { name: "记忆正文" })).toContainText(
+    "另一处已更新",
+  );
+  await memory.getByRole("button", { name: "返回", exact: true }).click();
+  await search.fill("");
+  const info = memory.getByRole("button", { name: "记忆信息", exact: true });
+  await expect(info.locator("svg")).toHaveCSS(
+    "fill",
+    await info.evaluate((node) => getComputedStyle(node).color),
+  );
+  await info.click();
+  await expect(page.getByText("记忆容量", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await memory.getByRole("button", { name: "记忆设置", exact: true }).click();
+  await page
+    .getByRole("menuitem", { name: "关闭后台回顾", exact: true })
+    .click();
+  await memory.getByRole("button", { name: "记忆设置", exact: true }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "开启后台回顾", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.screenshot({
+    path: testInfo.outputPath("memory-list-light-narrow.png"),
+  });
+});
+
 test("memory candidates retain approval, provenance and deletion across a service crash", async ({
   page,
   service,
@@ -23,18 +131,27 @@ test("memory candidates retain approval, provenance and deletion across a servic
   await service.control("memory-candidates");
   const details = page.getByRole("complementary", { name: /的详情$/ });
   await chooseDetail(details, "记忆");
-  const memory = page.getByRole("dialog", { name: /^记忆/ });
+  const memory = page.locator(".memory-dialog");
+  await memory.getByRole("button", { name: "待确认 · 2" }).click();
   await expect(
     memory.getByRole("region", { name: "待确认记忆" }),
   ).toContainText("报告使用公制单位");
-  await memory
-    .getByRole("button", { name: "保存记忆", exact: true })
-    .first()
-    .click();
-  await expect(memory.locator(".item-list")).toContainText("报告使用公制单位");
+  await memory.getByRole("button", { name: /^报告使用公制单位/ }).click();
+  await expect(
+    memory.getByRole("region", { name: "修改前", exact: true }),
+  ).toContainText("报告使用英制单位");
+  await expect(
+    memory.getByRole("region", { name: "修改后", exact: true }),
+  ).toContainText("报告使用公制单位");
   await memory.getByRole("button", { name: "保存记忆", exact: true }).click();
-  await expect(memory.locator(".item-list li")).toHaveCount(2);
+  await memory.getByRole("button", { name: /^金额使用人民币/ }).click();
+  await memory.getByRole("button", { name: "保存记忆", exact: true }).click();
+  await memory.getByRole("button", { name: "返回", exact: true }).click();
+  await expect(memory.locator(".memory-list li")).toHaveCount(2);
   await page.screenshot({ path: "test-results/memory-evidence-dark.png" });
+  await memory
+    .getByRole("button", { name: "报告使用公制单位", exact: true })
+    .click();
   await memory
     .getByRole("button", { name: "查看出处", exact: true })
     .first()
@@ -45,6 +162,9 @@ test("memory candidates retain approval, provenance and deletion across a servic
   );
   await chooseDetail(details, "记忆");
   await memory
+    .getByRole("button", { name: "报告使用公制单位", exact: true })
+    .click();
+  await memory
     .getByRole("button", { name: "记忆操作", exact: true })
     .first()
     .click();
@@ -53,15 +173,15 @@ test("memory candidates retain approval, provenance and deletion across a servic
     .getByRole("dialog", { name: "删除这条记忆？", exact: true })
     .getByRole("button", { name: "删除", exact: true })
     .click();
-  await expect(memory.locator(".item-list li")).toHaveCount(1);
+  await expect(memory.locator(".memory-list li")).toHaveCount(1);
   const port = Number(new URL(service.url).port);
   await service.stop();
   await service.start(port);
   await page.reload();
   await openDetails(page);
   await chooseDetail(details, "记忆");
-  await expect(memory.locator(".item-list li")).toHaveCount(1);
-  await expect(memory.locator(".item-list")).toContainText("金额使用人民币");
+  await expect(memory.locator(".memory-list li")).toHaveCount(1);
+  await expect(memory.locator(".memory-list")).toContainText("金额使用人民币");
   await page.emulateMedia({ colorScheme: "light" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await page.setViewportSize({ width: 720, height: 850 });
@@ -241,7 +361,7 @@ test("Bot details manage identity, memory, shared skills, routines and actual pr
     .fill("报告使用公制单位。");
   await memoryDialog.getByLabel("共享给所有 Bot").check();
   await memoryDialog.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(memoryDialog.locator(".item-list")).toContainText(
+  await expect(memoryDialog.locator(".memory-list")).toContainText(
     "报告使用公制单位。",
   );
   await memoryDialog
@@ -346,7 +466,7 @@ test("Bot details manage identity, memory, shared skills, routines and actual pr
   await page.reload();
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   await chooseDetail(sections, "记忆");
-  await expect(memoryDialog.locator(".item-list")).toContainText(
+  await expect(memoryDialog.locator(".memory-list")).toContainText(
     "报告使用公制单位。",
   );
   await memoryDialog
@@ -360,9 +480,13 @@ test("Bot details manage identity, memory, shared skills, routines and actual pr
   await expect(dialog).toContainText("已完成");
   await chooseDetail(sections, "记忆");
   const memory = memoryDialog
-    .locator(".item-list li")
+    .locator(".memory-list li")
     .filter({ hasText: "报告使用公制单位。" });
-  const remove = memory.getByRole("button", { name: "记忆操作", exact: true });
+  await memory.getByRole("button").click();
+  const remove = memoryDialog.getByRole("button", {
+    name: "记忆操作",
+    exact: true,
+  });
   await remove.click();
   await page.getByRole("menuitem", { name: "删除", exact: true }).click();
   const confirmation = page.getByRole("dialog", {
@@ -972,7 +1096,7 @@ test("Bot panels keep their hierarchy in both themes and panel widths", async ({
     }
   }
   await details.getByRole("button", { name: /^记忆(?:\s|$)/ }).click();
-  const memoryDialog = page.getByRole("dialog", { name: "记忆" });
+  const memoryDialog = page.locator(".memory-dialog");
   await expect(memoryDialog).toBeVisible();
   await expect(page.locator("#bot-details .panel-page")).toBeVisible();
   await memoryDialog.getByRole("button", { name: "新增记忆" }).click();
@@ -997,6 +1121,9 @@ test("Bot panels keep their hierarchy in both themes and panel widths", async ({
     );
     await expect(memory).toHaveCSS("outline-style", "none");
     await memory.press("Tab");
+    await memoryDialog
+      .getByRole("checkbox", { name: "共享给所有 Bot" })
+      .focus();
     await expect(
       memoryDialog.getByRole("checkbox", { name: "共享给所有 Bot" }),
     ).toBeFocused();
@@ -1023,11 +1150,16 @@ test("Bot panels keep their hierarchy in both themes and panel widths", async ({
   });
   await expect(entry).toBeVisible();
   await entry.click();
-  await expect(memoryDialog.locator(".item-list")).toHaveCount(0);
+  await expect(memoryDialog.locator(".memory-list")).toHaveCount(0);
+  await expect(
+    memoryDialog.getByRole("article", { name: "记忆正文" }),
+  ).toContainText("会议记录使用简洁中文。");
+  await memoryDialog.getByRole("button", { name: "编辑", exact: true }).click();
   await expect(
     memoryDialog.getByRole("textbox", { name: "内容", exact: true }),
   ).toHaveValue("会议记录使用简洁中文。");
   await memoryDialog.getByRole("button", { name: "取消", exact: true }).click();
+  await memoryDialog.getByRole("button", { name: "返回", exact: true }).click();
   await expect(entry).toBeVisible();
   await memoryDialog.screenshot({
     path: testInfo.outputPath("memory-list.png"),

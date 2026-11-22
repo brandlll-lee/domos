@@ -386,6 +386,20 @@ process.on("message", async (message) => {
       return entry.id;
     }, BACKGROUND_CONTEXT);
     await harness.commit(async (tx) => {
+      await saveMemory(
+        tx,
+        bot.id,
+        {
+          id: "units",
+          text: "报告使用英制单位",
+          category: "profile",
+          shared: false,
+          revision: 0,
+          requestId: "units-original",
+        },
+        "user",
+        bot.id,
+      );
       for (const [id, text] of [
         ["units", "报告使用公制单位"],
         ["currency", "金额使用人民币"],
@@ -399,7 +413,7 @@ process.on("message", async (message) => {
             text,
             category: "profile",
             shared: false,
-            revision: 0,
+            revision: id === "units" ? 1 : 0,
             requestId: id,
             origin: "user",
             evidence: [{ conversationId: bot.id, entryId, quote }],
