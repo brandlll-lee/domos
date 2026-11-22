@@ -23,9 +23,10 @@ export function evaluateMemory(trial: MemoryTrial) {
   ]).includes(trial.privateMarker);
   if (trial.id === "city") {
     rules.currentFact = text.includes("上海") && !text.includes("北京");
-    rules.replacement = trial.memories.some(
-      (item) => item.replaces?.id === "seed",
-    );
+    rules.inPlaceUpdate =
+      trial.memories.length === 1 &&
+      trial.memories[0]?.id === "seed" &&
+      trial.memories[0].revision > 1;
     rules.userEvidence = trial.memories.some(
       (item) =>
         item.origin === "user" &&

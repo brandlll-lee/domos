@@ -36,3 +36,42 @@ test("memory trajectory rules detect overwrite, forged provenance and private le
   };
   expect(evaluateMemory(corrupted)).toMatchObject({ passed: 0, total: 3 });
 });
+
+test("city trajectory requires the original memory ID and a newer revision", () => {
+  const trial: MemoryTrial = {
+    id: "city",
+    answer: "现在住上海，去年住北京。",
+    memories: [
+      {
+        id: "seed",
+        botId: 1,
+        text: "用户住在上海。",
+        revision: 2,
+        updatedAt: 2,
+        source: "bot:1",
+        requestId: "update",
+        origin: "user",
+        evidence: [{ conversationId: 1, entryId: 10, quote: "我现在住上海" }],
+      },
+    ],
+    calls: [
+      {
+        name: "conversation_read",
+        input: { entryId: 9 },
+        output: "我去年住北京",
+        isError: false,
+      },
+    ],
+    sourceIds: [9, 10],
+    privateMarker: "私有代号-926",
+  };
+  expect(evaluateMemory(trial)).toMatchObject({ passed: 6, total: 6 });
+  for (const changed of [{ id: "new-city" }, { revision: 1 }]) {
+    expect(
+      evaluateMemory({
+        ...trial,
+        memories: trial.memories.map((item) => ({ ...item, ...changed })),
+      }),
+    ).toMatchObject({ passed: 5, total: 6, rules: { inPlaceUpdate: false } });
+  }
+});

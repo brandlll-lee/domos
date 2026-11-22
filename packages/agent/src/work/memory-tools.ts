@@ -7,10 +7,7 @@ import {
 import type { ChatDirectory } from "../chat-directory.ts";
 import { owningBot } from "../conversations.ts";
 import { readHistory } from "../harness/history.ts";
-import { EngineMessage } from "../harness/state.ts";
 import type { EngineTaskInput } from "../harness/task-types.ts";
-import type { ChatMessage } from "../messages.ts";
-import { messageText } from "../messages.ts";
 import { WORK_TEXT_LENGTH } from "./limits.ts";
 import {
   deleteMemory,
@@ -50,7 +47,7 @@ export const memory = (chats: () => ChatDirectory) =>
       defineTool({
         name: "memory_save",
         description:
-          "Save lasting profile facts or work notes. Read memory_list and conversation_read first. Cite exact quotes with conversationId and entryId. origin=user requires a user message; tool requires original tool evidence; inference remains inference. Use replaces={id,revision} to replace a fact atomically and preserve scope. Set effectiveAt only when evidence explicitly dates the fact. Ask about ambiguous corrections. Background writes return pending candidates for user confirmation. shared=true requires explicit user permission. New records use revision=0. Never save secrets.",
+          "Save lasting profile facts or work notes. Update the same ID with its current revision from memory_list; new records use revision=0. Cite original conversationId, entryId and a short exact quote when available. Omitted evidence stays missing. origin=user means an explicit user statement; tool means a verified observation; inference stays inference. Background upkeep silently skips protected, deleted, stale or uncertain records. shared=true requires explicit user permission. Never save secrets or temporary status.",
         parameters: Type.Object({
           id: Type.Optional(Type.String()),
           revision: Type.Integer({ minimum: 0 }),
@@ -71,17 +68,10 @@ export const memory = (chats: () => ChatDirectory) =>
               Type.Object({
                 conversationId: Type.Integer({ minimum: 1 }),
                 entryId: Type.Integer({ minimum: 1 }),
-                quote: Type.String({ minLength: 1, maxLength: 2000 }),
+                quote: Type.String({ minLength: 1, maxLength: 512 }),
               }),
               { maxItems: 8 },
             ),
-          ),
-          effectiveAt: Type.Optional(Type.String({ maxLength: 40 })),
-          replaces: Type.Optional(
-            Type.Object({
-              id: Type.String(),
-              revision: Type.Integer({ minimum: 1 }),
-            }),
           ),
         }),
         replay: "safe",
@@ -105,51 +95,17 @@ export const memory = (chats: () => ChatDirectory) =>
                     (item) => item.id === args.id,
                   )
                 : undefined;
-              let evidence = args.evidence ?? previous?.evidence;
-              if (!evidence?.length) {
-                if (reviewing)
-                  throw new WorkError(
-                    "BAD_REQUEST",
-                    "后台记忆候选必须引用交接记录中的原始出处。",
-                  );
-                const page = await tx.scanEntries(
-                  { conversationId: api.conversationId, order: "descending" },
-                  64,
-                );
-                for (const entry of page.items) {
-                  const messages =
-                    entry.kind === EngineMessage
-                      ? [entry.data as unknown as ChatMessage]
-                      : (entry.model ?? []);
-                  const user = messages.find(
-                    (message) => message.role === "user",
-                  );
-                  const quote = user ? messageText(user).slice(0, 2000) : "";
-                  if (quote) {
-                    evidence = [
-                      {
-                        conversationId: api.conversationId,
-                        entryId: entry.id,
-                        quote,
-                      },
-                    ];
-                    break;
-                  }
-                }
-              }
               return saveMemory(
                 tx,
                 botId,
                 {
                   ...args,
-                  evidence: evidence ?? [],
                   id: args.id ?? `memory-${api.taskId}`,
                   shared: args.shared ?? previous?.botId === null,
                   requestId: String(api.taskId),
                 },
                 `bot:${botId}/tool:${api.callId}`,
                 api.conversationId,
-                false,
                 reviewing,
               );
             }, context),
@@ -221,7 +177,7 @@ export const memory = (chats: () => ChatDirectory) =>
         executionMode: "sequential",
         async execute(args, api, context) {
           const botId = await owningBot(api, api.conversationId, context);
-          await api.commit(
+          const result = await api.commit(
             async (tx) =>
               deleteMemory(
                 tx,
@@ -232,7 +188,7 @@ export const memory = (chats: () => ChatDirectory) =>
               ),
             context,
           );
-          return toolResult({ deleted: args.id });
+          return toolResult(result ?? { deleted: args.id });
         },
       }),
     ],

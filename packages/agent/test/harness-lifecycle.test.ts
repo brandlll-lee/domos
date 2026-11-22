@@ -1526,7 +1526,7 @@ test.each([false, true])(
     ).toBe(false);
     expect(
       view.messages.some((message) =>
-        JSON.stringify(message).includes("Review the recent conversation"),
+        JSON.stringify(message).includes("Silently maintain memory"),
       ),
     ).toBe(false);
     if (interrupt) {

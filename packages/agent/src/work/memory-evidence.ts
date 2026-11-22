@@ -20,8 +20,6 @@ export async function verifyMemoryEvidence(
 ) {
   if (evidence.length > 8)
     throw new WorkError("BAD_REQUEST", "记忆最多引用 8 条出处。");
-  if ((origin === "user" || origin === "tool") && !evidence.length)
-    throw new WorkError("BAD_REQUEST", "用户事实和工具观察必须提供原始出处。");
   for (const ref of evidence) {
     let entry: Awaited<ReturnType<typeof historyEvidence>>;
     try {

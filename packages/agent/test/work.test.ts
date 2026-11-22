@@ -276,13 +276,13 @@ test("memory preserves old notes, enforces UTF-8 capacity and protects user reco
           ),
         context,
       ),
-    ).resolves.toMatchObject({ pending: true });
+    ).resolves.toMatchObject({ skipped: true });
     await expect(
       runtime.harness.commit(
         (tx) => deleteMemory(tx, botId, input.id, 2, "bot:review"),
         context,
       ),
-    ).rejects.toMatchObject({ code: "CONFLICT" });
+    ).resolves.toMatchObject({ skipped: true });
     await expect(
       runtime.work.memory.save(
         botId,

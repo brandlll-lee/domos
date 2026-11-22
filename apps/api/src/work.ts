@@ -130,13 +130,6 @@ export function workRouter(bots: Bots, work: BotWork, engines?: Runtime) {
       );
     }),
     memory: {
-      resolve: os
-        .input(botTarget.extend({ id, accept: z.boolean() }))
-        .handler(({ input }) =>
-          access(input.botId, () =>
-            work.memory.resolve(input.botId, input.id, input.accept, context),
-          ),
-        ),
       evidence: os
         .input(botTarget.extend({ id, index: z.number().int().min(0).max(7) }))
         .handler(({ input }) =>

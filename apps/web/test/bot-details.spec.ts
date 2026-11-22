@@ -120,7 +120,7 @@ test("memory browsing retains anchors and conflicting edits retain the draft", a
   });
 });
 
-test("memory candidates retain approval, provenance and deletion across a service crash", async ({
+test("automatic memory retains provenance and deletion across a service crash", async ({
   page,
   service,
 }) => {
@@ -128,25 +128,10 @@ test("memory candidates retain approval, provenance and deletion across a servic
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await openDetails(page);
-  await service.control("memory-candidates");
+  await service.control("memory-upkeep");
   const details = page.getByRole("complementary", { name: /的详情$/ });
   await chooseDetail(details, "记忆");
   const memory = page.locator(".memory-dialog");
-  await memory.getByRole("button", { name: "待确认 · 2" }).click();
-  await expect(
-    memory.getByRole("region", { name: "待确认记忆" }),
-  ).toContainText("报告使用公制单位");
-  await memory.getByRole("button", { name: /^报告使用公制单位/ }).click();
-  await expect(
-    memory.getByRole("region", { name: "修改前", exact: true }),
-  ).toContainText("报告使用英制单位");
-  await expect(
-    memory.getByRole("region", { name: "修改后", exact: true }),
-  ).toContainText("报告使用公制单位");
-  await memory.getByRole("button", { name: "保存记忆", exact: true }).click();
-  await memory.getByRole("button", { name: /^金额使用人民币/ }).click();
-  await memory.getByRole("button", { name: "保存记忆", exact: true }).click();
-  await memory.getByRole("button", { name: "返回", exact: true }).click();
   await expect(memory.locator(".memory-list li")).toHaveCount(2);
   await page.screenshot({ path: "test-results/memory-evidence-dark.png" });
   await memory

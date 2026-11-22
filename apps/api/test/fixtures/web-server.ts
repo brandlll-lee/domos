@@ -370,7 +370,7 @@ server.listen(Number(process.argv[3] ?? 0), "127.0.0.1", async () => {
 });
 let release: (() => void) | undefined;
 process.on("message", async (message) => {
-  if (message === "memory-candidates") {
+  if (message === "memory-upkeep") {
     const bot = (await bots.list(BACKGROUND_CONTEXT))[0];
     if (!bot) throw new Error("Bot required");
     const quote = "报告使用公制单位，金额使用人民币。";
@@ -386,25 +386,11 @@ process.on("message", async (message) => {
       return entry.id;
     }, BACKGROUND_CONTEXT);
     await harness.commit(async (tx) => {
-      await saveMemory(
-        tx,
-        bot.id,
-        {
-          id: "units",
-          text: "报告使用英制单位",
-          category: "profile",
-          shared: false,
-          revision: 0,
-          requestId: "units-original",
-        },
-        "user",
-        bot.id,
-      );
       for (const [id, text] of [
         ["units", "报告使用公制单位"],
         ["currency", "金额使用人民币"],
       ]) {
-        if (!id || !text) throw new Error("Candidate required");
+        if (!id || !text) throw new Error("Memory required");
         await saveMemory(
           tx,
           bot.id,
@@ -413,14 +399,13 @@ process.on("message", async (message) => {
             text,
             category: "profile",
             shared: false,
-            revision: id === "units" ? 1 : 0,
+            revision: 0,
             requestId: id,
             origin: "user",
             evidence: [{ conversationId: bot.id, entryId, quote }],
           },
           "bot:review",
           bot.id,
-          false,
           true,
         );
       }

@@ -155,7 +155,7 @@ async function main() {
   }
   const report = {
     version: 1,
-    suite: "memory-1",
+    suite: "memory-2",
     commit: execFileSync("git", ["rev-parse", "HEAD"], {
       encoding: "utf8",
     }).trim(),

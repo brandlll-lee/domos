@@ -337,7 +337,6 @@ export function BotDetails({
         onOpenChange={setMemoryOpen}
         botId={bot.id}
         items={work.data?.memory ?? []}
-        candidates={work.data?.memoryCandidates ?? []}
         reviewEnabled={work.data?.memoryReviewEnabled ?? true}
         usage={work.data?.memoryUsage ?? { profile: 0, work: 0 }}
         action={action}

@@ -27,9 +27,7 @@ type Entry = WorkData["memory"][number];
 type Category = "profile" | "work";
 type View =
   | { kind: "read"; id: string }
-  | { kind: "edit"; entry: Entry | null }
-  | { kind: "candidates" }
-  | { kind: "candidate"; id: string };
+  | { kind: "edit"; entry: Entry | null };
 const categories = [
   { value: "profile", label: "用户档案" },
   { value: "work", label: "工作笔记" },
@@ -44,7 +42,6 @@ export function MemoryDialog({
   onOpenChange,
   botId,
   items,
-  candidates,
   reviewEnabled,
   usage,
   action,
@@ -54,7 +51,6 @@ export function MemoryDialog({
   onOpenChange: (open: boolean) => void;
   botId: number;
   items: Entry[];
-  candidates: WorkData["memoryCandidates"];
   reviewEnabled: boolean;
   usage: WorkData["memoryUsage"];
   action: WorkAction;
@@ -79,16 +75,6 @@ export function MemoryDialog({
     view?.kind === "read"
       ? items.find((item) => item.id === view.id)
       : undefined;
-  const candidate =
-    view?.kind === "candidate"
-      ? candidates.find((item) => item.id === view.id)
-      : undefined;
-  const previous = candidate
-    ? items.find(
-        (item) =>
-          item.id === (candidate.input.replaces?.id ?? candidate.input.id),
-      )
-    : undefined;
   const words = query.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
   const matches = items.filter(
     (item) =>
@@ -116,33 +102,13 @@ export function MemoryDialog({
   function back() {
     action.clear();
     setView(
-      view?.kind === "candidate"
-        ? { kind: "candidates" }
-        : view?.kind === "edit" && view.entry
-          ? { kind: "read", id: view.entry.id }
-          : null,
-    );
-  }
-  function resolve(id: string, accept: boolean) {
-    void action.run(
-      ["memory.resolve", id, accept],
-      () => client.work.memory.resolve({ botId, id, accept }),
-      () => {
-        refreshBotWork();
-        setView({ kind: "candidates" });
-      },
+      view?.kind === "edit" && view.entry
+        ? { kind: "read", id: view.entry.id }
+        : null,
     );
   }
   const title =
-    view?.kind === "edit"
-      ? view.entry
-        ? "编辑记忆"
-        : "新增记忆"
-      : view?.kind === "candidate"
-        ? "确认记忆"
-        : view?.kind === "candidates"
-          ? "待确认"
-          : "记忆";
+    view?.kind === "edit" ? (view.entry ? "编辑记忆" : "新增记忆") : "记忆";
   return (
     <Dialog
       open={open}
@@ -283,18 +249,6 @@ export function MemoryDialog({
               aria-label="搜索记忆"
               placeholder="搜索记忆"
             />
-            {candidates.length > 0 && (
-              <Button
-                variant="secondary"
-                size="small"
-                id="memory-candidates"
-                onClick={() =>
-                  navigate({ kind: "candidates" }, "memory-candidates")
-                }
-              >
-                待确认 · {candidates.length}
-              </Button>
-            )}
           </div>
         )
       }
@@ -362,11 +316,6 @@ export function MemoryDialog({
               <time dateTime={new Date(current.updatedAt).toISOString()}>
                 {new Date(current.updatedAt).toLocaleString()} 更新
               </time>
-              {current.effectiveAt && (
-                <time dateTime={current.effectiveAt}>
-                  {new Date(current.effectiveAt).toLocaleDateString()} 起生效
-                </time>
-              )}
             </div>
             {current.evidence?.length ? (
               <nav className="memory-evidence" aria-label="原始出处">
@@ -397,84 +346,13 @@ export function MemoryDialog({
                   </Button>
                 ))}
               </nav>
+            ) : current.source.startsWith("bot:") ? (
+              <span className="memory-metadata">未记录原始出处</span>
             ) : null}
           </article>
         ) : (
           <InlineNotice>这条记忆已移除</InlineNotice>
         ))}
-      {view?.kind === "candidates" && (
-        <section className="memory-page" aria-label="待确认记忆">
-          {candidates.length ? (
-            <PanelCard>
-              <ul>
-                {candidates.map((item) => (
-                  <li key={item.id}>
-                    <PanelRow
-                      title={item.input.text}
-                      preview
-                      value={
-                        item.input.replaces || item.input.revision > 0
-                          ? "修改"
-                          : "新增"
-                      }
-                      onClick={() =>
-                        navigate({ kind: "candidate", id: item.id })
-                      }
-                    />
-                  </li>
-                ))}
-              </ul>
-            </PanelCard>
-          ) : (
-            <p className="detail-empty">没有待确认的记忆</p>
-          )}
-        </section>
-      )}
-      {candidate && (
-        <section className="memory-page" aria-label="记忆修改对照">
-          <div className="memory-comparison">
-            <section aria-label="修改前">
-              <h3>修改前</h3>
-              <PanelCard>
-                <p className="memory-text">
-                  {previous?.text ??
-                    (candidate.input.replaces || candidate.input.revision > 0
-                      ? "原记忆已移除"
-                      : "新增记忆")}
-                </p>
-              </PanelCard>
-            </section>
-            <section aria-label="修改后">
-              <h3>修改后</h3>
-              <PanelCard>
-                <p className="memory-text">{candidate.input.text}</p>
-              </PanelCard>
-            </section>
-          </div>
-          <DialogFooter>
-            <div className="dialog-actions">
-              <Button
-                variant="ghost"
-                size="small"
-                disabled={action.busy}
-                onClick={() => resolve(candidate.id, false)}
-              >
-                忽略
-              </Button>
-              <Button
-                size="small"
-                pending={action.busy}
-                onClick={() => resolve(candidate.id, true)}
-              >
-                保存记忆
-              </Button>
-            </div>
-          </DialogFooter>
-        </section>
-      )}
-      {view?.kind === "candidate" && !candidate && (
-        <InlineNotice>这项修改已处理</InlineNotice>
-      )}
       {view?.kind === "edit" && (
         <MemoryEditor
           key={view.entry?.id ?? "new"}

@@ -67,18 +67,6 @@
   display: block;
   margin-bottom: 0;
 }
-.memory-comparison {
-  display: grid;
-  gap: var(--space-5);
-}
-.memory-comparison h3 {
-  margin: 0 0 var(--space-2);
-  font-size: var(--text-label);
-  font-weight: var(--weight-medium);
-}
-.memory-comparison .memory-text {
-  padding: var(--space-4);
-}
 .memory-dialog:has(.memory-editor) .dialog-body > .scroll-viewport {
   flex: 1;
 }
@@ -104,12 +92,4 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-}
-@media (min-width: 960px) {
-  .memory-page:has(.memory-comparison) {
-    max-width: none;
-  }
-  .memory-comparison {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }

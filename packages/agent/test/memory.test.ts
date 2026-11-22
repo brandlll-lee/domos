@@ -5,7 +5,14 @@ import {
 import { expect, test } from "vitest";
 import { conversationEntry } from "../src/harness/history.ts";
 import { EngineMessage } from "../src/harness/state.ts";
-import { MemoryDoc, MemoryReviewDoc, saveMemory } from "../src/work/memory.ts";
+import {
+  deleteMemory,
+  MemoryReviewDoc,
+  memoryContext,
+  memoryGeneration,
+  memoryUsage,
+  saveMemory,
+} from "../src/work/memory.ts";
 import { agent, context, setup } from "./fixtures/work.ts";
 
 test("deleted memory rejects a stale writer after reopening the database", async () => {
@@ -38,7 +45,7 @@ test("deleted memory rejects a stale writer after reopening the database", async
   }
 });
 
-test("fact replacement retains historical evidence and validates source identity", async () => {
+test("in-place correction retains historical evidence and validates source identity", async () => {
   const f = await setup();
   const runtime = await f.open();
   const botId = runtime.conversation.id;
@@ -73,12 +80,11 @@ test("fact replacement retains historical evidence and validates source identity
     if (!("revision" in old)) throw new Error("Expected confirmed memory");
     const change = {
       ...input,
-      id: "new-city",
+      id: old.id,
+      revision: old.revision,
       text: "居住在上海",
       requestId: "shanghai",
       evidence: [shanghai],
-      effectiveAt: "2026-11-20",
-      replaces: { id: old.id, revision: old.revision },
     };
     await runtime.harness.commit(
       (tx) => saveMemory(tx, botId, change, "bot:tool"),
@@ -88,12 +94,12 @@ test("fact replacement retains historical evidence and validates source identity
       {
         text: "居住在上海",
         origin: "user",
-        effectiveAt: "2026-11-20",
-        replaces: { id: "city", revision: 1 },
+        id: "city",
+        revision: 2,
       },
     ]);
     expect(
-      await runtime.work.memory.evidence(botId, "new-city", 0, context),
+      await runtime.work.memory.evidence(botId, "city", 0, context),
     ).toMatchObject({
       conversationId: botId,
       entryId: shanghai.entryId,
@@ -129,18 +135,6 @@ test("fact replacement retains historical evidence and validates source identity
               id: "forged",
               evidence: [{ ...beijing, quote: "我住在广州" }],
             },
-            "bot:tool",
-          ),
-        context,
-      ),
-    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    await expect(
-      runtime.harness.commit(
-        (tx) =>
-          saveMemory(
-            tx,
-            botId,
-            { ...input, id: "dated", effectiveAt: "2026-11-20" },
             "bot:tool",
           ),
         context,
@@ -221,93 +215,62 @@ test("fact replacement retains historical evidence and validates source identity
   }
 });
 
-test("deletion invalidates review proposals and prevents relearning from the same source", async () => {
+test("background deletion barriers skip old IDs, text and sources after restart", async () => {
   const f = await setup();
-  const runtime = await f.open();
-  const botId = runtime.conversation.id;
+  const first = await f.open();
+  const botId = first.conversation.id;
+  const ref = await first.harness.commit(async (tx) => {
+    const entry = await tx.appendEntry(botId, {
+      kind: EngineMessage,
+      data: {
+        id: "city-source",
+        role: "user",
+        content: [{ type: "text", text: "我住在北京" }],
+      },
+    });
+    return { conversationId: botId, entryId: entry.id, quote: "我住在北京" };
+  }, context);
+  const input = {
+    id: "city",
+    text: "住在北京",
+    shared: false,
+    revision: 0,
+    requestId: "saved",
+    origin: "user" as const,
+    evidence: [ref],
+  };
+  await first.harness.commit(
+    (tx) => saveMemory(tx, botId, input, "bot:tool"),
+    context,
+  );
+  await first.work.memory.delete(botId, "city", 1, context);
+  await first.harness.close(context);
+  const reopened = await f.open();
   try {
-    const ref = await runtime.harness.commit(async (tx) => {
-      const entry = await tx.appendEntry(botId, {
-        kind: EngineMessage,
-        data: {
-          id: "source",
-          role: "user",
-          content: [{ type: "text", text: "我住在北京" }],
-        },
-      });
-      return { conversationId: botId, entryId: entry.id, quote: "我住在北京" };
-    }, context);
-    const input = {
-      id: "city",
-      text: "住在北京",
-      category: "profile" as const,
-      shared: false,
-      revision: 0,
-      requestId: "saved",
-      evidence: [ref],
-      origin: "user" as const,
-    };
-    await runtime.harness.commit(
-      (tx) => saveMemory(tx, botId, input, "bot:tool"),
-      context,
-    );
-    await runtime.harness.commit(async (tx) => {
-      (await tx.doc(MemoryReviewDoc, botId)).reviewing = true;
-      await saveMemory(
-        tx,
-        botId,
-        {
-          ...input,
-          id: "proposal",
-          text: "常住地北京",
-          requestId: "candidate",
-        },
-        "bot:review",
-      );
-    }, context);
-    await runtime.work.memory.delete(botId, "city", 1, context);
-    await expect(
-      runtime.work.memory.resolve(botId, "candidate", true, context),
-    ).rejects.toMatchObject({ code: "CONFLICT" });
-    await expect(
-      runtime.harness.commit(
-        (tx) =>
-          saveMemory(
-            tx,
-            botId,
-            {
-              ...input,
-              id: "resurrection",
-              text: "北京是居住地",
-              requestId: "again",
-            },
-            "bot:review",
-          ),
-        context,
-      ),
-    ).rejects.toMatchObject({ code: "CONFLICT" });
-    await runtime.work.memory.resolve(botId, "candidate", false, context);
-    await runtime.harness.commit(async (tx) => {
-      (await tx.doc(MemoryReviewDoc, botId)).reviewing = false;
-    }, context);
-    expect(
-      await runtime.harness.commit(
-        (tx) =>
-          saveMemory(
-            tx,
-            botId,
-            { ...input, id: "restored", requestId: "confirm" },
-            "bot:tool",
-          ),
-        context,
-      ),
-    ).toMatchObject({ pending: true });
-    await runtime.work.memory.resolve(botId, "confirm", true, context);
-    expect(await runtime.work.memory.list(botId, context)).toMatchObject([
-      { id: "restored", userAuthored: true },
-    ]);
+    for (const change of [
+      { id: "city", revision: 0 },
+      { id: "city", revision: 2 },
+      { id: "same-text", text: "住在北京" },
+      { id: "same-source", text: "北京是常住地" },
+    ]) {
+      expect(
+        await reopened.harness.commit(
+          (tx) =>
+            saveMemory(
+              tx,
+              botId,
+              { ...input, ...change, requestId: change.id },
+              "bot:review",
+              botId,
+              true,
+            ),
+          context,
+        ),
+      ).toEqual({ skipped: true });
+    }
+    expect(await reopened.work.memory.list(botId, context)).toEqual([]);
   } finally {
-    await runtime.harness.close(context);
+    await reopened.harness.close(context);
   }
 });
 
@@ -340,7 +303,7 @@ test("confirmed tool memory survives a later task failure and database restart",
       {
         text: "回复用简体中文",
         origin: "inference",
-        evidence: [{ quote: "请记住，回复用简体中文" }],
+        evidence: [],
       },
     ]);
   } finally {
@@ -411,40 +374,134 @@ test("alternative queries retrieve notes and empty memory search reads authorize
   }
 });
 
-test("background additions remain proposals and do not change a manual profile", async () => {
+test("background upkeep saves directly and skips protected, uncertain and stale changes", async () => {
   const f = await setup();
   const runtime = await f.open();
   const botId = runtime.conversation.id;
+  const input = {
+    id: "units",
+    text: "报告使用公制单位",
+    category: "profile" as const,
+    shared: false,
+    revision: 0,
+    requestId: "units",
+  };
   try {
-    const input = {
-      id: "city",
-      text: "居住在北京",
-      category: "profile" as const,
-      shared: false,
-      revision: 0,
-      requestId: "manual",
-    };
-    await runtime.work.memory.save(botId, input, context);
-    await runtime.harness.commit(async (tx) => {
-      (await tx.doc(MemoryReviewDoc, botId)).reviewing = true;
-      await saveMemory(
-        tx,
-        botId,
-        {
-          ...input,
-          id: "new-city",
-          text: "当前常住地是上海",
-          requestId: "review",
+    const ref = await runtime.harness.commit(async (tx) => {
+      const entry = await tx.appendEntry(botId, {
+        kind: EngineMessage,
+        data: {
+          id: "source",
+          role: "user",
+          content: [
+            { type: "text", text: "报告使用公制单位，金额使用人民币。" },
+          ],
         },
-        "bot:review",
+      });
+      const review = await tx.doc(MemoryReviewDoc, botId);
+      review.reviewing = true;
+      review.generation = await memoryGeneration(tx, botId);
+      return {
+        conversationId: botId,
+        entryId: entry.id,
+        quote: "报告使用公制单位，金额使用人民币。",
+      };
+    }, context);
+    const write = (
+      change: Partial<typeof input>,
+      origin: "user" | "inference" = "user",
+    ) =>
+      runtime.harness.commit(
+        (tx) =>
+          saveMemory(
+            tx,
+            botId,
+            { ...input, ...change, origin, evidence: [ref] },
+            "bot:review",
+            botId,
+            true,
+          ),
+        context,
       );
+    expect(await write({})).toMatchObject({ id: "units", revision: 1 });
+    expect(
+      await write({
+        id: "currency",
+        text: "金额使用人民币",
+        requestId: "currency",
+      }),
+    ).toMatchObject({ id: "currency", revision: 1 });
+    expect(
+      await write({
+        revision: 1,
+        text: "报告采用公制单位",
+        requestId: "update",
+      }),
+    ).toMatchObject({ id: "units", revision: 2 });
+    expect(await write({ revision: 1, requestId: "stale" })).toEqual({
+      skipped: true,
+    });
+    expect(
+      await write({ id: "guess", requestId: "guess" }, "inference"),
+    ).toEqual({ skipped: true });
+    expect(
+      await runtime.harness.commit(
+        (tx) =>
+          saveMemory(
+            tx,
+            botId,
+            { ...input, id: "unsupported", origin: "user" },
+            "bot:review",
+            botId,
+            true,
+          ),
+        context,
+      ),
+    ).toEqual({ skipped: true });
+    const current = await runtime.work.memory.list(botId, context);
+    const contextText = memoryContext(current, botId)
+      .split("\n")
+      .slice(1)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+    expect(contextText.sort((a, b) => a.id.localeCompare(b.id))).toEqual(
+      current
+        .map((item) => ({ id: item.id, text: item.text }))
+        .sort((a, b) => a.id.localeCompare(b.id)),
+    );
+    expect(memoryUsage(current)).toEqual(
+      memoryUsage(current.map((item) => ({ ...item, evidence: [] }))),
+    );
+    await runtime.work.memory.save(
+      botId,
+      { ...input, id: "manual", requestId: "manual" },
+      context,
+    );
+    await runtime.harness.commit(async (tx) => {
+      (await tx.doc(MemoryReviewDoc, botId)).generation =
+        await memoryGeneration(tx, botId);
     }, context);
     expect(
-      (await runtime.work.memory.list(botId, context)).map((x) => x.text),
-    ).toEqual(["居住在北京"]);
+      await write({ id: "manual", revision: 1, requestId: "overwrite" }),
+    ).toEqual({ skipped: true });
+    await runtime.harness.commit(
+      (tx) => deleteMemory(tx, botId, "manual", 1, "bot:review"),
+      context,
+    );
     expect(
-      (await runtime.harness.snapshot(MemoryDoc, context))?.candidates,
-    ).toHaveLength(1);
+      (await runtime.work.memory.list(botId, context)).find(
+        (item) => item.id === "manual",
+      ),
+    ).toMatchObject({ text: input.text, revision: 1 });
+    await runtime.work.memory.save(
+      botId,
+      { ...input, id: "manual", revision: 1, requestId: "edited" },
+      context,
+    );
+    expect(await write({ id: "late", requestId: "late" })).toEqual({
+      skipped: true,
+    });
+    expect(await runtime.work.memory.list(botId, context)).toHaveLength(3);
   } finally {
     await runtime.harness.close(context);
   }

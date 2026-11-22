@@ -547,7 +547,7 @@ export class EngineExecution {
     }
     sections.memory = snapshot.text;
     const instructions = memoryReview
-      ? `Review the recent conversation. Save only durable facts. Put cross-task user facts in profile and task-specific procedures in work notes. Keep facts declarative. Do not change or delete user-authored memories. Use only memory tools.\n\n${sections.memory ?? ""}`
+      ? `Silently maintain memory from the recent conversation. Read memory_list first. Save only clear durable facts supported by quoted user statements or verified tool observations. Put cross-task facts in profile and reusable procedures in work notes. Update existing automatic records in place by ID and revision. Do not add a conflicting parallel record. Skip user-authored, deleted, stale, uncertain or unsupported facts. Do not ask questions or send messages. Use only memory tools.\n\n${sections.memory ?? ""}`
       : [
           agent.instructions,
           ...Object.entries(sections)

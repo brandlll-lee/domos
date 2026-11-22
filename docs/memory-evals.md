@@ -10,7 +10,7 @@ Run on Node 24 or later:
 pnpm test packages/agent/test/memory.test.ts packages/agent/test/memory-eval.test.ts packages/agent/test/work.test.ts packages/agent/test/harness-lifecycle.test.ts packages/agent/test/harness-recovery.test.ts apps/api/test/work.test.ts
 ```
 
-These public-behavior tests cover replacement, original evidence, forged references, private Bot boundaries, shared facts with private evidence, stale writes after deletion and reopen, review candidates, explicit re-remembering and tool saves before later task failure. Native lifecycle fixtures verify that the next task receives changed memory while retaining its compatible native process. CI runs these tests through the existing Vitest suites. They require no paid model.
+These public-behavior tests cover in-place corrections, original evidence, forged references, private Bot boundaries, shared facts with private evidence, stale writes after deletion and reopen, silent review saves and skips, missing provenance and tool saves before later task failure. Native lifecycle fixtures verify that the next task receives changed memory while retaining its compatible native process. CI runs these tests through the existing Vitest suites. They require no paid model.
 
 ## Browser acceptance
 
@@ -19,7 +19,7 @@ pnpm build
 pnpm exec playwright test apps/web/test/bot-details.spec.ts
 ```
 
-The memory case confirms two review proposals, follows an original message, deletes a record, kills the service and reopens its database. It verifies the retained result, dark and light themes and a narrow window. The fixture calls the real service and RPC boundary.
+The memory case reads two automatically saved memories, follows an original message, deletes a record, kills the service and reopens its database. It verifies the retained result, dark and light themes and a narrow window. The fixture calls the real service and RPC boundary.
 
 ## Native Agent evaluation
 
@@ -44,7 +44,7 @@ The process uses full native approval so model tools can run unattended. Tempora
 
 Each report records its suite version, Git commit, dirty state, Harness/model/options, budgets, times, CLI version, native evidence, exact tool arguments/results, answers, final memories, original IDs, usage and retained database path. Failures retain available evidence. Reports can contain private source text; share only sanitized artifacts.
 
-The six Chinese cases cover current versus historical residence, paraphrase retrieval, manual preference protection, deleted facts, crash persistence and private Bot isolation. Deterministic rules check state, references, successful retrieval and leak markers. They do not establish semantic answer correctness or universal isolation. Review the actual Chinese answers and source quotes separately.
+The six Chinese cases cover in-place current versus historical residence, paraphrase retrieval, manual preference protection, deleted facts, crash persistence and private Bot isolation. Deterministic rules check state, references, successful retrieval and leak markers. They do not establish semantic answer correctness or universal isolation. Review the actual Chinese answers and source quotes separately.
 
 ```sh
 pnpm eval:memory --trace memory-report.json --output memory-scored.json
