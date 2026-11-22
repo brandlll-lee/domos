@@ -45,14 +45,19 @@ export function WorkPanel(
   const [selected, setSelected] = useState<string | undefined>(
     chat.selectedRun,
   );
+  const [closing, setClosing] = useState(false);
   useEffect(() => {
-    if (chat.selectedRun) setSelected(chat.selectedRun);
+    if (chat.selectedRun) {
+      setSelected(chat.selectedRun);
+      setClosing(false);
+    }
   }, [chat.selectedRun]);
   const [now, setNow] = useState(Date.now);
   const trigger = useRef<HTMLButtonElement | null>(null);
   const timeline = useRef<HTMLOListElement>(null);
   const openRun = (id: string) => (event: MouseEvent<HTMLButtonElement>) => {
     trigger.current = event.currentTarget;
+    setClosing(false);
     setSelected(id);
   };
   useEffect(() => {
@@ -203,11 +208,15 @@ export function WorkPanel(
         </ScrollArea>
       )}
       <Dialog
-        open={Boolean(current)}
+        open={Boolean(current) && !closing}
         onOpenChange={(open) => {
+          setClosing(!open);
+        }}
+        onOpenChangeComplete={(open) => {
           if (!open) {
             setSelected(undefined);
             chat.onRunClose?.();
+            setClosing(false);
           }
         }}
         title="工作记录"

@@ -198,7 +198,7 @@ it("chat reflows within the frame budget and retains its position", async ({
   await frames.dispose();
 });
 
-test("contacts snap to an icon column and restore their width without losing chat state", async ({
+test("contacts collapse during dragging and restore their width without losing chat state", async ({
   service,
   page,
 }, info) => {
@@ -335,6 +335,16 @@ test("contacts snap to an icon column and restore their width without losing cha
   await expect(sidebar).toHaveCSS("width", "240px");
   await handle.press("Home");
   await expect(handle).toHaveAttribute("aria-valuenow", "96");
+  await sidebar.evaluate((node) =>
+    Promise.allSettled(
+      node
+        .getAnimations({ subtree: true })
+        .filter(
+          (animation) => animation.effect?.getTiming().iterations !== Infinity,
+        )
+        .map((animation) => animation.finished),
+    ),
+  );
   const moving = await handle.boundingBox();
   const currentWidth = (await sidebar.boundingBox())?.width;
   if (!moving || !currentWidth) throw new Error("Moving sidebar missing");
@@ -375,6 +385,99 @@ test("contacts snap to an icon column and restore their width without losing cha
   await page.setViewportSize({ width: 1600, height: 960 });
   await expect(workspace).toHaveAttribute("data-sidebar-compact", "true");
   await expect(input).toHaveText("收起侧栏仍保留的草稿");
+});
+
+test("sidebar transitions retain visible avatars and continue from an interrupted position", async ({
+  service,
+  page,
+}, info) => {
+  await service.control({ history: 160 });
+  await page.setViewportSize({ width: 1600, height: 960 });
+  await page.goto(service.url);
+  const input = page.getByRole("textbox", { name: "消息", exact: true });
+  await input.fill("动画切换时保留草稿");
+  const handle = page.getByRole("separator", { name: "调整联系人宽度" });
+  const sidebar = page.locator('.workspace-panel[data-side="sidebar"]');
+  const main = page.locator(".workspace-content");
+  const original = await main.boundingBox();
+  if (!original) throw new Error("Chat panel missing");
+  const sample = () =>
+    page.evaluate(() => {
+      const main = document.querySelector<HTMLElement>(".workspace-content");
+      const avatar = document.querySelector<HTMLElement>(
+        ".contact-row .bot-avatar",
+      );
+      if (!main || !avatar) throw new Error("Sidebar content missing");
+      for (const animation of document.getAnimations()) {
+        if (animation.effect?.getTiming().iterations === Infinity) continue;
+        animation.pause();
+        animation.currentTime = 80;
+      }
+      const box = avatar.getBoundingClientRect();
+      return {
+        left: main.getBoundingClientRect().left,
+        avatarVisible: avatar.contains(
+          document.elementFromPoint(
+            box.x + box.width / 2,
+            box.y + box.height / 2,
+          ),
+        ),
+      };
+    });
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await handle.press("Home");
+    const middle = await sample();
+    expect(middle.left).toBeGreaterThan(97);
+    expect(middle.left).toBeLessThan(original.x);
+    expect(middle.avatarVisible).toBe(true);
+    await page.screenshot({
+      path: info.outputPath(`sidebar-mid-${theme}.png`),
+    });
+    const resumed = await handle.evaluate((node) => {
+      node.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "End", bubbles: true }),
+      );
+      return document
+        .querySelector(".workspace-content")
+        ?.getBoundingClientRect().left;
+    });
+    expect(resumed).toBeCloseTo(middle.left, 0);
+    const opening = await sample();
+    expect(opening.avatarVisible).toBe(true);
+    await page.evaluate(() => {
+      for (const animation of document.getAnimations()) {
+        if (animation.effect?.getTiming().iterations !== Infinity)
+          animation.finish();
+      }
+    });
+    await expect(sidebar).not.toHaveAttribute("data-morphing");
+    await expect(input).toHaveText("动画切换时保留草稿");
+    await expect(page.locator(".message")).toHaveCount(120);
+  }
+  await handle.press("Home");
+  const grabbed = await sample();
+  const edge = await handle.boundingBox();
+  if (!edge) throw new Error("Animated resize handle missing");
+  await page.mouse.move(edge.x + edge.width / 2, edge.y + 100);
+  await page.mouse.down();
+  expect((await main.boundingBox())?.x).toBeCloseTo(grabbed.left, 0);
+  await expect(sidebar).not.toHaveAttribute("data-morphing");
+  const displayed = Number(await handle.getAttribute("aria-valuenow"));
+  await page.mouse.move(edge.x + edge.width / 2 + 150, edge.y + 100);
+  await expect(handle).toHaveAttribute(
+    "aria-valuenow",
+    String(displayed + 150),
+  );
+  await page.mouse.up();
+  await handle.press("Home");
+  await sample();
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await expect(sidebar).not.toHaveAttribute("data-morphing");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await handle.press("End");
+  await expect(sidebar).not.toHaveAttribute("data-morphing");
+  await expect(input).toHaveText("动画切换时保留草稿");
 });
 
 test("panels resize live, persist only on release, and retain drafts across layouts", async ({

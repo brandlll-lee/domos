@@ -45,6 +45,9 @@ export async function composerFiles(page: Page) {
 }
 
 export async function openSettings(page: import("@playwright/test").Page) {
+  await expect(page.locator(".settings-window[data-ending-style]")).toHaveCount(
+    0,
+  );
   if ((page.viewportSize()?.width ?? 0) < layout.sidebar.min + layout.chatMin)
     await expect(page.locator(".workspace")).toHaveAttribute(
       "data-mobile",
@@ -83,10 +86,12 @@ export async function chooseAppearance(
   await openSettings(page);
   await page.getByRole("combobox", { name: "外观", exact: true }).click();
   await page.getByRole("option", { name: label, exact: true }).click();
-  if (opened)
+  if (opened) {
     await settings
       .getByRole("button", { name: "返回对话", exact: true })
       .click();
+    await expect(settings).toHaveCount(0);
+  }
 }
 
 export async function chooseDetail(
@@ -136,6 +141,15 @@ export async function expectModel(
 export async function expectTextContrast(
   page: import("@playwright/test").Page,
 ) {
+  await page
+    .locator(".dialog-popup, .action-menu, .popover-surface")
+    .evaluateAll((nodes) =>
+      Promise.allSettled(
+        nodes.flatMap((node) =>
+          node.getAnimations().map((animation) => animation.finished),
+        ),
+      ),
+    );
   const ratios = await page.evaluate(() => {
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = 1;

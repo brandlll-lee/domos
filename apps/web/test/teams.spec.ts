@@ -107,6 +107,11 @@ test("teams preserve member authors and keep private chats separate", async ({
     name: "新建 Bot 团队",
     exact: true,
   });
+  await dialog.evaluate((node) =>
+    Promise.allSettled(
+      node.getAnimations().map((animation) => animation.finished),
+    ),
+  );
   const initialFrame = await dialog.boundingBox();
   await expect(
     dialog.getByRole("textbox", { name: "团队名称", exact: true }),

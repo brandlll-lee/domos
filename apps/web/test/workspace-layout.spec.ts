@@ -395,6 +395,7 @@ test("centered dialogs share stable geometry and Harness marks", async ({
   service,
   page,
 }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(service.url);
   for (const selector of [".chat-identity", ".context-ring"]) {
     const mark = page.locator(`${selector} .engine-mark`);
@@ -425,7 +426,7 @@ test("centered dialogs share stable geometry and Harness marks", async ({
     }
     await expect(page.locator(".dialog-backdrop")).toHaveCSS(
       "backdrop-filter",
-      "blur(8px)",
+      "none",
     );
     await page.keyboard.press("Escape");
     if (width === 390)
@@ -439,7 +440,7 @@ test("centered dialogs share stable geometry and Harness marks", async ({
     await expect(page.locator(".dialog-backdrop")).toBeVisible();
     await expect(page.locator(".dialog-backdrop")).toHaveCSS(
       "backdrop-filter",
-      "blur(8px)",
+      "none",
     );
     for (const state of ["list", "editor"]) {
       if (state === "editor")
@@ -583,6 +584,7 @@ for (const dialogName of [
       const frames: {
         connected: boolean;
         visible: boolean;
+        opacity: number;
         snapshots: boolean;
       }[] = [];
       document.documentElement.dataset.modalRecording = "true";
@@ -590,7 +592,8 @@ for (const dialogName of [
         const style = getComputedStyle(node);
         frames.push({
           connected: node.isConnected,
-          visible: style.visibility === "visible" && style.opacity === "1",
+          visible: style.visibility === "visible",
+          opacity: Number(style.opacity),
           snapshots:
             Boolean(document.activeViewTransition) &&
             getComputedStyle(document.documentElement, "::view-transition")
@@ -626,6 +629,7 @@ for (const dialogName of [
         JSON.parse(document.documentElement.dataset.modalFrames ?? "[]") as {
           connected: boolean;
           visible: boolean;
+          opacity: number;
           snapshots: boolean;
         }[],
     );
@@ -641,9 +645,14 @@ for (const dialogName of [
     expect(captures.length).toBeGreaterThan(0);
     expect(
       frames.every(
-        (frame) => frame.connected && frame.visible && !frame.snapshots,
+        (frame, index) =>
+          frame.connected &&
+          frame.visible &&
+          !frame.snapshots &&
+          frame.opacity >= (frames[index - 1]?.opacity ?? 0) - 0.01,
       ),
     ).toBe(true);
+    expect(frames.at(-1)?.opacity).toBe(1);
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
     if (dialogName === "添加容器环境") {
@@ -961,6 +970,7 @@ test("contact rows keep their density and searchable previews across selections"
   service,
   page,
 }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(service.url);
   await page.getByRole("button", { name: "新建", exact: true }).click();
   await page.getByRole("menuitem", { name: "新建 Bot", exact: true }).click();

@@ -43,7 +43,7 @@ export function ResizeHandle({
   const cancelDrag = () => {
     cancelFrame();
     if (!drag.current) return;
-    if (drag.current.moving) {
+    if (drag.current.moving || drag.current.next !== drag.current.initial) {
       onResize(drag.current.initial);
     }
     onDragChange(false);
@@ -80,16 +80,24 @@ export function ResizeHandle({
         if (!panel) return;
         event.preventDefault();
         event.currentTarget.setPointerCapture(event.pointerId);
-        const current = parseFloat(getComputedStyle(panel).width);
-        const scale = panel.getBoundingClientRect().width / current;
+        const box = panel.getBoundingClientRect();
+        const scale = box.width / parseFloat(getComputedStyle(panel).width);
+        const edge = event.currentTarget.getBoundingClientRect();
+        const current =
+          side === "sidebar" && panel.hasAttribute("data-morphing")
+            ? (document.documentElement.dir === "rtl"
+                ? box.right - edge.left - edge.width / 2
+                : edge.left + edge.width / 2 - box.left) / scale
+            : box.width / scale;
         drag.current = {
           x: event.clientX,
           width: current,
           initial: width,
-          next: width,
+          next: current,
           scale,
           moving: false,
         };
+        if (current !== width) onResize(current);
         onDragChange(true);
       }}
       onPointerMove={(event) => {

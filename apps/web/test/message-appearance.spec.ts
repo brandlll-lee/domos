@@ -13,6 +13,79 @@ import {
 } from "./fixtures/chat-ui.ts";
 import { test } from "./fixtures/service.ts";
 
+test("shared overlays finish their exit, retain content and restore keyboard focus", async ({
+  service,
+  page,
+}) => {
+  await page.goto(service.url);
+  const menuTrigger = page.getByRole("button", {
+    name: "用户菜单",
+    exact: true,
+  });
+  const menu = page.locator(".action-menu");
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await menuTrigger.click();
+    await expect(menu).toBeVisible();
+    await menu.evaluate((node) =>
+      Promise.allSettled(
+        node.getAnimations().map((animation) => animation.finished),
+      ),
+    );
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveAttribute("data-ending-style");
+    await expect(menu).toContainText("设置");
+    await expect(menu).toHaveCSS("interactivity", "inert");
+    await page.keyboard.press("Tab");
+    expect(
+      await menu.evaluate((node) => node.contains(document.activeElement)),
+    ).toBe(false);
+    await expect(menu).toHaveCount(0);
+
+    await menuTrigger.click();
+    await page.getByRole("menuitem", { name: "设置", exact: true }).click();
+    const settings = page.locator(".settings-window");
+    await expect(settings.locator(".settings-page")).toBeVisible();
+    await settings.evaluate((node) =>
+      Promise.allSettled(
+        node.getAnimations().map((animation) => animation.finished),
+      ),
+    );
+    await page.keyboard.press("Escape");
+    await expect(settings).toHaveAttribute("data-ending-style");
+    await expect(settings.locator(".settings-page")).toContainText("通用");
+    await expect(settings).toHaveCSS("interactivity", "inert");
+    await expect(settings).toHaveCount(0);
+    await expect(menuTrigger).toBeFocused();
+
+    await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+    const context = page.getByRole("button", {
+      name: "上下文窗口",
+      exact: true,
+    });
+    if (!(await context.isVisible()))
+      await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+    await context.click();
+    const popup = page.locator(".popover-surface");
+    await expect(popup).toBeVisible();
+    await popup.evaluate((node) =>
+      Promise.allSettled(
+        node.getAnimations().map((animation) => animation.finished),
+      ),
+    );
+    await page.keyboard.press("Escape");
+    await expect(popup).toHaveAttribute("data-ending-style");
+    await expect(popup).toHaveCSS("interactivity", "inert");
+    await expect(popup).toHaveCount(0);
+    await expect(context).toBeFocused();
+  }
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await menuTrigger.click();
+  await expect(menu).toHaveCSS("transition-duration", "0s");
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+});
+
 test("text contrast, keyboard focus and message scrolling meet the UI contract", async ({
   service,
   page,
@@ -944,6 +1017,7 @@ test("settings stay readable in both themes and compact layouts", async ({
   service,
   page,
 }, testInfo) => {
+  test.setTimeout(60_000);
   await page.goto(service.url);
   const input = page.getByRole("textbox", { name: "消息", exact: true });
   await input.fill("返回后继续编辑");
@@ -1003,7 +1077,7 @@ test("settings stay readable in both themes and compact layouts", async ({
   ).toBeFocused();
   await expect(search).toHaveValue("");
   await settings.getByRole("tab", { name: "当前电脑", exact: true }).click();
-  await settings.locator(".settings-group > .disclosure > summary").click();
+  await settings.getByRole("button", { name: /^工作环境/ }).click();
   await settings
     .getByRole("button", { name: "添加容器环境", exact: true })
     .click();
@@ -1017,14 +1091,23 @@ test("settings stay readable in both themes and compact layouts", async ({
   });
   await add.getByLabel("环境名称", { exact: true }).fill("尚未添加");
   await add.getByRole("button", { name: "取消", exact: true }).click();
-  await settings.getByRole("tab", { name: "通用", exact: true }).click();
-  await settings.getByRole("tab", { name: "当前电脑", exact: true }).click();
-
+  await expect(add).toHaveCount(0);
   await settings
     .getByRole("button", { name: "添加容器环境", exact: true })
     .click();
   await expect(add.getByLabel("环境名称", { exact: true })).toHaveValue(
     "尚未添加",
+  );
+  await add.getByRole("button", { name: "取消", exact: true }).click();
+  await settings.getByRole("tab", { name: "通用", exact: true }).click();
+  await settings.getByRole("tab", { name: "当前电脑", exact: true }).click();
+
+  await settings.getByRole("button", { name: /^工作环境/ }).click();
+  await settings
+    .getByRole("button", { name: "添加容器环境", exact: true })
+    .click();
+  await expect(add.getByLabel("环境名称", { exact: true })).toHaveValue(
+    "容器环境",
   );
   await page.keyboard.press("Escape");
   await expect(settings).toBeVisible();
@@ -1043,7 +1126,7 @@ test("settings stay readable in both themes and compact layouts", async ({
       path: testInfo.outputPath(`settings-${width}.png`),
     });
   }
-  await page.keyboard.press("Escape");
+  await settings.getByRole("button", { name: "关闭设置", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "用户菜单", exact: true }),
   ).toBeFocused();

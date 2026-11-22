@@ -99,9 +99,14 @@ export function UsageSurface() {
   const [analysisDimension, setAnalysisDimension] =
     useState<Dimension>("harness");
   const [view, setView] = useState<"cost" | "tokens" | "quota">("cost");
+  const [closing, setClosing] = useState(false);
   const [panel, setPanel] = useState<
     "data" | "records" | "filters" | "analysis" | null
   >(null);
+  function showPanel(next: NonNullable<typeof panel>) {
+    setClosing(false);
+    setPanel(next);
+  }
   const summaryDimension = panel === "analysis" ? analysisDimension : dimension;
   const [expanded, setExpanded] = useState(false);
   const [drill, setDrill] = useState<{ dimension: Dimension; key: string }>();
@@ -265,13 +270,13 @@ export function UsageSurface() {
     setDrill({ dimension: summary.dimension, key });
     setQuery("");
     setPage(1);
-    setPanel("records");
+    showPanel("records");
   };
   const openRecords = () => {
     setDrill(undefined);
     setQuery("");
     setPage(1);
-    setPanel("records");
+    showPanel("records");
   };
   const partial =
     summary &&
@@ -319,7 +324,7 @@ export function UsageSurface() {
                 <Button
                   size="small"
                   variant="ghost"
-                  onClick={() => setPanel("filters")}
+                  onClick={() => showPanel("filters")}
                 >
                   筛选{activeFilters ? ` · ${activeFilters}` : ""}
                 </Button>
@@ -364,7 +369,7 @@ export function UsageSurface() {
               <Button
                 size="small"
                 variant="ghost"
-                onClick={() => setPanel("data")}
+                onClick={() => showPanel("data")}
               >
                 查看详情
               </Button>
@@ -514,14 +519,14 @@ export function UsageSurface() {
                     <Button
                       size="small"
                       variant="ghost"
-                      onClick={() => setPanel("analysis")}
+                      onClick={() => showPanel("analysis")}
                     >
                       更多分析
                     </Button>
                     <Button
                       size="small"
                       variant="ghost"
-                      onClick={() => setPanel("data")}
+                      onClick={() => showPanel("data")}
                     >
                       数据说明
                     </Button>
@@ -533,9 +538,15 @@ export function UsageSurface() {
         </div>
       </main>
       <Dialog
-        open={panel !== null}
+        open={panel !== null && !closing}
         onOpenChange={(open) => {
-          if (!open) setPanel(null);
+          setClosing(!open);
+        }}
+        onOpenChangeComplete={(open) => {
+          if (!open) {
+            setPanel(null);
+            setClosing(false);
+          }
         }}
         title={
           panel === "filters"

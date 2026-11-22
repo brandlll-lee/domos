@@ -1,4 +1,4 @@
-@import "./popover.css";
+@import "./overlay.css";
 @import "./chat.css";
 @import "./controls.css";
 @import "./menu.css";
@@ -63,7 +63,6 @@ a,
   inset: 0;
   z-index: 3;
   background: var(--color-scrim);
-  backdrop-filter: blur(var(--surface-blur));
 }
 .dialog-popup {
   display: flex;

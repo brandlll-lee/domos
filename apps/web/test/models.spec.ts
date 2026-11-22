@@ -4,6 +4,8 @@ import { expect } from "@playwright/test";
 import { chooseDetail, openDetails, openSettings } from "./fixtures/chat-ui.ts";
 import { test } from "./fixtures/service.ts";
 
+test.use({ ignoreHTTPSErrors: true });
+
 test("model selection updates immediately and restores a failed save", async ({
   service,
   page,
@@ -329,11 +331,11 @@ test("native Harness controls persist and client accounts retain model access", 
   browser,
 }, info) => {
   await service.stop();
-  await service.start(0, "hosting");
+  await service.start(0, "https");
   const ready = { pairing: service.pairing };
   await page.goto(service.url);
   await page.getByLabel("配对码", { exact: true }).fill(ready.pairing);
-  await page.getByRole("button", { name: "连接", exact: true }).click();
+  await page.getByRole("button", { name: "确认连接", exact: true }).click();
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   const trigger = page.getByRole("combobox", { name: "模型", exact: true });
   const popup = page.locator(".model-selector-popup");
@@ -460,17 +462,20 @@ test("native Harness controls persist and client accounts retain model access", 
     ).toBe(true);
   }
   await page.keyboard.press("Escape");
+  const check = await page.request.get(`${service.url}/hosting/connection`);
+  expect((await check.json()).state).toBe("ready");
   const response = await page.request.post(`${service.url}/hosting/pairing`, {
     data: { scope: "client" },
     headers: { Origin: service.url },
   });
   const pairing = await response.json();
-  const client = await browser.newContext();
+  expect(response.ok()).toBe(true);
+  const client = await browser.newContext({ ignoreHTTPSErrors: true });
   try {
     const paired = await client.newPage();
     await paired.goto(service.url);
     await paired.getByLabel("配对码", { exact: true }).fill(pairing.code);
-    await paired.getByRole("button", { name: "连接", exact: true }).click();
+    await paired.getByRole("button", { name: "确认连接", exact: true }).click();
     await paired.getByRole("button", { name: "Bot详情", exact: true }).click();
     await paired.getByRole("combobox", { name: "模型", exact: true }).click();
     await expect(

@@ -170,11 +170,17 @@ const answer: FauxResponseFactory = async (input, options, _state, model) => {
           .filter((part) => part.type === "text")
           .map((part) => part.text)
           .join("\n") ?? "");
-  const request = content.startsWith(handoffInstructions)
+  const current = content.startsWith("Current saved memory snapshot (")
     ? content.slice(
-        content.lastIndexOf(requestInstructions) + requestInstructions.length,
+        content.indexOf("End of memory snapshot.\n\n") +
+          "End of memory snapshot.\n\n".length,
       )
     : content;
+  const request = current.startsWith(handoffInstructions)
+    ? current.slice(
+        current.lastIndexOf(requestInstructions) + requestInstructions.length,
+      )
+    : current;
   return fauxAssistantMessage(
     `已收到：${request}。这是一条用于验证流式显示和会话恢复的完整回复。（${model.id}）`,
   );

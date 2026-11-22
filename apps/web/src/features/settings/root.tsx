@@ -99,7 +99,7 @@ export function SettingsRoot({
             finalFocus={returnTarget}
           >
             <PanelDialog.Title className="sr-only">设置</PanelDialog.Title>
-            {open && (
+            {showing && (
               <SettingsPage
                 {...access}
                 initialSection={section}

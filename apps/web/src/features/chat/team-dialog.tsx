@@ -13,12 +13,14 @@ export function TeamDialog({
   bots,
   open,
   onOpenChange,
+  onOpenChangeComplete,
   onSaved,
   team,
 }: {
   finalFocus?: () => HTMLElement | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onOpenChangeComplete?: (open: boolean) => void;
   bots: BotPresence[];
   onSaved: (team: Team) => void;
   team?: Team;
@@ -31,10 +33,21 @@ export function TeamDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
   const requestId = useRef(crypto.randomUUID());
+  const completed = useRef(false);
   return (
     <Dialog
       open={open}
       onOpenChange={setOpen}
+      onOpenChangeComplete={(open) => {
+        if (!open && completed.current) {
+          completed.current = false;
+          setName("");
+          setPurpose("");
+          setMembers([]);
+          setOwner(undefined);
+        }
+        onOpenChangeComplete?.(open);
+      }}
       finalFocus={finalFocus}
       title={team ? "编辑团队" : "新建 Bot 团队"}
       footer={
@@ -64,12 +77,9 @@ export function TeamDialog({
                   owner,
                 });
                 onSaved(saved);
+                completed.current = true;
                 requestId.current = crypto.randomUUID();
                 setOpen(false);
-                setName("");
-                setPurpose("");
-                setMembers([]);
-                setOwner(undefined);
               } catch (cause) {
                 setError(
                   cause instanceof Error ? cause.message : "团队保存失败。",

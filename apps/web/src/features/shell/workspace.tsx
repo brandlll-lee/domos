@@ -13,6 +13,7 @@ import {
   addTransitionType,
   type ReactNode,
   startTransition,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useState,
@@ -22,6 +23,7 @@ import { flushSync } from "react-dom";
 import { EnvironmentSwitcher } from "./environment-switcher.tsx";
 import { useWorkspaceLayout } from "./layout.ts";
 import { ResizeHandle } from "./resize-handle.tsx";
+import { useSidebarMotion } from "./sidebar-motion.ts";
 import { Titlebar } from "./titlebar.tsx";
 import "./style.css";
 
@@ -51,9 +53,17 @@ export function Workspace({
   inspectorTitle?: string;
 }) {
   const sizing = useWorkspaceLayout(detailsOpen && !expanded);
+  const sidebarMotion = useSidebarMotion(sizing.root);
   const [contactsOpen, setContactsOpen] = useState(false);
   const [menuError, setMenuError] = useState("");
   const [dragging, setDragging] = useState(false);
+  const beginDrag = useCallback(
+    (moving: boolean) => {
+      if (moving) sidebarMotion.finish();
+      setDragging(moving);
+    },
+    [sidebarMotion.finish],
+  );
   useLayoutEffect(() => {
     // The viewport can change before its resize event reaches React.
     if (sizing.available !== window.innerWidth)
@@ -97,7 +107,9 @@ export function Workspace({
       modal: sizing.mobile,
       open: !sizing.mobile || contactsOpen,
       change: setContactsOpen,
-      content: sidebar(sizing.compact, sizing.expandSidebar),
+      content: sidebar(sizing.compact, () =>
+        sidebarMotion.change(sizing.expandSidebar),
+      ),
     },
     {
       side: "inspector" as const,
@@ -206,11 +218,22 @@ export function Workspace({
                     }
                     max={sizing.maximum[side]}
                     onResize={(width) => sizing.resize(side, width)}
-                    onCommit={(width) => sizing.resize(side, width, true)}
+                    onCommit={(width) => {
+                      const commit = () => sizing.resize(side, width, true);
+                      if (
+                        side === "sidebar" &&
+                        !dragging &&
+                        (width === layout.sidebar.compact) !== sizing.compact
+                      )
+                        sidebarMotion.change(commit);
+                      else commit();
+                    }}
                     onToggle={
-                      side === "sidebar" ? sizing.toggleSidebar : undefined
+                      side === "sidebar"
+                        ? () => sidebarMotion.change(sizing.toggleSidebar)
+                        : undefined
                     }
-                    onDragChange={setDragging}
+                    onDragChange={beginDrag}
                   />
                 )}
                 <div className="panel-body">

@@ -42,7 +42,7 @@ export function TeamDetails({
   onSaved: (team: Team) => void;
 }) {
   const [page, setPage] = useState<"root" | "members">("root");
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState<boolean | "closing">(false);
   const owner = members.find((member) => member.id === team.owner);
   return (
     <aside
@@ -153,8 +153,11 @@ export function TeamDetails({
         <TeamDialog
           team={team}
           bots={bots}
-          open
-          onOpenChange={setEditing}
+          open={editing === true}
+          onOpenChange={(open) => setEditing(open || "closing")}
+          onOpenChangeComplete={(open) => {
+            if (!open) setEditing(false);
+          }}
           onSaved={onSaved}
         />
       )}

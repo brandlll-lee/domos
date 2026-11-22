@@ -112,12 +112,12 @@ export function MemoryDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={(next) => {
+      onOpenChange={onOpenChange}
+      onOpenChangeComplete={(next) => {
         if (!next) {
           setView(null);
           action.clear();
         }
-        onOpenChange(next);
       }}
       className="memory-dialog"
       viewportRef={viewport}

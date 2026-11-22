@@ -34,17 +34,15 @@ export function CreateBot({
       title="新建 Bot"
       description="取个名字，再选择模型。"
     >
-      {open && (
-        <BotForm
-          saving={saving}
-          onSavingChange={setSaving}
-          onCancel={() => setOpen(false)}
-          onCreated={(bot) => {
-            setOpen(false);
-            onCreated(bot);
-          }}
-        />
-      )}
+      <BotForm
+        saving={saving}
+        onSavingChange={setSaving}
+        onCancel={() => setOpen(false)}
+        onCreated={(bot) => {
+          setOpen(false);
+          onCreated(bot);
+        }}
+      />
     </Dialog>
   );
 }

@@ -7,9 +7,6 @@
   border-radius: 0.875rem;
   background: var(--color-popup);
   box-shadow: var(--color-popup-shadow);
-  transform-origin: var(--transform-origin);
-  animation: action-menu-in var(--motion-feedback)
-    cubic-bezier(0.22, 1, 0.36, 1);
 }
 .action-menu-item {
   display: flex;
@@ -34,18 +31,6 @@
 .action-menu-item[data-disabled] {
   opacity: 0.45;
 }
-@keyframes action-menu-in {
-  from {
-    opacity: 0;
-    scale: 0.97;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .action-menu {
-    animation: none;
-  }
-}
-
 .action-menu-item > svg {
   width: var(--space-4);
   height: var(--space-4);

@@ -26,6 +26,7 @@ export function DialogFooter({ children }: { children: ReactNode }) {
 export function Dialog({
   open,
   onOpenChange,
+  onOpenChangeComplete,
   trigger,
   title,
   description,
@@ -40,6 +41,7 @@ export function Dialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onOpenChangeComplete?: (open: boolean) => void;
   trigger?: ReactElement;
   title: ReactNode;
   description?: string;
@@ -56,7 +58,11 @@ export function Dialog({
   const body = viewportRef ?? internalBody;
   const [footerTarget, setFooterTarget] = useState<HTMLElement | null>(null);
   return (
-    <BaseDialog.Root open={open} onOpenChange={onOpenChange}>
+    <BaseDialog.Root
+      open={open}
+      onOpenChange={onOpenChange}
+      onOpenChangeComplete={onOpenChangeComplete}
+    >
       {trigger && <BaseDialog.Trigger render={trigger} />}
       <BaseDialog.Portal>
         <BaseDialog.Backdrop className="dialog-backdrop" forceRender />

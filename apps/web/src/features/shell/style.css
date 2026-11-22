@@ -198,6 +198,24 @@
   inset-inline-start: 0;
   background: var(--color-sidebar);
 }
+.workspace-panel[data-morphing] {
+  isolation: isolate;
+}
+.workspace-panel[data-morphing]::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: var(--sidebar-motion-width);
+  background: inherit;
+  z-index: -1;
+}
+.workspace-panel[data-morphing] .chat-preview {
+  transition: none;
+}
+.workspace-panel[data-morphing] :is(.contact-row, .sidebar-toolbar) {
+  overflow: visible;
+}
 .workspace-panel[data-side="inspector"] {
   inset-block: calc(var(--workspace-inset) + 1px);
   inset-inline-end: calc(var(--workspace-inset) + 1px);
