@@ -6,7 +6,10 @@ import { Checkbox, SearchField, TextField } from "@domos/ui/field";
 import { ActionMenu } from "@domos/ui/menu";
 import { Pagination } from "@domos/ui/pagination";
 import { StatusDot } from "@domos/ui/status-dot";
+import { ClockIcon } from "@phosphor-icons/react/dist/csr/Clock";
 import { DotsThreeIcon } from "@phosphor-icons/react/dist/csr/DotsThree";
+import { HandPalmIcon } from "@phosphor-icons/react/dist/csr/HandPalm";
+import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { useState } from "react";
 import { client } from "../../client.ts";
 import { useWorkAction } from "../bots/details/use-bot-work.ts";
@@ -34,47 +37,47 @@ export async function createConversation(
   selectConversation(botId, conversation.id);
 }
 
+const conversationStatus = {
+  working: { label: "工作中", Icon: DotsThreeIcon },
+  queued: { label: "排队中", Icon: ClockIcon },
+  waiting: { label: "等待处理", Icon: HandPalmIcon },
+  failed: { label: "失败", Icon: XIcon },
+};
+
 export function ConversationState({
-  item,
+  status,
+  updatedAt,
   unread,
   now,
 }: {
-  item: PrivateConversation;
+  status: PrivateConversation["status"];
+  updatedAt?: number;
   unread: number;
   now: number;
 }) {
-  const label = {
-    working: "工作中",
-    queued: "排队中",
-    waiting: "等待处理",
-    failed: "失败",
-    idle: "",
-  }[item.status];
+  const mark = status === "idle" ? undefined : conversationStatus[status];
+  const label = [mark?.label, unread > 0 && "未读"].filter(Boolean).join("，");
   return (
-    <span className="conversation-state">
-      {(label || unread > 0) && (
-        <StatusDot
-          tone={
-            item.status === "failed"
-              ? "negative"
-              : item.status === "waiting" || item.status === "queued"
-                ? "warning"
-                : "positive"
-          }
-          label={label || "未读"}
-        />
+    <>
+      {label && (
+        <span
+          className="conversation-status"
+          data-status={status}
+          title={label}
+        >
+          {mark ? (
+            <mark.Icon role="img" aria-label={label} />
+          ) : (
+            <StatusDot tone="positive" label={label} />
+          )}
+        </span>
       )}
-      {label ||
-        (unread ? (
-          "未读"
-        ) : item.updatedAt ? (
-          <time dateTime={new Date(item.updatedAt).toISOString()}>
-            {contactTime(item.updatedAt, now)}
-          </time>
-        ) : (
-          ""
-        ))}
-    </span>
+      {updatedAt && (
+        <time dateTime={new Date(updatedAt).toISOString()}>
+          {contactTime(updatedAt, now)}
+        </time>
+      )}
+    </>
   );
 }
 
@@ -206,7 +209,8 @@ export function ConversationsDialog({
               >
                 <span className="conversation-row-title">{item.title}</span>
                 <ConversationState
-                  item={item}
+                  status={item.status}
+                  updatedAt={item.updatedAt}
                   unread={
                     attention?.counts[conversationRoute(bot.id, item.id)] ?? 0
                   }

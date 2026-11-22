@@ -4,7 +4,7 @@ import { flushSync } from "react-dom";
 const movers =
   ".bot-avatar, .sidebar-toolbar button, .sidebar-footer button, .environment-trigger, .panel-resizer";
 const labels =
-  ".chat-preview, .sidebar-heading, .apps-trigger span, .conversation-children, .bot-conversation-actions";
+  ".chat-preview, .sidebar-heading, .apps-trigger span, .conversation-children, .conversation-toggle";
 
 export function useSidebarMotion(root: HTMLDivElement | null) {
   const running = useRef<(() => void) | null>(null);

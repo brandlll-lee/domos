@@ -276,7 +276,12 @@ test("contacts collapse during dragging and restore their width without losing c
   for (const theme of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-    const contact = sidebar.locator('.contact-row[aria-current="page"]');
+    const contact = sidebar.locator(".contact-row").first();
+    const avatarMenu = sidebar.getByRole("button", {
+      name: "Domos",
+      exact: true,
+    });
+    await expect(avatarMenu).toHaveAttribute("aria-current", "page");
     const searchButton = sidebar.getByRole("button", {
       name: "搜索联系人和聊天记录",
       exact: true,
@@ -290,21 +295,28 @@ test("contacts collapse during dragging and restore their width without losing c
       "background-color",
       "rgba(0, 0, 0, 0)",
     );
-    await searchButton.hover();
-    await searchButton.evaluate((node) =>
-      Promise.all(node.getAnimations().map((animation) => animation.finished)),
-    );
-    const hover = await searchButton.evaluate(
+    const selected = await contact.evaluate(
       (node) => getComputedStyle(node).backgroundColor,
     );
-    await sidebar.getByRole("button", { name: "Domos", exact: true }).hover();
-    await expect(contact).toHaveCSS("background-color", hover);
+    expect(selected).not.toBe("rgba(0, 0, 0, 0)");
+    await avatarMenu.hover();
+    await expect(contact).toHaveCSS("background-color", selected);
     await page.mouse.move(400, 800);
     await page.screenshot({
       path: info.outputPath(`contacts-compact-${theme}.png`),
       animations: "disabled",
     });
   }
+  const avatarMenu = sidebar.getByRole("button", {
+    name: "Domos",
+    exact: true,
+  });
+  await avatarMenu.press("Enter");
+  await expect(page.getByRole("menuitem", { name: "新建会话" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "管理会话" }).press("Enter");
+  const conversations = page.getByRole("dialog", { name: "Domos的会话" });
+  await expect(conversations).toBeVisible();
+  await conversations.getByRole("button", { name: "关闭弹窗" }).click();
   await page.reload();
   await expect(workspace).toHaveAttribute("data-sidebar-compact", "true");
   await expect(input).toHaveText("收起侧栏仍保留的草稿");

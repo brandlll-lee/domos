@@ -1034,7 +1034,7 @@ test("Bot rows keep their density and conversation titles while search retains p
   );
   expect(
     geometry.every(
-      (item) => item.height === geometry[0]?.height && item.lines === 1,
+      (item) => item.height === geometry[0]?.height && item.lines === 2,
     ),
   ).toBe(true);
   expect(geometry[0]?.height).toBe(54);
@@ -1097,15 +1097,18 @@ test("Bot rows keep their density and conversation titles while search retains p
   await search.fill("Domos");
   await search.press("Enter");
   await expect(dialog).toBeHidden();
-  await expect(root).toHaveAttribute("aria-current", "page");
+  await expect(contacts.locator('[aria-current="page"]')).toHaveAttribute(
+    "href",
+    "#bot/1/1",
+  );
   await contacts.getByRole("link", { name: "研究助手", exact: true }).click();
-  const active = contacts.getByRole("link", { name: "研究助手", exact: true });
   await page.mouse.move(400, 800);
-  await expect(active).toHaveAttribute("aria-current", "page");
+  const activeConversation = contacts.locator('[aria-current="page"]');
+  await expect(activeConversation).toHaveAttribute("href", /#bot\/(\d+)\/\1$/);
   await root.hover();
   await expect(root).not.toHaveAttribute("aria-current", "page");
   await page.reload();
-  await expect(active).toHaveAttribute("aria-current", "page");
+  await expect(activeConversation).toHaveAttribute("href", /#bot\/(\d+)\/\1$/);
   await root.click();
   await expect(
     page.locator(".conversation-row-title").filter({ hasText: "核对列表预览" }),

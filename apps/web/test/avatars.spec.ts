@@ -73,7 +73,7 @@ test("plush identities load, animate and survive profile changes", async ({
     await expect(avatar.locator(".character-face image")).toHaveCount(4);
     await expect(page.locator(".character-body > path")).toHaveCount(0);
     await checkAvatarSizes();
-    const contact = page.locator('.contact-row[aria-current="page"]');
+    const contact = page.getByRole("link", { name: "Domos", exact: true });
     const contactAvatar = contact.locator(".bot-avatar");
     const frame = await contactAvatar.boundingBox();
     if (!frame) throw new Error("Contact avatar required");

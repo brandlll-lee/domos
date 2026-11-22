@@ -691,7 +691,7 @@ test("contacts keep independent histories, drafts, models, and locations after r
   await service.start(port);
   await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
   expect(page.url()).toBe(researchUrl);
-  await expect(contacts.getByRole("link")).toHaveCount(3);
+  await expect(contacts.locator(".contact-row")).toHaveCount(3);
   await expect(page.getByLabel("研究员 的回复")).toContainText("faux-2");
   await contacts.getByRole("link", { name: "写作助手", exact: true }).click();
   await expect(input).toHaveText("写作草稿");
@@ -814,10 +814,15 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
     name: "联系人",
     exact: true,
   });
-  await expect(contacts.getByRole("link")).toHaveCount(2);
+  await expect(contacts.locator(".contact-row")).toHaveCount(2);
   await expect(
     contacts.getByRole("link", { name: "设计助手", exact: true }),
-  ).toHaveAttribute("aria-current", "page");
+  ).toBeVisible();
+  await expect(
+    contacts
+      .getByRole("navigation", { name: "设计助手的会话列表" })
+      .locator('[aria-current="page"]'),
+  ).toHaveCount(1);
   await contacts.getByRole("link", { name: "Domos", exact: true }).click();
   await expect(page.getByLabel("消息", { exact: true })).toHaveAttribute(
     "data-placeholder",
@@ -914,9 +919,9 @@ test("Bot identity stays consistent and image previews work in drafts and histor
     .click();
   await dialog.getByRole("button", { name: "开始聊天", exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  const selected = page.locator(
-    '.contact-row[aria-current="page"] .bot-avatar',
-  );
+  const selected = page
+    .getByRole("link", { name: "视觉助手", exact: true })
+    .locator(".bot-avatar");
   await expect(selected).toHaveAttribute("data-seed", seed ?? "");
   await expect(page.locator(".chat-identity .bot-avatar")).toHaveAttribute(
     "data-seed",

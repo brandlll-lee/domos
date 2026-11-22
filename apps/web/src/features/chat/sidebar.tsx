@@ -62,6 +62,7 @@ export function Sidebar({
   searchTrigger: RefObject<HTMLButtonElement | null>;
 }) {
   const [expanded, setExpanded] = useState(() => workspaceView().expandedBots);
+  const [showAll, setShowAll] = useState<Record<number, boolean>>({});
   const [browsing, setBrowsing] = useState<number>();
   const browsingBot = bots.find((bot) => bot.id === browsing);
   const createTrigger = useRef<HTMLButtonElement>(null);
@@ -151,30 +152,62 @@ export function Sidebar({
           {bots.length ? (
             bots.map((bot) => {
               const sessions = bot.conversations ?? [];
-              const current =
-                bot.id === selected.id
-                  ? conversationId
-                  : (workspaceView().conversations[String(bot.id)] ?? bot.id);
-              const visible = sessions.filter(
-                (item) =>
-                  !item.archived ||
-                  (item.id === current && bot.id === selected.id) ||
-                  item.status === "working" ||
-                  item.status === "waiting" ||
-                  item.status === "queued",
+              const active =
+                !currentChat.startsWith("team/") && bot.id === selected.id;
+              const current = active
+                ? conversationId
+                : (workspaceView().conversations[String(bot.id)] ?? bot.id);
+              const target =
+                sessions.find(
+                  (item) => item.id === current && !item.archived,
+                ) ?? sessions.find((item) => item.id === bot.id);
+              const preview =
+                target?.id === bot.id && bot.lastMessageAt && bot.preview
+                  ? bot.preview
+                  : target?.title;
+              const visible = sessions
+                .filter(
+                  (item) =>
+                    !item.archived ||
+                    (active && item.id === current) ||
+                    item.status === "working" ||
+                    item.status === "waiting" ||
+                    item.status === "queued",
+                )
+                .map((item) => ({
+                  item,
+                  unread:
+                    attention?.counts[conversationRoute(bot.id, item.id)] ?? 0,
+                  status: connected ? item.status : ("idle" as const),
+                }));
+              const priority = visible.filter(
+                (row) => row.status !== "idle" || row.unread > 0,
               );
-              const recent = visible
-                .filter((item) => item.status === "idle")
-                .slice(0, 3);
-              const rows = visible.filter(
-                (item) =>
-                  recent.includes(item) ||
-                  item.id === current ||
-                  item.status !== "idle" ||
-                  (attention?.counts[conversationRoute(bot.id, item.id)] ?? 0) >
-                    0,
+              const idle = visible.filter(
+                (row) => row.status === "idle" && row.unread === 0,
               );
-              const open = expanded[bot.id] ?? bot.id === selected.id;
+              const recent = idle.slice(0, 3);
+              const activeIdle =
+                active && idle.find((row) => row.item.id === current);
+              if (activeIdle && !recent.includes(activeIdle))
+                recent[2] = activeIdle;
+              const extra = idle.length - recent.length;
+              const all = showAll[bot.id];
+              const open = expanded[bot.id] ?? active;
+              const parentCurrent =
+                active &&
+                (compact ||
+                  !open ||
+                  !visible.some((row) => row.item.id === current))
+                  ? "page"
+                  : undefined;
+              const listId = `bot-${bot.id}-conversations`;
+              const toggle = (nextOpen: boolean) => {
+                if (nextOpen === open) return;
+                const next = { ...expanded, [bot.id]: nextOpen };
+                setExpanded(next);
+                saveWorkspaceView({ expandedBots: next });
+              };
               const unread = sessions.reduce(
                 (total, item) =>
                   total +
@@ -202,21 +235,17 @@ export function Sidebar({
                       className="contact-row"
                       render={<a href={`#bot/${bot.id}`} />}
                       onClick={onSelect}
-                      onPointerEnter={() => prefetchChat(current)}
-                      onFocus={() => prefetchChat(current)}
+                      onPointerEnter={() => prefetchChat(target?.id ?? bot.id)}
+                      onFocus={() => prefetchChat(target?.id ?? bot.id)}
                       aria-label={bot.name}
                       tabIndex={compact ? -1 : undefined}
                       aria-hidden={compact || undefined}
-                      aria-current={
-                        !window.location.hash.startsWith("#team/") &&
-                        bot.id === selected.id
-                          ? "page"
-                          : undefined
-                      }
+                      aria-current={compact ? undefined : parentCurrent}
                     >
                       {avatar}
                       <div className="chat-preview">
                         <strong>{bot.name}</strong>
+                        {preview && <span>{preview}</span>}
                       </div>
                     </PanelDialog.Close>
                     {compact && (
@@ -228,10 +257,11 @@ export function Sidebar({
                             className="conversation-switcher"
                             title={bot.name}
                             aria-label={bot.name}
+                            aria-current={parentCurrent}
                           />
                         }
                         items={[
-                          ...rows.map((item) => ({
+                          ...[...priority, ...recent].map(({ item }) => ({
                             label: item.title,
                             onSelect: () => {
                               window.location.hash = `bot/${bot.id}/${item.id}`;
@@ -240,84 +270,84 @@ export function Sidebar({
                           })),
                           { label: "新建会话", onSelect: create },
                           {
-                            label: "查看全部会话",
+                            label: "管理会话",
                             onSelect: () => setBrowsing(bot.id),
                           },
                         ]}
                       />
                     )}
-                    <div className="bot-conversation-actions" inert={compact}>
+                    {sessions.length > 0 && (
                       <Button
+                        className="conversation-toggle"
                         variant="ghost"
                         size="icon-small"
                         aria-label={`${bot.name}的会话`}
                         aria-expanded={open}
-                        onClick={() => {
-                          const next = { ...expanded, [bot.id]: !open };
-                          setExpanded(next);
-                          saveWorkspaceView({ expandedBots: next });
+                        aria-controls={open && !compact ? listId : undefined}
+                        tabIndex={compact ? -1 : undefined}
+                        aria-hidden={compact || undefined}
+                        onClick={() => toggle(!open)}
+                        onKeyDown={(event) => {
+                          if (
+                            event.key !== "ArrowRight" &&
+                            event.key !== "ArrowLeft"
+                          )
+                            return;
+                          event.preventDefault();
+                          toggle(event.key === "ArrowRight");
                         }}
                       >
-                        <CaretDownIcon
-                          style={{
-                            transform: open ? undefined : "rotate(-90deg)",
-                          }}
-                        />
+                        <CaretDownIcon />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-small"
-                        aria-label={`为${bot.name}新建会话`}
-                        pending={action.busy}
-                        onClick={create}
-                      >
-                        <PlusIcon />
-                      </Button>
-                    </div>
+                    )}
                   </div>
-                  {open && (
+                  {open && visible.length > 0 && (
                     <nav
+                      id={listId}
                       className="conversation-children"
                       aria-label={`${bot.name}的会话列表`}
                       inert={compact}
                     >
-                      {rows.map((item) => (
-                        <PanelDialog.Close
-                          key={item.id}
-                          className="conversation-row"
-                          render={<a href={`#bot/${bot.id}/${item.id}`} />}
-                          onClick={onSelect}
-                          onPointerEnter={() => prefetchChat(item.id)}
-                          aria-current={
-                            currentChat === conversationRoute(bot.id, item.id)
-                              ? "page"
-                              : undefined
+                      {[...priority, ...(all ? idle : recent)].map(
+                        ({ item, status, unread }) => (
+                          <PanelDialog.Close
+                            key={item.id}
+                            className="conversation-row"
+                            render={<a href={`#bot/${bot.id}/${item.id}`} />}
+                            onClick={onSelect}
+                            onPointerEnter={() => prefetchChat(item.id)}
+                            onFocus={() => prefetchChat(item.id)}
+                            aria-current={
+                              !compact && active && item.id === current
+                                ? "page"
+                                : undefined
+                            }
+                          >
+                            <span className="conversation-row-title">
+                              {item.title}
+                            </span>
+                            <ConversationState
+                              status={status}
+                              updatedAt={item.updatedAt}
+                              unread={unread}
+                              now={now}
+                            />
+                          </PanelDialog.Close>
+                        ),
+                      )}
+                      {extra > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="small"
+                          className="conversation-more"
+                          aria-expanded={Boolean(all)}
+                          onClick={() =>
+                            setShowAll({ ...showAll, [bot.id]: !all })
                           }
                         >
-                          <span className="conversation-row-title">
-                            {item.title}
-                          </span>
-                          <ConversationState
-                            item={
-                              connected ? item : { ...item, status: "idle" }
-                            }
-                            unread={
-                              attention?.counts[
-                                conversationRoute(bot.id, item.id)
-                              ] ?? 0
-                            }
-                            now={now}
-                          />
-                        </PanelDialog.Close>
-                      ))}
-                      <Button
-                        variant="ghost"
-                        size="small"
-                        className="conversation-more"
-                        onClick={() => setBrowsing(bot.id)}
-                      >
-                        查看全部会话
-                      </Button>
+                          {all ? "收起其余会话" : `展开其余 ${extra} 条`}
+                        </Button>
+                      )}
                     </nav>
                   )}
                 </div>
