@@ -335,8 +335,24 @@ test("typing follows the Bot and failures retain their error message", async ({
   await expect(failure).toContainText("回复失败，原因待确认");
   await expect(failure).toContainText(/〔\d+:\d+〕/);
   await expect(failure.getByRole("alert")).toBeVisible();
+  await failure
+    .getByRole("button", { name: "查看工作记录", exact: true })
+    .click();
+  const workRecord = page.getByRole("dialog", {
+    name: "工作记录",
+    exact: true,
+  });
+  await expect(workRecord).toBeVisible();
+  await expect(workRecord).toContainText("回复失败，原因待确认");
+  await page.keyboard.press("Escape");
+  await expect(workRecord).not.toBeVisible();
+  await failure
+    .getByRole("button", { name: "查看工作记录", exact: true })
+    .click();
+  await expect(workRecord).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(failure.locator('svg[aria-hidden="true"]')).toHaveCount(1);
-  const errorText = await failure.innerText();
+  const errorText = await failure.getByRole("alert").innerText();
   const port = Number(new URL(service.url).port);
   await service.stop();
   await service.start(port);
@@ -345,7 +361,7 @@ test("typing follows the Bot and failures retain their error message", async ({
     page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),
   ).toBeVisible();
   await expect(failure).toHaveCount(1);
-  await expect(failure).toHaveText(errorText);
+  await expect(failure.getByRole("alert")).toHaveText(errorText);
   await page
     .locator("#bot-details")
     .getByRole("button", { name: "关闭", exact: true })

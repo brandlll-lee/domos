@@ -61,7 +61,17 @@ const MessageRow = memo(function MessageRow({
         data-session-id={item.sessionId ?? botId}
         data-incoming="true"
       >
-        <ErrorMessage>{item.error ?? chatCopy.taskFailed}</ErrorMessage>
+        <ErrorMessage
+          onInspect={() =>
+            window.dispatchEvent(
+              new CustomEvent("domos:work-open", {
+                detail: { botId: item.sessionId ?? botId, turnId: item.id },
+              }),
+            )
+          }
+        >
+          {item.error ?? chatCopy.taskFailed}
+        </ErrorMessage>
       </div>
     );
   if (item.kind === "attachments")

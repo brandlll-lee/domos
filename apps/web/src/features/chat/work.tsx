@@ -5,6 +5,7 @@ import { Dialog } from "@domos/ui/dialog";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { StatusDot } from "@domos/ui/status-dot";
 import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
+import { CrosshairIcon } from "@phosphor-icons/react/dist/csr/Crosshair";
 import { StopIcon } from "@phosphor-icons/react/dist/csr/Stop";
 import { WrenchIcon } from "@phosphor-icons/react/dist/csr/Wrench";
 import {
@@ -19,6 +20,7 @@ import { EngineMark } from "../bots/engine-mark.tsx";
 import { useModelSettings } from "../models/model-state.ts";
 import type { useChat } from "./use-chat.ts";
 import { WorkDelegations } from "./work-delegations.tsx";
+import { WorkDiagnostics } from "./work-diagnostics.tsx";
 import { WorkEntry } from "./work-entry.tsx";
 import { workTime, workTurns } from "./work-state.ts";
 import "./work.css";
@@ -48,6 +50,7 @@ export function WorkPanel(
   }, [chat.selectedRun]);
   const [now, setNow] = useState(Date.now);
   const trigger = useRef<HTMLButtonElement | null>(null);
+  const timeline = useRef<HTMLOListElement>(null);
   const openRun = (id: string) => (event: MouseEvent<HTMLButtonElement>) => {
     trigger.current = event.currentTarget;
     setSelected(id);
@@ -59,6 +62,17 @@ export function WorkPanel(
   }, [view?.busy]);
   const turns = useMemo(() => (view ? workTurns(view) : []), [view]);
   const current = turns.find((turn) => turn.id === selected);
+  const problem =
+    current?.items.findIndex(
+      (item) => item.status === "failed" || item.status === "uncertain",
+    ) ?? -1;
+  const locateProblem = () => {
+    const target = timeline.current?.children[problem] as
+      | HTMLElement
+      | undefined;
+    target?.scrollIntoView({ block: "center" });
+    target?.focus({ preventScroll: true });
+  };
   useEffect(() => {
     if (
       selected &&
@@ -198,6 +212,24 @@ export function WorkPanel(
         }}
         title="工作记录"
         finalFocus={() => trigger.current}
+        headerActions={
+          current && (
+            <>
+              {problem >= 0 && (
+                <Button
+                  variant="ghost"
+                  size="icon-small"
+                  aria-label="定位问题"
+                  title="定位问题"
+                  onClick={locateProblem}
+                >
+                  <CrosshairIcon />
+                </Button>
+              )}
+              <WorkDiagnostics key={current.id} run={current.run} />
+            </>
+          )
+        }
       >
         {current && view && (
           <div className="work-detail">
@@ -216,7 +248,11 @@ export function WorkPanel(
               </div>
             </header>
             {chat.runDetails}
-            <ol className="work-timeline" aria-label="执行时间线">
+            <ol
+              ref={timeline}
+              className="work-timeline"
+              aria-label="执行时间线"
+            >
               {current.items.map((item) => (
                 <WorkEntry
                   key={item.id}

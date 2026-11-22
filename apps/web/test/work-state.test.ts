@@ -76,6 +76,26 @@ function running() {
   return { view, run, activity };
 }
 
+test("accounting warnings preserve the execution result and legacy runs stay readable", () => {
+  const { view, run } = running();
+  view.messages = [
+    {
+      id: "request",
+      turnId: "turn",
+      role: "user",
+      content: [],
+      stopped: false,
+    },
+  ];
+  run.status = "ended";
+  expect(workTurns(view)[0]?.title).toBe("执行已结束");
+  run.evidence = { taskId: "1", usage: "failed" };
+  expect(workTurns(view)[0]).toMatchObject({
+    status: "ended",
+    title: "执行已结束 · 用量入账失败",
+  });
+});
+
 test.each([
   ["codex", "commandExecution", "正在运行命令"],
   ["claude", "Read", "正在读取文件"],

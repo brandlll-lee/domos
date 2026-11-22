@@ -58,6 +58,7 @@ export function BotDetails({
   onExpand,
   takeoverId,
   workRun,
+  onWorkRunClose,
   onShowMessage,
 }: {
   bot: Bot;
@@ -80,6 +81,7 @@ export function BotDetails({
   onExpand: () => void;
   takeoverId?: string;
   workRun?: string;
+  onWorkRunClose?: () => void;
   onShowMessage: (item: ConversationFile) => Promise<void>;
 }) {
   const [memoryOpen, setMemoryOpen] = useState(false);
@@ -253,12 +255,18 @@ export function BotDetails({
         tab === "work" &&
         active &&
         (sessionBot.id === bot.id ? (
-          <WorkPanel {...chat} botId={bot.id} selectedRun={workRun} />
+          <WorkPanel
+            {...chat}
+            botId={bot.id}
+            selectedRun={workRun}
+            onRunClose={onWorkRunClose}
+          />
         ) : (
           <SessionWork
             key={sessionBot.id}
             botId={sessionBot.id}
             selectedRun={workRun}
+            onRunClose={onWorkRunClose}
           />
         ))}
       {view === "root" &&
@@ -332,10 +340,19 @@ export function BotDetails({
 function SessionWork({
   botId,
   selectedRun,
+  onRunClose,
 }: {
   botId: number;
   selectedRun?: string;
+  onRunClose?: () => void;
 }) {
   const chat = useChat(botId);
-  return <WorkPanel {...chat} botId={botId} selectedRun={selectedRun} />;
+  return (
+    <WorkPanel
+      {...chat}
+      botId={botId}
+      selectedRun={selectedRun}
+      onRunClose={onRunClose}
+    />
+  );
 }

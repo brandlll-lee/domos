@@ -23,6 +23,7 @@ export function TeamDetails({
   onMember,
   onClose,
   workRun,
+  onWorkRunClose,
   active,
   bots,
   onSaved,
@@ -35,6 +36,7 @@ export function TeamDetails({
   onMember: (bot: BotPresence) => void;
   onClose: () => void;
   workRun?: string;
+  onWorkRunClose?: () => void;
   active: boolean;
   bots: BotPresence[];
   onSaved: (team: Team) => void;
@@ -77,7 +79,12 @@ export function TeamDetails({
       )}
       {page === "root" && tab === "work" ? (
         active && (
-          <WorkPanel {...chat} botId={team.owner} selectedRun={workRun} />
+          <WorkPanel
+            {...chat}
+            botId={team.owner}
+            selectedRun={workRun}
+            onRunClose={onWorkRunClose}
+          />
         )
       ) : (
         <ScrollArea

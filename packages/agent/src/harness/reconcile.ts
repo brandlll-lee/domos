@@ -8,7 +8,12 @@ import type {
 import { ComputerRequests } from "../computer/runtime.ts";
 import { approvalMessage } from "../messages.ts";
 import { projectContext } from "./context.ts";
-import { EngineDoc, EngineInputDoc, EngineMessage } from "./state.ts";
+import {
+  captureRunEvidence,
+  EngineDoc,
+  EngineInputDoc,
+  EngineMessage,
+} from "./state.ts";
 import { type EngineTaskInput, stored } from "./task-types.ts";
 
 export async function readEngine(
@@ -68,6 +73,7 @@ export async function stopEngine(tx: Tx, id: ConversationId) {
     await tx.appendEntry(id, { kind: EngineMessage, data: stored(draft) });
   }
   if (doc.run && !doc.run.endedAt) {
+    captureRunEvidence(doc);
     doc.run.status = "stopped";
     doc.run.endedAt = Date.now();
     await tx.appendEntry(id, {
@@ -133,6 +139,7 @@ export async function reconcileEngine(tx: Tx, id: ConversationId) {
       await tx.appendEntry(id, { kind: EngineMessage, data: stored(draft) });
     }
     if (doc.run) {
+      captureRunEvidence(doc);
       doc.run.status = "uncertain";
       doc.run.endedAt = active?.endedAt ?? Date.now();
       await tx.appendEntry(id, {

@@ -210,10 +210,58 @@ export class EngineProjection {
         const doc = await tx.doc(EngineDoc, runtime.conversationId);
         if (doc.activeId !== runtime.taskId) return;
         for (const event of events) {
+          if (
+            (event.type === "session" || event.type === "accepted") &&
+            doc.run?.evidence
+          ) {
+            const version = event.native?.version;
+            if (typeof version === "string" && /^[\w.+-]{1,64}$/.test(version))
+              doc.run.evidence.version = version;
+          }
           switch (event.type) {
             case "usage":
               if (doc.run && event.usage.model)
                 doc.run.model = event.usage.model;
+              if (doc.run?.evidence) {
+                const {
+                  input,
+                  output,
+                  cacheRead,
+                  cacheWrite,
+                  costUsd,
+                  costCumulative,
+                } = event.usage;
+                doc.run.evidence.counters = Object.fromEntries(
+                  Object.entries({
+                    input,
+                    output,
+                    cacheRead,
+                    cacheWrite,
+                    costUsd,
+                    costCumulative,
+                    ...event.usage.nativeUsage,
+                  }).flatMap(([key, value]) =>
+                    [
+                      "input",
+                      "output",
+                      "cacheRead",
+                      "cacheWrite",
+                      "costUsd",
+                      "costCumulative",
+                      "inputTokens",
+                      "outputTokens",
+                      "totalTokens",
+                      "cachedReadTokens",
+                      "cachedWriteTokens",
+                      "thoughtTokens",
+                    ].includes(key) &&
+                    (value === null ||
+                      (typeof value === "number" && Number.isFinite(value)))
+                      ? [[key, value] as const]
+                      : [],
+                  ),
+                );
+              }
               await recordUsage(tx, runtime.taskId, event.usage);
               break;
             case "context":
@@ -242,6 +290,9 @@ export class EngineProjection {
               break;
             }
             case "session":
+              if (doc.run?.evidence) {
+                doc.run.evidence.nativeSessionId = event.id;
+              }
               if (doc.sessionId !== event.id)
                 doc.runtime = doc.runtime?.controls
                   ? { controls: doc.runtime.controls }

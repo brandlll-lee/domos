@@ -53,8 +53,11 @@ export async function recordUsage(tx: Tx, taskId: TaskId, usage: EngineUsage) {
 }
 
 export async function settleUsage(runtime: EngineRuntime, context: Context) {
+  let status: "missing" | "recorded" | "failed" = "missing";
   try {
     await runtime.commit(async (tx, task) => {
+      const usage = await tx.doc(UsageTaskDoc, runtime.taskId);
+      status = Object.keys(usage.items).length ? "recorded" : "missing";
       const engine = await tx.doc(EngineDoc, runtime.conversationId);
       await finishUsage(
         tx,
@@ -65,11 +68,13 @@ export async function settleUsage(runtime: EngineRuntime, context: Context) {
       );
     }, context);
   } catch (error) {
+    status = "failed";
     console.warn("Harness usage settlement failed", {
       taskId: String(runtime.taskId),
       error: error instanceof Error ? error.message : String(error),
     });
   }
+  return status;
 }
 
 export async function finishUsage(

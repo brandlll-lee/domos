@@ -1,0 +1,19 @@
+{
+  "source": "Antigravity session 96465364, task 17545, native step 20; sanitized excerpt",
+  "harness": "antigravity",
+  "model": "claude-opus-4-6-thinking",
+  "coverage": "excerpt",
+  "startedAt": null,
+  "endedAt": null,
+  "modelResponses": null,
+  "completion": "unreviewed",
+  "calls": [
+    {
+      "name": "image_generate",
+      "input": {},
+      "output": "tool image_generate is not enabled for server domos",
+      "startedAt": null,
+      "endedAt": null
+    }
+  ]
+}

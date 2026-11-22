@@ -7,7 +7,11 @@ import { WorkProcess } from "../src/harness/process.ts";
 import { permissionTool } from "../src/harness/product-tools.ts";
 import { claudePermission } from "../src/harness/providers/claude-approval.ts";
 import { engineProvider } from "../src/harness/providers/index.ts";
-import type { EngineSession, ProductResult } from "../src/harness/types.ts";
+import type {
+  EngineEvent,
+  EngineSession,
+  ProductResult,
+} from "../src/harness/types.ts";
 
 test.skipIf(process.env.DOMOS_NATIVE_SMOKE !== "1")(
   "Antigravity calls a large product tool through its native registration",
@@ -16,6 +20,7 @@ test.skipIf(process.env.DOMOS_NATIVE_SMOKE !== "1")(
     const marker = crypto.randomUUID();
     const calls: string[] = [];
     const replies: string[] = [];
+    const events: EngineEvent[] = [];
     const worker = new WorkProcess(
       [
         process.execPath,
@@ -60,6 +65,7 @@ test.skipIf(process.env.DOMOS_NATIVE_SMOKE !== "1")(
         "Call the domos image_generate test fixture with prompt receipt. It returns a local receipt, not an image. Do not use native image generation, subagents, files or commands.",
       approve: async () => ({ allow: true }),
       emit: async (event) => {
+        events.push(event);
         if (event.type === "message") replies.push(event.text);
       },
     });
@@ -70,6 +76,16 @@ test.skipIf(process.env.DOMOS_NATIVE_SMOKE !== "1")(
     );
     expect(calls, replies.join("\n")).toEqual(["image_generate"]);
     expect(replies.join("\n")).toContain(marker);
+    expect(
+      events.find((event) => event.type === "accepted")?.native?.version,
+    ).toMatch(/^\d+\.\d+/);
+    const usage = events.findLast((event) => event.type === "usage");
+    expect(usage?.type === "usage" && usage.usage.nativeUsage).toEqual(
+      expect.objectContaining({
+        inputTokens: expect.any(Number),
+        totalTokens: expect.any(Number),
+      }),
+    );
   },
   150_000,
 );

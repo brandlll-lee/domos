@@ -99,3 +99,26 @@ export const EngineDoc = defineDoc<EngineState>({
     prompt: null,
   }),
 });
+
+export function captureRunEvidence(
+  doc: Pick<EngineState, "run" | "sessionId" | "drafts" | "dispatch">,
+) {
+  const evidence = doc.run?.evidence;
+  if (!evidence) return;
+  if (doc.dispatch === "accepted" && doc.sessionId)
+    evidence.nativeSessionId = doc.sessionId;
+  const calls = doc.drafts.flatMap((message) =>
+    message.content.filter((part) => part.type === "toolCall"),
+  );
+  const results = new Set(
+    doc.drafts
+      .filter(
+        (message) => message.toolCallId && message.toolStatus !== "running",
+      )
+      .map((message) => message.toolCallId),
+  );
+  evidence.toolCalls = calls.length;
+  evidence.missingResults = calls.filter(
+    (call) => !results.has(call.id),
+  ).length;
+}

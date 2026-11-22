@@ -391,6 +391,11 @@ test("Work renders native search, file and terminal details in both themes", asy
   await expect(dialog.locator(".work-file")).toContainText("note.md");
   await expect(dialog.locator(".work-file")).toContainText("+confirmed");
   await expect(entries.locator(":scope > time")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "诊断信息", exact: true }).click();
+  await expect(page.locator(".work-diagnostics")).toContainText(
+    "历史记录未保存",
+  );
+  await page.keyboard.press("Escape");
   for (const theme of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     const line = await entries.first().evaluate((el) => {
@@ -407,6 +412,125 @@ test("Work renders native search, file and terminal details in both themes", asy
       path: info.outputPath(`work-native-${theme}.png`),
     });
   }
+});
+
+test("Work locates a failed native tool and copies bounded diagnostics", async ({
+  service,
+  page,
+  context,
+}, info) => {
+  await service.control({
+    records: [
+      {
+        id: "request",
+        turnId: "failure",
+        role: "user",
+        content: [{ type: "text", key: "request", text: "检查工具失败" }],
+        stopped: false,
+      },
+      {
+        id: "call",
+        turnId: "failure",
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "tool",
+            key: "tool",
+            name: "image_generate",
+            arguments: { prompt: "private-input" },
+          },
+          {
+            type: "toolCall",
+            id: "pending",
+            key: "pending",
+            name: "read",
+            arguments: {},
+          },
+        ],
+        stopped: false,
+      },
+      {
+        id: "result",
+        turnId: "failure",
+        role: "toolResult",
+        toolCallId: "tool",
+        toolStatus: "failed",
+        content: [
+          {
+            type: "text",
+            key: "error",
+            text: "tool image_generate is not enabled for server domos",
+          },
+        ],
+        stopped: false,
+      },
+    ],
+    run: {
+      turnId: "failure",
+      provider: "antigravity",
+      model: "fixture",
+      startedAt: 1,
+      endedAt: 2,
+      status: "ended",
+      evidence: {
+        taskId: "17545",
+        nativeSessionId: "fixture-session",
+        version: "1.5.9",
+        usage: "failed",
+        toolCalls: 2,
+        missingResults: 1,
+        counters: { inputTokens: 100, cachedReadTokens: 900 },
+      },
+    },
+  });
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto(service.url);
+  await page.getByRole("tab", { name: "Work", exact: true }).click();
+  await expect(page.locator(".work-row").first()).toContainText(
+    "执行已结束 · 用量入账失败",
+  );
+  await page.locator(".work-open").first().click();
+  const dialog = page.getByRole("dialog", { name: "工作记录", exact: true });
+  await expect(dialog).toContainText(
+    "tool image_generate is not enabled for server domos",
+  );
+  await dialog.getByRole("button", { name: "定位问题", exact: true }).click();
+  await expect(dialog.locator(".work-entry[data-state=failed]")).toBeFocused();
+  await dialog.getByRole("button", { name: "诊断信息", exact: true }).click();
+  const diagnostic = page.locator(".work-diagnostics");
+  await expect(diagnostic).toContainText("1 / 2");
+  await expect(diagnostic).toContainText("入账失败，执行结果保留");
+  await diagnostic
+    .getByRole("button", { name: "复制诊断信息", exact: true })
+    .click();
+  await expect(diagnostic).toContainText("已复制");
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  expect(JSON.parse(copied)).toMatchObject({
+    taskId: "17545",
+    nativeSessionId: "fixture-session",
+    status: "ended",
+    counters: { inputTokens: 100 },
+  });
+  expect(copied).not.toContain("private-input");
+  expect(copied).not.toContain("检查工具失败");
+  for (const theme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.screenshot({
+      path: info.outputPath(`diagnostics-${theme}.png`),
+      animations: "disabled",
+    });
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  const bounds = await diagnostic.boundingBox();
+  if (!bounds) throw new Error("Diagnostic popup required");
+  expect(bounds.x).toBeGreaterThanOrEqual(0);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: info.outputPath("diagnostics-narrow.png") });
+  await page.keyboard.press("Escape");
+  await expect(
+    dialog.getByRole("button", { name: "诊断信息", exact: true }),
+  ).toBeFocused();
 });
 
 test("skill packages preview changes and restore resources across reload", async ({

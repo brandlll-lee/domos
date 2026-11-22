@@ -121,6 +121,7 @@ export type EngineUsage = EngineTokens & {
   costUsd: number | null;
   tokenBasis?: "uncached";
   nativeTokens?: EngineTokens;
+  nativeUsage?: Record<string, number | null>;
   tokensCumulative?: EngineTokens;
   tokensBaseline?: EngineTokens;
   counterId?: string;
@@ -227,6 +228,16 @@ export type EngineAnswer = {
   optionId?: string;
 };
 export type EngineRun = {
+  evidence?: {
+    taskId: string;
+    nativeSessionId?: string;
+    version?: string;
+    usage: "pending" | "missing" | "recorded" | "failed";
+    counters?: Record<string, number | null>;
+    toolCalls?: number;
+    missingResults?: number;
+    errorCode?: string | number;
+  };
   author?: import("../messages.ts").ChatMessage["author"];
   sessionId?: number;
   turnId: string;

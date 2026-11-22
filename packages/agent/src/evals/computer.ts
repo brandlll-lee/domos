@@ -3,11 +3,11 @@ import { z } from "zod";
 export const computerTrace = z
   .object({
     source: z.string(),
-    harness: z.enum(["pi", "claude", "codex", "opencode"]),
+    harness: z.string().min(1),
     model: z.string(),
     coverage: z.enum(["complete", "excerpt"]),
-    startedAt: z.number().finite(),
-    endedAt: z.number().finite(),
+    startedAt: z.number().finite().nullable(),
+    endedAt: z.number().finite().nullable(),
     modelResponses: z.number().int().nonnegative().nullable(),
     completion: z.enum(["pass", "fail", "unreviewed"]),
     calls: z.array(
@@ -16,21 +16,37 @@ export const computerTrace = z
           name: z.string(),
           input: z.record(z.string(), z.unknown()),
           output: z.string(),
-          startedAt: z.number().finite(),
-          endedAt: z.number().finite(),
+          startedAt: z.number().finite().nullable(),
+          endedAt: z.number().finite().nullable(),
         })
         .refine(
-          (call) => call.endedAt >= call.startedAt,
+          (call) =>
+            call.startedAt === null ||
+            call.endedAt === null ||
+            call.endedAt >= call.startedAt,
           "Call ends before it starts",
         ),
     ),
   })
   .refine(
     (trace) =>
-      trace.endedAt >= trace.startedAt &&
+      (trace.startedAt === null ||
+        trace.endedAt === null ||
+        trace.endedAt >= trace.startedAt) &&
+      (trace.coverage !== "complete" ||
+        (trace.startedAt !== null &&
+          trace.endedAt !== null &&
+          trace.calls.every(
+            (call) => call.startedAt !== null && call.endedAt !== null,
+          ))) &&
       trace.calls.every(
         (call) =>
-          call.startedAt >= trace.startedAt && call.endedAt <= trace.endedAt,
+          (call.startedAt === null ||
+            trace.startedAt === null ||
+            call.startedAt >= trace.startedAt) &&
+          (call.endedAt === null ||
+            trace.endedAt === null ||
+            call.endedAt <= trace.endedAt),
       ),
     "Calls must fit inside the task interval",
   );
@@ -47,7 +63,9 @@ export function evaluateComputer(input: unknown) {
   let deltas = 0;
   let sleeps = 0;
   const scopes = new Map<string, string>();
-  const calls = trace.calls.toSorted((a, b) => a.startedAt - b.startedAt);
+  const calls = trace.calls.toSorted(
+    (a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0),
+  );
   for (const [index, call] of trace.calls.entries()) {
     const name = call.name.replace(/^(domos_)?desktop_/, "");
     const inputTools = ["type_text", "set_value", "press_key", "hotkey"];
@@ -101,7 +119,11 @@ export function evaluateComputer(input: unknown) {
         scopes.set(target, scope);
       }
     }
-    if (/unavailable tool|unknown tool/i.test(call.output))
+    if (
+      /unavailable tool|unknown tool|tool .+ is not enabled for server/i.test(
+        call.output,
+      )
+    )
       failures.availableTools.push(index + 1);
     if (/\bStart-Sleep\b|\bsleep\s+\d/i.test(String(call.input.command ?? "")))
       sleeps++;
@@ -124,9 +146,10 @@ export function evaluateComputer(input: unknown) {
     (check) => check.status !== "not-exercised",
   ).length;
   const passed = checks.filter((check) => check.status === "pass").length;
-  let end = trace.startedAt;
+  let end = trace.startedAt ?? 0;
   let toolTimeMs = 0;
   for (const call of calls) {
+    if (call.startedAt === null || call.endedAt === null) continue;
     toolTimeMs += Math.max(0, call.endedAt - Math.max(end, call.startedAt));
     end = Math.max(end, call.endedAt);
   }
@@ -143,13 +166,16 @@ export function evaluateComputer(input: unknown) {
     total: checks.length,
     checkPassRate: exercised ? passed / exercised : null,
     metrics: {
-      elapsedMs: trace.endedAt - trace.startedAt,
+      elapsedMs:
+        trace.endedAt === null || trace.startedAt === null
+          ? null
+          : trace.endedAt - trace.startedAt,
       toolCalls: trace.calls.length,
       modelResponses: trace.modelResponses,
       toolTimeMs: trace.coverage === "complete" ? toolTimeMs : null,
       outsideToolsMs:
         trace.coverage === "complete"
-          ? trace.endedAt - trace.startedAt - toolTimeMs
+          ? (trace.endedAt ?? 0) - (trace.startedAt ?? 0) - toolTimeMs
           : null,
       fixedSleeps: sleeps,
     },

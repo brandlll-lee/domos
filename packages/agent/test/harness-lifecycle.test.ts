@@ -159,6 +159,24 @@ test.each([
     const usage = entries.items.find(
       (entry) => entry.kind === "domos.engine-usage",
     );
+    const run = entries.items.find(
+      (entry) => entry.kind === "domos.engine-run",
+    );
+    if (!run) throw new Error("Native run required");
+    expect(run?.data).toMatchObject({
+      evidence: {
+        taskId: expect.stringMatching(/^\d+$/),
+        version: "1.5.9",
+        nativeSessionId: "native",
+        usage: cost === -1 ? "failed" : "recorded",
+        counters: {
+          input: 100,
+          totalTokens: provider === "antigravity" ? 1020 : 120,
+        },
+        toolCalls: 0,
+        missingResults: 0,
+      },
+    });
     if (cost === -1) {
       expect(warning).toHaveBeenCalledWith(
         "Harness usage settlement failed",
@@ -171,6 +189,7 @@ test.each([
       return;
     }
     expect(usage?.data).toMatchObject({
+      taskId: (run.data as { evidence: { taskId: string } }).evidence.taskId,
       input: provider === "antigravity" ? 100 : null,
       output: 20,
       costUsd: cost ?? null,
@@ -351,6 +370,14 @@ test.each([
           ? ["I will read the file.", "Found the result."]
           : ["I will read the file."],
     });
+    const recorded = (await engines.view(botId, context)).runs?.findLast(
+      (run) => run.provider === provider,
+    );
+    expect(recorded?.evidence).toMatchObject({
+      toolCalls: 3,
+      missingResults: outcome === "complete" ? 0 : 2,
+    });
+    if (outcome === "fail") expect(recorded?.evidence?.errorCode).toBe(-32603);
   },
 );
 

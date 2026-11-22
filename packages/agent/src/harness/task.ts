@@ -8,7 +8,12 @@ import { finishCompactions, projectContext } from "./context.ts";
 import type { EngineExecution } from "./execution.ts";
 import { EngineProjection } from "./projection.ts";
 import { reconcileEngine } from "./reconcile.ts";
-import { EngineDoc, EngineInputDoc, EngineMessage } from "./state.ts";
+import {
+  captureRunEvidence,
+  EngineDoc,
+  EngineInputDoc,
+  EngineMessage,
+} from "./state.ts";
 import {
   type EngineCheckpoint,
   type EngineRuntime,
@@ -125,6 +130,7 @@ export function engineTask(execution: EngineExecution) {
               (bot) => bot.id === owner,
             );
             doc.run = {
+              evidence: { taskId: String(task.id), usage: "pending" },
               sessionId: runtime.conversationId,
               ...(bot
                 ? {
@@ -181,6 +187,17 @@ export function engineTask(execution: EngineExecution) {
           );
         } catch (cause) {
           if (runtime.signal.aborted) throw cause;
+          if (cause && typeof cause === "object" && "code" in cause) {
+            const code = cause.code;
+            if (
+              (typeof code === "string" && /^[\w.-]{1,64}$/.test(code)) ||
+              (typeof code === "number" && Number.isFinite(code))
+            )
+              await runtime.commit(async (tx) => {
+                const doc = await tx.doc(EngineDoc, runtime.conversationId);
+                if (doc.run?.evidence) doc.run.evidence.errorCode = code;
+              }, context);
+          }
           error =
             cause instanceof Error
               ? cause.message
@@ -218,7 +235,7 @@ async function finish(
     typeof defineTask<EngineTaskInput, EngineCheckpoint, null, object>
   >,
 ) {
-  await settleUsage(runtime, context);
+  const usage = await settleUsage(runtime, context);
   await runtime.commit(async (tx, current) => {
     const doc = await tx.doc(EngineDoc, runtime.conversationId);
     if (!doc.tasks.includes(runtime.taskId)) {
@@ -295,6 +312,10 @@ async function finish(
     let answer: EntryId | undefined;
     if (doc.activeId === runtime.taskId) {
       if (doc.run) {
+        if (doc.run.evidence) {
+          doc.run.evidence.usage = usage;
+        }
+        captureRunEvidence(doc);
         doc.run.endedAt = Date.now();
         doc.run.status =
           reason === "aborted" ? "stopped" : error ? "failed" : "ended";

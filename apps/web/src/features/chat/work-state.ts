@@ -124,6 +124,8 @@ export function workTurns(view: ChatView) {
         return rows;
       });
       let title = workStatus(status);
+      if (!active && run?.evidence?.usage === "failed")
+        title += " · 用量入账失败";
       if (active) {
         title = executionActivity(
           view,

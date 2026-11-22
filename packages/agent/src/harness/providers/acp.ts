@@ -749,7 +749,11 @@ export function acpProvider(
             configOptions = changed.configOptions;
         }
       }
-      await emit({ type: "session", id });
+      await emit({
+        type: "session",
+        id,
+        native: { version: hello.agentInfo?.version },
+      });
       await emit({
         type: "runtime",
         state: {
@@ -888,6 +892,7 @@ export function acpProvider(
           await emit({
             type: "accepted",
             id: openCode ? `opencode:${baseline}` : `${descriptor.id}:${id}`,
+            native: { version: hello.agentInfo?.version },
           });
           try {
             contextReading = undefined;
@@ -916,6 +921,23 @@ export function acpProvider(
                 usage: {
                   id: turnId,
                   source: `${descriptor.id}.acp.prompt`,
+                  nativeUsage: Object.fromEntries(
+                    Object.entries(outcome.usage ?? {}).flatMap(
+                      ([key, value]) =>
+                        [
+                          "inputTokens",
+                          "outputTokens",
+                          "totalTokens",
+                          "cachedReadTokens",
+                          "cachedWriteTokens",
+                          "thoughtTokens",
+                        ].includes(key) &&
+                        (value === null ||
+                          (typeof value === "number" && Number.isFinite(value)))
+                          ? [[key, value] as const]
+                          : [],
+                    ),
+                  ),
                   ...(uncachedInput ? { tokenBasis: "uncached" as const } : {}),
                   provider: null,
                   model: config.model,

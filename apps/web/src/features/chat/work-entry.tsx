@@ -173,7 +173,11 @@ function ToolRecord({
 }
 
 export function WorkEntry({ item, botId }: { item: WorkItem; botId: number }) {
-  const [expanded, setExpanded] = useState(Boolean(item.input?.command));
+  const [expanded, setExpanded] = useState(
+    Boolean(item.input?.command) ||
+      item.status === "failed" ||
+      item.status === "uncertain",
+  );
   const event = item.message.activity;
   const time =
     item.startedAt === undefined ? undefined : new Date(item.startedAt);
@@ -186,6 +190,7 @@ export function WorkEntry({ item, botId }: { item: WorkItem; botId: number }) {
       className="work-entry"
       data-state={item.status}
       data-parent={item.message.parentId}
+      tabIndex={-1}
     >
       {item.kind === "text" ? (
         <MessageContent

@@ -431,6 +431,7 @@ function BotChat({
               }}
               onClose={closePanel}
               workRun={workRun}
+              onWorkRunClose={() => setWorkRun(undefined)}
             />
           ) : (
             <MemberDetails
@@ -448,6 +449,7 @@ function BotChat({
               takeoverId={takeoverId}
               active={detailsOpen}
               workRun={workRun}
+              onWorkRunClose={() => setWorkRun(undefined)}
               bot={sessionOwner}
               sessionBot={detailBot}
               view={detailPanel}

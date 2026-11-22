@@ -6,7 +6,24 @@ import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "vitest";
 import { computerTrace, evaluateComputer } from "../src/evals/computer.ts";
 import { readOpenCodeTrace } from "../src/evals/opencode.ts";
+import antigravity from "./fixtures/antigravity-tool-failure.json" with {
+  type: "json",
+};
 import music from "./fixtures/pi-music-baseline.json" with { type: "json" };
+
+test("recorded AGY tool rejection fails availability without inventing task completion", () => {
+  const result = evaluateComputer(antigravity);
+  expect(result.completion).toBe("unreviewed");
+  expect(result.metrics.toolTimeMs).toBeNull();
+  expect(result.metrics.elapsedMs).toBeNull();
+  expect(() =>
+    evaluateComputer({ ...antigravity, coverage: "complete" }),
+  ).toThrow();
+  expect(
+    result.checks.find((check) => check.name === "availableTools"),
+  ).toMatchObject({ status: "fail", calls: [1] });
+  expect(result.checks[0]?.status).toBe("not-exercised");
+});
 
 const baseline = computerTrace.parse(
   JSON.parse(

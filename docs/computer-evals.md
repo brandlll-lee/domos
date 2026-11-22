@@ -26,7 +26,7 @@ pnpm eval:computer --task 7094 --domos-db "$env:APPDATA/@domos/desktop/hosting/d
 pnpm eval:computer --trace trace.json
 ```
 
-结构参考 `packages/agent/test/fixtures/computer-eval.json`。公共契约支持 Pi、Claude、Codex、OpenCode；首期原生日志导入器仅支持 OpenCode。
+结构参考 `packages/agent/test/fixtures/computer-eval.json`。公共契约接受原生 Harness 名称；原生日志导入器仅支持 OpenCode。摘录中未知的起止时间保留 `null`，不能填零。完整轨迹必须包含时间。
 
 ## 读报告
 
@@ -34,11 +34,15 @@ pnpm eval:computer --trace trace.json
 | --- | --- |
 | `inputVerification` | 输入、按键或输入批次含 `not verified` 投递标记时，记录流程风险。它不证明输入最终失败，也不判断后续截图是否完成验证。 |
 | `incrementalScope` | 同一目标改变树读取范围后，仍请求旧范围的增量，且驱动明确返回没有兼容基线时，记录回退。主动换范围有时合理，需结合任务复核。 |
-| `availableTools` | 工具结果明确报告 `unavailable tool` 或 `unknown tool` 时失败。 |
+| `availableTools` | 工具结果明确报告 `unavailable tool`、`unknown tool` 或 `tool … is not enabled for server` 时失败。 |
 
 `checks.calls` 使用从 1 开始的调用序号。`checkPassRate` 只表示上述流程规则的通过率，不是任务成功率。没有覆盖的项目标为 `not-exercised`；全部未覆盖时，通过率为 `null`。
 
 `completion` 单独记录人工任务验收。原生日志导入默认 `unreviewed`，不会把 Agent 自称完成或任务正常结束自动算作成功。人工验收必须查看任务要求与独立证据。
+
+AGY 的脱敏故障摘录保存在 `antigravity-tool-failure.json`。它保留原生工具拒绝的报错。任务完成情况、完整耗时和模型轮数未知。此样本验证故障识别，不代表在线重新运行或修复后的成功率。
+
+Work 的“诊断信息”复用每轮执行记录。它保留内部执行任务 ID、原生会话 ID、原生报告的版本、末次用量计数、入账状态及已接收工具的结果缺口。版本和原生时间缺失时保留未知。该范围只覆盖已接收的原生事件，不能据此推断模型 HTTP 请求或隐藏思考完整。“定位问题”跳到首个失败或结果未知的事件。复制只包含诊断字段，不包含聊天正文、工具参数或凭据。
 
 `coverage: complete` 报告完整任务的耗时、工具调用数、模型响应轮数、工具时间和固定睡眠次数。并行工具时间只计算一次。工具以外的时间包括模型、通信、调度，不能全部称作模型思考。`coverage: excerpt` 不计算完整工具时间或剩余时间。
 

@@ -89,6 +89,25 @@
 .work-detail {
   min-width: 0;
 }
+.work-diagnostics {
+  width: min(380px, calc(100vw - var(--space-6)));
+  overflow-wrap: anywhere;
+}
+.work-diagnostics dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  font-size: var(--text-small);
+  font-variant-numeric: tabular-nums;
+}
+.work-diagnostics dt,
+.work-diagnostics p {
+  color: var(--color-muted);
+  font-size: var(--text-small);
+}
+.work-diagnostics dd {
+  margin: 0;
+}
 .work-request {
   margin: 0;
   font-weight: 500;
