@@ -916,8 +916,37 @@ test("consecutive turns reuse Codex while account changes and Stop retire its pr
       .poll(async () => (await engines.profile(botId, context)).busy)
       .toBe(false);
   };
+  await runtime.work.memory.save(
+    botId,
+    {
+      id: "city",
+      text: "居住在北京",
+      category: "profile",
+      shared: false,
+      revision: 0,
+      requestId: "beijing",
+    },
+    context,
+  );
   await send();
+  await runtime.work.memory.save(
+    botId,
+    {
+      id: "city",
+      text: "居住在上海",
+      category: "profile",
+      shared: false,
+      revision: 1,
+      requestId: "shanghai",
+    },
+    context,
+  );
   await send();
+  const prompts = workers[0]?.requests.filter(
+    (request) => request.method === "turn/start",
+  );
+  expect(JSON.stringify(prompts?.[0])).toContain("居住在北京");
+  expect(JSON.stringify(prompts?.[1])).toContain("居住在上海");
   expect(tools).toHaveLength(2);
   expect(tools[1]).toContain("Request 2");
   expect(workers).toHaveLength(1);

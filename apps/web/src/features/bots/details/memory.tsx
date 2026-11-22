@@ -20,17 +20,23 @@ export function MemoryDialog({
   onOpenChange,
   botId,
   items,
+  candidates,
   reviewEnabled,
   usage,
   action,
+  onEvidence,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   botId: number;
   items: Entry[];
+  candidates: WorkData["memoryCandidates"];
   reviewEnabled: boolean;
   usage: WorkData["memoryUsage"];
   action: WorkAction;
+  onEvidence: (
+    value: Awaited<ReturnType<typeof client.work.memory.evidence>>,
+  ) => Promise<void>;
 }) {
   const [selected, setSelected] = useState<Entry | null | "new">(null);
   const [deleting, setDeleting] = useState<Entry | null>(null);
@@ -96,6 +102,55 @@ export function MemoryDialog({
             用户档案会进入每轮上下文。工作笔记由 Bot 按需搜索。 档案：
             {usage.profile} B / 8 KB；笔记：{usage.work} B / 24 KB。
           </p>
+          {candidates.length > 0 && (
+            <section aria-label="待确认记忆" className="detail-page">
+              <h3>待确认</h3>
+              {candidates.map((candidate) => (
+                <div key={candidate.id} className="item-card">
+                  <p>{candidate.input.text}</p>
+                  <div className="form-actions">
+                    <Button
+                      size="small"
+                      disabled={action.busy}
+                      onClick={() =>
+                        void action.run(
+                          ["memory.accept", candidate.id],
+                          () =>
+                            client.work.memory.resolve({
+                              botId,
+                              id: candidate.id,
+                              accept: true,
+                            }),
+                          refreshBotWork,
+                        )
+                      }
+                    >
+                      保存记忆
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="small"
+                      disabled={action.busy}
+                      onClick={() =>
+                        void action.run(
+                          ["memory.dismiss", candidate.id],
+                          () =>
+                            client.work.memory.resolve({
+                              botId,
+                              id: candidate.id,
+                              accept: false,
+                            }),
+                          refreshBotWork,
+                        )
+                      }
+                    >
+                      忽略
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </section>
+          )}
           {items.length ? (
             <ul className="item-list">
               {items.map((entry) => (
@@ -115,8 +170,48 @@ export function MemoryDialog({
                     </span>
                     <span>{entry.botId === null ? "共享" : "此 Bot"}</span>
                     <span>
-                      {entry.source.startsWith("bot:") ? "Bot 记录" : "你添加"}
+                      {entry.origin === "user"
+                        ? "用户原话"
+                        : entry.origin === "tool"
+                          ? "工具观察"
+                          : entry.origin === "inference"
+                            ? "模型推断"
+                            : entry.source.startsWith("bot:")
+                              ? "Bot 记录"
+                              : "你添加"}
                     </span>
+                    {entry.effectiveAt && (
+                      <time dateTime={entry.effectiveAt}>
+                        {new Date(entry.effectiveAt).toLocaleDateString()} 起
+                      </time>
+                    )}
+                    {entry.evidence?.map((ref, index) => (
+                      <Button
+                        key={`${ref.entryId}:${ref.quote}`}
+                        variant="ghost"
+                        size="small"
+                        disabled={action.busy}
+                        onClick={() =>
+                          void action.run(
+                            ["memory.evidence", entry.id, index],
+                            async () => {
+                              const value = await client.work.memory.evidence({
+                                botId,
+                                id: entry.id,
+                                index,
+                              });
+                              await onEvidence(value);
+                              onOpenChange(false);
+                            },
+                          )
+                        }
+                      >
+                        查看出处
+                        {entry.evidence && entry.evidence.length > 1
+                          ? ` ${index + 1}`
+                          : ""}
+                      </Button>
+                    ))}
                   </div>
                   <div className="item-actions">
                     <ActionMenu
@@ -135,16 +230,16 @@ export function MemoryDialog({
                 </li>
               ))}
             </ul>
-          ) : (
+          ) : candidates.length === 0 ? (
             <p className="detail-empty">暂无记忆</p>
-          )}
+          ) : null}
         </section>
       )}
       <ConfirmDialog
         open={Boolean(deleting)}
         onOpenChange={(next) => !next && setDeleting(null)}
         title="删除这条记忆？"
-        description="删除后，Bot 将不再使用这条记忆。"
+        description="从保存的记忆中删除。原始聊天和当前模型上下文仍会保留。"
         onConfirm={() => {
           const entry = deleting;
           setDeleting(null);

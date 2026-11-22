@@ -265,14 +265,14 @@ test.each(["completed", "running", "sending"] as const)(
     expect(await submission.wait(context)).toMatchObject({
       status: outcome === "completed" ? "done" : "unanswered",
     });
-    const instructions = JSON.stringify(
+    const prompts = JSON.stringify(
       workers
-        .at(-1)
-        ?.requests.find((request) => request.method === "thread/resume")
-        ?.params,
+        .flatMap((worker) => worker.requests)
+        .filter((request) => request.method === "turn/start")
+        .map((request) => request.params),
     );
-    expect(instructions).toContain("Original profile fact");
-    expect(instructions).not.toContain("Updated profile fact");
+    expect(prompts).toContain("Original profile fact");
+    expect(prompts).not.toContain("Updated profile fact");
     if (outcome !== "sending") {
       const extra = await runtime.engines.submit(
         id,

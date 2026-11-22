@@ -1,4 +1,5 @@
 import type { Context } from "@earendil-works/chord/context";
+import { MemorySnapshotDoc, memoryDigest } from "../work/memory.ts";
 import { RoutinesDoc } from "../work/routine-state.ts";
 import { projectContext } from "./context.ts";
 import { EngineDoc } from "./state.ts";
@@ -322,6 +323,9 @@ export class EngineProjection {
               ) {
                 session.through = current.input.entryId;
                 session.teamThrough = current.input.entryId;
+                session.memory = memoryDigest(
+                  (await tx.doc(MemorySnapshotDoc, this.runtime.taskId)).text,
+                );
               }
             }
           }

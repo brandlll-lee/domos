@@ -2,7 +2,7 @@ import type { Context } from "@earendil-works/chord/context";
 import { defineTask, type EntryId } from "@earendil-works/pi-durable";
 import { BotDirectory } from "../bots.ts";
 import { BotSession } from "../conversations.ts";
-import { MemoryReviewDoc } from "../work/memory.ts";
+import { MemoryReviewDoc, memoryGeneration } from "../work/memory.ts";
 import { RoutinesDoc, transitionRun } from "../work/routine-state.ts";
 import { finishCompactions, projectContext } from "./context.ts";
 import type { EngineExecution } from "./execution.ts";
@@ -43,6 +43,11 @@ export function engineTask(execution: EngineExecution) {
             );
             const doc = await tx.doc(EngineDoc, runtime.conversationId);
             enabled = review.enabled && doc.tasks.every((id) => id === task.id);
+            if (!review.reviewing)
+              review.generation = await memoryGeneration(
+                tx,
+                runtime.conversationId,
+              );
             review.reviewing = enabled;
           }, context);
           try {

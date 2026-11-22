@@ -1,5 +1,4 @@
 import type { Bot } from "@domos/agent/bots";
-import type { ConversationFile } from "@domos/agent/files";
 import type { ChatView } from "@domos/agent/view";
 import { Button } from "@domos/ui/controls";
 import { Loading } from "@domos/ui/loading";
@@ -7,6 +6,8 @@ import { PanelHeader } from "@domos/ui/panel";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { Tabs } from "@domos/ui/tabs";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { openChatTarget } from "../../chat/attention.tsx";
+import type { MessageTarget } from "../../chat/message-target.ts";
 import { useChat } from "../../chat/use-chat.ts";
 import { WorkPanel } from "../../chat/work.tsx";
 import type { useComputer } from "../../computer/use-computer.ts";
@@ -82,9 +83,10 @@ export function BotDetails({
   takeoverId?: string;
   workRun?: string;
   onWorkRunClose?: () => void;
-  onShowMessage: (item: ConversationFile) => Promise<void>;
+  onShowMessage: (item: MessageTarget) => Promise<void>;
 }) {
   const [memoryOpen, setMemoryOpen] = useState(false);
+  const [evidenceRun, setEvidenceRun] = useState<string>();
   const workActive =
     active &&
     ((requestedView === "root" && tab === "bot") ||
@@ -258,15 +260,21 @@ export function BotDetails({
           <WorkPanel
             {...chat}
             botId={bot.id}
-            selectedRun={workRun}
-            onRunClose={onWorkRunClose}
+            selectedRun={evidenceRun ?? workRun}
+            onRunClose={() => {
+              setEvidenceRun(undefined);
+              onWorkRunClose?.();
+            }}
           />
         ) : (
           <SessionWork
             key={sessionBot.id}
             botId={sessionBot.id}
-            selectedRun={workRun}
-            onRunClose={onWorkRunClose}
+            selectedRun={evidenceRun ?? workRun}
+            onRunClose={() => {
+              setEvidenceRun(undefined);
+              onWorkRunClose?.();
+            }}
           />
         ))}
       {view === "root" &&
@@ -329,9 +337,28 @@ export function BotDetails({
         onOpenChange={setMemoryOpen}
         botId={bot.id}
         items={work.data?.memory ?? []}
+        candidates={work.data?.memoryCandidates ?? []}
         reviewEnabled={work.data?.memoryReviewEnabled ?? true}
         usage={work.data?.memoryUsage ?? { profile: 0, work: 0 }}
         action={action}
+        onEvidence={async (value) => {
+          if (value.messageId && value.chat !== window.location.hash.slice(1)) {
+            openChatTarget({
+              ...value,
+              sessionId: value.conversationId,
+              messageId: value.messageId,
+            });
+          } else if (value.turnId) {
+            setEvidenceRun(value.turnId);
+            onTabChange("work");
+          } else if (value.messageId)
+            await onShowMessage({
+              messageId: value.messageId,
+              cursor: value.cursor,
+              sessionId: value.conversationId,
+            });
+          else throw new Error("该出处没有可定位的聊天消息。");
+        }}
       />
     </aside>
   );

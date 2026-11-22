@@ -50,7 +50,12 @@ export type EngineState = {
   sessionId: string | null;
   sessions?: Record<
     string,
-    { id: string; through: EntryId | null; teamThrough?: EntryId }
+    {
+      id: string;
+      through: EntryId | null;
+      teamThrough?: EntryId;
+      memory?: string;
+    }
   >;
   sessionKey?: string;
   summary?: HandoffSummary;

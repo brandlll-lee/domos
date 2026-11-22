@@ -22,6 +22,7 @@ export function botWork(harness: Harness, now = Date.now, files?: Files) {
     );
     return {
       memory: items,
+      memoryCandidates: await memory.candidates(botId, context),
       memoryUsage: memoryUsage(items),
       memoryReviewEnabled: await memory.reviewEnabled(botId, context),
       skills: await skills.list(context),

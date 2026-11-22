@@ -269,6 +269,25 @@ function sharedHistoryEntry(entry: EntryRecord, runs: RoutineRun[]) {
   );
 }
 
+export async function historyEvidence(
+  tx: Tx,
+  conversationId: HistoryReader["conversationId"],
+  entryId: EntryId,
+) {
+  const entry = await tx.entry(entryId);
+  if (!entry || !visibleHistoryEntry(entry))
+    throw new Error("聊天记录不存在。");
+  if (entry.conversationId !== conversationId) {
+    const scope = await historyConversations(tx, conversationId);
+    if (
+      !scope.includes(entry.conversationId) ||
+      !sharedHistoryEntry(entry, (await tx.doc(RoutinesDoc)).runs)
+    )
+      throw new Error("聊天记录不存在。");
+  }
+  return entry;
+}
+
 export async function conversationEntry(
   runtime: HistoryReader,
   entryId: EntryId,
@@ -280,7 +299,7 @@ export async function conversationEntry(
   let ownerBotId: number | undefined;
   let author: ChatMessage["author"];
   await runtime.commit(async (tx) => {
-    entry = await tx.entry(entryId);
+    entry = await historyEvidence(tx, runtime.conversationId, entryId);
     if (entry)
       ownerBotId =
         (await tx.doc(BotSession, entry.conversationId)).botId ??

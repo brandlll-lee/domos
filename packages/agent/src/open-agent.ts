@@ -28,7 +28,7 @@ import { modelImages } from "./runtime/model-images.ts";
 import { checkpointEngineState, openStorage } from "./runtime/storage.ts";
 import { Teams } from "./teams.ts";
 import { botWork } from "./work/index.ts";
-import { memory } from "./work/memory.ts";
+import { memory } from "./work/memory-tools.ts";
 import { Routines, routineExtension } from "./work/routines.ts";
 import { skillExtension } from "./work/skills.ts";
 
@@ -50,7 +50,7 @@ export async function openAgent(
   options.registry.install(messaging);
   options.registry.install(history(() => bots.chats));
   options.registry.install(identity);
-  options.registry.install(memory);
+  options.registry.install(memory(() => bots.chats));
   options.registry.install(skillExtension(files));
   const computers = options.computers;
   let images: ImageServices;

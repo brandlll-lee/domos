@@ -5,6 +5,7 @@ import type {
   EngineRuntime,
   StoredMessage,
 } from "../src/harness/task-types.ts";
+import { MemorySnapshotDoc } from "../src/work/memory.ts";
 
 function fixture() {
   const old: StoredMessage = {
@@ -27,7 +28,13 @@ function fixture() {
   const commit = vi.fn(async (change) => {
     entered.resolve();
     await released.promise;
-    await change({ doc: async () => doc }, { input: { entryId: "entry" } });
+    await change(
+      {
+        doc: async (kind: unknown) =>
+          kind === MemorySnapshotDoc ? { text: "current memory" } : doc,
+      },
+      { input: { entryId: "entry" } },
+    );
   });
   const projection = new EngineProjection(
     { conversationId: 7, taskId: 1, commit } as unknown as EngineRuntime,
