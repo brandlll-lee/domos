@@ -18,6 +18,7 @@ import type { WorkData } from "./use-bot-work.ts";
 
 export function RootPanel({
   bot,
+  sessionId = bot.id,
   data,
   chat,
   context,
@@ -27,6 +28,7 @@ export function RootPanel({
   onOpenMemory,
 }: {
   bot: Bot;
+  sessionId?: number;
   data: WorkData | null;
   chat: { model: ChatView["model"]; connected: boolean; busy: boolean };
   context: ReactNode;
@@ -55,13 +57,13 @@ export function RootPanel({
       <PanelGroup title="运行">
         <div className="engine-choices">
           <ModelSetting
-            botId={bot.id}
+            botId={sessionId}
             connected={chat.connected}
             disabled={computer.busy || chat.busy}
           />
           <SettingRow title="上下文">{context}</SettingRow>
           <ApprovalSetting
-            botId={bot.id}
+            botId={sessionId}
             disabled={
               !canManage ||
               computer.busy ||

@@ -731,11 +731,38 @@ test("Bot history permits team chat while private, delegated and hidden records 
     );
     return JSON.parse((result.content[0] as { text: string }).text);
   };
+  const privateChat = await runtime.bots.createSession(
+    owner,
+    owner,
+    crypto.randomUUID(),
+    context,
+  );
+  const privateEntry = await runtime.harness.commit(
+    async (tx) =>
+      (
+        await tx.appendEntry(privateChat, {
+          kind: EngineMessage,
+          data: {
+            id: "private-note",
+            role: "user",
+            content: [{ type: "text", text: "Private needle" }],
+          },
+        })
+      ).id,
+    context,
+  );
   expect(
     (await read(owner, { query: "needle" })).items
       .map((item: { conversationId: number }) => item.conversationId)
       .sort(),
-  ).toEqual([owner, team, peerTeam].sort());
+  ).toEqual([owner, team, peerTeam, privateChat].sort());
+  expect(
+    JSON.parse((await read(privateChat, { entryId: entries[0] })).text)[0],
+  ).toMatchObject({ conversationId: owner });
+  await expect(read(team, { entryId: privateEntry })).rejects.toThrow("不存在");
+  await expect(read(peer.id, { entryId: privateEntry })).rejects.toThrow(
+    "不存在",
+  );
   expect(
     (await read(team, { query: "needle" })).items
       .map((item: { conversationId: number }) => item.conversationId)
@@ -760,7 +787,7 @@ test("Bot history permits team chat while private, delegated and hidden records 
     (await read(owner, { query: "needle" })).items.map(
       (item: { conversationId: number }) => item.conversationId,
     ),
-  ).toEqual([owner]);
+  ).toEqual([privateChat, owner]);
   await expect(read(owner, { entryId: entries[3] })).rejects.toThrow("不存在");
   expect(
     (await read(team, { query: "needle" })).items.map(

@@ -35,7 +35,9 @@ test("send, reload, disconnect, reconnect and restart preserve the conversation"
   await expect(
     page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),
   ).toBeVisible();
-  const contactTime = page.locator('.contact-row[aria-current="page"] time');
+  const contactTime = page.locator(
+    '.conversation-row[aria-current="page"] time',
+  );
   await expect(contactTime).toHaveText(/^\d{2}:\d{2}$/);
   const lastMessage = (
     await createORPCClient<RouterClient<AppRouter>>(

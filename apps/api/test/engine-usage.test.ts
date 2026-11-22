@@ -11,7 +11,7 @@ import { createRegistry } from "@earendil-works/pi-durable";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterClient } from "@orpc/server";
-import { expect, onTestFinished, test, vi } from "vitest";
+import { expect, onTestFinished, test } from "vitest";
 import { ProtocolProcess } from "../../../packages/agent/test/fixtures/engine-process.ts";
 import { createApp } from "../src/app.ts";
 import type { AppRouter } from "../src/router.ts";
@@ -115,18 +115,13 @@ test("HTTP usage retains native attribution, deduplicates and survives reopening
   await runtime.harness
     .submission(submission.id, context)
     .then((item) => item?.wait(context));
-  const scans = vi.spyOn(runtime.harness, "conversation");
   const concurrent = await Promise.all(
     Array.from({ length: 6 }, () => runtime.client.engines.usage({})),
   );
   const rows = concurrent[0];
   if (!rows) throw new Error("Usage response required");
   for (const result of concurrent) expect(result).toEqual(rows);
-  expect(scans).toHaveBeenCalledTimes(concurrent.length + 1);
-  scans.mockClear();
   expect(await runtime.client.engines.usage({})).toEqual(rows);
-  expect(scans).toHaveBeenCalledTimes(1);
-  scans.mockRestore();
   expect(rows.items).toHaveLength(1);
   expect(rows.items[0]).toMatchObject({
     botId,

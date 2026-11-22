@@ -17,222 +17,260 @@ import { ProtocolProcess } from "../../../packages/agent/test/fixtures/engine-pr
 import { createApp } from "../src/app.ts";
 import type { AppRouter } from "../src/router.ts";
 
-test("Claude questions return distinct answers and use the Bot skill and memory authority", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "domos-interaction-"));
-  const models = createModels();
-  models.setProvider(fauxProvider().provider);
-  const skillId = crypto.randomUUID();
-  let updatedInput: unknown;
-  let operation: unknown;
-  const computers = {
-    initialize: async () => {},
-    preflight: async () => {},
-    computerId: async () => "local",
-    binding: async () => ({ directory: null }),
-    tools: { catalog: async () => [], finish: () => {} },
-    process: async (...args: Parameters<Computers["process"]>) => {
-      const process = new ProtocolProcess();
-      const launch = process.launch.bind(process);
-      process.launch = async (spec) => {
-        if (spec.args.includes("--version")) {
-          process.output.write("fixture-cli 1.0.0\n");
-          process.ended.resolve({ code: 0 });
-        } else await launch(spec);
-      };
-      process.request = async <T>(path: string) =>
-        (path === "/provider" ? { all: [], connected: [] } : {}) as T;
-      process.receive = async (request) => {
-        if (request.type !== "user") return;
-        const allowed = await args[2](
-          "operation",
-          "approve",
-          { tool_name: "Bash", input: { command: "pwd" } },
-          new AbortController().signal,
-        );
-        operation = JSON.parse((allowed.content[0] as { text: string }).text);
-        const memory = await args[2](
-          "memory",
-          "memory_list",
-          {},
-          new AbortController().signal,
-        );
-        const skill = await args[2](
-          "skill",
-          "skill_read",
-          { id: skillId },
-          new AbortController().signal,
-        );
-        const result = await args[2](
-          "ask",
-          "approve",
-          {
-            tool_name: "AskUserQuestion",
-            input: {
-              questions: [
+test.each(["original", "private"])(
+  "%s conversation targets Claude answers and shares Bot memory and skills",
+  async (kind) => {
+    const directory = await mkdtemp(join(tmpdir(), "domos-interaction-"));
+    const models = createModels();
+    models.setProvider(fauxProvider().provider);
+    const skillId = crypto.randomUUID();
+    let updatedInput: unknown;
+    let operation: unknown;
+    const computers = {
+      initialize: async () => {},
+      preflight: async () => {},
+      computerId: async () => "local",
+      binding: async () => ({ directory: null }),
+      tools: { catalog: async () => [], finish: () => {} },
+      process: async (...args: Parameters<Computers["process"]>) => {
+        const process = new ProtocolProcess();
+        const launch = process.launch.bind(process);
+        process.launch = async (spec) => {
+          if (spec.args.includes("--version")) {
+            process.output.write("fixture-cli 1.0.0\n");
+            process.ended.resolve({ code: 0 });
+          } else await launch(spec);
+        };
+        process.request = async <T>(path: string) =>
+          (path === "/provider" ? { all: [], connected: [] } : {}) as T;
+        process.receive = async (request) => {
+          if (request.type !== "user") return;
+          const allowed = await args[2](
+            "operation",
+            "approve",
+            { tool_name: "Bash", input: { command: "pwd" } },
+            new AbortController().signal,
+          );
+          operation = JSON.parse((allowed.content[0] as { text: string }).text);
+          const memory = await args[2](
+            "memory",
+            "memory_list",
+            {},
+            new AbortController().signal,
+          );
+          const skill = await args[2](
+            "skill",
+            "skill_read",
+            { id: skillId },
+            new AbortController().signal,
+          );
+          const result = await args[2](
+            "ask",
+            "approve",
+            {
+              tool_name: "AskUserQuestion",
+              input: {
+                questions: [
+                  {
+                    question: "Target?",
+                    options: [
+                      { label: "Preview", description: "Test release" },
+                    ],
+                    multiSelect: false,
+                  },
+                  {
+                    question: "Regions?",
+                    options: [{ label: "EU" }, { label: "US" }],
+                    multiSelect: true,
+                  },
+                ],
+              },
+            },
+            new AbortController().signal,
+          );
+          updatedInput = JSON.parse(
+            (result.content[0] as { text: string }).text,
+          );
+          await args[2](
+            "next-operation",
+            "approve",
+            { tool_name: "Bash", input: { command: "pwd" } },
+            new AbortController().signal,
+          );
+          process.frame({
+            type: "assistant",
+            message: {
+              id: "answer",
+              content: [
                 {
-                  question: "Target?",
-                  options: [{ label: "Preview", description: "Test release" }],
-                  multiSelect: false,
-                },
-                {
-                  question: "Regions?",
-                  options: [{ label: "EU" }, { label: "US" }],
-                  multiSelect: true,
+                  type: "text",
+                  text: JSON.stringify({ memory, skill, updatedInput }),
                 },
               ],
             },
-          },
-          new AbortController().signal,
-        );
-        updatedInput = JSON.parse((result.content[0] as { text: string }).text);
-        await args[2](
-          "next-operation",
-          "approve",
-          { tool_name: "Bash", input: { command: "pwd" } },
-          new AbortController().signal,
-        );
-        process.frame({
-          type: "assistant",
-          message: {
-            id: "answer",
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({ memory, skill, updatedInput }),
-              },
-            ],
-          },
-        });
-        process.frame({ type: "result" });
-      };
-      return process;
-    },
-  } as unknown as Computers;
-  const runtime = await openAgent(
-    join(directory, "agent.sqlite"),
-    { registry: createRegistry(), models, computers },
-    {},
-    context,
-  );
-  onTestFinished(async () => {
-    await runtime.harness.close(context);
-    await rm(directory, { recursive: true, force: true });
-  });
-  const app = createApp(
-    runtime.bots,
-    models,
-    runtime.files,
-    runtime.work,
-    undefined,
-    undefined,
-    runtime.engines,
-  );
-  const client: RouterClient<AppRouter> = createORPCClient(
-    new RPCLink({
-      url: "http://localhost/rpc",
-      fetch: async (request, init) => app.fetch(new Request(request, init)),
-    }),
-  );
-  const botId = runtime.conversation.id;
-  await runtime.harness.commit(async (tx) => {
-    const doc = await tx.doc(ComputersDoc);
-    doc.items = [
-      {
-        id: "local",
-        name: "Local",
-        config: { kind: "process" },
-        authorized: true,
+          });
+          process.frame({ type: "result" });
+        };
+        return process;
       },
-    ];
-    doc.bindings[String(botId)] = {
-      computerId: "local",
-      revision: 0,
-      requestId: "",
-      approvalMode: "auto",
-    };
-  }, context);
-  await client.engines.configure({
-    botId,
-    config: { provider: "claude", model: null, approvalMode: "full" },
-    revision: 0,
-    requestId: crypto.randomUUID(),
-  });
-  await client.work.memory.save({
-    botId,
-    id: crypto.randomUUID(),
-    text: "Use Chinese",
-    shared: false,
-    revision: 0,
-    requestId: crypto.randomUUID(),
-  });
-  const skill = await client.work.skills.save({
-    botId,
-    id: skillId,
-    content:
-      "---\nname: release\ndescription: Release work\n---\nCheck the release.",
-    revision: 0,
-    requestId: crypto.randomUUID(),
-  });
-  await client.work.skills.enable({
-    botId,
-    id: skill.id,
-    revision: skill.revision,
-    enabled: true,
-    requestId: crypto.randomUUID(),
-  });
-  const submission = await client.send({
-    botId,
-    text: "Work",
-    requestId: crypto.randomUUID(),
-  });
-  await expect
-    .poll(async () => (await client.get({ botId })).approvals?.length)
-    .toBe(2);
-  const approvals = (await client.get({ botId })).approvals ?? [];
-  expect(operation).toMatchObject({
-    behavior: "allow",
-    updatedInput: { command: "pwd" },
-  });
-
-  expect((await client.engines.get({ botId })).config.provider).toBe("claude");
-  expect(approvals.map((approval) => approval.questions)).toMatchObject([
-    [{ id: "Target?", multiple: false }],
-    [{ id: "Regions?", multiple: true }],
-  ]);
-  expect(new Set(approvals.map((approval) => approval.id)).size).toBe(2);
-  await runtime.harness.commit(async (tx) => {
-    const binding = (await tx.doc(ComputersDoc)).bindings[String(botId)];
-    if (binding) binding.approvalMode = "ask";
-    (await tx.doc(EngineDoc, botId)).config.approvalMode = "ask";
-  }, context);
-  for (const approval of approvals) {
-    await client.engines.answer({
-      botId,
-      id: approval.id,
-      allow: true,
-      answers:
-        approval.questions?.[0]?.id === "Target?"
-          ? { "Target?": ["Preview"] }
-          : { "Regions?": ["EU", "US"] },
+    } as unknown as Computers;
+    const runtime = await openAgent(
+      join(directory, "agent.sqlite"),
+      { registry: createRegistry(), models, computers },
+      {},
+      context,
+    );
+    onTestFinished(async () => {
+      await runtime.harness.close(context);
+      await rm(directory, { recursive: true, force: true });
     });
-  }
-  await expect
-    .poll(async () => (await client.get({ botId })).approvals?.[0]?.kind)
-    .toBe("permission");
-  const next = (await client.get({ botId })).approvals?.[0];
-  if (!next) throw new Error("Operation confirmation required");
-  await client.engines.answer({ botId, id: next.id, allow: false });
-  await runtime.harness
-    .submission(submission.id, context)
-    .then((item) => item?.wait(context));
-  expect(updatedInput).toMatchObject({
-    behavior: "allow",
-    updatedInput: { answers: { "Target?": "Preview", "Regions?": "EU, US" } },
-  });
-  expect(JSON.stringify((await client.get({ botId })).messages)).toContain(
-    "Use Chinese",
-  );
-  expect(JSON.stringify((await client.get({ botId })).messages)).toContain(
-    "Check the release.",
-  );
-});
+    const app = createApp(
+      runtime.bots,
+      models,
+      runtime.files,
+      runtime.work,
+      undefined,
+      undefined,
+      runtime.engines,
+    );
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({
+        url: "http://localhost/rpc",
+        fetch: async (request, init) => app.fetch(new Request(request, init)),
+      }),
+    );
+    const botId = runtime.conversation.id;
+    await runtime.harness.commit(async (tx) => {
+      const doc = await tx.doc(ComputersDoc);
+      doc.items = [
+        {
+          id: "local",
+          name: "Local",
+          config: { kind: "process" },
+          authorized: true,
+        },
+      ];
+      doc.bindings[String(botId)] = {
+        computerId: "local",
+        revision: 0,
+        requestId: "",
+        approvalMode: "auto",
+      };
+    }, context);
+    await client.engines.configure({
+      botId,
+      config: { provider: "claude", model: null, approvalMode: "full" },
+      revision: 0,
+      requestId: crypto.randomUUID(),
+    });
+    await client.work.memory.save({
+      botId,
+      id: crypto.randomUUID(),
+      text: "Use Chinese",
+      shared: false,
+      revision: 0,
+      requestId: crypto.randomUUID(),
+    });
+    const skill = await client.work.skills.save({
+      botId,
+      id: skillId,
+      content:
+        "---\nname: release\ndescription: Release work\n---\nCheck the release.",
+      revision: 0,
+      requestId: crypto.randomUUID(),
+    });
+    await client.work.skills.enable({
+      botId,
+      id: skill.id,
+      revision: skill.revision,
+      enabled: true,
+      requestId: crypto.randomUUID(),
+    });
+    const sessionId =
+      kind === "private"
+        ? (
+            await client.conversations.create({
+              botId,
+              source: botId,
+              requestId: crypto.randomUUID(),
+            })
+          ).id
+        : botId;
+    const submission = await client.send({
+      botId: sessionId,
+      text: "Work",
+      requestId: crypto.randomUUID(),
+    });
+    await expect
+      .poll(
+        async () => (await client.get({ botId: sessionId })).approvals?.length,
+      )
+      .toBe(2);
+    const approvals = (await client.get({ botId: sessionId })).approvals ?? [];
+    expect(operation).toMatchObject({
+      behavior: "allow",
+      updatedInput: { command: "pwd" },
+    });
+
+    expect((await client.engines.get({ botId })).config.provider).toBe(
+      "claude",
+    );
+    expect(approvals.map((approval) => approval.questions)).toMatchObject([
+      [{ id: "Target?", multiple: false }],
+      [{ id: "Regions?", multiple: true }],
+    ]);
+    expect(new Set(approvals.map((approval) => approval.id)).size).toBe(2);
+    await runtime.harness.commit(async (tx) => {
+      const binding = (await tx.doc(ComputersDoc)).bindings[String(botId)];
+      if (binding) binding.approvalMode = "ask";
+      (await tx.doc(EngineDoc, sessionId)).config.approvalMode = "ask";
+    }, context);
+    if (sessionId !== botId) {
+      expect((await client.get({ botId })).approvals).toHaveLength(0);
+      await expect(
+        client.engines.answer({
+          botId,
+          id: approvals.at(0)?.id ?? "missing",
+          allow: true,
+        }),
+      ).rejects.toThrow();
+    }
+    for (const approval of approvals) {
+      await client.engines.answer({
+        botId: sessionId,
+        id: approval.id,
+        allow: true,
+        answers:
+          approval.questions?.[0]?.id === "Target?"
+            ? { "Target?": ["Preview"] }
+            : { "Regions?": ["EU", "US"] },
+      });
+    }
+    await expect
+      .poll(
+        async () =>
+          (await client.get({ botId: sessionId })).approvals?.[0]?.kind,
+      )
+      .toBe("permission");
+    const next = (await client.get({ botId: sessionId })).approvals?.[0];
+    if (!next) throw new Error("Operation confirmation required");
+    await client.engines.answer({
+      botId: sessionId,
+      id: next.id,
+      allow: false,
+    });
+    await runtime.harness
+      .submission(submission.id, context)
+      .then((item) => item?.wait(context));
+    expect(updatedInput).toMatchObject({
+      behavior: "allow",
+      updatedInput: { answers: { "Target?": "Preview", "Regions?": "EU, US" } },
+    });
+    expect(
+      JSON.stringify((await client.get({ botId: sessionId })).messages),
+    ).toContain("Use Chinese");
+    expect(
+      JSON.stringify((await client.get({ botId: sessionId })).messages),
+    ).toContain("Check the release.");
+  },
+);

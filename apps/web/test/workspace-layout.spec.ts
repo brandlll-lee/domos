@@ -24,12 +24,6 @@ test("chat gutters align within the content limit while panels resize", async ({
   await page.getByRole("button", { name: "发送", exact: true }).click();
   const reply = page.getByLabel("Domos 的回复").locator(".message-bubble");
   await expect(reply.locator("pre code")).toHaveText(code, { timeout: 30_000 });
-  await expect(page.locator(".chat-preview span").first()).toContainText(
-    "回复已完成。",
-  );
-  await expect(page.locator(".chat-preview span").first()).not.toContainText(
-    "**",
-  );
   const outgoing = page.getByLabel("你的消息").locator(".message-bubble");
   for (const viewport of [
     { width: 1600, height: 900 },
@@ -75,9 +69,10 @@ test("chat gutters align within the content limit while panels resize", async ({
         "font-size",
         "13px",
       );
-      await expect(page.locator(".chat-preview span").first()).toHaveCSS(
-        "font-size",
-        "12px",
+      await expect(page.locator(".conversation-row-title").first()).toHaveText(
+        Array.from("请完整回复，检查长消息能使用规定的气泡宽度。".repeat(10))
+          .slice(0, 40)
+          .join(""),
       );
       await expect(outgoing).toHaveCSS(
         "color",
@@ -966,7 +961,7 @@ test("empty chats retain their creation time and compact controls across layouts
   await expect(input).toBeVisible();
 });
 
-test("contact rows keep their density and searchable previews across selections", async ({
+test("Bot rows keep their density and conversation titles while search retains previews", async ({
   service,
   page,
 }) => {
@@ -1027,7 +1022,7 @@ test("contact rows keep their density and searchable previews across selections"
     name: "联系人",
     exact: true,
   });
-  await expect(contacts.getByRole("link")).toHaveCount(3);
+  await expect(contacts.locator(".contact-row")).toHaveCount(3);
   const rows = page.locator(".contact-row");
   const geometry = await rows.evaluateAll((items) =>
     items.map((item) => ({
@@ -1039,7 +1034,7 @@ test("contact rows keep their density and searchable previews across selections"
   );
   expect(
     geometry.every(
-      (item) => item.height === geometry[0]?.height && item.lines === 2,
+      (item) => item.height === geometry[0]?.height && item.lines === 1,
     ),
   ).toBe(true);
   expect(geometry[0]?.height).toBe(54);
@@ -1083,7 +1078,9 @@ test("contact rows keep their density and searchable previews across selections"
     .getByRole("textbox", { name: "消息", exact: true })
     .fill("核对列表预览");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  await expect(root).toContainText("已收到：核对列表预览");
+  await expect(
+    page.locator(".conversation-row-title").filter({ hasText: "核对列表预览" }),
+  ).toHaveCount(1);
   await contacts.getByRole("link", { name: "研究助手", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Bot详情", exact: true }),
@@ -1108,7 +1105,11 @@ test("contact rows keep their density and searchable previews across selections"
   await root.hover();
   await expect(root).not.toHaveAttribute("aria-current", "page");
   await page.reload();
-  await expect(root).toContainText("已收到：核对列表预览");
+  await expect(active).toHaveAttribute("aria-current", "page");
+  await root.click();
+  await expect(
+    page.locator(".conversation-row-title").filter({ hasText: "核对列表预览" }),
+  ).toHaveCount(1);
 });
 
 test("sidebar footer keeps two entries and opens the account menu above them", async ({

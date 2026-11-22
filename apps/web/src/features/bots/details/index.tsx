@@ -138,6 +138,7 @@ export function BotDetails({
     content = (
       <RootPanel
         bot={bot}
+        sessionId={sessionBot.id}
         data={work.data}
         chat={chat}
         context={context}
@@ -147,7 +148,7 @@ export function BotDetails({
         onOpenMemory={() => setMemoryOpen(true)}
       />
     );
-  else if (view === "engine") content = <ModelSetup botId={bot.id} />;
+  else if (view === "engine") content = <ModelSetup botId={sessionBot.id} />;
   else if (view === "computer" || view === "assistance")
     content = (
       <ComputerSettings

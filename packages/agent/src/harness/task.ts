@@ -31,8 +31,12 @@ export function engineTask(execution: EngineExecution) {
     initial: () => ({ phase: "run" }),
     phases: {
       async run(task, runtime, context) {
-        if (task.input.previous)
-          await runtime.waitForTask(task.input.previous, context);
+        for (const previous of Array.isArray(task.input.previous)
+          ? task.input.previous
+          : task.input.previous
+            ? [task.input.previous]
+            : [])
+          await runtime.waitForTask(previous, context);
         if (task.input.memoryReview) {
           let completed = false;
           let enabled = false;

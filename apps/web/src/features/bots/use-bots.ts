@@ -59,7 +59,7 @@ export function useBots() {
     () => window.location.hash || workspaceView().contact || "",
   );
   useEffect(() => {
-    if (/^#(?:bot\/\d+|team\/.+)$/.test(hash))
+    if (/^#(?:bot\/\d+(?:\/\d+)?|team\/.+)$/.test(hash))
       saveWorkspaceView({ contact: hash });
   }, [hash]);
   useEffect(() => {
@@ -98,7 +98,12 @@ export function useBots() {
         });
         for await (const next of events) {
           if (controller.signal.aborted) return;
-          const ids = new Set(next.items.map((bot) => bot.id));
+          const ids = new Set(
+            next.items.flatMap((bot) => [
+              bot.id,
+              ...(bot.conversations ?? []).map((item) => item.id),
+            ]),
+          );
           clearChatState(ids);
           clearDraftState(ids);
           clearBotWork(ids);
@@ -110,7 +115,15 @@ export function useBots() {
           for (const bot of next.items) {
             receiveCharacter(bot);
             receiveBotProfile(bot);
-            receiveModelActivity(bot.id, bot.busy);
+            if (bot.conversations) {
+              for (const item of bot.conversations)
+                receiveModelActivity(
+                  item.id,
+                  item.status === "working" ||
+                    item.status === "waiting" ||
+                    item.status === "queued",
+                );
+            } else receiveModelActivity(bot.id, bot.busy);
             if (activity.current.get(bot.id) && !bot.busy) invalidateQuota();
             activity.current.set(bot.id, bot.busy);
             const binding = next.bindings[String(bot.id)];
@@ -154,13 +167,32 @@ export function useBots() {
     return () => controller.abort();
   }, []);
   useErrorNotice(error);
-  const match = /^#bot\/(\d+)$/.exec(hash);
+  const match = /^#bot\/(\d+)(?:\/(\d+))?$/.exec(hash);
   const selectedTeam = teams.find((team) => hash === `#team/${team.id}`);
   const selected =
     items.find(
       (bot) => bot.id === (selectedTeam?.owner ?? Number(match?.[1])),
     ) ?? items[0];
+  const requested = Number(
+    match?.[2] ??
+      workspaceView().conversations[String(selected?.id)] ??
+      selected?.id,
+  );
+  const conversation = selected?.conversations?.find(
+    (item) => item.id === requested && (!item.archived || Boolean(match?.[2])),
+  );
+  const conversationId = selectedTeam
+    ? selected?.id
+    : (conversation?.id ?? selected?.id);
+  const ownerId = selected?.id;
+  const teamId = selectedTeam?.id;
+  useEffect(() => {
+    if (ownerId !== undefined && conversationId !== undefined && !teamId)
+      saveWorkspaceView({ conversations: { [ownerId]: conversationId } });
+  }, [ownerId, conversationId, teamId]);
   return {
+    conversationId,
+    conversation,
     items,
     teams,
     setTeams,

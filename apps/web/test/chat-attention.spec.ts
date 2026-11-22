@@ -357,7 +357,7 @@ test("attention identifies the assistant, opens its message and respects mute", 
     });
   }
   await page.locator(".attention-body").click();
-  await expect(page).toHaveURL(new RegExp(`#bot/${bot.id}$`));
+  await expect(page).toHaveURL(new RegExp(`#bot/${bot.id}/${bot.id}$`));
   await expect(page.locator('[data-message-id="saved:1"]')).toBeInViewport();
   await page.getByRole("button", { name: "提醒设置", exact: true }).click();
   await page
@@ -478,7 +478,7 @@ test("failure reminders open the corresponding Work record", async ({
     "这项工作未能完成",
   );
   await page.locator(".attention-body").click();
-  await expect(page).toHaveURL(new RegExp(`#bot/${bot.id}$`));
+  await expect(page).toHaveURL(new RegExp(`#bot/${bot.id}/${bot.id}$`));
   const record = page.getByRole("dialog", { name: "工作记录", exact: true });
   await expect(record).toBeVisible();
   await expect(record).toContainText("整理失败的报告");

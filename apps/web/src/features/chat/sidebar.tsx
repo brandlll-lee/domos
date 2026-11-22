@@ -6,6 +6,7 @@ import { PanelDialog } from "@domos/ui/dialog";
 import { ActionMenu } from "@domos/ui/menu";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { BellIcon } from "@phosphor-icons/react/dist/csr/Bell";
+import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { MagnifyingGlassIcon as MagnifyingGlass } from "@phosphor-icons/react/dist/csr/MagnifyingGlass";
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { RobotIcon } from "@phosphor-icons/react/dist/csr/Robot";
@@ -15,10 +16,16 @@ import { prepareCharacters } from "../bots/character-state.ts";
 import { CreateBot } from "../bots/create-bot.tsx";
 import { useWorkAction } from "../bots/details/use-bot-work.ts";
 import { useErrorNotice } from "../notices.tsx";
+import { saveWorkspaceView, workspaceView } from "../shell/workspace-state.ts";
 import { useAttention } from "./attention.tsx";
 import { TeamAvatar } from "./bot-reference.tsx";
+import {
+  ConversationState,
+  ConversationsDialog,
+  conversationRoute,
+  createConversation,
+} from "./conversations.tsx";
 import { chatCopy } from "./copy.ts";
-import { contactTime } from "./format.ts";
 import { TeamDialog } from "./team-dialog.tsx";
 import { prefetchChat } from "./use-chat.ts";
 
@@ -34,6 +41,7 @@ export function Sidebar({
   teams,
   onTeamsChange,
   selected,
+  conversationId,
   connected,
   onBotCreated,
   onSelect,
@@ -45,6 +53,7 @@ export function Sidebar({
   teams: Team[];
   onTeamsChange: (teams: Team[]) => void;
   selected: Bot;
+  conversationId: number;
   connected: boolean;
   onBotCreated: (bot: Bot) => void;
   onSelect: () => void;
@@ -52,6 +61,9 @@ export function Sidebar({
   onSearch: () => void;
   searchTrigger: RefObject<HTMLButtonElement | null>;
 }) {
+  const [expanded, setExpanded] = useState(() => workspaceView().expandedBots);
+  const [browsing, setBrowsing] = useState<number>();
+  const browsingBot = bots.find((bot) => bot.id === browsing);
   const createTrigger = useRef<HTMLButtonElement>(null);
   const [creation, setCreation] = useState<"bot" | "team">();
   const action = useWorkAction();
@@ -59,7 +71,7 @@ export function Sidebar({
   const attention = useAttention();
   const currentChat = window.location.hash.startsWith("#team/")
     ? window.location.hash.slice(1)
-    : `bot/${selected.id}`;
+    : conversationRoute(selected.id, conversationId);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
@@ -137,47 +149,180 @@ export function Sidebar({
       <ScrollArea className="sidebar-scroll">
         <nav aria-label={chatCopy.conversations}>
           {bots.length ? (
-            bots.map((bot) => (
-              <PanelDialog.Close
-                className="contact-row"
-                key={bot.id}
-                render={<a href={`#bot/${bot.id}`} />}
-                onClick={onSelect}
-                onPointerEnter={() => prefetchChat(bot.id)}
-                onFocus={() => prefetchChat(bot.id)}
-                aria-label={bot.name}
-                title={compact ? bot.name : undefined}
-                aria-current={
-                  !window.location.hash.startsWith("#team/") &&
-                  bot.id === selected.id
-                    ? "page"
-                    : undefined
-                }
-              >
+            bots.map((bot) => {
+              const sessions = bot.conversations ?? [];
+              const current =
+                bot.id === selected.id
+                  ? conversationId
+                  : (workspaceView().conversations[String(bot.id)] ?? bot.id);
+              const visible = sessions.filter(
+                (item) =>
+                  !item.archived ||
+                  (item.id === current && bot.id === selected.id) ||
+                  item.status === "working" ||
+                  item.status === "waiting" ||
+                  item.status === "queued",
+              );
+              const recent = visible
+                .filter((item) => item.status === "idle")
+                .slice(0, 3);
+              const rows = visible.filter(
+                (item) =>
+                  recent.includes(item) ||
+                  item.id === current ||
+                  item.status !== "idle" ||
+                  (attention?.counts[conversationRoute(bot.id, item.id)] ?? 0) >
+                    0,
+              );
+              const open = expanded[bot.id] ?? bot.id === selected.id;
+              const unread = sessions.reduce(
+                (total, item) =>
+                  total +
+                  (attention?.counts[conversationRoute(bot.id, item.id)] ?? 0),
+                0,
+              );
+              const avatar = (
                 <BotAvatar
                   botId={bot.id}
                   interactive
                   seed={bot.avatar}
                   state={connected && bot.busy ? "running" : "idle"}
                   statusLabel={chatCopy.botWorking}
-                  unread={attention?.counts[`bot/${bot.id}`]}
+                  unread={unread}
                 />
-                <div className="chat-preview">
-                  <strong>{bot.name}</strong>
-                  {bot.lastMessageAt !== undefined && (
-                    <time
-                      dateTime={new Date(bot.lastMessageAt).toISOString()}
-                      title={new Date(bot.lastMessageAt).toLocaleString()}
+              );
+              const create = () =>
+                void action.run(["conversation", bot.id], (requestId) =>
+                  createConversation(bot.id, current, requestId),
+                );
+              return (
+                <div key={bot.id} className="bot-conversations">
+                  <div className="bot-contact-heading">
+                    <PanelDialog.Close
+                      className="contact-row"
+                      render={<a href={`#bot/${bot.id}`} />}
+                      onClick={onSelect}
+                      onPointerEnter={() => prefetchChat(current)}
+                      onFocus={() => prefetchChat(current)}
+                      aria-label={bot.name}
+                      tabIndex={compact ? -1 : undefined}
+                      aria-hidden={compact || undefined}
+                      aria-current={
+                        !window.location.hash.startsWith("#team/") &&
+                        bot.id === selected.id
+                          ? "page"
+                          : undefined
+                      }
                     >
-                      {contactTime(bot.lastMessageAt, now)}
-                    </time>
+                      {avatar}
+                      <div className="chat-preview">
+                        <strong>{bot.name}</strong>
+                      </div>
+                    </PanelDialog.Close>
+                    {compact && (
+                      <ActionMenu
+                        label={bot.name}
+                        trigger={
+                          <Button
+                            variant="ghost"
+                            className="conversation-switcher"
+                            title={bot.name}
+                            aria-label={bot.name}
+                          />
+                        }
+                        items={[
+                          ...rows.map((item) => ({
+                            label: item.title,
+                            onSelect: () => {
+                              window.location.hash = `bot/${bot.id}/${item.id}`;
+                              onSelect();
+                            },
+                          })),
+                          { label: "新建会话", onSelect: create },
+                          {
+                            label: "查看全部会话",
+                            onSelect: () => setBrowsing(bot.id),
+                          },
+                        ]}
+                      />
+                    )}
+                    <div className="bot-conversation-actions" inert={compact}>
+                      <Button
+                        variant="ghost"
+                        size="icon-small"
+                        aria-label={`${bot.name}的会话`}
+                        aria-expanded={open}
+                        onClick={() => {
+                          const next = { ...expanded, [bot.id]: !open };
+                          setExpanded(next);
+                          saveWorkspaceView({ expandedBots: next });
+                        }}
+                      >
+                        <CaretDownIcon
+                          style={{
+                            transform: open ? undefined : "rotate(-90deg)",
+                          }}
+                        />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-small"
+                        aria-label={`为${bot.name}新建会话`}
+                        pending={action.busy}
+                        onClick={create}
+                      >
+                        <PlusIcon />
+                      </Button>
+                    </div>
+                  </div>
+                  {open && (
+                    <nav
+                      className="conversation-children"
+                      aria-label={`${bot.name}的会话列表`}
+                      inert={compact}
+                    >
+                      {rows.map((item) => (
+                        <PanelDialog.Close
+                          key={item.id}
+                          className="conversation-row"
+                          render={<a href={`#bot/${bot.id}/${item.id}`} />}
+                          onClick={onSelect}
+                          onPointerEnter={() => prefetchChat(item.id)}
+                          aria-current={
+                            currentChat === conversationRoute(bot.id, item.id)
+                              ? "page"
+                              : undefined
+                          }
+                        >
+                          <span className="conversation-row-title">
+                            {item.title}
+                          </span>
+                          <ConversationState
+                            item={
+                              connected ? item : { ...item, status: "idle" }
+                            }
+                            unread={
+                              attention?.counts[
+                                conversationRoute(bot.id, item.id)
+                              ] ?? 0
+                            }
+                            now={now}
+                          />
+                        </PanelDialog.Close>
+                      ))}
+                      <Button
+                        variant="ghost"
+                        size="small"
+                        className="conversation-more"
+                        onClick={() => setBrowsing(bot.id)}
+                      >
+                        查看全部会话
+                      </Button>
+                    </nav>
                   )}
-                  <span>
-                    {contactPreview(connected ? bot : { ...bot, busy: false })}
-                  </span>
                 </div>
-              </PanelDialog.Close>
-            ))
+              );
+            })
           ) : (
             <p className="sidebar-empty" role="status">
               {chatCopy.searchEmpty}
@@ -205,6 +350,21 @@ export function Sidebar({
           ))}
         </nav>
       </ScrollArea>
+      {browsingBot && (
+        <ConversationsDialog
+          bot={browsingBot}
+          current={
+            browsingBot.id === selected.id
+              ? conversationId
+              : (workspaceView().conversations[String(browsingBot.id)] ??
+                browsingBot.id)
+          }
+          open
+          onOpenChange={(open) => {
+            if (!open) setBrowsing(undefined);
+          }}
+        />
+      )}
       <CreateBot
         finalFocus={() => createTrigger.current}
         open={creation === "bot"}

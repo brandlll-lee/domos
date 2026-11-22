@@ -1,5 +1,11 @@
 # Harness context
 
+## Private conversations
+
+Each private conversation owns its EngineConfig, native session and history cursor. Creating one copies the selected private configuration once. It starts without another conversation’s history. The original private conversation retains its ID and stored context. Identity, memory, files, work directory and tool grants belong to the Bot. All tasks of one Bot run serially. Cancelling queued work preserves the remaining predecessor dependencies. Navigation does not stop execution. Stop and answers target the selected conversation.
+
+Private conversation history search includes the same Bot’s other private chats and authorized team messages. Original tool evidence remains private to its session. Team and delegated contexts retain their existing boundaries. Cross-conversation search does not inject history into new native sessions.
+
 ## Ownership and admission
 
 Domos stores Bot identity, complete chat, memories, attachments, and computer permissions. Pi Durable 1.4.0 stores submissions and tasks. Runtime.submit admits ordinary chat, additional input, routines, API requests, and CLI requests. Stable request IDs deduplicate retries.

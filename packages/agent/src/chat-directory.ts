@@ -15,7 +15,7 @@ import type {
 import { BotDirectory } from "./bots.ts";
 import { chatView } from "./chat-view.ts";
 import { ComputerRequests, ordinaryQuestion } from "./computer/runtime.ts";
-import { BotSessions } from "./conversations.ts";
+import { BotSession, BotSessions } from "./conversations.ts";
 import { EngineDoc } from "./harness/state.ts";
 import type { EngineRun } from "./harness/types.ts";
 import { approvalMessage, messageText } from "./messages.ts";
@@ -71,6 +71,7 @@ const catalogChange = (change: CommitChange) =>
     [
       BotDirectory,
       BotSessions,
+      BotSession,
       TeamsDoc,
       EngineDoc,
       ComputerRequests,
@@ -150,20 +151,42 @@ export class ChatDirectory {
       this.harness.snapshot(TeamsDoc, context),
       this.harness.snapshot(BotSessions, context),
     ]);
+    const privateIds = new Set(
+      (
+        await Promise.all(
+          (sessions?.items ?? []).map(async (session) =>
+            (
+              await this.harness.snapshot(BotSession, session.id, context)
+            )?.purpose === "private"
+              ? session.id
+              : undefined,
+          ),
+        )
+      ).filter((id) => id !== undefined),
+    );
     return (bots?.items ?? []).flatMap((bot) => [
       { chat: `bot/${bot.id}`, bot, name: bot.name, session: bot.id },
       ...(sessions?.items ?? []).flatMap((session) => {
         const team = teams?.items.find((team) => team.id === session.teamId);
-        return session.botId === bot.id && team
+        return session.botId === bot.id && privateIds.has(session.id)
           ? [
               {
-                chat: `team/${team.id}`,
+                chat: `bot/${bot.id}/${session.id}`,
                 bot,
-                name: team.name,
+                name: bot.name,
                 session: session.id,
               },
             ]
-          : [];
+          : session.botId === bot.id && team
+            ? [
+                {
+                  chat: `team/${team.id}`,
+                  bot,
+                  name: team.name,
+                  session: session.id,
+                },
+              ]
+            : [];
       }),
     ]);
   }

@@ -12,7 +12,7 @@ import type { ChatMessage } from "../messages.ts";
 export type EngineTaskInput = {
   text: string;
   submissionId?: SubmissionId;
-  previous: TaskId | null;
+  previous: TaskId | TaskId[] | null;
   turnId: string;
   entryId?: EntryId;
   attachments?: Attachment[];

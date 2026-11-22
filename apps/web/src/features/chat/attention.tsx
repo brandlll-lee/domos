@@ -31,7 +31,9 @@ function saved() {
 let pendingTarget: ChatTarget | undefined;
 export function openChatTarget(target: ChatTarget) {
   pendingTarget = target;
-  window.location.hash = target.chat;
+  window.location.hash = target.chat.startsWith("bot/")
+    ? `bot/${target.botId}/${target.sessionId}`
+    : target.chat;
   window.dispatchEvent(new CustomEvent("domos:chat-open", { detail: target }));
 }
 export function consumeChatTarget(chat: string) {

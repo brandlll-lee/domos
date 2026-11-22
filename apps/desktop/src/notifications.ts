@@ -6,7 +6,7 @@ export const notificationSchema = z.object({
   sequence: z.number().int().positive(),
   chat: z
     .string()
-    .regex(/^(bot\/\d+|team\/[\w-]+)$/)
+    .regex(/^(bot\/\d+(?:\/\d+)?|team\/[\w-]+)$/)
     .max(100),
   botId: z.number().int().nonnegative(),
   sessionId: z.number().int().nonnegative(),

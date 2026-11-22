@@ -34,8 +34,12 @@ const schema = z.object({
   onboardingDeferred: z.boolean().optional(),
   contact: z
     .string()
-    .regex(/^#(?:bot\/\d+|team\/.+)$/)
+    .regex(/^#(?:bot\/\d+(?:\/\d+)?|team\/.+)$/)
     .optional(),
+  conversations: z
+    .record(z.string(), z.number().int().nonnegative())
+    .default({}),
+  expandedBots: z.record(z.string(), z.boolean()).default({}),
   panels: z.record(z.string(), panelSchema).default({}),
 });
 type WorkspaceView = z.infer<typeof schema>;
@@ -44,7 +48,7 @@ export function workspaceView(): WorkspaceView {
   try {
     return schema.parse(JSON.parse(localStorage.getItem(key()) ?? "{}"));
   } catch {
-    return { panels: {} };
+    return { panels: {}, conversations: {}, expandedBots: {} };
   }
 }
 export function saveWorkspaceView(patch: Partial<WorkspaceView>) {
@@ -56,6 +60,8 @@ export function saveWorkspaceView(patch: Partial<WorkspaceView>) {
         ...previous,
         ...patch,
         panels: { ...previous.panels, ...patch.panels },
+        conversations: { ...previous.conversations, ...patch.conversations },
+        expandedBots: { ...previous.expandedBots, ...patch.expandedBots },
       }),
     );
   } catch {}

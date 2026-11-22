@@ -264,7 +264,7 @@ test("contacts collapse during dragging and restore their width without losing c
   expect(stored).toMatchObject({ sidebar: 208, collapsed: true });
   await expect(sidebar.locator(".chat-preview").first()).toBeHidden();
   await expect(
-    sidebar.getByRole("link", { name: "Domos", exact: true }),
+    sidebar.getByRole("button", { name: "Domos", exact: true }),
   ).toHaveAttribute("title", "Domos");
   await expect(
     sidebar.getByRole("button", { name: "新建", exact: true }),
@@ -297,7 +297,7 @@ test("contacts collapse during dragging and restore their width without losing c
     const hover = await searchButton.evaluate(
       (node) => getComputedStyle(node).backgroundColor,
     );
-    await contact.hover();
+    await sidebar.getByRole("button", { name: "Domos", exact: true }).hover();
     await expect(contact).toHaveCSS("background-color", hover);
     await page.mouse.move(400, 800);
     await page.screenshot({
@@ -416,12 +416,16 @@ test("sidebar transitions retain visible avatars and continue from an interrupte
       const box = avatar.getBoundingClientRect();
       return {
         left: main.getBoundingClientRect().left,
-        avatarVisible: avatar.contains(
-          document.elementFromPoint(
-            box.x + box.width / 2,
-            box.y + box.height / 2,
-          ),
-        ),
+        avatarVisible:
+          getComputedStyle(avatar).visibility === "visible" &&
+          avatar
+            .closest(".bot-contact-heading")
+            ?.contains(
+              document.elementFromPoint(
+                box.x + box.width / 2,
+                box.y + box.height / 2,
+              ),
+            ),
       };
     });
   for (const theme of ["light", "dark"] as const) {

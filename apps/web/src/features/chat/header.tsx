@@ -7,6 +7,8 @@ import { IdentityAvatar } from "./identity-avatar.tsx";
 
 export function ChatHeader({
   bot,
+  conversationTitle,
+  onConversations,
   members,
   busy,
   activity,
@@ -16,6 +18,8 @@ export function ChatHeader({
   onDetails,
 }: {
   bot: Bot;
+  conversationTitle?: string;
+  onConversations?: () => void;
   members?: Bot[];
   busy: boolean;
   activity: WorkActivity[];
@@ -47,6 +51,17 @@ export function ChatHeader({
   return (
     <header className="chat-header">
       <div className="chat-header-fade" aria-hidden="true" />
+      {conversationTitle && (
+        <Button
+          variant="ghost"
+          size="small"
+          className="conversation-title"
+          onClick={onConversations}
+          aria-label="当前会话"
+        >
+          {conversationTitle}
+        </Button>
+      )}
       <Button
         id="details-trigger"
         variant="ghost"

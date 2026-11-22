@@ -240,8 +240,15 @@ async function historyConversations(
       (!current.teamId || team.id === current.teamId),
   );
   const scope = new Set([id]);
+  if (current.purpose === "private") scope.add(botId);
   for (const session of (await tx.doc(BotSessions)).items)
     if (
+      current.purpose === "private" &&
+      session.botId === botId &&
+      (await tx.doc(BotSession, session.id)).purpose === "private"
+    )
+      scope.add(session.id);
+    else if (
       teams.some((team) => team.id === session.teamId) &&
       (await tx.doc(BotSession, session.id)).purpose === "team"
     )

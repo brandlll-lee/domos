@@ -23,7 +23,9 @@ beforeEach(() => {
 
 test("computer identity separates same-ID contacts, panels and reading anchors", () => {
   saveWorkspaceView({
-    contact: "#bot/1",
+    contact: "#bot/1/20",
+    conversations: { "1": 20 },
+    expandedBots: { "1": true },
     panels: { "1": { open: true, tab: "work", detail: "root" } },
   });
   const anchor = {
@@ -34,12 +36,18 @@ test("computer identity separates same-ID contacts, panels and reading anchors",
   };
   saveReadingPosition("1", anchor);
   Object.assign(scope, { computerScope: "computer-b" });
-  expect(workspaceView()).toEqual({ panels: {} });
+  expect(workspaceView()).toEqual({
+    panels: {},
+    conversations: {},
+    expandedBots: {},
+  });
   expect(readingPosition("1")).toBeUndefined();
   saveWorkspaceView({ contact: "#bot/2" });
   Object.assign(scope, { computerScope: "computer-a" });
   expect(workspaceView()).toMatchObject({
-    contact: "#bot/1",
+    contact: "#bot/1/20",
+    conversations: { "1": 20 },
+    expandedBots: { "1": true },
     panels: { "1": { tab: "work" } },
   });
   expect(readingPosition("1")).toEqual(anchor);
@@ -49,7 +57,11 @@ test("computer identity separates same-ID contacts, panels and reading anchors",
 test("damaged and unavailable client storage keeps navigation usable", () => {
   localStorage.setItem("domos:workspace:v1:computer-a", "broken");
   localStorage.setItem("domos:reading:v1:computer-a:1", '{"cursor":"bad"}');
-  expect(workspaceView()).toEqual({ panels: {} });
+  expect(workspaceView()).toEqual({
+    panels: {},
+    conversations: {},
+    expandedBots: {},
+  });
   expect(readingPosition("1")).toBeUndefined();
   vi.stubGlobal("localStorage", {
     getItem: () => {
@@ -60,5 +72,9 @@ test("damaged and unavailable client storage keeps navigation usable", () => {
     },
   });
   expect(() => saveWorkspaceView({ contact: "#bot/1" })).not.toThrow();
-  expect(workspaceView()).toEqual({ panels: {} });
+  expect(workspaceView()).toEqual({
+    panels: {},
+    conversations: {},
+    expandedBots: {},
+  });
 });

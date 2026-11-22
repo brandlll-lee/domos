@@ -262,6 +262,7 @@ const MessageRow = memo(function MessageRow({
 export const Messages = memo(function Messages({
   botId,
   chatKey,
+  chatRoute,
   ready,
   busy,
   processing,
@@ -289,6 +290,7 @@ export const Messages = memo(function Messages({
 }: {
   botId: number;
   chatKey?: string;
+  chatRoute?: string;
   ready: boolean;
   busy: boolean;
   processing: boolean;
@@ -383,9 +385,10 @@ export const Messages = memo(function Messages({
         if (messages.length)
           void read
             .current?.(
-              chatKey?.startsWith("team:")
-                ? `team/${chatKey.slice(5)}`
-                : `bot/${botId}`,
+              chatRoute ??
+                (chatKey?.startsWith("team:")
+                  ? `team/${chatKey.slice(5)}`
+                  : `bot/${botId}`),
               messages,
             )
             .then((saved) => {
@@ -452,7 +455,7 @@ export const Messages = memo(function Messages({
       window.removeEventListener("focus", collect);
       document.removeEventListener("visibilitychange", collect);
     };
-  }, [ready, obscured, viewport, botId, chatKey, readRevision]);
+  }, [ready, obscured, viewport, botId, chatKey, chatRoute, readRevision]);
   const motion =
     !transcript.initialized || !transcript.atBottom || document.hidden
       ? { default: "none" }

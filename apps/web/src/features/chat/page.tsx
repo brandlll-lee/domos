@@ -34,6 +34,7 @@ import { ChatAttentionProvider, consumeChatTarget } from "./attention.tsx";
 import { TeamMembers } from "./bot-reference.tsx";
 import { Composer } from "./composer.tsx";
 import { ContextRing } from "./context.tsx";
+import { ConversationsDialog } from "./conversations.tsx";
 import { chatCopy } from "./copy.ts";
 import { ChatHeader } from "./header.tsx";
 import { Messages } from "./messages.tsx";
@@ -75,7 +76,7 @@ export function ChatPage() {
     >
       <ChatAttentionProvider>
         <BotChat
-          key={bots.selectedTeam?.id ?? bots.selected.id}
+          key={bots.selectedTeam?.id ?? bots.conversationId}
           team={bots.selectedTeam}
           bot={bots.selected}
           bots={bots.items}
@@ -121,15 +122,26 @@ function BotChat({
     [members, bots, bot.id],
   );
   const settings = useSettings();
-  const chatKey = team ? `team:${team.id}` : String(bot.id);
+  const conversationId = directory.conversationId ?? bot.id;
+  const chatKey = team ? `team:${team.id}` : String(conversationId);
+  const chatRoute = team
+    ? `team/${team.id}`
+    : conversationId === bot.id
+      ? `bot/${bot.id}`
+      : `bot/${bot.id}/${conversationId}`;
+  const [conversationsOpen, setConversationsOpen] = useState(false);
   const [savedPanel] = useState(() => workspaceView().panels[chatKey]);
-  const chat = useChat(bot.id, () => settings.open("ai", bot.id), team?.id);
+  const chat = useChat(
+    conversationId,
+    () => settings.open("ai", bot.id),
+    team?.id,
+  );
   const [navigationError, setNavigationError] = useState("");
   const navigation = useRef(chat);
   navigation.current = chat;
   const navigationReady = Boolean(chat.view) && !chat.restoring;
   const dock = useComposerDock();
-  const draft = useDraft(team ? `team:${team.id}` : bot.id);
+  const draft = useDraft(team ? `team:${team.id}` : conversationId);
   const [sessionId, setSessionId] = useState<number>();
   const [member, setMember] = useState<BotPresence>();
   const sessionOwner =
@@ -145,7 +157,9 @@ function BotChat({
     bot;
   const detailBot = sessionId
     ? { ...sessionOwner, id: sessionId as Bot["id"] }
-    : sessionOwner;
+    : team
+      ? sessionOwner
+      : { ...sessionOwner, id: conversationId as Bot["id"] };
   const computer = useComputer(sessionOwner.id, directory);
   const input = useRef<HTMLDivElement>(null);
   const resend = useCallback(
@@ -211,7 +225,7 @@ function BotChat({
       const detail = (event as CustomEvent<{ botId: number; turnId: string }>)
         .detail;
       if (
-        detail.botId !== bot.id &&
+        detail.botId !== conversationId &&
         !chat.view?.messages.some(
           (message) => message.sessionId === detail.botId,
         ) &&
@@ -227,7 +241,7 @@ function BotChat({
     };
     window.addEventListener("domos:work-open", open);
     return () => window.removeEventListener("domos:work-open", open);
-  }, [bot.id, chat.view, setDetailsOpen]);
+  }, [conversationId, chat.view, setDetailsOpen]);
   const [expanded, setExpanded] = useState(false);
   const [detailPanel, setDetailPanel] = useState<BotPanelView>(
     savedPanel?.detail ?? "root",
@@ -235,9 +249,7 @@ function BotChat({
   useEffect(() => {
     if (!navigationReady) return;
     const open = () => {
-      const target = consumeChatTarget(
-        team ? `team/${team.id}` : `bot/${bot.id}`,
-      );
+      const target = consumeChatTarget(chatRoute);
       if (!target) return;
       setView("chat");
       setNavigationError("");
@@ -260,7 +272,7 @@ function BotChat({
     open();
     window.addEventListener("domos:chat-open", open);
     return () => window.removeEventListener("domos:chat-open", open);
-  }, [bot.id, team, navigationReady, setDetailsOpen]);
+  }, [chatRoute, navigationReady, setDetailsOpen]);
   useEffect(() => {
     saveWorkspaceView({
       panels: {
@@ -288,7 +300,7 @@ function BotChat({
         }>
       ).detail;
       if (
-        request.botId !== bot.id &&
+        request.botId !== conversationId &&
         !chat.view?.messages.some(
           (message) => message.sessionId === request.botId,
         )
@@ -305,7 +317,7 @@ function BotChat({
     };
     window.addEventListener("domos:takeover-open", open);
     return () => window.removeEventListener("domos:takeover-open", open);
-  }, [bot.id, chat.view, setDetailsOpen]);
+  }, [conversationId, chat.view, setDetailsOpen]);
   const takeoverId =
     panel === (takeover?.service === "browser" ? "browser" : "computer") &&
     chat.view?.approvals?.some((approval) => approval.id === takeover?.id)
@@ -388,6 +400,7 @@ function BotChat({
             teams={directory.teams}
             onTeamsChange={directory.setTeams}
             selected={bot}
+            conversationId={conversationId}
             connected={directoryConnected}
             onBotCreated={selectBot}
             onSelect={() => setView("chat")}
@@ -463,7 +476,7 @@ function BotChat({
               }}
               context={
                 <ContextRing
-                  botId={bot.id}
+                  botId={conversationId}
                   state={chat.view?.runtime}
                   provider={chat.view?.engine?.provider}
                   busy={Boolean(chat.view?.busy)}
@@ -528,6 +541,12 @@ function BotChat({
               }
             >
               <ChatHeader
+                conversationTitle={
+                  !team
+                    ? (directory.conversation?.title ?? "新会话")
+                    : undefined
+                }
+                onConversations={() => setConversationsOpen(true)}
                 members={members}
                 bot={team ? { ...bot, name: team.name } : bot}
                 busy={chat.activity.length > 0}
@@ -541,8 +560,9 @@ function BotChat({
                 {connection}
               </span>
               <Messages
-                botId={bot.id}
+                botId={conversationId}
                 chatKey={chatKey}
+                chatRoute={chatRoute}
                 ready={
                   (Boolean(chat.view) || Boolean(chat.error)) && !chat.restoring
                 }
@@ -633,6 +653,19 @@ function BotChat({
           </TeamMembers>
         )}
       </Workspace>
+      <ConversationsDialog
+        bot={
+          bots.find((item) => item.id === bot.id) ?? {
+            ...bot,
+            busy: false,
+            revision: 0,
+            preview: "",
+          }
+        }
+        current={conversationId}
+        open={conversationsOpen}
+        onOpenChange={setConversationsOpen}
+      />
       <SearchDialog
         open={searchOpen}
         onOpenChange={setSearchOpen}

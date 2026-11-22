@@ -19,7 +19,12 @@ import {
   QuestionDoc,
 } from "../computer/runtime.ts";
 import { ComputersDoc } from "../computer/state.ts";
-import { BotSession, BotSessions, owningBot } from "../conversations.ts";
+import {
+  BotSession,
+  BotSessions,
+  namePrivateSession,
+  owningBot,
+} from "../conversations.ts";
 import { EngineConnections } from "../harness/connections.ts";
 import type { EngineExecution } from "../harness/execution.ts";
 import { completeCredentials } from "../harness/interactions.ts";
@@ -411,9 +416,18 @@ export class Runtime {
                   if (!task || task.state.status === "terminal") continue;
                   const input = task.input as EngineTaskInput;
                   if (input.memoryReview) continue;
-                  const previous = input.previous
-                    ? await tx.task(input.previous)
-                    : null;
+                  let previous: typeof task | undefined;
+                  for (const id of Array.isArray(input.previous)
+                    ? input.previous
+                    : input.previous
+                      ? [input.previous]
+                      : []) {
+                    const candidate = await tx.task(id);
+                    if (candidate && candidate.state.status !== "terminal") {
+                      previous = candidate;
+                      break;
+                    }
+                  }
                   return {
                     turnId: input.turnId,
                     waiting:
@@ -708,7 +722,7 @@ export class Runtime {
       const doc = await tx.doc(EngineDoc, botId as ConversationId);
       if (doc.requestId === input.requestId) return;
       for (const session of (await tx.doc(BotSessions)).items.filter(
-        (item) => item.botId === botId,
+        (item) => item.botId === botId && item.teamId,
       ))
         if ((await tx.doc(EngineDoc, session.id)).tasks.length)
           throw new WorkError("CONFLICT", "请先停止 Bot 的工作。");
@@ -787,14 +801,19 @@ export class Runtime {
       await this.harness.commit(async (tx) => {
         const doc = await tx.doc(EngineDoc, id);
         if (doc.tasks.length) return;
+        const privateChat =
+          (await tx.doc(BotSession, id)).purpose === "private";
         const config = stored((await tx.doc(EngineDoc, ownerId)).config);
-        if (JSON.stringify(config) !== JSON.stringify(doc.config)) {
+        if (
+          !privateChat &&
+          JSON.stringify(config) !== JSON.stringify(doc.config)
+        ) {
           switchSession(doc, config, doc.computerId);
           doc.config = config;
         }
         const agent = await tx.doc(AgentDoc, ownerId);
         await configure(tx, id, {
-          model: agent.model,
+          ...(!privateChat ? { model: agent.model } : {}),
           instructions: agent.instructions,
         });
       }, context);
@@ -817,6 +836,8 @@ export class Runtime {
         throw new WorkError("CONFLICT", "正在更新后台。请稍后再试。");
       const existing = await tx.submissionByRequest(id, input.requestId);
       if (existing) return existing.id;
+      if (!input.operation && !input.routineRunId)
+        await namePrivateSession(tx, id, input.text);
       const question = input.questionAnswer
         ? await tx.doc(QuestionDoc, id, input.questionAnswer.id, null)
         : undefined;
@@ -862,8 +883,9 @@ export class Runtime {
           ),
         )
       ).flatMap((doc) => doc.tasks);
-      const previous =
-        pending.sort((a, b) => Number(a) - Number(b)).at(-1) ?? null;
+      const previous = [...new Set(pending)].sort(
+        (a, b) => Number(a) - Number(b),
+      );
       const submission = await tx.createSubmission({
         type: "input",
         conversationId: id,

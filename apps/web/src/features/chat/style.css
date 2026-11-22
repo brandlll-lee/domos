@@ -63,7 +63,8 @@
   background: var(--color-surface);
 }
 @media (hover: hover) and (pointer: fine) {
-  .contact-row:hover {
+  .contact-row:hover,
+  .bot-contact-heading:has(.conversation-switcher:hover) .contact-row {
     background: var(--color-hover);
   }
 }
@@ -109,6 +110,105 @@
 }
 .sidebar-empty {
   margin: var(--space-3);
+}
+.bot-contact-heading {
+  display: grid;
+  position: relative;
+}
+.conversation-switcher.button {
+  position: absolute;
+  inset: 0;
+  width: var(--contact-height);
+  height: 100%;
+  margin-inline: auto;
+  background: transparent;
+}
+.conversation-switcher.button:hover {
+  background: transparent;
+}
+.sidebar[data-compact] :is(.bot-conversation-actions, .conversation-children) {
+  display: none;
+  opacity: 0;
+  visibility: hidden;
+}
+.bot-contact-heading .contact-row {
+  padding-inline-end: calc(2 * var(--space-8) + var(--space-3));
+}
+.bot-conversation-actions {
+  position: absolute;
+  inset: var(--space-2) var(--space-1) auto auto;
+  display: flex;
+}
+.conversation-children {
+  display: grid;
+  margin: var(--space-1) 0 var(--space-3) var(--space-6);
+  padding-inline-start: var(--space-2);
+  border-inline-start: 1px solid var(--color-border);
+}
+.conversation-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  width: 100%;
+  min-height: var(--control-height);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
+  color: var(--color-text);
+  text-decoration: none;
+  text-align: start;
+  font-size: var(--text-small);
+}
+.conversation-row:hover {
+  background: var(--color-hover);
+}
+.conversation-row[aria-current="page"] {
+  background: var(--color-surface);
+}
+.conversation-row-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conversation-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+}
+.conversation-more {
+  justify-self: start;
+  color: var(--color-muted);
+}
+.conversation-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+.conversation-controls .search-field {
+  flex: 1;
+}
+.conversation-list-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-block: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+.conversation-title {
+  position: absolute;
+  inset: auto var(--space-4) var(--space-2);
+  max-width: calc(100% - 2 * var(--space-4));
+  justify-self: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-muted);
+  pointer-events: auto;
 }
 .search-section {
   padding: var(--space-3) var(--space-3) var(--space-1);

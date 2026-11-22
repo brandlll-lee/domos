@@ -23,6 +23,7 @@ import {
   chatPage,
   singleChatPage,
 } from "./conversation.ts";
+import { conversationRouter } from "./conversations.ts";
 import { watchDirectory } from "./directory.ts";
 import { engineRouter } from "./engines.ts";
 import { fileRouter } from "./files.ts";
@@ -49,6 +50,7 @@ export function createRouter(
   mcpCallback?: string | (() => string),
 ) {
   return {
+    conversations: conversationRouter(bots),
     chats: {
       search: os
         .input(
@@ -71,7 +73,7 @@ export function createRouter(
           z.object({
             chat: z
               .string()
-              .regex(/^(bot\/\d+|team\/[\w-]+)$/)
+              .regex(/^(bot\/\d+(?:\/\d+)?|team\/[\w-]+)$/)
               .max(100),
             messages: z
               .array(
@@ -348,6 +350,11 @@ export function createRouter(
                   },
                   BACKGROUND_CONTEXT,
                 );
+              await bots.nameSession(
+                input.botId,
+                input.text,
+                BACKGROUND_CONTEXT,
+              );
               return conversation.submit(
                 {
                   type: "input",
@@ -375,7 +382,7 @@ export function createRouter(
           const submission = await (computer
             ? computer.transfer(ownerId, submit, BACKGROUND_CONTEXT)
             : submit());
-          await bots.completeWelcome(input.botId, BACKGROUND_CONTEXT);
+          await bots.completeWelcome(ownerId, BACKGROUND_CONTEXT);
           return { id: submission.id };
         } catch (error) {
           if (error instanceof WorkError)

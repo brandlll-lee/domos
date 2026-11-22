@@ -16,7 +16,17 @@ import { botPreview } from "./bot-preview.ts";
 import { Characters } from "./characters.ts";
 import { ChatDirectory } from "./chat-directory.ts";
 import type { Computers } from "./computer/catalog.ts";
-import { BotSession, BotSessions, owningBot } from "./conversations.ts";
+import { ComputerRequests } from "./computer/runtime.ts";
+import {
+  BotSession,
+  BotSessions,
+  createBotSession,
+  namePrivateSession,
+  owningBot,
+  type PrivateConversation,
+  privateConversations,
+  updatePrivateSession,
+} from "./conversations.ts";
 import type { Files } from "./files.ts";
 import { EngineDoc } from "./harness/state.ts";
 import type { EngineId } from "./harness/types.ts";
@@ -40,6 +50,7 @@ export type BotPresence = Bot & {
   busy: boolean;
   preview: string;
   lastMessageAt?: number;
+  conversations?: PrivateConversation[];
 };
 export type CreateBot = {
   name: string;
@@ -194,6 +205,34 @@ export class Bots {
   owner(id: number, context: Context) {
     return owningBot(this.harness, id as ConversationId, context);
   }
+  createSession(
+    botId: number,
+    source: number,
+    requestId: string,
+    context: Context,
+  ) {
+    return createBotSession(
+      this.harness,
+      botId as ConversationId,
+      { purpose: "private", source, key: `private:${requestId}` },
+      context,
+    );
+  }
+  updateSession(
+    botId: number,
+    id: number,
+    input: { title?: string; archived?: boolean },
+    context: Context,
+  ) {
+    return updatePrivateSession(this.harness, botId, id, input, context);
+  }
+  async nameSession(id: number, text: string, context: Context) {
+    await this.harness.commit(
+      (tx) => namePrivateSession(tx, id as ConversationId, text),
+      context,
+    );
+  }
+
   async sessionIds(id: number, context: Context) {
     const owner = await this.owner(id, context);
     const sessions =
@@ -272,6 +311,11 @@ export class Bots {
             revision: revision ?? 0,
             createdAt,
             welcomeComplete: Boolean(welcomeComplete),
+            conversations: await privateConversations(
+              this.harness,
+              id,
+              context,
+            ),
             busy: Boolean(
               live?.run ||
                 engine?.tasks.length ||
@@ -608,9 +652,25 @@ export class Bots {
         change.type === "entry" ||
         (change.type === "task" && change.value.state.status === "terminal") ||
         ((change.type === "document" || change.type === "document.copy") &&
-          [BotDirectory, AgentDoc, LiveDoc].some(
-            (doc) => doc.definition.kind === change.record.kind,
-          )),
+          [
+            BotDirectory,
+            BotSessions,
+            BotSession,
+            ComputerRequests,
+            AgentDoc,
+            LiveDoc,
+          ].some((doc) => doc.definition.kind === change.record.kind)) ||
+        (change.type === "document" &&
+          change.record.kind === EngineDoc.definition.kind &&
+          (!change.ops.length ||
+            change.ops.some(
+              (op) =>
+                op[0] === "r" ||
+                op[1][0] === "tasks" ||
+                op[1][0] === "error" ||
+                (op[1][0] === "run" &&
+                  (op[1].length === 1 || op[1][1] === "status")),
+            ))),
       () => this.list(context),
       context,
     );
