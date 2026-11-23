@@ -1,4 +1,4 @@
-import type { Bot } from "@domos/agent/bots";
+import type { Bot, Bots } from "@domos/agent/bots";
 import { type InputMaterials, MAX_MATERIALS } from "@domos/agent/materials";
 import type { McpConnections } from "@domos/agent/mcp";
 import { messageText } from "@domos/agent/messages";
@@ -57,6 +57,12 @@ export const materialsSchema = {
       z.discriminatedUnion("type", [
         z.object({
           id: z.uuid(),
+          type: z.literal("conversation"),
+          conversationId: z.number().int().nonnegative(),
+          position: z.number().int().nonnegative().optional(),
+        }),
+        z.object({
+          id: z.uuid(),
           type: z.literal("text"),
           text: z.string().trim().min(1).max(WORK_TEXT_LENGTH),
           position: z.number().int().nonnegative().optional(),
@@ -96,6 +102,7 @@ export async function prepareMaterials(
   view: Pick<ChatView, "messages">,
   work: BotWork,
   connections?: McpConnections,
+  bots?: Bots,
 ): Promise<InputMaterials> {
   const existing = view.messages.find(
     (message) => message.requestId === input.requestId,
@@ -113,6 +120,15 @@ export async function prepareMaterials(
     input.mcp.length && connections
       ? await connections.list(BACKGROUND_CONTEXT)
       : [];
+  const owner =
+    bots && input.context.some((item) => item.type === "conversation")
+      ? await bots.owner(input.botId, BACKGROUND_CONTEXT)
+      : undefined;
+  const conversations =
+    owner === undefined
+      ? []
+      : ((await bots?.list(BACKGROUND_CONTEXT))?.find((bot) => bot.id === owner)
+          ?.conversations ?? []);
   return {
     ...(input.mcp.length
       ? {
@@ -186,6 +202,16 @@ export async function prepareMaterials(
     context: [
       ...new Map(input.context.map((item) => [item.id, item])).values(),
     ].map((item) => {
+      if (item.type === "conversation") {
+        const source = conversations.find(
+          (source) => source.id === item.conversationId,
+        );
+        if (!source || owner === undefined)
+          throw new ORPCError("NOT_FOUND", {
+            message: "引用会话不存在或不可访问。",
+          });
+        return { ...item, botId: owner, text: source.title };
+      }
       if (item.type === "text") return { ...item, botId: input.botId };
       const message = view.messages.find(
         (message) =>
@@ -200,7 +226,7 @@ export async function prepareMaterials(
       const text = messageText(message);
       if (text.length > WORK_TEXT_LENGTH)
         throw new ORPCError("BAD_REQUEST", {
-          message: "引用消息过长。请改用粘贴文本，选择需要的内容。",
+          message: "引用消息过长。请选择需要的内容后粘贴到输入框。",
         });
       return {
         ...item,

@@ -52,19 +52,26 @@ export function useComposer(
       ),
       context: original.materials.context.map((item) => {
         const at = position(item.position);
-        return item.type === "message"
+        return item.type === "conversation"
           ? {
               id: item.id,
               type: item.type,
-              messageId: item.messageId,
+              conversationId: item.conversationId,
               ...(at === undefined ? {} : { position: at }),
             }
-          : {
-              id: item.id,
-              type: item.type,
-              text: item.text,
-              ...(at === undefined ? {} : { position: at }),
-            };
+          : item.type === "message"
+            ? {
+                id: item.id,
+                type: item.type,
+                messageId: item.messageId,
+                ...(at === undefined ? {} : { position: at }),
+              }
+            : {
+                id: item.id,
+                type: item.type,
+                text: item.text,
+                ...(at === undefined ? {} : { position: at }),
+              };
       }),
       requestId: crypto.randomUUID(),
     };

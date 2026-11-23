@@ -138,8 +138,11 @@ async function load(
           typeof item.text !== "string" ||
           (item.position !== undefined &&
             (!Number.isInteger(item.position) || item.position < 0)) ||
-          !["text", "message"].includes(item.type) ||
-          (item.type === "message" && typeof item.messageId !== "string"),
+          !["text", "message", "conversation"].includes(item.type) ||
+          (item.type === "message" && typeof item.messageId !== "string") ||
+          (item.type === "conversation" &&
+            (!Number.isSafeInteger(item.conversationId) ||
+              item.conversationId < 0)),
       )
     )
       throw new Error("Invalid materials");

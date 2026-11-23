@@ -65,3 +65,55 @@ test("private conversation creation and updates preserve their Bot boundary and 
     await runtime.harness.close(context);
   }
 });
+
+test("conversation materials validate ownership and retain only a bounded source reference", async () => {
+  const { open } = await setup();
+  const runtime = await open();
+  try {
+    const { client, conversation } = runtime;
+    const botId = conversation.id;
+    const source = await client.conversations.create({
+      botId,
+      source: botId,
+      requestId: crypto.randomUUID(),
+    });
+    await client.conversations.update({
+      botId,
+      id: source.id,
+      title: "来源方案",
+      archived: true,
+    });
+    const peer = await client.bots.create(botInput("Peer"));
+    const reference = {
+      id: crypto.randomUUID(),
+      type: "conversation" as const,
+      conversationId: source.id,
+      position: 0,
+    };
+    await expect(
+      client.send({
+        botId: peer.id,
+        text: "参考",
+        context: [reference],
+        requestId: crypto.randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    const requestId = crypto.randomUUID();
+    await client.send({ botId, text: "参考", context: [reference], requestId });
+    await conversation.waitForIdle(context);
+    const sent = (await client.get({ botId })).messages.find(
+      (message) => message.requestId === requestId,
+    );
+    expect(sent?.materials?.context).toEqual([
+      { ...reference, botId, text: "来源方案" },
+    ]);
+    await client.send({ botId, text: "参考", context: [reference], requestId });
+    expect(
+      (await client.get({ botId })).messages.filter(
+        (message) => message.requestId === requestId,
+      ),
+    ).toHaveLength(1);
+  } finally {
+    await runtime.harness.close(context);
+  }
+});

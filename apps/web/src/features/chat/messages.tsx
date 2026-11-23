@@ -2,6 +2,7 @@ import type { BotPresence } from "@domos/agent/bots";
 import { type ChatMessage, messageText } from "@domos/agent/messages";
 import type { TranscriptItem } from "@domos/agent/transcript";
 import type { ChatView } from "@domos/agent/view";
+import { WORK_TEXT_LENGTH } from "@domos/agent/work/limits";
 import { Button } from "@domos/ui/controls";
 import { Loading } from "@domos/ui/loading";
 import { ActionMenu } from "@domos/ui/menu";
@@ -43,12 +44,14 @@ const MessageRow = memo(function MessageRow({
   botName,
   bots,
   onResend,
+  onReference,
 }: {
   item: TranscriptItem;
   botId: number;
   botName: string;
   bots?: BotPresence[];
   onResend: (message: ChatMessage) => void;
+  onReference?: (message: ChatMessage) => void;
 }) {
   const key = `${item.kind}:${item.id}`;
   if (item.kind === "notice")
@@ -247,14 +250,27 @@ const MessageRow = memo(function MessageRow({
           }}
         </MessageDetail>
       )}
-      {message.role === "user" && (
-        <ActionMenu
-          label={chatCopy.messageActions}
-          items={[
-            { label: chatCopy.resend, onSelect: () => onResend(message) },
-          ]}
-        />
-      )}
+      {!message.pending &&
+        (message.role === "user" || message.role === "assistant") && (
+          <ActionMenu
+            label={chatCopy.messageActions}
+            items={[
+              ...(message.role === "user"
+                ? [
+                    {
+                      label: chatCopy.resend,
+                      onSelect: () => onResend(message),
+                    },
+                  ]
+                : []),
+              ...(onReference &&
+              messageText(message).trim() &&
+              messageText(message).length <= WORK_TEXT_LENGTH
+                ? [{ label: "引用消息", onSelect: () => onReference(message) }]
+                : []),
+            ]}
+          />
+        )}
     </article>
   );
 });
@@ -274,6 +290,7 @@ export const Messages = memo(function Messages({
   items,
   welcome,
   onResend,
+  onReference,
   sentRequest,
   hasMore,
   loadingEarlier,
@@ -302,6 +319,7 @@ export const Messages = memo(function Messages({
   items: TranscriptItem[];
   welcome?: ReactNode;
   onResend: (message: ChatMessage) => void;
+  onReference?: (message: ChatMessage) => void;
   sentRequest?: string;
   hasMore?: boolean;
   loadingEarlier?: boolean;
@@ -547,6 +565,7 @@ export const Messages = memo(function Messages({
                       botName={botName}
                       bots={bots}
                       onResend={onResend}
+                      onReference={onReference}
                     />
                   </ViewTransition>
                 </Fragment>

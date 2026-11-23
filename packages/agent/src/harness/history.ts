@@ -637,11 +637,12 @@ export async function conversationHistory(
 }
 
 export const historyDescription =
-  "Search quoted chat with query. Results include entryId, conversationId, turnId, author, time and excerpts. Search before is an opaque result cursor. Without query, use from as before for older history pages, including Work evidence references. Read entryId with a UTF-8 byte offset for original text or archived tool results; continue with nextOffset. Only this Bot's private chat and authorized team messages are searchable. Files stay on their recorded computer.";
+  "Search quoted chat with query. Results include entryId, conversationId, turnId, author, time and excerpts. Use conversationId with query to search one authorized conversation. Search before is an opaque result cursor. Without query, use from as before for older history pages, including Work evidence references. Read entryId with a UTF-8 byte offset for original text or archived tool results; continue with nextOffset. Only this Bot's private chat and authorized team messages are searchable. Files stay on their recorded computer.";
 
 export const historyParameters = Type.Object(
   {
     query: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+    conversationId: Type.Optional(Type.Integer({ minimum: 1 })),
     before: Type.Optional(Type.Integer({ minimum: 1 })),
     entryId: Type.Optional(Type.Integer({ minimum: 1 })),
     offset: Type.Optional(Type.Integer({ minimum: 0 })),
@@ -658,14 +659,18 @@ export async function readHistory(
   context.abortSignal?.throwIfAborted();
   if (
     Object.keys(args).some(
-      (key) => !["query", "before", "entryId", "offset"].includes(key),
+      (key) =>
+        !["query", "conversationId", "before", "entryId", "offset"].includes(
+          key,
+        ),
     ) ||
-    ["before", "entryId", "offset"].some(
+    ["before", "entryId", "offset", "conversationId"].some(
       (key) =>
         args[key] !== undefined &&
         (!Number.isSafeInteger(args[key]) ||
           (args[key] as number) < (key === "offset" ? 0 : 1)),
     ) ||
+    (args.conversationId !== undefined && args.query === undefined) ||
     (args.entryId !== undefined && args.before !== undefined) ||
     (args.offset !== undefined && args.entryId === undefined) ||
     (args.query !== undefined &&
@@ -682,6 +687,11 @@ export async function readHistory(
     await runtime.commit(async (tx) => {
       scope = await historyConversations(tx, runtime.conversationId);
     }, context);
+    if (args.conversationId !== undefined) {
+      if (!scope.includes(args.conversationId as number))
+        throw new Error("引用会话不可访问。");
+      scope = [args.conversationId as number];
+    }
     const page = await chats.search(
       args.query.trim(),
       args.before as number | undefined,

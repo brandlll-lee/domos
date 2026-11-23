@@ -1,6 +1,6 @@
 import { MAX_ATTACHMENTS } from "@domos/agent/attachments";
 import type { Bot } from "@domos/agent/bots";
-import type { ChatMessage } from "@domos/agent/messages";
+import type { PrivateConversation } from "@domos/agent/conversations";
 import { FileAttachment } from "@domos/ui/attachment";
 import { MessageComposer } from "@domos/ui/composer";
 import { Button } from "@domos/ui/controls";
@@ -26,7 +26,7 @@ export function Composer({
   ref,
   inputRef,
   draft,
-  messages,
+  conversations = [],
   botName,
   members = [],
   conversationId,
@@ -43,7 +43,7 @@ export function Composer({
   ref: Ref<HTMLElement>;
   inputRef: Ref<HTMLDivElement>;
   draft: ReturnType<typeof useDraft>;
-  messages: ChatMessage[];
+  conversations?: PrivateConversation[];
   botName: string;
   members?: Bot[];
   conversationId: number;
@@ -295,22 +295,20 @@ export function Composer({
             filesDisabled={
               uploads.busy || composer.attachments.length >= MAX_ATTACHMENTS
             }
-            messages={messages}
+            conversations={conversations}
             materials={composer.materials}
             onMaterials={composer.setMaterials}
             insertionPosition={() => composer.caret.current}
             onInsert={() =>
               requestAnimationFrame(() => editor.current?.focus())
             }
-            onFiles={(images) => {
+            onFiles={() => {
               if (!computerReady) {
                 onComputerRequired?.();
                 return;
               }
               if (input.current) {
-                input.current.accept = images
-                  ? "image/png,image/jpeg,image/webp,image/gif"
-                  : "";
+                input.current.accept = "";
                 input.current.click();
               }
             }}

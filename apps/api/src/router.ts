@@ -303,7 +303,7 @@ export function createRouter(
                         })())
                   : null;
               const materials = view
-                ? await prepareMaterials(input, view, work, mcp)
+                ? await prepareMaterials(input, view, work, mcp, bots)
                 : undefined;
               if (materials && input.bots.length)
                 materials.bots = botReferences(

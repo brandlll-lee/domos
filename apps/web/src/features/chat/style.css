@@ -59,9 +59,7 @@
   color: var(--color-text);
   text-decoration: none;
 }
-.contact-row[aria-current="page"],
-.bot-contact-heading:where(:has(.bot-menu-trigger[aria-current="page"]))
-  > .contact-row {
+.sidebar nav > .contact-row[aria-current="page"] {
   background: var(--color-surface);
 }
 @media (hover: hover) and (pointer: fine) {
@@ -115,6 +113,10 @@
 .bot-contact-heading {
   display: grid;
   position: relative;
+  border-radius: var(--radius-control);
+}
+.bot-contact-heading[data-current] {
+  background: var(--color-hover);
 }
 .bot-menu-trigger {
   position: absolute;
@@ -162,7 +164,7 @@
 }
 .conversation-row {
   display: grid;
-  grid-template-columns: var(--space-6) minmax(0, 1fr) auto;
+  grid-template-columns: var(--avatar-medium) minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
@@ -1712,3 +1714,4 @@ button.takeover-preview:focus-visible {
   font-size: var(--text-small);
   margin: 0;
 }
+

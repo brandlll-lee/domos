@@ -222,7 +222,10 @@ export function Sidebar({
                 );
               return (
                 <div key={bot.id} className="bot-conversations">
-                  <div className="bot-contact-heading">
+                  <div
+                    className="bot-contact-heading"
+                    data-current={active || undefined}
+                  >
                     <SidebarMenu
                       label={bot.name}
                       hover

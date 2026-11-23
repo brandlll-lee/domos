@@ -340,7 +340,7 @@ test("conversation marks keep their slot through failure, work, unread and compl
   ).toBeVisible();
 });
 
-test("the sidebar keeps one current row and reveals older conversations in place", async ({
+test("the sidebar highlights its Bot and current conversation and aligns their icon centers", async ({
   service,
   page,
 }) => {
@@ -384,6 +384,19 @@ test("the sidebar keeps one current row and reveals older conversations in place
     await chooseAppearance(page, theme === "light" ? "浅色" : "深色");
     await parent.hover();
     await expect(parent).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    const heading = parent.locator("..");
+    expect(
+      await heading.evaluate((row) => getComputedStyle(row).backgroundColor),
+    ).not.toBe("rgba(0, 0, 0, 0)");
+    const avatarBox = await heading.locator(".bot-menu-trigger").boundingBox();
+    const iconBox = await current.locator(".conversation-status").boundingBox();
+    expect(
+      avatarBox &&
+        iconBox &&
+        Math.abs(
+          avatarBox.x + avatarBox.width / 2 - iconBox.x - iconBox.width / 2,
+        ),
+    ).toBeLessThan(0.5);
     const selected = await current.evaluate(
       (row) => getComputedStyle(row).backgroundColor,
     );
@@ -398,7 +411,7 @@ test("the sidebar keeps one current row and reveals older conversations in place
     await expect(arrow).toHaveAttribute("aria-expanded", "false");
     await expect(arrow.locator("svg")).toHaveCSS("rotate", "-90deg");
     await expect(current).toHaveCount(1);
-    await expect(parent).toHaveCSS("background-color", selected);
+    await expect(parent.locator("..")).toHaveAttribute("data-current", "true");
     await expect(page).toHaveURL(/#bot\/1\/1$/);
     await page.keyboard.press("ArrowRight");
     await expect(arrow.locator("svg")).toHaveCSS("rotate", "none");

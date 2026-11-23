@@ -8,7 +8,7 @@ export async function attachFiles(
 ) {
   await page.getByRole("button", { name: "添加内容", exact: true }).click();
   const chooser = page.waitForEvent("filechooser");
-  await page.getByRole("menuitem", { name: "添加文件", exact: true }).click();
+  await page.getByRole("menuitem", { name: "添加附件…", exact: true }).click();
   await (await chooser).setFiles(files);
 }
 

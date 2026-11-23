@@ -1,3 +1,8 @@
+.dialog-popup,
+.action-menu,
+.popover-surface {
+  -webkit-app-region: no-drag;
+}
 .popover-positioner,
 .tooltip-positioner {
   z-index: 6;

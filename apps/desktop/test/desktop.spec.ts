@@ -459,7 +459,7 @@ test("native setup starts and resumes with Docker unavailable", async ({
       .click();
     const chooser = resumed.waitForEvent("filechooser");
     await resumed
-      .getByRole("menuitem", { name: "添加文件", exact: true })
+      .getByRole("menuitem", { name: "添加附件…", exact: true })
       .click();
     await (await chooser).setFiles([
       {

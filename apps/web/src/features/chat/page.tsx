@@ -1,5 +1,6 @@
 import type { Attachment } from "@domos/agent/attachments";
 import type { Bot, BotPresence } from "@domos/agent/bots";
+import { MAX_MATERIALS } from "@domos/agent/materials";
 import { type ChatMessage, messageText } from "@domos/agent/messages";
 import type { Team } from "@domos/agent/teams";
 import { AvatarMediaContext } from "@domos/ui/avatar";
@@ -171,6 +172,40 @@ function BotChat({
       input.current?.focus();
     },
     [draft.update],
+  );
+  const reference = useCallback(
+    (message: ChatMessage) => {
+      const current = draft.current.current;
+      if (current.pending || current.materials.context.length >= MAX_MATERIALS)
+        return;
+      const position =
+        current.text.length +
+        [
+          ...(current.materials.bots ?? []),
+          ...(current.materials.mcp ?? []),
+          ...current.materials.skills,
+          ...current.materials.context,
+        ].filter((item) => item.position !== undefined).length;
+      draft.update({
+        materials: {
+          ...current.materials,
+          context: [
+            ...current.materials.context,
+            {
+              id: crypto.randomUUID(),
+              type: "message",
+              messageId: message.id,
+              botId: conversationId,
+              text: messageText(message),
+              role: message.role as "user" | "assistant",
+              position,
+            },
+          ],
+        },
+      });
+      input.current?.focus();
+    },
+    [draft.update, draft.current, conversationId],
   );
   const [view, setView] = useState<"chat" | "usage">("chat");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -589,6 +624,7 @@ function BotChat({
                 earlierError={chat.earlierError}
                 onEarlier={chat.loadEarlier}
                 onResend={resend}
+                onReference={reference}
                 welcome={
                   !team &&
                   !chat.error &&
@@ -614,7 +650,12 @@ function BotChat({
                   ref={dock.ref}
                   inputRef={input}
                   draft={draft}
-                  messages={chat.view.messages}
+                  conversations={
+                    team
+                      ? []
+                      : (bots.find((item) => item.id === bot.id)
+                          ?.conversations ?? [])
+                  }
                   key={chat.view.id}
                   members={referenceBots}
                   botName={team?.name ?? bot.name}

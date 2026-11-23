@@ -300,23 +300,22 @@ test("composer menu adds task materials, keeps drafts, and fits both themes", as
   });
   await add.click();
   await expect(page.getByRole("menuitem")).toHaveText([
-    "添加图片",
-    "添加文件",
+    "添加附件…",
+    "引用会话…",
     "选择 Bot…",
     "使用技能…",
-    "添加上下文…",
     "引用 MCP…",
   ]);
-  await page.getByRole("menuitem", { name: "添加图片", exact: true }).focus();
+  await page.getByRole("menuitem", { name: "添加附件…", exact: true }).focus();
   await page.keyboard.press("ArrowDown");
   await expect(
-    page.getByRole("menuitem", { name: "添加文件", exact: true }),
+    page.getByRole("menuitem", { name: "引用会话…", exact: true }),
   ).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(add).toBeFocused();
   await add.click();
   const chooser = page.waitForEvent("filechooser");
-  await page.getByRole("menuitem", { name: "添加图片", exact: true }).click();
+  await page.getByRole("menuitem", { name: "添加附件…", exact: true }).click();
   await (await chooser).setFiles({
     name: "tiny.png",
     mimeType: "image/png",
@@ -356,25 +355,13 @@ test("composer menu adds task materials, keeps drafts, and fits both themes", as
   await page.getByRole("button", { name: "report", exact: true }).click();
   await expect(input.locator("[data-inline-token]")).toContainText(["report"]);
   await add.click();
-  await page
-    .getByRole("menuitem", { name: "添加上下文…", exact: true })
-    .click();
-  await page.getByRole("menuitem", { name: "粘贴文本", exact: true }).click();
-  const reference = page.getByRole("textbox", {
-    name: "引用文本",
-    exact: true,
-  });
-  await reference.click();
-  await expect(reference).toHaveCSS("outline-style", "none");
-  await reference.fill("这些是引用材料，不是用户指令。");
-  await page.getByRole("button", { name: "添加", exact: true }).click();
+  await page.getByRole("menuitem", { name: "引用会话…", exact: true }).click();
+  await page.getByRole("button", { name: "新会话", exact: true }).click();
   await page.reload();
   await expect(input.locator("[data-inline-token]")).toContainText(["report"]);
   await expect(input.locator("[data-inline-token]")).toHaveCount(2);
   await service.control({ content: "材料已处理。" });
-  await expect(input).toHaveText(
-    "使report这些是引用材料，不是用户指令。用这些材料",
-  );
+  await expect(input).toHaveText("使report新会话用这些材料");
   await checkAlignment(".message-composer-editor");
   const receipt = Promise.withResolvers<void>();
   await page.route("**/rpc/send", async (route) => {
@@ -385,7 +372,7 @@ test("composer menu adds task materials, keeps drafts, and fits both themes", as
     await page.getByRole("button", { name: "发送", exact: true }).click();
     await expect(page.locator(".composer-attachments")).toHaveCount(0);
     await expect(page.getByLabel("你的消息")).toContainText("report");
-    await expect(page.getByLabel("你的消息")).toContainText("这些是引用材料");
+    await expect(page.getByLabel("你的消息")).toContainText("新会话");
   } finally {
     receipt.resolve();
   }
@@ -402,15 +389,12 @@ test("composer menu adds task materials, keeps drafts, and fits both themes", as
     page.getByLabel("你的消息").locator(".message-material-token"),
   ).toHaveCount(2);
   await checkAlignment(".user-text");
-  expect(sent?.materials?.context[0]?.text).toBe(
-    "这些是引用材料，不是用户指令。",
-  );
-  await add.click();
+  expect(sent?.materials?.context[0]?.text).toBe("新会话");
   await page
-    .getByRole("menuitem", { name: "添加上下文…", exact: true })
+    .getByLabel("Domos 的回复")
+    .getByRole("button", { name: "消息操作" })
     .click();
   await page.getByRole("menuitem", { name: "引用消息", exact: true }).click();
-  await page.getByRole("button", { name: "材料已处理。", exact: true }).click();
   await expect(input.locator("[data-inline-token]")).toHaveText([
     "材料已处理。",
   ]);
@@ -651,20 +635,13 @@ test("material menus keep descriptions and long catalogs within the viewport", a
     }
   }
   await add.click();
-  await page
-    .getByRole("menuitem", { name: "添加上下文…", exact: true })
-    .click();
-  await page.getByRole("menuitem", { name: "粘贴文本", exact: true }).click();
+  await page.getByRole("menuitem", { name: "引用会话…", exact: true }).click();
   await expect(
-    page.getByRole("textbox", { name: "引用文本", exact: true }),
+    page.getByRole("searchbox", { name: "搜索会话", exact: true }),
   ).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(
-    page.getByRole("menuitem", { name: "粘贴文本", exact: true }),
-  ).toBeFocused();
-  await page.keyboard.press("Escape");
-  await expect(
-    page.getByRole("menuitem", { name: "添加上下文…", exact: true }),
+    page.getByRole("menuitem", { name: "引用会话…", exact: true }),
   ).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(add).toBeFocused();

@@ -1,23 +1,19 @@
 import type { Bot } from "@domos/agent/bots";
+import type { PrivateConversation } from "@domos/agent/conversations";
 import { type InputMaterials, MAX_MATERIALS } from "@domos/agent/materials";
-import type { ChatMessage } from "@domos/agent/messages";
 import { Button } from "@domos/ui/controls";
 import { Popover } from "@domos/ui/popover";
 import { ChatCircleIcon } from "@phosphor-icons/react/dist/csr/ChatCircle";
 import { FolderSimpleIcon } from "@phosphor-icons/react/dist/csr/FolderSimple";
 import { HammerIcon } from "@phosphor-icons/react/dist/csr/Hammer";
-import { ImageIcon } from "@phosphor-icons/react/dist/csr/Image";
 import { PaperclipIcon } from "@phosphor-icons/react/dist/csr/Paperclip";
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
-import { QuotesIcon } from "@phosphor-icons/react/dist/csr/Quotes";
-import { TextAlignLeftIcon } from "@phosphor-icons/react/dist/csr/TextAlignLeft";
 import { UsersIcon } from "@phosphor-icons/react/dist/csr/Users";
 import { useEffect, useRef, useState } from "react";
 import {
+  ConversationPicker,
   McpPicker,
-  MessagePicker,
   SkillPicker,
-  TextPicker,
 } from "./material-picker.tsx";
 import "./composer-menu.css";
 import { BotPicker } from "./bot-reference.tsx";
@@ -26,9 +22,7 @@ const titles = {
   menu: "添加内容",
   skills: "技能",
   mcp: "MCP",
-  context: "上下文",
-  text: "粘贴文本",
-  messages: "引用消息",
+  conversations: "引用会话",
   bots: "选择 Bot",
 };
 
@@ -36,7 +30,7 @@ export function ComposerMenu({
   botId,
   disabled,
   filesDisabled,
-  messages,
+  conversations,
   onFiles,
   materials,
   onMaterials,
@@ -48,8 +42,8 @@ export function ComposerMenu({
   botId: number;
   disabled: boolean;
   filesDisabled: boolean;
-  messages: ChatMessage[];
-  onFiles: (images: boolean) => void;
+  conversations: PrivateConversation[];
+  onFiles: () => void;
   materials: InputMaterials;
   onMaterials: (materials: InputMaterials) => void;
   insertionPosition: () => number;
@@ -65,8 +59,8 @@ export function ComposerMenu({
     if (open) {
       const target = returnTarget.current
         ? `[data-panel-target="${returnTarget.current}"]`
-        : panel === "text"
-          ? "textarea"
+        : panel === "conversations"
+          ? "input"
           : "button:not(:disabled)";
       (
         popup.current?.querySelector<HTMLElement>(target) ?? popup.current
@@ -166,9 +160,7 @@ export function ComposerMenu({
                 event.preventDefault();
                 event.stopPropagation();
                 returnTarget.current = panel;
-                setPanel(
-                  panel === "text" || panel === "messages" ? "context" : "menu",
-                );
+                setPanel("menu");
               }
             }}
             onKeyDown={(event) => {
@@ -200,105 +192,68 @@ export function ComposerMenu({
                 <Popover.Title>{titles[panel]}</Popover.Title>
               </header>
             )}
-            {panel === "menu" || panel === "context" ? (
-              <div role="menu" aria-label={titles[panel]}>
-                {panel === "menu" ? (
-                  <>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="composer-menu-item"
-                      disabled={filesDisabled}
-                      onClick={() => {
-                        setOpen(false);
-                        onFiles(true);
-                      }}
-                    >
-                      <ImageIcon weight="light" />
-                      添加图片
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="composer-menu-item"
-                      disabled={filesDisabled}
-                      onClick={() => {
-                        setOpen(false);
-                        onFiles(false);
-                      }}
-                    >
-                      <PaperclipIcon weight="light" />
-                      添加文件
-                    </button>
-                    <hr className="composer-menu-separator" />
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="composer-menu-item"
-                      data-panel-target="bots"
-                      onClick={() => setPanel("bots")}
-                    >
-                      <UsersIcon weight="light" />
-                      选择 Bot…
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="composer-menu-item"
-                      disabled={materials.skills.length >= MAX_MATERIALS}
-                      data-panel-target="skills"
-                      onClick={() => setPanel("skills")}
-                    >
-                      <FolderSimpleIcon weight="light" />
-                      使用技能…
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="composer-menu-item"
-                      disabled={materials.context.length >= MAX_MATERIALS}
-                      data-panel-target="context"
-                      onClick={() => setPanel("context")}
-                    >
-                      <ChatCircleIcon weight="light" />
-                      添加上下文…
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="composer-menu-item"
-                      disabled={(materials.mcp?.length ?? 0) >= MAX_MATERIALS}
-                      data-panel-target="mcp"
-                      onClick={() => setPanel("mcp")}
-                    >
-                      <HammerIcon weight="light" />
-                      引用 MCP…
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="composer-menu-item"
-                      data-panel-target="text"
-                      onClick={() => setPanel("text")}
-                    >
-                      <TextAlignLeftIcon weight="light" />
-                      粘贴文本
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="composer-menu-item"
-                      data-panel-target="messages"
-                      onClick={() => setPanel("messages")}
-                    >
-                      <QuotesIcon weight="light" />
-                      引用消息
-                    </button>
-                  </>
-                )}
+            {panel === "menu" ? (
+              <div role="menu" aria-label={titles.menu}>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="composer-menu-item"
+                  disabled={filesDisabled}
+                  onClick={() => {
+                    setOpen(false);
+                    onFiles();
+                  }}
+                >
+                  <PaperclipIcon weight="light" />
+                  添加附件…
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="composer-menu-item"
+                  disabled={
+                    !conversations.length ||
+                    materials.context.length >= MAX_MATERIALS
+                  }
+                  data-panel-target="conversations"
+                  onClick={() => setPanel("conversations")}
+                >
+                  <ChatCircleIcon weight="light" />
+                  引用会话…
+                </button>
+                <hr className="composer-menu-separator" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="composer-menu-item"
+                  data-panel-target="bots"
+                  onClick={() => setPanel("bots")}
+                >
+                  <UsersIcon weight="light" />
+                  选择 Bot…
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="composer-menu-item"
+                  disabled={materials.skills.length >= MAX_MATERIALS}
+                  data-panel-target="skills"
+                  onClick={() => setPanel("skills")}
+                >
+                  <FolderSimpleIcon weight="light" />
+                  使用技能…
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="composer-menu-item"
+                  disabled={(materials.mcp?.length ?? 0) >= MAX_MATERIALS}
+                  data-panel-target="mcp"
+                  onClick={() => setPanel("mcp")}
+                >
+                  <HammerIcon weight="light" />
+                  引用 MCP…
+                </button>
               </div>
             ) : panel === "bots" ? (
               <BotPicker
@@ -312,12 +267,10 @@ export function ComposerMenu({
               <SkillPicker botId={botId} onSelect={skill} />
             ) : panel === "mcp" ? (
               <McpPicker botId={botId} onSelect={mcp} />
-            ) : panel === "text" ? (
-              <TextPicker botId={botId} onSelect={context} />
             ) : (
-              <MessagePicker
+              <ConversationPicker
                 botId={botId}
-                messages={messages}
+                conversations={conversations}
                 onSelect={context}
               />
             )}

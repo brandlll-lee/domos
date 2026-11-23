@@ -72,7 +72,9 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
       .click();
     await page.getByRole("button", { name: "添加内容", exact: true }).click();
     const chooser = page.waitForEvent("filechooser");
-    await page.getByRole("menuitem", { name: "添加文件", exact: true }).click();
+    await page
+      .getByRole("menuitem", { name: "添加附件…", exact: true })
+      .click();
     const fixture = async (folder: string, name: string, mimeType: string) => ({
       name,
       mimeType,
@@ -543,7 +545,9 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
 
     await page.getByRole("button", { name: "添加内容", exact: true }).click();
     const unsupported = page.waitForEvent("filechooser");
-    await page.getByRole("menuitem", { name: "添加文件", exact: true }).click();
+    await page
+      .getByRole("menuitem", { name: "添加附件…", exact: true })
+      .click();
     await (await unsupported).setFiles([
       await fixture("media", "prores.mov", "video/quicktime"),
     ]);
@@ -715,7 +719,9 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
     await page.getByRole("menuitem", { name: "用量", exact: true }).click();
     await page.getByRole("button", { name: "添加内容", exact: true }).click();
     const imageChooser = page.waitForEvent("filechooser");
-    await page.getByRole("menuitem", { name: "添加文件", exact: true }).click();
+    await page
+      .getByRole("menuitem", { name: "添加附件…", exact: true })
+      .click();
     await (await imageChooser).setFiles({
       name: "desktop-image.png",
       mimeType: "image/png",

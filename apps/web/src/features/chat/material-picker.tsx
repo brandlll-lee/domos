@@ -1,7 +1,7 @@
+import type { PrivateConversation } from "@domos/agent/conversations";
 import type { InputMaterials } from "@domos/agent/materials";
-import { type ChatMessage, messageText } from "@domos/agent/messages";
-import { WORK_TEXT_LENGTH } from "@domos/agent/work/limits";
 import { Button } from "@domos/ui/controls";
+import { SearchField } from "@domos/ui/field";
 import { Loading } from "@domos/ui/loading";
 import { Tooltip } from "@domos/ui/popover";
 import { ChatCircleIcon } from "@phosphor-icons/react/dist/csr/ChatCircle";
@@ -16,6 +16,7 @@ import { nativeMcpNotice, nativeMcpStatus } from "../apps/copy.ts";
 import { useBotWork } from "../bots/details/use-bot-work.ts";
 import { useReadState } from "../read-state.ts";
 import { userError } from "../user-error.ts";
+import { contactTime } from "./format.ts";
 
 function focusChoice(element: HTMLElement | null) {
   if (document.activeElement?.matches(".composer-menu-popup"))
@@ -169,89 +170,56 @@ export function SkillPicker({
   );
 }
 
-export function TextPicker({
+export function ConversationPicker({
   botId,
+  conversations,
   onSelect,
 }: {
   botId: number;
+  conversations: PrivateConversation[];
   onSelect: (context: InputMaterials["context"][number]) => void;
 }) {
-  const [text, setText] = useState("");
-  return (
-    <div className="composer-text-picker">
-      <textarea
-        className="field-control"
-        aria-label="引用文本"
-        placeholder="粘贴要引用的内容…"
-        maxLength={WORK_TEXT_LENGTH}
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-      />
-      <Button
-        size="small"
-        disabled={!text.trim()}
-        onClick={() =>
-          onSelect({
-            id: crypto.randomUUID(),
-            type: "text",
-            botId,
-            text: text.trim(),
-          })
-        }
-      >
-        添加
-      </Button>
-    </div>
+  const [query, setQuery] = useState("");
+  const choices = conversations.filter((item) =>
+    item.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
   );
-}
-
-export function MessagePicker({
-  botId,
-  messages,
-  onSelect,
-}: {
-  botId: number;
-  messages: ChatMessage[];
-  onSelect: (context: InputMaterials["context"][number]) => void;
-}) {
-  const choices = messages
-    .filter(
-      (message) =>
-        (message.role === "user" || message.role === "assistant") &&
-        !message.pending &&
-        messageText(message).trim() &&
-        messageText(message).length <= WORK_TEXT_LENGTH,
-    )
-    .toReversed();
   return (
-    <div className="composer-picker-list" ref={focusChoice}>
-      {choices.length ? (
-        choices.map((message) => (
-          <button
-            className="composer-picker-row composer-message-choice"
-            type="button"
-            key={message.id}
-            title={messageText(message)}
-            onClick={() =>
-              onSelect({
-                id: crypto.randomUUID(),
-                type: "message",
-                botId,
-                messageId: message.id,
-                text: messageText(message),
-                role: message.role as "user" | "assistant",
-                ...(message.timestamp ? { timestamp: message.timestamp } : {}),
-              })
-            }
-          >
-            <ChatCircleIcon weight="light" />
-            <span>{messageText(message)}</span>
-          </button>
-        ))
-      ) : (
-        <p className="composer-picker-state">没有可引用的消息</p>
-      )}
-    </div>
+    <>
+      <SearchField
+        aria-label="搜索会话"
+        placeholder="搜索会话"
+        value={query}
+        onValueChange={setQuery}
+      />
+      <div className="composer-picker-list" ref={focusChoice}>
+        {choices.length ? (
+          choices.map((item) => (
+            <button
+              type="button"
+              className="composer-picker-row"
+              key={item.id}
+              onClick={() =>
+                onSelect({
+                  id: crypto.randomUUID(),
+                  type: "conversation",
+                  conversationId: item.id,
+                  botId,
+                  text: item.title,
+                })
+              }
+            >
+              <ChatCircleIcon weight="light" />
+              <span>{item.title}</span>
+              {item.updatedAt && (
+                <time>{contactTime(item.updatedAt, Date.now())}</time>
+              )}
+            </button>
+          ))
+        ) : (
+          <p className="composer-picker-state">没有匹配的会话</p>
+        )}
+      </div>
+    </>
   );
 }
 

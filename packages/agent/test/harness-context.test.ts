@@ -594,6 +594,13 @@ test("history search scopes pages before limiting and retains original evidence 
       (item: { conversationId: number }) => item.conversationId === id,
     ),
   ).toBe(true);
+  expect(
+    (await read({ query: "发布记录", conversationId: id })).items,
+  ).toHaveLength(50);
+  await expect(
+    read({ query: "发布记录", conversationId: other.id }),
+  ).rejects.toThrow("不可访问");
+  await expect(read({ conversationId: id })).rejects.toThrow("无效");
   const older = await read({ query: "发布记录", before: page.before });
   expect(older.items).toHaveLength(20);
   const earliest = older.items.at(-1);

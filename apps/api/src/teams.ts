@@ -130,6 +130,7 @@ export function teamRouter(
               view,
               work,
               mcp,
+              bots,
             );
             materials.bots = references;
             const attachments = await Promise.all(
