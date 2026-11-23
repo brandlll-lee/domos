@@ -99,6 +99,19 @@ const MessageRow = memo(function MessageRow({
   const { message } = item;
   botId = message.sessionId ?? botId;
   botName = message.author?.name ?? botName;
+  const actions = message.pending
+    ? []
+    : [
+        ...(message.role === "user"
+          ? [{ label: chatCopy.resend, onSelect: () => onResend(message) }]
+          : []),
+        ...((message.role === "user" || message.role === "assistant") &&
+        onReference &&
+        messageText(message).trim() &&
+        messageText(message).length <= WORK_TEXT_LENGTH
+          ? [{ label: "引用消息", onSelect: () => onReference(message) }]
+          : []),
+      ];
   return (
     <article
       className={`message ${message.role}`}
@@ -151,126 +164,112 @@ const MessageRow = memo(function MessageRow({
         </InlineNotice>
       )}
 
-      {message.link ? (
-        <LinkCard botId={botId} link={message.link} />
-      ) : message.notice ? (
-        <InlineNotice align="center">{message.notice.text}</InlineNotice>
-      ) : message.approval ? (
-        (message.approval.state === "pending" &&
-          message.approval.request.kind === "permission") ||
-        message.approval.request.draft ||
-        message.approval.request.credential ? (
-          <MessageBubble side="incoming">
+      <div className="message-content-row">
+        {message.link ? (
+          <LinkCard botId={botId} link={message.link} />
+        ) : message.notice ? (
+          <InlineNotice align="center">{message.notice.text}</InlineNotice>
+        ) : message.approval ? (
+          (message.approval.state === "pending" &&
+            message.approval.request.kind === "permission") ||
+          message.approval.request.draft ||
+          message.approval.request.credential ? (
+            <MessageBubble side="incoming">
+              <Approval botId={botId} message={message} />
+            </MessageBubble>
+          ) : (
             <Approval botId={botId} message={message} />
-          </MessageBubble>
+          )
+        ) : message.takeover ? (
+          <TakeoverCard botId={botId} message={message} />
         ) : (
-          <Approval botId={botId} message={message} />
-        )
-      ) : message.takeover ? (
-        <TakeoverCard botId={botId} message={message} />
-      ) : (
-        <MessageDetail botId={botId} message={message}>
-          {(resolved) => {
-            const files = !!resolved.attachments?.length;
-            const images = resolved.content.filter(
-              (part) => part.type === "image",
-            );
-            const attachments = files && (
-              <Attachments
-                botId={botId}
-                files={resolved.attachments ?? []}
-                caption={messageText(resolved)}
-                inline={resolved.role === "assistant"}
-                author={
-                  resolved.role === "user"
-                    ? "user"
-                    : (resolved.author ?? bots?.find((bot) => bot.id === botId))
-                }
-              />
-            );
-            return (
-              <div className="message-parts">
-                {(files || images.length > 0) && (
-                  <div className="attachment-message">
-                    {attachments}
-                    <MessageContent content={images} />
-                  </div>
-                )}
-                {(messageText(resolved).trim() ||
-                  materialTokens(resolved.materials).length > 0 ||
-                  resolved.reply) && (
-                  <MessageBubble
-                    side={resolved.role === "user" ? "outgoing" : "incoming"}
-                  >
-                    <MessageBody>
-                      {resolved.reply && (
-                        <button
-                          type="button"
-                          className="message-reply"
-                          aria-label={`回复「${resolved.reply.title}」`}
-                          onClick={() =>
-                            openChatTarget({
-                              chat:
-                                window.location.hash.slice(1) || `bot/${botId}`,
-                              botId,
-                              sessionId: botId,
-                              messageId: resolved.reply?.id ?? "",
-                              cursor: resolved.reply?.cursor,
-                            })
-                          }
-                        >
-                          <span>↪ {resolved.reply.title}</span>
-                          {resolved.reply.attachments?.[0] && (
-                            <img
-                              className="message-reply-image"
-                              src={fileUrl(
+          <MessageDetail botId={botId} message={message}>
+            {(resolved) => {
+              const files = !!resolved.attachments?.length;
+              const images = resolved.content.filter(
+                (part) => part.type === "image",
+              );
+              const attachments = files && (
+                <Attachments
+                  botId={botId}
+                  files={resolved.attachments ?? []}
+                  caption={messageText(resolved)}
+                  inline={resolved.role === "assistant"}
+                  author={
+                    resolved.role === "user"
+                      ? "user"
+                      : (resolved.author ??
+                        bots?.find((bot) => bot.id === botId))
+                  }
+                />
+              );
+              return (
+                <div className="message-parts">
+                  {(files || images.length > 0) && (
+                    <div className="attachment-message">
+                      {attachments}
+                      <MessageContent content={images} />
+                    </div>
+                  )}
+                  {(messageText(resolved).trim() ||
+                    materialTokens(resolved.materials).length > 0 ||
+                    resolved.reply) && (
+                    <MessageBubble
+                      side={resolved.role === "user" ? "outgoing" : "incoming"}
+                    >
+                      <MessageBody>
+                        {resolved.reply && (
+                          <button
+                            type="button"
+                            className="message-reply"
+                            aria-label={`回复「${resolved.reply.title}」`}
+                            onClick={() =>
+                              openChatTarget({
+                                chat:
+                                  window.location.hash.slice(1) ||
+                                  `bot/${botId}`,
                                 botId,
-                                resolved.reply.attachments[0].id,
-                              )}
-                              alt=""
-                              loading="lazy"
-                              decoding="async"
-                            />
-                          )}
-                        </button>
-                      )}
-                      <MaterialChips materials={resolved.materials} />
-                      <MessageContent
-                        content={resolved.content.filter(
-                          (part) => part.type !== "image",
+                                sessionId: botId,
+                                messageId: resolved.reply?.id ?? "",
+                                cursor: resolved.reply?.cursor,
+                              })
+                            }
+                          >
+                            <span>↪ {resolved.reply.title}</span>
+                            {resolved.reply.attachments?.[0] && (
+                              <img
+                                className="message-reply-image"
+                                src={fileUrl(
+                                  botId,
+                                  resolved.reply.attachments[0].id,
+                                )}
+                                alt=""
+                                loading="lazy"
+                                decoding="async"
+                              />
+                            )}
+                          </button>
                         )}
-                        materials={resolved.materials}
-                        user={resolved.role === "user"}
-                      />
-                    </MessageBody>
-                  </MessageBubble>
-                )}
-              </div>
-            );
-          }}
-        </MessageDetail>
-      )}
-      {!message.pending &&
-        (message.role === "user" || message.role === "assistant") && (
-          <ActionMenu
-            label={chatCopy.messageActions}
-            items={[
-              ...(message.role === "user"
-                ? [
-                    {
-                      label: chatCopy.resend,
-                      onSelect: () => onResend(message),
-                    },
-                  ]
-                : []),
-              ...(onReference &&
-              messageText(message).trim() &&
-              messageText(message).length <= WORK_TEXT_LENGTH
-                ? [{ label: "引用消息", onSelect: () => onReference(message) }]
-                : []),
-            ]}
-          />
+                        <MaterialChips materials={resolved.materials} />
+                        <MessageContent
+                          content={resolved.content.filter(
+                            (part) => part.type !== "image",
+                          )}
+                          materials={resolved.materials}
+                          user={resolved.role === "user"}
+                        />
+                      </MessageBody>
+                    </MessageBubble>
+                  )}
+                </div>
+              );
+            }}
+          </MessageDetail>
         )}
+        {actions.length > 0 && (
+          <ActionMenu label={chatCopy.messageActions} items={actions} />
+        )}
+      </div>
     </article>
   );
 });

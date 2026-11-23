@@ -390,6 +390,7 @@ test("composer menu adds task materials, keeps drafts, and fits both themes", as
   ).toHaveCount(2);
   await checkAlignment(".user-text");
   expect(sent?.materials?.context[0]?.text).toBe("新会话");
+  await page.getByLabel("Domos 的回复").hover();
   await page
     .getByLabel("Domos 的回复")
     .getByRole("button", { name: "消息操作" })

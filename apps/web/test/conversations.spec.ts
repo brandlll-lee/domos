@@ -373,7 +373,7 @@ test("the sidebar highlights its Bot and current conversation and aligns their i
   await expect(current).toHaveCSS("height", "32px");
   await expect(current.locator(".conversation-status")).toHaveCSS(
     "transform",
-    "matrix(0.875, 0, 0, 0.875, 0, 0)",
+    "matrix(0.75, 0, 0, 0.75, 0, 0)",
   );
   await expect(list).toHaveCSS("border-inline-start-width", "0px");
   const parentBox = await parent.boundingBox();
@@ -385,6 +385,13 @@ test("the sidebar highlights its Bot and current conversation and aligns their i
     await parent.hover();
     await expect(parent).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     const heading = parent.locator("..");
+    const headingBox = await heading.boundingBox();
+    const first = await list.locator(".conversation-row").nth(0).boundingBox();
+    const second = await list.locator(".conversation-row").nth(1).boundingBox();
+    expect(
+      headingBox && first && first.y - headingBox.y - headingBox.height,
+    ).toBe(8);
+    expect(first && second && second.y - first.y - first.height).toBe(4);
     expect(
       await heading.evaluate((row) => getComputedStyle(row).backgroundColor),
     ).not.toBe("rgba(0, 0, 0, 0)");

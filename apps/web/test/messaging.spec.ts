@@ -13,6 +13,145 @@ import {
 } from "./fixtures/chat-ui.ts";
 import { test } from "./fixtures/service.ts";
 
+test("message actions share the bubble row and retain layout through hover and keyboard use", async ({
+  service,
+  page,
+}, info) => {
+  test.setTimeout(60_000);
+  await service.control({
+    records: ["user", "assistant"].map((role, index) => ({
+      id: `actions:${role}`,
+      role,
+      stopped: false,
+      timestamp: Date.now() + index,
+      content: [
+        {
+          type: "text",
+          key: `text:${role}`,
+          text: "核对布局与消息操作。".repeat(25),
+        },
+      ],
+    })),
+  });
+  await page.goto(service.url);
+  await page
+    .locator("#bot-details")
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
+  for (const appearance of ["浅色", "深色"]) {
+    await page.setViewportSize({ width: 1360, height: 900 });
+    await chooseAppearance(page, appearance);
+    for (const width of [1360, 768, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const role of ["user", "assistant"]) {
+        const message = page.locator(`.message.${role}`);
+        const bubble = message.locator(".message-bubble");
+        const action = message.getByRole("button", { name: "消息操作" });
+        await bubble.scrollIntoViewIfNeeded();
+        await page.mouse.move(width - 2, 2);
+        await page.getByLabel("消息", { exact: true }).focus();
+        await expect(action).toHaveCSS("opacity", "0");
+        const before = await bubble.boundingBox();
+        const button = await action.boundingBox();
+        expect(before).not.toBeNull();
+        expect(button).not.toBeNull();
+        if (!before || !button) throw new Error("Message bounds required");
+        expect(button.y).toBeGreaterThanOrEqual(before.y);
+        expect(button.y + button.height).toBeLessThanOrEqual(
+          before.y + before.height + 0.5,
+        );
+        if (role === "assistant")
+          expect(button.x).toBeGreaterThanOrEqual(before.x + before.width);
+        else expect(button.x + button.width).toBeLessThanOrEqual(before.x);
+        const row = await message.boundingBox();
+        expect(row?.height).toBeCloseTo(before.height, 0);
+        await bubble.hover();
+        await expect(action).toHaveCSS("opacity", "1");
+        expect(await bubble.boundingBox()).toEqual(before);
+        await action.hover();
+        await expect(action).toHaveCSS("opacity", "1");
+        await action.click();
+        const reference = page.getByRole("menuitem", {
+          name: "引用消息",
+          exact: true,
+        });
+        await reference.hover();
+        await expect(reference).toBeVisible();
+        await expect(action).toHaveCSS("opacity", "1");
+        expect(await bubble.boundingBox()).toEqual(before);
+        await page.keyboard.press("Escape");
+        await expect(page.getByRole("menu")).toHaveCount(0);
+        await expect(action).toBeFocused();
+        await expect(action).toHaveCSS("opacity", "1");
+        await action.press("Enter");
+        await expect(reference).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(page.getByRole("menu")).toHaveCount(0);
+        await expect(action).toBeFocused();
+        await page.keyboard.press("Shift+Tab");
+        await page.keyboard.press("Tab");
+        await expect(action).toBeFocused();
+        await expect(action).toHaveCSS("opacity", "1");
+      }
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      await page.screenshot({
+        path: info.outputPath(`message-actions-${appearance}-${width}.png`),
+        animations: "disabled",
+      });
+    }
+  }
+});
+
+test.describe("touch message actions", () => {
+  test.use({ hasTouch: true, viewport: { width: 390, height: 844 } });
+
+  test("touch exposes actions and messages with no actions keep their content", async ({
+    service,
+    page,
+  }) => {
+    await service.control({
+      records: [
+        ...["user", "assistant"].map((role) => ({
+          id: `touch:${role}`,
+          role,
+          stopped: false,
+          content: [{ type: "text", key: role, text: "触屏消息操作" }],
+        })),
+        {
+          id: "touch:notice",
+          role: "toolResult",
+          stopped: false,
+          content: [],
+          notice: { text: "资料已交付" },
+        },
+      ],
+    });
+    await page.goto(service.url);
+    for (const role of ["user", "assistant"]) {
+      const message = page.locator(`[data-message-id="touch:${role}"]`);
+      const action = message.getByRole("button", { name: "消息操作" });
+      await expect(action).toHaveCSS("opacity", "1");
+      await action.tap();
+      await page.getByRole("menuitem", { name: "引用消息", exact: true }).tap();
+      await expect(
+        page
+          .getByLabel("消息", { exact: true })
+          .locator("[data-inline-token]")
+          .last(),
+      ).toContainText("触屏消息操作");
+    }
+    const notice = page.locator('[data-message-id="touch:notice"]');
+    await expect(notice).toHaveText("资料已交付");
+    await expect(notice.getByRole("button", { name: "消息操作" })).toHaveCount(
+      0,
+    );
+  });
+});
+
 test("send, reload, disconnect, reconnect and restart preserve the conversation", async ({
   service,
   page,
@@ -69,12 +208,12 @@ test("a killed server retains uncertain work and permits an explicit retry", asy
   await page.getByLabel("消息", { exact: true }).fill("恢复未完成任务");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
-  const contact = page.locator('.sidebar a[href="#bot/1"]');
-  await expect(contact.getByRole("img", { name: "正在工作" })).toBeVisible();
+  const contact = page.locator(".sidebar .bot-menu-trigger").first();
+  await expect(contact.getByRole("status", { name: "正在工作" })).toBeVisible();
   await service.control("wait-model");
   const port = Number(new URL(service.url).port);
   await service.stop();
-  await expect(contact.locator(".status-dot")).toHaveCount(0);
+  await expect(contact.locator(".loading-dots")).toHaveCount(0);
   await expect(
     page.getByRole("status").filter({ hasText: "正在重连" }),
   ).toBeAttached();
@@ -85,7 +224,7 @@ test("a killed server retains uncertain work and permits an explicit retry", asy
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
   await expect(page.getByLabel("你的消息")).toHaveCount(1);
   await expect(page.getByLabel("消息", { exact: true })).toBeEnabled();
-  await expect(contact.locator(".status-dot")).toHaveCount(0);
+  await expect(contact.locator(".loading-dots")).toHaveCount(0);
   await page.getByLabel("消息", { exact: true }).fill("重试恢复未完成任务");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.getByLabel("Domos 的回复")).toContainText("完整回复。");
@@ -171,6 +310,7 @@ test("stopping preserves the conversation and resending uses the message menu", 
   await page.reload();
   await expect(notice).toHaveCount(0);
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
+  await page.getByLabel("你的消息").hover();
   await page
     .getByLabel("你的消息")
     .getByRole("button", { name: "消息操作" })
@@ -384,6 +524,7 @@ test("typing follows the Bot and failures retain their error message", async ({
   await expect(page.locator('.task-notice[data-state="stopped"]')).toHaveCount(
     0,
   );
+  await page.getByLabel("你的消息").last().hover();
   await page
     .getByLabel("你的消息")
     .last()
@@ -652,7 +793,8 @@ test("typing dots share the avatar color and follow complete messages", async ({
   await expect(replies).toHaveText(["先核对资料，再整理结果。"]);
   await expect(typing).toBeVisible();
   await expect(typing).toHaveText("");
-  await expect(typing.locator("..")).toHaveClass("message-bubble");
+  const typingBubble = page.locator(".typing-row > .message-bubble");
+  await expect(typingBubble).toBeVisible();
   await expect(typing.locator("svg")).toHaveCount(1);
   await expect(typing.locator("svg circle")).toHaveCount(3);
   await expect(typing).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
@@ -684,9 +826,9 @@ test("typing dots share the avatar color and follow complete messages", async ({
     })),
   );
   expect(animation.map((item) => item.name)).toEqual([
-    "typing-wave",
-    "typing-wave",
-    "typing-wave",
+    "loading-wave",
+    "loading-wave",
+    "loading-wave",
   ]);
   const [first, second, third] = animation;
   if (!first || !second || !third) throw new Error("Three dots required");
@@ -832,7 +974,7 @@ test("typing dots share the avatar color and follow complete messages", async ({
     const textHeight = await replies
       .locator(".message-bubble")
       .evaluate((node) => node.getBoundingClientRect().height);
-    await expect(typing.locator("..")).toHaveCSS("height", `${textHeight}px`);
+    await expect(typingBubble).toHaveCSS("height", `${textHeight}px`);
     await expect(typing.locator("svg")).toHaveCSS("height", "28px");
     await expect(typing.locator("svg")).toHaveCSS("width", "48px");
     await page.screenshot({ path: `test-results/typing-${theme}.png` });

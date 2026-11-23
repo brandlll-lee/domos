@@ -110,6 +110,10 @@
 .sidebar-empty {
   margin: var(--space-3);
 }
+.bot-conversations {
+  display: grid;
+  gap: var(--space-2);
+}
 .bot-contact-heading {
   display: grid;
   position: relative;
@@ -160,6 +164,8 @@
   rotate: -90deg;
 }
 .conversation-children {
+  display: grid;
+  gap: var(--space-1);
   margin-block-end: var(--space-2);
 }
 .conversation-row {
@@ -200,6 +206,9 @@
   height: var(--space-6);
   color: var(--color-muted);
   transform: scale(0.875);
+}
+.conversation-row > .conversation-status {
+  transform: scale(0.75);
 }
 .conversation-status .loading-dots {
   border-radius: var(--radius-round);
@@ -530,6 +539,30 @@
   gap: var(--space-2);
   min-width: 0;
 }
+.message-content-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
+}
+.message-content-row > .action-menu-trigger {
+  flex: 0 0 var(--control-small);
+  opacity: 0;
+  pointer-events: none;
+}
+.message:hover > .message-content-row > .action-menu-trigger,
+.message:focus-within > .message-content-row > .action-menu-trigger,
+.message-content-row > .action-menu-trigger[aria-expanded="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: none), (pointer: coarse) {
+  .message-content-row > .action-menu-trigger {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
 .message-body {
   position: relative;
   max-height: var(--message-collapse-height);
@@ -589,20 +622,10 @@
   color: inherit;
 }
 .message.user {
+  align-items: flex-end;
+}
+.message.user .message-content-row {
   flex-direction: row-reverse;
-  align-items: center;
-}
-.message.user > .action-menu-trigger {
-  opacity: 0;
-}
-.message.user:hover > .action-menu-trigger,
-.message.user:focus-within > .action-menu-trigger {
-  opacity: 1;
-}
-@media (hover: none) {
-  .message.user > .action-menu-trigger {
-    opacity: 1;
-  }
 }
 ::view-transition-group(.chat-enter),
 ::view-transition-group(.chat-layout),
