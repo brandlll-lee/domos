@@ -206,6 +206,7 @@ export function createApp(
         join(files.directory(owner, file.id), "content"),
         c.req.query("sheet"),
         c.req.raw.signal,
+        c.req.query("width") === undefined ? 160 : Number(c.req.query("width")),
       );
       return c.json(result);
     } catch (error) {

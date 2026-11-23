@@ -66,6 +66,11 @@ test("chat audio shows recorded peaks and outgoing images share the bubble edge"
   }
   await page.emulateMedia({ colorScheme: "dark" });
   await page.setViewportSize({ width: 768, height: 900 });
+  const originals: string[] = [];
+  page.on("request", (request) => {
+    if (images.some((file) => new URL(request.url()).pathname === `/files/${bot.id}/${file.id}`) && !new URL(request.url()).search)
+      originals.push(request.url());
+  });
   await page.goto(service.url);
   await expect(page.getByRole("button", { name: "Bot详情" })).toHaveAttribute(
     "aria-expanded",
@@ -75,15 +80,18 @@ test("chat audio shows recorded peaks and outgoing images share the bubble edge"
   for (const text of ["单张图片", "多张图片"]) {
     const message = page.locator(".message.user").filter({ hasText: text });
     await expect(message.locator(".image-gallery img").last()).toBeVisible();
-    const bounds = await message.evaluate((node) => ({
-      bubble: node.querySelector(".message-bubble")?.getBoundingClientRect()
-        .right,
-      image: [...node.querySelectorAll(".image-gallery img")]
-        .at(-1)
-        ?.getBoundingClientRect().right,
-    }));
-    expect(bounds.image).toBeCloseTo(bounds.bubble ?? 0, 0);
+    await expect.poll(() => message.evaluate((node) => {
+      const bubble = node.querySelector(".message-bubble")?.getBoundingClientRect().right ?? 0;
+      const image = [...node.querySelectorAll(".image-gallery img")].at(-1)?.getBoundingClientRect().right ?? 0;
+      return Math.abs(bubble - image);
+    })).toBeLessThan(0.5);
   }
+  expect(originals).toEqual([]);
+  const thumbnail = page.locator(".message.user .image-gallery button").first();
+  await thumbnail.click();
+  await expect(page.locator(".image-viewer-canvas img")).toBeVisible();
+  expect(originals.some((url) => url.includes(single.id))).toBe(true);
+  await page.keyboard.press("Escape");
   const card = page.getByRole("group", { name: "音频 语音.mp3", exact: true });
   const bars = card.locator(".audio-waveform g line");
   const heights = () =>

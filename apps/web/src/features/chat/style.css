@@ -976,12 +976,7 @@ body:has(.workspace[data-platform="darwin"]) .image-viewer-header {
     gap: 0;
   }
 }
-.image-gallery[data-count="1"] img {
-  width: auto;
-  max-width: 100%;
-  max-height: 16rem;
-  aspect-ratio: auto;
-}
+
 .button.return-latest[data-size="icon"] {
   position: absolute;
   bottom: calc(var(--composer-dock-height, 0px) + var(--space-3));
@@ -1714,4 +1709,3 @@ button.takeover-preview:focus-visible {
   font-size: var(--text-small);
   margin: 0;
 }
-

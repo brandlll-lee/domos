@@ -106,6 +106,7 @@ export class EngineExecution {
     number,
     {
       key: string;
+      computerId: string | null;
       live: LiveSession;
       timer: ReturnType<typeof setTimeout>;
       managed: Active["managed"];
@@ -1158,11 +1159,20 @@ export class EngineExecution {
           timer.unref();
           this.idle.set(runtime.conversationId, {
             key: connectionKey,
+            computerId: binding.computerId,
             live: connection,
             timer,
             managed: active.managed,
             servers,
           });
+          const memory = (await active.process.ready).memoryBytes;
+          const gib = (memory ?? 0) / 1024 ** 3;
+          const limit = gib >= 32 ? 8 : gib > 8 ? 4 : 2;
+          const idle = [...this.idle].filter(
+            ([, item]) => item.computerId === binding.computerId,
+          );
+          for (const [id] of idle.slice(0, Math.max(0, idle.length - limit)))
+            await this.closeIdle(id);
           void active.process.closed.then(() => {
             if (this.idle.get(runtime.conversationId)?.live === connection) {
               clearTimeout(timer);

@@ -40,10 +40,11 @@ async function inspectZip(path) {
 async function preview(input) {
   if (input.kind === "image") {
     const { default: sharp } = await import("sharp");
-    const metadata = await sharp(input.path, {
-      animated: true,
-      limitInputPixels: false,
-    }).metadata();
+    const source = sharp(input.path, {
+      animated: false,
+      limitInputPixels: 40_000_000,
+    });
+    const metadata = await source.metadata();
     if (!metadata.width || !metadata.height)
       throw new Error("无法读取图片尺寸。");
     const { createNodePhotonImages } = await import(
@@ -51,8 +52,17 @@ async function preview(input) {
     );
     const images = await createNodePhotonImages({ worker: false });
     const image = await images.prepare(
-      await readFile(input.path),
-      input.mimeType,
+      await source
+        .rotate()
+        .resize({
+          width: input.width ?? 160,
+          height: input.width ?? 160,
+          fit: "inside",
+          withoutEnlargement: true,
+        })
+        .png()
+        .toBuffer(),
+      "image/png",
       {
         maxWidth: input.width ?? 160,
         maxHeight: input.width ?? 160,

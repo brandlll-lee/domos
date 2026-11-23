@@ -12,6 +12,38 @@ import { MagnifyingGlassPlusIcon } from "@phosphor-icons/react/dist/csr/Magnifyi
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { chatCopy } from "../chat/copy.ts";
+import { useFileSummary } from "./use-file-summary.ts";
+
+function ImageThumbnail({ botId, file }: { botId: number; file: Attachment }) {
+  const { element, summary, error } = useFileSummary(botId, file);
+  return (
+    <div
+      ref={element}
+      className="image-cover"
+      style={
+        {
+          "--image-ratio":
+            summary?.width && summary.height
+              ? summary.width / summary.height
+              : 4 / 3,
+          aspectRatio:
+            summary?.width && summary.height
+              ? `${summary.width} / ${summary.height}`
+              : undefined,
+        } as CSSProperties
+      }
+    >
+      {summary?.thumbnail ? (
+        <img src={summary.thumbnail} alt={file.name} decoding="async" />
+      ) : error ? (
+        <span className="image-unavailable">{file.name} · 点击查看或下载</span>
+      ) : (
+        <Loading label="正在加载缩略图…" />
+      )}
+    </div>
+  );
+}
+
 export function ImageGallery({
   botId,
   files,
@@ -62,6 +94,7 @@ export function ImageGallery({
     </p>
   );
   function image(file: Attachment, lazy: boolean) {
+    if (lazy) return <ImageThumbnail botId={botId} file={file} />;
     return failed.has(file.id) ? (
       <span className="image-unavailable">{chatCopy.imageUnavailable}</span>
     ) : (

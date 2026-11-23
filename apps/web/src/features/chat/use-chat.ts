@@ -17,6 +17,7 @@ import { useConnection } from "../connection.ts";
 import { receiveConversationFiles } from "../files/file-state.ts";
 import { flushModelSettings } from "../models/model-state.ts";
 import { chatActivity } from "./activity-state.ts";
+import { chatState, clearChatState, retained } from "./chat-state.ts";
 import { chatCopy } from "./copy.ts";
 import type { MessageTarget } from "./message-target.ts";
 import { readingPosition } from "./reading-position.ts";
@@ -29,54 +30,8 @@ export type SendInput = MaterialSelection & {
   attachments?: string[];
 };
 
-type RetainedChat = {
-  view: ChatView | null;
-  outgoing: TranscriptItem[];
-  sentRequest?: string;
-  pendingRequest?: string;
-  sending: boolean;
-  error: string | null;
-  history?: ChatView;
-  target?: MessageTarget;
-};
-function createChatState() {
-  let state: RetainedChat = {
-    view: null,
-    outgoing: [],
-    sending: false,
-    error: null,
-  };
-  const listeners = new Set<() => void>();
-  return {
-    snapshot: () => state,
-    observed: () => listeners.size > 0,
-    subscribe(listener: () => void) {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-    update(patch: Partial<RetainedChat>) {
-      state = { ...state, ...patch };
-      for (const listener of listeners) listener();
-    },
-  };
-}
-const retained = new Map<string, ReturnType<typeof createChatState>>();
-function chatState(botId: number, teamId?: string) {
-  const key = teamId ? `team:${teamId}` : String(botId);
-  let state = retained.get(key);
-  if (!state) {
-    state = createChatState();
-    retained.set(key, state);
-  }
-  return state;
-}
-export function clearChatState(ids?: Set<number>) {
-  for (const id of retained.keys())
-    if (!ids || (!id.startsWith("team:") && !ids.has(Number(id))))
-      retained.delete(id);
-}
+export { clearChatState } from "./chat-state.ts";
+
 window.addEventListener("domos:pair", () => clearChatState());
 window.addEventListener("domos:computer", () => clearChatState());
 export function prefetchChat(botId: number) {
@@ -85,7 +40,7 @@ export function prefetchChat(botId: number) {
   if (position && !position.following) return;
   const store = chatState(botId);
   void client
-    .get({ botId })
+    .get({ botId }, { signal: store.controller.signal })
     .then((view) => {
       if (retained.get(String(botId)) === store && !store.snapshot().view)
         store.update({ view });
@@ -106,11 +61,16 @@ export function useChat(
   teamId?: string,
 ) {
   const [store] = useState(() => chatState(botId, teamId));
-  const [restore] = useState(() =>
-    store.snapshot().view
-      ? undefined
-      : readingPosition(teamId ? `team:${teamId}` : String(botId)),
-  );
+  const [restore] = useState(() => {
+    const position = readingPosition(teamId ? `team:${teamId}` : String(botId));
+    return position &&
+      !position.following &&
+      !store
+        .snapshot()
+        .view?.messages.some((message) => message.cursor === position.cursor)
+      ? position
+      : undefined;
+  });
   const [restoring, setRestoring] = useState(
     Boolean(restore && !restore.following),
   );
@@ -295,6 +255,7 @@ export function useChat(
     })();
     return () => {
       if (current.current) store.update({ view: current.current });
+      store.trim();
       controller.abort();
       earlierRequest.current?.abort();
       revealRequest.current?.abort();

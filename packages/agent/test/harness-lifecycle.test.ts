@@ -1901,3 +1901,84 @@ test("monitor reports commit only after success, deduplicate notifications and r
     ),
   ).rejects.toThrow();
 });
+
+test.each([
+  { gib: 8, limit: 2 },
+  { gib: 16, limit: 4 },
+  { gib: 32, limit: 8 },
+])(
+  "idle processes obey the $gib GiB work computer budget",
+  async ({ gib, limit }) => {
+    const workers: ProtocolProcess[] = [];
+    const computers = {
+      attach: async () => {},
+      initialize: async () => {},
+      preflight: async () => {},
+      computerId: async () => "shared",
+      binding: async () => ({ computerId: "shared", directory: null }),
+      tools: { catalog: async () => [], finish: () => {} },
+      process: async () => {
+        const worker = new ProtocolProcess();
+        Object.defineProperty(worker, "ready", {
+          value: worker.ready.then((ready) => ({
+            ...ready,
+            memoryBytes: gib * 1024 ** 3,
+          })),
+        });
+        worker.receive = (request) => {
+          if (
+            request.method === "thread/start" ||
+            request.method === "thread/resume"
+          )
+            worker.response(request, { thread: { id: "chat" } });
+          else if (request.method === "turn/start") {
+            worker.response(request, { turn: { id: "turn" } });
+            worker.frame({
+              method: "turn/completed",
+              params: {
+                threadId: "chat",
+                turn: { id: "turn", status: "completed" },
+              },
+            });
+          } else if (request.id !== undefined) worker.response(request, {});
+        };
+        workers.push(worker);
+        return worker;
+      },
+    } as unknown as Computers;
+    onTestFinished(async () => {
+      await Promise.all(workers.map((worker) => worker.close()));
+    });
+    const runtime = await runtimeFixture(computers);
+    const engines = runtime.engines;
+    if (!engines) throw new Error("Native engines required");
+    for (let index = 0; index < limit + 1; index++) {
+      const bot = await runtime.bots.create(
+        { name: `Bot ${index}`, requestId: crypto.randomUUID() },
+        context,
+      );
+      await engines.configure(
+        bot.id,
+        {
+          config: { provider: "codex", model: null },
+          revision: 0,
+          requestId: crypto.randomUUID(),
+        },
+        context,
+      );
+      const task = await engines.submit(
+        bot.id,
+        { text: "Ready", requestId: crypto.randomUUID() },
+        context,
+      );
+      await task.wait(context);
+      await expect
+        .poll(async () => (await engines.profile(bot.id, context)).busy)
+        .toBe(false);
+    }
+    expect(
+      workers.filter((worker) => !worker.output.writableEnded),
+    ).toHaveLength(limit);
+    expect(workers[0]?.output.writableEnded).toBe(true);
+  },
+);

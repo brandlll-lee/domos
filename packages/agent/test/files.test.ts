@@ -113,6 +113,28 @@ test("image previews retain separate thumbnail and link cover sizes", async () =
   expect(await readFile(path)).toEqual(original);
 });
 
+test("image thumbnails bound decoding and retain their originals", async () => {
+  const { files } = await setup();
+  const bytes = png(1200, 600);
+  const file = await files.upload(1, "large.png", bytes);
+  const path = join(files.directory(1, file.id), "content");
+  const result = await files.previews.read(
+    file,
+    path,
+    undefined,
+    undefined,
+    960,
+  );
+  if (result.kind !== "image") throw new Error("Image preview required");
+  expect(result).toMatchObject({ width: 1200, height: 600, frames: 1 });
+  const thumbnail = Buffer.from(result.thumbnail.split(",")[1] ?? "", "base64");
+  expect(thumbnail.readUInt32BE(16)).toBe(960);
+  await expect(
+    files.previews.read(file, path, undefined, undefined, 2000),
+  ).rejects.toThrow("960");
+  expect(await readFile(path)).toEqual(bytes);
+});
+
 test("file capabilities reject traversal, absolute escape, junctions, hard links, and alternate streams", async () => {
   const { directory, files, workspace } = await setup();
   const outside = join(directory, "outside");

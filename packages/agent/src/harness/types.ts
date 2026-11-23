@@ -329,6 +329,7 @@ export type ProcessSpec = {
   http?: { timeoutMs: number; readyMs: number; listen?: boolean };
 };
 export type ProcessReady = {
+  memoryBytes?: number;
   url: string;
   cwd: string;
   home: string;

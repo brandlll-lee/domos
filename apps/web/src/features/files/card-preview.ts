@@ -40,9 +40,12 @@ export async function readCardPreview(
   signal.throwIfAborted();
   const kind = filePreviewKind(file);
   if (kind === "image") {
-    const response = await fetch(`/files/${botId}/${file.id}/preview`, {
-      signal,
-    });
+    const response = await fetch(
+      `/files/${botId}/${file.id}/preview?width=960`,
+      {
+        signal,
+      },
+    );
     if (!response.ok) throw new Error("无法读取图片缩略图。");
     return response.json();
   }

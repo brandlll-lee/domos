@@ -4,7 +4,10 @@ import { fileSummary } from "./file-state.ts";
 
 export function useFileSummary(botId: number, file: Attachment) {
   const store = fileSummary(botId, file);
-  const summary = useSyncExternalStore(store.subscribe, store.snapshot).data;
+  const { data: summary, error } = useSyncExternalStore(
+    store.subscribe,
+    store.snapshot,
+  );
   const element = useRef<HTMLDivElement>(null);
   const kind = filePreviewKind(file);
   useEffect(() => {
@@ -19,5 +22,5 @@ export function useFileSummary(botId: number, file: Attachment) {
     observer.observe(element.current);
     return () => observer.disconnect();
   }, [kind, store]);
-  return { element, summary };
+  return { element, summary, error };
 }

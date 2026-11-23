@@ -59,6 +59,8 @@ export class FilePreviews {
     width = 160,
   ): Promise<FilePreview> {
     signal?.throwIfAborted();
+    if (!Number.isInteger(width) || width < 1 || width > 960)
+      throw new Error("缩略图尺寸必须介于 1 至 960 像素。");
     const kind = filePreviewKind(file);
     if (kind !== "xlsx" && kind !== "image")
       throw new Error("此格式暂不支持预览，请下载后使用本机应用打开。");
@@ -129,6 +131,17 @@ export class FilePreviews {
       if (--current.readers === 0 && this.pending.get(key) === current)
         current.controller.abort();
     }
+  }
+
+  clear() {
+    const clearing = this.queue
+      .catch(() => {})
+      .then(async () => {
+        const path = join(this.root, "previews");
+        await rm(path, { recursive: true, force: true });
+      });
+    this.queue = clearing;
+    return clearing;
   }
 
   private run(

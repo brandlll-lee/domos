@@ -1,6 +1,7 @@
 import { once } from "node:events";
 import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { findPackageJSON } from "node:module";
+import { totalmem } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -111,6 +112,7 @@ async function configure(frame) {
   gateway = await openGateway(frame.tools, invoke);
   emit({
     type: "ready",
+    memoryBytes: Math.min(totalmem(), process.constrainedMemory() || Infinity),
     url: gateway.url,
     cwd: process.cwd(),
     home,

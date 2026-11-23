@@ -8,6 +8,9 @@ const files = new Map<number, Map<string, ReturnType<typeof createFile>>>();
 const lists = new Map<number, Map<string, ReturnType<typeof createList>>>();
 const revisions = new Map<number, string>();
 export type FileSummary = {
+  width?: number;
+  height?: number;
+  frames?: number;
   pages?: number;
   sheets?: number;
   duration?: number;
