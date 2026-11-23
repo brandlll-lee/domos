@@ -60,7 +60,7 @@
   text-decoration: none;
 }
 .contact-row[aria-current="page"],
-.bot-contact-heading:where(:has(.conversation-switcher[aria-current="page"]))
+.bot-contact-heading:where(:has(.bot-menu-trigger[aria-current="page"]))
   > .contact-row {
   background: var(--color-surface);
 }
@@ -116,16 +116,32 @@
   display: grid;
   position: relative;
 }
-.conversation-switcher.button {
+.bot-menu-trigger {
   position: absolute;
-  inset: 0;
-  width: var(--contact-height);
-  height: 100%;
-  margin-inline: auto;
+  z-index: 1;
+  inset-block-start: 50%;
+  inset-inline-start: var(--space-3);
+  display: grid;
+  place-items: center;
+  width: var(--avatar-medium);
+  height: var(--avatar-medium);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
   background: transparent;
+  color: inherit;
+  cursor: pointer;
+  translate: 0 -50%;
 }
-.conversation-switcher.button:hover {
-  background: transparent;
+.bot-menu-trigger:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 3px;
+}
+.sidebar[data-compact] .bot-menu-trigger {
+  inset-inline-start: 50%;
+  width: var(--contact-height);
+  height: var(--contact-height);
+  translate: -50% -50%;
 }
 .sidebar[data-compact] :is(.conversation-toggle, .conversation-children) {
   display: none;
@@ -217,29 +233,9 @@
   justify-self: start;
   color: var(--color-muted);
 }
-.bot-contact-actions {
-  position: absolute;
-  inset-block-start: 50%;
-  inset-inline-end: calc(var(--control-small) + var(--space-1));
-  display: flex;
-  translate: 0 -50%;
-  opacity: 0;
-  pointer-events: none;
-}
-.bot-contact-heading:is(:hover, :focus-within) .bot-contact-actions,
-.bot-contact-heading:has(.bot-contact-actions [aria-expanded="true"])
-  .bot-contact-actions {
-  opacity: 1;
-  pointer-events: auto;
-}
 .sidebar:where(:not([data-compact])) .bot-contact-heading .contact-row {
-  padding-inline-end: calc(2 * var(--control-small) + var(--space-2));
-}
-@media (hover: none), (pointer: coarse) {
-  .bot-contact-actions {
-    opacity: 1;
-    pointer-events: auto;
-  }
+  padding-inline-start: calc(var(--avatar-medium) + 2 * var(--space-3));
+  padding-inline-end: calc(var(--control-small) + var(--space-2));
 }
 .sidebar[data-compact] .scroll-viewport {
   padding-inline-end: 0;

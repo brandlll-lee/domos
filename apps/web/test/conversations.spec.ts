@@ -14,30 +14,103 @@ const sharp = createRequire(
 async function openConversations(page: Page) {
   await expect(page.locator(".workspace")).toBeVisible();
   const contacts = page.getByRole("button", { name: "联系人", exact: true });
-  const link = page.getByRole("link", { name: "Domos", exact: true });
   const sidebar = page.locator('.workspace-panel[data-side="sidebar"]');
   if ((await sidebar.getAttribute("data-closed")) !== null)
     await contacts.click();
   await expect(page.locator(".bot-conversations").first()).toBeVisible();
-  if ((await page.locator(".sidebar").getAttribute("data-compact")) !== null) {
-    await page.getByRole("button", { name: "Domos", exact: true }).click();
-  } else {
-    await link.hover({ position: { x: 20, y: 20 } });
-    await page
-      .getByRole("button", { name: "Domos 的操作", exact: true })
-      .click();
-  }
+  await page.getByRole("button", { name: "Domos", exact: true }).click();
   await page.getByRole("menuitem", { name: "管理会话", exact: true }).click();
   return page.getByRole("dialog", { name: "Domos 的会话", exact: true });
 }
 
 async function createConversation(page: Page) {
-  await page
-    .getByRole("link", { name: "Domos", exact: true })
-    .hover({ position: { x: 20, y: 20 } });
-  await page.getByRole("button", { name: "Domos 的操作", exact: true }).click();
+  await page.getByRole("button", { name: "Domos", exact: true }).click();
   await page.getByRole("menuitem", { name: "新建会话", exact: true }).click();
 }
+
+test("avatar menus retain their character through hover and sidebar changes", async ({
+  service,
+  page,
+}, info) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const client = createORPCClient<RouterClient<AppRouter>>(
+    new RPCLink({ url: `${service.url}/rpc` }),
+  );
+  for (let i = 0; i < 25; i++) {
+    const { id } = await client.conversations.create({
+      botId: 1,
+      source: 1,
+      requestId: crypto.randomUUID(),
+    });
+    await client.conversations.update({
+      botId: 1,
+      id,
+      title: `会话 ${i} 的长标题需要保持在浮层内部并自动截断`,
+    });
+  }
+  await page.goto(service.url);
+  const trigger = page.getByRole("button", { name: "Domos", exact: true });
+  const menu = page.getByRole("menu", { name: "Domos", exact: true });
+  await trigger.hover();
+  await expect(menu).toBeVisible();
+  await expect(trigger.locator(".bot-avatar")).toBeVisible();
+  const avatar = await trigger.locator(".bot-avatar").elementHandle();
+  const box = await trigger.boundingBox();
+  const popup = await menu.boundingBox();
+  expect(popup?.width).toBe(340);
+  expect(popup && box && popup.x >= box.x + box.width).toBe(true);
+  expect(Math.abs((popup?.y ?? 0) - (box?.y ?? 0))).toBeLessThan(2);
+  expect(
+    await menu
+      .locator(".scroll-viewport")
+      .evaluate((node) => node.scrollHeight > node.clientHeight),
+  ).toBe(true);
+  expect(
+    await menu.evaluate((node) => node.scrollWidth <= node.clientWidth),
+  ).toBe(true);
+  await expect(
+    menu.locator('.engine-mark[data-provider="pi"]').first(),
+  ).toBeVisible();
+  await menu.getByRole("menuitem", { name: "管理会话", exact: true }).hover();
+  await expect(menu).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+  await page.getByRole("separator", { name: "调整联系人宽度" }).press("Home");
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await trigger.hover();
+    await expect(menu).toBeVisible();
+    await expect(trigger).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    expect(
+      await trigger
+        .locator(".bot-avatar")
+        .evaluate((node, saved) => node === saved, avatar),
+    ).toBe(true);
+    await expect(trigger.locator(".bot-avatar")).toBeVisible();
+    await menu.getByRole("menuitem", { name: "管理会话", exact: true }).hover();
+    await page.screenshot({
+      path: info.outputPath(`avatar-menu-${theme}.png`),
+    });
+    await page.keyboard.press("Escape");
+    await page.mouse.move(700, 40);
+  }
+  await page
+    .getByRole("separator", { name: "调整联系人宽度" })
+    .press("ArrowRight");
+  expect(
+    await trigger
+      .locator(".bot-avatar")
+      .evaluate((node, saved) => node === saved, avatar),
+  ).toBe(true);
+  await trigger.press("ArrowDown");
+  await expect(
+    menu.getByRole("menuitem", { name: "新建会话", exact: true }),
+  ).toBeFocused();
+  await menu.getByRole("menuitem", { name: "管理会话", exact: true }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Domos 的会话", exact: true }),
+  ).toBeVisible();
+});
 
 test("three conversations keep drafts, configuration and history through navigation and restart", async ({
   service,
@@ -204,6 +277,10 @@ test("conversation marks keep their slot through failure, work, unread and compl
       await failed.evaluate((el) => getComputedStyle(el).backgroundColor),
     ).not.toBe("rgba(0, 0, 0, 0)");
     expect(await titleInset()).toBe(left);
+    await page.getByRole("button", { name: "Domos", exact: true }).hover();
+    const menu = page.getByRole("menu", { name: "Domos", exact: true });
+    await expect(menu.getByRole("img", { name: /^失败/ })).toBeVisible();
+    await page.keyboard.press("Escape");
     await page.screenshot({
       path: info.outputPath(`conversation-marks-${appearance}.png`),
     });
@@ -214,6 +291,13 @@ test("conversation marks keep their slot through failure, work, unread and compl
   await service.control("wait-model");
   const dots = original.locator(".loading-dots");
   await expect(dots).toBeVisible();
+  await page.getByRole("button", { name: "Domos", exact: true }).hover();
+  await expect(
+    page
+      .getByRole("menu", { name: "Domos", exact: true })
+      .locator(".conversation-status .loading-dots"),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(dots.locator("g").first()).toHaveCSS(
     "animation-name",
     "loading-wave",
@@ -237,7 +321,9 @@ test("conversation marks keep their slot through failure, work, unread and compl
       },
     ],
   });
-  const avatar = page.locator('.sidebar a[href="#bot/1"] .bot-avatar');
+  const avatar = page
+    .getByRole("button", { name: "Domos", exact: true })
+    .locator(".bot-avatar");
   await expect(avatar.locator(".loading-dots")).toBeVisible();
   await expect(avatar.locator(".unread-badge")).toBeVisible();
   const work = await avatar.locator(".loading-dots").boundingBox();
@@ -678,11 +764,17 @@ test.describe("touch navigation", () => {
     );
     await page.getByRole("button", { name: "联系人", exact: true }).tap();
     const menu = page.getByRole("button", {
-      name: "Domos 的操作",
+      name: "Domos",
       exact: true,
     });
     await expect(menu).toBeVisible();
     await menu.tap();
+    const popup = page.getByRole("menu", { name: "Domos", exact: true });
+    await expect(popup).toBeVisible();
+    const bounds = await popup.boundingBox();
+    expect(bounds && bounds.x >= 0 && bounds.x + bounds.width <= 390).toBe(
+      true,
+    );
     await page.getByRole("menuitem", { name: "新建会话", exact: true }).tap();
     await expect(page).toHaveURL(/#bot\/1\/\d+$/);
     await expect(page.locator(".chat-identity-conversation")).toHaveText(

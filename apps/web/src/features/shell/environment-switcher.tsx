@@ -1,16 +1,17 @@
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
-import { ActionMenu } from "@domos/ui/menu";
 import { InlineNotice } from "@domos/ui/message";
 import { SettingRow } from "@domos/ui/setting-row";
 import { UnreadBadge } from "@domos/ui/unread-badge";
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
+import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
 import { MonitorIcon } from "@phosphor-icons/react/dist/csr/Monitor";
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { useEffect, useRef, useState } from "react";
 import type { DesktopState } from "../hosting/desktop.ts";
 import { useErrorNotice } from "../notices.tsx";
+import { SidebarMenu, SidebarMenuItem } from "./sidebar-menu.tsx";
 
 export function EnvironmentSwitcher() {
   const desktop = window.domosDesktop;
@@ -78,7 +79,7 @@ export function EnvironmentSwitcher() {
   }
   return (
     <div className="environment-switcher">
-      <ActionMenu
+      <SidebarMenu
         label="切换电脑"
         trigger={
           <Button
@@ -98,33 +99,43 @@ export function EnvironmentSwitcher() {
             <CaretDownIcon aria-hidden="true" />
           </Button>
         }
-        items={[
-          ...(state?.instances ?? []).map((item) => ({
-            label:
+        footer={
+          <>
+            <SidebarMenuItem
+              label="连接其他电脑…"
+              disabled={Boolean(pending)}
+              onClick={() => void run({ action: "add" })}
+            >
+              <PlusIcon />
+            </SidebarMenuItem>
+            <SidebarMenuItem label="管理连接" onClick={() => setManaging(true)}>
+              <GearSixIcon />
+            </SidebarMenuItem>
+          </>
+        }
+      >
+        {(state?.instances ?? []).map((item) => (
+          <SidebarMenuItem
+            key={item.id}
+            label={
               item.mode === "local" && item.name === "这台电脑"
                 ? "本机"
-                : item.name,
-            icon: item.unread ? (
-              <UnreadBadge count={item.unread} />
-            ) : item.id === state?.selected ? (
-              <CheckIcon />
-            ) : (
-              <MonitorIcon />
-            ),
-            disabled: item.id === state?.selected,
-            onSelect: () =>
-              void run({ action: "select", id: item.id }, item.name),
-          })),
-          {
-            label: "连接其他电脑…",
-            icon: <PlusIcon />,
-            separator: true,
-            disabled: Boolean(pending),
-            onSelect: () => void run({ action: "add" }),
-          },
-          { label: "管理连接", onSelect: () => setManaging(true) },
-        ]}
-      />
+                : item.name
+            }
+            current={item.id === state?.selected}
+            onClick={() => {
+              if (item.id !== state?.selected)
+                void run({ action: "select", id: item.id }, item.name);
+            }}
+          >
+            <MonitorIcon />
+            <span className="sidebar-menu-trailing">
+              <UnreadBadge count={item.unread ?? 0} />
+              {item.id === state?.selected && <CheckIcon />}
+            </span>
+          </SidebarMenuItem>
+        ))}
+      </SidebarMenu>
       {pending && (
         <div className="environment-progress" role="status">
           <InlineNotice>{pending}</InlineNotice>

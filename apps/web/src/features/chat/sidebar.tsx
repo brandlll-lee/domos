@@ -7,7 +7,7 @@ import { ActionMenu } from "@domos/ui/menu";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { BellIcon } from "@phosphor-icons/react/dist/csr/Bell";
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
-import { DotsThreeIcon } from "@phosphor-icons/react/dist/csr/DotsThree";
+import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
 import { MagnifyingGlassIcon as MagnifyingGlass } from "@phosphor-icons/react/dist/csr/MagnifyingGlass";
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { RobotIcon } from "@phosphor-icons/react/dist/csr/Robot";
@@ -17,6 +17,7 @@ import { prepareCharacters } from "../bots/character-state.ts";
 import { CreateBot } from "../bots/create-bot.tsx";
 import { useWorkAction } from "../bots/details/use-bot-work.ts";
 import { useErrorNotice } from "../notices.tsx";
+import { SidebarMenu, SidebarMenuItem } from "../shell/sidebar-menu.tsx";
 import { saveWorkspaceView, workspaceView } from "../shell/workspace-state.ts";
 import { useAttention } from "./attention.tsx";
 import { TeamAvatar } from "./bot-reference.tsx";
@@ -215,16 +216,6 @@ export function Sidebar({
                   (attention?.counts[conversationRoute(bot.id, item.id)] ?? 0),
                 0,
               );
-              const avatar = (
-                <BotAvatar
-                  botId={bot.id}
-                  interactive
-                  seed={bot.avatar}
-                  state={connected && bot.busy ? "running" : "idle"}
-                  statusLabel={chatCopy.botWorking}
-                  unread={unread}
-                />
-              );
               const create = () =>
                 void action.run(["conversation", bot.id], (requestId) =>
                   createConversation(bot.id, current, requestId),
@@ -232,6 +223,69 @@ export function Sidebar({
               return (
                 <div key={bot.id} className="bot-conversations">
                   <div className="bot-contact-heading">
+                    <SidebarMenu
+                      label={bot.name}
+                      hover
+                      trigger={
+                        <button
+                          type="button"
+                          className="bot-menu-trigger"
+                          title={bot.name}
+                          aria-label={bot.name}
+                          aria-current={compact ? parentCurrent : undefined}
+                        >
+                          <BotAvatar
+                            botId={bot.id}
+                            interactive
+                            seed={bot.avatar}
+                            state={connected && bot.busy ? "running" : "idle"}
+                            statusLabel={chatCopy.botWorking}
+                            unread={unread}
+                          />
+                        </button>
+                      }
+                      header={
+                        <SidebarMenuItem
+                          label="新建会话"
+                          onClick={create}
+                          disabled={action.busy}
+                        >
+                          <PlusIcon />
+                        </SidebarMenuItem>
+                      }
+                      footer={
+                        <SidebarMenuItem
+                          label="管理会话"
+                          onClick={() => setBrowsing(bot.id)}
+                        >
+                          <GearSixIcon />
+                        </SidebarMenuItem>
+                      }
+                    >
+                      {[...priority, ...idle].map(
+                        ({ item, status, unread }) => (
+                          <SidebarMenuItem
+                            key={item.id}
+                            label={item.title}
+                            current={active && item.id === current}
+                            onClick={() => {
+                              window.location.hash = `bot/${bot.id}/${item.id}`;
+                              onSelect();
+                            }}
+                            onPointerEnter={() => prefetchChat(item.id)}
+                            onFocus={() => prefetchChat(item.id)}
+                          >
+                            <ConversationState
+                              provider={item.provider}
+                              status={status}
+                              updatedAt={item.updatedAt}
+                              unread={unread}
+                              now={now}
+                            />
+                          </SidebarMenuItem>
+                        ),
+                      )}
+                    </SidebarMenu>
                     <PanelDialog.Close
                       className="contact-row"
                       render={<a href={`#bot/${bot.id}`} />}
@@ -243,40 +297,11 @@ export function Sidebar({
                       aria-hidden={compact || undefined}
                       aria-current={compact ? undefined : parentCurrent}
                     >
-                      {avatar}
                       <div className="chat-preview">
                         <strong>{bot.name}</strong>
                         {preview && <span>{preview}</span>}
                       </div>
                     </PanelDialog.Close>
-                    {compact && (
-                      <ActionMenu
-                        label={bot.name}
-                        trigger={
-                          <Button
-                            variant="ghost"
-                            className="conversation-switcher"
-                            title={bot.name}
-                            aria-label={bot.name}
-                            aria-current={parentCurrent}
-                          />
-                        }
-                        items={[
-                          ...[...priority, ...recent].map(({ item }) => ({
-                            label: item.title,
-                            onSelect: () => {
-                              window.location.hash = `bot/${bot.id}/${item.id}`;
-                              onSelect();
-                            },
-                          })),
-                          { label: "新建会话", onSelect: create },
-                          {
-                            label: "管理会话",
-                            onSelect: () => setBrowsing(bot.id),
-                          },
-                        ]}
-                      />
-                    )}
                     {sessions.length > 0 && (
                       <Button
                         className="conversation-toggle"
@@ -300,33 +325,6 @@ export function Sidebar({
                       >
                         <CaretDownIcon />
                       </Button>
-                    )}
-                    {!compact && (
-                      <div className="bot-contact-actions">
-                        <ActionMenu
-                          label={`${bot.name} 的操作`}
-                          trigger={
-                            <Button
-                              variant="ghost"
-                              size="icon-small"
-                              aria-label={`${bot.name} 的操作`}
-                            >
-                              <DotsThreeIcon />
-                            </Button>
-                          }
-                          items={[
-                            {
-                              label: "新建会话",
-                              onSelect: create,
-                              disabled: action.busy,
-                            },
-                            {
-                              label: "管理会话",
-                              onSelect: () => setBrowsing(bot.id),
-                            },
-                          ]}
-                        />
-                      </div>
                     )}
                   </div>
                   {open && visible.length > 0 && (

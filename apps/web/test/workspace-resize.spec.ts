@@ -222,7 +222,7 @@ test("contacts collapse during dragging and restore their width without losing c
     const panel = root.querySelector('.workspace-panel[data-side="sidebar"]');
     const chat = root.querySelector(".conversation");
     if (!panel || !chat) throw new Error("Workspace missing");
-    const avatar = root.querySelector(".contact-row .bot-avatar");
+    const avatar = root.querySelector(".bot-menu-trigger .bot-avatar");
     if (!avatar) throw new Error("Contact avatar missing");
     const frames: [number, number, number][] = [];
     root.setAttribute("data-sampling", "true");
@@ -300,7 +300,11 @@ test("contacts collapse during dragging and restore their width without losing c
     );
     expect(selected).not.toBe("rgba(0, 0, 0, 0)");
     await avatarMenu.hover();
+    await expect(
+      page.getByRole("menu", { name: "Domos", exact: true }),
+    ).toBeVisible();
     await expect(contact).toHaveCSS("background-color", selected);
+    await page.keyboard.press("Escape");
     await page.mouse.move(400, 800);
     await page.screenshot({
       path: info.outputPath(`contacts-compact-${theme}.png`),
@@ -417,7 +421,7 @@ test("sidebar transitions retain visible avatars and continue from an interrupte
     page.evaluate(() => {
       const main = document.querySelector<HTMLElement>(".workspace-content");
       const avatar = document.querySelector<HTMLElement>(
-        ".contact-row .bot-avatar",
+        ".bot-menu-trigger .bot-avatar",
       );
       if (!main || !avatar) throw new Error("Sidebar content missing");
       for (const animation of document.getAnimations()) {

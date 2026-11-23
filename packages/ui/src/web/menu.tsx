@@ -4,6 +4,7 @@ import { Button } from "./controls.tsx";
 import "./menu.css";
 
 export { Caret } from "./caret.tsx";
+export { Menu };
 
 function MoreIcon() {
   return (

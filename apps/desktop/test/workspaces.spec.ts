@@ -171,10 +171,24 @@ test("workspaces switch in one window and preserve identity, authorization and r
     });
     for (const theme of ["light", "dark"] as const) {
       await pageA.emulateMedia({ colorScheme: theme });
-      await pageA.getByRole("button", { name: /^切换电脑：/ }).click();
+      const trigger = pageA.getByRole("button", { name: /^切换电脑：/ });
+      await trigger.click();
+      const menu = pageA.getByRole("menu", { name: "切换电脑", exact: true });
+      await expect(menu).toHaveCSS("width", "340px");
+      const current = menu.getByRole("menuitem", {
+        name: "电脑 A",
+        exact: true,
+      });
+      await expect(current).toHaveAttribute("aria-current", "page");
+      await expect(current).toHaveCSS("opacity", "1");
+      await expect(current).toBeEnabled();
+      await current.click();
+      expect(await selected()).toBe(ids[0]);
+      await trigger.click();
       await expect(
         pageA.getByRole("menuitem", { name: "电脑 B", exact: true }),
       ).toBeVisible();
+      await expect(menu).toHaveCSS("opacity", "1");
       await pageA.screenshot({
         path: info.outputPath(`workspace-menu-${theme}.png`),
       });
@@ -359,6 +373,14 @@ test("workspaces switch in one window and preserve identity, authorization and r
     await expect(
       pageA.getByRole("menuitem", { name: "电脑 B", exact: true }),
     ).toBeVisible();
+    const narrowMenu = pageA.getByRole("menu", {
+      name: "切换电脑",
+      exact: true,
+    });
+    const bounds = await narrowMenu.boundingBox();
+    expect(bounds && bounds.x >= 0 && bounds.x + bounds.width <= 420).toBe(
+      true,
+    );
     await pageA.screenshot({ path: info.outputPath("workspace-narrow.png") });
     await pageA.keyboard.press("Escape");
     await expect(compactMenu).toBeFocused();

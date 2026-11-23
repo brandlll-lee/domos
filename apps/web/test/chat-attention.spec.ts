@@ -202,7 +202,9 @@ test("unread survives reload and search dialog loads results on scroll and bound
     records: Array.from({ length: 430 }, (_, index) => message(index)),
   });
   await page.goto(`${url}/#bot/${peer.id}`);
-  const contact = page.locator(`.contact-row[href="#bot/${bot.id}"]`);
+  const contact = page
+    .locator(`.contact-row[href="#bot/${bot.id}"]`)
+    .locator("..");
   await expect(contact.locator(".unread-badge")).toHaveText("99+");
   await expect(
     page.locator(`.contact-row[href="#team/${teamId}"] .unread-badge`),
@@ -408,7 +410,10 @@ test("attention identifies the assistant, opens its message and respects mute", 
     .toBe(2);
   await expect(page.locator(".attention-toast")).toHaveCount(0);
   await expect(
-    page.locator(`.contact-row[href="#bot/${bot.id}"] .unread-badge`),
+    page
+      .locator(`.contact-row[href="#bot/${bot.id}"]`)
+      .locator("..")
+      .locator(".unread-badge"),
   ).toBeVisible();
 });
 
