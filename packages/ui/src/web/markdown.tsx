@@ -2,9 +2,8 @@ import type { Paragraph, Root, RootContent } from "mdast";
 import { gfmAutolinkLiteralFromMarkdown } from "mdast-util-gfm-autolink-literal";
 import { type ComponentProps, memo, type ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { markdownPlugins } from "../markdown-plugins.ts";
 
-const plugins = [remarkGfm];
 const autolinks = gfmAutolinkLiteralFromMarkdown();
 function MessageLink({ href, title, children }: ComponentProps<"a">) {
   let icon: string | undefined;
@@ -153,7 +152,9 @@ export const MessageMarkdown = memo(function MessageMarkdown({
   return (
     <div className="markdown">
       <Markdown
-        remarkPlugins={references.length ? [...plugins, mentions] : plugins}
+        remarkPlugins={
+          references.length ? [...markdownPlugins, mentions] : markdownPlugins
+        }
         skipHtml
         components={{
           ...components,

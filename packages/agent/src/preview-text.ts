@@ -1,9 +1,9 @@
+import { markdownPlugins } from "@domos/ui/markdown-plugins";
 import type { Nodes } from "mdast";
-import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
 
-const markdown = unified().use(remarkParse).use(remarkGfm);
+const markdown = unified().use(remarkParse).use(markdownPlugins);
 
 function nodeText(node: Nodes): string {
   if (node.type === "html" || node.type === "definition") return "";

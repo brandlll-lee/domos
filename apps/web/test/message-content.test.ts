@@ -6,6 +6,24 @@ import { expect, test } from "vitest";
 import { TeamMembers } from "../src/features/chat/bot-reference.tsx";
 import { MessageContent } from "../src/features/chat/message-content.tsx";
 
+test("assistant CJK emphasis preserves source and code boundaries", () => {
+  const text =
+    "**烟酰胺（维生素 B3）**能帮助，前**（重点）**后，*重点。*继续，~~旧说明。~~继续，**查看[资料](https://example.com)**继续。\n\n`**原文。**继续`\n\n```text\n**代码。**继续\n```\n\n\\*\\*字面。\\*\\*继续\n\n**未闭合\n\n**空格 **继续";
+  const content: ChatMessage["content"] = [{ type: "text", key: "a", text }];
+  const html = renderToStaticMarkup(createElement(MessageContent, { content }));
+  expect(html).toContain("<strong>烟酰胺（维生素 B3）</strong>能帮助");
+  expect(html).toContain("前<strong>（重点）</strong>后");
+  expect(html).toContain("<em>重点。</em>继续");
+  expect(html).toContain("<del>旧说明。</del>继续");
+  expect(html).toMatch(/<strong>查看<a[^>]*href="https:\/\/example.com"/);
+  expect(html).toContain("<code>**原文。**继续</code>");
+  expect(html).toContain('<code class="language-text">**代码。**继续\n</code>');
+  expect(html).toContain("**字面。**继续");
+  expect(html).toContain("**未闭合");
+  expect(html).toContain("**空格 **继续");
+  expect(content[0]).toEqual({ type: "text", key: "a", text });
+});
+
 test("materials keep inline order in display and model input", () => {
   const materials = {
     skills: [
@@ -51,7 +69,7 @@ test("materials keep inline order in display and model input", () => {
 
 test("user links preserve literal text, line breaks and URL punctuation", () => {
   const text =
-    "**原文**\n  查看 https://example.com/page?q=1&x=2, 或 www.example.org。\n<script>原文</script>";
+    "**原文。**继续\n  查看 https://example.com/page?q=1&x=2, 或 www.example.org。\n<script>原文</script>";
   const html = renderToStaticMarkup(
     createElement(MessageContent, {
       content: [{ type: "text", key: "a", text }],
@@ -61,7 +79,7 @@ test("user links preserve literal text, line breaks and URL punctuation", () => 
   expect(html).toContain('href="https://example.com/page?q=1&amp;x=2"');
   expect(html).toContain('class="message-link"');
   expect(html).toContain('src="https://example.com/favicon.ico"');
-  expect(html).toContain("**原文**\n  查看 ");
+  expect(html).toContain("**原文。**继续\n  查看 ");
   expect(html).toContain("&lt;script&gt;原文&lt;/script&gt;");
   expect(html).not.toContain("<strong>");
 });
@@ -73,7 +91,7 @@ test("assistant links share website icons and keep unsafe URLs inert", () => {
         {
           type: "text",
           key: "a",
-          text: "[来源](https://example.com/article) [危险](javascript:alert%281%29) [地址](https://)",
+          text: '**来源。**继续 [来源](https://example.com/article) [危险](javascript:alert%281%29) [地址](https://) <img src="x" onerror="alert(1)"><script>alert(1)</script>',
         },
       ],
     }),
@@ -83,6 +101,9 @@ test("assistant links share website icons and keep unsafe URLs inert", () => {
   expect(html).toContain('target="_blank"');
   expect(html).toContain('rel="noopener noreferrer"');
   expect(html).not.toContain('href="javascript:');
+  expect(html).toContain("<strong>来源。</strong>继续");
+  expect(html).not.toContain("onerror");
+  expect(html).not.toContain("<script");
 });
 
 test("images precede captions while each group retains its order", () => {
