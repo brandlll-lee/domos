@@ -17,7 +17,13 @@ export type MaterialSelection = {
   }[];
   context?: (
     | { id: string; type: "text"; text: string; position?: number }
-    | { id: string; type: "message"; messageId: string; position?: number }
+    | {
+        id: string;
+        type: "message";
+        messageId: string;
+        cursor?: string;
+        position?: number;
+      }
     | {
         id: string;
         type: "conversation";

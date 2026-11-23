@@ -1,5 +1,58 @@
 import { expect, test } from "vitest";
+import { prepareMaterials } from "../src/materials.ts";
 import { botInput, context, setup } from "./fixtures/api.ts";
+
+test("historical message references resolve through the scoped original reader", async () => {
+  const { open } = await setup();
+  const runtime = await open();
+  try {
+    const input = {
+      botId: runtime.conversation.id,
+      requestId: crypto.randomUUID(),
+      skills: [],
+      mcp: [],
+      context: [
+        {
+          id: crypto.randomUUID(),
+          type: "message" as const,
+          messageId: "old",
+          cursor: "42:0",
+        },
+      ],
+    };
+    const references: unknown[] = [];
+    const material = await prepareMaterials(
+      input,
+      { messages: [] },
+      runtime.work,
+      undefined,
+      runtime.bots,
+      async (id, cursor) => {
+        references.push({ id, cursor });
+        return {
+          id,
+          role: "assistant",
+          content: [{ type: "text", text: "保留的历史原文", key: "old" }],
+          stopped: false,
+        };
+      },
+    );
+    expect(references).toEqual([{ id: "old", cursor: "42:0" }]);
+    expect(material.context[0]?.text).toBe("保留的历史原文");
+    await expect(
+      prepareMaterials(
+        input,
+        { messages: [] },
+        runtime.work,
+        undefined,
+        runtime.bots,
+        async () => null,
+      ),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  } finally {
+    await runtime.harness.close(context);
+  }
+});
 
 test("private conversation creation and updates preserve their Bot boundary and history", async () => {
   const { open } = await setup();

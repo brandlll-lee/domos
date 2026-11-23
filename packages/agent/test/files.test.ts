@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
+import { crc32 } from "node:zlib";
 import {
   BACKGROUND_CONTEXT,
   withAbortSignal,
@@ -133,6 +134,18 @@ test("image thumbnails bound decoding and retain their originals", async () => {
     files.previews.read(file, path, undefined, undefined, 2000),
   ).rejects.toThrow("960");
   expect(await readFile(path)).toEqual(bytes);
+  const oversized = png(1, 1);
+  oversized.writeUInt32BE(50_000, 16);
+  oversized.writeUInt32BE(50_000, 20);
+  oversized.writeUInt32BE(crc32(oversized.subarray(12, 29)), 29);
+  const bomb = await files.upload(1, "oversized.png", oversized);
+  await expect(
+    files.previews.read(
+      bomb,
+      join(files.directory(1, bomb.id), "content"),
+      undefined,
+    ),
+  ).rejects.toThrow();
 });
 
 test("file capabilities reject traversal, absolute escape, junctions, hard links, and alternate streams", async () => {

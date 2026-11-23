@@ -131,6 +131,14 @@ export function teamRouter(
               work,
               mcp,
               bots,
+              async (id, cursor) =>
+                cursor
+                  ? ((
+                      await teams.view(team.id, runtime, context, {
+                        around: cursor,
+                      })
+                    ).messages.find((message) => message.id === id) ?? null)
+                  : null,
             );
             materials.bots = references;
             const attachments = await Promise.all(

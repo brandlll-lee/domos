@@ -2,6 +2,7 @@ import { MAX_ATTACHMENTS } from "@domos/agent/attachments";
 import type { Bots } from "@domos/agent/bots";
 import type { Computers } from "@domos/agent/computer/catalog";
 import { FileInput, type Files } from "@domos/agent/files";
+import { storageUsage } from "@domos/agent/maintenance";
 import { materialText } from "@domos/agent/materials";
 import type { McpConnections } from "@domos/agent/mcp";
 import { type Runtime, slimChatView } from "@domos/agent/runtime";
@@ -50,6 +51,14 @@ export function createRouter(
   mcpCallback?: string | (() => string),
 ) {
   return {
+    storage: {
+      usage: os.handler(() => storageUsage(files.database)),
+      clear: os.handler(async () => {
+        await files.links.clear();
+        await files.previews.clear();
+        return storageUsage(files.database);
+      }),
+    },
     conversations: conversationRouter(bots),
     chats: {
       search: os
@@ -303,7 +312,22 @@ export function createRouter(
                         })())
                   : null;
               const materials = view
-                ? await prepareMaterials(input, view, work, mcp, bots)
+                ? await prepareMaterials(
+                    input,
+                    view,
+                    work,
+                    mcp,
+                    bots,
+                    engines
+                      ? (id, cursor) =>
+                          engines.message(
+                            input.botId,
+                            id,
+                            cursor,
+                            BACKGROUND_CONTEXT,
+                          )
+                      : undefined,
+                  )
                 : undefined;
               if (materials && input.bots.length)
                 materials.bots = botReferences(

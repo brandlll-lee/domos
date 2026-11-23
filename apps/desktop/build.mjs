@@ -54,8 +54,12 @@ const banner = {
   js: 'import { createRequire as createDesktopRequire } from "node:module"; const require = createDesktopRequire(import.meta.url);',
 };
 await build({
-  entryPoints: [join(here, "src/main.ts")],
-  outfile: join(dist, "main.mjs"),
+  entryPoints: [
+    join(here, "src/main.ts"),
+    join(here, "src/maintenance-worker.ts"),
+  ],
+  outdir: dist,
+  outExtension: { ".js": ".mjs" },
   bundle: true,
   platform: "node",
   format: "esm",

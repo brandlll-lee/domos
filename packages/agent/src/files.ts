@@ -114,6 +114,7 @@ export const FileInput = "domos.file-input";
 
 export class Files {
   readonly root: string;
+  readonly database: string;
   readonly previews: FilePreviews;
   readonly links: LinkPreviews;
   private readonly operations = new Map<number, Promise<unknown>>();
@@ -142,6 +143,7 @@ export class Files {
     target?: (botId: number, context: Context) => Promise<string | null>,
     attachmentComputerId?: (context: Context) => Promise<string | null>,
   ) {
+    this.database = database;
     this.root = resolve(`${database}.files`);
     this.previews = new FilePreviews(this.root);
     this.links = new LinkPreviews(this.root, this.previews);

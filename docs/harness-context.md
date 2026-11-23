@@ -44,6 +44,8 @@ Pi login uses its native ModelRuntime through an RPC extension. Codex and Claude
 
 Codex, Claude, Pi, Grok, Antigravity, Devin and Cursor retain compatible connections between completed chat turns. Compatibility includes the program, account, directory, permissions, instructions and tool configuration. Each turn binds its own events, approvals, tools and cancellation. Idle connections close after ten minutes. Configuration and directory changes close idle connections. Stop terminates the active process tree. Memory review tasks keep separate native sessions. Uncertain outcomes still require recovery before more execution.
 
+Idle retention also has a limit per execution computer. Computers with at most 8 GiB of memory retain two idle connections. Computers below 32 GiB retain four. Larger computers retain eight. The execution worker reports its own memory limit. Exceeding the limit closes the least recently used idle connection. Active tasks and human waits remain outside this pool. A later turn resumes the retained native session identity through a new connection.
+
 Chat shows waiting feedback when the client submits a message. The server's active task then owns that feedback, including native startup. Approval requests replace it with their own state. Failure and Stop settle the local feedback.
 
 ## History and migration

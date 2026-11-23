@@ -332,6 +332,17 @@ export class LinkPreviews {
     this.images = images;
   }
 
+  clear() {
+    const clearing = this.queue
+      .catch(() => {})
+      .then(async () => {
+        const path = join(this.root, "link-previews");
+        await rm(path, { recursive: true, force: true });
+      });
+    this.queue = clearing;
+    return clearing;
+  }
+
   async read(
     botId: number,
     value: string,

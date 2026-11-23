@@ -17,7 +17,7 @@ import { themes, windowOverlay } from "@domos/ui/tokens";
 import { app, type BrowserWindow, dialog, ipcMain, Menu, Tray } from "electron";
 import { z } from "zod";
 import { ConnectionSetup } from "./connection.ts";
-import { desktopFile } from "./files.ts";
+import { desktopFile, desktopFileCache } from "./files.ts";
 import { LocalHost, type ServiceState } from "./host.ts";
 import { applicationIcon, applicationId } from "./icons.ts";
 import { maintain } from "./maintenance.ts";
@@ -423,6 +423,12 @@ async function main() {
     },
     false,
   );
+  handle("desktop:file-cache", async (input) => {
+    const action = z.enum(["usage", "clear"]).parse(input);
+    const instance = instances.find((item) => item.id === selected);
+    if (!instance) throw new Error("电脑不可用。");
+    return desktopFileCache(instance.url, action);
+  });
   handle("desktop:prepare", async () => {
     if (!release.workImage)
       throw new Error("此开发包未包含 Docker 发布清单。请使用正式发布包。");

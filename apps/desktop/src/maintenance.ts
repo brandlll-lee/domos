@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { Worker } from "node:worker_threads";
 import {
   backupInstallation,
   restoreInstallation,
@@ -8,9 +9,41 @@ import { z } from "zod";
 import type { LocalHost } from "./host.ts";
 
 export async function maintain(
-  host: Pick<LocalHost, "directory" | "stop">,
+  host: Pick<
+    LocalHost,
+    "directory" | "dataDirectory" | "stop" | "start" | "setMaintenance"
+  >,
   input: unknown,
 ) {
+  if (z.object({ action: z.literal("compact") }).safeParse(input).success) {
+    await host.setMaintenance(true);
+    try {
+      await host.stop();
+      const result = await new Promise<{ reclaimedBytes: number }>(
+        (resolve, reject) => {
+          const worker = new Worker(
+            new URL("./maintenance-worker.mjs", import.meta.url),
+            { workerData: join(host.dataDirectory, "agent.sqlite") },
+          );
+          let result: { reclaimedBytes: number } | undefined;
+          worker.once("message", (value) => {
+            result = value;
+          });
+          worker.once("error", reject);
+          worker.once("exit", (code) => {
+            if (code === 0 && result) resolve(result);
+            else reject(new Error("数据库整理未完成。"));
+          });
+        },
+      );
+      return {
+        message: `数据库整理完成，回收 ${result.reclaimedBytes} 字节。`,
+      };
+    } finally {
+      await host.start(() => {}, AbortSignal.timeout(120_000));
+      await host.setMaintenance(false);
+    }
+  }
   const { action, password } = z
     .object({
       action: z.enum(["backup", "restore"]),

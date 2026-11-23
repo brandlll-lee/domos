@@ -195,6 +195,7 @@ function BotChat({
               id: crypto.randomUUID(),
               type: "message",
               messageId: message.id,
+              cursor: message.cursor,
               botId: conversationId,
               text: messageText(message),
               role: message.role as "user" | "assistant",

@@ -119,7 +119,8 @@ class TestService {
   async control(command: Parameters<ChildProcess["send"]>[0]) {
     const receipt = once(this.worker, "message");
     this.worker.send(command);
-    await receipt;
+    const [result] = await receipt;
+    return result as { memory: NodeJS.MemoryUsage; pid: number };
   }
 
   async close() {

@@ -56,6 +56,8 @@ export async function openHostedRuntime() {
     return {
       config,
       app: hosted.app,
+      maintenance: (held: boolean) =>
+        engines.maintenance(held, BACKGROUND_CONTEXT),
       pairDesktop: (identity: DesktopIdentity) =>
         desktopSession(sessions, config.dataDir, identity),
       async close() {

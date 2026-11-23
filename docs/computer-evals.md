@@ -20,13 +20,30 @@ pnpm eval:computer --task 7094 --domos-db "$env:APPDATA/@domos/desktop/hosting/d
 
 把 `7094` 换成新任务编号。编号来自 Domos 日志中的 `taskId`。数据库位置以服务和 OpenCode 实际运行的电脑为准。命令以只读方式打开两份数据库。OpenCode 原始记录用于取得完整参数，避免聊天摘要中空参数的影响。导入失败会报错，不会退回缺少参数的摘要继续评分。
 
-其他 Harness 可提供同一结构的轨迹 JSON：
+其他 Harness 可直接读取 Domos 中已接收并保存的原生事件：
+
+```powershell
+pnpm eval:computer --task 17707 --domos-db "$env:APPDATA/@domos/desktop/hosting/data/agent.sqlite"
+```
+
+导入器关联工具调用 ID 与末次结果。报告保留参数、结果、失败状态和已记录时间。它只覆盖 Domos 已接收的事件。缺少的时间、错误状态和成本保持未知。跨任务累计的会话成本不能作为单任务成本。导出包含原始工具参数与结果，只应在受信任的本机保存。对外分享前须脱敏。
+
+也可提供同一结构的轨迹 JSON：
 
 ```sh
 pnpm eval:computer --trace trace.json
 ```
 
-结构参考 `packages/agent/test/fixtures/computer-eval.json`。公共契约接受原生 Harness 名称；原生日志导入器仅支持 OpenCode。摘录中未知的起止时间保留 `null`，不能填零。完整轨迹必须包含时间。
+结构参考 `packages/agent/test/fixtures/computer-eval.json`。可选 OpenCode 数据库用于补充其原生日志。摘录中未知的起止时间保留 `null`，不能填零。完整轨迹必须包含时间。
+
+批量评测已保存的脱敏样本：
+
+```sh
+pnpm eval:computer --cases packages/agent/test/fixtures/trajectory-cases.json
+pnpm exec vitest run packages/agent/test/trajectory-evals.test.ts
+```
+
+每个样本列出预期工具名称及次数。评分器计算工具选择准确率、精确率、召回率、已知结果成功率、已人工验收任务的完成率、耗时和可用成本。工具选择按名称及次数匹配，不评价顺序、参数语义或业务结果。工具选择匹配不等于任务完成。样本包含历史故障，命令应返回失败；单测检查评分器能保留这些故障。缺失成本不会按零计算。此命令不会重新调用模型。
 
 ## 读报告
 

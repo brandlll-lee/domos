@@ -376,6 +376,10 @@ server.listen(Number(process.argv[3] ?? 0), "127.0.0.1", async () => {
 });
 let release: (() => void) | undefined;
 process.on("message", async (message) => {
+  if (message && typeof message === "object" && "metrics" in message) {
+    process.send?.({ memory: process.memoryUsage(), pid: process.pid });
+    return;
+  }
   if (message === "memory-upkeep") {
     const bot = (await bots.list(BACKGROUND_CONTEXT))[0];
     if (!bot) throw new Error("Bot required");

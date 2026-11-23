@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { parseConfig } from "@domos/agent/config";
 import type { DesktopIdentity } from "@domos/hosting/desktop";
@@ -10,6 +11,7 @@ import {
   writeConfiguration,
 } from "@domos/hosting/install";
 import { type UtilityProcess, utilityProcess } from "electron";
+import { z } from "zod";
 import { diagnostics, errorTrace } from "./diagnostics.ts";
 
 export type ServiceState =
@@ -35,6 +37,7 @@ export class LocalHost {
   state: ServiceState = "stopped";
   recoveryEnabled = true;
   readonly directory: string;
+  dataDirectory = "";
   readonly release: Release;
   readonly runtimeDirectory: string;
 
@@ -104,6 +107,7 @@ export class LocalHost {
       this.release,
     );
     const config = parseConfig(prepared.config, prepared.configFile);
+    this.dataDirectory = config.dataDir;
     if (config.host !== "127.0.0.1")
       throw new Error("桌面本机后台必须仅监听回环地址。");
     if (config.staticDir !== this.release.staticDir || !config.workComputer) {
@@ -236,43 +240,48 @@ export class LocalHost {
     }
   }
 
-  pair(identity: DesktopIdentity) {
+  async pair(identity: DesktopIdentity) {
+    return z
+      .object({ token: z.string().min(32), expires: z.number() })
+      .parse(await this.request({ type: "pair-desktop", identity }));
+  }
+  async setMaintenance(held: boolean) {
+    await this.request({ type: "maintenance", held });
+  }
+  private request(input: Record<string, unknown>) {
     const server = this.server;
     if (!server) throw new Error("本机后台未启动。");
-    return new Promise<{ token: string; expires: number }>(
-      (resolve, reject) => {
-        const cleanup = () => {
-          clearTimeout(timer);
-          server.removeListener("message", receive);
-          server.removeListener("exit", failed);
-        };
-        const failed = () => {
-          cleanup();
-          reject(new Error("桌面配对未完成。"));
-        };
-        const receive = (message: {
-          type?: string;
-          token: string;
-          expires: number;
-        }) => {
-          if (message.type === "desktop-session-error") {
-            failed();
-            return;
-          }
-          if (message.type !== "desktop-session") return;
-          cleanup();
-          resolve({ token: message.token, expires: message.expires });
-        };
-        const timer = setTimeout(failed, 10_000);
-        server.on("message", receive);
-        server.once("exit", failed);
-        try {
-          server.postMessage({ type: "pair-desktop", ...identity });
-        } catch {
-          failed();
-        }
-      },
-    );
+    const id = randomUUID();
+    return new Promise<unknown>((resolve, reject) => {
+      const cleanup = () => {
+        clearTimeout(timer);
+        server.removeListener("message", receive);
+        server.removeListener("exit", failed);
+      };
+      const failed = () => {
+        cleanup();
+        reject(new Error("本机后台请求未完成。"));
+      };
+      const receive = (message: {
+        type?: string;
+        id?: string;
+        result?: unknown;
+        error?: string;
+      }) => {
+        if (message.type !== "desktop-response" || message.id !== id) return;
+        cleanup();
+        if (message.error) reject(new Error(message.error));
+        else resolve(message.result);
+      };
+      const timer = setTimeout(failed, 15_000);
+      server.on("message", receive);
+      server.once("exit", failed);
+      try {
+        server.postMessage({ ...input, id });
+      } catch {
+        failed();
+      }
+    });
   }
 
   stop() {

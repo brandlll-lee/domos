@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { mkdir, rename, rm } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { lstat, mkdir, readdir, rename, rm } from "node:fs/promises";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { MAX_FILE_BYTES } from "@domos/agent/attachments";
@@ -100,4 +100,59 @@ export async function desktopFile(
     controller.abort();
     if (temporary) await rm(temporary, { force: true });
   }
+}
+
+export async function desktopFileCache(
+  origin: string,
+  action: "usage" | "clear",
+) {
+  const computer = createHash("sha256")
+    .update(new URL(origin).origin)
+    .digest("hex");
+  const root = resolve(app.getPath("temp"), "Domos", "files", computer);
+  let bytes = 0;
+  let reclaimableBytes = 0;
+  let clearedBytes = 0;
+  const visit = async (path: string) => {
+    const inside = relative(root, path);
+    if (
+      inside === ".." ||
+      inside.startsWith(`..${sep}`) ||
+      resolve(root, inside) !== path
+    )
+      throw new Error("临时文件路径无效。");
+    const info = await lstat(path).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+    if (!info || info.isSymbolicLink()) return;
+    if (info.isDirectory()) {
+      for (const name of await readdir(path)) await visit(join(path, name));
+      return;
+    }
+    if (!info.isFile()) return;
+    bytes += info.size;
+    if (
+      !/^\.[a-f0-9-]{36}\.download$/.test(basename(path)) ||
+      Date.now() - info.mtimeMs < 24 * 60 * 60_000
+    )
+      return;
+    reclaimableBytes += info.size;
+    if (action === "clear") {
+      await rm(path)
+        .then(() => {
+          clearedBytes += info.size;
+        })
+        .catch((error: NodeJS.ErrnoException) => {
+          if (!["EBUSY", "EPERM", "ENOENT"].includes(error.code ?? ""))
+            throw error;
+        });
+    }
+  };
+  await visit(root);
+  return {
+    bytes: bytes - clearedBytes,
+    reclaimableBytes: reclaimableBytes - clearedBytes,
+    clearedBytes,
+  };
 }

@@ -10,10 +10,12 @@ export const computerTrace = z
     endedAt: z.number().finite().nullable(),
     modelResponses: z.number().int().nonnegative().nullable(),
     completion: z.enum(["pass", "fail", "unreviewed"]),
+    costUsd: z.number().finite().nonnegative().nullable().optional(),
     calls: z.array(
       z
         .object({
           name: z.string(),
+          failed: z.boolean().optional(),
           input: z.record(z.string(), z.unknown()),
           output: z.string(),
           startedAt: z.number().finite().nullable(),
@@ -171,6 +173,13 @@ export function evaluateComputer(input: unknown) {
           ? null
           : trace.endedAt - trace.startedAt,
       toolCalls: trace.calls.length,
+      costUsd: trace.costUsd ?? null,
+      measuredResults: trace.calls.filter((call) => call.failed !== undefined)
+        .length,
+      toolSuccessRate: trace.calls.some((call) => call.failed !== undefined)
+        ? trace.calls.filter((call) => call.failed === false).length /
+          trace.calls.filter((call) => call.failed !== undefined).length
+        : null,
       modelResponses: trace.modelResponses,
       toolTimeMs: trace.coverage === "complete" ? toolTimeMs : null,
       outsideToolsMs:

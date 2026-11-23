@@ -30,6 +30,9 @@ const operationTimeout = 20 * 60_000;
 
 export class LocalStack {
   readonly directory: string;
+  get dataDirectory() {
+    return join(this.directory, "data");
+  }
   readonly release: Release;
   private readonly execute: typeof runCommand;
   private readonly ready: typeof waitForService;
@@ -196,6 +199,11 @@ export class LocalStack {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
       throw error;
     }
+  }
+
+  async setMaintenance(held: boolean) {
+    if (!this.origin || !this.active) throw new Error("请先启动本机后台。");
+    return this.maintenance(this.origin, held);
   }
 
   private async maintenance(

@@ -22,6 +22,7 @@
     "./attachments": "./src/attachments.ts",
     "./models": "./src/models.ts",
     "./runtime": "./src/runtime/index.ts",
+    "./maintenance": "./src/runtime/maintenance.ts",
     "./harness/types": "./src/harness/types.ts",
     "./harness/questions": "./src/harness/questions.ts",
     "./messages": "./src/messages.ts",

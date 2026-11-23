@@ -1906,16 +1906,21 @@ test.each([
   { gib: 8, limit: 2 },
   { gib: 16, limit: 4 },
   { gib: 32, limit: 8 },
+  { gib: 8, limit: 2, hosts: 2 },
 ])(
   "idle processes obey the $gib GiB work computer budget",
-  async ({ gib, limit }) => {
+  async ({ gib, limit, hosts = 1 }) => {
+    const owners = new Map<number, string>();
     const workers: ProtocolProcess[] = [];
     const computers = {
       attach: async () => {},
       initialize: async () => {},
       preflight: async () => {},
-      computerId: async () => "shared",
-      binding: async () => ({ computerId: "shared", directory: null }),
+      computerId: async (id: number) => owners.get(id) ?? "shared",
+      binding: async (id: number) => ({
+        computerId: owners.get(id) ?? "shared",
+        directory: null,
+      }),
       tools: { catalog: async () => [], finish: () => {} },
       process: async () => {
         const worker = new ProtocolProcess();
@@ -1952,11 +1957,12 @@ test.each([
     const runtime = await runtimeFixture(computers);
     const engines = runtime.engines;
     if (!engines) throw new Error("Native engines required");
-    for (let index = 0; index < limit + 1; index++) {
+    for (let index = 0; index < (limit + 1) * hosts; index++) {
       const bot = await runtime.bots.create(
         { name: `Bot ${index}`, requestId: crypto.randomUUID() },
         context,
       );
+      owners.set(bot.id, `computer:${index % hosts}`);
       await engines.configure(
         bot.id,
         {
@@ -1978,7 +1984,7 @@ test.each([
     }
     expect(
       workers.filter((worker) => !worker.output.writableEnded),
-    ).toHaveLength(limit);
+    ).toHaveLength(limit * hosts);
     expect(workers[0]?.output.writableEnded).toBe(true);
   },
 );

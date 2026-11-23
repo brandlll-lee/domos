@@ -1,0 +1,52 @@
+[
+  {
+    "name": "domos-task:7094:excerpt",
+    "trace": "computer-eval.json",
+    "expectedTools": [
+      "domos_desktop_get_window_state",
+      "domos_desktop_run_steps",
+      "domos_desktop_get_window_state",
+      "invalid",
+      "bash"
+    ]
+  },
+  {
+    "name": "Antigravity session 96465364, task 17545, native step 20; sanitized excerpt",
+    "trace": "antigravity-tool-failure.json",
+    "expectedTools": ["image_generate"]
+  },
+  {
+    "name": "domos-task:9954",
+    "trace": "pi-music-baseline.json",
+    "expectedTools": [
+      "desktop_get_window_state",
+      "desktop_list_windows",
+      "desktop_list_apps",
+      "query_result",
+      "powershell",
+      "desktop_list_windows",
+      "powershell",
+      "powershell",
+      "desktop_launch_app",
+      "desktop_get_desktop_state",
+      "desktop_launch_app",
+      "desktop_get_window_state",
+      "desktop_clipboard_write",
+      "desktop_run_steps",
+      "desktop_verify_state",
+      "desktop_run_steps",
+      "desktop_get_window_state",
+      "desktop_run_steps",
+      "browser_agent_browser_wait_ms",
+      "desktop_get_window_state",
+      "desktop_run_steps",
+      "browser_agent_browser_wait_ms",
+      "desktop_get_window_state",
+      "desktop_get_window_state",
+      "desktop_run_steps",
+      "desktop_run_steps",
+      "desktop_get_window_state",
+      "memory_save"
+    ]
+  }
+]

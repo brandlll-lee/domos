@@ -41,14 +41,21 @@ declare global {
       connected(): Promise<void>;
       pairing(): void;
       cancelConnection(): void;
+      fileCache(action: "usage" | "clear"): Promise<
+        Result<{
+          bytes: number;
+          reclaimableBytes: number;
+          clearedBytes: number;
+        }>
+      >;
       file(input: {
         action: "open" | "reveal" | "save";
         botId: number;
         id: string;
       }): Promise<Result<{ cancelled: boolean; localCopy?: boolean }>>;
       maintain(
-        action: "backup" | "restore",
-        password: string,
+        action: "backup" | "restore" | "compact",
+        password?: string,
       ): Promise<Result<{ message: string }>>;
     };
   }

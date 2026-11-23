@@ -55,27 +55,43 @@ async function main() {
     }
   ).parentPort;
   parent?.on("message", (event) => {
-    if (event.data === "shutdown") shutdown();
-    if (
-      typeof event.data === "object" &&
-      event.data &&
-      "type" in event.data &&
-      event.data.type === "pair-desktop" &&
-      config.host === "127.0.0.1"
-    ) {
-      const { type: _, ...input } = event.data;
-      const identity = desktopIdentity.safeParse(input);
-      if (!identity.success) {
-        parent.postMessage({ type: "desktop-session-error" });
-        return;
-      }
-      void runtime
-        .pairDesktop(identity.data)
-        .then((session) =>
-          parent.postMessage({ type: "desktop-session", ...session }),
-        )
-        .catch(() => parent.postMessage({ type: "desktop-session-error" }));
+    if (event.data === "shutdown") {
+      shutdown();
+      return;
     }
+    if (
+      config.host !== "127.0.0.1" ||
+      !event.data ||
+      typeof event.data !== "object" ||
+      !("id" in event.data) ||
+      typeof event.data.id !== "string" ||
+      !("type" in event.data)
+    )
+      return;
+    const input = event.data;
+    const operation = async () => {
+      if (input.type === "pair-desktop" && "identity" in input)
+        return runtime.pairDesktop(desktopIdentity.parse(input.identity));
+      if (
+        input.type === "maintenance" &&
+        "held" in input &&
+        typeof input.held === "boolean"
+      )
+        return runtime.maintenance(input.held);
+      throw new Error("桌面后台请求无效。");
+    };
+    void operation()
+      .then((result) =>
+        parent.postMessage({ type: "desktop-response", id: input.id, result }),
+      )
+      .catch((error) =>
+        parent.postMessage({
+          type: "desktop-response",
+          id: input.id,
+          error:
+            error instanceof Error ? error.message : "本机后台请求未完成。",
+        }),
+      );
   });
   server.once("error", (error) => {
     report(error);

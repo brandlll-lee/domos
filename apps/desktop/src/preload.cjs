@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld("domosDesktop", {
   maintain: (action, password) =>
     ipcRenderer.invoke("desktop:maintain", { action, password }),
   file: (input) => ipcRenderer.invoke("desktop:file", input),
+  fileCache: (action) => ipcRenderer.invoke("desktop:file-cache", action),
 });
 ipcRenderer.on("desktop:chat-target", (_event, target) => {
   window.dispatchEvent(

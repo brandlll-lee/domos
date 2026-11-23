@@ -282,6 +282,19 @@ test("native setup starts and resumes with Docker unavailable", async ({
       page.getByRole("heading", { name: "连接你的 AI" }),
     ).toBeVisible();
     await expect(page.getByText("桌面状态读取失败。")).toBeHidden();
+    const maintenance = await page.evaluate(() =>
+      window.domosDesktop!.maintain("compact"),
+    );
+    expect(maintenance.ok, maintenance.error).toBe(true);
+    expect(maintenance.value?.message).toContain("数据库整理完成");
+    await expect
+      .poll(() =>
+        page.evaluate(
+          async () => (await window.domosDesktop!.state()).value?.running,
+        ),
+      )
+      .toBe(true);
+
     await desktop.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows().find((window) =>
         window.contentView.children.some(
@@ -829,7 +842,7 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
         .getByRole("button", { name: "连接新设备", exact: true })
         .click();
       await expect(
-        settings.getByText("仅本机可用", { exact: true }),
+        settings.getByRole("radiogroup", { name: "连接方式", exact: true }),
       ).toBeVisible();
       await page.screenshot({
         path: testInfo.outputPath(`device-connection-${label}.png`),

@@ -1,4 +1,4 @@
-import { fork } from "node:child_process";
+import { execFile, fork } from "node:child_process";
 import { once } from "node:events";
 import {
   mkdir,
@@ -12,6 +12,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { expect, type Page, test } from "@playwright/test";
 import { workspacePage } from "./pages.ts";
 
@@ -142,6 +143,13 @@ test("workspaces switch in one window and preserve identity, authorization and r
       pageA.getByRole("textbox", { name: "消息", exact: true }),
     ).toBeEmpty();
     await expect.poll(() => pageB.isClosed()).toBe(true);
+    await desktop.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      window?.setBounds({ x: 40, y: 40, width: 1200, height: 800 });
+      window?.setAlwaysOnTop(true);
+      window?.show();
+      window?.focus();
+    });
     const seeded = once(a.worker, "message");
     a.worker.send({ history: 60 });
     await seeded;
@@ -155,6 +163,13 @@ test("workspaces switch in one window and preserve identity, authorization and r
     await pageA
       .getByRole("textbox", { name: "消息", exact: true })
       .fill("A 的草稿");
+    expect(
+      await pageA.evaluate(() => window.domosDesktop!.maintain("compact")),
+    ).toMatchObject({
+      ok: false,
+      error: "请先打开本机 Domos，再管理本机托管。",
+    });
+
     await pageA.locator(".transcript").evaluate((node) => {
       node.scrollTop = node.scrollHeight / 2;
     });
@@ -182,7 +197,70 @@ test("workspaces switch in one window and preserve identity, authorization and r
       await expect(current).toHaveAttribute("aria-current", "page");
       await expect(current).toHaveCSS("opacity", "1");
       await expect(current).toBeEnabled();
-      await current.click();
+      if (process.platform === "win32") {
+        const native = await desktop.evaluate(({ BrowserWindow }, url) => {
+          const window = BrowserWindow.getAllWindows().find((window) =>
+            window.contentView.children.some(
+              (view) =>
+                "webContents" in view &&
+                (
+                  view.webContents as import("electron").WebContents
+                ).getURL() === url,
+            ),
+          );
+          if (!window) throw new Error("Workspace window missing");
+          const view = window.contentView.children.find(
+            (view) =>
+              "webContents" in view &&
+              (view.webContents as import("electron").WebContents).getURL() ===
+                url,
+          );
+          return {
+            handle: window.getNativeWindowHandle().readBigUInt64LE().toString(),
+            view: view?.getBounds() ?? { x: 0, y: 0 },
+          };
+        }, pageA.url());
+        const points = await menu.getByRole("menuitem").evaluateAll(
+          (items, offset) =>
+            items.map((item) => {
+              const box = item.getBoundingClientRect();
+              return {
+                x: Math.round(
+                  (offset.x + box.x + box.width / 2) * devicePixelRatio,
+                ),
+                y: Math.round(
+                  (offset.y + box.y + box.height / 2) * devicePixelRatio,
+                ),
+              };
+            }),
+          native.view,
+        );
+        const invoke = async (click = false) => {
+          const { stdout } = await promisify(execFile)(
+            "powershell.exe",
+            [
+              "-NoProfile",
+              "-NonInteractive",
+              "-File",
+              fileURLToPath(
+                new URL("./fixtures/menu-input.ps1", import.meta.url),
+              ),
+              "-Window",
+              native.handle,
+              "-Points",
+              JSON.stringify(points),
+              ...(click ? ["-Click"] : []),
+            ],
+            { windowsHide: true },
+          );
+          return JSON.parse(stdout) as { hit: number }[];
+        };
+        const probes = await invoke();
+        expect(probes.every((point) => point.hit === 1)).toBe(true);
+        await expect(current).toHaveAttribute("data-highlighted");
+        await invoke(true);
+        await expect(menu).toBeHidden();
+      } else await current.click();
       expect(await selected()).toBe(ids[0]);
       await trigger.click();
       await expect(

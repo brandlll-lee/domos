@@ -1,7 +1,7 @@
 import type { Bot, Bots } from "@domos/agent/bots";
 import { type InputMaterials, MAX_MATERIALS } from "@domos/agent/materials";
 import type { McpConnections } from "@domos/agent/mcp";
-import { messageText } from "@domos/agent/messages";
+import { type ChatMessage, messageText } from "@domos/agent/messages";
 import type { ChatView } from "@domos/agent/view";
 import type { BotWork } from "@domos/agent/work";
 import { WORK_TEXT_LENGTH } from "@domos/agent/work/limits";
@@ -71,6 +71,10 @@ export const materialsSchema = {
           id: z.uuid(),
           type: z.literal("message"),
           messageId: z.string().min(1).max(128),
+          cursor: z
+            .string()
+            .regex(/^\d+:\d+$/)
+            .optional(),
           position: z.number().int().nonnegative().optional(),
         }),
       ]),
@@ -103,6 +107,7 @@ export async function prepareMaterials(
   work: BotWork,
   connections?: McpConnections,
   bots?: Bots,
+  readMessage?: (id: string, cursor?: string) => Promise<ChatMessage | null>,
 ): Promise<InputMaterials> {
   const existing = view.messages.find(
     (message) => message.requestId === input.requestId,
@@ -129,6 +134,17 @@ export async function prepareMaterials(
       ? []
       : ((await bots?.list(BACKGROUND_CONTEXT))?.find((bot) => bot.id === owner)
           ?.conversations ?? []);
+  const messages = [...view.messages];
+  if (readMessage)
+    for (const item of input.context) {
+      if (
+        item.type !== "message" ||
+        messages.some((message) => message.id === item.messageId)
+      )
+        continue;
+      const message = await readMessage(item.messageId, item.cursor);
+      if (message) messages.push(message);
+    }
   return {
     ...(input.mcp.length
       ? {
@@ -213,7 +229,7 @@ export async function prepareMaterials(
         return { ...item, botId: owner, text: source.title };
       }
       if (item.type === "text") return { ...item, botId: input.botId };
-      const message = view.messages.find(
+      const message = messages.find(
         (message) =>
           message.id === item.messageId &&
           !message.pending &&

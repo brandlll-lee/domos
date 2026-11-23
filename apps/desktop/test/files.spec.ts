@@ -1,9 +1,16 @@
 import { fork } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 import { pdf } from "../../../packages/agent/test/fixtures/pdf.ts";
@@ -61,8 +68,9 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
 
     await setup.getByRole("button", { name: "连接", exact: true }).click();
     const page = await workspacePage(desktop);
+
     await page.getByLabel("配对码", { exact: true }).fill(ready.pairing);
-    await page.getByRole("button", { name: "连接", exact: true }).click();
+    await page.getByRole("button", { name: "确认连接", exact: true }).click();
     await expect(
       page.getByRole("button", { name: "Bot详情", exact: true }),
     ).toBeVisible();
@@ -172,9 +180,14 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
               }),
             });
       await card.scrollIntoViewIfNeeded();
-      await expect(card.locator(".media-attachment-duration")).toHaveText(
-        "0:03",
-      );
+      if (name === "audio.mp3")
+        await expect(
+          card.locator(".media-attachment-duration"),
+        ).toHaveAttribute("title", "总时长 0:03");
+      else
+        await expect(card.locator(".media-attachment-duration")).toHaveText(
+          "0:03",
+        );
       await expect(card.locator(".file-card-actions")).toHaveCount(0);
       if (name !== "audio.mp3") {
         await expect(card.locator("img")).toBeVisible();
@@ -198,10 +211,14 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
         await expect
           .poll(() =>
             card
-              .locator(".audio-waveform g rect")
+              .locator(".audio-waveform g line")
               .evaluateAll((bars) =>
                 Math.max(
-                  ...bars.map((bar) => Number(bar.getAttribute("height"))),
+                  ...bars.map(
+                    (bar) =>
+                      Number(bar.getAttribute("y2")) -
+                      Number(bar.getAttribute("y1")),
+                  ),
                 ),
               ),
           )
@@ -335,6 +352,26 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
           () => Reflect.get(globalThis, "fileActionPaths")[0] as string,
         );
         expect(await readFile(local)).toEqual(pdf());
+        const abandoned = join(
+          dirname(local),
+          `.${crypto.randomUUID()}.download`,
+        );
+        const recent = join(dirname(local), `.${crypto.randomUUID()}.download`);
+        await writeFile(abandoned, "unfinished");
+        await writeFile(recent, "active");
+        const old = new Date(Date.now() - 25 * 60 * 60_000);
+        await utimes(abandoned, old, old);
+        const cache = await page.evaluate(() =>
+          window.domosDesktop!.fileCache("clear"),
+        );
+        expect(cache.ok, cache.error).toBe(true);
+        expect(cache.value?.clearedBytes).toBe(Buffer.byteLength("unfinished"));
+        await expect(readFile(abandoned)).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+        expect(await readFile(recent, "utf8")).toBe("active");
+        expect(await readFile(local)).toEqual(pdf());
+
         await panel
           .getByRole("button", { name: "文件操作", exact: true })
           .click();
@@ -519,10 +556,9 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
       .screenshot({ path: testInfo.outputPath("file-message-cards.png") });
     await page.emulateMedia({ colorScheme: "dark" });
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-    await page
-      .locator(".file-card")
-      .first()
-      .screenshot({ path: testInfo.outputPath("file-message-cards-dark.png") });
+    await page.screenshot({
+      path: testInfo.outputPath("file-message-cards-dark.png"),
+    });
     await page.emulateMedia({ colorScheme: "light" });
     const sorted = seekTimes.toSorted((a, b) => a - b);
     measurements.mediaEvents = mediaEvents;
@@ -658,7 +694,11 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
     const receivedAudio = page
       .locator(".delivered-files")
       .getByRole("group", { name: "音频 audio.mp3", exact: true });
-    await expect(receivedAudio.locator(".bot-avatar")).toBeVisible();
+    await expect(
+      page
+        .locator(".delivered-files")
+        .getByRole("region", { name: "Domos 的附件", exact: true }),
+    ).toBeVisible();
     await expect(page.locator(".delivered-files .message-bubble")).toHaveCount(
       0,
     );
