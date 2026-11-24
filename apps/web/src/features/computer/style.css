@@ -141,15 +141,6 @@
   gap: var(--space-2);
   white-space: nowrap;
 }
-.computer-live-dot {
-  width: var(--space-2);
-  height: var(--space-2);
-  border-radius: var(--radius-round);
-  background: currentColor;
-}
-.computer-view-status[data-connected] .computer-live-dot {
-  background: var(--color-live);
-}
 .computer-view-screen {
   position: relative;
   display: grid;

@@ -74,7 +74,11 @@ test("the directory reports each private conversation's Harness and follows conf
     expect((await events.next()).value?.[0]?.conversations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: conversation.id, provider: "pi" }),
-        expect.objectContaining({ id: second, provider: "pi" }),
+        expect.objectContaining({
+          id: second,
+          provider: "pi",
+          createdAt: expect.any(Number),
+        }),
       ]),
     );
     await harness.commit(async (tx) => {
@@ -108,9 +112,13 @@ test("private conversations inherit once and retain independent native contexts 
       const worker = featureProcess(async () => "Done");
       workers.push(worker);
       const receive = worker.receive;
-      const native = `/native/private-${workers.length}`;
-      worker.receive = (request) =>
-        request.type === "get_state"
+      let native = `/native/private-${workers.length}`;
+      worker.receive = (request) => {
+        if (request.type === "switch_session") {
+          assert(request.sessionPath);
+          native = request.sessionPath;
+        }
+        return request.type === "get_state"
           ? worker.frame({
               type: "response",
               id: request.id,
@@ -125,6 +133,7 @@ test("private conversations inherit once and retain independent native contexts 
               },
             })
           : receive(request);
+      };
       return worker;
     },
   } as unknown as Computers;

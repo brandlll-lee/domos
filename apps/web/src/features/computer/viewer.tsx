@@ -2,6 +2,7 @@ import { Button } from "@domos/ui/controls";
 import { Loading } from "@domos/ui/loading";
 import { ActionMenu } from "@domos/ui/menu";
 import { InlineNotice } from "@domos/ui/message";
+import { StatusDot, type StatusTone } from "@domos/ui/status-dot";
 import { ArrowsInIcon } from "@phosphor-icons/react/dist/csr/ArrowsIn";
 import { ArrowsOutIcon } from "@phosphor-icons/react/dist/csr/ArrowsOut";
 import { CornersInIcon } from "@phosphor-icons/react/dist/csr/CornersIn";
@@ -48,6 +49,16 @@ export function ComputerViewer({
   const [ratio, setRatio] = useState(16 / 10);
   const [failure, setFailure] = useState<string>();
   const driving = connected && controlling && !busy && !blocked;
+  const status: { tone: StatusTone; label: string } =
+    !connected && error
+      ? { tone: "negative", label: "已断开" }
+      : blocked
+        ? { tone: "warning", label: "操作已暂停" }
+        : busy
+          ? { tone: "neutral", label: "正在交接…" }
+          : connected && frame
+            ? { tone: "positive", label: controlling ? "你正在操作" : "实时" }
+            : { tone: "neutral", label: "连接中" };
   useEffect(() => {
     const changed = () =>
       setFullscreen(document.fullscreenElement === viewer.current);
@@ -163,20 +174,9 @@ export function ComputerViewer({
           role="status"
           aria-label="屏幕状态"
           className="computer-view-status"
-          data-connected={(connected && Boolean(frame)) || undefined}
         >
-          <span className="computer-live-dot" />
-          {busy
-            ? "正在交接…"
-            : blocked
-              ? "操作已暂停"
-              : connected && frame
-                ? controlling
-                  ? "你正在操作"
-                  : "实时"
-                : error
-                  ? "已断开"
-                  : "连接中"}
+          <StatusDot inline {...status} />
+          {status.label}
         </span>
         <div className="detail-inline">
           {controlling && (

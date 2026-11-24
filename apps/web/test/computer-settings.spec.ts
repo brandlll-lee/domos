@@ -670,6 +670,12 @@ test("computer viewing uses separate tabs and releases control when closed", asy
   await view.getByRole("button", { name: "启用浏览器", exact: true }).click();
   const screen = view.getByRole("img", { name: "工作电脑画面" });
   await expect(screen).toBeVisible({ timeout: 30000 });
+  const status = view.getByRole("status", { name: "屏幕状态", exact: true });
+  await expect(status).toHaveText("实时");
+  await expect(status.locator("span").first()).toHaveCSS(
+    "background-color",
+    "rgb(37, 216, 132)",
+  );
   await expect(
     view.getByRole("textbox", { name: "网址", exact: true }),
   ).toHaveCount(0);
@@ -686,6 +692,10 @@ test("computer viewing uses separate tabs and releases control when closed", asy
   await view.getByRole("button", { name: "收起工作区", exact: true }).click();
   for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme });
+    await expect(status.locator("span").first()).toHaveCSS(
+      "background-color",
+      "rgb(37, 216, 132)",
+    );
     for (const width of [1440, 768, 390]) {
       await page.setViewportSize({ width, height: 900 });
       await expect(screen).toBeInViewport({ ratio: 1 });
@@ -722,6 +732,13 @@ test("computer viewing uses separate tabs and releases control when closed", asy
   await expect(
     view.getByRole("button", { name: "接管", exact: true }),
   ).toBeVisible();
+  await service.control("disconnect-clients");
+  await expect(status).toHaveText("已断开");
+  await expect(screen).toBeVisible();
+  await expect(status.locator("span").first()).toHaveCSS(
+    "background-color",
+    "rgb(255, 82, 101)",
+  );
   await details.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Bot详情", exact: true }),
@@ -776,8 +793,18 @@ for (const [error, action, install] of [
     await expect(
       view.getByRole("status", { name: "正在连接画面", exact: true }),
     ).toBeVisible();
+    const status = view.getByRole("status", { name: "屏幕状态", exact: true });
+    await expect(status).toHaveText("连接中");
+    await expect(
+      status.getByRole("img", { name: "连接中", exact: true }),
+    ).toBeVisible();
     opening.resolve();
     await expect(view.getByRole("alert")).toContainText(error);
+    await expect(status).toHaveText("已断开");
+    await expect(status.locator("span").first()).toHaveCSS(
+      "background-color",
+      "rgb(255, 82, 101)",
+    );
     await page.screenshot({ path: info.outputPath("browser-recovery.png") });
     await view.getByRole("button", { name: action, exact: true }).click();
     if (install)

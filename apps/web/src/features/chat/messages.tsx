@@ -12,7 +12,6 @@ import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import {
   Fragment,
   memo,
-  type ReactNode,
   useDeferredValue,
   useEffect,
   useMemo,
@@ -287,7 +286,6 @@ export const Messages = memo(function Messages({
   botName,
   createdAt,
   items,
-  welcome,
   onResend,
   onReference,
   sentRequest,
@@ -316,7 +314,6 @@ export const Messages = memo(function Messages({
   botName: string;
   createdAt?: number;
   items: TranscriptItem[];
-  welcome?: ReactNode;
   onResend: (message: ChatMessage) => void;
   onReference?: (message: ChatMessage) => void;
   sentRequest?: string;
@@ -516,7 +513,6 @@ export const Messages = memo(function Messages({
             </div>
           )
         )}
-        {shown.ready && !shown.items.length && welcome}
         <div
           className="messages"
           ref={transcript.content}

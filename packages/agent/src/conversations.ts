@@ -157,6 +157,7 @@ export type PrivateConversation = {
   provider: EngineId | undefined;
   title: string;
   archived: boolean;
+  createdAt?: number;
   updatedAt?: number;
   status: "idle" | "working" | "queued" | "waiting" | "failed";
 };
@@ -203,6 +204,7 @@ export async function privateConversations(
           title:
             session?.title ?? (preview.lastMessageAt ? "原有会话" : "新会话"),
           archived: session?.archived ?? false,
+          createdAt: session?.createdAt,
           updatedAt: preview.lastMessageAt ?? session?.createdAt,
           status,
         },

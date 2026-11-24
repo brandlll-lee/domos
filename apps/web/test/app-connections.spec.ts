@@ -133,11 +133,12 @@ test("native connection cards expand in place and retain source and tool evidenc
           observedAt: 1,
           inheritance: "native",
           inherited: true,
-          items: ["exa", "tavily"].map((name) => ({
+          items: ["exa", "tavily", "registry"].map((name) => ({
             name,
             source: "opencode",
             enabled: true,
-            status: "connected",
+            status:
+              name === "registry" ? "needs_client_registration" : "connected",
             ...(name === "tavily"
               ? {
                   tools: [
@@ -162,6 +163,10 @@ test("native connection cards expand in place and retain source and tool evidenc
   const dialog = page.locator(".apps-dialog");
   const exa = dialog.getByRole("button", { name: "查看 exa", exact: true });
   await expect(exa).toBeVisible();
+  const registration = dialog
+    .getByRole("button", { name: "查看 registry", exact: true })
+    .getByRole("img", { name: /需要客户端注册/ });
+  await expect(registration).toHaveCSS("background-color", "rgb(255, 190, 50)");
   await expect(dialog.getByText("尚未添加连接。", { exact: true })).toHaveCount(
     0,
   );

@@ -43,7 +43,6 @@ export type Bot = {
   avatarAssetId?: string;
   avatarMigrationError?: string;
   createdAt?: number;
-  welcomeComplete?: boolean;
 };
 export type BotPresence = Bot & {
   revision: number;
@@ -293,7 +292,6 @@ export class Bots {
           avatarMigrationError,
           revision,
           createdAt,
-          welcomeComplete,
         }) => {
           const [live, agent, conversation, engine] = await Promise.all([
             this.harness.snapshot(LiveDoc, id, context),
@@ -310,7 +308,6 @@ export class Bots {
             avatarMigrationError,
             revision: revision ?? 0,
             createdAt,
-            welcomeComplete: Boolean(welcomeComplete),
             conversations: await privateConversations(
               this.harness,
               id,
@@ -352,16 +349,6 @@ export class Bots {
     return bot
       ? this.harness.conversation(id as ConversationId, context)
       : undefined;
-  }
-
-  async completeWelcome(id: number, context: Context) {
-    await this.harness.commit(async (tx) => {
-      const bot = (await tx.doc(BotDirectory)).items.find(
-        (item) => item.id === id,
-      );
-      if (!bot) throw new WorkError("NOT_FOUND", "Bot不存在。");
-      bot.welcomeComplete = true;
-    }, context);
   }
 
   async profile(id: number, context: Context) {

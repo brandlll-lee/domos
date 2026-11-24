@@ -8,6 +8,7 @@ export type Request = {
   method?: string;
   params?: Record<string, unknown>;
   message?: { content: string };
+  sessionPath?: string;
   result?: unknown;
 };
 

@@ -696,6 +696,12 @@ test("a failed browser input pauses the viewer and reconnect never replays it", 
   await expect(
     view.getByRole("status", { name: "屏幕状态", exact: true }),
   ).toHaveText("操作已暂停");
+  await expect(
+    view
+      .getByRole("status", { name: "屏幕状态", exact: true })
+      .locator("span")
+      .first(),
+  ).toHaveCSS("background-color", "rgb(255, 190, 50)");
   expect(calls).toBe(1);
   expect((await state()).value).toBe("saved draft");
   await page.unroute("**/rpc/computer/input");

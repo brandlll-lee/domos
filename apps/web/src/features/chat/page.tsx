@@ -47,7 +47,6 @@ import { useChat } from "./use-chat.ts";
 import { useComposerDock } from "./use-composer-dock.ts";
 import { useDraft } from "./use-draft.ts";
 import { useHistorySearch } from "./use-history-search.ts";
-import { ChatWelcome } from "./welcome.tsx";
 import { useWorkspaceAvatars } from "./workspace-avatars.ts";
 
 const UsageSurface = lazy(() =>
@@ -614,7 +613,13 @@ function BotChat({
                 bots={bots}
                 retry={chat.view?.busy ? chat.view.runtime?.retry : null}
                 botName={team?.name ?? bot.name}
-                createdAt={bot.createdAt}
+                createdAt={
+                  team
+                    ? undefined
+                    : conversationId === bot.id
+                      ? bot.createdAt
+                      : directory.conversation?.createdAt
+                }
                 items={items}
                 sentRequest={chat.sentRequest}
                 target={chat.target}
@@ -631,25 +636,6 @@ function BotChat({
                 onEarlier={chat.loadEarlier}
                 onResend={resend}
                 onReference={reference}
-                welcome={
-                  !team &&
-                  !chat.error &&
-                  !bot.welcomeComplete &&
-                  !chat.view?.messages.length && (
-                    <ChatWelcome
-                      botId={bot.id}
-                      disabled={!chat.connected || Boolean(draft.draft.pending)}
-                      onChoose={(text) => {
-                        const current = draft.current.current.text;
-                        draft.update({
-                          text: current.trim() ? `${current}\n\n${text}` : text,
-                        });
-                        input.current?.focus();
-                      }}
-                      onDismissed={() => input.current?.focus()}
-                    />
-                  )
-                }
               />
               {chat.view ? (
                 <Composer

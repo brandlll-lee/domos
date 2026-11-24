@@ -105,6 +105,7 @@ export function ConnectionStatus({
                   "connecting",
                   "needs-auth",
                   "needs_auth",
+                  "needs_client_registration",
                   "authorization_required",
                 ].includes(status)
               ? "warning"

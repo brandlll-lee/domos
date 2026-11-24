@@ -28,6 +28,64 @@ async function createConversation(page: Page) {
   await page.getByRole("menuitem", { name: "新建会话", exact: true }).click();
 }
 
+test("empty private conversations retain their creation time through navigation and restart", async ({
+  service,
+  page,
+}, info) => {
+  await page.goto(service.url);
+  const time = page.locator('.conversation-time time[title="创建时间"]');
+  const times: { id: string; at: string }[] = [];
+  for (let index = 0; index < 2; index++) {
+    const started = Date.now();
+    await createConversation(page);
+    await expect(page).toHaveURL(/#bot\/1\/\d+$/);
+    await expect(time).toBeVisible();
+    const at = await time.getAttribute("datetime");
+    expect(Date.parse(at ?? "")).toBeGreaterThanOrEqual(started);
+    expect(Date.parse(at ?? "")).toBeLessThanOrEqual(Date.now());
+    times.push({ id: new URL(page.url()).hash, at: at ?? "" });
+    await expect(
+      page.getByRole("region", { name: "入门提示", exact: true }),
+    ).toHaveCount(0);
+  }
+  expect(times[0]?.at).not.toBe(times[1]?.at);
+  const port = Number(new URL(service.url).port);
+  await service.stop();
+  await service.start(port);
+  await page.reload();
+  for (const saved of times) {
+    await page.goto(`${service.url}/${saved.id}`);
+    await expect(time).toHaveAttribute("datetime", saved.at);
+    for (const theme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: theme });
+      const header = await page.locator(".chat-header").boundingBox();
+      const stamp = await time.boundingBox();
+      const pane = await page.locator(".transcript").boundingBox();
+      expect(stamp?.y).toBeGreaterThan(
+        (header?.y ?? 0) + (header?.height ?? 0),
+      );
+      expect(
+        Math.abs(
+          (stamp?.x ?? 0) +
+            (stamp?.width ?? 0) / 2 -
+            (pane?.x ?? 0) -
+            (pane?.width ?? 0) / 2,
+        ),
+      ).toBeLessThan(2);
+      await page.screenshot({
+        path: info.outputPath(`empty-${times.indexOf(saved)}-${theme}.png`),
+      });
+    }
+  }
+  await page
+    .getByRole("textbox", { name: "消息", exact: true })
+    .fill("记录这次任务");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByLabel("Domos 的回复")).toContainText("记录这次任务");
+  await expect(time).toHaveCount(0);
+  await expect(page.locator(".conversation-time time")).toHaveCount(1);
+});
+
 test("avatar menus retain their character through hover and sidebar changes", async ({
   service,
   page,
