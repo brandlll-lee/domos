@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode, Ref } from "react";
+import { type ComponentProps, type ReactNode, type Ref, useId } from "react";
 import { Button } from "./controls.tsx";
 
 export function PanelHeader({
@@ -149,5 +149,65 @@ export function PanelRow({
         <path d="m6 4 4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </button>
+  );
+}
+
+export function ExpandableCard({
+  title,
+  icon,
+  description,
+  value,
+  expanded,
+  onExpandedChange,
+  children,
+  className = "",
+  ...props
+}: {
+  title: string;
+  icon: ReactNode;
+  description?: ReactNode;
+  value?: ReactNode;
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
+  children: ReactNode;
+} & Omit<
+  ComponentProps<"button">,
+  "title" | "value" | "children" | "onClick"
+>) {
+  const id = useId();
+  return (
+    <PanelCard className={`expandable-card ${className}`}>
+      <button
+        {...props}
+        type="button"
+        className="expandable-card-trigger"
+        aria-label={`查看 ${title}`}
+        aria-expanded={expanded}
+        aria-controls={id}
+        onClick={() => onExpandedChange(!expanded)}
+      >
+        <span className="expandable-card-icon" aria-hidden="true">
+          {icon}
+        </span>
+        <span className="expandable-card-identity">
+          <strong>{title}</strong>
+          {description && <span>{description}</span>}
+        </span>
+        <span className="expandable-card-value">{value}</span>
+        <svg
+          className="expandable-card-caret"
+          viewBox="0 0 16 16"
+          aria-hidden="true"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        >
+          <path d="m4 6 4 4 4-4" />
+        </svg>
+      </button>
+      <div id={id} hidden={!expanded} className="expandable-card-body">
+        {expanded && children}
+      </div>
+    </PanelCard>
   );
 }

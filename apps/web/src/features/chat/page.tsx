@@ -548,7 +548,6 @@ function BotChat({
           open={appsOpen}
           onOpenChange={setAppsOpen}
           bots={bots}
-          currentBotId={team ? undefined : bot.id}
           computers={directory.computers.items}
         />
         {view === "usage" ? (

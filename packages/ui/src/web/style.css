@@ -305,3 +305,40 @@ a,
     padding: var(--space-4);
   }
 }
+
+.dialog-popup[data-layout="task"] {
+  --control-height: var(--control-small);
+  width: min(28rem, calc(100vw - var(--space-8)));
+  height: auto;
+  max-height: calc(100dvh - var(--space-8));
+  padding: var(--space-5);
+  border-radius: var(--radius-surface);
+}
+.dialog-popup[data-layout="task"] .dialog-header {
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+.dialog-popup[data-layout="task"] .dialog-title {
+  font-size: var(--text-heading);
+}
+.dialog-popup[data-layout="task"] .dialog-body {
+  flex: 0 1 auto;
+}
+.dialog-popup[data-layout="task"] .dialog-body > .scroll-viewport {
+  padding-inline-end: 0;
+}
+.dialog-popup[data-layout="task"] .dialog-actions > .button {
+  min-height: var(--control-small);
+  padding-block: var(--space-1);
+}
+.dialog-popup[data-layout="task"] .form-fields {
+  gap: var(--space-3);
+}
+.dialog-popup[data-layout="task"] textarea.field-control {
+  field-sizing: content;
+  max-height: 10rem;
+}
+
+.dialog-popup[data-layout="task"] .picker-trigger {
+  padding-block: var(--space-1);
+}

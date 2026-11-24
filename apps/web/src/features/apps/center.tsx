@@ -5,8 +5,7 @@ import { Disclosure } from "@domos/ui/disclosure";
 import { Checkbox, SearchField } from "@domos/ui/field";
 import { Loading } from "@domos/ui/loading";
 import { ActionMenu } from "@domos/ui/menu";
-import { PanelRow } from "@domos/ui/panel";
-import { ChoicePicker } from "@domos/ui/picker";
+import { ExpandableCard } from "@domos/ui/panel";
 import { Tabs } from "@domos/ui/tabs";
 import { ArrowClockwiseIcon as ArrowClockwise } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
 import { PlusIcon as Plus } from "@phosphor-icons/react/dist/csr/Plus";
@@ -20,11 +19,9 @@ import {
 import { client } from "../../client.ts";
 import { useReadState } from "../read-state.ts";
 import {
-  ConnectionHint,
   ConnectionIcon,
   ConnectionStatus,
   ConnectionTools,
-  NativeConnectionDetails,
   NativeConnections,
 } from "./connection-details.tsx";
 import { ConnectionEditor, type Draft } from "./connection-editor.tsx";
@@ -32,8 +29,9 @@ import {
   appCatalog,
   managedConnections,
   nativeConnections,
+  useNativeCatalogs,
 } from "./connection-state.ts";
-import { appsCopy, nativeMcpNotice } from "./copy.ts";
+import { appsCopy } from "./copy.ts";
 import "./style.css";
 
 type Connection = Awaited<ReturnType<typeof client.mcp.list>>[number];
@@ -58,13 +56,11 @@ export function AppsCenter({
   onOpenChange,
   bots,
   computers,
-  currentBotId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   bots: { id: number; name: string }[];
   computers: { id: string; name: string }[];
-  currentBotId?: number;
 }) {
   const [view, updateView] = useState<"apps" | "connected">("connected");
   const viewport = useRef<HTMLDivElement>(null);
@@ -95,16 +91,10 @@ export function AppsCenter({
     [busy, setBusy] = useState(false),
     [checking, setChecking] = useState<string | null>(null);
   const [removing, setRemoving] = useState<Connection | null>(null);
-  const [nativeBot, setNativeBot] = useState(
-    currentBotId ? String(currentBotId) : "",
-  );
-  const [selectedNative, setSelectedNative] = useState<string>();
   const [step, setStep] = useState<"import" | "confirm">("import");
   const source = useRef<string>("add-mcp");
   const restoreFocus = useRef(false);
-  const location = form
-    ? `editor:${form.id}`
-    : (selectedId ?? (selectedNative ? `native:${selectedNative}` : view));
+  const location = form ? `editor:${form.id}` : view;
   useLayoutEffect(() => {
     if (location.startsWith("editor:")) {
       viewport.current
@@ -122,20 +112,8 @@ export function AppsCenter({
         ?.focus();
     }
   }, [location, step, view]);
-  const nativeStore = nativeConnections(Number(nativeBot));
-  const nativeState = useReadState(
-    nativeStore,
-    open && view === "connected" && !form && !selectedId && !!nativeBot,
-  );
-  const native = nativeState.data;
-  const nativeReading = nativeState.loading;
-  const nativeError = nativeState.error ? appsCopy.nativeReadError : null;
-  const refreshNative = (id: string) => {
-    if (id)
-      void nativeConnections(Number(id))
-        .load(true)
-        .catch(() => {});
-  };
+  const native = useNativeCatalogs(bots, open && view === "connected" && !form);
+  const nativeReading = native.loading;
   const refresh = useCallback(async () => {
     await Promise.allSettled([
       managedConnections.load(true),
@@ -209,7 +187,6 @@ export function AppsCenter({
     restoreFocus.current = true;
     setForm(null);
     setSelectedId(undefined);
-    setSelectedNative(undefined);
     setError(null);
   };
   const back = () => {
@@ -264,60 +241,30 @@ export function AppsCenter({
       <Dialog
         open={open}
         onOpenChange={onOpenChange}
-        title={
-          form
-            ? form.editing
-              ? "编辑连接"
-              : "添加 MCP"
-            : selectedId || selectedNative
-              ? "连接详情"
-              : "应用连接"
-        }
+        title={form ? (form.editing ? "编辑连接" : "添加 MCP") : "应用连接"}
         className="apps-dialog"
+        layout={form ? "task" : "window"}
         viewportRef={viewport}
-        onBack={form || selectedId || selectedNative ? back : undefined}
+        onBack={form ? back : undefined}
         backDisabled={busy}
         headerActions={
           !form && (
-            <>
-              {!selectedId && !selectedNative && view === "connected" && (
-                <div className="connection-scope">
-                  <ChoicePicker
-                    label="选择机器人"
-                    placeholder="选择机器人"
-                    size="small"
-                    value={nativeBot}
-                    disabled={busy}
-                    items={bots.map((bot) => ({
-                      value: String(bot.id),
-                      label: bot.name,
-                    }))}
-                    onValueChange={(id) => setNativeBot(id)}
-                  />
-                  <ConnectionHint label="连接查看范围">
-                    机器人选择切换原生目录。Domos 管理的连接属于当前电脑。
-                  </ConnectionHint>
-                </div>
-              )}
-              <Button
-                variant="ghost"
-                size="icon-small"
-                aria-label="刷新连接"
-                disabled={reading || busy || nativeReading}
-                onClick={() => {
-                  void refresh();
-                  if (view === "connected") refreshNative(nativeBot);
-                }}
-              >
-                <ArrowClockwise />
-              </Button>
-            </>
+            <Button
+              variant="ghost"
+              size="icon-small"
+              aria-label="刷新连接"
+              disabled={reading || busy || nativeReading}
+              onClick={() => {
+                void refresh();
+                if (view === "connected") void native.refresh();
+              }}
+            >
+              <ArrowClockwise />
+            </Button>
           )
         }
         subheader={
-          !form &&
-          !selectedId &&
-          !selectedNative && (
+          !form && (
             <div className="apps-navigation">
               <div className="section-heading">
                 <Tabs.Root
@@ -335,6 +282,7 @@ export function AppsCenter({
                 </Tabs.Root>
                 <Button
                   variant="secondary"
+                  size="small"
                   data-connection-action="add-mcp"
                   onClick={() => start()}
                   disabled={busy}
@@ -412,10 +360,8 @@ export function AppsCenter({
           )}
           {loaded &&
             !form &&
-            !selectedId &&
-            !selectedNative &&
             query &&
-            (view === "apps" || !nativeBot || native?.status === "complete") &&
+            (view === "apps" || !nativeReading) &&
             !(view === "apps"
               ? catalog.some(
                   (app) =>
@@ -427,8 +373,10 @@ export function AppsCenter({
               : items.some((item) =>
                   item.name.toLowerCase().includes(query.toLowerCase()),
                 ) ||
-                native?.items.some((item) =>
-                  item.name.toLowerCase().includes(query.toLowerCase()),
+                native.sources.some((source) =>
+                  source.data?.items.some((item) =>
+                    item.name.toLowerCase().includes(query.toLowerCase()),
+                  ),
                 )) && (
               <p role="status">
                 没有找到匹配项。
@@ -448,7 +396,7 @@ export function AppsCenter({
               {error}
             </p>
           )}
-          {view === "apps" && !form && !selectedId ? (
+          {view === "apps" && !form ? (
             <>
               {loaded && !catalog.length && (
                 <p className="apps-muted">暂无可用应用。</p>
@@ -492,6 +440,7 @@ export function AppsCenter({
                               </div>
                               <Button
                                 variant="secondary"
+                                size="small"
                                 data-connection-action={app.id}
                                 onClick={() => {
                                   start();
@@ -563,196 +512,32 @@ export function AppsCenter({
                 />
               )}
               {!form &&
-                !selectedNative &&
-                (view === "connected" || selectedId) &&
-                items
-                  .filter((item) =>
-                    selectedId
-                      ? item.id === selectedId
-                      : item.name.toLowerCase().includes(query.toLowerCase()),
-                  )
-                  .map((item) =>
-                    selectedId ? (
-                      <section className="apps-item" key={item.id}>
-                        <div className="apps-item-heading">
-                          <div>
-                            <strong>{item.name}</strong>
-                            <p>
-                              {!item.enabled
-                                ? "已禁用"
-                                : checking === item.id
-                                  ? "检查中…"
-                                  : appsCopy.status[
-                                      item.status ?? "configured"
-                                    ]}{" "}
-                              ·{" "}
-                              {computers.find((pc) => pc.id === item.computerId)
-                                ?.name ?? item.computerId}{" "}
-                              · {item.transport}
-                            </p>
-                            {item.checkedAt && (
-                              <p>
-                                上次检查{" "}
-                                {new Date(item.checkedAt).toLocaleString()}
-                              </p>
-                            )}
-                            {item.error && <p role="status">{item.error}</p>}
-                          </div>
-                          <ActionMenu
-                            label={`${item.name}的操作`}
-                            disabled={busy}
-                            items={[
-                              { label: "测试", onSelect: () => check(item) },
-                              { label: "编辑", onSelect: () => start(item) },
-                              {
-                                label: item.enabled ? "停用" : "启用",
-                                onSelect: () =>
-                                  void run(() =>
-                                    client.mcp.save({
-                                      id: item.id,
-                                      revision: item.revision,
-                                      name: item.name,
-                                      computerId: item.computerId,
-                                      enabled: !item.enabled,
-                                    }),
-                                  ),
-                              },
-                              {
-                                label: "删除",
-                                tone: "danger",
-                                onSelect: () => setRemoving(item),
-                              },
-                            ]}
-                          />
-                        </div>
-
-                        {!item.grants.length && (
-                          <p className="apps-muted">尚未分配机器人</p>
-                        )}
-                        {item.status === "failed" && (
-                          <Button
-                            variant="secondary"
-                            onClick={() => check(item)}
-                            disabled={busy}
-                          >
-                            重试测试
-                          </Button>
-                        )}
-                        {item.transport === "http" && (
-                          <ConnectionLogin item={item} busy={busy} run={run} />
-                        )}
-                        <Disclosure
-                          label={
-                            <>
-                              机器人权限
-                              {item.tools
-                                ? ` · ${item.tools.length} 个工具`
-                                : ""}
-                            </>
+                view === "connected" &&
+                items.some((item) =>
+                  item.name.toLowerCase().includes(query.toLowerCase()),
+                ) && (
+                  <div className="connection-grid">
+                    {items
+                      .filter((item) =>
+                        item.name.toLowerCase().includes(query.toLowerCase()),
+                      )
+                      .map((item) => (
+                        <ExpandableCard
+                          key={item.id}
+                          className="apps-item"
+                          title={item.name}
+                          data-connection-action={item.id}
+                          icon={
+                            <ConnectionIcon
+                              name={item.name}
+                              icon={
+                                catalog.find((app) => app.name === item.name)
+                                  ?.icon
+                              }
+                            />
                           }
-                        >
-                          {bots.map((bot) => {
-                            const current = item.grants.find(
-                              (g) => g.botId === bot.id,
-                            );
-                            return (
-                              <div className="apps-grant" key={bot.id}>
-                                <Checkbox
-                                  label={bot.name}
-                                  checked={!!current}
-                                  disabled={busy}
-                                  onCheckedChange={(checked) =>
-                                    grant(
-                                      item,
-                                      bot.id,
-                                      checked ? null : undefined,
-                                    )
-                                  }
-                                />
-                                {current && item.tools && (
-                                  <Disclosure
-                                    label={
-                                      current.tools === null
-                                        ? "全部工具"
-                                        : `已选 ${current.tools.length} 个工具`
-                                    }
-                                  >
-                                    <Checkbox
-                                      label="全部工具"
-                                      checked={current.tools === null}
-                                      disabled={busy}
-                                      onCheckedChange={(checked) =>
-                                        grant(item, bot.id, checked ? null : [])
-                                      }
-                                    />
-                                    {item.tools.map((tool) => (
-                                      <Checkbox
-                                        key={tool.name}
-                                        label={tool.title ?? tool.name}
-                                        disabled={busy}
-                                        checked={
-                                          current.tools === null ||
-                                          current.tools.includes(tool.name)
-                                        }
-                                        onCheckedChange={(checked) => {
-                                          const selected =
-                                            current.tools ??
-                                            (item.tools ?? []).map(
-                                              (t) => t.name,
-                                            );
-                                          grant(
-                                            item,
-                                            bot.id,
-                                            checked
-                                              ? [...selected, tool.name]
-                                              : selected.filter(
-                                                  (name) => name !== tool.name,
-                                                ),
-                                          );
-                                        }}
-                                      />
-                                    ))}
-                                  </Disclosure>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </Disclosure>
-                        {item.capabilities && (
-                          <p className="apps-muted">
-                            {[
-                              item.capabilities.tools && "工具",
-                              item.capabilities.resources && "资源",
-                              item.capabilities.prompts && "提示词",
-                            ]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </p>
-                        )}
-                        <ConnectionTools tools={item.tools} />
-                      </section>
-                    ) : (
-                      <PanelRow
-                        key={item.id}
-                        variant="navigation"
-                        title={item.name}
-                        aria-label={`查看 ${item.name}`}
-                        data-connection-action={item.id}
-                        icon={
-                          <ConnectionIcon
-                            name={item.name}
-                            icon={
-                              catalog.find((app) => app.name === item.name)
-                                ?.icon
-                            }
-                          />
-                        }
-                        description={`${computers.find((pc) => pc.id === item.computerId)?.name ?? item.computerId} · 已授权 ${item.grants.length} 个机器人`}
-                        value={
-                          <>
-                            {item.tools && (
-                              <span>{item.tools.length} 个工具</span>
-                            )}
+                          description={`${computers.find((pc) => pc.id === item.computerId)?.name ?? item.computerId} · 已授权 ${item.grants.length} 个 Bot`}
+                          value={
                             <ConnectionStatus
                               status={
                                 item.enabled
@@ -765,72 +550,228 @@ export function AppsCenter({
                                   : "已禁用"
                               }
                             />
-                          </>
-                        }
-                        onClick={() => {
-                          positions.current[view] =
-                            viewport.current?.scrollTop ?? 0;
-                          source.current = item.id;
-                          setSelectedId(item.id);
-                        }}
-                      />
-                    ),
-                  )}
-              {view === "connected" && !form && !selectedId && (
-                <>
-                  {nativeReading && !native && (
-                    <Loading label="正在读取原生连接" inline />
-                  )}
-                  {nativeError && <p role="alert">{nativeError}</p>}
-                  {native && nativeMcpNotice(native) && (
-                    <p role="status">{nativeMcpNotice(native)}</p>
-                  )}
-                  {native &&
-                    (selectedNative ? (
-                      native.items
-                        .filter((item) => item.name === selectedNative)
-                        .map((item) => (
-                          <NativeConnectionDetails
-                            key={item.name}
-                            item={item}
-                            catalog={native}
-                          />
-                        ))
-                    ) : (
-                      <>
-                        <NativeConnections
-                          catalog={native}
-                          query={query}
-                          onSelect={(name) => {
-                            positions.current[view] =
-                              viewport.current?.scrollTop ?? 0;
-                            source.current = `native:${name}`;
-                            setSelectedNative(name);
-                          }}
-                        />
-                        {native.inheritance === "selectable" && (
-                          <Checkbox
-                            label="在下一轮沿用原生连接"
-                            checked={native.inherited}
-                            disabled={busy}
-                            onCheckedChange={(enabled) =>
-                              void run(async () => {
-                                nativeStore.receive(
-                                  await client.mcp.native({
-                                    botId: Number(nativeBot),
-                                    enabled,
-                                  }),
+                          }
+                          expanded={selectedId === item.id}
+                          onExpandedChange={(expanded) =>
+                            setSelectedId(expanded ? item.id : undefined)
+                          }
+                        >
+                          <section>
+                            <div className="apps-item-heading">
+                              <div>
+                                <p>
+                                  {!item.enabled
+                                    ? "已禁用"
+                                    : checking === item.id
+                                      ? "检查中…"
+                                      : appsCopy.status[
+                                          item.status ?? "configured"
+                                        ]}{" "}
+                                </p>
+                                {item.error && (
+                                  <p role="status">{item.error}</p>
+                                )}
+                              </div>
+                              <ActionMenu
+                                label={`${item.name}的操作`}
+                                disabled={busy}
+                                items={[
+                                  {
+                                    label: "测试",
+                                    onSelect: () => check(item),
+                                  },
+                                  {
+                                    label: "编辑",
+                                    onSelect: () => start(item),
+                                  },
+                                  {
+                                    label: item.enabled ? "停用" : "启用",
+                                    onSelect: () =>
+                                      void run(() =>
+                                        client.mcp.save({
+                                          id: item.id,
+                                          revision: item.revision,
+                                          name: item.name,
+                                          computerId: item.computerId,
+                                          enabled: !item.enabled,
+                                        }),
+                                      ),
+                                  },
+                                  {
+                                    label: "删除",
+                                    tone: "danger",
+                                    onSelect: () => setRemoving(item),
+                                  },
+                                ]}
+                              />
+                            </div>
+
+                            {!item.grants.length && (
+                              <p className="apps-muted">尚未分配机器人</p>
+                            )}
+                            {item.status === "failed" && (
+                              <Button
+                                variant="secondary"
+                                onClick={() => check(item)}
+                                disabled={busy}
+                              >
+                                重试测试
+                              </Button>
+                            )}
+                            {item.transport === "http" && (
+                              <ConnectionLogin
+                                item={item}
+                                busy={busy}
+                                run={run}
+                              />
+                            )}
+                            <Disclosure
+                              label={
+                                <>
+                                  机器人权限
+                                  {item.tools
+                                    ? ` · ${item.tools.length} 个工具`
+                                    : ""}
+                                </>
+                              }
+                            >
+                              {bots.map((bot) => {
+                                const current = item.grants.find(
+                                  (g) => g.botId === bot.id,
                                 );
-                              })
-                            }
-                          />
-                        )}
-                      </>
-                    ))}
+                                return (
+                                  <div className="apps-grant" key={bot.id}>
+                                    <Checkbox
+                                      label={bot.name}
+                                      checked={!!current}
+                                      disabled={busy}
+                                      onCheckedChange={(checked) =>
+                                        grant(
+                                          item,
+                                          bot.id,
+                                          checked ? null : undefined,
+                                        )
+                                      }
+                                    />
+                                    {current && item.tools && (
+                                      <Disclosure
+                                        label={
+                                          current.tools === null
+                                            ? "全部工具"
+                                            : `已选 ${current.tools.length} 个工具`
+                                        }
+                                      >
+                                        <Checkbox
+                                          label="全部工具"
+                                          checked={current.tools === null}
+                                          disabled={busy}
+                                          onCheckedChange={(checked) =>
+                                            grant(
+                                              item,
+                                              bot.id,
+                                              checked ? null : [],
+                                            )
+                                          }
+                                        />
+                                        {item.tools.map((tool) => (
+                                          <Checkbox
+                                            key={tool.name}
+                                            label={tool.title ?? tool.name}
+                                            disabled={busy}
+                                            checked={
+                                              current.tools === null ||
+                                              current.tools.includes(tool.name)
+                                            }
+                                            onCheckedChange={(checked) => {
+                                              const selected =
+                                                current.tools ??
+                                                (item.tools ?? []).map(
+                                                  (t) => t.name,
+                                                );
+                                              grant(
+                                                item,
+                                                bot.id,
+                                                checked
+                                                  ? [...selected, tool.name]
+                                                  : selected.filter(
+                                                      (name) =>
+                                                        name !== tool.name,
+                                                    ),
+                                              );
+                                            }}
+                                          />
+                                        ))}
+                                      </Disclosure>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </Disclosure>
+                            <ConnectionTools tools={item.tools} />
+                            <Disclosure label="连接信息">
+                              <dl className="connection-metadata">
+                                <dt>电脑</dt>
+                                <dd>
+                                  {computers.find(
+                                    (pc) => pc.id === item.computerId,
+                                  )?.name ?? item.computerId}
+                                </dd>
+                                <dt>传输方式</dt>
+                                <dd>{item.transport}</dd>
+                                {item.checkedAt && (
+                                  <>
+                                    <dt>上次检查</dt>
+                                    <dd>
+                                      {new Date(
+                                        item.checkedAt,
+                                      ).toLocaleString()}
+                                    </dd>
+                                  </>
+                                )}
+                                {item.capabilities && (
+                                  <>
+                                    <dt>能力</dt>
+                                    <dd>
+                                      {[
+                                        item.capabilities.tools && "工具",
+                                        item.capabilities.resources && "资源",
+                                        item.capabilities.prompts && "提示词",
+                                      ]
+                                        .filter(Boolean)
+                                        .join(" · ")}
+                                    </dd>
+                                  </>
+                                )}
+                              </dl>
+                            </Disclosure>
+                          </section>
+                        </ExpandableCard>
+                      ))}
+                  </div>
+                )}
+              {view === "connected" && !form && (
+                <>
+                  {nativeReading && <Loading label="正在读取原生连接" inline />}
+                  <NativeConnections
+                    query={query}
+                    catalogs={native}
+                    busy={busy}
+                    onInheritance={(botId, enabled) =>
+                      void run(async () => {
+                        nativeConnections(botId).receive(
+                          await client.mcp.native({ botId, enabled }),
+                        );
+                      })
+                    }
+                  />
                   {loaded &&
                     !items.length &&
-                    native?.status === "complete" &&
-                    !native.items.length &&
+                    !nativeReading &&
+                    native.sources.every(
+                      (source) =>
+                        source.data?.status === "complete" &&
+                        !source.data.items.length,
+                    ) &&
                     !query && <p className="apps-muted">尚未添加连接。</p>}
                 </>
               )}

@@ -2,6 +2,7 @@ import { SegmentedControl } from "@domos/ui/choice";
 import { Button } from "@domos/ui/controls";
 import { Disclosure } from "@domos/ui/disclosure";
 import { ChoicePicker } from "@domos/ui/picker";
+import { useState } from "react";
 import type { client } from "../../client.ts";
 import { appsCopy } from "./copy.ts";
 
@@ -53,17 +54,27 @@ export function ConnectionEditor({
             <span className="field-label">MCP 地址或配置</span>
             <textarea
               className="field-control"
-              rows={5}
+              rows={1}
               value={form.paste}
               spellCheck={false}
               autoComplete="off"
               onChange={(event) => change({ paste: event.target.value })}
-              placeholder="URL、mcpServers JSON 或支持的 MCP 添加命令"
+              placeholder="https://example.com/mcp"
             />
           </label>
-          <Button type="button" variant="ghost" onClick={onManual}>
-            手动配置
-          </Button>
+          <div className="connection-import-actions">
+            <span className="field-description">
+              也支持 JSON 配置和 MCP 添加命令
+            </span>
+            <Button
+              type="button"
+              size="small"
+              variant="ghost"
+              onClick={onManual}
+            >
+              手动配置
+            </Button>
+          </div>
         </>
       ) : (
         <>
@@ -140,25 +151,115 @@ export function ConnectionEditor({
                   />
                 </label>
               )}
-              <label className="field">
-                <span className="field-label">
-                  {form.transport === "http"
-                    ? "请求头（JSON，可填写 Key / Token）"
-                    : "环境变量（JSON）"}
-                </span>
-                <textarea
-                  className="field-control"
-                  disabled={busy}
-                  autoComplete="off"
-                  spellCheck={false}
-                  value={form.settings}
-                  onChange={(event) => change({ settings: event.target.value })}
-                />
-              </label>
+              <ConnectionSecrets
+                key={form.id}
+                settings={form.settings}
+                transport={form.transport}
+                disabled={busy}
+                onChange={(settings) => change({ settings })}
+              />
             </div>
           </Disclosure>
         </>
       )}
     </form>
+  );
+}
+
+function ConnectionSecrets({
+  settings,
+  transport,
+  disabled,
+  onChange,
+}: {
+  settings: string;
+  transport: Draft["transport"];
+  disabled: boolean;
+  onChange: (settings: string) => void;
+}) {
+  const [rows, setRows] = useState<
+    { id: string; key: string; value: string }[]
+  >(() =>
+    Object.entries(JSON.parse(settings) as Record<string, string>).map(
+      ([key, value]) => ({ id: crypto.randomUUID(), key, value }),
+    ),
+  );
+  const label = transport === "http" ? "请求头" : "环境变量";
+  const update = (next: { id: string; key: string; value: string }[]) => {
+    setRows(next);
+    onChange(
+      JSON.stringify(
+        Object.fromEntries(
+          next
+            .filter(({ key }) => key.trim())
+            .map(({ key, value }) => [key, value]),
+        ),
+      ),
+    );
+  };
+  return (
+    <fieldset className="connection-secrets" disabled={disabled}>
+      <legend className="field-label">{label}</legend>
+      {rows.map(({ id, key, value }, index) => (
+        <div className="connection-secret-row" key={id}>
+          <input
+            className="field-control"
+            aria-label={`${label}名称 ${index + 1}`}
+            placeholder="名称"
+            autoComplete="off"
+            value={key}
+            required={!!value}
+            ref={(node) => {
+              node?.setCustomValidity(
+                key && rows.filter((row) => row.key === key).length > 1
+                  ? "名称不能重复。"
+                  : "",
+              );
+            }}
+            onChange={(event) =>
+              update(
+                rows.map((row, i) =>
+                  i === index ? { ...row, key: event.target.value } : row,
+                ),
+              )
+            }
+          />
+          <input
+            className="field-control"
+            aria-label={`${label}值 ${index + 1}`}
+            placeholder="值"
+            type="password"
+            autoComplete="new-password"
+            value={value}
+            onChange={(event) =>
+              update(
+                rows.map((row, i) =>
+                  i === index ? { ...row, value: event.target.value } : row,
+                ),
+              )
+            }
+          />
+          <Button
+            type="button"
+            size="icon-small"
+            variant="ghost"
+            aria-label={`删除${label} ${index + 1}`}
+            onClick={() => update(rows.filter((_, i) => i !== index))}
+          >
+            ×
+          </Button>
+        </div>
+      ))}
+      <Button
+        type="button"
+        size="small"
+        variant="ghost"
+        onClick={() =>
+          update([...rows, { id: crypto.randomUUID(), key: "", value: "" }])
+        }
+      >
+        ＋ 添加{label}
+      </Button>
+    </fieldset>
   );
 }

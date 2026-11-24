@@ -1,7 +1,7 @@
 .apps-center {
   display: grid;
   align-content: start;
-  gap: var(--space-1);
+  gap: var(--space-5);
 }
 .apps-actions,
 .apps-item-heading {
@@ -85,12 +85,6 @@
 .apps-error {
   color: var(--color-danger);
 }
-.apps-item {
-  min-width: 0;
-  display: grid;
-  gap: var(--space-2);
-  padding-block: var(--space-4);
-}
 .apps-item-heading {
   flex-wrap: wrap;
   align-items: start;
@@ -110,45 +104,17 @@
   display: grid;
   gap: var(--space-4);
 }
-.connection-scope,
-.connection-group-heading,
-.connection-identity,
-.connection-group-heading h3 {
+.connection-group-heading {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-}
-.connection-group-heading {
-  padding: var(--space-4) var(--space-3) var(--space-1);
   color: var(--color-muted);
-}
-.connection-scope {
-  min-width: 0;
-}
-.connection-scope .picker-trigger {
-  max-width: 8rem;
-}
-.connection-identity {
-  gap: var(--space-3);
-}
-.connection-identity > div {
-  min-width: 0;
-  overflow-wrap: anywhere;
 }
 .connection-hint {
   max-width: 22rem;
 }
-.connection-details {
-  display: grid;
-  gap: var(--space-4);
-}
-.connection-details > p:has(.status-dot) {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
 .connection-tools {
-  margin-top: var(--space-5);
+  min-width: 0;
 }
 .connection-tools h3 {
   margin-bottom: var(--space-3);
@@ -162,12 +128,90 @@
   overflow-wrap: anywhere;
   font-size: var(--text-caption);
 }
-.connection-icon {
+
+.connection-grid {
   display: grid;
-  place-items: center;
-  width: var(--space-10);
-  height: var(--space-10);
-  flex-shrink: 0;
-  border-radius: var(--radius-control);
-  background: var(--color-control);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--space-3);
+}
+.connection-source,
+.connection-tools {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.connection-source + .connection-source {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-divider);
+}
+.connection-source-heading,
+.connection-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-caption);
+}
+.connection-source-heading > span {
+  margin-inline-start: auto;
+  color: var(--color-muted);
+}
+.connection-metadata {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  font-size: var(--text-caption);
+}
+.connection-metadata dt {
+  color: var(--color-muted);
+}
+.connection-metadata dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.expandable-card-identity .engine-mark {
+  vertical-align: middle;
+}
+@media (max-width: 44rem) {
+  .connection-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.connection-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.connection-secrets {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.connection-secrets legend {
+  margin-bottom: var(--space-2);
+}
+.connection-secrets > .button {
+  justify-self: start;
+}
+.connection-secret-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: center;
+}
+.connection-brand {
+  width: var(--space-5);
+  height: var(--space-5);
+}
+[data-theme="dark"] .connection-brand {
+  filter: invert(1);
 }

@@ -116,7 +116,7 @@ test("connection layout keeps controls compact and the final row readable", asyn
   expect((await transport.boundingBox())?.width).toBeLessThan(300);
 });
 
-test("native connections are searchable first-class rows with read-only details", async ({
+test("native connection cards expand in place and retain source and tool evidence", async ({
   service,
   page,
 }, info) => {
@@ -182,9 +182,14 @@ test("native connections are searchable first-class rows with read-only details"
     dialog.getByText("没有找到匹配项。", { exact: false }),
   ).toHaveCount(0);
   await dialog.getByRole("searchbox").fill("");
-  await exa.click();
   await expect(
-    dialog.getByRole("heading", { name: "exa", exact: true }),
+    dialog.getByRole("combobox", { name: "选择机器人" }),
+  ).toHaveCount(0);
+  await exa.click();
+  await expect(exa).toHaveAttribute("aria-expanded", "true");
+  await expect(dialog.getByRole("tab", { name: "我的连接" })).toBeVisible();
+  await expect(
+    dialog.getByRole("heading", { name: "应用连接", exact: true }),
   ).toBeVisible();
   await expect(
     dialog.getByText("未提供工具目录", { exact: true }),
@@ -192,7 +197,8 @@ test("native connections are searchable first-class rows with read-only details"
   await expect(
     dialog.getByRole("button", { name: "保存并测试", exact: true }),
   ).toHaveCount(0);
-  await dialog.getByRole("button", { name: "返回", exact: true }).click();
+  await exa.click();
+  await expect(exa).toHaveAttribute("aria-expanded", "false");
   await expect(exa).toBeFocused();
   const tavily = dialog.getByRole("button", {
     name: "查看 tavily",
@@ -226,6 +232,19 @@ test("connection navigation keeps import and confirmation separate", async ({
     exact: true,
   });
   await expect(paste).toBeFocused();
+  await editor.screenshot({ path: test.info().outputPath("import.png") });
+  const compactFrame = await editor.boundingBox();
+  expect(compactFrame?.width).toBeLessThanOrEqual(480);
+  expect(compactFrame?.height).toBeLessThanOrEqual(300);
+  expect((await paste.boundingBox())?.height).toBeLessThanOrEqual(56);
+  const next = await editor
+    .getByRole("button", { name: "继续", exact: true })
+    .boundingBox();
+  const field = await paste.boundingBox();
+  expect(next && field && next.y - field.y - field.height).toBeLessThanOrEqual(
+    100,
+  );
+
   await expect(
     editor.getByRole("textbox", { name: "名称", exact: true }),
   ).toHaveCount(0);
@@ -238,7 +257,12 @@ test("connection navigation keeps import and confirmation separate", async ({
   await expect(paste).toHaveValue("{broken");
   await paste.fill(
     JSON.stringify({
-      mcpServers: { Docs: { url: "https://example.com/mcp" } },
+      mcpServers: {
+        Docs: {
+          url: "https://example.com/mcp",
+          headers: { Authorization: "private-import-token" },
+        },
+      },
     }),
   );
   await editor.getByRole("button", { name: "继续", exact: true }).click();
@@ -262,6 +286,43 @@ test("connection navigation keeps import and confirmation separate", async ({
     name: "运行／访问电脑",
     exact: true,
   });
+  await editor.locator("summary").filter({ hasText: "高级设置" }).click();
+  await expect(
+    editor.getByLabel("请求头值 1", { exact: true }),
+  ).toHaveAttribute("type", "password");
+  await expect(editor.getByLabel("请求头值 1", { exact: true })).toHaveValue(
+    "private-import-token",
+  );
+  await editor
+    .getByRole("button", { name: "＋ 添加请求头", exact: true })
+    .click();
+  const duplicate = editor.getByLabel("请求头名称 2", { exact: true });
+  await duplicate.fill("Authorization");
+  await expect(duplicate).toHaveJSProperty(
+    "validationMessage",
+    "名称不能重复。",
+  );
+  await editor
+    .getByRole("button", { name: "删除请求头 2", exact: true })
+    .click();
+  await expect(
+    editor.getByLabel("请求头名称 1", { exact: true }),
+  ).toHaveJSProperty("validationMessage", "");
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.setViewportSize({ width: 390, height: 500 });
+    await expect(
+      editor.getByRole("button", { name: "保存并测试", exact: true }),
+    ).toBeInViewport();
+    expect(
+      await editor.evaluate((node) => node.scrollWidth <= node.clientWidth),
+    ).toBe(true);
+    await editor.screenshot({
+      path: test.info().outputPath(`editor-${theme}.png`),
+    });
+  }
+  await page.setViewportSize({ width: 1360, height: 900 });
+
   await expect(computer).toContainText("选择电脑");
   await computer.click();
   await expect(
@@ -320,7 +381,9 @@ test("saved connections retain failed checks and can be found in My connections"
     await expect(
       dialog.getByRole("button", { name: "重试测试", exact: true }),
     ).toBeVisible();
-    await dialog.getByRole("button", { name: "返回", exact: true }).click();
+    await dialog
+      .getByRole("button", { name: "查看 Unavailable Docs", exact: true })
+      .click();
     await expect(
       dialog.getByRole("tab", { name: "我的连接", exact: true }),
     ).toHaveAttribute("aria-selected", "true");
@@ -405,7 +468,36 @@ test("local command edits retain their transport and advanced settings stay opti
   });
 });
 
-test("native connections require explicit Bot context and keep read failures visible", async ({
+test("connection overview reads native sources and exposes failures without a Bot filter", async ({
+  service,
+  page,
+}) => {
+  await page.route("**/rpc/mcp/native", (route) =>
+    route.fulfill({
+      status: 503,
+      json: {
+        json: {
+          code: "SERVICE_UNAVAILABLE",
+          message: "Native catalog unavailable",
+        },
+      },
+    }),
+  );
+  await page.goto(service.url);
+  await page.getByRole("button", { name: "应用连接", exact: true }).click();
+  const dialog = page.locator(".apps-dialog");
+  await expect(
+    dialog.getByRole("combobox", { name: "选择机器人" }),
+  ).toHaveCount(0);
+  await expect(dialog.getByRole("alert")).toContainText("原生连接读取失败");
+  await expect(dialog.getByText("尚未添加连接。", { exact: true })).toHaveCount(
+    0,
+  );
+  await dialog.getByRole("button", { name: "刷新连接", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("原生连接读取失败");
+});
+
+test("service cards retain separate Bot sources and show partial read evidence", async ({
   service,
   page,
 }) => {
@@ -414,51 +506,101 @@ test("native connections require explicit Bot context and keep read failures vis
   );
   const bot = (await rpc.bots.list())[0];
   if (!bot) throw new Error("Missing Bot");
-  const id = crypto.randomUUID();
-  await rpc.teams.create({
-    id,
-    name: "Review Team",
-    purpose: "Review",
-    owner: bot.id,
-    members: [bot.id],
+  const peer = await rpc.bots.create({
+    name: "Reviewer",
+    requestId: crypto.randomUUID(),
   });
-  let reads = 0;
   await page.route("**/rpc/mcp/native", async (route) => {
-    reads++;
+    const request = route.request().postDataJSON();
+    const id = request.json.botId;
     await route.fulfill({
-      status: 503,
-      contentType: "application/json",
       json: {
         json: {
-          code: "SERVICE_UNAVAILABLE",
-          message: "Native catalog unavailable",
+          provider: "opencode",
+          computerId: "pc",
+          readonly: true,
+          inheritance: "selectable",
+          inherited: false,
+          status: id === peer.id ? "partial" : "complete",
+          scope: "configuration",
+          observedAt: 1,
+          errors:
+            id === peer.id ? [{ message: "One directory unavailable" }] : [],
+          items: [
+            {
+              name: "Shared Docs",
+              source: `project-${id}`,
+              enabled: true,
+              status: id === peer.id ? "failed" : "connected",
+              tools:
+                id === peer.id
+                  ? []
+                  : [{ name: "read", description: "Read documents" }],
+            },
+          ],
         },
       },
     });
   });
-  await page.goto(`${service.url}/#team/${id}`);
-  await expect(
-    page.getByRole("button", { name: "团队详情", exact: true }),
-  ).toBeVisible();
+  await page.goto(service.url);
   await page.getByRole("button", { name: "应用连接", exact: true }).click();
   const dialog = page.locator(".apps-dialog");
-  const picker = dialog.getByRole("combobox", {
-    name: "选择机器人",
+  const card = dialog.getByRole("button", {
+    name: "查看 Shared Docs",
     exact: true,
   });
-  await expect(picker).toHaveText("选择机器人");
-  expect(reads).toBe(0);
-  await picker.click();
+  await expect(card).toContainText("2 个来源");
+  await expect(card).toHaveCount(1);
+  await card.click();
   await expect(
-    page.getByRole("option", { name: "选择机器人", exact: true }),
-  ).toHaveCount(0);
-  await page.getByRole("option", { name: bot.name, exact: true }).click();
-  await expect(dialog.getByRole("alert")).toContainText("原生连接读取失败");
+    dialog.getByRole("region", { name: `${bot.name} 的 Shared Docs` }),
+  ).toContainText("已连接");
+  const other = dialog.getByRole("region", { name: "Reviewer 的 Shared Docs" });
+  await expect(other).toContainText("连接失败");
+  await expect(other).toContainText("工具目录为空");
+  await expect(dialog.getByRole("alert")).toContainText(
+    "One directory unavailable",
+  );
+  await other.locator("summary").filter({ hasText: "来源信息" }).click();
+  await expect(other).toContainText(`project-${peer.id}`);
+  await dialog.locator("summary").filter({ hasText: "原生连接设置" }).click();
   await expect(
-    dialog.locator(".dialog-header").getByRole("combobox"),
-  ).toContainText(bot.name);
-  await expect(dialog.getByRole("alert")).toContainText("原生连接读取失败");
-  expect(reads).toBe(1);
+    dialog.getByRole("checkbox", {
+      name: "Reviewer · 在下一轮沿用原生连接",
+      exact: true,
+    }),
+  ).not.toBeChecked();
+});
+
+test("native inheritance remains available when its catalog is empty", async ({
+  service,
+  page,
+}) => {
+  await page.route("**/rpc/mcp/native", async (route) =>
+    route.fulfill({
+      json: {
+        json: {
+          provider: "pi",
+          computerId: "pc",
+          readonly: true,
+          inheritance: "selectable",
+          inherited: false,
+          status: "complete",
+          scope: "configuration",
+          observedAt: 1,
+          errors: [],
+          items: [],
+        },
+      },
+    }),
+  );
+  await page.goto(service.url);
+  await page.getByRole("button", { name: "应用连接", exact: true }).click();
+  const dialog = page.locator(".apps-dialog");
+  await dialog.locator("summary").filter({ hasText: "原生连接设置" }).click();
+  await expect(
+    dialog.getByRole("checkbox", { name: /在下一轮沿用原生连接/ }),
+  ).toBeVisible();
 });
 
 test("material pickers show native sources and keep MCP references separate from grants", async ({
@@ -677,8 +819,8 @@ test("MCP readers share pending and retained catalogs across the composer and co
     await page.getByRole("button", { name: "应用连接", exact: true }).click();
     const center = page.getByRole("dialog");
     await expect(
-      center.getByRole("combobox", { name: "选择机器人", exact: true }),
-    ).toContainText("Domos");
+      center.getByRole("combobox", { name: "选择机器人" }),
+    ).toHaveCount(0);
     await expect(
       center.getByRole("button", { name: "查看 Shared Docs", exact: true }),
     ).toBeVisible();
@@ -832,7 +974,7 @@ test("Apps manages a real MCP connection and Bot grants across reloads and theme
     const frame = await dialog.boundingBox();
     await dialog.getByRole("tab", { name: "我的连接", exact: true }).click();
     await dialog.getByRole("button", { name: "添加 MCP", exact: true }).click();
-    expect(await dialog.boundingBox()).toEqual(frame);
+    expect((await dialog.boundingBox())?.width).toBeLessThanOrEqual(480);
     await expect(dialog.getByRole("button", { name: "继续" })).toBeInViewport();
     await dialog.getByLabel("MCP 地址或配置").fill(
       JSON.stringify({
@@ -1059,7 +1201,7 @@ test("connection pages distinguish first read, empty search and refreshed native
   await dialog.getByRole("tab", { name: "我的连接", exact: true }).click();
   await expect(
     dialog.getByRole("combobox", { name: "选择机器人" }),
-  ).toContainText("Domos");
+  ).toHaveCount(0);
   await expect(dialog.getByText("原生服务 1", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "刷新连接", exact: true }).click();
   await expect(dialog.getByText("原生服务 2", { exact: true })).toBeVisible();

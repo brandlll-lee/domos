@@ -40,6 +40,7 @@ export function Dialog({
   subheader,
   onBack,
   backDisabled,
+  layout = "window",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -57,6 +58,7 @@ export function Dialog({
   subheader?: ReactNode;
   onBack?: () => void;
   backDisabled?: boolean;
+  layout?: "window" | "task";
 }) {
   const internalBody = useRef<HTMLDivElement>(null);
   const body = viewportRef ?? internalBody;
@@ -72,6 +74,7 @@ export function Dialog({
         <BaseDialog.Backdrop className="dialog-backdrop" forceRender />
         <BaseDialog.Popup
           className={`dialog-popup ${className ?? ""}`}
+          data-layout={layout}
           finalFocus={finalFocus}
           initialFocus={
             initialFocus ??
