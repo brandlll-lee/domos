@@ -1,28 +1,41 @@
-:where(.work-row[data-active]) time {
-  margin-inline-end: 32px;
+.work-group + .work-group {
+  margin-top: var(--space-5);
+}
+.work-group > h3 {
+  margin: 0 0 var(--space-2);
+  padding-inline: var(--space-3);
+  color: var(--color-muted);
+  font-size: var(--text-small);
+  font-weight: var(--weight-medium);
 }
 .work-list {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--space-1);
 }
 .work-row {
   position: relative;
   min-width: 0;
-  border: 1px solid var(--color-edge);
   border-radius: var(--radius-control);
 }
 .work-open.button[data-variant="ghost"] {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto 12px;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: start;
   gap: var(--space-3);
   width: 100%;
-  min-height: 58px;
+  min-height: 56px;
   padding: var(--space-2) var(--space-3);
   border: 0;
   border-radius: inherit;
   background: transparent;
   color: var(--color-text);
   text-align: start;
+}
+.work-open.button[data-variant="ghost"]:not(:disabled):hover {
+  background: var(--color-hover);
+}
+.work-row[data-active] .work-open {
+  padding-inline-end: 44px;
 }
 .work-label {
   display: grid;
@@ -32,42 +45,53 @@
   line-height: 20px;
   font-weight: 400;
 }
-.work-open.button[data-variant="ghost"]:not(:disabled):hover {
-  background: transparent;
-}
 .work-label > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.work-subject {
+  font-weight: var(--weight-medium);
+}
 .work-activity,
-.work-open time,
-.work-chevron,
+.work-time,
+.work-author,
 .work-meta {
   color: var(--color-muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
-.work-open:hover .work-chevron {
+.work-time {
+  line-height: 20px;
+}
+.work-activity,
+.work-author {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.work-activity > span:not(.status-dot) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.work-activity > span:last-child {
+  flex-shrink: 0;
+}
+.work-activity > .status-dot {
+  position: static;
+  flex-shrink: 0;
+  box-shadow: none;
+}
+.work-activity[data-tone] {
   color: var(--color-text);
 }
-.work-mark {
-  --status-dot-surface: var(--color-canvas);
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--color-edge);
-  border-radius: 50%;
-}
-.work-mark .engine-mark {
-  width: 18px;
-  height: 18px;
+.work-author .bot-avatar {
+  width: 16px;
+  height: 16px;
 }
 .work-stop {
   position: absolute;
-  right: 30px;
+  right: var(--space-2);
   top: 50%;
   transform: translateY(-50%);
 }
@@ -240,32 +264,6 @@
   margin-inline-start: var(--space-4);
 }
 
-.work-mark:has(.bot-avatar) {
-  border: 0;
-}
-.work-mark .bot-avatar {
-  width: 100%;
-  height: 100%;
-}
-.work-harness-badge {
-  position: absolute;
-  right: calc(-1 * var(--space-1));
-  bottom: calc(-1 * var(--space-1));
-  display: grid;
-  place-items: center;
-  width: var(--space-4);
-  height: var(--space-4);
-  border-radius: 50%;
-  background: var(--color-canvas);
-}
-.work-harness-badge svg {
-  width: var(--space-3);
-  height: var(--space-3);
-}
-.work-mark:has(.bot-avatar) > .status-dot {
-  right: auto;
-  left: calc(-1 * var(--space-1));
-}
 .work-delegations {
   display: grid;
   gap: var(--space-3);

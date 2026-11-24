@@ -4,10 +4,8 @@ import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { StatusDot } from "@domos/ui/status-dot";
-import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
 import { CrosshairIcon } from "@phosphor-icons/react/dist/csr/Crosshair";
 import { StopIcon } from "@phosphor-icons/react/dist/csr/Stop";
-import { WrenchIcon } from "@phosphor-icons/react/dist/csr/Wrench";
 import {
   type MouseEvent,
   type ReactNode,
@@ -16,18 +14,18 @@ import {
   useRef,
   useState,
 } from "react";
-import { EngineMark } from "../bots/engine-mark.tsx";
 import { useModelSettings } from "../models/model-state.ts";
 import type { useChat } from "./use-chat.ts";
 import { WorkDelegations } from "./work-delegations.tsx";
 import { WorkDiagnostics } from "./work-diagnostics.tsx";
 import { WorkEntry } from "./work-entry.tsx";
-import { workTime, workTurns } from "./work-state.ts";
+import { workGroups, workTime, workTurns } from "./work-state.ts";
 import "./work.css";
 
 export function WorkPanel(
   chat: ReturnType<typeof useChat> & {
     botId: number;
+    team?: boolean;
     selectedRun?: string;
     onRunClose?: () => void;
     detailOnly?: boolean;
@@ -66,6 +64,7 @@ export function WorkPanel(
     return () => clearInterval(timer);
   }, [view?.busy]);
   const turns = useMemo(() => (view ? workTurns(view) : []), [view]);
+  const groups = workGroups(turns, now);
   const current = turns.find((turn) => turn.id === selected);
   const problem =
     current?.items.findIndex(
@@ -110,86 +109,110 @@ export function WorkPanel(
           {view && !turns.length && (
             <p className="detail-note">开始对话后，这里会显示每轮工作记录。</p>
           )}
-          {turns.length > 0 && (
-            <div className="work-list">
-              {turns.map((turn) => {
-                const status =
-                  turn.status === "failed"
-                    ? ({ tone: "negative", label: "执行失败" } as const)
-                    : turn.active
-                      ? !connected ||
-                        stopping ||
-                        turn.status === "queued" ||
-                        turn.status === "stopping" ||
-                        view?.approvals?.length
-                        ? ({ tone: "warning", label: "等待处理" } as const)
-                        : ({ tone: "positive", label: "正在工作" } as const)
-                      : undefined;
-                return (
-                  <article
-                    className="work-row"
-                    key={turn.id}
-                    data-active={turn.active || undefined}
-                  >
-                    <Button
-                      variant="ghost"
-                      className="work-open"
-                      aria-label={`查看工作记录：${turn.request || turn.title}`}
-                      onClick={openRun(turn.id)}
+          {groups.map((group) => (
+            <section
+              className="work-group"
+              key={group.label}
+              aria-label={group.label}
+            >
+              <h3>{group.label}</h3>
+              <div className="work-list">
+                {group.turns.map((turn) => {
+                  const status =
+                    turn.issue === "failed"
+                      ? ({ tone: "negative", label: "执行失败" } as const)
+                      : turn.issue === "uncertain"
+                        ? ({ tone: "warning", label: "结果待核对" } as const)
+                        : turn.active
+                          ? ({
+                              tone:
+                                !connected || !turn.working
+                                  ? "warning"
+                                  : "positive",
+                              label: turn.title,
+                            } as const)
+                          : undefined;
+                  const date =
+                    turn.startedAt === undefined
+                      ? undefined
+                      : new Date(turn.startedAt);
+                  return (
+                    <article
+                      className="work-row"
+                      key={turn.id}
+                      data-active={turn.active || undefined}
                     >
-                      <span className="work-mark">
-                        {turn.author && (
-                          <BotAvatar
-                            botId={turn.author.botId}
-                            seed={turn.author.avatar}
-                            size="small"
-                          />
-                        )}
-                        <span
-                          className={
-                            turn.author ? "work-harness-badge" : undefined
-                          }
-                        >
-                          {turn.run ? (
-                            <EngineMark provider={turn.run.provider} />
-                          ) : (
-                            <WrenchIcon />
-                          )}
-                        </span>
-                        {status && <StatusDot {...status} />}
-                      </span>
-                      <span className="work-label">
-                        <span title={modelName(turn.run)}>
-                          {turn.author ? `${turn.author.name} · ` : ""}
-                          {modelName(turn.run)}
-                        </span>
-                        <span className="work-activity" title={turn.title}>
-                          {turn.active && !connected
-                            ? "状态待更新"
-                            : turn.title}
-                        </span>
-                      </span>
-                      <time>{elapsed(turn, turn.active && connected)}</time>
-                      <CaretRightIcon className="work-chevron" />
-                    </Button>
-                    {turn.active && (
                       <Button
                         variant="ghost"
-                        size="icon-small"
-                        className="work-stop"
-                        aria-label="停止执行"
-                        disabled={!connected}
-                        pending={stopping || turn.status === "stopping"}
-                        onClick={() => void stop(turn.sessionId)}
+                        className="work-open"
+                        aria-label={`查看工作记录：${turn.request || turn.subject}`}
+                        onClick={openRun(turn.id)}
                       >
-                        <StopIcon />
+                        {turn.active ? (
+                          <span className="work-time">进行中</span>
+                        ) : (
+                          <time
+                            className="work-time"
+                            dateTime={date?.toISOString()}
+                            title={date?.toLocaleString("zh-CN")}
+                          >
+                            {date?.toLocaleTimeString("zh-CN", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: false,
+                            }) ?? "—"}
+                          </time>
+                        )}
+                        <span className="work-label">
+                          <span className="work-subject" title={turn.subject}>
+                            {turn.subject}
+                          </span>
+                          {chat.team && turn.author && (
+                            <span className="work-author">
+                              <BotAvatar
+                                botId={turn.author.botId}
+                                seed={turn.author.avatar}
+                                size="small"
+                              />
+                              {turn.author.name}
+                            </span>
+                          )}
+                          <span
+                            className="work-activity"
+                            data-tone={status?.tone}
+                          >
+                            {status && <StatusDot {...status} />}
+                            <span>
+                              {turn.active && !connected
+                                ? "状态待更新"
+                                : turn.title}
+                            </span>
+                            <span>
+                              · {turn.active ? "已运行 " : ""}
+                              {elapsed(turn, turn.active && connected)}
+                            </span>
+                          </span>
+                        </span>
                       </Button>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
-          )}
+                      {turn.active && (
+                        <Button
+                          variant="ghost"
+                          size="icon-small"
+                          className="work-stop"
+                          aria-label="停止执行"
+                          disabled={!connected}
+                          pending={stopping || turn.status === "stopping"}
+                          onClick={() => void stop(turn.sessionId)}
+                        >
+                          <StopIcon />
+                        </Button>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
           {view?.before && (
             <Button
               variant="ghost"
@@ -243,7 +266,9 @@ export function WorkPanel(
         {current && view && (
           <div className="work-detail">
             <header className="work-heading">
-              <p className="work-request">{current.request}</p>
+              <p className="work-request">
+                {current.request || current.subject}
+              </p>
               <div className="work-meta">
                 {current.run && (
                   <span>
@@ -251,7 +276,7 @@ export function WorkPanel(
                   </span>
                 )}
                 <span role="status">
-                  {connected ? current.title : "连接中断"}
+                  {current.active && !connected ? "状态待更新" : current.title}
                 </span>
                 <time>{elapsed(current, current.active)}</time>
               </div>

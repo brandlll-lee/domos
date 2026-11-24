@@ -81,6 +81,7 @@ export function TeamDetails({
         active && (
           <WorkPanel
             {...chat}
+            team
             botId={team.owner}
             selectedRun={workRun}
             onRunClose={onWorkRunClose}

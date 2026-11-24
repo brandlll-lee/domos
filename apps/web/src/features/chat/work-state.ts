@@ -123,11 +123,22 @@ export function workTurns(view: ChatView) {
         }
         return rows;
       });
+      const issue = !active
+        ? status === "failed" || items.some((item) => item.status === "failed")
+          ? "failed"
+          : status === "uncertain" ||
+              items.some((item) => item.status === "uncertain")
+            ? "uncertain"
+            : undefined
+        : undefined;
       let title = workStatus(status);
+      let working = false;
       if (!active && run?.evidence?.usage === "failed")
         title += " · 用量入账失败";
+      if (issue && issue !== status)
+        title += issue === "failed" ? " · 有工具失败" : " · 结果待核对";
       if (active) {
-        title = executionActivity(
+        const progress = executionActivity(
           view,
           {
             turnId: id,
@@ -136,8 +147,16 @@ export function workTurns(view: ChatView) {
             status: status === "stopping" ? "stopping" : "running",
           },
           messages,
-        ).label;
+        );
+        title = progress.label;
+        working = progress.working;
       }
+      const request = messages
+        .filter((m) => m.role === "user")
+        .flatMap((m) =>
+          m.content.filter((p) => p.type === "text").map((p) => p.text),
+        )
+        .join("\n");
       return {
         id,
         run,
@@ -152,18 +171,59 @@ export function workTurns(view: ChatView) {
         active,
         status,
         title,
+        working,
+        issue,
         items,
-        request: messages
-          .filter((m) => m.role === "user")
-          .flatMap((m) =>
-            m.content.filter((p) => p.type === "text").map((p) => p.text),
-          )
-          .join("\n"),
+        request,
+        subject:
+          messages.find((message) => message.routine)?.routine?.title ??
+          request
+            .split(/\r?\n/)
+            .find((line) => line.trim())
+            ?.trim() ??
+          messages.find(
+            (message) => message.role === "user" && message.attachments?.length,
+          )?.attachments?.[0]?.name ??
+          "工作记录",
         startedAt: run?.startedAt ?? messages[0]?.timestamp,
         endedAt: run?.endedAt,
       };
     })
     .toReversed();
+}
+
+export function workGroups(turns: ReturnType<typeof workTurns>, now: number) {
+  const current = turns.filter((turn) => turn.active);
+  const attention = turns.filter((turn) => !turn.active && turn.issue);
+  const history = turns
+    .filter((turn) => !turn.active && !turn.issue)
+    .toSorted((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0));
+  const groups = new Map<string, typeof turns>();
+  if (current.length) groups.set("当前工作", current);
+  if (attention.length) groups.set("需要关注", attention);
+  const today = new Date(now);
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const dates = new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  for (const turn of history) {
+    const date =
+      turn.startedAt === undefined ? undefined : new Date(turn.startedAt);
+    const label = !date
+      ? "时间未提供"
+      : date.toDateString() === today.toDateString()
+        ? "今天"
+        : date.toDateString() === yesterday.toDateString()
+          ? "昨天"
+          : dates.format(date);
+    const rows = groups.get(label) ?? [];
+    rows.push(turn);
+    groups.set(label, rows);
+  }
+  return [...groups].map(([label, turns]) => ({ label, turns }));
 }
 const labels: Record<string, string> = {
   running: "进行中",
@@ -183,6 +243,6 @@ export function workTime(start?: number, end?: number) {
   if (start === undefined || end === undefined) return "—";
   const seconds = Math.max(0, (end - start) / 1000);
   return seconds < 60
-    ? `${seconds.toFixed(1)}s`
-    : `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
+    ? `${Number(seconds.toFixed(1))}秒`
+    : `${Math.floor(seconds / 60)}分${String(Math.floor(seconds % 60)).padStart(2, "0")}秒`;
 }

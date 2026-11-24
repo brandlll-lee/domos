@@ -5,7 +5,11 @@ import {
   chatActivity,
   executionActivity,
 } from "../src/features/chat/activity-state.ts";
-import { workTurns } from "../src/features/chat/work-state.ts";
+import {
+  workGroups,
+  workTime,
+  workTurns,
+} from "../src/features/chat/work-state.ts";
 
 test("Work retains each queued recipient after the shared user message is deduplicated", () => {
   const view: ChatView = {
@@ -75,6 +79,158 @@ function running() {
   };
   return { view, run, activity };
 }
+
+test("Work identifies an execution by the first input line and retains additional input in its detail", () => {
+  const { view, run } = running();
+  run.inputTurns = ["follow-up"];
+  view.messages = [
+    {
+      id: "request",
+      turnId: "turn",
+      role: "user",
+      stopped: false,
+      content: [
+        {
+          type: "text",
+          key: "request",
+          text: "\n重新设计项目报价单\n保留价格",
+        },
+      ],
+    },
+    {
+      id: "additional",
+      turnId: "follow-up",
+      role: "user",
+      stopped: false,
+      content: [{ type: "text", key: "additional", text: "导出 PDF" }],
+    },
+  ];
+  expect(workTurns(view)[0]).toMatchObject({
+    subject: "重新设计项目报价单",
+    request: "\n重新设计项目报价单\n保留价格\n导出 PDF",
+  });
+});
+
+test("Work separates current and uncertain work from dated history across midnight", () => {
+  const { view, run } = running();
+  const now = new Date(2026, 10, 24, 0, 5).getTime();
+  const records = [
+    ["today", "ended", new Date(2026, 10, 24, 0, 1).getTime()],
+    ["yesterday", "stopped", new Date(2026, 10, 23, 23, 59).getTime()],
+    ["older", "ended", new Date(2026, 10, 20, 12).getTime()],
+    ["failed", "failed", new Date(2026, 10, 20, 11).getTime()],
+    ["uncertain", "uncertain", new Date(2026, 10, 19, 11).getTime()],
+    ["current", "running", now],
+  ] as const;
+  view.runs = records.map(([turnId, status, startedAt]) => ({
+    ...run,
+    turnId,
+    status,
+    startedAt,
+  }));
+  view.messages = records.map(([turnId]) => ({
+    id: turnId,
+    turnId,
+    role: "user",
+    stopped: false,
+    content: [],
+  }));
+  view.messages.push({
+    id: "undated",
+    role: "user",
+    stopped: false,
+    content: [],
+  });
+  expect(
+    workGroups(workTurns(view), now).map((group) => ({
+      label: group.label,
+      ids: group.turns.map((turn) => turn.id),
+    })),
+  ).toEqual([
+    { label: "当前工作", ids: ["current"] },
+    { label: "需要关注", ids: ["uncertain", "failed"] },
+    { label: "今天", ids: ["today"] },
+    { label: "昨天", ids: ["yesterday"] },
+    { label: "2026年11月20日", ids: ["older"] },
+    { label: "时间未提供", ids: ["undated"] },
+  ]);
+  expect(workGroups([], now)).toEqual([]);
+});
+
+test("Work names routine and attachment executions from their saved inputs", () => {
+  const { view } = running();
+  view.messages = [
+    {
+      id: "request",
+      turnId: "turn",
+      role: "user",
+      stopped: false,
+      content: [],
+      attachments: [
+        { id: "file", name: "报价单.pdf", size: 42, path: "file.pdf" },
+      ],
+    },
+  ];
+  expect(workTurns(view)[0]?.subject).toBe("报价单.pdf");
+  const input = view.messages[0];
+  if (!input) throw new Error("Input required");
+  input.routine = {
+    runId: "routine",
+    title: "每日市场简报",
+    scheduledAt: 1,
+  };
+  expect(workTurns(view)[0]?.subject).toBe("每日市场简报");
+});
+
+test("Work labels elapsed time separately from its start time", () => {
+  expect(workTime(0, 42_000)).toBe("42秒");
+  expect(workTime(0, 65_000)).toBe("1分05秒");
+  expect(workTime(0, 2300)).toBe("2.3秒");
+  expect(workTime(undefined, 42_000)).toBe("—");
+});
+
+test("Work surfaces missing tool results while retaining the confirmed native end state", () => {
+  const { view, run } = running();
+  run.status = "ended";
+  view.messages = [
+    {
+      id: "call",
+      turnId: "turn",
+      role: "assistant",
+      stopped: false,
+      content: [
+        {
+          type: "toolCall",
+          id: "tool",
+          key: "tool",
+          name: "read",
+          arguments: {},
+        },
+      ],
+    },
+  ];
+  const turn = workTurns(view)[0];
+  expect(turn).toMatchObject({
+    status: "ended",
+    title: "执行已结束 · 结果待核对",
+    issue: "uncertain",
+  });
+  expect(workGroups(workTurns(view), Date.now())[0]?.label).toBe("需要关注");
+  view.messages.push({
+    id: "result",
+    turnId: "turn",
+    role: "toolResult",
+    toolCallId: "tool",
+    toolStatus: "failed",
+    stopped: false,
+    content: [],
+  });
+  expect(workTurns(view)[0]).toMatchObject({
+    status: "ended",
+    title: "执行已结束 · 有工具失败",
+    issue: "failed",
+  });
+});
 
 test("accounting warnings preserve the execution result and legacy runs stay readable", () => {
   const { view, run } = running();

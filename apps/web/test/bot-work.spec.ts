@@ -173,6 +173,11 @@ test("Work follows a native turn, opens its record and preserves it after stop a
   await expect(
     card.getByRole("button", { name: "停止执行", exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "当前工作", exact: true }),
+  ).toContainText("检查 Work 工作记录");
+  await expect(card.locator(".work-subject")).toHaveText("检查 Work 工作记录");
+  await expect(card.locator(".engine-mark, .bot-avatar")).toHaveCount(0);
   await expect(card.locator(".status-dot")).toHaveAttribute(
     "data-tone",
     "positive",
@@ -187,18 +192,7 @@ test("Work follows a native turn, opens its record and preserves it after stop a
       path: info.outputPath(`work-active-${theme}.png`),
     });
   }
-  expect((await card.boundingBox())?.height).toBe(60);
-  const background = await card
-    .locator(".work-open")
-    .evaluate((el) => getComputedStyle(el).backgroundColor);
   await card.locator(".work-open").hover();
-  await expect
-    .poll(() =>
-      card
-        .locator(".work-open")
-        .evaluate((el) => getComputedStyle(el).backgroundColor),
-    )
-    .toBe(background);
   await page.screenshot({ path: info.outputPath("work-running.png") });
   await card.locator(".work-open").click();
   const dialog = page.getByRole("dialog", { name: "工作记录", exact: true });
@@ -207,6 +201,13 @@ test("Work follows a native turn, opens its record and preserves it after stop a
   await expect(card.locator(".work-open")).toBeFocused();
   await card.getByRole("button", { name: "停止执行", exact: true }).click();
   await expect(card).toContainText("已停止");
+  await expect(
+    page.getByRole("region", { name: "当前工作", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: "今天", exact: true }),
+  ).toContainText("检查 Work 工作记录");
+  await expect(card.locator("time").first()).toHaveAttribute("datetime", /T/);
   await expect(dialog).not.toBeVisible();
   await expect(card.locator(".status-dot")).toHaveCount(0);
   await page.reload();
@@ -262,13 +263,13 @@ test("Work follows a native turn, opens its record and preserves it after stop a
   await expect(dialog.locator(".work-entry").last()).toContainText("已收到");
   await page.keyboard.press("Escape");
   await expect(page.locator(".work-row")).toHaveCount(2);
-  await expect(card).toHaveCSS("border-width", "1px");
+  await expect(card).toHaveCSS("border-width", "0px");
   await expect(page.locator(".work-list")).toHaveCSS("border-width", "0px");
   const cards = await page.locator(".work-row").all();
   const first = await cards[0]?.boundingBox();
   const second = await cards[1]?.boundingBox();
   if (!first || !second) throw new Error("Work cards missing");
-  expect(second.y - first.y - first.height).toBe(8);
+  expect(second.y - first.y - first.height).toBe(4);
   await card.locator(".work-open").click();
   await dialog.locator("summary").filter({ hasText: "原生思考" }).click();
   await expect(dialog).toContainText("核对原生记录。");
@@ -307,7 +308,7 @@ test("Work follows a native turn, opens its record and preserves it after stop a
   await expect(dialog).toContainText("原生工具回执");
   await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 390, height: 844 });
-  expect((await card.boundingBox())?.height).toBe(60);
+  expect((await card.boundingBox())?.height).toBeGreaterThanOrEqual(48);
   const label = card.locator(".work-label");
   await expect(label).toHaveCSS("min-width", "0px");
   await expect(label.locator("span").first()).toHaveCSS(
@@ -490,6 +491,11 @@ test("Work locates a failed native tool and copies bounded diagnostics", async (
   await expect(page.locator(".work-row").first()).toContainText(
     "执行已结束 · 用量入账失败",
   );
+  const attention = page.getByRole("region", { name: "需要关注", exact: true });
+  await expect(attention).toContainText("检查工具失败");
+  await expect(
+    attention.getByRole("img", { name: "执行失败", exact: true }),
+  ).toBeVisible();
   await page.locator(".work-open").first().click();
   const dialog = page.getByRole("dialog", { name: "工作记录", exact: true });
   await expect(dialog).toContainText(

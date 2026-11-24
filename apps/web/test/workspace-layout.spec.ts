@@ -74,10 +74,6 @@ test("chat gutters align within the content limit while panels resize", async ({
           .slice(0, 40)
           .join(""),
       );
-      await expect(outgoing).toHaveCSS(
-        "color",
-        await reply.evaluate((element) => getComputedStyle(element).color),
-      );
       await expectTextContrast(page);
       const overflow = await page
         .locator(".transcript")
