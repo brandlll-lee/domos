@@ -4,6 +4,7 @@ import { MAX_MATERIALS } from "@domos/agent/materials";
 import { type ChatMessage, messageText } from "@domos/agent/messages";
 import type { Team } from "@domos/agent/teams";
 import { AvatarMediaContext } from "@domos/ui/avatar";
+import { userBubbleColors } from "@domos/ui/bubble-colors";
 import { characterIdentity } from "@domos/ui/characters";
 import { Button } from "@domos/ui/controls";
 import { Loading } from "@domos/ui/loading";
@@ -121,6 +122,8 @@ function BotChat({
     () => members ?? bots.filter((member) => member.id !== bot.id),
     [members, bots, bot.id],
   );
+  const botColor = characterIdentity(bot.avatar).color;
+  const bubbleColors = useMemo(() => userBubbleColors(botColor), [botColor]);
   const settings = useSettings();
   const conversationId = directory.conversationId ?? bot.id;
   const chatKey = team ? `team:${team.id}` : String(conversationId);
@@ -570,7 +573,9 @@ function BotChat({
               style={
                 {
                   "--composer-dock-height": `${dock.height}px`,
-                  "--bot-color": characterIdentity(bot.avatar).color,
+                  "--bot-color": botColor,
+                  "--user-bubble-light": bubbleColors.light,
+                  "--user-bubble-dark": bubbleColors.dark,
                 } as CSSProperties
               }
             >

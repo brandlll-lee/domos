@@ -2,10 +2,10 @@
   container: chat / inline-size;
   --bot-foreground: contrast-color(var(--bot-color));
   --bot-icon-color: #ffffff;
-  --color-user: oklch(
-    from var(--bot-color) min(l, var(--color-user-lightness))
-      min(c, var(--color-user-chroma)) h
-  );
+  --color-user: var(--user-bubble-light);
+}
+[data-theme="dark"] .chat-surface {
+  --color-user: var(--user-bubble-dark);
 }
 .message-bubble {
   --color-text: var(--color-message-text);

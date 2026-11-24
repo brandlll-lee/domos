@@ -1,8 +1,12 @@
 import { once } from "node:events";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { characterColors } from "@domos/ui/characters";
+import { userBubbleColors } from "@domos/ui/bubble-colors";
+import { characterColors, characterSeed } from "@domos/ui/characters";
+import { createORPCClient } from "@orpc/client";
+import { RPCLink } from "@orpc/client/fetch";
 import { expect } from "@playwright/test";
+import type { client as appClient } from "../src/client.ts";
 import {
   attachFiles,
   chooseAppearance,
@@ -1282,7 +1286,11 @@ test("user bubbles retain readable local colors for every Bot hue in both themes
       "color",
       theme === "light" ? "rgb(255, 255, 255)" : "rgb(245, 245, 245)",
     );
-    const failures = await bubble.evaluate((node, colors) => {
+    const palettes = colors.map((color) => ({
+      color,
+      ...userBubbleColors(color),
+    }));
+    const failures = await bubble.evaluate((node, palettes) => {
       const surface = node.closest<HTMLElement>(".chat-surface");
       if (!surface) throw new Error("Chat surface required");
       const canvas = document.createElement("canvas");
@@ -1312,10 +1320,12 @@ test("user bubbles retain readable local colors for every Bot hue in both themes
       quote.className = "message-reply";
       quote.textContent = "引用内容";
       node.append(quote);
-      const saved = surface.style.getPropertyValue("--bot-color");
+      const saved = surface.getAttribute("style");
       const failures: { color: string; target: string; ratio: number }[] = [];
-      for (const color of colors) {
+      for (const { color, light, dark } of palettes) {
         surface.style.setProperty("--bot-color", color);
+        surface.style.setProperty("--user-bubble-light", light);
+        surface.style.setProperty("--user-bubble-dark", dark);
         const style = getComputedStyle(node);
         const selection = getComputedStyle(node, "::selection");
         for (const [target, ink, background] of [
@@ -1332,10 +1342,10 @@ test("user bubbles retain readable local colors for every Bot hue in both themes
           if (measured < 4.5) failures.push({ color, target, ratio: measured });
         }
       }
-      surface.style.setProperty("--bot-color", saved);
+      surface.setAttribute("style", saved ?? "");
       quote.remove();
       return failures.slice(0, 8);
-    }, colors);
+    }, palettes);
     expect(failures).toEqual([]);
     const link = bubble.locator(".message-link");
     await link.hover();
@@ -1351,5 +1361,57 @@ test("user bubbles retain readable local colors for every Bot hue in both themes
     await page.mouse.move(1, 1);
     await link.evaluate((node) => node.blur());
     await page.screenshot({ path: `test-results/user-bubble-${theme}.png` });
+  }
+});
+
+test("saved Bot colors retain their original bubble fill when contrast is sufficient", async ({
+  service,
+  page,
+}) => {
+  const api = createORPCClient<typeof appClient>(
+    new RPCLink({ url: `${service.url}/rpc` }),
+  );
+  const bot = (await api.bots.list())[0];
+  if (!bot) throw new Error("Bot required");
+  await service.control({ content: "保留合格原色。" });
+  await page.goto(service.url);
+  await page.getByLabel("消息", { exact: true }).fill("核对气泡配色");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  for (const [color, themes] of [
+    ["#894ef0", ["light"]],
+    ["#73479f", ["light", "dark"]],
+  ] as const) {
+    const profile = await api.work.profile({ botId: bot.id });
+    await api.work.update({
+      botId: bot.id,
+      name: profile.name,
+      instructions: profile.instructions,
+      avatar: characterSeed("star", color),
+      revision: profile.revision,
+      requestId: crypto.randomUUID(),
+    });
+    await page.reload();
+    for (const theme of themes) {
+      await page.emulateMedia({ colorScheme: theme });
+      await expect
+        .poll(() =>
+          page
+            .locator('.message-bubble[data-side="outgoing"]')
+            .last()
+            .evaluate((node) => {
+              const canvas = document.createElement("canvas");
+              canvas.width = canvas.height = 1;
+              const ctx = canvas.getContext("2d");
+              if (!ctx) throw new Error("Canvas required");
+              ctx.fillStyle = getComputedStyle(node).backgroundColor;
+              ctx.fillRect(0, 0, 1, 1);
+              return `#${[...ctx.getImageData(0, 0, 1, 1).data]
+                .slice(0, 3)
+                .map((v) => v.toString(16).padStart(2, "0"))
+                .join("")}`;
+            }),
+        )
+        .toBe(color);
+    }
   }
 });

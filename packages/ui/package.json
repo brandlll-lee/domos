@@ -15,6 +15,7 @@
     "./unread-badge": "./src/web/unread-badge.tsx",
     "./characters": "./src/characters.ts",
     "./tokens": "./src/tokens.ts",
+    "./bubble-colors": "./src/bubble-colors.ts",
     "./controls": "./src/web/controls.tsx",
     "./loading": "./src/web/loading.tsx",
     "./menu": "./src/web/menu.tsx",
