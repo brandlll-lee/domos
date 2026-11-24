@@ -124,7 +124,7 @@ export class ConnectionSetup {
     this.loading = loading;
     const dark = loading || nativeTheme.shouldUseDarkColors;
     this.window?.setBackgroundColor(themes[dark ? "dark" : "light"].startup);
-    if (process.platform !== "darwin")
+    if (process.platform === "linux")
       this.window?.setTitleBarOverlay({
         ...windowOverlay,
         symbolColor: themes[dark ? "dark" : "light"].text,

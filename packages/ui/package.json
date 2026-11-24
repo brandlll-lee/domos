@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./titlebar": "./src/web/titlebar.tsx",
     "./panel": "./src/web/panel.tsx",
     "./progress": "./src/web/progress.tsx",
     "./number-ticker": "./src/web/number-ticker.tsx",

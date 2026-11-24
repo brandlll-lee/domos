@@ -1,47 +1,8 @@
-.app-titlebar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  height: var(--titlebar-height);
-  padding-inline: max(var(--space-3), var(--window-inset-start, 0px))
-    var(--space-3);
-  background: var(--color-frame);
-  user-select: none;
-  -webkit-app-region: drag;
-}
-.app-titlebar[data-platform="win32"],
-.app-titlebar[data-platform="linux"] {
-  padding-inline-end: max(
-    var(--space-3),
-    var(--window-controls-width),
-    var(--window-inset-end, 0px)
-  );
-}
-.app-titlebar[data-platform="darwin"] {
-  padding-inline-start: max(
-    var(--mac-controls-width),
-    var(--window-inset-start, 0px)
-  );
-}
-.app-titlebar button {
-  -webkit-app-region: no-drag;
-}
-.titlebar-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: var(--space-2);
-  flex: 1;
-  margin-inline-end: auto;
-  padding-inline-end: var(--space-4);
-  flex-shrink: 0;
-}
 .environment-switcher {
   position: relative;
   min-width: 0;
   flex-shrink: 0;
   padding: var(--space-3) var(--space-3) 0;
-  -webkit-app-region: drag;
 }
 .environment-switcher .environment-trigger {
   width: 100%;
@@ -86,16 +47,15 @@
   :is(span, svg:last-child) {
   display: none;
 }
-.workspace[data-platform="darwin"] .environment-switcher {
-  padding-block-start: var(--titlebar-height);
-}
 .workspace {
   --workspace-inset: var(--space-2);
+  --workspace-titlebar: 0px;
   position: relative;
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr) 0;
   height: 100dvh;
-  padding-block: var(--workspace-inset);
+  padding-block: calc(var(--workspace-titlebar) + var(--workspace-inset))
+    var(--workspace-inset);
   padding-inline-end: var(--workspace-inset);
   overflow: clip;
   background: var(--color-sidebar);
@@ -126,66 +86,22 @@
 .workspace-content > .conversation {
   height: 100%;
 }
-.workspace[data-platform] .usage-page {
-  padding-block-start: var(--titlebar-height);
+.workspace[data-platform] {
+  --workspace-titlebar: var(--titlebar-height);
 }
 .contacts-trigger {
   position: absolute;
-  inset-block-start: var(--space-3);
+  inset-block-start: calc(var(--workspace-titlebar) + var(--space-3));
   inset-inline-start: var(--space-3);
   z-index: 2;
   -webkit-app-region: no-drag;
 }
-.workspace .chat-header,
-.workspace .sidebar-toolbar,
-.workspace-panel[data-side="inspector"] > .panel-body > * > .panel-header {
-  -webkit-app-region: drag;
-  user-select: none;
-}
 .workspace :is(button, a, input, textarea) {
   -webkit-app-region: no-drag;
 }
-.workspace[data-platform="darwin"][data-mobile] .chat-header {
-  padding-top: var(--titlebar-height);
-}
-.workspace[data-platform="darwin"] .contacts-trigger {
-  top: calc(var(--titlebar-height) + var(--space-3));
-}
-.workspace:is([data-platform="win32"], [data-platform="linux"])
-  .workspace-panel[data-side="inspector"]
-  > .panel-body
-  > *
-  > .panel-header {
-  padding-inline-end: max(
-    var(--window-controls-width),
-    var(--window-inset-end, 0px)
-  );
-}
-.workspace[data-platform="darwin"]
-  .workspace-panel[data-side="inspector"][data-expanded]
-  > .panel-body
-  > *
-  > .panel-header,
-.workspace[data-platform="darwin"][data-mobile]
-  .workspace-panel[data-side="inspector"]
-  > .panel-body
-  > *
-  > .panel-header {
-  padding-inline-start: max(
-    var(--mac-controls-width),
-    var(--window-inset-start, 0px)
-  );
-}
-.workspace[data-platform="win32"]:not([data-details]) .chat-header,
-.workspace[data-platform="linux"]:not([data-details]) .chat-header {
-  padding-inline: max(
-    var(--window-controls-width),
-    var(--window-inset-end, 0px)
-  );
-}
 .workspace-panel {
   position: absolute;
-  top: 0;
+  top: var(--workspace-titlebar);
   bottom: 0;
   max-width: 100%;
   z-index: 1;
@@ -217,7 +133,8 @@
   overflow: visible;
 }
 .workspace-panel[data-side="inspector"] {
-  inset-block: calc(var(--workspace-inset) + 1px);
+  inset-block: calc(var(--workspace-titlebar) + var(--workspace-inset) + 1px)
+    calc(var(--workspace-inset) + 1px);
   inset-inline-end: calc(var(--workspace-inset) + 1px);
   border-start-end-radius: calc(var(--radius-panel) - 1px);
   border-end-end-radius: calc(var(--radius-panel) - 1px);
@@ -330,7 +247,7 @@
 }
 .panel-backdrop {
   position: absolute;
-  inset: 0;
+  inset: var(--workspace-titlebar) 0 0;
   background: var(--color-scrim);
   z-index: 2;
 }
@@ -382,7 +299,7 @@
   width: 100%;
   padding: 0;
   border: 0;
-  inset-block: 0;
+  inset-block: var(--workspace-titlebar) 0;
   inset-inline-end: 0;
   border-radius: 0;
 }

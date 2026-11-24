@@ -164,6 +164,9 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
     });
     await page.bringToFront();
     await expect(page.locator("body")).toBeVisible();
+    await expect(page.getByText("回复已结束", { exact: true })).toBeAttached();
+    await page.locator(".transcript").hover();
+    await page.mouse.wheel(0, -4000);
     await pdfCard.scrollIntoViewIfNeeded();
     await expect(pdfCard.locator(".file-card-thumbnail img")).toBeVisible({
       timeout: 30_000,
@@ -781,7 +784,7 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
     ).toHaveJSProperty("naturalWidth", 2048);
     await expect(imageViewer).toHaveCSS("scale", "1");
     const frame = await imageViewer.boundingBox();
-    expect(frame?.y).toBe(0);
+    expect(frame?.y).toBe(30);
     for (const colorScheme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme });
       await expect(page.locator("html")).toHaveAttribute(

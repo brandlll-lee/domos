@@ -15,11 +15,12 @@ button,
 input {
   font: inherit;
 }
-.titlebar {
-  grid-area: 1 / 1;
-  height: var(--titlebar-height);
-  -webkit-app-region: drag;
-  user-select: none;
+.setup-titlebar {
+  background: transparent;
+  pointer-events: none;
+}
+.setup-titlebar .window-caption {
+  pointer-events: auto;
 }
 .setup-window {
   background: var(--color-startup);

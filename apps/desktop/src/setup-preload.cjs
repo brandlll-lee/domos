@@ -1,4 +1,5 @@
 const { contextBridge, ipcRenderer } = require("electron");
+contextBridge.exposeInMainWorld("domosWindow", require("./window-preload.cjs"));
 contextBridge.exposeInMainWorld("domosSetup", {
   platform: process.platform,
   state: () => ipcRenderer.invoke("setup:state"),

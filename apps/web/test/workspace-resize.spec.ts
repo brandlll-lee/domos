@@ -295,7 +295,8 @@ test("contacts collapse during dragging and restore their width without losing c
       "background-color",
       "rgba(0, 0, 0, 0)",
     );
-    const selected = await contact.evaluate(
+    const heading = sidebar.locator(".bot-contact-heading").first();
+    const selected = await heading.evaluate(
       (node) => getComputedStyle(node).backgroundColor,
     );
     expect(selected).not.toBe("rgba(0, 0, 0, 0)");
@@ -303,7 +304,7 @@ test("contacts collapse during dragging and restore their width without losing c
     await expect(
       page.getByRole("menu", { name: "Domos", exact: true }),
     ).toBeVisible();
-    await expect(contact).toHaveCSS("background-color", selected);
+    await expect(heading).toHaveCSS("background-color", selected);
     await page.keyboard.press("Escape");
     await page.mouse.move(400, 800);
     await page.screenshot({
@@ -317,7 +318,9 @@ test("contacts collapse during dragging and restore their width without losing c
   });
   await avatarMenu.press("Enter");
   await expect(page.getByRole("menuitem", { name: "新建会话" })).toBeVisible();
-  await page.getByRole("menuitem", { name: "管理会话" }).press("Enter");
+  await page.keyboard.press("End");
+  await expect(page.getByRole("menuitem", { name: "管理会话" })).toBeFocused();
+  await page.keyboard.press("Enter");
   const conversations = page.getByRole("dialog", { name: "Domos 的会话" });
   await expect(conversations).toBeVisible();
   await conversations.getByRole("button", { name: "关闭弹窗" }).click();

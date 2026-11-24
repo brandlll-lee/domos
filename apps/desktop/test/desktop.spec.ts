@@ -43,6 +43,89 @@ async function captureWindow(
   await writeFile(path, Buffer.from(png, "base64"));
 }
 
+test("Windows caption buttons control the window in a compact title bar", async ({
+  playwright,
+}) => {
+  test.skip(process.platform !== "win32", "Windows caption controls");
+  const directory = await mkdtemp(join(tmpdir(), "domos-caption-"));
+  const executablePath = createRequire(
+    new URL("../package.json", import.meta.url),
+  )("electron") as string;
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(
+      (entry): entry is [string, string] => entry[1] !== undefined,
+    ),
+  );
+  delete env.ELECTRON_RUN_AS_NODE;
+  const desktop = await playwright._electron.launch({
+    executablePath,
+    args: [
+      fileURLToPath(new URL("./entry.mjs", import.meta.url)),
+      `--test-data-dir=${directory}`,
+    ],
+    env,
+  });
+  try {
+    const page = await desktop.firstWindow();
+    const maximize = page.getByRole("button", {
+      name: "最大化窗口",
+      exact: true,
+    });
+    await expect(maximize).toBeVisible();
+    await expect(page.locator(".app-titlebar")).toHaveCSS("height", "30px");
+    await expect(maximize).toHaveCSS("-webkit-app-region", "no-drag");
+    await expect(maximize).toHaveCSS("width", "46px");
+    await expect(maximize).toHaveCSS("height", "30px");
+    const close = page.getByRole("button", { name: "关闭窗口", exact: true });
+    await close.hover();
+    await expect(close).toHaveCSS("background-color", "rgb(196, 43, 28)");
+    await expect(close).toHaveCSS("color", "rgb(255, 255, 255)");
+    await expect(
+      page.evaluate(() => window.domosWindow?.command("invalid" as "state")),
+    ).rejects.toThrow("窗口操作无效");
+    await maximize.click();
+    await expect
+      .poll(() =>
+        desktop.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()[0]?.isMaximized(),
+        ),
+      )
+      .toBe(true);
+    await page.getByRole("button", { name: "还原窗口", exact: true }).click();
+    await expect
+      .poll(() =>
+        desktop.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()[0]?.isMaximized(),
+        ),
+      )
+      .toBe(false);
+    await desktop.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.maximize(),
+    );
+    await expect(
+      page.getByRole("button", { name: "还原窗口", exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "还原窗口", exact: true }).click();
+    await page.getByRole("button", { name: "最小化窗口", exact: true }).click();
+    await expect
+      .poll(() =>
+        desktop.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()[0]?.isMinimized(),
+        ),
+      )
+      .toBe(true);
+    await desktop.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.restore(),
+    );
+    await expect(maximize).toBeVisible();
+    await page.getByRole("button", { name: "关闭窗口", exact: true }).click();
+    await expect.poll(() => page.isClosed()).toBe(true);
+  } finally {
+    await desktop.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("native setup starts and resumes with Docker unavailable", async ({
   playwright,
 }, testInfo) => {
@@ -648,7 +731,43 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     expect(new URL(page.url()).hash).toBe("");
     await page.getByRole("button", { name: "确认连接", exact: true }).click();
     await expect(page.getByRole("button", { name: "Bot详情" })).toBeVisible();
-    await expect(page.locator(".app-titlebar, .app-rail")).toHaveCount(0);
+    const titlebar = page.locator(".app-titlebar");
+    await expect(titlebar).toHaveCSS("height", "30px");
+    const bar = await titlebar.boundingBox();
+    if (!bar) throw new Error("Window title bar required");
+    expect(bar.y).toBe(0);
+    expect(
+      Math.abs(bar.width - (await page.evaluate(() => innerWidth))),
+    ).toBeLessThan(1);
+    for (const selector of [
+      ".workspace-content",
+      '.workspace-panel[data-side="sidebar"]',
+      '.workspace-panel[data-side="inspector"]',
+    ]) {
+      const box = await page.locator(selector).boundingBox();
+      if (!box) throw new Error("Workspace panel required");
+      expect(box.y).toBeGreaterThanOrEqual(30);
+    }
+    const sidebarColor = await page
+      .locator('.workspace-panel[data-side="sidebar"]')
+      .evaluate((node) => getComputedStyle(node).backgroundColor);
+    await expect(titlebar).toHaveCSS("background-color", sidebarColor);
+    for (const zoom of [1.25, 1.5, 1]) {
+      await desktop.evaluate(({ BrowserWindow }, zoom) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        const view = window?.contentView.children[0];
+        if (view && "webContents" in view)
+          (view.webContents as import("electron").WebContents).setZoomFactor(
+            zoom,
+          );
+      }, zoom);
+      await expect(titlebar).toHaveCSS("height", "30px");
+      expect(
+        await page
+          .locator(".workspace-content")
+          .evaluate((node) => node.getBoundingClientRect().top),
+      ).toBeGreaterThanOrEqual(30);
+    }
     await expect(page.locator("#bot-details")).toBeVisible();
     await expect(page.locator(".chat-identity .engine-mark")).toBeVisible();
     expect(
@@ -834,6 +953,30 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
       await expect(
         page.locator('.workspace-panel[data-side="sidebar"]'),
       ).toHaveCSS("background-color", `rgb(${rgb?.join(", ")})`);
+      await expect(page.locator(".app-titlebar")).toHaveCSS(
+        "background-color",
+        `rgb(${rgb?.join(", ")})`,
+      );
+      if (process.platform === "win32") {
+        const maximize = page.locator(".window-caption-button").nth(1);
+        await maximize.click();
+        await expect
+          .poll(() =>
+            desktop.evaluate(({ BrowserWindow }) =>
+              BrowserWindow.getAllWindows()[0]?.isMaximized(),
+            ),
+          )
+          .toBe(true);
+        await maximize.click();
+        await expect
+          .poll(() =>
+            desktop.evaluate(({ BrowserWindow }) =>
+              BrowserWindow.getAllWindows()[0]?.isMaximized(),
+            ),
+          )
+          .toBe(false);
+        await expect(settings).toBeVisible();
+      }
       await settings
         .getByRole("tab", { name: "当前电脑", exact: true })
         .click();
@@ -938,9 +1081,9 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     }));
     const bounds = {
       x: 0,
-      y: 0,
+      y: 30,
       width: expect.closeTo(viewport.width, 0),
-      height: expect.closeTo(viewport.height, 0),
+      height: expect.closeTo(viewport.height - 30, 0),
     };
     expect(frame).toEqual(bounds);
     expect(
@@ -949,13 +1092,7 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
     const close = await viewer
       .getByRole("button", { name: "关闭弹窗", exact: true })
       .boundingBox();
-    if (process.platform === "darwin") {
-      expect(close?.x).toBeGreaterThan(80);
-    } else {
-      expect(close && close.x + close.width).toBeLessThanOrEqual(
-        viewport.width - 144,
-      );
-    }
+    expect(close?.y).toBeGreaterThanOrEqual(30);
     await captureWindow(
       desktop,
       reopened,

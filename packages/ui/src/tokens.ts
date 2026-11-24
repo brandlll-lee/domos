@@ -134,7 +134,7 @@ export function resolveTheme(
 }
 
 export const layout = {
-  titlebar: 48,
+  titlebar: 30,
   chatMin: 400,
   sidebar: { compact: 96, min: 208, initial: 272, max: 360 },
   inspector: { min: 320, initial: 384, max: 640 },

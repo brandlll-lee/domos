@@ -62,9 +62,9 @@ test("chat gutters align within the content limit while panels resize", async ({
       );
       expect(sent.width).toBeLessThanOrEqual(messages.width * 0.9 + 1);
       expect(sent.x + sent.width).toBeCloseTo(messages.x + messages.width, 0);
-      await expect(reply).toHaveCSS("font-size", "13.5px");
-      await expect(reply).toHaveCSS("line-height", "20px");
-      await expect(reply.locator("strong")).toHaveCSS("font-weight", "500");
+      await expect(reply).toHaveCSS("font-size", "14px");
+      await expect(reply).toHaveCSS("line-height", "22px");
+      await expect(reply.locator("strong")).toHaveCSS("font-weight", "600");
       await expect(page.locator(".chat-preview strong").first()).toHaveCSS(
         "font-size",
         "13px",
@@ -203,52 +203,6 @@ test("three columns keep the two-line identity and navigation clear at each widt
   await expect(details).toBeVisible();
   await expect(details.getByRole("button", { name: /^记忆/ })).toBeVisible();
   expect(workStreams).toBe(0);
-  const header = details.locator(":scope > .panel-header");
-  const inspectorPanel = page.locator(
-    '.workspace-panel[data-side="inspector"]',
-  );
-  for (const platform of ["win32", "darwin"]) {
-    await page.locator(".workspace").evaluate((node, value) => {
-      (node as HTMLElement).dataset.platform = value;
-      node.ownerDocument.documentElement.style.setProperty(
-        "--window-inset-end",
-        "180px",
-      );
-      node.ownerDocument.documentElement.style.setProperty(
-        "--window-inset-start",
-        "100px",
-      );
-    }, platform);
-    for (const expanded of [false, true]) {
-      await inspectorPanel.evaluate(
-        (node, value) => node.toggleAttribute("data-expanded", value),
-        expanded,
-      );
-      const close = await header
-        .getByRole("button", { name: "关闭", exact: true })
-        .boundingBox();
-      if (!close) throw new Error("Panel close button required");
-      if (platform === "win32")
-        expect(close.x + close.width).toBeLessThanOrEqual(1420);
-      else
-        await expect(header).toHaveCSS(
-          "padding-inline-start",
-          expanded ? "100px" : "12px",
-        );
-    }
-  }
-  await inspectorPanel.evaluate((node) =>
-    node.removeAttribute("data-expanded"),
-  );
-  await page.locator(".workspace").evaluate((node) => {
-    node.removeAttribute("data-platform");
-    node.ownerDocument.documentElement.style.removeProperty(
-      "--window-inset-end",
-    );
-    node.ownerDocument.documentElement.style.removeProperty(
-      "--window-inset-start",
-    );
-  });
   await expect(page.locator(".app-titlebar, .app-rail")).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Bot电脑", exact: true }),

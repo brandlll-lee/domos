@@ -836,18 +836,8 @@
   min-width: 0;
   padding-bottom: var(--space-4);
 }
-body:has(.workspace:is([data-platform="win32"], [data-platform="linux"]))
-  .image-viewer-header {
-  padding-inline-end: max(
-    var(--window-controls-width),
-    var(--window-inset-end, 0px)
-  );
-}
-body:has(.workspace[data-platform="darwin"]) .image-viewer-header {
-  padding-inline-start: max(
-    var(--mac-controls-width),
-    var(--window-inset-start, 0px)
-  );
+body:has(.workspace[data-platform]) :is(.image-viewer, .image-viewer-backdrop) {
+  inset-block-start: var(--titlebar-height);
 }
 .image-viewer-info {
   min-width: 0;

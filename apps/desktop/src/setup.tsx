@@ -4,6 +4,7 @@ import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
 import { ActionMenu, Caret } from "@domos/ui/menu";
 import { StartupLoading, StartupScene } from "@domos/ui/startup";
+import { DesktopTitlebar } from "@domos/ui/titlebar";
 import { useEffect, useEffectEvent, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "@fontsource-variable/geist/wght.css";
@@ -116,7 +117,7 @@ function Welcome() {
   );
   return (
     <div className="setup-window" data-platform={bridge.platform}>
-      <header className="titlebar" />
+      <DesktopTitlebar className="setup-titlebar" />
       {!loaded || (busy && !remote) ? (
         <StartupLoading message={phase?.message ?? "正在准备本机…"}>
           {busy && cancel}

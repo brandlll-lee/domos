@@ -15,6 +15,30 @@ import {
   applicationId,
 } from "./icons.ts";
 
+ipcMain.handle("desktop:window", (event, action: unknown) => {
+  if (event.senderFrame !== event.sender.mainFrame)
+    throw new Error("请求来源无效。");
+  const window =
+    BrowserWindow.fromWebContents(event.sender) ??
+    BrowserWindow.getAllWindows().find((window) =>
+      window.contentView.children.some(
+        (view) =>
+          view instanceof WebContentsView && view.webContents === event.sender,
+      ),
+    );
+  const setup =
+    event.sender.getURL() === new URL("./setup.html", import.meta.url).href;
+  if (!window || (!setup && !workspaceSource(event)))
+    throw new Error("请求来源无效。");
+  if (action === "minimize") window.minimize();
+  else if (action === "maximize") {
+    if (window.isMaximized()) window.unmaximize();
+    else window.maximize();
+  } else if (action === "close") window.close();
+  else if (action !== "state") throw new Error("窗口操作无效。");
+  return { maximized: !window.isDestroyed() && window.isMaximized() };
+});
+
 const sources = new Map<number, string>();
 export function workspaceSource(
   event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent,
@@ -211,15 +235,17 @@ export function createWindow(preload: string, partition?: string, show = true) {
     autoHideMenuBar: true,
     backgroundColor:
       themes[nativeTheme.shouldUseDarkColors ? "dark" : "light"].frame,
-    ...(process.platform !== "darwin"
-      ? {
-          titleBarOverlay: {
-            ...windowOverlay,
-            symbolColor:
-              themes[nativeTheme.shouldUseDarkColors ? "dark" : "light"].text,
-          },
-        }
-      : {}),
+    ...(process.platform === "darwin"
+      ? { trafficLightPosition: { x: 12, y: 8 } }
+      : process.platform === "linux"
+        ? {
+            titleBarOverlay: {
+              ...windowOverlay,
+              symbolColor:
+                themes[nativeTheme.shouldUseDarkColors ? "dark" : "light"].text,
+            },
+          }
+        : {}),
     width: 1200,
     height: 820,
     minWidth: 360,
@@ -232,6 +258,15 @@ export function createWindow(preload: string, partition?: string, show = true) {
       preload: fileURLToPath(new URL(preload, import.meta.url)),
     },
   });
+  const publish = () => {
+    const state = { maximized: window.isMaximized() };
+    window.webContents.send("desktop:window-state", state);
+    for (const view of window.contentView.children)
+      if (view instanceof WebContentsView)
+        view.webContents.send("desktop:window-state", state);
+  };
+  window.on("maximize", publish);
+  window.on("unmaximize", publish);
   if (process.platform === "win32")
     window.setAppDetails({
       appId: applicationId,

@@ -92,7 +92,19 @@ for (const [entry, output] of [
     external,
     banner,
   });
-await cp(join(here, "src/preload.cjs"), join(dist, "preload.cjs"));
+await build({
+  entryPoints: [
+    join(here, "src/preload.cjs"),
+    join(here, "src/setup-preload.cjs"),
+  ],
+  outdir: dist,
+  outExtension: { ".js": ".cjs" },
+  bundle: true,
+  platform: "node",
+  format: "cjs",
+  target: "node24",
+  external: ["electron"],
+});
 await build({
   entryPoints: [join(here, "src/setup.tsx")],
   outfile: join(dist, "setup.js"),
@@ -104,8 +116,7 @@ await build({
   assetNames: "assets/[name]-[hash]",
   define: { "process.env.NODE_ENV": '"production"' },
 });
-for (const name of ["setup.html", "setup-preload.cjs"])
-  await cp(join(here, "src", name), join(dist, name));
+await cp(join(here, "src/setup.html"), join(dist, "setup.html"));
 const variables = (values, prefix = "") =>
   Object.entries(values)
     .map(([key, value]) => `--${prefix}${key}:${value};`)

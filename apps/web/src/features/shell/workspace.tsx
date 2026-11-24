@@ -132,7 +132,7 @@ export function Workspace({
         gridTemplateColumns: `${sizing.mobile ? 0 : sizing.widths.sidebar}px minmax(0, 1fr) ${detailsOpen && !sizing.overlay && !expanded ? sizing.widths.inspector : 0}px`,
       }}
     >
-      <Titlebar embedded />
+      <Titlebar />
       {sizing.mobile && (
         <Button
           id="contacts-trigger"

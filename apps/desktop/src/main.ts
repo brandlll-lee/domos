@@ -387,7 +387,7 @@ async function main() {
     async (input) => {
       const theme = z.enum(["light", "dark"]).parse(input);
       current?.setBackgroundColor(themes[theme].frame);
-      if (process.platform !== "darwin")
+      if (process.platform === "linux")
         current?.setTitleBarOverlay({
           ...windowOverlay,
           symbolColor: themes[theme].text,
