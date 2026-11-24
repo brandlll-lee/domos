@@ -233,6 +233,13 @@ test("files preview documents, search old history and return to the source", asy
   await expect(
     panel.getByRole("heading", { name: "文件预览验收", exact: true }),
   ).toBeVisible();
+  await expect(panel.locator(".markdown h1")).toHaveCSS("font-size", "20px");
+  await expect(panel.locator(".markdown p")).toHaveCSS("font-size", "14px");
+  await expect(panel.locator(".markdown p")).toHaveCSS("line-height", "22px");
+  await expect(panel.locator(".markdown strong")).toHaveCSS(
+    "font-weight",
+    "600",
+  );
   const download = page.waitForEvent("download");
   await panel.getByRole("button", { name: "下载文件", exact: true }).click();
   expect((await download).suggestedFilename()).toBe("说明.md");

@@ -19,7 +19,7 @@
   background: var(--color-assistant);
   color: var(--color-text);
   font-size: var(--text-message);
-  line-height: var(--leading-control);
+  line-height: var(--leading-message);
   font-weight: var(--weight-regular);
 }
 .message-bubble::after {
@@ -487,7 +487,9 @@ button.file-caption {
 .markdown {
   min-width: 0;
   overflow-wrap: anywhere;
-  line-height: inherit;
+  font-size: var(--text-message);
+  line-height: var(--leading-message);
+  font-weight: var(--weight-regular);
 }
 .markdown > :first-child {
   margin-top: 0;
@@ -509,14 +511,25 @@ button.file-caption {
 .markdown h4,
 .markdown h5,
 .markdown h6 {
-  margin-block: var(--message-paragraph-gap);
+  margin-block: var(--message-heading-gap) var(--space-2);
   font-size: inherit;
   line-height: inherit;
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-semibold);
+}
+.markdown h1 {
+  font-size: var(--text-title);
+  line-height: var(--leading-message-title);
+}
+.markdown h2 {
+  font-size: var(--text-message-heading);
+  line-height: var(--leading-message-heading);
+}
+.markdown h3 {
+  font-size: var(--text-message-subheading);
 }
 .markdown strong,
 .markdown th {
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-semibold);
 }
 .markdown ul,
 .markdown ol {
@@ -584,7 +597,7 @@ button.file-caption {
   margin-inline: 0;
   padding-inline-start: var(--space-4);
   border-inline-start: 2px solid var(--color-border);
-  color: var(--color-muted);
+  color: inherit;
 }
 .markdown-table {
   overflow-x: auto;
@@ -597,12 +610,14 @@ button.file-caption {
 }
 .markdown th,
 .markdown td {
+  min-width: var(--message-table-column-width);
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--color-border);
   text-align: start;
 }
 .markdown th {
   white-space: nowrap;
+  background: color-mix(in srgb, currentColor 4%, transparent);
 }
 .markdown img {
   max-width: 100%;

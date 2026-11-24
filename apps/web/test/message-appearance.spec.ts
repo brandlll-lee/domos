@@ -279,7 +279,7 @@ test("structured messages keep Markdown and private tool results across reloads"
   await expect(page.getByRole("heading", { name: "调研结果" })).toBeVisible();
 });
 
-test("Markdown keeps one message scale across elements, themes, and text enlargement", async ({
+test("Markdown retains its reading hierarchy across themes and text enlargement", async ({
   service,
   page,
 }) => {
@@ -304,15 +304,45 @@ test("Markdown keeps one message scale across elements, themes, and text enlarge
   await page.getByRole("button", { name: "发送", exact: true }).click();
   const reply = page.getByLabel("Domos 的回复");
   await expect(reply.getByRole("heading")).toHaveCount(6);
-  const expectScale = async (size: number) => {
+  const expectScale = async (scale: number) => {
     const values = await reply.evaluate((element) =>
       [
         ...element.querySelectorAll(
           "h1,h2,h3,h4,h5,h6,p,li,blockquote,th,td,code",
         ),
-      ].map((node) => Number.parseFloat(getComputedStyle(node).fontSize)),
+      ].map((node) => ({
+        tag: node.tagName.toLowerCase(),
+        size: Number.parseFloat(getComputedStyle(node).fontSize),
+        line: Number.parseFloat(getComputedStyle(node).lineHeight),
+      })),
     );
-    for (const value of values) expect(value).toBe(size);
+    for (const { tag, size, line } of values) {
+      const [expectedSize, expectedLine] =
+        tag === "h1"
+          ? [20, 28]
+          : tag === "h2"
+            ? [17, 24]
+            : tag === "h3"
+              ? [15, 22]
+              : [14, 22];
+      expect(size).toBe(expectedSize * scale);
+      expect(line).toBe(expectedLine * scale);
+    }
+    for (const node of await reply.locator("h1,h2,h3,h4,h5,h6,strong,th").all())
+      await expect(node).toHaveCSS("font-weight", "600");
+    await expect(reply.locator("h1")).toHaveCSS("margin-top", "0px");
+    await expect(reply.locator("h2")).toHaveCSS(
+      "margin-top",
+      `${18 * scale}px`,
+    );
+    await expect(reply.locator("h2")).toHaveCSS(
+      "margin-bottom",
+      `${8 * scale}px`,
+    );
+    await expect(reply.locator(".markdown > p")).toHaveCSS(
+      "margin-top",
+      `${10 * scale}px`,
+    );
     const code = await reply.locator("pre").evaluate((element) => ({
       content: element.scrollWidth,
       frame: element.clientWidth,
@@ -324,17 +354,14 @@ test("Markdown keeps one message scale across elements, themes, and text enlarge
       await page.locator("body").evaluate((element) => element.scrollWidth),
     ).toBe(await page.evaluate(() => innerWidth));
   };
-  for (const [width, size] of [
-    [1600, 13.5],
-    [390, 13.5],
-  ] as const) {
+  for (const width of [1600, 390]) {
     await page.setViewportSize({ width, height: 900 });
     for (const [theme, label] of [
       ["light", "浅色"],
       ["dark", "深色"],
     ] as const) {
       await chooseAppearance(page, label);
-      await expectScale(size);
+      await expectScale(1);
       await page.getByRole("log").evaluate((element) => {
         element.closest(".transcript")?.scrollTo(0, 0);
       });
@@ -346,12 +373,67 @@ test("Markdown keeps one message scale across elements, themes, and text enlarge
   await page.setViewportSize({ width: 1600, height: 1200 });
   await page.addStyleTag({ content: ":root { font-size: 200%; }" });
   await expect(page.locator("html")).toHaveCSS("font-size", "32px");
-  await expectScale(27);
+  await expectScale(2);
   await expect(input).toBeVisible();
   await input.fill("放大后仍可编辑。");
   await expect(
     page.getByRole("button", { name: "发送", exact: true }),
   ).toBeEnabled();
+});
+
+test("Markdown tables retain readable columns and quotes retain body contrast", async ({
+  service,
+  page,
+}, info) => {
+  await service.control({
+    content: [
+      "**结论：优先验证实际业务。**",
+      "继续核对工具调用、记忆和执行记录。",
+      "| 项目 | 经验 | 证据 | 下一步 |\n| --- | --- | --- | --- |\n| 商家智能客服与订单异常检测 | 两年客户服务产品开发经验 | 原生工具调用和执行记录 | 补充生产使用评估与成本数据 |",
+      "> 引用内容保持清晰可读。",
+    ].join("\n\n"),
+  });
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto(service.url);
+  await page.getByLabel("消息", { exact: true }).fill("检查中文表格和引用。");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const reply = page.getByLabel("Domos 的回复");
+  await expect(reply.getByRole("table")).toBeVisible();
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    const table = reply.getByRole("table");
+    for (const cell of await table.getByRole("cell").all())
+      expect((await cell.boundingBox())?.width).toBeGreaterThanOrEqual(128);
+    const scroll = reply.locator(".markdown-table");
+    expect(
+      await scroll.evaluate((node) => node.scrollWidth > node.clientWidth),
+    ).toBe(true);
+    await expect(scroll).toHaveCSS("overflow-x", "auto");
+    const header = table.getByRole("columnheader").first();
+    await expect(header).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    const quote = reply.locator("blockquote");
+    await expect(quote).toHaveCSS(
+      "color",
+      await reply
+        .locator(".markdown")
+        .evaluate((node) => getComputedStyle(node).color),
+    );
+    await expect(quote).toHaveCSS("border-inline-start-width", "2px");
+    await expect(reply.getByRole("heading")).toHaveCount(0);
+    await expect(reply.locator("strong")).toHaveCSS("font-weight", "600");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await scroll.evaluate((node) => {
+      node.scrollLeft = node.scrollWidth;
+    });
+    expect(await scroll.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
+    await page.screenshot({
+      path: info.outputPath(`markdown-table-${theme}.png`),
+    });
+  }
 });
 
 test("bundled Chinese and Latin faces render shared text weights", async ({
@@ -366,7 +448,7 @@ test("bundled Chinese and Latin faces render shared text weights", async ({
   await expect(paragraph).toContainText("中文消息与 Latin 文字。");
   await page.evaluate(() => document.fonts.ready);
   await expect(paragraph).toHaveCSS("font-weight", "400");
-  await expect(paragraph.locator("strong")).toHaveCSS("font-weight", "500");
+  await expect(paragraph.locator("strong")).toHaveCSS("font-weight", "600");
   const session = await page.context().newCDPSession(page);
   await session.send("DOM.enable");
   await session.send("CSS.enable");
@@ -898,12 +980,25 @@ test("long bubbles fold with a fade and retain full text without outgoing timest
   await expect(
     incoming.getByRole("button", { name: "展开", exact: true }),
   ).toBeVisible({ timeout: 20_000 });
+  const incomingBody = incoming.locator(".message-body");
+  await expect(incoming.locator(".markdown p")).toHaveCount(28);
+  expect((await incomingBody.boundingBox())?.height).toBeCloseTo(384, 1);
   const gap = await incoming.evaluate(
     (node) =>
       node.getBoundingClientRect().top -
       (node.previousElementSibling?.getBoundingClientRect().bottom ?? 0),
   );
   expect(gap).toBeGreaterThanOrEqual(12);
+  await incoming.getByRole("button", { name: "展开", exact: true }).click();
+  expect((await incomingBody.boundingBox())?.height).toBeGreaterThan(384);
+  const close = page.locator("#bot-details").getByRole("button", {
+    name: "关闭",
+    exact: true,
+  });
+  if (await close.isVisible()) await close.click();
+  await page.setViewportSize({ width: 390, height: 900 });
+  await incoming.getByRole("button", { name: "收起", exact: true }).click();
+  expect((await incomingBody.boundingBox())?.height).toBeCloseTo(384, 1);
   await page.reload();
   await expect(page.getByLabel("你的消息")).toHaveCount(1);
   await expect(
