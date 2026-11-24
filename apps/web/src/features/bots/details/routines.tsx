@@ -8,7 +8,7 @@ import { ChoicePicker } from "@domos/ui/picker";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { SettingRow } from "@domos/ui/setting-row";
 import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
-import { useLayoutEffect, useRef, useState } from "react";
+import { type ComponentProps, useLayoutEffect, useRef, useState } from "react";
 import { client } from "../../../client.ts";
 import type { useChat } from "../../chat/use-chat.ts";
 import { WorkPanel } from "../../chat/work.tsx";
@@ -52,6 +52,9 @@ export function RoutinesPanel({
   editor,
   onEditorChange,
   chat,
+  author,
+  onDetailChange,
+  onClose,
 }: {
   chat: ReturnType<typeof useChat>;
   botId: number;
@@ -60,6 +63,9 @@ export function RoutinesPanel({
   action: WorkAction;
   editor: Extract<PanelEditor, { view: "routines" }> | null;
   onEditorChange: (editor: PanelEditor | null) => void;
+  author: ComponentProps<typeof WorkPanel>["author"];
+  onDetailChange: (open: boolean) => void;
+  onClose: () => void;
 }) {
   const [selectedRun, setSelectedRun] = useState<string>();
   const viewport = useRef<HTMLDivElement>(null);
@@ -309,6 +315,9 @@ export function RoutinesPanel({
       {selectedRun && (
         <WorkPanel
           {...chat}
+          author={author}
+          onDetailChange={onDetailChange}
+          onClose={onClose}
           botId={botId}
           selectedRun={selectedRun}
           onRunClose={() => setSelectedRun(undefined)}

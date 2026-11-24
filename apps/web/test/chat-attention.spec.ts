@@ -505,7 +505,14 @@ test("failure reminders open the corresponding Work record", async ({
   await expect(page).toHaveURL(new RegExp(`#bot/${bot.id}/${bot.id}$`));
   const record = page.getByRole("region", { name: "工作记录", exact: true });
   await expect(record).toBeVisible();
-  await expect(record).toContainText("整理失败的报告");
+  await record
+    .getByRole("button", { name: "工作记录选项", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "执行详情", exact: true }).click();
+  await expect(
+    page.getByRole("dialog", { name: "执行详情", exact: true }),
+  ).toContainText("整理失败的报告");
+  await page.keyboard.press("Escape");
   await record
     .getByRole("button", { name: "返回工作列表", exact: true })
     .click();

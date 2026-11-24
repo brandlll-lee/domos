@@ -9,6 +9,112 @@ import type { AppRouter } from "../../api/src/router.ts";
 import { openDetails } from "./fixtures/chat-ui.ts";
 import { test } from "./fixtures/service.ts";
 
+test("Work detail shows one execution header with its saved Harness and model", async ({
+  service,
+  page,
+}, info) => {
+  await service.control({
+    records: [
+      {
+        id: "summary-input",
+        turnId: "summary",
+        role: "user",
+        content: [
+          {
+            type: "text",
+            key: "input",
+            text: "重新设计项目报价单\n保留全部服务项目。",
+          },
+        ],
+        stopped: false,
+      },
+      {
+        id: "summary-reply",
+        turnId: "summary",
+        role: "assistant",
+        content: [{ type: "text", key: "reply", text: "报价单已完成。" }],
+        stopped: false,
+      },
+    ],
+    run: {
+      turnId: "summary",
+      author: { botId: 1, name: "报价助手", avatar: "star:blue" },
+      provider: "codex",
+      model: "historical-model",
+      startedAt: Date.parse("2026-11-24T06:32:00Z"),
+      endedAt: Date.parse("2026-11-24T06:33:05Z"),
+      status: "ended",
+      evidence: { taskId: "summary-task", usage: "missing", toolCalls: 2 },
+    },
+  });
+  await page.goto(service.url);
+  await page.getByRole("tab", { name: "Work", exact: true }).click();
+  const source = page.getByRole("button", {
+    name: /^查看工作记录：重新设计项目报价单/,
+  });
+  await source.click();
+  const detail = page.getByRole("region", { name: "工作记录", exact: true });
+  const summary = detail.getByLabel("执行摘要", { exact: true });
+  await expect(summary).toContainText("报价助手");
+  await expect(summary).toContainText("historical-model");
+  await expect(summary).toContainText("1分05秒");
+  await expect(summary).toContainText("2 次工具调用");
+  await expect(
+    summary.getByLabel("Harness：codex", { exact: true }),
+  ).toBeVisible();
+  await expect(page.locator("#bot-details .panel-header:visible")).toHaveCount(
+    1,
+  );
+  await expect(
+    page.getByRole("tab", { name: "Work", exact: true }),
+  ).not.toBeVisible();
+  await expect(
+    detail.getByRole("heading", { name: "重新设计项目报价单", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    detail.getByText("保留全部服务项目。", { exact: true }),
+  ).not.toBeVisible();
+  await detail
+    .getByRole("button", { name: "工作记录选项", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "执行详情", exact: true }).click();
+  const input = page.getByRole("dialog", { name: "执行详情", exact: true });
+  await expect(input).toContainText("保留全部服务项目。");
+  await page.keyboard.press("Escape");
+  await expect(
+    detail.getByRole("button", { name: "工作记录选项", exact: true }),
+  ).toBeFocused();
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect
+      .poll(() => detail.evaluate((el) => el.scrollWidth <= el.clientWidth))
+      .toBe(true);
+    await expect(summary.locator(".bot-avatar")).toHaveCSS("width", "40px");
+    const heading = await summary.boundingBox();
+    const timeline = await detail
+      .getByRole("list", { name: "执行时间线" })
+      .boundingBox();
+    expect(
+      heading && timeline && timeline.y - heading.y - heading.height,
+    ).toBeCloseTo(24, 0);
+    await detail.screenshot({
+      path: info.outputPath(`work-summary-${theme}.png`),
+      animations: "disabled",
+    });
+  }
+  await detail
+    .getByRole("button", { name: "返回工作列表", exact: true })
+    .click();
+  await expect(source).toBeFocused();
+  await expect(
+    page.getByRole("tab", { name: "Work", exact: true }),
+  ).toBeVisible();
+  await source.click();
+  await detail.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(detail).not.toBeVisible();
+});
+
 test("Bot readers retain model and skill data while live skill changes reach the composer", async ({
   service,
   page,
@@ -196,7 +302,7 @@ test("Work follows a native turn, opens its record and preserves it after stop a
   await page.screenshot({ path: info.outputPath("work-running.png") });
   await card.locator(".work-open").click();
   const detail = page.getByRole("region", { name: "工作记录", exact: true });
-  await expect(detail).toContainText("检查 Work 工作记录");
+  await expect(detail.getByRole("list", { name: "执行时间线" })).toBeVisible();
   await expect(
     page.getByRole("dialog", { name: "工作记录", exact: true }),
   ).toHaveCount(0);
@@ -207,7 +313,9 @@ test("Work follows a native turn, opens its record and preserves it after stop a
   await expect(card.locator(".work-open")).toBeFocused();
   await card.locator(".work-open").click();
   const dialog = page.getByRole("region", { name: "工作记录", exact: true });
-  await expect(dialog).toContainText("检查 Work 工作记录");
+  await expect(
+    dialog.getByRole("button", { name: "停止执行", exact: true }),
+  ).toBeEnabled();
   await dialog
     .getByRole("button", { name: "返回工作列表", exact: true })
     .click();
@@ -523,7 +631,12 @@ test("Work renders native search, file and terminal details in both themes", asy
   await expect(dialog.locator(".work-file")).toContainText("note.md");
   await expect(dialog.locator(".work-file")).toContainText("+confirmed");
   await expect(entries.locator(":scope > time")).toHaveCount(0);
-  await dialog.getByRole("button", { name: "诊断信息", exact: true }).click();
+  await expect(dialog.getByLabel("执行摘要")).toContainText("模型未知");
+  await expect(dialog.getByLabel("执行摘要")).not.toContainText("次工具调用");
+  await dialog
+    .getByRole("button", { name: "工作记录选项", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "诊断信息", exact: true }).click();
   await expect(page.locator(".work-diagnostics")).toContainText(
     "历史记录未保存",
   );
@@ -637,7 +750,10 @@ test("Work locates a failed native tool and copies bounded diagnostics", async (
     "tool image_generate is not enabled for server domos",
   );
   await expect(dialog.locator(".work-entry[data-state=failed]")).toBeFocused();
-  await dialog.getByRole("button", { name: "诊断信息", exact: true }).click();
+  await dialog
+    .getByRole("button", { name: "工作记录选项", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "诊断信息", exact: true }).click();
   const diagnostic = page.locator(".work-diagnostics");
   await expect(diagnostic).toContainText("1 / 2");
   await expect(diagnostic).toContainText("入账失败，执行结果保留");
@@ -669,7 +785,7 @@ test("Work locates a failed native tool and copies bounded diagnostics", async (
   await page.screenshot({ path: info.outputPath("diagnostics-narrow.png") });
   await page.keyboard.press("Escape");
   await expect(
-    dialog.getByRole("button", { name: "诊断信息", exact: true }),
+    dialog.getByRole("button", { name: "工作记录选项", exact: true }),
   ).toBeFocused();
 });
 
@@ -846,12 +962,20 @@ test("chat routine changes require confirmation and link runs to Work", async ({
     .click();
   const record = page.getByRole("region", { name: "工作记录", exact: true });
   await expect(details.locator(".run-list")).not.toBeVisible();
-  await record.locator("summary").filter({ hasText: "任务输入" }).click();
-  await expect(record).toContainText("试跑：Daily report");
-  await expect(record).toContainText("Read the daily report");
-  await expect(record).toContainText("等人");
-  await expect(record).toContainText("计划时间");
+  await expect(
+    details.getByRole("heading", { name: "定时", exact: true }),
+  ).not.toBeVisible();
+  await record
+    .getByRole("button", { name: "工作记录选项", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "执行详情", exact: true }).click();
+  const input = page.getByRole("dialog", { name: "执行详情", exact: true });
+  await expect(input).toContainText("试跑：Daily report");
+  await expect(input).toContainText("等人");
+  await expect(input).toContainText("计划时间");
   await page.screenshot({ path: info.outputPath("routine-work-record.png") });
+  await page.keyboard.press("Escape");
+  await expect(record).toContainText("Read the daily report");
   await record
     .getByRole("button", { name: "返回工作列表", exact: true })
     .click();

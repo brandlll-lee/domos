@@ -55,8 +55,7 @@
 }
 .work-activity,
 .work-time,
-.work-author,
-.work-meta {
+.work-author {
   color: var(--color-muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
@@ -95,17 +94,6 @@
   top: 50%;
   transform: translateY(-50%);
 }
-.work-heading {
-  display: grid;
-  gap: var(--space-2);
-  padding-bottom: var(--space-4);
-}
-.work-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2) var(--space-4);
-}
 .work-detail {
   display: flex;
   flex-direction: column;
@@ -113,33 +101,65 @@
   min-width: 0;
   min-height: 0;
 }
-.work-toolbar,
-.work-actions {
+.work-summary {
+  display: flex;
+  align-items: start;
+  gap: var(--space-3);
+}
+.work-summary > .bot-avatar {
+  width: 40px;
+  height: 40px;
+}
+.work-summary-copy {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.work-summary h3 {
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+}
+.work-model,
+.work-summary-status,
+.work-dates {
   display: flex;
   align-items: center;
   gap: var(--space-1);
-}
-.work-toolbar {
-  flex-wrap: wrap;
-  justify-content: space-between;
-  padding: var(--space-2) var(--space-3);
-}
-.work-toolbar > :where(.button) svg {
-  width: 16px;
-  height: 16px;
-}
-.work-toolbar > .button {
-  gap: var(--space-2);
-}
-.work-heading > .disclosure {
+  color: var(--color-muted);
   font-size: var(--text-small);
+  font-variant-numeric: tabular-nums;
 }
-.work-heading .disclosure-heading {
+.work-summary-status,
+.work-dates {
+  flex-wrap: wrap;
+}
+.work-model > :last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.work-model > :first-child {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.work-model .engine-mark {
+  width: 14px;
+  height: 14px;
+}
+.work-model .button {
+  width: 20px;
+  height: 20px;
   min-height: 0;
   padding: 0;
 }
+.detail-content.work-content > div {
+  gap: var(--space-6);
+}
 .work-diagnostics {
   width: min(380px, calc(100vw - var(--space-6)));
+  max-height: min(70dvh, var(--available-height));
+  overflow-y: auto;
   overflow-wrap: anywhere;
 }
 .work-diagnostics dl {
@@ -168,7 +188,7 @@
   overflow-wrap: anywhere;
 }
 .work-timeline {
-  margin: var(--space-4) 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
 }

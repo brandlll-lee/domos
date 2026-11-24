@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from "react";
+import type { ComponentProps, ReactNode, Ref } from "react";
 import { Button } from "./controls.tsx";
 
 export function PanelHeader({
@@ -6,11 +6,15 @@ export function PanelHeader({
   onBack,
   onClose,
   actions,
+  backLabel = "返回",
+  backRef,
 }: {
   title: string;
   onBack?: () => void;
   onClose: () => void;
   actions?: ReactNode;
+  backLabel?: string;
+  backRef?: Ref<HTMLButtonElement>;
 }) {
   return (
     <header
@@ -19,9 +23,10 @@ export function PanelHeader({
     >
       {onBack ? (
         <Button
+          ref={backRef}
           variant="ghost"
           size="icon-small"
-          aria-label="返回"
+          aria-label={backLabel}
           onClick={onBack}
         >
           <svg

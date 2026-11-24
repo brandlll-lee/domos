@@ -1,6 +1,8 @@
+import type { ChatMessage } from "@domos/agent/messages";
 import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { Loading } from "@domos/ui/loading";
+import { PanelHeader } from "@domos/ui/panel";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { StatusDot } from "@domos/ui/status-dot";
 import { StopIcon } from "@phosphor-icons/react/dist/csr/Stop";
@@ -26,6 +28,9 @@ export function WorkPanel(
     selectedRun?: string;
     onRunClose?: () => void;
     runDetails?: ReactNode;
+    author?: ChatMessage["author"];
+    onClose: () => void;
+    onDetailChange: (open: boolean) => void;
   },
 ) {
   const { view, connected, stopping, stop } = chat;
@@ -38,6 +43,11 @@ export function WorkPanel(
     }
   }, [chat.selectedRun]);
   const [now, setNow] = useState(Date.now);
+  const detailOpen = selected !== undefined;
+  useLayoutEffect(() => {
+    chat.onDetailChange(detailOpen);
+    return () => chat.onDetailChange(false);
+  }, [chat.onDetailChange, detailOpen]);
   const trigger = useRef<HTMLButtonElement | null>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const reading = useRef(0);
@@ -222,21 +232,25 @@ export function WorkPanel(
             key={current.id}
             turn={current}
             botId={chat.botId}
-            team={chat.team}
+            author={current.author ?? chat.author}
             sessionId={view.id}
             connected={connected}
             stopping={stopping}
             now={now}
             stop={stop}
             onBack={closeRun}
+            onClose={chat.onClose}
           >
             {chat.runDetails}
           </WorkDetail>
         ) : (
           <section className="work-detail" aria-label="工作记录">
-            <Button variant="ghost" onClick={closeRun}>
-              返回工作列表
-            </Button>
+            <PanelHeader
+              title="工作记录"
+              onBack={closeRun}
+              backLabel="返回工作列表"
+              onClose={chat.onClose}
+            />
             {chat.error ? (
               <p role="alert">{String(chat.error)}</p>
             ) : view && !view.before ? (

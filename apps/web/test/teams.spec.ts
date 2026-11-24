@@ -383,6 +383,11 @@ test("teams preserve member authors and keep private chats separate", async ({
     exact: true,
   });
   await expect(workDetail).toContainText("Reviewer");
+  await expect(workDetail.getByLabel("执行摘要")).toContainText("Reviewer");
+  await expect(details.locator(".panel-header:visible")).toHaveCount(1);
+  await expect(
+    details.getByRole("tab", { name: "Work", exact: true }),
+  ).not.toBeVisible();
   await expect(
     page.getByRole("dialog", { name: "工作记录", exact: true }),
   ).toHaveCount(0);

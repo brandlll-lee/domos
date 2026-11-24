@@ -5,7 +5,13 @@ import { Loading } from "@domos/ui/loading";
 import { PanelHeader } from "@domos/ui/panel";
 import { ScrollArea } from "@domos/ui/scroll-area";
 import { Tabs } from "@domos/ui/tabs";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  type ComponentProps,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { openChatTarget } from "../../chat/attention.tsx";
 import type { MessageTarget } from "../../chat/message-target.ts";
 import { useChat } from "../../chat/use-chat.ts";
@@ -86,6 +92,7 @@ export function BotDetails({
   onShowMessage: (item: MessageTarget) => Promise<void>;
 }) {
   const [memoryOpen, setMemoryOpen] = useState(false);
+  const [workDetail, setWorkDetail] = useState(false);
   const [evidenceRun, setEvidenceRun] = useState<string>();
   const workActive =
     active &&
@@ -175,6 +182,9 @@ export function BotDetails({
     content = work.data ? (
       <RoutinesPanel
         botId={bot.id}
+        author={{ botId: bot.id, name: bot.name, avatar: bot.avatar }}
+        onDetailChange={setWorkDetail}
+        onClose={onClose}
         data={work.data.routines}
         chat={chat}
         skills={work.data.skills}
@@ -197,19 +207,21 @@ export function BotDetails({
       data-computer={(view === "root" && tab !== "bot") || undefined}
       aria-label={`${bot.name}的详情`}
     >
-      <PanelHeader
-        title={title}
-        onBack={
-          view === "root"
-            ? onBack
-            : () =>
-                editor
-                  ? setSelection(null)
-                  : navigate(view === "assistance" ? "computer" : "root")
-        }
-        onClose={onClose}
-      />
-      {view === "root" && (
+      {!workDetail && (
+        <PanelHeader
+          title={title}
+          onBack={
+            view === "root"
+              ? onBack
+              : () =>
+                  editor
+                    ? setSelection(null)
+                    : navigate(view === "assistance" ? "computer" : "root")
+          }
+          onClose={onClose}
+        />
+      )}
+      {view === "root" && !workDetail && (
         <div className="detail-identity">
           <BotIdentity
             bot={bot}
@@ -261,6 +273,9 @@ export function BotDetails({
           <WorkPanel
             {...chat}
             botId={bot.id}
+            author={{ botId: bot.id, name: bot.name, avatar: bot.avatar }}
+            onDetailChange={setWorkDetail}
+            onClose={onClose}
             selectedRun={evidenceRun ?? workRun}
             onRunClose={() => {
               setEvidenceRun(undefined);
@@ -271,6 +286,9 @@ export function BotDetails({
           <SessionWork
             key={sessionBot.id}
             botId={sessionBot.id}
+            author={{ botId: bot.id, name: bot.name, avatar: bot.avatar }}
+            onDetailChange={setWorkDetail}
+            onClose={onClose}
             selectedRun={evidenceRun ?? workRun}
             onRunClose={() => {
               setEvidenceRun(undefined);
@@ -371,15 +389,20 @@ function SessionWork({
   botId,
   selectedRun,
   onRunClose,
+  ...props
 }: {
   botId: number;
   selectedRun?: string;
   onRunClose?: () => void;
+  author: ComponentProps<typeof WorkPanel>["author"];
+  onDetailChange: (open: boolean) => void;
+  onClose: () => void;
 }) {
   const chat = useChat(botId);
   return (
     <WorkPanel
       {...chat}
+      {...props}
       botId={botId}
       selectedRun={selectedRun}
       onRunClose={onRunClose}

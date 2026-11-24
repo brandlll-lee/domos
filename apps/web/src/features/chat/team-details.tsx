@@ -42,6 +42,7 @@ export function TeamDetails({
   onSaved: (team: Team) => void;
 }) {
   const [page, setPage] = useState<"root" | "members">("root");
+  const [workDetail, setWorkDetail] = useState(false);
   const [editing, setEditing] = useState<boolean | "closing">(false);
   const owner = members.find((member) => member.id === team.owner);
   return (
@@ -50,12 +51,14 @@ export function TeamDetails({
       className="bot-details"
       aria-label={`${team.name}的详情`}
     >
-      <PanelHeader
-        title={page === "members" ? "成员" : team.name}
-        onBack={page !== "root" ? () => setPage("root") : undefined}
-        onClose={onClose}
-      />
-      {page === "root" && (
+      {!workDetail && (
+        <PanelHeader
+          title={page === "members" ? "成员" : team.name}
+          onBack={page !== "root" ? () => setPage("root") : undefined}
+          onClose={onClose}
+        />
+      )}
+      {page === "root" && !workDetail && (
         <div className="detail-identity">
           <div className="team-identity">
             <TeamAvatar members={members} />
@@ -83,6 +86,8 @@ export function TeamDetails({
             {...chat}
             team
             botId={team.owner}
+            onDetailChange={setWorkDetail}
+            onClose={onClose}
             selectedRun={workRun}
             onRunClose={onWorkRunClose}
           />
