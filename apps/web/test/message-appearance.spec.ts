@@ -484,7 +484,7 @@ test("IM bubbles, search dialog, and popup surfaces share both themes", async ({
     await expect(searchButton).toBeFocused();
     await expect(outgoing).toHaveCSS(
       "color",
-      await incoming.evaluate((element) => getComputedStyle(element).color),
+      theme === "light" ? "rgb(255, 255, 255)" : "rgb(245, 245, 245)",
     );
     await page.screenshot({ path: `test-results/im-${theme}.png` });
     const details = await openDetails(page);
@@ -1250,4 +1250,106 @@ test("control geometry and interaction states stay consistent", async ({
   await expect(
     settings.getByRole("tab", { name: "AI 服务", exact: true }),
   ).toBeFocused();
+});
+
+test("user bubbles retain readable local colors for every Bot hue in both themes", async ({
+  service,
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await service.control({ content: "助手保持中性色。" });
+  await page.goto(service.url);
+  await page
+    .getByLabel("消息", { exact: true })
+    .fill("请看 https://example.com/reading");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const close = page
+    .locator("#bot-details")
+    .getByRole("button", { name: "关闭", exact: true });
+  if (await close.isVisible()) await close.click();
+  const bubble = page.locator('.message-bubble[data-side="outgoing"]').last();
+  await expect(bubble.locator(".message-link")).toBeVisible();
+  const colors: string[] = characterColors.map(({ color }) => color);
+  for (let r = 0; r <= 255; r += 17)
+    for (let g = 0; g <= 255; g += 17)
+      for (let b = 0; b <= 255; b += 17)
+        colors.push(
+          `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`,
+        );
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await expect(bubble).toHaveCSS(
+      "color",
+      theme === "light" ? "rgb(255, 255, 255)" : "rgb(245, 245, 245)",
+    );
+    const failures = await bubble.evaluate((node, colors) => {
+      const surface = node.closest<HTMLElement>(".chat-surface");
+      if (!surface) throw new Error("Chat surface required");
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 1;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas required for contrast measurement");
+      const luminance = (color: string) => {
+        ctx.clearRect(0, 0, 1, 1);
+        ctx.fillStyle = color;
+        ctx.fillRect(0, 0, 1, 1);
+        const [r, g, b] = [...ctx.getImageData(0, 0, 1, 1).data].map((v) => {
+          const s = v / 255;
+          return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+        });
+        if (r === undefined || g === undefined || b === undefined)
+          throw new Error("RGB channels required");
+        return r * 0.2126 + g * 0.7152 + b * 0.0722;
+      };
+      const ratio = (ink: string, background: string) => {
+        const a = luminance(ink),
+          b = luminance(background);
+        return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      };
+      const linkElement = node.querySelector("a");
+      if (!linkElement) throw new Error("User link required");
+      const quote = document.createElement("blockquote");
+      quote.className = "message-reply";
+      quote.textContent = "引用内容";
+      node.append(quote);
+      const saved = surface.style.getPropertyValue("--bot-color");
+      const failures: { color: string; target: string; ratio: number }[] = [];
+      for (const color of colors) {
+        surface.style.setProperty("--bot-color", color);
+        const style = getComputedStyle(node);
+        const selection = getComputedStyle(node, "::selection");
+        for (const [target, ink, background] of [
+          ["body", style.color, style.backgroundColor],
+          ["link", getComputedStyle(linkElement).color, style.backgroundColor],
+          [
+            "quote",
+            getComputedStyle(quote).color,
+            getComputedStyle(quote).backgroundColor,
+          ],
+          ["selection", selection.color, selection.backgroundColor],
+        ] as const) {
+          const measured = ratio(ink, background);
+          if (measured < 4.5) failures.push({ color, target, ratio: measured });
+        }
+      }
+      surface.style.setProperty("--bot-color", saved);
+      quote.remove();
+      return failures.slice(0, 8);
+    }, colors);
+    expect(failures).toEqual([]);
+    const link = bubble.locator(".message-link");
+    await link.hover();
+    await expect(link).toHaveCSS(
+      "color",
+      await bubble.evaluate((node) => getComputedStyle(node).color),
+    );
+    await link.focus();
+    await expect(link).toHaveCSS(
+      "color",
+      await bubble.evaluate((node) => getComputedStyle(node).color),
+    );
+    await page.mouse.move(1, 1);
+    await link.evaluate((node) => node.blur());
+    await page.screenshot({ path: `test-results/user-bubble-${theme}.png` });
+  }
 });

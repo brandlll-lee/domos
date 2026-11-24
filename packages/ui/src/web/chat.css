@@ -3,7 +3,7 @@
   --bot-foreground: contrast-color(var(--bot-color));
   --bot-icon-color: #ffffff;
   --color-user: oklch(
-    from var(--bot-color) var(--color-user-lightness)
+    from var(--bot-color) min(l, var(--color-user-lightness))
       min(c, var(--color-user-chroma)) h
   );
 }
@@ -40,10 +40,36 @@
   pointer-events: none;
 }
 .message-bubble[data-side="outgoing"] {
+  --color-text: var(--color-user-text);
+  --color-muted: var(--color-user-text);
+  --color-background: color-mix(in srgb, var(--color-user) 88%, #000000);
+  --color-hover: var(--color-background);
+  --color-border: color-mix(in srgb, var(--color-text) 30%, transparent);
+  --color-selection: color-mix(in srgb, var(--color-user) 65%, #000000);
   background: var(--color-user);
   border-bottom-left-radius: var(--radius-message);
   border-bottom-right-radius: 0;
 }
+.message-bubble[data-side="outgoing"] ::selection,
+.message-bubble[data-side="outgoing"]::selection {
+  background: var(--color-selection);
+  color: var(--color-text);
+}
+.message-reply {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  margin-bottom: var(--space-2);
+  border: 0;
+  border-left: 2px solid var(--color-border);
+  border-radius: var(--radius-control);
+  color: var(--color-text);
+  background: var(--color-background);
+  text-align: left;
+  width: 100%;
+}
+
 .message-bubble[data-side="outgoing"]::after {
   left: auto;
   right: calc(var(--space-2) * -1);
@@ -594,4 +620,15 @@ button.file-caption {
   border: 0;
   border-top: 1px solid var(--color-border);
   margin-block: var(--message-paragraph-gap);
+}
+
+.message-bubble[data-side="outgoing"] .message-link:is(:hover, :focus-visible) {
+  color: inherit;
+}
+.message-bubble[data-side="outgoing"] .message-material-token {
+  background: var(--color-background);
+  color: var(--color-text);
+}
+.message-bubble[data-side="outgoing"] .bot-reference {
+  color: inherit;
 }

@@ -1392,21 +1392,6 @@ body:has(.workspace[data-platform="darwin"]) .image-viewer-header {
 .question-card[data-state="answered"] .question-reply:not([data-selected]) {
   color: var(--color-muted);
 }
-.message-reply {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2);
-  margin-bottom: var(--space-2);
-  border: 0;
-  border-left: 2px solid color-mix(in srgb, var(--color-text) 25%, transparent);
-  border-radius: var(--radius-control);
-  color: color-mix(in srgb, var(--color-text) 88%, var(--color-user));
-  background: color-mix(in srgb, var(--color-user) 94%, var(--color-text));
-  text-align: left;
-  width: 100%;
-}
-
 .message-reply-image {
   width: var(--space-10);
   height: var(--space-10);
