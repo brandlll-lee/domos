@@ -8,10 +8,6 @@ export const appsCopy = {
   readError: "连接读取失败，请重试。",
   nativeReadError: "原生连接读取失败，请重试。",
   secretHint: "留空保留已有配置和凭据。填写新配置会替换它们。",
-  nativeHint:
-    "原生配置只读。权限和登录由 Harness 管理。配置存在不表示本轮已加载。",
-  capabilitiesHint:
-    "此接入保留工具、资源和提示词。目前不声明 sampling、elicitation 或 roots 能力。",
 };
 
 export function nativeMcpNotice(

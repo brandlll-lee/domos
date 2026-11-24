@@ -38,6 +38,8 @@ export function Dialog({
   viewportRef,
   headerActions,
   subheader,
+  onBack,
+  backDisabled,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -53,6 +55,8 @@ export function Dialog({
   viewportRef?: RefObject<HTMLDivElement | null>;
   headerActions?: ReactNode;
   subheader?: ReactNode;
+  onBack?: () => void;
+  backDisabled?: boolean;
 }) {
   const internalBody = useRef<HTMLDivElement>(null);
   const body = viewportRef ?? internalBody;
@@ -87,6 +91,19 @@ export function Dialog({
           }
         >
           <header className="dialog-header">
+            {onBack && (
+              <Button
+                variant="ghost"
+                size="icon-small"
+                aria-label="返回"
+                disabled={backDisabled}
+                onClick={onBack}
+              >
+                <svg viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="m12 4-6 6 6 6" />
+                </svg>
+              </Button>
+            )}
             <BaseDialog.Title className="dialog-title">
               {title}
             </BaseDialog.Title>

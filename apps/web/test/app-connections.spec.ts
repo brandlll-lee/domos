@@ -6,6 +6,264 @@ import { mcpFixture } from "../../../packages/agent/test/fixtures/mcp.mjs";
 import type { AppRouter } from "../../api/src/router.ts";
 import { test } from "./fixtures/service.ts";
 
+test("connection navigation keeps import and confirmation separate", async ({
+  service,
+  page,
+}) => {
+  await page.goto(service.url);
+  await page.getByRole("button", { name: "应用连接", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "应用连接", exact: true });
+  await expect(
+    dialog.getByRole("tab", { name: "我的连接", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await dialog.getByRole("tab", { name: "发现应用", exact: true }).click();
+  await expect(dialog.getByText("Context7", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "添加 MCP", exact: true }).click();
+  const editor = page.getByRole("dialog", { name: "添加 MCP", exact: true });
+  const paste = editor.getByRole("textbox", {
+    name: "MCP 地址或配置",
+    exact: true,
+  });
+  await expect(paste).toBeFocused();
+  await expect(
+    editor.getByRole("textbox", { name: "名称", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    editor.getByRole("button", { name: "继续", exact: true }),
+  ).toBeDisabled();
+  await paste.fill("{broken");
+  await editor.getByRole("button", { name: "继续", exact: true }).click();
+  await expect(editor.getByRole("alert")).toBeVisible();
+  await expect(paste).toHaveValue("{broken");
+  await paste.fill(
+    JSON.stringify({
+      mcpServers: { Docs: { url: "https://example.com/mcp" } },
+    }),
+  );
+  await editor.getByRole("button", { name: "继续", exact: true }).click();
+  await expect(paste).toHaveCount(0);
+  await expect(
+    editor.getByRole("textbox", { name: "名称", exact: true }),
+  ).toBeFocused();
+  await expect(
+    editor.getByRole("button", { name: "手动配置", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    editor.getByRole("textbox", { name: "名称", exact: true }),
+  ).toHaveValue("Docs");
+  await expect(
+    editor.getByRole("textbox", { name: "MCP 地址", exact: true }),
+  ).toHaveValue("https://example.com/mcp");
+  await expect(
+    editor.getByRole("radio", { name: "HTTP / SSE", exact: true }),
+  ).toBeChecked();
+  const computer = editor.getByRole("combobox", {
+    name: "运行／访问电脑",
+    exact: true,
+  });
+  await expect(computer).toContainText("选择电脑");
+  await computer.click();
+  await expect(
+    page.getByRole("option", { name: "选择电脑", exact: true }),
+  ).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await editor.getByRole("button", { name: "返回", exact: true }).click();
+  await expect(paste).toHaveValue(/mcpServers/);
+  await editor.getByRole("button", { name: "返回", exact: true }).click();
+  await expect(
+    dialog.getByRole("tab", { name: "发现应用", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(
+    dialog.getByRole("button", { name: "添加 MCP", exact: true }),
+  ).toBeFocused();
+});
+
+test("saved connections retain failed checks and can be found in My connections", async ({
+  service,
+  page,
+}) => {
+  const upstream = await mcpFixture();
+  await upstream.close();
+  const release = Promise.withResolvers<void>();
+  await page.route("**/rpc/mcp/check", async (route) => {
+    await release.promise;
+    await route.continue();
+  });
+  try {
+    await page.goto(service.url);
+    await page.getByRole("button", { name: "应用连接", exact: true }).click();
+    const dialog = page.locator(".apps-dialog");
+    await dialog.getByRole("button", { name: "添加 MCP", exact: true }).click();
+    await dialog.getByRole("button", { name: "手动配置", exact: true }).click();
+    await dialog.getByLabel("名称", { exact: true }).fill("Unavailable Docs");
+    await dialog.getByLabel("MCP 地址", { exact: true }).fill(upstream.url);
+    await dialog
+      .getByRole("button", { name: "保存并测试", exact: true })
+      .click();
+    await expect(
+      dialog.getByLabel("运行／访问电脑", { exact: true }),
+    ).toBeFocused();
+    await dialog
+      .getByRole("combobox", { name: "运行／访问电脑", exact: true })
+      .click();
+    await page.getByRole("option").first().click();
+    await dialog
+      .getByRole("button", { name: "保存并测试", exact: true })
+      .click();
+    await expect(
+      dialog.getByText("Unavailable Docs", { exact: true }),
+    ).toBeVisible();
+    await expect(dialog.getByText(/检查中/)).toBeVisible();
+    release.resolve();
+    await expect(dialog.getByText(/^检查失败/)).toBeVisible();
+    await expect(
+      dialog.getByRole("button", { name: "重试测试", exact: true }),
+    ).toBeVisible();
+    await dialog.getByRole("button", { name: "返回", exact: true }).click();
+    await expect(
+      dialog.getByRole("tab", { name: "我的连接", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(
+      dialog.getByText("Unavailable Docs", { exact: true }),
+    ).toHaveCount(1);
+    await page.reload();
+    await page.getByRole("button", { name: "应用连接", exact: true }).click();
+    await expect(
+      dialog.getByText("Unavailable Docs", { exact: true }),
+    ).toHaveCount(1);
+    await dialog
+      .getByRole("button", { name: "查看 Unavailable Docs", exact: true })
+      .click();
+    await dialog.getByRole("button", { name: "重试测试", exact: true }).click();
+    await expect(
+      dialog.getByRole("button", { name: "重试测试", exact: true }),
+    ).toBeEnabled();
+    const rpc: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ url: `${service.url}/rpc` }),
+    );
+    expect(
+      (await rpc.mcp.list()).filter((item) => item.name === "Unavailable Docs"),
+    ).toHaveLength(1);
+  } finally {
+    release.resolve();
+  }
+});
+
+test("local command edits retain their transport and advanced settings stay optional", async ({
+  service,
+  page,
+}) => {
+  const rpc: RouterClient<AppRouter> = createORPCClient(
+    new RPCLink({ url: `${service.url}/rpc` }),
+  );
+  await rpc.mcp.save({
+    id: crypto.randomUUID(),
+    revision: 0,
+    name: "Local Tools",
+    computerId: "pc",
+    enabled: false,
+    config: {
+      transport: "stdio",
+      command: "node",
+      args: ["tools.mjs"],
+      env: {},
+    },
+  });
+  await page.goto(service.url);
+  await page.getByRole("button", { name: "应用连接", exact: true }).click();
+  const dialog = page.locator(".apps-dialog");
+  await dialog
+    .getByRole("button", { name: "查看 Local Tools", exact: true })
+    .click();
+  await dialog
+    .getByRole("button", { name: "Local Tools的操作", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "编辑", exact: true }).click();
+  await expect(
+    dialog.getByRole("radio", { name: "本地命令", exact: true }),
+  ).toBeChecked();
+  await expect(dialog.getByLabel("启动程序", { exact: true })).toHaveValue("");
+  await expect(
+    dialog.getByText("留空保留已有配置和凭据。填写新配置会替换它们。", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("textbox", { name: "参数（JSON 数组）", exact: true }),
+  ).not.toBeVisible();
+  await dialog.locator("summary").filter({ hasText: "高级设置" }).click();
+  await expect(
+    dialog.getByRole("textbox", { name: "参数（JSON 数组）", exact: true }),
+  ).toBeVisible();
+  await dialog.getByRole("button", { name: "保存并测试", exact: true }).click();
+  await expect(dialog.getByText("已禁用", { exact: false })).toBeVisible();
+  expect((await rpc.mcp.list())[0]).toMatchObject({
+    name: "Local Tools",
+    transport: "stdio",
+    enabled: false,
+  });
+});
+
+test("native connections require explicit Bot context and keep read failures visible", async ({
+  service,
+  page,
+}) => {
+  const rpc: RouterClient<AppRouter> = createORPCClient(
+    new RPCLink({ url: `${service.url}/rpc` }),
+  );
+  const bot = (await rpc.bots.list())[0];
+  if (!bot) throw new Error("Missing Bot");
+  const id = crypto.randomUUID();
+  await rpc.teams.create({
+    id,
+    name: "Review Team",
+    purpose: "Review",
+    owner: bot.id,
+    members: [bot.id],
+  });
+  let reads = 0;
+  await page.route("**/rpc/mcp/native", async (route) => {
+    reads++;
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      json: {
+        json: {
+          code: "SERVICE_UNAVAILABLE",
+          message: "Native catalog unavailable",
+        },
+      },
+    });
+  });
+  await page.goto(`${service.url}/#team/${id}`);
+  await expect(
+    page.getByRole("button", { name: "团队详情", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "应用连接", exact: true }).click();
+  const dialog = page.locator(".apps-dialog");
+  const picker = dialog.getByRole("combobox", {
+    name: "选择机器人",
+    exact: true,
+  });
+  await expect(picker).toHaveText("选择机器人");
+  expect(reads).toBe(0);
+  await picker.click();
+  await expect(
+    page.getByRole("option", { name: "选择机器人", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("option", { name: bot.name, exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("原生连接读取失败");
+  const native = dialog.getByRole("button", {
+    name: "引擎原生连接",
+    exact: false,
+  });
+  await expect(native).toHaveAttribute("aria-expanded", "true");
+  await native.click();
+  await expect(native).toHaveAttribute("aria-expanded", "false");
+  await expect(dialog.getByRole("alert")).toContainText("原生连接读取失败");
+  expect(reads).toBe(1);
+});
+
 test("material pickers show native sources and keep MCP references separate from grants", async ({
   service,
   page,
@@ -221,11 +479,12 @@ test("MCP readers share pending and retained catalogs across the composer and co
     await close();
     await page.getByRole("button", { name: "应用连接", exact: true }).click();
     const center = page.getByRole("dialog");
-    await center.getByRole("button", { name: "MCP", exact: true }).click();
+    await expect(
+      center.getByRole("combobox", { name: "选择机器人", exact: true }),
+    ).toContainText("Domos");
     await center
-      .getByRole("combobox", { name: "选择机器人", exact: true })
+      .getByRole("button", { name: "引擎原生连接", exact: false })
       .click();
-    await page.getByRole("option", { name: "Domos", exact: true }).click();
     await expect(center.locator(".apps-native-row")).toContainText(
       "Shared Docs",
     );
@@ -328,6 +587,7 @@ test("Apps manages a real MCP connection and Bot grants across reloads and theme
     await page.goto(service.url);
     await page.getByRole("button", { name: "应用连接", exact: true }).click();
     const dialog = page.locator(".apps-dialog");
+    await dialog.getByRole("tab", { name: "发现应用", exact: true }).click();
     await expect(
       dialog.getByText("Microsoft Learn", { exact: true }),
     ).toBeVisible();
@@ -361,10 +621,12 @@ test("Apps manages a real MCP connection and Bot grants across reloads and theme
         await search.fill("没有匹配结果");
         expect(await dialog.boundingBox()).toEqual(initial);
         await search.fill("");
-        await dialog.getByRole("button", { name: "MCP", exact: true }).click();
+        await dialog
+          .getByRole("tab", { name: "我的连接", exact: true })
+          .click();
         expect(await dialog.boundingBox()).toEqual(initial);
         await dialog
-          .getByRole("button", { name: "返回应用", exact: true })
+          .getByRole("tab", { name: "发现应用", exact: true })
           .click();
         expect(await dialog.boundingBox()).toEqual(initial);
         await dialog.screenshot({
@@ -374,13 +636,11 @@ test("Apps manages a real MCP connection and Bot grants across reloads and theme
     }
     await page.setViewportSize({ width: 1360, height: 900 });
     const frame = await dialog.boundingBox();
-    await dialog.getByRole("button", { name: "MCP", exact: true }).click();
+    await dialog.getByRole("tab", { name: "我的连接", exact: true }).click();
     await dialog.getByRole("button", { name: "添加 MCP", exact: true }).click();
     expect(await dialog.boundingBox()).toEqual(frame);
-    await expect(
-      dialog.getByRole("button", { name: "保存并测试" }),
-    ).toBeInViewport();
-    await dialog.getByLabel("粘贴 MCP 地址或配置").fill(
+    await expect(dialog.getByRole("button", { name: "继续" })).toBeInViewport();
+    await dialog.getByLabel("MCP 地址或配置").fill(
       JSON.stringify({
         mcpServers: {
           "Local Docs": {
@@ -390,13 +650,13 @@ test("Apps manages a real MCP connection and Bot grants across reloads and theme
         },
       }),
     );
-    await dialog.getByRole("button", { name: "预览配置" }).click();
+    await dialog.getByRole("button", { name: "继续" }).click();
     await expect(
       dialog.getByRole("textbox", { name: "名称", exact: true }),
     ).toHaveValue("Local Docs");
     const computer = dialog.getByRole("combobox", { name: "运行／访问电脑" });
     await computer.click();
-    await page.getByRole("option").nth(1).click();
+    await page.getByRole("option").first().click();
     await dialog.getByRole("button", { name: "保存并测试" }).click();
     const connection = dialog
       .locator(".apps-item")
@@ -435,7 +695,6 @@ test("Apps manages a real MCP connection and Bot grants across reloads and theme
     }
     await page.reload();
     await page.getByRole("button", { name: "应用连接", exact: true }).click();
-    await dialog.getByRole("button", { name: /^已添加/ }).click();
     await dialog
       .getByRole("button", { name: /^查看 (Local Docs|OAuth Docs)$/ })
       .click();
@@ -476,7 +735,7 @@ test("Apps manages a real MCP connection and Bot grants across reloads and theme
       exact: true,
     });
     await expect(confirmation).toBeVisible();
-    expect(await confirmation.boundingBox()).toEqual(frame);
+    await expect.poll(() => confirmation.boundingBox()).toEqual(frame);
     await expect(
       confirmation
         .locator(".dialog-footer")
@@ -501,13 +760,13 @@ test("Apps completes and cancels browser OAuth with stored state", async ({
     await page.goto(service.url);
     await page.getByRole("button", { name: "应用连接", exact: true }).click();
     const dialog = page.locator(".apps-dialog");
-    await dialog.getByRole("button", { name: "MCP", exact: true }).click();
+    await dialog.getByRole("tab", { name: "我的连接", exact: true }).click();
     await dialog.getByRole("button", { name: "添加 MCP", exact: true }).click();
     await dialog.getByRole("button", { name: "手动配置", exact: true }).click();
     await dialog.getByLabel("名称", { exact: true }).fill("OAuth Docs");
     await dialog.getByLabel("MCP 地址", { exact: true }).fill(upstream.url);
     await dialog.getByRole("combobox", { name: "运行／访问电脑" }).click();
-    await page.getByRole("option").nth(1).click();
+    await page.getByRole("option").first().click();
     await dialog.getByRole("button", { name: "保存并测试" }).click();
     const item = dialog.locator(".apps-item").filter({ hasText: "OAuth Docs" });
     await expect(item.getByText(/^待授权/)).toBeVisible({ timeout: 20_000 });
@@ -548,7 +807,6 @@ test("Apps completes and cancels browser OAuth with stored state", async ({
     await cancelled.close();
     await page.reload();
     await page.getByRole("button", { name: "应用连接", exact: true }).click();
-    await dialog.getByRole("button", { name: /^已添加/ }).click();
     await dialog
       .getByRole("button", { name: /^查看 (Local Docs|OAuth Docs)$/ })
       .click();
@@ -598,14 +856,19 @@ test("connection pages distinguish first read, empty search and refreshed native
   await page.goto(service.url);
   await page.getByRole("button", { name: "应用连接", exact: true }).click();
   const dialog = page.locator(".apps-dialog");
+  await dialog.getByRole("tab", { name: "发现应用", exact: true }).click();
   await expect(
     dialog.getByRole("status", { name: "正在读取连接", exact: true }),
   ).toBeVisible();
   gate.resolve();
   await expect(dialog.getByText("Context7", { exact: true })).toBeVisible();
-  await dialog.getByRole("button", { name: "MCP", exact: true }).click();
-  await dialog.getByRole("combobox", { name: "选择机器人" }).click();
-  await page.getByRole("option").nth(1).click();
+  await dialog.getByRole("tab", { name: "我的连接", exact: true }).click();
+  await expect(
+    dialog.getByRole("combobox", { name: "选择机器人" }),
+  ).toContainText("Domos");
+  await dialog
+    .getByRole("button", { name: "引擎原生连接", exact: false })
+    .click();
   await expect(dialog.getByText("原生服务 1", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "刷新连接", exact: true }).click();
   await expect(dialog.getByText("原生服务 2", { exact: true })).toBeVisible();

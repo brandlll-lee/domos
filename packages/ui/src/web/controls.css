@@ -6,7 +6,7 @@
   min-height: var(--control-height);
   padding: var(--space-2) var(--space-4);
   border: 1px solid transparent;
-  border-radius: var(--radius-round);
+  border-radius: var(--radius-control);
   background: var(--color-text);
   color: var(--color-canvas);
   font-size: var(--text-label);
@@ -186,6 +186,11 @@ summary:focus-visible {
 .search-field input::-webkit-search-cancel-button {
   display: none;
 }
+.navigation-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
 .navigation-tab {
   display: inline-flex;
   align-items: center;
@@ -268,7 +273,7 @@ button.inline-notice-content:hover {
   max-width: 100%;
   min-height: var(--control-height);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid transparent;
+  border: 1px solid var(--color-divider);
   border-radius: var(--radius-control);
   background: var(--color-control);
   color: var(--color-text);
@@ -687,6 +692,19 @@ textarea.field-control {
 .section-heading strong {
   font-size: var(--text-label);
   font-weight: var(--weight-medium);
+}
+.form-content {
+  width: 100%;
+  max-width: var(--settings-content-width);
+  margin-inline: auto;
+}
+.form-fields {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.form-fields > .button {
+  justify-self: start;
 }
 .form-actions {
   display: flex;

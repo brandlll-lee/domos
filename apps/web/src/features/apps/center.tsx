@@ -7,6 +7,7 @@ import { Checkbox, SearchField } from "@domos/ui/field";
 import { Loading } from "@domos/ui/loading";
 import { ActionMenu } from "@domos/ui/menu";
 import { ChoicePicker } from "@domos/ui/picker";
+import { Tabs } from "@domos/ui/tabs";
 import { ArrowClockwiseIcon as ArrowClockwise } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
 import { BookOpenIcon as BookOpen } from "@phosphor-icons/react/dist/csr/BookOpen";
 import { CodeIcon as Code } from "@phosphor-icons/react/dist/csr/Code";
@@ -52,15 +53,17 @@ export function AppsCenter({
   onOpenChange,
   bots,
   computers,
+  currentBotId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   bots: { id: number; name: string }[];
   computers: { id: string; name: string }[];
+  currentBotId?: number;
 }) {
-  const [view, updateView] = useState<"apps" | "connected" | "mcp">("apps");
+  const [view, updateView] = useState<"apps" | "connected">("connected");
   const viewport = useRef<HTMLDivElement>(null);
-  const positions = useRef({ apps: 0, connected: 0, mcp: 0 });
+  const positions = useRef({ apps: 0, connected: 0 });
   const setView = (next: typeof view) => {
     positions.current[view] = viewport.current?.scrollTop ?? 0;
     updateView(next);
@@ -77,7 +80,7 @@ export function AppsCenter({
   const reading = managed.loading || apps.loading;
   const [selectedId, setSelectedId] = useState<string>();
   const [appInfo, setAppInfo] = useState<App>();
-  const [queries, setQueries] = useState({ apps: "", connected: "", mcp: "" });
+  const [queries, setQueries] = useState({ apps: "", connected: "" });
   const query = queries[view];
   const setQuery = (query: string) =>
     setQueries((current) => ({ ...current, [view]: query }));
@@ -87,12 +90,35 @@ export function AppsCenter({
     [busy, setBusy] = useState(false),
     [checking, setChecking] = useState<string | null>(null);
   const [removing, setRemoving] = useState<Connection | null>(null);
-  const [nativeBot, setNativeBot] = useState("");
-  const [manual, setManual] = useState(false);
+  const [nativeBot, setNativeBot] = useState(
+    currentBotId ? String(currentBotId) : "",
+  );
+  const [nativeOpen, setNativeOpen] = useState(false);
+  const [step, setStep] = useState<"import" | "confirm">("import");
+  const source = useRef<string>("add-mcp");
+  const restoreFocus = useRef(false);
+  const location = form ? `editor:${form.id}` : (selectedId ?? view);
+  useLayoutEffect(() => {
+    if (location.startsWith("editor:")) {
+      viewport.current
+        ?.querySelector<HTMLElement>(step === "import" ? "textarea" : "input")
+        ?.focus();
+    } else if (restoreFocus.current) {
+      restoreFocus.current = false;
+      if (viewport.current)
+        viewport.current.scrollTop = positions.current[view];
+      viewport.current
+        ?.closest(".dialog-popup")
+        ?.querySelector<HTMLElement>(
+          `[data-connection-action="${CSS.escape(source.current)}"]`,
+        )
+        ?.focus();
+    }
+  }, [location, step, view]);
   const nativeStore = nativeConnections(Number(nativeBot));
   const nativeState = useReadState(
     nativeStore,
-    open && view === "mcp" && !!nativeBot,
+    open && view === "connected" && !form && !selectedId && !!nativeBot,
   );
   const native = nativeState.data;
   const nativeReading = nativeState.loading;
@@ -133,11 +159,11 @@ export function AppsCenter({
   };
   const change = (next: Partial<Draft>) =>
     setForm((value) => value && { ...value, ...next });
-  const setConfig = (name: string, config: McpConfig) =>
+  const setConfig = (name: string, config: McpConfig) => {
+    setStep("confirm");
     setForm((value) => ({
       ...(value ?? draft()),
       name,
-      paste: "",
       transport: config.transport,
       address: config.transport === "http" ? config.url : config.command,
       args: JSON.stringify(config.transport === "stdio" ? config.args : []),
@@ -147,9 +173,15 @@ export function AppsCenter({
         2,
       ),
     }));
+  };
   const start = (item?: Connection) => {
     positions.current[view] = viewport.current?.scrollTop ?? 0;
-    setManual(!!item);
+    source.current =
+      item?.id ??
+      (document.activeElement as HTMLElement)?.dataset.connectionAction ??
+      "add-mcp";
+    setStep(item ? "confirm" : "import");
+    setError(null);
     setAppInfo(undefined);
     setForm(
       item
@@ -160,20 +192,49 @@ export function AppsCenter({
             name: item.name,
             computerId: item.computerId,
             enabled: item.enabled,
+            transport: item.transport,
             editing: true,
           }
         : draft(),
     );
   };
-  const check = (item: Connection) =>
-    void run(async () => {
-      setChecking(item.id);
-      try {
-        await client.mcp.check({ id: item.id });
-      } finally {
-        setChecking(null);
-      }
-    });
+  const backToList = () => {
+    restoreFocus.current = true;
+    setForm(null);
+    setSelectedId(undefined);
+    setError(null);
+  };
+  const back = () => {
+    setError(null);
+    if (form && step === "confirm" && !form.editing && !appInfo) {
+      setStep("import");
+    } else if (form?.editing) {
+      restoreFocus.current = true;
+      setForm(null);
+    } else backToList();
+  };
+  const preview = () => {
+    if (!form) return;
+    try {
+      const parsed = parseMcp(form.paste);
+      const entry = parsed[0];
+      if (parsed.length !== 1 || !entry)
+        throw new Error("请一次粘贴一个 MCP 配置。");
+      setConfig(entry.name, entry.config);
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "配置无效。");
+    }
+  };
+  const testConnection = async (id: string) => {
+    setChecking(id);
+    try {
+      await client.mcp.check({ id });
+    } finally {
+      setChecking(null);
+    }
+  };
+  const check = (item: Connection) => void run(() => testConnection(item.id));
   const grant = (
     item: Connection,
     botId: number,
@@ -199,124 +260,111 @@ export function AppsCenter({
           form
             ? form.editing
               ? "编辑连接"
-              : "添加连接"
+              : "添加 MCP"
             : selectedId
               ? "连接详情"
               : "应用连接"
         }
         className="apps-dialog"
         viewportRef={viewport}
+        onBack={form || selectedId ? back : undefined}
+        backDisabled={busy}
         headerActions={
           !form && (
-            <>
-              {!selectedId && (
-                <Button
-                  variant="ghost"
-                  aria-label={`已添加 ${items.length}`}
-                  onClick={() =>
-                    setView(view === "connected" ? "apps" : "connected")
-                  }
-                >
-                  已添加 {items.length} ›
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="icon-small"
-                aria-label="刷新连接"
-                disabled={reading || busy || nativeReading}
-                onClick={() => {
-                  void refresh();
-                  if (view === "mcp") void refreshNative(nativeBot);
-                }}
-              >
-                <ArrowClockwise />
-              </Button>
-            </>
+            <Button
+              variant="ghost"
+              size="icon-small"
+              aria-label="刷新连接"
+              disabled={reading || busy || nativeReading}
+              onClick={() => {
+                void refresh();
+                if (view === "connected") refreshNative(nativeBot);
+              }}
+            >
+              <ArrowClockwise />
+            </Button>
           )
         }
         subheader={
-          <div className="apps-navigation">
-            {form || selectedId ? (
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setForm(null);
-                  setSelectedId(undefined);
-                  requestAnimationFrame(() => {
-                    if (viewport.current)
-                      viewport.current.scrollTop = positions.current[view];
-                  });
-                }}
-              >
-                ‹ 返回列表
-              </Button>
-            ) : (
-              <>
-                <div className="apps-search-row">
-                  {view !== "apps" && (
-                    <Button
-                      variant="ghost"
-                      aria-label="返回应用"
-                      onClick={() => setView("apps")}
-                    >
-                      ‹ 应用
-                    </Button>
-                  )}
-                  <SearchField
-                    aria-label="搜索当前页面"
-                    placeholder={view === "apps" ? "搜索应用" : "搜索连接"}
-                    value={query}
-                    onValueChange={setQuery}
-                  />
-                  <Button
-                    variant="secondary"
-                    aria-label="MCP"
-                    aria-pressed={view === "mcp"}
-                    onClick={() => setView("mcp")}
-                  >
-                    <Plugs />
-                    MCP 服务器
-                  </Button>
-                </div>
-                {view === "apps" && (
-                  <SegmentedControl
-                    label="应用分类"
-                    value={category}
-                    onValueChange={setCategory}
-                    options={[
-                      { value: "", label: "全部" },
-                      ...categories.map((name) => ({
-                        value: name,
-                        label: name,
-                      })),
-                    ]}
-                  />
-                )}
-              </>
-            )}
-          </div>
+          !form &&
+          !selectedId && (
+            <div className="apps-navigation">
+              <div className="section-heading">
+                <Tabs.Root
+                  value={view}
+                  onValueChange={(value) => setView(value as typeof view)}
+                >
+                  <Tabs.List className="navigation-tabs" aria-label="连接页面">
+                    <Tabs.Tab className="navigation-tab" value="connected">
+                      我的连接
+                    </Tabs.Tab>
+                    <Tabs.Tab className="navigation-tab" value="apps">
+                      发现应用
+                    </Tabs.Tab>
+                  </Tabs.List>
+                </Tabs.Root>
+                <Button
+                  data-connection-action="add-mcp"
+                  onClick={() => start()}
+                  disabled={busy}
+                >
+                  <Plus />
+                  添加 MCP
+                </Button>
+              </div>
+              <SearchField
+                aria-label="搜索当前页面"
+                placeholder={view === "apps" ? "搜索应用" : "搜索连接"}
+                value={query}
+                onValueChange={setQuery}
+              />
+              {view === "apps" && (
+                <SegmentedControl
+                  label="应用分类"
+                  value={category}
+                  onValueChange={setCategory}
+                  options={[
+                    { value: "", label: "全部" },
+                    ...categories.map((name) => ({ value: name, label: name })),
+                  ]}
+                />
+              )}
+            </div>
+          )
         }
         footer={
           form && (
             <div className="dialog-actions">
-              <Button variant="secondary" onClick={() => setForm(null)}>
+              <Button variant="ghost" disabled={busy} onClick={backToList}>
                 取消
               </Button>
-              <Button
-                type="submit"
-                form="connection-editor"
-                disabled={
-                  busy || !(manual || appInfo || form.editing || form.address)
-                }
-              >
-                保存并测试
-              </Button>
+              {step === "import" ? (
+                <Button
+                  key="import"
+                  type="button"
+                  disabled={!form.paste.trim()}
+                  onClick={preview}
+                >
+                  继续
+                </Button>
+              ) : (
+                <Button
+                  key="confirm"
+                  type="submit"
+                  form="connection-editor"
+                  pending={busy}
+                >
+                  保存并测试
+                </Button>
+              )}
             </div>
           )
         }
       >
-        <div className="apps-center" aria-busy={busy}>
+        <div
+          className={`apps-center ${form ? "form-content" : ""}`}
+          aria-busy={busy}
+        >
           {Boolean(managed.error || apps.error) && (
             <p role="alert">{appsCopy.readError}</p>
           )}
@@ -338,13 +386,9 @@ export function AppsCenter({
                       .toLowerCase()
                       .includes(query.toLowerCase()),
                 )
-              : view === "mcp"
-                ? native?.items.some((item) =>
-                    item.name.toLowerCase().includes(query.toLowerCase()),
-                  )
-                : items.some((item) =>
-                    item.name.toLowerCase().includes(query.toLowerCase()),
-                  )) && (
+              : items.some((item) =>
+                  item.name.toLowerCase().includes(query.toLowerCase()),
+                )) && (
               <p role="status">
                 没有找到匹配项。
                 <Button
@@ -413,6 +457,7 @@ export function AppsCenter({
                               </div>
                               <Button
                                 variant="secondary"
+                                data-connection-action={app.id}
                                 onClick={() => {
                                   start();
                                   setAppInfo(app);
@@ -430,28 +475,20 @@ export function AppsCenter({
             </>
           ) : (
             <>
-              {view === "mcp" && !form && !selectedId && (
-                <div className="apps-center-nav">
-                  <h3>MCP 服务器</h3>
-                  <span className="apps-center-spacer" />
-                  <Button onClick={() => start()} disabled={busy}>
-                    <Plus />
-                    添加 MCP
-                  </Button>
-                </div>
-              )}
               {form && (
                 <ConnectionEditor
                   form={form}
                   appInfo={appInfo}
                   computers={computers}
-                  manual={manual}
-                  setManual={setManual}
+                  step={step}
+                  onManual={() => {
+                    setStep("confirm");
+                    setError(null);
+                  }}
+                  busy={busy}
                   change={change}
                   onSave={() => {
                     void run(async () => {
-                      if (form.paste.trim())
-                        throw new Error("请先预览粘贴的配置。");
                       const config = form.address.trim()
                         ? form.transport === "http"
                           ? {
@@ -474,25 +511,19 @@ export function AppsCenter({
                         enabled: form.enabled,
                         config,
                       });
+                      managedConnections.receive([
+                        ...(managedConnections.snapshot().data ?? []).filter(
+                          (saved) => saved.id !== item.id,
+                        ),
+                        item,
+                      ]);
+                      source.current = item.id;
                       setSelectedId(item.id);
+                      setQueries((current) => ({ ...current, connected: "" }));
                       setView("connected");
                       setForm(null);
-                      if (item.enabled) await client.mcp.check({ id: item.id });
+                      if (item.enabled) await testConnection(item.id);
                     });
-                  }}
-                  onPreview={() => {
-                    try {
-                      const parsed = parseMcp(form.paste);
-                      const entry = parsed[0];
-                      if (parsed.length !== 1 || !entry)
-                        throw new Error("请一次粘贴一个 MCP 配置。");
-                      setConfig(entry.name, entry.config);
-                      setError(null);
-                    } catch (cause) {
-                      setError(
-                        cause instanceof Error ? cause.message : "配置无效。",
-                      );
-                    }
                   }}
                 />
               )}
@@ -566,9 +597,11 @@ export function AppsCenter({
                           <Button
                             variant="ghost"
                             aria-label={`查看 ${item.name}`}
+                            data-connection-action={item.id}
                             onClick={() => {
                               positions.current[view] =
                                 viewport.current?.scrollTop ?? 0;
+                              source.current = item.id;
                               setSelectedId(item.id);
                             }}
                           >
@@ -687,33 +720,38 @@ export function AppsCenter({
               {loaded && view === "connected" && !items.length && !form && (
                 <p className="apps-muted">尚未添加连接。</p>
               )}
-              {view === "mcp" && !form && !selectedId && (
+              {view === "connected" && !form && !selectedId && (
                 <section className="apps-native">
-                  <h3>引擎原生连接</h3>
-                  {nativeReading && (
-                    <Loading label="正在读取原生连接" inline={!!native} />
-                  )}
-                  {nativeError && <p role="alert">{nativeError}</p>}
-                  <p className="apps-muted">{appsCopy.nativeHint}</p>
-                  <div className="field">
-                    <span className="field-label">选择机器人</span>
+                  <div className="section-heading">
+                    <Button
+                      variant="ghost"
+                      aria-expanded={nativeOpen}
+                      onClick={() => setNativeOpen((value) => !value)}
+                    >
+                      引擎原生连接 <span className="status-label">只读</span>
+                    </Button>
                     <ChoicePicker
                       label="选择机器人"
+                      placeholder="选择机器人"
+                      size="small"
                       value={nativeBot}
                       disabled={busy}
-                      items={[
-                        { value: "", label: "选择机器人" },
-                        ...bots.map((bot) => ({
-                          value: String(bot.id),
-                          label: bot.name,
-                        })),
-                      ]}
+                      items={bots.map((bot) => ({
+                        value: String(bot.id),
+                        label: bot.name,
+                      }))}
                       onValueChange={(id) => {
                         setNativeBot(id);
+                        setNativeOpen(true);
                       }}
                     />
                   </div>
-                  {native && (
+                  {nativeReading && <Loading label="正在读取原生连接" inline />}
+                  {nativeError && <p role="alert">{nativeError}</p>}
+                  {native && nativeMcpNotice(native) && (
+                    <p role="status">{nativeMcpNotice(native)}</p>
+                  )}
+                  {native && nativeOpen && (
                     <>
                       <p>
                         {native.provider} ·{" "}
@@ -726,9 +764,6 @@ export function AppsCenter({
                           ? "当前私聊会话"
                           : "工作目录配置；不代表本轮已连接"}
                       </p>
-                      {nativeMcpNotice(native) && (
-                        <p role="status">{nativeMcpNotice(native)}</p>
-                      )}
                       {native.inheritance === "selectable" && (
                         <Checkbox
                           label="在下一轮沿用原生连接"
@@ -762,9 +797,6 @@ export function AppsCenter({
                     </>
                   )}
                 </section>
-              )}
-              {view === "mcp" && !form && !selectedId && (
-                <p className="apps-muted">{appsCopy.capabilitiesHint}</p>
               )}
             </>
           )}
@@ -874,17 +906,17 @@ function ConnectionLogin({
         </a>
       )}
       <Disclosure label="自定义 OAuth 客户端">
-        <div className="apps-form-columns">
-          <label>
-            客户端编号
+        <div className="form-fields">
+          <label className="field">
+            <span className="field-label">客户端编号</span>
             <input
               className="field-control"
               value={oauthClient}
               onChange={(e) => setOauthClient(e.target.value)}
             />
           </label>
-          <label>
-            客户端密钥
+          <label className="field">
+            <span className="field-label">客户端密钥</span>
             <input
               type="password"
               className="field-control"

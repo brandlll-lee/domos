@@ -1,19 +1,17 @@
 .apps-center {
   display: grid;
+  align-content: start;
   gap: var(--space-4);
 }
-.apps-center-nav,
 .apps-actions,
 .apps-item-heading {
   display: flex;
   gap: var(--space-2);
   align-items: center;
 }
-.apps-center-nav,
 .apps-actions {
   flex-wrap: wrap;
 }
-.apps-center-spacer,
 .apps-item-heading > div:first-child {
   flex: 1;
   min-width: 0;
@@ -72,22 +70,11 @@
   width: var(--space-6);
   height: var(--space-6);
 }
-.apps-form,
 .apps-native {
   display: grid;
   gap: var(--space-3);
   padding-block: var(--space-4);
-}
-.apps-form label,
-.apps-native > label,
-.apps-form-columns label {
-  display: grid;
-  gap: var(--space-2);
-}
-.apps-form-columns {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
-  gap: var(--space-4);
+  border-top: 1px solid var(--color-divider);
 }
 .apps-center textarea {
   font-family: var(--font-mono);
@@ -138,27 +125,4 @@
 .apps-navigation {
   display: grid;
   gap: var(--space-4);
-}
-.apps-search-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-.apps-search-row .search-field {
-  flex: 1;
-}
-.apps-navigation > .button {
-  justify-self: start;
-}
-.apps-center {
-  align-content: start;
-}
-@media (max-width: 600px) {
-  .apps-search-row {
-    flex-wrap: wrap;
-  }
-  .apps-search-row .search-field {
-    flex-basis: 100%;
-    order: 1;
-  }
 }

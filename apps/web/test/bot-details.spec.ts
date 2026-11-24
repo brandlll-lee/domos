@@ -1150,7 +1150,7 @@ test("Bot panels keep their hierarchy in both themes and panel widths", async ({
         .locator("body")
         .evaluate((item) => getComputedStyle(item).color),
     );
-    await expect(save).toHaveCSS("border-radius", "999px");
+    await expect(save).toHaveCSS("border-radius", "8px");
     await memoryDialog.screenshot({
       path: testInfo.outputPath(`memory-editor-${theme}.png`),
     });

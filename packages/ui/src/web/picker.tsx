@@ -25,13 +25,18 @@ export function ChoicePicker({
   onValueChange,
   disabled,
   required,
+  placeholder,
   size = "default",
   id,
-}: PickerProps & { size?: "default" | "small"; id?: string }) {
+}: PickerProps & {
+  size?: "default" | "small";
+  id?: string;
+  placeholder?: string;
+}) {
   return (
     <Select.Root
       items={items}
-      value={value}
+      value={placeholder && value === "" ? null : value}
       disabled={disabled}
       required={required}
       onValueChange={(next) => {
@@ -44,7 +49,7 @@ export function ChoicePicker({
         id={id}
         data-size={size}
       >
-        <Select.Value className="picker-value" />
+        <Select.Value className="picker-value" placeholder={placeholder} />
         <Select.Icon>
           <Caret />
         </Select.Icon>
