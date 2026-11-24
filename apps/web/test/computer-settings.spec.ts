@@ -42,6 +42,7 @@ test("computer details share live directory status and recover a failed refresh"
   await settings.getByRole("button", { name: "刷新电脑状态" }).click();
   await expect(page.locator(".attention-toast[data-error]")).toHaveCount(0);
   await settings.getByRole("button", { name: "返回对话", exact: true }).click();
+  await expect(settings).toHaveCount(0);
   await page.screenshot({ path: "test-results/computer-light.png" });
   await chooseAppearance(page, "深色");
   await page.setViewportSize({ width: 375, height: 812 });
@@ -674,7 +675,9 @@ test("computer viewing uses separate tabs and releases control when closed", asy
   ).toHaveCount(0);
   await expect(view.getByRole("tab")).toHaveCount(0);
   await view.getByRole("button", { name: "接管", exact: true }).click();
-  await expect(view.getByRole("status")).toHaveText("你正在操作");
+  await expect(
+    view.getByRole("status", { name: "屏幕状态", exact: true }),
+  ).toHaveText("你正在操作");
   expect((await view.boundingBox())?.width).toBeLessThan(700);
   await view.getByRole("button", { name: "展开工作区", exact: true }).click();
   await expect
@@ -770,7 +773,9 @@ for (const [error, action, install] of [
     await page.getByRole("button", { name: "Bot详情", exact: true }).click();
     await page.getByRole("tab", { name: "Browser", exact: true }).click();
     const view = page.getByRole("region", { name: "Domos的电脑", exact: true });
-    await expect(view.getByText("正在连接…", { exact: true })).toBeVisible();
+    await expect(
+      view.getByRole("status", { name: "正在连接画面", exact: true }),
+    ).toBeVisible();
     opening.resolve();
     await expect(view.getByRole("alert")).toContainText(error);
     await page.screenshot({ path: info.outputPath("browser-recovery.png") });

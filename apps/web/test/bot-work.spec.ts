@@ -90,7 +90,15 @@ test("Work detail shows one execution header with its saved Harness and model", 
     await expect
       .poll(() => detail.evaluate((el) => el.scrollWidth <= el.clientWidth))
       .toBe(true);
-    await expect(summary.locator(".bot-avatar")).toHaveCSS("width", "40px");
+    const avatar = await summary.locator(".bot-avatar").boundingBox();
+    const copy = await summary.locator(".work-summary-copy").boundingBox();
+    expect(avatar?.width).toBe(80);
+    expect(avatar?.height).toBe(80);
+    expect(copy?.height).toBe(80);
+    expect(copy?.y).toBe(avatar?.y);
+    expect(
+      await summary.evaluate((el) => el.scrollWidth <= el.clientWidth),
+    ).toBe(true);
     const heading = await summary.boundingBox();
     const timeline = await detail
       .getByRole("list", { name: "执行时间线" })

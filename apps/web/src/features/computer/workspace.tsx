@@ -100,19 +100,17 @@ export function ComputerWorkspace({
               )
             )}
             {state && !admin && <p>请联系管理员启用{label}。</p>}
-          </div>
-        )}
-        {!viewing && (
-          <div className="computer-empty-controls">
-            <Button
-              variant="ghost"
-              size="icon-small"
-              aria-label="电脑设置"
-              title="电脑设置"
-              onClick={onSettings}
-            >
-              <GearSixIcon />
-            </Button>
+            <div className="computer-empty-controls">
+              <Button
+                variant="ghost"
+                size="icon-small"
+                aria-label="电脑设置"
+                title="电脑设置"
+                onClick={onSettings}
+              >
+                <GearSixIcon />
+              </Button>
+            </div>
           </div>
         )}
       </div>

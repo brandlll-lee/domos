@@ -54,13 +54,18 @@
 .computer-workspace-stage {
   position: relative;
   display: flex;
+  flex-direction: column;
+  align-items: center;
   flex: 1;
   min-height: 0;
-  padding: 0 var(--space-2) var(--space-2);
+  padding: 0 var(--space-4) var(--space-4);
+  container-type: size;
 }
 .computer-workspace-empty {
+  position: relative;
   display: flex;
-  flex: 1;
+  width: 100%;
+  aspect-ratio: 16 / 10;
   min-width: 0;
   align-items: center;
   justify-content: center;
@@ -68,6 +73,9 @@
   gap: var(--space-3);
   min-height: 0;
   padding: var(--space-6);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface);
   text-align: center;
 }
 .computer-workspace-empty > svg {
@@ -88,25 +96,31 @@
 }
 .computer-viewer {
   display: flex;
-  flex: 1;
+  flex-shrink: 0;
   flex-direction: column;
+  width: min(
+    100%,
+    calc((100cqh - var(--control-height) - 2px) * var(--screen-ratio))
+  );
   min-width: 0;
   min-height: 0;
-  background: var(--color-viewer);
-  color: var(--color-viewer-text);
+  overflow: hidden;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface);
+  color: var(--color-text);
 }
 .computer-viewer:fullscreen {
   width: 100%;
   height: 100%;
   padding: 0;
+  border: 0;
+  border-radius: 0;
 }
 .computer-viewer::backdrop {
   background: var(--color-viewer);
 }
 .computer-view-toolbar {
-  --color-hover: var(--color-viewer-control);
-  --color-text: var(--color-viewer-text);
-  --color-muted: var(--color-viewer-muted);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -114,7 +128,7 @@
   min-height: var(--control-height);
   padding: var(--space-1) var(--space-2);
   flex-shrink: 0;
-  color: var(--color-viewer-muted);
+  color: var(--color-muted);
   font-size: var(--text-caption);
 }
 .computer-view-toolbar .button[data-variant="ghost"] {
@@ -139,10 +153,17 @@
 .computer-view-screen {
   position: relative;
   display: grid;
-  flex: 1;
+  aspect-ratio: var(--screen-ratio);
+  flex-shrink: 0;
+  width: 100%;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  background: var(--color-viewer);
+}
+.computer-viewer:fullscreen .computer-view-screen {
+  flex: 1;
+  aspect-ratio: auto;
 }
 .computer-view-screen img {
   display: block;
@@ -152,11 +173,12 @@
   object-fit: contain;
   touch-action: none;
 }
-.computer-view-screen > p {
+.computer-view-placeholder {
   display: grid;
   place-items: center;
   height: 100%;
-  margin: 0;
+  background: var(--color-surface);
+  color: var(--color-muted);
 }
 .computer-view-screen:focus-within {
   outline: 2px solid var(--color-focus);
@@ -166,32 +188,34 @@
   position: absolute;
   inset: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-3);
   border: 0;
   padding: var(--space-4);
-  background: var(--color-viewer-scrim);
-  color: var(--color-viewer-text);
+  background: transparent;
+  color: var(--color-text);
   cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--motion-feedback);
 }
-.computer-takeover-icon {
-  display: grid;
-  place-items: center;
-  width: 5rem;
-  height: 5rem;
-  border-radius: var(--radius-round);
-  background: var(--color-viewer-control);
+.computer-view-screen:hover .computer-takeover,
+.computer-view-screen:focus-within .computer-takeover,
+.computer-takeover[aria-busy="true"] {
+  opacity: 1;
 }
-.computer-takeover-icon svg {
-  width: 2rem;
-  height: 2rem;
+.computer-takeover-label svg {
+  width: 1rem;
+  height: 1rem;
 }
 .computer-takeover-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-control);
-  background: var(--color-viewer-control);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-round);
+  background: var(--color-popup);
+  box-shadow: var(--color-popup-shadow);
   font-size: var(--text-label);
   font-weight: var(--weight-medium);
 }
@@ -199,16 +223,19 @@
   outline: 2px solid var(--color-focus);
   outline-offset: -2px;
 }
-.computer-takeover:hover .computer-takeover-icon {
-  transform: scale(1.04);
-}
 .computer-view-error {
   padding: var(--space-2);
   font-size: var(--text-caption);
 }
 @media (prefers-reduced-motion: reduce) {
-  .workspace-tab {
+  .workspace-tab,
+  .computer-takeover {
     transition: none;
+  }
+}
+@media (hover: none), (pointer: coarse) {
+  .computer-takeover {
+    opacity: 1;
   }
 }
 @media (forced-colors: active) {

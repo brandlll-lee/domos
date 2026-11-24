@@ -54,7 +54,9 @@ async function openBrowser(page: import("@playwright/test").Page) {
   const [result] = await opened;
   expect(result.type).toBe("takeover-page-opened");
   await view.getByRole("button", { name: "接管", exact: true }).click();
-  await expect(view.getByRole("status")).toHaveText("你正在操作", {
+  await expect(
+    view.getByRole("status", { name: "屏幕状态", exact: true }),
+  ).toHaveText("你正在操作", {
     timeout: 35_000,
   });
   const modifier = process.platform === "darwin" ? "Meta" : "Control";
@@ -127,7 +129,9 @@ for (const ending of ["cancel", "cancel-control", "stop"]) {
     const view = page.getByRole("region", { name: "Domos的电脑", exact: true });
     if (ending === "cancel-control") {
       await card.getByRole("button", { name: "接管", exact: true }).click();
-      await expect(view.getByRole("status")).toHaveText("你正在操作");
+      await expect(
+        view.getByRole("status", { name: "屏幕状态", exact: true }),
+      ).toHaveText("你正在操作");
     }
     if (ending === "stop")
       await page.getByRole("button", { name: "停止生成", exact: true }).click();
@@ -138,7 +142,9 @@ for (const ending of ["cancel", "cancel-control", "stop"]) {
     await expect(card.getByRole("button")).toHaveCount(0);
     await expect(card.getByRole("img")).toBeHidden();
     if (ending === "cancel-control")
-      await expect(view.getByRole("status")).not.toHaveText("你正在操作");
+      await expect(
+        view.getByRole("status", { name: "屏幕状态", exact: true }),
+      ).not.toHaveText("你正在操作");
     await card.locator("summary").click();
     await expect(card.getByRole("img")).toBeVisible();
     await expect(card.getByRole("link")).toHaveAttribute(
@@ -237,7 +243,9 @@ for (const refresh of [false, true]) {
         exact: true,
       })
       .click();
-    await expect(view.getByRole("status")).toHaveText("你正在操作");
+    await expect(
+      view.getByRole("status", { name: "屏幕状态", exact: true }),
+    ).toHaveText("你正在操作");
     await expect(card.getByText("控制中", { exact: true })).toBeVisible();
     await expect(view.getByRole("alert")).toHaveCount(0);
     const grantMs = performance.now() - takeStarted;
@@ -248,7 +256,9 @@ for (const refresh of [false, true]) {
     await left.press("ArrowRight");
     await expect(sidebar).toHaveCSS("width", "232px");
     await page.getByRole("separator", { name: "调整详情宽度" }).press("End");
-    await expect(view.getByRole("status")).toHaveText("你正在操作");
+    await expect(
+      view.getByRole("status", { name: "屏幕状态", exact: true }),
+    ).toHaveText("你正在操作");
     expect(watches).toBe(1);
     const state = await (await request.get(`${url}/takeover-state`)).json();
     const at = await point(
@@ -342,7 +352,10 @@ for (const refresh of [false, true]) {
     if (!refresh) {
       await page.getByRole("button", { name: "Bot详情", exact: true }).click();
       await page.getByRole("tab", { name: "Browser", exact: true }).click();
-      await view.getByRole("button", { name: "电脑设置", exact: true }).click();
+      await view.getByRole("button", { name: "屏幕选项", exact: true }).click();
+      await page
+        .getByRole("menuitem", { name: "电脑设置", exact: true })
+        .click();
       await page
         .getByRole("button", { name: /尝试有界面模式|切换为无界面/ })
         .click();
@@ -364,7 +377,9 @@ for (const refresh of [false, true]) {
       worker.send("open-takeover-page");
       await opened;
       await view.getByRole("button", { name: "接管", exact: true }).click();
-      await expect(view.getByRole("status")).toHaveText("你正在操作");
+      await expect(
+        view.getByRole("status", { name: "屏幕状态", exact: true }),
+      ).toHaveText("你正在操作");
       const image = view.getByRole("img", { name: "工作电脑画面" });
       const state = await (await request.get(`${url}/takeover-state`)).json();
       expect(state.width).toBeGreaterThan(0);
@@ -447,10 +462,14 @@ test("continuous wheel input keeps takeover active", async ({
   }, at);
   expect(observed.accepted).toBe(120);
   expect(observed.frames).toBeGreaterThan(0);
-  await expect(view.getByRole("status")).toHaveText("你正在操作");
+  await expect(
+    view.getByRole("status", { name: "屏幕状态", exact: true }),
+  ).toHaveText("你正在操作");
   await expect(view.getByRole("alert")).toHaveCount(0);
   await view.getByRole("button", { name: "交还", exact: true }).click();
-  await expect(view.getByRole("status")).toHaveText("实时");
+  await expect(
+    view.getByRole("status", { name: "屏幕状态", exact: true }),
+  ).toHaveText("实时");
   const metrics = info.outputPath("continuous-input.json");
   await writeFile(
     metrics,
@@ -476,9 +495,34 @@ test("takeover controls the Agent browser and preserves its layout through fulls
   request,
 }, info) => {
   test.setTimeout(120_000);
+  let watches = 0;
+  const pointerInputs: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith("/rpc/computer/watch")) watches++;
+    if (request.url().endsWith("/rpc/computer/input")) {
+      const action = request.postDataJSON()?.json?.action;
+      if (action?.type === "pointer") pointerInputs.push(action.event);
+    }
+  });
   const { view, image, modifier } = await openBrowser(page);
   const state = async () => (await request.get(`${url}/takeover-state`)).json();
   await expect.poll(async () => (await state()).value).toBe("saved draft");
+  expect(pointerInputs).not.toContain("down");
+  const screen = view.locator(".computer-view-screen");
+  await expect
+    .poll(() =>
+      image.evaluate((node: HTMLImageElement) => {
+        const rect = node.getBoundingClientRect();
+        return Math.abs(
+          rect.width / rect.height - node.naturalWidth / node.naturalHeight,
+        );
+      }),
+    )
+    .toBeLessThan(0.01);
+  await expect(view.locator(".computer-viewer")).toHaveCSS(
+    "border-radius",
+    "16px",
+  );
   await expect(
     view.getByRole("textbox", { name: "网址", exact: true }),
   ).toHaveCount(0);
@@ -556,6 +600,19 @@ test("takeover controls the Agent browser and preserves its layout through fulls
   await page.mouse.wheel(0, -300);
   await expect.poll(async () => (await state()).scrollDone).toBeGreaterThan(1);
   await expect.poll(async () => (await state()).scrollY).toBe(0);
+  const connections = watches;
+  await view.getByRole("button", { name: "展开工作区", exact: true }).click();
+  await expect(
+    view.getByRole("button", { name: "收起工作区", exact: true }),
+  ).toBeVisible();
+  await expect(
+    view.getByRole("status", { name: "屏幕状态", exact: true }),
+  ).toHaveText("你正在操作");
+  await view.getByRole("button", { name: "收起工作区", exact: true }).click();
+  await expect(
+    view.getByRole("button", { name: "展开工作区", exact: true }),
+  ).toBeVisible();
+  expect(watches).toBe(connections);
   const header = page.locator(".detail-identity");
   const before = await header.boundingBox();
   for (const width of [1440, 768, 390]) {
@@ -574,18 +631,46 @@ test("takeover controls the Agent browser and preserves its layout through fulls
   await expect(
     view.getByRole("button", { name: "退出全屏", exact: true }),
   ).toBeInViewport();
-  await expect(view.getByRole("status")).toHaveText("你正在操作");
+  await expect(
+    view.getByRole("status", { name: "屏幕状态", exact: true }),
+  ).toHaveText("你正在操作");
   await page.screenshot({ path: info.outputPath("viewer-fullscreen.png") });
   await page.keyboard.press("Escape");
   await expect
     .poll(() => page.evaluate(() => document.fullscreenElement === null))
     .toBe(true);
-  await expect(view.getByRole("status")).toHaveText("你正在操作");
+  await expect(
+    view.getByRole("status", { name: "屏幕状态", exact: true }),
+  ).toHaveText("你正在操作");
   await expect(header).toBeVisible();
   expect((await header.boundingBox())?.height).toBe(before?.height);
   await view.getByRole("button", { name: "交还", exact: true }).click();
+  const take = view.getByRole("button", { name: "接管", exact: true });
+  await page.mouse.move(0, 0);
+  await expect(take).toHaveCSS("opacity", "0");
+  await screen.hover();
+  await expect(take).toHaveCSS("opacity", "1");
+  await expect(take).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await page.mouse.move(0, 0);
+  await take.focus();
+  await expect(take).toHaveCSS("opacity", "1");
+  const colors: string[] = [];
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    colors.push(
+      await view
+        .locator(".computer-viewer")
+        .evaluate((node) => getComputedStyle(node).backgroundColor),
+    );
+    await view.screenshot({
+      path: info.outputPath(`viewer-card-${colorScheme}.png`),
+    });
+  }
+  expect(colors[0]).not.toBe(colors[1]);
+  await view.getByRole("button", { name: "屏幕选项", exact: true }).click();
+  await page.getByRole("menuitem", { name: "电脑设置", exact: true }).click();
   await expect(
-    view.getByRole("button", { name: "接管", exact: true }),
+    page.getByRole("group", { name: "浏览器模式", exact: true }),
   ).toBeVisible();
   expect((await state()).value).toBe("上海气 粘贴中文");
 });
@@ -608,7 +693,9 @@ test("a failed browser input pauses the viewer and reconnect never replays it", 
     } else await route.continue();
   });
   await page.keyboard.insertText("测试文字");
-  await expect(view.getByRole("status")).toHaveText("操作已暂停");
+  await expect(
+    view.getByRole("status", { name: "屏幕状态", exact: true }),
+  ).toHaveText("操作已暂停");
   expect(calls).toBe(1);
   expect((await state()).value).toBe("saved draft");
   await page.unroute("**/rpc/computer/input");

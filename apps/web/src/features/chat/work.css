@@ -106,19 +106,19 @@
   align-items: start;
   gap: var(--space-3);
 }
-.work-summary > .bot-avatar {
-  width: 40px;
-  height: 40px;
-}
 .work-summary-copy {
   display: grid;
-  gap: var(--space-1);
+  grid-template-rows: repeat(4, 20px);
+  flex: 1;
   min-width: 0;
+  line-height: 20px;
 }
 .work-summary h3 {
   font-size: var(--text-body);
   font-weight: var(--weight-semibold);
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .work-model,
 .work-summary-status,
@@ -132,7 +132,12 @@
 }
 .work-summary-status,
 .work-dates {
-  flex-wrap: wrap;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.work-summary-status > span,
+.work-dates > * {
+  flex-shrink: 0;
 }
 .work-model > :last-child {
   overflow: hidden;

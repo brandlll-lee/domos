@@ -139,9 +139,11 @@ export function WorkDetail({
         viewportClassName="detail-content work-content"
       >
         <section className="work-summary" aria-label="执行摘要">
-          {author && <BotAvatar botId={author.botId} seed={author.avatar} />}
+          {author && (
+            <BotAvatar botId={author.botId} seed={author.avatar} size="large" />
+          )}
           <div className="work-summary-copy">
-            <h3>{author?.name ?? "执行者未知"}</h3>
+            <h3 title={author?.name}>{author?.name ?? "执行者未知"}</h3>
             <div className="work-model">
               {turn.run && (
                 <Tooltip.Root>

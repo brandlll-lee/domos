@@ -1,11 +1,14 @@
 import { Button } from "@domos/ui/controls";
+import { Loading } from "@domos/ui/loading";
+import { ActionMenu } from "@domos/ui/menu";
+import { InlineNotice } from "@domos/ui/message";
 import { ArrowsInIcon } from "@phosphor-icons/react/dist/csr/ArrowsIn";
 import { ArrowsOutIcon } from "@phosphor-icons/react/dist/csr/ArrowsOut";
 import { CornersInIcon } from "@phosphor-icons/react/dist/csr/CornersIn";
 import { CornersOutIcon } from "@phosphor-icons/react/dist/csr/CornersOut";
 import { CursorIcon } from "@phosphor-icons/react/dist/csr/Cursor";
 import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
-import { useEffect, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { useView } from "./use-view.ts";
 import { ComputerViewport } from "./viewport.tsx";
 
@@ -42,6 +45,7 @@ export function ComputerViewer({
   const image = useRef<HTMLImageElement | null>(null);
   const acknowledged = useRef("");
   const [fullscreen, setFullscreen] = useState(false);
+  const [ratio, setRatio] = useState(16 / 10);
   const [failure, setFailure] = useState<string>();
   const driving = connected && controlling && !busy && !blocked;
   useEffect(() => {
@@ -93,7 +97,12 @@ export function ComputerViewer({
     }
   };
   return (
-    <section ref={viewer} className="computer-viewer" aria-label="工作电脑观看">
+    <section
+      ref={viewer}
+      className="computer-viewer"
+      aria-label="工作电脑观看"
+      style={{ "--screen-ratio": ratio } as CSSProperties}
+    >
       <div className="computer-view-screen">
         {frame ? (
           <ComputerViewport
@@ -102,32 +111,34 @@ export function ComputerViewer({
             send={send}
             onLoad={(node) => {
               image.current = node;
+              setRatio(node.naturalWidth / node.naturalHeight);
               acknowledge();
             }}
           />
         ) : (
-          <p className="detail-note">{error ? "画面暂不可用" : "正在连接…"}</p>
+          <div className="computer-view-placeholder">
+            {error ? "画面暂不可用" : <Loading label="正在连接画面" />}
+          </div>
         )}
         {frame && connected && !controlling && !blocked && (
           <button
             className="computer-takeover"
             type="button"
             disabled={busy}
+            aria-busy={busy || undefined}
             onClick={control}
             aria-label="接管"
           >
-            <span className="computer-takeover-icon">
-              <CursorIcon weight="fill" />
-            </span>
             <span className="computer-takeover-label">
-              {busy ? "正在接管…" : "点击接管"}
+              <CursorIcon weight="fill" />
+              {busy ? "正在接管…" : "接管"}
             </span>
           </button>
         )}
       </div>
       {(error || failure) && (
         <div role="alert" className="computer-view-error">
-          {error ?? failure}
+          <InlineNotice>{error ?? failure}</InlineNotice>
           {error &&
             (installBrowser && error.includes("Chrome not found.") ? (
               <Button
@@ -150,6 +161,7 @@ export function ComputerViewer({
       <div className="computer-view-toolbar">
         <span
           role="status"
+          aria-label="屏幕状态"
           className="computer-view-status"
           data-connected={(connected && Boolean(frame)) || undefined}
         >
@@ -190,15 +202,16 @@ export function ComputerViewer({
             </Button>
           )}
           {!fullscreen && (
-            <Button
-              variant="ghost"
-              size="icon-small"
-              title="电脑设置"
-              aria-label="电脑设置"
-              onClick={onSettings}
-            >
-              <GearSixIcon />
-            </Button>
+            <ActionMenu
+              label="屏幕选项"
+              items={[
+                {
+                  label: "电脑设置",
+                  icon: <GearSixIcon />,
+                  onSelect: onSettings,
+                },
+              ]}
+            />
           )}
           <Button
             variant="ghost"
