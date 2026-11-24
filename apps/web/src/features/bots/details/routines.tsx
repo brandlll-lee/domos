@@ -5,9 +5,10 @@ import { Disclosure } from "@domos/ui/disclosure";
 import { Checkbox, TextField } from "@domos/ui/field";
 import { ActionMenu } from "@domos/ui/menu";
 import { ChoicePicker } from "@domos/ui/picker";
+import { ScrollArea } from "@domos/ui/scroll-area";
 import { SettingRow } from "@domos/ui/setting-row";
 import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { client } from "../../../client.ts";
 import type { useChat } from "../../chat/use-chat.ts";
 import { WorkPanel } from "../../chat/work.tsx";
@@ -61,204 +62,256 @@ export function RoutinesPanel({
   onEditorChange: (editor: PanelEditor | null) => void;
 }) {
   const [selectedRun, setSelectedRun] = useState<string>();
+  const viewport = useRef<HTMLDivElement>(null);
+  const source = useRef<HTMLButtonElement>(null);
+  const reading = useRef(0);
+  useLayoutEffect(() => {
+    if (selectedRun || !source.current) return;
+    if (viewport.current) viewport.current.scrollTop = reading.current;
+    source.current.focus({ preventScroll: true });
+  }, [selectedRun]);
   const [deleting, setDeleting] = useState<Routine | null>(null);
   const runs = [...data.runs].reverse();
   const selected = runs.find((run) => run.turnId === selectedRun);
   return (
-    <section className="detail-page" aria-label="定时">
-      {!editor && (
-        <header className="detail-page-head">
-          <span className="detail-note">{data.items.length} 个计划</span>
-          <Button
-            size="small"
-            disabled={action.busy}
-            onClick={() =>
-              onEditorChange({
-                view: "routines",
-                routine: null,
-                token: crypto.randomUUID(),
-              })
-            }
-          >
-            新建定时任务
-          </Button>
-        </header>
-      )}
+    <>
+      <ScrollArea
+        hidden={Boolean(selectedRun)}
+        viewportRef={viewport}
+        className="detail-scroll"
+        viewportClassName="detail-content"
+      >
+        <section className="detail-page" aria-label="定时">
+          {!editor && (
+            <header className="detail-page-head">
+              <span className="detail-note">{data.items.length} 个计划</span>
+              <Button
+                size="small"
+                disabled={action.busy}
+                onClick={() =>
+                  onEditorChange({
+                    view: "routines",
+                    routine: null,
+                    token: crypto.randomUUID(),
+                  })
+                }
+              >
+                新建定时任务
+              </Button>
+            </header>
+          )}
 
-      {editor && (
-        <RoutineEditor
-          key={editor.token}
-          botId={botId}
-          routine={editor.routine}
-          skills={skills}
-          action={action}
-          onSaved={() => onEditorChange(null)}
-        />
-      )}
+          {editor && (
+            <RoutineEditor
+              key={editor.token}
+              botId={botId}
+              routine={editor.routine}
+              skills={skills}
+              action={action}
+              onSaved={() => onEditorChange(null)}
+            />
+          )}
 
-      {!editor &&
-        (data.items.length ? (
-          <ul className="item-list">
-            {data.items.map((routine) => (
-              <li key={routine.id} className="item-card">
-                <div className="item-heading">
-                  <button
-                    type="button"
-                    className="item-heading-copy item-open"
-                    onClick={() =>
-                      onEditorChange({
-                        view: "routines",
-                        routine,
-                        token: crypto.randomUUID(),
-                      })
-                    }
-                  >
-                    <h3>{routine.title}</h3>
-                  </button>
-                </div>
-                <div className="item-meta">
-                  <span
-                    className="item-tag"
-                    data-tone={routine.enabled ? "ready" : undefined}
-                  >
-                    {routine.enabled ? "已启用" : "已暂停"}
-                  </span>
-                  <span>{scheduleLabel(routine)}</span>
-                </div>
-                {routine.nextAt && (
-                  <p className="item-note">
-                    下次：{new Date(routine.nextAt).toLocaleString()}
-                  </p>
-                )}
-                <div className="item-actions">
-                  <Switch
-                    label={`启用 ${routine.title}`}
-                    checked={routine.enabled}
-                    disabled={action.busy}
-                    onCheckedChange={(next) =>
-                      void action.run(
-                        ["routines.enable", routine.id, routine.revision, next],
-                        (requestId) =>
-                          client.work.routines.enable({
-                            botId,
-                            id: routine.id,
-                            enabled: next,
-                            revision: routine.revision,
-                            requestId,
-                          }),
-                      )
-                    }
-                  />
-                  <ActionMenu
-                    label={`${routine.title}的操作`}
-                    disabled={action.busy}
-                    items={[
-                      {
-                        label: "试跑",
-                        onSelect: () =>
-                          void action.run(
-                            ["routines.test", routine.id],
-                            (requestId) =>
-                              client.work.routines.test({
-                                botId,
-                                id: routine.id,
-                                requestId,
-                              }),
-                          ),
-                      },
-                      {
-                        label: "编辑",
-                        onSelect: () =>
+          {!editor &&
+            (data.items.length ? (
+              <ul className="item-list">
+                {data.items.map((routine) => (
+                  <li key={routine.id} className="item-card">
+                    <div className="item-heading">
+                      <button
+                        type="button"
+                        className="item-heading-copy item-open"
+                        onClick={() =>
                           onEditorChange({
                             view: "routines",
                             routine,
                             token: crypto.randomUUID(),
-                          }),
-                      },
-                      {
-                        label: "删除",
-                        tone: "danger",
-                        onSelect: () => setDeleting(routine),
-                      },
-                    ]}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="detail-empty">暂无定时任务</p>
-        ))}
-
-      {!editor && (
-        <Disclosure
-          className="detail-disclosure"
-          label={
-            <>
-              运行记录
-              {runs.length > 0 && (
-                <span className="disclosure-count">{runs.length}</span>
-              )}
-            </>
-          }
-        >
-          <div className="detail-disclosure-body">
-            {runs.length ? (
-              <ul className="run-list">
-                {runs.map((run) => (
-                  <li key={run.id} data-state={run.status}>
-                    <Button
-                      variant="ghost"
-                      className="routine-run"
-                      disabled={!run.turnId}
-                      aria-label={`查看工作记录：${run.title}`}
-                      onClick={() => setSelectedRun(run.turnId)}
-                    >
-                      <span className="routine-run-copy">
-                        <strong>{run.title}</strong>
-                        <span className="item-note">
-                          {new Date(run.firedAt).toLocaleString("zh-CN", {
-                            month: "long",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            hour12: false,
-                          })}
-                          {run.activeMs !== undefined &&
-                            ` · 执行 ${(run.activeMs / 1000).toFixed(1)} 秒`}
-                        </span>
+                          })
+                        }
+                      >
+                        <h3>{routine.title}</h3>
+                      </button>
+                    </div>
+                    <div className="item-meta">
+                      <span
+                        className="item-tag"
+                        data-tone={routine.enabled ? "ready" : undefined}
+                      >
+                        {routine.enabled ? "已启用" : "已暂停"}
                       </span>
-                      <span className="routine-run-status">
-                        {run.status === "done" && run.delivery === "conditional"
-                          ? run.delivered
-                            ? "已交付"
-                            : "静默完成"
-                          : runLabels[run.status]}
-                      </span>
-                      <CaretRightIcon aria-hidden="true" />
-                    </Button>
-                    {run.error && (
-                      <p className="alert" role="status">
-                        {run.error}
+                      <span>{scheduleLabel(routine)}</span>
+                    </div>
+                    {routine.nextAt && (
+                      <p className="item-note">
+                        下次：{new Date(routine.nextAt).toLocaleString()}
                       </p>
                     )}
+                    <div className="item-actions">
+                      <Switch
+                        label={`启用 ${routine.title}`}
+                        checked={routine.enabled}
+                        disabled={action.busy}
+                        onCheckedChange={(next) =>
+                          void action.run(
+                            [
+                              "routines.enable",
+                              routine.id,
+                              routine.revision,
+                              next,
+                            ],
+                            (requestId) =>
+                              client.work.routines.enable({
+                                botId,
+                                id: routine.id,
+                                enabled: next,
+                                revision: routine.revision,
+                                requestId,
+                              }),
+                          )
+                        }
+                      />
+                      <ActionMenu
+                        label={`${routine.title}的操作`}
+                        disabled={action.busy}
+                        items={[
+                          {
+                            label: "试跑",
+                            onSelect: () =>
+                              void action.run(
+                                ["routines.test", routine.id],
+                                (requestId) =>
+                                  client.work.routines.test({
+                                    botId,
+                                    id: routine.id,
+                                    requestId,
+                                  }),
+                              ),
+                          },
+                          {
+                            label: "编辑",
+                            onSelect: () =>
+                              onEditorChange({
+                                view: "routines",
+                                routine,
+                                token: crypto.randomUUID(),
+                              }),
+                          },
+                          {
+                            label: "删除",
+                            tone: "danger",
+                            onSelect: () => setDeleting(routine),
+                          },
+                        ]}
+                      />
+                    </div>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="detail-note">还没有运行记录。</p>
-            )}
-          </div>
-        </Disclosure>
-      )}
+              <p className="detail-empty">暂无定时任务</p>
+            ))}
 
+          {!editor && (
+            <Disclosure
+              className="detail-disclosure"
+              label={
+                <>
+                  运行记录
+                  {runs.length > 0 && (
+                    <span className="disclosure-count">{runs.length}</span>
+                  )}
+                </>
+              }
+            >
+              <div className="detail-disclosure-body">
+                {runs.length ? (
+                  <ul className="run-list">
+                    {runs.map((run) => (
+                      <li key={run.id} data-state={run.status}>
+                        <Button
+                          variant="ghost"
+                          className="routine-run"
+                          disabled={!run.turnId}
+                          aria-label={`查看工作记录：${run.title}`}
+                          onClick={(event) => {
+                            source.current = event.currentTarget;
+                            reading.current = viewport.current?.scrollTop ?? 0;
+                            setSelectedRun(run.turnId);
+                          }}
+                        >
+                          <span className="routine-run-copy">
+                            <strong>{run.title}</strong>
+                            <span className="item-note">
+                              {new Date(run.firedAt).toLocaleString("zh-CN", {
+                                month: "long",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                hour12: false,
+                              })}
+                              {run.activeMs !== undefined &&
+                                ` · 执行 ${(run.activeMs / 1000).toFixed(1)} 秒`}
+                            </span>
+                          </span>
+                          <span className="routine-run-status">
+                            {run.status === "done" &&
+                            run.delivery === "conditional"
+                              ? run.delivered
+                                ? "已交付"
+                                : "静默完成"
+                              : runLabels[run.status]}
+                          </span>
+                          <CaretRightIcon aria-hidden="true" />
+                        </Button>
+                        {run.error && (
+                          <p className="alert" role="status">
+                            {run.error}
+                          </p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="detail-note">还没有运行记录。</p>
+                )}
+              </div>
+            </Disclosure>
+          )}
+
+          <ConfirmDialog
+            open={Boolean(deleting)}
+            onOpenChange={(open) => {
+              if (!open) setDeleting(null);
+            }}
+            title="删除这个定时任务？"
+            description="已开始的工作仍会完成。"
+            onConfirm={() => {
+              const routine = deleting;
+              setDeleting(null);
+              if (routine)
+                void action.run(
+                  ["routines.delete", routine.id, routine.revision],
+                  () =>
+                    client.work.routines.delete({
+                      botId,
+                      id: routine.id,
+                      revision: routine.revision,
+                    }),
+                  () => {
+                    if (editor?.routine?.id === routine.id)
+                      onEditorChange(null);
+                  },
+                );
+            }}
+          />
+        </section>
+      </ScrollArea>
       {selectedRun && (
         <WorkPanel
           {...chat}
           botId={botId}
           selectedRun={selectedRun}
           onRunClose={() => setSelectedRun(undefined)}
-          detailOnly
           runDetails={
             selected && (
               <dl className="approval-fields">
@@ -299,32 +352,7 @@ export function RoutinesPanel({
           }
         />
       )}
-      <ConfirmDialog
-        open={Boolean(deleting)}
-        onOpenChange={(open) => {
-          if (!open) setDeleting(null);
-        }}
-        title="删除这个定时任务？"
-        description="已开始的工作仍会完成。"
-        onConfirm={() => {
-          const routine = deleting;
-          setDeleting(null);
-          if (routine)
-            void action.run(
-              ["routines.delete", routine.id, routine.revision],
-              () =>
-                client.work.routines.delete({
-                  botId,
-                  id: routine.id,
-                  revision: routine.revision,
-                }),
-              () => {
-                if (editor?.routine?.id === routine.id) onEditorChange(null);
-              },
-            );
-        }}
-      />
-    </section>
+    </>
   );
 }
 

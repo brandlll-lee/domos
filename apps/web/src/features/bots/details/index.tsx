@@ -293,8 +293,9 @@ export function BotDetails({
             onSettings={() => navigate("computer")}
           />
         )}
+      {view === "routines" && content}
       <ScrollArea
-        hidden={view === "root" && tab !== "bot"}
+        hidden={view === "routines" || (view === "root" && tab !== "bot")}
         className="detail-scroll"
         viewportClassName="detail-content"
       >
@@ -303,14 +304,16 @@ export function BotDetails({
             <IdentityEditor profile={work.profile} action={action} />
           </div>
         )}
-        {view !== "identity" && (view !== "root" || tab === "bot") && (
-          <div
-            className="detail-view"
-            key={`${view}:${editor ? "editor" : "list"}`}
-          >
-            {content}
-          </div>
-        )}
+        {view !== "identity" &&
+          view !== "routines" &&
+          (view !== "root" || tab === "bot") && (
+            <div
+              className="detail-view"
+              key={`${view}:${editor ? "editor" : "list"}`}
+            >
+              {content}
+            </div>
+          )}
       </ScrollArea>
       {view === "routines" && editor?.view === "routines" && (
         <footer className="detail-footer form-actions">

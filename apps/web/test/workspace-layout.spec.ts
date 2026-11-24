@@ -515,12 +515,7 @@ test("chat input stays active while a panel closes", async ({
   ).toBeEnabled();
 });
 
-for (const dialogName of [
-  "设置",
-  "工作记录",
-  "应用连接",
-  "添加容器环境",
-] as const) {
+for (const dialogName of ["设置", "应用连接", "添加容器环境"] as const) {
   test(`background replies stay behind ${dialogName} during transition frames`, async ({
     service,
     page,
@@ -531,8 +526,6 @@ for (const dialogName of [
     if (dialogName === "添加容器环境")
       await page.setViewportSize({ width: 768, height: 900 });
     await page.goto(service.url);
-    if (dialogName === "工作记录")
-      await page.getByRole("tab", { name: "Work", exact: true }).click();
     const gated = once(service.worker, "message");
     service.worker.send("gate");
     await gated;
@@ -558,8 +551,6 @@ for (const dialogName of [
       }
     } else if (dialogName === "应用连接") {
       await page.getByRole("button", { name: "应用连接", exact: true }).click();
-    } else {
-      await page.locator(".work-row .work-open").first().click();
     }
     const dialog = page.getByRole("dialog", { name: dialogName, exact: true });
     await expect(dialog).toBeVisible();

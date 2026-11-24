@@ -147,7 +147,7 @@ test("routine forms share quiet pointer focus and keep actions outside scrolling
         .poll(() => details.evaluate((el) => el.scrollWidth <= el.clientWidth))
         .toBe(true);
       const before = await footer.boundingBox();
-      await details.locator(".detail-content").evaluate((el) => {
+      await details.locator(".detail-content:visible").evaluate((el) => {
         el.scrollTop = el.scrollHeight;
       });
       expect(await footer.boundingBox()).toEqual(before);
@@ -195,9 +195,22 @@ test("Work follows a native turn, opens its record and preserves it after stop a
   await card.locator(".work-open").hover();
   await page.screenshot({ path: info.outputPath("work-running.png") });
   await card.locator(".work-open").click();
-  const dialog = page.getByRole("dialog", { name: "工作记录", exact: true });
+  const detail = page.getByRole("region", { name: "工作记录", exact: true });
+  await expect(detail).toContainText("检查 Work 工作记录");
+  await expect(
+    page.getByRole("dialog", { name: "工作记录", exact: true }),
+  ).toHaveCount(0);
+  await expect(card).not.toBeVisible();
+  await detail
+    .getByRole("button", { name: "返回工作列表", exact: true })
+    .click();
+  await expect(card.locator(".work-open")).toBeFocused();
+  await card.locator(".work-open").click();
+  const dialog = page.getByRole("region", { name: "工作记录", exact: true });
   await expect(dialog).toContainText("检查 Work 工作记录");
-  await page.keyboard.press("Escape");
+  await dialog
+    .getByRole("button", { name: "返回工作列表", exact: true })
+    .click();
   await expect(card.locator(".work-open")).toBeFocused();
   await card.getByRole("button", { name: "停止执行", exact: true }).click();
   await expect(card).toContainText("已停止");
@@ -216,19 +229,22 @@ test("Work follows a native turn, opens its record and preserves it after stop a
   for (const theme of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await card.locator(".work-open").click();
-    await expect(dialog).toHaveCSS(
-      "background-color",
-      theme === "dark" ? "rgb(15, 15, 16)" : "rgb(250, 250, 250)",
-    );
+    await expect(
+      page.getByRole("dialog", { name: "工作记录", exact: true }),
+    ).toHaveCount(0);
     await page.screenshot({
-      path: info.outputPath(`work-dialog-${theme}.png`),
+      path: info.outputPath(`work-detail-${theme}.png`),
     });
-    await page.keyboard.press("Escape");
+    await dialog
+      .getByRole("button", { name: "返回工作列表", exact: true })
+      .click();
     await page.screenshot({ path: info.outputPath(`work-${theme}.png`) });
   }
   await card.locator(".work-open").click();
   await expect(dialog).toContainText("已停止");
-  await page.keyboard.press("Escape");
+  await dialog
+    .getByRole("button", { name: "返回工作列表", exact: true })
+    .click();
   service.worker.send({
     content: [
       { type: "thinking", thinking: "核对原生记录。" },
@@ -253,7 +269,7 @@ test("Work follows a native turn, opens its record and preserves it after stop a
   );
   service.worker.send("release");
   await once(service.worker, "message");
-  await expect(card).toContainText("执行已结束", { timeout: info.timeout });
+  await expect(dialog).toContainText("执行已结束", { timeout: info.timeout });
   await expect(
     dialog.locator("summary").filter({ hasText: service.toolName }),
   ).toHaveCount(1);
@@ -261,7 +277,9 @@ test("Work follows a native turn, opens its record and preserves it after stop a
     0,
   );
   await expect(dialog.locator(".work-entry").last()).toContainText("已收到");
-  await page.keyboard.press("Escape");
+  await dialog
+    .getByRole("button", { name: "返回工作列表", exact: true })
+    .click();
   await expect(page.locator(".work-row")).toHaveCount(2);
   await expect(card).toHaveCSS("border-width", "0px");
   await expect(page.locator(".work-list")).toHaveCSS("border-width", "0px");
@@ -281,32 +299,33 @@ test("Work follows a native turn, opens its record and preserves it after stop a
   await expect(dialog.locator(".work-entry[data-state=done]")).toHaveCount(1);
   await expect(
     dialog.locator("summary").filter({ hasText: /^回复/ }),
-  ).toHaveCount(0);
+  ).toHaveCount(1);
   await expect(dialog).not.toContainText("Harness 未提供思考内容");
-  await expect(dialog.locator(".work-entry time").first()).toHaveAttribute(
-    "datetime",
-    /T/,
-  );
+  await expect(dialog.locator(".work-step-time").first()).toBeVisible();
   await expect(dialog).toContainText("原生工具回执");
   for (const theme of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: theme });
-    await expect(dialog.locator(".work-entry").first()).toHaveCSS(
-      "border-left-width",
-      "1px",
+    await expect(dialog.locator(".work-node").first()).toHaveCSS(
+      "width",
+      "32px",
     );
     await page.screenshot({
       path: info.outputPath(`work-timeline-${theme}.png`),
     });
   }
   const recordCount = await dialog.locator(".work-entry").count();
-  await page.keyboard.press("Escape");
+  await dialog
+    .getByRole("button", { name: "返回工作列表", exact: true })
+    .click();
   await page.reload();
   await page.getByRole("tab", { name: "Work", exact: true }).click();
   await card.locator(".work-open").click();
   await expect(dialog.locator(".work-entry")).toHaveCount(recordCount);
   await dialog.locator("summary").filter({ hasText: service.toolName }).click();
   await expect(dialog).toContainText("原生工具回执");
-  await page.keyboard.press("Escape");
+  await dialog
+    .getByRole("button", { name: "返回工作列表", exact: true })
+    .click();
   await page.setViewportSize({ width: 390, height: 844 });
   expect((await card.boundingBox())?.height).toBeGreaterThanOrEqual(48);
   const label = card.locator(".work-label");
@@ -316,6 +335,102 @@ test("Work follows a native turn, opens its record and preserves it after stop a
     "ellipsis",
   );
   await page.screenshot({ path: info.outputPath("work-narrow.png") });
+});
+
+test("Work restores list reading and loads tool evidence only when expanded", async ({
+  service,
+  page,
+}, info) => {
+  await service.control({ history: 40 });
+  await service.control({
+    records: [
+      {
+        id: "lazy-input",
+        turnId: "lazy",
+        role: "user",
+        stopped: false,
+        content: [{ type: "text", key: "input", text: "读取工具证据" }],
+      },
+      {
+        id: "lazy-call",
+        turnId: "lazy",
+        role: "assistant",
+        stopped: false,
+        timestamp: 1000,
+        parentId: "parent",
+        content: [
+          {
+            type: "toolCall",
+            id: "lazy-tool",
+            key: "call",
+            name: "read",
+            arguments: { path: "report.txt" },
+          },
+        ],
+      },
+      {
+        id: "lazy-result",
+        turnId: "lazy",
+        role: "toolResult",
+        toolCallId: "lazy-tool",
+        toolStatus: "done",
+        stopped: false,
+        timestamp: 3000,
+        content: [{ type: "text", key: "result", text: "完整的原始工具证据" }],
+      },
+    ],
+  });
+  const reads: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith("/rpc/message")) reads.push(request.url());
+  });
+  await page.goto(service.url);
+  await page.getByRole("tab", { name: "Work", exact: true }).click();
+  const source = page.getByRole("button", {
+    name: "查看工作记录：历史任务 15",
+    exact: true,
+  });
+  await source.scrollIntoViewIfNeeded();
+  const viewport = page.locator(
+    ".detail-scroll:not([hidden]) > .scroll-viewport",
+  );
+  const top = await viewport.evaluate((node) => node.scrollTop);
+  expect(top).toBeGreaterThan(0);
+  await source.click();
+  const detail = page.getByRole("region", { name: "工作记录", exact: true });
+  await detail
+    .getByRole("button", { name: "返回工作列表", exact: true })
+    .click();
+  await expect(source).toBeFocused();
+  expect(await viewport.evaluate((node) => node.scrollTop)).toBeCloseTo(top, 0);
+  await page
+    .getByRole("button", { name: "查看工作记录：读取工具证据", exact: true })
+    .click();
+  const entry = detail.locator(".work-entry");
+  await expect(entry).toHaveAttribute("data-parent", "parent");
+  await expect(entry).toContainText("2秒");
+  await expect(entry.locator(".work-operation-body")).toHaveCount(0);
+  expect(reads).toHaveLength(0);
+  await entry.locator("summary").click();
+  await expect(entry.locator(".work-operation-body")).toContainText(
+    "完整的原始工具证据",
+  );
+  expect(reads).toHaveLength(1);
+  await entry.locator("summary").click();
+  await expect(entry.locator(".work-operation-body")).toHaveCount(0);
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect
+      .poll(() =>
+        detail.evaluate((node) => node.scrollWidth <= node.clientWidth),
+      )
+      .toBe(true);
+    await detail.screenshot({
+      path: info.outputPath(`timeline-narrow-${theme}.png`),
+      animations: "disabled",
+    });
+  }
 });
 
 test("Work renders native search, file and terminal details in both themes", async ({
@@ -361,7 +476,10 @@ test("Work renders native search, file and terminal details in both themes", asy
             role: "toolResult",
             toolCallId: item.id,
             content: [],
-            native: item,
+            native: {
+              ...item,
+              ...(item.type === "commandExecution" ? { durationMs: 2300 } : {}),
+            },
             toolStatus: "done",
             stopped: false,
           },
@@ -372,9 +490,22 @@ test("Work renders native search, file and terminal details in both themes", asy
   await page.goto(service.url);
   await page.getByRole("tab", { name: "Work", exact: true }).click();
   await page.locator(".work-open").first().click();
-  const dialog = page.getByRole("dialog", { name: "工作记录", exact: true });
+  const dialog = page.getByRole("region", { name: "工作记录", exact: true });
   const entries = dialog.locator(".work-entry");
   await expect(entries).toHaveCount(4);
+  await expect(entries.filter({ hasText: "commandExecution" })).toContainText(
+    "2.3秒",
+  );
+  await expect(dialog.locator(".work-terminal")).toHaveCount(0);
+  await expect(entries.first()).toContainText("耗时未知");
+  await expect(entries.first().locator(".work-node")).toHaveCSS(
+    "width",
+    "32px",
+  );
+  await dialog
+    .locator("summary")
+    .filter({ hasText: "commandExecution" })
+    .click();
   await expect(dialog.locator(".work-terminal")).toContainText(
     "node --version",
   );
@@ -400,15 +531,17 @@ test("Work renders native search, file and terminal details in both themes", asy
   for (const theme of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     const line = await entries.first().evaluate((el) => {
-      const entry = getComputedStyle(el);
-      const dot = getComputedStyle(el, "::before");
+      const line = getComputedStyle(el, "::before");
+      const node = el.querySelector(".work-node");
+      if (!node) throw new Error("Timeline node required");
       return {
-        line: entry.borderLeftWidth,
-        dot: dot.width,
-        position: dot.left,
+        line: line.width,
+        node: getComputedStyle(node).width,
+        position: line.left,
       };
     });
-    expect(line).toEqual({ line: "1px", dot: "7px", position: "-4px" });
+    expect(line).toEqual({ line: "1px", node: "32px", position: "15.5px" });
+    await expect(entries.last()).toHaveCSS("padding-bottom", "0px");
     await page.screenshot({
       path: info.outputPath(`work-native-${theme}.png`),
     });
@@ -497,11 +630,12 @@ test("Work locates a failed native tool and copies bounded diagnostics", async (
     attention.getByRole("img", { name: "执行失败", exact: true }),
   ).toBeVisible();
   await page.locator(".work-open").first().click();
-  const dialog = page.getByRole("dialog", { name: "工作记录", exact: true });
+  const dialog = page.getByRole("region", { name: "工作记录", exact: true });
+  await expect(dialog.locator(".work-operation-body")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "定位问题", exact: true }).click();
   await expect(dialog).toContainText(
     "tool image_generate is not enabled for server domos",
   );
-  await dialog.getByRole("button", { name: "定位问题", exact: true }).click();
   await expect(dialog.locator(".work-entry[data-state=failed]")).toBeFocused();
   await dialog.getByRole("button", { name: "诊断信息", exact: true }).click();
   const diagnostic = page.locator(".work-diagnostics");
@@ -710,12 +844,23 @@ test("chat routine changes require confirmation and link runs to Work", async ({
   await details
     .getByRole("button", { name: "查看工作记录：Daily report", exact: true })
     .click();
-  const record = page.getByRole("dialog", { name: "工作记录", exact: true });
+  const record = page.getByRole("region", { name: "工作记录", exact: true });
+  await expect(details.locator(".run-list")).not.toBeVisible();
+  await record.locator("summary").filter({ hasText: "任务输入" }).click();
   await expect(record).toContainText("试跑：Daily report");
   await expect(record).toContainText("Read the daily report");
   await expect(record).toContainText("等人");
   await expect(record).toContainText("计划时间");
   await page.screenshot({ path: info.outputPath("routine-work-record.png") });
+  await record
+    .getByRole("button", { name: "返回工作列表", exact: true })
+    .click();
+  await expect(
+    details.getByRole("button", {
+      name: "查看工作记录：Daily report",
+      exact: true,
+    }),
+  ).toBeFocused();
 });
 
 test("monitoring stays quiet, delivers one result and opens the native Work record", async ({
@@ -776,10 +921,10 @@ test("monitoring stays quiet, delivers one result and opens the native Work reco
       .getByText("发布了新版本 v2", { exact: true }),
   ).toBeVisible();
   await page.locator(".routine-source").getByRole("button").click();
-  const record = page.getByRole("dialog", { name: "工作记录", exact: true });
+  const record = page.getByRole("region", { name: "工作记录", exact: true });
   await expect(record).toBeVisible();
   await expect(record).toContainText("routine_report");
-  await record.getByRole("button", { name: "关闭弹窗" }).click();
+  await record.getByRole("button", { name: "返回工作列表" }).click();
   for (const theme of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await page.screenshot({ path: info.outputPath(`monitor-${theme}.png`) });

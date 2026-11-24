@@ -373,6 +373,22 @@ test("teams preserve member authors and keep private chats separate", async ({
       .filter({ hasText: "Reviewer" })
       .locator(".bot-avatar"),
   ).toBeVisible();
+  await page
+    .locator(".work-row")
+    .filter({ hasText: "Reviewer" })
+    .locator(".work-open")
+    .click();
+  const workDetail = page.getByRole("region", {
+    name: "工作记录",
+    exact: true,
+  });
+  await expect(workDetail).toContainText("Reviewer");
+  await expect(
+    page.getByRole("dialog", { name: "工作记录", exact: true }),
+  ).toHaveCount(0);
+  await workDetail
+    .getByRole("button", { name: "返回工作列表", exact: true })
+    .click();
   await expect(
     page.locator(".chat-identity .team-avatar .bot-avatar"),
   ).toHaveCount(2);
@@ -421,9 +437,15 @@ test("teams preserve member authors and keep private chats separate", async ({
       page.locator("#conversation > section[aria-label='协作任务']"),
     ).toHaveCount(0);
     const composerFrame = await page.locator(".composer-area").boundingBox();
+    await active.locator(".work-open").click();
     const request = page.waitForRequest("**/rpc/stop");
-    await active.getByRole("button", { name: "停止执行", exact: true }).click();
+    await workDetail
+      .getByRole("button", { name: "停止执行", exact: true })
+      .click();
     expect((await request).postDataJSON().json.botId).toBe(sent.sessionId);
+    await workDetail
+      .getByRole("button", { name: "返回工作列表", exact: true })
+      .click();
     await expect(active).toHaveCount(0);
     await expect(log.locator(".typing-row")).toHaveCount(1);
     await expect(log.locator(".typing-row")).toContainText("Domos");
