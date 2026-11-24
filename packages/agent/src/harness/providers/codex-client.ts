@@ -169,6 +169,18 @@ export async function openCodexClient(
             name: z.string().min(1),
             authStatus: z.string().optional(),
             status: z.string().optional(),
+            runtimeStatus: z.string().nullable().optional(),
+            toolsError: z.string().nullable().optional(),
+            tools: z
+              .record(
+                z.string(),
+                z.object({
+                  name: z.string().min(1),
+                  description: z.string().optional(),
+                  inputSchema: z.record(z.string(), z.unknown()).optional(),
+                }),
+              )
+              .optional(),
           }),
           page.data,
         );
@@ -178,8 +190,13 @@ export async function openCodexClient(
             name: item.name,
             source: "codex",
             enabled: null,
-            status: item.status ?? "unknown",
+            status: item.runtimeStatus ?? item.status ?? "unknown",
             authStatus: item.authStatus,
+            error: item.toolsError ?? undefined,
+            tools:
+              item.tools && !item.toolsError
+                ? Object.values(item.tools)
+                : undefined,
           })),
         );
         cursor = page.nextCursor ?? null;

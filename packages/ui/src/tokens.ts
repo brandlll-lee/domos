@@ -149,6 +149,7 @@ export const windowOverlay = {
 export const metrics = {
   "titlebar-height": `${layout.titlebar}px`,
   "settings-content-width": "49rem",
+  "form-content-width": "40rem",
   "setup-content-width": "32rem",
   "setup-button-width": "22rem",
   "setup-control-height": "2.875rem",

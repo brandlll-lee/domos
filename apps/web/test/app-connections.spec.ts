@@ -6,6 +6,207 @@ import { mcpFixture } from "../../../packages/agent/test/fixtures/mcp.mjs";
 import type { AppRouter } from "../../api/src/router.ts";
 import { test } from "./fixtures/service.ts";
 
+test("connection layout keeps controls compact and the final row readable", async ({
+  service,
+  page,
+}, info) => {
+  await page.route("**/rpc/mcp/native", (route) =>
+    route.fulfill({
+      json: {
+        json: {
+          provider: "opencode",
+          computerId: "pc",
+          readonly: true,
+          status: "complete",
+          scope: "session",
+          errors: [],
+          observedAt: 1,
+          inheritance: "native",
+          inherited: true,
+          items: Array.from({ length: 30 }, (_, index) => ({
+            name: `Service ${index}`,
+            source: "opencode",
+            enabled: true,
+            status: index === 29 ? "unknown" : "connected",
+          })),
+        },
+      },
+    }),
+  );
+  await page.goto(service.url);
+  await page.getByRole("button", { name: "应用连接", exact: true }).click();
+  const dialog = page.locator(".apps-dialog");
+  const body = dialog.locator(".dialog-body");
+  const viewport = body.locator(".scroll-viewport");
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    for (const width of [1360, 768, 390]) {
+      await page.setViewportSize({ width, height: 800 });
+      const title = dialog.locator(".dialog-title");
+      const titleHeight = await title.evaluate((node) =>
+        parseFloat(getComputedStyle(node).lineHeight),
+      );
+      expect((await title.boundingBox())?.height).toBeLessThanOrEqual(
+        titleHeight + 1,
+      );
+      const first = dialog.getByRole("button", {
+        name: "查看 Service 0",
+        exact: true,
+      });
+      await first.scrollIntoViewIfNeeded();
+      const row = await first.boundingBox();
+      const dot = await first
+        .getByRole("img", { name: "已连接", exact: true })
+        .boundingBox();
+      expect(
+        row &&
+          dot &&
+          dot.y >= row.y &&
+          dot.y + dot.height <= row.y + row.height,
+      ).toBe(true);
+      expect(
+        (await dialog.locator(".search-field").boundingBox())?.height,
+      ).toBeLessThanOrEqual(36);
+      await expect(body).toHaveAttribute("data-overflow-y-end", "");
+      await expect
+        .poll(() =>
+          body.evaluate((node) => getComputedStyle(node, "::after").opacity),
+        )
+        .toBe("1");
+      const last = dialog.getByRole("button", {
+        name: "查看 Service 29",
+        exact: true,
+      });
+      await last.focus();
+      await viewport.evaluate((node) => {
+        node.scrollTop = node.scrollHeight;
+      });
+      await expect(body).not.toHaveAttribute("data-overflow-y-end");
+      const end = await last.boundingBox();
+      const frame = await viewport.boundingBox();
+      expect(
+        end && frame && end.y + end.height <= frame.y + frame.height - 20,
+      ).toBe(true);
+      await expect(last.getByRole("img")).toHaveAttribute(
+        "data-tone",
+        "neutral",
+      );
+      await dialog.screenshot({
+        path: info.outputPath(`connections-${theme}-${width}.png`),
+      });
+    }
+  }
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await dialog.getByRole("tab", { name: "发现应用", exact: true }).click();
+  const categories = dialog.getByRole("tablist", {
+    name: "应用分类",
+    exact: true,
+  });
+  expect((await categories.boundingBox())?.width).toBeLessThan(300);
+  await categories.getByRole("tab", { name: "开发", exact: true }).click();
+  await expect(dialog.getByText("Context7", { exact: true })).toBeVisible();
+  await expect(
+    dialog.getByRole("heading", { name: "开发", exact: true }),
+  ).toHaveCount(0);
+  await dialog.getByRole("button", { name: "添加 MCP", exact: true }).click();
+  await dialog.getByRole("button", { name: "手动配置", exact: true }).click();
+  const form = dialog.locator("form");
+  expect((await form.boundingBox())?.width).toBeLessThanOrEqual(640);
+  const transport = dialog.getByRole("radiogroup", { name: "传输方式" });
+  expect((await transport.boundingBox())?.width).toBeLessThan(300);
+});
+
+test("native connections are searchable first-class rows with read-only details", async ({
+  service,
+  page,
+}, info) => {
+  await page.route("**/rpc/mcp/native", (route) =>
+    route.fulfill({
+      json: {
+        json: {
+          provider: "opencode",
+          computerId: "local",
+          readonly: true,
+          status: "complete",
+          scope: "configuration",
+          errors: [],
+          observedAt: 1,
+          inheritance: "native",
+          inherited: true,
+          items: ["exa", "tavily"].map((name) => ({
+            name,
+            source: "opencode",
+            enabled: true,
+            status: "connected",
+            ...(name === "tavily"
+              ? {
+                  tools: [
+                    {
+                      name: "search",
+                      description: "Search the web",
+                      inputSchema: {
+                        type: "object",
+                        properties: { query: { type: "string" } },
+                      },
+                    },
+                  ],
+                }
+              : {}),
+          })),
+        },
+      },
+    }),
+  );
+  await page.goto(service.url);
+  await page.getByRole("button", { name: "应用连接", exact: true }).click();
+  const dialog = page.locator(".apps-dialog");
+  const exa = dialog.getByRole("button", { name: "查看 exa", exact: true });
+  await expect(exa).toBeVisible();
+  await expect(dialog.getByText("尚未添加连接。", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(
+    exa.getByRole("img", { name: "已连接", exact: true }),
+  ).toBeVisible();
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await exa.hover();
+    await dialog.screenshot({ path: info.outputPath(`native-${theme}.png`) });
+  }
+  await dialog.getByRole("searchbox").fill("tavily");
+  await expect(exa).toHaveCount(0);
+  await expect(
+    dialog.getByRole("button", { name: "查看 tavily", exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText("没有找到匹配项。", { exact: false }),
+  ).toHaveCount(0);
+  await dialog.getByRole("searchbox").fill("");
+  await exa.click();
+  await expect(
+    dialog.getByRole("heading", { name: "exa", exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText("未提供工具目录", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "保存并测试", exact: true }),
+  ).toHaveCount(0);
+  await dialog.getByRole("button", { name: "返回", exact: true }).click();
+  await expect(exa).toBeFocused();
+  const tavily = dialog.getByRole("button", {
+    name: "查看 tavily",
+    exact: true,
+  });
+  await expect(tavily).toContainText("1 个工具");
+  await tavily.click();
+  await dialog.locator("summary").filter({ hasText: "search" }).click();
+  await expect(
+    dialog.getByText("Search the web", { exact: true }),
+  ).toBeVisible();
+  await expect(dialog.getByText('"query"', { exact: false })).toBeVisible();
+});
+
 test("connection navigation keeps import and confirmation separate", async ({
   service,
   page,
@@ -253,13 +454,9 @@ test("native connections require explicit Bot context and keep read failures vis
   ).toHaveCount(0);
   await page.getByRole("option", { name: bot.name, exact: true }).click();
   await expect(dialog.getByRole("alert")).toContainText("原生连接读取失败");
-  const native = dialog.getByRole("button", {
-    name: "引擎原生连接",
-    exact: false,
-  });
-  await expect(native).toHaveAttribute("aria-expanded", "true");
-  await native.click();
-  await expect(native).toHaveAttribute("aria-expanded", "false");
+  await expect(
+    dialog.locator(".dialog-header").getByRole("combobox"),
+  ).toContainText(bot.name);
   await expect(dialog.getByRole("alert")).toContainText("原生连接读取失败");
   expect(reads).toBe(1);
 });
@@ -482,12 +679,9 @@ test("MCP readers share pending and retained catalogs across the composer and co
     await expect(
       center.getByRole("combobox", { name: "选择机器人", exact: true }),
     ).toContainText("Domos");
-    await center
-      .getByRole("button", { name: "引擎原生连接", exact: false })
-      .click();
-    await expect(center.locator(".apps-native-row")).toContainText(
-      "Shared Docs",
-    );
+    await expect(
+      center.getByRole("button", { name: "查看 Shared Docs", exact: true }),
+    ).toBeVisible();
     expect(nativeReads).toBe(1);
     expect(managedReads).toBe(1);
     await center.getByRole("button", { name: "刷新连接", exact: true }).click();
@@ -866,9 +1060,6 @@ test("connection pages distinguish first read, empty search and refreshed native
   await expect(
     dialog.getByRole("combobox", { name: "选择机器人" }),
   ).toContainText("Domos");
-  await dialog
-    .getByRole("button", { name: "引擎原生连接", exact: false })
-    .click();
   await expect(dialog.getByText("原生服务 1", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "刷新连接", exact: true }).click();
   await expect(dialog.getByText("原生服务 2", { exact: true })).toBeVisible();

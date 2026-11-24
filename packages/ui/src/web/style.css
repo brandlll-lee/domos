@@ -66,6 +66,7 @@ a,
   background: var(--color-scrim);
 }
 .dialog-popup {
+  --dialog-surface: var(--color-surface);
   display: flex;
   flex-direction: column;
   position: fixed;
@@ -82,12 +83,12 @@ a,
   padding: var(--space-8);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
-  background: var(--color-surface);
+  background: var(--dialog-surface);
   color: var(--color-text);
   box-shadow: var(--color-popup-shadow);
 }
 [data-theme="dark"] .dialog-popup {
-  background: var(--color-canvas);
+  --dialog-surface: var(--color-canvas);
 }
 .dialog-header {
   display: flex;
@@ -96,6 +97,23 @@ a,
   flex-shrink: 0;
   gap: var(--space-4);
   margin-bottom: var(--space-6);
+}
+.dialog-header-actions {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: var(--space-2);
+}
+@media (max-width: 32rem) {
+  .dialog-header {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  .dialog-header-actions {
+    order: 1;
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
 }
 .dialog-header > .button svg {
   width: var(--space-4);
@@ -117,6 +135,21 @@ a,
 }
 .dialog-body > .scroll-viewport {
   padding-inline-end: var(--space-3);
+}
+.dialog-body:not(:has(form)) > .scroll-viewport {
+  padding-bottom: var(--space-6);
+}
+.dialog-body::after {
+  content: "";
+  position: absolute;
+  inset: auto var(--space-3) 0 0;
+  height: var(--space-6);
+  background: linear-gradient(transparent, var(--dialog-surface));
+  pointer-events: none;
+  opacity: 0;
+}
+.dialog-body[data-overflow-y-end]::after {
+  opacity: 1;
 }
 .dialog-footer {
   display: flex;

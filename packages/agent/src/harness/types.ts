@@ -46,6 +46,11 @@ export type EngineMcpCatalog = {
     status: string;
     authStatus?: string;
     error?: string;
+    tools?: {
+      name: string;
+      description?: string;
+      inputSchema?: Record<string, unknown>;
+    }[];
   }[];
   status: "complete" | "partial" | "failed" | "unsupported";
   scope: "configuration" | "session";

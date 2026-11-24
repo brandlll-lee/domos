@@ -107,7 +107,9 @@ export function Dialog({
             <BaseDialog.Title className="dialog-title">
               {title}
             </BaseDialog.Title>
-            {headerActions}
+            {headerActions && (
+              <div className="dialog-header-actions">{headerActions}</div>
+            )}
             <BaseDialog.Close
               aria-label="关闭弹窗"
               render={<Button variant="ghost" size="icon-small" />}

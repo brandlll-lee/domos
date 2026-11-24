@@ -14,16 +14,22 @@ export function SearchField({
   className = "",
   inputRef,
   hidden,
+  variant = "default",
   ...props
 }: Omit<ComponentProps<"input">, "value" | "onChange" | "type" | "ref"> & {
   value: string;
   onValueChange: (value: string) => void;
   inputRef?: RefObject<HTMLInputElement | null>;
+  variant?: "default" | "quiet";
 }) {
   const local = useRef<HTMLInputElement>(null);
   const ref = inputRef ?? local;
   return (
-    <div className={`search-field ${className}`} hidden={hidden}>
+    <div
+      className={`search-field ${className}`}
+      data-variant={variant}
+      hidden={hidden}
+    >
       <svg viewBox="0 0 20 20" aria-hidden="true">
         <circle cx="8.5" cy="8.5" r="5.5" />
         <path d="m13 13 4 4" />

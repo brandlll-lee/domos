@@ -38,10 +38,6 @@
   gap: var(--space-2);
   padding: 0 var(--space-3) var(--space-2);
 }
-.command-tabs {
-  display: flex;
-  gap: var(--space-1);
-}
 .chat-command-dialog .dialog-body {
   flex: 0 1 auto;
   padding: var(--space-2);
@@ -128,11 +124,6 @@
 }
 .chat-search-dialog .command-controls {
   padding-top: var(--space-2);
-}
-.chat-command-dialog .command-search {
-  min-height: 3rem;
-  border: 0;
-  background: transparent;
 }
 .chat-search-dialog .command-search {
   padding-inline-end: calc(var(--control-small) + var(--space-3));

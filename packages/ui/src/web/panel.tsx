@@ -96,23 +96,28 @@ export function PanelRow({
   value,
   description,
   preview = false,
+  variant = "setting",
   onClick,
+  ...props
 }: {
   id?: string;
   icon?: ReactNode;
   title: string;
-  value?: string;
+  value?: ReactNode;
   description?: string;
   preview?: boolean;
+  variant?: "setting" | "navigation";
   onClick: () => void;
-}) {
+} & Omit<ComponentProps<"button">, "title" | "value" | "onClick">) {
   return (
     <button
       id={id}
       type="button"
       className="panel-row"
       data-preview={preview || undefined}
+      data-variant={variant}
       onClick={onClick}
+      {...props}
     >
       {icon && (
         <span className="panel-row-icon" aria-hidden="true">
@@ -127,7 +132,10 @@ export function PanelRow({
           <span className="panel-row-description">{description}</span>
         )}
       </span>
-      <span className="panel-row-value" title={value}>
+      <span
+        className="panel-row-value"
+        title={typeof value === "string" ? value : undefined}
+      >
         {value}
       </span>
       <svg

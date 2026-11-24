@@ -16,3 +16,13 @@
 .status-dot[data-tone="negative"] {
   background: var(--color-status-negative);
 }
+.status-dot[data-tone="neutral"] {
+  background: var(--color-muted);
+}
+.status-dot[data-inline] {
+  position: static;
+  flex-shrink: 0;
+  width: 0.375rem;
+  height: 0.375rem;
+  box-shadow: none;
+}

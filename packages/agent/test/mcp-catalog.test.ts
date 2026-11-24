@@ -87,7 +87,23 @@ test.each(["complete", "partial", "unsupported", "cancel"])(
                 nextCursor: null,
               }
             : {
-                data: [{ name: "one", authStatus: "unsupported" }],
+                data: [
+                  {
+                    name: "one",
+                    authStatus: "unsupported",
+                    runtimeStatus: "connected",
+                    tools: {
+                      search: {
+                        name: "search",
+                        description: "Search documents",
+                        inputSchema: {
+                          type: "object",
+                          properties: { query: { type: "string" } },
+                        },
+                      },
+                    },
+                  },
+                ],
                 nextCursor: "next",
               },
         );
@@ -112,13 +128,27 @@ test.each(["complete", "partial", "unsupported", "cancel"])(
     );
     if (mode === "partial") expect(result.errors[0]?.code).toBe(-32001);
     if (mode === "complete") expect(result.items[0]?.enabled).toBeNull();
+    if (mode === "complete")
+      expect(result.items[0]).toMatchObject({
+        status: "connected",
+        tools: [
+          {
+            name: "search",
+            description: "Search documents",
+            inputSchema: {
+              type: "object",
+              properties: { query: { type: "string" } },
+            },
+          },
+        ],
+      });
   },
 );
 
 test("Claude reads plugin names and changing live states through its control channel", async () => {
   const process = new ProtocolProcess();
   onTestFinished(() => process.close());
-  let status = fixture.claude;
+  let status: unknown = fixture.claude;
   process.receive = (request) => {
     const control = request as unknown as {
       request_id: string;
@@ -149,9 +179,18 @@ test("Claude reads plugin names and changing live states through its control cha
     source: "project",
   });
   status = {
-    mcpServers: [{ name: "plugin:notes:search", status: "connected" }],
+    mcpServers: [
+      {
+        name: "plugin:notes:search",
+        status: "connected",
+        tools: [{ name: "search", description: "Search saved notes" }],
+      },
+    ],
   };
-  expect((await session.mcp()).items[0]?.status).toBe("connected");
+  expect((await session.mcp()).items[0]).toMatchObject({
+    status: "connected",
+    tools: [{ name: "search", description: "Search saved notes" }],
+  });
   expect(process.requests.some((request) => request.type === "user")).toBe(
     false,
   );

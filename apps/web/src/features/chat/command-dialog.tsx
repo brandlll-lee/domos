@@ -29,10 +29,14 @@ export function ChatCommandDialog({
       subheader={
         search && (
           <div className="command-controls">
-            <SearchField {...search} className="command-search" />
+            <SearchField
+              {...search}
+              variant="quiet"
+              className="command-search"
+            />
             {tabs && (
               <Tabs.Root value={tabs.value} onValueChange={tabs.onValueChange}>
-                <Tabs.List className="command-tabs" aria-label={tabs.label}>
+                <Tabs.List className="navigation-tabs" aria-label={tabs.label}>
                   {tabs.items.map((tab) => (
                     <Tabs.Tab
                       key={tab.value}

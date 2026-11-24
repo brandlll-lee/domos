@@ -2,6 +2,7 @@
   position: relative;
   isolation: isolate;
   display: inline-flex;
+  width: fit-content;
   flex-wrap: wrap;
   gap: 0;
   max-width: 100%;

@@ -186,8 +186,20 @@ summary:focus-visible {
 .search-field input::-webkit-search-cancel-button {
   display: none;
 }
+.search-field[data-variant="quiet"] {
+  min-height: var(--control-small);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+}
+.search-field[data-variant="quiet"] input {
+  padding-block: var(--space-1);
+}
 .navigation-tabs {
   display: flex;
+  width: fit-content;
+  max-width: 100%;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-1);
 }
@@ -695,7 +707,7 @@ textarea.field-control {
 }
 .form-content {
   width: 100%;
-  max-width: var(--settings-content-width);
+  max-width: var(--form-content-width);
   margin-inline: auto;
 }
 .form-fields {

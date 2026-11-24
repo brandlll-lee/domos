@@ -1,17 +1,14 @@
 import { type McpConfig, parseMcp } from "@domos/agent/mcp/config";
-import { SegmentedControl } from "@domos/ui/choice";
 import { Button } from "@domos/ui/controls";
 import { ConfirmDialog, Dialog } from "@domos/ui/dialog";
 import { Disclosure } from "@domos/ui/disclosure";
 import { Checkbox, SearchField } from "@domos/ui/field";
 import { Loading } from "@domos/ui/loading";
 import { ActionMenu } from "@domos/ui/menu";
+import { PanelRow } from "@domos/ui/panel";
 import { ChoicePicker } from "@domos/ui/picker";
 import { Tabs } from "@domos/ui/tabs";
 import { ArrowClockwiseIcon as ArrowClockwise } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
-import { BookOpenIcon as BookOpen } from "@phosphor-icons/react/dist/csr/BookOpen";
-import { CodeIcon as Code } from "@phosphor-icons/react/dist/csr/Code";
-import { PlugsIcon as Plugs } from "@phosphor-icons/react/dist/csr/Plugs";
 import { PlusIcon as Plus } from "@phosphor-icons/react/dist/csr/Plus";
 import {
   useCallback,
@@ -22,13 +19,21 @@ import {
 } from "react";
 import { client } from "../../client.ts";
 import { useReadState } from "../read-state.ts";
+import {
+  ConnectionHint,
+  ConnectionIcon,
+  ConnectionStatus,
+  ConnectionTools,
+  NativeConnectionDetails,
+  NativeConnections,
+} from "./connection-details.tsx";
 import { ConnectionEditor, type Draft } from "./connection-editor.tsx";
 import {
   appCatalog,
   managedConnections,
   nativeConnections,
 } from "./connection-state.ts";
-import { appsCopy, nativeMcpNotice, nativeMcpStatus } from "./copy.ts";
+import { appsCopy, nativeMcpNotice } from "./copy.ts";
 import "./style.css";
 
 type Connection = Awaited<ReturnType<typeof client.mcp.list>>[number];
@@ -93,11 +98,13 @@ export function AppsCenter({
   const [nativeBot, setNativeBot] = useState(
     currentBotId ? String(currentBotId) : "",
   );
-  const [nativeOpen, setNativeOpen] = useState(false);
+  const [selectedNative, setSelectedNative] = useState<string>();
   const [step, setStep] = useState<"import" | "confirm">("import");
   const source = useRef<string>("add-mcp");
   const restoreFocus = useRef(false);
-  const location = form ? `editor:${form.id}` : (selectedId ?? view);
+  const location = form
+    ? `editor:${form.id}`
+    : (selectedId ?? (selectedNative ? `native:${selectedNative}` : view));
   useLayoutEffect(() => {
     if (location.startsWith("editor:")) {
       viewport.current
@@ -202,6 +209,7 @@ export function AppsCenter({
     restoreFocus.current = true;
     setForm(null);
     setSelectedId(undefined);
+    setSelectedNative(undefined);
     setError(null);
   };
   const back = () => {
@@ -261,33 +269,55 @@ export function AppsCenter({
             ? form.editing
               ? "编辑连接"
               : "添加 MCP"
-            : selectedId
+            : selectedId || selectedNative
               ? "连接详情"
               : "应用连接"
         }
         className="apps-dialog"
         viewportRef={viewport}
-        onBack={form || selectedId ? back : undefined}
+        onBack={form || selectedId || selectedNative ? back : undefined}
         backDisabled={busy}
         headerActions={
           !form && (
-            <Button
-              variant="ghost"
-              size="icon-small"
-              aria-label="刷新连接"
-              disabled={reading || busy || nativeReading}
-              onClick={() => {
-                void refresh();
-                if (view === "connected") refreshNative(nativeBot);
-              }}
-            >
-              <ArrowClockwise />
-            </Button>
+            <>
+              {!selectedId && !selectedNative && view === "connected" && (
+                <div className="connection-scope">
+                  <ChoicePicker
+                    label="选择机器人"
+                    placeholder="选择机器人"
+                    size="small"
+                    value={nativeBot}
+                    disabled={busy}
+                    items={bots.map((bot) => ({
+                      value: String(bot.id),
+                      label: bot.name,
+                    }))}
+                    onValueChange={(id) => setNativeBot(id)}
+                  />
+                  <ConnectionHint label="连接查看范围">
+                    机器人选择切换原生目录。Domos 管理的连接属于当前电脑。
+                  </ConnectionHint>
+                </div>
+              )}
+              <Button
+                variant="ghost"
+                size="icon-small"
+                aria-label="刷新连接"
+                disabled={reading || busy || nativeReading}
+                onClick={() => {
+                  void refresh();
+                  if (view === "connected") refreshNative(nativeBot);
+                }}
+              >
+                <ArrowClockwise />
+              </Button>
+            </>
           )
         }
         subheader={
           !form &&
-          !selectedId && (
+          !selectedId &&
+          !selectedNative && (
             <div className="apps-navigation">
               <div className="section-heading">
                 <Tabs.Root
@@ -304,6 +334,7 @@ export function AppsCenter({
                   </Tabs.List>
                 </Tabs.Root>
                 <Button
+                  variant="secondary"
                   data-connection-action="add-mcp"
                   onClick={() => start()}
                   disabled={busy}
@@ -313,21 +344,26 @@ export function AppsCenter({
                 </Button>
               </div>
               <SearchField
+                variant="quiet"
                 aria-label="搜索当前页面"
                 placeholder={view === "apps" ? "搜索应用" : "搜索连接"}
                 value={query}
                 onValueChange={setQuery}
               />
               {view === "apps" && (
-                <SegmentedControl
-                  label="应用分类"
-                  value={category}
-                  onValueChange={setCategory}
-                  options={[
-                    { value: "", label: "全部" },
-                    ...categories.map((name) => ({ value: name, label: name })),
-                  ]}
-                />
+                <Tabs.Root value={category} onValueChange={setCategory}>
+                  <Tabs.List className="navigation-tabs" aria-label="应用分类">
+                    {["", ...categories].map((name) => (
+                      <Tabs.Tab
+                        className="navigation-tab"
+                        key={name}
+                        value={name}
+                      >
+                        {name || "全部"}
+                      </Tabs.Tab>
+                    ))}
+                  </Tabs.List>
+                </Tabs.Root>
               )}
             </div>
           )
@@ -377,7 +413,9 @@ export function AppsCenter({
           {loaded &&
             !form &&
             !selectedId &&
+            !selectedNative &&
             query &&
+            (view === "apps" || !nativeBot || native?.status === "complete") &&
             !(view === "apps"
               ? catalog.some(
                   (app) =>
@@ -387,6 +425,9 @@ export function AppsCenter({
                       .includes(query.toLowerCase()),
                 )
               : items.some((item) =>
+                  item.name.toLowerCase().includes(query.toLowerCase()),
+                ) ||
+                native?.items.some((item) =>
                   item.name.toLowerCase().includes(query.toLowerCase()),
                 )) && (
               <p role="status">
@@ -427,7 +468,7 @@ export function AppsCenter({
                   )
                   .map((name) => (
                     <section className="apps-category" key={name}>
-                      <h3>{name}</h3>
+                      {!category && <h3>{name}</h3>}
                       <div className="apps-catalog-rows">
                         {catalog
                           .filter(
@@ -440,16 +481,10 @@ export function AppsCenter({
                           .map((app) => (
                             <section className="apps-catalog-item" key={app.id}>
                               <div className="apps-logo" aria-hidden="true">
-                                {(() => {
-                                  const Icon =
-                                    (
-                                      { BookOpen, Code } as Record<
-                                        string,
-                                        typeof BookOpen
-                                      >
-                                    )[app.icon] ?? Plugs;
-                                  return <Icon />;
-                                })()}
+                                <ConnectionIcon
+                                  name={app.name}
+                                  icon={app.icon}
+                                />
                               </div>
                               <div>
                                 <strong>{app.name}</strong>
@@ -528,6 +563,7 @@ export function AppsCenter({
                 />
               )}
               {!form &&
+                !selectedNative &&
                 (view === "connected" || selectedId) &&
                 items
                   .filter((item) =>
@@ -535,38 +571,33 @@ export function AppsCenter({
                       ? item.id === selectedId
                       : item.name.toLowerCase().includes(query.toLowerCase()),
                   )
-                  .map((item) => (
-                    <section className="apps-item" key={item.id}>
-                      <div className="apps-item-heading">
-                        <div>
-                          <strong>{item.name}</strong>
-                          <p>
-                            {!item.enabled
-                              ? "已禁用"
-                              : checking === item.id
-                                ? "检查中…"
-                                : appsCopy.status[
-                                    item.status ?? "configured"
-                                  ]}{" "}
-                            ·{" "}
-                            {computers.find((pc) => pc.id === item.computerId)
-                              ?.name ?? item.computerId}{" "}
-                            ·{" "}
-                            {selectedId
-                              ? item.transport
-                              : `已授权 ${item.grants.length} 个机器人`}
-                          </p>
-                          {selectedId && item.checkedAt && (
+                  .map((item) =>
+                    selectedId ? (
+                      <section className="apps-item" key={item.id}>
+                        <div className="apps-item-heading">
+                          <div>
+                            <strong>{item.name}</strong>
                             <p>
-                              上次检查{" "}
-                              {new Date(item.checkedAt).toLocaleString()}
+                              {!item.enabled
+                                ? "已禁用"
+                                : checking === item.id
+                                  ? "检查中…"
+                                  : appsCopy.status[
+                                      item.status ?? "configured"
+                                    ]}{" "}
+                              ·{" "}
+                              {computers.find((pc) => pc.id === item.computerId)
+                                ?.name ?? item.computerId}{" "}
+                              · {item.transport}
                             </p>
-                          )}
-                          {selectedId && item.error && (
-                            <p role="status">{item.error}</p>
-                          )}
-                        </div>
-                        {selectedId ? (
+                            {item.checkedAt && (
+                              <p>
+                                上次检查{" "}
+                                {new Date(item.checkedAt).toLocaleString()}
+                              </p>
+                            )}
+                            {item.error && <p role="status">{item.error}</p>}
+                          </div>
                           <ActionMenu
                             label={`${item.name}的操作`}
                             disabled={busy}
@@ -593,39 +624,23 @@ export function AppsCenter({
                               },
                             ]}
                           />
-                        ) : (
+                        </div>
+
+                        {!item.grants.length && (
+                          <p className="apps-muted">尚未分配机器人</p>
+                        )}
+                        {item.status === "failed" && (
                           <Button
-                            variant="ghost"
-                            aria-label={`查看 ${item.name}`}
-                            data-connection-action={item.id}
-                            onClick={() => {
-                              positions.current[view] =
-                                viewport.current?.scrollTop ?? 0;
-                              source.current = item.id;
-                              setSelectedId(item.id);
-                            }}
+                            variant="secondary"
+                            onClick={() => check(item)}
+                            disabled={busy}
                           >
-                            查看 ›
+                            重试测试
                           </Button>
                         )}
-                      </div>
-
-                      {selectedId && !item.grants.length && (
-                        <p className="apps-muted">尚未分配机器人</p>
-                      )}
-                      {selectedId && item.status === "failed" && (
-                        <Button
-                          variant="secondary"
-                          onClick={() => check(item)}
-                          disabled={busy}
-                        >
-                          重试测试
-                        </Button>
-                      )}
-                      {selectedId && item.transport === "http" && (
-                        <ConnectionLogin item={item} busy={busy} run={run} />
-                      )}
-                      {selectedId && (
+                        {item.transport === "http" && (
+                          <ConnectionLogin item={item} busy={busy} run={run} />
+                        )}
                         <Disclosure
                           label={
                             <>
@@ -703,100 +718,121 @@ export function AppsCenter({
                             );
                           })}
                         </Disclosure>
-                      )}
-                      {selectedId && item.capabilities && (
-                        <p className="apps-muted">
-                          {[
-                            item.capabilities.tools && "工具",
-                            item.capabilities.resources && "资源",
-                            item.capabilities.prompts && "提示词",
-                          ]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </p>
-                      )}
-                    </section>
-                  ))}
-              {loaded && view === "connected" && !items.length && !form && (
-                <p className="apps-muted">尚未添加连接。</p>
-              )}
+                        {item.capabilities && (
+                          <p className="apps-muted">
+                            {[
+                              item.capabilities.tools && "工具",
+                              item.capabilities.resources && "资源",
+                              item.capabilities.prompts && "提示词",
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        )}
+                        <ConnectionTools tools={item.tools} />
+                      </section>
+                    ) : (
+                      <PanelRow
+                        key={item.id}
+                        variant="navigation"
+                        title={item.name}
+                        aria-label={`查看 ${item.name}`}
+                        data-connection-action={item.id}
+                        icon={
+                          <ConnectionIcon
+                            name={item.name}
+                            icon={
+                              catalog.find((app) => app.name === item.name)
+                                ?.icon
+                            }
+                          />
+                        }
+                        description={`${computers.find((pc) => pc.id === item.computerId)?.name ?? item.computerId} · 已授权 ${item.grants.length} 个机器人`}
+                        value={
+                          <>
+                            {item.tools && (
+                              <span>{item.tools.length} 个工具</span>
+                            )}
+                            <ConnectionStatus
+                              status={
+                                item.enabled
+                                  ? (item.status ?? "configured")
+                                  : "disabled"
+                              }
+                              label={
+                                item.enabled
+                                  ? appsCopy.status[item.status ?? "configured"]
+                                  : "已禁用"
+                              }
+                            />
+                          </>
+                        }
+                        onClick={() => {
+                          positions.current[view] =
+                            viewport.current?.scrollTop ?? 0;
+                          source.current = item.id;
+                          setSelectedId(item.id);
+                        }}
+                      />
+                    ),
+                  )}
               {view === "connected" && !form && !selectedId && (
-                <section className="apps-native">
-                  <div className="section-heading">
-                    <Button
-                      variant="ghost"
-                      aria-expanded={nativeOpen}
-                      onClick={() => setNativeOpen((value) => !value)}
-                    >
-                      引擎原生连接 <span className="status-label">只读</span>
-                    </Button>
-                    <ChoicePicker
-                      label="选择机器人"
-                      placeholder="选择机器人"
-                      size="small"
-                      value={nativeBot}
-                      disabled={busy}
-                      items={bots.map((bot) => ({
-                        value: String(bot.id),
-                        label: bot.name,
-                      }))}
-                      onValueChange={(id) => {
-                        setNativeBot(id);
-                        setNativeOpen(true);
-                      }}
-                    />
-                  </div>
-                  {nativeReading && <Loading label="正在读取原生连接" inline />}
+                <>
+                  {nativeReading && !native && (
+                    <Loading label="正在读取原生连接" inline />
+                  )}
                   {nativeError && <p role="alert">{nativeError}</p>}
                   {native && nativeMcpNotice(native) && (
                     <p role="status">{nativeMcpNotice(native)}</p>
                   )}
-                  {native && nativeOpen && (
-                    <>
-                      <p>
-                        {native.provider} ·{" "}
-                        {computers.find((pc) => pc.id === native.computerId)
-                          ?.name ?? native.computerId}{" "}
-                        · 只读
-                      </p>
-                      <p className="apps-muted">
-                        {native.scope === "session"
-                          ? "当前私聊会话"
-                          : "工作目录配置；不代表本轮已连接"}
-                      </p>
-                      {native.inheritance === "selectable" && (
-                        <Checkbox
-                          label="在下一轮沿用原生连接"
-                          checked={native.inherited}
-                          disabled={busy}
-                          onCheckedChange={(enabled) =>
-                            void run(async () => {
-                              const result = await client.mcp.native({
-                                botId: Number(nativeBot),
-                                enabled,
-                              });
-                              nativeStore.receive(result);
-                            })
-                          }
-                        />
-                      )}
-                      {native.items
-                        .filter((item) =>
-                          item.name.toLowerCase().includes(query.toLowerCase()),
-                        )
+                  {native &&
+                    (selectedNative ? (
+                      native.items
+                        .filter((item) => item.name === selectedNative)
                         .map((item) => (
-                          <div className="apps-native-row" key={item.name}>
-                            <strong>{item.name}</strong>
-                            <span>{nativeMcpStatus(item)}</span>
-                            <small>{item.source}</small>
-                          </div>
-                        ))}
-                      {native.status === "complete" && !native.items.length && (
-                        <p className="apps-muted">未发现原生 MCP。</p>
-                      )}
-                    </>
-                  )}
-                </section>
+                          <NativeConnectionDetails
+                            key={item.name}
+                            item={item}
+                            catalog={native}
+                          />
+                        ))
+                    ) : (
+                      <>
+                        <NativeConnections
+                          catalog={native}
+                          query={query}
+                          onSelect={(name) => {
+                            positions.current[view] =
+                              viewport.current?.scrollTop ?? 0;
+                            source.current = `native:${name}`;
+                            setSelectedNative(name);
+                          }}
+                        />
+                        {native.inheritance === "selectable" && (
+                          <Checkbox
+                            label="在下一轮沿用原生连接"
+                            checked={native.inherited}
+                            disabled={busy}
+                            onCheckedChange={(enabled) =>
+                              void run(async () => {
+                                nativeStore.receive(
+                                  await client.mcp.native({
+                                    botId: Number(nativeBot),
+                                    enabled,
+                                  }),
+                                );
+                              })
+                            }
+                          />
+                        )}
+                      </>
+                    ))}
+                  {loaded &&
+                    !items.length &&
+                    native?.status === "complete" &&
+                    !native.items.length &&
+                    !query && <p className="apps-muted">尚未添加连接。</p>}
+                </>
               )}
             </>
           )}

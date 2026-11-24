@@ -726,6 +726,14 @@ export const claudeProvider: EngineProvider = {
             status: z.string(),
             scope: z.string().optional(),
             error: z.string().optional(),
+            tools: z
+              .array(
+                z.object({
+                  name: z.string(),
+                  description: z.string().optional(),
+                }),
+              )
+              .optional(),
           }),
           raw.mcpServers,
         );
@@ -743,6 +751,7 @@ export const claudeProvider: EngineProvider = {
                   : null,
             status: item.status,
             error: item.error,
+            tools: item.tools,
           })),
           "session",
           result.errors,

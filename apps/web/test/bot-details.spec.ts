@@ -739,6 +739,7 @@ test("creation retries keep one contact and themed dialogs work on narrow screen
   service,
   page,
 }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(service.url);
   const trigger = page.getByRole("button", { name: "新建", exact: true });
   await trigger.focus();
