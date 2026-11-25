@@ -5,15 +5,35 @@ import { taskReview } from "./task-score.ts";
 
 export const taskReport = z
   .object({
-    version: z.literal(1),
+    version: z.union([z.literal(1), z.literal(2)]),
+    taskHash: z.string().optional(),
+    grading: z
+      .object({
+        hash: z.string(),
+        nativeVersion: z.string().nullable().optional(),
+        provider: z.string(),
+        model: z.string(),
+        options: z.record(z.string(), z.string()),
+      })
+      .optional(),
     suite: z.literal("tasks-1"),
     suiteHash: z.string().min(1),
     commit: z.string().min(1),
     dirty: z.boolean(),
     createdAt: z.string(),
+    gradedAt: z.string().optional(),
+    sourceReport: z.object({ path: z.string(), hash: z.string() }).optional(),
+    experiment: z
+      .object({
+        id: z.string(),
+        factor: z.enum(["code", "model", "harness", "combination"]),
+        arm: z.enum(["before", "after"]),
+        planHash: z.string(),
+      })
+      .optional(),
     conditions: z.object({
-      model: z.literal("gpt-6.1-terra"),
-      harness: z.literal("codex"),
+      model: z.string().min(1),
+      harness: z.string().min(1),
       options: z.record(z.string(), z.string()),
       os: z.string(),
       arch: z.string(),
@@ -53,6 +73,26 @@ export const taskReport = z
         evidenceHash: z.string().nullable(),
         inventory: z.record(z.string(), z.string()),
         nativeVersion: z.string().nullable(),
+        actualModel: z.string().nullable().optional(),
+        judgment: z
+          .object({
+            directory: z.string(),
+            hash: z.string(),
+            failure: z.string().nullable(),
+            tokens: z.number().nullable(),
+            cost: z.number().nullable(),
+            knownCost: z.number().nonnegative(),
+            cleanup: z
+              .object({
+                before: z.number(),
+                after: z.number(),
+                released: z.number(),
+                freeBefore: z.number(),
+                freeAfter: z.number(),
+              })
+              .nullable(),
+          })
+          .optional(),
         failure: z.string().nullable(),
         cleanup: z
           .object({
@@ -77,12 +117,18 @@ export const taskReport = z
         knownCost: z.number().nonnegative(),
         freeAtStart: z.number().nonnegative().nullable(),
         elapsedMs: z.number().nonnegative(),
+        dispatch: z.number().int().nonnegative().optional(),
         review: taskReview.optional(),
       }),
     ),
     stopped: z.string().nullable(),
   })
   .superRefine((report, ctx) => {
+    if (report.version === 2 && (!report.grading || !report.taskHash))
+      ctx.addIssue({
+        code: "custom",
+        message: "Missing task or grader identity",
+      });
     const plan = report.plan.map((item) => `${item.id}:${item.repeat}`);
     const seen = new Set<string>();
     if (new Set(plan).size !== plan.length)
@@ -122,7 +168,18 @@ export function reportTotals(report: TaskReport) {
     0,
   );
   const unknownCost = report.trials.filter((item) => item.cost === null).length;
+  const judgments = report.trials.flatMap((t) =>
+    t.judgment ? [t.judgment] : [],
+  );
+  const judgeKnownCost = judgments.reduce((sum, j) => sum + j.knownCost, 0);
+  const judgeUnknownCost = judgments.filter((j) => j.cost === null).length;
   return {
+    judgeKnownCost,
+    judgeUnknownCost,
+    judgeTotalCost: judgeUnknownCost ? null : judgeKnownCost,
+    judgeTokens: judgments.some((j) => j.tokens === null)
+      ? null
+      : judgments.reduce((sum, j) => sum + (j.tokens ?? 0), 0),
     planned: report.plan.length,
     ran: report.trials.length,
     passed,
@@ -146,11 +203,15 @@ export function reportTotals(report: TaskReport) {
 }
 export function reportExitCode(report: TaskReport) {
   const totals = reportTotals(report);
-  return totals.failed
-    ? 1
-    : totals.passed === totals.planned && !report.stopped
-      ? 0
-      : 2;
+  if (
+    report.stopped ||
+    totals.blocked ||
+    totals.unreviewed ||
+    totals.notRun ||
+    report.trials.some((t) => !t.score || t.judgment?.failure)
+  )
+    return 2;
+  return totals.failed ? 1 : totals.passed === totals.planned ? 0 : 2;
 }
 const cell = (value: string) =>
   value.replaceAll("|", "\\|").replaceAll("\n", " ");
@@ -163,6 +224,8 @@ export function reportMarkdown(report: TaskReport) {
     "",
     `Planned ${totals.planned}; ran ${totals.ran}; passed ${totals.passed}; failed ${totals.failed}; blocked ${totals.blocked}; unreviewed ${totals.unreviewed}; not run ${totals.notRun}.`,
     `Cost USD: ${totals.totalCost ?? "unknown"}. Known subtotal: ${totals.knownCost}. Unknown trials: ${totals.unknownCost}.`,
+    `Grader: ${report.grading?.hash ?? "legacy"}. Task version: ${report.taskHash ?? report.suiteHash}.`,
+    `Judge USD: ${totals.judgeTotalCost ?? "unknown"}. Known subtotal: ${totals.judgeKnownCost}. Unknown judgments: ${totals.judgeUnknownCost}. Tokens: ${totals.judgeTokens ?? "unknown"}.`,
     `Stop: ${report.stopped ?? "none"}.`,
     "",
     "| Task | Trials | Passed | Median ms |",
@@ -197,6 +260,17 @@ export function reportMarkdown(report: TaskReport) {
           ", ",
         )} | ${cell(item.failure ?? "")} | ${item.cleanup?.released ?? "unknown"} |`,
     );
+  for (const trial of report.trials) {
+    if (trial.score?.review)
+      rows.push(
+        "",
+        `Review ${trial.id}/${trial.repeat}: ${cell(trial.score.review.evidence)}`,
+      );
+    if (trial.judgment)
+      rows.push(
+        `Judgment: ${cell(trial.judgment.directory)}. Failure: ${cell(trial.judgment.failure ?? "none")}.`,
+      );
+  }
   rows.push(
     "",
     "Three repeats describe this sample. They do not establish precise reliability. Missing cost remains unknown.",
@@ -204,14 +278,66 @@ export function reportMarkdown(report: TaskReport) {
   );
   return rows.join("\n");
 }
-export function compareReports(before: TaskReport, after: TaskReport) {
+export const experimentFactor = z.enum([
+  "code",
+  "model",
+  "harness",
+  "combination",
+]);
+export type ExperimentFactor = z.infer<typeof experimentFactor>;
+export function compareReports(
+  before: TaskReport,
+  after: TaskReport,
+  factor: ExperimentFactor = "code",
+) {
   if (before.dirty || after.dirty)
     throw new Error("Compare committed versions with clean working trees");
-  if (before.commit === after.commit)
-    throw new Error("Comparison requires two different commits");
+  if (
+    factor === "code"
+      ? before.commit === after.commit
+      : before.commit !== after.commit
+  )
+    throw new Error("Comparison commit does not match declared factor");
+  const a = { ...before.conditions };
+  const b = { ...after.conditions };
+  if (factor === "model" || factor === "combination") {
+    a.model = b.model;
+    a.options = b.options;
+  }
+  if (factor === "harness" || factor === "combination") {
+    a.harness = b.harness;
+    if (factor === "harness") a.model = b.model;
+    a.options = b.options;
+  }
+  if (
+    factor === "model" &&
+    before.conditions.model === after.conditions.model &&
+    isDeepStrictEqual(before.conditions.options, after.conditions.options)
+  )
+    throw new Error("Model factor requires a changed model");
+  if (
+    (factor === "harness" || factor === "combination") &&
+    before.conditions.harness === after.conditions.harness &&
+    before.conditions.model === after.conditions.model &&
+    isDeepStrictEqual(before.conditions.options, after.conditions.options)
+  )
+    throw new Error("Experiment requires a changed configuration");
+  if (
+    factor === "harness" &&
+    (before.conditions.harness === after.conditions.harness ||
+      before.trials.some((t) => !t.actualModel) ||
+      after.trials.some((t) => !t.actualModel) ||
+      !isDeepStrictEqual(
+        before.trials.map((t) => t.actualModel),
+        after.trials.map((t) => t.actualModel),
+      ))
+  )
+    throw new Error("Harness factor requires verified identical native models");
   if (
     before.suiteHash !== after.suiteHash ||
-    !isDeepStrictEqual(before.conditions, after.conditions) ||
+    !isDeepStrictEqual(a, b) ||
+    !isDeepStrictEqual(before.grading, after.grading) ||
+    before.taskHash !== after.taskHash ||
     !isDeepStrictEqual(before.plan, after.plan)
   )
     throw new Error("Comparison conditions differ");
@@ -226,7 +352,9 @@ export function compareReports(before: TaskReport, after: TaskReport) {
     [...new Set(report.trials.map((item) => item.nativeVersion))].sort();
   if (
     versions(before).includes(null) ||
-    !isDeepStrictEqual(versions(before), versions(after))
+    versions(after).includes(null) ||
+    ((factor === "code" || factor === "model") &&
+      !isDeepStrictEqual(versions(before), versions(after)))
   )
     throw new Error("Harness versions differ or are unknown");
   const tasks = [...new Set(before.plan.map((item) => item.id))].map((id) => {
@@ -242,13 +370,25 @@ export function compareReports(before: TaskReport, after: TaskReport) {
       review: [...before.trials, ...after.trials].some(
         (item) =>
           item.id === id &&
-          (item.failure || item.score?.completion === "unreviewed"),
+          (item.status === "blocked" ||
+            !item.score ||
+            item.score.completion === "unreviewed" ||
+            item.judgment?.failure),
       )
         ? "required"
         : "complete",
     };
   });
   return {
+    factor,
+    interleaved: Boolean(
+      before.experiment &&
+        after.experiment &&
+        before.experiment.id === after.experiment.id &&
+        before.experiment.planHash === after.experiment.planHash &&
+        before.trials.every((t, i) => t.dispatch === i * 2 + (i % 2)) &&
+        after.trials.every((t, i) => t.dispatch === i * 2 + 1 - (i % 2)),
+    ),
     before: reportTotals(before),
     after: reportTotals(after),
     tasks,

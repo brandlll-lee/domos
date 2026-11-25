@@ -41,6 +41,14 @@ export const taskEvidence = z.object({
   botId: z.number().int(),
   version: z.string().nullable(),
   model: z.string().nullable(),
+  actualModels: z
+    .array(
+      z.object({
+        provider: z.string().nullable(),
+        model: z.string().nullable(),
+      }),
+    )
+    .optional(),
   startedAt: z.number(),
   endedAt: z.number(),
   failure: z

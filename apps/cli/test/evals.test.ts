@@ -238,3 +238,29 @@ test("computer single and suite scoring report unexercised checks", async () => 
       exec(process.execPath, ["apps/cli/src/eval-computer.ts", ...args]),
     ).rejects.toMatchObject({ code: 2 });
 });
+
+test("task model selection rejects foreign defaults and malformed native options", async () => {
+  for (const args of [
+    ["--harness", "pi"],
+    [
+      "--harness",
+      "pi",
+      "--model",
+      "deepseek/deepseek-flash",
+      "--options",
+      '{"thinkingLevel":1}',
+    ],
+  ])
+    await expect(
+      exec(process.execPath, ["apps/cli/src/eval-tasks.ts", ...args]),
+    ).rejects.toMatchObject({ code: 2 });
+  const { stdout } = await exec(process.execPath, [
+    "apps/cli/src/eval-tasks.ts",
+    "--list",
+    "--harness",
+    "pi",
+    "--model",
+    "deepseek/deepseek-flash",
+  ]);
+  expect(JSON.parse(stdout).cases).toHaveLength(16);
+});

@@ -16,6 +16,7 @@ import { parseConfig } from "../runtime/config.ts";
 import { memoryCases } from "./memory-cases.ts";
 import { readMemoryTrace } from "./memory-trace.ts";
 import { monitoringInstructions, taskCase, taskFiles } from "./task-cases.ts";
+import { validateEvalConfig } from "./task-config.ts";
 import { taskFixture } from "./task-fixture.ts";
 import { taskEvidence } from "./task-score.ts";
 
@@ -69,10 +70,7 @@ process.once("message", async (input: TaskWorkerInput) => {
       bounded,
     );
     version = catalog.version ?? null;
-    if (!catalog.ready || catalog.authenticated === false)
-      throw new Error(catalog.message ?? "Harness unavailable");
-    if (!catalog.models.some((model) => model.id === input.config.model))
-      throw new Error(`Model unavailable: ${input.config.model}`);
+    validateEvalConfig(input.config, catalog);
     await engines.configure(
       botId,
       {
@@ -318,16 +316,15 @@ process.once("message", async (input: TaskWorkerInput) => {
           if (page.next === null) break;
           offset = page.next;
         } while (offset > 0);
-        const usage = (
-          await runtime.engines.usageSummary(
-            [botId],
-            {},
-            "model",
-            "tokens",
-            20,
-            context,
-          )
-        ).totals;
+        const usageReport = await runtime.engines.usageSummary(
+          [botId],
+          {},
+          "model",
+          "tokens",
+          20,
+          context,
+        );
+        const usage = usageReport.totals;
         const workspace = await runtime.computer.workspace(botId, context);
         const result = taskEvidence.parse({
           workspace: Object.fromEntries(
@@ -357,6 +354,7 @@ process.once("message", async (input: TaskWorkerInput) => {
           botId,
           version,
           model: input.config.model,
+          actualModels: usageReport.options,
           startedAt,
           endedAt: Date.now(),
           failure,

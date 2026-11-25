@@ -99,3 +99,14 @@ export async function evidenceInventory(
   await walk(directory);
   return inventory;
 }
+
+export function evaluationRoot(path: string, repository: string) {
+  const root = resolve(path);
+  const local = relative(repository, root);
+  if (
+    !local ||
+    (!local.startsWith(`..${sep}`) && local !== ".." && !isAbsolute(local))
+  )
+    throw new Error("Keep evaluation evidence outside the repository");
+  return root;
+}

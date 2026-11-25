@@ -1,9 +1,21 @@
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, onTestFinished, test } from "vitest";
+import {
+  calibrationSamples,
+  sampleHash,
+  verifyCalibration,
+} from "../src/evals/task-calibration.ts";
 import { taskCases, taskFiles } from "../src/evals/task-cases.ts";
+import { evalConfig, validateEvalConfig } from "../src/evals/task-config.ts";
 import { contactsCsv, taskFixture } from "../src/evals/task-fixture.ts";
+import {
+  graderHash,
+  gradeSemantics,
+  semanticInput,
+} from "../src/evals/task-grading.ts";
 import {
   compareReports,
   reportExitCode,
@@ -365,4 +377,175 @@ test("cleanup frees owned caches and preserves database and Files originals", as
   expect(Object.keys(inventory).some((path) => path.includes("browser"))).toBe(
     false,
   );
+});
+
+test("semantic grading validates conditions and evidence, and preserves hard failures", () => {
+  const e = reference("H2");
+  e.trace.answers = [
+    {
+      prompt: "执行顺序？",
+      requestId: "eval:H2:0",
+      messages: [{ text: "先更新界面，再异步清理文件。原始 entryId: 1" }],
+    },
+  ];
+  first(e.trace.messages).message.role = "user";
+  first(e.trace.messages).message.content = [
+    { type: "text", text: "附件移除时，先更新界面，再异步清理文件。" },
+  ];
+  const input = semanticInput(e);
+  const result = {
+    conditions: input.criteria.map((c) => ({
+      id: c.id,
+      verdict: "pass",
+      reason: "顺序正确",
+      evidence: ["answer:0:0"],
+    })),
+  };
+  expect(gradeSemantics(e, result).completion).toBe("pass");
+  first(result.conditions).verdict = "fail";
+  expect(gradeSemantics(e, result).completion).toBe("fail");
+  first(result.conditions).verdict = "unknown";
+  expect(gradeSemantics(e, result).completion).toBe("unreviewed");
+  expect(() => gradeSemantics(e, { conditions: [] })).toThrow();
+  first(result.conditions).evidence = ["entry:999"];
+  expect(() => gradeSemantics(e, result)).toThrow();
+  expect(() => gradeSemantics(e, "pass")).toThrow();
+  e.fixture.forbidden = 1;
+  expect(gradeSemantics(e, null).completion).toBe("fail");
+});
+
+test("incomplete batches take priority over known task failures", () => {
+  const r = report();
+  r.trials.push({
+    id: "F1",
+    repeat: 1,
+    directory: "evidence",
+    status: "blocked",
+    evidenceHash: null,
+    inventory: {},
+    nativeVersion: null,
+    failure: "environment",
+    cleanup: null,
+    score: { checks: { value: false }, completion: "fail", review: null },
+    tokens: null,
+    cost: null,
+    knownCost: 0,
+    freeAtStart: null,
+    elapsedMs: 1,
+  });
+  r.trials.push({ ...first(r.trials), repeat: 2, status: "done" });
+  expect(reportExitCode(r)).toBe(2);
+});
+
+test("model experiments allow one changed model at the same commit", () => {
+  const a = report();
+  const b = structuredClone(a);
+  a.plan = [];
+  b.plan = [];
+  b.conditions.model = "deepseek/deepseek-flash";
+  expect(compareReports(a, b, "model").factor).toBe("model");
+  b.conditions.harness = "pi";
+  expect(() => compareReports(a, b, "model")).toThrow();
+  expect(compareReports(a, b, "combination").factor).toBe("combination");
+});
+
+test("history citations must point to real supporting user entries", () => {
+  const e = reference("H2");
+  e.trace.answers = [
+    {
+      prompt: "顺序",
+      requestId: "eval:H2:0",
+      messages: [{ text: "先更新界面，再异步清理文件。entryId: 999" }],
+    },
+  ];
+  const raw = {
+    conditions: semanticInput(e).criteria.map((c) => ({
+      id: c.id,
+      verdict: "pass",
+      reason: "正确",
+      evidence: ["answer:0:0"],
+    })),
+  };
+  expect(gradeSemantics(e, raw).completion).toBe("fail");
+});
+
+test("native configuration retains Pi options and rejects unsupported catalog values", () => {
+  const config = evalConfig.parse({
+    provider: "pi",
+    model: "deepseek/deepseek-flash",
+    options: { thinkingLevel: "low" },
+  });
+  const catalog = {
+    ready: true,
+    authenticated: true,
+    models: [
+      {
+        id: config.model,
+        effort: {
+          id: "thinkingLevel",
+          label: "thinking",
+          value: "",
+          options: [{ id: "low", label: "low" }],
+        },
+      },
+    ],
+  };
+  expect(() => validateEvalConfig(config, catalog)).not.toThrow();
+  expect(() =>
+    validateEvalConfig({ ...config, options: { effort: "low" } }, catalog),
+  ).toThrow("option");
+  expect(() =>
+    validateEvalConfig({ ...config, model: "gpt-6.1-terra" }, catalog),
+  ).toThrow("Model");
+  expect(() =>
+    validateEvalConfig(config, { ...catalog, authenticated: false }),
+  ).toThrow();
+  expect(calibrationSamples).toHaveLength(24);
+  for (const s of calibrationSamples)
+    expect(taskEvidence.parse(s.evidence).id).toBe(s.evidence.id);
+});
+
+test("calibration rejects a claimed pass when its retained judgment failed", async () => {
+  const root = await mkdtemp(join(tmpdir(), "domos-calibration-test-"));
+  onTestFinished(async () => {
+    const { rm } = await import("node:fs/promises");
+    await rm(root, { recursive: true, force: true });
+  });
+  const results = [];
+  for (const sample of calibrationSamples.filter((s) => s.set === "holdout"))
+    for (const repeat of [1, 2, 3]) {
+      const directory = join(root, `${sample.id}-${repeat}`);
+      await mkdir(directory);
+      const bytes = JSON.stringify({
+        result: { version: "1.5.2", failure: null, tokens: 1 },
+        score: { completion: sample.expected === "pass" ? "fail" : "pass" },
+      });
+      await writeFile(join(directory, "judgment.json"), bytes);
+      results.push({
+        id: sample.id,
+        repeat,
+        expected: sample.expected,
+        completion: sample.expected,
+        matched: true,
+        directory,
+        hash: createHash("sha256").update(bytes).digest("hex"),
+        failure: null,
+        tokens: 1,
+        cost: 0,
+        knownCost: 0,
+      });
+    }
+  const path = join(root, "report.json");
+  await writeFile(
+    path,
+    JSON.stringify({
+      graderHash,
+      sampleHash,
+      set: "holdout",
+      labelReview: "spec-derived; independent human review pending",
+      results,
+      stopped: null,
+    }),
+  );
+  await expect(verifyCalibration(path)).rejects.toThrow("judgment");
 });

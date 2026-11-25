@@ -123,7 +123,7 @@ export const taskCases: readonly TaskCase[] = [
     id: "R2",
     title: "拒绝例行任务",
     prompts: [
-      "创建名为 report-declined 的一次性例行任务，时区 UTC，时间 {{at}}。任务生成 declined.txt。我会在确认卡拒绝，请尊重拒绝。",
+      "创建名为 report-declined 的一次性例行任务，时区 UTC，时间 {{at}}。任务生成 declined.txt。请通过确认卡请求创建。",
     ],
     expected: "审批拒绝，没有启用任务、运行和 declined.txt。",
   },
