@@ -52,6 +52,8 @@ pnpm eval:memory --trace memory-report.json --output memory-scored.json
 
 Offline scoring performs no inference. A failed execution remains failed even when its retained state passes some rules. Exit 0 requires every executed case to pass its deterministic rules with no execution failure. Exit 1 reports a rule or execution failure. Exit 2 reports invalid configuration or runner failure.
 
+Offline imports validate the executed cases and grading fields. A case must contain a valid result or a recorded failure. Missing results cannot pass grading.
+
 Read three results separately: CI rule regression, offline trajectory rules and manually reviewed real task success. Reports mark answer review and task success as `unreviewed`. There is no implicit model judge or judge cost. Inspect execution, native errors and budget failures before attributing failure to a model. Native provider rejection and missing login are environment issues. The report preserves native errors rather than guessing their cause.
 
 Keep the keyword baseline. Add a rebuildable semantic index only after a versioned set of real questions shows important missed retrievals and a controlled comparison improves them. Track correctness, evidence accuracy, unintended writes, latency and reported subject usage separately.

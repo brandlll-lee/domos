@@ -1,13 +1,55 @@
-import type { MemoryEntry } from "../work/memory.ts";
+import { z } from "zod";
+import { memoryCases } from "./memory-cases.ts";
 
-export type MemoryTrial = {
-  id: string;
-  answer: string;
-  memories: MemoryEntry[];
-  calls: { name: string; input: unknown; output: unknown; isError: boolean }[];
-  sourceIds: number[];
-  privateMarker: string;
-};
+const memoryTrial = z.looseObject({
+  id: z.enum(memoryCases.map((item) => item.id)),
+  answer: z.string(),
+  memories: z.array(
+    z.looseObject({
+      id: z.string(),
+      text: z.string(),
+      revision: z.number().int().nonnegative(),
+      origin: z.enum(["user", "tool", "inference", "manual"]).optional(),
+      evidence: z
+        .array(
+          z.object({
+            conversationId: z.number().int(),
+            entryId: z.number().int(),
+            quote: z.string(),
+          }),
+        )
+        .optional(),
+    }),
+  ),
+  calls: z.array(
+    z.looseObject({
+      name: z.string(),
+      input: z.unknown(),
+      output: z.unknown(),
+      isError: z.boolean(),
+    }),
+  ),
+  sourceIds: z.array(z.number().int()),
+  privateMarker: z.string().min(1),
+});
+export type MemoryTrial = z.infer<typeof memoryTrial>;
+
+export const memoryReport = z.looseObject({
+  subject: z
+    .array(
+      z
+        .looseObject({
+          result: memoryTrial.optional(),
+          failure: z.record(z.string(), z.unknown()).optional(),
+          score: z.object({ passed: z.number(), total: z.number() }).optional(),
+        })
+        .refine(
+          (item) => item.result !== undefined || item.failure !== undefined,
+          "Missing execution result or failure",
+        ),
+    )
+    .min(1),
+});
 
 export function evaluateMemory(trial: MemoryTrial) {
   const rules: Record<string, boolean> = {};

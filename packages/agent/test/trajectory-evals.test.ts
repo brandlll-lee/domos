@@ -74,6 +74,8 @@ test("task traces retain parameters, receipt times, errors, cost and incomplete 
   const trace = readTaskTrace(path, 1);
   expect(trace).toMatchObject({
     coverage: "complete",
+    modelResponses: null,
+    assistantTextMessages: 0,
     completion: "unreviewed",
     costUsd: 0.02,
     calls: [

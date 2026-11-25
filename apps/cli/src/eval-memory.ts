@@ -9,6 +9,7 @@ import { memoryCases } from "../../../packages/agent/src/evals/memory-cases.ts";
 import {
   evaluateMemory,
   type MemoryTrial,
+  memoryReport,
 } from "../../../packages/agent/src/evals/memory-score.ts";
 import type { MemoryWorkerInput } from "../../../packages/agent/src/evals/memory-worker.ts";
 
@@ -68,28 +69,19 @@ async function main() {
     },
   });
   if (values.trace) {
-    const report = JSON.parse(await readFile(values.trace, "utf8")) as {
-      subject: {
-        result?: MemoryTrial;
-        failure?: unknown;
-        score?: ReturnType<typeof evaluateMemory>;
-      }[];
-    };
-    if (!Array.isArray(report.subject) || !report.subject.length)
-      throw new Error("Trace must contain executed memory cases.");
-    for (const item of report.subject)
-      if (
-        item.result &&
-        !memoryCases.some((test) => test.id === item.result?.id)
-      )
-        throw new Error(`Unknown trace case: ${item.result.id}`);
+    const report = memoryReport.parse(
+      JSON.parse(await readFile(values.trace, "utf8")),
+    );
     for (const item of report.subject)
       item.score = item.result ? evaluateMemory(item.result) : undefined;
     const output = resolve(values.output ?? `${values.trace}.scored.json`);
     await writeFile(output, `${JSON.stringify(report, null, 2)}\n`);
     console.log(output);
     process.exitCode = report.subject.every(
-      (item) => !item.failure && item.score?.passed === item.score?.total,
+      (item) =>
+        !item.failure &&
+        item.score !== undefined &&
+        item.score.passed === item.score.total,
     )
       ? 0
       : 1;

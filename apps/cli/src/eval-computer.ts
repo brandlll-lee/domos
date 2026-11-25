@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import {
+  computerExitCode,
   computerTrace,
   evaluateComputer,
 } from "../../../packages/agent/src/evals/computer.ts";
@@ -48,11 +49,9 @@ async function main() {
     );
     const result = evaluateTrajectories(loaded);
     console.log(JSON.stringify(result, null, 2));
-    process.exitCode = result.cases.every(
-      (item) => item.exactMatch && item.passed === item.exercised,
-    )
-      ? 0
-      : 1;
+    process.exitCode = result.cases.some((item) => !item.exactMatch)
+      ? 1
+      : computerExitCode(result.cases);
     return;
   }
   const native = values.task || values["domos-db"] || values["opencode-db"];
@@ -87,12 +86,7 @@ async function main() {
       );
   const result = evaluateComputer(trace);
   console.log(JSON.stringify(result, null, 2));
-  process.exitCode =
-    result.passed !== result.exercised
-      ? 1
-      : result.exercised !== result.total
-        ? 2
-        : 0;
+  process.exitCode = computerExitCode([result]);
 }
 
 main().catch((error) => {

@@ -65,6 +65,8 @@ Work 的“诊断信息”复用每轮执行记录。它保留内部执行任务
 
 退出码：`0` 表示三项流程规则通过；`1` 表示规则发现问题；`2` 表示数据无效或存在未覆盖项目。它们不替代人工任务验收。
 
+单条和批量评分使用相同覆盖规则。批量工具匹配失败返回 `1`；工具匹配成功但流程未覆盖时返回 `2`。Domos 事件导入只统计 `assistantTextMessages`，不把文字消息数当作模型轮数；`modelResponses` 保持 `null`。OpenCode 原生消息读取保留其模型响应计数。
+
 ## 回归流程
 
 浏览器执行契约见 [Browser Use](browser-use.md)。脱敏基线保存在 `packages/agent/test/fixtures/browser-failures.json`。它记录取消后页面丢失、超时后动作继续、审批回调缺失和跨服务接管问题。它是驱动基线，不是在线 Agent 任务成功率。

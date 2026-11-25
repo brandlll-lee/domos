@@ -82,7 +82,8 @@ export function readTaskTrace(path: string, taskId: number): ComputerTrace {
           : "excerpt",
       startedAt: task.startedAt ?? null,
       endedAt: task.endedAt ?? null,
-      modelResponses: rows.filter(
+      modelResponses: null,
+      assistantTextMessages: rows.filter(
         (message) =>
           message.role === "assistant" &&
           !message.pending &&

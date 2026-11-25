@@ -9,6 +9,7 @@ export const computerTrace = z
     startedAt: z.number().finite().nullable(),
     endedAt: z.number().finite().nullable(),
     modelResponses: z.number().int().nonnegative().nullable(),
+    assistantTextMessages: z.number().int().nonnegative().optional(),
     completion: z.enum(["pass", "fail", "unreviewed"]),
     costUsd: z.number().finite().nonnegative().nullable().optional(),
     calls: z.array(
@@ -53,6 +54,13 @@ export const computerTrace = z
     "Calls must fit inside the task interval",
   );
 export type ComputerTrace = z.infer<typeof computerTrace>;
+
+export function computerExitCode(
+  results: { passed: number; exercised: number; total: number }[],
+) {
+  if (results.some((item) => item.passed !== item.exercised)) return 1;
+  return results.some((item) => item.exercised !== item.total) ? 2 : 0;
+}
 
 export function evaluateComputer(input: unknown) {
   const trace = computerTrace.parse(input);
@@ -181,6 +189,7 @@ export function evaluateComputer(input: unknown) {
           trace.calls.filter((call) => call.failed !== undefined).length
         : null,
       modelResponses: trace.modelResponses,
+      assistantTextMessages: trace.assistantTextMessages,
       toolTimeMs: trace.coverage === "complete" ? toolTimeMs : null,
       outsideToolsMs:
         trace.coverage === "complete"
