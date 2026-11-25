@@ -26,6 +26,7 @@ jobs:
       sandbox: ${{ steps.scope.outputs.sandbox }}
       full: ${{ steps.scope.outputs.full }}
       web_os: ${{ steps.scope.outputs.web_os }}
+      evals: ${{ steps.scope.outputs.evals }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -45,8 +46,11 @@ jobs:
       - if: steps.scope.outputs.code == 'true'
         run: pnpm typecheck
       - name: Verify platform-independent regressions
-        if: steps.scope.outputs.code == 'true'
+        if: steps.scope.outputs.code == 'true' && steps.scope.outputs.evals != 'true'
         run: pnpm test:ci unit --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml
+      - name: Verify evaluation contracts
+        if: steps.scope.outputs.evals == 'true'
+        run: pnpm test:ci evals --reporter=default --reporter=junit --outputFile.junit=test-results/evals.xml
       - uses: actions/upload-artifact@v6
         if: always()
         with:
@@ -90,7 +94,7 @@ jobs:
           if-no-files-found: ignore
   web:
     needs: check
-    if: needs.check.outputs.code == 'true'
+    if: needs.check.outputs.code == 'true' && needs.check.outputs.evals != 'true'
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     strategy:
@@ -133,7 +137,7 @@ jobs:
       web-full: ${{ needs.check.outputs.full == 'true' }}
   desktop:
     needs: check
-    if: needs.check.outputs.code == 'true'
+    if: needs.check.outputs.code == 'true' && needs.check.outputs.evals != 'true'
     timeout-minutes: 15
     runs-on: windows-latest
     steps:

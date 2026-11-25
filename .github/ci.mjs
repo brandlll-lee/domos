@@ -6,6 +6,31 @@ const platforms = ["ubuntu-latest", "windows-latest", "macos-latest"];
 const flags = ["code", "native", "input", "package", "sandbox"];
 
 export function scope(paths, full = false) {
+  const evalPath = (path) =>
+    /^(packages\/agent\/(src\/evals\/|test\/(.*eval.*|memory-trace)\.test\.ts$)|apps\/cli\/(src\/eval-[^/]+\.ts$|test\/evals\.test\.ts$))/.test(
+      path,
+    );
+  const evals =
+    !full &&
+    paths.some(evalPath) &&
+    paths.every(
+      (path) =>
+        evalPath(path) ||
+        /^(AGENTS\.md|\.gitignore|docs\/.*\.md|\.github\/(ci\.(test\.)?mjs|workflows\/checks\.yml))$/.test(
+          path,
+        ),
+    );
+  if (evals)
+    return {
+      code: true,
+      native: false,
+      input: false,
+      package: false,
+      sandbox: false,
+      full: false,
+      web_os: platforms.slice(0, 1),
+      evals: true,
+    };
   const selected = Object.fromEntries(flags.map((flag) => [flag, full]));
   for (const path of paths) {
     if (/^(AGENTS\.md|README[^/]*\.md|docs\/.*\.md)$/.test(path)) continue;
@@ -64,6 +89,7 @@ export function scope(paths, full = false) {
     ...selected,
     full,
     web_os: full ? platforms : platforms.slice(0, 1),
+    evals: false,
   };
 }
 
@@ -81,6 +107,14 @@ export function changedPaths(base, head, cwd) {
 }
 
 export const suites = {
+  evals: [
+    "packages/agent/test/task-evals.test.ts",
+    "packages/agent/test/memory-eval.test.ts",
+    "packages/agent/test/memory-trace.test.ts",
+    "packages/agent/test/computer-evals.test.ts",
+    "packages/agent/test/trajectory-evals.test.ts",
+    "apps/cli/test/evals.test.ts",
+  ],
   native: [
     "packages/agent/test/harness-process.test.ts",
     "packages/agent/test/harness-protocols.test.ts",
@@ -103,9 +137,9 @@ export function report(results) {
   const expected = {
     check: true,
     native: scope.native === "true",
-    web: scope.code === "true",
+    web: scope.code === "true" && scope.evals !== "true",
     "computer-input": scope.input === "true",
-    desktop: scope.code === "true",
+    desktop: scope.code === "true" && scope.evals !== "true",
     sandbox: scope.sandbox === "true",
   };
   const rows = ["| Check | Result |", "| --- | --- |"];
@@ -134,8 +168,9 @@ if (
       throw new Error(`Unknown test suite: ${suite}`);
     const files =
       suite === "unit"
-        ? Object.values(suites)
-            .flat()
+        ? Object.entries(suites)
+            .filter(([name]) => name !== "evals")
+            .flatMap(([, files]) => files)
             .map((path) => `--exclude=${path}`)
         : suites[suite];
     const pnpm = process.env.npm_execpath;

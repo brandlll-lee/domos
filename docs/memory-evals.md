@@ -1,5 +1,7 @@
 # Memory verification
 
+For repeated file, history, browser and routine tasks, see [Task evals](task-evals.md).
+
 Memory uses the existing Durable store, shared product tools and native Harness adapters. The full chat archive remains the evidence source. The chat index is rebuildable. There is no semantic index or synonym dictionary.
 
 ## Rule regression

@@ -7,6 +7,32 @@ import { expect, onTestFinished, test } from "vitest";
 
 const exec = promisify(execFile);
 
+test("task CLI lists executable cases and rejects invalid inputs before dispatch", async () => {
+  const command = ["apps/cli/src/eval-tasks.ts"];
+  const listed = JSON.parse(
+    (await exec(process.execPath, [...command, "--list"])).stdout,
+  );
+  expect(listed.cases).toHaveLength(16);
+  expect(
+    new Set(listed.cases.map((item: { id: string }) => item.id)).size,
+  ).toBe(16);
+  for (const args of [
+    ["--cases", "missing"],
+    ["--repeats", "0"],
+    ["--root", process.cwd()],
+  ])
+    await expect(
+      exec(process.execPath, [...command, ...args]),
+    ).rejects.toMatchObject({ code: 2 });
+  const root = await mkdtemp(join(tmpdir(), "domos-task-report-test-"));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
+  const path = join(root, "empty.json");
+  await writeFile(path, "{}");
+  await expect(
+    exec(process.execPath, [...command, "--trace", path]),
+  ).rejects.toMatchObject({ code: 2 });
+});
+
 test("memory scoring rejects missing and malformed execution results", async () => {
   const root = await mkdtemp(join(tmpdir(), "domos-eval-cli-"));
   onTestFinished(() => rm(root, { recursive: true, force: true }));

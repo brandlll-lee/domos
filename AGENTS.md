@@ -134,6 +134,7 @@ Pi Durable 1.4.0 stores Bot tasks. Native Harness processes own model loops. Dom
 - Report skipped and untested capabilities explicitly. Green CI does not prove every OS permission, desktop session, or third-party application works.
 - Documentation-only edits need link, path, and diff checks. Do not add tests that assert document wording.
 - Main pushes and pull requests always produce a Checks result. Changes limited to root `AGENTS.md`, root `README*.md`, and Markdown under `docs/` omit product jobs. Dependencies, shared configuration, unknown paths and unavailable Git comparisons select full validation. The result job distinguishes scope omissions from failed or cancelled checks. Verify added, deleted and renamed paths when changing selection rules.
+- Changes limited to eval code, eval tests and their allowed documentation or CI-selection files run the eval suite, lint, typecheck and selection tests. Runtime, dependency and other changes retain their normal checks. Real model evals use explicit commands.
 
 ## Environment secrets
 
@@ -161,9 +162,15 @@ Pi Durable 1.4.0 stores Bot tasks. Native Harness processes own model loops. Dom
 - Keep `main` clean between integrations. Review and test each feature before merging it into `main`.
 - Push when authorized by the user. Verify the merged commit and all required CI results.
 
+## Spec-driven development
+
+- Before implementing a feature, fix, or refactor, create or update its numbered directory under local `spec/`. Record the goal, scope, status, acceptance criteria, and verification evidence. Follow `spec/README.md` when present.
+- Keep Specs on the local computer. Keep implementation aligned with the Spec and update its status as work proceeds. Include the goal, scope, and verification results in each related PR so reviewers can assess it independently.
+- For task evals, follow [Task evals](docs/task-evals.md). Use the native Runtime, saved trace and Files evidence. Keep objective checks and semantic review separate. Preserve unknown usage and verify trial cleanup before dispatching more work.
+
 ## Keep this guide current
 
 - Update this file in the same change when module ownership, public contracts, development workflows, or verification boundaries change. Replace or remove stale guidance.
-- Store current decisions and rules here. Keep task progress, incident timelines, commit IDs, CI run links, and temporary plans in task reports or Git.
+- Store current decisions and rules here. Keep task scope and progress in its Spec. Keep incident timelines and execution logs in task reports or Git.
 - Link to existing specialist documentation when a task needs detail. Do not duplicate command catalogs or file inventories that the code already provides.
 - Keep `AGENTS.md` as the shared project source. Check each AI client's repository-instruction entry point before claiming it loads this file. Any required compatibility entry should point here instead of copying the rules.

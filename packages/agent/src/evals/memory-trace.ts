@@ -3,11 +3,10 @@ import type { Cursor, EntryRecord } from "@earendil-works/pi-durable";
 import { EngineMessage } from "../harness/state.ts";
 import { type ChatMessage, messageText } from "../messages.ts";
 import type { openChat } from "../open-chat.ts";
-import type { MemoryCase } from "./memory-cases.ts";
 
 export async function readMemoryTrace(
   conversation: Awaited<ReturnType<typeof openChat>>["conversation"],
-  id: MemoryCase["id"],
+  id: string,
   context: Context,
 ) {
   const entries: EntryRecord[] = [];
@@ -37,6 +36,7 @@ export async function readMemoryTrace(
   }
   const rows = [...messages.values()];
   return {
+    messages: rows,
     sourceIds: entries
       .filter((entry) => entry.kind === EngineMessage)
       .map((entry) => Number(entry.id)),

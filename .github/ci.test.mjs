@@ -25,9 +25,50 @@ test("documentation avoids product jobs; UI keeps daily checks", () => {
     sandbox: false,
     full: false,
     web_os: ["ubuntu-latest"],
+    evals: false,
   });
   assert.equal(scope(["packages/ui/src/web/chat.css"]).package, false);
   assert.equal(scope(["apps/desktop/src/setup.css"]).package, false);
+});
+
+test("evaluation changes select focused checks and retain broad checks for runtime changes", () => {
+  const paths = [
+    "packages/agent/src/evals/task-worker.ts",
+    "apps/cli/src/eval-tasks.ts",
+    ".github/ci.mjs",
+    ".github/workflows/checks.yml",
+    ".gitignore",
+    "docs/task-evals.md",
+  ];
+  assert.equal(scope(paths).evals, true);
+  for (const flag of ["native", "input", "package", "sandbox", "full"])
+    assert.equal(scope(paths)[flag], false);
+  for (const extra of [
+    "packages/agent/src/runtime/index.ts",
+    "pnpm-lock.yaml",
+    "package.json",
+    "apps/web/src/main.tsx",
+    ".github/workflows/release.yml",
+    "unknown.ts",
+  ])
+    assert.equal(scope([...paths, extra]).evals, false, extra);
+  assert.equal(scope(paths, true).evals, false);
+  const results = {
+    check: { result: "success", outputs: { code: "true", evals: "true" } },
+    native: { result: "skipped" },
+    web: { result: "skipped" },
+    desktop: { result: "skipped" },
+    "computer-input": { result: "skipped" },
+    sandbox: { result: "skipped" },
+  };
+  assert.equal(report(results).failed, false);
+  assert.equal(
+    report({
+      ...results,
+      check: { result: "failure", outputs: results.check.outputs },
+    }).failed,
+    true,
+  );
 });
 
 test("platform and deployment changes select their regressions", () => {
