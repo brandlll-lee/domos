@@ -35,11 +35,12 @@ export function readOpenCodeTrace(
     try {
       const parts = native
         .prepare(
-          "SELECT json_extract(data,'$.tool') AS name, json_extract(data,'$.state.input') AS input, COALESCE(json_extract(data,'$.state.error'),json_extract(data,'$.state.output'),'') AS output, json_extract(data,'$.state.time.start') AS startedAt, json_extract(data,'$.state.time.end') AS endedAt FROM part WHERE session_id=? AND time_created BETWEEN ? AND ? AND json_extract(data,'$.type')='tool' ORDER BY time_created",
+          "SELECT rowid AS nativeRowId, json_extract(data,'$.callID') AS id, json_extract(data,'$.tool') AS name, json_extract(data,'$.state.input') AS input, COALESCE(json_extract(data,'$.state.error'),json_extract(data,'$.state.output'),'') AS output, json_extract(data,'$.state.time.start') AS startedAt, json_extract(data,'$.state.time.end') AS endedAt FROM part WHERE session_id=? AND time_created BETWEEN ? AND ? AND json_extract(data,'$.type')='tool' ORDER BY time_created",
         )
         .all(engine.data.sessionId, task.startedAt, task.endedAt);
       const calls = parts.map((row) => ({
         ...row,
+        id: row.id ?? undefined,
         input: JSON.parse(String(row.input)),
       }));
       const messages = native
@@ -49,6 +50,8 @@ export function readOpenCodeTrace(
         .get(engine.data.sessionId, task.startedAt, task.endedAt);
       return computerTrace.parse({
         source: `domos-task:${taskId}`,
+        database: domosFile,
+        nativeDatabase: nativeFile,
         harness: "opencode",
         model: engine.data.model,
         coverage: "complete",

@@ -9,9 +9,11 @@ import { memoryCases } from "../../../packages/agent/src/evals/memory-cases.ts";
 import {
   evaluateMemory,
   type MemoryTrial,
+  memoryExitCode,
   memoryReport,
 } from "../../../packages/agent/src/evals/memory-score.ts";
 import type { MemoryWorkerInput } from "../../../packages/agent/src/evals/memory-worker.ts";
+import { taskCompletion } from "../../../packages/agent/src/evals/outcome.ts";
 
 async function trial(
   input: MemoryWorkerInput,
@@ -69,22 +71,26 @@ async function main() {
     },
   });
   if (values.trace) {
-    const report = memoryReport.parse(
+    const saved = memoryReport.parse(
       JSON.parse(await readFile(values.trace, "utf8")),
     );
-    for (const item of report.subject)
-      item.score = item.result ? evaluateMemory(item.result) : undefined;
+    const subject = saved.subject.map((item) => ({
+      ...item,
+      score: item.result ? evaluateMemory(item.result) : null,
+    }));
+    const report = {
+      ...saved,
+      subject,
+      taskSuccess: taskCompletion(
+        subject.map((item) =>
+          item.failure ? "fail" : (item.score?.answerReview ?? "unreviewed"),
+        ),
+      ),
+    };
     const output = resolve(values.output ?? `${values.trace}.scored.json`);
     await writeFile(output, `${JSON.stringify(report, null, 2)}\n`);
     console.log(output);
-    process.exitCode = report.subject.every(
-      (item) =>
-        !item.failure &&
-        item.score !== undefined &&
-        item.score.passed === item.score.total,
-    )
-      ? 0
-      : 1;
+    process.exitCode = memoryExitCode(subject);
     return;
   }
   if (!values.model && !values.catalog)
@@ -142,12 +148,12 @@ async function main() {
     const score = record ? evaluateMemory(record) : null;
     results.push({ ...outcome, failure: outcome.failure, score });
     console.log(
-      `${item.id}: ${outcome.failure ? `${JSON.stringify(outcome.failure)}; ` : ""}${score ? `${score.passed}/${score.total} rules; answer unreviewed` : "unscored"}`,
+      `${item.id}: ${outcome.failure ? `${JSON.stringify(outcome.failure)}; ` : ""}${score ? `${score.passed}/${score.total} rules; answer ${score.answerReview}` : "unscored"}`,
     );
   }
   const report = {
     version: 1,
-    suite: "memory-2",
+    suite: "memory-3",
     commit: execFileSync("git", ["rev-parse", "HEAD"], {
       encoding: "utf8",
     }).trim(),
@@ -162,17 +168,16 @@ async function main() {
     directory: root,
     subject: results,
     judge: null,
-    taskSuccess: "unreviewed",
+    taskSuccess: taskCompletion(
+      results.map((item) =>
+        item.failure ? "fail" : (item.score?.answerReview ?? "unreviewed"),
+      ),
+    ),
   };
   const output = resolve(values.output ?? join(root, "report.json"));
   await writeFile(output, `${JSON.stringify(report, null, 2)}\n`);
   console.log(output);
-  process.exitCode = results.every(
-    (item) =>
-      !item.failure && item.score && item.score.passed === item.score.total,
-  )
-    ? 0
-    : 1;
+  process.exitCode = memoryExitCode(results);
 }
 
 main().catch((error) => {

@@ -57,6 +57,7 @@ test("task 7094 retains three workflow failures despite a reviewed successful ou
   ]);
   expect(result).toMatchObject({
     completion: "pass",
+    review: baseline.review,
     passed: 0,
     exercised: 3,
     checkPassRate: 0,
@@ -112,6 +113,11 @@ test("native import reads complete tool arguments and counts concurrent tool tim
     native.close();
     const trace = readOpenCodeTrace(domosPath, nativePath, 1);
     expect(trace.calls[0]?.input).toEqual({ value: "song" });
+    expect(trace).toMatchObject({
+      database: domosPath,
+      nativeDatabase: nativePath,
+      calls: [{ nativeRowId: 1 }, { nativeRowId: 2 }],
+    });
     expect(evaluateComputer(trace)).toMatchObject({
       completion: "unreviewed",
       metrics: { modelResponses: 1, toolTimeMs: 40, outsideToolsMs: 60 },

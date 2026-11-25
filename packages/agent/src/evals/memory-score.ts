@@ -1,37 +1,66 @@
 import { z } from "zod";
 import { memoryCases } from "./memory-cases.ts";
+import { taskCompletion, taskOutcome } from "./outcome.ts";
 
-const memoryTrial = z.looseObject({
-  id: z.enum(memoryCases.map((item) => item.id)),
-  answer: z.string(),
-  memories: z.array(
-    z.looseObject({
-      id: z.string(),
-      text: z.string(),
-      revision: z.number().int().nonnegative(),
-      origin: z.enum(["user", "tool", "inference", "manual"]).optional(),
-      evidence: z
-        .array(
-          z.object({
-            conversationId: z.number().int(),
-            entryId: z.number().int(),
-            quote: z.string(),
-          }),
-        )
-        .optional(),
-    }),
-  ),
-  calls: z.array(
-    z.looseObject({
-      name: z.string(),
-      input: z.unknown(),
-      output: z.unknown(),
-      isError: z.boolean(),
-    }),
-  ),
-  sourceIds: z.array(z.number().int()),
-  privateMarker: z.string().min(1),
-});
+const memoryTrial = z
+  .looseObject({
+    id: z.enum(memoryCases.map((item) => item.id)),
+    answer: z.string().optional(),
+    answers: z
+      .array(
+        taskOutcome
+          .safeExtend({
+            prompt: z.string(),
+            requestId: z.string().min(1),
+            turnId: z.string().nullable(),
+            taskId: z.string().nullable(),
+            messages: z.array(
+              z.object({
+                entryId: z.number().int(),
+                messageId: z.string(),
+                text: z.string(),
+              }),
+            ),
+          })
+          .refine(
+            (answer) =>
+              answer.completion === "unreviewed" || answer.review !== undefined,
+            "Reviewed answers require a reviewer and evidence",
+          ),
+      )
+      .optional(),
+    memories: z.array(
+      z.looseObject({
+        id: z.string(),
+        text: z.string(),
+        revision: z.number().int().nonnegative(),
+        origin: z.enum(["user", "tool", "inference", "manual"]).optional(),
+        evidence: z
+          .array(
+            z.object({
+              conversationId: z.number().int(),
+              entryId: z.number().int(),
+              quote: z.string(),
+            }),
+          )
+          .optional(),
+      }),
+    ),
+    calls: z.array(
+      z.looseObject({
+        name: z.string(),
+        input: z.unknown(),
+        output: z.unknown(),
+        isError: z.boolean(),
+      }),
+    ),
+    sourceIds: z.array(z.number().int()),
+    privateMarker: z.string().min(1),
+  })
+  .refine(
+    (item) => item.answers !== undefined || item.answer !== undefined,
+    "Missing answers",
+  );
 export type MemoryTrial = z.infer<typeof memoryTrial>;
 
 export const memoryReport = z.looseObject({
@@ -41,7 +70,6 @@ export const memoryReport = z.looseObject({
         .looseObject({
           result: memoryTrial.optional(),
           failure: z.record(z.string(), z.unknown()).optional(),
-          score: z.object({ passed: z.number(), total: z.number() }).optional(),
         })
         .refine(
           (item) => item.result !== undefined || item.failure !== undefined,
@@ -59,7 +87,7 @@ export function evaluateMemory(trial: MemoryTrial) {
     trial.sourceIds.includes(ref.entryId),
   );
   rules.privateIsolation = !JSON.stringify([
-    trial.answer,
+    trial.answers ?? trial.answer,
     trial.calls,
     trial.memories,
   ]).includes(trial.privateMarker);
@@ -97,6 +125,29 @@ export function evaluateMemory(trial: MemoryTrial) {
     rules,
     passed: Object.values(rules).filter(Boolean).length,
     total: Object.keys(rules).length,
-    answerReview: "unreviewed" as const,
+    answerReview: taskCompletion(
+      trial.answers?.map((answer) => answer.completion) ?? [],
+    ),
   };
+}
+
+export function memoryExitCode(
+  results: {
+    failure?: unknown;
+    score?: ReturnType<typeof evaluateMemory> | null;
+  }[],
+) {
+  if (
+    results.some(
+      (item) =>
+        item.failure ||
+        !item.score ||
+        item.score.passed !== item.score.total ||
+        item.score.answerReview === "fail",
+    )
+  )
+    return 1;
+  return results.some((item) => item.score?.answerReview === "unreviewed")
+    ? 2
+    : 0;
 }

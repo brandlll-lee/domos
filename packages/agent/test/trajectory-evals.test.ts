@@ -51,6 +51,7 @@ test("task traces retain parameters, receipt times, errors, cost and incomplete 
       toolCallId: "x",
       endedAt: 300,
       isError: false,
+      native: { structuredContent: { receipt: "original result" } },
       content: [{ type: "text", text: "Recovered" }],
     },
   ])
@@ -85,9 +86,26 @@ test("task traces retain parameters, receipt times, errors, cost and incomplete 
         endedAt: 300,
         failed: false,
         output: "Recovered",
+        id: "x",
+        message: { entryId: 1, messageId: "call" },
+        result: { entryId: 3, messageId: "result" },
       },
     ],
   });
+  expect(trace.database).toBe(path);
+  const reference = trace.calls[0]?.result;
+  if (!reference) throw new Error("Result reference required");
+  const archive = new DatabaseSync(path, { readOnly: true });
+  try {
+    const row = archive
+      .prepare("SELECT record FROM entries WHERE id=?")
+      .get(reference.entryId);
+    expect(
+      JSON.parse(String(row?.record)).data.native.structuredContent,
+    ).toEqual({ receipt: "original result" });
+  } finally {
+    archive.close();
+  }
   expect(
     evaluateTrajectories([{ name: "read", trace, expectedTools: ["read"] }]),
   ).toMatchObject({
@@ -96,6 +114,14 @@ test("task traces retain parameters, receipt times, errors, cost and incomplete 
     recall: 1,
     completionRate: null,
     costUsd: 0.02,
+    cases: [
+      {
+        trace: {
+          database: path,
+          calls: [{ id: "x", result: { entryId: 3, messageId: "result" } }],
+        },
+      },
+    ],
   });
   expect(await readFile(path)).toEqual(before);
   expect(() => readTaskTrace(path, 2)).toThrow("Task not found");

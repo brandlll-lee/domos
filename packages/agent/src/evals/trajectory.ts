@@ -16,13 +16,15 @@ export function readTaskTrace(path: string, taskId: number): ComputerTrace {
     if (!row) throw new Error("Task not found");
     const task = JSON.parse(String(row.record));
     const messages = new Map<string, ChatMessage>();
+    const entryIds = new Map<string, number>();
     for (const row of database
       .prepare(
-        "SELECT record FROM entries WHERE CAST(json_extract(record,'$.byTaskId') AS TEXT)=? AND json_extract(record,'$.kind')='domos.engine-message' ORDER BY id",
+        "SELECT id, record FROM entries WHERE CAST(json_extract(record,'$.byTaskId') AS TEXT)=? AND json_extract(record,'$.kind')='domos.engine-message' ORDER BY id",
       )
       .all(String(taskId))) {
       const message = JSON.parse(String(row.record)).data as ChatMessage;
       messages.set(message.id, message);
+      entryIds.set(message.id, Number(row.id));
     }
     const usages = database
       .prepare(
@@ -41,6 +43,19 @@ export function readTaskTrace(path: string, taskId: number): ComputerTrace {
         .map((part) => {
           const result = rows.find((result) => result.toolCallId === part.id);
           return {
+            id: part.id,
+            message: {
+              entryId: entryIds.get(message.id),
+              messageId: message.id,
+            },
+            ...(result
+              ? {
+                  result: {
+                    entryId: entryIds.get(result.id),
+                    messageId: result.id,
+                  },
+                }
+              : {}),
             name: part.name,
             input: part.arguments,
             output:
@@ -72,6 +87,7 @@ export function readTaskTrace(path: string, taskId: number): ComputerTrace {
         : null;
     return computerTrace.parse({
       source: `domos-task:${taskId}`,
+      database: path,
       harness: usage.harness,
       model: usage.model ?? "unknown",
       coverage:

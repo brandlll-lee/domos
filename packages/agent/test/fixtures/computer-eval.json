@@ -7,6 +7,10 @@
   "endedAt": 103954,
   "modelResponses": null,
   "completion": "pass",
+  "review": {
+    "reviewer": "历史人工验收（姓名未记录）",
+    "evidence": "docs/computer-evals.md：任务 7094 的歌曲、歌手、歌词页经人工核对正确。连续截图中的播放进度向前推进。扬声器出声未验证。"
+  },
   "calls": [
     {
       "name": "domos_desktop_get_window_state",

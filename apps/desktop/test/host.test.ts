@@ -139,7 +139,7 @@ test("early exit rejects readiness and pairing without waiting for their deadlin
   await start();
   const paired = host.pair({ installationId: crypto.randomUUID() });
   child().emit("exit", 1);
-  await expect(paired).rejects.toThrow("配对未完成");
+  await expect(paired).rejects.toThrow("本机后台请求未完成");
 });
 
 test("intentional stop cancels startup and does not recover remaining controller children", async () => {
@@ -163,9 +163,9 @@ test("intentional stop cancels startup and does not recover remaining controller
   await rejected;
   expect(host.state).toBe("stopped");
   expect(mocks.fork).toHaveBeenCalledTimes(2);
-  expect(() => host.pair({ installationId: crypto.randomUUID() })).toThrow(
-    "未启动",
-  );
+  await expect(
+    host.pair({ installationId: crypto.randomUUID() }),
+  ).rejects.toThrow("未启动");
 });
 
 test("stderr evidence contains error types and code locations only", () => {
@@ -217,7 +217,12 @@ test("pairing failure settles the active request and keeps the service available
   const { host, start } = await fixture();
   await start();
   const paired = host.pair({ installationId: crypto.randomUUID() });
-  child().emit("message", { type: "desktop-session-error" });
+  const request = child().postMessage.mock.lastCall?.[0];
+  child().emit("message", {
+    type: "desktop-response",
+    id: request.id,
+    error: "配对未完成",
+  });
   await expect(paired).rejects.toThrow("配对未完成");
   expect(host.running).toBe(true);
 });

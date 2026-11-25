@@ -1,7 +1,8 @@
 import { z } from "zod";
+import { taskOutcome } from "./outcome.ts";
 
-export const computerTrace = z
-  .object({
+export const computerTrace = taskOutcome
+  .safeExtend({
     source: z.string(),
     harness: z.string().min(1),
     model: z.string(),
@@ -10,12 +11,21 @@ export const computerTrace = z
     endedAt: z.number().finite().nullable(),
     modelResponses: z.number().int().nonnegative().nullable(),
     assistantTextMessages: z.number().int().nonnegative().optional(),
-    completion: z.enum(["pass", "fail", "unreviewed"]),
+    database: z.string().optional(),
+    nativeDatabase: z.string().optional(),
     costUsd: z.number().finite().nonnegative().nullable().optional(),
     calls: z.array(
       z
         .object({
           name: z.string(),
+          id: z.string().optional(),
+          nativeRowId: z.number().int().optional(),
+          message: z
+            .object({ entryId: z.number().int(), messageId: z.string() })
+            .optional(),
+          result: z
+            .object({ entryId: z.number().int(), messageId: z.string() })
+            .optional(),
           failed: z.boolean().optional(),
           input: z.record(z.string(), z.unknown()),
           output: z.string(),
@@ -56,10 +66,24 @@ export const computerTrace = z
 export type ComputerTrace = z.infer<typeof computerTrace>;
 
 export function computerExitCode(
-  results: { passed: number; exercised: number; total: number }[],
+  results: {
+    passed: number;
+    exercised: number;
+    total: number;
+    completion: "pass" | "fail" | "unreviewed";
+  }[],
 ) {
-  if (results.some((item) => item.passed !== item.exercised)) return 1;
-  return results.some((item) => item.exercised !== item.total) ? 2 : 0;
+  if (
+    results.some(
+      (item) => item.passed !== item.exercised || item.completion === "fail",
+    )
+  )
+    return 1;
+  return results.some(
+    (item) => item.exercised !== item.total || item.completion === "unreviewed",
+  )
+    ? 2
+    : 0;
 }
 
 export function evaluateComputer(input: unknown) {
@@ -165,11 +189,13 @@ export function evaluateComputer(input: unknown) {
   }
   return {
     kind: "computer-trajectory-eval",
+    trace,
     source: trace.source,
     harness: trace.harness,
     model: trace.model,
     coverage: trace.coverage,
     completion: trace.completion,
+    review: trace.review,
     checks,
     passed,
     exercised,

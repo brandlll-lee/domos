@@ -5,13 +5,13 @@ import {
 } from "@earendil-works/chord/context";
 import { EngineDoc, EngineMessage } from "../harness/state.ts";
 import type { EngineConfig } from "../harness/types.ts";
-import { messageText } from "../messages.ts";
 import { openChat } from "../open-chat.ts";
 import { parseConfig } from "../runtime/config.ts";
-import { memoryCases } from "./memory-cases.ts";
+import { type MemoryCase, memoryCases } from "./memory-cases.ts";
+import { readMemoryTrace } from "./memory-trace.ts";
 
 export type MemoryWorkerInput = {
-  id: string;
+  id: MemoryCase["id"];
   directory: string;
   config: EngineConfig;
   seconds: number;
@@ -179,30 +179,10 @@ process.once("message", async (input: MemoryWorkerInput) => {
       const botId = runtime.conversation.id;
       const engines = runtime.engines;
       try {
-        const page = await runtime.conversation.entries(
-          {},
-          500,
-          undefined,
+        const trace = await readMemoryTrace(
+          runtime.conversation,
+          input.id,
           context,
-        );
-        const view = await engines.view(botId, context);
-        const calls = view.messages.flatMap((message) =>
-          message.content
-            .filter((part) => part.type === "toolCall")
-            .map((call) => {
-              const result = view.messages.find(
-                (item) => item.toolCallId === call.id,
-              );
-              return {
-                name: call.name,
-                input: call.arguments,
-                output: result?.content ?? null,
-                isError:
-                  !result ||
-                  result.isError === true ||
-                  result.toolStatus === "running",
-              };
-            }),
         );
         const evidence = await runtime.harness.snapshot(
           EngineDoc,
@@ -219,15 +199,8 @@ process.once("message", async (input: MemoryWorkerInput) => {
         );
         result = {
           id: input.id,
-          answer: view.messages
-            .filter((item) => item.role === "assistant")
-            .map(messageText)
-            .join("\n"),
+          ...trace,
           memories: await runtime.work.memory.list(botId, context),
-          calls,
-          sourceIds: page.items
-            .filter((entry) => entry.kind === EngineMessage)
-            .map((entry) => Number(entry.id)),
           privateMarker,
           startedAt,
           endedAt: Date.now(),

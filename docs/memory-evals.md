@@ -50,10 +50,14 @@ The six Chinese cases cover in-place current versus historical residence, paraph
 pnpm eval:memory --trace memory-report.json --output memory-scored.json
 ```
 
-Offline scoring performs no inference. A failed execution remains failed even when its retained state passes some rules. Exit 0 requires every executed case to pass its deterministic rules with no execution failure. Exit 1 reports a rule or execution failure. Exit 2 reports invalid configuration or runner failure.
+Offline scoring performs no inference. A failed execution remains failed even when its retained state passes some rules. Exit 0 requires passing rules, successful execution and a passing review for every answer. Exit 1 reports a rule, execution or reviewed task failure. Exit 2 reports invalid data, configuration, runner failure or answers awaiting review. The saved report distinguishes these states.
 
 Offline imports validate the executed cases and grading fields. A case must contain a valid result or a recorded failure. Missing results cannot pass grading.
 
-Read three results separately: CI rule regression, offline trajectory rules and manually reviewed real task success. Reports mark answer review and task success as `unreviewed`. There is no implicit model judge or judge cost. Inspect execution, native errors and budget failures before attributing failure to a model. Native provider rejection and missing login are environment issues. The report preserves native errors rather than guessing their cause.
+Read three results separately: CI rule regression, offline trajectory rules and manually reviewed real task success. New `memory-3` reports store `result.answers`: one question per item, with `prompt`, `requestId`, `turnId`, `taskId` and original answer `messages` (`entryId`, `messageId`, `text`). Missing identities remain null. All original source pages are read. Tool calls retain IDs and references to their original call and result entries in the retained database. Structured results and attachments stay in those original records.
+
+Review the question and its actual answers against original evidence. In a copy of the report, set each answer's `completion` to `pass` or `fail` and add `review: { "reviewer": "your name", "evidence": "the observed result and original record or file reference" }`. Then run the existing offline scoring command. Do not edit prompts, answers or execution results. The scorer derives `score.answerReview` and report `taskSuccess`; execution failure still returns failure. Reports with all rules passing but a wrong answer must receive a failing task review. New answers default to `unreviewed`. Retained reports with a single `answer` remain scoreable, but their missing question boundaries and reviews remain unknown.
+
+There is no implicit model judge or judge cost. Inspect execution, native errors and budget failures before attributing failure to a model. Native provider rejection and missing login are environment issues. The report preserves native errors rather than guessing their cause.
 
 Keep the keyword baseline. Add a rebuildable semantic index only after a versioned set of real questions shows important missed retrievals and a controlled comparison improves them. Track correctness, evidence accuracy, unintended writes, latency and reported subject usage separately.
