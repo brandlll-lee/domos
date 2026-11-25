@@ -22,7 +22,7 @@ Use Node 24 or newer. Log in with the work computer's Codex CLI first. Each tria
 Start with one case from each group:
 
 ```sh
-pnpm exec node apps/cli/src/eval-tasks.ts --cases F1,H1,B1,R1 --repeats 1 --max-batch-tokens 1000000
+pnpm exec node apps/cli/src/eval-tasks.ts --cases F1,H1,B1,R1 --repeats 1 --max-tokens 1000000 --max-batch-tokens 2000000
 ```
 
 Run the baseline with three repeats:
@@ -78,7 +78,7 @@ pnpm exec node apps/cli/src/eval-tasks.ts --trace /path/run/report.json --review
 Prepare two clean Git checkouts with dependencies installed. The current evaluator loads each target's `openChat`. Both targets use the same external task definitions and graders. Fresh trials alternate A/B and B/A for each planned pair.
 
 ```sh
-pnpm exec node apps/cli/src/eval-tasks.ts --before /path/old --after /path/new --max-batch-tokens 20000000
+pnpm exec node apps/cli/src/eval-tasks.ts --before /path/old --after /path/new --max-tokens 1000000 --max-batch-tokens 20000000
 pnpm exec node apps/cli/src/eval-tasks.ts --trace /path/before/report.json --compare /path/after/report.json
 ```
 
@@ -91,3 +91,5 @@ Comparison rejects dirty versions, equal commits, incomplete batches and changed
 `pnpm test:ci evals` checks reference and incorrect results, report completeness, comparison conditions, fixture behavior, cleanup paths and existing Memory/Computer/Trace contracts. Pure eval changes run this suite, lint, type checking and CI-selection tests. Other changes retain normal checks. Paid model runs use explicit local commands and do not run on each PR.
 
 Specs stay local under `spec/`. PR descriptions contain the goal, scope and verification results for independent review.
+
+The [first baseline](task-evals-baseline-2026-11-25.md) records 48 real trials, failures, review gaps and cleanup totals.
