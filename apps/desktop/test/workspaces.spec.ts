@@ -171,6 +171,7 @@ test("workspaces switch in one window and preserve identity, authorization and r
       error: "请先打开本机 Domos，再管理本机托管。",
     });
 
+    await pageA.evaluate(() => document.fonts.ready.then(() => {}));
     await pageA.locator(".transcript").evaluate((node) => {
       node.scrollTop = node.scrollHeight / 2;
     });
