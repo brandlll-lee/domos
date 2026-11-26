@@ -9,6 +9,7 @@ export type DesktopState = {
     name: string;
     mode: "local" | "existing";
     unread?: number;
+    runtime?: "native" | "docker";
   }[];
   selected?: string;
   mode?: "local" | "existing";

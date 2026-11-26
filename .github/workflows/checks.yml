@@ -30,6 +30,7 @@ jobs:
       onboarding: ${{ steps.scope.outputs.onboarding }}
       activity: ${{ steps.scope.outputs.activity }}
       connections: ${{ steps.scope.outputs.connections }}
+      work: ${{ steps.scope.outputs.work }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -49,8 +50,11 @@ jobs:
       - if: steps.scope.outputs.code == 'true'
         run: pnpm typecheck
       - name: Verify platform-independent regressions
-        if: steps.scope.outputs.code == 'true' && steps.scope.outputs.evals != 'true' && steps.scope.outputs.onboarding != 'true' && steps.scope.outputs.activity != 'true' && steps.scope.outputs.connections != 'true'
+        if: steps.scope.outputs.code == 'true' && steps.scope.outputs.evals != 'true' && steps.scope.outputs.onboarding != 'true' && steps.scope.outputs.activity != 'true' && steps.scope.outputs.connections != 'true' && steps.scope.outputs.work != 'true'
         run: pnpm test:ci unit --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml
+      - name: Verify Work and workspace contracts
+        if: steps.scope.outputs.work == 'true'
+        run: pnpm exec vitest run apps/web/test/work-state.test.ts apps/web/test/chat-state.test.ts apps/web/test/transcript-state.test.ts apps/web/test/workspace-state.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml
       - name: Verify chat activity contracts
         if: steps.scope.outputs.activity == 'true'
         run: pnpm exec vitest run apps/web/test/work-state.test.ts apps/web/test/chat-state.test.ts apps/web/test/transcript-state.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml
@@ -130,7 +134,10 @@ jobs:
       - name: Verify web workflows
         shell: bash
         run: |
-          if [ "${{ needs.check.outputs.connections }}" = "true" ]; then
+          if [ "${{ needs.check.outputs.work }}" = "true" ]; then
+            pnpm build
+            xvfb-run -a pnpm exec playwright test apps/web/test/bot-work.spec.ts apps/web/test/teams.spec.ts apps/web/test/drafts.spec.ts apps/web/test/conversations.spec.ts --shard=${{ matrix.shard }}/2 --output=test-results/e2e
+          elif [ "${{ needs.check.outputs.connections }}" = "true" ]; then
             pnpm build
             xvfb-run -a pnpm exec playwright test apps/web/test/app-connections.spec.ts apps/web/test/drafts.spec.ts apps/web/test/conversations.spec.ts --shard=${{ matrix.shard }}/2 --output=test-results/e2e
           elif [ "${{ needs.check.outputs.activity }}" = "true" ]; then
@@ -173,8 +180,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: pnpm exec playwright install chromium --only-shell
       - name: Verify desktop smoke
-        if: needs.check.outputs.package != 'true' && needs.check.outputs.onboarding != 'true'
+        if: needs.check.outputs.package != 'true' && needs.check.outputs.onboarding != 'true' && needs.check.outputs.work != 'true'
         run: pnpm exec playwright test --config apps/desktop/playwright.config.ts desktop.spec.ts runtime.spec.ts
+      - name: Verify Work computer switching
+        if: needs.check.outputs.work == 'true'
+        run: pnpm exec playwright test --config apps/desktop/playwright.config.ts desktop.spec.ts runtime.spec.ts workspaces.spec.ts
       - name: Verify startup and workspace workflows
         if: needs.check.outputs.onboarding == 'true'
         run: pnpm exec playwright test --config apps/desktop/playwright.config.ts desktop.spec.ts runtime.spec.ts avatars.spec.ts workspaces.spec.ts

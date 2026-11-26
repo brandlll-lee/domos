@@ -1,19 +1,16 @@
 import type { ChatMessage } from "@domos/agent/messages";
 import { Disclosure } from "@domos/ui/disclosure";
-import { BrainIcon } from "@phosphor-icons/react/dist/csr/Brain";
-import { ChatTextIcon } from "@phosphor-icons/react/dist/csr/ChatText";
-import { FileTextIcon } from "@phosphor-icons/react/dist/csr/FileText";
-import { InfoIcon } from "@phosphor-icons/react/dist/csr/Info";
-import { ListChecksIcon } from "@phosphor-icons/react/dist/csr/ListChecks";
-import { MagnifyingGlassIcon } from "@phosphor-icons/react/dist/csr/MagnifyingGlass";
-import { TerminalIcon } from "@phosphor-icons/react/dist/csr/Terminal";
-import { UsersIcon } from "@phosphor-icons/react/dist/csr/Users";
-import { WrenchIcon } from "@phosphor-icons/react/dist/csr/Wrench";
 import { useState } from "react";
 import { Attachments } from "./attachments.tsx";
 import { MessageContent } from "./message-content.tsx";
 import { MessageDetail } from "./message-detail.tsx";
-import { type WorkItem, workStatus, workTime } from "./work-state.ts";
+import {
+  timelineState,
+  type WorkItem,
+  workStatus,
+  workTime,
+} from "./work-state.ts";
+import { WorkStep } from "./work-timeline.tsx";
 
 function object(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -181,131 +178,89 @@ function ToolRecord({
   );
 }
 
-export function WorkEntry({ item, botId }: { item: WorkItem; botId: number }) {
+export function WorkEntry({
+  item,
+  botId,
+  connected,
+}: {
+  item: WorkItem;
+  botId: number;
+  connected: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
   const event = item.message.activity;
-  const input = item.input ?? {};
   const native = item.result?.native;
-  const Icon =
-    item.kind === "thinking"
-      ? BrainIcon
-      : item.kind === "text"
-        ? ChatTextIcon
-        : item.kind === "event"
-          ? event?.type === "plan"
-            ? ListChecksIcon
-            : InfoIcon
-          : input.command || native?.command
-            ? TerminalIcon
-            : input.query || native?.type === "webSearch"
-              ? MagnifyingGlassIcon
-              : input.file_path || input.path || native?.type === "fileChange"
-                ? FileTextIcon
-                : native?.type === "collabAgentToolCall"
-                  ? UsersIcon
-                  : WrenchIcon;
-  const preview =
-    text(
-      input.description ??
-        input.command ??
-        input.file_path ??
-        input.path ??
-        input.query,
-    ) ||
-    (typeof item.detail === "string"
-      ? item.detail
-      : item.detail
-          .filter((part) => part.type === "text")
-          .map((part) => part.text)
-          .join(" "));
   const duration = native?.durationMs;
   const time =
     typeof duration === "number" && Number.isFinite(duration) && duration >= 0
       ? workTime(0, duration)
       : workTime(item.startedAt, item.endedAt);
   return (
-    <li
-      className="work-entry"
-      data-state={item.status}
-      data-parent={item.message.parentId}
-      tabIndex={-1}
-    >
-      <span
-        className="work-node"
-        role="img"
-        aria-label={item.kind === "toolCall" ? "工具调用" : item.label}
-      >
-        <Icon />
-      </span>
-      <Disclosure
-        className="work-operation"
-        open={expanded}
-        onToggle={(event) => setExpanded(event.currentTarget.open)}
-        label={
+    <WorkStep
+      connected={connected}
+      parentId={item.message.parentId}
+      open={expanded}
+      onToggle={(event) => setExpanded(event.currentTarget.open)}
+      step={{
+        id: item.id,
+        title: item.label,
+        state: timelineState(item.status),
+        label: workStatus(item.status),
+        time:
+          item.startedAt === undefined
+            ? "时间未提供"
+            : new Date(item.startedAt).toLocaleTimeString("zh-CN", {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+                hour12: false,
+              }),
+        duration: time === "—" ? "耗时未知" : time,
+        content: (
           <>
-            <span className="work-step-copy">
-              <strong>{item.label}</strong>
-              {preview && (
-                <span className="work-preview">{preview.slice(0, 240)}</span>
-              )}
-              {["running", "uncertain", "stopped", "failed"].includes(
-                item.status,
-              ) && (
-                <span className="work-operation-status">
-                  {workStatus(item.status)}
-                </span>
-              )}
-            </span>
-            <span className="work-step-time">
-              {time === "—" ? "耗时未知" : time}
-            </span>
-          </>
-        }
-      >
-        {expanded && (
-          <div className="work-operation-body">
-            {item.kind === "text" ? (
-              <MessageContent
-                content={typeof item.detail === "string" ? [] : item.detail}
-              />
-            ) : item.kind === "thinking" ? (
-              <MessageContent
-                content={[
-                  {
-                    type: "text",
-                    text: typeof item.detail === "string" ? item.detail : "",
-                    key: item.id,
-                  },
-                ]}
-              />
-            ) : item.kind === "toolCall" ? (
-              item.result ? (
-                <MessageDetail botId={botId} message={item.result}>
-                  {(message) => (
-                    <ToolRecord item={item} message={message} botId={botId} />
-                  )}
-                </MessageDetail>
+            {expanded &&
+              (item.kind === "text" ? (
+                <MessageContent
+                  content={typeof item.detail === "string" ? [] : item.detail}
+                />
+              ) : item.kind === "thinking" ? (
+                <MessageContent
+                  content={[
+                    {
+                      type: "text",
+                      text: typeof item.detail === "string" ? item.detail : "",
+                      key: item.id,
+                    },
+                  ]}
+                />
+              ) : item.kind === "toolCall" ? (
+                item.result ? (
+                  <MessageDetail botId={botId} message={item.result}>
+                    {(message) => (
+                      <ToolRecord item={item} message={message} botId={botId} />
+                    )}
+                  </MessageDetail>
+                ) : (
+                  <ToolRecord item={item} botId={botId} />
+                )
+              ) : event?.type === "plan" ? (
+                <ul className="work-plan">
+                  {event.plan.map((step) => (
+                    <li key={step.step} data-state={step.status}>
+                      {step.step}
+                    </li>
+                  ))}
+                </ul>
               ) : (
-                <ToolRecord item={item} botId={botId} />
-              )
-            ) : event?.type === "plan" ? (
-              <ul className="work-plan">
-                {event.plan.map((step) => (
-                  <li key={step.step} data-state={step.status}>
-                    {step.step}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p>
-                {typeof item.detail === "string" && item.detail
-                  ? item.detail
-                  : item.label}
-              </p>
-            )}
-          </div>
-        )}
-      </Disclosure>
-    </li>
+                <p>
+                  {typeof item.detail === "string" && item.detail
+                    ? item.detail
+                    : item.label}
+                </p>
+              ))}
+          </>
+        ),
+      }}
+    />
   );
 }

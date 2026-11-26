@@ -260,3 +260,27 @@ test("chat activity changes select their workflows and retain broad checks for o
     true,
   );
 });
+
+test("Work and computer management select their UI and desktop workflows", () => {
+  const paths = [
+    "apps/web/src/features/chat/work-timeline.tsx",
+    "apps/web/src/features/chat/work-state.ts",
+    "apps/web/src/features/shell/computer-connections.tsx",
+    "apps/web/src/features/hosting/desktop.ts",
+    "apps/desktop/src/main.ts",
+    "apps/desktop/test/workspaces.spec.ts",
+    ".github/ci.mjs",
+    ".github/workflows/checks.yml",
+  ];
+  assert.equal(scope(paths).work, true);
+  for (const flag of ["native", "input", "package", "sandbox", "full"])
+    assert.equal(scope(paths)[flag], false);
+  for (const path of [
+    "packages/agent/src/runtime/index.ts",
+    "apps/desktop/src/preload.cjs",
+    "pnpm-lock.yaml",
+    "unknown.ts",
+  ])
+    assert.notEqual(scope([...paths, path]).work, true);
+  assert.notEqual(scope(paths, true).work, true);
+});

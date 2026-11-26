@@ -114,7 +114,7 @@ test("Work identifies an execution by the first input line and retains additiona
   });
 });
 
-test("Work separates current and uncertain work from dated history across midnight", () => {
+test("Work keeps every status in chronological date groups across midnight", () => {
   const { view, run } = running();
   const now = new Date(2026, 10, 24, 0, 5).getTime();
   const records = [
@@ -150,11 +150,10 @@ test("Work separates current and uncertain work from dated history across midnig
       ids: group.turns.map((turn) => turn.id),
     })),
   ).toEqual([
-    { label: "当前工作", ids: ["current"] },
-    { label: "需要关注", ids: ["uncertain", "failed"] },
-    { label: "今天", ids: ["today"] },
+    { label: "今天", ids: ["current", "today"] },
     { label: "昨天", ids: ["yesterday"] },
-    { label: "2026年11月20日", ids: ["older"] },
+    { label: "2026年11月20日", ids: ["older", "failed"] },
+    { label: "2026年11月19日", ids: ["uncertain"] },
     { label: "时间未提供", ids: ["undated"] },
   ]);
   expect(workGroups([], now)).toEqual([]);
@@ -218,7 +217,9 @@ test("Work surfaces missing tool results while retaining the confirmed native en
     title: "执行已结束 · 结果待核对",
     issue: "uncertain",
   });
-  expect(workGroups(workTurns(view), Date.now())[0]?.label).toBe("需要关注");
+  expect(
+    workGroups(workTurns(view), Date.now()).flatMap((group) => group.turns),
+  ).toEqual(workTurns(view));
   view.messages.push({
     id: "result",
     turnId: "turn",
@@ -230,7 +231,8 @@ test("Work surfaces missing tool results while retaining the confirmed native en
   });
   expect(workTurns(view)[0]).toMatchObject({
     status: "ended",
-    title: "执行已结束 · 有工具失败",
+    title: "执行已结束",
+    toolFailures: 1,
     issue: "failed",
   });
 });

@@ -6,6 +6,40 @@ const platforms = ["ubuntu-latest", "windows-latest", "macos-latest"];
 const flags = ["code", "native", "input", "package", "sandbox"];
 
 export function scope(paths, full = false) {
+  const workPath = (path) =>
+    /^apps\/web\/src\/features\/chat\/(work[^/]*\.(tsx|ts|css)|use-chat\.ts)$/.test(
+      path,
+    ) ||
+    /^apps\/web\/src\/features\/(shell\/(environment-switcher|computer-connections)\.(tsx|css)|hosting\/desktop\.ts)$/.test(
+      path,
+    ) ||
+    /^apps\/web\/test\/(work-state\.test\.ts|(bot-work|teams)\.spec\.ts)$/.test(
+      path,
+    ) ||
+    /^apps\/desktop\/(src\/main\.ts|test\/workspaces\.spec\.ts)$/.test(path);
+  if (
+    !full &&
+    paths.some((path) => workPath(path) && path.startsWith("apps/web/src/")) &&
+    paths.every(
+      (path) =>
+        workPath(path) ||
+        /^(docs\/.*\.md|\.github\/(ci\.(test\.)?mjs|workflows\/checks\.yml))$/.test(
+          path,
+        ),
+    )
+  )
+    return {
+      code: true,
+      native: false,
+      input: false,
+      package: false,
+      sandbox: false,
+      full: false,
+      web_os: platforms.slice(0, 1),
+      evals: false,
+      onboarding: false,
+      work: true,
+    };
   const connectionPath = (path) =>
     /^apps\/web\/src\/features\/apps\/(center|connection-(detail|details|editor|login|page|setup))\.(tsx|css)$/.test(
       path,

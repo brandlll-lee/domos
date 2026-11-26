@@ -4,8 +4,6 @@ import { Button } from "@domos/ui/controls";
 import { Loading } from "@domos/ui/loading";
 import { PanelHeader } from "@domos/ui/panel";
 import { ScrollArea } from "@domos/ui/scroll-area";
-import { StatusDot } from "@domos/ui/status-dot";
-import { StopIcon } from "@phosphor-icons/react/dist/csr/Stop";
 import {
   type MouseEvent,
   type ReactNode,
@@ -18,7 +16,8 @@ import {
 import type { useChat } from "./use-chat.ts";
 import { WorkDelegations } from "./work-delegations.tsx";
 import { WorkDetail } from "./work-detail.tsx";
-import { workGroups, workTime, workTurns } from "./work-state.ts";
+import { workGroups, workTimeline, workTurns } from "./work-state.ts";
+import { WorkList } from "./work-timeline.tsx";
 import "./work.css";
 
 export function WorkPanel(
@@ -69,10 +68,10 @@ export function WorkPanel(
     trigger.current?.focus({ preventScroll: true });
   }, [selected]);
   useEffect(() => {
-    if (!view?.busy) return;
+    if (!view?.busy || !connected) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [view?.busy]);
+  }, [view?.busy, connected]);
   const turns = useMemo(() => (view ? workTurns(view) : []), [view]);
   const groups = workGroups(turns, now);
   const current = turns.find((turn) => turn.id === selected);
@@ -94,125 +93,72 @@ export function WorkPanel(
     chat.loadEarlier,
     chat.error,
   ]);
-  const elapsed = (
-    record: { startedAt?: number; endedAt?: number },
-    active = false,
-  ) => workTime(record.startedAt, record.endedAt ?? (active ? now : undefined));
+  const runs = groups
+    .flatMap((group) => group.turns)
+    .map((turn) => ({
+      ...workTimeline(turn, now),
+      author:
+        chat.team && turn.author ? (
+          <>
+            <BotAvatar
+              botId={turn.author.botId}
+              seed={turn.author.avatar}
+              size="small"
+            />
+            {turn.author.name}
+          </>
+        ) : undefined,
+    }));
+  const latest = runs[0]?.id;
+  const previous = useRef(latest);
+  const [hasNew, setHasNew] = useState(false);
+  useEffect(() => {
+    if (previous.current && latest && latest !== previous.current)
+      setHasNew(true);
+    previous.current = latest;
+  }, [latest]);
   return (
     <>
       <ScrollArea
         hidden={selected !== undefined}
         viewportRef={viewport}
         className="detail-scroll"
-        viewportClassName="detail-content"
+        viewportClassName="execution-scroll"
       >
-        {view && !turns.length && (
-          <p className="detail-note">开始对话后，这里会显示每轮工作记录。</p>
-        )}
-        {groups.map((group) => (
-          <section
-            className="work-group"
-            key={group.label}
-            aria-label={group.label}
+        {hasNew && (
+          <Button
+            variant="ghost"
+            size="small"
+            onClick={() => {
+              viewport.current?.scrollTo({ top: 0 });
+              setHasNew(false);
+            }}
           >
-            <h3>{group.label}</h3>
-            <div className="work-list">
-              {group.turns.map((turn) => {
-                const status =
-                  turn.issue === "failed"
-                    ? ({ tone: "negative", label: "执行失败" } as const)
-                    : turn.issue === "uncertain"
-                      ? ({ tone: "warning", label: "结果待核对" } as const)
-                      : turn.active
-                        ? ({
-                            tone:
-                              !connected || !turn.working
-                                ? "warning"
-                                : "positive",
-                            label: turn.title,
-                          } as const)
-                        : undefined;
-                const date =
-                  turn.startedAt === undefined
-                    ? undefined
-                    : new Date(turn.startedAt);
-                return (
-                  <article
-                    className="work-row"
-                    key={turn.id}
-                    data-active={turn.active || undefined}
-                  >
-                    <Button
-                      variant="ghost"
-                      className="work-open"
-                      aria-label={`查看工作记录：${turn.request || turn.subject}`}
-                      onClick={openRun(turn.id)}
-                    >
-                      {turn.active ? (
-                        <span className="work-time">进行中</span>
-                      ) : (
-                        <time
-                          className="work-time"
-                          dateTime={date?.toISOString()}
-                          title={date?.toLocaleString("zh-CN")}
-                        >
-                          {date?.toLocaleTimeString("zh-CN", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            hour12: false,
-                          }) ?? "—"}
-                        </time>
-                      )}
-                      <span className="work-label">
-                        <span className="work-subject" title={turn.subject}>
-                          {turn.subject}
-                        </span>
-                        {chat.team && turn.author && (
-                          <span className="work-author">
-                            <BotAvatar
-                              botId={turn.author.botId}
-                              seed={turn.author.avatar}
-                              size="small"
-                            />
-                            {turn.author.name}
-                          </span>
-                        )}
-                        <span
-                          className="work-activity"
-                          data-tone={status?.tone}
-                        >
-                          {status && <StatusDot {...status} />}
-                          <span>
-                            {turn.active && !connected
-                              ? "状态待更新"
-                              : turn.title}
-                          </span>
-                          <span>
-                            · {turn.active ? "已运行 " : ""}
-                            {elapsed(turn, turn.active && connected)}
-                          </span>
-                        </span>
-                      </span>
-                    </Button>
-                    {turn.active && (
-                      <Button
-                        variant="ghost"
-                        size="icon-small"
-                        className="work-stop"
-                        aria-label="停止执行"
-                        disabled={!connected}
-                        pending={stopping || turn.status === "stopping"}
-                        onClick={() => void stop(turn.sessionId)}
-                      >
-                        <StopIcon />
-                      </Button>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-        ))}
+            有新工作 · 查看最新记录
+          </Button>
+        )}
+        {chat.error ? (
+          <div role="alert">
+            <p>{String(chat.error)}</p>
+            <Button variant="ghost" onClick={() => void chat.reconnect()}>
+              重新读取
+            </Button>
+          </div>
+        ) : !view ? (
+          <Loading label="正在读取工作记录" />
+        ) : null}
+        {view && (
+          <WorkList
+            runs={runs}
+            today={now}
+            connected={connected}
+            stopping={stopping}
+            onOpen={(id, event) => openRun(id)(event)}
+            onStop={(id) =>
+              void stop(turns.find((turn) => turn.id === id)?.sessionId)
+            }
+          />
+        )}
         {view?.before && (
           <Button
             variant="ghost"
@@ -231,7 +177,6 @@ export function WorkPanel(
           <WorkDetail
             key={current.id}
             turn={current}
-            botId={chat.botId}
             author={current.author ?? chat.author}
             sessionId={view.id}
             connected={connected}

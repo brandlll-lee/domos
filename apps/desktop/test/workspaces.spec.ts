@@ -107,11 +107,34 @@ test("workspaces switch in one window and preserve identity, authorization and r
     expect(state?.value?.instances.every((item) => !("url" in item))).toBe(
       true,
     );
-    await choose(pageA, "离线电脑");
+    await pageA.getByRole("button", { name: /^切换电脑：/ }).click();
+    await pageA
+      .getByRole("menuitem", { name: "管理连接", exact: true })
+      .click();
+    const manager = pageA.getByRole("dialog", {
+      name: "电脑连接",
+      exact: true,
+    });
+    await expect(
+      manager.getByRole("button", { name: "当前电脑：电脑 A" }),
+    ).toBeDisabled();
+    await expect(
+      manager.getByRole("listitem", { name: "电脑 A" }).locator(".status-dot"),
+    ).toHaveAttribute("data-tone", "positive");
+    await expect(
+      manager.getByRole("listitem", { name: "电脑 B" }),
+    ).toContainText("状态未读取");
+    await manager
+      .getByRole("button", { name: "切换到 离线电脑", exact: true })
+      .click();
     await expect(
       pageA.getByRole("alert", { name: "fetch failed", exact: true }),
     ).toBeVisible();
     expect(await selected()).toBe(ids[0]);
+    await expect(
+      manager.getByRole("button", { name: "当前电脑：电脑 A" }),
+    ).toBeDisabled();
+    await manager.getByRole("button", { name: "完成", exact: true }).click();
     await expect(
       pageA.getByRole("textbox", { name: "消息", exact: true }),
     ).toBeEnabled();
@@ -411,9 +434,17 @@ test("workspaces switch in one window and preserve identity, authorization and r
       exact: true,
     });
     await connections
-      .locator(".setting-row")
-      .filter({ hasText: "电脑 B" })
-      .getByRole("button", { name: "移除连接", exact: true })
+      .getByRole("button", { name: "电脑 A 的更多操作" })
+      .click();
+    await expect(
+      pageA.getByRole("menuitem", { name: "请先切换到其他电脑" }),
+    ).toBeDisabled();
+    await pageA.keyboard.press("Escape");
+    await connections
+      .getByRole("button", { name: "电脑 B 的更多操作" })
+      .click();
+    await pageA
+      .getByRole("menuitem", { name: "移除连接", exact: true })
       .click();
     await expect(connections.getByText("电脑 B", { exact: true })).toHaveCount(
       0,

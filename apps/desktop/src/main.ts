@@ -437,10 +437,11 @@ async function main() {
   handle(
     "desktop:state",
     async () => ({
-      instances: instances.map(({ id, name, mode }) => ({
+      instances: instances.map(({ id, name, mode, runtime }) => ({
         id,
         name,
         mode,
+        runtime,
         unread: unread[id] ?? 0,
       })),
       selected,

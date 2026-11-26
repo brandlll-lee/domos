@@ -1,6 +1,7 @@
 import type { ChatMessage } from "@domos/agent/messages";
 import type { ChatView } from "@domos/agent/view";
 import { executionActivity } from "./activity-state.ts";
+import type { TimelineRun, TimelineState } from "./work-timeline.tsx";
 
 export type WorkItem = {
   id: string;
@@ -135,8 +136,7 @@ export function workTurns(view: ChatView) {
       let working = false;
       if (!active && run?.evidence?.usage === "failed")
         title += " · 用量入账失败";
-      if (issue && issue !== status)
-        title += issue === "failed" ? " · 有工具失败" : " · 结果待核对";
+      if (issue === "uncertain" && issue !== status) title += " · 结果待核对";
       if (active) {
         const progress = executionActivity(
           view,
@@ -173,6 +173,9 @@ export function workTurns(view: ChatView) {
         title,
         working,
         issue,
+        toolFailures: items.filter(
+          (item) => item.kind === "toolCall" && item.status === "failed",
+        ).length,
         items,
         request,
         subject:
@@ -192,15 +195,14 @@ export function workTurns(view: ChatView) {
     .toReversed();
 }
 
-export function workGroups(turns: ReturnType<typeof workTurns>, now: number) {
-  const current = turns.filter((turn) => turn.active);
-  const attention = turns.filter((turn) => !turn.active && turn.issue);
-  const history = turns
-    .filter((turn) => !turn.active && !turn.issue)
-    .toSorted((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0));
+export function workGroups<T extends { startedAt?: number }>(
+  turns: T[],
+  now: number,
+) {
+  const history = turns.toSorted(
+    (a, b) => (b.startedAt ?? -Infinity) - (a.startedAt ?? -Infinity),
+  );
   const groups = new Map<string, typeof turns>();
-  if (current.length) groups.set("当前工作", current);
-  if (attention.length) groups.set("需要关注", attention);
   const today = new Date(now);
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
@@ -245,4 +247,42 @@ export function workTime(start?: number, end?: number) {
   return seconds < 60
     ? `${Number(seconds.toFixed(1))}秒`
     : `${Math.floor(seconds / 60)}分${String(Math.floor(seconds % 60)).padStart(2, "0")}秒`;
+}
+
+export function timelineState(status: string): TimelineState {
+  switch (status) {
+    case "running":
+    case "queued":
+    case "stopping":
+    case "ended":
+    case "stopped":
+    case "failed":
+    case "uncertain":
+    case "done":
+      return status;
+    default:
+      return "recorded";
+  }
+}
+export function workTimeline(
+  turn: ReturnType<typeof workTurns>[number],
+  now: number,
+): TimelineRun {
+  return {
+    id: turn.id,
+    title: turn.subject,
+    startedAt: turn.startedAt,
+    state:
+      turn.active && !turn.working && turn.status === "running"
+        ? "waiting"
+        : timelineState(turn.status),
+    label: turn.title,
+    duration: workTime(
+      turn.startedAt,
+      turn.endedAt ?? (turn.active ? now : undefined),
+    ).replace("—", "耗时未知"),
+    harness: turn.run?.provider,
+    model: turn.run?.model ?? undefined,
+    toolFailures: turn.toolFailures,
+  };
 }

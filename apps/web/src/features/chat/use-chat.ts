@@ -92,6 +92,7 @@ export function useChat(
     store.update({ outgoing: update(store.snapshot().outgoing) });
   const connection = useConnection();
   const [connected, setConnected] = useState(false);
+  const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [stopping, setStopping] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [earlierError, setEarlierError] = useState<string>();
@@ -137,6 +138,7 @@ export function useChat(
   }, [restore, botId, teamId, store, setError]);
 
   useEffect(() => {
+    if (connectionAttempt > 0) setError(null);
     const controller = new AbortController();
     let pending: ChatView | undefined;
     let frame: number | undefined;
@@ -254,7 +256,7 @@ export function useChat(
       if (frame !== undefined) cancelAnimationFrame(frame);
       document.removeEventListener("visibilitychange", visible);
     };
-  }, [botId, store, setView, setError, teamId]);
+  }, [botId, store, setView, setError, teamId, connectionAttempt]);
 
   const loadPage = useCallback(
     async (direction: "before" | "after") => {
@@ -473,6 +475,9 @@ export function useChat(
       } finally {
         if (revealRequest.current === controller) revealRequest.current = null;
       }
+    },
+    reconnect() {
+      setConnectionAttempt((value) => value + 1);
     },
     view,
     restoring,
