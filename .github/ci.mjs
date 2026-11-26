@@ -19,7 +19,11 @@ export function scope(paths, full = false) {
     /^apps\/desktop\/(src\/main\.ts|test\/workspaces\.spec\.ts)$/.test(path);
   if (
     !full &&
-    paths.some((path) => workPath(path) && path.startsWith("apps/web/src/")) &&
+    paths.some(
+      (path) =>
+        (workPath(path) && path.startsWith("apps/web/src/")) ||
+        path === "apps/desktop/test/workspaces.spec.ts",
+    ) &&
     paths.every(
       (path) =>
         workPath(path) ||

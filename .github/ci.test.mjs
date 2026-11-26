@@ -205,7 +205,7 @@ test("onboarding selects its user flows and keeps runtime changes broad", () => 
     "docs/startup-onboarding.md",
   ];
   assert.equal(scope(paths).onboarding, true);
-  for (const name of ["desktop", "runtime", "avatars", "workspaces"]) {
+  for (const name of ["desktop", "runtime", "avatars"]) {
     const selected = scope([`apps/desktop/test/${name}.spec.ts`]);
     assert.equal(selected.onboarding, true);
     for (const flag of ["native", "input", "package", "sandbox", "full"])
@@ -262,6 +262,7 @@ test("chat activity changes select their workflows and retain broad checks for o
 });
 
 test("Work and computer management select their UI and desktop workflows", () => {
+  assert.equal(scope(["apps/desktop/test/workspaces.spec.ts"]).work, true);
   const paths = [
     "apps/web/src/features/chat/work-timeline.tsx",
     "apps/web/src/features/chat/work-state.ts",

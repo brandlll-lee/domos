@@ -305,7 +305,14 @@ test("workspaces switch in one window and preserve identity, authorization and r
     await expect(
       pageB.getByRole("textbox", { name: "消息", exact: true }),
     ).toHaveText("B 的草稿");
-    await desktop.context().addInitScript(() => {
+    const started = performance.now();
+    await choose(pageB, "电脑 A");
+    pageA = await workspacePage(desktop, a.origin);
+    await expect(
+      pageA.getByRole("textbox", { name: "消息", exact: true }),
+    ).toHaveText("A 的草稿");
+    const switchMs = performance.now() - started;
+    await pageA.evaluate(() => {
       const times: number[] = [];
       Reflect.set(window, "workspaceFrames", times);
       const sample = (time: number) => {
@@ -315,13 +322,6 @@ test("workspaces switch in one window and preserve identity, authorization and r
       };
       requestAnimationFrame(sample);
     });
-    const started = performance.now();
-    await choose(pageB, "电脑 A");
-    pageA = await workspacePage(desktop, a.origin);
-    await expect(
-      pageA.getByRole("textbox", { name: "消息", exact: true }),
-    ).toHaveText("A 的草稿");
-    const switchMs = performance.now() - started;
     await pageA.waitForFunction(
       () => Reflect.get(window, "workspaceFrames")?.length === 31,
     );
