@@ -92,35 +92,44 @@ export function ConnectionEditor({
               className="field-control"
               required
               disabled={busy}
+              placeholder="我的工具"
               value={form.name}
               onChange={(event) => change({ name: event.target.value })}
             />
           </label>
-          <div className="field">
-            <label className="field-label" htmlFor="connection-computer">
-              运行／访问电脑
-            </label>
-            <ChoicePicker
-              id="connection-computer"
-              label="运行／访问电脑"
-              placeholder="选择电脑"
-              required
+          {computers.length > 1 && (
+            <div className="field">
+              <label className="field-label" htmlFor="connection-computer">
+                运行／访问电脑
+              </label>
+              <ChoicePicker
+                id="connection-computer"
+                label="运行／访问电脑"
+                placeholder="选择电脑"
+                required
+                disabled={busy}
+                value={form.computerId}
+                items={computers.map((pc) => ({
+                  value: pc.id,
+                  label: pc.name,
+                }))}
+                onValueChange={(computerId) => change({ computerId })}
+              />
+            </div>
+          )}
+          <div className="connection-transport">
+            <span className="field-label">连接方式</span>
+            <SegmentedControl
+              label="传输方式"
+              value={form.transport}
               disabled={busy}
-              value={form.computerId}
-              items={computers.map((pc) => ({ value: pc.id, label: pc.name }))}
-              onValueChange={(computerId) => change({ computerId })}
+              options={[
+                { value: "http", label: "服务地址" },
+                { value: "stdio", label: "本地命令" },
+              ]}
+              onValueChange={(transport) => change({ transport })}
             />
           </div>
-          <SegmentedControl
-            label="传输方式"
-            value={form.transport}
-            disabled={busy}
-            options={[
-              { value: "http", label: "HTTP / SSE" },
-              { value: "stdio", label: "本地命令" },
-            ]}
-            onValueChange={(transport) => change({ transport })}
-          />
           <label className="field">
             <span className="field-label">
               {form.transport === "http" ? "MCP 地址" : "启动程序"}
@@ -131,6 +140,9 @@ export function ConnectionEditor({
               disabled={busy}
               autoComplete="off"
               type={form.transport === "http" ? "url" : "text"}
+              placeholder={
+                form.transport === "http" ? "https://example.com/mcp" : "npx"
+              }
               value={form.address}
               onChange={(event) => change({ address: event.target.value })}
             />

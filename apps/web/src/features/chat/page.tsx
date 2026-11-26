@@ -22,7 +22,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { AppsCenter } from "../apps/center.tsx";
+import { ConnectionCenter } from "../apps/center.tsx";
 import { BotDetails, type BotPanelView } from "../bots/details/index.tsx";
 import { selectBot, useBots } from "../bots/use-bots.ts";
 import { useComputer } from "../computer/use-computer.ts";
@@ -210,10 +210,9 @@ function BotChat({
     },
     [draft.update, draft.current, conversationId],
   );
-  const [view, setView] = useState<"chat" | "usage">("chat");
+  const [view, setView] = useState<"chat" | "usage" | "connections">("chat");
   const [searchOpen, setSearchOpen] = useState(false);
   const searchTrigger = useRef<HTMLButtonElement>(null);
-  const [appsOpen, setAppsOpen] = useState(false);
   const [detailsOpen, updateDetailsOpen] = useState(
     () =>
       savedPanel?.open ??
@@ -407,9 +406,9 @@ function BotChat({
   return (
     <FilePreviewContext value={filePreview}>
       <Workspace
-        onApps={() => setAppsOpen(true)}
-        detailsOpen={detailsOpen}
-        obscured={settings.showing || appsOpen}
+        onApps={() => setView("connections")}
+        detailsOpen={view === "chat" && detailsOpen}
+        obscured={settings.showing}
         onDetailsChange={(open) => {
           if (open) setDetailsOpen(true);
           else closePanel();
@@ -457,7 +456,7 @@ function BotChat({
             !sessionId &&
             (panel === "settings" || panel === "work") ? (
             <TeamDetails
-              active={detailsOpen}
+              active={view === "chat" && detailsOpen}
               team={team}
               members={members ?? []}
               bots={bots}
@@ -496,7 +495,7 @@ function BotChat({
                   : undefined
               }
               takeoverId={takeoverId}
-              active={detailsOpen}
+              active={view === "chat" && detailsOpen}
               workRun={workRun}
               onWorkRunClose={() => setWorkRun(undefined)}
               bot={sessionOwner}
@@ -543,13 +542,14 @@ function BotChat({
           )
         }
       >
-        <AppsCenter
-          open={appsOpen}
-          onOpenChange={setAppsOpen}
-          bots={bots}
-          computers={directory.computers.items}
-        />
-        {view === "usage" ? (
+        {view === "connections" ? (
+          <ConnectionCenter
+            onExit={() => setView("chat")}
+            bots={bots}
+            computers={directory.computers.items}
+            defaultComputerId={directory.computers.defaultId}
+          />
+        ) : view === "usage" ? (
           <Suspense fallback={<Loading label="正在读取用量" />}>
             <UsageSurface />
           </Suspense>
@@ -619,7 +619,7 @@ function BotChat({
                 sentRequest={chat.sentRequest}
                 target={chat.target}
                 readingHistory={chat.readingHistory}
-                obscured={settings.showing || appsOpen || view !== "chat"}
+                obscured={settings.showing || view !== "chat"}
                 onLatest={chat.showLatest}
                 hasMore={chat.hasMore}
                 hasNewer={chat.hasNewer}

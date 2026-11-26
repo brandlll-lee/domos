@@ -6,6 +6,37 @@ const platforms = ["ubuntu-latest", "windows-latest", "macos-latest"];
 const flags = ["code", "native", "input", "package", "sandbox"];
 
 export function scope(paths, full = false) {
+  const connectionPath = (path) =>
+    /^apps\/web\/src\/features\/apps\/(center|connection-(detail|details|editor|login|page|setup))\.(tsx|css)$/.test(
+      path,
+    ) ||
+    path === "apps/web/src/features/apps/style.css" ||
+    path === "apps/web/src/features/chat/page.tsx" ||
+    path === "apps/web/test/app-connections.spec.ts" ||
+    path === "packages/agent/src/mcp/catalog.ts";
+  if (
+    !full &&
+    paths.some(connectionPath) &&
+    paths.every(
+      (path) =>
+        connectionPath(path) ||
+        /^(AGENTS\.md|docs\/.*\.md|\.github\/(ci\.(test\.)?mjs|workflows\/checks\.yml))$/.test(
+          path,
+        ),
+    )
+  )
+    return {
+      code: true,
+      native: false,
+      input: false,
+      package: false,
+      sandbox: false,
+      full: false,
+      web_os: platforms.slice(0, 1),
+      evals: false,
+      onboarding: false,
+      connections: true,
+    };
   const activityPath = (path) =>
     path === "apps/web/src/main.tsx" ||
     path === "apps/desktop/test/desktop.spec.ts" ||

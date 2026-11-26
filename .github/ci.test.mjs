@@ -12,6 +12,31 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { changedPaths, report, scope, suites } from "./ci.mjs";
 
+test("connection page changes select connection and workspace checks", () => {
+  const paths = [
+    "apps/web/src/features/apps/center.tsx",
+    "apps/web/src/features/chat/page.tsx",
+    "apps/web/test/app-connections.spec.ts",
+    "packages/agent/src/mcp/catalog.ts",
+    "docs/decisions/0005-workspace-ui.md",
+    ".github/ci.mjs",
+    ".github/ci.test.mjs",
+    ".github/workflows/checks.yml",
+  ];
+  const selected = scope(paths);
+  assert.equal(selected.connections, true);
+  for (const flag of ["native", "input", "package", "sandbox", "full"])
+    assert.equal(selected[flag], false);
+  for (const extra of [
+    "packages/agent/src/mcp/service.ts",
+    "apps/web/src/features/apps/connection-state.ts",
+    "packages/ui/src/web/controls.tsx",
+    "pnpm-lock.yaml",
+  ])
+    assert.notEqual(scope([...paths, extra]).connections, true);
+  assert.notEqual(scope(paths, true).connections, true);
+});
+
 test("documentation avoids product jobs; UI keeps daily checks", () => {
   assert.equal(
     scope(["README.zh-CN.md", "docs/setup.md", "AGENTS.md"]).code,

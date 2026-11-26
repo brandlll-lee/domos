@@ -1,117 +1,13 @@
-.apps-center {
-  display: grid;
-  align-content: start;
-  gap: var(--space-5);
-}
-.apps-actions,
-.apps-item-heading {
+.apps-actions {
   display: flex;
-  gap: var(--space-2);
-  align-items: center;
-}
-.apps-actions {
   flex-wrap: wrap;
-}
-.apps-item-heading > div:first-child {
-  flex: 1;
-  min-width: 0;
-}
-.apps-center h3 {
-  font-size: var(--text-heading);
-  margin: 0;
-}
-.apps-catalog {
-  display: grid;
-  gap: var(--space-6);
-}
-.apps-category {
-  display: grid;
-  gap: var(--space-2);
-}
-.apps-category h3 {
-  font-size: var(--text-label);
-  font-weight: var(--weight-semibold);
-}
-.apps-catalog-rows {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
-  column-gap: var(--space-10);
-  row-gap: var(--space-1);
-}
-.apps-catalog-item {
-  display: grid;
-  grid-template-columns: var(--space-8) minmax(0, 1fr) auto;
-  gap: var(--space-3);
-  align-items: center;
-  min-width: 0;
-  padding-block: var(--space-3);
-}
-.apps-catalog-item > div:nth-child(2) {
-  min-width: 0;
-}
-.apps-catalog-item strong {
-  font-weight: var(--weight-medium);
-}
-.apps-catalog-item p {
-  overflow-wrap: anywhere;
-}
-.apps-catalog-item > .button {
-  min-width: var(--space-12);
-}
-.apps-logo {
-  width: var(--space-8);
-  height: var(--space-8);
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-control);
-  background: var(--color-control);
-}
-.apps-logo svg {
-  width: var(--space-4);
-  height: var(--space-4);
-}
-.apps-center textarea {
-  font-family: var(--font-mono);
-}
-.apps-center p {
-  margin: var(--space-1) 0;
-}
-.apps-muted,
-.apps-catalog-item p,
-.apps-item-heading p {
-  color: var(--color-muted);
-  font-size: var(--text-label);
-}
-.apps-error {
-  color: var(--color-danger);
-}
-.apps-item-heading {
-  flex-wrap: wrap;
-  align-items: start;
-  gap: var(--space-4);
-}
-.apps-grant {
-  padding-block: var(--space-2);
-}
-.apps-grant details {
-  padding-inline-start: var(--space-6);
-}
-.apps-actions {
   justify-content: flex-end;
-}
-
-.apps-navigation {
-  display: grid;
-  gap: var(--space-4);
-}
-.connection-group-heading {
-  display: flex;
   align-items: center;
   gap: var(--space-2);
-  color: var(--color-muted);
 }
-.connection-hint {
-  max-width: 22rem;
+.apps-muted {
+  color: var(--color-muted);
+  font-size: var(--text-label);
 }
 .connection-tools {
   min-width: 0;
@@ -127,57 +23,6 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: var(--text-caption);
-}
-
-.connection-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: start;
-  gap: var(--space-3);
-}
-.connection-source,
-.connection-tools {
-  display: grid;
-  gap: var(--space-3);
-  min-width: 0;
-}
-.connection-source + .connection-source {
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--color-divider);
-}
-.connection-source-heading,
-.connection-state {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-caption);
-}
-.connection-source-heading > span {
-  margin-inline-start: auto;
-  color: var(--color-muted);
-}
-.connection-metadata {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: var(--space-2) var(--space-4);
-  margin: 0;
-  font-size: var(--text-caption);
-}
-.connection-metadata dt {
-  color: var(--color-muted);
-}
-.connection-metadata dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-.expandable-card-identity .engine-mark {
-  vertical-align: middle;
-}
-@media (max-width: 44rem) {
-  .connection-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 .connection-import-actions {
