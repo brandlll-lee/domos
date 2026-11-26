@@ -73,7 +73,9 @@ test("plush identities load, animate and survive profile changes", async ({
     await expect(avatar.locator(".character-face image")).toHaveCount(4);
     await expect(page.locator(".character-body > path")).toHaveCount(0);
     await checkAvatarSizes();
-    const contact = page.getByRole("link", { name: "Domos", exact: true });
+    const contact = page
+      .getByRole("navigation", { name: "联系人", exact: true })
+      .getByRole("button", { name: "Domos", exact: true });
     const contactAvatar = contact.locator(".bot-avatar");
     const frame = await contactAvatar.boundingBox();
     if (!frame) throw new Error("Contact avatar required");
@@ -122,6 +124,7 @@ test("plush identities load, animate and survive profile changes", async ({
       )
       .toBeLessThan(-0.1);
     expect(await contactAvatar.boundingBox()).toEqual(frame);
+    await page.keyboard.press("Escape");
     await page.getByLabel("消息", { exact: true }).fill("保存这条消息的主题");
     await page.getByRole("button", { name: "发送", exact: true }).click();
     const bubble = page.getByLabel("你的消息").locator(".message-bubble");
@@ -230,6 +233,10 @@ test("plush identities load, animate and survive profile changes", async ({
     await page.emulateMedia({ reducedMotion: "reduce" });
     await contactAvatar.hover();
     await expect(gesture).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
+    await page.mouse.move(0, 0);
+    await expect(
+      page.getByRole("menu", { name: "Domos", exact: true }),
+    ).toBeHidden();
     await details.getByRole("button", { name: "编辑", exact: true }).click();
     const picker = details.locator(".avatar-editor");
     const cloud = picker.getByRole("button", {

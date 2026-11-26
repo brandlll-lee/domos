@@ -122,7 +122,7 @@ Pi Durable 1.4.0 stores Bot tasks. Native Harness processes own model loops. Dom
 
 - Use the scripts in `package.json` as the command source. Run focused tests for the changed behavior first, then the checks required by affected consumers and CI.
 - Group web and API tests by feature ownership. Extend the relevant suite. Web suites share the per-test service fixture in `apps/web/test/fixtures/service.ts`; API suites share `apps/api/test/fixtures/api.ts`. Keep feature assertions in their suites and preserve isolated data and service cleanup.
-- Run `pnpm typecheck` and `pnpm lint` for code changes. Fix new errors and report retained warnings.
+- Stage the intended change and run `pnpm verify`. It selects checks from the staged tree, including lint and typecheck for code changes. Fix new errors and report retained warnings. See [Verification](docs/verification.md).
 - For Harness or Computer Use changes, read [docs/computer-evals.md](docs/computer-evals.md) before changing behavior. Save the relevant failure or baseline first. Run the regression after the change.
 - Add new confirmed failure cases to the small, sanitized eval set. Report completion evidence, coverage, elapsed time, and model round trips when available. Without eval evidence, do not claim a Harness performance or success-rate improvement.
 - Offline trajectory scoring evaluates recorded behavior. Scorer tests test the scorer. Neither reruns an Agent. Rule pass rates are separate from task success rates.
@@ -132,12 +132,26 @@ Pi Durable 1.4.0 stores Bot tasks. Native Harness processes own model loops. Dom
 - Wait for a state or event in tests. Use timeouts as hang guards. Keep a performance threshold tied to the work it measures and report runner limits.
 - For cross-platform claims, inspect Windows, Linux, and macOS results for the same commit in `.github/workflows/checks.yml` and `.github/workflows/computer-input.yml`.
 - Startup and first-use pages share `packages/ui/src/web/startup/` across desktop setup, hosting pairing and onboarding. Local Spec03 preview imports these product components. Preserve the approved layout and animation. Native services own readiness, authorization, login and model saving. Keep saved connection access and Docker actions in the setup auxiliary controls.
-- Checks owns change selection and test partitions in `.github/ci.mjs`. Run platform-independent regressions, lint and typecheck once on Linux. Changes confined to startup UI and its direct callers select startup API contracts, onboarding/model/computer-settings Web tests, and Windows startup/runtime/avatar/workspace workflows. Daily full Web E2E uses two Linux shards. Selected native process, browser and input checks retain Windows, Linux and macOS coverage. Run Harness process tests and real browser service tests in separate sequential steps. Use the runner default shell for native process tests. Each runner uses one GUI worker. Daily desktop smoke covers startup, connection, chat and exit. Relevant desktop, runtime, asset or dependency changes select full desktop and Windows packaging with the packaged identity test. Select Docker and SSH by their affected boundaries. Manual Checks and `v*` tags run full validation. New runs cancel older runs for the same workflow and ref.
+- Checks owns change selection, command plans and test partitions in `.github/ci.mjs`. CI runs platform-independent regressions, lint and typecheck once on Linux. Changes confined to startup UI and its direct callers select startup API contracts, onboarding/model/computer-settings Web tests, and Windows startup/runtime/avatar/workspace workflows. Scoped Web E2E uses two Linux shards. Full runs retain three OS targets. Selected native process, browser and input checks retain Windows, Linux and macOS coverage. Run Harness process tests and real browser service tests as sequential commands. Each runner uses one GUI worker. Daily desktop smoke covers startup, connection, chat and exit. Relevant desktop, runtime, asset or dependency changes select full desktop and Windows packaging with the packaged identity test. Select Docker and SSH by their affected boundaries. Manual Checks and `v*` tags run full validation. New runs cancel older runs for the same workflow and ref.
 - Report skipped and untested capabilities explicitly. Green CI does not prove every OS permission, desktop session, or third-party application works.
 - Documentation-only edits need link, path, and diff checks. Do not add tests that assert document wording.
 - Main pushes and pull requests always produce a Checks result. Changes limited to root `AGENTS.md`, root `README*.md`, and Markdown under `docs/` omit product jobs. Dependencies, shared configuration, unknown paths and unavailable Git comparisons select full validation. The result job distinguishes scope omissions from failed or cancelled checks. Verify added, deleted and renamed paths when changing selection rules.
 - Changes limited to eval code, eval tests and their allowed documentation or CI-selection files run the eval suite, lint, typecheck and selection tests. Runtime, dependency and other changes retain their normal checks. Real model evals use explicit commands.
 - Changes confined to chat activity and its listed callers select chat state unit tests, the affected chat Web suites on two Linux shards, and Windows desktop smoke. Other owners retain their normal checks.
+
+| Verification rule | Enforcement |
+| --- | --- |
+| Use the Node major in `.node-version` before any check | `.github/ci.mjs` `assertNode`; `.github/verify.test.mjs` |
+| Select from the staged tree or actual pushed commit; use the same commands in CI | `pnpm verify`; `.github/ci.mjs` `scope`, `plan`, `snapshot`; `.githooks/pre-push` |
+| Install the push hook for this repository | Root `prepare` script; `.github/ci.mjs` `hooks` |
+| Retain required Work, draft and workspace checks | `.github/verify.test.mjs` coverage and real-push tests |
+| Fail on command errors, termination, missing checks or incompatible explicit jobs | `.github/ci.mjs` `execute`, `verify`, `report`; `.github/verify.test.mjs` |
+| Keep off-host checks pending until CI completes them | `.github/ci.mjs` `schedule`, `report`; `.github/verify.test.mjs` |
+| Keep ordinary pushes on the selected check job; report other jobs as pending CI | `pnpm verify --push`; `.github/ci.mjs` `verifyTree` |
+| Reuse local web results only when their execution inputs match; rerun changed or failed files | `.github/ci.mjs` `webFingerprints`, `verifyWeb`; `.github/verify.test.mjs` |
+| Wait for saved attachment removal before reload | `apps/web/test/drafts.spec.ts` delayed IndexedDB transaction |
+| Hold Electron readiness until its test connection starts | `apps/desktop/test/entry.mjs`; `.github/desktop-startup.test.mjs` |
+| Bound test concurrency on each host | `vitest.config.ts` two workers; existing single-worker Playwright configs |
 
 ## Environment secrets
 

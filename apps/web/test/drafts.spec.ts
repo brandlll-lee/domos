@@ -506,6 +506,37 @@ test("attachment removal updates the editor before cleanup and can retry cleanup
   await expect(notice).toBeVisible();
   await notice.getByRole("button", { name: "重试", exact: true }).click();
   await expect(notice).toHaveCount(0);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const request = indexedDB.open("domos:composer", 1);
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          const db = request.result;
+          const original = IDBDatabase.prototype.transaction;
+          const gate = db.transaction("drafts", "readwrite");
+          const store = gate.objectStore("drafts");
+          let holding = true;
+          IDBDatabase.prototype.transaction = function (...args) {
+            const transaction = original.apply(this, args);
+            if (this.name === db.name && args[1] !== "readwrite") {
+              holding = false;
+              IDBDatabase.prototype.transaction = original;
+            }
+            return transaction;
+          };
+          const keepAlive = () => {
+            const read = store.getAll();
+            read.onsuccess = () => {
+              if (holding) keepAlive();
+            };
+          };
+          gate.oncomplete = () => db.close();
+          keepAlive();
+          resolve();
+        };
+      }),
+  );
   await page.getByRole("button", { name: "移除文件 image.png" }).click();
   await expect(page.locator(".composer-attachments")).toHaveCount(0);
   await composerFiles(page);

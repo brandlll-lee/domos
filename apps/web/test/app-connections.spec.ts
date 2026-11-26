@@ -23,11 +23,17 @@ async function addConnection(page: Page, name: string, url: string) {
   await editor.getByRole("button", { name: "保存并测试" }).click();
 }
 
-test("connection center opens Discover apps as a workspace page", async ({
+test("connection center opens Discover apps and preserves chat work", async ({
   service,
   page,
 }) => {
   await page.goto(service.url);
+  await service.control("gate");
+  await page.getByLabel("消息", { exact: true }).fill("后台更新");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "停止生成", exact: true }),
+  ).toBeVisible();
   await page.getByLabel("消息", { exact: true }).fill("保留这段草稿");
   const details = await openDetails(page);
   await page.getByRole("button", { name: "应用连接", exact: true }).click();
@@ -41,7 +47,10 @@ test("connection center opens Discover apps as a workspace page", async ({
     0,
   );
   await expect(details).not.toBeVisible();
+  await service.control("release");
+  await expect(center).toBeVisible();
   await center.getByRole("button", { name: "返回聊天" }).click();
+  await expect(page.locator(".messages")).toContainText("完整回复。");
   await expect(page.getByLabel("消息", { exact: true })).toHaveText(
     "保留这段草稿",
   );

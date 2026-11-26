@@ -100,7 +100,9 @@ test("image service generates media and shared tools apply a character with work
     await expect(
       settings.getByText("试生成完成。", { exact: true }),
     ).toBeVisible({ timeout: 30000 });
-    await expect(settings.locator(".image-thumbnail img")).toBeVisible();
+    const preview = settings.locator(".image-thumbnail").first();
+    await preview.scrollIntoViewIfNeeded();
+    await expect(preview.locator("img")).toBeVisible();
     await page.screenshot({ path: "test-results/image-service-settings.png" });
     await page.getByRole("button", { name: "关闭设置", exact: true }).click();
     await service.control({
@@ -130,7 +132,11 @@ test("image service generates media and shared tools apply a character with work
     await expect(
       page.locator(".messages").getByText("动图已经生成。", { exact: true }),
     ).toBeVisible({ timeout: 30000 });
-    const animation = page.locator(".messages .image-thumbnail img").first();
+    const attachment = page.locator(".messages .image-thumbnail").first();
+    await attachment.scrollIntoViewIfNeeded();
+    await attachment.click();
+    const viewer = page.locator(".image-viewer");
+    const animation = viewer.locator(".image-viewer-canvas img");
     await expect(animation).toBeVisible();
     const first = createHash("sha256")
       .update(await animation.screenshot())
@@ -144,6 +150,8 @@ test("image service generates media and shared tools apply a character with work
         { timeout: 4000, intervals: [70, 110, 130] },
       )
       .not.toBe(first);
+    const avatarFileId = await attachment.getAttribute("data-file-id");
+    await viewer.getByRole("button", { name: "关闭弹窗", exact: true }).click();
     await service.control({
       responses: [
         {
@@ -154,9 +162,7 @@ test("image service generates media and shared tools apply a character with work
               name: "bot_update",
               arguments: {
                 name: "小怪兽",
-                avatarFileId: (await animation.getAttribute("src"))
-                  ?.split("/")
-                  .pop(),
+                avatarFileId,
               },
             },
           ],
@@ -180,17 +186,16 @@ test("image service generates media and shared tools apply a character with work
     await page.emulateMedia({ reducedMotion: "reduce" });
     await expect(character.locator(".character-body > image")).toHaveAttribute(
       "href",
-      applied.avatarMedia?.cover ?? "",
+      applied.avatarMedia?.thumbnail ?? applied.avatarMedia?.cover ?? "",
     );
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.screenshot({ path: "test-results/image-character-applied.png" });
     await page.getByRole("button", { name: "Bot详情", exact: true }).click();
     const details = page.locator("#bot-details");
     await details.getByRole("button", { name: "编辑", exact: true }).click();
-    await expect(
-      details.getByText("角色装备预览", { exact: true }),
-    ).toBeVisible();
-    await expect(details.locator(".character-work-headset")).toBeVisible();
+    const equipment = details.getByRole("figure", { name: "角色装备预览" });
+    await equipment.scrollIntoViewIfNeeded();
+    await expect(equipment.locator(".character-work-headset")).toBeVisible();
     await page.screenshot({
       path: "test-results/image-character-equipment.png",
     });

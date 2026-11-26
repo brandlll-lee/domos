@@ -189,36 +189,49 @@ test("profile reads reject late responses and drafts stay with their Bot", async
     name: "Second",
     requestId: crypto.randomUUID(),
   });
-  const captured = Promise.withResolvers<void>();
-  const release = Promise.withResolvers<void>();
-  let delay = true;
-  await page.route("**/rpc/work/profile", async (route) => {
-    const response = await route.fetch();
-    if (delay) {
-      delay = false;
-      captured.resolve();
-      await release.promise;
-    }
-    await route.fulfill({ response });
-  });
   await page.goto(service.url);
   await page.getByRole("link", { name: "Domos", exact: false }).click();
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   const details = page.locator("#bot-details");
   await details.getByRole("button", { name: "编辑", exact: true }).click();
-  await captured.promise;
+  const name = details.getByRole("textbox", { name: "名字", exact: true });
+  await expect(name).toHaveValue("Domos");
+  const captured = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const delivered = Promise.withResolvers<void>();
+  let delay = true;
+  await page.route("**/rpc/work/profile", async (route) => {
+    const response = await route.fetch();
+    const held = delay;
+    if (held) {
+      delay = false;
+      captured.resolve();
+      await release.promise;
+    }
+    await route.fulfill({ response });
+    if (held) delivered.resolve();
+  });
   const initial = await api.work.profile({ botId: first.id });
+  const pending = await api.work.update({
+    botId: first.id,
+    name: "Pending",
+    instructions: "Pending instructions",
+    avatar: initial.avatar,
+    revision: initial.revision,
+    requestId: crypto.randomUUID(),
+  });
+  await captured.promise;
   await api.work.update({
     botId: first.id,
     name: "Current",
     instructions: "Current instructions",
     avatar: initial.avatar,
-    revision: initial.revision,
+    revision: pending.revision,
     requestId: crypto.randomUUID(),
   });
-  const name = details.getByRole("textbox", { name: "名字", exact: true });
   await expect(name).toHaveValue("Current");
   release.resolve();
+  await delivered.promise;
   await expect(
     details.getByRole("textbox", { name: "职责与长期指令", exact: true }),
   ).toHaveValue("Current instructions");
@@ -772,12 +785,14 @@ test("working contacts retain animated status across switches, concurrent work, 
   await service.control("gate");
   await input.fill("后台任务");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  const first = page.locator('.sidebar a[href="#bot/1"]');
+  const first = page.locator(".sidebar .bot-contact-heading").filter({
+    has: page.locator('a[href="#bot/1"]'),
+  });
   await expect(first.getByRole("status", { name: "正在工作" })).toBeVisible();
   await createBot(page, "第二位助手");
-  const second = page
-    .getByRole("navigation", { name: "联系人", exact: true })
-    .getByRole("link", { name: "第二位助手" });
+  const second = page.locator(".sidebar .bot-contact-heading").filter({
+    has: page.getByRole("link", { name: "第二位助手", exact: true }),
+  });
   await expect(first.locator(".bot-avatar > .loading-dots")).toBeVisible();
   await expect(second.locator(".bot-avatar > .loading-dots")).toHaveCount(0);
   await service.control("gate");
@@ -833,7 +848,7 @@ test("working contacts retain animated status across switches, concurrent work, 
   await service.control("release");
   await expect(second.locator(".bot-avatar > .loading-dots")).toHaveCount(0);
   await expect(first.locator(".bot-avatar > .loading-dots")).toBeVisible();
-  await first.click();
+  await first.getByRole("link", { name: "Domos", exact: true }).click();
   await page.getByRole("button", { name: "停止生成", exact: true }).click();
   await expect(
     page.locator(".sidebar .bot-avatar > .loading-dots"),
@@ -873,7 +888,8 @@ test("Bot identity stays consistent and image previews work in drafts and histor
   await dialog.getByRole("button", { name: "开始聊天", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   const selected = page
-    .getByRole("link", { name: "视觉助手", exact: true })
+    .getByRole("navigation", { name: "联系人", exact: true })
+    .getByRole("button", { name: "视觉助手", exact: true })
     .locator(".bot-avatar");
   await expect(selected).toHaveAttribute("data-seed", seed ?? "");
   await expect(page.locator(".chat-identity .bot-avatar")).toHaveAttribute(
@@ -944,7 +960,7 @@ test("detail pages load their own data and isolate profile errors", async ({
   ).toBeVisible();
   await expect(details.getByRole("status")).toHaveCount(0);
   expect(streams).toBe(0);
-  expect(profiles).toBe(0);
+  expect(profiles).toBe(1);
   await details.getByRole("button", { name: "返回", exact: true }).click();
   await details.getByRole("tab", { name: "Bot", exact: true }).click();
   await details.getByRole("button", { name: "编辑", exact: true }).click();
@@ -980,10 +996,7 @@ test("profile loading recovers without retaining an old error", async ({
   await expect(page.locator(".attention-toast[data-error]")).toBeVisible();
   await expect(details.getByRole("status")).toHaveCount(0);
   fail = false;
-  await page
-    .locator(".attention-toast[data-error]")
-    .getByRole("button", { name: "重试", exact: true })
-    .click();
+  await details.getByRole("button", { name: "编辑", exact: true }).click();
   await expect(
     details.getByRole("textbox", { name: "名字", exact: true }),
   ).toHaveValue("Domos");

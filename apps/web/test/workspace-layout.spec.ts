@@ -439,15 +439,6 @@ test("centered dialogs share stable geometry and Harness marks", async ({
       }
     }
     await page.keyboard.press("Escape");
-    if (width === 390) {
-      await page.keyboard.press("Escape");
-      await page.getByRole("button", { name: "联系人", exact: true }).click();
-    }
-    await page.getByRole("button", { name: "应用连接", exact: true }).click();
-    const apps = page.getByRole("dialog", { name: "应用连接", exact: true });
-    await expect(apps).toBeVisible();
-    expect(await apps.boundingBox()).toEqual(size);
-    await page.keyboard.press("Escape");
   }
 });
 
@@ -469,7 +460,7 @@ test("chat input stays active while a panel closes", async ({
   ).toBeEnabled();
 });
 
-for (const dialogName of ["设置", "应用连接", "添加容器环境"] as const) {
+for (const dialogName of ["设置", "添加容器环境"] as const) {
   test(`background replies stay behind ${dialogName} during transition frames`, async ({
     service,
     page,
@@ -490,21 +481,17 @@ for (const dialogName of ["设置", "应用连接", "添加容器环境"] as con
     await expect(
       page.getByRole("button", { name: "停止生成", exact: true }),
     ).toBeVisible();
-    if (dialogName === "设置" || dialogName === "添加容器环境") {
-      await page.getByRole("button", { name: "用户菜单", exact: true }).click();
-      await page.getByRole("menuitem", { name: "设置", exact: true }).click();
-      if (dialogName === "添加容器环境") {
-        await page.getByRole("tab", { name: "当前电脑", exact: true }).click();
-        await page
-          .getByRole("main", { name: "设置", exact: true })
-          .getByRole("button", { name: /^工作环境/ })
-          .click();
-        await page
-          .getByRole("button", { name: "添加容器环境", exact: true })
-          .click();
-      }
-    } else if (dialogName === "应用连接") {
-      await page.getByRole("button", { name: "应用连接", exact: true }).click();
+    await page.getByRole("button", { name: "用户菜单", exact: true }).click();
+    await page.getByRole("menuitem", { name: "设置", exact: true }).click();
+    if (dialogName === "添加容器环境") {
+      await page.getByRole("tab", { name: "当前电脑", exact: true }).click();
+      await page
+        .getByRole("main", { name: "设置", exact: true })
+        .getByRole("button", { name: /^工作环境/ })
+        .click();
+      await page
+        .getByRole("button", { name: "添加容器环境", exact: true })
+        .click();
     }
     const dialog = page.getByRole("dialog", { name: dialogName, exact: true });
     await expect(dialog).toBeVisible();
@@ -1104,6 +1091,6 @@ test("sidebar footer keeps two entries and opens the account menu above them", a
   ).toBeVisible();
   await connections.click();
   await expect(
-    page.getByRole("dialog", { name: "应用连接", exact: true }),
+    page.getByRole("region", { name: "连接中心", exact: true }),
   ).toBeVisible();
 });

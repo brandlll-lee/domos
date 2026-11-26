@@ -161,21 +161,19 @@ test("audio decode failures preserve the file download action", async ({
   for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-    await expect(card.locator(".audio-play")).toHaveCSS(
-      "color",
-      "rgb(255, 255, 255)",
-    );
-    const raw = await page
-      .locator(".chat-surface")
-      .evaluate((node) => node.style.getPropertyValue("--bot-color"));
-    await expect(card).toHaveCSS(
-      "background-color",
-      `rgb(${raw
-        .slice(1)
-        .match(/../g)
-        ?.map((part) => Number.parseInt(part, 16))
-        .join(", ")})`,
-    );
+    await page.mouse.move(0, 0);
+    const colors = await card.evaluate((node) => {
+      const sample = document.createElement("span");
+      sample.style.cssText =
+        "background:var(--color-surface);color:var(--color-muted)";
+      node.append(sample);
+      const style = getComputedStyle(sample);
+      const colors = { background: style.backgroundColor, text: style.color };
+      sample.remove();
+      return colors;
+    });
+    await expect(card).toHaveCSS("background-color", colors.background);
+    await expect(card.locator(".audio-play")).toHaveCSS("color", colors.text);
     await expectTextContrast(page);
     await page.setViewportSize({
       width: theme === "light" ? 1360 : 390,
@@ -252,7 +250,7 @@ test("message media leads captions and bubble tails follow both themes", async (
     else expect(background).not.toBe(lightBackground);
     await expect(outgoingBubble).toHaveCSS(
       "color",
-      await incoming.evaluate((element) => getComputedStyle(element).color),
+      theme === "light" ? "rgb(255, 255, 255)" : "rgb(245, 245, 245)",
     );
     await expectTextContrast(page);
     for (const width of [1440, 768, 390]) {

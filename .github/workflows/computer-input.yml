@@ -6,6 +6,9 @@ on:
       web-full:
         type: boolean
         default: false
+      selection:
+        type: string
+        default: ""
   workflow_dispatch:
 
 permissions:
@@ -37,16 +40,11 @@ jobs:
           electron_path=$(pnpm --filter @domos/desktop exec node -p "require('electron')")
           printf 'abi <abi/4.0>,\ninclude <tunables/global>\nprofile domos-electron "%s" flags=(unconfined) { userns, }\n' "$electron_path" | sudo tee /etc/apparmor.d/domos-electron >/dev/null
           sudo apparmor_parser -r /etc/apparmor.d/domos-electron
-      - if: runner.os == 'Linux'
-        run: xvfb-run -a pnpm exec playwright test --config apps/desktop/playwright.config.ts computer-input.spec.ts
-      - if: runner.os != 'Linux'
-        run: pnpm exec playwright test --config apps/desktop/playwright.config.ts computer-input.spec.ts
-      - name: Verify platform browser takeover
-        if: runner.os != 'Linux' && !inputs.web-full
-        run: |
-          pnpm exec playwright install chromium --only-shell
-          pnpm build
-          pnpm exec playwright test browser-takeover.spec.ts --output=test-results/takeover
+      - name: Verify computer input
+        env:
+          VERIFY_SELECTION: ${{ inputs.selection }}
+          VERIFY_WEB_FULL: ${{ inputs.web-full }}
+        run: pnpm verify --job computer-input
       - uses: actions/upload-artifact@v6
         if: always()
         with:

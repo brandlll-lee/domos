@@ -484,7 +484,10 @@ test("typing follows the Bot and failures retain their error message", async ({
     exact: true,
   });
   await expect(workRecord).toBeVisible();
-  await expect(workRecord).toContainText("回复失败，原因待确认");
+  await expect(workRecord.getByRole("status")).toHaveText("执行失败");
+  await expect(
+    workRecord.getByRole("list", { name: "执行时间线", exact: true }),
+  ).toContainText("执行错误");
   await workRecord
     .getByRole("button", { name: "返回工作列表", exact: true })
     .click();

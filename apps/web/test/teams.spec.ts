@@ -365,6 +365,11 @@ test("teams preserve member authors and keep private chats separate", async ({
   await expect(
     details.getByRole("tab", { name: "Computer", exact: true }),
   ).toBeVisible();
+  const closeNotice = page.getByRole("button", {
+    name: "关闭提醒",
+    exact: true,
+  });
+  while (await closeNotice.count()) await closeNotice.first().click();
   await details.getByRole("button", { name: "返回", exact: true }).click();
   await page.getByRole("tab", { name: "Work", exact: true }).click();
   await expect(
