@@ -200,6 +200,7 @@ test("onboarding selects its user flows and keeps runtime changes broad", () => 
 test("chat activity changes select their workflows and retain broad checks for other owners", () => {
   const paths = [
     "apps/web/src/main.tsx",
+    "apps/desktop/test/desktop.spec.ts",
     "apps/web/src/features/chat/activity-state.ts",
     "apps/web/src/features/chat/messages.tsx",
     "apps/web/src/features/chat/working-presence.tsx",
@@ -225,4 +226,11 @@ test("chat activity changes select their workflows and retain broad checks for o
     assert.notEqual(scope([...paths, path]).activity, true, path);
   assert.notEqual(scope(paths, true).activity, true);
   assert.notEqual(scope(["apps/web/src/main.tsx"]).activity, true);
+  assert.equal(
+    scope([
+      "apps/web/test/interactions.spec.ts",
+      "apps/desktop/test/desktop.spec.ts",
+    ]).activity,
+    true,
+  );
 });

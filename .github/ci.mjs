@@ -8,6 +8,7 @@ const flags = ["code", "native", "input", "package", "sandbox"];
 export function scope(paths, full = false) {
   const activityPath = (path) =>
     path === "apps/web/src/main.tsx" ||
+    path === "apps/desktop/test/desktop.spec.ts" ||
     /^apps\/web\/src\/features\/chat\/(activity-state\.ts|working-presence\.(tsx|css)|typing-dots\.tsx|messages\.tsx|page\.tsx|use-chat\.ts|style\.css|copy\.ts)$/.test(
       path,
     ) ||
@@ -18,7 +19,9 @@ export function scope(paths, full = false) {
     !full &&
     paths.some(
       (path) =>
-        path.startsWith("apps/web/src/features/chat/") && activityPath(path),
+        (path.startsWith("apps/web/src/features/chat/") ||
+          path.startsWith("apps/web/test/")) &&
+        activityPath(path),
     ) &&
     paths.every(
       (path) =>

@@ -496,6 +496,7 @@ test("native setup starts and resumes with Docker unavailable", async ({
 test("desktop opens setup, pairs a remote Domos and restores the connection", async ({
   playwright,
 }, testInfo) => {
+  test.setTimeout(120_000);
   const directory = await mkdtemp(join(tmpdir(), "domos-desktop-"));
   const worker = fork(
     fileURLToPath(

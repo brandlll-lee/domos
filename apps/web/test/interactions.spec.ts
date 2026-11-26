@@ -570,7 +570,7 @@ test("question replies align and completed questions remain readable", async ({
   );
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
-    const distance = await quote.evaluate((element) => {
+    const colors = await quote.evaluate((element) => {
       const canvas = document.createElement("canvas");
       canvas.width = canvas.height = 1;
       const context = canvas.getContext("2d");
@@ -585,14 +585,13 @@ test("question replies align and completed questions remain readable", async ({
       if (!bubble) throw new Error("Reply bubble required");
       const background = pixel(getComputedStyle(bubble).backgroundColor);
       const quote = pixel(getComputedStyle(element).backgroundColor);
-      return Math.max(
-        ...background.map((channel, index) =>
-          Math.abs(channel - (quote[index] ?? 0)),
-        ),
-      );
+      return { background, quote };
     });
-    expect(distance).toBeGreaterThan(0);
-    expect(distance).toBeLessThan(20);
+    expect(colors.quote).not.toEqual(colors.background);
+    for (const [index, channel] of colors.background.entries())
+      expect(
+        Math.abs((colors.quote[index] ?? 0) - channel * 0.88),
+      ).toBeLessThanOrEqual(1);
     const selected = card.locator(".question-reply[data-selected]");
     await expect(selected).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await expect(selected).toHaveCSS(
