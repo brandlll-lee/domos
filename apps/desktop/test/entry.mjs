@@ -1,5 +1,17 @@
-import { isAbsolute } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, isAbsolute, join } from "node:path";
 import { app } from "electron";
+
+const require = createRequire(
+  createRequire(import.meta.url).resolve("@playwright/test/package.json"),
+);
+// Explicit Electron executables need Playwright's startup barrier.
+require(
+  join(
+    dirname(require.resolve("playwright-core/package.json")),
+    "lib/server/electron/loader.js",
+  ),
+);
 
 try {
   const directory = app.commandLine.getSwitchValue("test-data-dir");

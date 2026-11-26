@@ -16,7 +16,7 @@ export function scope(paths, full = false) {
     /^apps\/web\/test\/(work-state\.test\.ts|(bot-work|teams)\.spec\.ts)$/.test(
       path,
     ) ||
-    /^apps\/desktop\/(src\/main\.ts|test\/(desktop|workspaces)\.spec\.ts)$/.test(
+    /^apps\/desktop\/(src\/main\.ts|test\/(entry\.mjs|(desktop|workspaces)\.spec\.ts))$/.test(
       path,
     );
   if (
@@ -24,7 +24,8 @@ export function scope(paths, full = false) {
     paths.some(
       (path) =>
         (workPath(path) && path.startsWith("apps/web/src/")) ||
-        path === "apps/desktop/test/workspaces.spec.ts",
+        path === "apps/desktop/test/workspaces.spec.ts" ||
+        path === "apps/desktop/test/entry.mjs",
     ) &&
     paths.every(
       (path) =>

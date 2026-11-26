@@ -263,6 +263,7 @@ test("chat activity changes select their workflows and retain broad checks for o
 
 test("Work and computer management select their UI and desktop workflows", () => {
   assert.equal(scope(["apps/desktop/test/workspaces.spec.ts"]).work, true);
+  assert.equal(scope(["apps/desktop/test/entry.mjs"]).work, true);
   const paths = [
     "apps/web/src/features/chat/work-timeline.tsx",
     "apps/web/src/features/chat/work-state.ts",
