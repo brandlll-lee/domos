@@ -1,7 +1,7 @@
 import { DesktopTitlebar } from "@domos/ui/titlebar";
 import { useEffect } from "react";
 
-export function Titlebar({ loading = false }: { loading?: boolean }) {
+export function useWindowAppearance(loading = false) {
   const desktop = window.domosDesktop;
   useEffect(() => {
     if (!desktop?.appearance) return;
@@ -19,5 +19,9 @@ export function Titlebar({ loading = false }: { loading?: boolean }) {
     });
     return () => observer.disconnect();
   }, [loading]);
+}
+
+export function Titlebar({ loading = false }: { loading?: boolean }) {
+  useWindowAppearance(loading);
   return <DesktopTitlebar />;
 }

@@ -26,6 +26,7 @@ test("documentation avoids product jobs; UI keeps daily checks", () => {
     full: false,
     web_os: ["ubuntu-latest"],
     evals: false,
+    onboarding: false,
   });
   assert.equal(scope(["packages/ui/src/web/chat.css"]).package, false);
   assert.equal(scope(["apps/desktop/src/setup.css"]).package, false);
@@ -164,4 +165,28 @@ test("result accepts scope omissions and rejects failed, cancelled or unexpected
     report({ ...results, check: { result: "failure", outputs: {} } }).failed,
     true,
   );
+});
+
+test("onboarding selects its user flows and keeps runtime changes broad", () => {
+  const paths = [
+    "packages/ui/src/web/startup/startup-pages.tsx",
+    "apps/desktop/src/setup.tsx",
+    "apps/web/src/features/onboarding/root.tsx",
+    "packages/ui/package.json",
+    "pnpm-lock.yaml",
+    ".github/ci.mjs",
+    ".github/workflows/checks.yml",
+    "docs/startup-onboarding.md",
+  ];
+  assert.equal(scope(paths).onboarding, true);
+  for (const flag of ["native", "input", "package", "sandbox", "full"])
+    assert.equal(scope(paths)[flag], false);
+  for (const path of [
+    "apps/desktop/src/main.ts",
+    "packages/agent/src/runtime/index.ts",
+    "package.json",
+    "apps/api/src/app.ts",
+  ])
+    assert.equal(scope([...paths, path]).onboarding, false);
+  assert.equal(scope(paths, true).onboarding, false);
 });

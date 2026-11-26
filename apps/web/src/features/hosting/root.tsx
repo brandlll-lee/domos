@@ -1,13 +1,11 @@
-import { Button } from "@domos/ui/controls";
-import { TextField } from "@domos/ui/field";
-import { StartupLoading, StartupScene } from "@domos/ui/startup";
+import { StartupPages } from "@domos/ui/startup";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import { client, selectComputer } from "../../client.ts";
 import { ApplicationNotices } from "../notices.tsx";
 import { Onboarding } from "../onboarding/root.tsx";
 import { SettingsRoot } from "../settings/root.tsx";
-import { Titlebar } from "../shell/titlebar.tsx";
+import { useWindowAppearance } from "../shell/titlebar.tsx";
 import { hostingRequest } from "./api.ts";
 import "./style.css";
 
@@ -29,8 +27,9 @@ export function HostingRoot({
   const [session, setSession] = useState<Session>();
   const [error, setError] = useState(pairingError ?? "");
   const [code, setCode] = useState(pairingCode ?? "");
-  const [label, setLabel] = useState("我的设备");
+  const [identity, setIdentity] = useState("");
   const [busy, setBusy] = useState(false);
+  useWindowAppearance();
   const refresh = useCallback(async () => {
     const response = await fetch("/hosting/session");
     if (response.status === 404) {
@@ -41,6 +40,8 @@ export function HostingRoot({
       return;
     }
     if (response.status === 401) {
+      const info = await hostingRequest<{ computerId?: string }>("info");
+      setIdentity(info.computerId ?? "");
       setState("pair");
       window.domosDesktop?.pairing();
       return;
@@ -89,96 +90,37 @@ export function HostingRoot({
       </SettingsRoot>
     );
   return (
-    <div className="setup-window">
-      <Titlebar loading={state === "loading"} />
-      {state === "pair" ? (
-        <StartupScene
-          stop="pair"
-          title="连接这个 Domos"
-          description="配对码让另一台电脑认出你的设备。"
-        >
-          <form
-            className="setup-form"
-            aria-busy={busy}
-            onSubmit={async (event) => {
-              event.preventDefault();
-              if (busy) return;
-              setBusy(true);
-              setError("");
-              try {
-                await hostingRequest("exchange", { code, label });
-                setCode("");
-                await refresh();
-              } catch (error) {
-                setError((error as Error).message);
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            <TextField
-              label="设备名称"
-              value={label}
-              maxLength={80}
-              onValueChange={setLabel}
-              required
-              disabled={busy}
-            />
-            <TextField
-              label="配对码"
-              value={code}
-              autoComplete="off"
-              onValueChange={setCode}
-              required
-              disabled={busy}
-            />
-            {error && (
-              <p className="alert" role="alert">
-                {error}
-              </p>
-            )}
-            <div className="setup-actions">
-              {window.domosDesktop && (
-                <Button
-                  variant="secondary"
-                  className="startup-form-cancel"
-                  onClick={() => window.domosDesktop?.cancelConnection()}
-                >
-                  取消
-                </Button>
-              )}
-              <Button
-                type="submit"
-                variant="ghost"
-                className="startup-branch"
-                pending={busy}
-              >
-                {busy ? "正在连接…" : "确认连接"}
-                <span className="startup-arrow" aria-hidden="true">
-                  →
-                </span>
-              </Button>
-            </div>
-          </form>
-        </StartupScene>
-      ) : (
-        <StartupLoading
-          message={error || "正在读取连接信息…"}
-          status={error ? "error" : "loading"}
-        >
-          {error && (
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setError("");
-                void refresh().catch((error) => setError(error.message));
-              }}
-            >
-              重试
-            </Button>
-          )}
-        </StartupLoading>
-      )}
-    </div>
+    <StartupPages
+      page={state === "pair" ? "pair" : error ? "failure" : "preparing"}
+      computer={identity || "待确认"}
+      address={location.origin}
+      pairingCode={code}
+      onPairingCode={setCode}
+      status="正在读取连接信息…"
+      error={error}
+      busy={busy}
+      onAction={(action) => {
+        if (action === "back") {
+          if (window.domosDesktop) window.domosDesktop.cancelConnection();
+          else history.back();
+          return;
+        }
+        if (action === "retry") {
+          setError("");
+          void refresh().catch((cause) => setError(cause.message));
+        }
+        if (action === "pair" && !busy) {
+          setBusy(true);
+          setError("");
+          void hostingRequest("exchange", { code, label: "我的设备" })
+            .then(async () => {
+              setCode("");
+              await refresh();
+            })
+            .catch((cause) => setError(cause.message))
+            .finally(() => setBusy(false));
+        }
+      }}
+    />
   );
 }

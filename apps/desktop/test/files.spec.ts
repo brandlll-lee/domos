@@ -60,17 +60,13 @@ test("desktop uploads, previews, searches and downloads saved files", async ({
     await setup
       .getByRole("button", { name: "连接另一台电脑", exact: true })
       .click();
-    await expect(setup.locator(".startup-viewport")).not.toHaveAttribute(
-      "data-travelling",
-      "",
-    );
-    await setup.getByLabel("Domos 地址").fill(`http://127.0.0.1:${ready.port}`);
+    await setup.getByLabel("电脑地址").fill(`http://127.0.0.1:${ready.port}`);
 
-    await setup.getByRole("button", { name: "连接", exact: true }).click();
+    await setup.getByRole("button", { name: "连接电脑", exact: true }).click();
     const page = await workspacePage(desktop);
 
     await page.getByLabel("配对码", { exact: true }).fill(ready.pairing);
-    await page.getByRole("button", { name: "确认连接", exact: true }).click();
+    await page.getByRole("button", { name: "确认配对", exact: true }).click();
     await expect(
       page.getByRole("button", { name: "Bot详情", exact: true }),
     ).toBeVisible();

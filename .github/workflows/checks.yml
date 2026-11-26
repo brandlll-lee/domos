@@ -27,6 +27,7 @@ jobs:
       full: ${{ steps.scope.outputs.full }}
       web_os: ${{ steps.scope.outputs.web_os }}
       evals: ${{ steps.scope.outputs.evals }}
+      onboarding: ${{ steps.scope.outputs.onboarding }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -46,8 +47,11 @@ jobs:
       - if: steps.scope.outputs.code == 'true'
         run: pnpm typecheck
       - name: Verify platform-independent regressions
-        if: steps.scope.outputs.code == 'true' && steps.scope.outputs.evals != 'true'
+        if: steps.scope.outputs.code == 'true' && steps.scope.outputs.evals != 'true' && steps.scope.outputs.onboarding != 'true'
         run: pnpm test:ci unit --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml
+      - name: Verify startup contracts
+        if: steps.scope.outputs.onboarding == 'true'
+        run: pnpm exec vitest run apps/api/test/onboarding.test.ts apps/api/test/startup.test.ts
       - name: Verify evaluation contracts
         if: steps.scope.outputs.evals == 'true'
         run: pnpm test:ci evals --reporter=default --reporter=junit --outputFile.junit=test-results/evals.xml
@@ -118,7 +122,10 @@ jobs:
       - name: Verify web workflows
         shell: bash
         run: |
-          if [ "$RUNNER_OS" = "Linux" ]; then
+          if [ "${{ needs.check.outputs.onboarding }}" = "true" ]; then
+            pnpm build
+            xvfb-run -a pnpm exec playwright test apps/web/test/onboarding.spec.ts apps/web/test/models.spec.ts apps/web/test/computer-settings.spec.ts --shard=${{ matrix.shard }}/2 --output=test-results/e2e
+          elif [ "$RUNNER_OS" = "Linux" ]; then
             xvfb-run -a pnpm test:e2e --shard=${{ matrix.shard }}/2 --output=test-results/e2e
           else
             pnpm test:e2e --shard=${{ matrix.shard }}/2 --output=test-results/e2e
@@ -152,8 +159,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: pnpm exec playwright install chromium --only-shell
       - name: Verify desktop smoke
-        if: needs.check.outputs.package != 'true'
+        if: needs.check.outputs.package != 'true' && needs.check.outputs.onboarding != 'true'
         run: pnpm exec playwright test --config apps/desktop/playwright.config.ts desktop.spec.ts runtime.spec.ts
+      - name: Verify startup and workspace workflows
+        if: needs.check.outputs.onboarding == 'true'
+        run: pnpm exec playwright test --config apps/desktop/playwright.config.ts desktop.spec.ts runtime.spec.ts avatars.spec.ts workspaces.spec.ts
       - name: Verify full desktop workflows
         if: needs.check.outputs.package == 'true'
         run: pnpm exec playwright test --config apps/desktop/playwright.config.ts desktop.spec.ts files.spec.ts runtime.spec.ts workspaces.spec.ts notifications.spec.ts avatars.spec.ts

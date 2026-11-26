@@ -75,7 +75,7 @@ test("desktop notification IPC preserves workspace identity and unread counts", 
   try {
     let page = await workspacePage(desktop, a.origin);
     await page.getByLabel("配对码", { exact: true }).fill(a.pairing);
-    await page.getByRole("button", { name: "确认连接", exact: true }).click();
+    await page.getByRole("button", { name: "确认配对", exact: true }).click();
     await expect(
       page.getByRole("textbox", { name: "消息", exact: true }),
     ).toBeEnabled();
@@ -177,7 +177,7 @@ test("desktop notification IPC preserves workspace identity and unread counts", 
     await page.getByRole("menuitem", { name: "电脑 B", exact: true }).click();
     page = await workspacePage(desktop, b.origin);
     await page.getByLabel("配对码", { exact: true }).fill(b.pairing);
-    await page.getByRole("button", { name: "确认连接", exact: true }).click();
+    await page.getByRole("button", { name: "确认配对", exact: true }).click();
     await expect(
       page.getByRole("textbox", { name: "消息", exact: true }),
     ).toBeEnabled();

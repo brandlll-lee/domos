@@ -1,4 +1,5 @@
 import type { EngineConfig } from "@domos/agent/harness/types";
+import { EngineMark } from "@domos/ui/avatar";
 import { Button, Switch } from "@domos/ui/controls";
 import { Disclosure } from "@domos/ui/disclosure";
 import { SearchField } from "@domos/ui/field";
@@ -11,7 +12,6 @@ import { StatusDot, type StatusTone } from "@domos/ui/status-dot";
 import { ArrowLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowLeft";
 import { useEffect, useState } from "react";
 import { client } from "../../client.ts";
-import { EngineMark } from "../bots/engine-mark.tsx";
 import { ModelSetting } from "../models/model-setting.tsx";
 import { useModelSettings } from "../models/model-state.ts";
 import { useVisibility } from "../models/use-visibility.ts";

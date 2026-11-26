@@ -6,6 +6,46 @@ const platforms = ["ubuntu-latest", "windows-latest", "macos-latest"];
 const flags = ["code", "native", "input", "package", "sandbox"];
 
 export function scope(paths, full = false) {
+  const onboarding =
+    !full &&
+    paths.some((path) =>
+      /^(packages\/ui\/src\/web\/startup|apps\/(desktop\/src\/setup|web\/src\/features\/onboarding))/.test(
+        path,
+      ),
+    ) &&
+    paths.every(
+      (path) =>
+        /^(docs\/.*\.md|AGENTS\.md|pnpm-lock\.yaml|packages\/ui\/package\.json|\.github\/(ci\.(test\.)?mjs|workflows\/checks\.yml))$/.test(
+          path,
+        ) ||
+        /^packages\/ui\/(src\/(assets\.d\.ts|tokens\.ts)|assets\/startup-[^/]+\.png|src\/web\/(startup[^/]*\.(tsx|ts|css)|startup\/[^/]+\.(tsx|css)|(avatar|theme)\.tsx|engine-mark\.(tsx|css)|engine-assets\/[^/]+\.svg))$/.test(
+          path,
+        ) ||
+        /^apps\/desktop\/(src\/setup\.(tsx|css|html)|build\.mjs|test\/(desktop|avatars|files|identity|notifications|workspaces)\.spec\.ts)$/.test(
+          path,
+        ) ||
+        /^apps\/web\/test\/(onboarding|models|computer-settings)\.spec\.ts$/.test(
+          path,
+        ) ||
+        /^apps\/web\/src\/features\/(onboarding\/root|hosting\/root|shell\/titlebar|computer\/permission|models\/(model-setting|setup-models)|bots\/(details\/model|engine-mark)|apps\/connection-details|chat\/(context|conversations|header|work-detail)|settings\/ai|usage\/(charts|page|quota|tables))\.(tsx|css)$/.test(
+          path,
+        ) ||
+        /^apps\/web\/src\/features\/bots\/assets\/(codex|claude-code|antigravity|grok|devin|cursor)\.svg$/.test(
+          path,
+        ),
+    );
+  if (onboarding)
+    return {
+      code: true,
+      native: false,
+      input: false,
+      package: false,
+      sandbox: false,
+      full: false,
+      web_os: platforms.slice(0, 1),
+      evals: false,
+      onboarding: true,
+    };
   const evalPath = (path) =>
     /^(packages\/agent\/(src\/evals\/|test\/(.*eval.*|memory-trace)\.test\.ts$)|apps\/cli\/(src\/eval-[^/]+\.ts$|test\/evals\.test\.ts$))/.test(
       path,
@@ -30,6 +70,7 @@ export function scope(paths, full = false) {
       full: false,
       web_os: platforms.slice(0, 1),
       evals: true,
+      onboarding: false,
     };
   const selected = Object.fromEntries(flags.map((flag) => [flag, full]));
   for (const path of paths) {
@@ -90,6 +131,7 @@ export function scope(paths, full = false) {
     full,
     web_os: full ? platforms : platforms.slice(0, 1),
     evals: false,
+    onboarding: false,
   };
 }
 

@@ -1,6 +1,6 @@
 import type { BotPresence } from "@domos/agent/bots";
 import type { PrivateConversation } from "@domos/agent/conversations";
-import { BotAvatar } from "@domos/ui/avatar";
+import { BotAvatar, EngineMark } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
 import { LoadingDots } from "@domos/ui/loading";
@@ -13,7 +13,6 @@ import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { useState } from "react";
 import { client } from "../../client.ts";
 import { useWorkAction } from "../bots/details/use-bot-work.ts";
-import { EngineMark } from "../bots/engine-mark.tsx";
 import { flushModelSettings } from "../models/model-state.ts";
 import { useErrorNotice } from "../notices.tsx";
 import { useAttention } from "./attention.tsx";

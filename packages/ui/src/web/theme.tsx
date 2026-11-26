@@ -6,20 +6,15 @@ import {
   useState,
 } from "react";
 import {
-  compactChat,
-  metrics,
   resolveTheme,
   type ThemePreference,
   themePreference,
+  themeStyles,
   themes,
 } from "../tokens.ts";
 
 const storageKey = "domos:appearance:v1";
 const mediaQuery = "(prefers-color-scheme: dark)";
-const variables = (values: Record<string, string>, prefix = "") =>
-  Object.entries(values)
-    .map(([key, value]) => `--${prefix}${key}:${value}`)
-    .join(";");
 const ThemeContext = createContext<{
   preference: ThemePreference;
   select: (preference: ThemePreference) => void;
@@ -38,16 +33,12 @@ function apply(preference: ThemePreference) {
 }
 
 export function initializeTheme(): ThemePreference {
-  const style = document.createElement("style");
-  style.textContent = `:root{${variables(metrics)}}${Object.entries(themes)
-    .map(
-      ([name, palette]) =>
-        `[data-theme="${name}"]{color-scheme:${name};${variables(palette, "color-")}}`,
-    )
-    .join(
-      "",
-    )}@container chat (width < ${compactChat.maxWidth}){.chat-surface > *{${variables(compactChat.metrics)}}}`;
-  document.head.append(style);
+  if (!document.getElementById("domos-theme")) {
+    const style = document.createElement("style");
+    style.id = "domos-theme";
+    style.textContent = themeStyles;
+    document.head.append(style);
+  }
   let preference: ThemePreference = "system";
   try {
     preference = themePreference(localStorage.getItem(storageKey));

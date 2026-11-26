@@ -156,7 +156,7 @@ test("connection settings offer private networking and validate HTTPS before pai
   await service.start(0, "hosting");
   await page.goto(service.url);
   await page.getByLabel("配对码", { exact: true }).fill(service.pairing);
-  await page.getByRole("button", { name: "确认连接", exact: true }).click();
+  await page.getByRole("button", { name: "确认配对", exact: true }).click();
   await page.getByRole("button", { name: "用户菜单", exact: true }).click();
   await page.getByRole("menuitem", { name: "设置", exact: true }).click();
   const settings = page.getByRole("main", { name: "设置", exact: true });
@@ -225,9 +225,8 @@ test("computer settings pair through HTTPS and preview explicit login revocation
   await service.stop();
   await service.start(0, "https");
   await page.goto(service.url);
-  await page.getByLabel("设备名称", { exact: true }).fill("管理电脑");
   await page.getByLabel("配对码", { exact: true }).fill(service.pairing);
-  await page.getByRole("button", { name: "确认连接", exact: true }).click();
+  await page.getByRole("button", { name: "确认配对", exact: true }).click();
   await page.getByRole("button", { name: "用户菜单", exact: true }).click();
   await page.getByRole("menuitem", { name: "设置", exact: true }).click();
   const settings = page.getByRole("main", { name: "设置", exact: true });
@@ -290,9 +289,8 @@ test("computer settings pair through HTTPS and preview explicit login revocation
     expect(
       (await remote.request.get(`${service.url}/hosting/session`)).status(),
     ).toBe(401);
-    await remotePage.getByLabel("设备名称", { exact: true }).fill("演示手机");
     await remotePage
-      .getByRole("button", { name: "确认连接", exact: true })
+      .getByRole("button", { name: "确认配对", exact: true })
       .click();
     await expect
       .poll(async () =>
@@ -329,17 +327,17 @@ test("computer settings pair through HTTPS and preview explicit login revocation
       .getByRole("button", { name: "返回设备访问", exact: true })
       .click();
     await settings.getByRole("button", { name: "刷新设备" }).click();
-    await settings.getByRole("button", { name: /^演示手机/ }).click();
+    await settings.getByRole("button", { name: /^我的设备.*使用 Bot/ }).click();
     await expect(settings.getByText("有效至", { exact: true })).toBeVisible();
     await settings
       .getByRole("button", { name: "撤销访问", exact: true })
       .click();
     await page
-      .getByRole("dialog", { name: "撤销 演示手机 的访问？", exact: true })
+      .getByRole("dialog", { name: "撤销 我的设备 的访问？", exact: true })
       .getByRole("button", { name: "撤销访问", exact: true })
       .click();
     await expect(
-      settings.getByRole("button", { name: /^演示手机/ }),
+      settings.getByRole("button", { name: /^我的设备.*使用 Bot/ }),
     ).toHaveCount(0);
     expect(
       (await remote.request.get(`${service.url}/hosting/session`)).status(),
@@ -401,7 +399,7 @@ test("computer settings pair through HTTPS and preview explicit login revocation
   } finally {
     await remote.close();
   }
-  await settings.getByRole("button", { name: /^管理电脑/ }).click();
+  await settings.getByRole("button", { name: /^我的设备.*当前设备/ }).click();
   await expect(
     settings.getByRole("button", { name: "撤销访问", exact: true }),
   ).toHaveCount(0);
@@ -410,7 +408,7 @@ test("computer settings pair through HTTPS and preview explicit login revocation
     settings.getByRole("heading", { name: "设备访问", exact: true }),
   ).toBeVisible();
   await expect(
-    settings.getByRole("button", { name: /^管理电脑/ }),
+    settings.getByRole("button", { name: /^我的设备.*当前设备/ }),
   ).toBeFocused();
   for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme });

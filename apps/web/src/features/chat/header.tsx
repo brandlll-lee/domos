@@ -1,6 +1,6 @@
 import type { Bot } from "@domos/agent/bots";
+import { EngineMark } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
-import { EngineMark } from "../bots/engine-mark.tsx";
 import type { WorkActivity } from "./activity-state.ts";
 import { TeamAvatar } from "./bot-reference.tsx";
 import { IdentityAvatar } from "./identity-avatar.tsx";

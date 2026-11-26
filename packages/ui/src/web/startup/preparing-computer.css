@@ -1,0 +1,40 @@
+.preparing-computer {
+  width: min(100%, 344px);
+  margin: 0 auto 32px;
+}
+.preparing-computer .computer-screen {
+  aspect-ratio: 16 / 9;
+}
+.preparing-viewport {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+.preparing-camera {
+  width: 80px;
+  height: 80px;
+  animation: preparing-pullback 3.2s cubic-bezier(0.2, 0.65, 0.3, 1) both;
+}
+.preparing-loading {
+  position: absolute;
+  inset: auto 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+@keyframes preparing-pullback {
+  0%,
+  12% {
+    transform: scale(2);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .preparing-camera {
+    animation: none;
+  }
+}

@@ -43,6 +43,7 @@
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
+    "@phosphor-icons/react": "^2.1.10",
     "mdast-util-gfm-autolink-literal": "2.0.1",
     "react-markdown": "^10.1.0",
     "remark-cjk-friendly": "2.3.4",

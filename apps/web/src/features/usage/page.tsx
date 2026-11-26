@@ -1,4 +1,5 @@
 import type { EngineId } from "@domos/agent/harness/types";
+import { EngineMark } from "@domos/ui/avatar";
 import { SegmentedControl } from "@domos/ui/choice";
 import { Button } from "@domos/ui/controls";
 import { Dialog } from "@domos/ui/dialog";
@@ -8,7 +9,6 @@ import { ScrollArea } from "@domos/ui/scroll-area";
 import { ArrowClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
 import { useEffect, useMemo, useState } from "react";
 import { client } from "../../client.ts";
-import { EngineMark } from "../bots/engine-mark.tsx";
 import { userError } from "../user-error.ts";
 import { DailyChart } from "./charts.tsx";
 import {

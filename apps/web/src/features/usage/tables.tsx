@@ -1,6 +1,6 @@
+import { EngineMark } from "@domos/ui/avatar";
 import { SearchField } from "@domos/ui/field";
 import { Pagination } from "@domos/ui/pagination";
-import { EngineMark } from "../bots/engine-mark.tsx";
 import {
   compactNumber,
   type Dimension,

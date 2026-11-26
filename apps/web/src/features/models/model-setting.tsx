@@ -1,4 +1,5 @@
 import type { EngineConfig } from "@domos/agent/harness/types";
+import { EngineMark } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { Disclosure } from "@domos/ui/disclosure";
 import { TextField } from "@domos/ui/field";
@@ -6,14 +7,13 @@ import { Loading } from "@domos/ui/loading";
 import { ModelSelector } from "@domos/ui/model-selector";
 import { ChoicePicker, SearchPicker } from "@domos/ui/picker";
 import { SettingRow } from "@domos/ui/setting-row";
+import { StartupPages } from "@domos/ui/startup";
 import { useEffect, useState } from "react";
 import { client } from "../../client.ts";
-import { EngineMark } from "../bots/engine-mark.tsx";
 import { useErrorNotice } from "../notices.tsx";
 import { useSettings } from "../settings/context.ts";
 import { Effort } from "./effort.tsx";
 import { useModelSettings } from "./model-state.ts";
-import { SetupModels } from "./setup-models.tsx";
 import { useVisibility } from "./use-visibility.ts";
 
 export function ModelSetting({
@@ -23,12 +23,18 @@ export function ModelSetting({
   onBusyChange,
   setupProvider,
   connectionOnly = false,
-  guided = false,
+  onboarding,
 }: {
   botId: number;
   setupProvider?: string;
   connectionOnly?: boolean;
-  guided?: boolean;
+  onboarding?: {
+    computer: string;
+    bot: string;
+    onReady: () => Promise<void>;
+    onBack: () => void;
+    onDefer: () => void;
+  };
   connected: boolean;
   disabled?: boolean;
   onBusyChange?: (busy: boolean) => void;
@@ -76,7 +82,7 @@ export function ModelSetting({
   const [busyAction, setBusyAction] = useState("");
   const busy = Boolean(busyAction);
   const [error, setError] = useState("");
-  useErrorNotice(error || saveError);
+  useErrorNotice(onboarding ? "" : error || saveError);
   useEffect(() => {
     if (!connected) return;
     let current = true;
@@ -138,7 +144,8 @@ export function ModelSetting({
     setConfig(next);
     if (close) setOpen(false);
     await store.save(next, settings.admin);
-    if (store.snapshot().error) setConfig(store.snapshot().selected ?? next);
+    if (!onboarding && store.snapshot().error)
+      setConfig(store.snapshot().selected ?? next);
   }
   const loaded = Boolean(profile);
   useEffect(() => {
@@ -415,6 +422,76 @@ export function ModelSetting({
       )}
     </div>
   );
+  if (onboarding) {
+    const models = (
+      connection?.models ??
+      profile?.catalog.find((item) => item.id === config.provider)?.models ??
+      []
+    ).filter((model) => visibility.visible(config.provider, model.id));
+    const available = Boolean(connection?.ready && connection.authenticated);
+    const provider = {
+      id: config.provider,
+      name: nativeProvider?.name ?? config.provider,
+      status: connection?.message ?? "正在检查连接…",
+    };
+    return (
+      <StartupPages
+        page={available ? "model" : "connection"}
+        computer={onboarding.computer}
+        bot={onboarding.bot}
+        provider={provider}
+        status={login?.state === "waiting" ? "等待登录…" : provider.status}
+        error={error || saveError}
+        busy={Boolean(
+          busy || saving || profile?.busy || login?.state === "waiting",
+        )}
+        models={
+          models.length
+            ? models.map((model) => ({ value: model.id, label: model.name }))
+            : available
+              ? [{ value: "", label: "原生默认模型" }]
+              : []
+        }
+        model={config.model ?? ""}
+        onModel={(model) => setConfig({ ...config, model, options: undefined })}
+        connectionActions={
+          !login &&
+          connection?.ready &&
+          nativeProvider?.login &&
+          config.provider !== "opencode" &&
+          config.provider !== "acp"
+            ? undefined
+            : configuration
+        }
+        onAction={(action) => {
+          if (action === "back") onboarding.onBack();
+          if (action === "defer") onboarding.onDefer();
+          if (action === "check") void run("检查登录", inspect);
+          if (action === "connect")
+            void run("打开登录", async () =>
+              setLogin(
+                await client.engines.login({
+                  botId,
+                  config: {
+                    ...config,
+                    command: connection?.path ?? config.command,
+                  },
+                  providerId: account || undefined,
+                  method: Number(method),
+                  inputs,
+                }),
+              ),
+            );
+          if (action === "save-model")
+            void run("保存模型", async () => {
+              await save(config);
+              await store.flush();
+              await onboarding.onReady();
+            });
+        }}
+      />
+    );
+  }
   if (setupProvider) {
     const models = (
       connection?.models ??
@@ -431,34 +508,23 @@ export function ModelSetting({
         )}
         {!connection && !error && <Loading label="正在检查连接" inline />}
         {login?.state === "waiting" && <p role="status">等待登录…</p>}
-        {!connectionOnly &&
-          models.length > 0 &&
-          (guided ? (
-            <SetupModels
-              models={models}
-              value={config.model}
-              disabled={Boolean(disabled || profile?.busy || busy || saving)}
-              onSelect={(model) =>
-                void save({ ...config, model, options: undefined })
-              }
-            />
-          ) : (
-            <SearchPicker
-              label="模型"
-              searchLabel="搜索模型"
-              placeholder="选择模型"
-              emptyLabel="没有可用模型"
-              value={config.model ?? ""}
-              items={models.map((model) => ({
-                value: model.id,
-                label: `${providers.find((item) => item.id === config.provider)?.name} · ${model.name}`,
-              }))}
-              disabled={Boolean(disabled || profile?.busy || busy || saving)}
-              onValueChange={(model) =>
-                void save({ ...config, model, options: undefined })
-              }
-            />
-          ))}
+        {!connectionOnly && models.length > 0 && (
+          <SearchPicker
+            label="模型"
+            searchLabel="搜索模型"
+            placeholder="选择模型"
+            emptyLabel="没有可用模型"
+            value={config.model ?? ""}
+            items={models.map((model) => ({
+              value: model.id,
+              label: `${providers.find((item) => item.id === config.provider)?.name} · ${model.name}`,
+            }))}
+            disabled={Boolean(disabled || profile?.busy || busy || saving)}
+            onValueChange={(model) =>
+              void save({ ...config, model, options: undefined })
+            }
+          />
+        )}
         {!connectionOnly &&
         connection?.authenticated &&
         models.length > 0 &&

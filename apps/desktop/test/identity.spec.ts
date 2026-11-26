@@ -43,7 +43,7 @@ $icon.Dispose()
   try {
     const window = await desktop.firstWindow();
     await expect(
-      window.getByRole("heading", { name: "你的 Bot 在哪台电脑？" }),
+      window.getByRole("heading", { name: "认识你的 AI 伙伴" }),
     ).toBeVisible();
     const identity = await desktop.evaluate(
       async ({ app, nativeImage, shell }, { directory, embedded }) => {

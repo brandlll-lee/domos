@@ -4,18 +4,32 @@ import { SetupComputer } from "@domos/ui/setup";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { client } from "../../client.ts";
 
+export async function authorizeComputer(botId: number, requestId: string) {
+  const binding = await client.computer.get({ botId });
+  if (binding.computerId)
+    await client.computer.authorize({
+      id: binding.computerId,
+      authorized: true,
+    });
+  else
+    await client.computer.configure({
+      botId,
+      mode: "process",
+      revision: binding.revision,
+      requestId,
+    });
+}
+
 export function ComputerPermission({
   botId,
   onReady,
   onBusyChange,
   footer,
-  illustrated = true,
 }: {
   botId: number;
   onReady: () => Promise<unknown>;
   onBusyChange?: (busy: boolean) => void;
   footer?: ReactNode;
-  illustrated?: boolean;
 }) {
   const request = useRef(crypto.randomUUID());
   const [busy, setBusy] = useState(false);
@@ -29,7 +43,7 @@ export function ComputerPermission({
   }, [botId]);
   return (
     <div className="setup-permission">
-      {illustrated && <SetupComputer />}
+      <SetupComputer />
       <p className="setup-permission-title">
         允许 Domos 运行本机程序并访问文件
       </p>
@@ -45,8 +59,7 @@ export function ComputerPermission({
       <DialogFooter>
         <div className="setup-actions">
           <Button
-            variant={illustrated ? "primary" : "ghost"}
-            className={illustrated ? undefined : "startup-branch"}
+            variant="primary"
             pending={busy}
             disabled={!computer}
             onClick={async () => {
@@ -55,19 +68,7 @@ export function ComputerPermission({
               onBusyChange?.(true);
               setError("");
               try {
-                const binding = await client.computer.get({ botId });
-                if (binding.computerId)
-                  await client.computer.authorize({
-                    id: binding.computerId,
-                    authorized: true,
-                  });
-                else
-                  await client.computer.configure({
-                    botId,
-                    mode: "process",
-                    revision: binding.revision,
-                    requestId: request.current,
-                  });
+                await authorizeComputer(botId, request.current);
                 await onReady();
               } catch (cause) {
                 setError(
@@ -82,11 +83,6 @@ export function ComputerPermission({
             }}
           >
             允许访问并继续
-            {!illustrated && (
-              <span className="startup-arrow" aria-hidden="true">
-                →
-              </span>
-            )}
           </Button>
           {footer}
         </div>

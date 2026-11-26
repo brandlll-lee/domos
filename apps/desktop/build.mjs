@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { metrics, themes } from "@domos/ui/tokens";
+import { themeStyles } from "@domos/ui/tokens";
 import { build } from "esbuild";
 import { desktopBinary } from "../../packages/agent/src/harness/desktop-driver.mjs";
 import {
@@ -112,19 +112,12 @@ await build({
   platform: "browser",
   format: "esm",
   target: "chrome144",
-  loader: { ".webp": "file", ".woff2": "file", ".png": "file" },
+  loader: { ".webp": "file", ".woff2": "file", ".png": "file", ".svg": "file" },
   assetNames: "assets/[name]-[hash]",
   define: { "process.env.NODE_ENV": '"production"' },
 });
 await cp(join(here, "src/setup.html"), join(dist, "setup.html"));
-const variables = (values, prefix = "") =>
-  Object.entries(values)
-    .map(([key, value]) => `--${prefix}${key}:${value};`)
-    .join("");
-await writeFile(
-  join(dist, "setup-theme.css"),
-  `:root{${variables(metrics)}${variables(themes.light, "color-")}}@media(prefers-color-scheme:dark){:root{${variables(themes.dark, "color-")}}}`,
-);
+await writeFile(join(dist, "setup-theme.css"), themeStyles);
 for (const name of ["icon.png", "icon.ico"])
   await cp(join(root, "packages/ui/assets", name), join(dist, name));
 await cp(join(root, "apps/web/dist"), join(runtime, "web"), {

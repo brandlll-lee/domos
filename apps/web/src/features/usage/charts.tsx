@@ -1,3 +1,4 @@
+import { EngineMark } from "@domos/ui/avatar";
 import { area, curveMonotoneX, line } from "d3-shape";
 import {
   type ReactNode,
@@ -6,7 +7,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { EngineMark } from "../bots/engine-mark.tsx";
 import {
   type dailyUsage,
   dayLabel,

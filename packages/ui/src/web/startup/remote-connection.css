@@ -1,0 +1,115 @@
+.remote-connection {
+  width: min(100%, 320px);
+  height: 112px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.remote-bot {
+  width: 96px;
+  height: 96px;
+  flex-shrink: 0;
+}
+.remote-harness {
+  width: 96px;
+  height: 96px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+}
+.remote-harness .engine-mark {
+  width: 64px;
+  height: 64px;
+}
+.remote-link {
+  width: 100px;
+  flex-shrink: 1;
+  overflow: visible;
+}
+.remote-dashes {
+  fill: none;
+  stroke: var(--color-border);
+  stroke-width: 2;
+  stroke-dasharray: 1 6;
+  stroke-linecap: round;
+}
+.remote-arrows {
+  fill: none;
+  stroke: var(--color-muted);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.remote-packet {
+  fill: #91df74;
+  animation: remote-send 1.8s ease-in-out infinite;
+}
+.remote-packet-return {
+  fill: #7bc6ff;
+  animation-name: remote-receive;
+  animation-delay: 450ms;
+}
+.remote-computer {
+  width: 96px;
+  flex-shrink: 0;
+}
+.remote-computer .computer-monitor {
+  padding: 4px 4px 0;
+  border-radius: 6px;
+}
+.remote-computer .computer-screen {
+  height: 55px;
+  border-radius: 3px;
+  display: grid;
+  place-items: center;
+}
+.remote-computer .brand-mark {
+  width: 28px;
+  height: 28px;
+}
+.remote-computer .computer-power {
+  width: 2px;
+  height: 2px;
+  margin: 3px auto;
+}
+.remote-computer .computer-stand {
+  height: 10px;
+}
+.remote-computer .computer-foot {
+  height: 4px;
+}
+@keyframes remote-send {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  15%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(108px);
+    opacity: 0;
+  }
+}
+@keyframes remote-receive {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  15%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(-108px);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .remote-packet {
+    animation: none;
+  }
+}

@@ -1,3 +1,4 @@
+import { EngineMark } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { Disclosure } from "@domos/ui/disclosure";
 import { Checkbox } from "@domos/ui/field";
@@ -10,7 +11,6 @@ import { PlugIcon } from "@phosphor-icons/react/dist/csr/Plug";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import type { client } from "../../client.ts";
-import { EngineMark } from "../bots/engine-mark.tsx";
 import type { useNativeCatalogs } from "./connection-state.ts";
 import { appsCopy, nativeMcpNotice, nativeMcpStatus } from "./copy.ts";
 

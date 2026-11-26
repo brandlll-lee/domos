@@ -1,0 +1,43 @@
+.computer-illustration {
+  --computer-shell: #e9dfc7;
+  --computer-edge: #d3c6a6;
+}
+[data-theme="dark"] .computer-illustration {
+  --computer-shell: #575348;
+  --computer-edge: #716a59;
+}
+.computer-monitor {
+  padding: 10px 10px 0;
+  border: 1px solid var(--computer-edge);
+  border-radius: 16px;
+  background: var(--computer-shell);
+}
+.computer-screen {
+  position: relative;
+  border-radius: 8px;
+  background: var(--color-surface);
+  overflow: hidden;
+}
+.computer-power {
+  display: block;
+  width: 4px;
+  height: 4px;
+  margin: 7px auto;
+  border-radius: 50%;
+  background: var(--color-muted);
+}
+.computer-stand {
+  width: 14%;
+  height: 26px;
+  margin: 0 auto;
+  background: var(--computer-shell);
+  border-inline: 1px solid var(--computer-edge);
+}
+.computer-foot {
+  width: 42%;
+  height: 10px;
+  margin: 0 auto;
+  border: 1px solid var(--computer-edge);
+  border-radius: 8px 8px 4px 4px;
+  background: var(--computer-shell);
+}

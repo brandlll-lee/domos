@@ -1,0 +1,122 @@
+.harness-constellation {
+  --pointer-x: 0;
+  --pointer-y: 0;
+  position: absolute;
+  inset: 0;
+  width: min(100%, 1120px);
+  margin: auto;
+  pointer-events: none;
+}
+.harness-orbit {
+  position: absolute;
+  width: 84px;
+  height: 84px;
+  animation: harness-arrival 850ms cubic-bezier(0.16, 1, 0.3, 1) var(--entrance)
+    both;
+}
+.harness-card {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-edge);
+  border-radius: 22px;
+  background: var(--color-surface);
+  transform: perspective(700px)
+    translate3d(
+      calc(var(--pointer-x) * var(--depth) * 14px),
+      calc(var(--pointer-y) * var(--depth) * 10px),
+      0
+    )
+    rotateX(calc(var(--pointer-y) * -4deg))
+    rotateY(calc(var(--pointer-x) * 6deg)) rotate(var(--tilt, 0deg));
+  transition: transform 550ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.harness-card .engine-mark {
+  width: 38px;
+  height: 38px;
+}
+.harness-orbit:nth-child(1) {
+  left: 9%;
+  top: 19%;
+  --tilt: -10deg;
+}
+.harness-orbit:nth-child(2) {
+  right: 9%;
+  top: 19%;
+  --tilt: 10deg;
+}
+.harness-orbit:nth-child(3) {
+  left: 16%;
+  top: 52%;
+  --tilt: 7deg;
+}
+.harness-orbit:nth-child(4) {
+  right: 16%;
+  top: 52%;
+  --tilt: -7deg;
+}
+.harness-orbit:nth-child(5) {
+  left: 7%;
+  top: 79%;
+  --tilt: -8deg;
+}
+.harness-orbit:nth-child(6) {
+  right: 7%;
+  top: 79%;
+  --tilt: 8deg;
+}
+.harness-orbit:nth-child(7) {
+  left: 34%;
+  top: 3%;
+  --tilt: 6deg;
+}
+.harness-orbit:nth-child(8) {
+  right: 34%;
+  top: 3%;
+  --tilt: -6deg;
+}
+@keyframes harness-arrival {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@media (max-width: 900px) {
+  .harness-constellation {
+    position: relative;
+    inset: auto;
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: min(100%, 400px);
+    margin: 0 auto 28px;
+  }
+  .harness-orbit:nth-child(n) {
+    position: relative;
+    inset: auto;
+    width: 30px;
+    height: 36px;
+  }
+  .harness-card {
+    border-radius: 8px;
+  }
+  .harness-card .engine-mark {
+    width: 20px;
+    height: 20px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .harness-orbit {
+    animation: none;
+  }
+  .harness-card {
+    transition: none;
+    transform: rotate(var(--tilt, 0deg));
+  }
+}

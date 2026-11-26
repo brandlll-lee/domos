@@ -335,7 +335,7 @@ test("native Harness controls persist and client accounts retain model access", 
   const ready = { pairing: service.pairing };
   await page.goto(service.url);
   await page.getByLabel("配对码", { exact: true }).fill(ready.pairing);
-  await page.getByRole("button", { name: "确认连接", exact: true }).click();
+  await page.getByRole("button", { name: "确认配对", exact: true }).click();
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   const trigger = page.getByRole("combobox", { name: "模型", exact: true });
   const popup = page.locator(".model-selector-popup");
@@ -475,7 +475,7 @@ test("native Harness controls persist and client accounts retain model access", 
     const paired = await client.newPage();
     await paired.goto(service.url);
     await paired.getByLabel("配对码", { exact: true }).fill(pairing.code);
-    await paired.getByRole("button", { name: "确认连接", exact: true }).click();
+    await paired.getByRole("button", { name: "确认配对", exact: true }).click();
     await paired.getByRole("button", { name: "Bot详情", exact: true }).click();
     await paired.getByRole("combobox", { name: "模型", exact: true }).click();
     await expect(

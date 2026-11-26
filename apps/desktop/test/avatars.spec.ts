@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 
-test("startup Bot follows the pointer and changes shape while working", async ({
+test("startup shows the approved companions in both themes and a narrow window", async ({
   playwright,
 }, testInfo) => {
   const directory = await mkdtemp(join(tmpdir(), "domos-avatars-"));
@@ -27,85 +27,20 @@ test("startup Bot follows the pointer and changes shape while working", async ({
   });
   try {
     const page = await desktop.firstWindow();
-    const viewport = page.locator(".startup-guide");
-    await expect(viewport).toHaveCSS("scrollbar-width", "none");
-    const advanced = page.getByRole("button", { name: "高级", exact: true });
-    const corner = await advanced.boundingBox();
-    const windowSize = await page.evaluate(() => ({
-      width: innerWidth,
-      height: innerHeight,
-    }));
-    expect(corner?.x).toBeGreaterThan(windowSize.width * 0.8);
-    expect(corner?.y).toBeGreaterThan(windowSize.height * 0.85);
-    await advanced.click();
-    const docker = page.getByRole("menuitem", {
-      name: "在 Docker 中运行",
-      exact: true,
-    });
-    await expect(docker).toBeVisible();
-    expect((await docker.boundingBox())?.y).toBeLessThan(corner?.y ?? 0);
-    await docker.click();
-    await expect(page.getByRole("menu")).toBeHidden();
-    await expect(advanced).toContainText("Docker");
-    await advanced.click();
-    await page.getByRole("menuitem", { name: "直接运行", exact: true }).click();
-    await advanced.focus();
-    await page.keyboard.press("ArrowUp");
-    await expect(page.getByRole("menu")).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(advanced).toBeFocused();
-    await desktop.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0]?.setSize(1120, 640),
-    );
-    await expect.poll(() => page.evaluate(() => innerHeight)).toBeLessThan(650);
-    await expect
-      .poll(() =>
-        viewport.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
+    const styleErrors: string[] = [];
+    page.on("console", (message) => {
+      if (
+        message
+          .text()
+          .includes("violates the following Content Security Policy")
       )
-      .toBe(true);
-    await desktop.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0]?.setSize(1120, 820),
-    );
-    await expect
-      .poll(() => page.evaluate(() => innerHeight))
-      .toBeGreaterThan(700);
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    const hero = page.getByRole("button", { name: "随机变身", exact: true });
-    const working = hero.locator("[data-work=working]");
-    const gesture = hero.locator(".character-gesture");
-    await expect(working).toBeVisible();
-    const shape = await working.getAttribute("data-shape");
-    await hero.focus();
-    await page.keyboard.press("Enter");
-    await expect(working).not.toHaveAttribute("data-shape", shape ?? "");
-    await expect(hero).toBeFocused();
-    await expect(gesture).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
-    await page.emulateMedia({ reducedMotion: "no-preference" });
-    const gaze = () =>
-      hero.evaluate((node) =>
-        Number.parseFloat(node.style.getPropertyValue("--character-gaze-x")),
-      );
-    const follow = (direction: number) =>
-      hero.evaluate((button, direction) => {
-        const { left, top, width, height } = button.getBoundingClientRect();
-        window.dispatchEvent(
-          new PointerEvent("pointermove", {
-            pointerType: "mouse",
-            clientX: Math.max(1, left + width / 2 + 200 * direction),
-            clientY: top + height / 2,
-          }),
-        );
-      }, direction);
-    await hero.hover();
-    await follow(-1);
-    await expect.poll(gaze).toBeLessThan(-0.3);
-    await follow(1);
-    await expect.poll(gaze).toBeGreaterThan(0.3);
+        styleErrors.push(message.text());
+    });
+    await page.reload();
+    await expect(page.locator(".startup-characters .character")).toHaveCount(5);
+    await page.evaluate(() => document.fonts.ready);
+    expect(styleErrors).toEqual([]);
     for (const colorScheme of ["dark", "light"] as const) {
-      await desktop.evaluate(({ BrowserWindow, nativeTheme }, theme) => {
-        nativeTheme.themeSource = theme;
-        BrowserWindow.getAllWindows()[0]?.setSize(1280, 920);
-      }, colorScheme);
       await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
       await page.screenshot({
         path: testInfo.outputPath(`welcome-${colorScheme}.png`),
@@ -117,20 +52,25 @@ test("startup Bot follows the pointer and changes shape while working", async ({
     );
     await expect.poll(() => page.evaluate(() => innerWidth)).toBeLessThan(400);
     expect(
-      await page
-        .locator("main")
-        .evaluate((node) => node.scrollWidth <= node.clientWidth),
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
     ).toBe(true);
-    await page
-      .getByRole("button", { name: "连接另一台电脑", exact: true })
-      .scrollIntoViewIfNeeded();
-    await expect(
-      page.getByRole("button", { name: "连接另一台电脑", exact: true }),
-    ).toBeInViewport({ ratio: 0.99 });
-    await page.screenshot({
-      path: testInfo.outputPath("welcome-narrow.png"),
-      scale: "css",
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.evaluate(() =>
+      localStorage.setItem("domos:appearance:v1", "dark"),
+    );
+    await page.reload();
+    await expect(page.locator(".startup-pages")).toHaveCSS(
+      "background-color",
+      "rgb(15, 15, 16)",
+    );
+    const remote = page.getByRole("button", {
+      name: "连接另一台电脑",
+      exact: true,
     });
+    await remote.scrollIntoViewIfNeeded();
+    await expect(remote).toBeInViewport();
   } finally {
     await desktop.close();
     await rm(directory, { recursive: true, force: true });

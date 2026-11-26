@@ -19,6 +19,7 @@ export {
   useAvatarImages,
 } from "./avatar-images.ts";
 export { characterImages, thumbnailEyes } from "./character.tsx";
+export { EngineMark } from "./engine-mark.tsx";
 
 export const characterPickerImages = [
   ...new Set(

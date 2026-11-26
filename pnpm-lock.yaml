@@ -331,6 +331,9 @@ importers:
       '@base-ui/react':
         specifier: 1.9.0
         version: 1.9.0(@types/react@19.3.0)(react-dom@19.3.1(patch_hash=8a9bc73dc1232059e92e305b7f1f75aae5c01297c6043dadf5e62e6212e94408)(react@19.3.1))(react@19.3.1)
+      '@phosphor-icons/react':
+        specifier: ^2.1.10
+        version: 2.1.10(react-dom@19.3.1(patch_hash=8a9bc73dc1232059e92e305b7f1f75aae5c01297c6043dadf5e62e6212e94408)(react@19.3.1))(react@19.3.1)
       mdast-util-gfm-autolink-literal:
         specifier: 2.0.1
         version: 2.0.1

@@ -1,5 +1,5 @@
 import type { ChatMessage } from "@domos/agent/messages";
-import { BotAvatar } from "@domos/ui/avatar";
+import { BotAvatar, EngineMark } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { ActionMenu } from "@domos/ui/menu";
 import { PanelHeader } from "@domos/ui/panel";
@@ -9,7 +9,6 @@ import { CrosshairIcon } from "@phosphor-icons/react/dist/csr/Crosshair";
 import { DotsThreeIcon } from "@phosphor-icons/react/dist/csr/DotsThree";
 import { StopIcon } from "@phosphor-icons/react/dist/csr/Stop";
 import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
-import { EngineMark } from "../bots/engine-mark.tsx";
 import { useModelSettings } from "../models/model-state.ts";
 import type { useChat } from "./use-chat.ts";
 import { WorkDiagnostics } from "./work-diagnostics.tsx";

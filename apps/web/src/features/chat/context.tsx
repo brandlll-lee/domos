@@ -1,9 +1,9 @@
 import type { EngineRuntimeState } from "@domos/agent/harness/types";
+import { EngineMark } from "@domos/ui/avatar";
 import { ContextWindow, contextPercent } from "@domos/ui/context-window";
 import { Button } from "@domos/ui/controls";
 import { client } from "../../client.ts";
 import { useWorkAction } from "../bots/details/use-bot-work.ts";
-import { EngineMark } from "../bots/engine-mark.tsx";
 
 const compactNumber = (value: number) =>
   new Intl.NumberFormat("en", {

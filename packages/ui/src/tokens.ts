@@ -250,3 +250,17 @@ export const compactChat = {
     "message-max-width": "90%",
   },
 } as const;
+
+const variables = (values: Record<string, string>, prefix = "") =>
+  Object.entries(values)
+    .map(([key, value]) => `--${prefix}${key}:${value}`)
+    .join(";");
+
+export const themeStyles = `:root{${variables(metrics)}}${Object.entries(themes)
+  .map(
+    ([name, palette]) =>
+      `[data-theme="${name}"]{color-scheme:${name};${variables(palette, "color-")}}`,
+  )
+  .join(
+    "",
+  )}@container chat (width < ${compactChat.maxWidth}){.chat-surface > *{${variables(compactChat.metrics)}}}`;

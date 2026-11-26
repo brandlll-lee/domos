@@ -1,30 +1,35 @@
-import type { EngineId } from "@domos/agent/harness/types";
+import antigravity from "./engine-assets/antigravity.svg";
+import claude from "./engine-assets/claude-code.svg";
+import codex from "./engine-assets/codex.svg";
+import cursor from "./engine-assets/cursor.svg";
+import devin from "./engine-assets/devin.svg";
+import grok from "./engine-assets/grok.svg";
 import "./engine-mark.css";
 import { TerminalWindowIcon } from "@phosphor-icons/react/dist/csr/TerminalWindow";
 
 const images: Record<string, { url: string; monochrome: boolean }> = {
   codex: {
-    url: new URL("./assets/codex.svg", import.meta.url).href,
+    url: codex,
     monochrome: false,
   },
   claude: {
-    url: new URL("./assets/claude-code.svg", import.meta.url).href,
+    url: claude,
     monochrome: false,
   },
   antigravity: {
-    url: new URL("./assets/antigravity.svg", import.meta.url).href,
+    url: antigravity,
     monochrome: false,
   },
   grok: {
-    url: new URL("./assets/grok.svg", import.meta.url).href,
+    url: grok,
     monochrome: true,
   },
   devin: {
-    url: new URL("./assets/devin.svg", import.meta.url).href,
+    url: devin,
     monochrome: true,
   },
   cursor: {
-    url: new URL("./assets/cursor.svg", import.meta.url).href,
+    url: cursor,
     monochrome: true,
   },
 };
@@ -57,7 +62,7 @@ const marks = {
   { viewBox: string; paths: { d: string; evenodd: boolean }[] }
 >;
 
-export function EngineMark({ provider }: { provider: EngineId }) {
+export function EngineMark({ provider }: { provider: string }) {
   const image = images[provider];
   if (image?.monochrome)
     return (

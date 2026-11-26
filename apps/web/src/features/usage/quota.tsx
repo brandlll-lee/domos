@@ -1,3 +1,4 @@
+import { EngineMark } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { Loading } from "@domos/ui/loading";
 import { InlineNotice } from "@domos/ui/message";
@@ -7,7 +8,6 @@ import { Progress } from "@domos/ui/progress";
 import { ArrowClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
 import { InfoIcon } from "@phosphor-icons/react/dist/csr/Info";
 import { useEffect, useState } from "react";
-import { EngineMark } from "../bots/engine-mark.tsx";
 import { useReadState } from "../read-state.ts";
 import { userError } from "../user-error.ts";
 import { quotaGroups, quotaReset } from "./data.ts";

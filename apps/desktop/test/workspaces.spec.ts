@@ -82,7 +82,7 @@ test("workspaces switch in one window and preserve identity, authorization and r
       .selected;
   const pair = async (page: Page, code: string) => {
     await page.getByLabel("配对码", { exact: true }).fill(code);
-    await page.getByRole("button", { name: "确认连接", exact: true }).click();
+    await page.getByRole("button", { name: "确认配对", exact: true }).click();
     await expect(
       page.getByRole("button", { name: "Bot详情", exact: true }),
     ).toBeVisible();
@@ -120,7 +120,7 @@ test("workspaces switch in one window and preserve identity, authorization and r
     await expect(pageB.getByLabel("配对码", { exact: true })).toBeVisible();
     expect(await selected()).toBe(ids[0]);
     await pageB
-      .getByRole("button", { name: "取消", exact: true })
+      .getByRole("button", { name: "返回", exact: true })
       .click()
       .catch((error) => {
         if (!pageB.isClosed()) throw error;
@@ -150,6 +150,7 @@ test("workspaces switch in one window and preserve identity, authorization and r
       window?.show();
       window?.focus();
     });
+    await expect.poll(() => pageA.evaluate(() => innerWidth)).toBe(1200);
     const seeded = once(a.worker, "message");
     a.worker.send({ history: 60 });
     await seeded;
@@ -272,6 +273,9 @@ test("workspaces switch in one window and preserve identity, authorization and r
       });
       await pageA.keyboard.press("Escape");
     }
+    await desktop.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.setAlwaysOnTop(false),
+    );
     await choose(pageA, "电脑 B");
     pageB = await workspacePage(desktop, b.origin);
     await expect(
@@ -420,12 +424,10 @@ test("workspaces switch in one window and preserve identity, authorization and r
       .getByRole("menuitem", { name: "连接其他电脑…", exact: true })
       .click();
     const setup = await opening;
-    await setup
-      .getByLabel("Domos 地址或配对链接", { exact: true })
-      .fill(b.origin);
-    await setup.getByLabel("连接名称", { exact: true }).fill("电脑 B");
-    await setup.getByRole("button", { name: "连接", exact: true }).click();
+    await setup.getByLabel("电脑地址", { exact: true }).fill(b.origin);
+    await setup.getByRole("button", { name: "连接电脑", exact: true }).click();
     pageB = await workspacePage(desktop, b.origin);
+    await expect.poll(() => setup.isClosed()).toBe(true);
     await expect(
       pageB.getByRole("textbox", { name: "消息", exact: true }),
     ).toHaveText("B 的草稿");
@@ -449,7 +451,7 @@ test("workspaces switch in one window and preserve identity, authorization and r
     await compactMenu.focus();
     await compactMenu.press("Enter");
     await expect(
-      pageA.getByRole("menuitem", { name: "电脑 B", exact: true }),
+      pageA.getByRole("menuitem", { name: "我的 Domos", exact: true }),
     ).toBeVisible();
     const narrowMenu = pageA.getByRole("menu", {
       name: "切换电脑",
