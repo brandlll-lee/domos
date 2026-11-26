@@ -179,6 +179,12 @@ test("onboarding selects its user flows and keeps runtime changes broad", () => 
     "docs/startup-onboarding.md",
   ];
   assert.equal(scope(paths).onboarding, true);
+  for (const name of ["desktop", "runtime", "avatars", "workspaces"]) {
+    const selected = scope([`apps/desktop/test/${name}.spec.ts`]);
+    assert.equal(selected.onboarding, true);
+    for (const flag of ["native", "input", "package", "sandbox", "full"])
+      assert.equal(selected[flag], false);
+  }
   for (const flag of ["native", "input", "package", "sandbox", "full"])
     assert.equal(scope(paths)[flag], false);
   for (const path of [

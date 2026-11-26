@@ -9,7 +9,7 @@ export function scope(paths, full = false) {
   const onboarding =
     !full &&
     paths.some((path) =>
-      /^(packages\/ui\/src\/web\/startup|apps\/(desktop\/src\/setup|web\/src\/features\/onboarding))/.test(
+      /^(packages\/ui\/src\/web\/startup|apps\/(desktop\/src\/setup|desktop\/test\/(desktop|runtime|avatars|workspaces)\.spec\.ts$|web\/src\/features\/onboarding))/.test(
         path,
       ),
     ) &&
@@ -21,7 +21,7 @@ export function scope(paths, full = false) {
         /^packages\/ui\/(src\/(assets\.d\.ts|tokens\.ts)|assets\/startup-[^/]+\.png|src\/web\/(startup[^/]*\.(tsx|ts|css)|startup\/[^/]+\.(tsx|css)|(avatar|theme)\.tsx|engine-mark\.(tsx|css)|engine-assets\/[^/]+\.svg))$/.test(
           path,
         ) ||
-        /^apps\/desktop\/(src\/setup\.(tsx|css|html)|build\.mjs|test\/(desktop|avatars|files|identity|notifications|workspaces)\.spec\.ts)$/.test(
+        /^apps\/desktop\/(src\/setup\.(tsx|css|html)|build\.mjs|test\/(desktop|runtime|avatars|files|identity|notifications|workspaces)\.spec\.ts)$/.test(
           path,
         ) ||
         /^apps\/web\/test\/(onboarding|models|computer-settings)\.spec\.ts$/.test(
