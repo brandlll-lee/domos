@@ -1,3 +1,7 @@
+import "@fontsource-variable/geist/wght.css";
+import "@fontsource-variable/noto-sans-sc/wght.css";
+import "@domos/ui/style.css";
+import "./features/chat/style.css";
 import { connectionLink } from "@domos/hosting/instance";
 import { prepareAvatarImages, thumbnailEyes } from "@domos/ui/avatar";
 import { initializeTheme, ThemeProvider } from "@domos/ui/theme";
@@ -6,10 +10,6 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { ChatPage } from "./features/chat/page.tsx";
 import { HostingRoot } from "./features/hosting/root.tsx";
-import "@fontsource-variable/geist/wght.css";
-import "@fontsource-variable/noto-sans-sc/wght.css";
-import "@domos/ui/style.css";
-import "./features/chat/style.css";
 
 const root = document.getElementById("root");
 let pairingCode: string | undefined;

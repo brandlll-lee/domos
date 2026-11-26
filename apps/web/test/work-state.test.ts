@@ -1,4 +1,7 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import type { EngineRun } from "@domos/agent/harness/types";
+import type { ChatMessage } from "@domos/agent/messages";
 import type { ChatView } from "@domos/agent/view";
 import { expect, test } from "vitest";
 import {
@@ -254,10 +257,10 @@ test("accounting warnings preserve the execution result and legacy runs stay rea
 
 test.each([
   ["codex", "commandExecution", "正在运行命令"],
-  ["claude", "Read", "正在读取文件"],
+  ["claude", "Read", "正在读取「private-path」"],
   ["opencode", "webfetch", "正在读取网页"],
-  ["pi", "read", "正在读取文件"],
-  ["acp", "mcp__browser__web_search", "正在搜索网页"],
+  ["pi", "read", "正在读取「private-path」"],
+  ["acp", "mcp__browser__web_search", "正在调用应用工具"],
   ["pi", "custom_tool", "正在使用工具"],
 ])(
   "%s activity uses the shared native tool record %s",
@@ -421,4 +424,207 @@ test("team activity retains execution identity and isolates member waits", () =>
     turnId: "additional",
   }));
   expect(chatActivity(view)[0]?.label).toBe("正在回复");
+});
+
+function toolView(
+  name = "read_file",
+  args: Extract<
+    ChatMessage["content"][number],
+    { type: "toolCall" }
+  >["arguments"] = {},
+) {
+  const { view } = running();
+  view.messages = [
+    {
+      id: "call",
+      turnId: "turn",
+      sessionId: 1,
+      role: "assistant",
+      stopped: false,
+      content: [
+        { type: "toolCall", key: "call", id: "call", name, arguments: args },
+      ],
+    },
+  ];
+  return view;
+}
+
+test("product actions use their actual parameters and keep sensitive input out of labels", () => {
+  const cases: [
+    string,
+    Extract<ChatMessage["content"][number], { type: "toolCall" }>["arguments"],
+    string,
+  ][] = [
+    ["get_window_state", {}, "正在读取窗口状态"],
+    ["set_value", { value: "private" }, "正在填写电脑界面"],
+    ["request_credentials", {}, "正在查看应用连接"],
+    [
+      "image_generate",
+      { recoverRequestId: "saved", purpose: "avatar" },
+      "正在恢复图片结果",
+    ],
+    [
+      "read_file",
+      { path: "C:\\Users\\ASUS\\work\\项目记录.md" },
+      "正在读取「项目记录.md」",
+    ],
+    [
+      "browser_agent_browser_open",
+      { url: "https://user:password@example.com/private?token=secret" },
+      "正在打开 example.com",
+    ],
+    [
+      "browser_agent_browser_fill",
+      { value: "password-secret" },
+      "正在填写表单",
+    ],
+    [
+      "memory_save",
+      { id: "record", revision: 2, text: "private fact" },
+      "正在更新记忆",
+    ],
+    ["memory_save", { revision: 0 }, "正在保存记忆"],
+    [
+      "routine_manage",
+      { action: "pause", id: "routine" },
+      "正在申请暂停例行任务",
+    ],
+    [
+      "mcp_call",
+      {
+        id: "connection-secret",
+        method: "tools/call",
+        params: { name: "send_email", arguments: { token: "secret" } },
+      },
+      "正在调用应用工具",
+    ],
+    [
+      "mcpToolCall",
+      {
+        server: "domos",
+        tool: "memory_search",
+        arguments: { query: "private" },
+      },
+      "正在查找相关记忆",
+    ],
+    ["arbitrary_tool", { text: "private" }, "正在使用工具"],
+  ];
+  for (const [name, args, expected] of cases)
+    assert.equal(chatActivity(toolView(name, args))[0]?.label, expected);
+});
+
+test("every current named product tool has a deliberate activity description", () => {
+  const sources = [
+    "work/memory-tools.ts",
+    "work/routines.ts",
+    "work/skills.ts",
+    "collaboration.ts",
+    "harness/interactions.ts",
+    "image-services.ts",
+  ];
+  const names = sources.flatMap((path) => {
+    const text = readFileSync(
+      new URL(`../../../packages/agent/src/${path}`, import.meta.url),
+      "utf8",
+    );
+    return [...text.matchAll(/name: "([a-z_]+)",\s*description:/g)].map(
+      (match) => match[1],
+    );
+  });
+  names.push(
+    "attach_file",
+    "conversation_read",
+    "mcp_call",
+    "computer_assist",
+    "computer_request_takeover",
+    "query_result",
+    "approve",
+  );
+  for (const name of names) {
+    assert(name);
+    assert.notEqual(
+      chatActivity(toolView(name))[0]?.label,
+      "正在使用工具",
+      name,
+    );
+  }
+});
+
+test("pending calls, concurrent calls and results retain truthful activity", () => {
+  const view = toolView("read_file", { path: "a.md" });
+  view.messages[0]?.content.push({
+    type: "toolCall",
+    key: "second",
+    id: "second",
+    name: "web_search",
+    arguments: {},
+  });
+  assert.equal(chatActivity(view)[0]?.label, "正在处理 2 项操作");
+  view.messages.push({
+    id: "result",
+    turnId: "turn",
+    sessionId: 1,
+    role: "toolResult",
+    stopped: false,
+    toolCallId: "call",
+    toolStatus: "done",
+    content: [],
+  });
+  assert.equal(chatActivity(view)[0]?.label, "正在搜索网页");
+  view.messages.push({
+    id: "second-result",
+    turnId: "turn",
+    sessionId: 1,
+    role: "toolResult",
+    stopped: false,
+    toolCallId: "second",
+    toolStatus: "failed",
+    content: [],
+  });
+  assert.equal(chatActivity(view)[0]?.label, "正在工作");
+  const run = view.runs?.[0];
+  assert(run);
+  run.status = "ended";
+  view.activity = [
+    { botId: 1, executionId: "turn", sessionId: 1, processing: true },
+  ];
+  assert.deepEqual(chatActivity(view), []);
+});
+
+test("waits override operations and remain scoped to the execution", () => {
+  const view = toolView();
+  view.approvals = [
+    { id: "draft", kind: "question", title: "确认", detail: "", draft: {} },
+  ];
+  assert.deepEqual(
+    chatActivity(view).map(({ label, working }) => ({ label, working })),
+    [{ label: "等你审阅草稿", working: false }],
+  );
+  view.approvals = [
+    {
+      id: "credential",
+      kind: "question",
+      title: "配置",
+      detail: "",
+      credential: {
+        connectionId: "secret-id",
+        revision: 1,
+        mode: "secret",
+        fields: [],
+      },
+    },
+  ];
+  assert.equal(chatActivity(view)[0]?.label, "等你配置应用连接");
+  const run = view.runs?.[0];
+  assert(run);
+  run.status = "stopping";
+  assert.equal(chatActivity(view)[0]?.label, "正在停止");
+  assert.equal(
+    executionActivity(view, {
+      turnId: "other",
+      sessionId: 2,
+      status: "running",
+    }).label,
+    "正在工作",
+  );
 });

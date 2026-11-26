@@ -1044,7 +1044,7 @@ test("monitoring stays quiet, delivers one result and opens the native Work reco
       { timeout: 20_000 },
     );
     await expect(page.getByLabel("你的消息")).toHaveCount(1);
-    await expect(page.locator(".typing-dots")).toHaveCount(0);
+    await expect(page.locator(".working-presence")).toHaveCount(0);
   }
   await expect(page.locator(".routine-source")).toHaveCount(1);
   await expect(

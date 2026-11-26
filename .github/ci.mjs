@@ -6,6 +6,40 @@ const platforms = ["ubuntu-latest", "windows-latest", "macos-latest"];
 const flags = ["code", "native", "input", "package", "sandbox"];
 
 export function scope(paths, full = false) {
+  const activityPath = (path) =>
+    path === "apps/web/src/main.tsx" ||
+    /^apps\/web\/src\/features\/chat\/(activity-state\.ts|working-presence\.(tsx|css)|typing-dots\.tsx|messages\.tsx|page\.tsx|use-chat\.ts|style\.css|copy\.ts)$/.test(
+      path,
+    ) ||
+    /^apps\/web\/test\/((work|chat|transcript)-state\.test\.ts|(bot-work|chat-history|chat-identity|conversations|drafts|files|interactions|message-appearance|messaging|teams)\.spec\.ts)$/.test(
+      path,
+    );
+  if (
+    !full &&
+    paths.some(
+      (path) =>
+        path.startsWith("apps/web/src/features/chat/") && activityPath(path),
+    ) &&
+    paths.every(
+      (path) =>
+        activityPath(path) ||
+        /^(AGENTS\.md|docs\/.*\.md|\.github\/(ci\.(test\.)?mjs|workflows\/checks\.yml))$/.test(
+          path,
+        ),
+    )
+  )
+    return {
+      code: true,
+      native: false,
+      input: false,
+      package: false,
+      sandbox: false,
+      full: false,
+      web_os: platforms.slice(0, 1),
+      evals: false,
+      onboarding: false,
+      activity: true,
+    };
   const onboarding =
     !full &&
     paths.some((path) =>

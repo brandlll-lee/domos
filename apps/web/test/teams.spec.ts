@@ -57,7 +57,7 @@ test("private chats insert peer Bot references through mentions and the shared m
   await page.getByRole("button", { name: "发送", exact: true }).click();
   const log = page.getByRole("log", { name: "聊天记录", exact: true });
   await expect(log.locator(".message.user .bot-reference")).toHaveCount(2);
-  await expect(log.locator(".typing-row")).toHaveCount(0);
+  await expect(log.locator(".working-presence")).toHaveCount(0);
   const view = (
     await (
       await page.request.post(`${service.url}/rpc/get`, {
@@ -233,7 +233,7 @@ test("teams preserve member authors and keep private chats separate", async ({
   await expect(
     log.locator(".message .message-author").filter({ hasText: "Reviewer" }),
   ).toBeVisible();
-  await expect(log.locator(".typing-row")).toHaveCount(0);
+  await expect(log.locator(".working-presence")).toHaveCount(0);
   await expect
     .poll(() =>
       log
@@ -423,19 +423,19 @@ test("teams preserve member authors and keep private chats separate", async ({
       .locator(".work-row[data-active]")
       .filter({ hasText: "Reviewer" });
     await expect(active).toBeVisible();
-    await expect(log.locator(".typing-row")).toContainText("Reviewer");
-    await expect(log.locator(".typing-row")).toHaveCount(1);
+    await expect(log.locator(".working-presence")).toContainText("Reviewer");
+    await expect(log.locator(".working-presence")).toHaveCount(1);
     const secondGate = once(service.worker, "message");
     service.worker.send("gate");
     await secondGate;
     await input.fill("同时核对另一份发布资料");
     await page.getByRole("button", { name: "发送", exact: true }).click();
-    await expect(log.locator(".typing-row")).toHaveCount(2);
+    await expect(log.locator(".working-presence")).toHaveCount(2);
     await expect(
-      log.locator(".typing-row").filter({ hasText: "Domos" }),
+      log.locator(".working-presence").filter({ hasText: "Domos" }),
     ).toBeVisible();
     await page.reload();
-    await expect(log.locator(".typing-row")).toHaveCount(2);
+    await expect(log.locator(".working-presence")).toHaveCount(2);
     await page.getByRole("button", { name: "团队详情", exact: true }).click();
     await page.getByRole("tab", { name: "Work", exact: true }).click();
     await expect(
@@ -452,14 +452,14 @@ test("teams preserve member authors and keep private chats separate", async ({
       .getByRole("button", { name: "返回工作列表", exact: true })
       .click();
     await expect(active).toHaveCount(0);
-    await expect(log.locator(".typing-row")).toHaveCount(1);
-    await expect(log.locator(".typing-row")).toContainText("Domos");
+    await expect(log.locator(".working-presence")).toHaveCount(1);
+    await expect(log.locator(".working-presence")).toContainText("Domos");
     await page
       .locator(".work-row[data-active]")
       .filter({ hasText: "Domos" })
       .getByRole("button", { name: "停止执行", exact: true })
       .click();
-    await expect(log.locator(".typing-row")).toHaveCount(0);
+    await expect(log.locator(".working-presence")).toHaveCount(0);
     expect((await page.locator(".composer-area").boundingBox())?.y).toBe(
       composerFrame?.y,
     );

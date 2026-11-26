@@ -74,16 +74,8 @@ export function useChat(
   const [restoring, setRestoring] = useState(
     Boolean(restore && !restore.following),
   );
-  const {
-    view,
-    outgoing,
-    sentRequest,
-    pendingRequest,
-    sending,
-    error,
-    history,
-    target,
-  } = useSyncExternalStore(store.subscribe, store.snapshot);
+  const { view, outgoing, sentRequest, sending, error, history, target } =
+    useSyncExternalStore(store.subscribe, store.snapshot);
   const current = useRef<ChatView | null>(view);
   current.current ??= view;
   const setView = useCallback(
@@ -423,7 +415,12 @@ export function useChat(
     }
   }
 
-  const activity = useMemo(() => chatActivity(view), [view]);
+  const activity = useMemo(() => {
+    const current = chatActivity(view);
+    return stopping
+      ? current.map((item) => ({ ...item, label: "正在停止", working: false }))
+      : current;
+  }, [view, stopping]);
   return {
     activity:
       connected && (!connection.service || connection.service === "ready")
@@ -493,10 +490,6 @@ export function useChat(
       connected && (!connection.service || connection.service === "ready"),
     error,
     sending,
-    processing:
-      !stopping &&
-      !view?.approvals?.length &&
-      (Boolean(pendingRequest) || Boolean(view?.processing)),
     stopping:
       stopping ||
       view?.runs?.some(

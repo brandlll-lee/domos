@@ -1,0 +1,77 @@
+.working-presence {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 36px;
+  color: var(--color-muted);
+  font-size: var(--text-label);
+  line-height: var(--leading-caption);
+}
+.working-presence-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+}
+.working-presence-avatar .bot-avatar {
+  width: 26px;
+  height: 26px;
+}
+.working-presence-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.working-presence-phrase {
+  animation: working-presence-reveal 180ms ease-out;
+}
+.working-presence[data-working] .working-presence-text {
+  background: linear-gradient(
+    90deg,
+    var(--color-muted) 0%,
+    var(--color-muted) 35%,
+    var(--color-text) 50%,
+    var(--color-muted) 65%,
+    var(--color-muted) 100%
+  );
+  background-size: 250% 100%;
+  background-clip: text;
+  color: transparent;
+  animation: working-presence-scan 3s linear infinite;
+}
+@keyframes working-presence-scan {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -150% 0;
+  }
+}
+@keyframes working-presence-reveal {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .working-presence-phrase,
+  .working-presence[data-working] .working-presence-text {
+    animation: none;
+  }
+  .working-presence[data-working] .working-presence-text {
+    background: none;
+    color: var(--color-muted);
+  }
+}
+@media (forced-colors: active) {
+  .working-presence[data-working] .working-presence-text {
+    background: none;
+    color: CanvasText;
+    animation: none;
+  }
+}

@@ -212,7 +212,7 @@ for (const method of ["click", "Enter"] as const) {
       ).toBeVisible();
       await expect(outgoing.locator("img")).toHaveJSProperty("naturalWidth", 1);
       await expect(page.locator(".composer-attachments")).toHaveCount(0);
-      await expect(page.locator(".typing-dots")).toBeVisible();
+      await expect(page.locator(".working-presence")).toHaveCount(0);
       await input.fill("下一条草稿");
     } finally {
       receipt.resolve();

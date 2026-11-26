@@ -45,7 +45,9 @@ test("native questions use the shared card and native replies persist", async ({
     exact: true,
   });
   await expect(choice).toBeVisible();
-  await expect(page.locator(".typing-row")).toHaveCount(0);
+  await expect(page.locator(".working-presence")).toHaveAccessibleName(
+    "Domos：等你回答",
+  );
   await expect(page.locator(".composer-area .interaction-card")).toHaveCount(0);
   await expect(choice.getByRole("combobox")).toHaveCount(0);
   await page.reload();

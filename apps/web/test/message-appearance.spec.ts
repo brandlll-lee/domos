@@ -264,7 +264,7 @@ test("structured messages keep Markdown and private tool results across reloads"
   });
   await page.getByLabel("消息", { exact: true }).fill("调用工具");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  await expect(page.locator(".typing-dots")).toBeVisible();
+  await expect(page.locator(".working-presence")).toBeVisible();
   await service.control("release");
   await expect(
     page.getByRole("button", { name: "语音输入（暂未开放）", exact: true }),

@@ -196,3 +196,33 @@ test("onboarding selects its user flows and keeps runtime changes broad", () => 
     assert.equal(scope([...paths, path]).onboarding, false);
   assert.equal(scope(paths, true).onboarding, false);
 });
+
+test("chat activity changes select their workflows and retain broad checks for other owners", () => {
+  const paths = [
+    "apps/web/src/main.tsx",
+    "apps/web/src/features/chat/activity-state.ts",
+    "apps/web/src/features/chat/messages.tsx",
+    "apps/web/src/features/chat/working-presence.tsx",
+    "apps/web/src/features/chat/typing-dots.tsx",
+    "apps/web/test/teams.spec.ts",
+    "apps/web/test/work-state.test.ts",
+    ".github/ci.mjs",
+    ".github/ci.test.mjs",
+    ".github/workflows/checks.yml",
+    "docs/decisions/0005-workspace-ui.md",
+  ];
+  assert.equal(scope(paths).activity, true);
+  for (const flag of ["native", "input", "package", "sandbox", "full"])
+    assert.equal(scope(paths)[flag], false);
+  for (const path of [
+    "apps/web/src/features/chat/approvals.tsx",
+    "apps/web/src/features/computer/view.tsx",
+    "packages/agent/src/runtime/index.ts",
+    "apps/desktop/src/main.ts",
+    "pnpm-lock.yaml",
+    "unknown.ts",
+  ])
+    assert.notEqual(scope([...paths, path]).activity, true, path);
+  assert.notEqual(scope(paths, true).activity, true);
+  assert.notEqual(scope(["apps/web/src/main.tsx"]).activity, true);
+});

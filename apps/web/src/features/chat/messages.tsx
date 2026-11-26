@@ -1,7 +1,6 @@
-import type { BotPresence } from "@domos/agent/bots";
+import type { Bot, BotPresence } from "@domos/agent/bots";
 import { type ChatMessage, messageText } from "@domos/agent/messages";
 import type { TranscriptItem } from "@domos/agent/transcript";
-import type { ChatView } from "@domos/agent/view";
 import { WORK_TEXT_LENGTH } from "@domos/agent/work/limits";
 import { Button } from "@domos/ui/controls";
 import { Loading } from "@domos/ui/loading";
@@ -19,6 +18,7 @@ import {
   ViewTransition,
 } from "react";
 import { fileUrl } from "../files/actions.ts";
+import type { WorkActivity } from "./activity-state.ts";
 import { Approval } from "./approvals.tsx";
 import { Attachments } from "./attachments.tsx";
 import { openChatTarget, useAttention } from "./attention.tsx";
@@ -34,8 +34,8 @@ import { MessageContent } from "./message-content.tsx";
 import { MessageDetail } from "./message-detail.tsx";
 import type { MessageTarget } from "./message-target.ts";
 import { TakeoverCard } from "./takeover-card.tsx";
-import { TypingDots } from "./typing-dots.tsx";
 import { useTranscript } from "./use-transcript.ts";
+import { WorkingPresence } from "./working-presence.tsx";
 
 const MessageRow = memo(function MessageRow({
   item,
@@ -279,10 +279,9 @@ export const Messages = memo(function Messages({
   chatRoute,
   ready,
   busy,
-  processing,
+  bot,
   activity,
   bots,
-  retry,
   botName,
   createdAt,
   items,
@@ -307,10 +306,9 @@ export const Messages = memo(function Messages({
   chatRoute?: string;
   ready: boolean;
   busy: boolean;
-  processing: boolean;
-  activity?: ChatView["activity"];
+  bot: Bot;
+  activity: WorkActivity[];
   bots?: BotPresence[];
-  retry?: string | null;
   botName: string;
   createdAt?: number;
   items: TranscriptItem[];
@@ -334,13 +332,10 @@ export const Messages = memo(function Messages({
     () => ({
       items,
       ready,
-      processing,
-      activity,
-      retry,
       sentRequest,
       readingHistory,
     }),
-    [items, ready, processing, activity, retry, sentRequest, readingHistory],
+    [items, ready, sentRequest, readingHistory],
   );
   const deferred = useDeferredValue(received);
   const shown =
@@ -353,17 +348,12 @@ export const Messages = memo(function Messages({
       items[0]?.id !== deferred.items[0]?.id)
       ? received
       : deferred;
-  const working = shown.activity?.filter(
-    (item) => item.processing || item.waiting,
-  );
-  const typing =
-    shown.ready &&
-    (working ? working.length > 0 : shown.processing || Boolean(shown.retry));
+  const working = ready && activity.length > 0;
   const transcript = useTranscript(
     shown.items,
     shown.ready,
     shown.sentRequest,
-    typing && !readingHistory,
+    working && !readingHistory,
     botId,
     target,
     chatKey,
@@ -586,36 +576,32 @@ export const Messages = memo(function Messages({
               {newerError}
             </p>
           )}
-          {typing && !readingHistory && transcript.atLatest && (
-            <ViewTransition {...motion}>
-              {working ? (
-                working.map((item) => {
-                  const member = bots?.find((bot) => bot.id === item.botId);
-                  return (
-                    <TypingDots
-                      key={`${item.sessionId}:${item.executionId}`}
-                      author={
-                        member
-                          ? {
-                              botId: member.id,
-                              name: member.name,
-                              avatar: member.avatar,
-                            }
-                          : undefined
-                      }
-                      label={`${member?.name ?? "成员"} ${chatCopy.botWorking}`}
-                      status={item.waiting ?? item.retry}
-                    />
-                  );
-                })
-              ) : (
-                <TypingDots
-                  label={chatCopy.typing(botName)}
-                  status={shown.retry}
-                />
-              )}
-            </ViewTransition>
-          )}
+          {working &&
+            !readingHistory &&
+            transcript.atLatest &&
+            activity.map((item) => {
+              const member = bots?.find(
+                (bot) => bot.id === (item.author?.botId ?? item.botId),
+              );
+              const actor =
+                member ??
+                (item.author
+                  ? {
+                      id: item.author.botId as Bot["id"],
+                      name: item.author.name,
+                      avatar: item.author.avatar,
+                    }
+                  : bot);
+              return (
+                <ViewTransition key={item.id} {...motion}>
+                  <WorkingPresence
+                    bot={actor}
+                    activity={item}
+                    showName={Boolean(item.author) || actor.id !== bot.id}
+                  />
+                </ViewTransition>
+              );
+            })}
           <p className="sr-only" role="status">
             {!busy && shown.items.length ? chatCopy.complete : ""}
           </p>

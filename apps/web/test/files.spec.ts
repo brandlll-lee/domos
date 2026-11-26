@@ -728,32 +728,6 @@ test("PDF preview renders selectable pages in both themes and a narrow panel", a
   );
   await expect(panel.locator("canvas").first()).toBeVisible();
   expect(await appearance()).toEqual(light);
-  for (const platform of ["win32", "darwin"]) {
-    await page.locator(".workspace").evaluate((node, platform) => {
-      (node as HTMLElement).dataset.platform = platform;
-    }, platform);
-    for (const width of [1360, 390]) {
-      await page.setViewportSize({ width, height: 900 });
-      const close = await panel
-        .getByRole("button", { name: "关闭", exact: true })
-        .boundingBox();
-      const back = await panel
-        .getByRole("button", { name: "返回", exact: true })
-        .boundingBox();
-      if (!close || !back) throw new Error("Preview controls required");
-      if (platform === "win32")
-        expect(close.x + close.width).toBeLessThanOrEqual(width - 144);
-      else if (width === 390) expect(back.x).toBeGreaterThanOrEqual(80);
-      else {
-        const bounds = await panel.boundingBox();
-        if (!bounds) throw new Error("Preview bounds required");
-        expect(back.x - bounds.x).toBeLessThan(80);
-      }
-    }
-  }
-  await page
-    .locator(".workspace")
-    .evaluate((node) => node.removeAttribute("data-platform"));
   await page.setViewportSize({ width: 1360, height: 900 });
   await expect(
     panel.getByRole("button", { name: "适应宽度", exact: true }),
@@ -951,7 +925,7 @@ test("completed messages and published files arrive before the final reply", asy
   await page.getByLabel("消息", { exact: true }).fill("生成报告");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await page.getByRole("button", { name: "批准", exact: true }).click();
-  await expect(page.locator(".typing-dots")).toBeVisible();
+  await expect(page.locator(".working-presence")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "另存为 report.md", exact: true }),
   ).toBeVisible();

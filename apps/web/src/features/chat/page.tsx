@@ -604,14 +604,9 @@ function BotChat({
                   (Boolean(chat.view) || Boolean(chat.error)) && !chat.restoring
                 }
                 busy={chat.connected && Boolean(chat.view?.busy)}
-                processing={chat.connected && chat.processing}
-                activity={
-                  chat.connected && (team || chat.view?.delegations?.length)
-                    ? chat.view?.activity
-                    : undefined
-                }
+                bot={bot}
+                activity={chat.activity}
                 bots={bots}
-                retry={chat.view?.busy ? chat.view.runtime?.retry : null}
                 botName={team?.name ?? bot.name}
                 createdAt={
                   team

@@ -571,9 +571,6 @@
 .message-body[data-expanded] {
   max-height: none;
 }
-.typing-row > .message-bubble {
-  max-width: 100%;
-}
 .message-parts {
   display: flex;
   flex-direction: column;
@@ -708,31 +705,6 @@
 }
 .history-page {
   align-self: center;
-}
-.typing-row {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-  align-self: flex-start;
-  max-width: var(--message-max-width);
-}
-.typing-dots {
-  color: var(--bot-color);
-  display: flex;
-  align-items: center;
-  align-self: flex-start;
-  width: 3rem;
-  height: 1lh;
-}
-.typing-dots .loading-dots {
-  width: 100%;
-  height: 1.75rem;
-}
-@media (forced-colors: active) {
-  .typing-dots {
-    color: CanvasText;
-  }
 }
 .message-image {
   display: block;

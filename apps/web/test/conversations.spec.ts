@@ -344,6 +344,7 @@ test("conversation marks keep their slot through failure, work, unread and compl
     });
   }
   await service.control("gate");
+  await page.mouse.move(0, 0);
   await page.getByLabel("消息", { exact: true }).fill("处理资料");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await service.control("wait-model");
@@ -360,7 +361,7 @@ test("conversation marks keep their slot through failure, work, unread and compl
     "animation-name",
     "loading-wave",
   );
-  await expect(page.locator(".typing-dots > .loading-dots")).toBeVisible();
+  await expect(page.locator(".working-presence")).toBeVisible();
   expect(await titleInset()).toBe(left);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(dots.locator("g").first()).toHaveCSS("animation-name", "none");

@@ -178,7 +178,7 @@ test("background replies and reduced motion show complete messages without entry
   });
   await input.fill("减少动画");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  const dot = page.locator(".typing-dots g").first();
+  const dot = page.locator(".working-presence-text").first();
   await expect(dot).toBeVisible();
   await expect(dot).toHaveCSS("animation-name", "none");
   await service.control("release");

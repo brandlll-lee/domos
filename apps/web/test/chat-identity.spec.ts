@@ -204,7 +204,10 @@ test("working identity follows live activity and shares equipment across every s
       Reflect.get(window, "deliverWorkActivity")({ type: "snapshot", view });
     }, state);
   await deliver();
-  await expect(status).toHaveText("正在读取文件");
+  await expect(status).toHaveText("正在读取「private-path」");
+  await expect(page.locator(".working-presence")).toHaveAccessibleName(
+    `${bot.name}：正在读取「private-path」`,
+  );
   expect(
     (await header.locator(".chat-identity-label").boundingBox())?.width,
   ).toBe(idleWidth);
@@ -215,7 +218,9 @@ test("working identity follows live activity and shares equipment across every s
     .toBe(1);
   await expect(character).not.toHaveAttribute("data-entering");
   await page.getByRole("tab", { name: "Work", exact: true }).click();
-  await expect(page.locator(".work-row").first()).toContainText("正在读取文件");
+  await expect(page.locator(".work-row").first()).toContainText(
+    "正在读取「private-path」",
+  );
   const result = {
     id: "result",
     turnId: "work",
@@ -283,6 +288,13 @@ test("working identity follows live activity and shares equipment across every s
       waiting,
     );
     await expect(status).toHaveText(label ?? "");
+    await expect(page.locator(".working-presence")).toHaveAccessibleName(
+      `${bot.name}：${label}`,
+    );
+    await expect(page.locator(".working-presence-text")).toHaveCSS(
+      "animation-name",
+      "none",
+    );
     await expect(character).toHaveAttribute("data-work", "waiting");
     await expect(character.locator(".character-computer-motion")).toHaveCSS(
       "animation-name",
@@ -309,8 +321,12 @@ test("working identity follows live activity and shares equipment across every s
   expect(await page.locator(".chat-header").boundingBox()).toEqual(top);
   await page.evaluate(() => Reflect.get(window, "disconnectWorkActivity")());
   await expect(status).toBeEmpty();
+  await expect(page.locator(".working-presence")).toHaveCount(0);
   await expect(character).not.toHaveAttribute("data-work");
-  await expect(status).toHaveText("正在读取文件");
+  await expect(status).toHaveText("正在读取「private-path」");
+  await expect(page.locator(".working-presence")).toHaveAccessibleName(
+    `${bot.name}：正在读取「private-path」`,
+  );
   expect(
     await page.evaluate(() => Reflect.get(window, "activityArrivals")),
   ).toBe(1);
@@ -490,7 +506,7 @@ test("chat identity stays painted above live message transitions and the top fad
     "data-entering",
   );
   await page.getByRole("button", { name: "展开", exact: true }).first().click();
-  await page.locator(".typing-row").scrollIntoViewIfNeeded();
+  await page.locator(".working-presence").scrollIntoViewIfNeeded();
   await page.evaluate(() => document.activeViewTransition?.finished);
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });

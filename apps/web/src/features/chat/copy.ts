@@ -18,7 +18,6 @@ export const chatCopy = {
   stop: "停止生成",
   stopping: "正在停止…",
   taskFailed: "任务未完成",
-  typing: (name: string) => `${name} 正在回复`,
   working: "正在回复…",
   botWorking: "正在工作",
   complete: "回复已结束",

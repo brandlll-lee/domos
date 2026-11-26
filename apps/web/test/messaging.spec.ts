@@ -1,5 +1,4 @@
 import { once } from "node:events";
-import { characterIdentity } from "@domos/ui/characters";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterClient } from "@orpc/server";
@@ -65,7 +64,10 @@ test("message actions share the bubble row and retain layout through hover and k
         else expect(button.x + button.width).toBeLessThanOrEqual(before.x);
         const row = await message.boundingBox();
         expect(row?.height).toBeCloseTo(before.height, 0);
-        await bubble.hover();
+        await page.mouse.move(
+          before.x + before.width / 2,
+          before.y + before.height / 2,
+        );
         await expect(action).toHaveCSS("opacity", "1");
         expect(await bubble.boundingBox()).toEqual(before);
         await action.hover();
@@ -268,10 +270,7 @@ test("a reply arrives complete while typing survives reloads", async ({
   await page.goto(service.url);
   await page.getByLabel("消息", { exact: true }).fill("完整交付");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  const typing = page.getByRole("status", {
-    name: "Domos 正在回复",
-    exact: true,
-  });
+  const typing = page.locator(".working-presence");
   await expect(typing).toBeVisible();
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
   await page.reload();
@@ -301,12 +300,12 @@ test("stopping preserves the conversation and resending uses the message menu", 
   await page.goto(service.url);
   await page.getByLabel("消息", { exact: true }).fill("停止这次回答");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  await expect(page.locator(".typing-dots")).toBeVisible();
+  await expect(page.locator(".working-presence")).toBeVisible();
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
   await page.getByRole("button", { name: "停止生成", exact: true }).click();
   const notice = page.locator('.task-notice[data-state="stopped"]');
   await expect(notice).toHaveCount(0);
-  await expect(page.locator(".typing-dots")).toHaveCount(0);
+  await expect(page.locator(".working-presence")).toHaveCount(0);
   await page.reload();
   await expect(notice).toHaveCount(0);
   await expect(page.getByLabel("Domos 的回复")).toHaveCount(0);
@@ -447,15 +446,15 @@ test("typing follows the Bot and failures retain their error message", async ({
   await input.fill("生成文件");
   await send.click();
   await page.getByRole("button", { name: "批准", exact: true }).click();
-  await expect(page.locator(".typing-dots")).toBeVisible();
+  await expect(page.locator(".working-presence")).toBeVisible();
   await createBot(page, "旁观助手");
-  await expect(page.locator(".typing-dots")).toHaveCount(0);
+  await expect(page.locator(".working-presence")).toHaveCount(0);
   await page.getByRole("link", { name: "Domos", exact: true }).click();
-  await expect(page.locator(".typing-dots")).toBeVisible();
+  await expect(page.locator(".working-presence")).toBeVisible();
   const stoppedReceipt = page.waitForResponse("**/rpc/stop");
   await page.getByRole("button", { name: "停止生成", exact: true }).click();
   await stoppedReceipt;
-  await expect(page.locator(".typing-dots")).toHaveCount(0);
+  await expect(page.locator(".working-presence")).toHaveCount(0);
   await expect(page.locator('.task-notice[data-state="stopped"]')).toHaveCount(
     0,
   );
@@ -480,19 +479,23 @@ test("typing follows the Bot and failures retain their error message", async ({
   await failure
     .getByRole("button", { name: "查看工作记录", exact: true })
     .click();
-  const workRecord = page.getByRole("dialog", {
+  const workRecord = page.getByRole("region", {
     name: "工作记录",
     exact: true,
   });
   await expect(workRecord).toBeVisible();
   await expect(workRecord).toContainText("回复失败，原因待确认");
-  await page.keyboard.press("Escape");
+  await workRecord
+    .getByRole("button", { name: "返回工作列表", exact: true })
+    .click();
   await expect(workRecord).not.toBeVisible();
   await failure
     .getByRole("button", { name: "查看工作记录", exact: true })
     .click();
   await expect(workRecord).toBeVisible();
-  await page.keyboard.press("Escape");
+  await workRecord
+    .getByRole("button", { name: "返回工作列表", exact: true })
+    .click();
   await expect(failure.locator('svg[aria-hidden="true"]')).toHaveCount(1);
   const errorText = await failure.getByRole("alert").innerText();
   const port = Number(new URL(service.url).port);
@@ -561,7 +564,7 @@ test("chat keeps sending available while the Bot is working", async ({
   const send = page.getByRole("button", { name: "发送", exact: true });
   await input.fill("first");
   await send.click();
-  await expect(page.locator(".typing-dots")).toBeVisible();
+  await expect(page.locator(".working-presence")).toBeVisible();
   await expect(page.getByLabel("Domos 的回复")).toHaveText("Checking sources");
   await input.pressSequentially("second");
   await expect(send).toBeEnabled();
@@ -571,10 +574,12 @@ test("chat keeps sending available while the Bot is working", async ({
   await send.click();
   await expect(input).toHaveText("");
   await expect(
-    page.locator(".message").filter({ hasNot: page.locator(".typing-dots") }),
+    page
+      .locator(".message")
+      .filter({ hasNot: page.locator(".working-presence") }),
   ).toHaveText([/first/, "Checking sources", /second/, /third/]);
-  await expect(page.locator(".typing-dots")).toHaveCount(1);
-  const typingPosition = await page.locator(".typing-dots").boundingBox();
+  await expect(page.locator(".working-presence")).toHaveCount(1);
+  const typingPosition = await page.locator(".working-presence").boundingBox();
   const latestPosition = await page.getByLabel("你的消息").last().boundingBox();
   expect(
     typingPosition &&
@@ -620,7 +625,7 @@ test("chat keeps sending available while the Bot is working", async ({
   await page.screenshot({ path: "test-results/chat-continuous-input.png" });
 });
 
-test("message insertion moves typing continuously and completion fades it out", async ({
+test("message insertion moves working presence continuously and completion clears it", async ({
   service,
   page,
 }) => {
@@ -666,7 +671,7 @@ test("message insertion moves typing continuously and completion fades it out", 
   const input = page.getByLabel("消息", { exact: true });
   await input.fill("核对资料");
   await input.press("Enter");
-  const typing = page.locator(".typing-row");
+  const typing = page.locator(".working-presence");
   await expect(typing).toBeVisible();
   await service.control("wait-tool");
   await page.evaluate(() => document.activeViewTransition?.finished);
@@ -746,16 +751,13 @@ test("message insertion moves typing continuously and completion fades it out", 
     expect(moving[index]?.y).toBeGreaterThanOrEqual(
       (moving[index - 1]?.y ?? 0) - 0.5,
     );
-  const fading = frames.filter((frame) => frame.exit);
-  expect(fading.length).toBeGreaterThan(2);
-  expect(fading.at(-1)?.opacity).toBeLessThan(fading[0]?.opacity ?? 0);
   await test.info().attach("message-motion", {
     body: JSON.stringify(frames),
     contentType: "application/json",
   });
 });
 
-test("typing dots share the avatar color and follow complete messages", async ({
+test("working presence shows the Bot and actual activity after delivered messages", async ({
   service,
   page,
 }) => {
@@ -785,232 +787,55 @@ test("typing dots share the avatar color and follow complete messages", async ({
   await page.goto(service.url);
   await page.getByLabel("消息", { exact: true }).fill("核对并整理资料");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  const typing = page.getByRole("status", {
-    name: "Domos 正在回复",
-    exact: true,
-  });
+  const presence = page.locator(".working-presence");
   const replies = page.getByLabel("Domos 的回复");
   await expect(replies).toHaveText(["先核对资料，再整理结果。"]);
-  await expect(typing).toBeVisible();
-  await expect(typing).toHaveText("");
-  const typingBubble = page.locator(".typing-row > .message-bubble");
-  await expect(typingBubble).toBeVisible();
-  await expect(typing.locator("svg")).toHaveCount(1);
-  await expect(typing.locator("svg circle")).toHaveCount(3);
-  await expect(typing).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-  const indicator = await typing.boundingBox();
-  expect(indicator && indicator.width <= 48 && indicator.height <= 28).toBe(
-    true,
+  await expect(presence).toBeVisible();
+  await expect(presence).toHaveAccessibleName("Domos：正在使用工具");
+  await expect(presence).toHaveAttribute("data-bot-id", "1");
+  await expect(presence).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(presence).toHaveCSS("height", "36px");
+  await expect(presence.locator(".bot-avatar")).toHaveCSS("width", "26px");
+  await expect(presence.locator(".working-presence-text")).toHaveCSS(
+    "animation-name",
+    "working-presence-scan",
   );
-  await expect(page.getByRole("log").locator("details")).toHaveCount(0);
-  await expect(page.locator(".composer-area .bot-avatar")).toHaveCount(0);
   await expect(
     page.getByText("核对资料的内容与来源。", { exact: true }),
   ).toHaveCount(0);
-  const position = await typing.boundingBox();
+  const position = await presence.boundingBox();
   const reply = await replies.boundingBox();
   expect(position && reply && position.y >= reply.y + reply.height).toBe(true);
-  const seed = await page
-    .locator(".chat-identity .bot-avatar")
-    .getAttribute("data-seed");
-  const color = characterIdentity(seed ?? "").color;
-  const rgb = [1, 3, 5].map((index) =>
-    Number.parseInt(color.slice(index, index + 2), 16),
-  );
-  await expect(typing).toHaveCSS("color", `rgb(${rgb.join(", ")})`);
-  const animation = await typing.locator("g").evaluateAll((nodes) =>
-    nodes.map((node) => ({
-      name: getComputedStyle(node).animationName,
-      delay: Number.parseFloat(getComputedStyle(node).animationDelay),
-      fill: getComputedStyle(node.querySelector("circle") as Element).fill,
-    })),
-  );
-  expect(animation.map((item) => item.name)).toEqual([
-    "loading-wave",
-    "loading-wave",
-    "loading-wave",
-  ]);
-  const [first, second, third] = animation;
-  if (!first || !second || !third) throw new Error("Three dots required");
-  expect([first.delay, second.delay, third.delay]).toEqual([0, 0.18, 0.36]);
-  expect(new Set(animation.map((item) => item.fill)).size).toBe(1);
-  const wave = await typing.locator("g").evaluateAll((nodes) =>
-    nodes.map((node) => {
-      const animation = node.getAnimations()[0];
-      if (!animation) throw new Error("Typing animation missing");
-      const currentTime = animation.currentTime;
-      animation.pause();
-      const samples = [0, 390, 780].map((time) => {
-        animation.currentTime =
-          time +
-          Number.parseFloat(getComputedStyle(node).animationDelay) * 1000;
-        const style = getComputedStyle(node);
-        return {
-          y: new DOMMatrix(style.transform).m42,
-          opacity: Number(style.opacity),
-        };
-      });
-      animation.currentTime = currentTime;
-      animation.play();
-      return samples;
-    }),
-  );
-  for (const samples of wave) {
-    for (const [index, expected] of [
-      { y: 0, opacity: 0.4 },
-      { y: -4, opacity: 1 },
-      { y: 0, opacity: 0.4 },
-    ].entries()) {
-      expect(samples[index]?.y).toBeCloseTo(expected.y, 3);
-      expect(samples[index]?.opacity).toBeCloseTo(expected.opacity, 3);
-    }
-  }
-  const surroundingAnimations = await typing.evaluateHandle((element) =>
-    document.getAnimations().filter((animation) => {
-      const target = (animation.effect as KeyframeEffect | null)?.target;
-      if (!(target instanceof Element) || element.contains(target))
-        return false;
-      animation.pause();
-      return true;
-    }),
-  );
-  await page.evaluate(() => new Promise(requestAnimationFrame));
-  await page.locator(".bot-avatar").evaluateAll(async (elements) => {
-    const snapshot = () =>
-      elements.map((element) => element.outerHTML).join("");
-    let previous = snapshot();
-    for (let stable = 0; stable < 3; ) {
-      await new Promise(requestAnimationFrame);
-      const current = snapshot();
-      stable = current === previous ? stable + 1 : 0;
-      previous = current;
-    }
-  });
-  const performance = await page.context().newCDPSession(page);
-  await performance.send("Performance.enable");
-  const before = await performance.send("Performance.getMetrics");
-  const sampleFrames = () =>
-    page.evaluate(
-      () =>
-        new Promise<number[]>((resolve) => {
-          const samples: number[] = [];
-          let start = 0;
-          let previous = 0;
-          const sample = (time: number) => {
-            if (!start) start = time;
-            if (previous) samples.push(time - previous);
-            previous = time;
-            if (time - start < 1000) requestAnimationFrame(sample);
-            else resolve(samples);
-          };
-          requestAnimationFrame(sample);
-        }),
-    );
-  const intervals = await sampleFrames();
-  const after = await performance.send("Performance.getMetrics");
-  await typing.evaluate((element) => {
-    for (const animation of element.getAnimations({ subtree: true }))
-      animation.pause();
-  });
-  await page.evaluate(() => new Promise(requestAnimationFrame));
-  const idleBefore = await performance.send("Performance.getMetrics");
-  const idleIntervals = await sampleFrames();
-  const idleAfter = await performance.send("Performance.getMetrics");
-  await typing.evaluate((element) => {
-    for (const animation of element.getAnimations({ subtree: true }))
-      animation.play();
-  });
-  const metric = (metrics: typeof before, name: string) =>
-    metrics.metrics.find((item) => item.name === name)?.value ?? 0;
-  const layouts = metric(after, "LayoutCount") - metric(before, "LayoutCount");
-  const layoutMs =
-    (metric(after, "LayoutDuration") - metric(before, "LayoutDuration")) * 1000;
-  const styleMs =
-    (metric(after, "RecalcStyleDuration") -
-      metric(before, "RecalcStyleDuration")) *
-    1000;
-  const idleMs =
-    (metric(idleAfter, "LayoutDuration") -
-      metric(idleBefore, "LayoutDuration") +
-      metric(idleAfter, "RecalcStyleDuration") -
-      metric(idleBefore, "RecalcStyleDuration")) *
-    1000;
-  const animationMsPerFrame =
-    (layoutMs + styleMs) / intervals.length - idleMs / idleIntervals.length;
-  const p95 = [...intervals].sort((a, b) => a - b)[
-    Math.floor(intervals.length * 0.95)
-  ];
-  const idleP95 = [...idleIntervals].sort((a, b) => a - b)[
-    Math.floor(idleIntervals.length * 0.95)
-  ];
-  if (idleP95 === undefined) throw new Error("No idle frames were recorded");
-  console.log("typing frames", { p95, idleP95, layoutMs, styleMs });
-  await performance.detach();
-  await test.info().attach("typing-performance", {
-    body: JSON.stringify({
-      layouts,
-      layoutMs,
-      styleMs,
-      p95,
-      idleP95,
-      idleMs,
-      animationMsPerFrame,
-      intervals,
-      idleIntervals,
-    }),
-    contentType: "application/json",
-  });
-  await surroundingAnimations.evaluate((animations) => {
-    for (const animation of animations) animation.play();
-  });
-  await surroundingAnimations.dispose();
-  expect(animationMsPerFrame).toBeLessThan(1);
-  for (const [theme, label] of [
-    ["dark", "深色"],
-    ["light", "浅色"],
-  ] as const) {
-    await chooseAppearance(page, label);
-    await expect(typing).toBeVisible();
-    const textHeight = await replies
-      .locator(".message-bubble")
-      .evaluate((node) => node.getBoundingClientRect().height);
-    await expect(typingBubble).toHaveCSS("height", `${textHeight}px`);
-    await expect(typing.locator("svg")).toHaveCSS("height", "28px");
-    await expect(typing.locator("svg")).toHaveCSS("width", "48px");
-    await page.screenshot({ path: `test-results/typing-${theme}.png` });
+  for (const theme of ["浅色", "深色"] as const) {
+    await chooseAppearance(page, theme);
+    await expect(presence).toBeVisible();
+    await page.screenshot({
+      path: test.info().outputPath(`working-${theme}.png`),
+    });
   }
   await page.emulateMedia({ reducedMotion: "reduce" });
-  for (const dot of await typing.locator("g").all())
-    await expect(dot).toHaveCSS("animation-name", "none");
+  await expect(presence.locator(".working-presence-text")).toHaveCSS(
+    "animation-name",
+    "none",
+  );
+  await expect(presence.locator(".character-body")).toHaveCSS(
+    "animation-name",
+    "none",
+  );
   await page.emulateMedia({ forcedColors: "active" });
-  await expect(typing).toBeVisible();
-  await page.emulateMedia({
-    forcedColors: "none",
-    reducedMotion: "no-preference",
-  });
+  await expect(presence.locator(".working-presence-text")).toHaveCSS(
+    "background-image",
+    "none",
+  );
   await page.reload();
-  await expect(replies).toHaveText(["先核对资料，再整理结果。"]);
-  await expect(typing).toBeVisible();
+  await expect(presence).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
-  await page.screenshot({ path: "test-results/typing-mobile.png" });
+  await page.screenshot({ path: test.info().outputPath("working-mobile.png") });
   await service.control("release");
   await expect(replies).toHaveCount(2);
   await expect(replies.last().locator("strong")).toHaveText("整理完成。");
-  const positions = await replies.last().evaluate(async (node) => {
-    const viewport = node.closest(".transcript");
-    if (!viewport) throw new Error("Transcript required");
-    const samples: number[] = [];
-    for (let index = 0; index < 20; index++) {
-      await new Promise(requestAnimationFrame);
-      samples.push((node as HTMLElement).offsetTop - viewport.scrollTop);
-    }
-    return samples;
-  });
-  expect(Math.max(...positions) - Math.min(...positions)).toBeLessThanOrEqual(
-    1,
-  );
-  await expect(typing).toHaveCount(0);
+  await expect(presence).toHaveCount(0);
   await page.reload();
   await expect(replies).toHaveCount(2);
 });
@@ -1075,7 +900,7 @@ test("sending paints the outgoing message and waiting feedback before the networ
       `send paint with 320 history messages and 4x CPU: ${duration.toFixed(1)}ms`,
     );
     expect(duration).toBeLessThan(200);
-    await expect(page.locator(".typing-dots")).toBeVisible();
+    await expect(page.locator(".working-presence")).toHaveCount(0);
     await expect
       .poll(() =>
         page

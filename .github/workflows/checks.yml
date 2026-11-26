@@ -28,6 +28,7 @@ jobs:
       web_os: ${{ steps.scope.outputs.web_os }}
       evals: ${{ steps.scope.outputs.evals }}
       onboarding: ${{ steps.scope.outputs.onboarding }}
+      activity: ${{ steps.scope.outputs.activity }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -47,8 +48,11 @@ jobs:
       - if: steps.scope.outputs.code == 'true'
         run: pnpm typecheck
       - name: Verify platform-independent regressions
-        if: steps.scope.outputs.code == 'true' && steps.scope.outputs.evals != 'true' && steps.scope.outputs.onboarding != 'true'
+        if: steps.scope.outputs.code == 'true' && steps.scope.outputs.evals != 'true' && steps.scope.outputs.onboarding != 'true' && steps.scope.outputs.activity != 'true'
         run: pnpm test:ci unit --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml
+      - name: Verify chat activity contracts
+        if: steps.scope.outputs.activity == 'true'
+        run: pnpm exec vitest run apps/web/test/work-state.test.ts apps/web/test/chat-state.test.ts apps/web/test/transcript-state.test.ts --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml
       - name: Verify startup contracts
         if: steps.scope.outputs.onboarding == 'true'
         run: pnpm exec vitest run apps/api/test/onboarding.test.ts apps/api/test/startup.test.ts
@@ -122,7 +126,10 @@ jobs:
       - name: Verify web workflows
         shell: bash
         run: |
-          if [ "${{ needs.check.outputs.onboarding }}" = "true" ]; then
+          if [ "${{ needs.check.outputs.activity }}" = "true" ]; then
+            pnpm build
+            xvfb-run -a pnpm exec playwright test apps/web/test/bot-work.spec.ts apps/web/test/chat-history.spec.ts apps/web/test/chat-identity.spec.ts apps/web/test/conversations.spec.ts apps/web/test/drafts.spec.ts apps/web/test/files.spec.ts apps/web/test/interactions.spec.ts apps/web/test/message-appearance.spec.ts apps/web/test/messaging.spec.ts apps/web/test/teams.spec.ts --shard=${{ matrix.shard }}/2 --output=test-results/e2e
+          elif [ "${{ needs.check.outputs.onboarding }}" = "true" ]; then
             pnpm build
             xvfb-run -a pnpm exec playwright test apps/web/test/onboarding.spec.ts apps/web/test/models.spec.ts apps/web/test/computer-settings.spec.ts --shard=${{ matrix.shard }}/2 --output=test-results/e2e
           elif [ "$RUNNER_OS" = "Linux" ]; then
