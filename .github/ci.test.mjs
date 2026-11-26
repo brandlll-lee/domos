@@ -17,6 +17,7 @@ test("connection page changes select connection and workspace checks", () => {
     "apps/web/src/features/apps/center.tsx",
     "apps/web/src/features/chat/page.tsx",
     "apps/web/test/app-connections.spec.ts",
+    "apps/web/test/drafts.spec.ts",
     "packages/agent/src/mcp/catalog.ts",
     "docs/decisions/0005-workspace-ui.md",
     ".github/ci.mjs",

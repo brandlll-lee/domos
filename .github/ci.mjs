@@ -13,6 +13,7 @@ export function scope(paths, full = false) {
     path === "apps/web/src/features/apps/style.css" ||
     path === "apps/web/src/features/chat/page.tsx" ||
     path === "apps/web/test/app-connections.spec.ts" ||
+    path === "apps/web/test/drafts.spec.ts" ||
     path === "packages/agent/src/mcp/catalog.ts";
   if (
     !full &&

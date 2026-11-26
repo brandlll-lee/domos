@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test";
 import { png } from "../../../packages/agent/test/fixtures/png.ts";
-import { attachFiles, createBot } from "./fixtures/chat-ui.ts";
+import { attachFiles, composerFiles, createBot } from "./fixtures/chat-ui.ts";
 import { test } from "./fixtures/service.ts";
 
 test("drafts survive reload and reopening in the same browser", async ({
@@ -508,6 +508,7 @@ test("attachment removal updates the editor before cleanup and can retry cleanup
   await expect(notice).toHaveCount(0);
   await page.getByRole("button", { name: "移除文件 image.png" }).click();
   await expect(page.locator(".composer-attachments")).toHaveCount(0);
+  await composerFiles(page);
   await page.reload();
   await expect(page.getByLabel("消息", { exact: true })).toHaveText(
     "仍然可以输入",
