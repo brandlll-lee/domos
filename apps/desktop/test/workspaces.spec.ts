@@ -324,17 +324,20 @@ test("workspaces switch in one window and preserve identity, authorization and r
     expect(frames.p95).toBeLessThan(50);
     expect(frames.max).toBeLessThan(250);
     await expect(pageA.locator("#bot-details")).toBeHidden();
+    // Native scrolling rounds fractional layout positions to device pixels.
     await expect
       .poll(async () =>
-        pageA
-          .locator(`[data-transcript-key="${anchor.key}"]`)
-          .evaluate(
-            (row) =>
-              row.getBoundingClientRect().top -
-              (row.closest(".transcript")?.getBoundingClientRect().top ?? 0),
-          ),
+        Math.abs(
+          (await pageA
+            .locator(`[data-transcript-key="${anchor.key}"]`)
+            .evaluate(
+              (row) =>
+                row.getBoundingClientRect().top -
+                (row.closest(".transcript")?.getBoundingClientRect().top ?? 0),
+            )) - anchor.offset,
+        ),
       )
-      .toBeCloseTo(anchor.offset, 0);
+      .toBeLessThanOrEqual(1);
     expect(
       await desktop.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows().map((window) => ({
