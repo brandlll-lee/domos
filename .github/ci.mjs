@@ -16,7 +16,9 @@ export function scope(paths, full = false) {
     /^apps\/web\/test\/(work-state\.test\.ts|(bot-work|teams)\.spec\.ts)$/.test(
       path,
     ) ||
-    /^apps\/desktop\/(src\/main\.ts|test\/workspaces\.spec\.ts)$/.test(path);
+    /^apps\/desktop\/(src\/main\.ts|test\/(desktop|workspaces)\.spec\.ts)$/.test(
+      path,
+    );
   if (
     !full &&
     paths.some(

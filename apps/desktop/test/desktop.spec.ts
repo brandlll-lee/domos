@@ -854,7 +854,12 @@ test("desktop opens setup, pairs a remote Domos and restores the connection", as
       testInfo.outputPath("settings-zoom.png"),
     );
     await desktop.close();
-    desktop = await playwright._electron.launch({ executablePath, args, env });
+    desktop = await playwright._electron.launch({
+      executablePath,
+      args,
+      env,
+      timeout: 30_000,
+    });
     const reopened = await workspacePage(desktop);
     await desktop.evaluate(({ webContents }, url) => {
       webContents

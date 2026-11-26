@@ -67,6 +67,7 @@ test("workspaces switch in one window and preserve identity, authorization and r
   );
   const launch = () =>
     playwright._electron.launch({
+      timeout: 30_000,
       executablePath: createRequire(
         new URL("../package.json", import.meta.url),
       )("electron") as string,

@@ -270,6 +270,7 @@ test("Work and computer management select their UI and desktop workflows", () =>
     "apps/web/src/features/hosting/desktop.ts",
     "apps/desktop/src/main.ts",
     "apps/desktop/test/workspaces.spec.ts",
+    "apps/desktop/test/desktop.spec.ts",
     ".github/ci.mjs",
     ".github/workflows/checks.yml",
   ];

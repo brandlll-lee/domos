@@ -184,6 +184,8 @@ jobs:
         run: pnpm exec playwright test --config apps/desktop/playwright.config.ts desktop.spec.ts runtime.spec.ts
       - name: Verify Work computer switching
         if: needs.check.outputs.work == 'true'
+        env:
+          DEBUG: pw:browser
         run: pnpm exec playwright test --config apps/desktop/playwright.config.ts desktop.spec.ts runtime.spec.ts workspaces.spec.ts
       - name: Verify startup and workspace workflows
         if: needs.check.outputs.onboarding == 'true'
