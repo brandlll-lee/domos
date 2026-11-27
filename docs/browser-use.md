@@ -56,7 +56,7 @@ Click the screen to take control. The first click only requests control. It does
 
 The browser service connects to the session's loopback stream endpoint. Frame acknowledgements pace delivery. Browser viewing and input do not use desktop capture, screen recording permission, or native window discovery. The browser's address bar and tabs are not part of the viewport.
 
-The viewer fits the decoded image and excludes letterboxing from input. Browser coordinates use CSS pixels. The decoded aspect ratio sets the visible height when screencast metadata includes browser chrome. Pointer moves retain the current held-button state. Browser commands acknowledge input before Domos returns control.
+The viewer fits the decoded image and excludes letterboxing from input. Browser coordinates use CSS pixels. The stream adapter reads the native page viewport for each delivered frame. The pinned daemon reports its configured stream size in frame metadata, which can differ from a headed window's actual viewport. The decoded aspect ratio sets the visible height. Pointer moves retain the current held-button state. Browser commands acknowledge input before Domos returns control.
 
 Text input uses a focused textarea over the viewport. Composition stays local until it ends. Normal input and paste send text once. Special keys use browser key presses. Pointer movements support hover. Dragging runs before button release. Cancellation, focus loss, close, and hand-back release held buttons outside the page controls.
 

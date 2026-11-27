@@ -108,6 +108,22 @@ export async function openBrowserView(run, signal, ready, input, session) {
       signal.throwIfAborted();
       const frame = latest;
       latest = undefined;
+      const { result: viewport } = await browserCommand(
+        status.port,
+        {
+          action: "evaluate",
+          script: "[window.innerWidth, window.innerHeight]",
+        },
+        AbortSignal.any([signal, AbortSignal.timeout(5000)]),
+      );
+      if (
+        !Array.isArray(viewport) ||
+        viewport.length !== 2 ||
+        !viewport.every((value) => Number.isFinite(value) && value > 0)
+      )
+        throw new Error("浏览器画面尺寸不可用。");
+      frame.width = viewport[0];
+      frame.height = viewport[1];
       delivered = frame.seq;
       return frame;
     },
