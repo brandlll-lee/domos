@@ -145,13 +145,16 @@ test("attachment retry keeps its request and draft after a lost receipt", async 
   ).toBeEnabled();
   await input.fill("处理文件");
   let lost = false;
+  const lostReceipt = Promise.withResolvers<void>();
   await page.route("**/rpc/send", async (route) => {
     if (lost) return route.continue();
     lost = true;
     await route.fetch();
     await route.abort("failed");
+    lostReceipt.resolve();
   });
   await page.getByRole("button", { name: "发送", exact: true }).click();
+  await lostReceipt.promise;
   await expect(
     page.getByRole("button", { name: "重试发送", exact: true }),
   ).toBeEnabled();
