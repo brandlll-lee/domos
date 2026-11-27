@@ -570,6 +570,10 @@ test("question replies align and completed questions remain readable", async ({
   );
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-theme",
+      colorScheme,
+    );
     const colors = await quote.evaluate((element) => {
       const canvas = document.createElement("canvas");
       canvas.width = canvas.height = 1;

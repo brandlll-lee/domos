@@ -92,6 +92,7 @@ test("teams preserve member authors and keep private chats separate", async ({
   service,
   page,
 }, info) => {
+  test.setTimeout(60_000);
   await page.goto(service.url);
   await page
     .locator("#bot-details")

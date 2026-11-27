@@ -319,8 +319,9 @@ test("contacts collapse during dragging and restore their width without losing c
   await avatarMenu.press("Enter");
   await expect(page.getByRole("menuitem", { name: "新建会话" })).toBeFocused();
   await page.keyboard.press("End");
-  await expect(page.getByRole("menuitem", { name: "管理会话" })).toBeFocused();
-  await page.keyboard.press("Enter");
+  const manage = page.getByRole("menuitem", { name: "管理会话" });
+  await expect(manage).toBeFocused();
+  await manage.press("Enter");
   const conversations = page.getByRole("dialog", { name: "Domos 的会话" });
   await expect(conversations).toBeVisible();
   await conversations.getByRole("button", { name: "关闭弹窗" }).click();

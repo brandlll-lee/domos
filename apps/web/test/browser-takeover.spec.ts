@@ -376,6 +376,7 @@ for (const refresh of [false, true]) {
       const opened = once(worker, "message");
       worker.send("open-takeover-page");
       await opened;
+      await page.bringToFront();
       await view.getByRole("button", { name: "接管", exact: true }).click();
       await expect(
         view.getByRole("status", { name: "屏幕状态", exact: true }),

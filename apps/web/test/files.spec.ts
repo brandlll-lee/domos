@@ -1004,8 +1004,19 @@ test("file drafts, real tools, and published downloads survive Bot switches and 
   });
   await expect(send).toBeEnabled();
   await send.click();
-  await page.getByRole("button", { name: "批准", exact: true }).click();
-  await page.getByRole("button", { name: "批准", exact: true }).click();
+  const approvals = page.getByRole("article", {
+    name: "Domos 的审批",
+    exact: true,
+  });
+  await approvals
+    .nth(0)
+    .getByRole("button", { name: "批准", exact: true })
+    .click();
+  await expect(approvals.nth(0).getByRole("status")).toHaveText("已批准");
+  await approvals
+    .nth(1)
+    .getByRole("button", { name: "批准", exact: true })
+    .click();
   const report = page.getByRole("button", {
     name: "另存为 report.md",
     exact: true,

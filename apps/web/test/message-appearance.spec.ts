@@ -17,6 +17,25 @@ import {
 } from "./fixtures/chat-ui.ts";
 import { test } from "./fixtures/service.ts";
 
+function observeExit(layer: import("@playwright/test").Locator) {
+  return layer.evaluate(
+    (node) =>
+      new Promise<{ text: string; interactivity: string }>((resolve) => {
+        const observer = new MutationObserver(() => {
+          if (!node.hasAttribute("data-ending-style")) return;
+          observer.disconnect();
+          resolve({
+            text: node.textContent ?? "",
+            interactivity:
+              getComputedStyle(node).getPropertyValue("interactivity"),
+          });
+        });
+        observer.observe(node, { attributes: true });
+        node.setAttribute("data-exit-observed", "");
+      }),
+  );
+}
+
 test("shared overlays finish their exit, retain content and restore keyboard focus", async ({
   service,
   page,
@@ -36,14 +55,14 @@ test("shared overlays finish their exit, retain content and restore keyboard foc
         node.getAnimations().map((animation) => animation.finished),
       ),
     );
+    const menuExit = observeExit(menu);
+    await expect(menu).toHaveAttribute("data-exit-observed");
     await page.keyboard.press("Escape");
-    await expect(menu).toHaveAttribute("data-ending-style");
-    await expect(menu).toContainText("设置");
-    await expect(menu).toHaveCSS("interactivity", "inert");
+    const menuState = await menuExit;
+    expect(menuState.text).toContain("设置");
+    expect(menuState.interactivity).toBe("inert");
     await page.keyboard.press("Tab");
-    expect(
-      await menu.evaluate((node) => node.contains(document.activeElement)),
-    ).toBe(false);
+    await expect(page.locator(".action-menu :focus")).toHaveCount(0);
     await expect(menu).toHaveCount(0);
 
     await menuTrigger.click();
@@ -55,10 +74,12 @@ test("shared overlays finish their exit, retain content and restore keyboard foc
         node.getAnimations().map((animation) => animation.finished),
       ),
     );
+    const settingsExit = observeExit(settings);
+    await expect(settings).toHaveAttribute("data-exit-observed");
     await page.keyboard.press("Escape");
-    await expect(settings).toHaveAttribute("data-ending-style");
-    await expect(settings.locator(".settings-page")).toContainText("通用");
-    await expect(settings).toHaveCSS("interactivity", "inert");
+    const settingsState = await settingsExit;
+    expect(settingsState.text).toContain("通用");
+    expect(settingsState.interactivity).toBe("inert");
     await expect(settings).toHaveCount(0);
     await expect(menuTrigger).toBeFocused();
 
@@ -77,9 +98,10 @@ test("shared overlays finish their exit, retain content and restore keyboard foc
         node.getAnimations().map((animation) => animation.finished),
       ),
     );
+    const popupExit = observeExit(popup);
+    await expect(popup).toHaveAttribute("data-exit-observed");
     await page.keyboard.press("Escape");
-    await expect(popup).toHaveAttribute("data-ending-style");
-    await expect(popup).toHaveCSS("interactivity", "inert");
+    expect((await popupExit).interactivity).toBe("inert");
     await expect(popup).toHaveCount(0);
     await expect(context).toBeFocused();
   }
