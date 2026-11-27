@@ -1,46 +1,33 @@
 import { BotAvatar } from "@domos/ui/avatar";
+import type { CharacterMedia } from "@domos/ui/characters";
 import { Button } from "@domos/ui/controls";
-import { TextField } from "@domos/ui/field";
-import { client } from "../../../client.ts";
-import { useCharacters } from "../character-state.ts";
-import { equipmentFields } from "./identity-state.ts";
-import {
-  type Profile,
-  saveBotIdentity,
-  useIdentityDraft,
-  type WorkAction,
-} from "./use-bot-work.ts";
+import { Tabs } from "@domos/ui/tabs";
+import { useMemo, useState } from "react";
 
 export function AvatarEquipment({
-  profile,
-  action,
+  avatar,
+  source,
+  headset,
+  computer,
+  onChange,
 }: {
-  profile: Profile;
-  action: WorkAction;
+  avatar: string;
+  source: CharacterMedia;
+  headset: CharacterMedia["headset"];
+  computer: CharacterMedia["computer"];
+  onChange: (
+    field: "headset" | "computer",
+    value: CharacterMedia["headset"],
+  ) => void;
 }) {
-  const draft = useIdentityDraft(profile);
-  const { data } = useCharacters(profile.id);
-  const { avatar, avatarAssetId } = draft.values.appearance;
-  const source =
-    avatarAssetId === null
-      ? undefined
-      : avatarAssetId === profile.avatarAssetId
-        ? profile.avatarMedia
-        : data?.find((item) => item.id === avatarAssetId)?.media;
-  if (!source) return null;
-  const media = {
-    ...source,
-    headset: draft.values.headset ?? source.headset,
-    computer: draft.values.computer ?? source.computer,
-  };
-  const dirty = draft.dirty.some((field) => equipmentFields.includes(field));
-  const conflicted = draft.conflicts.some(
-    (field) => field === "appearance" || equipmentFields.includes(field),
+  const [selected, setSelected] = useState<"headset" | "computer">("headset");
+  const media = useMemo(
+    () => ({ ...source, headset, computer }),
+    [source, headset, computer],
   );
   return (
-    <fieldset className="bot-fields equipment-editor">
-      <legend>装备调整</legend>
-      <figure className="avatar-preview" aria-label="角色装备预览">
+    <>
+      <div className="profile-stage profile-equipment-stage">
         <BotAvatar
           seed={avatar}
           media={media}
@@ -48,102 +35,73 @@ export function AvatarEquipment({
           interactive
           work={{ id: "equipment-preview", working: false }}
         />
-      </figure>
-      {(
-        [
-          ["headset", "耳机"],
-          ["computer", "电脑"],
-        ] as const
-      ).map(([equipment, label]) => (
-        <fieldset className="equipment-fields" key={equipment}>
-          <legend>{label}位置</legend>
-          {(
-            [
-              ["x", "水平"],
-              ["y", "垂直"],
-              ["scale", "缩放"],
-            ] as const
-          ).map(([field, title]) => (
-            <TextField
-              key={field}
-              label={`${label}${title}`}
-              type="number"
-              min={field === "scale" ? 0.1 : 0}
-              max={field === "scale" ? 2 : 100}
-              step={field === "scale" ? 0.01 : 1}
-              value={String(media[equipment][field])}
-              onValueChange={(value) => {
-                const number = Number(value);
-                if (Number.isFinite(number))
-                  draft.change(
-                    equipment,
-                    {
-                      ...media[equipment],
-                      [field]: Math.max(
-                        field === "scale" ? 0.1 : 0,
-                        Math.min(field === "scale" ? 2 : 100, number),
-                      ),
-                    },
-                    media[equipment],
-                  );
-              }}
-            />
-          ))}
-        </fieldset>
-      ))}
-      <div className="form-actions">
-        <Button
-          type="button"
-          size="small"
-          variant="secondary"
-          disabled={!dirty || action.busy || conflicted}
-          onClick={() => {
-            const input = {
-              botId: profile.id,
-              name: profile.name,
-              instructions: profile.instructions,
-              avatar,
-              avatarAssetId,
-              revision: profile.revision,
-              headset: media.headset,
-              computer: media.computer,
-            };
-            void action.run(["equipment", input], (requestId) =>
-              saveBotIdentity(
-                profile.id,
-                ["appearance", ...equipmentFields],
-                () => client.work.update({ ...input, requestId }),
-              ),
-            );
-          }}
-        >
-          {avatarAssetId === profile.avatarAssetId
-            ? "保存装备位置"
-            : "保存角色与装备"}
-        </Button>
-        <Button
-          type="button"
-          size="small"
-          variant="ghost"
-          disabled={action.busy}
-          onClick={() => {
-            const input = {
-              botId: profile.id,
-              revision: profile.revision,
-              resetAvatar: true,
-            };
-            void action.run(["reset-avatar", input], (requestId) =>
-              saveBotIdentity(
-                profile.id,
-                ["appearance", ...equipmentFields],
-                () => client.work.identity({ ...input, requestId }),
-              ),
-            );
-          }}
-        >
-          恢复内置角色
-        </Button>
       </div>
-    </fieldset>
+      <Tabs.Root
+        value={selected}
+        onValueChange={(value) => setSelected(value as typeof selected)}
+      >
+        <Tabs.List
+          className="navigation-tabs profile-source-tabs"
+          aria-label="选择装备"
+        >
+          <Tabs.Tab className="navigation-tab" value="headset">
+            耳机
+          </Tabs.Tab>
+          <Tabs.Tab className="navigation-tab" value="computer">
+            电脑
+          </Tabs.Tab>
+        </Tabs.List>
+      </Tabs.Root>
+      <div className="profile-equipment-controls">
+        {(
+          [
+            ["x", "水平位置", 0, 100, 1],
+            ["y", "垂直位置", 0, 100, 1],
+            ["scale", "大小", 0.1, 2, 0.01],
+          ] as const
+        ).map(([field, label, min, max, step]) => {
+          const change = (value: string) => {
+            if (!value.trim()) return;
+            const next = Number(value);
+            if (Number.isFinite(next))
+              onChange(selected, {
+                ...media[selected],
+                [field]: Math.min(max, Math.max(min, next)),
+              });
+          };
+          return (
+            <label className="profile-range" key={field}>
+              <span>{label}</span>
+              <input
+                type="range"
+                aria-label={`${label}滑块`}
+                min={min}
+                max={max}
+                step={step}
+                value={media[selected][field]}
+                onChange={(event) => change(event.target.value)}
+              />
+              <input
+                type="number"
+                aria-label={`${label}数值`}
+                min={min}
+                max={max}
+                step={step}
+                value={media[selected][field]}
+                onChange={(event) => change(event.target.value)}
+              />
+            </label>
+          );
+        })}
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        className="profile-equipment-reset"
+        onClick={() => onChange(selected, source[selected])}
+      >
+        还原{selected === "headset" ? "耳机" : "电脑"}位置
+      </Button>
+    </>
   );
 }

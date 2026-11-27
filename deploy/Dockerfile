@@ -17,6 +17,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssh-client ca-certificates && rm -rf /var/lib/apt/lists/* && npm install --global pnpm@10.20.0
 COPY --from=docker /usr/local/bin/docker /usr/local/bin/docker
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml domos.config.json ./
+COPY .github/ci.mjs ./.github/ci.mjs
 COPY patches ./patches
 COPY apps/api/package.json ./apps/api/package.json
 COPY apps/cli/package.json ./apps/cli/package.json

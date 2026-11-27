@@ -127,11 +127,18 @@ test("computer ownership, project directories and access stay distinct", async (
   await writeFile(join(project, "source.txt"), "project");
   await page.getByRole("button", { name: "更改目录", exact: true }).click();
   const picker = page.getByRole("dialog", {
-    name: "选择工作目录",
+    name: "工作文件夹",
     exact: true,
   });
-  await picker.getByLabel("目录路径", { exact: true }).fill(project);
-  await picker.getByRole("button", { name: "使用此目录", exact: true }).click();
+  await expect(picker).toHaveAttribute("data-layout", "task");
+  await picker.getByRole("radio", { name: "指定文件夹", exact: true }).click();
+  await picker.getByRole("button", { name: "输入路径", exact: true }).click();
+  await picker.getByLabel("文件夹完整路径", { exact: true }).fill(project);
+  await picker.getByRole("button", { name: "前往", exact: true }).click();
+  await expect(picker.locator(".directory-destination")).toContainText(project);
+  await picker
+    .getByRole("button", { name: "使用此文件夹", exact: true })
+    .click();
   await expect(picker).toBeHidden();
   await expect(
     page.getByRole("complementary", { name: "Domos的详情", exact: true }),

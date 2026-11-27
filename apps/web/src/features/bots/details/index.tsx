@@ -1,6 +1,5 @@
 import type { Bot } from "@domos/agent/bots";
 import type { ChatView } from "@domos/agent/view";
-import { Button } from "@domos/ui/controls";
 import { Loading } from "@domos/ui/loading";
 import { PanelHeader } from "@domos/ui/panel";
 import { ScrollArea } from "@domos/ui/scroll-area";
@@ -42,7 +41,7 @@ const titles: Record<Exclude<BotPanelView, "root">, string> = {
   computer: "工作目录与权限",
   assistance: "Jev 辅助操作",
   skills: "技能",
-  routines: "定时",
+  routines: "定时任务",
   prompt: "提示词",
   files: "文件与媒体",
 };
@@ -181,6 +180,7 @@ export function BotDetails({
   else if (view === "routines")
     content = work.data ? (
       <RoutinesPanel
+        onBack={() => navigate("root")}
         botId={bot.id}
         author={{ botId: bot.id, name: bot.name, avatar: bot.avatar }}
         onDetailChange={setWorkDetail}
@@ -207,7 +207,7 @@ export function BotDetails({
       data-computer={(view === "root" && tab !== "bot") || undefined}
       aria-label={`${bot.name}的详情`}
     >
-      {!workDetail && (
+      {!workDetail && view !== "identity" && view !== "routines" && (
         <PanelHeader
           title={title}
           onBack={
@@ -312,16 +312,23 @@ export function BotDetails({
           />
         )}
       {view === "routines" && content}
+      {view === "identity" && work.profile && (
+        <IdentityEditor
+          profile={work.profile}
+          action={action}
+          onClose={onClose}
+          onBack={() => navigate("root")}
+        />
+      )}
       <ScrollArea
-        hidden={view === "routines" || (view === "root" && tab !== "bot")}
+        hidden={
+          view === "identity" ||
+          view === "routines" ||
+          (view === "root" && tab !== "bot")
+        }
         className="detail-scroll"
         viewportClassName="detail-content"
       >
-        {view === "identity" && work.profile && (
-          <div>
-            <IdentityEditor profile={work.profile} action={action} />
-          </div>
-        )}
         {view !== "identity" &&
           view !== "routines" &&
           (view !== "root" || tab === "bot") && (
@@ -333,27 +340,6 @@ export function BotDetails({
             </div>
           )}
       </ScrollArea>
-      {view === "routines" && editor?.view === "routines" && (
-        <footer className="detail-footer form-actions">
-          <Button
-            variant="ghost"
-            size="small"
-            disabled={action.busy}
-            onClick={() => setSelection(null)}
-          >
-            取消
-          </Button>
-          <Button
-            type="submit"
-            form={`routine-${bot.id}`}
-            size="small"
-            disabled={action.busy}
-            aria-label="保存为暂停"
-          >
-            保存
-          </Button>
-        </footer>
-      )}
       <MemoryDialog
         open={memoryOpen}
         onOpenChange={setMemoryOpen}

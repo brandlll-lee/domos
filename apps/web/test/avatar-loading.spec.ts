@@ -77,12 +77,15 @@ test("avatar editors open with complete built-in and saved characters while full
     ).toHaveAttribute("aria-busy", "true");
     await expect(details.locator(".avatar-editor")).toHaveCount(0);
     release.resolve();
+    await details
+      .getByRole("button", { name: "编辑外观", exact: true })
+      .click();
     const picker = details.locator(".avatar-editor");
     await expect(picker.getByRole("button", { name: /^外形：/ })).toHaveCount(
       15,
     );
     expect(
-      await picker.locator('[aria-label="外形"] .character-face').count(),
+      await picker.locator('[aria-label="内置角色"] .character-face').count(),
     ).toBe(15);
     await expect(picker.getByRole("status")).toHaveCount(0);
     expect(
@@ -109,22 +112,27 @@ test("avatar editors open with complete built-in and saved characters while full
       });
     }
     await details.getByRole("button", { name: "返回", exact: true }).click();
+    await details.getByRole("button", { name: "返回", exact: true }).click();
     const before = reads.length;
     await details.getByRole("button", { name: "编辑", exact: true }).click();
+    await details
+      .getByRole("button", { name: "编辑外观", exact: true })
+      .click();
     await expect(choice.locator(".character-body > image")).toBeVisible();
     expect(reads.slice(before)).toEqual([]);
     await details.getByRole("button", { name: "返回", exact: true }).click();
     await details.getByRole("button", { name: "关闭", exact: true }).click();
     await page.getByRole("button", { name: "新建", exact: true }).click();
     await page.getByRole("menuitem", { name: "新建 Bot", exact: true }).click();
-    const creation = page.getByRole("dialog", {
-      name: "新建 Bot",
-      exact: true,
-    });
+    const creation = page.locator(".create-bot-dialog");
+    await creation
+      .getByRole("button", { name: "编辑外观", exact: true })
+      .click();
     await expect(
-      creation.locator('[aria-label="外形"] .character-face'),
+      creation.locator('[aria-label="内置角色"] .character-face'),
     ).toHaveCount(15);
     await expect(creation.getByRole("status")).toHaveCount(0);
+    await creation.getByRole("button", { name: "返回", exact: true }).click();
     await creation.getByRole("button", { name: "取消", exact: true }).click();
     expect(errors).toEqual([]);
   } finally {

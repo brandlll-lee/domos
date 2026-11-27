@@ -1,3 +1,4 @@
+import { writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
@@ -13,6 +14,7 @@ test("custom theme colors validate, save and survive restart in both themes", as
   page,
   service,
 }, info) => {
+  test.setTimeout(60_000);
   const api = createORPCClient<typeof appClient>(
     new RPCLink({ url: `${service.url}/rpc` }),
   );
@@ -22,35 +24,84 @@ test("custom theme colors validate, save and survive restart in both themes", as
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   const details = page.locator("#bot-details");
   await details.getByRole("button", { name: "编辑", exact: true }).click();
-  const colors = details.getByRole("group", { name: "主题色", exact: true });
-  const hex = colors.getByRole("textbox", { name: "HEX", exact: true });
-  const native = colors.getByLabel("自定义颜色", { exact: true });
+  await details.getByRole("button", { name: "编辑外观", exact: true }).click();
+  await details.getByRole("button", { name: /^主题色 #/ }).click();
+  await page
+    .getByRole("button", { name: "编辑自定义颜色", exact: true })
+    .click();
+  const hex = page.getByRole("textbox", { name: "HEX", exact: true });
   const preview = details.locator(".avatar-preview > .bot-avatar");
   const original = await preview.getAttribute("data-seed");
-  await hex.fill("#12zz");
+  await hex.fill("12zz");
   await expect(hex).toHaveAttribute("aria-invalid", "true");
-  await expect(colors.getByText("请输入 # 和六位十六进制颜色")).toBeVisible();
   await expect(preview).toHaveAttribute("data-seed", original ?? "");
-  await details.getByLabel("名字", { exact: true }).fill("Custom theme");
-  await details.getByRole("button", { name: "保存身份", exact: true }).click();
-  await expect(hex).toBeFocused();
-  expect((await api.work.profile({ botId: bot.id })).name).toBe(bot.name);
   await hex.fill("#73479F");
-  await expect(hex).toHaveValue("#73479f");
-  await expect(hex).toBeFocused();
-  await expect(native).toHaveValue("#73479f");
-  await native.evaluate((node: HTMLInputElement) => {
-    Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
-      "value",
-    )?.set?.call(node, "#123456");
-    node.dispatchEvent(new Event("input", { bubbles: true }));
-    node.dispatchEvent(new Event("change", { bubbles: true }));
+  await expect(hex).toHaveValue("73479F");
+  await expect(
+    page.getByRole("textbox", { name: "R", exact: true }),
+  ).toHaveValue("115");
+  await page.getByRole("textbox", { name: "G", exact: true }).fill("0");
+  await expect(hex).toHaveValue("73009F");
+  await hex.fill("73479F");
+  const hue = page.getByRole("slider", { name: "色相", exact: true });
+  await hue.focus();
+  await hue.press("ArrowRight");
+  await expect(hex).not.toHaveValue("73479F");
+  const plane = page.getByRole("slider", { name: "饱和度与亮度", exact: true });
+  const box = await plane.boundingBox();
+  if (!box) throw new Error("Color plane missing");
+  const frameTimes = page.evaluate(
+    () =>
+      new Promise<number[]>((resolve) => {
+        const frames: number[] = [];
+        const start = performance.now();
+        let previous = start;
+        function frame(now: number) {
+          frames.push(now - previous);
+          previous = now;
+          if (now - start < 5000) requestAnimationFrame(frame);
+          else resolve(frames);
+        }
+        requestAnimationFrame(frame);
+      }),
+  );
+  await page.mouse.move(box.x + 10, box.y + 10);
+  await page.mouse.down();
+  const started = Date.now();
+  let step = 0;
+  while (Date.now() - started < 5000) {
+    await page.mouse.move(
+      box.x + box.width * (0.5 + 0.4 * Math.sin(step / 8)),
+      box.y + box.height * (0.5 + 0.4 * Math.cos(step / 8)),
+    );
+    step++;
+  }
+  await page.mouse.up();
+  const frames = (await frameTimes).sort((a, b) => a - b);
+  const p95 = frames[Math.floor(frames.length * 0.95)];
+  const performancePath = info.outputPath("color-drag.json");
+  await writeFile(
+    performancePath,
+    JSON.stringify({
+      durationMs: 5000,
+      frames: frames.length,
+      p95,
+      max: frames.at(-1),
+    }),
+  );
+  await info.attach("color-drag", {
+    contentType: "application/json",
+    path: performancePath,
   });
-  await expect(hex).toHaveValue("#123456");
-  await colors.getByRole("button", { name: "颜色：晴蓝", exact: true }).click();
-  await expect(hex).toHaveValue("#659fff");
-  await hex.fill("#73479f");
+  await expect(hex).not.toHaveValue("73479F");
+  await hex.fill("73479F");
+  await page
+    .getByRole("button", { name: "保存当前颜色到位置 1", exact: true })
+    .last()
+    .click();
+  await expect(
+    page.getByRole("button", { name: "自定义色 #73479f", exact: true }),
+  ).toHaveCount(2);
   for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await page.setViewportSize({
@@ -59,31 +110,43 @@ test("custom theme colors validate, save and survive restart in both themes", as
     });
     await expect
       .poll(() =>
-        colors.evaluate((node) => node.scrollWidth <= node.clientWidth),
+        page
+          .locator(".color-editor")
+          .evaluate((node) => node.scrollWidth <= node.clientWidth),
       )
       .toBe(true);
-    await native.focus();
-    await expect(native).toBeFocused();
-    await colors.screenshot({
+    await page.screenshot({
       path: info.outputPath(`theme-colors-${theme}.png`),
     });
   }
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await details.getByRole("button", { name: "返回", exact: true }).click();
+  await details.getByLabel("名字", { exact: true }).fill("Custom theme");
   await details.getByRole("button", { name: "保存身份", exact: true }).click();
   await expect(
     details.getByRole("button", { name: "保存身份", exact: true }),
-  ).toHaveCount(0);
+  ).toBeDisabled();
   expect((await api.work.profile({ botId: bot.id })).avatar).toContain(
     "73479f000000",
   );
+  await details.getByRole("button", { name: "返回", exact: true }).click();
+  await details.getByRole("button", { name: "关闭", exact: true }).click();
   const port = Number(new URL(service.url).port);
   await service.stop();
   await service.start(port);
   await page.reload();
-  await expect(hex).toHaveValue("#73479f");
   await expect(page.locator(".chat-surface")).toHaveCSS(
     "--bot-color",
     "#73479f",
   );
+  await page.getByRole("button", { name: "Bot详情", exact: true }).click();
+  await details.getByRole("button", { name: "编辑", exact: true }).click();
+  await details.getByRole("button", { name: "编辑外观", exact: true }).click();
+  await details.getByRole("button", { name: /^主题色 #/ }).click();
+  await expect(
+    page.getByRole("button", { name: "自定义色 #73479f", exact: true }),
+  ).toBeVisible();
 });
 
 test("profile updates merge with drafts and keep character equipment scoped", async ({
@@ -123,14 +186,24 @@ test("profile updates merge with drafts and keep character equipment scoped", as
   await details.getByRole("button", { name: "编辑", exact: true }).click();
   const name = details.getByRole("textbox", { name: "名字", exact: true });
   const save = details.getByRole("button", { name: "保存身份", exact: true });
+  const back = details.getByRole("button", { name: "返回", exact: true });
+  const appearance = details.getByRole("button", {
+    name: "编辑外观",
+    exact: true,
+  });
+  const equipment = details.getByRole("button", {
+    name: "调整耳机与电脑",
+    exact: true,
+  });
+  const horizontal = details.getByRole("spinbutton", {
+    name: "水平位置数值",
+    exact: true,
+  });
   await name.fill("My name");
   const yellow = await apply("#ffff00");
   await expect(
-    details.locator(".avatar-editor .avatar-preview .character-body > image"),
+    details.locator(".profile-identity .character-body > image"),
   ).toHaveAttribute("href", yellow.avatarMedia?.src ?? "");
-  await expect(
-    details.locator(".equipment-editor .character-body > image"),
-  ).toHaveAttribute("href", yellow.avatarMedia?.cover ?? "");
   await expect(name).toHaveValue("My name");
   await expect(name).toBeFocused();
   await api.work.update({
@@ -142,48 +215,40 @@ test("profile updates merge with drafts and keep character equipment scoped", as
     requestId: crypto.randomUUID(),
   });
   await expect(
-    details.getByRole("textbox", { name: "职责与长期指令", exact: true }),
+    details.getByRole("textbox", { name: "长期指令", exact: true }),
   ).toHaveValue("Remote instructions");
   await save.click();
-  await expect(save).toHaveCount(0);
+  await expect(save).toBeDisabled();
   expect(await api.work.profile({ botId: bot.id })).toMatchObject({
     name: "My name",
     instructions: "Remote instructions",
     avatarAssetId: yellow.avatarAssetId,
   });
-
   await name.fill("Retained name");
-  await details
-    .getByRole("spinbutton", { name: "耳机水平", exact: true })
-    .fill("23");
-  await details
-    .getByRole("button", { name: "保存装备位置", exact: true })
-    .click();
+  await appearance.click();
+  await equipment.click();
   await expect(
-    details.getByRole("button", { name: "保存装备位置", exact: true }),
-  ).toBeDisabled();
-  await expect(name).toHaveValue("Retained name");
+    details.locator(".profile-equipment-stage .character-body > image"),
+  ).toHaveAttribute("href", yellow.avatarMedia?.cover ?? "");
+  await horizontal.fill("23");
   await save.click();
-  await expect(save).toHaveCount(0);
-  await details
-    .getByRole("spinbutton", { name: "耳机水平", exact: true })
-    .fill("31");
+  await expect(save).toBeDisabled();
+  expect((await api.work.profile({ botId: bot.id })).name).toBe(
+    "Retained name",
+  );
+  await horizontal.fill("31");
   const blue = await apply("#0000ff");
   await expect(
     details.getByText("耳机位置已在别处更新。请选择要保留的内容。", {
       exact: true,
     }),
   ).toBeVisible();
-  await expect(
-    details.getByRole("button", { name: "保存装备位置", exact: true }),
-  ).toBeDisabled();
+  await expect(save).toBeDisabled();
   await page.screenshot({ path: info.outputPath("equipment-conflict.png") });
   await details
     .getByRole("button", { name: "保留我的修改", exact: true })
     .click();
-  await details
-    .getByRole("button", { name: "保存装备位置", exact: true })
-    .click();
+  await save.click();
   await expect
     .poll(
       async () =>
@@ -193,7 +258,7 @@ test("profile updates merge with drafts and keep character equipment scoped", as
   expect((await api.work.profile({ botId: bot.id })).avatarAssetId).toBe(
     blue.avatarAssetId,
   );
-
+  await back.click();
   await details.getByRole("tab", { name: "我的角色", exact: true }).click();
   const catalog = await api.bots.characters({ botId: bot.id });
   const yellowAsset = catalog.find((item) => item.id === yellow.avatarAssetId);
@@ -207,27 +272,19 @@ test("profile updates merge with drafts and keep character equipment scoped", as
       ),
     })
     .click();
-  await expect(
-    details.getByRole("spinbutton", { name: "耳机水平", exact: true }),
-  ).toHaveValue("23");
-  await expect(
-    details.locator(".equipment-editor .character-body > image"),
-  ).toHaveAttribute("href", yellowAsset.media.cover);
-  await details
-    .getByRole("spinbutton", { name: "耳机水平", exact: true })
-    .fill("29");
-  await name.fill("Unsaved name");
-  await details
-    .getByRole("button", { name: "保存角色与装备", exact: true })
-    .click();
-  await expect(
-    details.getByRole("button", { name: "保存装备位置", exact: true }),
-  ).toBeDisabled();
-  expect((await api.work.profile({ botId: bot.id })).name).toBe(
-    "Retained name",
-  );
-  await expect(name).toHaveValue("Unsaved name");
-  await name.fill("Retained name");
+  await equipment.click();
+  await expect(horizontal).toHaveValue("23");
+  await horizontal.fill("29");
+  await back.click();
+  await back.click();
+  await name.fill("Unified name");
+  await save.click();
+  await expect(save).toBeDisabled();
+  expect((await api.work.profile({ botId: bot.id })).name).toBe("Unified name");
+  expect(
+    (await api.work.profile({ botId: bot.id })).avatarMedia?.headset.x,
+  ).toBe(29);
+  await appearance.click();
   await choices
     .filter({
       has: page.locator(
@@ -235,13 +292,13 @@ test("profile updates merge with drafts and keep character equipment scoped", as
       ),
     })
     .click();
-  await expect(
-    details.getByRole("spinbutton", { name: "耳机水平", exact: true }),
-  ).toHaveValue("31");
+  await equipment.click();
+  await expect(horizontal).toHaveValue("31");
   await save.click();
-  await expect(save).toHaveCount(0);
-
-  await details.getByRole("button", { name: "返回", exact: true }).click();
+  await expect(save).toBeDisabled();
+  await back.click();
+  await back.click();
+  await back.click();
   let reads = 0;
   page.on("request", (request) => {
     if (request.url().endsWith("/rpc/work/profile")) reads++;
@@ -253,10 +310,10 @@ test("profile updates merge with drafts and keep character equipment scoped", as
   expect(reads).toBe(0);
   await details.getByRole("button", { name: "编辑", exact: true }).click();
   await expect(
-    details.locator(".avatar-editor .avatar-preview .character-body > image"),
+    details.locator(".profile-identity .character-body > image"),
   ).toHaveAttribute("href", green.avatarMedia?.src ?? "");
-  await expect(name).toHaveValue("Retained name");
-  await expect(save).toHaveCount(0);
+  await expect(name).toHaveValue("Unified name");
+  await expect(save).toBeDisabled();
   await page.screenshot({ path: info.outputPath("profile-current.png") });
 });
 
@@ -308,7 +365,7 @@ test("profile conflicts refresh after a racing write and uncertain saves reuse t
     .getByRole("button", { name: "保留我的修改", exact: true })
     .click();
   await save.click();
-  await expect(save).toHaveCount(0);
+  await expect(save).toBeDisabled();
   expect((await api.work.profile({ botId: bot.id })).name).toBe("Mine");
   await name.fill("Confirmed after retry");
   loseResponse = true;
@@ -321,7 +378,7 @@ test("profile conflicts refresh after a racing write and uncertain saves reuse t
     .click();
   await expect(page.locator(".attention-toast[data-error]")).toHaveCount(0);
   expect(issued.at(-1)).toBe(original);
-  await expect(save).toHaveCount(0);
+  await expect(save).toBeDisabled();
   const latest = await api.work.profile({ botId: bot.id });
   await api.work.identity({
     botId: bot.id,
@@ -330,7 +387,7 @@ test("profile conflicts refresh after a racing write and uncertain saves reuse t
     requestId: crypto.randomUUID(),
   });
   await expect(name).toHaveValue("Latest name");
-  await expect(save).toHaveCount(0);
+  await expect(save).toBeDisabled();
 });
 
 test("character retention failure stays visible and explicit retry clears it", async ({
@@ -434,7 +491,11 @@ test("saved characters keep their pixels, share across Bots and transform only o
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   const details = page.locator("#bot-details");
   await details.getByRole("button", { name: "编辑", exact: true }).click();
+  await details.getByRole("button", { name: "编辑外观", exact: true }).click();
+  await details.getByRole("button", { name: /^主题色 #/ }).click();
   await page.getByRole("button", { name: "颜色：晴蓝", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await details.getByRole("button", { name: "返回", exact: true }).click();
   await details.getByRole("button", { name: "保存身份", exact: true }).click();
   await expect
     .poll(async () => (await api.work.profile({ botId: source.id })).avatar)
@@ -468,16 +529,44 @@ test("saved characters keep their pixels, share across Bots and transform only o
   await details.getByRole("button", { name: "关闭", exact: true }).click();
   await page.getByRole("button", { name: "新建", exact: true }).click();
   await page.getByRole("menuitem", { name: "新建 Bot", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "新建 Bot", exact: true });
+  const dialog = page.locator(".create-bot-dialog");
+  await dialog.getByRole("button", { name: "编辑外观", exact: true }).click();
   await page.getByRole("tab", { name: "我的角色", exact: true }).click();
   await page
     .getByRole("button", { name: "角色：黄色角色", exact: true })
     .click();
+  await dialog.getByRole("button", { name: /^主题色 #/ }).click();
   await page.getByRole("button", { name: "颜色：翡翠绿", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await dialog
+    .getByRole("button", { name: "调整耳机与电脑", exact: true })
+    .click();
+  await dialog
+    .getByRole("spinbutton", { name: "水平位置数值", exact: true })
+    .fill("34");
+  await dialog.getByRole("button", { name: "返回", exact: true }).click();
+  await dialog.getByRole("button", { name: "返回", exact: true }).click();
   await dialog.getByLabel("名字", { exact: true }).fill("复用角色");
   await page.screenshot({ path: "test-results/character-create-picker.png" });
-  await dialog.getByRole("button", { name: "创建", exact: true }).click();
+  const equipmentRequests: string[] = [];
+  await page.route("**/rpc/work/update", async (route) => {
+    equipmentRequests.push(route.request().postData() ?? "");
+    if (equipmentRequests.length === 1) {
+      await route.fetch();
+      await route.abort("failed");
+    } else await route.continue();
+  });
+  await dialog
+    .getByRole("button", { name: "创建并选择模型", exact: true })
+    .click();
+  await expect(dialog.getByRole("alert")).toContainText("创建未确认");
+  await dialog
+    .getByRole("button", { name: "创建并选择模型", exact: true })
+    .click();
   await dialog.getByRole("button", { name: "Pi", exact: true }).click();
+  expect(equipmentRequests).toHaveLength(2);
+  expect(equipmentRequests[1]).toBe(equipmentRequests[0]);
+  await page.unroute("**/rpc/work/update");
   await dialog.getByRole("combobox", { name: "模型", exact: true }).click();
   await page
     .getByRole("option", { name: "Pi · 测试模型一", exact: true })
@@ -487,6 +576,7 @@ test("saved characters keep their pixels, share across Bots and transform only o
   const second = (await api.bots.list()).find((bot) => bot.name === "复用角色");
   if (!second) throw new Error("Second Bot missing");
   expect(second.avatarAssetId).toBe(applied.avatarAssetId);
+  expect(second.avatarMedia?.headset.x).toBe(34);
   expect(second.avatar).not.toBe(blue.avatar);
   await expect(
     page.locator(".chat-header .character-body > image"),
@@ -498,6 +588,7 @@ test("saved characters keep their pixels, share across Bots and transform only o
   ).toBe(2);
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   await details.getByRole("button", { name: "编辑", exact: true }).click();
+  await details.getByRole("button", { name: "编辑外观", exact: true }).click();
   await page.getByRole("tab", { name: "内置角色", exact: true }).click();
   await page.getByRole("button", { name: "外形：圆球", exact: true }).click();
   await details.getByRole("button", { name: "保存身份", exact: true }).click();

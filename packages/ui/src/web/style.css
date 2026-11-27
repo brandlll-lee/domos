@@ -335,6 +335,7 @@ a,
   gap: var(--space-3);
 }
 .dialog-popup[data-layout="task"] textarea.field-control {
+  min-height: calc(3lh + var(--space-4));
   field-sizing: content;
   max-height: 10rem;
 }

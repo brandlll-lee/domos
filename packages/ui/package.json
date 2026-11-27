@@ -15,6 +15,7 @@
     "./status-dot": "./src/web/status-dot.tsx",
     "./unread-badge": "./src/web/unread-badge.tsx",
     "./characters": "./src/characters.ts",
+    "./color-picker": "./src/web/color-picker.tsx",
     "./tokens": "./src/tokens.ts",
     "./bubble-colors": "./src/bubble-colors.ts",
     "./controls": "./src/web/controls.tsx",

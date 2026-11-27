@@ -208,9 +208,7 @@ test("routine forms share quiet pointer focus and keep actions outside scrolling
   await page.getByRole("button", { name: "Bot详情", exact: true }).click();
   const details = page.locator("#bot-details");
   await details.getByRole("button", { name: /^定时(?:\s|$)/ }).click();
-  await details
-    .getByRole("button", { name: "新建定时任务", exact: true })
-    .click();
+  await details.getByRole("button", { name: "新建任务", exact: true }).click();
   const name = details.getByRole("textbox", { name: "任务名称", exact: true });
   await expect(name).toBeVisible();
   for (const theme of ["dark", "light"] as const) {
@@ -265,6 +263,59 @@ test("routine forms share quiet pointer focus and keep actions outside scrolling
     }
     await page.setViewportSize({ width: 1360, height: 900 });
   }
+});
+
+test("routine calendar and custom rules persist as paused tasks", async ({
+  service,
+  page,
+}) => {
+  await page.goto(service.url);
+  await openDetails(page);
+  const details = page.locator("#bot-details");
+  await details.getByRole("button", { name: /^定时(?:\s|$)/ }).click();
+  await details.getByRole("button", { name: "新建任务", exact: true }).click();
+  await details.getByLabel("任务名称", { exact: true }).fill("日期检查");
+  await details.getByLabel("工作要求", { exact: true }).fill("检查指定日期");
+  await details.getByRole("combobox", { name: "执行频率" }).click();
+  await page.getByRole("option", { name: "执行一次", exact: true }).click();
+  const date = details.locator(".schedule-date");
+  await date.click();
+  await page.getByRole("button", { name: "下个月", exact: true }).click();
+  const day = page.locator('.schedule-calendar button[aria-label$="-15"]');
+  const selectedDate = await day.getAttribute("aria-label");
+  if (!selectedDate) throw new Error("Calendar date required");
+  await day.click();
+  await details
+    .getByRole("button", { name: "保存并暂停", exact: true })
+    .click();
+  await expect(details.locator(".routine-list")).toContainText("日期检查");
+  await details.getByRole("button", { name: "返回", exact: true }).click();
+  await details.getByRole("button", { name: "关闭", exact: true }).click();
+  await page.reload();
+  await openDetails(page);
+  await details.getByRole("button", { name: /^定时(?:\s|$)/ }).click();
+  await expect(details.getByRole("switch")).not.toBeChecked();
+  await details.getByRole("button", { name: "日期检查的操作" }).click();
+  await page.getByRole("menuitem", { name: "编辑", exact: true }).click();
+  await expect(date).toHaveText(selectedDate.replaceAll("-", " / "));
+  await details.getByRole("combobox", { name: "执行频率" }).click();
+  await page.getByRole("option", { name: "自定义规则", exact: true }).click();
+  await details.getByLabel("时间规则", { exact: true }).fill("17 9 * * 1-5");
+  await details
+    .getByRole("button", { name: "保存并暂停", exact: true })
+    .click();
+  await expect(details.locator(".routine-list")).toContainText("日期检查");
+  await details.getByRole("button", { name: "日期检查的操作" }).click();
+  await page.getByRole("menuitem", { name: "编辑", exact: true }).click();
+  await expect(
+    details.getByRole("combobox", { name: "执行频率" }),
+  ).toContainText("工作日");
+  await expect(
+    details.getByRole("combobox", { name: "小时", exact: true }),
+  ).toContainText("09");
+  await expect(
+    details.getByRole("combobox", { name: "分钟", exact: true }),
+  ).toContainText("17");
 });
 
 test("Work follows a native turn, opens its record and preserves it after stop and reload", async ({
@@ -948,11 +999,13 @@ test("chat routine changes require confirmation and link runs to Work", async ({
     page.getByText("已创建定时　◷　Daily report", { exact: true }),
   ).toHaveCount(1);
   await expect(
-    details.getByRole("heading", { name: "定时", exact: true }),
+    details.getByRole("heading", { name: "定时任务", exact: true }),
   ).toBeVisible();
   await details.getByRole("button", { name: "Daily report的操作" }).click();
   await page.getByRole("menuitem", { name: "试跑", exact: true }).click();
-  await details.locator("summary").filter({ hasText: "运行记录" }).click();
+  await expect(
+    details.getByRole("tab", { name: "运行记录", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
   await expect(details.locator(".run-list")).toContainText("已完成");
   await expect(details.locator(".run-list")).not.toContainText("等人");
   await details
@@ -961,7 +1014,7 @@ test("chat routine changes require confirmation and link runs to Work", async ({
   const record = page.getByRole("region", { name: "工作记录", exact: true });
   await expect(details.locator(".run-list")).not.toBeVisible();
   await expect(
-    details.getByRole("heading", { name: "定时", exact: true }),
+    details.getByRole("heading", { name: "定时任务", exact: true }),
   ).not.toBeVisible();
   await record
     .getByRole("button", { name: "工作记录选项", exact: true })
@@ -1016,7 +1069,7 @@ test("monitoring stays quiet, delivers one result and opens the native Work reco
   await expect(approval.getByRole("status")).toHaveText("已批准");
   const details = page.locator("#bot-details");
   await details.getByRole("button", { name: /^定时(?:\s|$)/ }).click();
-  await details.locator("summary").filter({ hasText: "运行记录" }).click();
+  await details.getByRole("tab", { name: "运行记录", exact: true }).click();
   await page.mouse.move(0, 0);
   await expect(page.locator(".attention-toast")).toHaveCount(0, {
     timeout: 10000,
@@ -1028,6 +1081,7 @@ test("monitoring stays quiet, delivers one result and opens the native Work reco
       summary: notify ? "v2" : "v1",
       ...(notify ? { key: "release/v2" } : {}),
     });
+    await details.getByRole("tab", { name: "任务", exact: true }).click();
     await details.getByRole("button", { name: "版本监控的操作" }).click();
     await page.getByRole("menuitem", { name: "试跑", exact: true }).click();
     await expect(details.locator(".run-list")).toContainText(

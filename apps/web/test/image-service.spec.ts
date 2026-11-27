@@ -193,14 +193,25 @@ test("image service generates media and shared tools apply a character with work
     await page.getByRole("button", { name: "Bot详情", exact: true }).click();
     const details = page.locator("#bot-details");
     await details.getByRole("button", { name: "编辑", exact: true }).click();
-    const equipment = details.getByRole("figure", { name: "角色装备预览" });
+    await details
+      .getByRole("button", { name: "编辑外观", exact: true })
+      .click();
+    await details
+      .getByRole("button", { name: "调整耳机与电脑", exact: true })
+      .click();
+    const equipment = details.locator(".profile-equipment-stage");
     await equipment.scrollIntoViewIfNeeded();
     await expect(equipment.locator(".character-work-headset")).toBeVisible();
     await page.screenshot({
       path: "test-results/image-character-equipment.png",
     });
+    await details.getByRole("button", { name: "返回", exact: true }).click();
+    await details.getByRole("tab", { name: "内置角色", exact: true }).click();
     await details
-      .getByRole("button", { name: "恢复内置角色", exact: true })
+      .getByRole("button", { name: "外形：软方", exact: true })
+      .click();
+    await details
+      .getByRole("button", { name: "保存身份", exact: true })
       .click();
     await expect
       .poll(async () => (await api.work.profile({ botId })).avatarMedia)

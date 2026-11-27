@@ -252,15 +252,20 @@ test("plush identities load, animate and survive profile changes", async ({
     expect((await textureResponse).headers()["cache-control"]).toContain(
       "immutable",
     );
+    await details
+      .getByRole("button", { name: "编辑外观", exact: true })
+      .click();
     await expect(cloud.locator(".character-face")).toBeVisible();
     await expect(picker.getByRole("status")).toHaveCount(0);
     await expect(
-      picker.locator('[aria-label="外形"] .character-face'),
+      picker.locator('[aria-label="内置角色"] .character-face'),
     ).toHaveCount(15);
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.setViewportSize({ width: 390, height: 700 });
-    await details.getByLabel("名字", { exact: true }).scrollIntoViewIfNeeded();
-    const shapes = picker.locator('[aria-label="外形"] .character');
+    await details
+      .getByRole("button", { name: "返回", exact: true })
+      .scrollIntoViewIfNeeded();
+    const shapes = picker.locator('[aria-label="内置角色"] .character');
     await expect
       .poll(() =>
         shapes.evaluateAll((nodes) =>
@@ -301,15 +306,15 @@ test("plush identities load, animate and survive profile changes", async ({
     await picker.getByRole("tab", { name: "内置角色", exact: true }).focus();
     await expect(
       picker.getByRole("tab", { name: "我的角色", exact: true }),
-    ).toBeDisabled();
+    ).toBeEnabled();
     await expect(picker.getByRole("button", { name: /^外形：/ })).toHaveCount(
       15,
     );
-    await expect(picker.getByRole("button", { name: /^颜色：/ })).toHaveCount(
-      18,
-    );
+    await picker.getByRole("button", { name: /^主题色 #/ }).click();
+    await expect(page.getByRole("button", { name: /^颜色：/ })).toHaveCount(18);
+    await page.keyboard.press("Escape");
     const bodies = await picker
-      .locator('[aria-label="外形"] .character-body > image')
+      .locator('[aria-label="内置角色"] .character-body > image')
       .evaluateAll(async (nodes) => {
         const sources = new Set(nodes.map((node) => node.getAttribute("href")));
         return Promise.all(
@@ -354,13 +359,12 @@ test("plush identities load, animate and survive profile changes", async ({
       expect(Math.abs(body.median / 255 - 0.55)).toBeLessThan(3 / 255);
     }
     await checkAvatarSizes();
-    await picker.getByRole("button", { name: "换个形象", exact: true }).click();
     await picker
       .getByRole("button", { name: "外形：胶囊", exact: true })
       .click();
-    await picker
-      .getByRole("button", { name: "颜色：樱粉", exact: true })
-      .click();
+    await picker.getByRole("button", { name: /^主题色 #/ }).click();
+    await page.getByRole("button", { name: "颜色：樱粉", exact: true }).click();
+    await page.keyboard.press("Escape");
     await expect(details.locator(".avatar-preview .character")).toHaveAttribute(
       "data-shape",
       "capsule",
@@ -368,12 +372,12 @@ test("plush identities load, animate and survive profile changes", async ({
     await picker
       .getByRole("button", { name: "外形：云团", exact: true })
       .click();
+    await picker.getByRole("button", { name: /^主题色 #/ }).click();
     await expect(
-      picker.getByRole("button", { name: "颜色：樱粉", exact: true }),
+      page.getByRole("button", { name: "颜色：樱粉", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
-    await picker
-      .getByRole("button", { name: "颜色：天蓝", exact: true })
-      .click();
+    await page.getByRole("button", { name: "颜色：天蓝", exact: true }).click();
+    await page.keyboard.press("Escape");
     await expect(details.locator(".avatar-preview .character")).toHaveAttribute(
       "data-shape",
       "cloud",

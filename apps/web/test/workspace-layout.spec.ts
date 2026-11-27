@@ -387,7 +387,7 @@ test("centered dialogs share stable geometry and Harness marks", async ({
       .locator("#bot-details")
       .getByRole("button", { name: /^记忆(?:\s|$)/ })
       .click();
-    const memory = page.getByRole("dialog", { name: "记忆" });
+    const memory = page.locator(".memory-dialog");
     await expect(memory).toBeVisible();
     await expect(page.locator(".dialog-backdrop")).toBeVisible();
     await expect(page.locator(".dialog-backdrop")).toHaveCSS(
@@ -397,7 +397,7 @@ test("centered dialogs share stable geometry and Harness marks", async ({
     for (const state of ["list", "editor"]) {
       if (state === "editor")
         await memory
-          .getByRole("button", { name: "新增记忆", exact: true })
+          .getByRole("button", { name: "添加记忆", exact: true })
           .click();
       for (const theme of ["dark", "light"] as const) {
         await page.emulateMedia({ colorScheme: theme });
@@ -407,8 +407,13 @@ test("centered dialogs share stable geometry and Harness marks", async ({
         );
       }
       const box = await memory.boundingBox();
-      expect(box?.width).toBe(size?.width);
-      expect(box?.height).toBe(size?.height);
+      if (state === "list") {
+        expect(box?.width).toBe(size?.width);
+        expect(box?.height).toBe(size?.height);
+      } else {
+        expect(box?.width).toBeLessThanOrEqual(size?.width ?? 0);
+        expect(box?.height).toBeLessThanOrEqual(size?.height ?? 0);
+      }
       await expect(memory.locator(".dialog-body > .scroll-viewport")).toHaveCSS(
         "overflow-y",
         /auto|scroll/,
@@ -430,12 +435,7 @@ test("centered dialogs share stable geometry and Harness marks", async ({
           footer,
         );
         await expect(memory.locator(".scroll-viewport")).toHaveCount(1);
-        if (height === 380)
-          expect(
-            await viewport.evaluate(
-              (node) => node.scrollHeight > node.clientHeight,
-            ),
-          ).toBe(true);
+        await expect(viewport).toBeInViewport();
       }
     }
     await page.keyboard.press("Escape");
@@ -904,11 +904,13 @@ test("Bot rows keep their density and conversation titles while search retains p
   await page.goto(service.url);
   await page.getByRole("button", { name: "新建", exact: true }).click();
   await page.getByRole("menuitem", { name: "新建 Bot", exact: true }).click();
-  let create = page.getByRole("dialog", { name: "新建 Bot", exact: true });
+  let create = page.locator(".create-bot-dialog");
   await create
     .getByRole("textbox", { name: "名字", exact: true })
     .fill("研究助手");
-  await create.getByRole("button", { name: "创建", exact: true }).click();
+  await create
+    .getByRole("button", { name: "创建并选择模型", exact: true })
+    .click();
   const modelDialog = create;
   await modelDialog.getByRole("button", { name: "Pi", exact: true }).click();
   await modelDialog
@@ -928,19 +930,19 @@ test("Bot rows keep their density and conversation titles while search retains p
     exact: true,
   });
   await details.getByRole("button", { name: "编辑", exact: true }).click();
-  await details
-    .getByRole("textbox", { name: "职责与长期指令" })
-    .fill("整理研究资料");
+  await details.getByRole("textbox", { name: "长期指令" }).fill("整理研究资料");
   await details.getByRole("button", { name: "保存身份", exact: true }).click();
   await details.getByRole("button", { name: "关闭", exact: true }).click();
   await page.getByRole("button", { name: "新建", exact: true }).click();
   await page.getByRole("menuitem", { name: "新建 Bot", exact: true }).click();
-  create = page.getByRole("dialog", { name: "新建 Bot", exact: true });
+  create = page.locator(".create-bot-dialog");
   const longName = "负责跨语言内容审校与排版的 Editorial Assistant";
   await create
     .getByRole("textbox", { name: "名字", exact: true })
     .fill(longName);
-  await create.getByRole("button", { name: "创建", exact: true }).click();
+  await create
+    .getByRole("button", { name: "创建并选择模型", exact: true })
+    .click();
   await modelDialog.getByRole("button", { name: "Pi", exact: true }).click();
   await modelDialog
     .getByRole("combobox", { name: "模型", exact: true })

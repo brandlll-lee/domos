@@ -4,9 +4,17 @@ import { BotAvatar } from "@domos/ui/avatar";
 import { Button } from "@domos/ui/controls";
 import { TextField } from "@domos/ui/field";
 import { InlineNotice } from "@domos/ui/message";
+import { PanelHeader } from "@domos/ui/panel";
+import { ScrollArea } from "@domos/ui/scroll-area";
 import { PencilSimpleIcon } from "@phosphor-icons/react/dist/csr/PencilSimple";
+import { useState } from "react";
 import { client } from "../../../client.ts";
-import { AvatarEditor } from "../avatar-editor.tsx";
+import {
+  AvatarEditor,
+  IdentityPreview,
+  useCharacterMedia,
+} from "../avatar-editor.tsx";
+import { useCustomColors } from "../color-preferences.ts";
 import { AvatarEquipment } from "./avatar-equipment.tsx";
 import {
   equipmentFields,
@@ -20,9 +28,10 @@ import {
   type WorkAction,
 } from "./use-bot-work.ts";
 
+const fields = [...identityFields, ...equipmentFields];
 const fieldLabels: Record<IdentityField, string> = {
   name: "名字",
-  instructions: "职责与长期指令",
+  instructions: "长期指令",
   appearance: "头像",
   headset: "耳机位置",
   computer: "电脑位置",
@@ -31,23 +40,31 @@ const fieldLabels: Record<IdentityField, string> = {
 export function IdentityEditor({
   profile,
   action,
+  onClose,
+  onBack,
 }: {
   profile: Profile;
   action: WorkAction;
+  onClose: () => void;
+  onBack: () => void;
 }) {
   const draft = useIdentityDraft(profile);
-  const { values, change, conflicts } = draft;
+  const { values, conflicts } = draft;
   const {
     name,
     instructions,
     appearance: { avatar, avatarAssetId },
   } = values;
-  const setName = (name: string) => change("name", name);
-  const setInstructions = (instructions: string) =>
-    change("instructions", instructions);
-  const setAvatar = (avatar: string) => draft.changeAppearance({ avatar });
-  const dirty = draft.dirty.some((field) => identityFields.includes(field));
-  const conflicted = conflicts.some((field) => identityFields.includes(field));
+  const { source, data } = useCharacterMedia(
+    profile.id,
+    avatarAssetId,
+    avatarAssetId === profile.avatarAssetId ? profile.avatarMedia : undefined,
+  );
+  const [page, setPage] = useState<"profile" | "appearance" | "equipment">(
+    "profile",
+  );
+  const [colors, setColors] = useCustomColors();
+  const dirty = draft.dirty.length > 0;
   const input = {
     botId: profile.id,
     name,
@@ -55,131 +72,186 @@ export function IdentityEditor({
     avatar,
     avatarAssetId,
     revision: profile.revision,
+    headset: source ? values.headset : undefined,
+    computer: source ? values.computer : undefined,
   };
   return (
-    <form
-      className="bot-form"
-      aria-busy={action.busy}
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!dirty || conflicted) return;
-        void action.run(["profile", input], (requestId) =>
-          saveBotIdentity(profile.id, identityFields, () =>
-            client.work.update({ ...input, requestId }),
-          ),
-        );
-      }}
-    >
-      <fieldset className="bot-fields" disabled={action.busy}>
-        <fieldset className="bot-fields">
-          <legend>基本资料</legend>
-          <TextField
-            label="名字"
-            value={name}
-            onValueChange={setName}
-            required
-            maxLength={BOT_NAME_LENGTH}
-          />
-          <TextField
-            label="职责与长期指令"
-            value={instructions}
-            onValueChange={setInstructions}
-            multiline
-            maxLength={WORK_TEXT_LENGTH}
-            placeholder="例如：帮我整理资料、准备每周工作计划。"
-          />
-        </fieldset>
-        <AvatarEditor
-          botId={profile.id}
-          value={avatar}
-          assetId={avatarAssetId}
-          media={
-            avatarAssetId === profile.avatarAssetId
-              ? profile.avatarMedia
-              : undefined
-          }
-          onAssetChange={(avatarAssetId) =>
-            draft.changeAppearance({ avatarAssetId })
-          }
-          onChange={setAvatar}
-        />
-        {conflicts.map((field) => (
-          <InlineNotice key={field}>
-            <span>{fieldLabels[field]}已在别处更新。请选择要保留的内容。</span>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                draft.resolve(field, "current");
-                action.clear();
-              }}
-            >
-              使用最新值
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              disabled={
-                equipmentFields.includes(field) && avatarAssetId === null
-              }
-              onClick={() => {
-                draft.resolve(field, "draft");
-                action.clear();
-              }}
-            >
-              保留我的修改
-            </Button>
-          </InlineNotice>
-        ))}
-        {profile.avatarMigrationError && (
-          <InlineNotice>
-            <span>{profile.avatarMigrationError}</span>
-            <Button
-              type="button"
-              variant="ghost"
-              pending={action.busy}
-              onClick={() =>
-                void action.run({ migration: profile.id }, () =>
-                  saveBotIdentity(profile.id, [], () =>
-                    client.bots.retryCharacterMigration({ botId: profile.id }),
-                  ),
-                )
-              }
-            >
-              重试收录角色
-            </Button>
-          </InlineNotice>
-        )}
-        {dirty && (
-          <div className="form-actions">
-            <Button
-              type="button"
-              variant="ghost"
-              size="small"
-              onClick={() => {
-                draft.reset(identityFields);
-                action.clear();
-              }}
-            >
-              还原
-            </Button>
-            <Button
-              type="submit"
-              size="small"
-              aria-label="保存身份"
-              pending={action.busy}
-              disabled={!name.trim() || conflicted}
-            >
-              保存
-            </Button>
-          </div>
-        )}
-        <AvatarEquipment profile={profile} action={action} />
-      </fieldset>
-    </form>
+    <section className="profile-editor" aria-label="编辑资料">
+      <PanelHeader
+        title={
+          page === "profile"
+            ? "编辑资料"
+            : page === "appearance"
+              ? "外观"
+              : "装备位置"
+        }
+        onClose={onClose}
+        onBack={() =>
+          page === "profile"
+            ? onBack()
+            : setPage(page === "equipment" ? "appearance" : "profile")
+        }
+      />
+      <ScrollArea
+        className="profile-scroll"
+        viewportClassName="profile-viewport"
+      >
+        <form
+          id={`profile-${profile.id}`}
+          className="profile-body"
+          aria-busy={action.busy}
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!dirty || conflicts.length || !name.trim() || action.busy)
+              return;
+            void action.run(["profile", input], (requestId) =>
+              saveBotIdentity(profile.id, fields, () =>
+                client.work.update({ ...input, requestId }),
+              ),
+            );
+          }}
+        >
+          <fieldset className="bot-fields" disabled={action.busy}>
+            {page === "profile" ? (
+              <>
+                <IdentityPreview
+                  name={name}
+                  avatar={avatar}
+                  media={source}
+                  onEdit={() => setPage("appearance")}
+                />
+                <div className="profile-info-fields">
+                  <TextField
+                    label="名字"
+                    value={name}
+                    onValueChange={(value) => draft.change("name", value)}
+                    required
+                    maxLength={BOT_NAME_LENGTH}
+                  />
+                  <TextField
+                    label="长期指令"
+                    description="告诉伙伴，你希望它怎样帮助你。"
+                    value={instructions}
+                    onValueChange={(value) =>
+                      draft.change("instructions", value)
+                    }
+                    multiline
+                    maxLength={WORK_TEXT_LENGTH}
+                  />
+                </div>
+              </>
+            ) : page === "appearance" ? (
+              <AvatarEditor
+                value={avatar}
+                assetId={avatarAssetId}
+                source={source}
+                characters={data}
+                onAssetChange={(id) =>
+                  draft.changeAppearance({ avatarAssetId: id })
+                }
+                onChange={(avatar) => draft.changeAppearance({ avatar })}
+                onEquipment={() => setPage("equipment")}
+                colors={colors}
+                onColorsChange={setColors}
+              />
+            ) : (
+              source && (
+                <AvatarEquipment
+                  avatar={avatar}
+                  source={source}
+                  headset={values.headset ?? source.headset}
+                  computer={values.computer ?? source.computer}
+                  onChange={(field, value) =>
+                    draft.change(field, value, source[field])
+                  }
+                />
+              )
+            )}
+            {conflicts.map((field) => (
+              <InlineNotice key={field}>
+                <span>
+                  {fieldLabels[field]}已在别处更新。请选择要保留的内容。
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    draft.resolve(field, "current");
+                    action.clear();
+                  }}
+                >
+                  使用最新值
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={
+                    equipmentFields.includes(field) && avatarAssetId === null
+                  }
+                  onClick={() => {
+                    draft.resolve(field, "draft");
+                    action.clear();
+                  }}
+                >
+                  保留我的修改
+                </Button>
+              </InlineNotice>
+            ))}
+            {profile.avatarMigrationError && (
+              <InlineNotice>
+                <span>{profile.avatarMigrationError}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  pending={action.busy}
+                  onClick={() =>
+                    void action.run({ migration: profile.id }, () =>
+                      saveBotIdentity(profile.id, [], () =>
+                        client.bots.retryCharacterMigration({
+                          botId: profile.id,
+                        }),
+                      ),
+                    )
+                  }
+                >
+                  重试收录角色
+                </Button>
+              </InlineNotice>
+            )}
+          </fieldset>
+        </form>
+      </ScrollArea>
+      <footer className="profile-footer">
+        <span
+          className="profile-save-state"
+          role={action.busy ? "status" : undefined}
+        >
+          {action.busy ? "正在保存…" : dirty ? "有未保存的修改" : ""}
+        </span>
+        <Button
+          type="button"
+          variant="ghost"
+          disabled={!dirty || action.busy}
+          onClick={() => {
+            draft.reset(fields);
+            action.clear();
+          }}
+        >
+          还原
+        </Button>
+        <Button
+          type="submit"
+          form={`profile-${profile.id}`}
+          aria-label="保存身份"
+          pending={action.busy}
+          disabled={!dirty || !name.trim() || conflicts.length > 0}
+        >
+          保存
+        </Button>
+      </footer>
+    </section>
   );
 }
-
 export function BotIdentity({
   bot,
   profile,

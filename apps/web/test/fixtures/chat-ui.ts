@@ -217,13 +217,15 @@ export async function createBot(
     await page.getByRole("button", { name: "联系人", exact: true }).click();
   await page.getByRole("button", { name: "新建", exact: true }).click();
   await page.getByRole("menuitem", { name: "新建 Bot", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "新建 Bot", exact: true });
+  const dialog = page.locator(".create-bot-dialog");
   await dialog.getByLabel("名字", { exact: true }).fill(name);
   await expect(
-    dialog.getByRole("textbox", { name: "HEX", exact: true }),
+    dialog.getByRole("button", { name: "编辑外观", exact: true }),
   ).toBeVisible();
   await expect(dialog.getByRole("combobox")).toHaveCount(0);
-  await dialog.getByRole("button", { name: "创建", exact: true }).click();
+  await dialog
+    .getByRole("button", { name: "创建并选择模型", exact: true })
+    .click();
 
   await dialog.getByRole("button", { name: "Pi", exact: true }).click();
   await dialog.getByRole("combobox", { name: "模型", exact: true }).click();

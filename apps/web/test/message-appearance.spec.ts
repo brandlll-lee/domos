@@ -1037,11 +1037,17 @@ test("settings rows keep content insets across Bot, computer and settings views"
     .getByRole("button", { name: "更改目录", exact: true })
     .click();
   const picker = page.getByRole("dialog", {
-    name: "选择工作目录",
+    name: "工作文件夹",
     exact: true,
   });
-  await picker.getByLabel("目录路径", { exact: true }).fill(project);
-  await picker.getByRole("button", { name: "使用此目录", exact: true }).click();
+  await picker.getByRole("radio", { name: "指定文件夹", exact: true }).click();
+  await picker.getByRole("button", { name: "输入路径", exact: true }).click();
+  await picker.getByLabel("文件夹完整路径", { exact: true }).fill(project);
+  await picker.getByRole("button", { name: "前往", exact: true }).click();
+  await expect(picker.locator(".directory-destination")).toContainText(project);
+  await picker
+    .getByRole("button", { name: "使用此文件夹", exact: true })
+    .click();
   await expect(directoryRow).toContainText(project);
 
   for (const colorScheme of ["dark", "light"] as const) {
@@ -1280,12 +1286,12 @@ test("control geometry and interaction states stay consistent", async ({
     "0px",
   );
   const save = details.getByRole("button", { name: "保存身份", exact: true });
-  await expect(save).toHaveCount(0);
+  await expect(save).toBeDisabled();
   await name.fill("编辑中的名字");
   await expect(save).toBeEnabled();
   await details.getByRole("button", { name: "还原", exact: true }).click();
   await expect(name).toHaveValue("Domos");
-  await expect(save).toHaveCount(0);
+  await expect(save).toBeDisabled();
   await name.fill("");
   await expect(save).toBeDisabled();
   const color = await save.evaluate(
@@ -1317,7 +1323,7 @@ test("control geometry and interaction states stay consistent", async ({
   await details.getByRole("tab", { name: "Bot", exact: true }).click();
   await details.getByRole("button", { name: /^记忆(?:\s|$)/ }).click();
   const memory = page.locator(".dialog-popup").first();
-  await memory.getByRole("button", { name: "新增记忆", exact: true }).click();
+  await memory.getByRole("button", { name: "添加记忆", exact: true }).click();
   const checkbox = memory.getByRole("checkbox", { name: "共享给所有 Bot" });
   await expect(checkbox).toHaveCSS("width", "16px");
   await expect(checkbox).toHaveCSS("margin", "0px");

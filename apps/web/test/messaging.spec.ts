@@ -939,9 +939,11 @@ test("returning to a Bot shows retained messages and draft while its stream is d
     .toBe(top);
   await page.getByRole("button", { name: "新建", exact: true }).click();
   await page.getByRole("menuitem", { name: "新建 Bot", exact: true }).click();
-  const create = page.getByRole("dialog", { name: "新建 Bot", exact: true });
+  const create = page.locator(".create-bot-dialog");
   await create.getByRole("textbox", { name: "名字", exact: true }).fill("乙");
-  await create.getByRole("button", { name: "创建", exact: true }).click();
+  await create
+    .getByRole("button", { name: "创建并选择模型", exact: true })
+    .click();
   await create.getByRole("button", { name: "Pi", exact: true }).click();
   await create.getByRole("combobox", { name: "模型", exact: true }).click();
   await page
