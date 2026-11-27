@@ -215,6 +215,7 @@ test("host scheduling keeps other operating systems pending for CI", () => {
   );
   assert.ok(builder);
   assert.equal(builder[builder.indexOf("--publish") + 1], "never");
+  assert.ok(builder.includes("--config.nsis.publish=null"));
   for (const platform of ["win32", "linux", "darwin"]) {
     const assigned = schedule(selected, jobs, platform);
     assert.deepEqual(

@@ -432,6 +432,7 @@ export function plan(
         "nsis",
         "--publish",
         "never",
+        "--config.nsis.publish=null",
         "--config.win.signExecutable=false",
       ),
       ["node", "--test", "apps/desktop/test/package.test.mjs"],
