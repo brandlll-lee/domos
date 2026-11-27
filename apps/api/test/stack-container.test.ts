@@ -38,12 +38,26 @@ test.runIf(process.env.DOMOS_CONTAINER_TESTS === "1")(
   async () => {
     const directory = await mkdtemp(join(tmpdir(), "domos-managed-container-"));
     const root = join(directory, "installation");
-    const release = releaseSchema.parse(
-      JSON.parse(await readFile("deploy/release.json", "utf8")),
+    const images = await Promise.all(
+      ["domos-app:test", "domos-workspace:1.2.0", "domos-egress:1"].map(
+        async (image) =>
+          (
+            await runCommand("docker", [
+              "image",
+              "inspect",
+              "--format",
+              "{{index .RepoDigests 0}}",
+              image,
+            ])
+          ).trim(),
+      ),
     );
-    release.serviceImage = "domos-app:test";
-    release.workImage = "domos-workspace:1.2.0";
-    release.proxyImage = "domos-egress:1";
+    const release = releaseSchema.parse({
+      ...JSON.parse(await readFile("deploy/release.json", "utf8")),
+      serviceImage: images[0],
+      workImage: images[1],
+      proxyImage: images[2],
+    });
     const installations = [root];
     let stack = new LocalStack(root, release);
     const targets: { botId: number; id: string }[] = [];
