@@ -430,6 +430,8 @@ export function plan(
         "electron-builder",
         "--win",
         "nsis",
+        "--publish",
+        "never",
         "--config.win.signExecutable=false",
       ),
       ["node", "--test", "apps/desktop/test/package.test.mjs"],

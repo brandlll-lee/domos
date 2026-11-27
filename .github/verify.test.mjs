@@ -210,6 +210,11 @@ test("failed processes and unavailable commands fail verification", () => {
 test("host scheduling keeps other operating systems pending for CI", () => {
   const selected = scope([".github/ci.mjs"]);
   const jobs = plan(selected);
+  const builder = jobs.desktop.find((args) =>
+    args.includes("electron-builder"),
+  );
+  assert.ok(builder);
+  assert.equal(builder[builder.indexOf("--publish") + 1], "never");
   for (const platform of ["win32", "linux", "darwin"]) {
     const assigned = schedule(selected, jobs, platform);
     assert.deepEqual(
