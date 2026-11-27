@@ -372,7 +372,9 @@ test("teams preserve member authors and keep private chats separate", async ({
     exact: true,
   });
   while (await closeNotice.count()) await closeNotice.first().click();
-  await details.getByRole("button", { name: "返回", exact: true }).click();
+  await details
+    .getByRole("button", { name: "返回", exact: true })
+    .press("Enter");
   await page.getByRole("tab", { name: "Work", exact: true }).click();
   await expect(
     page
