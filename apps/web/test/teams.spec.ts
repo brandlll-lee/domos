@@ -107,6 +107,7 @@ test("teams preserve member authors and keep private chats separate", async ({
     name: "新建 Bot 团队",
     exact: true,
   });
+  await expect(dialog).toHaveCSS("scale", "none");
   await dialog.evaluate((node) =>
     Promise.allSettled(
       node.getAnimations().map((animation) => animation.finished),

@@ -368,6 +368,7 @@ test("centered dialogs share stable geometry and Harness marks", async ({
     await page.getByRole("menuitem", { name: "设置", exact: true }).click();
     const settings = page.getByRole("dialog", { name: "设置", exact: true });
     await expect(settings).toBeVisible();
+    await expect(settings).toHaveCSS("scale", "none");
     const size = await settings.boundingBox();
     for (const theme of ["dark", "light"] as const) {
       await page.emulateMedia({ colorScheme: theme });
@@ -389,6 +390,7 @@ test("centered dialogs share stable geometry and Harness marks", async ({
       .click();
     const memory = page.locator(".memory-dialog");
     await expect(memory).toBeVisible();
+    await expect(memory).toHaveCSS("scale", "none");
     await expect(page.locator(".dialog-backdrop")).toBeVisible();
     await expect(page.locator(".dialog-backdrop")).toHaveCSS(
       "backdrop-filter",

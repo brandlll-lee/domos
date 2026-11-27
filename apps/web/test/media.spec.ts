@@ -625,6 +625,7 @@ test("image viewer follows the live theme, displays original pixels and releases
       if (!this.closest(".image-viewer")) return decode.call(this);
       HTMLImageElement.prototype.decode = decode;
       return new Promise<void>((resolve, reject) => {
+        this.dataset.decodePending = "true";
         this.addEventListener(
           "decode-image",
           () => void decode.call(this).then(resolve, reject),
@@ -645,6 +646,7 @@ test("image viewer follows the live theme, displays original pixels and releases
     "background-image",
     "none",
   );
+  await expect(image).toHaveAttribute("data-decode-pending", "true");
   await image.dispatchEvent("decode-image");
   await expect(image).toHaveCSS("opacity", "1");
   await expect(viewer.getByRole("status")).toHaveCount(0);

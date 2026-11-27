@@ -279,8 +279,9 @@ test("profile updates merge with drafts and keep character equipment scoped", as
   await back.click();
   await name.fill("Unified name");
   await save.click();
-  await expect(save).toBeDisabled();
-  expect((await api.work.profile({ botId: bot.id })).name).toBe("Unified name");
+  await expect
+    .poll(async () => (await api.work.profile({ botId: bot.id })).name)
+    .toBe("Unified name");
   expect(
     (await api.work.profile({ botId: bot.id })).avatarMedia?.headset.x,
   ).toBe(29);

@@ -920,6 +920,12 @@ test("Bot identity stays consistent and image previews work in drafts and histor
   await dialog.getByRole("button", { name: "编辑外观", exact: true }).click();
   const avatar = dialog.locator(".avatar-editor .avatar-preview > .bot-avatar");
   const initial = await avatar.getAttribute("data-seed");
+  const finalShape =
+    (await dialog
+      .getByRole("button", { name: "外形：气泡", exact: true })
+      .getAttribute("aria-pressed")) === "true"
+      ? "兔子"
+      : "气泡";
   for (const name of ["兔子", "幽灵", "火箭", "手柄", "幼苗", "气泡"]) {
     const shape = page.getByRole("button", {
       name: `外形：${name}`,
@@ -929,6 +935,9 @@ test("Bot identity stays consistent and image previews work in drafts and histor
     await expect(shape).toHaveAttribute("aria-pressed", "true");
     await expect(avatar.locator(".character")).toHaveCSS("opacity", "1");
   }
+  await dialog
+    .getByRole("button", { name: `外形：${finalShape}`, exact: true })
+    .click();
   await expect(avatar).not.toHaveAttribute("data-seed", initial ?? "");
   const seed = await avatar.getAttribute("data-seed");
   expect(seed).toBeTruthy();

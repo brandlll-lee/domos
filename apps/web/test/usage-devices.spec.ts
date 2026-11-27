@@ -800,9 +800,9 @@ test("usage curves grow on accepted data and retain their state during pending r
     await curves.evaluate((element) => element.getAnimations().length),
   ).toBe(1);
   await page.emulateMedia({ reducedMotion: "reduce" });
-  expect(
-    await curves.evaluate((element) => element.getAnimations().length),
-  ).toBe(0);
+  await expect
+    .poll(() => curves.evaluate((element) => element.getAnimations().length))
+    .toBe(0);
   await usage.getByRole("radio", { name: "费用", exact: true }).click();
   await expect(ticker).toHaveAccessibleName("US$6.78");
   expect(

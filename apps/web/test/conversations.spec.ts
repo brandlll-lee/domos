@@ -40,6 +40,9 @@ test("empty private conversations retain their creation time through navigation 
     await createConversation(page);
     await expect(page).toHaveURL(/#bot\/1\/\d+$/);
     await expect(time).toBeVisible();
+    await expect
+      .poll(async () => Date.parse((await time.getAttribute("datetime")) ?? ""))
+      .toBeGreaterThanOrEqual(started);
     const at = await time.getAttribute("datetime");
     expect(Date.parse(at ?? "")).toBeGreaterThanOrEqual(started);
     expect(Date.parse(at ?? "")).toBeLessThanOrEqual(Date.now());
@@ -385,9 +388,13 @@ test("conversation marks keep their slot through failure, work, unread and compl
     .locator(".bot-avatar");
   await expect(avatar.locator(".loading-dots")).toBeVisible();
   await expect(avatar.locator(".unread-badge")).toBeVisible();
-  const work = await avatar.locator(".loading-dots").boundingBox();
-  const unread = await avatar.locator(".unread-badge").boundingBox();
-  expect(work && unread && work.y >= unread.y + unread.height).toBe(true);
+  await expect
+    .poll(async () => {
+      const work = await avatar.locator(".loading-dots").boundingBox();
+      const unread = await avatar.locator(".unread-badge").boundingBox();
+      return Boolean(work && unread && work.y >= unread.y + unread.height);
+    })
+    .toBe(true);
   await service.control("release");
   await expect(avatar.locator(".loading-dots")).toHaveCount(0);
   await expect(

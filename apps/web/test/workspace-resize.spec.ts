@@ -317,7 +317,7 @@ test("contacts collapse during dragging and restore their width without losing c
     exact: true,
   });
   await avatarMenu.press("Enter");
-  await expect(page.getByRole("menuitem", { name: "新建会话" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "新建会话" })).toBeFocused();
   await page.keyboard.press("End");
   await expect(page.getByRole("menuitem", { name: "管理会话" })).toBeFocused();
   await page.keyboard.press("Enter");

@@ -657,6 +657,10 @@ test("takeover controls the Agent browser and preserves its layout through fulls
   const colors: string[] = [];
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-theme",
+      colorScheme,
+    );
     colors.push(
       await view
         .locator(".computer-viewer")

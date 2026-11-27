@@ -551,6 +551,7 @@ test("IM bubbles, search dialog, and popup surfaces share both themes", async ({
       .first(),
   ).toBeVisible();
   await search.clear();
+  await expect(page.locator(".chat-search-dialog")).toHaveCSS("opacity", "1");
   await page.keyboard.press("Escape");
   await expect(searchButton).toBeFocused();
   for (const [theme, label] of [
@@ -890,6 +891,7 @@ test("message links inherit text and highlight on interaction without a backgrou
   const colors: string[] = [];
   for (const theme of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: theme });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     const normal = await source
       .locator("..")
       .evaluate((node) => getComputedStyle(node).color);
